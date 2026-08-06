@@ -1,0 +1,178 @@
+//! App-shell commands: startup checks, cache cleanup, version info.
+
+use std::path::PathBuf;
+
+use serde::Serialize;
+use tauri::{AppHandle, Manager};
+
+use crate::commands::config::ConfigState;
+use crate::storage::cache::{
+    cleanup_all, cleanup_orphans_only, collect_work_base_paths, CacheCleanupResult,
+};
+use crate::storage::logging::{self, log_error, log_info, log_warn};
+use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
+use crate::video::hw_accel::{detect_hardware, HwAccelInfo};
+
+#[derive(Debug, Serialize)]
+pub struct AppInfo {
+    pub product_name: String,
+    pub version: String,
+    pub log_path: Option<String>,
+    pub config_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StartupCheckResult {
+    pub ok: bool,
+    pub ffmpeg_path: Option<String>,
+    pub ffmpeg_error: Option<String>,
+    pub hw: Option<HwAccelInfo>,
+    pub cache: Option<CacheCleanupResult>,
+    pub version: String,
+    pub message: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct CleanupCacheArgs {
+    pub speicherort: Option<String>,
+    pub import_paths: Option<Vec<String>>,
+    pub exclude_temp_dir: Option<String>,
+    pub include_hw_cache: Option<bool>,
+    pub orphans_only: Option<bool>,
+}
+
+#[tauri::command]
+pub fn get_app_info() -> AppInfo {
+    let log = logging::log_path().map(|p| p.to_string_lossy().into_owned());
+    let config_dir = crate::storage::app_config_dir()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned());
+    AppInfo {
+        product_name: "Aero Tandem Studio".into(),
+        version: env!("CARGO_PKG_VERSION").into(),
+        log_path: log,
+        config_dir,
+    }
+}
+
+/// FFmpeg find + HW detect + optional orphan cache sweep (used by SplashScreen).
+#[tauri::command]
+pub fn run_startup_checks(
+    app: AppHandle,
+    auto_cleanup: Option<bool>,
+) -> Result<StartupCheckResult, String> {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    let do_cleanup = auto_cleanup.unwrap_or(true);
+
+    log_info("Startup checks: locating FFmpeg...");
+    let resource_dir = app.path().resource_dir().ok();
+    let ffmpeg_result = find_ffmpeg_with_resource_dir(resource_dir.as_deref());
+
+    let (ffmpeg_path, ffmpeg_error) = match &ffmpeg_result {
+        Ok(p) => {
+            log_info(&format!("FFmpeg found: {}", p.display()));
+            (Some(p.to_string_lossy().into_owned()), None)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            log_error(&format!("FFmpeg not found: {msg}"));
+            (None, Some(msg))
+        }
+    };
+
+    log_info("Startup checks: detecting hardware encoder...");
+    let hw = detect_hardware();
+    log_info(&format!(
+        "Hardware encoder: {} (available={})",
+        hw.encoder, hw.available
+    ));
+
+    let cache = if do_cleanup {
+        log_info("Startup checks: orphan cache sweep...");
+        // No active session yet at splash — clear all orphan preview/work dirs.
+        let result = cleanup_orphans_only(None);
+        if result.deleted_dirs.is_empty() && result.deleted_files.is_empty() {
+            log_info("Cache sweep: nothing to remove");
+        } else {
+            log_info(&format!("Cache sweep: {}", result.summary));
+        }
+        Some(result)
+    } else {
+        None
+    };
+
+    let ok = ffmpeg_path.is_some();
+    let message = if ok {
+        format!("Bereit — FFmpeg OK, Encoder {}", hw.encoder)
+    } else {
+        "FFmpeg nicht gefunden — Encoding nicht möglich.".into()
+    };
+
+    if !ok {
+        log_warn(&message);
+    } else {
+        log_info(&message);
+    }
+
+    Ok(StartupCheckResult {
+        ok,
+        ffmpeg_path,
+        ffmpeg_error,
+        hw: Some(hw),
+        cache,
+        version,
+        message,
+    })
+}
+
+#[tauri::command]
+pub fn cleanup_cache(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<CleanupCacheArgs>,
+) -> Result<CacheCleanupResult, String> {
+    let args = args.unwrap_or(CleanupCacheArgs {
+        speicherort: None,
+        import_paths: None,
+        exclude_temp_dir: None,
+        include_hw_cache: Some(false),
+        orphans_only: Some(false),
+    });
+
+    let exclude = args
+        .exclude_temp_dir
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(crate::storage::working_session::get_working_dir);
+
+    let orphans_only = args.orphans_only.unwrap_or(false);
+    if orphans_only {
+        let result = cleanup_orphans_only(exclude.as_deref());
+        log_info(&format!("cleanup_cache (orphans): {}", result.summary));
+        return Ok(result);
+    }
+
+    let speicherort = args.speicherort.or_else(|| {
+        state
+            .cache
+            .lock()
+            .ok()
+            .map(|g| g.speicherort.clone())
+            .filter(|s| !s.is_empty())
+    });
+
+    let import_paths = args.import_paths.unwrap_or_default();
+    let bases = collect_work_base_paths(
+        speicherort.as_deref(),
+        if import_paths.is_empty() {
+            None
+        } else {
+            Some(&import_paths)
+        },
+    );
+
+    let include_hw = args.include_hw_cache.unwrap_or(false);
+    let result = cleanup_all(exclude.as_deref(), Some(&bases), include_hw);
+    log_info(&format!("cleanup_cache: {}", result.summary));
+    Ok(result)
+}

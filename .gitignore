@@ -1,0 +1,38 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# FFmpeg sidecar binaries (download separately — see resources/ffmpeg/README.md)
+src-tauri/resources/ffmpeg/win/ffmpeg.exe
+src-tauri/resources/ffmpeg/win/*.zip
+src-tauri/resources/ffmpeg/win/_extract/
+src-tauri/resources/ffmpeg/mac/ffmpeg
+src-tauri/resources/ffmpeg/mac/arm64/
+src-tauri/resources/ffmpeg/mac/x86_64/
+src-tauri/resources/ffmpeg/linux/ffmpeg
+src-tauri/target/
+
+# Updater private signing key (public key lives in tauri.conf.json)
+src-tauri/keys/*.key
+!src-tauri/keys/*.key.pub

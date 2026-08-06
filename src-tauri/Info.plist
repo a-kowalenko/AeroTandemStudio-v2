@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>Aero Tandem Studio liest Videos und Fotos von SD-Karten und Kameras unter /Volumes.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>Aero Tandem Studio speichert und öffnet exportierte Videos im Downloads-Ordner, wenn ausgewählt.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>Aero Tandem Studio speichert Vorgänge und Medien in Dokumenten-Ordnern, wenn ausgewählt.</string>
+    <key>NSNetworkVolumesUsageDescription</key>
+    <string>Aero Tandem Studio kann auf Netzwerkfreigaben zugreifen, wenn der Speicherort dort liegt.</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.video</string>
+</dict>
+</plist>

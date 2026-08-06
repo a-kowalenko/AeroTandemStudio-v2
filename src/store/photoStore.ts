@@ -1,0 +1,197 @@
+import { create } from "zustand";
+import { deleteWorkingCopy, getFileSizes, importPhotos } from "../lib/tauri";
+import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
+
+export type PhotoItem = {
+  path: string;
+  filename: string;
+  sizeBytes?: number;
+};
+
+type PhotoListState = {
+  photoList: PhotoItem[];
+  currentIndex: number;
+  selected: Set<number>;
+  explicitlySelected: boolean;
+  /** Indices marked for unpaid-foto watermark (Preview_Foto). */
+  watermarkIndices: Set<number>;
+  importing: boolean;
+  importError: string | null;
+  addPhotos: (paths: string[]) => Promise<void>;
+  removePhotos: (indices: number[]) => void;
+  setCurrentIndex: (index: number) => void;
+  toggleSelect: (index: number, mode: "replace" | "toggle" | "range") => void;
+  clearSelection: () => void;
+  clearPhotos: () => void;
+  toggleWatermark: (index: number) => void;
+  setWatermarkIndices: (indices: number[]) => void;
+  clearWatermarkSelection: () => void;
+  /** Fill missing `sizeBytes` from disk (no-op if all present). */
+  refreshSizes: (paths?: string[]) => Promise<void>;
+};
+
+function toItem(path: string): PhotoItem {
+  const normalized = path.replace(/\\/g, "/");
+  const filename = normalized.split("/").pop() || path;
+  return { path, filename };
+}
+
+export const usePhotoStore = create<PhotoListState>((set, get) => ({
+  photoList: [],
+  currentIndex: -1,
+  selected: new Set(),
+  explicitlySelected: false,
+  watermarkIndices: new Set(),
+  importing: false,
+  importError: null,
+
+  addPhotos: async (paths: string[]) => {
+    if (paths.length === 0) return;
+    set({ importing: true, importError: null });
+    try {
+      const imported = await importPhotos(paths);
+      const existing = new Set(get().photoList.map((p) => p.path.toLowerCase()));
+      const fresh = imported
+        .filter((p) => !existing.has(p.toLowerCase()))
+        .map(toItem);
+      if (fresh.length === 0) {
+        set({
+          importing: false,
+          importError:
+            imported.length === 0
+              ? "Keine gültigen Foto-Dateien gefunden"
+              : "Alle Dateien sind bereits in der Liste",
+        });
+        return;
+      }
+      const next = [...get().photoList, ...fresh];
+      set({
+        photoList: next,
+        currentIndex: get().currentIndex < 0 ? 0 : get().currentIndex,
+        importing: false,
+        importError: null,
+      });
+      void get().refreshSizes(fresh.map((p) => p.path));
+      syncProductsFromMedia({ hasVideos: false, hasPhotos: true });
+    } catch (e) {
+      set({ importing: false, importError: String(e) });
+    }
+  },
+
+  removePhotos: (indices: number[]) => {
+    const remove = new Set(indices);
+    const removedPaths = get()
+      .photoList.filter((_, i) => remove.has(i))
+      .map((p) => p.path);
+    const next = get().photoList.filter((_, i) => !remove.has(i));
+    const wm = new Set<number>();
+    get().photoList.forEach((_, i) => {
+      if (remove.has(i) || !get().watermarkIndices.has(i)) return;
+      const removedBefore = [...remove].filter((r) => r < i).length;
+      wm.add(i - removedBefore);
+    });
+    set({
+      photoList: next,
+      currentIndex: next.length === 0 ? -1 : Math.min(get().currentIndex, next.length - 1),
+      selected: new Set(),
+      explicitlySelected: false,
+      watermarkIndices: wm,
+    });
+    for (const p of removedPaths) {
+      void deleteWorkingCopy(p);
+    }
+  },
+
+  setCurrentIndex: (index: number) => {
+    const list = get().photoList;
+    if (index < 0 || index >= list.length) return;
+    set({ currentIndex: index });
+  },
+
+  toggleSelect: (index: number, mode) => {
+    const { photoList, selected, currentIndex } = get();
+    if (index < 0 || index >= photoList.length) return;
+
+    if (mode === "replace") {
+      set({
+        currentIndex: index,
+        selected: new Set(),
+        explicitlySelected: false,
+      });
+      return;
+    }
+
+    if (mode === "toggle") {
+      const next = new Set(selected);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      set({
+        selected: next,
+        explicitlySelected: next.size > 0,
+      });
+      return;
+    }
+
+    const start = Math.min(currentIndex >= 0 ? currentIndex : index, index);
+    const end = Math.max(currentIndex >= 0 ? currentIndex : index, index);
+    const next = new Set(selected);
+    for (let i = start; i <= end; i++) next.add(i);
+    set({ selected: next, explicitlySelected: true });
+  },
+
+  clearSelection: () => set({ selected: new Set(), explicitlySelected: false }),
+
+  clearPhotos: () => {
+    const paths = get().photoList.map((p) => p.path);
+    set({
+      photoList: [],
+      currentIndex: -1,
+      selected: new Set(),
+      explicitlySelected: false,
+      watermarkIndices: new Set(),
+      importError: null,
+    });
+    for (const p of paths) {
+      void deleteWorkingCopy(p);
+    }
+  },
+
+  toggleWatermark: (index) => {
+    const next = new Set(get().watermarkIndices);
+    if (next.has(index)) next.delete(index);
+    else next.add(index);
+    set({ watermarkIndices: next });
+  },
+
+  setWatermarkIndices: (indices) => set({ watermarkIndices: new Set(indices) }),
+
+  clearWatermarkSelection: () => set({ watermarkIndices: new Set() }),
+
+  refreshSizes: async (paths) => {
+    const list = get().photoList;
+    const targets =
+      paths && paths.length > 0
+        ? paths
+        : list.filter((p) => p.sizeBytes == null).map((p) => p.path);
+    if (targets.length === 0) return;
+    try {
+      const entries = await getFileSizes(targets);
+      const byPath = new Map(
+        entries.map((e) => [e.path.replace(/\\/g, "/").toLowerCase(), e.size_bytes]),
+      );
+      const queried = new Set(
+        targets.map((p) => p.replace(/\\/g, "/").toLowerCase()),
+      );
+      set({
+        photoList: get().photoList.map((p) => {
+          const key = p.path.replace(/\\/g, "/").toLowerCase();
+          if (byPath.has(key)) return { ...p, sizeBytes: byPath.get(key)! };
+          if (queried.has(key) && p.sizeBytes == null) return { ...p, sizeBytes: 0 };
+          return p;
+        }),
+      });
+    } catch {
+      /* keep previous sizes */
+    }
+  },
+}));
