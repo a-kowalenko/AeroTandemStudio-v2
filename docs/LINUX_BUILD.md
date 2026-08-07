@@ -242,7 +242,7 @@ Job steps (in addition to Node/Rust):
 5. Upload artifacts to the public releases repo (same flow as Win/Mac)
 6. Ensure updater JSON includes Linux entry when signing secrets are present
 
-Optional: run `cargo test` on Ubuntu so Linux `cfg` branches are exercised in CI.
+Rust unit tests are not run in CI (too slow); use `npm run test:rust` locally, including on Linux if you need `cfg` coverage.
 
 PR workflow (`.github/workflows/test.yml`) may stay Windows-only for speed; full Linux verification is release + local.
 
@@ -252,7 +252,7 @@ PR workflow (`.github/workflows/test.yml`) may stay Windows-only for speed; full
 
 - [x] Apt deps installed on build machine / CI image (`release.yml` ubuntu-22.04)
 - [x] `npm run download-ffmpeg` → static binary under `linux/x86_64/`
-- [x] `cargo test` / `npm run test:rust` (also on Ubuntu release job)
+- [x] `cargo test` / `npm run test:rust` (lokal; nicht im Release-CI)
 - [ ] `npm run tauri build -- --bundles appimage` (run on Linux / CI)
 - [ ] Launch AppImage; UI loads
 - [ ] Intro encode shows umlauts (fontfile OK)

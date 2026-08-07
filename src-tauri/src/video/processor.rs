@@ -576,24 +576,30 @@ pub fn build_soft_splice_head_args(
     let h = v_params.height;
     let fps = &v_params.fps;
 
+    // `setsar=1` is required: scale/pad on still vs camera often yields different
+    // SARs, and concat fails with EINVAL (Windows exit 234) without normalization.
     let intro_v = format!(
         "[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,\
          {drawtext_filter},format={target_pix_fmt},fps={fps},\
-         trim=duration={intro_dauer},setpts=PTS-STARTPTS[introv]"
+         trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv]"
     );
     let body_v = format!(
         "[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt},\
-         trim=duration={bridge_secs},setpts=PTS-STARTPTS[bodyv]"
+         trim=duration={bridge_secs},setpts=PTS-STARTPTS,setsar=1[bodyv]"
     );
     let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
+    let aformat = format!(
+        "aformat=sample_rates={}:channel_layouts={}",
+        v_params.sample_rate, v_params.channel_layout
+    );
 
     let filter_complex = if has_body_audio {
         format!(
             "{intro_v};{body_v};{v_concat};\
-             [2:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS[introa];\
-             [1:a]atrim=0:{bridge_secs},asetpts=PTS-STARTPTS[bodya];\
+             [2:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS,{aformat}[introa];\
+             [1:a]atrim=0:{bridge_secs},asetpts=PTS-STARTPTS,{aformat}[bodya];\
              [introa][bodya]concat=n=2:v=0:a=1[a]"
         )
     } else {
@@ -1727,6 +1733,11 @@ mod tests {
         assert!(fc.contains("concat=n=2:v=1:a=0"));
         assert!(fc.contains("trim=duration=5"));
         assert!(fc.contains("trim=duration=2"));
+        assert!(
+            fc.matches("setsar=1").count() >= 2,
+            "both intro and body must force SAR=1 before concat"
+        );
+        assert!(fc.contains("aformat=sample_rates=48000:channel_layouts=stereo"));
         assert!(args.contains(&"libx264".into()));
         assert!(args.contains(&"-t".into()));
         assert!(args.iter().any(|a| a == "7" || a.starts_with("7.")));
@@ -1751,6 +1762,7 @@ mod tests {
             .unwrap();
         assert!(!fc2.contains("[1:a]"));
         assert!(fc2.contains("atrim=0:4"));
+        assert!(fc2.contains("setsar=1"));
     }
 
     #[test]

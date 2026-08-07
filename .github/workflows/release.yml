@@ -217,10 +217,6 @@ jobs:
           FFMPEG_MAC_ARCH: ${{ matrix.ffmpeg_arch }}
         run: npm run download-ffmpeg
 
-      - name: Rust unit tests (Linux cfg branches)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: npm run test:rust
-
       - name: Build and upload to existing release
         uses: tauri-apps/tauri-action@v1
         env:

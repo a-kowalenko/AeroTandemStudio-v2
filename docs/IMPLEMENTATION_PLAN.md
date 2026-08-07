@@ -786,7 +786,7 @@ FFmpeg-Download, Font/`fontfile`, NVENC-Detection Linux, SD-Härtung, Updater-Ap
 - [x] `tauri build` → AppImage (+ optional deb); Bundle-Targets klar dokumentieren/konfigurieren
 - [x] Updater: `pick_installer_url` (`.AppImage`), `launch_installer` (`chmod +x` + spawn)
 - [x] `.github/workflows/release.yml`: `ubuntu-22.04` (o. ä.) + Apt-Deps + `download-ffmpeg` + Upload
-- [x] Optional: Linux `cargo test` in CI für cfg-Zweige
+- [x] Optional: Linux `cargo test` in CI für cfg-Zweige — bewusst nicht (nur lokal `npm run test:rust`)
 - [x] `AGENTS.md` / Plan-Tracker: Win + Mac + Linux; HW-Liste NVENC Win/Linux
 - [ ] Manuelle E2E-Abnahme laut Feature-Matrix unten (Linux-VM / Release-Job)
 

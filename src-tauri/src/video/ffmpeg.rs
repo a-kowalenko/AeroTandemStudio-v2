@@ -487,12 +487,15 @@ pub fn run_ffmpeg_tagged(
 
     let stderr_thread = thread::spawn(move || {
         let reader = BufReader::new(stderr);
+        let mut lines = Vec::new();
         for line in reader.lines().flatten() {
             if is_cancelled() {
                 break;
             }
             let _ = parse_duration(&line);
+            lines.push(line);
         }
+        lines.join("\n")
     });
 
     let exit_code = loop {
@@ -519,7 +522,7 @@ pub fn run_ffmpeg_tagged(
     };
 
     let _ = progress_thread.join();
-    let _ = stderr_thread.join();
+    let stderr_text = stderr_thread.join().unwrap_or_default();
     unregister_child(job_id);
 
     if is_cancelled() {
@@ -535,7 +538,22 @@ pub fn run_ffmpeg_tagged(
         ));
         Ok(())
     } else {
-        Err(FfmpegError::ExitStatus(exit_code))
+        let hint = stderr_text
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        if hint.is_empty() {
+            Err(FfmpegError::ExitStatus(exit_code))
+        } else {
+            Err(FfmpegError::Message(format!(
+                "FFmpeg exited with status {exit_code}: {hint}"
+            )))
+        }
     }
 }
 
