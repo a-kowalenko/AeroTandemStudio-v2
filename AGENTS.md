@@ -4,7 +4,9 @@
 
 **Implementierungsplan:** `@docs/IMPLEMENTATION_PLAN.md`  
 **Architektur:** `@docs/ARCHITECTURE.md`  
-**Migration-Mapping:** `@docs/MIGRATION.md`
+**Migration-Mapping:** `@docs/MIGRATION.md`  
+**macOS Build:** `@docs/MACOS_BUILD.md`  
+**Linux Build:** `@docs/LINUX_BUILD.md`
 
 In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren.
 
@@ -22,7 +24,7 @@ Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 
 
 - **NIEMALS** Dateien im Legacy-Projekt ändern (nur lesen)
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust — kein MoviePy, kein Python
-- Hardware-Encoding: NVENC (Windows), VideoToolbox (macOS), Fallback libx264
+- Hardware-Encoding: NVENC (Windows + Linux), VideoToolbox (macOS), Fallback libx264
 - FFmpeg-Command-Generierung braucht **Rust Unit-Tests**
 - Nach Änderungen: `cargo test` und `npm run tauri dev`
 - **Eine Phase pro Session** — Scope nicht erweitern
@@ -93,7 +95,8 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 13: macOS Build & Plattform-Tests (FFmpeg mac, VideoToolbox/SD/SMB Fixes, CI, Entitlements, Signing-Docs)
 - ✅ Import Working-Folder: Medien werden beim Import in `aero_studio_preview_*` kopiert; Cuts treffen nur Kopien
 
-**Nächster Schritt:** Phase 14 aus `@docs/IMPLEMENTATION_PLAN.md` (optional / Backlog)
+**Nächster Schritt:** Phase 15 — Linux Build & Plattform-Parity aus `@docs/IMPLEMENTATION_PLAN.md` + `@docs/LINUX_BUILD.md`  
+*(Phase 14 ML bleibt optionaler Backlog)*
 
 ---
 
@@ -105,3 +108,5 @@ Regeln: @AGENTS.md
 Legacy: [Pfade aus Phase X im Plan]
 Nur Phase X. Danach cargo test && npm run tauri dev.
 ```
+
+**Phase 15 (Linux):** Prompt in `@docs/LINUX_BUILD.md` (Abschnitt „Agent prompt“) verwenden.

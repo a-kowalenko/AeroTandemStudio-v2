@@ -33,7 +33,7 @@
 - QR-Code-Erkennung für Kundendaten
 - Video-Schneiden, Vorschau, Encoding (1080p/4K)
 - SMB-Upload, Auto-Update
-- Windows + macOS
+- Windows + macOS + Linux (Phase 15)
 
 ### Projektpfade
 
@@ -50,13 +50,15 @@
 |------|--------|
 | Tauri 2 Scaffold (React + TypeScript) | ✅ Erledigt |
 | `npm run tauri dev` startet | ✅ Erledigt |
-| FFmpeg Sidecar | ✅ Erledigt (Win + mac Docs/CI) |
+| FFmpeg Sidecar | ✅ Erledigt (Win + mac Docs/CI); Linux → Phase 15 |
 | Rust Video-Module | ✅ Phase 0–13 |
 | AGENTS.md | ✅ Vorhanden |
 | Implementierungsplan | ✅ Dieses Dokument |
-| CI (Win + Mac) | ✅ `.github/workflows/build.yml` |
+| CI (Win + Mac) | ✅ `.github/workflows/release.yml` |
+| Linux Build | ⬜ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später)
+**Nächste Phase:** [Phase 15 — Linux Build & Plattform-Parity](#phase-15--linux-build--plattform-parity)  
+*(Backlog danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*
 
 ---
 
@@ -64,7 +66,7 @@
 
 | Schicht | Technologie | Hinweis |
 |---------|-------------|---------|
-| Desktop-Shell | Tauri 2 | Win + Mac |
+| Desktop-Shell | Tauri 2 | Win + Mac + Linux (Phase 15) |
 | Backend | Rust | `src-tauri/src/` |
 | Frontend | React 19 + TypeScript | `src/` |
 | Styling (ab Phase 5) | Tailwind CSS + shadcn/ui | Schrittweise einführen |
@@ -80,7 +82,7 @@
 
 - **NIEMALS** Dateien im Legacy-Projekt ändern
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust
-- Hardware-Encoding: **NVENC** (Windows), **VideoToolbox** (macOS), Fallback **libx264**
+- Hardware-Encoding: **NVENC** (Windows + Linux), **VideoToolbox** (macOS), Fallback **libx264** (VAAPI optional später)
 - FFmpeg-Command-Generierung braucht **Rust Unit-Tests**
 - Nach jeder Phase: `cargo test` + `npm run check` + `npm run tauri dev`
 - **Eine Phase pro Agent-Session**
@@ -736,8 +738,89 @@ Unit-Tests für Command-Generierung. Nur Phase 1.
 
 - [ ] Separates Python-Trainings-Repo (`AeroTandemStudio-ml`)
 - [ ] Modell exportieren als ONNX
-- [ ] `ort` (ONNX Runtime) in Rust — DirectML (Win) / CoreML (Mac)
+- [ ] `ort` (ONNX Runtime) in Rust — DirectML (Win) / CoreML (Mac) / optional Linux EP
 - [ ] Tauri-Command `classify_photo(path)` → phase_label
+
+---
+
+### Phase 15 — Linux Build & Plattform-Parity
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** Phase 13  
+**Ziel:** Voll funktionsfähiger Linux-Desktop-Build (Feature-Parity Win/Mac)  
+**Guide:** `@docs/LINUX_BUILD.md`
+
+Offiziell bisher nur Win + Mac. Viel Code ist bereits Linux-aware (FFmpeg-Pfad `linux/`, SD `/media`/`/run/media`/`/mnt`, Font-Fallback DejaVu, `smb2`, Updater-Plugin in `Cargo.toml`). Lücken: release-taugliches FFmpeg-Download, Font/`fontfile`, NVENC-Detection, SD-Härtung, Updater-Assets, CI.
+
+#### Architektur-Entscheidungen (v1)
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Target | `x86_64-unknown-linux-gnu` (aarch64 optional später) |
+| Bundle | **AppImage** primär; `.deb` optional parallel |
+| Nicht in v1 | Flatpak/Snap (Sandbox blockiert SD/SMB/arbitrary paths) |
+| FFmpeg | Statisches/bundled Binary → `resources/ffmpeg/linux/x86_64/ffmpeg` (nicht PATH-Copy) |
+| HW-Encode | NVENC wenn `nvidia-smi` + Encoder; sonst libx264; VAAPI = Backlog |
+| Updater | AppImage in Release + `pick_installer_url` / `launch_installer` |
+| Breaking Changes | Keine für Win/Mac (additiv) |
+
+#### Aufgaben — Foundation
+
+- [ ] System-Deps dokumentieren (WebKitGTK, GTK, `patchelf`, …) in `docs/LINUX_BUILD.md`
+- [ ] FFmpeg: echtes Download in `scripts/download-ffmpeg.mjs` (statt `which ffmpeg` kopieren)
+- [ ] Layout `linux/x86_64/ffmpeg` + Fallback `linux/ffmpeg`; `find_ffmpeg` + Unit-Tests
+- [ ] `resources/ffmpeg/README.md` Linux-Quelle aktualisieren
+- [ ] Font-Auflösung Linux: System-DejaVu und/oder Bundle-TTF; Intro-`drawtext` mit `fontfile=` wo nötig
+- [ ] `hw_accel.rs`: NVENC-Detection auch unter Linux (`nvidia-smi`; ohne PowerShell-Zweig)
+
+#### Aufgaben — Plattform-Features
+
+- [ ] SD-Monitor härten: False-Positives filtern; `/run/media/$USER/…` / `/media/$USER/…`; optional `/sys/block/…/removable`
+- [ ] Unit-Tests für Linux-Mount-Heuristik (analog `is_macos_volume_candidate`)
+- [ ] SMB Smoke (Guest + Credentials) — Code cross-platform, Verifikation + ggf. kleine Fixes
+- [ ] Config-/Cache-Docs: XDG `~/.local/share/AeroTandemStudio`
+
+#### Aufgaben — Ship
+
+- [ ] `tauri build` → AppImage (+ optional deb); Bundle-Targets klar dokumentieren/konfigurieren
+- [ ] Updater: `pick_installer_url` (`.AppImage`), `launch_installer` (`chmod +x` + spawn)
+- [ ] `.github/workflows/release.yml`: `ubuntu-22.04` (o. ä.) + Apt-Deps + `download-ffmpeg` + Upload
+- [ ] Optional: Linux `cargo test` in CI für cfg-Zweige
+- [ ] `AGENTS.md` / Plan-Tracker: Win + Mac + Linux; HW-Liste NVENC Win/Linux
+- [ ] Manuelle E2E-Abnahme laut Feature-Matrix unten
+
+#### Feature-Parity (Abnahme)
+
+| Feature | Soll Linux |
+|---------|------------|
+| UI starten, Drag&Drop, Dialoge | ✅ |
+| Preview + Full Encode | ✅ (NVENC oder x264) |
+| Intro drawtext (Umlaute) | ✅ |
+| Cut / Split / Pending Cuts | ✅ |
+| QR | ✅ |
+| SD Monitor + Import/Backup | ✅ |
+| Vorgang / Export / Marker / WM | ✅ |
+| SMB Upload | ✅ |
+| Auto-Update (AppImage) | ✅ |
+| Cache / Session-Reset / Logs | ✅ |
+
+#### Nicht-Ziele v1
+
+- Flatpak/Snap, Distro-Repos, Code-Signing à la macOS, aarch64-Linux, VAAPI-Parity
+
+#### Referenzen
+
+```
+@docs/LINUX_BUILD.md
+@docs/MACOS_BUILD.md          # Spiegel für Struktur
+src-tauri/src/video/ffmpeg.rs
+src-tauri/src/video/hw_accel.rs
+src-tauri/src/video/processor.rs
+src-tauri/src/sd_card/monitor.rs
+src-tauri/src/updater/mod.rs
+scripts/download-ffmpeg.mjs
+.github/workflows/release.yml
+```
 
 ---
 
@@ -778,6 +861,7 @@ Portieren aus `config.py` → SQLite. Alle Keys:
 Config-Pfad:
 - Windows: `%LOCALAPPDATA%\AeroTandemStudio\`
 - macOS: `~/Library/Application Support/AeroTandemStudio/`
+- Linux: `~/.local/share/AeroTandemStudio/` (XDG via `directories`)
 
 ---
 
@@ -834,6 +918,8 @@ cargo test
 | 7 | SD-Karte einstecken → Backup/Dialog |
 | 9 | Video schneiden und teilen |
 | 10 | SMB-Upload, Update-Check |
+| 13 | macOS: VT encode, SD `/Volumes`, DMG |
+| 15 | Linux: AppImage, FFmpeg sidecar, SD mounts, SMB, Updater |
 
 ### End-to-End (Phase 11)
 
@@ -855,14 +941,15 @@ npm run tauri build
 
 Output: `src-tauri/target/release/bundle/`
 
-### CI (Phase 13)
+### CI (Phase 13 + Phase 15)
 
 ```yaml
-# .github/workflows/build.yml
-# - windows-latest + macos-latest
-# - npm run download-ffmpeg → cargo test → npm run tauri build
-# - Artifacts: .msi / NSIS (Win), .dmg / .app (Mac)
-# - Signing/Notarization optional via GitHub Secrets (docs/MACOS_BUILD.md)
+# .github/workflows/release.yml
+# - windows-latest + macos-latest (+ ubuntu-22.04 ab Phase 15)
+# - npm run download-ffmpeg → tauri-action → Releases-Repo
+# - Artifacts: NSIS/EXE (Win), .dmg (Mac), AppImage (+ optional .deb) (Linux)
+# - Mac signing/notarization: docs/MACOS_BUILD.md
+# - Linux: docs/LINUX_BUILD.md
 ```
 
 ### Versionierung
@@ -890,6 +977,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 12 | Vorgang Erstellen & Legacy-Export | ✅ |
 | 13 | macOS Build & Plattform-Tests | ✅ |
 | 14 | ML Foto-Klassifikation (optional) | ⬜ |
+| 15 | Linux Build & Plattform-Parity | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -904,6 +992,8 @@ Legacy-Dateien: [siehe Phase X im Plan]
 Nur Phase X. Danach cargo test && npm run tauri dev.
 ```
 
+**Linux (Phase 15):** zusätzlich `@docs/LINUX_BUILD.md` — siehe Prompt dort bzw. unten in der Datei.
+
 ---
 
-*Letzte Aktualisierung: 2026-08-06 · Projekt: Aero Tandem Studio v2*
+*Letzte Aktualisierung: 2026-08-07 · Projekt: Aero Tandem Studio v2*
