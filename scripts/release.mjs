@@ -23,12 +23,16 @@ const FILES = {
 };
 
 function git(args, opts = {}) {
-  return execFileSync("git", args, {
+  const stdio = opts.stdio ?? ["ignore", "pipe", "pipe"];
+  const out = execFileSync("git", args, {
     cwd: root,
     encoding: "utf8",
-    stdio: opts.stdio ?? ["ignore", "pipe", "pipe"],
     ...opts,
-  }).trim();
+    stdio,
+  });
+  // With stdio: "inherit", Node returns null (no captured stdout).
+  if (out == null) return "";
+  return String(out).trim();
 }
 
 function parseSemver(v) {
