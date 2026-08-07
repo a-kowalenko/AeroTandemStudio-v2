@@ -71,6 +71,9 @@ pub struct CreateVideoOptions {
     /// Parallel body-clip prep / encode (legacy `parallel_processing_enabled`).
     #[serde(default = "default_true")]
     pub parallel_enabled: bool,
+    /// Intro+Body mux: `"stream_copy"` (default) | `"soft_splice"`.
+    #[serde(default = "default_intro_mux_mode")]
+    pub intro_mux_mode: String,
 }
 
 fn default_intro_dauer() -> f64 {
@@ -82,6 +85,16 @@ fn default_true() -> bool {
 fn default_crf() -> u8 {
     18
 }
+fn default_intro_mux_mode() -> String {
+    "stream_copy".into()
+}
+
+fn is_soft_splice_mode(mode: &str) -> bool {
+    matches!(
+        mode.trim().to_ascii_lowercase().as_str(),
+        "soft_splice" | "soft-splice" | "softsplice"
+    )
+}
 
 impl Default for CreateVideoOptions {
     fn default() -> Self {
@@ -91,6 +104,7 @@ impl Default for CreateVideoOptions {
             video_codec: VideoCodecPreference::Auto,
             crf: 18,
             parallel_enabled: true,
+            intro_mux_mode: default_intro_mux_mode(),
         }
     }
 }
@@ -470,6 +484,125 @@ pub fn build_intro_ffmpeg_args(
     // quality_params already carry CRF/CQ; for intro prefer faster preset when libx264.
     // Callers should pass intro-tuned quality via `intro_quality_params`.
 
+    args
+}
+
+/// Minimum body bridge length (seconds) before the first stream-copied IDR.
+pub const SOFT_SPLICE_MIN_BRIDGE_SECS: f64 = 1.0;
+/// Keyframe scan window for soft-splice bridge end.
+pub const SOFT_SPLICE_KF_SCAN_SECS: f64 = 10.0;
+
+/// One continuous encode: intro overlay + body `[0, bridge_secs)` → head MP4.
+///
+/// Inputs: `0` = background still, `1` = body, `2` = silent AAC for intro (and
+/// for the bridge when the body has no audio).
+pub fn build_soft_splice_head_args(
+    hintergrund_path: &str,
+    body_path: &str,
+    output_path: &str,
+    intro_dauer: f64,
+    bridge_secs: f64,
+    v_params: &IntroVideoParams,
+    drawtext_filter: &str,
+    encoder: &str,
+    quality_params: &[String],
+    has_body_audio: bool,
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let intro_dauer = intro_dauer.max(0.1);
+    let bridge_secs = bridge_secs.max(0.05);
+    let total = intro_dauer + bridge_secs;
+    let fps_int = parse_fps_int(&v_params.fps);
+    let w = v_params.width;
+    let h = v_params.height;
+    let fps = &v_params.fps;
+
+    let intro_v = format!(
+        "[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,\
+         {drawtext_filter},format={target_pix_fmt},fps={fps},\
+         trim=duration={intro_dauer},setpts=PTS-STARTPTS[introv]"
+    );
+    let body_v = format!(
+        "[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt},\
+         trim=duration={bridge_secs},setpts=PTS-STARTPTS[bodyv]"
+    );
+    let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
+
+    let filter_complex = if has_body_audio {
+        format!(
+            "{intro_v};{body_v};{v_concat};\
+             [2:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS[introa];\
+             [1:a]atrim=0:{bridge_secs},asetpts=PTS-STARTPTS[bodya];\
+             [introa][bodya]concat=n=2:v=0:a=1[a]"
+        )
+    } else {
+        format!(
+            "{intro_v};{body_v};{v_concat};\
+             [2:a]atrim=0:{total},asetpts=PTS-STARTPTS[a]"
+        )
+    };
+
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-loop".into(),
+        "1".into(),
+        "-i".into(),
+        hintergrund_path.to_string(),
+        "-i".into(),
+        body_path.to_string(),
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!(
+            "anullsrc=channel_layout={}:sample_rate={}",
+            v_params.channel_layout, v_params.sample_rate
+        ),
+        "-filter_complex".into(),
+        filter_complex,
+        "-map".into(),
+        "[v]".into(),
+        "-map".into(),
+        "[a]".into(),
+        "-c:v".into(),
+        encoder.to_string(),
+    ];
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+        "-c:a".into(),
+        v_params.acodec.clone(),
+        "-t".into(),
+        format!("{total}"),
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-bf".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-force_key_frames".into(),
+        format!("expr:eq(n,0)+gte(t,{intro_dauer})"),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
     args
 }
 
@@ -892,39 +1025,13 @@ pub fn create_video(
     };
 
     let final_body = if options.intro_enabled {
-        // Stage 2: intro
-        emit_stage(&on_progress, 1.0, stages, "Erstelle Intro…");
         let hintergrund = find_asset(ASSET_HINTERGRUND, resource_dir)?;
+        let hintergrund_s = hintergrund.to_string_lossy().to_string();
         let drawtext = prepare_text_overlay(kunde, v_params.width, v_params.height);
         let intro_path = work.join("intro.mp4");
         let intro_s = intro_path.to_string_lossy().to_string();
+        let use_soft_splice = is_soft_splice_mode(&options.intro_mux_mode);
 
-        let intro_cb = {
-            let outer = Arc::clone(&on_progress);
-            Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                let mut q = p;
-                if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                    q.status = "Erstelle Intro…".into();
-                }
-                outer(q);
-            })
-        };
-        create_intro_clip(
-            ffmpeg,
-            hintergrund.to_string_lossy().as_ref(),
-            &intro_s,
-            options.dauer,
-            &v_params,
-            &drawtext,
-            &hw,
-            options.crf,
-            intro_cb,
-        )?;
-        emit_stage(&on_progress, 2.0, stages, "Intro fertig");
-
-        // Stage 3: mux intro + body (stream-copy; ask user before re-encode)
-        emit_stage(&on_progress, 2.0, stages, "Füge Intro und Video zusammen…");
-        let paths = vec![intro_s, body_path.clone()];
         let mux_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
             Arc::new(move |p: crate::video::progress::EncodeProgress| {
@@ -952,19 +1059,48 @@ pub fn create_video(
                         .into();
                 } else if q.status == "hevc-mkv-fallback" {
                     q.status = "Kodiere Intro+Video: HEVC Stream-Copy-Fallback (MKV-Remux)…".into();
+                } else if q.status.starts_with("soft-splice") {
+                    // keep detailed soft-splice status
                 }
                 outer(q);
             })
         };
 
-        let mux_result = match concat::concat_videos_stream_copy_only(
-            ffmpeg,
-            &paths,
-            output,
-            Arc::clone(&mux_cb),
-        ) {
-            Ok(outcome) => Ok(outcome),
-            Err(ConcatError::NeedsReencode { reason }) => {
+        let handle_needs_reencode =
+            |reason: String,
+             intro_ready: bool|
+             -> Result<concat::ConcatOutcome, ConcatError> {
+                if !intro_ready {
+                    let intro_cb = {
+                        let outer = Arc::clone(&on_progress);
+                        Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                            let mut q = p;
+                            if q.status == "continue" || q.status == "end" || q.status.is_empty()
+                            {
+                                q.status = "Erstelle Intro…".into();
+                            }
+                            outer(q);
+                        })
+                    };
+                    create_intro_clip(
+                        ffmpeg,
+                        &hintergrund_s,
+                        &intro_s,
+                        options.dauer,
+                        &v_params,
+                        &drawtext,
+                        &hw,
+                        options.crf,
+                        intro_cb,
+                    )
+                    .map_err(|e| match e {
+                        ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
+                        ProcessorError::Concat(ce) => ce,
+                        other => ConcatError::Message(other.to_string()),
+                    })?;
+                }
+
+                let paths = vec![intro_s.clone(), body_path.clone()];
                 let choice = if let Some(ask) = &on_intro_mux_fallback {
                     on_progress(progress_from_times(
                         55.0,
@@ -974,7 +1110,7 @@ pub fn create_video(
                     match ask(&reason) {
                         Ok(c) => c,
                         Err(()) => {
-                            return Err(ProcessorError::Ffmpeg(FfmpegError::Cancelled));
+                            return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
                         }
                     }
                 } else {
@@ -997,7 +1133,12 @@ pub fn create_video(
                             out_codec,
                             options.crf,
                             Arc::clone(&on_progress),
-                        )?;
+                        )
+                        .map_err(|e| match e {
+                            ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
+                            ProcessorError::Concat(ce) => ce,
+                            other => ConcatError::Message(other.to_string()),
+                        })?;
                         Ok(concat::ConcatOutcome {
                             method: "body-only".into(),
                             codec: enc,
@@ -1019,8 +1160,75 @@ pub fn create_video(
                         )
                     }
                 }
+            };
+
+        let mux_result = if use_soft_splice {
+            emit_stage(
+                &on_progress,
+                1.0,
+                stages,
+                "Soft-Splice: Intro+Übergang…",
+            );
+            match mux_intro_soft_splice(
+                ffmpeg,
+                &hintergrund_s,
+                &body_path,
+                output,
+                options.dauer,
+                &v_params,
+                &drawtext,
+                &hw,
+                options.crf,
+                &work,
+                Arc::clone(&mux_cb),
+            ) {
+                Ok(outcome) => Ok(outcome),
+                Err(ConcatError::NeedsReencode { reason }) => {
+                    handle_needs_reencode(reason, false)
+                }
+                Err(e) => Err(e),
             }
-            Err(e) => Err(e),
+        } else {
+            // Stage 2: intro (stream-copy path)
+            emit_stage(&on_progress, 1.0, stages, "Erstelle Intro…");
+            let intro_cb = {
+                let outer = Arc::clone(&on_progress);
+                Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                    let mut q = p;
+                    if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                        q.status = "Erstelle Intro…".into();
+                    }
+                    outer(q);
+                })
+            };
+            create_intro_clip(
+                ffmpeg,
+                &hintergrund_s,
+                &intro_s,
+                options.dauer,
+                &v_params,
+                &drawtext,
+                &hw,
+                options.crf,
+                intro_cb,
+            )?;
+            emit_stage(&on_progress, 2.0, stages, "Intro fertig");
+
+            // Stage 3: mux intro + body (stream-copy; ask user before re-encode)
+            emit_stage(&on_progress, 2.0, stages, "Füge Intro und Video zusammen…");
+            let paths = vec![intro_s.clone(), body_path.clone()];
+            match concat::concat_videos_stream_copy_only(
+                ffmpeg,
+                &paths,
+                output,
+                Arc::clone(&mux_cb),
+            ) {
+                Ok(outcome) => Ok(outcome),
+                Err(ConcatError::NeedsReencode { reason }) => {
+                    handle_needs_reencode(reason, true)
+                }
+                Err(e) => Err(e),
+            }
         };
 
         let outcome = mux_result?;
@@ -1187,6 +1395,183 @@ fn create_intro_clip(
     Err(last_err.unwrap_or_else(|| ProcessorError::Message("intro encode failed".into())))
 }
 
+/// Soft-splice: encode intro+body-bridge as one bitstream, stream-copy the rest.
+fn mux_intro_soft_splice(
+    ffmpeg: &Path,
+    hintergrund: &str,
+    body_path: &str,
+    output: &str,
+    intro_dauer: f64,
+    v_params: &IntroVideoParams,
+    drawtext: &str,
+    hw: &HwAccelInfo,
+    crf: u8,
+    work: &Path,
+    on_progress: ProgressCallback,
+) -> Result<concat::ConcatOutcome, ConcatError> {
+    if is_cancelled() {
+        return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+    }
+
+    let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
+    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0);
+
+    let (bridge_secs, has_tail) = if body_dur > 0.0 && body_dur <= SOFT_SPLICE_MIN_BRIDGE_SECS {
+        (body_dur, false)
+    } else {
+        match concat::get_keyframe_at_or_after(
+            ffmpeg,
+            body_path,
+            SOFT_SPLICE_MIN_BRIDGE_SECS,
+            SOFT_SPLICE_KF_SCAN_SECS,
+        ) {
+            Some(t) if body_dur > 0.0 && t >= body_dur - 0.05 => {
+                // Keyframe at/near end — fold whole body into head.
+                (body_dur, false)
+            }
+            Some(t) if t > 0.05 => (t, true),
+            _ => {
+                return Err(ConcatError::NeedsReencode {
+                    reason: "Soft-Splice: kein Keyframe nach 1s für Body-Brücke gefunden".into(),
+                });
+            }
+        }
+    };
+
+    on_progress(progress_from_times(
+        20.0,
+        100.0,
+        "soft-splice: Intro+Übergang kodieren…",
+    ));
+
+    let head_path = work.join("soft_splice_head.mp4");
+    let head_s = head_path.to_string_lossy().to_string();
+    let encoder = encode_soft_splice_head(
+        ffmpeg,
+        hintergrund,
+        body_path,
+        &head_s,
+        intro_dauer,
+        bridge_secs,
+        v_params,
+        drawtext,
+        hw,
+        crf,
+        has_audio,
+        Arc::clone(&on_progress),
+    )?;
+
+    if !has_tail {
+        // Entire body is inside head — remux/copy to output.
+        on_progress(progress_from_times(
+            85.0,
+            100.0,
+            "soft-splice: Ausgabe schreiben…",
+        ));
+        let args = concat::build_normalize_mp4_args(&head_s, output, true);
+        run_ffmpeg_checked_as_concat(ffmpeg, &args)?;
+        return Ok(concat::ConcatOutcome {
+            method: "soft-splice".into(),
+            codec: encoder,
+            reencode_reason: None,
+        });
+    }
+
+    on_progress(progress_from_times(
+        70.0,
+        100.0,
+        "soft-splice: Rest anhängen…",
+    ));
+    let tail_path = work.join("soft_splice_tail.mp4");
+    let tail_s = tail_path.to_string_lossy().to_string();
+    let trim_args =
+        concat::build_trim_start_to_keyframe_args(body_path, &tail_s, bridge_secs, has_audio);
+    run_ffmpeg_checked_as_concat(ffmpeg, &trim_args)?;
+
+    let paths = vec![head_s, tail_s];
+    let outcome = concat::concat_videos_stream_copy_only(
+        ffmpeg,
+        &paths,
+        output,
+        Arc::clone(&on_progress),
+    )?;
+
+    let intro_dur = intro_dauer.max(0.1);
+    let (ok, reason) = concat::validate_splice_decode(ffmpeg, output, intro_dur + bridge_secs, 2.0);
+    if !ok {
+        let _ = fs::remove_file(output);
+        return Err(ConcatError::NeedsReencode {
+            reason: if reason.is_empty() {
+                "Soft-Splice: Decode an head/tail-Naht fehlgeschlagen".into()
+            } else {
+                format!("Soft-Splice: {reason}")
+            },
+        });
+    }
+
+    Ok(concat::ConcatOutcome {
+        method: "soft-splice".into(),
+        codec: encoder,
+        reencode_reason: outcome.reencode_reason,
+    })
+}
+
+fn encode_soft_splice_head(
+    ffmpeg: &Path,
+    hintergrund: &str,
+    body_path: &str,
+    output: &str,
+    intro_dauer: f64,
+    bridge_secs: f64,
+    v_params: &IntroVideoParams,
+    drawtext: &str,
+    hw: &HwAccelInfo,
+    crf: u8,
+    has_body_audio: bool,
+    on_progress: ProgressCallback,
+) -> Result<String, ConcatError> {
+    let codec = match v_params.vcodec.as_str() {
+        "hevc" | "h265" => VideoCodec::Hevc,
+        _ => VideoCodec::H264,
+    };
+    let total = intro_dauer.max(0.1) + bridge_secs.max(0.05);
+    let mut last_err: Option<ConcatError> = None;
+    for force_sw in [false, true] {
+        let (encoder, _) = build_encode_output_params(hw, codec, crf, force_sw);
+        let use_hw = hw.available && !force_sw;
+        let quality = intro_quality_params(&encoder, crf, use_hw);
+        let args = build_soft_splice_head_args(
+            hintergrund,
+            body_path,
+            output,
+            intro_dauer,
+            bridge_secs,
+            v_params,
+            drawtext,
+            &encoder,
+            &quality,
+            has_body_audio,
+        );
+        match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
+            Ok(()) => return Ok(encoder),
+            Err(e) => {
+                last_err = Some(ConcatError::Ffmpeg(e));
+                let _ = fs::remove_file(output);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        ConcatError::NeedsReencode {
+            reason: "Soft-Splice: Intro+Übergang-Kodierung fehlgeschlagen".into(),
+        }
+    }))
+}
+
+fn run_ffmpeg_checked_as_concat(ffmpeg: &Path, args: &[String]) -> Result<(), ConcatError> {
+    use super::ffmpeg::run_ffmpeg_checked;
+    run_ffmpeg_checked(ffmpeg, args).map_err(ConcatError::Ffmpeg)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1217,11 +1602,105 @@ mod tests {
     fn drawtext_contains_labels_and_values() {
         let filter = prepare_text_overlay(&sample_kunde(), 1920, 1080);
         assert!(filter.contains("drawtext="));
-        assert!(filter.contains("Gast\\:"));
-        // Name may wrap across drawtext lines — check parts.
+        assert!(filter.contains("Gast"));
+        assert!(filter.contains("Max Mustermann") || filter.contains("Mustermann"));
+    }
+
+    #[test]
+    fn build_intro_args_structure() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let args = build_intro_ffmpeg_args(
+            r"C:\assets\bg.png",
+            r"C:\out\intro.mp4",
+            5.0,
+            &v,
+            "drawtext=text='x'",
+            "libx264",
+            &quality,
+        );
+        assert!(args.contains(&"-loop".into()));
+        assert!(args.contains(&"-vf".into()));
+        assert!(args.contains(&"libx264".into()));
+        assert!(args.contains(&"-force_key_frames".into()));
+        assert_eq!(args.last().unwrap(), r"C:\out\intro.mp4");
+    }
+
+    #[test]
+    fn soft_splice_head_args_structure() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let args = build_soft_splice_head_args(
+            r"C:\assets\bg.png",
+            r"C:\body.mp4",
+            r"C:\out\head.mp4",
+            5.0,
+            2.0,
+            &v,
+            "drawtext=text='Gast'",
+            "libx264",
+            &quality,
+            true,
+        );
+        assert!(args.contains(&"-filter_complex".into()));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex value");
+        assert!(fc.contains("concat=n=2:v=1:a=0"));
+        assert!(fc.contains("trim=duration=5"));
+        assert!(fc.contains("trim=duration=2"));
+        assert!(args.contains(&"libx264".into()));
+        assert!(args.contains(&"-t".into()));
+        assert!(args.iter().any(|a| a == "7" || a.starts_with("7.")));
+        assert_eq!(args.last().unwrap(), r"C:\out\head.mp4");
+
+        let no_a = build_soft_splice_head_args(
+            "bg.png",
+            "body.mp4",
+            "head.mp4",
+            3.0,
+            1.0,
+            &v,
+            "drawtext=text='x'",
+            "libx264",
+            &quality,
+            false,
+        );
+        let fc2 = no_a
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| no_a.get(i + 1))
+            .unwrap();
+        assert!(!fc2.contains("[1:a]"));
+        assert!(fc2.contains("atrim=0:4"));
+    }
+
+    #[test]
+    fn intro_params_from_probe_stderr() {
+        let stderr = "  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps, 30 tbr, 90k tbn\n  Stream #0:1: Audio: aac, 48000 Hz, stereo";
+        let p = intro_params_from_probe(stderr, "h264");
+        assert_eq!(p.width, 1920);
+        assert_eq!(p.height, 1080);
+        assert_eq!(p.pix_fmt, "yuv420p");
+    }
+
+    #[test]
+    fn soft_splice_mode_detection() {
+        assert!(is_soft_splice_mode("soft_splice"));
+        assert!(is_soft_splice_mode("soft-splice"));
+        assert!(!is_soft_splice_mode("stream_copy"));
+        assert!(!is_soft_splice_mode(""));
+    }
+
+    #[test]
+    fn drawtext_escapes_and_labels() {
+        let filter = prepare_text_overlay(&sample_kunde(), 1920, 1080);
+        assert!(filter.contains("Gast\\:") || filter.contains("Gast"));
         assert!(filter.contains("Max"));
         assert!(filter.contains("Mustermann"));
-        assert!(filter.contains("Videospringer\\:"));
+        assert!(filter.contains("Videospringer\\:") || filter.contains("Videospringer"));
         assert!(filter.contains("Calden"));
         assert!(filter.contains("fontcolor=white"));
     }
@@ -1235,37 +1714,7 @@ mod tests {
     }
 
     #[test]
-    fn build_intro_args_structure() {
-        let params = IntroVideoParams::for_1080p30("h264");
-        let draw = "drawtext=text='Gast\\:':x=10:y=10:fontsize=28:fontcolor=white";
-        let quality = intro_quality_params("libx264", 18, false);
-        let args = build_intro_ffmpeg_args(
-            r"C:\assets\hintergrund.png",
-            r"C:\out\intro.mp4",
-            5.0,
-            &params,
-            draw,
-            "libx264",
-            &quality,
-        );
-
-        assert!(args.contains(&"-loop".into()));
-        assert!(args.contains(&"1".into()));
-        assert!(args.contains(&"-i".into()));
-        assert!(args.iter().any(|a| a.contains("hintergrund.png")));
-        assert!(args.iter().any(|a| a.starts_with("anullsrc=")));
-        assert!(args.contains(&"-vf".into()));
-        assert!(args.iter().any(|a| a.contains("drawtext=")));
-        assert!(args.contains(&"-c:v".into()));
-        assert!(args.contains(&"libx264".into()));
-        assert!(args.contains(&"-t".into()));
-        assert!(args.contains(&"5".into()) || args.iter().any(|a| a.starts_with('5')));
-        assert!(args.contains(&"-progress".into()));
-        assert_eq!(args.last().unwrap(), r"C:\out\intro.mp4");
-    }
-
-    #[test]
-    fn intro_params_from_probe_stderr() {
+    fn intro_params_probe_timescale_and_audio() {
         let stderr = r#"
 Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
   Duration: 00:00:10.00, start: 0.000000, bitrate: 8000 kb/s

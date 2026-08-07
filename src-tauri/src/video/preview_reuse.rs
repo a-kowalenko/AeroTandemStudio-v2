@@ -16,6 +16,15 @@ pub fn create_content_fingerprint(
     kunde: &Kunde,
     video_paths: &[String],
 ) -> Result<String, String> {
+    create_content_fingerprint_with_tag(kunde, video_paths, "")
+}
+
+/// Like [`create_content_fingerprint`], plus an encoding tag (e.g. intro mux mode).
+pub fn create_content_fingerprint_with_tag(
+    kunde: &Kunde,
+    video_paths: &[String],
+    encoding_tag: &str,
+) -> Result<String, String> {
     let kunde_json = serde_json::to_string(kunde).map_err(|e| e.to_string())?;
     let mut payload = String::with_capacity(256 + video_paths.len() * 128);
     payload.push_str("kunde:");
@@ -34,9 +43,28 @@ pub fn create_content_fingerprint(
         payload.push_str(&format!("clip:{path}|{len}|{mtime}\n"));
     }
 
+    if !encoding_tag.is_empty() {
+        payload.push_str("enc:");
+        payload.push_str(encoding_tag);
+        payload.push('\n');
+    }
+
     let mut hasher = Sha1::new();
     hasher.update(payload.as_bytes());
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+/// Encoding-relevant tag so preview reuse invalidates when mux/intro settings change.
+pub fn preview_encoding_tag(
+    intro_enabled: bool,
+    intro_dauer: f64,
+    intro_mux_mode: &str,
+) -> String {
+    let mux = crate::storage::config::normalize_intro_mux_mode(intro_mux_mode);
+    format!(
+        "intro={}|dauer={:.3}|mux={}",
+        intro_enabled as u8, intro_dauer, mux
+    )
 }
 
 /// Copy `reuse_path` → `dest` when fingerprint still matches and the file exists.
@@ -48,10 +76,22 @@ pub fn try_reuse_preview(
     video_paths: &[String],
     dest: &Path,
 ) -> Result<bool, String> {
+    try_reuse_preview_with_tag(reuse_path, reuse_fingerprint, kunde, video_paths, dest, "")
+}
+
+/// Like [`try_reuse_preview`], verifying against an encoding tag.
+pub fn try_reuse_preview_with_tag(
+    reuse_path: &str,
+    reuse_fingerprint: &str,
+    kunde: &Kunde,
+    video_paths: &[String],
+    dest: &Path,
+    encoding_tag: &str,
+) -> Result<bool, String> {
     if reuse_path.trim().is_empty() || reuse_fingerprint.trim().is_empty() {
         return Ok(false);
     }
-    let current = create_content_fingerprint(kunde, video_paths)?;
+    let current = create_content_fingerprint_with_tag(kunde, video_paths, encoding_tag)?;
     if current != reuse_fingerprint {
         return Ok(false);
     }
@@ -77,6 +117,16 @@ mod tests {
         f.write_all(bytes).expect("write");
         f.flush().expect("flush");
         f
+    }
+
+    #[test]
+    fn fingerprint_changes_with_encoding_tag() {
+        let f = write_temp(b"abc");
+        let path = f.path().to_string_lossy().to_string();
+        let k = Kunde::default();
+        let a = create_content_fingerprint_with_tag(&k, &[path.clone()], "mux=stream_copy").unwrap();
+        let b = create_content_fingerprint_with_tag(&k, &[path], "mux=soft_splice").unwrap();
+        assert_ne!(a, b);
     }
 
     #[test]

@@ -716,8 +716,14 @@ pub fn generate_preview(
     let crf = clamp_crf(i32::from(config.preview_encode_crf), 18);
     let hw = detect_hardware();
     let hw_accel_enabled = config.hardware_acceleration_enabled;
-    let fingerprint = preview_reuse::create_content_fingerprint(kunde, video_paths)
-        .map_err(PreviewError::Message)?;
+    let enc_tag = preview_reuse::preview_encoding_tag(
+        config.intro_enabled,
+        f64::from(config.dauer),
+        &config.intro_mux_mode,
+    );
+    let fingerprint =
+        preview_reuse::create_content_fingerprint_with_tag(kunde, video_paths, &enc_tag)
+            .map_err(PreviewError::Message)?;
 
     on_progress(progress_from_times(0.0, 100.0, "preview-analyse"));
     let format_info = probe_preview_formats(ffmpeg, video_paths)?;
@@ -747,6 +753,7 @@ pub fn generate_preview(
             video_codec: codec_pref,
             crf,
             parallel_enabled: config.parallel_processing_enabled,
+            intro_mux_mode: config.intro_mux_mode.clone(),
         };
         let result = processor::create_video(
             ffmpeg,

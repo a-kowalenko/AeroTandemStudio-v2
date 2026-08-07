@@ -12,22 +12,42 @@ export function kundeSignature(kunde: Kunde): string {
   return JSON.stringify(kunde);
 }
 
+/** Encoding options that change the preview bitstream. */
+export function previewEncodingSignature(
+  introEnabled: boolean,
+  dauer: number,
+  introMuxMode: string,
+): string {
+  const mux =
+    introMuxMode.trim().toLowerCase() === "soft_splice" ||
+    introMuxMode.trim().toLowerCase() === "soft-splice"
+      ? "soft_splice"
+      : "stream_copy";
+  return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}`;
+}
+
 type PreviewCacheState = {
   previewPath: string | null;
   fingerprint: string | null;
   videoSig: string | null;
   kundeSig: string | null;
+  encodingSig: string | null;
   setFromPreview: (
     result: PreviewResult,
     videos: VideoMetadata[],
     kunde: Kunde,
+    encodingSig?: string | null,
   ) => void;
   clear: () => void;
   /**
-   * True when the cached preview still matches current form + clips.
+   * True when the cached preview still matches current form + clips (+ encoding).
    * False (stale) → UI keeps showing the old preview, but create must re-encode.
    */
-  matches: (videos: VideoMetadata[], kunde: Kunde) => boolean;
+  matches: (
+    videos: VideoMetadata[],
+    kunde: Kunde,
+    encodingSig?: string | null,
+  ) => boolean;
 };
 
 export const usePreviewCacheStore = create<PreviewCacheState>((set, get) => ({
@@ -35,14 +55,16 @@ export const usePreviewCacheStore = create<PreviewCacheState>((set, get) => ({
   fingerprint: null,
   videoSig: null,
   kundeSig: null,
+  encodingSig: null,
 
-  setFromPreview: (result, videos, kunde) => {
+  setFromPreview: (result, videos, kunde, encodingSig = null) => {
     if (!result.preview_path || !result.fingerprint) {
       set({
         previewPath: null,
         fingerprint: null,
         videoSig: null,
         kundeSig: null,
+        encodingSig: null,
       });
       return;
     }
@@ -51,6 +73,7 @@ export const usePreviewCacheStore = create<PreviewCacheState>((set, get) => ({
       fingerprint: result.fingerprint,
       videoSig: videoListSignature(videos),
       kundeSig: kundeSignature(kunde),
+      encodingSig: encodingSig ?? null,
     });
   },
 
@@ -60,14 +83,28 @@ export const usePreviewCacheStore = create<PreviewCacheState>((set, get) => ({
       fingerprint: null,
       videoSig: null,
       kundeSig: null,
+      encodingSig: null,
     }),
 
-  matches: (videos, kunde) => {
-    const { previewPath, fingerprint, videoSig, kundeSig } = get();
-    if (!previewPath || !fingerprint || !videoSig || !kundeSig) return false;
-    return (
-      videoSig === videoListSignature(videos) &&
-      kundeSig === kundeSignature(kunde)
-    );
+  matches: (videos, kunde, encodingSig = null) => {
+    const state = get();
+    if (
+      !state.previewPath ||
+      !state.fingerprint ||
+      !state.videoSig ||
+      !state.kundeSig
+    ) {
+      return false;
+    }
+    if (
+      state.videoSig !== videoListSignature(videos) ||
+      state.kundeSig !== kundeSignature(kunde)
+    ) {
+      return false;
+    }
+    if (encodingSig != null || state.encodingSig != null) {
+      return (encodingSig ?? null) === (state.encodingSig ?? null);
+    }
+    return true;
   },
 }));

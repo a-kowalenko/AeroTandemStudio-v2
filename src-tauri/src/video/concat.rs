@@ -590,16 +590,30 @@ pub fn parse_vcodec_from_probe(stderr: &str) -> Option<VideoCodec> {
 
 /// Parse first I-frame `pts_time` from ffmpeg `showinfo` stderr.
 pub fn parse_first_keyframe_time(stderr: &str) -> Option<f64> {
+    parse_keyframe_times(stderr).into_iter().next()
+}
+
+/// All I-frame `pts_time` values from ffmpeg `showinfo` stderr (in encounter order).
+pub fn parse_keyframe_times(stderr: &str) -> Vec<f64> {
+    let mut times = Vec::new();
     for caps in SHOWINFO_TYPE_RE.captures_iter(stderr) {
-        let pict = caps.get(2)?.as_str().to_uppercase();
+        let Some(pict) = caps.get(2).map(|m| m.as_str().to_uppercase()) else {
+            continue;
+        };
         if pict != "I" {
             continue;
         }
-        if let Ok(t) = caps.get(1)?.as_str().parse::<f64>() {
-            return Some(t);
+        if let Some(Ok(t)) = caps.get(1).map(|m| m.as_str().parse::<f64>()) {
+            times.push(t);
         }
     }
-    None
+    times
+}
+
+/// First keyframe time at or after `min_secs` (within floating epsilon).
+pub fn keyframe_at_or_after(times: &[f64], min_secs: f64) -> Option<f64> {
+    let floor = min_secs - 1e-6;
+    times.iter().copied().find(|&t| t >= floor)
 }
 
 pub fn body_starts_with_keyframe(ffmpeg: &Path, video_path: &str) -> bool {
@@ -617,6 +631,19 @@ pub fn get_first_keyframe_time(
     let args = build_keyframe_scan_args(video_path, max_scan_sec);
     let (_code, stderr) = run_ffmpeg_capture_stderr(ffmpeg, &args).ok()?;
     parse_first_keyframe_time(&stderr)
+}
+
+/// First I-frame at or after `min_secs` within a `max_scan_sec` showinfo scan.
+pub fn get_keyframe_at_or_after(
+    ffmpeg: &Path,
+    video_path: &str,
+    min_secs: f64,
+    max_scan_sec: f64,
+) -> Option<f64> {
+    let scan = max_scan_sec.max(min_secs + 0.5);
+    let args = build_keyframe_scan_args(video_path, scan);
+    let (_code, stderr) = run_ffmpeg_capture_stderr(ffmpeg, &args).ok()?;
+    keyframe_at_or_after(&parse_keyframe_times(&stderr), min_secs)
 }
 
 pub fn validate_splice_decode(
@@ -1097,6 +1124,22 @@ mod tests {
 
         let later = r#"n:  12 pts:  500 pts_time:0.400000 type:I checksum:x"#;
         assert!((parse_first_keyframe_time(later).unwrap() - 0.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn keyframe_at_or_after_picks_next_idr() {
+        let times = parse_keyframe_times(
+            r#"
+pts_time:0.000000 type:I
+pts_time:1.000000 type:P
+pts_time:2.000000 type:I
+pts_time:4.000000 type:I
+"#,
+        );
+        assert_eq!(times, vec![0.0, 2.0, 4.0]);
+        assert!((keyframe_at_or_after(&times, 1.0).unwrap() - 2.0).abs() < 0.001);
+        assert!((keyframe_at_or_after(&times, 2.0).unwrap() - 2.0).abs() < 0.001);
+        assert!(keyframe_at_or_after(&times, 5.0).is_none());
     }
 
     #[test]

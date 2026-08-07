@@ -24,6 +24,9 @@ const STATUS_LABELS: Record<string, string> = {
   "intro-done": "Intro fertig",
   mux: "Füge Intro und Video zusammen…",
   "mux-done": "Zusammenfügen fertig",
+  "soft-splice: Intro+Übergang kodieren…": "Soft-Splice: Intro+Übergang…",
+  "soft-splice: Rest anhängen…": "Soft-Splice: Rest anhängen…",
+  "soft-splice: Ausgabe schreiben…": "Soft-Splice: Ausgabe schreiben…",
   export: "Exportiere Video…",
   "export-done": "Export fertig",
   "preview-analyse": "Analysiere für Vorschau…",
@@ -40,7 +43,7 @@ const TRANSIENT = new Set(["continue", "end"]);
  * Stages where per-clip task bars are not meaningful — clear them on overall events.
  */
 const CLEAR_TASK_BARS =
-  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…/i;
+  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|soft-splice/i;
 
 export function shouldClearTaskProgress(status: string | undefined | null): boolean {
   const s = (status ?? "").trim();

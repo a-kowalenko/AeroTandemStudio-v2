@@ -403,7 +403,18 @@ pub fn create_job(
                 "create",
                 format!("Versuche Preview-Reuse: {}", file_name(path)),
             );
-            match preview_reuse::try_reuse_preview(path, fp, kunde, video_paths, &out_path) {
+            match preview_reuse::try_reuse_preview_with_tag(
+                path,
+                fp,
+                kunde,
+                video_paths,
+                &out_path,
+                &preview_reuse::preview_encoding_tag(
+                    options.video.intro_enabled,
+                    options.video.dauer,
+                    &options.video.intro_mux_mode,
+                ),
+            ) {
                 Ok(true) => {
                     reused_preview = true;
                     encoder = "preview-reuse".into();

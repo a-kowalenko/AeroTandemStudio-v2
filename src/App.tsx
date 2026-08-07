@@ -43,7 +43,7 @@ import { useKundeStore } from "./store/kundeStore";
 import { useUiStore } from "./store/uiStore";
 import { useSdStore } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
-import { usePreviewCacheStore } from "./store/previewCacheStore";
+import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { usePendingVideoCuts } from "./hooks/usePendingVideoCuts";
 import { useLogListener } from "./hooks/useLogListener";
@@ -578,7 +578,12 @@ function App() {
     setPercent(1);
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
-      const canReusePreview = previewCacheMatches(videoList, kunde);
+      const encodingSig = previewEncodingSignature(
+        Boolean(config?.intro_enabled ?? true),
+        config?.dauer ?? 5,
+        config?.intro_mux_mode ?? "stream_copy",
+      );
+      const canReusePreview = previewCacheMatches(videoList, kunde, encodingSig);
       const res: CreateJobResult = await createJob(kunde, paths, photos, {
         watermark_clip_index: watermarkClipIndex,
         watermark_photo_indices: wmPhotos,
@@ -587,6 +592,7 @@ function App() {
         video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
         crf: config?.preview_encode_crf ?? 18,
         parallel_enabled: config?.parallel_processing_enabled ?? true,
+        intro_mux_mode: config?.intro_mux_mode ?? "stream_copy",
         reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
         reuse_preview_fingerprint: canReusePreview
           ? cachedPreviewFingerprint

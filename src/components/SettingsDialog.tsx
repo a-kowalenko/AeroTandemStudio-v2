@@ -952,6 +952,36 @@ export function SettingsDialog({
               </Select>
             </div>
 
+            <div className="space-y-1.5">
+              <Label>Intro zusammenfügen</Label>
+              <Select
+                value={
+                  draft.intro_mux_mode === "soft_splice"
+                    ? "soft_splice"
+                    : "stream_copy"
+                }
+                onValueChange={(v) => patch("intro_mux_mode", v)}
+                disabled={!draft.intro_enabled}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stream_copy">
+                    Stream-Copy (schnell, wie bisher)
+                  </SelectItem>
+                  <SelectItem value="soft_splice">
+                    Soft-Splice (kompatibler auf Geräten)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Soft-Splice kodiert Intro und den Body-Anfang in einem Stück und
+                hängt den Rest per Stream-Copy an — robuster gegen eingefrorene
+                Intro-Endframes.
+              </p>
+            </div>
+
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.hardware_acceleration_enabled}

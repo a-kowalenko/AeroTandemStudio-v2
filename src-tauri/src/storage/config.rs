@@ -133,6 +133,9 @@ pub struct AppConfig {
     pub encoding_strategy: String,
     #[serde(default)]
     pub reencode_matching_clips: bool,
+    /// Intro+Body mux: `"stream_copy"` (default) | `"soft_splice"`.
+    #[serde(default = "default_intro_mux_mode")]
+    pub intro_mux_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
     pub preview_encode_crf: u8,
     /// Auto-scan newly imported videos for QR codes.
@@ -347,8 +350,19 @@ fn default_codec() -> String {
 fn default_encoding_strategy() -> String {
     "per_clip".into()
 }
+fn default_intro_mux_mode() -> String {
+    "stream_copy".into()
+}
 fn default_preview_crf() -> u8 {
     18
+}
+
+/// Normalize intro mux mode to `stream_copy` | `soft_splice`.
+pub fn normalize_intro_mux_mode(mode: &str) -> String {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "soft_splice" | "soft-splice" | "softsplice" => "soft_splice".into(),
+        _ => "stream_copy".into(),
+    }
 }
 fn default_qr_scan_seconds() -> u32 {
     5
@@ -381,6 +395,11 @@ impl AppConfig {
         self.oldschool_mode = self.manual_entry_mode == "oldschool";
     }
 
+    /// Canonicalize `intro_mux_mode` to `stream_copy` | `soft_splice`.
+    pub fn sync_intro_mux_mode(&mut self) {
+        self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
+    }
+
     /// Lokal mode skips `_fertig.txt` on create.
     pub fn skip_marker_file(&self) -> bool {
         self.manual_entry_mode == "lokal"
@@ -408,6 +427,7 @@ impl Default for AppConfig {
             video_codec: default_codec(),
             encoding_strategy: default_encoding_strategy(),
             reencode_matching_clips: false,
+            intro_mux_mode: default_intro_mux_mode(),
             preview_encode_crf: default_preview_crf(),
             qr_check_enabled: false,
             photo_qr_check_enabled: false,
@@ -474,6 +494,7 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
         };
     }
     cfg.sync_manual_entry_mode();
+    cfg.sync_intro_mux_mode();
     Ok(cfg)
 }
 
@@ -557,6 +578,7 @@ impl ConfigStore {
     pub fn save(&self, cfg: &AppConfig) -> Result<(), ConfigError> {
         let mut normalized = cfg.clone();
         normalized.sync_manual_entry_mode();
+        normalized.sync_intro_mux_mode();
         let conn = self.connect()?;
         self.save_with_conn(&conn, &normalized)
     }
@@ -616,6 +638,7 @@ mod tests {
         assert_eq!(cfg.dauer, 7);
         assert!(cfg.intro_enabled);
         assert_eq!(cfg.video_codec, "auto");
+        assert_eq!(cfg.intro_mux_mode, "stream_copy");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);

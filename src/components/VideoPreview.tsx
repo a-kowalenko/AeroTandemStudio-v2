@@ -10,7 +10,7 @@ import { VideoPlayer, type VideoPlayerHandle } from "./VideoPlayer";
 import { useVideoStore } from "../store/videoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
-import { usePreviewCacheStore } from "../store/previewCacheStore";
+import { usePreviewCacheStore, previewEncodingSignature } from "../store/previewCacheStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import { generatePreview, validateKunde, scanQrVideo, type PreviewResult } from "../lib/tauri";
 import { useConfigStore } from "../store/configStore";
@@ -86,6 +86,7 @@ export function VideoPreview({
   const kunde = useKundeStore((s) => s.kunde);
   const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const oldschoolMode = useConfigStore((s) => s.config?.oldschool_mode);
+  const config = useConfigStore((s) => s.config);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showWarning = useUiStore((s) => s.showWarning);
@@ -131,8 +132,15 @@ export function VideoPreview({
     (kunde.handcam_video && !kunde.ist_bezahlt_handcam_video) ||
     (kunde.outside_video && !kunde.ist_bezahlt_outside_video);
 
+  const encodingSig = previewEncodingSignature(
+    Boolean(config?.intro_enabled ?? true),
+    config?.dauer ?? 5,
+    config?.intro_mux_mode ?? "stream_copy",
+  );
+
   const previewStale = Boolean(
-    preview?.preview_path && !previewCacheMatches(videoList, kunde),
+    preview?.preview_path &&
+      !previewCacheMatches(videoList, kunde, encodingSig),
   );
 
   useEffect(() => {
@@ -192,7 +200,7 @@ export function VideoPreview({
     try {
       const result = await generatePreview(paths, kunde);
       setPreview(result);
-      setPreviewCache(result, videoList, kunde);
+      setPreviewCache(result, videoList, kunde, encodingSig);
       setPlayerMode("combined");
       setLocalPercent(100);
       setLocalStatus("end");
