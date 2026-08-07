@@ -42,6 +42,7 @@ jobs:
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       release_id: ${{ steps.ensure.outputs.release_id }}
+      release_notes: ${{ steps.ensure.outputs.release_notes }}
     steps:
       - name: Resolve release tag
         id: meta
@@ -63,6 +64,7 @@ jobs:
         id: ensure
         env:
           GH_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
         shell: bash
         run: |
@@ -73,6 +75,24 @@ jobs:
           fi
 
           REPO="${RELEASES_OWNER}/${RELEASES_REPO}"
+
+          # Patchnotes from private source commits (between previous tag and this one).
+          # Use the workflow token for the private source repo (not the releases PAT).
+          NOTES=$(GH_TOKEN="${GITHUB_TOKEN}" gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${TAG}" \
+            --jq .body 2>/dev/null || true)
+          if [ -z "${NOTES}" ]; then
+            NOTES="Aero Tandem Studio ${TAG}"$'\n\n'"Automatischer Build aus dem privaten Source-Repository."
+          fi
+          DELIM="NOTES_EOF_$(openssl rand -hex 8)"
+          {
+            echo "release_notes<<${DELIM}"
+            printf '%s\n' "${NOTES}"
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
 
           DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq .default_branch)
           echo "Releases repo default branch: ${DEFAULT_BRANCH}"
@@ -99,10 +119,13 @@ jobs:
             echo "Release for ${TAG} already exists (id=${RELEASE_ID})"
           else
             echo "Creating release ${TAG}"
+            NOTES_FILE="$(mktemp)"
+            printf '%s\n' "${NOTES}" > "${NOTES_FILE}"
             gh release create "${TAG}" \
               --repo "${REPO}" \
               --title "Aero Tandem Studio ${TAG}" \
-              --notes "Automatischer Build aus dem privaten Source-Repository. Installer und Updater-Artefakte für diese Version."
+              --notes-file "${NOTES_FILE}"
+            rm -f "${NOTES_FILE}"
             RELEASE_ID=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id)
           fi
 
@@ -182,6 +205,7 @@ jobs:
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseId: ${{ needs.prepare.outputs.release_id }}
           releaseName: Aero Tandem Studio ${{ needs.prepare.outputs.tag }}
+          releaseBody: ${{ needs.prepare.outputs.release_notes }}
           releaseDraft: false
           prerelease: false
           uploadUpdaterJson: true

@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { UpdateCheckResult } from "@/lib/tauri";
 
 type Props = {
@@ -27,10 +30,15 @@ export function UpdateDialog({
   onClose,
 }: Props) {
   const available = Boolean(result?.available);
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) setNotesOpen(false);
+  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {available ? "Update verfügbar" : "Update-Prüfung"}
@@ -41,21 +49,39 @@ export function UpdateDialog({
         </DialogHeader>
 
         {available && (
-          <div className="space-y-2 text-sm">
+          <div className="space-y-3 text-sm">
             <p>
               Version <strong>{result?.latest_version}</strong> kann installiert werden.
               <br />
               Aktuell: {result?.current_version}
             </p>
-            {result?.body ? (
-              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-border bg-muted/30 p-2 text-xs">
-                {result.body}
-              </pre>
-            ) : null}
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-foreground"
+                aria-expanded={notesOpen}
+                onClick={() => setNotesOpen((v) => !v)}
+              >
+                Patchnotes
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform duration-200",
+                    notesOpen && "rotate-180",
+                  )}
+                />
+              </button>
+              {notesOpen ? (
+                <div className="border-l border-border/70 pl-3">
+                  <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed text-muted">
+                    {result?.body?.trim() || "Keine Details verfügbar."}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           {available ? (
             <>
               <Button type="button" variant="secondary" onClick={onLater} disabled={installing}>

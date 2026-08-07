@@ -109,14 +109,18 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
             .build()
             .map_err(|e| format!("Updater konnte nicht initialisiert werden: {e}"))?;
         match updater.check().await {
-            Ok(Some(update)) => Ok(UpdateCheckResult {
-                configured: true,
-                available: true,
-                current_version,
-                latest_version: Some(update.version.clone()),
-                body: update.body.clone(),
-                message: format!("Update verfügbar: {}", update.version),
-            }),
+            Ok(Some(update)) => {
+                // Always from GitHub Release body (editable after publish), never latest.json notes.
+                let body = fetch_release_notes(&update.version).await;
+                Ok(UpdateCheckResult {
+                    configured: true,
+                    available: true,
+                    current_version,
+                    latest_version: Some(update.version.clone()),
+                    body,
+                    message: format!("Update verfügbar: {}", update.version),
+                })
+            }
             Ok(None) => Ok(UpdateCheckResult {
                 configured: true,
                 available: false,
@@ -251,6 +255,32 @@ pub async fn install_specific_version(installer_url: String) -> Result<String, S
             .and_then(|n| n.to_str())
             .unwrap_or("setup")
     ))
+}
+
+fn nonempty_notes(notes: Option<&str>) -> Option<String> {
+    notes
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Fall back to the GitHub release body when `latest.json` notes are empty.
+async fn fetch_release_notes(version: &str) -> Option<String> {
+    let tag = if version.starts_with('v') {
+        version.to_string()
+    } else {
+        format!("v{version}")
+    };
+    let url = format!(
+        "https://api.github.com/repos/a-kowalenko/aero-tandem-studio-releases/releases/tags/{tag}"
+    );
+    let client = http_client().ok()?;
+    let response = client.get(&url).send().await.ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let release: GitHubRelease = response.json().await.ok()?;
+    nonempty_notes(release.body.as_deref())
 }
 
 fn http_client() -> Result<reqwest::Client, String> {
@@ -506,5 +536,13 @@ mod tests {
             let _ = assets;
             assert!(pick_installer_url(&[]).is_none());
         }
+    }
+
+    #[test]
+    fn nonempty_notes_trims_and_rejects_blank() {
+        assert_eq!(nonempty_notes(Some("  hello  ")).as_deref(), Some("hello"));
+        assert!(nonempty_notes(Some("   ")).is_none());
+        assert!(nonempty_notes(Some("")).is_none());
+        assert!(nonempty_notes(None).is_none());
     }
 }
