@@ -82,6 +82,24 @@ pub struct BackupResult {
     pub error_message: Option<String>,
     pub copied_count: usize,
     pub skipped_count: usize,
+    /// Second backup root folder when dual-write succeeded.
+    pub secondary_backup_path: Option<String>,
+    /// Soft-fail message for the optional second path (primary may still succeed).
+    pub secondary_warning: Option<String>,
+}
+
+impl BackupResult {
+    fn fail(msg: impl Into<String>, skipped: usize) -> Self {
+        Self {
+            success: false,
+            backup_path: None,
+            error_message: Some(msg.into()),
+            copied_count: 0,
+            skipped_count: skipped,
+            secondary_backup_path: None,
+            secondary_warning: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -509,13 +527,10 @@ impl SdCardMonitor {
         let cfg = self.config();
         let backup_folder = cfg.sd_backup_folder.trim().to_string();
         if backup_folder.is_empty() || !Path::new(&backup_folder).is_dir() {
-            return Ok(BackupResult {
-                success: false,
-                backup_path: None,
-                error_message: Some(format!("Ungültiger Backup-Ordner: {backup_folder}")),
-                copied_count: 0,
-                skipped_count: 0,
-            });
+            return Ok(BackupResult::fail(
+                format!("Ungültiger Backup-Ordner: {backup_folder}"),
+                0,
+            ));
         }
 
         self.emit_status("backup_started", serde_json::json!(drive));
@@ -523,13 +538,10 @@ impl SdCardMonitor {
         let dcim = resolve_drive_dcim_path(drive);
         let dcim_path = PathBuf::from(&dcim);
         if !dcim_path.is_dir() {
-            return Ok(BackupResult {
-                success: false,
-                backup_path: None,
-                error_message: Some(format!("DCIM Ordner nicht gefunden: {dcim}")),
-                copied_count: 0,
-                skipped_count: 0,
-            });
+            return Ok(BackupResult::fail(
+                format!("DCIM Ordner nicht gefunden: {dcim}"),
+                0,
+            ));
         }
 
         let media_files: Vec<String> = if let Some(selected) = selected_files {
@@ -544,13 +556,10 @@ impl SdCardMonitor {
         let (media_files, _tl_skipped) =
             filter_media_paths_for_backup(&media_files, &dcim, true);
         if media_files.is_empty() {
-            return Ok(BackupResult {
-                success: false,
-                backup_path: None,
-                error_message: Some("Keine Mediendateien auf der SD-Karte gefunden".into()),
-                copied_count: 0,
-                skipped_count: 0,
-            });
+            return Ok(BackupResult::fail(
+                "Keine Mediendateien auf der SD-Karte gefunden",
+                0,
+            ));
         }
 
         let history = self.history.lock().unwrap();
@@ -571,15 +580,10 @@ impl SdCardMonitor {
         drop(history);
 
         if filtered.is_empty() {
-            return Ok(BackupResult {
-                success: false,
-                backup_path: None,
-                error_message: Some(format!(
-                    "Keine neuen Dateien zum Sichern. Übersprungen: {skipped_count}"
-                )),
-                copied_count: 0,
+            return Ok(BackupResult::fail(
+                format!("Keine neuen Dateien zum Sichern. Übersprungen: {skipped_count}"),
                 skipped_count,
-            });
+            ));
         }
 
         let total_size: u64 = filtered
@@ -600,9 +604,43 @@ impl SdCardMonitor {
         let backup_path = PathBuf::from(&backup_folder).join(&backup_dir_name);
         fs::create_dir_all(&backup_path)?;
 
+        let dual_mode = {
+            let m = cfg.sd_server_backup_mode.trim();
+            if m == "local_then_server" {
+                "local_then_server"
+            } else {
+                "direct_dual_write"
+            }
+        };
+        let mut secondary_active = cfg.sd_server_backup_enabled;
+        let dual_root = cfg.sd_server_backup_path.trim().to_string();
+        let mut secondary_path: Option<PathBuf> = None;
+        let mut secondary_warning: Option<String> = None;
+
+        if secondary_active {
+            if dual_root.is_empty() || !Path::new(&dual_root).is_dir() {
+                secondary_warning = Some(format!(
+                    "Zweiter Backup-Pfad ungültig (Primär bleibt erfolgreich): {dual_root}"
+                ));
+                secondary_active = false;
+            } else {
+                let sp = PathBuf::from(&dual_root).join(&backup_dir_name);
+                match fs::create_dir_all(&sp) {
+                    Ok(()) => secondary_path = Some(sp),
+                    Err(e) => {
+                        secondary_warning = Some(format!(
+                            "Zweiter Backup-Pfad nicht erstellbar (Primär bleibt erfolgreich): {e}"
+                        ));
+                        secondary_active = false;
+                    }
+                }
+            }
+        }
+
         let mut used_names = HashSet::new();
         let mut copied_sources = Vec::new();
         let mut manifest_entries = Vec::new();
+        let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
         let mut copied_size: u64 = 0;
         let start = SystemTime::now();
 
@@ -627,10 +665,31 @@ impl SdCardMonitor {
                     copied_size += n;
                     copied_sources.push(src_file.clone());
                     manifest_entries.push(ManifestEntry {
-                        dest: dst_filename,
+                        dest: dst_filename.clone(),
                         src: Some(src_file.clone()),
                         media_type: media_type_from_filename(&original_name).to_string(),
                     });
+
+                    if secondary_active {
+                        if let Some(ref sp) = secondary_path {
+                            if dual_mode == "direct_dual_write" {
+                                let secondary_dst = sp.join(&dst_filename);
+                                if let Err(e) = fs::copy(src_path, &secondary_dst) {
+                                    secondary_warning = Some(format!(
+                                        "Zweiter Backup teilweise fehlgeschlagen: {e}"
+                                    ));
+                                    secondary_active = false;
+                                } else if let Ok(meta) = fs::metadata(src_path) {
+                                    if let Ok(mtime) = meta.modified() {
+                                        let _ = filetime_set_mtime(&secondary_dst, mtime);
+                                    }
+                                }
+                            } else {
+                                local_to_secondary.push((dst.clone(), dst_filename.clone()));
+                            }
+                        }
+                    }
+
                     if let Ok(hist) = self.history.lock() {
                         let _ = hist.mark_backed_up(src_path);
                     }
@@ -658,6 +717,9 @@ impl SdCardMonitor {
                 Err(e) => {
                     // Card removed mid-backup
                     let _ = fs::remove_dir_all(&backup_path);
+                    if let Some(ref sp) = secondary_path {
+                        let _ = fs::remove_dir_all(sp);
+                    }
                     return Ok(BackupResult {
                         success: false,
                         backup_path: None,
@@ -666,7 +728,28 @@ impl SdCardMonitor {
                         )),
                         copied_count: copied_sources.len(),
                         skipped_count,
+                        secondary_backup_path: None,
+                        secondary_warning: None,
                     });
+                }
+            }
+        }
+
+        if secondary_active && dual_mode == "local_then_server" {
+            if let Some(ref sp) = secondary_path {
+                for (local_file, dst_filename) in &local_to_secondary {
+                    let secondary_dst = sp.join(dst_filename);
+                    if let Err(e) = fs::copy(local_file, &secondary_dst) {
+                        secondary_warning =
+                            Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
+                        secondary_active = false;
+                        break;
+                    }
+                    if let Ok(meta) = fs::metadata(local_file) {
+                        if let Ok(mtime) = meta.modified() {
+                            let _ = filetime_set_mtime(&secondary_dst, mtime);
+                        }
+                    }
                 }
             }
         }
@@ -683,6 +766,16 @@ impl SdCardMonitor {
             session_active,
         );
 
+        let secondary_ok = secondary_active
+            && secondary_path.is_some()
+            && secondary_warning.is_none()
+            && !copied_sources.is_empty();
+        if secondary_ok {
+            if let Some(ref sp) = secondary_path {
+                let _ = write_backup_manifest(sp, &dcim, &manifest_entries, session_active);
+            }
+        }
+
         if cfg.sd_clear_after_backup && !copied_sources.is_empty() {
             self.emit_status("clearing_started", serde_json::json!(drive));
             clear_sd_files(&copied_sources);
@@ -695,6 +788,12 @@ impl SdCardMonitor {
             error_message: None,
             copied_count: copied_sources.len(),
             skipped_count,
+            secondary_backup_path: if secondary_ok {
+                secondary_path.map(|p| p.to_string_lossy().into_owned())
+            } else {
+                None
+            },
+            secondary_warning,
         })
     }
 
@@ -1087,22 +1186,113 @@ mod tests {
             on_removed: Mutex::new(None),
         };
 
-        // Simulate drive path = src root so DCIM resolves under it.
-        // On Windows resolve_drive_dcim_path("E:") -> E:\DCIM; for tests we call
-        // backup with a path that already ends such that join works:
-        // Use the temp path as drive by listing via collect and manual backup pieces.
-        let paths = collect_media_paths_from_tree(&src.path().join("DCIM"));
-        let (filtered, _) = filter_media_paths_for_backup(
-            &paths,
-            &src.path().join("DCIM").to_string_lossy(),
-            true,
-        );
-        assert_eq!(filtered.len(), 2);
+        let drive = src.path().to_string_lossy().into_owned();
+        let result = monitor.backup_drive(&drive, None).unwrap();
+        assert!(result.success, "{:?}", result.error_message);
+        assert_eq!(result.copied_count, 2);
+        assert!(result.secondary_backup_path.is_none());
+        let primary = PathBuf::from(result.backup_path.unwrap());
+        assert!(primary.join("a.mp4").is_file());
+        assert!(primary.join("b.jpg").is_file());
+        assert!(primary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+    }
 
-        // Direct copy exercise via backup_drive_inner won't work without drive letter —
-        // verify import_files instead.
-        let result = monitor.import_files(&filtered).unwrap();
-        assert_eq!(result.imported_videos.len(), 1);
-        assert_eq!(result.imported_photos.len(), 1);
+    #[test]
+    fn backup_dual_write_copies_to_both_roots() {
+        let src = tempdir().unwrap();
+        let dcim = src.path().join("DCIM").join("100");
+        fs::create_dir_all(&dcim).unwrap();
+        fs::write(dcim.join("clip.mp4"), b"dual-video").unwrap();
+
+        let primary_root = tempdir().unwrap();
+        let secondary_root = tempdir().unwrap();
+        let hist = tempdir().unwrap();
+
+        let monitor = SdCardMonitor {
+            monitoring: AtomicBool::new(false),
+            known_drives: Mutex::new(HashSet::new()),
+            action_cam_drives: Mutex::new(HashSet::new()),
+            pending_drives: Mutex::new(HashSet::new()),
+            declined_drives: Mutex::new(HashSet::new()),
+            processed_drives: Mutex::new(HashSet::new()),
+            processing_drives: Mutex::new(HashSet::new()),
+            backup_in_progress: AtomicBool::new(false),
+            history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            config_provider: Mutex::new(Box::new({
+                let p = primary_root.path().to_path_buf();
+                let s = secondary_root.path().to_path_buf();
+                move || {
+                    let mut c = AppConfig::default();
+                    c.sd_backup_folder = p.to_string_lossy().into_owned();
+                    c.sd_server_backup_enabled = true;
+                    c.sd_server_backup_path = s.to_string_lossy().into_owned();
+                    c.sd_server_backup_mode = "direct_dual_write".into();
+                    c
+                }
+            })),
+            on_progress: Mutex::new(None),
+            on_status: Mutex::new(None),
+            on_inserted: Mutex::new(None),
+            on_removed: Mutex::new(None),
+        };
+
+        let drive = src.path().to_string_lossy().into_owned();
+        let result = monitor.backup_drive(&drive, None).unwrap();
+        assert!(result.success, "{:?}", result.error_message);
+        assert!(result.secondary_warning.is_none(), "{:?}", result.secondary_warning);
+        let primary = PathBuf::from(result.backup_path.as_ref().unwrap());
+        let secondary = PathBuf::from(result.secondary_backup_path.as_ref().unwrap());
+        assert!(primary.join("clip.mp4").is_file());
+        assert!(secondary.join("clip.mp4").is_file());
+        assert_eq!(
+            fs::read(primary.join("clip.mp4")).unwrap(),
+            fs::read(secondary.join("clip.mp4")).unwrap()
+        );
+        assert!(secondary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+    }
+
+    #[test]
+    fn backup_dual_write_soft_fails_invalid_secondary() {
+        let src = tempdir().unwrap();
+        let dcim = src.path().join("DCIM").join("100");
+        fs::create_dir_all(&dcim).unwrap();
+        fs::write(dcim.join("clip.mp4"), b"ok").unwrap();
+
+        let primary_root = tempdir().unwrap();
+        let hist = tempdir().unwrap();
+
+        let monitor = SdCardMonitor {
+            monitoring: AtomicBool::new(false),
+            known_drives: Mutex::new(HashSet::new()),
+            action_cam_drives: Mutex::new(HashSet::new()),
+            pending_drives: Mutex::new(HashSet::new()),
+            declined_drives: Mutex::new(HashSet::new()),
+            processed_drives: Mutex::new(HashSet::new()),
+            processing_drives: Mutex::new(HashSet::new()),
+            backup_in_progress: AtomicBool::new(false),
+            history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            config_provider: Mutex::new(Box::new({
+                let p = primary_root.path().to_path_buf();
+                move || {
+                    let mut c = AppConfig::default();
+                    c.sd_backup_folder = p.to_string_lossy().into_owned();
+                    c.sd_server_backup_enabled = true;
+                    c.sd_server_backup_path = "Z:\\does\\not\\exist\\backup".into();
+                    c
+                }
+            })),
+            on_progress: Mutex::new(None),
+            on_status: Mutex::new(None),
+            on_inserted: Mutex::new(None),
+            on_removed: Mutex::new(None),
+        };
+
+        let drive = src.path().to_string_lossy().into_owned();
+        let result = monitor.backup_drive(&drive, None).unwrap();
+        assert!(result.success, "{:?}", result.error_message);
+        assert!(result.secondary_backup_path.is_none());
+        assert!(result.secondary_warning.is_some());
+        let primary = PathBuf::from(result.backup_path.unwrap());
+        assert!(primary.join("clip.mp4").is_file());
     }
 }

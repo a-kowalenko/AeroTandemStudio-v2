@@ -74,6 +74,11 @@ export type AppConfig = {
   qr_remove_video_max_duration_sec: number;
   sd_auto_backup: boolean;
   sd_backup_folder: string;
+  /** Optional second backup root (dual write). */
+  sd_server_backup_enabled: boolean;
+  sd_server_backup_path: string;
+  /** "direct_dual_write" | "local_then_server" */
+  sd_server_backup_mode: string;
   sd_backup_mode: string;
   sd_clear_after_backup: boolean;
   sd_auto_import: boolean;

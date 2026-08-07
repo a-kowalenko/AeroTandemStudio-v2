@@ -31,6 +31,8 @@ export type BackupResult = {
   error_message: string | null;
   copied_count: number;
   skipped_count: number;
+  secondary_backup_path: string | null;
+  secondary_warning: string | null;
 };
 
 export type ImportSdResult = {

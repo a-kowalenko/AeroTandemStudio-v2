@@ -249,13 +249,26 @@ export function SettingsDialog({
     }
   }
 
-  async function pickFolder(key: "speicherort" | "sd_backup_folder") {
+  async function pickFolder(
+    key: "speicherort" | "sd_backup_folder" | "sd_server_backup_path",
+  ) {
     const selected = await openDialog({ directory: true, multiple: false });
     if (typeof selected === "string") patch(key, selected);
   }
 
   async function onSave() {
     if (!draft) return;
+    if (draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
+      showError("Bitte einen Backup-Ordner wählen.");
+      return;
+    }
+    if (
+      draft.sd_server_backup_enabled &&
+      !draft.sd_server_backup_path.trim()
+    ) {
+      showError("Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.");
+      return;
+    }
     const toSave: AppConfig = {
       ...draft,
       crew_list: [...draft.crew_list].sort((a, b) =>
@@ -994,6 +1007,58 @@ export function SettingsDialog({
               </div>
             </div>
 
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.sd_server_backup_enabled}
+                onCheckedChange={(v) => patch("sd_server_backup_enabled", v === true)}
+              />
+              Zusätzlich auf zweiten Pfad sichern
+            </label>
+            {draft.sd_server_backup_enabled ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Zweiter Backup-Ordner</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={draft.sd_server_backup_path}
+                      readOnly
+                      placeholder="Ordner wählen…"
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => pickFolder("sd_server_backup_path")}
+                    >
+                      Wählen…
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Kopierstrategie (zweiter Pfad)</Label>
+                  <Select
+                    value={
+                      draft.sd_server_backup_mode === "local_then_server"
+                        ? "local_then_server"
+                        : "direct_dual_write"
+                    }
+                    onValueChange={(v) => patch("sd_server_backup_mode", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="direct_dual_write">
+                        Direkt: pro Datei SD → beide
+                      </SelectItem>
+                      <SelectItem value="local_then_server">
+                        Spiegeln: erst lokal, dann → zweiter Pfad
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : null}
+
             <div className="space-y-1.5">
               <Label>Backup-Modus</Label>
               <Select
@@ -1059,7 +1124,8 @@ export function SettingsDialog({
               />
             </div>
             <p className="text-xs text-muted">
-              Backup-Modus, Auto-Import und Größen-Limit für Action-Cam SD-Karten.
+              Backup-Modus, optionaler zweiter Backup-Pfad, Auto-Import und Größen-Limit für
+              Action-Cam SD-Karten.
             </p>
           </TabsContent>
           </div>

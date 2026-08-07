@@ -159,6 +159,14 @@ pub struct AppConfig {
     pub sd_auto_backup: bool,
     #[serde(default)]
     pub sd_backup_folder: String,
+    /// Optional second backup root (legacy: server/NAS dual write).
+    #[serde(default)]
+    pub sd_server_backup_enabled: bool,
+    #[serde(default)]
+    pub sd_server_backup_path: String,
+    /// `"direct_dual_write"` | `"local_then_server"`.
+    #[serde(default = "default_sd_server_backup_mode")]
+    pub sd_server_backup_mode: String,
     #[serde(default = "default_sd_backup_mode")]
     pub sd_backup_mode: String,
     #[serde(default)]
@@ -351,6 +359,9 @@ fn default_qr_remove_video_max_duration() -> u32 {
 fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
+fn default_sd_server_backup_mode() -> String {
+    "direct_dual_write".into()
+}
 fn default_sd_size_limit() -> u32 {
     3000
 }
@@ -406,6 +417,9 @@ impl Default for AppConfig {
             qr_remove_video_max_duration_sec: default_qr_remove_video_max_duration(),
             sd_auto_backup: true,
             sd_backup_folder: String::new(),
+            sd_server_backup_enabled: false,
+            sd_server_backup_path: String::new(),
+            sd_server_backup_mode: default_sd_server_backup_mode(),
             sd_backup_mode: default_sd_backup_mode(),
             sd_clear_after_backup: false,
             sd_auto_import: true,
@@ -609,6 +623,9 @@ mod tests {
         assert!(cfg.sd_auto_backup);
         assert!(cfg.sd_auto_import);
         assert_eq!(cfg.sd_backup_mode, "confirm");
+        assert!(!cfg.sd_server_backup_enabled);
+        assert!(cfg.sd_server_backup_path.is_empty());
+        assert_eq!(cfg.sd_server_backup_mode, "direct_dual_write");
         assert_eq!(cfg.sd_size_limit_mb, 3000);
         assert!(cfg.sd_size_limit_enabled);
         assert!(cfg.qr_remove_photo_after_scan);

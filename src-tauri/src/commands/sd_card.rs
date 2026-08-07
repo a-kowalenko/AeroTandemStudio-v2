@@ -164,12 +164,16 @@ pub fn backup_sd_card(
             logging::info(
                 "sd",
                 format!(
-                    "Backup fertig: copied={}, skipped={}, path={}",
+                    "Backup fertig: copied={}, skipped={}, path={}, secondary={}",
                     res.copied_count,
                     res.skipped_count,
-                    res.backup_path.as_deref().unwrap_or("-")
+                    res.backup_path.as_deref().unwrap_or("-"),
+                    res.secondary_backup_path.as_deref().unwrap_or("-")
                 ),
             );
+            if let Some(ref w) = res.secondary_warning {
+                logging::warn("sd", format!("Zweiter Backup-Pfad: {w}"));
+            }
             Ok(res)
         }
         Err(e) => {

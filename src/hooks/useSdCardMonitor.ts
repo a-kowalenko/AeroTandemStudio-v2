@@ -165,8 +165,14 @@ export function useSdCardMonitor(opts?: {
         showSuccess(
           `Backup OK: ${res.copied_count} Dateien` +
             (res.backup_path ? `\n${res.backup_path}` : "") +
+            (res.secondary_backup_path
+              ? `\nZweiter Pfad: ${res.secondary_backup_path}`
+              : "") +
             (res.skipped_count ? `\nÜbersprungen: ${res.skipped_count}` : ""),
         );
+        if (res.secondary_warning) {
+          showWarning(res.secondary_warning);
+        }
         if (config?.sd_auto_import) {
           onRequestImportRef.current?.(drive);
         }
