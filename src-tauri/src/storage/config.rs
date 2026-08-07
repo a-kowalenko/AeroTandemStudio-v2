@@ -171,8 +171,13 @@ pub struct AppConfig {
     pub sd_size_limit_enabled: bool,
     #[serde(default = "default_sd_size_limit", deserialize_with = "de_u32_flexible")]
     pub sd_size_limit_mb: u32,
+    /// Legacy flag — kept in sync with `manual_entry_mode == "oldschool"`.
     #[serde(default)]
     pub oldschool_mode: bool,
+    /// Manual entry when not QR: `"id"` | `"oldschool"` | `"lokal"`.
+    /// `lokal` = Vor-/Nachname like oldschool, without email/phone and without `_fertig.txt`.
+    #[serde(default = "default_manual_entry_mode")]
+    pub manual_entry_mode: String,
     #[serde(default)]
     pub keep_tandemmaster_on_session_reset: bool,
     #[serde(default)]
@@ -349,6 +354,27 @@ fn default_sd_backup_mode() -> String {
 fn default_sd_size_limit() -> u32 {
     3000
 }
+fn default_manual_entry_mode() -> String {
+    "id".into()
+}
+
+impl AppConfig {
+    /// Canonicalize `manual_entry_mode` and keep `oldschool_mode` in sync.
+    pub fn sync_manual_entry_mode(&mut self) {
+        let mode = self.manual_entry_mode.trim().to_ascii_lowercase();
+        self.manual_entry_mode = match mode.as_str() {
+            "oldschool" => "oldschool".into(),
+            "lokal" => "lokal".into(),
+            _ => "id".into(),
+        };
+        self.oldschool_mode = self.manual_entry_mode == "oldschool";
+    }
+
+    /// Lokal mode skips `_fertig.txt` on create.
+    pub fn skip_marker_file(&self) -> bool {
+        self.manual_entry_mode == "lokal"
+    }
+}
 
 impl Default for AppConfig {
     fn default() -> Self {
@@ -387,6 +413,7 @@ impl Default for AppConfig {
             sd_size_limit_enabled: true,
             sd_size_limit_mb: default_sd_size_limit(),
             oldschool_mode: false,
+            manual_entry_mode: default_manual_entry_mode(),
             keep_tandemmaster_on_session_reset: false,
             keep_videospringer_on_session_reset: false,
             auto_clear_files_after_creation: false,
@@ -413,13 +440,27 @@ fn legacy_json_path(dir: &Path) -> PathBuf {
 
 /// Merge unknown/missing keys from defaults (legacy load_settings behaviour).
 pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
+    let had_entry_mode = partial
+        .as_object()
+        .map(|o| o.contains_key("manual_entry_mode"))
+        .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
     if let (Value::Object(base), Value::Object(overlay)) = (&mut defaults, partial) {
         for (k, v) in overlay {
             base.insert(k, v);
         }
     }
-    Ok(serde_json::from_value(defaults)?)
+    let mut cfg: AppConfig = serde_json::from_value(defaults)?;
+    if !had_entry_mode {
+        // Migrate legacy configs that only had the boolean flag.
+        cfg.manual_entry_mode = if cfg.oldschool_mode {
+            "oldschool".into()
+        } else {
+            "id".into()
+        };
+    }
+    cfg.sync_manual_entry_mode();
+    Ok(cfg)
 }
 
 pub struct ConfigStore {
@@ -500,8 +541,10 @@ impl ConfigStore {
     }
 
     pub fn save(&self, cfg: &AppConfig) -> Result<(), ConfigError> {
+        let mut normalized = cfg.clone();
+        normalized.sync_manual_entry_mode();
         let conn = self.connect()?;
-        self.save_with_conn(&conn, cfg)
+        self.save_with_conn(&conn, &normalized)
     }
 
     fn save_with_conn(&self, conn: &Connection, cfg: &AppConfig) -> Result<(), ConfigError> {
@@ -562,6 +605,7 @@ mod tests {
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);
+        assert_eq!(cfg.manual_entry_mode, "id");
         assert!(cfg.sd_auto_backup);
         assert!(cfg.sd_auto_import);
         assert_eq!(cfg.sd_backup_mode, "confirm");
@@ -641,6 +685,21 @@ mod tests {
         assert_eq!(cfg.sd_size_limit_mb, 2000);
         assert_eq!(cfg.crew_list, default_crew_list());
         assert!(cfg.crew_list.iter().any(|c| c.name == "Andy" && c.tandemmaster));
+    }
+
+    #[test]
+    fn migrate_oldschool_bool_to_entry_mode() {
+        let cfg = merge_with_defaults(serde_json::json!({ "oldschool_mode": true })).unwrap();
+        assert_eq!(cfg.manual_entry_mode, "oldschool");
+        assert!(cfg.oldschool_mode);
+    }
+
+    #[test]
+    fn lokal_entry_mode_skips_marker() {
+        let cfg = merge_with_defaults(serde_json::json!({ "manual_entry_mode": "lokal" })).unwrap();
+        assert_eq!(cfg.manual_entry_mode, "lokal");
+        assert!(!cfg.oldschool_mode);
+        assert!(cfg.skip_marker_file());
     }
 
     #[test]

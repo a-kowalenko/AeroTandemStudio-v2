@@ -139,6 +139,8 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
         const cleanup = await maybeRemoveQrPhoto(result.source_path ?? current.path);
         showSuccess(
           `Kundendaten aus Foto übernommen.${formatQrCleanupSummary(cleanup)}`,
+          "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showError(result.message || "Kein QR-Code gefunden.");

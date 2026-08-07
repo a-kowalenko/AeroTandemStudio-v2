@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { History, RotateCcw, Settings } from "lucide-react";
 import { ProgressIndicator } from "./components/ProgressIndicator";
 import { MediaDropZone } from "./components/MediaDropZone";
@@ -9,7 +9,7 @@ import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
 import { PendingCutsDialog } from "./components/PendingCutsDialog";
-import { CustomerForm } from "./components/CustomerForm";
+import { CustomerForm, CustomerFormToolbar } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { ErrorDialog } from "./components/ErrorDialog";
 import { SuccessDialog } from "./components/SuccessDialog";
@@ -34,8 +34,6 @@ import { ProcessedFilesDialog } from "./components/ProcessedFilesDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
 import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
 import { Checkbox } from "./components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { useVideoStore } from "./store/videoStore";
@@ -66,12 +64,7 @@ import {
   type UpdateCheckResult,
   type UploadProgressEvent,
 } from "./lib/tauri";
-import {
-  importSdFiles,
-  listSdFiles,
-  scanSdDrives,
-  startSdMonitor,
-} from "./lib/sdCard";
+import { importSdFiles, listSdFiles } from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
@@ -93,33 +86,6 @@ type TaskProgressState = {
   status: string;
 };
 
-type EncodeResult = {
-  output: string;
-  encoder: string;
-  hw_type: string;
-};
-
-type ConcatResult = {
-  output: string;
-  method: string;
-  codec: string;
-  reencode_reason?: string | null;
-};
-
-type TrimResult = {
-  output: string;
-  method: string;
-  reencode_reason?: string | null;
-};
-
-type Mode = "encode" | "concat" | "trim" | "create";
-
-const MODE_LABELS: Record<Mode, string> = {
-  create: "Erstellen",
-  encode: "Kodieren",
-  concat: "Zusammenfügen",
-  trim: "Zuschneiden",
-};
 function App() {
   const videoList = useVideoStore((s) => s.videoList);
   const addVideos = useVideoStore((s) => s.addVideos);
@@ -140,6 +106,7 @@ function App() {
   const dialogKind = useUiStore((s) => s.dialogKind);
   const dialogTitle = useUiStore((s) => s.dialogTitle);
   const dialogMessage = useUiStore((s) => s.dialogMessage);
+  const dialogAutoCloseSecs = useUiStore((s) => s.dialogAutoCloseSecs);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -164,26 +131,15 @@ function App() {
   const openSelector = useSdStore((s) => s.openSelector);
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
-  const setDrives = useSdStore((s) => s.setDrives);
-  const setMonitoring = useSdStore((s) => s.setMonitoring);
   const setPhase = useSdStore((s) => s.setPhase);
   const activeDrive = useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
-  const pendingInsert = useSdStore((s) => s.pendingInsert);
 
-  const [mode, setMode] = useState<Mode>("create");
-  const [inputPath, setInputPath] = useState("");
-  const [concatPaths, setConcatPaths] = useState<string[]>([]);
-  const [outputPath, setOutputPath] = useState("");
-  const [trimStart, setTrimStart] = useState("0");
-  const [trimEnd, setTrimEnd] = useState("5");
-  const [preciseTrim, setPreciseTrim] = useState(false);
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
   const [percent, setPercent] = useState(0);
   const [status, setStatus] = useState("");
   const [taskProgress, setTaskProgress] = useState<TaskProgressState[]>([]);
-  const [sidebarTab, setSidebarTab] = useState<"kunde" | "tools">("kunde");
   /** Shared media list + preview tab (video | foto). */
   const [mediaTab, setMediaTab] = useState<"video" | "foto">("video");
   const photoList = usePhotoStore((s) => s.photoList);
@@ -216,8 +172,6 @@ function App() {
   const setConsoleOpen = useLogStore((s) => s.setOpen);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
   const watermarkPhotoIndices = usePhotoStore((s) => s.watermarkIndices);
-
-  const listPaths = videoList.map((v) => v.path);
 
   async function runUpdateCheck(forceDialog = false) {
     try {
@@ -284,7 +238,7 @@ function App() {
     return openSdSelector(drive, mode);
   }
 
-  const { runBackup, decline } = useSdCardMonitor({
+  const { runBackup } = useSdCardMonitor({
     onRequestImport: (drive) => {
       void openSdImport(drive);
     },
@@ -507,145 +461,6 @@ function App() {
   }, [busy, percent, taskProgress.length]);
 
   useEffect(() => {
-    if (videoList.length === 0) return;
-    const paths = videoList.map((v) => v.path);
-    if (mode === "concat" || mode === "create") {
-      setConcatPaths(paths);
-    } else {
-      setInputPath((prev) => (prev && paths.includes(prev) ? prev : paths[0]));
-    }
-  }, [videoList, mode]);
-
-  async function pickInput() {
-    const selected = await open({
-      multiple: false,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "avi", "m4v"] }],
-    });
-    if (typeof selected === "string") {
-      setInputPath(selected);
-      if (!outputPath) {
-        const base = selected.replace(/\.[^.]+$/, "");
-        const suffix = mode === "trim" ? "_trim.mp4" : "_1080p30.mp4";
-        setOutputPath(`${base}${suffix}`);
-      }
-    }
-  }
-
-  async function pickConcatInputs() {
-    const selected = await open({
-      multiple: true,
-      filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "avi", "m4v"] }],
-    });
-    if (Array.isArray(selected) && selected.length > 0) {
-      setConcatPaths(selected);
-      if (!outputPath) {
-        const base = selected[0].replace(/\.[^.]+$/, "");
-        const suffix = mode === "create" ? "_final.mp4" : "_concat.mp4";
-        setOutputPath(`${base}${suffix}`);
-      }
-    } else if (typeof selected === "string") {
-      setConcatPaths([selected]);
-    }
-  }
-
-  async function pickOutput() {
-    const selected = await save({
-      filters: [{ name: "MP4", extensions: ["mp4"] }],
-      defaultPath: outputPath || "output.mp4",
-    });
-    if (typeof selected === "string") {
-      setOutputPath(selected);
-    }
-  }
-
-  async function startEncode() {
-    setBusy(true);
-    setLoading(true, "Encoding…");
-    resetProgress();
-    try {
-      const res = await invoke<EncodeResult>("encode_video", {
-        input: inputPath,
-        output: outputPath,
-      });
-      showSuccess(`Gespeichert: ${res.output} (${res.encoder})`);
-      setPercent(100);
-      setStatus("end");
-    } catch (e) {
-      if (isCancellationError(e)) {
-        setStatus("Abgebrochen");
-        showWarning("Vorgang abgebrochen.");
-      } else {
-        showError(String(e));
-      }
-    } finally {
-      setBusy(false);
-      setLoading(false);
-    }
-  }
-
-  async function startConcat() {
-    setBusy(true);
-    setLoading(true, "Concat…");
-    resetProgress();
-    try {
-      const paths = listPaths.length >= 2 ? listPaths : concatPaths;
-      const res = await invoke<ConcatResult>("concat_videos", {
-        paths,
-        output: outputPath,
-      });
-      showSuccess(
-        res.reencode_reason
-          ? `Concat → ${res.output} (${res.method}, ${res.codec})\nGrund: ${res.reencode_reason}`
-          : `Concat → ${res.output} (${res.method}, ${res.codec})`,
-      );
-      setPercent(100);
-      setStatus("end");
-    } catch (e) {
-      if (isCancellationError(e)) {
-        setStatus("Abgebrochen");
-        showWarning("Vorgang abgebrochen.");
-      } else {
-        showError(String(e));
-      }
-    } finally {
-      setBusy(false);
-      setLoading(false);
-    }
-  }
-
-  async function startTrim() {
-    setBusy(true);
-    setLoading(true, "Trim…");
-    resetProgress();
-    try {
-      const res = await invoke<TrimResult>("trim_video", {
-        input: inputPath,
-        start: Number(trimStart),
-        end: Number(trimEnd),
-        output: outputPath,
-        precise: preciseTrim,
-      });
-      showSuccess(
-        res.reencode_reason
-          ? `Trim → ${res.output} (${res.method})\nGrund: ${res.reencode_reason}`
-          : `Trim → ${res.output} (${res.method})`,
-      );
-      setPercent(100);
-      setStatus("end");
-    } catch (e) {
-      if (isCancellationError(e)) {
-        setStatus("Abgebrochen");
-        showWarning("Vorgang abgebrochen.");
-      } else {
-        showError(String(e));
-      }
-    } finally {
-      setBusy(false);
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
     if (!ready) return;
     let cancelled = false;
     const t = window.setTimeout(() => {
@@ -692,6 +507,7 @@ function App() {
     photoList,
     watermarkPhotoIndices,
     config?.oldschool_mode,
+    config?.manual_entry_mode,
     config?.speicherort,
     pendingCuts.count,
   ]);
@@ -843,45 +659,6 @@ function App() {
     }
   }
 
-  function canRun(): boolean {
-    if (mode === "concat") {
-      const paths = listPaths.length >= 2 ? listPaths : concatPaths;
-      return paths.length >= 2 && Boolean(outputPath);
-    }
-    if (mode === "create") {
-      return createReady;
-    }
-    return Boolean(inputPath) && Boolean(outputPath);
-  }
-
-  function run() {
-    if (mode === "encode") return startEncode();
-    if (mode === "concat") return startConcat();
-    if (mode === "create") return startCreate();
-    return startTrim();
-  }
-
-  async function handleScanSd() {
-    try {
-      const ok = await startSdMonitor();
-      setMonitoring(ok);
-      const drives = await scanSdDrives();
-      setDrives(drives);
-      if (drives.length === 0) {
-        showWarning("Keine Action-Cam SD-Karte (DCIM) gefunden.");
-        return;
-      }
-      const preferred =
-        activeDrive && drives.some((d) => d.drive === activeDrive)
-          ? activeDrive
-          : drives[0].drive;
-      setActiveDrive(preferred);
-      await openSdDriveFromHeader(preferred);
-    } catch (e) {
-      showError(String(e));
-    }
-  }
-
   async function handleSelectorConfirm(paths: string[]) {
     const drive = selectorDrive;
     const modeSel = selectorMode;
@@ -986,13 +763,6 @@ function App() {
     showSuccess("Session zurückgesetzt.", "Zurücksetzen");
   }
 
-  const multiSourceLabel =
-    listPaths.length >= 1 && (mode === "concat" || mode === "create")
-      ? `${listPaths.length} Dateien aus Video-Liste`
-      : concatPaths.length
-        ? `${concatPaths.length} Dateien gewählt`
-        : "Keine Eingaben";
-
   const hwLabel = hwInfo
     ? `${hwInfo.encoder}${hwInfo.available ? "" : " (Software)"}`
     : null;
@@ -1079,312 +849,98 @@ function App() {
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
-          <div className="border-b border-border/80 p-3">
-            <div className="flex gap-1 rounded-lg border border-border bg-card-elevated/80 p-1">
-              <Button
-                type="button"
-                size="sm"
-                variant={sidebarTab === "kunde" ? "default" : "ghost"}
-                className="flex-1"
-                onClick={() => setSidebarTab("kunde")}
-              >
-                Kunde
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={sidebarTab === "tools" ? "default" : "ghost"}
-                className="flex-1"
-                onClick={() => setSidebarTab("tools")}
-              >
-                Tools
-              </Button>
-            </div>
+          <div className="flex items-center gap-3 border-b border-border/80 px-4 py-3">
+            <h2 className="shrink-0 text-sm font-semibold tracking-wide text-muted uppercase">
+              Kunde
+            </h2>
+            <CustomerFormToolbar disabled={busy} />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {sidebarTab === "kunde" ? (
-              <CustomerForm disabled={busy} />
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <p className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
-                    Werkzeug
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(["create", "encode", "concat", "trim"] as Mode[]).map((m) => (
-                      <Button
-                        key={m}
-                        type="button"
-                        size="sm"
-                        variant={mode === m ? "default" : "secondary"}
-                        onClick={() => setMode(m)}
-                        disabled={busy}
-                      >
-                        {MODE_LABELS[m]}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-2 rounded-xl border border-border bg-card-elevated p-3">
-                  <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                    SD-Karte
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => void handleScanSd()}
-                      disabled={busy}
-                    >
-                      SD öffnen…
-                    </Button>
-                    {pendingInsert && (
-                      <>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => void runBackup(pendingInsert.drive, null)}
-                          disabled={busy}
-                        >
-                          Backup
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => void decline(pendingInsert.drive)}
-                          disabled={busy}
-                        >
-                          Ablehnen
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {mode === "concat" || mode === "create" ? (
-                  <div className="space-y-2">
-                    {mode === "concat" ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={pickConcatInputs}
-                          disabled={busy || listPaths.length >= 1}
-                        >
-                          Eingaben wählen…
-                        </Button>
-                        <p className="text-xs text-muted">{multiSourceLabel}</p>
-                      </>
-                    ) : (
-                      <p className="text-xs text-muted">
-                        Nutzt Video-/Foto-Liste und Produkte aus dem Kundenformular.
-                        {listPaths.length > 0
-                          ? ` ${listPaths.length} Video(s)`
-                          : " Keine Videos"}
-                        {photoList.length > 0 ? `, ${photoList.length} Foto(s)` : ""}.
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={pickInput}
-                      disabled={busy}
-                    >
-                      Input wählen…
-                    </Button>
-                    <p className="truncate text-xs text-muted">{inputPath || "Kein Input"}</p>
-                  </div>
-                )}
-
-                {mode !== "create" ? (
-                  <div className="space-y-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={pickOutput}
-                      disabled={busy}
-                    >
-                      Output wählen…
-                    </Button>
-                    <p className="truncate text-xs text-muted">{outputPath || "Kein Output"}</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void ensureSpeicherort(true)}
-                      disabled={busy}
-                    >
-                      Speicherort…
-                    </Button>
-                    <p className="truncate text-xs text-muted">
-                      {config?.speicherort?.trim() || "Noch nicht gesetzt"}
-                    </p>
-                  </div>
-                )}
-
-                {mode === "trim" && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label>Start (s)</Label>
-                      <Input
-                        type="number"
-                        value={trimStart}
-                        onChange={(e) => setTrimStart(e.target.value)}
-                        disabled={busy}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Ende (s)</Label>
-                      <Input
-                        type="number"
-                        value={trimEnd}
-                        onChange={(e) => setTrimEnd(e.target.value)}
-                        disabled={busy}
-                      />
-                    </div>
-                    <label className="col-span-2 flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={preciseTrim}
-                        onCheckedChange={(v) => setPreciseTrim(v === true)}
-                        disabled={busy}
-                      />
-                      Präzise (neu kodieren)
-                    </label>
-                  </div>
-                )}
-
-                {mode === "create" && (
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={Boolean(config?.upload_to_server)}
-                      disabled={busy || !config}
-                      onCheckedChange={(v) => {
-                        if (!config) return;
-                        const enabled = v === true;
-                        if (enabled && !serverConnected) {
-                          showWarning(
-                            "Server nicht erreichbar — Upload bleibt deaktiviert.",
-                            "Server",
-                          );
-                          void checkServerConnection();
-                          return;
-                        }
-                        void persistConfig({ ...config, upload_to_server: enabled });
-                      }}
-                    />
-                    Nach Erstellung hochladen
-                  </label>
-                )}
-
-                <div className="flex gap-2">
-                  <Button type="button" className="flex-1" onClick={run} disabled={busy || !canRun()}>
-                    {MODE_LABELS[mode]}
-                  </Button>
-                  <Button type="button" variant="destructive" onClick={cancel} disabled={!busy}>
-                    Abbrechen
-                  </Button>
-                </div>
-              </div>
-            )}
+            <CustomerForm disabled={busy} />
           </div>
 
-          {sidebarTab === "kunde" && (
-            <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                    Vorgang
-                  </p>
-                  <p
-                    className="truncate text-xs text-foreground/80"
-                    title={config?.speicherort || undefined}
-                  >
-                    {config?.speicherort?.trim()
-                      ? config.speicherort
-                      : "Speicherort beim Erstellen wählen…"}
-                  </p>
-                </div>
-                <label className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card-elevated/80 px-2 py-1 text-xs text-muted">
-                  <Checkbox
-                    checked={Boolean(config?.upload_to_server)}
-                    disabled={busy || !config}
-                    onCheckedChange={(v) => {
-                      if (!config) return;
-                      const enabled = v === true;
-                      if (enabled && !serverConnected) {
-                        showWarning(
-                          "Server nicht erreichbar — Upload bleibt deaktiviert.",
-                          "Server",
-                        );
-                        void checkServerConnection();
-                        return;
-                      }
-                      void persistConfig({ ...config, upload_to_server: enabled });
-                    }}
-                  />
-                  Upload
-                </label>
+          <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+                  Vorgang
+                </p>
+                <p
+                  className="truncate text-xs text-foreground/80"
+                  title={config?.speicherort || undefined}
+                >
+                  {config?.speicherort?.trim()
+                    ? config.speicherort
+                    : "Speicherort beim Erstellen wählen…"}
+                </p>
               </div>
-              <label className="flex items-center gap-2 text-xs text-muted">
+              <label className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card-elevated/80 px-2 py-1 text-xs text-muted">
                 <Checkbox
-                  checked={Boolean(config?.auto_clear_files_after_creation)}
+                  checked={Boolean(config?.upload_to_server)}
                   disabled={busy || !config}
                   onCheckedChange={(v) => {
                     if (!config) return;
-                    void persistConfig({
-                      ...config,
-                      auto_clear_files_after_creation: v === true,
-                    });
+                    const enabled = v === true;
+                    if (enabled && !serverConnected) {
+                      showWarning(
+                        "Server nicht erreichbar — Upload bleibt deaktiviert.",
+                        "Server",
+                      );
+                      void checkServerConnection();
+                      return;
+                    }
+                    void persistConfig({ ...config, upload_to_server: enabled });
                   }}
                 />
-                Nach Erstellen zurücksetzen
+                Upload
               </label>
-              {createHints.length > 0 && (
-                <ul className="max-h-20 space-y-0.5 overflow-y-auto text-[11px] leading-snug text-muted">
-                  {createHints.slice(0, 4).map((h) => (
-                    <li key={h}>• {h}</li>
-                  ))}
-                </ul>
-              )}
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => void ensureSpeicherort(true)}
-                  disabled={busy}
-                  title="Speicherort ändern"
-                >
-                  Ordner…
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1"
-                  onClick={() => {
-                    setMode("create");
-                    void startCreate();
-                  }}
-                  disabled={busy || !createReady}
-                >
-                  Erstellen
-                </Button>
-              </div>
             </div>
-          )}
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <Checkbox
+                checked={Boolean(config?.auto_clear_files_after_creation)}
+                disabled={busy || !config}
+                onCheckedChange={(v) => {
+                  if (!config) return;
+                  void persistConfig({
+                    ...config,
+                    auto_clear_files_after_creation: v === true,
+                  });
+                }}
+              />
+              Nach Erstellen zurücksetzen
+            </label>
+            {createHints.length > 0 && (
+              <ul className="space-y-0.5 text-[11px] leading-snug text-muted">
+                {createHints.slice(0, 4).map((h) => (
+                  <li key={h}>• {h}</li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void ensureSpeicherort(true)}
+                disabled={busy}
+                title="Speicherort ändern"
+              >
+                Ordner…
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={() => {
+                  void startCreate();
+                }}
+                disabled={busy || !createReady}
+              >
+                Erstellen
+              </Button>
+            </div>
+          </div>
         </aside>
 
         <main className={cn("flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4")}>
@@ -1570,6 +1126,7 @@ function App() {
         open={dialogKind === "success"}
         title={dialogTitle}
         message={dialogMessage}
+        autoCloseSecs={dialogAutoCloseSecs}
         onClose={closeDialog}
       />
       <CreateSuccessDialog

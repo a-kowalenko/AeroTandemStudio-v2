@@ -18,15 +18,15 @@ type Props = {
 export function ErrorDialog({ open, title = "Fehler", message, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="border-l-4 border-l-destructive">
+      <DialogContent className="max-w-md border-l-4 border-l-destructive">
         <DialogHeader>
           <DialogTitle className="text-destructive">{title}</DialogTitle>
-          <DialogDescription className="whitespace-pre-wrap text-foreground">
+          <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
             {message}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="destructive" onClick={onClose}>
+          <Button variant="destructive" className="shrink-0" onClick={onClose}>
             OK
           </Button>
         </DialogFooter>

@@ -253,6 +253,7 @@ export function VideoPreview({
         showSuccess(
           `Kundendaten übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");

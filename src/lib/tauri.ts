@@ -81,6 +81,8 @@ export type AppConfig = {
   sd_size_limit_enabled: boolean;
   sd_size_limit_mb: number;
   oldschool_mode: boolean;
+  /** Manual entry when not QR: "id" | "oldschool" | "lokal". */
+  manual_entry_mode: ManualEntryMode;
   keep_tandemmaster_on_session_reset: boolean;
   keep_videospringer_on_session_reset: boolean;
   /** Clear imported media and session form after successful create. */
@@ -89,6 +91,31 @@ export type AppConfig = {
 
 /** Fixed Ort presets; free text remains allowed in the combobox. */
 export const ORT_OPTIONS = ["Calden", "Gera"] as const;
+
+/** Manual customer form mode (non-QR). */
+export type ManualEntryMode = "id" | "oldschool" | "lokal";
+
+export function normalizeManualEntryMode(
+  mode: string | null | undefined,
+  oldschoolFallback = false,
+): ManualEntryMode {
+  const m = (mode ?? "").trim().toLowerCase();
+  if (m === "oldschool") return "oldschool";
+  if (m === "lokal") return "lokal";
+  if (m === "id") return "id";
+  return oldschoolFallback ? "oldschool" : "id";
+}
+
+export function withManualEntryMode(
+  config: AppConfig,
+  mode: ManualEntryMode,
+): AppConfig {
+  return {
+    ...config,
+    manual_entry_mode: mode,
+    oldschool_mode: mode === "oldschool",
+  };
+}
 
 export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Alberto", tandemmaster: true, videospringer: false },

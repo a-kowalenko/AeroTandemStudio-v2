@@ -579,17 +579,28 @@ pub fn create_job(
     }
 
     ensure_not_cancelled()?;
-    emit(&on_progress, 96.0, "Schreibe _fertig.txt…");
-    logging::info("create", "Schreibe Marker _fertig.txt…");
-    let marker = write_marker_file(&layout, kunde, config).map_err(ProcessorError::Message)?;
+    let marker_path = if config.skip_marker_file() {
+        emit(&on_progress, 96.0, "Überspringe _fertig.txt (Lokal)…");
+        logging::info("create", "Lokal-Modus: keine Marker-Datei _fertig.txt");
+        String::new()
+    } else {
+        emit(&on_progress, 96.0, "Schreibe _fertig.txt…");
+        logging::info("create", "Schreibe Marker _fertig.txt…");
+        let marker = write_marker_file(&layout, kunde, config).map_err(ProcessorError::Message)?;
+        marker.to_string_lossy().to_string()
+    };
 
     emit(&on_progress, 100.0, "Vorgang fertig");
+    let marker_label = if marker_path.is_empty() {
+        "(keine)".into()
+    } else {
+        file_name(&marker_path)
+    };
     logging::info(
         "create",
         format!(
             "Vorgang abgeschlossen: {}, marker={}",
-            layout.base_filename,
-            file_name(&marker)
+            layout.base_filename, marker_label
         ),
     );
 
@@ -600,7 +611,7 @@ pub fn create_job(
         watermark_video: wm_video,
         photos_copied,
         watermark_photos,
-        marker_path: marker.to_string_lossy().to_string(),
+        marker_path,
         encoder,
         intro_created,
         body_clips,

@@ -22,14 +22,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AppConfig, AvailableRelease, CrewMember } from "@/lib/tauri";
+import type { AppConfig, AvailableRelease, CrewMember, ManualEntryMode } from "@/lib/tauri";
 import {
   cleanupCache,
   clearWorkingSession,
   getAppInfo,
   installSpecificVersion,
   listAvailableVersions,
+  normalizeManualEntryMode,
   ORT_OPTIONS,
+  withManualEntryMode,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
@@ -408,13 +410,34 @@ export function SettingsDialog({
               Intro beim Erstellen verwenden
             </label>
 
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.oldschool_mode}
-                onCheckedChange={(v) => patch("oldschool_mode", v === true)}
-              />
-              Oldschool-Modus (Vorname/Nachname/Email)
-            </label>
+            <div className="space-y-1.5">
+              <Label htmlFor="manual-entry-mode">Manueller Eingabemodus</Label>
+              <Select
+                value={normalizeManualEntryMode(
+                  draft.manual_entry_mode,
+                  draft.oldschool_mode,
+                )}
+                onValueChange={(v) => {
+                  const mode = normalizeManualEntryMode(v) as ManualEntryMode;
+                  setDraft((prev) =>
+                    prev ? withManualEntryMode(prev, mode) : prev,
+                  );
+                }}
+              >
+                <SelectTrigger id="manual-entry-mode">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="id">ID (Kunden-/Booking-ID)</SelectItem>
+                  <SelectItem value="oldschool">
+                    Oldschool (Name + E-Mail/Telefon)
+                  </SelectItem>
+                  <SelectItem value="lokal">
+                    Lokal (Name, ohne _fertig.txt)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             <label className="flex items-center gap-2 text-sm">
               <Checkbox

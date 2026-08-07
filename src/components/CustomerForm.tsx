@@ -8,7 +8,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
-import { ORT_OPTIONS, crewNamesForRole } from "@/lib/tauri";
+import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 type FieldProps = {
@@ -165,6 +165,111 @@ type CustomerFormProps = {
   disabled?: boolean;
 };
 
+export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
+  const kunde = useKundeStore((s) => s.kunde);
+  const patch = useKundeStore((s) => s.patch);
+  const config = useConfigStore((s) => s.config);
+  const persistConfig = useConfigStore((s) => s.persist);
+  const entryMode = normalizeManualEntryMode(
+    config?.manual_entry_mode,
+    config?.oldschool_mode ?? false,
+  );
+  const busy = Boolean(disabled);
+  const isQrMode = kunde.form_mode === "kunde";
+  const qrName = [kunde.vorname, kunde.nachname].filter(Boolean).join(" ");
+
+  function switchToManual() {
+    patch({
+      form_mode: "manual",
+      kunden_id_hash: null,
+      booking_id_hash: null,
+      email: null,
+      telefon: null,
+    });
+  }
+
+  async function setManualEntryMode(next: ManualEntryMode) {
+    if (!config || entryMode === next) return;
+    await persistConfig(withManualEntryMode(config, next));
+    if (next === "id") {
+      patch({ email: null, telefon: null });
+    } else if (next === "lokal") {
+      patch({
+        email: null,
+        telefon: null,
+        kunden_id: null,
+        booking_id: null,
+      });
+    } else {
+      patch({ kunden_id: null, booking_id: null });
+    }
+  }
+
+  const modes: { id: ManualEntryMode; label: string }[] = [
+    { id: "id", label: "ID" },
+    { id: "oldschool", label: "Oldschool" },
+    { id: "lokal", label: "Lokal" },
+  ];
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+      <span
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
+          isQrMode
+            ? "bg-primary text-primary-foreground"
+            : "bg-card-elevated text-muted ring-1 ring-border",
+        )}
+      >
+        {isQrMode ? <QrCode className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
+        {isQrMode ? "QR-Modus" : "Manuell"}
+      </span>
+      {isQrMode && qrName ? (
+        <span className="min-w-0 truncate text-xs font-medium text-foreground">{qrName}</span>
+      ) : null}
+      {!isQrMode ? (
+        <div
+          role="group"
+          aria-label="Manueller Eingabemodus"
+          className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
+        >
+          {modes.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              disabled={busy || !config}
+              aria-pressed={entryMode === id}
+              onClick={() => void setManualEntryMode(id)}
+              className={cn(
+                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+                "disabled:pointer-events-none disabled:opacity-50",
+                entryMode === id
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 shrink-0 px-2 text-[11px]"
+          disabled={busy}
+          onClick={switchToManual}
+          title="Zurück zur manuellen Eingabe"
+        >
+          <PencilLine className="h-3 w-3" />
+          Manuell
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function CustomerForm({ disabled }: CustomerFormProps) {
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
@@ -172,8 +277,12 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
   const setVideoMode = useKundeStore((s) => s.setVideoMode);
   const qrRevision = useKundeStore((s) => s.qrRevision);
   const config = useConfigStore((s) => s.config);
-  const persistConfig = useConfigStore((s) => s.persist);
-  const oldschool = config?.oldschool_mode ?? false;
+  const entryMode = normalizeManualEntryMode(
+    config?.manual_entry_mode,
+    config?.oldschool_mode ?? false,
+  );
+  const nameEntry = entryMode === "oldschool" || entryMode === "lokal";
+  const oldschool = entryMode === "oldschool";
   const crewList = config?.crew_list;
   const tandemmasterOptions = useMemo(
     () => crewNamesForRole(crewList, "tandemmaster"),
@@ -188,7 +297,6 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
   const mode = (kunde.video_mode || "") as "" | "handcam" | "outside";
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
-  const qrName = [kunde.vorname, kunde.nachname].filter(Boolean).join(" ");
   const productsFromQr =
     isQrMode &&
     (kunde.handcam_foto ||
@@ -215,92 +323,8 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
     }
   }, [kunde.vorname, kunde.nachname, kunde.gast, setField]);
 
-  function switchToManual() {
-    patch({
-      form_mode: "manual",
-      kunden_id_hash: null,
-      booking_id_hash: null,
-      email: null,
-      telefon: null,
-    });
-    setNameLocked(true);
-  }
-
-  async function setManualEntryMode(nextOldschool: boolean) {
-    if (!config || config.oldschool_mode === nextOldschool) return;
-    await persistConfig({ ...config, oldschool_mode: nextOldschool });
-  }
-
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
-            isQrMode
-              ? "bg-primary text-primary-foreground"
-              : "bg-card-elevated text-muted ring-1 ring-border",
-          )}
-        >
-          {isQrMode ? <QrCode className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-          {isQrMode ? "QR-Modus" : "Manuell"}
-        </span>
-        {isQrMode && qrName ? (
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">{qrName}</span>
-        ) : null}
-        {!isQrMode ? (
-          <div
-            role="group"
-            aria-label="Manueller Eingabemodus"
-            className="ml-auto inline-flex items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
-          >
-            <button
-              type="button"
-              disabled={busy || !config}
-              aria-pressed={!oldschool}
-              onClick={() => void setManualEntryMode(false)}
-              className={cn(
-                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
-                "disabled:pointer-events-none disabled:opacity-50",
-                !oldschool
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted hover:text-foreground",
-              )}
-            >
-              ID
-            </button>
-            <button
-              type="button"
-              disabled={busy || !config}
-              aria-pressed={oldschool}
-              onClick={() => void setManualEntryMode(true)}
-              className={cn(
-                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
-                "disabled:pointer-events-none disabled:opacity-50",
-                oldschool
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted hover:text-foreground",
-              )}
-            >
-              Oldschool
-            </button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="ml-auto h-7 shrink-0 px-2 text-[11px]"
-            disabled={busy}
-            onClick={switchToManual}
-            title="Zurück zur manuellen Eingabe"
-          >
-            <PencilLine className="h-3 w-3" />
-            Manuell
-          </Button>
-        )}
-      </div>
-
       <Section title="Session">
         <div className="grid gap-3 sm:grid-cols-2">
           <Combobox
@@ -321,7 +345,15 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
       </Section>
 
       <Section
-        title={isQrMode ? "Kunde (QR)" : oldschool ? "Kontakt" : "Identität"}
+        title={
+          isQrMode
+            ? "Kunde (QR)"
+            : oldschool
+              ? "Kontakt"
+              : nameEntry
+                ? "Name"
+                : "Identität"
+        }
         action={
           isQrMode ? (
             <Button
@@ -398,7 +430,8 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
                     disabled={busy}
                   />
                 </>
-              ) : (
+              ) : null}
+              {!nameEntry ? (
                 <>
                   <Field
                     label="Kunden-ID"
@@ -415,7 +448,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
                     mono
                   />
                 </>
-              )}
+              ) : null}
             </>
           )}
         </div>

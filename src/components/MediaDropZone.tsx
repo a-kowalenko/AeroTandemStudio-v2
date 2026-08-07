@@ -376,7 +376,7 @@ export function MediaDropZone({
               }),
             );
             if (outcome.attempted && outcome.found) {
-              showSuccess(outcome.message, "Auto-QR");
+              showSuccess(outcome.message, "Auto-QR", { autoCloseSecs: 5 });
               setStatusMsg(`${parts.join(", ")} · QR übernommen`);
             } else if (outcome.attempted && outcome.message) {
               setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
@@ -488,6 +488,7 @@ export function MediaDropZone({
         showSuccess(
           `Kundendaten übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
@@ -512,6 +513,7 @@ export function MediaDropZone({
         showSuccess(
           `Kundendaten aus Foto übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Foto.", "QR-Scan");
@@ -540,10 +542,14 @@ export function MediaDropZone({
           onBeforeRemove: (p) => onRemoveVideo?.(p),
         });
         const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        const src = result.source_path ? `\nQuelle: ${result.source_path}` : "";
+        const srcName = result.source_path
+          ? result.source_path.replace(/^.*[/\\]/, "")
+          : "";
+        const src = srcName ? `\nQuelle: ${srcName}` : "";
         showSuccess(
           `Kundendaten übernommen${name ? `: ${name}` : ""}.${src}${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
@@ -570,10 +576,14 @@ export function MediaDropZone({
         applyFromQr(result.kunde);
         const cleanup = await maybeRemoveQrPhoto(result.source_path);
         const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        const src = result.source_path ? `\nQuelle: ${result.source_path}` : "";
+        const srcName = result.source_path
+          ? result.source_path.replace(/^.*[/\\]/, "")
+          : "";
+        const src = srcName ? `\nQuelle: ${srcName}` : "";
         showSuccess(
           `Kundendaten übernommen${name ? `: ${name}` : ""}.${src}${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
@@ -622,6 +632,7 @@ export function MediaDropZone({
         showSuccess(
           `Kundendaten aus ${typeLabel} übernommen${name ? `: ${name}` : ""} (Datei nicht importiert).`,
           "QR-Scan",
+          { autoCloseSecs: 5 },
         );
       } else {
         showWarning(
