@@ -362,8 +362,11 @@ mod tests {
 
     #[test]
     fn safe_filename_strips_illegal_chars() {
-        let p = Path::new(r"C:\x\bad:name?.mp4");
+        // Use a basename only — `Path` treats `\` as a normal char on Unix.
+        let p = Path::new("bad:name?.mp4");
         assert_eq!(safe_filename(p), "bad_name_.mp4");
+        let nested = PathBuf::from("folder").join("bad:name?.mp4");
+        assert_eq!(safe_filename(&nested), "bad_name_.mp4");
     }
 
     #[test]

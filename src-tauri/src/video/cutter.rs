@@ -426,13 +426,14 @@ mod tests {
 
     #[test]
     fn temp_and_split_path_naming() {
-        let cut = temp_cut_path(r"C:\work\DJI_0001.mp4");
+        // Forward slashes: Path::file_name works on Windows and Unix.
+        let cut = temp_cut_path("/work/DJI_0001.mp4");
         assert!(cut
             .file_name()
             .unwrap()
             .to_string_lossy()
             .contains(".__temp_cut__."));
-        let (p1, p2) = split_output_paths(r"C:\work\DJI_0001.mp4");
+        let (p1, p2) = split_output_paths("/work/DJI_0001.mp4");
         assert_eq!(p1.file_name().unwrap().to_string_lossy(), "DJI_0001_1.mp4");
         assert_eq!(p2.file_name().unwrap().to_string_lossy(), "DJI_0001_2.mp4");
         let tmp = temp_split_part1_path("/tmp/foo.mov");

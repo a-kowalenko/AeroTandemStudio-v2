@@ -1,0 +1,34 @@
+# CI checks — lightweight (no Tauri bundle, no Rust tests).
+#
+# Full Windows/macOS app builds run only in `release.yml` (version tags).
+# Rust unit tests: lokal mit `npm run test:rust` (nicht in CI — zu langsam).
+# This workflow does NOT run on pushes to master.
+
+name: test
+
+on:
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck / frontend build
+        run: npm run build

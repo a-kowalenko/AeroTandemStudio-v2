@@ -35,7 +35,9 @@ Das Skript setzt die Version, committed `release: x.y.z`, taggt `vx.y.z` und pus
 npm run release
 ```
 
-Danach: Actions → Workflow **release**; öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
+Danach: Actions → Workflow **release** (Win + Mac, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
+
+Normale Commits auf `master` starten **keinen** App-Build. Volle Bundles nur bei Version-Tags (`release.yml`). PRs: leichter Check in `test.yml`.
 
 ## Installer-Links (immer neueste Version)
 

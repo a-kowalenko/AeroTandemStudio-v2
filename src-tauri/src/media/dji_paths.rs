@@ -25,7 +25,11 @@ pub const MEDIA_EXTENSIONS: &[&str] = &[
 ];
 
 fn ext_of(path: &Path) -> String {
-    path.extension()
+    // Prefer last path segment after `/` or `\` so Windows-style strings work on Unix.
+    let raw = path.to_string_lossy();
+    let name = raw.rsplit(['/', '\\']).next().unwrap_or(raw.as_ref());
+    Path::new(name)
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| format!(".{}", e.to_ascii_lowercase()))
         .unwrap_or_default()
@@ -95,7 +99,9 @@ pub fn resolve_drive_dcim_path(drive: &str) -> String {
 }
 
 fn path_parts(path: &str) -> Vec<String> {
-    Path::new(&normalize_media_path(path))
+    // Accept Windows-style `\` even on Unix (tests / imported path strings).
+    let normalized = normalize_media_path(path).replace('\\', "/");
+    Path::new(&normalized)
         .components()
         .filter_map(|c| match c {
             Component::Normal(s) => Some(s.to_string_lossy().into_owned()),

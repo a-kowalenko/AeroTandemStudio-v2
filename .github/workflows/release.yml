@@ -9,6 +9,7 @@
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password
 #
 # Optional later: APPLE_* / Windows Authenticode (not required for unsigned shipping).
+# Rust unit tests are intentionally not run here (slow cold compile); use `npm run test:rust` locally.
 
 name: release
 
@@ -76,9 +77,6 @@ jobs:
 
       - name: Download FFmpeg sidecar
         run: npm run download-ffmpeg
-
-      - name: Rust unit tests
-        run: npm run test:rust
 
       - name: Resolve release tag
         id: tag
