@@ -11,7 +11,13 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
-use tauri::{AppHandle, Runtime};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+use tauri::{AppHandle, Emitter, Runtime};
+
+/// Frontend listens for download/install progress while applying an update.
+pub const EVENT_UPDATE_INSTALL_PROGRESS: &str = "update-install-progress";
 
 /// Marker substring that means “stub / not ready” (keep for safety if config regresses).
 pub const UPDATER_STUB_MARKER: &str = "releases.example.invalid";
@@ -146,7 +152,23 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
     }
 }
 
-/// Download + install a pending update (plugin API).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInstallProgress {
+    /// `"download"` while bytes arrive, `"install"` after download finishes.
+    pub phase: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub percent: f64,
+    /// Approximate download throughput in bytes/sec (0 while installing).
+    pub speed_bps: f64,
+}
+
+fn emit_update_progress<R: Runtime>(app: &AppHandle<R>, progress: &UpdateInstallProgress) {
+    let _ = app.emit(EVENT_UPDATE_INSTALL_PROGRESS, progress);
+}
+
+/// Download + install a pending update (plugin API) with progress events.
 #[tauri::command]
 pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     if !is_updater_configured() {
@@ -167,8 +189,57 @@ pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, Str
             .ok_or_else(|| "Kein Update verfügbar.".to_string())?;
 
         let version = update.version.clone();
+        let app_for_progress = app.clone();
+        let downloaded = Arc::new(AtomicU64::new(0));
+        let started = Instant::now();
+
+        emit_update_progress(
+            &app,
+            &UpdateInstallProgress {
+                phase: "download".into(),
+                downloaded_bytes: 0,
+                total_bytes: None,
+                percent: 0.0,
+                speed_bps: 0.0,
+            },
+        );
+
+        let downloaded_cb = Arc::clone(&downloaded);
         update
-            .download_and_install(|_chunk, _total| {}, || {})
+            .download_and_install(
+                move |chunk, total| {
+                    let done = downloaded_cb.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
+                    let elapsed = started.elapsed().as_secs_f64().max(0.001);
+                    let speed_bps = done as f64 / elapsed;
+                    let percent = match total {
+                        Some(t) if t > 0 => (done as f64 / t as f64 * 100.0).clamp(0.0, 100.0),
+                        _ => 0.0,
+                    };
+                    emit_update_progress(
+                        &app_for_progress,
+                        &UpdateInstallProgress {
+                            phase: "download".into(),
+                            downloaded_bytes: done,
+                            total_bytes: total,
+                            percent,
+                            speed_bps,
+                        },
+                    );
+                },
+                || {
+                    let done = downloaded.load(Ordering::Relaxed);
+                    emit_update_progress(
+                        &app,
+                        &UpdateInstallProgress {
+                            phase: "install".into(),
+                            downloaded_bytes: done,
+                            total_bytes: Some(done).filter(|&n| n > 0),
+                            percent: 100.0,
+                            speed_bps: 0.0,
+                        },
+                    );
+                },
+            )
             .await
             .map_err(|e| format!("Update-Installation fehlgeschlagen: {e}"))?;
 
@@ -350,7 +421,11 @@ fn default_installer_name() -> &'static str {
     {
         "setup.dmg"
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        "setup.AppImage"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         "setup.bin"
     }
@@ -372,7 +447,24 @@ fn launch_installer(path: &PathBuf) -> Result<(), String> {
             .map_err(|e| format!("Installer konnte nicht geöffnet werden: {e}"))?;
         Ok(())
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let meta = std::fs::metadata(path)
+                .map_err(|e| format!("AppImage konnte nicht gelesen werden: {e}"))?;
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o755);
+            std::fs::set_permissions(path, perms)
+                .map_err(|e| format!("AppImage konnte nicht ausführbar gemacht werden: {e}"))?;
+        }
+        Command::new(path)
+            .spawn()
+            .map_err(|e| format!("AppImage konnte nicht gestartet werden: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         let _ = path;
         Err("Versionswechsel auf dieser Plattform nicht unterstützt.".into())
@@ -451,7 +543,30 @@ fn pick_installer_url(assets: &[GitHubAsset]) -> Option<String> {
             })
             .map(|a| a.browser_download_url.clone())
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(target_os = "linux")]
+    {
+        let prefer_arch = |n: &str| {
+            n.contains("amd64")
+                || n.contains("x86_64")
+                || n.contains("x86-64")
+                || n.contains("_x64")
+                || n.contains("-x64")
+        };
+        assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with(".appimage") && prefer_arch(&n) && !n.ends_with(".sig")
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".appimage") && !n.ends_with(".sig")
+                })
+            })
+            .map(|a| a.browser_download_url.clone())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
         let _ = assets;
         None
@@ -523,6 +638,10 @@ mod tests {
                 name: "Aero.Tandem.Studio_0.1.3_x64-setup.exe.sig".into(),
                 browser_download_url: "https://example/sig".into(),
             },
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.3_amd64.AppImage".into(),
+                browser_download_url: "https://example/appimage".into(),
+            },
         ];
         #[cfg(target_os = "windows")]
         {
@@ -533,8 +652,45 @@ mod tests {
         }
         #[cfg(target_os = "macos")]
         {
-            let _ = assets;
+            let _ = &assets;
             assert!(pick_installer_url(&[]).is_none());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(
+                pick_installer_url(&assets).as_deref(),
+                Some("https://example/appimage")
+            );
+        }
+    }
+
+    #[test]
+    fn pick_linux_appimage_prefers_arch_token() {
+        let assets = vec![
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.7_aarch64.AppImage".into(),
+                browser_download_url: "https://example/arm".into(),
+            },
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.7_amd64.AppImage".into(),
+                browser_download_url: "https://example/amd64".into(),
+            },
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.7_amd64.AppImage.sig".into(),
+                browser_download_url: "https://example/sig".into(),
+            },
+        ];
+        #[cfg(target_os = "linux")]
+        {
+            assert_eq!(
+                pick_installer_url(&assets).as_deref(),
+                Some("https://example/amd64")
+            );
+        }
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        {
+            // Win/Mac must ignore Linux AppImage assets when no native installer present.
+            assert!(pick_installer_url(&assets).is_none());
         }
     }
 

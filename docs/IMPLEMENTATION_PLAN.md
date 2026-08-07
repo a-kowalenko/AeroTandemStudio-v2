@@ -50,15 +50,15 @@
 |------|--------|
 | Tauri 2 Scaffold (React + TypeScript) | ✅ Erledigt |
 | `npm run tauri dev` startet | ✅ Erledigt |
-| FFmpeg Sidecar | ✅ Erledigt (Win + mac Docs/CI); Linux → Phase 15 |
-| Rust Video-Module | ✅ Phase 0–13 |
+| FFmpeg Sidecar | ✅ Erledigt (Win + Mac + Linux) |
+| Rust Video-Module | ✅ Phase 0–13 + 15 |
 | AGENTS.md | ✅ Vorhanden |
 | Implementierungsplan | ✅ Dieses Dokument |
-| CI (Win + Mac) | ✅ `.github/workflows/release.yml` |
-| Linux Build | ⬜ Phase 15 (`docs/LINUX_BUILD.md`) |
+| CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
+| Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 15 — Linux Build & Plattform-Parity](#phase-15--linux-build--plattform-parity)  
-*(Backlog danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*
+**Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
+*(Phase 15 Linux erledigt — manuelle VM-Abnahme laut Feature-Matrix / `LINUX_BUILD.md`)*
 
 ---
 
@@ -66,7 +66,7 @@
 
 | Schicht | Technologie | Hinweis |
 |---------|-------------|---------|
-| Desktop-Shell | Tauri 2 | Win + Mac + Linux (Phase 15) |
+| Desktop-Shell | Tauri 2 | Win + Mac + Linux |
 | Backend | Rust | `src-tauri/src/` |
 | Frontend | React 19 + TypeScript | `src/` |
 | Styling (ab Phase 5) | Tailwind CSS + shadcn/ui | Schrittweise einführen |
@@ -745,12 +745,13 @@ Unit-Tests für Command-Generierung. Nur Phase 1.
 
 ### Phase 15 — Linux Build & Plattform-Parity
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** Phase 13  
 **Ziel:** Voll funktionsfähiger Linux-Desktop-Build (Feature-Parity Win/Mac)  
 **Guide:** `@docs/LINUX_BUILD.md`
 
-Offiziell bisher nur Win + Mac. Viel Code ist bereits Linux-aware (FFmpeg-Pfad `linux/`, SD `/media`/`/run/media`/`/mnt`, Font-Fallback DejaVu, `smb2`, Updater-Plugin in `Cargo.toml`). Lücken: release-taugliches FFmpeg-Download, Font/`fontfile`, NVENC-Detection, SD-Härtung, Updater-Assets, CI.
+Offiziell Win + Mac + Linux. Code-Lücken aus Phase 15 geschlossen: release-taugliches
+FFmpeg-Download, Font/`fontfile`, NVENC-Detection Linux, SD-Härtung, Updater-AppImage, Ubuntu CI.
 
 #### Architektur-Entscheidungen (v1)
 
@@ -766,28 +767,28 @@ Offiziell bisher nur Win + Mac. Viel Code ist bereits Linux-aware (FFmpeg-Pfad `
 
 #### Aufgaben — Foundation
 
-- [ ] System-Deps dokumentieren (WebKitGTK, GTK, `patchelf`, …) in `docs/LINUX_BUILD.md`
-- [ ] FFmpeg: echtes Download in `scripts/download-ffmpeg.mjs` (statt `which ffmpeg` kopieren)
-- [ ] Layout `linux/x86_64/ffmpeg` + Fallback `linux/ffmpeg`; `find_ffmpeg` + Unit-Tests
-- [ ] `resources/ffmpeg/README.md` Linux-Quelle aktualisieren
-- [ ] Font-Auflösung Linux: System-DejaVu und/oder Bundle-TTF; Intro-`drawtext` mit `fontfile=` wo nötig
-- [ ] `hw_accel.rs`: NVENC-Detection auch unter Linux (`nvidia-smi`; ohne PowerShell-Zweig)
+- [x] System-Deps dokumentieren (WebKitGTK, GTK, `patchelf`, …) in `docs/LINUX_BUILD.md`
+- [x] FFmpeg: echtes Download in `scripts/download-ffmpeg.mjs` (statt `which ffmpeg` kopieren)
+- [x] Layout `linux/x86_64/ffmpeg` + Fallback `linux/ffmpeg`; `find_ffmpeg` + Unit-Tests
+- [x] `resources/ffmpeg/README.md` Linux-Quelle aktualisieren
+- [x] Font-Auflösung Linux: System-DejaVu und/oder Bundle-TTF; Intro-`drawtext` mit `fontfile=` wo nötig
+- [x] `hw_accel.rs`: NVENC-Detection auch unter Linux (`nvidia-smi`; ohne PowerShell-Zweig)
 
 #### Aufgaben — Plattform-Features
 
-- [ ] SD-Monitor härten: False-Positives filtern; `/run/media/$USER/…` / `/media/$USER/…`; optional `/sys/block/…/removable`
-- [ ] Unit-Tests für Linux-Mount-Heuristik (analog `is_macos_volume_candidate`)
-- [ ] SMB Smoke (Guest + Credentials) — Code cross-platform, Verifikation + ggf. kleine Fixes
-- [ ] Config-/Cache-Docs: XDG `~/.local/share/AeroTandemStudio`
+- [x] SD-Monitor härten: False-Positives filtern; `/run/media/$USER/…` / `/media/$USER/…`; optional `/sys/block/…/removable`
+- [x] Unit-Tests für Linux-Mount-Heuristik (analog `is_macos_volume_candidate`)
+- [x] SMB Smoke (Guest + Credentials) — Code cross-platform, Verifikation + ggf. kleine Fixes
+- [x] Config-/Cache-Docs: XDG `~/.local/share/AeroTandemStudio`
 
 #### Aufgaben — Ship
 
-- [ ] `tauri build` → AppImage (+ optional deb); Bundle-Targets klar dokumentieren/konfigurieren
-- [ ] Updater: `pick_installer_url` (`.AppImage`), `launch_installer` (`chmod +x` + spawn)
-- [ ] `.github/workflows/release.yml`: `ubuntu-22.04` (o. ä.) + Apt-Deps + `download-ffmpeg` + Upload
-- [ ] Optional: Linux `cargo test` in CI für cfg-Zweige
-- [ ] `AGENTS.md` / Plan-Tracker: Win + Mac + Linux; HW-Liste NVENC Win/Linux
-- [ ] Manuelle E2E-Abnahme laut Feature-Matrix unten
+- [x] `tauri build` → AppImage (+ optional deb); Bundle-Targets klar dokumentieren/konfigurieren
+- [x] Updater: `pick_installer_url` (`.AppImage`), `launch_installer` (`chmod +x` + spawn)
+- [x] `.github/workflows/release.yml`: `ubuntu-22.04` (o. ä.) + Apt-Deps + `download-ffmpeg` + Upload
+- [x] Optional: Linux `cargo test` in CI für cfg-Zweige
+- [x] `AGENTS.md` / Plan-Tracker: Win + Mac + Linux; HW-Liste NVENC Win/Linux
+- [ ] Manuelle E2E-Abnahme laut Feature-Matrix unten (Linux-VM / Release-Job)
 
 #### Feature-Parity (Abnahme)
 
@@ -945,9 +946,9 @@ Output: `src-tauri/target/release/bundle/`
 
 ```yaml
 # .github/workflows/release.yml
-# - windows-latest + macos-latest (+ ubuntu-22.04 ab Phase 15)
+# - windows-latest + macos-latest + ubuntu-22.04
 # - npm run download-ffmpeg → tauri-action → Releases-Repo
-# - Artifacts: NSIS/EXE (Win), .dmg (Mac), AppImage (+ optional .deb) (Linux)
+# - Artifacts: NSIS/EXE (Win), .dmg (Mac), AppImage (Linux)
 # - Mac signing/notarization: docs/MACOS_BUILD.md
 # - Linux: docs/LINUX_BUILD.md
 ```
@@ -977,7 +978,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 12 | Vorgang Erstellen & Legacy-Export | ✅ |
 | 13 | macOS Build & Plattform-Tests | ✅ |
 | 14 | ML Foto-Klassifikation (optional) | ⬜ |
-| 15 | Linux Build & Plattform-Parity | ⬜ |
+| 15 | Linux Build & Plattform-Parity | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -996,4 +997,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-07 · Projekt: Aero Tandem Studio v2*
+*Letzte Aktualisierung: 2026-08-07 · Projekt: Aero Tandem Studio v2 · Phase 15 Linux*

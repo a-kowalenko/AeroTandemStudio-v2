@@ -62,6 +62,7 @@ import {
   type HwAccelInfo,
   type IntroMuxFallbackPayload,
   type UpdateCheckResult,
+  type UpdateInstallProgress,
   type UploadProgressEvent,
 } from "./lib/tauri";
 import { importSdFiles, listSdFiles } from "./lib/sdCard";
@@ -151,6 +152,8 @@ function App() {
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [updateInstallProgress, setUpdateInstallProgress] =
+    useState<UpdateInstallProgress | null>(null);
   const [splashOpen, setSplashOpen] = useState(true);
   const [splashStatus, setSplashStatus] = useState("Wird geladen…");
   const [splashError, setSplashError] = useState<string | null>(null);
@@ -187,6 +190,7 @@ function App() {
 
   async function runInstallUpdate() {
     setUpdateInstalling(true);
+    setUpdateInstallProgress(null);
     try {
       const msg = await installUpdate();
       showSuccess(msg, "Update");
@@ -200,6 +204,7 @@ function App() {
       showError(String(e), "Update");
     } finally {
       setUpdateInstalling(false);
+      setUpdateInstallProgress(null);
     }
   }
 
@@ -397,7 +402,24 @@ function App() {
         reason: p.reason ?? "",
         timeoutSecs: p.timeout_secs > 0 ? p.timeout_secs : 15,
       });
-      setStatus("Stream-Copy fehlgeschlagen — bitte Entscheidung…");
+      const soft = (p.reason ?? "").toLowerCase().includes("soft-splice");
+      setStatus(
+        soft
+          ? "Soft-Splice fehlgeschlagen — bitte Entscheidung…"
+          : "Stream-Copy fehlgeschlagen — bitte Entscheidung…",
+      );
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<UpdateInstallProgress>("update-install-progress", (event) => {
+      setUpdateInstallProgress(event.payload);
     }).then((fn) => {
       unlisten = fn;
     });
@@ -1082,9 +1104,14 @@ function App() {
         open={updateDialogOpen}
         result={updateResult}
         installing={updateInstalling}
+        installProgress={updateInstallProgress}
         onInstall={() => void runInstallUpdate()}
-        onLater={() => setUpdateDialogOpen(false)}
-        onClose={() => setUpdateDialogOpen(false)}
+        onLater={() => {
+          if (!updateInstalling) setUpdateDialogOpen(false);
+        }}
+        onClose={() => {
+          if (!updateInstalling) setUpdateDialogOpen(false);
+        }}
       />
       <SdFileSelector
         open={selectorOpen}

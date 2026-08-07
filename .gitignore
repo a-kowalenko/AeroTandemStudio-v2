@@ -31,6 +31,9 @@ src-tauri/resources/ffmpeg/mac/ffmpeg
 src-tauri/resources/ffmpeg/mac/arm64/
 src-tauri/resources/ffmpeg/mac/x86_64/
 src-tauri/resources/ffmpeg/linux/ffmpeg
+src-tauri/resources/ffmpeg/linux/x86_64/
+src-tauri/resources/ffmpeg/linux/_linux_extract/
+src-tauri/resources/ffmpeg/linux/*.tar.xz
 src-tauri/target/
 
 # Updater private signing key (public key lives in tauri.conf.json)

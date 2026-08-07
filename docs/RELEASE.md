@@ -35,7 +35,7 @@ Das Skript setzt die Version, committed `release: x.y.z`, taggt `vx.y.z` und pus
 npm run release
 ```
 
-Danach: Actions → Workflow **release** (Win + **zwei** Mac-Jobs, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
+Danach: Actions → Workflow **release** (Win + **zwei** Mac-Jobs + Ubuntu AppImage, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
 
 Neue Releases bekommen **kein** „Latest“-Label. Nach Prüfung der Assets im öffentlichen Repo manuell auf **Set as the latest release** setzen — erst dann greifen Installer-Links und Auto-Update (`/releases/latest/`).
 
@@ -56,6 +56,8 @@ macOS erscheint als **zwei** DMGs (Tauri-Namensschema):
 | Intel | `…_x64.dmg` |
 
 „Dieses Programm wird auf diesem Mac nicht unterstützt“ = meist falsche Architektur (Intel braucht `_x64.dmg`).
+
+Linux: **AppImage** (`…_amd64.AppImage` o. ä.) — Details: `docs/LINUX_BUILD.md`.
 
 ## Hinweise
 

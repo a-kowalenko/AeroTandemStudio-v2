@@ -19,8 +19,8 @@ type Props = {
 };
 
 /**
- * Shown when Intro+Body stream-copy fails. Default is without intro;
- * that option auto-selects after `timeoutSecs` (countdown on the button).
+ * Shown when Intro+Body soft-splice / stream-copy fails.
+ * Default is without intro; that option auto-selects after `timeoutSecs`.
  */
 export function IntroMuxFallbackDialog({
   open,
@@ -32,6 +32,8 @@ export function IntroMuxFallbackDialog({
   const chosenRef = useRef(false);
   const onChooseRef = useRef(onChoose);
   onChooseRef.current = onChoose;
+
+  const isSoftSplice = reason.toLowerCase().includes("soft-splice");
 
   useEffect(() => {
     if (!open) {
@@ -71,25 +73,28 @@ export function IntroMuxFallbackDialog({
       }}
     >
       <DialogContent
-        className="border-l-4 border-l-warning"
+        className="max-w-lg overflow-hidden border-l-4 border-l-warning"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => {
           e.preventDefault();
           choose("without_intro");
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="min-w-0">
           <DialogTitle className="text-warning">
-            Intro kann nicht per Stream-Copy angefügt werden
+            {isSoftSplice
+              ? "Intro konnte nicht nahtlos angefügt werden"
+              : "Intro kann nicht per Stream-Copy angefügt werden"}
           </DialogTitle>
           <DialogDescription asChild>
-            <div className="space-y-3 text-sm text-foreground">
-              <p>
-                Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist
-                fehlgeschlagen (häufig bei modernen Kameradateien).
+            <div className="min-w-0 space-y-3 text-sm text-foreground">
+              <p className="break-words">
+                {isSoftSplice
+                  ? "Soft-Splice (Intro + kurzer Video-Anfang gemeinsam kodieren) ist fehlgeschlagen. Das kommt bei manchen Kameradateien vor."
+                  : "Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist fehlgeschlagen (häufig bei modernen Kameradateien)."}
               </p>
               {reason ? (
-                <p className="rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted">
+                <p className="min-w-0 overflow-x-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted [overflow-wrap:anywhere]">
                   {reason}
                 </p>
               ) : null}
@@ -100,7 +105,7 @@ export function IntroMuxFallbackDialog({
             </div>
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="min-w-0 gap-2 sm:justify-between">
           <Button
             variant="outline"
             onClick={() => choose("with_intro_encode")}

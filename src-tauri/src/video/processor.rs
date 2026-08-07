@@ -241,6 +241,61 @@ fn best_system_font() -> String {
     }
 }
 
+/// Candidate TTF paths for Linux Intro `drawtext` (`fontfile=`).
+///
+/// Order: bundled asset → common distro DejaVu locations.
+/// Pure path list — unit-tested; existence checked by [`resolve_linux_fontfile`].
+#[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(dead_code))]
+pub fn linux_fontfile_candidates() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    paths.push(
+        manifest
+            .join("resources")
+            .join("assets")
+            .join("fonts")
+            .join("DejaVuSans.ttf"),
+    );
+    paths.push(PathBuf::from(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ));
+    paths.push(PathBuf::from(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ));
+    paths.push(PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"));
+    paths.push(PathBuf::from("/usr/share/fonts/dejavu/DejaVuSans.ttf"));
+    paths
+}
+
+/// First existing Linux TTF suitable for FFmpeg `fontfile=`.
+#[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(dead_code))]
+pub fn resolve_linux_fontfile() -> Option<PathBuf> {
+    linux_fontfile_candidates()
+        .into_iter()
+        .find(|p| p.is_file())
+}
+
+/// Escape a filesystem path for use inside an FFmpeg filter option value.
+#[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(dead_code))]
+pub fn ffmpeg_escape_fontfile_path(path: &str) -> String {
+    // Normalise separators then apply drawtext escaping (colon, quotes, commas).
+    let normalised = path.replace('\\', "/");
+    ffmpeg_escape_text(&normalised)
+}
+
+/// `font='…'` (Win/Mac) or `fontfile='…'` (Linux when a TTF is found).
+fn drawtext_font_option() -> String {
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        if let Some(path) = resolve_linux_fontfile() {
+            let escaped = ffmpeg_escape_fontfile_path(&path.to_string_lossy());
+            return format!("fontfile='{escaped}'");
+        }
+    }
+    let font_escaped = ffmpeg_escape_text(&best_system_font());
+    format!("font='{font_escaped}'")
+}
+
 // ---------------------------------------------------------------------------
 // Content area + drawtext (pure)
 // ---------------------------------------------------------------------------
@@ -326,8 +381,7 @@ fn wrap_text(text: &str, max_width: i32, font_size: i32) -> Vec<String> {
 /// Build comma-joined `drawtext=…` filter chain for the intro overlay.
 pub fn prepare_text_overlay(kunde: &Kunde, video_width: u32, video_height: u32) -> String {
     let area = calculate_scaled_content_area(video_width, video_height);
-    let font_name = best_system_font();
-    let font_escaped = ffmpeg_escape_text(&font_name);
+    let font_opt = drawtext_font_option();
     let gast = kunde.resolve_gast();
 
     let mut text_data: Vec<(&str, &str)> = vec![
@@ -358,7 +412,7 @@ pub fn prepare_text_overlay(kunde: &Kunde, video_width: u32, video_height: u32) 
 
         let label_escaped = ffmpeg_escape_text(label);
         cmds.push(format!(
-            "drawtext=text='{label_escaped}':x={}:y={}:fontsize={font_size}:fontcolor=white:borderw=3:bordercolor=black:font='{font_escaped}'",
+            "drawtext=text='{label_escaped}':x={}:y={}:fontsize={font_size}:fontcolor=white:borderw=3:bordercolor=black:{font_opt}",
             area.x_start, current_y
         ));
 
@@ -366,7 +420,7 @@ pub fn prepare_text_overlay(kunde: &Kunde, video_width: u32, video_height: u32) 
         for line in &wrapped {
             let value_escaped = ffmpeg_escape_text(line);
             cmds.push(format!(
-                "drawtext=text='{value_escaped}':x={value_x_start}:y={value_y}:fontsize={font_size}:fontcolor=white:borderw=3:bordercolor=black:font='{font_escaped}'"
+                "drawtext=text='{value_escaped}':x={value_x_start}:y={value_y}:fontsize={font_size}:fontcolor=white:borderw=3:bordercolor=black:{font_opt}"
             ));
             value_y += line_height;
         }
@@ -489,8 +543,10 @@ pub fn build_intro_ffmpeg_args(
 
 /// Minimum body bridge length (seconds) before the first stream-copied IDR.
 pub const SOFT_SPLICE_MIN_BRIDGE_SECS: f64 = 1.0;
-/// Keyframe scan window for soft-splice bridge end.
-pub const SOFT_SPLICE_KF_SCAN_SECS: f64 = 10.0;
+/// Initial keyframe search window for soft-splice bridge end.
+pub const SOFT_SPLICE_KF_SCAN_SECS: f64 = 30.0;
+/// Extended scan when the first pass finds no IDR (long-GOP action cams).
+pub const SOFT_SPLICE_KF_SCAN_SECS_EXTENDED: f64 = 90.0;
 
 /// One continuous encode: intro overlay + body `[0, bridge_secs)` → head MP4.
 ///
@@ -1102,11 +1158,12 @@ pub fn create_video(
 
                 let paths = vec![intro_s.clone(), body_path.clone()];
                 let choice = if let Some(ask) = &on_intro_mux_fallback {
-                    on_progress(progress_from_times(
-                        55.0,
-                        100.0,
-                        "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…",
-                    ));
+                    let waiting = if reason.to_ascii_lowercase().contains("soft-splice") {
+                        "Soft-Splice fehlgeschlagen — warte auf Entscheidung…"
+                    } else {
+                        "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…"
+                    };
+                    on_progress(progress_from_times(55.0, 100.0, waiting));
                     match ask(&reason) {
                         Ok(c) => c,
                         Err(()) => {
@@ -1395,6 +1452,45 @@ fn create_intro_clip(
     Err(last_err.unwrap_or_else(|| ProcessorError::Message("intro encode failed".into())))
 }
 
+/// Pick soft-splice bridge length: prefer a keyframe ≥ 1s into the body.
+///
+/// Falls back to progressively wider scans, then encodes the whole body into
+/// the head (no stream-copy tail) instead of failing the export.
+fn resolve_soft_splice_bridge(
+    ffmpeg: &Path,
+    body_path: &str,
+    body_dur: f64,
+) -> Result<(f64, bool), ConcatError> {
+    if body_dur > 0.0 && body_dur <= SOFT_SPLICE_MIN_BRIDGE_SECS {
+        return Ok((body_dur, false));
+    }
+
+    for max_scan in [SOFT_SPLICE_KF_SCAN_SECS, SOFT_SPLICE_KF_SCAN_SECS_EXTENDED] {
+        if let Some(t) = concat::get_keyframe_at_or_after(
+            ffmpeg,
+            body_path,
+            SOFT_SPLICE_MIN_BRIDGE_SECS,
+            max_scan,
+        ) {
+            if body_dur > 0.0 && t >= body_dur - 0.05 {
+                return Ok((body_dur, false));
+            }
+            if t > 0.05 {
+                return Ok((t, true));
+            }
+        }
+    }
+
+    // Last resort: fold entire body into the re-encoded head (still keeps intro).
+    if body_dur > SOFT_SPLICE_MIN_BRIDGE_SECS {
+        return Ok((body_dur, false));
+    }
+
+    Err(ConcatError::NeedsReencode {
+        reason: "Soft-Splice: kein Keyframe nach 1s für Body-Brücke gefunden".into(),
+    })
+}
+
 /// Soft-splice: encode intro+body-bridge as one bitstream, stream-copy the rest.
 fn mux_intro_soft_splice(
     ffmpeg: &Path,
@@ -1416,27 +1512,7 @@ fn mux_intro_soft_splice(
     let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
     let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0);
 
-    let (bridge_secs, has_tail) = if body_dur > 0.0 && body_dur <= SOFT_SPLICE_MIN_BRIDGE_SECS {
-        (body_dur, false)
-    } else {
-        match concat::get_keyframe_at_or_after(
-            ffmpeg,
-            body_path,
-            SOFT_SPLICE_MIN_BRIDGE_SECS,
-            SOFT_SPLICE_KF_SCAN_SECS,
-        ) {
-            Some(t) if body_dur > 0.0 && t >= body_dur - 0.05 => {
-                // Keyframe at/near end — fold whole body into head.
-                (body_dur, false)
-            }
-            Some(t) if t > 0.05 => (t, true),
-            _ => {
-                return Err(ConcatError::NeedsReencode {
-                    reason: "Soft-Splice: kein Keyframe nach 1s für Body-Brücke gefunden".into(),
-                });
-            }
-        }
-    };
+    let (bridge_secs, has_tail) = resolve_soft_splice_bridge(ffmpeg, body_path, body_dur)?;
 
     on_progress(progress_from_times(
         20.0,
@@ -1703,6 +1779,47 @@ mod tests {
         assert!(filter.contains("Videospringer\\:") || filter.contains("Videospringer"));
         assert!(filter.contains("Calden"));
         assert!(filter.contains("fontcolor=white"));
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        assert!(filter.contains("font='"), "Win/Mac should use font= name");
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            assert!(
+                filter.contains("fontfile='") || filter.contains("font='"),
+                "Linux should prefer fontfile= when a TTF exists"
+            );
+        }
+    }
+
+    #[test]
+    fn linux_fontfile_candidates_include_dejavu_and_bundle() {
+        let c = linux_fontfile_candidates();
+        assert!(!c.is_empty());
+        let joined: Vec<String> = c
+            .iter()
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .collect();
+        assert!(joined.iter().any(|p| p.contains("assets/fonts/DejaVuSans.ttf")));
+        assert!(joined
+            .iter()
+            .any(|p| p.contains("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")));
+    }
+
+    #[test]
+    fn ffmpeg_escape_fontfile_path_normalises_and_escapes() {
+        // Linux-style paths (fontfile= is Linux-only); colon in filename must be escaped.
+        let escaped =
+            ffmpeg_escape_fontfile_path("/usr/share/fonts/truetype/dejavu/DejaVu:Sans.ttf");
+        assert!(escaped.contains("/usr/share/fonts/truetype/dejavu/"));
+        assert!(
+            escaped.contains(r"DejaVu\:Sans"),
+            "colon in path must be escaped for FFmpeg filters: {escaped}"
+        );
+        let win_style = ffmpeg_escape_fontfile_path(r"C:\Fonts\DejaVuSans.ttf");
+        assert!(
+            win_style.contains("C:/Fonts/DejaVuSans.ttf")
+                || win_style.contains(r"C\:/Fonts/DejaVuSans.ttf"),
+            "backslashes normalised; drive colon may be escaped: {win_style}"
+        );
     }
 
     #[test]

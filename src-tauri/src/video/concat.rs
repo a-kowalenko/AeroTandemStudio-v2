@@ -31,6 +31,10 @@ static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
 static SHOWINFO_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?).*?\btype:\s*([IPB])\b").unwrap()
 });
+/// Fallback when using `-skip_frame nokey` (every showinfo line is a keyframe).
+static SHOWINFO_PTS_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?)").unwrap()
+});
 
 #[derive(Debug, Error)]
 pub enum ConcatError {
@@ -529,7 +533,31 @@ pub fn build_validate_splice_decode_args(
 }
 
 /// Keyframe scan via `showinfo` (no ffprobe required).
+///
+/// Prefer `-skip_frame nokey` so HEVC/IDR packets are found even when
+/// `select=eq(pict_type,I)` misses non-IDR I-slices. Avoid deprecated `-vsync`
+/// (breaks on newer FFmpeg builds).
 pub fn build_keyframe_scan_args(input: &str, max_scan_sec: f64) -> Vec<String> {
+    vec![
+        "-hide_banner".into(),
+        "-skip_frame".into(),
+        "nokey".into(),
+        "-i".into(),
+        input.to_string(),
+        "-t".into(),
+        format_secs(max_scan_sec),
+        "-vf".into(),
+        "showinfo".into(),
+        "-an".into(),
+        "-f".into(),
+        "null".into(),
+        "-".into(),
+    ]
+}
+
+/// Legacy pict_type filter scan (unit-tested / fallback).
+#[allow(dead_code)]
+pub fn build_keyframe_scan_args_pict_type(input: &str, max_scan_sec: f64) -> Vec<String> {
     vec![
         "-hide_banner".into(),
         "-i".into(),
@@ -538,8 +566,6 @@ pub fn build_keyframe_scan_args(input: &str, max_scan_sec: f64) -> Vec<String> {
         format_secs(max_scan_sec),
         "-vf".into(),
         "select=eq(pict_type\\,I),showinfo".into(),
-        "-vsync".into(),
-        "vfr".into(),
         "-an".into(),
         "-f".into(),
         "null".into(),
@@ -593,7 +619,7 @@ pub fn parse_first_keyframe_time(stderr: &str) -> Option<f64> {
     parse_keyframe_times(stderr).into_iter().next()
 }
 
-/// All I-frame `pts_time` values from ffmpeg `showinfo` stderr (in encounter order).
+/// All I-frame / keyframe `pts_time` values from ffmpeg `showinfo` stderr.
 pub fn parse_keyframe_times(stderr: &str) -> Vec<f64> {
     let mut times = Vec::new();
     for caps in SHOWINFO_TYPE_RE.captures_iter(stderr) {
@@ -605,6 +631,17 @@ pub fn parse_keyframe_times(stderr: &str) -> Vec<f64> {
         }
         if let Some(Ok(t)) = caps.get(1).map(|m| m.as_str().parse::<f64>()) {
             times.push(t);
+        }
+    }
+    if !times.is_empty() {
+        return times;
+    }
+    // `-skip_frame nokey` path: every showinfo pts_time is a keyframe.
+    for caps in SHOWINFO_PTS_RE.captures_iter(stderr) {
+        if let Some(Ok(t)) = caps.get(1).map(|m| m.as_str().parse::<f64>()) {
+            if times.last().copied() != Some(t) {
+                times.push(t);
+            }
         }
     }
     times
@@ -643,7 +680,14 @@ pub fn get_keyframe_at_or_after(
     let scan = max_scan_sec.max(min_secs + 0.5);
     let args = build_keyframe_scan_args(video_path, scan);
     let (_code, stderr) = run_ffmpeg_capture_stderr(ffmpeg, &args).ok()?;
-    keyframe_at_or_after(&parse_keyframe_times(&stderr), min_secs)
+    let times = parse_keyframe_times(&stderr);
+    if let Some(t) = keyframe_at_or_after(&times, min_secs) {
+        return Some(t);
+    }
+    // Retry with pict_type select (older / edge-case streams).
+    let args2 = build_keyframe_scan_args_pict_type(video_path, scan);
+    let (_code2, stderr2) = run_ffmpeg_capture_stderr(ffmpeg, &args2).ok()?;
+    keyframe_at_or_after(&parse_keyframe_times(&stderr2), min_secs)
 }
 
 pub fn validate_splice_decode(
@@ -1262,8 +1306,24 @@ pts_time:4.000000 type:I
     #[test]
     fn keyframe_scan_filter() {
         let args = build_keyframe_scan_args("in.mp4", 10.0);
-        assert!(args.iter().any(|a| a.contains("pict_type")));
+        assert!(args.contains(&"-skip_frame".into()));
+        assert!(args.contains(&"nokey".into()));
         assert!(args.iter().any(|a| a.contains("showinfo")));
+        assert!(!args.contains(&"-vsync".into()));
+
+        let legacy = build_keyframe_scan_args_pict_type("in.mp4", 10.0);
+        assert!(legacy.iter().any(|a| a.contains("pict_type")));
+    }
+
+    #[test]
+    fn parse_keyframe_times_skip_frame_pts_only() {
+        let stderr = r#"
+[Parsed_showinfo_0 @ 0x1] n:0 pts:0 pts_time:0.000000
+[Parsed_showinfo_0 @ 0x1] n:1 pts:90000 pts_time:2.000000
+"#;
+        let times = parse_keyframe_times(stderr);
+        assert_eq!(times, vec![0.0, 2.0]);
+        assert!((keyframe_at_or_after(&times, 1.0).unwrap() - 2.0).abs() < 0.001);
     }
 
     #[test]

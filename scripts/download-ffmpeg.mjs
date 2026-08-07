@@ -3,7 +3,7 @@
  *
  * Windows: essentials build from gyan.dev (zip → win/ffmpeg.exe)
  * macOS:   brew (native arch) or evermeet.cx static zip (Intel / cross-arch)
- * Linux:   apt/ffmpeg or static — copies `ffmpeg` from PATH if present
+ * Linux:   BtbN static GPL tarball → linux/x86_64/ffmpeg (+ fallback linux/ffmpeg)
  *
  * Usage:
  *   node scripts/download-ffmpeg.mjs
@@ -27,6 +27,16 @@ const GYAN_ESSENTIALS =
 
 /** Intel (x86_64) static macOS builds — includes VideoToolbox / libx264. */
 const EVERMEET_FFMPEG_ZIP = "https://evermeet.cx/ffmpeg/getrelease/zip";
+
+/**
+ * Linux x86_64 static GPL build (libx264, drawtext, h264_nvenc).
+ * Floating `latest` tag — pin to a dated autobuild URL if reproducibility is required.
+ * Fallback: johnvansickle release static (no NVENC).
+ */
+const BTBN_LINUX64_GPL =
+  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linux64-gpl.tar.xz";
+const JOHNVANSICKLE_LINUX64 =
+  "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz";
 
 function ensureDir(p) {
   mkdirSync(p, { recursive: true });
@@ -213,22 +223,70 @@ async function installWindows() {
   }
 }
 
-function installLinux() {
-  const dest = join(ffmpegRoot, "linux", "ffmpeg");
-  if (existsSync(dest)) {
-    console.log(`Already present: ${dest}`);
+async function installLinuxFromTarball(url, archDest, fallback, label) {
+  const linuxDir = join(ffmpegRoot, "linux");
+  const archivePath = join(linuxDir, "ffmpeg-linux64.tar.xz");
+  const extractDir = join(linuxDir, "_linux_extract");
+
+  ensureDir(linuxDir);
+  await download(url, archivePath);
+
+  rmSync(extractDir, { recursive: true, force: true });
+  ensureDir(extractDir);
+  execFileSync("tar", ["-xJf", archivePath, "-C", extractDir], { stdio: "inherit" });
+
+  const found = execSync(
+    `find "${extractDir}" -type f -name ffmpeg | head -n 1`,
+    { encoding: "utf8" },
+  ).trim();
+
+  if (!found || !existsSync(found)) {
+    throw new Error(`ffmpeg binary not found inside ${label} archive`);
+  }
+
+  ensureDir(dirname(archDest));
+  ensureDir(dirname(fallback));
+  copyFileSync(found, archDest);
+  copyFileSync(found, fallback);
+  chmodSync(archDest, 0o755);
+  chmodSync(fallback, 0o755);
+  console.log(`Installed ${archDest} (${label})`);
+  console.log(`Installed ${fallback}`);
+
+  try {
+    rmSync(extractDir, { recursive: true, force: true });
+    rmSync(archivePath, { force: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+async function installLinux() {
+  const archDest = join(ffmpegRoot, "linux", "x86_64", "ffmpeg");
+  const fallback = join(ffmpegRoot, "linux", "ffmpeg");
+
+  if (existsSync(archDest) && existsSync(fallback)) {
+    console.log(`Already present: ${archDest}`);
     return;
   }
-  let src;
-  try {
-    src = execSync("which ffmpeg", { encoding: "utf8" }).trim();
-  } catch {
-    throw new Error("ffmpeg not on PATH — install via apt or place linux/ffmpeg manually");
+
+  if (arch() !== "x64" && arch() !== "x86_64") {
+    console.warn(
+      `Host arch is ${arch()}; shipping x86_64 sidecar only. Place linux/x86_64/ffmpeg manually for other arches.`,
+    );
   }
-  ensureDir(dirname(dest));
-  copyFileSync(src, dest);
-  chmodSync(dest, 0o755);
-  console.log(`Installed ${dest}`);
+
+  try {
+    await installLinuxFromTarball(BTBN_LINUX64_GPL, archDest, fallback, "BtbN linux64-gpl");
+  } catch (err) {
+    console.warn(`BtbN download failed (${err.message}); trying johnvansickle…`);
+    await installLinuxFromTarball(
+      JOHNVANSICKLE_LINUX64,
+      archDest,
+      fallback,
+      "johnvansickle amd64-static",
+    );
+  }
 }
 
 const os = platform();
@@ -237,7 +295,7 @@ if (os === "win32") {
 } else if (os === "darwin") {
   await installMac();
 } else if (os === "linux") {
-  installLinux();
+  await installLinux();
 } else {
   throw new Error(`Unsupported platform: ${os}`);
 }

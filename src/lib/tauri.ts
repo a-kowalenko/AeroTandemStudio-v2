@@ -476,6 +476,14 @@ export type UpdateCheckResult = {
   message: string;
 };
 
+export type UpdateInstallProgress = {
+  phase: "download" | "install" | string;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  percent: number;
+  speedBps: number;
+};
+
 export type AvailableRelease = {
   tag_name: string;
   published_at: string;

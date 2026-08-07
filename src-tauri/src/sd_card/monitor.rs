@@ -1008,12 +1008,18 @@ fn unix_media_mounts() -> HashSet<String> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.is_dir() {
-                    drives.insert(path.to_string_lossy().into_owned());
+                    let s = path.to_string_lossy().into_owned();
+                    if is_linux_mount_candidate(&s) {
+                        drives.insert(s);
+                    }
                     if let Ok(sub) = fs::read_dir(&path) {
                         for s in sub.flatten() {
                             let sp = s.path();
                             if sp.is_dir() {
-                                drives.insert(sp.to_string_lossy().into_owned());
+                                let ss = sp.to_string_lossy().into_owned();
+                                if is_linux_mount_candidate(&ss) {
+                                    drives.insert(ss);
+                                }
                             }
                         }
                     }
@@ -1022,6 +1028,56 @@ fn unix_media_mounts() -> HashSet<String> {
         }
     }
     drives
+}
+
+/// Heuristic: treat a Unix path as a candidate removable / user media mount.
+///
+/// Prefer `/run/media/$USER/<label>` and `/media/$USER/<label>` (or `/media/<label>`).
+/// Under `/mnt`, accept only a single label and skip common fixed-disk names to
+/// reduce false positives (e.g. `/mnt/data` with a DCIM folder).
+/// Pure string logic — unit-tested on all platforms.
+#[cfg_attr(any(target_os = "windows", target_os = "macos"), allow(dead_code))]
+pub fn is_linux_mount_candidate(path: &str) -> bool {
+    let trimmed = path.trim_end_matches('/');
+
+    if let Some(rest) = trimmed.strip_prefix("/run/media/") {
+        let parts: Vec<_> = rest.split('/').filter(|p| !p.is_empty()).collect();
+        // /run/media/<user>/<label>
+        return parts.len() == 2
+            && !parts[0].starts_with('.')
+            && !parts[1].starts_with('.');
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("/media/") {
+        let parts: Vec<_> = rest.split('/').filter(|p| !p.is_empty()).collect();
+        // /media/<label> or /media/<user>/<label>
+        if parts.is_empty() || parts.len() > 2 {
+            return false;
+        }
+        return parts.iter().all(|p| !p.starts_with('.'));
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("/mnt/") {
+        let parts: Vec<_> = rest.split('/').filter(|p| !p.is_empty()).collect();
+        if parts.len() != 1 {
+            return false;
+        }
+        let lower = parts[0].to_ascii_lowercase();
+        if lower.starts_with('.') {
+            return false;
+        }
+        // Common long-lived mounts that often host random DCIM trees
+        const SKIP: &[&str] = &[
+            "data", "storage", "hdd", "ssd", "home", "backup", "backups", "nas", "cifs", "nfs",
+            "share", "shares", "disk", "drive",
+        ];
+        if SKIP.contains(&lower.as_str()) {
+            return false;
+        }
+        return true;
+    }
+
+    false
 }
 
 pub fn is_removable_drive(drive: &str) -> bool {
@@ -1035,9 +1091,7 @@ pub fn is_removable_drive(drive: &str) -> bool {
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
-        drive.starts_with("/media/")
-            || drive.starts_with("/run/media/")
-            || drive.starts_with("/mnt/")
+        is_linux_mount_candidate(drive)
     }
 }
 
@@ -1123,6 +1177,28 @@ mod tests {
         assert!(!is_macos_volume_candidate("/Volumes/"));
         assert!(!is_macos_volume_candidate("/media/usb"));
         assert!(!is_macos_volume_candidate("/Volumes/nested/path"));
+    }
+
+    #[test]
+    fn linux_mount_candidate_prefers_user_media() {
+        assert!(is_linux_mount_candidate("/run/media/alice/SDCARD"));
+        assert!(is_linux_mount_candidate("/run/media/bob/NO NAME"));
+        assert!(is_linux_mount_candidate("/media/alice/USB"));
+        assert!(is_linux_mount_candidate("/media/DJI_001"));
+        assert!(is_linux_mount_candidate("/mnt/CAMERA"));
+        assert!(is_linux_mount_candidate("/mnt/sdcard"));
+
+        assert!(!is_linux_mount_candidate("/run/media/alice"));
+        assert!(!is_linux_mount_candidate("/run/media/"));
+        assert!(!is_linux_mount_candidate("/run/media/alice/nested/path"));
+        assert!(!is_linux_mount_candidate("/media/"));
+        assert!(!is_linux_mount_candidate("/media/a/b/c"));
+        assert!(!is_linux_mount_candidate("/mnt/data"));
+        assert!(!is_linux_mount_candidate("/mnt/storage"));
+        assert!(!is_linux_mount_candidate("/mnt/backup"));
+        assert!(!is_linux_mount_candidate("/mnt/nested/path"));
+        assert!(!is_linux_mount_candidate("/home/alice"));
+        assert!(!is_linux_mount_candidate("/Volumes/USB"));
     }
 
     #[test]

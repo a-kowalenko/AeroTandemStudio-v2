@@ -29,6 +29,7 @@ Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 
 - Nach Änderungen: `cargo test` und `npm run tauri dev`
 - **Eine Phase pro Session** — Scope nicht erweitern
 - Verhalten aus Legacy portieren, nicht 1:1 copy-pasten
+- Plattformen: **Windows + macOS + Linux** (AppImage; siehe `docs/LINUX_BUILD.md`)
 
 ---
 
@@ -94,9 +95,10 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 12: Vorgang Erstellen & Legacy-Export (Ordner, Marker, WM, Upload)
 - ✅ Phase 13: macOS Build & Plattform-Tests (FFmpeg mac, VideoToolbox/SD/SMB Fixes, CI, Entitlements, Signing-Docs)
 - ✅ Import Working-Folder: Medien werden beim Import in `aero_studio_preview_*` kopiert; Cuts treffen nur Kopien
+- ✅ Phase 15: Linux Build & Plattform-Parity (static FFmpeg, fontfile, NVENC, SD-Heuristik, AppImage-Updater, Ubuntu CI)
 
-**Nächster Schritt:** Phase 15 — Linux Build & Plattform-Parity aus `@docs/IMPLEMENTATION_PLAN.md` + `@docs/LINUX_BUILD.md`  
-*(Phase 14 ML bleibt optionaler Backlog)*
+**Nächster Schritt:** optional Phase 14 — ML Foto-Klassifikation (Backlog) aus `@docs/IMPLEMENTATION_PLAN.md`  
+*(oder manuelle Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*
 
 ---
 

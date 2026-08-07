@@ -1,6 +1,7 @@
 //! Hardware-encoder detection (port of legacy `hardware_acceleration.py`).
 //!
-//! Phase 0 priority: NVENC (Windows) → VideoToolbox (macOS) → libx264.
+//! Priority: NVENC (Windows + Linux) → VideoToolbox (macOS) → libx264.
+//! VAAPI is backlog only (optional stub below).
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
@@ -131,7 +132,7 @@ pub fn clear_hw_cache() {
 }
 
 fn detect_hardware_uncached() -> HwAccelInfo {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     {
         if has_nvidia_gpu() && encoder_listed("h264_nvenc") {
             return HwAccelInfo::nvidia();
@@ -144,6 +145,10 @@ fn detect_hardware_uncached() -> HwAccelInfo {
             return HwAccelInfo::videotoolbox();
         }
     }
+
+    // Optional backlog: VAAPI (`h264_vaapi`) — not enabled in v1.
+    // #[cfg(target_os = "linux")]
+    // if encoder_listed("h264_vaapi") { … }
 
     HwAccelInfo::software()
 }
@@ -166,9 +171,9 @@ fn encoder_listed(encoder_name: &str) -> bool {
     }
 }
 
-#[cfg(target_os = "windows")]
+/// True when an NVIDIA GPU is visible to the OS (`nvidia-smi`, plus Windows CIM fallback).
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn has_nvidia_gpu() -> bool {
-    // Prefer nvidia-smi (fast, definitive when present)
     if let Ok(out) = Command::new("nvidia-smi").arg("-L").output() {
         if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
@@ -178,20 +183,23 @@ fn has_nvidia_gpu() -> bool {
         }
     }
 
-    // Fallback: enumerate video controllers via PowerShell (wmic is deprecated)
-    let script = "(Get-CimInstance Win32_VideoController).Name -join '|'";
-    if let Ok(out) = Command::new("powershell")
-        .args(["-NoProfile", "-Command", script])
-        .output()
+    #[cfg(target_os = "windows")]
     {
-        if out.status.success() {
-            let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
-            if text.contains("nvidia")
-                || text.contains("geforce")
-                || text.contains("quadro")
-                || text.contains("rtx")
-            {
-                return true;
+        // Fallback: enumerate video controllers via PowerShell (wmic is deprecated)
+        let script = "(Get-CimInstance Win32_VideoController).Name -join '|'";
+        if let Ok(out) = Command::new("powershell")
+            .args(["-NoProfile", "-Command", script])
+            .output()
+        {
+            if out.status.success() {
+                let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
+                if text.contains("nvidia")
+                    || text.contains("geforce")
+                    || text.contains("quadro")
+                    || text.contains("rtx")
+                {
+                    return true;
+                }
             }
         }
     }

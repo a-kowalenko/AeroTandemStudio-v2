@@ -112,6 +112,15 @@ pub fn find_ffmpeg_with_resource_dir(resource_dir: Option<&Path>) -> Result<Path
                     .join("ffmpeg"),
             );
         }
+        #[cfg(target_os = "linux")]
+        {
+            candidates.push(
+                dir.join("ffmpeg")
+                    .join("linux")
+                    .join(linux_arch_subdir())
+                    .join("ffmpeg"),
+            );
+        }
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -164,6 +173,15 @@ fn macos_arch_subdir() -> &'static str {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn linux_arch_subdir() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        "aarch64"
+    } else {
+        "x86_64"
+    }
+}
+
 /// Relative paths under `resources/`, most specific first.
 fn platform_relative_ffmpeg_candidates() -> Vec<PathBuf> {
     let mut paths = Vec::new();
@@ -173,6 +191,15 @@ fn platform_relative_ffmpeg_candidates() -> Vec<PathBuf> {
             PathBuf::from("ffmpeg")
                 .join("mac")
                 .join(macos_arch_subdir())
+                .join("ffmpeg"),
+        );
+    }
+    #[cfg(target_os = "linux")]
+    {
+        paths.push(
+            PathBuf::from("ffmpeg")
+                .join("linux")
+                .join(linux_arch_subdir())
                 .join("ffmpeg"),
         );
     }
@@ -544,6 +571,15 @@ mod tests {
             );
             let fallback = rels.last().unwrap().to_string_lossy().replace('\\', "/");
             assert!(fallback.ends_with("mac/ffmpeg"));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            assert!(
+                s.contains("linux/x86_64/") || s.contains("linux/aarch64/"),
+                "Linux preferred path should be arch-specific: {s}"
+            );
+            let fallback = rels.last().unwrap().to_string_lossy().replace('\\', "/");
+            assert!(fallback.ends_with("linux/ffmpeg"));
         }
     }
 

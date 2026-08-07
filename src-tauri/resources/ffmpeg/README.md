@@ -10,7 +10,7 @@ Bundled FFmpeg CLI used by the Rust video pipeline. Binaries are **not** committ
 | Windows x64 | `win/ffmpeg.exe` | — |
 | macOS Apple Silicon | `mac/arm64/ffmpeg` | `mac/ffmpeg` |
 | macOS Intel | `mac/x86_64/ffmpeg` | `mac/ffmpeg` |
-| Linux | `linux/ffmpeg` | — |
+| Linux x86_64 | `linux/x86_64/ffmpeg` | `linux/ffmpeg` |
 
 Tauri bundles the whole `resources/ffmpeg/` tree (`tauri.conf.json` → `bundle.resources`).
 At runtime `find_ffmpeg` picks the arch-specific binary first, then the fallback.
@@ -53,13 +53,30 @@ The binary **must** include `h264_videotoolbox` (and ideally `libx264` as fallba
 ./mac/ffmpeg -hide_banner -encoders | grep videotoolbox
 ```
 
+## Linux
+
+`npm run download-ffmpeg` on Linux installs a **static** x86_64 build (not a PATH
+copy of system ffmpeg):
+
+| Priority | Source |
+|----------|--------|
+| 1 | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) `linux64-gpl` (`latest` tag) — libx264, drawtext, h264_nvenc |
+| 2 | [johnvansickle](https://johnvansickle.com/ffmpeg/) amd64-static (fallback; typically no NVENC) |
+
+Installs to `linux/x86_64/ffmpeg` and `linux/ffmpeg`. Verify:
+
+```bash
+./src-tauri/resources/ffmpeg/linux/x86_64/ffmpeg -hide_banner -encoders | grep -E 'libx264|nvenc'
+./src-tauri/resources/ffmpeg/linux/x86_64/ffmpeg -hide_banner -filters | grep drawtext
+```
+
 ## CI
 
-`.github/workflows/release.yml` runs `npm run download-ffmpeg` (with `FFMPEG_MAC_ARCH`
-set per macOS matrix leg) before `tauri-action` on Windows and both Mac targets
-(`aarch64-apple-darwin`, `x86_64-apple-darwin`).
+`.github/workflows/release.yml` runs `npm run download-ffmpeg` before `tauri-action`
+on Windows, both Mac targets (`aarch64-apple-darwin`, `x86_64-apple-darwin`), and
+Ubuntu (`AppImage`). Mac legs set `FFMPEG_MAC_ARCH` per matrix entry.
 
 ## License note
 
 Distribute FFmpeg under the license of the build you ship (LGPL vs GPL). Prefer builds
-that match your redistribution policy.
+that match your redistribution policy. Windows essentials and BtbN `*-gpl` are GPL.

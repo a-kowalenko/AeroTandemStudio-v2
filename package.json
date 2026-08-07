@@ -11,6 +11,7 @@
     "download-ffmpeg": "node scripts/download-ffmpeg.mjs",
     "build:win": "node scripts/build-windows-dev.mjs",
     "release": "node scripts/release.mjs",
+    "check": "tsc --noEmit",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri:build:ci": "tauri build --config src-tauri/tauri.conf.ci.json"
   },

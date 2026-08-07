@@ -95,18 +95,18 @@ Runtime resolution: `src-tauri/src/video/ffmpeg.rs` (`platform_subdir()` → `"l
 
 ### Current gap
 
-`scripts/download-ffmpeg.mjs` → `installLinux()` currently copies `which ffmpeg`.
-That is **not** release-safe (shared libs, missing encoders, host drift).
+~~`scripts/download-ffmpeg.mjs` → `installLinux()` currently copies `which ffmpeg`.
+That is **not** release-safe (shared libs, missing encoders, host drift).~~
+
+**Done (Phase 15):** downloads BtbN static `linux64-gpl` (fallback johnvansickle)
+into `linux/x86_64/ffmpeg` + `linux/ffmpeg`.
 
 ### Required implementation
 
-1. Download a **static** (or fully self-contained) Linux x64 build that includes at least:
-   - `libx264`
-   - `drawtext` (+ fontconfig or rely on bundled `fontfile`)
-   - ideally `h264_nvenc` when redistributing an NVIDIA-capable build is acceptable
-2. Install to `src-tauri/resources/ffmpeg/linux/x86_64/ffmpeg` (and/or `linux/ffmpeg`)
-3. `chmod +x`
-4. Document license (LGPL vs GPL) in `resources/ffmpeg/README.md` — same policy as Windows essentials
+1. ~~Download a **static** (or fully self-contained) Linux x64 build~~ ✅
+2. ~~Install to `src-tauri/resources/ffmpeg/linux/x86_64/ffmpeg`~~ ✅
+3. ~~`chmod +x`~~ ✅
+4. ~~Document license in `resources/ffmpeg/README.md`~~ ✅
 
 Verify:
 
@@ -115,7 +115,7 @@ Verify:
 ./src-tauri/resources/ffmpeg/linux/x86_64/ffmpeg -hide_banner -filters | grep drawtext
 ```
 
-Suggested sources (pick one and pin URL/version in the download script): johnvansickle static builds, BtbN GitHub releases, or a project-controlled mirror.
+Sources pinned in `scripts/download-ffmpeg.mjs`: BtbN `latest` linux64-gpl, johnvansickle fallback.
 
 ---
 
@@ -127,8 +127,9 @@ Suggested sources (pick one and pin URL/version in the download script): johnvan
 | 2 | `libx264` | always (fallback) |
 | — | VAAPI | backlog only |
 
-Today `has_nvidia_gpu()` is `#[cfg(windows)]` (PowerShell + `nvidia-smi`).
-For Linux: enable the **`nvidia-smi`** branch under `#[cfg(any(windows, target_os = "linux"))]` and keep the PowerShell path Windows-only.
+Today `has_nvidia_gpu()` is shared for **Windows + Linux** via `nvidia-smi`;
+PowerShell CIM fallback remains Windows-only. VAAPI is backlog only (stub comment
+in `hw_accel.rs`).
 
 Unit tests for NVENC/libx264 arg building stay platform-agnostic.
 
@@ -136,33 +137,34 @@ Unit tests for NVENC/libx264 arg building stay platform-agnostic.
 
 ## Fonts / Intro `drawtext`
 
-Today Linux uses font **name** `DejaVu Sans` without `fontfile=` — fragile on minimal systems.
+Today Linux uses FFmpeg `fontfile=` when a TTF is found (bundled
+`resources/assets/fonts/DejaVuSans.ttf` or system DejaVu paths). Win/Mac keep
+`font=` system names.
 
 ### Required approach
 
-1. Resolve a real `.ttf` path, e.g.:
-   - `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`
-   - `/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`
-   - optional bundled: `resources/assets/fonts/DejaVuSans.ttf`
-2. On Linux, prefer FFmpeg `fontfile=…` in the drawtext filter (escape paths correctly).
-3. Keep Windows / macOS behavior unchanged (`font=` / system names).
-4. Add unit tests for path selection and escaping.
+1. ~~Resolve a real `.ttf` path~~ ✅ (bundle + `/usr/share/fonts/…/DejaVuSans*.ttf`)
+2. ~~On Linux, prefer FFmpeg `fontfile=…`~~ ✅
+3. ~~Keep Windows / macOS behavior unchanged~~ ✅
+4. ~~Add unit tests for path selection and escaping~~ ✅
 
-Dev packages: `fonts-dejavu-core`. For releases, a bundled TTF is the robust default.
+Dev packages: `fonts-dejavu-core`. Releases ship the bundled TTF.
 
 ---
 
 ## SD card monitor
 
-Existing Unix path: scan `/media`, `/run/media`, `/mnt` (`unix_media_mounts` in `sd_card/monitor.rs`).
+Existing Unix path: scan `/media`, `/run/media`, `/mnt` with
+`is_linux_mount_candidate` (prefer `/run/media/$USER/<label>`, filter `/mnt/data`
+etc.).
 
 ### Harden for production
 
-- Prefer user mounts: `/run/media/$USER/<label>`, `/media/$USER/<label>`
-- Reduce false positives (random `/mnt/data` with DCIM)
-- Optionally consult `/proc/mounts` and `/sys/block/<dev>/removable`
-- Keep DCIM / action-cam heuristics aligned with Win/Mac
-- Add pure unit tests (string/path filters), mirroring `is_macos_volume_candidate`
+- ~~Prefer user mounts~~ ✅
+- ~~Reduce false positives~~ ✅
+- Optional `/proc/mounts` / `/sys/block/…/removable` — not required for v1
+- ~~Keep DCIM / action-cam heuristics aligned with Win/Mac~~ ✅
+- ~~Add pure unit tests~~ ✅ (`is_linux_mount_candidate`)
 
 Manual check: insert USB/SD with DCIM → insert event → import/backup UI.
 
@@ -175,7 +177,8 @@ Manual check: insert USB/SD with DCIM → insert event → import/backup UI.
 | App config / SQLite | `~/.local/share/AeroTandemStudio/` (`directories` → `data_local_dir`) |
 | Working / preview copies | existing Unix temp / session logic |
 
-No config schema migration. Document XDG path in Settings/docs if user-facing.
+No config schema migration. App data lives under XDG
+`~/.local/share/AeroTandemStudio/` (see Settings / storage docs).
 
 ---
 
@@ -195,17 +198,17 @@ Fix only if Linux-specific auth/path bugs appear — no rewrite.
 
 ## Updater
 
-Today Linux stubs:
+Today Linux:
 
-- `pick_installer_url` → `None`
-- `launch_installer` → error (“nicht unterstützt”)
+- `pick_installer_url` → prefer `*.AppImage` (arch tokens amd64 / x86_64 / x64)
+- `launch_installer` → `chmod +x` + spawn AppImage
 
 ### Required
 
-1. Prefer release assets ending in `.AppImage` (optional arch token in filename)
-2. Download to temp, `chmod +x`, spawn / replace per chosen UX
-3. Align with Tauri updater artifacts + `latest.json` when `createUpdaterArtifacts` is enabled
-4. Win/Mac asset selection must keep ignoring Linux files
+1. ~~Prefer release assets ending in `.AppImage`~~ ✅
+2. ~~Download to temp, `chmod +x`, spawn~~ ✅
+3. Align with Tauri updater artifacts + `latest.json` when `createUpdaterArtifacts` is enabled (CI uploads updater JSON for all platforms)
+4. ~~Win/Mac asset selection must keep ignoring Linux files~~ ✅ (unit-tested)
 
 Document user expectation: replace/relaunch AppImage (AppImageUpdate optional later).
 
@@ -247,10 +250,10 @@ PR workflow (`.github/workflows/test.yml`) may stay Windows-only for speed; full
 
 ## Manual checklist (release Linux)
 
-- [ ] Apt deps installed on build machine / CI image
-- [ ] `npm run download-ffmpeg` → static binary under `linux/x86_64/`
-- [ ] `cargo test` / `npm run test:rust`
-- [ ] `npm run tauri build -- --bundles appimage`
+- [x] Apt deps installed on build machine / CI image (`release.yml` ubuntu-22.04)
+- [x] `npm run download-ffmpeg` → static binary under `linux/x86_64/`
+- [x] `cargo test` / `npm run test:rust` (also on Ubuntu release job)
+- [ ] `npm run tauri build -- --bundles appimage` (run on Linux / CI)
 - [ ] Launch AppImage; UI loads
 - [ ] Intro encode shows umlauts (fontfile OK)
 - [ ] Settings / HW info: NVENC or software fallback as expected
@@ -260,6 +263,8 @@ PR workflow (`.github/workflows/test.yml`) may stay Windows-only for speed; full
 - [ ] SMB test + upload
 - [ ] Updater picks `.AppImage` from a test release (if shipped)
 - [ ] Upload AppImage (+ `.sig` if used) to release endpoint
+
+Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 
 ---
 
