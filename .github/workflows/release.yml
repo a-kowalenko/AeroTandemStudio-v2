@@ -121,10 +121,13 @@ jobs:
             echo "Creating release ${TAG}"
             NOTES_FILE="$(mktemp)"
             printf '%s\n' "${NOTES}" > "${NOTES_FILE}"
+            # Do not mark as Latest — promote manually in the releases UI
+            # after verifying assets (updater still uses /releases/latest/).
             gh release create "${TAG}" \
               --repo "${REPO}" \
               --title "Aero Tandem Studio ${TAG}" \
-              --notes-file "${NOTES_FILE}"
+              --notes-file "${NOTES_FILE}" \
+              --latest=false
             rm -f "${NOTES_FILE}"
             RELEASE_ID=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id)
           fi

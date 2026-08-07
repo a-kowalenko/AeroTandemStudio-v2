@@ -37,11 +37,13 @@ npm run release
 
 Danach: Actions → Workflow **release** (Win + **zwei** Mac-Jobs, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
 
+Neue Releases bekommen **kein** „Latest“-Label. Nach Prüfung der Assets im öffentlichen Repo manuell auf **Set as the latest release** setzen — erst dann greifen Installer-Links und Auto-Update (`/releases/latest/`).
+
 Normale Commits auf `master` starten **keinen** App-Build. Volle Bundles nur bei Version-Tags (`release.yml`). PRs: leichter Check in `test.yml`.
 
 ## Installer-Links (immer neueste Version)
 
-Nach dem ersten erfolgreichen Release:
+Nach manuellem Setzen von **Latest**:
 
 - Releases-Übersicht: `https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/latest`
 - Konkrete Asset-URLs: `…/releases/latest/download/<asset-name>`
