@@ -38,6 +38,45 @@ pub enum FfmpegError {
     Message(String),
 }
 
+/// User-facing message when FFmpeg/I/O fails due to insufficient disk space.
+pub const DISK_FULL_USER_MESSAGE: &str =
+    "Nicht genügend Speicherplatz vorhanden. Bitte Speicher freigeben und erneut versuchen.";
+
+/// `AVERROR(ENOSPC)` — POSIX `ENOSPC` is 28; FFmpeg may exit with this code.
+const AVERROR_ENOSPC: i32 = -28;
+
+/// True when an error string indicates a genuine out-of-disk-space failure.
+///
+/// FFmpeg historically returned `AVERROR(ENOSPC)` for muxer packet-queue overflow
+/// ("Too many packets buffered"); that case must **not** be treated as disk full
+/// so stream-copy → re-encode fallback can still run.
+pub fn indicates_disk_full(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    if lower.contains("too many packets buffered") {
+        return false;
+    }
+    lower.contains("no space left")
+        || lower.contains("enospc")
+        || lower.contains("nicht genügend speicherplatz")
+        || lower.contains("status -28")
+        || lower.contains("status: -28")
+}
+
+/// True when [`FfmpegError`] represents insufficient disk space (not packet-buffer ENOSPC).
+pub fn is_disk_full_error(err: &FfmpegError) -> bool {
+    match err {
+        FfmpegError::Spawn(io) if io.kind() == std::io::ErrorKind::StorageFull => true,
+        FfmpegError::ExitStatus(code) if *code == AVERROR_ENOSPC => true,
+        FfmpegError::Message(msg) => indicates_disk_full(msg),
+        _ => false,
+    }
+}
+
+/// Map a disk-full FFmpeg failure to the stable user-facing error.
+pub fn disk_full_error() -> FfmpegError {
+    FfmpegError::Message(DISK_FULL_USER_MESSAGE.into())
+}
+
 /// Resolve path to the bundled FFmpeg binary.
 ///
 /// Search order:
@@ -526,5 +565,37 @@ mod tests {
         assert!(is_cancelled());
         reset_cancel_flag();
         assert!(!is_cancelled());
+    }
+
+    #[test]
+    fn disk_full_exit_status_enospc() {
+        assert!(is_disk_full_error(&FfmpegError::ExitStatus(AVERROR_ENOSPC)));
+        assert!(!is_disk_full_error(&FfmpegError::ExitStatus(1)));
+    }
+
+    #[test]
+    fn disk_full_message_no_space() {
+        let err = FfmpegError::Message(
+            "FFmpeg exited with status -28: /tmp/out.mp4: No space left on device".into(),
+        );
+        assert!(is_disk_full_error(&err));
+        assert!(indicates_disk_full(&err.to_string()));
+    }
+
+    #[test]
+    fn disk_full_ignores_packet_buffer_enospc() {
+        let msg = "Too many packets buffered for output stream 0:1\n\
+                   Error while filtering: No space left on device";
+        assert!(
+            !indicates_disk_full(msg),
+            "muxer queue overflow must allow re-encode fallback"
+        );
+        assert!(!is_disk_full_error(&FfmpegError::Message(msg.into())));
+    }
+
+    #[test]
+    fn disk_full_spawn_storage_full() {
+        let io = std::io::Error::new(std::io::ErrorKind::StorageFull, "disk full");
+        assert!(is_disk_full_error(&FfmpegError::Spawn(io)));
     }
 }

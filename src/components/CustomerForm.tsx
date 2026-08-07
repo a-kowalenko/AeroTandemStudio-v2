@@ -257,21 +257,6 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
             <button
               type="button"
               disabled={busy || !config}
-              aria-pressed={oldschool}
-              onClick={() => void setManualEntryMode(true)}
-              className={cn(
-                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
-                "disabled:pointer-events-none disabled:opacity-50",
-                oldschool
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted hover:text-foreground",
-              )}
-            >
-              Oldschool
-            </button>
-            <button
-              type="button"
-              disabled={busy || !config}
               aria-pressed={!oldschool}
               onClick={() => void setManualEntryMode(false)}
               className={cn(
@@ -283,6 +268,21 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               )}
             >
               ID
+            </button>
+            <button
+              type="button"
+              disabled={busy || !config}
+              aria-pressed={oldschool}
+              onClick={() => void setManualEntryMode(true)}
+              className={cn(
+                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+                "disabled:pointer-events-none disabled:opacity-50",
+                oldschool
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              Oldschool
             </button>
           </div>
         ) : (

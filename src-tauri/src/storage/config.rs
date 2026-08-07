@@ -123,7 +123,7 @@ pub struct AppConfig {
     pub server_login: String,
     #[serde(default)]
     pub server_password: String,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub hardware_acceleration_enabled: bool,
     #[serde(default = "default_true")]
     pub parallel_processing_enabled: bool,
@@ -144,10 +144,10 @@ pub struct AppConfig {
     #[serde(default = "default_qr_scan_seconds", deserialize_with = "de_u32_flexible")]
     pub qr_video_scan_seconds: u32,
     /// Remove the photo that carried a successful QR from the session list.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub qr_remove_photo_after_scan: bool,
     /// Remove the video clip that carried a successful QR (if short enough).
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub qr_remove_video_after_scan: bool,
     /// Max clip duration (seconds) for auto-removal after QR hit. Default 10.
     #[serde(
@@ -155,7 +155,7 @@ pub struct AppConfig {
         deserialize_with = "de_u32_flexible"
     )]
     pub qr_remove_video_max_duration_sec: u32,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub sd_auto_backup: bool,
     #[serde(default)]
     pub sd_backup_folder: String,
@@ -163,7 +163,7 @@ pub struct AppConfig {
     pub sd_backup_mode: String,
     #[serde(default)]
     pub sd_clear_after_backup: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub sd_auto_import: bool,
     #[serde(default)]
     pub sd_skip_processed: bool,
@@ -235,6 +235,11 @@ fn default_crew_list() -> Vec<CrewMember> {
             videospringer: false,
         },
         CrewMember {
+            name: "Kai".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
             name: "Max".into(),
             tandemmaster: true,
             videospringer: false,
@@ -258,6 +263,21 @@ fn default_crew_list() -> Vec<CrewMember> {
             name: "Rene".into(),
             tandemmaster: true,
             videospringer: false,
+        },
+        CrewMember {
+            name: "Robert".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
+            name: "Robin".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
+            name: "Sabrina".into(),
+            tandemmaster: false,
+            videospringer: true,
         },
         CrewMember {
             name: "Sahira".into(),
@@ -327,7 +347,7 @@ fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
 fn default_sd_size_limit() -> u32 {
-    2000
+    3000
 }
 
 impl Default for AppConfig {
@@ -346,7 +366,7 @@ impl Default for AppConfig {
             server_url: default_server_url(),
             server_login: String::new(),
             server_password: String::new(),
-            hardware_acceleration_enabled: true,
+            hardware_acceleration_enabled: false,
             parallel_processing_enabled: true,
             video_codec: default_codec(),
             encoding_strategy: default_encoding_strategy(),
@@ -355,14 +375,14 @@ impl Default for AppConfig {
             qr_check_enabled: false,
             photo_qr_check_enabled: false,
             qr_video_scan_seconds: default_qr_scan_seconds(),
-            qr_remove_photo_after_scan: false,
-            qr_remove_video_after_scan: false,
+            qr_remove_photo_after_scan: true,
+            qr_remove_video_after_scan: true,
             qr_remove_video_max_duration_sec: default_qr_remove_video_max_duration(),
-            sd_auto_backup: false,
+            sd_auto_backup: true,
             sd_backup_folder: String::new(),
             sd_backup_mode: default_sd_backup_mode(),
             sd_clear_after_backup: false,
-            sd_auto_import: false,
+            sd_auto_import: true,
             sd_skip_processed: false,
             sd_size_limit_enabled: false,
             sd_size_limit_mb: default_sd_size_limit(),
@@ -520,6 +540,16 @@ mod tests {
         assert!(cfg.intro_enabled);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
+        assert!(!cfg.hardware_acceleration_enabled);
+        assert!(!cfg.oldschool_mode);
+        assert!(cfg.sd_auto_backup);
+        assert!(cfg.sd_auto_import);
+        assert_eq!(cfg.sd_backup_mode, "confirm");
+        assert_eq!(cfg.sd_size_limit_mb, 3000);
+        assert!(cfg.qr_remove_photo_after_scan);
+        assert!(cfg.qr_remove_video_after_scan);
+        assert_eq!(cfg.qr_remove_video_max_duration_sec, 10);
+        assert_eq!(cfg.qr_video_scan_seconds, 5);
     }
 
     #[test]
@@ -624,8 +654,7 @@ mod tests {
     #[test]
     fn default_crew_list_has_expected_tandemmasters() {
         let list = default_crew_list();
-        assert_eq!(list.len(), 21);
-        assert!(list.iter().all(|c| c.tandemmaster));
+        assert_eq!(list.len(), 25);
         assert_eq!(list.first().unwrap().name, "Alberto");
         assert_eq!(list.last().unwrap().name, "Torsten");
         let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
@@ -635,6 +664,9 @@ mod tests {
         for name in ["Jan", "Pascal", "Rene"] {
             assert!(list.iter().any(|c| c.name == name && c.tandemmaster && !c.videospringer));
         }
+        for name in ["Kai", "Robert", "Robin", "Sabrina"] {
+            assert!(list.iter().any(|c| c.name == name && !c.tandemmaster && c.videospringer));
+        }
         let vs: Vec<_> = list
             .iter()
             .filter(|c| c.videospringer)
@@ -643,8 +675,8 @@ mod tests {
         assert_eq!(
             vs,
             [
-                "Ana", "Andy", "Futti", "Harry", "Henrik", "Ralph", "Sahira", "Samuel", "Tim",
-                "Tom", "Torsten"
+                "Ana", "Andy", "Futti", "Harry", "Henrik", "Kai", "Ralph", "Robert", "Robin",
+                "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
             ]
         );
     }

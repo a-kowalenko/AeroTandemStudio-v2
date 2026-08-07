@@ -796,7 +796,7 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
                 value={draft.sd_size_limit_mb}
                 disabled={!draft.sd_size_limit_enabled}
                 onChange={(e) =>
-                  patch("sd_size_limit_mb", Number(e.target.value) || 2000)
+                  patch("sd_size_limit_mb", Number(e.target.value) || 3000)
                 }
               />
             </div>

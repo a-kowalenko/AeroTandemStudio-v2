@@ -20,8 +20,8 @@ use super::encoding_quality::{
     select_encoder, strip_hwaccel_input_params, VideoCodecPreference,
 };
 use super::ffmpeg::{
-    ffmpeg_probe_stderr, is_cancelled, probe_duration_secs, run_ffmpeg, FfmpegError,
-    ProgressCallback,
+    disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
+    run_ffmpeg, FfmpegError, ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, EncodingParams, HwAccelInfo};
 use super::probe;
@@ -873,7 +873,10 @@ pub fn generate_preview(
                 combined_s.clone(),
             ];
             let dur = probe_duration_secs(ffmpeg, &prepared[0]).unwrap_or(0.0);
-            if run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&on_progress)).is_err() {
+            if let Err(e) = run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&on_progress)) {
+                if is_disk_full_error(&e) {
+                    return Err(PreviewError::Ffmpeg(disk_full_error()));
+                }
                 let remux_reason =
                     "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback".to_string();
                 active_reason = Some(remux_reason.clone());

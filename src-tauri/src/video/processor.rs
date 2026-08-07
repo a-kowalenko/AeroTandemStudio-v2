@@ -25,8 +25,8 @@ use super::encoding_quality::{
     build_encode_output_params, resolve_output_codec, VideoCodecPreference,
 };
 use super::ffmpeg::{
-    ffmpeg_probe_stderr, is_cancelled, probe_duration_secs, run_ffmpeg, run_ffmpeg_tagged,
-    FfmpegError, ProgressCallback,
+    disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
+    run_ffmpeg, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, HwAccelInfo};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
@@ -919,14 +919,24 @@ pub fn create_video(
             let outer = Arc::clone(&on_progress);
             Arc::new(move |p: crate::video::progress::EncodeProgress| {
                 let mut q = p;
+                // Keep FFmpeg `continue`/`end` transient so the UI retains the last
+                // concrete status — especially re-encode reasons.
                 if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                    q.status = "Füge Intro und Video zusammen…".into();
+                    q.status = "continue".into();
                 } else if q.status == "probing" {
                     q.status = "Analysiere Intro/Video…".into();
-                } else if q.status == "mpegts-concat" {
+                } else if q.status == "mpegts-concat"
+                    || q.status == "prepare"
+                    || q.status == "prepare-done"
+                {
                     q.status = "Füge Intro und Video zusammen…".into();
+                } else if let Some(reason) = q.status.strip_prefix("Kodiere neu: ") {
+                    q.status = format!("Kodiere Intro+Video neu: {reason}");
                 } else if q.status == "re-encode" {
-                    q.status = "Kodiere Intro+Video neu…".into();
+                    q.status = "Kodiere Intro+Video neu: Intro und Body nicht stream-copy-kompatibel"
+                        .into();
+                } else if q.status == "hevc-mkv-fallback" {
+                    q.status = "Kodiere Intro+Video: HEVC Stream-Copy-Fallback (MKV-Remux)…".into();
                 }
                 outer(q);
             })
@@ -977,8 +987,25 @@ pub fn create_video(
                 })
             };
             if let Err(e) = run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&export_cb)) {
-                // Fallback re-encode
-                let _ = e;
+                if is_disk_full_error(&e) {
+                    return Err(ProcessorError::Ffmpeg(disk_full_error()));
+                }
+                // Fallback re-encode (codec/mux issues only — not disk full)
+                let reason = format!(
+                    "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})"
+                );
+                on_progress(progress_from_times(50.0, 100.0, &format!("Kodiere neu: {reason}")));
+                let reenc_cb: ProgressCallback = {
+                    let outer = Arc::clone(&on_progress);
+                    let reason = reason.clone();
+                    Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                        let mut q = p;
+                        if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                            q.status = format!("Kodiere neu: {reason}");
+                        }
+                        outer(q);
+                    })
+                };
                 args = vec![
                     "-y".into(),
                     "-hide_banner".into(),
@@ -998,7 +1025,7 @@ pub fn create_video(
                     "-nostats".into(),
                     output.to_string(),
                 ]);
-                run_ffmpeg(ffmpeg, &args, dur, export_cb)?;
+                run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
             } else {
                 encoder_used = "copy".into();
             }

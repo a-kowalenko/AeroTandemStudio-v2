@@ -13,8 +13,9 @@ use serde::Serialize;
 use thiserror::Error;
 
 use super::ffmpeg::{
-    ffmpeg_probe_stderr, is_cancelled, probe_duration_secs, run_ffmpeg, run_ffmpeg_capture_stderr,
-    run_ffmpeg_checked, FfmpegError, ProgressCallback,
+    disk_full_error, ffmpeg_probe_stderr, indicates_disk_full, is_cancelled, is_disk_full_error,
+    probe_duration_secs, run_ffmpeg, run_ffmpeg_capture_stderr, run_ffmpeg_checked, FfmpegError,
+    ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
@@ -40,6 +41,15 @@ pub enum ConcatError {
     Message(String),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+fn concat_error_is_disk_full(err: &ConcatError) -> bool {
+    match err {
+        ConcatError::Ffmpeg(e) => is_disk_full_error(e),
+        ConcatError::Io(e) if e.kind() == std::io::ErrorKind::StorageFull => true,
+        ConcatError::Message(m) => indicates_disk_full(m),
+        other => indicates_disk_full(&other.to_string()),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -746,6 +756,9 @@ pub fn concat_videos(
                 });
             }
             Err(e) => {
+                if concat_error_is_disk_full(&e) {
+                    return Err(ConcatError::Ffmpeg(disk_full_error()));
+                }
                 let reason = format!("Stream-Copy fehlgeschlagen: {e}");
                 emit(
                     &on_progress,
@@ -776,7 +789,14 @@ pub fn concat_videos(
         reason
     };
 
-    concat_reencode(ffmpeg, paths, output, total_secs, &on_progress)?;
+    concat_reencode(
+        ffmpeg,
+        paths,
+        output,
+        total_secs,
+        &reencode_reason,
+        &on_progress,
+    )?;
     emit(&on_progress, 100.0, "end");
     Ok(ConcatOutcome {
         method: "re-encode".into(),
@@ -868,6 +888,12 @@ fn concat_stream_copy(
     // Prefer progress-aware run for the final mux
     let result = run_ffmpeg(ffmpeg, &concat_args, total_secs, on_progress.clone());
 
+    if let Err(ref e) = result {
+        if is_disk_full_error(e) {
+            return Err(ConcatError::Ffmpeg(disk_full_error()));
+        }
+    }
+
     if result.is_err() && vcodec == VideoCodec::Hevc {
         // HEVC fallback: MKV remux path (legacy Avidemux-style)
         emit(on_progress, 75.0, "hevc-mkv-fallback");
@@ -878,7 +904,13 @@ fn concat_stream_copy(
 
         let mkv = work.join("splice_concat.mkv");
         let mkv_args = build_concat_mp4_to_mkv_args(&path_str(&list_path), &path_str(&mkv));
-        run_ffmpeg_checked(ffmpeg, &mkv_args)?;
+        match run_ffmpeg_checked(ffmpeg, &mkv_args) {
+            Err(e) if is_disk_full_error(&e) => {
+                return Err(ConcatError::Ffmpeg(disk_full_error()));
+            }
+            Err(e) => return Err(ConcatError::Ffmpeg(e)),
+            Ok(()) => {}
+        }
 
         let remux_args = build_remux_mkv_to_mp4_args(
             &path_str(&mkv),
@@ -887,7 +919,13 @@ fn concat_stream_copy(
             has_audio,
             video_tag,
         );
-        run_ffmpeg_checked(ffmpeg, &remux_args)?;
+        match run_ffmpeg_checked(ffmpeg, &remux_args) {
+            Err(e) if is_disk_full_error(&e) => {
+                return Err(ConcatError::Ffmpeg(disk_full_error()));
+            }
+            Err(e) => return Err(ConcatError::Ffmpeg(e)),
+            Ok(()) => {}
+        }
     } else {
         result?;
     }
@@ -912,10 +950,15 @@ fn concat_reencode(
     paths: &[String],
     output: &str,
     total_secs: f64,
+    reason: &str,
     on_progress: &ProgressCallback,
 ) -> Result<(), ConcatError> {
-    // Status with reason is emitted by caller before this; keep a stable stage label.
-    emit(on_progress, 50.0, "re-encode");
+    // Keep the reason visible for the whole re-encode stage (do not emit bare "re-encode").
+    emit(
+        on_progress,
+        50.0,
+        &format!("Kodiere neu: {reason}"),
+    );
     let work = make_work_dir("concat_re")?;
     let list_path = work.join("concat_list.txt");
     let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();

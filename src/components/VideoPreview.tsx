@@ -95,6 +95,8 @@ export function VideoPreview({
 
   const [localBusy, setLocalBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
+  /** Combined preview vs. single-clip player; preview file is kept until overwritten or list cleared. */
+  const [playerMode, setPlayerMode] = useState<"combined" | "clip">("clip");
   const [activeClip, setActiveClip] = useState(0);
   /** When Einzelclip-Wiedergabe ends, advance to the next clip. */
   const [autoNextClip, setAutoNextClip] = useState(true);
@@ -107,7 +109,9 @@ export function VideoPreview({
   const [qrBusy, setQrBusy] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
 
-  const einzelclipMode = !preview?.preview_path;
+  const hasPreviewFile = Boolean(preview?.preview_path);
+  const showingCombined = hasPreviewFile && playerMode === "combined";
+  const einzelclipMode = !showingCombined;
 
   const busy = busyProp ?? localBusy;
   const percent = percentProp ?? localPercent;
@@ -135,6 +139,7 @@ export function VideoPreview({
     if (videoList.length === 0) {
       setPreview(null);
       clearPreviewCache();
+      setPlayerMode("clip");
       setActiveClip(0);
       setPlayOnLoad(false);
       return;
@@ -143,7 +148,7 @@ export function VideoPreview({
       setActiveClip(0);
       setPlayOnLoad(false);
     }
-    // Keep showing the last preview when form/clips change; reuse is blocked via matches().
+    // Keep the last preview file when form/clips change; reuse is blocked via matches().
   }, [videoList, activeClip, clearPreviewCache]);
 
   function setBusy(value: boolean) {
@@ -188,6 +193,7 @@ export function VideoPreview({
       const result = await generatePreview(paths, kunde);
       setPreview(result);
       setPreviewCache(result, videoList, kunde);
+      setPlayerMode("combined");
       setLocalPercent(100);
       setLocalStatus("end");
       const strategy =
@@ -256,13 +262,20 @@ export function VideoPreview({
   const current = videoList[activeClip];
 
   function selectClip(index: number, autoPlay = false) {
-    if (index === activeClip && autoPlay) {
+    setPlayerMode("clip");
+    if (index === activeClip && autoPlay && playerMode === "clip") {
       clipPlayerRef.current?.seekMs(0);
       clipPlayerRef.current?.play();
       return;
     }
     setPlayOnLoad(autoPlay);
     setActiveClip(index);
+  }
+
+  function showCombinedPreview() {
+    if (!preview?.preview_path) return;
+    setPlayOnLoad(false);
+    setPlayerMode("combined");
   }
 
   function handleClipEnded() {
@@ -279,40 +292,58 @@ export function VideoPreview({
           Video-Vorschau
         </h3>
         <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => void handleGenerate()}
-            disabled={busy || !canGeneratePreview}
-            title={
-              canGeneratePreview
-                ? previewStale
-                  ? "Formular oder Clips haben sich geändert — Vorschau neu generieren"
-                  : undefined
-                : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                  (videoList.length < 1
-                    ? "Keine Videos in der Liste"
-                    : "Formular unvollständig")
-            }
-          >
-            {previewStale ? (
-              <RefreshCw className="h-4 w-4" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            {previewStale ? "Vorschau aktualisieren" : "Vorschau generieren"}
-          </Button>
-          {preview && !previewStale && (
+          {!hasPreviewFile ? (
             <Button
               type="button"
               size="sm"
-              variant="secondary"
               onClick={() => void handleGenerate()}
               disabled={busy || !canGeneratePreview}
+              title={
+                canGeneratePreview
+                  ? undefined
+                  : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
+                    (videoList.length < 1
+                      ? "Keine Videos in der Liste"
+                      : "Formular unvollständig")
+              }
             >
-              <RefreshCw className="h-4 w-4" />
-              Neu
+              <Play className="h-4 w-4" />
+              Vorschau generieren
             </Button>
+          ) : (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant={showingCombined ? "default" : "secondary"}
+                onClick={showCombinedPreview}
+                disabled={busy}
+                title="Gespeicherte kombinierte Vorschau anzeigen (ohne neu zu generieren)"
+              >
+                <Play className="h-4 w-4" />
+                Vorschau anzeigen
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={previewStale ? "default" : "secondary"}
+                onClick={() => void handleGenerate()}
+                disabled={busy || !canGeneratePreview}
+                title={
+                  canGeneratePreview
+                    ? previewStale
+                      ? "Formular oder Clips haben sich geändert — Vorschau neu generieren"
+                      : "Kombinierte Vorschau neu erzeugen und überschreiben"
+                    : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
+                      (videoList.length < 1
+                        ? "Keine Videos in der Liste"
+                        : "Formular unvollständig")
+                }
+              >
+                <RefreshCw className="h-4 w-4" />
+                {previewStale ? "Vorschau aktualisieren" : "Neu"}
+              </Button>
+            </>
           )}
           <Button
             type="button"
@@ -331,12 +362,11 @@ export function VideoPreview({
           className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
           role="status"
         >
-          Vorschau veraltet — Formular oder Clips wurden geändert. Bitte neu
-          generieren, bevor „Erstellen“ die Vorschau wiederverwendet.
+          Vorschau veraltet — Formular oder Clips wurden geändert.
         </div>
       )}
 
-      {preview?.preview_path ? (
+      {showingCombined && preview?.preview_path ? (
         <div className={cn("relative", previewStale && "opacity-80")}>
           <VideoPlayer srcPath={preview.preview_path} disabled={busy} />
           {previewStale && (
@@ -363,8 +393,9 @@ export function VideoPreview({
       {einzelclipMode && current && (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted">
-            Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte
-            Datei.
+            {hasPreviewFile
+              ? "Einzelclip-Wiedergabe — „Vorschau anzeigen“ für die kombinierte Datei."
+              : "Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte Datei."}
           </p>
           <div className="flex items-center gap-2">
             <Switch
@@ -399,6 +430,7 @@ export function VideoPreview({
         <div className="flex gap-2 overflow-x-auto pb-1">
           {videoList.map((v, i) => {
             const isWm = videoWmNeeded && watermarkClipIndex === i;
+            const clipActive = einzelclipMode && i === activeClip;
             return (
               <button
                 key={v.path}
@@ -407,7 +439,7 @@ export function VideoPreview({
                 onContextMenu={mediaContextMenuHandler(v.path, setCtxMenu)}
                 className={cn(
                   "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 pr-7 text-left text-xs transition",
-                  i === activeClip
+                  clipActive
                     ? "border-primary bg-primary-soft"
                     : "border-border/70 bg-card/70 hover:border-primary/40",
                 )}
@@ -429,6 +461,32 @@ export function VideoPreview({
               </button>
             );
           })}
+          {hasPreviewFile && (
+            <button
+              type="button"
+              onClick={showCombinedPreview}
+              disabled={busy}
+              className={cn(
+                "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 text-left text-xs transition",
+                showingCombined
+                  ? "border-primary bg-primary-soft"
+                  : "border-border/70 bg-card/70 hover:border-primary/40",
+              )}
+              title={
+                previewStale
+                  ? "Gespeicherte Vorschau (veraltet) anzeigen"
+                  : "Gespeicherte kombinierte Vorschau anzeigen"
+              }
+            >
+              <div className="flex items-center gap-1 truncate font-medium">
+                <Film className="h-3 w-3 shrink-0" aria-hidden />
+                Vorschau
+              </div>
+              <div className="text-muted">
+                {previewStale ? "veraltet" : "kombiniert"}
+              </div>
+            </button>
+          )}
         </div>
       )}
 
