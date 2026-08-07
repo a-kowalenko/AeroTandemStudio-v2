@@ -45,6 +45,7 @@ type Props = {
 export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Props) {
   const config = useConfigStore((s) => s.config);
   const persist = useConfigStore((s) => s.persist);
+  const resetToDefaults = useConfigStore((s) => s.resetToDefaults);
   const saving = useConfigStore((s) => s.saving);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
@@ -200,6 +201,28 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
       onOpenChange(false);
     } else {
       showError("Einstellungen konnten nicht gespeichert werden.");
+    }
+  }
+
+  async function onResetDefaults() {
+    if (
+      !window.confirm(
+        "Alle Einstellungen auf die Werkseinstellungen zurücksetzen?\n\nSpeicherort, Server-Zugangsdaten und individuelle Anpassungen gehen verloren.",
+      )
+    ) {
+      return;
+    }
+    const restored = await resetToDefaults();
+    if (restored) {
+      const list = [...(restored.crew_list ?? [])].sort((a, b) =>
+        a.name.localeCompare(b.name, "de"),
+      );
+      setDraft({ ...restored, crew_list: list });
+      setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
+      setCrewEditIndex(null);
+      showSuccess("Einstellungen wurden auf die Standardeinstellungen zurückgesetzt.");
+    } else {
+      showError("Standardeinstellungen konnten nicht wiederhergestellt werden.");
     }
   }
 
@@ -422,6 +445,23 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
                 }}
               >
                 Nach Updates suchen
+              </Button>
+            </div>
+
+            <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
+              <Label>Zurücksetzen</Label>
+              <p className="text-xs text-muted">
+                Stellt alle Einstellungen auf die Werkseinstellungen zurück
+                (inkl. Crew-Liste, Encoding, QR und SD). Wird sofort gespeichert.
+              </p>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={saving}
+                onClick={() => void onResetDefaults()}
+              >
+                Auf Standardeinstellungen zurücksetzen
               </Button>
             </div>
           </TabsContent>

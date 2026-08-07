@@ -24,7 +24,7 @@ import {
   mediaContextMenuHandler,
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
-import { cn } from "../lib/utils";
+import { cn, isCancellationError } from "../lib/utils";
 
 type TaskProgressState = {
   taskId: number;
@@ -214,7 +214,12 @@ export function VideoPreview({
         "Vorschau",
       );
     } catch (e) {
-      showError(String(e));
+      if (isCancellationError(e)) {
+        setLocalStatus("cancelled");
+        showWarning("Vorschau abgebrochen.");
+      } else {
+        showError(String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -227,7 +232,7 @@ export function VideoPreview({
       await invoke("cancel_encode");
       setLocalStatus("cancelled");
     } catch (e) {
-      showError(String(e));
+      if (!isCancellationError(e)) showError(String(e));
     }
   }
 

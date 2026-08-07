@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { AppConfig } from "../lib/tauri";
-import { getConfig, saveConfig } from "../lib/tauri";
+import { getConfig, resetConfig, saveConfig } from "../lib/tauri";
 
 type ConfigState = {
   config: AppConfig | null;
@@ -10,6 +10,7 @@ type ConfigState = {
   loadConfig: () => Promise<void>;
   updateLocal: (patch: Partial<AppConfig>) => void;
   persist: (next?: AppConfig) => Promise<AppConfig | null>;
+  resetToDefaults: () => Promise<AppConfig | null>;
 };
 
 export const useConfigStore = create<ConfigState>((set, get) => ({
@@ -42,6 +43,18 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
       const saved = await saveConfig(config);
       set({ config: saved, saving: false });
       return saved;
+    } catch (e) {
+      set({ saving: false, error: String(e) });
+      return null;
+    }
+  },
+
+  resetToDefaults: async () => {
+    set({ saving: true, error: null });
+    try {
+      const config = await resetConfig();
+      set({ config, saving: false });
+      return config;
     } catch (e) {
       set({ saving: false, error: String(e) });
       return null;

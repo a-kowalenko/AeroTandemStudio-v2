@@ -12,6 +12,7 @@ use crate::sd_card::monitor::{
     SdInsertedPayload, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_SD_INSERTED,
     EVENT_SD_REMOVED, SD_MONITOR,
 };
+use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
 
 #[derive(Debug, Serialize)]
@@ -44,9 +45,17 @@ fn wire_monitor_events(app: &AppHandle) {
             );
         })),
         Some(Arc::new(move |payload: SdInsertedPayload| {
+            logging::info(
+                "sd",
+                format!(
+                    "SD erkannt: {} (confirm={})",
+                    payload.drive, payload.needs_confirmation
+                ),
+            );
             let _ = handle3.emit(EVENT_SD_INSERTED, payload);
         })),
         Some(Arc::new(move |drives: Vec<String>| {
+            logging::info("sd", format!("SD entfernt: {}", drives.join(", ")));
             let _ = handle4.emit(EVENT_SD_REMOVED, serde_json::json!({ "drives": drives }));
         })),
     );
@@ -84,6 +93,7 @@ pub fn start_sd_monitor(app: AppHandle) -> Result<bool, String> {
     init_sd_monitor(&app);
     if !SD_MONITOR.is_monitoring() {
         SD_MONITOR.start_monitoring();
+        logging::info("sd", "SD-Monitor gestartet");
     }
     Ok(SD_MONITOR.is_monitoring())
 }
@@ -91,6 +101,7 @@ pub fn start_sd_monitor(app: AppHandle) -> Result<bool, String> {
 #[tauri::command]
 pub fn stop_sd_monitor() -> Result<(), String> {
     SD_MONITOR.stop_monitoring();
+    logging::info("sd", "SD-Monitor gestoppt");
     Ok(())
 }
 
@@ -105,12 +116,32 @@ pub fn get_sd_status() -> Result<SdStatusSnapshot, String> {
 
 #[tauri::command]
 pub fn scan_sd_drives() -> Result<Vec<SdDriveInfo>, String> {
-    Ok(find_dcim_drives())
+    let drives = find_dcim_drives();
+    logging::info("sd", format!("SD-Scan: {} Laufwerk(e)", drives.len()));
+    Ok(drives)
 }
 
 #[tauri::command]
 pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
-    SD_MONITOR.list_files(&drive).map_err(|e| e.to_string())
+    logging::info("sd", format!("Liste SD-Dateien: {drive}"));
+    match SD_MONITOR.list_files(&drive) {
+        Ok(res) => {
+            logging::info(
+                "sd",
+                format!(
+                    "SD-Dateien: {} Datei(en), {:.1} MB",
+                    res.files.len(),
+                    res.total_size_mb
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("SD-Liste fehlgeschlagen ({drive}): {msg}"));
+            Err(msg)
+        }
+    }
 }
 
 #[tauri::command]
@@ -118,18 +149,67 @@ pub fn backup_sd_card(
     drive: String,
     selected_files: Option<Vec<String>>,
 ) -> Result<BackupResult, String> {
-    SD_MONITOR
-        .backup_drive(&drive, selected_files)
-        .map_err(|e| e.to_string())
+    let count = selected_files.as_ref().map(|v| v.len());
+    logging::info(
+        "sd",
+        format!(
+            "Backup start: drive={drive}, selected={}",
+            count
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| "all".into())
+        ),
+    );
+    match SD_MONITOR.backup_drive(&drive, selected_files) {
+        Ok(res) => {
+            logging::info(
+                "sd",
+                format!(
+                    "Backup fertig: copied={}, skipped={}, path={}",
+                    res.copied_count,
+                    res.skipped_count,
+                    res.backup_path.as_deref().unwrap_or("-")
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+            Err(msg)
+        }
+    }
 }
 
 #[tauri::command]
 pub fn import_sd_files(paths: Vec<String>) -> Result<ImportSdResult, String> {
-    SD_MONITOR.import_files(&paths).map_err(|e| e.to_string())
+    logging::info(
+        "sd",
+        format!("SD-Import start: {} Datei(en)", paths.len()),
+    );
+    match SD_MONITOR.import_files(&paths) {
+        Ok(res) => {
+            logging::info(
+                "sd",
+                format!(
+                    "SD-Import fertig: videos={}, photos={}, skipped={}",
+                    res.imported_videos.len(),
+                    res.imported_photos.len(),
+                    res.skipped
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("SD-Import fehlgeschlagen: {msg}"));
+            Err(msg)
+        }
+    }
 }
 
 #[tauri::command]
 pub fn decline_sd_backup(drive: String) -> Result<(), String> {
+    logging::info("sd", format!("Backup abgelehnt: {drive}"));
     SD_MONITOR.decline_drive(&drive);
     Ok(())
 }
@@ -147,18 +227,49 @@ pub fn list_processed_files(
     search: Option<String>,
 ) -> Result<Vec<ProcessedFileEntry>, String> {
     let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
-    hist.list_entries(limit.unwrap_or(1000) as usize, search.as_deref())
-        .map_err(|e| e.to_string())
+    let entries = hist
+        .list_entries(limit.unwrap_or(1000) as usize, search.as_deref())
+        .map_err(|e| e.to_string())?;
+    logging::debug(
+        "history",
+        format!(
+            "Verlauf geladen: {} Einträge{}",
+            entries.len(),
+            search
+                .as_ref()
+                .filter(|s| !s.is_empty())
+                .map(|s| format!(" (Suche: {s})"))
+                .unwrap_or_default()
+        ),
+    );
+    Ok(entries)
 }
 
 #[tauri::command]
 pub fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {
+    logging::info(
+        "history",
+        format!("Verlauf: lösche {} Eintrag/Einträge", ids.len()),
+    );
     let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
-    hist.delete_by_ids(&ids).map_err(|e| e.to_string())
+    hist.delete_by_ids(&ids).map_err(|e| {
+        let msg = e.to_string();
+        logging::error("history", format!("Verlauf löschen fehlgeschlagen: {msg}"));
+        msg
+    })?;
+    logging::info("history", "Verlauf-Einträge gelöscht");
+    Ok(())
 }
 
 #[tauri::command]
 pub fn purge_processed_files() -> Result<(), String> {
+    logging::warn("history", "Verlauf wird vollständig geleert");
     let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
-    hist.purge_all().map_err(|e| e.to_string())
+    hist.purge_all().map_err(|e| {
+        let msg = e.to_string();
+        logging::error("history", format!("Verlauf leeren fehlgeschlagen: {msg}"));
+        msg
+    })?;
+    logging::info("history", "Verlauf geleert");
+    Ok(())
 }

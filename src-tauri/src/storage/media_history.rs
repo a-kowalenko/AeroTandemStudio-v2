@@ -10,6 +10,7 @@ use thiserror::Error;
 
 use crate::media::dji_paths::media_type_from_filename;
 use crate::storage::app_config_dir;
+use crate::storage::logging;
 
 const DB_FILE_NAME: &str = "media_history.db";
 const PARTIAL_HASH_READ_BYTES: usize = 4 * 1024 * 1024;
@@ -239,6 +240,10 @@ impl MediaHistoryStore {
 
     pub fn mark_imported_batch(&self, file_paths: &[PathBuf]) -> Result<(), MediaHistoryError> {
         let now = utc_now_iso();
+        logging::info(
+            "history",
+            format!("Verlauf: markiere {} Datei(en) als importiert", file_paths.len()),
+        );
         for path in file_paths {
             let Ok((hash, size)) = Self::compute_identity(path) else {
                 continue;
@@ -271,6 +276,7 @@ impl MediaHistoryStore {
             .to_string();
         let media_type = media_type_from_filename(&filename);
         let now = utc_now_iso();
+        logging::debug("history", format!("Verlauf: Backup vermerkt für {filename}"));
         self.upsert(&hash, &filename, size, media_type, Some(&now), None, None)
     }
 }

@@ -1,22 +1,19 @@
-//! Auto-update helpers (Tauri updater plugin + stub when not configured).
+//! Auto-update helpers (Tauri updater plugin).
 //!
-//! Production update feed is **not** live yet. Configure:
+//! Production feed: public releases repo
+//! `a-kowalenko/aero-tandem-studio-releases` → `latest.json`.
 //!
-//! 1. Private key: `src-tauri/keys/updater.key` (gitignored) — password in
-//!    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` when signing builds
-//! 2. Public key: already in `tauri.conf.json` → `plugins.updater.pubkey`
-//! 3. Replace the stub endpoint containing `releases.example.invalid` with your
-//!    `latest.json` URL(s), and update `updater_endpoints()` in this module so
-//!    `is_updater_configured()` returns true
-//!
-//! Until the endpoint is real, `check_for_updates` returns `configured: false`
-//! and the UI still shows an Update-Dialog (install disabled).
+//! Signing: `TAURI_SIGNING_PRIVATE_KEY` (+ password) in CI; pubkey in
+//! `tauri.conf.json` → `plugins.updater.pubkey`.
 
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
 
-/// Marker substring in the configured endpoint that means “stub / not ready”.
+/// Marker substring that means “stub / not ready” (keep for safety if config regresses).
 pub const UPDATER_STUB_MARKER: &str = "releases.example.invalid";
+
+const UPDATER_ENDPOINT: &str =
+    "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/latest/download/latest.json";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdaterStatus {
@@ -37,10 +34,7 @@ pub struct UpdateCheckResult {
 
 fn updater_endpoints() -> Vec<String> {
     // Keep in sync with tauri.conf.json → plugins.updater.endpoints
-    vec![
-        "https://releases.example.invalid/aero-tandem-studio/{{target}}/{{arch}}/{{current_version}}"
-            .to_string(),
-    ]
+    vec![UPDATER_ENDPOINT.to_string()]
 }
 
 pub fn is_updater_configured() -> bool {
@@ -58,13 +52,14 @@ pub fn get_updater_status(app: AppHandle) -> UpdaterStatus {
         UpdaterStatus {
             configured: true,
             current_version,
-            message: "Updater konfiguriert — Prüfung über Plugin möglich.".into(),
+            message: "Updater konfiguriert — Prüfung über GitHub Releases möglich.".into(),
         }
     } else {
         UpdaterStatus {
             configured: false,
             current_version,
-            message: "Updater-Stub: Endpoint noch nicht gesetzt (releases.example.invalid). Siehe updater/mod.rs.".into(),
+            message: "Updater-Stub: Endpoint noch Platzhalter (releases.example.invalid)."
+                .into(),
         }
     }
 }
@@ -83,7 +78,7 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
             latest_version: None,
             body: None,
             message: "Update-Prüfung übersprungen: Endpoint ist Platzhalter \
-(releases.example.invalid). Pubkey ist gesetzt — Endpoint in tauri.conf.json ersetzen."
+(releases.example.invalid)."
                 .into(),
         });
     }
@@ -129,7 +124,7 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
     }
 }
 
-/// Download + install a pending update (plugin API). No-op stub when unconfigured.
+/// Download + install a pending update (plugin API).
 #[tauri::command]
 pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     if !is_updater_configured() {
@@ -164,5 +159,18 @@ pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, Str
     #[cfg(not(desktop))]
     {
         Err("Updater nur auf Desktop verfügbar.".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn updater_is_configured_for_releases_repo() {
+        assert!(is_updater_configured());
+        assert!(updater_endpoints()
+            .iter()
+            .any(|e| e.contains("aero-tandem-studio-releases")));
     }
 }

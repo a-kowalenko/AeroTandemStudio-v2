@@ -13,6 +13,7 @@ use crate::qr::parallel::{
     scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
 };
 use crate::storage::config::AppConfig;
+use crate::storage::logging::{self, file_name};
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 
 use super::config::ConfigState;
@@ -79,6 +80,29 @@ fn make_progress_cb(app: AppHandle) -> Arc<dyn Fn(&str, &str) + Send + Sync> {
     })
 }
 
+fn log_qr_result(kind: &str, path: &str, dto: &QrScanResultDto) {
+    if dto.cancelled {
+        logging::warn("qr", format!("{kind} abgebrochen: {}", file_name(path)));
+        return;
+    }
+    if dto.found {
+        let gast = dto
+            .kunde
+            .as_ref()
+            .map(|k| k.resolve_gast())
+            .unwrap_or_default();
+        logging::info(
+            "qr",
+            format!("{kind} Treffer: {} → Gast={gast}", file_name(path)),
+        );
+    } else {
+        logging::info(
+            "qr",
+            format!("{kind} ohne Treffer: {} ({})", file_name(path), dto.message),
+        );
+    }
+}
+
 /// Scan a single video file for a customer QR code (first N seconds).
 #[tauri::command]
 pub async fn scan_qr_video(
@@ -89,6 +113,7 @@ pub async fn scan_qr_video(
     if path.trim().is_empty() {
         return Err("path is required".into());
     }
+    logging::info("qr", format!("Video-Scan start: {}", file_name(&path)));
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let opts = options_from_config(&read_config(&config));
@@ -98,12 +123,15 @@ pub async fn scan_qr_video(
         on_progress(&path, "start");
         let res = scan_video_clip(&ffmpeg, &path, &opts, None).map_err(|e| e.to_string())?;
         on_progress(&path, if res.found { "hit" } else { "done" });
-        Ok::<_, String>(res)
+        Ok::<_, String>((path, res))
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    Ok(result.into())
+    let (path, res) = result;
+    let dto: QrScanResultDto = res.into();
+    log_qr_result("Video-Scan", &path, &dto);
+    Ok(dto)
 }
 
 /// Scan a single photo file for a customer QR code.
@@ -116,6 +144,7 @@ pub async fn scan_qr_photo(
     if path.trim().is_empty() {
         return Err("path is required".into());
     }
+    logging::info("qr", format!("Foto-Scan start: {}", file_name(&path)));
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let opts = options_from_config(&read_config(&config));
@@ -125,12 +154,15 @@ pub async fn scan_qr_photo(
         on_progress(&path, "start");
         let res = scan_photo(&ffmpeg, &path, &opts, None).map_err(|e| e.to_string())?;
         on_progress(&path, if res.found { "hit" } else { "done" });
-        Ok::<_, String>(res)
+        Ok::<_, String>((path, res))
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    Ok(result.into())
+    let (path, res) = result;
+    let dto: QrScanResultDto = res.into();
+    log_qr_result("Foto-Scan", &path, &dto);
+    Ok(dto)
 }
 
 /// Parallel quarter-based scan over multiple video clips (up to 4 workers).
@@ -154,17 +186,49 @@ pub async fn scan_qr_videos(
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
     let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
+    logging::info(
+        "qr",
+        format!(
+            "Video-Batch-Scan start: {} Datei(en), workers={workers}, window={:.0}s",
+            paths.len(),
+            opts.scan_seconds
+        ),
+    );
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let cb = |path: &str, phase: &str| on_progress(path, phase);
+        let cb = |path: &str, phase: &str| {
+            if phase == "start" {
+                logging::debug("qr", format!("Scan start: {}", file_name(path)));
+            } else if phase == "hit" {
+                logging::info("qr", format!("Scan Treffer: {}", file_name(path)));
+            }
+            on_progress(path, phase);
+        };
         scan_videos_hybrid_with_progress(&ffmpeg, &paths, &opts, workers, None, Some(&cb))
             .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    Ok(result.into())
+    let dto: QrScanResultDto = result.into();
+    if dto.found {
+        let src = dto.source_path.as_deref().unwrap_or("?");
+        let gast = dto
+            .kunde
+            .as_ref()
+            .map(|k| k.resolve_gast())
+            .unwrap_or_default();
+        logging::info(
+            "qr",
+            format!("Video-Batch-Scan Treffer in {}: Gast={gast}", file_name(src)),
+        );
+    } else if dto.cancelled {
+        logging::warn("qr", "Video-Batch-Scan abgebrochen");
+    } else {
+        logging::info("qr", format!("Video-Batch-Scan ohne Treffer: {}", dto.message));
+    }
+    Ok(dto)
 }
 
 /// Parallel quarter-based scan over multiple photos (up to 4 workers).
@@ -188,15 +252,43 @@ pub async fn scan_qr_photos(
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
     let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
+    logging::info(
+        "qr",
+        format!("Foto-Batch-Scan start: {} Datei(en), workers={workers}", paths.len()),
+    );
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let cb = |path: &str, phase: &str| on_progress(path, phase);
+        let cb = |path: &str, phase: &str| {
+            if phase == "start" {
+                logging::debug("qr", format!("Scan start: {}", file_name(path)));
+            } else if phase == "hit" {
+                logging::info("qr", format!("Scan Treffer: {}", file_name(path)));
+            }
+            on_progress(path, phase);
+        };
         scan_photos_hybrid_with_progress(&ffmpeg, &paths, &opts, workers, None, Some(&cb))
             .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    Ok(result.into())
+    let dto: QrScanResultDto = result.into();
+    if dto.found {
+        let src = dto.source_path.as_deref().unwrap_or("?");
+        let gast = dto
+            .kunde
+            .as_ref()
+            .map(|k| k.resolve_gast())
+            .unwrap_or_default();
+        logging::info(
+            "qr",
+            format!("Foto-Batch-Scan Treffer in {}: Gast={gast}", file_name(src)),
+        );
+    } else if dto.cancelled {
+        logging::warn("qr", "Foto-Batch-Scan abgebrochen");
+    } else {
+        logging::info("qr", format!("Foto-Batch-Scan ohne Treffer: {}", dto.message));
+    }
+    Ok(dto)
 }

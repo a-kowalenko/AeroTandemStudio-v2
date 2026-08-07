@@ -521,6 +521,26 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
+    fn reset_overwrites_custom_config() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("config.db");
+        let store = ConfigStore::open_at(db).unwrap();
+        let mut custom = AppConfig::default();
+        custom.ort = "Gera".into();
+        custom.server_login = "user".into();
+        custom.dauer = 9;
+        store.save(&custom).unwrap();
+
+        let defaults = AppConfig::default();
+        store.save(&defaults).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.ort, defaults.ort);
+        assert_eq!(loaded.server_login, "");
+        assert_eq!(loaded.dauer, defaults.dauer);
+        assert_eq!(loaded.crew_list, defaults.crew_list);
+    }
+
+    #[test]
     fn defaults_roundtrip_sqlite() {
         let dir = tempdir().unwrap();
         let db = dir.path().join("config.db");

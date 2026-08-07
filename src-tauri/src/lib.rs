@@ -10,9 +10,12 @@ mod updater;
 mod util;
 mod video;
 
-use commands::app::{cleanup_cache, get_app_info, run_startup_checks};
+use commands::app::{
+    cleanup_cache, clear_log_buffer, get_app_info, get_recent_logs, run_startup_checks,
+};
 use commands::config::{
-    get_config, get_config_paths, reload_config, save_config, validate_kunde_cmd, ConfigState,
+    get_config, get_config_paths, reload_config, reset_config, save_config, validate_kunde_cmd,
+    ConfigState,
 };
 use commands::media::{
     clear_working_session, delete_working_copy, expand_media_paths, get_file_sizes, get_working_dir,
@@ -30,9 +33,10 @@ use commands::video::{
     generate_preview, get_hw_info, import_videos, probe_video, split_video, trim_video,
     validate_create_job,
 };
-use storage::logging::{init_logging, log_info};
+use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
 use updater::{check_for_updates, get_updater_status, install_update};
+use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -53,6 +57,12 @@ pub fn run() {
                     eprintln!("failed to init app.log: {e}");
                 }
             }
+            set_log_emitter({
+                let handle = app.handle().clone();
+                move |entry| {
+                    let _ = handle.emit("log-line", entry);
+                }
+            });
 
             #[cfg(desktop)]
             {
@@ -81,6 +91,7 @@ pub fn run() {
             get_config,
             save_config,
             reload_config,
+            reset_config,
             get_config_paths,
             validate_kunde_cmd,
             scan_qr_video,
@@ -111,6 +122,8 @@ pub fn run() {
             check_for_updates,
             install_update,
             get_app_info,
+            get_recent_logs,
+            clear_log_buffer,
             run_startup_checks,
             cleanup_cache,
         ])

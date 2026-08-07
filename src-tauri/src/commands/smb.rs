@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::config::ConfigState;
 use crate::smb::{test_connection, upload_path, ConnectionTestResult, UploadProgress, UploadResult};
+use crate::storage::logging::{self, file_name};
 
 pub const UPLOAD_PROGRESS_EVENT: &str = "upload-progress";
 
@@ -66,7 +67,17 @@ pub async fn test_server_connection(
                 .unwrap_or_else(|| cache.server_password.clone()),
         )
     };
-    Ok(test_connection(&url, &login, &password).await)
+    logging::info(
+        "smb",
+        format!("Server-Test: url={}", url.trim()),
+    );
+    let result = test_connection(&url, &login, &password).await;
+    if result.ok {
+        logging::info("smb", format!("Server-Test OK: {}", result.message));
+    } else {
+        logging::warn("smb", format!("Server-Test fehlgeschlagen: {}", result.message));
+    }
+    Ok(result)
 }
 
 /// Upload a finished video file or an entire folder to the configured server.
@@ -94,6 +105,11 @@ pub async fn upload_to_server(
         )
     };
 
+    logging::info(
+        "smb",
+        format!("Upload start: {}", file_name(&local_path)),
+    );
+
     let app_for_progress = app.clone();
     let result = upload_path(&path, &url, &login, &password, |progress| {
         let event = UploadProgressEvent::from(progress);
@@ -102,8 +118,13 @@ pub async fn upload_to_server(
     .await;
 
     if result.success {
+        logging::info(
+            "smb",
+            format!("Upload fertig: {} → {}", result.message, result.remote_path),
+        );
         Ok(result)
     } else {
+        logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         Err(result.message)
     }
 }

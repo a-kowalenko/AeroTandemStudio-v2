@@ -61,6 +61,21 @@ pub fn reload_config(state: State<'_, ConfigState>) -> Result<AppConfig, String>
     Ok(cfg)
 }
 
+/// Persist factory defaults (`AppConfig::default`) and refresh the in-memory cache.
+#[tauri::command]
+pub fn reset_config(state: State<'_, ConfigState>) -> Result<AppConfig, String> {
+    let config = AppConfig::default();
+    {
+        let store = state.store.lock().map_err(|e| e.to_string())?;
+        store.save(&config).map_err(|e| e.to_string())?;
+    }
+    {
+        let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+        *cache = config.clone();
+    }
+    Ok(config)
+}
+
 #[tauri::command]
 pub fn get_config_paths() -> Result<ConfigPathInfo, String> {
     let dir = crate::storage::app_config_dir().map_err(|e| e.to_string())?;

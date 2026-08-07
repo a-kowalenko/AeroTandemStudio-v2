@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::config::ConfigState;
+use crate::storage::logging::{self, file_name};
 use crate::util::natural_sort::sort_paths_by_basename;
 use crate::video::concat;
 use crate::video::cutter::{self, CutResult, SplitResult};
@@ -57,6 +58,19 @@ fn resolve_ffmpeg(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())
 }
 
+fn is_cancel_err(e: &str) -> bool {
+    let lower = e.to_lowercase();
+    lower.contains("cancel") || lower.contains("abgebrochen") || lower.contains("abbruch")
+}
+
+fn log_job_failure(scope: &str, label: &str, e: &str) {
+    if is_cancel_err(e) {
+        logging::warn(scope, format!("{label} abgebrochen: {e}"));
+    } else {
+        logging::error(scope, format!("{label} fehlgeschlagen: {e}"));
+    }
+}
+
 /// Detect which hardware encoder will be used.
 #[tauri::command]
 pub fn get_hw_info() -> Result<HwAccelInfo, String> {
@@ -77,11 +91,23 @@ pub async fn encode_video(
         return Err(format!("input file not found: {input}"));
     }
 
+    logging::info(
+        "encode",
+        format!(
+            "Encode start: {} → {}",
+            file_name(&input),
+            file_name(&output)
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let (hw, args) = build_encode_command(&input, &output);
     let encoder = hw.encoder.clone();
     let hw_label = hw_type_label(&hw);
+    logging::info(
+        "encode",
+        format!("Encoder: {encoder} ({hw_label})"),
+    );
 
     let total_secs = probe_duration_secs(&ffmpeg, &input).unwrap_or(0.0);
 
@@ -91,17 +117,29 @@ pub async fn encode_video(
     });
 
     let output_clone = output.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         run_ffmpeg(&ffmpeg, &args, total_secs, on_progress).map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
-    Ok(EncodeResult {
-        output: output_clone,
-        encoder,
-        hw_type: hw_label,
-    })
+    match result {
+        Ok(()) => {
+            logging::info(
+                "encode",
+                format!("Encode fertig: {}", file_name(&output_clone)),
+            );
+            Ok(EncodeResult {
+                output: output_clone,
+                encoder,
+                hw_type: hw_label,
+            })
+        }
+        Err(e) => {
+            log_job_failure("encode", "Encode", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Concatenate multiple videos into one MP4 (stream-copy when possible).
@@ -118,6 +156,14 @@ pub async fn concat_videos(
         return Err("output path is required".into());
     }
 
+    logging::info(
+        "concat",
+        format!(
+            "Concat start: {} Clips → {}",
+            paths.len(),
+            file_name(&output)
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
@@ -131,14 +177,35 @@ pub async fn concat_videos(
         concat::concat_videos(&ffmpeg, &paths, &output, on_progress).map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
-    Ok(ConcatResult {
-        output: output_clone,
-        method: outcome.method,
-        codec: outcome.codec,
-        reencode_reason: outcome.reencode_reason,
-    })
+    match outcome {
+        Ok(outcome) => {
+            logging::info(
+                "concat",
+                format!(
+                    "Concat fertig: method={}, codec={}{}",
+                    outcome.method,
+                    outcome.codec,
+                    outcome
+                        .reencode_reason
+                        .as_ref()
+                        .map(|r| format!(" ({r})"))
+                        .unwrap_or_default()
+                ),
+            );
+            Ok(ConcatResult {
+                output: output_clone,
+                method: outcome.method,
+                codec: outcome.codec,
+                reencode_reason: outcome.reencode_reason,
+            })
+        }
+        Err(e) => {
+            log_job_failure("concat", "Concat", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Trim video to `[start, end)` seconds. Stream-copy by default; `precise` re-encodes.
@@ -159,6 +226,14 @@ pub async fn trim_video(
     }
 
     let precise = precise.unwrap_or(false);
+    logging::info(
+        "trim",
+        format!(
+            "Trim start: {} [{start:.3}s–{end:.3}s] precise={precise} → {}",
+            file_name(&input),
+            file_name(&output)
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
@@ -168,28 +243,38 @@ pub async fn trim_video(
     });
 
     let output_clone = output.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         concat::trim_video(&ffmpeg, &input, start, end, &output, precise, on_progress)
             .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
 
-    Ok(TrimResult {
-        output: output_clone,
-        method: if precise {
-            "re-encode".into()
-        } else {
-            "stream-copy".into()
-        },
-        reencode_reason: if precise {
-            Some(
-                "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
-            )
-        } else {
-            None
-        },
-    })
+    match result {
+        Ok(()) => {
+            let method = if precise {
+                "re-encode"
+            } else {
+                "stream-copy"
+            };
+            logging::info("trim", format!("Trim fertig ({method}): {}", file_name(&output_clone)));
+            Ok(TrimResult {
+                output: output_clone,
+                method: method.into(),
+                reencode_reason: if precise {
+                    Some(
+                        "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
+                    )
+                } else {
+                    None
+                },
+            })
+        }
+        Err(e) => {
+            log_job_failure("trim", "Trim", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Cut `[start, end)` — optionally overwrite the source (legacy Schneide-Dialog).
@@ -213,6 +298,13 @@ pub async fn cut_video(
 
     let overwrite = overwrite.unwrap_or(false);
     let precise = precise.unwrap_or(false);
+    logging::info(
+        "cut",
+        format!(
+            "Cut start: {} [{start:.3}s–{end:.3}s] overwrite={overwrite} precise={precise}",
+            file_name(&input)
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
@@ -221,7 +313,7 @@ pub async fn cut_video(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         cutter::cut_video(
             &ffmpeg,
             &input,
@@ -235,7 +327,26 @@ pub async fn cut_video(
         .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "cut",
+                format!(
+                    "Cut fertig: {} (method={}, overwrite={})",
+                    file_name(&res.output),
+                    res.method,
+                    res.overwritten
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("cut", "Cut", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Split video at `split_secs` into two parts. With `overwrite`, writes `name_1` / `name_2`.
@@ -257,6 +368,13 @@ pub async fn split_video(
     }
 
     let overwrite = overwrite.unwrap_or(false);
+    logging::info(
+        "cut",
+        format!(
+            "Split start: {} at {split_secs:.3}s overwrite={overwrite}",
+            file_name(&input)
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
@@ -265,7 +383,7 @@ pub async fn split_video(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         cutter::split_video(
             &ffmpeg,
             &input,
@@ -278,12 +396,32 @@ pub async fn split_video(
         .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "cut",
+                format!(
+                    "Split fertig: {} + {} (method={})",
+                    file_name(&res.part1_path),
+                    file_name(&res.part2_path),
+                    res.method
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("cut", "Split", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Cancel all currently running FFmpeg processes.
 #[tauri::command]
 pub fn cancel_encode() -> Result<bool, String> {
+    logging::warn("encode", "Abbruch angefordert (cancel_encode)");
     Ok(ffmpeg_cancel())
 }
 
@@ -317,6 +455,15 @@ pub async fn create_video(
         return Err("output path is required".into());
     }
 
+    logging::info(
+        "create",
+        format!(
+            "create_video start: {} Clip(s) → {} (Gast={})",
+            video_paths.len(),
+            file_name(&output),
+            kunde.resolve_gast()
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let resource_dir = app.path().resource_dir().ok();
@@ -327,7 +474,7 @@ pub async fn create_video(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         processor::create_video(
             &ffmpeg,
             &kunde,
@@ -340,7 +487,24 @@ pub async fn create_video(
         .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "create",
+                format!(
+                    "create_video fertig: encoder={}, intro={}, body_clips={}",
+                    res.encoder, res.intro_created, res.body_clips
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("create", "create_video", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Generate a combined preview MP4 in a temp work dir (CRF from config).
@@ -364,9 +528,21 @@ pub async fn generate_preview(
 
     let form = crate::model::validate_kunde(&kunde, &video_paths, config.oldschool_mode);
     if !form.valid {
+        logging::warn(
+            "preview",
+            format!("Vorschau abgebrochen (Formular): {}", form.errors.join("; ")),
+        );
         return Err(form.errors.join("\n"));
     }
 
+    logging::info(
+        "preview",
+        format!(
+            "Preview start: {} Clip(s), Gast={}",
+            video_paths.len(),
+            kunde.resolve_gast()
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let resource_dir = app.path().resource_dir().ok();
@@ -376,7 +552,7 @@ pub async fn generate_preview(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         preview_encode::generate_preview(
             &ffmpeg,
             &video_paths,
@@ -388,7 +564,27 @@ pub async fn generate_preview(
         .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "preview",
+                format!(
+                    "Preview fertig: {} (encoder={}, intro={}, strategy={})",
+                    file_name(&res.preview_path),
+                    res.encoder,
+                    res.intro_included,
+                    res.strategy
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("preview", "Preview", &e);
+            Err(e)
+        }
+    }
 }
 
 /// Filter video paths, natural-sort by basename, and probe metadata for each.
@@ -404,20 +600,48 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         .collect();
     let sorted = sort_paths_by_basename(&video_paths);
     if sorted.is_empty() {
+        logging::warn("import", "Video-Import: keine gültigen Videopfade");
         return Ok(Vec::new());
     }
 
+    logging::info(
+        "import",
+        format!("Importiere {} Video(s) (Kopie + Probe)…", sorted.len()),
+    );
     let ffmpeg = resolve_ffmpeg(&app)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         // Copy into session working folder first (Legacy: never mutate originals).
         let working = crate::storage::working_session::import_videos_to_session(&sorted)
             .map_err(|e| e.to_string())?;
+        logging::info(
+            "import",
+            format!("Videos kopiert: {} Datei(en), starte Probe…", working.len()),
+        );
         let mut out = Vec::with_capacity(working.len());
         let mut errors = Vec::new();
         for path in &working {
             match probe::probe_video(&ffmpeg, path) {
-                Ok(meta) => out.push(meta),
-                Err(e) => errors.push(format!("{path}: {e}")),
+                Ok(meta) => {
+                    logging::debug(
+                        "import",
+                        format!(
+                            "Probe OK: {} ({}x{}, {:.1}s, {})",
+                            file_name(path),
+                            meta.width,
+                            meta.height,
+                            meta.duration_secs,
+                            meta.codec
+                        ),
+                    );
+                    out.push(meta);
+                }
+                Err(e) => {
+                    logging::warn(
+                        "import",
+                        format!("Probe fehlgeschlagen ({}): {e}", file_name(path)),
+                    );
+                    errors.push(format!("{path}: {e}"));
+                }
             }
         }
         if out.is_empty() && !errors.is_empty() {
@@ -426,7 +650,21 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         Ok(out)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(out) => {
+            logging::info(
+                "import",
+                format!("Video-Import fertig: {} Clip(s)", out.len()),
+            );
+            Ok(out)
+        }
+        Err(e) => {
+            logging::error("import", format!("Video-Import fehlgeschlagen: {e}"));
+            Err(e)
+        }
+    }
 }
 
 /// Validate products + media for the unified create/export job.
@@ -471,6 +709,15 @@ pub async fn create_job(
     photo_paths: Vec<String>,
     options: Option<CreateJobOptions>,
 ) -> Result<CreateJobResult, String> {
+    logging::info(
+        "create",
+            format!(
+            "Vorgang starten: Gast={}, Videos={}, Fotos={}",
+            kunde.resolve_gast(),
+            video_paths.len(),
+            photo_paths.len(),
+        ),
+    );
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let resource_dir = app.path().resource_dir().ok();
@@ -485,7 +732,7 @@ pub async fn create_job(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         export_job::create_job(
             &ffmpeg,
             &kunde,
@@ -499,5 +746,27 @@ pub async fn create_job(
         .map_err(|e| e.to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "create",
+                format!(
+                    "Vorgang fertig: dir={}, video={}, fotos={}, wm_fotos={}, reused_preview={}, encoder={}",
+                    res.base_filename,
+                    res.video_output.is_some(),
+                    res.photos_copied,
+                    res.watermark_photos,
+                    res.reused_preview,
+                    res.encoder
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("create", "Vorgang", &e);
+            Err(e)
+        }
+    }
 }

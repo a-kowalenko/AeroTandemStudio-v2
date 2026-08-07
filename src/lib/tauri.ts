@@ -337,6 +337,10 @@ export async function saveConfig(config: AppConfig): Promise<AppConfig> {
   return invoke<AppConfig>("save_config", { config });
 }
 
+export async function resetConfig(): Promise<AppConfig> {
+  return invoke<AppConfig>("reset_config");
+}
+
 export async function validateKunde(
   kunde: Kunde,
   videoPaths: string[] = [],
@@ -459,6 +463,16 @@ export type AppInfo = {
   config_dir: string | null;
 };
 
+export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+
+export type LogEntry = {
+  id: number;
+  ts: string;
+  level: string;
+  source: string;
+  message: string;
+};
+
 export type HwAccelInfo = {
   available: boolean;
   hw_type: string;
@@ -495,6 +509,14 @@ export type CleanupCacheArgs = {
 
 export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>("get_app_info");
+}
+
+export async function getRecentLogs(limit?: number): Promise<LogEntry[]> {
+  return invoke<LogEntry[]>("get_recent_logs", { limit: limit ?? null });
+}
+
+export async function clearLogBuffer(): Promise<void> {
+  return invoke<void>("clear_log_buffer");
 }
 
 export async function runStartupChecks(

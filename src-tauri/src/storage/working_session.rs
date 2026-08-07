@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use once_cell::sync::Lazy;
 
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
+use crate::storage::logging::{self, file_name};
 
 static WORKING_SESSION: Lazy<Mutex<WorkingSession>> =
     Lazy::new(|| Mutex::new(WorkingSession::default()));
@@ -54,6 +55,10 @@ impl WorkingSession {
         ));
         fs::create_dir_all(&dir)?;
         self.temp_dir = Some(dir.clone());
+        logging::info(
+            "import",
+            format!("Arbeitsordner angelegt: {}", dir.display()),
+        );
         Ok(dir)
     }
 
@@ -83,10 +88,22 @@ impl WorkingSession {
         }
         let root = self.ensure_dir()?;
         if self.is_under_working_dir(source) {
+            logging::debug(
+                "import",
+                format!("Video bereits im Arbeitsordner: {}", file_name(source)),
+            );
             return Ok(source.to_path_buf());
         }
         let dest = unique_dest_in(&root, &safe_filename(source))?;
         copy_file(source, &dest)?;
+        logging::info(
+            "import",
+            format!(
+                "Video kopiert: {} → {}",
+                file_name(source),
+                file_name(&dest)
+            ),
+        );
         Ok(dest)
     }
 
@@ -100,12 +117,24 @@ impl WorkingSession {
         }
         let root = self.ensure_dir()?;
         if self.is_under_working_dir(source) {
+            logging::debug(
+                "import",
+                format!("Foto bereits im Arbeitsordner: {}", file_name(source)),
+            );
             return Ok(source.to_path_buf());
         }
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
         let dest = unique_dest_in(&photos, &safe_filename(source))?;
         copy_file(source, &dest)?;
+        logging::info(
+            "import",
+            format!(
+                "Foto kopiert: {} → {}",
+                file_name(source),
+                file_name(&dest)
+            ),
+        );
         Ok(dest)
     }
 
@@ -115,8 +144,22 @@ impl WorkingSession {
             return false;
         }
         if path.is_file() {
-            let _ = fs::remove_file(path);
-            return true;
+            match fs::remove_file(path) {
+                Ok(()) => {
+                    logging::info(
+                        "import",
+                        format!("Arbeitskopie entfernt: {}", file_name(path)),
+                    );
+                    return true;
+                }
+                Err(e) => {
+                    logging::warn(
+                        "import",
+                        format!("Löschen fehlgeschlagen ({}): {e}", file_name(path)),
+                    );
+                    return false;
+                }
+            }
         }
         false
     }
@@ -124,7 +167,16 @@ impl WorkingSession {
     /// Remove the entire working directory and clear session state.
     pub fn clear(&mut self) {
         if let Some(dir) = self.temp_dir.take() {
-            let _ = fs::remove_dir_all(&dir);
+            logging::info(
+                "import",
+                format!("Arbeitsordner wird gelöscht: {}", dir.display()),
+            );
+            if let Err(e) = fs::remove_dir_all(&dir) {
+                logging::warn(
+                    "import",
+                    format!("Arbeitsordner löschen fehlgeschlagen: {e}"),
+                );
+            }
         }
     }
 }

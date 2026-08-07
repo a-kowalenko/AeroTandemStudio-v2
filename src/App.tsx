@@ -27,6 +27,7 @@ import { SdModeSelector } from "./components/SdModeSelector";
 import { SdFileSelector } from "./components/SdFileSelector";
 import { ProcessedFilesDialog } from "./components/ProcessedFilesDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
@@ -42,6 +43,8 @@ import { useServerStore } from "./store/serverStore";
 import { usePreviewCacheStore } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { usePendingVideoCuts } from "./hooks/usePendingVideoCuts";
+import { useLogListener } from "./hooks/useLogListener";
+import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
   clearWorkingSession,
@@ -66,7 +69,7 @@ import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
 import { resolveProgressLabel, taskProgressLabel } from "./lib/progressLabels";
-import { cn } from "./lib/utils";
+import { cn, isCancellationError } from "./lib/utils";
 import "./App.css";
 
 type EncodeProgress = {
@@ -195,6 +198,10 @@ function App() {
 
   const pendingCuts = usePendingVideoCuts();
   useQrScanProgressListener();
+  useLogListener();
+  const consoleOpen = useLogStore((s) => s.open);
+  const toggleConsole = useLogStore((s) => s.toggleOpen);
+  const setConsoleOpen = useLogStore((s) => s.setOpen);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
   const watermarkPhotoIndices = usePhotoStore((s) => s.watermarkIndices);
 
@@ -254,6 +261,24 @@ function App() {
       void openSdImport(drive);
     },
   });
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const isToggle =
+        (e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "j";
+      if (isToggle) {
+        e.preventDefault();
+        toggleConsole();
+        return;
+      }
+      if (e.key === "Escape" && consoleOpen) {
+        e.preventDefault();
+        setConsoleOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleConsole, setConsoleOpen, consoleOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -479,7 +504,12 @@ function App() {
       setPercent(100);
       setStatus("end");
     } catch (e) {
-      showError(String(e));
+      if (isCancellationError(e)) {
+        setStatus("Abgebrochen");
+        showWarning("Vorgang abgebrochen.");
+      } else {
+        showError(String(e));
+      }
     } finally {
       setBusy(false);
       setLoading(false);
@@ -504,7 +534,12 @@ function App() {
       setPercent(100);
       setStatus("end");
     } catch (e) {
-      showError(String(e));
+      if (isCancellationError(e)) {
+        setStatus("Abgebrochen");
+        showWarning("Vorgang abgebrochen.");
+      } else {
+        showError(String(e));
+      }
     } finally {
       setBusy(false);
       setLoading(false);
@@ -531,7 +566,12 @@ function App() {
       setPercent(100);
       setStatus("end");
     } catch (e) {
-      showError(String(e));
+      if (isCancellationError(e)) {
+        setStatus("Abgebrochen");
+        showWarning("Vorgang abgebrochen.");
+      } else {
+        showError(String(e));
+      }
     } finally {
       setBusy(false);
       setLoading(false);
@@ -715,12 +755,11 @@ function App() {
         });
       }
     } catch (e) {
-      const msg = String(e);
-      if (/cancel/i.test(msg)) {
+      if (isCancellationError(e)) {
         setStatus("Abgebrochen");
         showWarning("Vorgang abgebrochen.");
       } else {
-        showError(msg);
+        showError(String(e));
       }
     } finally {
       setBusy(false);
@@ -733,7 +772,7 @@ function App() {
       setStatus("cancelled");
       showWarning("Vorgang abgebrochen.");
     } catch (e) {
-      showError(String(e));
+      if (!isCancellationError(e)) showError(String(e));
     }
   }
 
@@ -947,6 +986,7 @@ function App() {
             <span className="hidden sm:inline">Zurücksetzen</span>
           </Button>
           <ThemeToggle />
+          <LogConsoleToggleButton disabled={!ready} />
           <Button
             type="button"
             variant="secondary"
@@ -960,6 +1000,7 @@ function App() {
         </div>
       </header>
 
+      <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
           <div className="border-b border-border/80 p-3">
@@ -1373,6 +1414,8 @@ function App() {
             </Tabs>
           </section>
         </main>
+      </div>
+      <LogConsole />
       </div>
 
       <SettingsDialog

@@ -59,9 +59,9 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBRjE2MENDMjUyQjJENUUKUldSZUxTc2x6R0R4R25IUmZsTWZvR1lXVy9NV2JsV09sZS9RZ3RXcTAyeFhwdnhiNTVobHd0K1QK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2MDAyRTREQzUxNkJEN0MKUldSOHZSYkZUUzRBbGx6enAwVm1zbEwxVjJzMnlRQ25XTDZRczJ2aFllc2hOWnB0aHFVcGU1eEEK",
       "endpoints": [
-        "https://releases.example.invalid/aero-tandem-studio/{{target}}/{{arch}}/{{current_version}}"
+        "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/latest/download/latest.json"
       ]
     }
   }

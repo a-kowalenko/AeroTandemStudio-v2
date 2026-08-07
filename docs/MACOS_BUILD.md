@@ -126,5 +126,6 @@ npm run tauri build -- --config src-tauri/tauri.conf.ci.json
 
 - FFmpeg layout: `src-tauri/resources/ffmpeg/README.md`
 - CI: `.github/workflows/build.yml`
+- Release / updater: `docs/RELEASE.md`, `.github/workflows/release.yml`
 - CI config overlay: `src-tauri/tauri.conf.ci.json`
 - Plan: `docs/IMPLEMENTATION_PLAN.md` Phase 13

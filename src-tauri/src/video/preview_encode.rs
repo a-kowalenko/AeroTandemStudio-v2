@@ -659,7 +659,7 @@ fn reencode_one(
     task_id: Option<u32>,
 ) -> Result<(), PreviewError> {
     if is_cancelled() {
-        return Err(PreviewError::Message("abgebrochen".into()));
+        return Err(PreviewError::Ffmpeg(FfmpegError::Cancelled));
     }
     let args = build_preview_reencode_args(
         input,
@@ -792,7 +792,7 @@ pub fn generate_preview(
         let use_task_ids = config.parallel_processing_enabled && video_paths.len() > 1;
         for (i, path) in video_paths.iter().enumerate() {
             if is_cancelled() {
-                return Err(PreviewError::Message("abgebrochen".into()));
+                return Err(PreviewError::Ffmpeg(FfmpegError::Cancelled));
             }
             let out = work.join(format!("clip_{i}.mp4"));
             let out_s = out.to_string_lossy().to_string();
@@ -948,7 +948,7 @@ pub fn generate_preview(
     }
 
     if is_cancelled() {
-        return Err(PreviewError::Message("abgebrochen".into()));
+        return Err(PreviewError::Ffmpeg(FfmpegError::Cancelled));
     }
 
     on_progress(progress_from_times(100.0, 100.0, "end"));

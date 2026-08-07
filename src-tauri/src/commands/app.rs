@@ -9,7 +9,7 @@ use crate::commands::config::ConfigState;
 use crate::storage::cache::{
     cleanup_all, cleanup_orphans_only, collect_work_base_paths, CacheCleanupResult,
 };
-use crate::storage::logging::{self, log_error, log_info, log_warn};
+use crate::storage::logging::{self, log_error, log_info, log_warn, LogEntry};
 use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
 use crate::video::hw_accel::{detect_hardware, HwAccelInfo};
 
@@ -53,6 +53,18 @@ pub fn get_app_info() -> AppInfo {
         log_path: log,
         config_dir,
     }
+}
+
+/// Recent in-memory log lines for the debug console (oldest → newest).
+#[tauri::command]
+pub fn get_recent_logs(limit: Option<usize>) -> Vec<LogEntry> {
+    logging::recent_logs(limit)
+}
+
+/// Clear the in-memory console buffer only (`app.log` is kept).
+#[tauri::command]
+pub fn clear_log_buffer() {
+    logging::clear_ring_buffer();
 }
 
 /// FFmpeg find + HW detect + optional orphan cache sweep (used by SplashScreen).
