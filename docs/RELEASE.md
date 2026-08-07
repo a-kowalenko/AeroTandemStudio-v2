@@ -48,6 +48,7 @@ Nach dem ersten erfolgreichen Release:
 
 ## Hinweise
 
+- Das öffentliche Releases-Repo braucht **mindestens einen Commit** auf dem Default-Branch (z. B. README). Sonst schlägt das Anlegen von Tags/Releases fehl.
 - macOS-Builds sind ohne Apple Developer Account **nicht** notarisiert (Gatekeeper-Warnung möglich).
 - Windows ohne Authenticode: ggf. SmartScreen-Warnung.
 - Auto-Update in der App nutzt die Tauri-Updater-Signatur (Pubkey), unabhängig von OS-Code-Signing.

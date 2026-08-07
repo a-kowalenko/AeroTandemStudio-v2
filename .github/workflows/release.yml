@@ -1,4 +1,4 @@
-# Release — build signed updater artifacts and publish to the public releases repo.
+# Release — build updater artifacts and publish to the public releases repo.
 #
 # Trigger: push a version tag (v0.1.0, v1.2.3, …).
 # Target:  https://github.com/a-kowalenko/aero-tandem-studio-releases
@@ -8,8 +8,11 @@
 #   TAURI_SIGNING_PRIVATE_KEY          — updater private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password
 #
+# The public releases repo must have at least one commit on its default branch
+# (e.g. README). Tags for releases are created there pointing at that branch tip.
+#
 # Optional later: APPLE_* / Windows Authenticode (not required for unsigned shipping).
-# Rust unit tests are intentionally not run here (slow cold compile); use `npm run test:rust` locally.
+# Rust unit tests are intentionally not run here; use `npm run test:rust` locally.
 
 name: release
 
@@ -27,8 +30,86 @@ on:
 permissions:
   contents: read
 
+env:
+  RELEASES_OWNER: a-kowalenko
+  RELEASES_REPO: aero-tandem-studio-releases
+
 jobs:
+  # Create tag + GitHub Release on the public repo once (avoids Win/Mac race +
+  # invalid target_commitish when the tag only exists in the private repo).
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      release_id: ${{ steps.ensure.outputs.release_id }}
+    steps:
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Invalid tag '$TAG' (expected vX.Y.Z)" >&2
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using tag: $TAG"
+
+      - name: Ensure tag and release on public repo
+        id: ensure
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Missing secret RELEASES_GITHUB_TOKEN" >&2
+            exit 1
+          fi
+
+          REPO="${RELEASES_OWNER}/${RELEASES_REPO}"
+
+          DEFAULT_BRANCH=$(gh api "repos/${REPO}" --jq .default_branch)
+          echo "Releases repo default branch: ${DEFAULT_BRANCH}"
+
+          if ! SHA=$(gh api "repos/${REPO}/git/ref/heads/${DEFAULT_BRANCH}" --jq .object.sha); then
+            echo "ERROR: Branch '${DEFAULT_BRANCH}' missing or repo has no commits." >&2
+            echo "Open ${REPO}, add a README commit on the default branch, then re-run." >&2
+            exit 1
+          fi
+          echo "Default branch SHA: ${SHA}"
+
+          # Create lightweight tag on the public repo if it does not exist yet.
+          if gh api "repos/${REPO}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists on ${REPO}"
+          else
+            echo "Creating tag ${TAG} on ${REPO} → ${SHA}"
+            gh api "repos/${REPO}/git/refs" \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="${SHA}"
+          fi
+
+          # Create published release if missing.
+          if RELEASE_ID=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id 2>/dev/null); then
+            echo "Release for ${TAG} already exists (id=${RELEASE_ID})"
+          else
+            echo "Creating release ${TAG}"
+            gh release create "${TAG}" \
+              --repo "${REPO}" \
+              --title "Aero Tandem Studio ${TAG}" \
+              --notes "Automatischer Build aus dem privaten Source-Repository. Installer und Updater-Artefakte für diese Version."
+            RELEASE_ID=$(gh api "repos/${REPO}/releases/tags/${TAG}" --jq .id)
+          fi
+
+          echo "release_id=${RELEASE_ID}" >> "$GITHUB_OUTPUT"
+
   release:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -43,8 +124,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        # workflow_dispatch builds current default branch; tag name only labels the public release.
-        # tag-push builds the tagged commit.
 
       - name: Require updater signing secrets
         shell: bash
@@ -78,33 +157,20 @@ jobs:
       - name: Download FFmpeg sidecar
         run: npm run download-ffmpeg
 
-      - name: Resolve release tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build and publish to releases repo
+      - name: Build and upload to existing release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          owner: a-kowalenko
-          repo: aero-tandem-studio-releases
-          tagName: ${{ steps.tag.outputs.name }}
-          releaseName: Aero Tandem Studio ${{ steps.tag.outputs.name }}
-          releaseBody: |
-            Automatischer Build aus dem privaten Source-Repository.
-            Installer und Updater-Artefakte für diese Version.
+          owner: ${{ env.RELEASES_OWNER }}
+          repo: ${{ env.RELEASES_REPO }}
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          releaseName: Aero Tandem Studio ${{ needs.prepare.outputs.tag }}
           releaseDraft: false
           prerelease: false
-          releaseCommitish: main
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
