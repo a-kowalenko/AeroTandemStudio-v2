@@ -441,7 +441,7 @@ export function VideoPreview({
       )}
 
       {videoList.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-3">
+        <div className="flex gap-2 overflow-x-auto pb-5">
           {videoList.map((v, i) => {
             const isWm = videoWmNeeded && watermarkClipIndex === i;
             const clipActive = einzelclipMode && i === activeClip;

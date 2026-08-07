@@ -44,6 +44,11 @@
       "resources/ffmpeg/",
       "resources/assets/"
     ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    },
     "macOS": {
       "entitlements": "./Entitlements.plist",
       "minimumSystemVersion": "11.0",

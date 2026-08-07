@@ -26,7 +26,7 @@ use super::encoding_quality::{
 };
 use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
-    run_ffmpeg, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
+    run_ffmpeg, run_ffmpeg_checked, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, HwAccelInfo};
 use super::intro_mux_fallback::IntroMuxChoice;
@@ -545,6 +545,242 @@ pub fn build_intro_ffmpeg_args(
     args
 }
 
+/// Whether body audio can be stream-copied (AAC) after a video-only single-pass encode.
+pub fn body_audio_is_aac_copyable(v_params: &IntroVideoParams) -> bool {
+    matches!(
+        v_params.acodec.to_ascii_lowercase().as_str(),
+        "aac" | "mp4a"
+    )
+}
+
+/// How audio is handled in [`build_intro_body_single_pass_args`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SinglePassAudioMode {
+    /// Filter-concat silence + body audio, then encode AAC.
+    EncodeAac,
+    /// Video only (`-an`) — caller muxes silent AAC + body audio via stream-copy.
+    VideoOnly,
+    /// No body audio: silent AAC for the full duration.
+    EncodeSilence,
+}
+
+/// One continuous encode: intro overlay + full body → single MP4 bitstream.
+///
+/// Inputs: `0` = background still, `1` = body, `2` = silent AAC source (`anullsrc`).
+pub fn build_intro_body_single_pass_args(
+    hintergrund_path: &str,
+    body_path: &str,
+    output_path: &str,
+    intro_dauer: f64,
+    body_dauer: f64,
+    v_params: &IntroVideoParams,
+    drawtext_filter: &str,
+    encoder: &str,
+    quality_params: &[String],
+    audio_mode: SinglePassAudioMode,
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let intro_dauer = intro_dauer.max(0.1);
+    let body_dauer = body_dauer.max(0.05);
+    let total = intro_dauer + body_dauer;
+    let fps_int = parse_fps_int(&v_params.fps);
+    let w = v_params.width;
+    let h = v_params.height;
+    let fps = &v_params.fps;
+
+    let intro_v = format!(
+        "[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,\
+         {drawtext_filter},format={target_pix_fmt},fps={fps},\
+         trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv]"
+    );
+    let body_v = format!(
+        "[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt},\
+         setpts=PTS-STARTPTS,setsar=1[bodyv]"
+    );
+    let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
+    let aformat = format!(
+        "aformat=sample_rates={}:channel_layouts={}",
+        v_params.sample_rate, v_params.channel_layout
+    );
+
+    let filter_complex = match audio_mode {
+        SinglePassAudioMode::EncodeAac => {
+            format!(
+                "{intro_v};{body_v};{v_concat};\
+                 [2:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS,{aformat}[introa];\
+                 [1:a]asetpts=PTS-STARTPTS,{aformat}[bodya];\
+                 [introa][bodya]concat=n=2:v=0:a=1[a]"
+            )
+        }
+        SinglePassAudioMode::EncodeSilence => {
+            format!(
+                "{intro_v};{body_v};{v_concat};\
+                 [2:a]atrim=0:{total},asetpts=PTS-STARTPTS[a]"
+            )
+        }
+        SinglePassAudioMode::VideoOnly => {
+            format!("{intro_v};{body_v};{v_concat}")
+        }
+    };
+
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-loop".into(),
+        "1".into(),
+        "-i".into(),
+        hintergrund_path.to_string(),
+        "-i".into(),
+        body_path.to_string(),
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!(
+            "anullsrc=channel_layout={}:sample_rate={}",
+            v_params.channel_layout, v_params.sample_rate
+        ),
+        "-filter_complex".into(),
+        filter_complex,
+        "-map".into(),
+        "[v]".into(),
+    ];
+
+    match audio_mode {
+        SinglePassAudioMode::VideoOnly => {
+            args.push("-an".into());
+        }
+        SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
+            args.extend(["-map".into(), "[a]".into()]);
+        }
+    }
+
+    args.extend(["-c:v".into(), encoder.to_string()]);
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+    ]);
+
+    match audio_mode {
+        SinglePassAudioMode::VideoOnly => {}
+        SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
+            args.extend([
+                "-c:a".into(),
+                "aac".into(),
+                "-b:a".into(),
+                "192k".into(),
+            ]);
+        }
+    }
+
+    args.extend([
+        "-t".into(),
+        format!("{total}"),
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-bf".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-force_key_frames".into(),
+        format!("expr:eq(n,0)+gte(t,{intro_dauer})"),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
+    args
+}
+
+/// Build silent AAC args matching body sample rate / layout (for audio-copy mux).
+pub fn build_silent_aac_args(
+    output_path: &str,
+    dauer: f64,
+    sample_rate: &str,
+    channel_layout: &str,
+) -> Vec<String> {
+    let dauer = dauer.max(0.1);
+    vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!("anullsrc=channel_layout={channel_layout}:sample_rate={sample_rate}"),
+        "-t".into(),
+        format!("{dauer}"),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        "192k".into(),
+        "-ac".into(),
+        if channel_layout.contains("mono") {
+            "1".into()
+        } else {
+            "2".into()
+        },
+        output_path.to_string(),
+    ]
+}
+
+/// Extract body audio via stream-copy.
+pub fn build_extract_audio_copy_args(input: &str, output_path: &str) -> Vec<String> {
+    vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        input.to_string(),
+        "-vn".into(),
+        "-map".into(),
+        "0:a:0".into(),
+        "-c:a".into(),
+        "copy".into(),
+        output_path.to_string(),
+    ]
+}
+
+/// Mux video (no/ignored audio) + audio stream-copy → final MP4.
+pub fn build_mux_video_audio_copy_args(
+    video_path: &str,
+    audio_path: &str,
+    output_path: &str,
+) -> Vec<String> {
+    vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        video_path.to_string(),
+        "-i".into(),
+        audio_path.to_string(),
+        "-map".into(),
+        "0:v:0".into(),
+        "-map".into(),
+        "1:a:0".into(),
+        "-c:v".into(),
+        "copy".into(),
+        "-c:a".into(),
+        "copy".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        output_path.to_string(),
+    ]
+}
+
 /// Intro-tuned quality flags (faster preset / constqp) — without `-c:v`.
 pub fn intro_quality_params(encoder: &str, crf: u8, use_hw: bool) -> Vec<String> {
     let enc = encoder.to_ascii_lowercase();
@@ -1022,41 +1258,7 @@ pub fn create_video(
         };
 
         let handle_needs_reencode =
-            |reason: String,
-             intro_ready: bool|
-             -> Result<concat::ConcatOutcome, ConcatError> {
-                if !intro_ready {
-                    let intro_cb = {
-                        let outer = Arc::clone(&on_progress);
-                        Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                            let mut q = p;
-                            if q.status == "continue" || q.status == "end" || q.status.is_empty()
-                            {
-                                q.status = "Erstelle Intro…".into();
-                            }
-                            outer(q);
-                        })
-                    };
-                    create_intro_clip(
-                        ffmpeg,
-                        &hintergrund_s,
-                        &intro_s,
-                        options.dauer,
-                        &v_params,
-                        &drawtext,
-                        &hw,
-                        options.crf,
-                        hw_accel_enabled,
-                        intro_cb,
-                    )
-                    .map_err(|e| match e {
-                        ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
-                        ProcessorError::Concat(ce) => ce,
-                        other => ConcatError::Message(other.to_string()),
-                    })?;
-                }
-
-                let paths = vec![intro_s.clone(), body_path.clone()];
+            |reason: String| -> Result<concat::ConcatOutcome, ConcatError> {
                 let choice = if let Some(ask) = &on_intro_mux_fallback {
                     on_progress(progress_from_times(
                         55.0,
@@ -1108,14 +1310,19 @@ pub fn create_video(
                             100.0,
                             &format!("Kodiere Intro+Video neu: {reason}"),
                         ));
-                        concat::concat_videos_reencode(
+                        mux_intro_body_single_pass(
                             ffmpeg,
-                            &paths,
+                            &hintergrund_s,
+                            &body_path,
                             output,
-                            &reason,
-                            Arc::clone(&mux_cb),
-                            hw_accel_enabled,
+                            options.dauer,
+                            &v_params,
+                            &drawtext,
+                            &hw,
                             options.crf,
+                            hw_accel_enabled,
+                            &work,
+                            Arc::clone(&mux_cb),
                         )
                     }
                 }
@@ -1158,52 +1365,31 @@ pub fn create_video(
             ) {
                 Ok(outcome) => Ok(outcome),
                 Err(ConcatError::NeedsReencode { reason }) => {
-                    handle_needs_reencode(reason, true)
+                    handle_needs_reencode(reason)
                 }
                 Err(e) => Err(e),
             }
         } else {
-            // Default: continuous re-encode (customer-compatible single bitstream).
-            emit_stage(&on_progress, 1.0, stages, "Erstelle Intro…");
-            let intro_cb = {
-                let outer = Arc::clone(&on_progress);
-                Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                    let mut q = p;
-                    if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                        q.status = "Erstelle Intro…".into();
-                    }
-                    outer(q);
-                })
-            };
-            create_intro_clip(
+            // Default: one continuous encode (intro overlay + body) — customer-compatible.
+            emit_stage(
+                &on_progress,
+                1.0,
+                stages,
+                "Kodiere Intro+Video (kompatibel)…",
+            );
+            mux_intro_body_single_pass(
                 ffmpeg,
                 &hintergrund_s,
-                &intro_s,
+                &body_path,
+                output,
                 options.dauer,
                 &v_params,
                 &drawtext,
                 &hw,
                 options.crf,
                 hw_accel_enabled,
-                intro_cb,
-            )?;
-            emit_stage(&on_progress, 2.0, stages, "Intro fertig");
-
-            emit_stage(
-                &on_progress,
-                2.0,
-                stages,
-                "Kodiere Intro+Video (kompatibel)…",
-            );
-            let paths = vec![intro_s.clone(), body_path.clone()];
-            concat::concat_videos_reencode(
-                ffmpeg,
-                &paths,
-                output,
-                "Intro+Body durchgängig kodieren (kundenkompatibel)",
+                &work,
                 Arc::clone(&mux_cb),
-                hw_accel_enabled,
-                options.crf,
             )
         };
 
@@ -1380,6 +1566,184 @@ fn create_intro_clip(
     Err(last_err.unwrap_or_else(|| ProcessorError::Message("intro encode failed".into())))
 }
 
+fn quality_params_without_codec(output_params: Vec<String>) -> Vec<String> {
+    let mut q = output_params;
+    if q.first().map(|s| s.as_str()) == Some("-c:v") && q.len() >= 2 {
+        q.drain(0..2);
+    }
+    q
+}
+
+/// Single-pass Intro+Body encode (one bitstream). Optionally stream-copies body AAC.
+fn mux_intro_body_single_pass(
+    ffmpeg: &Path,
+    hintergrund: &str,
+    body_path: &str,
+    output: &str,
+    intro_dauer: f64,
+    v_params: &IntroVideoParams,
+    drawtext: &str,
+    hw: &HwAccelInfo,
+    crf: u8,
+    hw_accel_enabled: bool,
+    work: &Path,
+    on_progress: ProgressCallback,
+) -> Result<concat::ConcatOutcome, ConcatError> {
+    if is_cancelled() {
+        return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+    }
+
+    let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
+    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0).max(0.05);
+    let intro_dauer = intro_dauer.max(0.1);
+    let total = intro_dauer + body_dur;
+    let copy_audio = has_audio && body_audio_is_aac_copyable(v_params);
+
+    let audio_mode = if copy_audio {
+        SinglePassAudioMode::VideoOnly
+    } else if has_audio {
+        SinglePassAudioMode::EncodeAac
+    } else {
+        SinglePassAudioMode::EncodeSilence
+    };
+
+    let video_target = if copy_audio {
+        work.join("single_pass_video.mp4")
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        output.to_string()
+    };
+
+    on_progress(progress_from_times(
+        25.0,
+        100.0,
+        if copy_audio {
+            "Kodiere Intro+Video (Audio-Copy)…"
+        } else {
+            "Kodiere Intro+Video (kompatibel)…"
+        },
+    ));
+
+    let codec = match v_params.vcodec.as_str() {
+        "hevc" | "h265" => VideoCodec::Hevc,
+        _ => VideoCodec::H264,
+    };
+
+    let mut last_err: Option<ConcatError> = None;
+    let attempts: &[bool] = if hw_accel_enabled {
+        &[false, true]
+    } else {
+        &[true]
+    };
+    let mut encoder_used = String::new();
+    let mut encoded = false;
+    for &force_sw in attempts {
+        let (encoder, out_params) = build_encode_output_params(hw, codec, crf, force_sw);
+        let quality = quality_params_without_codec(out_params);
+        let args = build_intro_body_single_pass_args(
+            hintergrund,
+            body_path,
+            &video_target,
+            intro_dauer,
+            body_dur,
+            v_params,
+            drawtext,
+            &encoder,
+            &quality,
+            audio_mode,
+        );
+        match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
+            Ok(()) => {
+                encoder_used = encoder;
+                encoded = true;
+                break;
+            }
+            Err(e) => {
+                last_err = Some(ConcatError::Ffmpeg(e));
+                let _ = fs::remove_file(&video_target);
+            }
+        }
+    }
+    if !encoded {
+        return Err(last_err.unwrap_or_else(|| ConcatError::NeedsReencode {
+            reason: "Intro+Body Single-Pass-Kodierung fehlgeschlagen".into(),
+        }));
+    }
+
+    if copy_audio {
+        on_progress(progress_from_times(80.0, 100.0, "Audio anhängen (Copy)…"));
+        assemble_silent_plus_body_audio(
+            ffmpeg,
+            body_path,
+            &video_target,
+            output,
+            intro_dauer,
+            v_params,
+            work,
+        )?;
+        let _ = fs::remove_file(&video_target);
+    }
+
+    Ok(concat::ConcatOutcome {
+        method: if copy_audio {
+            "single-pass-reencode+acopy".into()
+        } else {
+            "single-pass-reencode".into()
+        },
+        codec: encoder_used,
+        reencode_reason: Some("Intro+Body durchgängig kodieren (kundenkompatibel)".into()),
+    })
+}
+
+fn assemble_silent_plus_body_audio(
+    ffmpeg: &Path,
+    body_path: &str,
+    video_path: &str,
+    output: &str,
+    intro_dauer: f64,
+    v_params: &IntroVideoParams,
+    work: &Path,
+) -> Result<(), ConcatError> {
+    let silent = work.join("intro_silence.m4a");
+    let silent_s = silent.to_string_lossy().to_string();
+    let body_a = work.join("body_audio.m4a");
+    let body_a_s = body_a.to_string_lossy().to_string();
+    let full_a = work.join("full_audio.m4a");
+    let full_a_s = full_a.to_string_lossy().to_string();
+
+    let silent_args = build_silent_aac_args(
+        &silent_s,
+        intro_dauer,
+        &v_params.sample_rate,
+        &v_params.channel_layout,
+    );
+    run_ffmpeg_checked(ffmpeg, &silent_args).map_err(ConcatError::Ffmpeg)?;
+
+    let extract_args = build_extract_audio_copy_args(body_path, &body_a_s);
+    run_ffmpeg_checked(ffmpeg, &extract_args).map_err(ConcatError::Ffmpeg)?;
+
+    let list_path = work.join("audio_concat.txt");
+    concat::write_concat_file_list(&[&silent_s, &body_a_s], &list_path)?;
+    let concat_args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-f".into(),
+        "concat".into(),
+        "-safe".into(),
+        "0".into(),
+        "-i".into(),
+        list_path.to_string_lossy().into_owned(),
+        "-c".into(),
+        "copy".into(),
+        full_a_s.clone(),
+    ];
+    run_ffmpeg_checked(ffmpeg, &concat_args).map_err(ConcatError::Ffmpeg)?;
+
+    let mux_args = build_mux_video_audio_copy_args(video_path, &full_a_s, output);
+    run_ffmpeg_checked(ffmpeg, &mux_args).map_err(ConcatError::Ffmpeg)?;
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -1433,6 +1797,89 @@ mod tests {
         assert!(args.contains(&"libx264".into()));
         assert!(args.contains(&"-force_key_frames".into()));
         assert_eq!(args.last().unwrap(), r"C:\out\intro.mp4");
+    }
+
+    #[test]
+    fn single_pass_args_structure_encode_aac() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let args = build_intro_body_single_pass_args(
+            r"C:\assets\bg.png",
+            r"C:\body.mp4",
+            r"C:\out\final.mp4",
+            5.0,
+            10.0,
+            &v,
+            "drawtext=text='Gast'",
+            "libx264",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+        );
+        assert!(args.contains(&"-filter_complex".into()));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("concat=n=2:v=1:a=0"));
+        assert!(fc.contains("trim=duration=5"));
+        assert!(!fc.contains("trim=duration=10"));
+        assert!(fc.contains("[1:a]"));
+        assert!(fc.matches("setsar=1").count() >= 2);
+        assert!(args.contains(&"aac".into()));
+        assert!(args.iter().any(|a| a == "15" || a.starts_with("15.")));
+        assert_eq!(args.last().unwrap(), r"C:\out\final.mp4");
+    }
+
+    #[test]
+    fn single_pass_args_video_only_for_audio_copy() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let args = build_intro_body_single_pass_args(
+            "bg.png",
+            "body.mp4",
+            "v.mp4",
+            3.0,
+            7.0,
+            &v,
+            "drawtext=text='x'",
+            "libx264",
+            &quality,
+            SinglePassAudioMode::VideoOnly,
+        );
+        assert!(args.contains(&"-an".into()));
+        assert!(!args.iter().any(|a| a == "[a]"));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .unwrap();
+        assert!(!fc.contains("[1:a]"));
+    }
+
+    #[test]
+    fn body_audio_aac_copyable_detection() {
+        let mut v = IntroVideoParams::for_1080p30("h264");
+        assert!(body_audio_is_aac_copyable(&v));
+        v.acodec = "mp4a".into();
+        assert!(body_audio_is_aac_copyable(&v));
+        v.acodec = "pcm_s16le".into();
+        assert!(!body_audio_is_aac_copyable(&v));
+    }
+
+    #[test]
+    fn silent_aac_and_mux_arg_builders() {
+        let silent = build_silent_aac_args("silent.m4a", 5.0, "48000", "stereo");
+        assert!(silent.contains(&"anullsrc=channel_layout=stereo:sample_rate=48000".into()));
+        assert!(silent.contains(&"aac".into()));
+
+        let extract = build_extract_audio_copy_args("body.mp4", "a.m4a");
+        assert!(extract.contains(&"-vn".into()));
+        assert!(extract.contains(&"copy".into()));
+
+        let mux = build_mux_video_audio_copy_args("v.mp4", "a.m4a", "out.mp4");
+        assert!(mux.contains(&"+faststart".into()));
+        assert_eq!(mux.iter().filter(|a| *a == "copy").count(), 2);
     }
 
     #[test]

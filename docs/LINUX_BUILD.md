@@ -282,6 +282,7 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
+| Video import freezes UI | WebKitGTK/`asset://` loads whole multi‑GB file | Custom `media://` range protocol (rebuilt); ensure GStreamer plugins present |
 | `webkit` / linker errors at build | Missing GTK/WebKit deps | Install Prerequisites apt packages |
 | AppImage won’t start | Missing `chmod +x` / FUSE | `chmod +x`; install `libfuse2` on older hosts if needed |
 | Encode fails / no x264 | System ffmpeg copied into resources | Use static sidecar download |

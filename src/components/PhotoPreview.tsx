@@ -228,7 +228,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
       </div>
 
       {photoList.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-3">
+        <div className="flex gap-2 overflow-x-auto pb-5">
           {photoList.map((p, i) => {
             const isCurrent = i === currentIndex;
             const isSelected = explicitlySelected && selected.has(i);

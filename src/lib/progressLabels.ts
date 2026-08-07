@@ -25,6 +25,8 @@ const STATUS_LABELS: Record<string, string> = {
   mux: "Füge Intro und Video zusammen…",
   "mux-done": "Zusammenfügen fertig",
   "Kodiere Intro+Video (kompatibel)…": "Kodiere Intro+Video…",
+  "Kodiere Intro+Video (Audio-Copy)…": "Kodiere Intro+Video (Audio-Copy)…",
+  "Audio anhängen (Copy)…": "Audio anhängen…",
   "Intro+Body durchgängig kodieren (kundenkompatibel)":
     "Kodiere Intro+Video (kompatibel)…",
   export: "Exportiere Video…",

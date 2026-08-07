@@ -26,6 +26,9 @@ tauri-plugin-dialog = "2.7.2"
 thiserror = "2.0.19"
 regex = "1.13.1"
 once_cell = "1.21.4"
+http = "1"
+http-range = "0.1"
+percent-encoding = "2"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 directories = "6.0.0"
 rxing = { version = "0.9", default-features = false, features = ["image", "image_formats", "decoders", "qrcode", "encoding_rs"] }

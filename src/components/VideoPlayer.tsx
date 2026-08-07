@@ -6,9 +6,9 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { Pause, Play, Volume2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { videoFileSrc } from "../lib/mediaUrl";
 import { cn } from "../lib/utils";
 
 export type VideoPlayerHandle = {
@@ -20,7 +20,7 @@ export type VideoPlayerHandle = {
 };
 
 type VideoPlayerProps = {
-  /** Absolute filesystem path (converted via convertFileSrc). */
+  /** Absolute filesystem path (converted via media URI scheme). */
   srcPath: string | null;
   className?: string;
   /** Called when currentTime / duration update. */
@@ -64,7 +64,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
 
-    const src = srcPath ? convertFileSrc(srcPath) : null;
+    const src = srcPath ? videoFileSrc(srcPath) : null;
 
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {

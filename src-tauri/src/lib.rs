@@ -41,8 +41,31 @@ use updater::{
 };
 use tauri::Emitter;
 
+/// Allow WebKitGTK/GStreamer to play custom URI schemes (Linux media hang fix).
+#[cfg(target_os = "linux")]
+fn ensure_webkit_gst_protocols() {
+    const NEEDED: &[&str] = &["asset", "media", "http", "https", "file"];
+    let existing = std::env::var("WEBKIT_GST_ALLOWED_URI_PROTOCOLS").unwrap_or_default();
+    let mut protocols: Vec<String> = existing
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    for p in NEEDED {
+        if !protocols.iter().any(|x| x.eq_ignore_ascii_case(p)) {
+            protocols.push((*p).to_string());
+        }
+    }
+    // SAFETY: called once at process start before any threads/WebView exist.
+    std::env::set_var("WEBKIT_GST_ALLOWED_URI_PROTOCOLS", protocols.join(","));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    ensure_webkit_gst_protocols();
+
     let config_state = ConfigState::new().unwrap_or_else(|e| {
         panic!("failed to initialize config store: {e}");
     });
@@ -51,6 +74,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(config_state)
+        .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
+            std::thread::spawn(move || {
+                let response = media::stream_protocol::build_response(request);
+                responder.respond(response);
+            });
+        })
         .setup(|app| {
             match init_logging() {
                 Ok(path) => {

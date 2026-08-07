@@ -76,6 +76,9 @@ pub fn select_encoder(hw: &HwAccelInfo, codec: VideoCodec) -> String {
 }
 
 /// Software quality flags (CRF / preset). Does **not** include `-c:v`.
+///
+/// Preset `veryfast` keeps CRF-driven quality while encoding much faster than `medium`
+/// (slightly larger files — typical for camera footage).
 pub fn build_software_quality_params(encoder: &str, crf: u8, codec: VideoCodec) -> Vec<String> {
     let crf = clamp_crf(i32::from(crf), 18);
     let encoder = encoder.to_ascii_lowercase();
@@ -91,7 +94,7 @@ pub fn build_software_quality_params(encoder: &str, crf: u8, codec: VideoCodec) 
     if encoder == "libx264" {
         params.extend([
             "-preset".into(),
-            "medium".into(),
+            "veryfast".into(),
             "-crf".into(),
             crf.to_string(),
         ]);
@@ -105,7 +108,7 @@ pub fn build_software_quality_params(encoder: &str, crf: u8, codec: VideoCodec) 
         let hevc_crf = (u16::from(crf) + 2).min(51);
         params.extend([
             "-preset".into(),
-            "medium".into(),
+            "veryfast".into(),
             "-crf".into(),
             hevc_crf.to_string(),
         ]);
@@ -113,7 +116,7 @@ pub fn build_software_quality_params(encoder: &str, crf: u8, codec: VideoCodec) 
     } else {
         params.extend([
             "-preset".into(),
-            "medium".into(),
+            "veryfast".into(),
             "-crf".into(),
             crf.to_string(),
         ]);
@@ -281,6 +284,7 @@ mod tests {
         assert!(p.contains(&"-crf".into()));
         assert!(p.contains(&"18".into()));
         assert!(p.contains(&"-preset".into()));
+        assert!(p.contains(&"veryfast".into()));
     }
 
     #[test]

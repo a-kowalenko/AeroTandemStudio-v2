@@ -10,26 +10,30 @@ use crate::util::natural_sort::sort_paths_by_basename;
 /// Expand file/folder paths into a flat list of media files (videos + photos).
 /// Directories are walked recursively.
 #[tauri::command]
-pub fn expand_media_paths(paths: Vec<String>) -> Result<Vec<String>, String> {
-    let paths: Vec<String> = paths
-        .into_iter()
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect();
-    logging::info(
-        "import",
-        format!("Expandiere {} Pfad(e)…", paths.len()),
-    );
-    let expanded = expand_import_paths(&paths);
-    logging::info(
-        "import",
-        format!(
-            "Expansion fertig: {} → {} Mediendatei(en)",
-            paths.len(),
-            expanded.len()
-        ),
-    );
-    Ok(expanded)
+pub async fn expand_media_paths(paths: Vec<String>) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let paths: Vec<String> = paths
+            .into_iter()
+            .map(|p| p.trim().to_string())
+            .filter(|p| !p.is_empty())
+            .collect();
+        logging::info(
+            "import",
+            format!("Expandiere {} Pfad(e)…", paths.len()),
+        );
+        let expanded = expand_import_paths(&paths);
+        logging::info(
+            "import",
+            format!(
+                "Expansion fertig: {} → {} Mediendatei(en)",
+                paths.len(),
+                expanded.len()
+            ),
+        );
+        Ok(expanded)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(Debug, Serialize)]
@@ -40,24 +44,28 @@ pub struct FileSizeEntry {
 
 /// Return on-disk sizes for existing files (missing paths are omitted).
 #[tauri::command]
-pub fn get_file_sizes(paths: Vec<String>) -> Vec<FileSizeEntry> {
-    paths
-        .into_iter()
-        .filter_map(|path| {
-            let trimmed = path.trim();
-            if trimmed.is_empty() {
-                return None;
-            }
-            let meta = std::fs::metadata(trimmed).ok()?;
-            if !meta.is_file() {
-                return None;
-            }
-            Some(FileSizeEntry {
-                path: path,
-                size_bytes: meta.len(),
+pub async fn get_file_sizes(paths: Vec<String>) -> Vec<FileSizeEntry> {
+    tauri::async_runtime::spawn_blocking(move || {
+        paths
+            .into_iter()
+            .filter_map(|path| {
+                let trimmed = path.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let meta = std::fs::metadata(trimmed).ok()?;
+                if !meta.is_file() {
+                    return None;
+                }
+                Some(FileSizeEntry {
+                    path: path,
+                    size_bytes: meta.len(),
+                })
             })
-        })
-        .collect()
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 fn is_photo_path(path: &str) -> bool {
@@ -70,37 +78,41 @@ fn is_photo_path(path: &str) -> bool {
 
 /// Copy photos into the session working folder (`…/photos/`) and return dest paths.
 #[tauri::command]
-pub fn import_photos(paths: Vec<String>) -> Result<Vec<String>, String> {
+pub async fn import_photos(paths: Vec<String>) -> Result<Vec<String>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
-    let photo_paths: Vec<String> = paths
-        .into_iter()
-        .filter(|p| is_photo_path(p))
-        .collect();
-    let sorted = sort_paths_by_basename(&photo_paths);
-    if sorted.is_empty() {
-        logging::warn("import", "Foto-Import: keine gültigen Bildpfade");
-        return Ok(Vec::new());
-    }
-    logging::info(
-        "import",
-        format!("Importiere {} Foto(s) in Arbeitsordner…", sorted.len()),
-    );
-    match working_session::import_photos_to_session(&sorted) {
-        Ok(dest) => {
-            logging::info(
-                "import",
-                format!("Foto-Import fertig: {} Datei(en)", dest.len()),
-            );
-            Ok(dest)
+    tauri::async_runtime::spawn_blocking(move || {
+        let photo_paths: Vec<String> = paths
+            .into_iter()
+            .filter(|p| is_photo_path(p))
+            .collect();
+        let sorted = sort_paths_by_basename(&photo_paths);
+        if sorted.is_empty() {
+            logging::warn("import", "Foto-Import: keine gültigen Bildpfade");
+            return Ok(Vec::new());
         }
-        Err(e) => {
-            let msg = e.to_string();
-            logging::error("import", format!("Foto-Import fehlgeschlagen: {msg}"));
-            Err(msg)
+        logging::info(
+            "import",
+            format!("Importiere {} Foto(s) in Arbeitsordner…", sorted.len()),
+        );
+        match working_session::import_photos_to_session(&sorted) {
+            Ok(dest) => {
+                logging::info(
+                    "import",
+                    format!("Foto-Import fertig: {} Datei(en)", dest.len()),
+                );
+                Ok(dest)
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                logging::error("import", format!("Foto-Import fehlgeschlagen: {msg}"));
+                Err(msg)
+            }
         }
-    }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Active session working directory, if any.

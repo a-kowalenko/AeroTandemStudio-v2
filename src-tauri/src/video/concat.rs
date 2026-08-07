@@ -28,6 +28,12 @@ static VIDEO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
 static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:").unwrap()
 });
+static AUDIO_CODEC_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:\s+(\w+).*?(\d+)\s*Hz",
+    )
+    .unwrap()
+});
 static SHOWINFO_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?).*?\btype:\s*([IPB])\b").unwrap()
 });
@@ -474,10 +480,14 @@ pub fn build_concat_demuxer_copy_args(
 }
 
 /// Re-encode concat via demuxer (fallback when stream-copy fails / codecs differ).
+///
+/// When `copy_audio` is true, audio is stream-copied (caller must ensure AAC-compatible
+/// inputs); otherwise audio is re-encoded to AAC 192k.
 pub fn build_concat_demuxer_reencode_args(
     concat_list_path: &str,
     output: &str,
     params: &EncodingParams,
+    copy_audio: bool,
 ) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     args.push("-y".into());
@@ -492,11 +502,17 @@ pub fn build_concat_demuxer_reencode_args(
         concat_list_path.to_string(),
     ]);
     args.extend(params.output_params.iter().cloned());
+    if copy_audio {
+        args.extend(["-c:a".into(), "copy".into()]);
+    } else {
+        args.extend([
+            "-c:a".into(),
+            "aac".into(),
+            "-b:a".into(),
+            "192k".into(),
+        ]);
+    }
     args.extend([
-        "-c:a".into(),
-        "aac".into(),
-        "-b:a".into(),
-        "192k".into(),
         "-movflags".into(),
         "+faststart".into(),
         "-progress".into(),
@@ -607,6 +623,49 @@ pub fn probe_vcodec(ffmpeg: &Path, input: &str) -> Result<VideoCodec, ConcatErro
 pub fn probe_has_audio(ffmpeg: &Path, input: &str) -> Result<bool, ConcatError> {
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
     Ok(AUDIO_STREAM_RE.is_match(&stderr))
+}
+
+/// Returns `(codec, sample_rate_hz)` when an audio stream is present.
+pub fn probe_audio_codec(ffmpeg: &Path, input: &str) -> Result<Option<(String, String)>, ConcatError> {
+    let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
+    Ok(parse_audio_codec_from_probe(&stderr))
+}
+
+pub fn parse_audio_codec_from_probe(stderr: &str) -> Option<(String, String)> {
+    let caps = AUDIO_CODEC_RE.captures(stderr)?;
+    Some((
+        caps.get(1)?.as_str().to_ascii_lowercase(),
+        caps.get(2)?.as_str().to_string(),
+    ))
+}
+
+/// True when every input has AAC audio (or all lack audio — then copy is vacuous).
+pub fn inputs_allow_aac_audio_copy(ffmpeg: &Path, paths: &[String]) -> bool {
+    let mut saw_audio = false;
+    let mut sample_rate: Option<String> = None;
+    for p in paths {
+        match probe_audio_codec(ffmpeg, p) {
+            Ok(Some((codec, rate))) => {
+                if codec != "aac" && codec != "mp4a" {
+                    return false;
+                }
+                if let Some(ref prev) = sample_rate {
+                    if prev != &rate {
+                        return false;
+                    }
+                } else {
+                    sample_rate = Some(rate);
+                }
+                saw_audio = true;
+            }
+            Ok(None) => {
+                // Missing audio on one segment → cannot copy a continuous track.
+                return false;
+            }
+            Err(_) => return false,
+        }
+    }
+    saw_audio
 }
 
 pub fn parse_vcodec_from_probe(stderr: &str) -> Option<VideoCodec> {
@@ -1129,7 +1188,13 @@ fn concat_reencode(
         output_params,
         encoder: encoder.clone(),
     };
-    let args = build_concat_demuxer_reencode_args(&path_str(&list_path), output, &params);
+    let copy_audio = inputs_allow_aac_audio_copy(ffmpeg, paths);
+    let args = build_concat_demuxer_reencode_args(
+        &path_str(&list_path),
+        output,
+        &params,
+        copy_audio,
+    );
 
     run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone())?;
     let _ = fs::remove_dir_all(&work);
@@ -1339,9 +1404,20 @@ pts_time:4.000000 type:I
         assert!(copy.contains(&"copy".into()));
 
         let params = EncodingParams::software();
-        let re = build_concat_demuxer_reencode_args("list.txt", "out.mp4", &params);
+        let re = build_concat_demuxer_reencode_args("list.txt", "out.mp4", &params, false);
         assert!(re.contains(&"libx264".into()));
         assert!(re.contains(&"aac".into()));
+        let re_copy = build_concat_demuxer_reencode_args("list.txt", "out.mp4", &params, true);
+        assert!(re_copy.contains(&"copy".into()));
+        assert!(!re_copy.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
+    }
+
+    #[test]
+    fn parse_audio_codec_from_probe_aac() {
+        let stderr = "  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo";
+        let (c, r) = parse_audio_codec_from_probe(stderr).unwrap();
+        assert_eq!(c, "aac");
+        assert_eq!(r, "48000");
     }
 
     #[test]
