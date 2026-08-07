@@ -35,7 +35,7 @@ Das Skript setzt die Version, committed `release: x.y.z`, taggt `vx.y.z` und pus
 npm run release
 ```
 
-Danach: Actions → Workflow **release** (Win + Mac, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
+Danach: Actions → Workflow **release** (Win + **zwei** Mac-Jobs, oft 15–40+ Min. pro Job); öffentliches Repo → [Releases](https://github.com/a-kowalenko/aero-tandem-studio-releases/releases).
 
 Normale Commits auf `master` starten **keinen** App-Build. Volle Bundles nur bei Version-Tags (`release.yml`). PRs: leichter Check in `test.yml`.
 
@@ -45,6 +45,15 @@ Nach dem ersten erfolgreichen Release:
 
 - Releases-Übersicht: `https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/latest`
 - Konkrete Asset-URLs: `…/releases/latest/download/<asset-name>`
+
+macOS erscheint als **zwei** DMGs (Tauri-Namensschema):
+
+| Mac | Asset (Beispiel) |
+|-----|------------------|
+| Apple Silicon (M1+) | `…_aarch64.dmg` |
+| Intel | `…_x64.dmg` |
+
+„Dieses Programm wird auf diesem Mac nicht unterstützt“ = meist falsche Architektur (Intel braucht `_x64.dmg`).
 
 ## Hinweise
 

@@ -116,8 +116,15 @@ jobs:
         include:
           - platform: windows-latest
             args: ""
+            ffmpeg_arch: ""
+          # Apple Silicon (M1+) — native on macos-latest (arm64)
           - platform: macos-latest
-            args: ""
+            args: "--target aarch64-apple-darwin"
+            ffmpeg_arch: arm64
+          # Intel Mac — cross-compile from arm64 runner + evermeet x86_64 FFmpeg
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+            ffmpeg_arch: x86_64
 
     runs-on: ${{ matrix.platform }}
 
@@ -145,16 +152,22 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
+        with:
+          # Both macOS targets so Intel can be cross-built on arm64 runners.
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./src-tauri -> target"
+          key: ${{ matrix.args || 'host' }}
 
       - name: Install frontend dependencies
         run: npm ci
 
       - name: Download FFmpeg sidecar
+        env:
+          FFMPEG_MAC_ARCH: ${{ matrix.ffmpeg_arch }}
         run: npm run download-ffmpeg
 
       - name: Build and upload to existing release

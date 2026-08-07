@@ -28,6 +28,29 @@ Output:
 Ad-hoc signing (`signingIdentity: "-"`) is enough for local testing. Gatekeeper
 will still warn when opening the app on another machine until notarized.
 
+### Explicit architecture (CI / Intel)
+
+Release CI builds **both** targets on `macos-latest` (arm64 host):
+
+| Target | FFmpeg | Command |
+|--------|--------|---------|
+| Apple Silicon | Homebrew → `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
+| Intel | evermeet.cx → `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
+
+```bash
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+# Native arch
+npm run download-ffmpeg
+npm run tauri build -- --target aarch64-apple-darwin --bundles app,dmg
+
+# Intel from Apple Silicon host (cross-compile)
+FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg
+npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
+```
+
+Artifacts are named with `aarch64` / `x64` so the in-app updater can pick the matching DMG.
+
 ## Entitlements & Info.plist
 
 | File | Purpose |
@@ -112,10 +135,10 @@ npm run tauri build -- --config src-tauri/tauri.conf.ci.json
 
 ## Manual checklist (release Mac)
 
-- [ ] `npm run download-ffmpeg` — binary is `arm64` or `x86_64` matching the build
+- [ ] `npm run download-ffmpeg` — or `FFMPEG_MAC_ARCH=x86_64` for Intel cross-build
 - [ ] `chmod +x` on mac FFmpeg; clear quarantine (`xattr`)
 - [ ] `cargo test` / `npm run test:rust`
-- [ ] `npm run tauri build -- --bundles app,dmg`
+- [ ] `npm run tauri build -- --bundles app,dmg` (optional `--target …-apple-darwin`)
 - [ ] Open `.app`, confirm VideoToolbox in Settings / HW info (`h264_videotoolbox`)
 - [ ] Insert SD card → `/Volumes/...` detected, DCIM listed
 - [ ] SMB test to `smb://host/share` (empty login → Guest)

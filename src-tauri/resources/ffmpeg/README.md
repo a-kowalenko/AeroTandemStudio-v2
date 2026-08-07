@@ -43,7 +43,8 @@ xattr -dr com.apple.quarantine src-tauri/resources/ffmpeg/mac 2>/dev/null || tru
 
 | Arch | Source |
 |------|--------|
-| arm64 / x86_64 | `npm run download-ffmpeg` (Homebrew on macOS CI/dev) |
+| Native host arch | `npm run download-ffmpeg` (Homebrew) |
+| Intel (`x86_64`), also when cross-building on Apple Silicon | `FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg` → [evermeet.cx](https://evermeet.cx/ffmpeg/) |
 | Manual | https://evermeet.cx/ffmpeg/ (Intel) · https://www.osxexperts.net/ (arm64) |
 
 The binary **must** include `h264_videotoolbox` (and ideally `libx264` as fallback):
@@ -54,8 +55,9 @@ The binary **must** include `h264_videotoolbox` (and ideally `libx264` as fallba
 
 ## CI
 
-GitHub Actions (`.github/workflows/build.yml`) runs `npm run download-ffmpeg` before
-`npm run tauri build` on `windows-latest` and `macos-latest`.
+`.github/workflows/release.yml` runs `npm run download-ffmpeg` (with `FFMPEG_MAC_ARCH`
+set per macOS matrix leg) before `tauri-action` on Windows and both Mac targets
+(`aarch64-apple-darwin`, `x86_64-apple-darwin`).
 
 ## License note
 
