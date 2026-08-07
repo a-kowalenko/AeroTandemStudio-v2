@@ -18,12 +18,17 @@ import {
   type CreateSuccessInfo,
 } from "./components/CreateSuccessDialog";
 import { WarningDialog } from "./components/WarningDialog";
+import {
+  IntroMuxFallbackDialog,
+  type IntroMuxFallbackChoice,
+} from "./components/IntroMuxFallbackDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { SplashScreen } from "./components/SplashScreen";
 import { SdStatusIndicator } from "./components/SdStatusIndicator";
 import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
+import { SdDriveSelector } from "./components/SdDriveSelector";
 import { SdFileSelector } from "./components/SdFileSelector";
 import { ProcessedFilesDialog } from "./components/ProcessedFilesDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
@@ -51,11 +56,13 @@ import {
   createJob,
   getAppInfo,
   installUpdate,
+  resolveIntroMuxFallback,
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
   type CreateJobResult,
   type HwAccelInfo,
+  type IntroMuxFallbackPayload,
   type UpdateCheckResult,
   type UploadProgressEvent,
 } from "./lib/tauri";
@@ -160,6 +167,7 @@ function App() {
   const setDrives = useSdStore((s) => s.setDrives);
   const setMonitoring = useSdStore((s) => s.setMonitoring);
   const setPhase = useSdStore((s) => s.setPhase);
+  const activeDrive = useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const pendingInsert = useSdStore((s) => s.pendingInsert);
 
@@ -195,6 +203,10 @@ function App() {
   const [createReady, setCreateReady] = useState(false);
   const [createHints, setCreateHints] = useState<string[]>([]);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
+  const [introMuxFallback, setIntroMuxFallback] = useState<{
+    reason: string;
+    timeoutSecs: number;
+  } | null>(null);
 
   const pendingCuts = usePendingVideoCuts();
   useQrScanProgressListener();
@@ -237,8 +249,12 @@ function App() {
     }
   }
 
-  async function openSdImport(drive: string) {
-    setPhase("importing");
+  async function openSdSelector(
+    drive: string,
+    mode: "backup" | "import" = "import",
+  ) {
+    setActiveDrive(drive);
+    setPhase(mode === "backup" ? "detected" : "importing");
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
       const listed = await listSdFiles(drive);
@@ -246,7 +262,7 @@ function App() {
         drive,
         files: listed.files,
         totalMb: listed.total_size_mb,
-        mode: "import",
+        mode,
       });
     } catch (e) {
       showError(String(e));
@@ -256,11 +272,31 @@ function App() {
     }
   }
 
+  function openSdImport(drive: string) {
+    return openSdSelector(drive, "import");
+  }
+
+  function openSdDriveFromHeader(drive: string) {
+    const mode =
+      config?.sd_auto_backup && config.sd_backup_mode !== "disabled"
+        ? "backup"
+        : "import";
+    return openSdSelector(drive, mode);
+  }
+
   const { runBackup, decline } = useSdCardMonitor({
     onRequestImport: (drive) => {
       void openSdImport(drive);
     },
   });
+
+  async function handleSdPrimaryAction(drive: string) {
+    if (config?.sd_auto_backup && config.sd_backup_mode !== "disabled") {
+      await runBackup(drive, null);
+      return;
+    }
+    await openSdSelector(drive, "import");
+  }
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -401,6 +437,37 @@ function App() {
       unlisten?.();
     };
   }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<IntroMuxFallbackPayload>("intro-mux-fallback-required", (event) => {
+      const p = event.payload;
+      setIntroMuxFallback({
+        reason: p.reason ?? "",
+        timeoutSecs: p.timeout_secs > 0 ? p.timeout_secs : 15,
+      });
+      setStatus("Stream-Copy fehlgeschlagen — bitte Entscheidung…");
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  async function onIntroMuxChoice(choice: IntroMuxFallbackChoice) {
+    setIntroMuxFallback(null);
+    setStatus(
+      choice === "without_intro"
+        ? "Exportiere Video ohne Intro…"
+        : "Kodiere Intro+Video neu…",
+    );
+    try {
+      await resolveIntroMuxFallback(choice);
+    } catch (e) {
+      showError(String(e), "Intro-Entscheidung");
+    }
+  }
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -804,8 +871,12 @@ function App() {
         showWarning("Keine Action-Cam SD-Karte (DCIM) gefunden.");
         return;
       }
-      setActiveDrive(drives[0].drive);
-      await openSdImport(drives[0].drive);
+      const preferred =
+        activeDrive && drives.some((d) => d.drive === activeDrive)
+          ? activeDrive
+          : drives[0].drive;
+      setActiveDrive(preferred);
+      await openSdDriveFromHeader(preferred);
     } catch (e) {
       showError(String(e));
     }
@@ -960,6 +1031,11 @@ function App() {
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <SdDriveSelector
+            disabled={busy || !ready}
+            onOpenDrive={(drive) => void openSdDriveFromHeader(drive)}
+            onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
+          />
           <SdModeSelector visible={Boolean(config?.sd_auto_backup)} />
           <SdStatusIndicator />
           <ServerStatusIndicator />
@@ -1420,8 +1496,12 @@ function App() {
 
       <SettingsDialog
         open={settingsOpen}
-        onOpenChange={setSettingsOpen}
+        onOpenChange={(open) => {
+          if (!open && updateDialogOpen) return;
+          setSettingsOpen(open);
+        }}
         onRequestUpdateCheck={() => void runUpdateCheck(true)}
+        suppressDismiss={updateDialogOpen}
       />
       <UpdateDialog
         open={updateDialogOpen}
@@ -1502,6 +1582,14 @@ function App() {
         title={dialogTitle}
         message={dialogMessage}
         onClose={closeDialog}
+      />
+      <IntroMuxFallbackDialog
+        open={introMuxFallback !== null}
+        reason={introMuxFallback?.reason ?? ""}
+        timeoutSecs={introMuxFallback?.timeoutSecs ?? 15}
+        onChoose={(choice) => {
+          void onIntroMuxChoice(choice);
+        }}
       />
       <LoadingOverlay open={loading} message={loadingMessage} />
     </div>

@@ -62,7 +62,7 @@ export function SplashScreen({ open, status, version, error, className }: Props)
         <h1 className="font-display text-2xl font-bold tracking-tight text-primary">
           Aero Tandem Studio
         </h1>
-        <p className="mt-1 text-xs tracking-wide text-muted uppercase">Video-Produktion</p>
+        <p className="mt-1 text-xs tracking-wide text-muted uppercase">Just Jump</p>
         <div className="mt-7">
           <Spinner size={44} />
         </div>
@@ -75,6 +75,7 @@ export function SplashScreen({ open, status, version, error, className }: Props)
         {version ? (
           <p className="mt-3 text-xs text-muted/80">Version {version}</p>
         ) : null}
+        <p className="mt-2 text-[11px] text-muted/70">© Andreas Kowalenko</p>
       </div>
     </div>
   );

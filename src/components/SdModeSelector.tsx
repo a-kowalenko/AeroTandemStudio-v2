@@ -41,7 +41,7 @@ export function SdModeSelector({ className, visible = true }: Props) {
 
   return (
     <div className={cn("flex items-center gap-2 text-xs", className)} title={tip}>
-      <span className="text-muted">SD:</span>
+      <span className="text-muted">Backup:</span>
       <Select
         value={mode}
         onValueChange={(v) => {

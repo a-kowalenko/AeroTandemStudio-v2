@@ -167,7 +167,7 @@ pub struct AppConfig {
     pub sd_auto_import: bool,
     #[serde(default)]
     pub sd_skip_processed: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub sd_size_limit_enabled: bool,
     #[serde(default = "default_sd_size_limit", deserialize_with = "de_u32_flexible")]
     pub sd_size_limit_mb: u32,
@@ -384,7 +384,7 @@ impl Default for AppConfig {
             sd_clear_after_backup: false,
             sd_auto_import: true,
             sd_skip_processed: false,
-            sd_size_limit_enabled: false,
+            sd_size_limit_enabled: true,
             sd_size_limit_mb: default_sd_size_limit(),
             oldschool_mode: false,
             keep_tandemmaster_on_session_reset: false,
@@ -566,6 +566,7 @@ mod tests {
         assert!(cfg.sd_auto_import);
         assert_eq!(cfg.sd_backup_mode, "confirm");
         assert_eq!(cfg.sd_size_limit_mb, 3000);
+        assert!(cfg.sd_size_limit_enabled);
         assert!(cfg.qr_remove_photo_after_scan);
         assert!(cfg.qr_remove_video_after_scan);
         assert_eq!(cfg.qr_remove_video_max_duration_sec, 10);

@@ -756,6 +756,7 @@ pub fn generate_preview(
             &opts,
             resource_dir,
             Arc::clone(&on_progress),
+            None,
         )?;
         on_progress(progress_from_times(100.0, 100.0, "end"));
         return Ok(PreviewResult {

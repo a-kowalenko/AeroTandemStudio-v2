@@ -283,6 +283,18 @@ export async function createJob(
   });
 }
 
+/** Resolve Intro+Body stream-copy fallback dialog (`without_intro` | `with_intro_encode`). */
+export async function resolveIntroMuxFallback(
+  choice: "without_intro" | "with_intro_encode",
+): Promise<void> {
+  return invoke("resolve_intro_mux_fallback", { choice });
+}
+
+export type IntroMuxFallbackPayload = {
+  reason: string;
+  timeout_secs: number;
+};
+
 export async function generatePreview(
   videoPaths: string[],
   kunde: Kunde,
@@ -426,6 +438,14 @@ export type UpdateCheckResult = {
   message: string;
 };
 
+export type AvailableRelease = {
+  tag_name: string;
+  published_at: string;
+  body: string;
+  installer_url: string;
+  prerelease: boolean;
+};
+
 export async function testServerConnection(
   overrides?: ServerOverrides,
 ): Promise<ConnectionTestResult> {
@@ -454,6 +474,14 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 
 export async function installUpdate(): Promise<string> {
   return invoke<string>("install_update");
+}
+
+export async function listAvailableVersions(): Promise<AvailableRelease[]> {
+  return invoke<AvailableRelease[]>("list_available_versions");
+}
+
+export async function installSpecificVersion(installerUrl: string): Promise<string> {
+  return invoke<string>("install_specific_version", { installerUrl });
 }
 
 export type AppInfo = {

@@ -30,12 +30,15 @@ use commands::sd_card::{
 use commands::smb::{test_server_connection, upload_to_server};
 use commands::video::{
     cancel_encode, concat_videos, create_job, create_video, cut_video, encode_video,
-    generate_preview, get_hw_info, import_videos, probe_video, split_video, trim_video,
-    validate_create_job,
+    generate_preview, get_hw_info, import_videos, probe_video, resolve_intro_mux_fallback,
+    split_video, trim_video, validate_create_job,
 };
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
-use updater::{check_for_updates, get_updater_status, install_update};
+use updater::{
+    check_for_updates, get_updater_status, install_specific_version, install_update,
+    list_available_versions,
+};
 use tauri::Emitter;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -86,6 +89,7 @@ pub fn run() {
             import_videos,
             create_video,
             create_job,
+            resolve_intro_mux_fallback,
             validate_create_job,
             generate_preview,
             get_config,
@@ -121,6 +125,8 @@ pub fn run() {
             get_updater_status,
             check_for_updates,
             install_update,
+            list_available_versions,
+            install_specific_version,
             get_app_info,
             get_recent_logs,
             clear_log_buffer,

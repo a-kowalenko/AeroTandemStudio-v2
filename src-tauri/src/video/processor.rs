@@ -29,6 +29,7 @@ use super::ffmpeg::{
     run_ffmpeg, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, HwAccelInfo};
+use super::intro_mux_fallback::IntroMuxChoice;
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::probe;
 use super::progress::{progress_from_times, progress_from_times_with_task};
@@ -93,6 +94,10 @@ impl Default for CreateVideoOptions {
         }
     }
 }
+
+/// Called when Intro+Body stream-copy cannot proceed.
+/// Return `Err(())` to abort (cancellation).
+pub type IntroMuxAskFn = Arc<dyn Fn(&str) -> Result<IntroMuxChoice, ()> + Send + Sync>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct CreateVideoResult {
@@ -764,6 +769,10 @@ fn body_codecs_compatible(ffmpeg: &Path, paths: &[String]) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Create final MP4: optional intro + body clips → `output`.
+///
+/// When `on_intro_mux_fallback` is set and Intro+Body stream-copy fails, the
+/// callback decides between body-only export and re-encode-with-intro.
+/// When unset (e.g. preview), stream-copy failure falls back to re-encode.
 pub fn create_video(
     ffmpeg: &Path,
     kunde: &Kunde,
@@ -772,6 +781,7 @@ pub fn create_video(
     options: &CreateVideoOptions,
     resource_dir: Option<&Path>,
     on_progress: ProgressCallback,
+    on_intro_mux_fallback: Option<IntroMuxAskFn>,
 ) -> Result<CreateVideoResult, ProcessorError> {
     if video_paths.is_empty() {
         return Err(ProcessorError::Message(
@@ -912,10 +922,10 @@ pub fn create_video(
         )?;
         emit_stage(&on_progress, 2.0, stages, "Intro fertig");
 
-        // Stage 3: mux intro + body
+        // Stage 3: mux intro + body (stream-copy; ask user before re-encode)
         emit_stage(&on_progress, 2.0, stages, "Füge Intro und Video zusammen…");
-        let paths = vec![intro_s, body_path];
-        let mux_cb = {
+        let paths = vec![intro_s, body_path.clone()];
+        let mux_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
             Arc::new(move |p: crate::video::progress::EncodeProgress| {
                 let mut q = p;
@@ -941,94 +951,97 @@ pub fn create_video(
                 outer(q);
             })
         };
-        let outcome = concat::concat_videos(ffmpeg, &paths, output, mux_cb)?;
+
+        let mux_result = match concat::concat_videos_stream_copy_only(
+            ffmpeg,
+            &paths,
+            output,
+            Arc::clone(&mux_cb),
+        ) {
+            Ok(outcome) => Ok(outcome),
+            Err(ConcatError::NeedsReencode { reason }) => {
+                let choice = if let Some(ask) = &on_intro_mux_fallback {
+                    on_progress(progress_from_times(
+                        55.0,
+                        100.0,
+                        "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…",
+                    ));
+                    match ask(&reason) {
+                        Ok(c) => c,
+                        Err(()) => {
+                            return Err(ProcessorError::Ffmpeg(FfmpegError::Cancelled));
+                        }
+                    }
+                } else {
+                    // Preview / silent path: keep previous auto re-encode behaviour.
+                    IntroMuxChoice::WithIntroEncode
+                };
+
+                match choice {
+                    IntroMuxChoice::WithoutIntro => {
+                        on_progress(progress_from_times(
+                            60.0,
+                            100.0,
+                            "Exportiere Video ohne Intro (Stream-Copy)…",
+                        ));
+                        let enc = export_body_to_output(
+                            ffmpeg,
+                            &body_path,
+                            output,
+                            &hw,
+                            out_codec,
+                            options.crf,
+                            Arc::clone(&on_progress),
+                        )?;
+                        Ok(concat::ConcatOutcome {
+                            method: "body-only".into(),
+                            codec: enc,
+                            reencode_reason: Some(reason),
+                        })
+                    }
+                    IntroMuxChoice::WithIntroEncode => {
+                        on_progress(progress_from_times(
+                            60.0,
+                            100.0,
+                            &format!("Kodiere Intro+Video neu: {reason}"),
+                        ));
+                        concat::concat_videos_reencode(
+                            ffmpeg,
+                            &paths,
+                            output,
+                            &reason,
+                            Arc::clone(&mux_cb),
+                        )
+                    }
+                }
+            }
+            Err(e) => Err(e),
+        };
+
+        let outcome = mux_result?;
+        let intro_created = outcome.method != "body-only";
         encoder_used = outcome.codec;
         emit_stage(&on_progress, 3.0, stages, "Zusammenfügen fertig");
 
         CreateVideoResult {
             output: output.to_string(),
             encoder: encoder_used,
-            intro_created: true,
+            intro_created,
             body_clips: video_paths.len(),
         }
     } else {
-        // No intro: copy/re-mux body to output via concat of one? Prefer remux or encode.
+        // No intro: copy/re-mux body to output
         emit_stage(&on_progress, 1.0, stages, "Exportiere Video…");
-        if Path::new(&body_path) == Path::new(output) {
-            // already at destination
-        } else {
-            let (enc, out_params) =
-                build_encode_output_params(&hw, out_codec, options.crf, false);
-            encoder_used = enc;
-            // Stream-copy when possible: use concat normalize / simple remux
-            let mut args = vec![
-                "-y".into(),
-                "-hide_banner".into(),
-                "-i".into(),
-                body_path.clone(),
-                "-c".into(),
-                "copy".into(),
-                "-movflags".into(),
-                "+faststart".into(),
-                "-progress".into(),
-                "pipe:1".into(),
-                "-nostats".into(),
-                output.to_string(),
-            ];
-            let dur = probe_duration_secs(ffmpeg, &body_path).unwrap_or(0.0);
-            let export_cb: ProgressCallback = {
-                let outer = Arc::clone(&on_progress);
-                Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                    let mut q = p;
-                    if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                        q.status = "Exportiere Video…".into();
-                    }
-                    outer(q);
-                })
-            };
-            if let Err(e) = run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&export_cb)) {
-                if is_disk_full_error(&e) {
-                    return Err(ProcessorError::Ffmpeg(disk_full_error()));
-                }
-                // Fallback re-encode (codec/mux issues only — not disk full)
-                let reason = format!(
-                    "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})"
-                );
-                on_progress(progress_from_times(50.0, 100.0, &format!("Kodiere neu: {reason}")));
-                let reenc_cb: ProgressCallback = {
-                    let outer = Arc::clone(&on_progress);
-                    let reason = reason.clone();
-                    Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                        let mut q = p;
-                        if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                            q.status = format!("Kodiere neu: {reason}");
-                        }
-                        outer(q);
-                    })
-                };
-                args = vec![
-                    "-y".into(),
-                    "-hide_banner".into(),
-                    "-i".into(),
-                    body_path.clone(),
-                ];
-                args.extend(out_params);
-                args.extend([
-                    "-c:a".into(),
-                    "aac".into(),
-                    "-b:a".into(),
-                    "192k".into(),
-                    "-movflags".into(),
-                    "+faststart".into(),
-                    "-progress".into(),
-                    "pipe:1".into(),
-                    "-nostats".into(),
-                    output.to_string(),
-                ]);
-                run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
-            } else {
-                encoder_used = "copy".into();
-            }
+        if Path::new(&body_path) != Path::new(output) {
+            encoder_used = export_body_to_output(
+                ffmpeg,
+                &body_path,
+                output,
+                &hw,
+                out_codec,
+                options.crf,
+                Arc::clone(&on_progress),
+            )?;
         }
         emit_stage(&on_progress, 2.0, stages, "Export fertig");
         CreateVideoResult {
@@ -1044,6 +1057,88 @@ pub fn create_video(
 
     on_progress(progress_from_times(100.0, 100.0, "Video fertig"));
     Ok(final_body)
+}
+
+/// Remux body to `output` via stream-copy; re-encode only if remux fails.
+fn export_body_to_output(
+    ffmpeg: &Path,
+    body_path: &str,
+    output: &str,
+    hw: &HwAccelInfo,
+    out_codec: VideoCodec,
+    crf: u8,
+    on_progress: ProgressCallback,
+) -> Result<String, ProcessorError> {
+    let (enc, out_params) = build_encode_output_params(hw, out_codec, crf, false);
+    let mut encoder_used = enc;
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        body_path.to_string(),
+        "-c".into(),
+        "copy".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output.to_string(),
+    ];
+    let dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0);
+    let export_cb: ProgressCallback = {
+        let outer = Arc::clone(&on_progress);
+        Arc::new(move |p: crate::video::progress::EncodeProgress| {
+            let mut q = p;
+            if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                q.status = "Exportiere Video…".into();
+            }
+            outer(q);
+        })
+    };
+    if let Err(e) = run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&export_cb)) {
+        if is_disk_full_error(&e) {
+            return Err(ProcessorError::Ffmpeg(disk_full_error()));
+        }
+        let reason = format!(
+            "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})"
+        );
+        on_progress(progress_from_times(50.0, 100.0, &format!("Kodiere neu: {reason}")));
+        let reenc_cb: ProgressCallback = {
+            let outer = Arc::clone(&on_progress);
+            let reason = reason.clone();
+            Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                let mut q = p;
+                if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                    q.status = format!("Kodiere neu: {reason}");
+                }
+                outer(q);
+            })
+        };
+        args = vec![
+            "-y".into(),
+            "-hide_banner".into(),
+            "-i".into(),
+            body_path.to_string(),
+        ];
+        args.extend(out_params);
+        args.extend([
+            "-c:a".into(),
+            "aac".into(),
+            "-b:a".into(),
+            "192k".into(),
+            "-movflags".into(),
+            "+faststart".into(),
+            "-progress".into(),
+            "pipe:1".into(),
+            "-nostats".into(),
+            output.to_string(),
+        ]);
+        run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
+    } else {
+        encoder_used = "copy".into();
+    }
+    Ok(encoder_used)
 }
 
 fn create_intro_clip(

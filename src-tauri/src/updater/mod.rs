@@ -1,4 +1,4 @@
-//! Auto-update helpers (Tauri updater plugin).
+//! Auto-update helpers (Tauri updater plugin) + manual version switching.
 //!
 //! Production feed: public releases repo
 //! `a-kowalenko/aero-tandem-studio-releases` → `latest.json`.
@@ -6,7 +6,11 @@
 //! Signing: `TAURI_SIGNING_PRIVATE_KEY` (+ password) in CI; pubkey in
 //! `tauri.conf.json` → `plugins.updater.pubkey`.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
 use tauri::{AppHandle, Runtime};
 
 /// Marker substring that means “stub / not ready” (keep for safety if config regresses).
@@ -14,6 +18,14 @@ pub const UPDATER_STUB_MARKER: &str = "releases.example.invalid";
 
 const UPDATER_ENDPOINT: &str =
     "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/latest/download/latest.json";
+
+const RELEASES_API_URL: &str =
+    "https://api.github.com/repos/a-kowalenko/aero-tandem-studio-releases/releases?per_page=100";
+
+/// Oldest version offered in the manual switcher (matches first public v2 builds).
+pub const MIN_SWITCHABLE_VERSION: &str = "0.1.0";
+
+const USER_AGENT: &str = "AeroTandemStudio-Updater";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdaterStatus {
@@ -30,6 +42,15 @@ pub struct UpdateCheckResult {
     pub latest_version: Option<String>,
     pub body: Option<String>,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AvailableRelease {
+    pub tag_name: String,
+    pub published_at: String,
+    pub body: String,
+    pub installer_url: String,
+    pub prerelease: bool,
 }
 
 fn updater_endpoints() -> Vec<String> {
@@ -52,14 +73,13 @@ pub fn get_updater_status(app: AppHandle) -> UpdaterStatus {
         UpdaterStatus {
             configured: true,
             current_version,
-            message: "Updater konfiguriert — Prüfung über GitHub Releases möglich.".into(),
+            message: "Update-Prüfung über GitHub Releases möglich.".into(),
         }
     } else {
         UpdaterStatus {
             configured: false,
             current_version,
-            message: "Updater-Stub: Endpoint noch Platzhalter (releases.example.invalid)."
-                .into(),
+            message: "Auto-Update ist derzeit nicht verfügbar.".into(),
         }
     }
 }
@@ -77,9 +97,7 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
             current_version,
             latest_version: None,
             body: None,
-            message: "Update-Prüfung übersprungen: Endpoint ist Platzhalter \
-(releases.example.invalid)."
-                .into(),
+            message: "Auto-Update ist derzeit nicht verfügbar.".into(),
         });
     }
 
@@ -128,10 +146,7 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
 #[tauri::command]
 pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     if !is_updater_configured() {
-        return Err(
-            "Update-Installation nicht möglich: Update-Endpoint ist noch Platzhalter."
-                .into(),
-        );
+        return Err("Update-Installation ist derzeit nicht möglich.".into());
     }
 
     #[cfg(desktop)]
@@ -162,6 +177,278 @@ pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, Str
     }
 }
 
+/// List published releases that include a platform installer (for version switching).
+#[tauri::command]
+pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> {
+    let client = http_client()?;
+    let response = client
+        .get(RELEASES_API_URL)
+        .send()
+        .await
+        .map_err(|e| format!("Releases konnten nicht geladen werden: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Releases konnten nicht geladen werden (HTTP {}).",
+            response.status()
+        ));
+    }
+
+    let payload: Vec<GitHubRelease> = response
+        .json()
+        .await
+        .map_err(|e| format!("Release-Antwort ungültig: {e}"))?;
+
+    let mut releases = Vec::new();
+    for release in payload {
+        if release.draft {
+            continue;
+        }
+        let tag = normalize_tag(&release.tag_name);
+        if tag.is_empty() {
+            continue;
+        }
+        if !version_at_least(&tag, MIN_SWITCHABLE_VERSION) {
+            continue;
+        }
+        let Some(installer_url) = pick_installer_url(&release.assets) else {
+            continue;
+        };
+        releases.push(AvailableRelease {
+            tag_name: tag,
+            published_at: release.published_at.unwrap_or_default(),
+            body: release
+                .body
+                .unwrap_or_else(|| "Keine Details verfügbar.".into()),
+            installer_url,
+            prerelease: release.prerelease,
+        });
+    }
+
+    releases.sort_by(|a, b| compare_versions_desc(&a.tag_name, &b.tag_name));
+    Ok(releases)
+}
+
+/// Download a specific release installer and launch it (upgrade or downgrade).
+#[tauri::command]
+pub async fn install_specific_version(installer_url: String) -> Result<String, String> {
+    if installer_url.trim().is_empty() {
+        return Err("Keine Installer-URL angegeben.".into());
+    }
+    if !(installer_url.starts_with("https://github.com/a-kowalenko/aero-tandem-studio-releases/")
+        || installer_url.starts_with("https://objects.githubusercontent.com/"))
+    {
+        return Err("Installer-URL ist nicht erlaubt.".into());
+    }
+
+    let dest = installer_download_path(&installer_url)?;
+    download_file(&installer_url, &dest).await?;
+    launch_installer(&dest)?;
+
+    Ok(format!(
+        "Installer gestartet ({})",
+        dest.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("setup")
+    ))
+}
+
+fn http_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .map_err(|e| format!("HTTP-Client konnte nicht erstellt werden: {e}"))
+}
+
+async fn download_file(url: &str, dest: &PathBuf) -> Result<(), String> {
+    let client = http_client()?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Download fehlgeschlagen (HTTP {}).",
+            response.status()
+        ));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Download konnte nicht gelesen werden: {e}"))?;
+
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Temp-Ordner konnte nicht erstellt werden: {e}"))?;
+    }
+
+    let mut file =
+        File::create(dest).map_err(|e| format!("Installer-Datei konnte nicht angelegt werden: {e}"))?;
+    file.write_all(&bytes)
+        .map_err(|e| format!("Installer-Datei konnte nicht geschrieben werden: {e}"))?;
+    Ok(())
+}
+
+fn installer_download_path(url: &str) -> Result<PathBuf, String> {
+    let name = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(default_installer_name());
+    let safe = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    Ok(std::env::temp_dir().join(format!("ats_version_switch_{safe}")))
+}
+
+fn default_installer_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        "setup.exe"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "setup.dmg"
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        "setup.bin"
+    }
+}
+
+fn launch_installer(path: &PathBuf) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new(path)
+            .spawn()
+            .map_err(|e| format!("Installer konnte nicht gestartet werden: {e}"))?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("Installer konnte nicht geöffnet werden: {e}"))?;
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = path;
+        Err("Versionswechsel auf dieser Plattform nicht unterstützt.".into())
+    }
+}
+
+fn normalize_tag(tag: &str) -> String {
+    tag.trim().trim_start_matches('v').to_string()
+}
+
+/// Loose semver compare: `candidate >= minimum` (numeric segments only).
+fn version_at_least(candidate: &str, minimum: &str) -> bool {
+    compare_version_parts(&parse_version_parts(candidate), &parse_version_parts(minimum))
+        != std::cmp::Ordering::Less
+}
+
+fn compare_versions_desc(a: &str, b: &str) -> std::cmp::Ordering {
+    compare_version_parts(&parse_version_parts(a), &parse_version_parts(b)).reverse()
+}
+
+fn parse_version_parts(v: &str) -> Vec<u64> {
+    v.split(|c: char| !c.is_ascii_digit())
+        .filter(|s| !s.is_empty())
+        .filter_map(|s| s.parse::<u64>().ok())
+        .collect()
+}
+
+fn compare_version_parts(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
+    let len = a.len().max(b.len());
+    for i in 0..len {
+        let left = a.get(i).copied().unwrap_or(0);
+        let right = b.get(i).copied().unwrap_or(0);
+        match left.cmp(&right) {
+            std::cmp::Ordering::Equal => {}
+            other => return other,
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+fn pick_installer_url(assets: &[GitHubAsset]) -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with("-setup.exe") && !n.ends_with(".sig")
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".exe") && !n.ends_with(".sig")
+                })
+            })
+            .map(|a| a.browser_download_url.clone())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let prefer_arch = if cfg!(target_arch = "aarch64") {
+            "aarch64"
+        } else {
+            "x64"
+        };
+        assets
+            .iter()
+            .find(|a| {
+                let n = a.name.to_lowercase();
+                n.ends_with(".dmg") && n.contains(prefer_arch) && !n.ends_with(".sig")
+            })
+            .or_else(|| {
+                assets.iter().find(|a| {
+                    let n = a.name.to_lowercase();
+                    n.ends_with(".dmg") && !n.ends_with(".sig")
+                })
+            })
+            .map(|a| a.browser_download_url.clone())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = assets;
+        None
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    #[serde(default)]
+    published_at: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    draft: bool,
+    #[serde(default)]
+    prerelease: bool,
+    #[serde(default)]
+    assets: Vec<GitHubAsset>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,5 +459,52 @@ mod tests {
         assert!(updater_endpoints()
             .iter()
             .any(|e| e.contains("aero-tandem-studio-releases")));
+    }
+
+    #[test]
+    fn version_compare_and_filter() {
+        assert!(version_at_least("0.1.3", "0.1.0"));
+        assert!(version_at_least("0.1.0", "0.1.0"));
+        assert!(!version_at_least("0.0.9", "0.1.0"));
+        assert_eq!(
+            compare_versions_desc("0.1.3", "0.1.2"),
+            std::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn normalize_strips_v_prefix() {
+        assert_eq!(normalize_tag("v0.1.3"), "0.1.3");
+        assert_eq!(normalize_tag("0.1.3"), "0.1.3");
+    }
+
+    #[test]
+    fn pick_windows_setup_prefers_nsis() {
+        let assets = vec![
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.3_x64_en-US.msi".into(),
+                browser_download_url: "https://example/msi".into(),
+            },
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.3_x64-setup.exe".into(),
+                browser_download_url: "https://example/setup".into(),
+            },
+            GitHubAsset {
+                name: "Aero.Tandem.Studio_0.1.3_x64-setup.exe.sig".into(),
+                browser_download_url: "https://example/sig".into(),
+            },
+        ];
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(
+                pick_installer_url(&assets).as_deref(),
+                Some("https://example/setup")
+            );
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = assets;
+            assert!(pick_installer_url(&[]).is_none());
+        }
     }
 }

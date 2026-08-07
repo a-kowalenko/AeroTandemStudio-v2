@@ -19,7 +19,8 @@ use crate::video::preview_encode::{self, PreviewResult};
 use crate::video::probe::{self, VideoMetadata};
 use crate::model::Kunde;
 use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
-use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult};
+use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
+use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn};
 use crate::video::progress::EncodeProgress;
 use crate::model::ValidationResult;
 
@@ -474,6 +475,11 @@ pub async fn create_video(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
+    let app_for_ask = app.clone();
+    let on_intro_mux_fallback: IntroMuxAskFn = Arc::new(move |reason: &str| {
+        intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         processor::create_video(
             &ffmpeg,
@@ -483,6 +489,7 @@ pub async fn create_video(
             &opts,
             resource_dir.as_deref(),
             on_progress,
+            Some(on_intro_mux_fallback),
         )
         .map_err(|e| e.to_string())
     })
@@ -505,6 +512,14 @@ pub async fn create_video(
             Err(e)
         }
     }
+}
+
+/// Resolve a pending Intro+Body stream-copy fallback decision from the UI.
+#[tauri::command]
+pub fn resolve_intro_mux_fallback(choice: String) -> Result<(), String> {
+    let parsed = IntroMuxChoice::parse(&choice)
+        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    intro_mux_fallback::resolve_choice(parsed)
 }
 
 /// Generate a combined preview MP4 in a temp work dir (CRF from config).
@@ -732,6 +747,11 @@ pub async fn create_job(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
+    let app_for_ask = app.clone();
+    let on_intro_mux_fallback: IntroMuxAskFn = Arc::new(move |reason: &str| {
+        intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         export_job::create_job(
             &ffmpeg,
@@ -742,6 +762,7 @@ pub async fn create_job(
             &opts,
             resource_dir.as_deref(),
             on_progress,
+            Some(on_intro_mux_fallback),
         )
         .map_err(|e| e.to_string())
     })

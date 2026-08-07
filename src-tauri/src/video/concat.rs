@@ -5,6 +5,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
@@ -37,6 +38,9 @@ pub enum ConcatError {
     Ffmpeg(#[from] FfmpegError),
     #[error(transparent)]
     Parallel(#[from] ParallelError),
+    /// Stream-copy is not possible; caller may ask the user before re-encoding.
+    #[error("stream-copy nicht möglich: {reason}")]
+    NeedsReencode { reason: String },
     #[error("{0}")]
     Message(String),
     #[error("io error: {0}")]
@@ -48,6 +52,7 @@ fn concat_error_is_disk_full(err: &ConcatError) -> bool {
         ConcatError::Ffmpeg(e) => is_disk_full_error(e),
         ConcatError::Io(e) if e.kind() == std::io::ErrorKind::StorageFull => true,
         ConcatError::Message(m) => indicates_disk_full(m),
+        ConcatError::NeedsReencode { reason } => indicates_disk_full(reason),
         other => indicates_disk_full(&other.to_string()),
     }
 }
@@ -706,11 +711,11 @@ pub struct ConcatOutcome {
     pub reencode_reason: Option<String>,
 }
 
-/// Concatenate multiple videos into one MP4.
+/// Probe inputs and attempt stream-copy concat only (no re-encode fallback).
 ///
-/// Prefers MPEG-TS stream-copy (H.264/HEVC). Falls back to re-encode when
-/// codecs differ or stream-copy fails.
-pub fn concat_videos(
+/// Returns [`ConcatError::NeedsReencode`] when codecs differ or stream-copy fails
+/// (disk-full / cancel remain fatal errors).
+pub fn concat_videos_stream_copy_only(
     ffmpeg: &Path,
     paths: &[String],
     output: &str,
@@ -744,7 +749,7 @@ pub fn concat_videos(
     let stream_copy_ok =
         all_same && matches!(vcodec, VideoCodec::H264 | VideoCodec::Hevc);
 
-    let reencode_reason = if stream_copy_ok {
+    if stream_copy_ok {
         match concat_stream_copy(ffmpeg, paths, output, vcodec, has_audio, total_secs, &on_progress)
         {
             Ok(()) => {
@@ -759,50 +764,85 @@ pub fn concat_videos(
                 if concat_error_is_disk_full(&e) {
                     return Err(ConcatError::Ffmpeg(disk_full_error()));
                 }
+                if matches!(&e, ConcatError::Ffmpeg(FfmpegError::Cancelled)) {
+                    return Err(e);
+                }
+                let _ = fs::remove_file(output);
                 let reason = format!("Stream-Copy fehlgeschlagen: {e}");
-                emit(
-                    &on_progress,
-                    40.0,
-                    &format!("Kodiere neu: {reason}"),
-                );
-                reason
+                return Err(ConcatError::NeedsReencode { reason });
             }
         }
-    } else {
-        let reason = if !all_same {
-            let names: Vec<&str> = codecs.iter().map(|c| c.as_str()).collect();
-            format!(
-                "Unterschiedliche Video-Codecs ({})",
-                names.join(", ")
-            )
-        } else {
-            format!(
-                "Codec „{}“ ist nicht stream-copy-fähig (nur H.264/HEVC)",
-                vcodec.as_str()
-            )
-        };
-        emit(
-            &on_progress,
-            40.0,
-            &format!("Kodiere neu: {reason}"),
-        );
-        reason
-    };
+    }
 
-    concat_reencode(
-        ffmpeg,
-        paths,
-        output,
-        total_secs,
-        &reencode_reason,
-        &on_progress,
-    )?;
+    let reason = if !all_same {
+        let names: Vec<&str> = codecs.iter().map(|c| c.as_str()).collect();
+        format!(
+            "Unterschiedliche Video-Codecs ({})",
+            names.join(", ")
+        )
+    } else {
+        format!(
+            "Codec „{}“ ist nicht stream-copy-fähig (nur H.264/HEVC)",
+            vcodec.as_str()
+        )
+    };
+    Err(ConcatError::NeedsReencode { reason })
+}
+
+/// Re-encode concat via demuxer (public for intro-mux fallback after user consent).
+pub fn concat_videos_reencode(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    reason: &str,
+    on_progress: ProgressCallback,
+) -> Result<ConcatOutcome, ConcatError> {
+    if paths.len() < 2 {
+        return Err(ConcatError::Message(
+            "concat_videos requires at least 2 input paths".into(),
+        ));
+    }
+    let mut total_secs = 0.0_f64;
+    let mut codecs = Vec::with_capacity(paths.len());
+    for p in paths {
+        if !Path::new(p).is_file() {
+            return Err(ConcatError::Message(format!("input file not found: {p}")));
+        }
+        codecs.push(probe_vcodec(ffmpeg, p)?);
+        total_secs += probe_duration_secs(ffmpeg, p).unwrap_or(0.0);
+    }
+    let vcodec = codecs[0];
+    concat_reencode(ffmpeg, paths, output, total_secs, reason, &on_progress)?;
     emit(&on_progress, 100.0, "end");
     Ok(ConcatOutcome {
         method: "re-encode".into(),
         codec: vcodec.as_str().into(),
-        reencode_reason: Some(reencode_reason),
+        reencode_reason: Some(reason.to_string()),
     })
+}
+
+/// Concatenate multiple videos into one MP4.
+///
+/// Prefers MPEG-TS stream-copy (H.264/HEVC). Falls back to re-encode when
+/// codecs differ or stream-copy fails.
+pub fn concat_videos(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    on_progress: ProgressCallback,
+) -> Result<ConcatOutcome, ConcatError> {
+    match concat_videos_stream_copy_only(ffmpeg, paths, output, Arc::clone(&on_progress)) {
+        Ok(outcome) => Ok(outcome),
+        Err(ConcatError::NeedsReencode { reason }) => {
+            emit(
+                &on_progress,
+                40.0,
+                &format!("Kodiere neu: {reason}"),
+            );
+            concat_videos_reencode(ffmpeg, paths, output, &reason, on_progress)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn concat_stream_copy(

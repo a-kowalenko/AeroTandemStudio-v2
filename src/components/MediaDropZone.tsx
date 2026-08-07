@@ -22,6 +22,7 @@ import {
   ImageIcon,
   Images,
   QrCode,
+  ScanSearch,
   Trash2,
   Upload,
   X,
@@ -858,6 +859,7 @@ export function MediaDropZone({
             disabled={busy}
             title="Foto oder Video wählen — nur QR-Scan, kein Import"
           >
+            <ScanSearch className="h-3.5 w-3.5" />
             Datei scannen…
           </Button>
         </div>

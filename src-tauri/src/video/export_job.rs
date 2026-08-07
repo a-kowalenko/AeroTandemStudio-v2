@@ -22,7 +22,9 @@ use crate::video::export_paths::{
 };
 use crate::video::ffmpeg::{is_cancelled, probe_duration_secs, FfmpegError, ProgressCallback};
 use crate::video::marker::write_marker_file;
-use crate::video::processor::{create_video, CreateVideoOptions, CreateVideoResult, ProcessorError};
+use crate::video::processor::{
+    create_video, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn, ProcessorError,
+};
 use crate::video::progress::EncodeProgress;
 use crate::video::preview_reuse;
 use crate::video::watermark::{
@@ -324,6 +326,7 @@ pub fn create_job(
     options: &CreateJobOptions,
     resource_dir: Option<&Path>,
     on_progress: ProgressCallback,
+    on_intro_mux_fallback: Option<IntroMuxAskFn>,
 ) -> Result<CreateJobResult, ProcessorError> {
     let validation = validate_create_job(
         kunde,
@@ -441,6 +444,7 @@ pub fn create_job(
                 &options.video,
                 resource_dir,
                 stage_cb,
+                on_intro_mux_fallback.clone(),
             )?;
             encoder = res.encoder;
             intro_created = res.intro_created;

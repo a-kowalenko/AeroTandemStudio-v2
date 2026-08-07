@@ -22,11 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AppConfig, CrewMember } from "@/lib/tauri";
+import type { AppConfig, AvailableRelease, CrewMember } from "@/lib/tauri";
 import {
   cleanupCache,
   clearWorkingSession,
   getAppInfo,
+  installSpecificVersion,
+  listAvailableVersions,
   ORT_OPTIONS,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
@@ -40,9 +42,16 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRequestUpdateCheck?: () => void;
+  /** Keep settings open while another dialog (e.g. Update) is stacked on top. */
+  suppressDismiss?: boolean;
 };
 
-export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Props) {
+export function SettingsDialog({
+  open,
+  onOpenChange,
+  onRequestUpdateCheck,
+  suppressDismiss = false,
+}: Props) {
   const config = useConfigStore((s) => s.config);
   const persist = useConfigStore((s) => s.persist);
   const resetToDefaults = useConfigStore((s) => s.resetToDefaults);
@@ -63,6 +72,12 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
   const [testingServer, setTestingServer] = useState(false);
   const [cleaningCache, setCleaningCache] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [releases, setReleases] = useState<AvailableRelease[]>([]);
+  const [releasesLoading, setReleasesLoading] = useState(false);
+  const [releasesError, setReleasesError] = useState<string | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<string>("");
+  const [showPrereleases, setShowPrereleases] = useState(false);
+  const [installingVersion, setInstallingVersion] = useState(false);
   const [crewDraft, setCrewDraft] = useState<CrewMember>({
     name: "",
     tandemmaster: true,
@@ -76,6 +91,16 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
       .map((member, index) => ({ member, index }))
       .sort((a, b) => a.member.name.localeCompare(b.member.name, "de"));
   }, [draft]);
+
+  const filteredReleases = useMemo(() => {
+    if (showPrereleases) return releases;
+    return releases.filter((r) => !r.prerelease);
+  }, [releases, showPrereleases]);
+
+  const selectedRelease = useMemo(
+    () => filteredReleases.find((r) => r.tag_name === selectedVersion) ?? null,
+    [filteredReleases, selectedVersion],
+  );
 
   useEffect(() => {
     if (open && config) {
@@ -93,7 +118,47 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
     void getAppInfo()
       .then((info) => setAppVersion(info.version))
       .catch(() => setAppVersion(null));
+
+    let cancelled = false;
+    setReleasesLoading(true);
+    setReleasesError(null);
+    void listAvailableVersions()
+      .then((list) => {
+        if (cancelled) return;
+        setReleases(list);
+        const firstStable = list.find((r) => !r.prerelease);
+        setSelectedVersion(firstStable?.tag_name ?? list[0]?.tag_name ?? "");
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setReleases([]);
+        setSelectedVersion("");
+        setReleasesError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setReleasesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || releases.length === 0) return;
+    const visible = showPrereleases
+      ? releases
+      : releases.filter((r) => !r.prerelease);
+    if (appVersion && visible.some((r) => r.tag_name === appVersion)) {
+      setSelectedVersion(appVersion);
+      return;
+    }
+    setSelectedVersion((prev) =>
+      visible.some((r) => r.tag_name === prev)
+        ? prev
+        : (visible[0]?.tag_name ?? ""),
+    );
+  }, [appVersion, open, releases, showPrereleases]);
 
   if (!draft) return null;
 
@@ -226,18 +291,65 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
     }
   }
 
+  async function onApplyVersion() {
+    if (!selectedRelease) return;
+    if (selectedRelease.tag_name === appVersion) return;
+    if (
+      !window.confirm(
+        `Zu Version ${selectedRelease.tag_name} wechseln?\n\nDer Installer wird heruntergeladen und gestartet. Die App sollte danach neu gestartet werden.`,
+      )
+    ) {
+      return;
+    }
+    setInstallingVersion(true);
+    try {
+      const msg = await installSpecificVersion(selectedRelease.installer_url);
+      showSuccess(msg, "Update");
+      onOpenChange(false);
+    } catch (e) {
+      showError(String(e), "Update");
+    } finally {
+      setInstallingVersion(false);
+    }
+  }
+
+  function formatReleaseDate(iso: string): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("de-DE", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent
+        className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-hidden"
+        onPointerDownOutside={(e) => {
+          if (suppressDismiss) e.preventDefault();
+        }}
+        onFocusOutside={(e) => {
+          if (suppressDismiss) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (suppressDismiss) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (suppressDismiss) e.preventDefault();
+        }}
+      >
+        <DialogHeader className="shrink-0">
           <DialogTitle>Einstellungen</DialogTitle>
-          <DialogDescription>
-            Speichern unter %LOCALAPPDATA%\AeroTandemStudio (SQLite).
+          <DialogDescription className="sr-only">
+            App-Einstellungen bearbeiten
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="allgemein">
-          <TabsList className="flex h-auto flex-wrap gap-1">
+        <Tabs defaultValue="allgemein" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TabsList className="flex h-auto shrink-0 flex-wrap gap-1">
             <TabsTrigger value="allgemein">Allgemein</TabsTrigger>
             <TabsTrigger value="crew">Crew</TabsTrigger>
             <TabsTrigger value="qr">QR-Code</TabsTrigger>
@@ -245,7 +357,8 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
             <TabsTrigger value="sd">SD / Backup</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="allgemein" className="space-y-4">
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <TabsContent value="allgemein" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Speicherort</Label>
               <div className="flex gap-2">
@@ -425,27 +538,109 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
               >
                 {cleaningCache ? "Räume auf…" : "Cache leeren"}
               </Button>
-              {appVersion ? (
-                <p className="text-xs text-muted">Version {appVersion}</p>
-              ) : null}
             </div>
 
-            <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
-              <Label>Auto-Update</Label>
+            <div className="space-y-3 rounded-md border border-border/60 bg-muted/20 p-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <Label>Update</Label>
+                {appVersion ? (
+                  <p className="text-xs text-muted">Version {appVersion}</p>
+                ) : null}
+              </div>
               <p className="text-xs text-muted">
-                Prüft beim Start (Stub bis Endpoint konfiguriert ist).
+                Beim Start wird automatisch nach neueren Versionen gesucht.
+                Hier können Sie auch eine ältere oder neuere Version manuell
+                auswählen.
               </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  onOpenChange(false);
-                  onRequestUpdateCheck?.();
-                }}
-              >
-                Nach Updates suchen
-              </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onRequestUpdateCheck?.()}
+                >
+                  Nach Updates suchen
+                </Button>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={showPrereleases}
+                    onCheckedChange={(v) => setShowPrereleases(v === true)}
+                  />
+                  Prereleases anzeigen
+                </label>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Verfügbare Versionen</Label>
+                <div className="flex flex-wrap gap-2">
+                  <Select
+                    value={selectedVersion || undefined}
+                    onValueChange={setSelectedVersion}
+                    disabled={releasesLoading || filteredReleases.length === 0}
+                  >
+                    <SelectTrigger className="min-w-[12rem] flex-1">
+                      <SelectValue
+                        placeholder={
+                          releasesLoading
+                            ? "Lade Versionen…"
+                            : releasesError
+                              ? "Nicht verfügbar"
+                              : "Version wählen…"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredReleases.map((r) => {
+                        const labels: string[] = [];
+                        if (r.tag_name === appVersion) labels.push("Installiert");
+                        if (r.prerelease) labels.push("Prerelease");
+                        const suffix =
+                          labels.length > 0 ? ` (${labels.join(", ")})` : "";
+                        return (
+                          <SelectItem key={r.tag_name} value={r.tag_name}>
+                            {r.tag_name}
+                            {suffix}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={
+                      installingVersion ||
+                      !selectedRelease ||
+                      selectedRelease.tag_name === appVersion
+                    }
+                    onClick={() => void onApplyVersion()}
+                  >
+                    {installingVersion ? "Lade…" : "Version übernehmen"}
+                  </Button>
+                </div>
+                {releasesError ? (
+                  <p className="text-xs text-destructive">{releasesError}</p>
+                ) : null}
+              </div>
+
+              {selectedRelease ? (
+                <div className="space-y-1 rounded-md border border-border/50 bg-card/40 p-3">
+                  <p className="text-sm font-medium">
+                    Version {selectedRelease.tag_name}
+                    {selectedRelease.tag_name === appVersion
+                      ? " (installiert)"
+                      : ""}
+                  </p>
+                  {selectedRelease.published_at ? (
+                    <p className="text-xs text-muted">
+                      {formatReleaseDate(selectedRelease.published_at)}
+                    </p>
+                  ) : null}
+                  <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs text-muted">
+                    {selectedRelease.body || "Keine Release Notes."}
+                  </pre>
+                </div>
+              ) : null}
             </div>
 
             <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
@@ -466,7 +661,7 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
             </div>
           </TabsContent>
 
-          <TabsContent value="crew" className="space-y-4">
+          <TabsContent value="crew" className="mt-4 space-y-4">
             <div className="space-y-2 rounded-xl border border-border bg-card-elevated/60 p-4">
               <div>
                 <p className="text-sm font-semibold text-foreground">Springer / Crew</p>
@@ -584,7 +779,7 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
             </div>
           </TabsContent>
 
-          <TabsContent value="qr" className="space-y-4">
+          <TabsContent value="qr" className="mt-4 space-y-4">
             <div className="space-y-3 rounded-xl border border-border bg-card-elevated/60 p-4">
               <div>
                 <p className="text-sm font-semibold text-foreground">
@@ -685,7 +880,7 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
             </div>
           </TabsContent>
 
-          <TabsContent value="encoding" className="space-y-4">
+          <TabsContent value="encoding" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Video-Codec</Label>
               <Select
@@ -761,7 +956,7 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
             </div>
           </TabsContent>
 
-          <TabsContent value="sd" className="space-y-4">
+          <TabsContent value="sd" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Backup-Ordner</Label>
               <div className="flex gap-2">
@@ -844,16 +1039,24 @@ export function SettingsDialog({ open, onOpenChange, onRequestUpdateCheck }: Pro
               Backup-Modus, Auto-Import und Größen-Limit für Action-Cam SD-Karten.
             </p>
           </TabsContent>
+          </div>
         </Tabs>
 
-        <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
-            Abbrechen
-          </Button>
-          <Button onClick={onSave} disabled={saving}>
-            {saving ? "Speichern…" : "Speichern"}
-          </Button>
-        </DialogFooter>
+        <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-center text-xs text-muted sm:text-left">
+            Aero Tandem Studio
+            {appVersion ? ` v${appVersion}` : ""}
+            {" · © Andreas Kowalenko"}
+          </p>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={saving}>
+              Abbrechen
+            </Button>
+            <Button onClick={onSave} disabled={saving}>
+              {saving ? "Speichern…" : "Speichern"}
+            </Button>
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );

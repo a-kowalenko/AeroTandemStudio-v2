@@ -27,14 +27,13 @@ export function UpdateDialog({
   onClose,
 }: Props) {
   const available = Boolean(result?.available);
-  const configured = result?.configured ?? false;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {available ? "Update verfügbar" : configured ? "Update-Prüfung" : "Auto-Update"}
+            {available ? "Update verfügbar" : "Update-Prüfung"}
           </DialogTitle>
           <DialogDescription>
             {result?.message || "Update-Status wird geladen…"}
@@ -56,20 +55,13 @@ export function UpdateDialog({
           </div>
         )}
 
-        {!configured && (
-          <p className="text-xs text-muted">
-            Platzhalter in <code>tauri.conf.json</code> (pubkey / endpoints). Keys erzeugen mit{" "}
-            <code>npm run tauri signer generate</code>.
-          </p>
-        )}
-
         <DialogFooter className="gap-2 sm:gap-0">
           {available ? (
             <>
               <Button type="button" variant="secondary" onClick={onLater} disabled={installing}>
                 Später
               </Button>
-              <Button type="button" onClick={onInstall} disabled={installing || !configured}>
+              <Button type="button" onClick={onInstall} disabled={installing}>
                 {installing ? "Installiere…" : "Jetzt aktualisieren"}
               </Button>
             </>
