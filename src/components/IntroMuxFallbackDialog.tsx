@@ -19,7 +19,7 @@ type Props = {
 };
 
 /**
- * Shown when Intro+Body soft-splice / stream-copy fails.
+ * Shown when Intro+Body stream-copy fails.
  * Default is without intro; that option auto-selects after `timeoutSecs`.
  */
 export function IntroMuxFallbackDialog({
@@ -32,8 +32,6 @@ export function IntroMuxFallbackDialog({
   const chosenRef = useRef(false);
   const onChooseRef = useRef(onChoose);
   onChooseRef.current = onChoose;
-
-  const isSoftSplice = reason.toLowerCase().includes("soft-splice");
 
   useEffect(() => {
     if (!open) {
@@ -82,16 +80,13 @@ export function IntroMuxFallbackDialog({
       >
         <DialogHeader className="min-w-0">
           <DialogTitle className="text-warning">
-            {isSoftSplice
-              ? "Intro konnte nicht nahtlos angefügt werden"
-              : "Intro kann nicht per Stream-Copy angefügt werden"}
+            Intro kann nicht per Stream-Copy angefügt werden
           </DialogTitle>
           <DialogDescription asChild>
             <div className="min-w-0 space-y-3 text-sm text-foreground">
               <p className="break-words">
-                {isSoftSplice
-                  ? "Soft-Splice (Intro + kurzer Video-Anfang gemeinsam kodieren) ist fehlgeschlagen. Das kommt bei manchen Kameradateien vor."
-                  : "Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist fehlgeschlagen (häufig bei modernen Kameradateien)."}
+                Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist
+                fehlgeschlagen (häufig bei modernen Kameradateien).
               </p>
               {reason ? (
                 <p className="min-w-0 overflow-x-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted [overflow-wrap:anywhere]">

@@ -133,7 +133,7 @@ pub struct AppConfig {
     pub encoding_strategy: String,
     #[serde(default)]
     pub reencode_matching_clips: bool,
-    /// Intro+Body mux: `"soft_splice"` (default) | `"stream_copy"`.
+    /// Intro+Body mux: `"reencode"` (default, compatible) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
@@ -351,17 +351,19 @@ fn default_encoding_strategy() -> String {
     "per_clip".into()
 }
 fn default_intro_mux_mode() -> String {
-    "soft_splice".into()
+    "reencode".into()
 }
 fn default_preview_crf() -> u8 {
     18
 }
 
-/// Normalize intro mux mode to `stream_copy` | `soft_splice`.
+/// Normalize intro mux mode to `stream_copy` | `reencode`.
+///
+/// Legacy `soft_splice` maps to `reencode` (customer-compatible continuous encode).
 pub fn normalize_intro_mux_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "stream_copy" | "stream-copy" | "streamcopy" => "stream_copy".into(),
-        _ => "soft_splice".into(),
+        _ => "reencode".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -395,7 +397,7 @@ impl AppConfig {
         self.oldschool_mode = self.manual_entry_mode == "oldschool";
     }
 
-    /// Canonicalize `intro_mux_mode` to `stream_copy` | `soft_splice`.
+    /// Canonicalize `intro_mux_mode` to `stream_copy` | `reencode`.
     pub fn sync_intro_mux_mode(&mut self) {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
@@ -638,7 +640,7 @@ mod tests {
         assert_eq!(cfg.dauer, 7);
         assert!(cfg.intro_enabled);
         assert_eq!(cfg.video_codec, "auto");
-        assert_eq!(cfg.intro_mux_mode, "soft_splice");
+        assert_eq!(cfg.intro_mux_mode, "reencode");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);
@@ -655,6 +657,15 @@ mod tests {
         assert!(cfg.qr_remove_video_after_scan);
         assert_eq!(cfg.qr_remove_video_max_duration_sec, 10);
         assert_eq!(cfg.qr_video_scan_seconds, 5);
+    }
+
+    #[test]
+    fn normalize_intro_mux_mode_maps_legacy_soft_splice() {
+        assert_eq!(normalize_intro_mux_mode("stream_copy"), "stream_copy");
+        assert_eq!(normalize_intro_mux_mode("stream-copy"), "stream_copy");
+        assert_eq!(normalize_intro_mux_mode("reencode"), "reencode");
+        assert_eq!(normalize_intro_mux_mode("soft_splice"), "reencode");
+        assert_eq!(normalize_intro_mux_mode(""), "reencode");
     }
 
     #[test]

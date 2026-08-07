@@ -68,6 +68,7 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
 
     let status = Command::new(&ffmpeg)
         .args([
+            "-nostdin",
             "-y",
             "-ss",
             "0.5",
@@ -79,6 +80,7 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
             "5",
             &out_path.to_string_lossy(),
         ])
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()?;
@@ -87,6 +89,7 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
         // Retry from start without seek.
         let status2 = Command::new(&ffmpeg)
             .args([
+                "-nostdin",
                 "-y",
                 "-i",
                 &path.to_string_lossy(),
@@ -96,6 +99,7 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
                 "5",
                 &out_path.to_string_lossy(),
             ])
+            .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()?;

@@ -958,7 +958,7 @@ export function SettingsDialog({
                 value={
                   draft.intro_mux_mode === "stream_copy"
                     ? "stream_copy"
-                    : "soft_splice"
+                    : "reencode"
                 }
                 onValueChange={(v) => patch("intro_mux_mode", v)}
                 disabled={!draft.intro_enabled}
@@ -967,8 +967,8 @@ export function SettingsDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="soft_splice">
-                    Soft-Splice (kompatibel)
+                  <SelectItem value="reencode">
+                    Neu kodieren (kompatibel)
                   </SelectItem>
                   <SelectItem value="stream_copy">
                     Stream-Copy (schnell)
@@ -976,9 +976,9 @@ export function SettingsDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Soft-Splice kodiert Intro und den Body-Anfang in einem Stück und
-                hängt den Rest per Stream-Copy an — robuster gegen eingefrorene
-                Intro-Endframes.
+                Neu kodieren erzeugt Intro und Flugvideo als einen durchgängigen
+                Bitstream — zuverlässig auf Handys und in Playern. Stream-Copy
+                ist schneller, kann aber auf manchen Geräten einfrieren.
               </p>
             </div>
 

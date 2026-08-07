@@ -65,8 +65,8 @@ export type AppConfig = {
   video_codec: string;
   encoding_strategy: string;
   reencode_matching_clips: boolean;
-  /** Intro+Body mux: "soft_splice" (default) | "stream_copy". */
-  intro_mux_mode: "stream_copy" | "soft_splice" | string;
+  /** Intro+Body mux: "reencode" (default) | "stream_copy". */
+  intro_mux_mode: "stream_copy" | "reencode" | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;
   photo_qr_check_enabled: boolean;
@@ -175,8 +175,10 @@ export type CreateVideoOptions = {
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
-  /** Intro+Body mux: "stream_copy" | "soft_splice". */
-  intro_mux_mode?: "stream_copy" | "soft_splice" | string;
+  /** Intro+Body mux: "stream_copy" | "reencode". */
+  intro_mux_mode?: "stream_copy" | "reencode" | string;
+  /** Use NVENC/VideoToolbox when available. */
+  hw_accel_enabled?: boolean;
 };
 
 export type CreateVideoResult = {
@@ -194,8 +196,10 @@ export type CreateJobOptions = {
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
-  /** Intro+Body mux: "stream_copy" | "soft_splice". */
-  intro_mux_mode?: "stream_copy" | "soft_splice" | string;
+  /** Intro+Body mux: "stream_copy" | "reencode". */
+  intro_mux_mode?: "stream_copy" | "reencode" | string;
+  /** Use NVENC/VideoToolbox when available. */
+  hw_accel_enabled?: boolean;
   /** Path from last matching `generate_preview` (backend verifies fingerprint). */
   reuse_preview_path?: string | null;
   reuse_preview_fingerprint?: string | null;

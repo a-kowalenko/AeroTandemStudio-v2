@@ -22,7 +22,7 @@ export function previewEncodingSignature(
     introMuxMode.trim().toLowerCase() === "stream_copy" ||
     introMuxMode.trim().toLowerCase() === "stream-copy"
       ? "stream_copy"
-      : "soft_splice";
+      : "reencode";
   return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}`;
 }
 

@@ -861,12 +861,16 @@ pub fn concat_videos_stream_copy_only(
 }
 
 /// Re-encode concat via demuxer (public for intro-mux fallback after user consent).
+///
+/// Uses the first clip's video codec. Hardware encode only when `hw_accel_enabled`.
 pub fn concat_videos_reencode(
     ffmpeg: &Path,
     paths: &[String],
     output: &str,
     reason: &str,
     on_progress: ProgressCallback,
+    hw_accel_enabled: bool,
+    crf: u8,
 ) -> Result<ConcatOutcome, ConcatError> {
     if paths.len() < 2 {
         return Err(ConcatError::Message(
@@ -883,11 +887,21 @@ pub fn concat_videos_reencode(
         total_secs += probe_duration_secs(ffmpeg, p).unwrap_or(0.0);
     }
     let vcodec = codecs[0];
-    concat_reencode(ffmpeg, paths, output, total_secs, reason, &on_progress)?;
+    let encoder = concat_reencode(
+        ffmpeg,
+        paths,
+        output,
+        vcodec,
+        total_secs,
+        reason,
+        hw_accel_enabled,
+        crf,
+        &on_progress,
+    )?;
     emit(&on_progress, 100.0, "end");
     Ok(ConcatOutcome {
         method: "re-encode".into(),
-        codec: vcodec.as_str().into(),
+        codec: encoder,
         reencode_reason: Some(reason.to_string()),
     })
 }
@@ -902,6 +916,18 @@ pub fn concat_videos(
     output: &str,
     on_progress: ProgressCallback,
 ) -> Result<ConcatOutcome, ConcatError> {
+    concat_videos_with_opts(ffmpeg, paths, output, on_progress, false, 18)
+}
+
+/// Like [`concat_videos`], with explicit encode options for the re-encode fallback.
+pub fn concat_videos_with_opts(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    on_progress: ProgressCallback,
+    hw_accel_enabled: bool,
+    crf: u8,
+) -> Result<ConcatOutcome, ConcatError> {
     match concat_videos_stream_copy_only(ffmpeg, paths, output, Arc::clone(&on_progress)) {
         Ok(outcome) => Ok(outcome),
         Err(ConcatError::NeedsReencode { reason }) => {
@@ -910,7 +936,15 @@ pub fn concat_videos(
                 40.0,
                 &format!("Kodiere neu: {reason}"),
             );
-            concat_videos_reencode(ffmpeg, paths, output, &reason, on_progress)
+            concat_videos_reencode(
+                ffmpeg,
+                paths,
+                output,
+                &reason,
+                on_progress,
+                hw_accel_enabled,
+                crf,
+            )
         }
         Err(e) => Err(e),
     }
@@ -1063,10 +1097,13 @@ fn concat_reencode(
     ffmpeg: &Path,
     paths: &[String],
     output: &str,
+    vcodec: VideoCodec,
     total_secs: f64,
     reason: &str,
+    hw_accel_enabled: bool,
+    crf: u8,
     on_progress: &ProgressCallback,
-) -> Result<(), ConcatError> {
+) -> Result<String, ConcatError> {
     // Keep the reason visible for the whole re-encode stage (do not emit bare "re-encode").
     emit(
         on_progress,
@@ -1079,12 +1116,24 @@ fn concat_reencode(
     write_concat_file_list(&refs, &list_path)?;
 
     let hw = detect_hardware();
-    let params = EncodingParams::from_hw(&hw, false);
+    let force_software = !hw_accel_enabled || !hw.available;
+    let (encoder, output_params) =
+        crate::video::encoding_quality::build_encode_output_params(
+            &hw,
+            vcodec,
+            crf,
+            force_software,
+        );
+    let params = EncodingParams {
+        input_params: Vec::new(),
+        output_params,
+        encoder: encoder.clone(),
+    };
     let args = build_concat_demuxer_reencode_args(&path_str(&list_path), output, &params);
 
     run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone())?;
     let _ = fs::remove_dir_all(&work);
-    Ok(())
+    Ok(encoder)
 }
 
 /// Trim video to `[start_secs, end_secs)`.

@@ -232,16 +232,12 @@ pub fn probe_duration_secs(ffmpeg: &Path, input: &str) -> Result<f64, FfmpegErro
 /// Run `ffmpeg -hide_banner -i <input>` and return stderr (banner + stream info).
 pub fn ffmpeg_probe_stderr(ffmpeg: &Path, input: &str) -> Result<String, FfmpegError> {
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(["-hide_banner", "-i", input])
+    // `-nostdin` + null stdin: without this, FFmpeg may enable TTY key interaction and
+    // get stopped (SIGTTIN) when spawned from a Linux/macOS GUI — UI hangs on import.
+    cmd.args(["-nostdin", "-hide_banner", "-i", input])
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    apply_noninteractive(&mut cmd);
 
     let output = cmd.output()?;
     Ok(String::from_utf8_lossy(&output.stderr).into_owned())
@@ -305,6 +301,12 @@ fn apply_no_window(cmd: &mut Command) {
     }
 }
 
+/// GUI-/background-safe FFmpeg spawn defaults (null stdin, no console window on Windows).
+fn apply_noninteractive(cmd: &mut Command) {
+    cmd.stdin(Stdio::null());
+    apply_no_window(cmd);
+}
+
 /// Run FFmpeg without progress parsing (stream-copy remux, probes, validation).
 pub fn run_ffmpeg_checked(ffmpeg: &Path, args: &[String]) -> Result<(), FfmpegError> {
     if is_cancelled() {
@@ -312,11 +314,11 @@ pub fn run_ffmpeg_checked(ffmpeg: &Path, args: &[String]) -> Result<(), FfmpegEr
     }
 
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(args)
-        .stdin(Stdio::null())
+    cmd.arg("-nostdin")
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_no_window(&mut cmd);
+    apply_noninteractive(&mut cmd);
 
     let mut child = cmd.spawn()?;
     let stderr = child
@@ -385,11 +387,11 @@ pub fn run_ffmpeg_checked(ffmpeg: &Path, args: &[String]) -> Result<(), FfmpegEr
 /// Like [`run_ffmpeg_checked`], but returns stderr text (e.g. for splice validation).
 pub fn run_ffmpeg_capture_stderr(ffmpeg: &Path, args: &[String]) -> Result<(i32, String), FfmpegError> {
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(args)
-        .stdin(Stdio::null())
+    cmd.arg("-nostdin")
+        .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    apply_no_window(&mut cmd);
+    apply_noninteractive(&mut cmd);
 
     let output = cmd.output()?;
     let code = output.status.code().unwrap_or(-1);
@@ -422,11 +424,11 @@ pub fn run_ffmpeg_tagged(
     }
 
     let mut cmd = Command::new(ffmpeg);
-    cmd.args(args)
-        .stdin(Stdio::null())
+    cmd.arg("-nostdin")
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    apply_no_window(&mut cmd);
+    apply_noninteractive(&mut cmd);
 
     let mut child = cmd.spawn()?;
 
@@ -609,6 +611,18 @@ mod tests {
             "expected ffmpeg sidecar under resources/ffmpeg/ (run npm run download-ffmpeg): {result:?}"
         );
         assert!(result.unwrap().exists());
+    }
+
+    #[test]
+    fn probe_stderr_returns_quickly_without_hanging() {
+        let ffmpeg = find_ffmpeg().expect("ffmpeg sidecar");
+        let start = std::time::Instant::now();
+        // Missing input still exercises spawn + stdin handling; must not hang (SIGTTIN).
+        let _ = ffmpeg_probe_stderr(&ffmpeg, "/nonexistent/aero_studio_probe_hang_check.mp4");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(20),
+            "ffmpeg probe hung (check -nostdin / stdin null)"
+        );
     }
 
     #[test]

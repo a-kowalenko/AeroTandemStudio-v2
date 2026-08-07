@@ -125,7 +125,7 @@ mod tests {
         let path = f.path().to_string_lossy().to_string();
         let k = Kunde::default();
         let a = create_content_fingerprint_with_tag(&k, &[path.clone()], "mux=stream_copy").unwrap();
-        let b = create_content_fingerprint_with_tag(&k, &[path], "mux=soft_splice").unwrap();
+        let b = create_content_fingerprint_with_tag(&k, &[path], "mux=reencode").unwrap();
         assert_ne!(a, b);
     }
 

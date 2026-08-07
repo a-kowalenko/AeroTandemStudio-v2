@@ -402,12 +402,7 @@ function App() {
         reason: p.reason ?? "",
         timeoutSecs: p.timeout_secs > 0 ? p.timeout_secs : 15,
       });
-      const soft = (p.reason ?? "").toLowerCase().includes("soft-splice");
-      setStatus(
-        soft
-          ? "Soft-Splice fehlgeschlagen — bitte Entscheidung…"
-          : "Stream-Copy fehlgeschlagen — bitte Entscheidung…",
-      );
+      setStatus("Stream-Copy fehlgeschlagen — bitte Entscheidung…");
     }).then((fn) => {
       unlisten = fn;
     });
@@ -603,7 +598,7 @@ function App() {
       const encodingSig = previewEncodingSignature(
         Boolean(config?.intro_enabled ?? true),
         config?.dauer ?? 5,
-        config?.intro_mux_mode ?? "soft_splice",
+        config?.intro_mux_mode ?? "reencode",
       );
       const canReusePreview = previewCacheMatches(videoList, kunde, encodingSig);
       const res: CreateJobResult = await createJob(kunde, paths, photos, {
@@ -614,7 +609,8 @@ function App() {
         video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
         crf: config?.preview_encode_crf ?? 18,
         parallel_enabled: config?.parallel_processing_enabled ?? true,
-        intro_mux_mode: config?.intro_mux_mode ?? "soft_splice",
+        intro_mux_mode: config?.intro_mux_mode ?? "reencode",
+        hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
         reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
         reuse_preview_fingerprint: canReusePreview
           ? cachedPreviewFingerprint

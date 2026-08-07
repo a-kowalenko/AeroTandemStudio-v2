@@ -135,7 +135,7 @@ export function VideoPreview({
   const encodingSig = previewEncodingSignature(
     Boolean(config?.intro_enabled ?? true),
     config?.dauer ?? 5,
-    config?.intro_mux_mode ?? "soft_splice",
+    config?.intro_mux_mode ?? "reencode",
   );
 
   const previewStale = Boolean(
@@ -441,7 +441,7 @@ export function VideoPreview({
       )}
 
       {videoList.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex gap-2 overflow-x-auto pb-3">
           {videoList.map((v, i) => {
             const isWm = videoWmNeeded && watermarkClipIndex === i;
             const clipActive = einzelclipMode && i === activeClip;

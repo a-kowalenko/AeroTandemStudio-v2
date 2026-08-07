@@ -4,7 +4,7 @@
 //! VAAPI is backlog only (optional stub below).
 
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
@@ -159,7 +159,10 @@ fn encoder_listed(encoder_name: &str) -> bool {
     };
 
     let output = Command::new(&ffmpeg)
-        .args(["-hide_banner", "-encoders"])
+        .args(["-nostdin", "-hide_banner", "-encoders"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
         .output();
 
     match output {

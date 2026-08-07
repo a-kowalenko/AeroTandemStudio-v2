@@ -754,6 +754,7 @@ pub fn generate_preview(
             crf,
             parallel_enabled: config.parallel_processing_enabled,
             intro_mux_mode: config.intro_mux_mode.clone(),
+            hw_accel_enabled: config.hardware_acceleration_enabled,
         };
         let result = processor::create_video(
             ffmpeg,
