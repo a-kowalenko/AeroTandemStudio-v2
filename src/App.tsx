@@ -68,7 +68,7 @@ import { importSdFiles, listSdFiles } from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
-import { resolveProgressLabel, taskProgressLabel } from "./lib/progressLabels";
+import { applyMonotonicPercent, resolveProgressLabel, shouldClearTaskProgress, taskProgressLabel } from "./lib/progressLabels";
 import { cn, isCancellationError } from "./lib/utils";
 import "./App.css";
 
@@ -347,24 +347,20 @@ function App() {
       const p = event.payload;
 
       if (p.task_id != null && p.task_id > 0) {
+        // Per-clip bars only — overall % comes exclusively from overall events
+        // (avoids flicker when task-average and remapped stage % race).
         setTaskProgress((prev) => {
           const next = [...prev];
           const idx = next.findIndex((t) => t.taskId === p.task_id);
           const prevStatus = idx >= 0 ? next[idx].status : "";
           const entry: TaskProgressState = {
             taskId: p.task_id!,
-            percent: p.percent,
+            percent: applyMonotonicPercent(idx >= 0 ? next[idx].percent : 0, p.percent),
             status: resolveProgressLabel(p.status, prevStatus),
           };
           if (idx >= 0) next[idx] = entry;
           else next.push(entry);
           next.sort((a, b) => a.taskId - b.taskId);
-
-          // Used when only task events fire (e.g. preview). Create jobs also emit a
-          // remapped overall right after each task, which overwrites this.
-          const overall =
-            next.reduce((sum, t) => sum + t.percent, 0) / Math.max(next.length, 1);
-          setPercent(overall);
           return next;
         });
         setStatus((prev) => {
@@ -378,9 +374,10 @@ function App() {
           return resolveProgressLabel(p.status, prev);
         });
       } else {
-        setPercent(p.percent);
+        setPercent((prev) => applyMonotonicPercent(prev, p.percent));
+        const label = resolveProgressLabel(p.status, undefined);
         setStatus((prev) => resolveProgressLabel(p.status, prev));
-        if (/foto|wasserzeichen|upload|_fertig|vorgang fertig/i.test(p.status)) {
+        if (shouldClearTaskProgress(p.status) || shouldClearTaskProgress(label)) {
           setTaskProgress([]);
         }
       }

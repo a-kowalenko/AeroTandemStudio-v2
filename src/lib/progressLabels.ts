@@ -5,8 +5,8 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: "Abgebrochen",
   end: "Fertig",
   probing: "Analysiere Videos…",
-  prepare: "Bereite Clip vor…",
-  "prepare-done": "Clip vorbereitet",
+  prepare: "Bereite Clip-Segment vor…",
+  "prepare-done": "Clip-Segment bereit",
   "mpegts-concat": "Füge Clips zusammen…",
   "hevc-mkv-fallback": "HEVC-Fallback…",
   "re-encode": "Kodiere neu…",
@@ -37,6 +37,31 @@ const STATUS_LABELS: Record<string, string> = {
 const TRANSIENT = new Set(["continue", "end"]);
 
 /**
+ * Stages where per-clip task bars are not meaningful — clear them on overall events.
+ */
+const CLEAR_TASK_BARS =
+  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…/i;
+
+export function shouldClearTaskProgress(status: string | undefined | null): boolean {
+  const s = (status ?? "").trim();
+  if (!s) return false;
+  return CLEAR_TASK_BARS.test(s);
+}
+
+/**
+ * Keep overall percent from jittering backwards (FFmpeg out_time noise).
+ * Allows reset to 0 and intentional large stage jumps forward only.
+ */
+export function applyMonotonicPercent(previous: number, next: number): number {
+  const n = Math.max(0, Math.min(100, next));
+  if (n <= 0) return 0;
+  if (n + 0.05 >= previous) return n;
+  // Ignore tiny backwards jitter (< 1.5 pp)
+  if (previous - n < 1.5) return previous;
+  return n;
+}
+
+/**
  * Returns a display label for a progress status, or `null` if the previous
  * label should be kept (e.g. ffmpeg `continue`).
  */
@@ -58,7 +83,8 @@ export function resolveProgressLabel(
   // body-parallel workers=2 clips=3 → readable
   const parallel = /^body-(parallel|concat-parallel)\s+workers=(\d+)\s+clips=(\d+)/i.exec(s);
   if (parallel) {
-    const mode = parallel[1] === "parallel" ? "Kodiere Clips parallel" : "Füge Clips parallel zusammen";
+    const mode =
+      parallel[1] === "parallel" ? "Kodiere Clips parallel" : "Füge Clips parallel zusammen";
     return `${mode} (${parallel[3]} Clips, ${parallel[2]} Worker)…`;
   }
 
@@ -66,13 +92,17 @@ export function resolveProgressLabel(
 }
 
 export function taskProgressLabel(taskId: number, status?: string): string {
-  const resolved = resolveProgressLabel(status, undefined);
-  if (resolved && resolved !== "In Arbeit…" && !TRANSIENT.has(status ?? "")) {
-    // Backend already sent something like "Clip 2: name.mp4 — kodieren"
-    if (/clip/i.test(resolved) || resolved.includes(".mp4") || resolved.includes(".MP4")) {
-      return resolved;
-    }
-    return `Clip ${taskId}: ${resolved}`;
+  const raw = (status ?? "").trim();
+  if (!raw || TRANSIENT.has(raw)) {
+    return `Clip ${taskId}: In Arbeit…`;
   }
-  return `Clip ${taskId}`;
+  const resolved = resolveProgressLabel(raw, undefined);
+  if (!resolved || resolved === "In Arbeit…") {
+    return `Clip ${taskId}: In Arbeit…`;
+  }
+  // Backend already sent something like "Clip 2: name.mp4 — kodieren"
+  if (/^clip\s*\d+/i.test(resolved) || resolved.includes(".mp4") || resolved.includes(".MP4")) {
+    return resolved;
+  }
+  return `Clip ${taskId}: ${resolved}`;
 }

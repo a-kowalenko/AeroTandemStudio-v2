@@ -872,7 +872,10 @@ fn concat_stream_copy(
             if is_cancelled() {
                 return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
             }
-            progress(progress_from_times_with_task(0.0, 100.0, "prepare", Some(task_id)));
+            let activity = format!("Clip {task_id}/{n}: Segment vorbereiten…");
+            let mid = format!("Clip {task_id}/{n}: Segment normalisieren…");
+            let done = format!("Clip {task_id}/{n}: Segment bereit");
+            progress(progress_from_times_with_task(0.0, 100.0, &activity, Some(task_id)));
 
             let mut current = paths_owned[i].clone();
 
@@ -892,7 +895,7 @@ fn concat_stream_copy(
             run_ffmpeg_checked(&ffmpeg_path, &norm_args)?;
             current = path_str(&norm);
 
-            progress(progress_from_times_with_task(50.0, 100.0, "prepare", Some(task_id)));
+            progress(progress_from_times_with_task(50.0, 100.0, &mid, Some(task_id)));
 
             if vcodec == VideoCodec::Hevc {
                 let splice = work_dir.join(format!("seg_{i}_splice.mp4"));
@@ -906,7 +909,7 @@ fn concat_stream_copy(
             let ts_args = build_mp4_to_mpegts_args(&current, &path_str(&ts), vcodec, has_audio);
             run_ffmpeg_checked(&ffmpeg_path, &ts_args)?;
 
-            progress(progress_from_times_with_task(100.0, 100.0, "prepare-done", Some(task_id)));
+            progress(progress_from_times_with_task(100.0, 100.0, &done, Some(task_id)));
             Ok((PathBuf::from(&current), path_str(&ts)))
         },
         None,

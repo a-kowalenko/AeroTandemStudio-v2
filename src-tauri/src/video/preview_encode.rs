@@ -791,6 +791,7 @@ pub fn generate_preview(
         ));
         let mut outs = Vec::with_capacity(video_paths.len());
         let use_task_ids = config.parallel_processing_enabled && video_paths.len() > 1;
+        let n_clips = video_paths.len().max(1) as f64;
         for (i, path) in video_paths.iter().enumerate() {
             if is_cancelled() {
                 return Err(PreviewError::Ffmpeg(FfmpegError::Cancelled));
@@ -803,6 +804,46 @@ pub fn generate_preview(
             } else {
                 None
             };
+            let clip_name = Path::new(path)
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| format!("Clip {}", i + 1));
+            let activity = if use_task_ids {
+                format!(
+                    "Clip {}/{}: {clip_name} — Vorschau kodieren",
+                    i + 1,
+                    video_paths.len()
+                )
+            } else {
+                format!("Kodiere Vorschau-Clip: {clip_name}")
+            };
+            // Overall 10–70% across clips so the main bar moves without averaging task events.
+            let clip_cb: ProgressCallback = {
+                let outer = Arc::clone(&on_progress);
+                let activity = activity.clone();
+                let i = i as f64;
+                Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                    let mut q = p;
+                    if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                        q.status = activity.clone();
+                    }
+                    if let Some(tid) = task_id {
+                        q.task_id = Some(tid);
+                        outer(q.clone());
+                        let frac = (i + q.percent.clamp(0.0, 100.0) / 100.0) / n_clips;
+                        outer(crate::video::progress::EncodeProgress {
+                            percent: 10.0 + frac * 60.0,
+                            current_secs: q.current_secs,
+                            total_secs: q.total_secs,
+                            status: activity.clone(),
+                            task_id: None,
+                        });
+                    } else {
+                        q.percent = 10.0 + (i + q.percent.clamp(0.0, 100.0) / 100.0) / n_clips * 60.0;
+                        outer(q);
+                    }
+                })
+            };
             reencode_one(
                 ffmpeg,
                 path,
@@ -812,8 +853,8 @@ pub fn generate_preview(
                 &hw,
                 hw_accel_enabled,
                 crf,
-                Arc::clone(&on_progress),
-                task_id,
+                clip_cb,
+                None, // task_id applied in clip_cb
             )?;
             outs.push(out_s);
         }

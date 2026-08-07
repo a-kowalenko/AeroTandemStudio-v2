@@ -26,8 +26,8 @@ function Bar({
       <div
         className={
           tone === "primary"
-            ? "h-full rounded-full transition-[width] duration-150 ease-out"
-            : "h-full rounded-full opacity-90 transition-[width] duration-150 ease-out"
+            ? "h-full rounded-full transition-[width] duration-300 ease-out"
+            : "h-full rounded-full opacity-90 transition-[width] duration-300 ease-out"
         }
         style={{
           width: `${clamped}%`,

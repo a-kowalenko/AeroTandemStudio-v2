@@ -928,6 +928,11 @@ pub fn create_video(
         let mux_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
             Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                // Intro+Body mux reuses the multi-clip concat prep path (2 segments).
+                // Do not surface those as "Clip 1/2" task bars — overall stage only.
+                if p.task_id.is_some() {
+                    return;
+                }
                 let mut q = p;
                 // Keep FFmpeg `continue`/`end` transient so the UI retains the last
                 // concrete status — especially re-encode reasons.
