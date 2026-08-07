@@ -135,7 +135,7 @@ export function VideoPreview({
   const encodingSig = previewEncodingSignature(
     Boolean(config?.intro_enabled ?? true),
     config?.dauer ?? 5,
-    config?.intro_mux_mode ?? "stream_copy",
+    config?.intro_mux_mode ?? "soft_splice",
   );
 
   const previewStale = Boolean(

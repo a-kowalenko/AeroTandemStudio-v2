@@ -956,9 +956,9 @@ export function SettingsDialog({
               <Label>Intro zusammenfügen</Label>
               <Select
                 value={
-                  draft.intro_mux_mode === "soft_splice"
-                    ? "soft_splice"
-                    : "stream_copy"
+                  draft.intro_mux_mode === "stream_copy"
+                    ? "stream_copy"
+                    : "soft_splice"
                 }
                 onValueChange={(v) => patch("intro_mux_mode", v)}
                 disabled={!draft.intro_enabled}
@@ -967,11 +967,11 @@ export function SettingsDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="stream_copy">
-                    Stream-Copy (schnell, wie bisher)
-                  </SelectItem>
                   <SelectItem value="soft_splice">
-                    Soft-Splice (kompatibler auf Geräten)
+                    Soft-Splice (kompatibel)
+                  </SelectItem>
+                  <SelectItem value="stream_copy">
+                    Stream-Copy (schnell)
                   </SelectItem>
                 </SelectContent>
               </Select>

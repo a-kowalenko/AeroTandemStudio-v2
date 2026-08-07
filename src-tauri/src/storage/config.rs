@@ -133,7 +133,7 @@ pub struct AppConfig {
     pub encoding_strategy: String,
     #[serde(default)]
     pub reencode_matching_clips: bool,
-    /// Intro+Body mux: `"stream_copy"` (default) | `"soft_splice"`.
+    /// Intro+Body mux: `"soft_splice"` (default) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
@@ -351,7 +351,7 @@ fn default_encoding_strategy() -> String {
     "per_clip".into()
 }
 fn default_intro_mux_mode() -> String {
-    "stream_copy".into()
+    "soft_splice".into()
 }
 fn default_preview_crf() -> u8 {
     18
@@ -360,8 +360,8 @@ fn default_preview_crf() -> u8 {
 /// Normalize intro mux mode to `stream_copy` | `soft_splice`.
 pub fn normalize_intro_mux_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
-        "soft_splice" | "soft-splice" | "softsplice" => "soft_splice".into(),
-        _ => "stream_copy".into(),
+        "stream_copy" | "stream-copy" | "streamcopy" => "stream_copy".into(),
+        _ => "soft_splice".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(cfg.dauer, 7);
         assert!(cfg.intro_enabled);
         assert_eq!(cfg.video_codec, "auto");
-        assert_eq!(cfg.intro_mux_mode, "stream_copy");
+        assert_eq!(cfg.intro_mux_mode, "soft_splice");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);

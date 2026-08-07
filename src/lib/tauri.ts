@@ -65,7 +65,7 @@ export type AppConfig = {
   video_codec: string;
   encoding_strategy: string;
   reencode_matching_clips: boolean;
-  /** Intro+Body mux: "stream_copy" (default) | "soft_splice". */
+  /** Intro+Body mux: "soft_splice" (default) | "stream_copy". */
   intro_mux_mode: "stream_copy" | "soft_splice" | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;

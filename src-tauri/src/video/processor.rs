@@ -71,7 +71,7 @@ pub struct CreateVideoOptions {
     /// Parallel body-clip prep / encode (legacy `parallel_processing_enabled`).
     #[serde(default = "default_true")]
     pub parallel_enabled: bool,
-    /// Intro+Body mux: `"stream_copy"` (default) | `"soft_splice"`.
+    /// Intro+Body mux: `"soft_splice"` (default) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
 }
@@ -86,7 +86,7 @@ fn default_crf() -> u8 {
     18
 }
 fn default_intro_mux_mode() -> String {
-    "stream_copy".into()
+    "soft_splice".into()
 }
 
 fn is_soft_splice_mode(mode: &str) -> bool {

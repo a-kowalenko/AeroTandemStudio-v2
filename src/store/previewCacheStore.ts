@@ -19,10 +19,10 @@ export function previewEncodingSignature(
   introMuxMode: string,
 ): string {
   const mux =
-    introMuxMode.trim().toLowerCase() === "soft_splice" ||
-    introMuxMode.trim().toLowerCase() === "soft-splice"
-      ? "soft_splice"
-      : "stream_copy";
+    introMuxMode.trim().toLowerCase() === "stream_copy" ||
+    introMuxMode.trim().toLowerCase() === "stream-copy"
+      ? "stream_copy"
+      : "soft_splice";
   return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}`;
 }
 

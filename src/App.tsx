@@ -581,7 +581,7 @@ function App() {
       const encodingSig = previewEncodingSignature(
         Boolean(config?.intro_enabled ?? true),
         config?.dauer ?? 5,
-        config?.intro_mux_mode ?? "stream_copy",
+        config?.intro_mux_mode ?? "soft_splice",
       );
       const canReusePreview = previewCacheMatches(videoList, kunde, encodingSig);
       const res: CreateJobResult = await createJob(kunde, paths, photos, {
@@ -592,7 +592,7 @@ function App() {
         video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
         crf: config?.preview_encode_crf ?? 18,
         parallel_enabled: config?.parallel_processing_enabled ?? true,
-        intro_mux_mode: config?.intro_mux_mode ?? "stream_copy",
+        intro_mux_mode: config?.intro_mux_mode ?? "soft_splice",
         reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
         reuse_preview_fingerprint: canReusePreview
           ? cachedPreviewFingerprint
