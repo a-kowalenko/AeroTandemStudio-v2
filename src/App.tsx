@@ -132,7 +132,7 @@ function App() {
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
-  const activeDrive = useSdStore((s) => s.activeDrive);
+  useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
@@ -896,20 +896,36 @@ function App() {
                 Upload
               </label>
             </div>
-            <label className="flex items-center gap-2 text-xs text-muted">
-              <Checkbox
-                checked={Boolean(config?.auto_clear_files_after_creation)}
-                disabled={busy || !config}
-                onCheckedChange={(v) => {
-                  if (!config) return;
-                  void persistConfig({
-                    ...config,
-                    auto_clear_files_after_creation: v === true,
-                  });
-                }}
-              />
-              Nach Erstellen zurücksetzen
-            </label>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <Checkbox
+                  checked={Boolean(config?.auto_clear_files_after_creation)}
+                  disabled={busy || !config}
+                  onCheckedChange={(v) => {
+                    if (!config) return;
+                    void persistConfig({
+                      ...config,
+                      auto_clear_files_after_creation: v === true,
+                    });
+                  }}
+                />
+                Nach Erstellen zurücksetzen
+              </label>
+              <label className="flex items-center gap-2 text-xs text-muted">
+                <Checkbox
+                  checked={Boolean(config?.intro_enabled)}
+                  disabled={busy || !config}
+                  onCheckedChange={(v) => {
+                    if (!config) return;
+                    void persistConfig({
+                      ...config,
+                      intro_enabled: v === true,
+                    });
+                  }}
+                />
+                Intro erstellen
+              </label>
+            </div>
             {createHints.length > 0 && (
               <ul className="space-y-0.5 text-[11px] leading-snug text-muted">
                 {createHints.slice(0, 4).map((h) => (
