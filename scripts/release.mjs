@@ -134,7 +134,13 @@ async function ask(rl, question) {
 }
 
 async function main() {
-  const rl = createInterface({ input, output });
+  // JetBrains Run-Konsole ist oft kein echtes TTY — ohne terminal:false
+  // erscheinen Cursor-Escape-Sequenzen (z. B. ←[1G←[0J) im Output.
+  const rl = createInterface({
+    input,
+    output,
+    terminal: false,
+  });
   try {
     assertReadyToRelease();
 
