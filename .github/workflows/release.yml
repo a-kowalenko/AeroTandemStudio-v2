@@ -1,0 +1,112 @@
+# Release — build signed updater artifacts and publish to the public releases repo.
+#
+# Trigger: push a version tag (v0.1.0, v1.2.3, …).
+# Target:  https://github.com/a-kowalenko/aero-tandem-studio-releases
+#
+# Required secrets (private repo):
+#   RELEASES_GITHUB_TOKEN              — PAT with Contents R/W on the releases repo
+#   TAURI_SIGNING_PRIVATE_KEY          — updater private key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password
+#
+# Optional later: APPLE_* / Windows Authenticode (not required for unsigned shipping).
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing or new tag to release (e.g. v0.1.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: ""
+          - platform: macos-latest
+            args: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # workflow_dispatch builds current default branch; tag name only labels the public release.
+        # tag-push builds the tagged commit.
+
+      - name: Require updater signing secrets
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            echo "Missing secret TAURI_SIGNING_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [ -z "${{ secrets.RELEASES_GITHUB_TOKEN }}" ]; then
+            echo "Missing secret RELEASES_GITHUB_TOKEN" >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Download FFmpeg sidecar
+        run: npm run download-ffmpeg
+
+      - name: Rust unit tests
+        run: npm run test:rust
+
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and publish to releases repo
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          owner: a-kowalenko
+          repo: aero-tandem-studio-releases
+          tagName: ${{ steps.tag.outputs.name }}
+          releaseName: Aero Tandem Studio ${{ steps.tag.outputs.name }}
+          releaseBody: |
+            Automatischer Build aus dem privaten Source-Repository.
+            Installer und Updater-Artefakte für diese Version.
+          releaseDraft: false
+          prerelease: false
+          releaseCommitish: main
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: ${{ matrix.args }}
