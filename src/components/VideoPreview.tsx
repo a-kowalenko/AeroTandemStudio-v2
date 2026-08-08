@@ -133,7 +133,7 @@ export function VideoPreview({
     (kunde.outside_video && !kunde.ist_bezahlt_outside_video);
 
   const encodingSig = previewEncodingSignature(
-    Boolean(config?.intro_enabled ?? true),
+    Boolean(config?.intro_enabled ?? false),
     config?.dauer ?? 5,
     config?.intro_mux_mode ?? "reencode",
   );

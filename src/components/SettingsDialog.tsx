@@ -44,6 +44,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRequestUpdateCheck?: () => void;
+  /** After factory reset — open first-run setup wizard. */
+  onAfterFactoryReset?: () => void;
   /** Keep settings open while another dialog (e.g. Update) is stacked on top. */
   suppressDismiss?: boolean;
 };
@@ -52,6 +54,7 @@ export function SettingsDialog({
   open,
   onOpenChange,
   onRequestUpdateCheck,
+  onAfterFactoryReset,
   suppressDismiss = false,
 }: Props) {
   const config = useConfigStore((s) => s.config);
@@ -322,6 +325,8 @@ export function SettingsDialog({
       setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
       setCrewEditIndex(null);
       showSuccess("Einstellungen wurden auf die Standardeinstellungen zurückgesetzt.");
+      onOpenChange(false);
+      onAfterFactoryReset?.();
     } else {
       showError("Standardeinstellungen konnten nicht wiederhergestellt werden.");
     }

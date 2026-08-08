@@ -102,7 +102,8 @@ pub struct AppConfig {
     pub ort: String,
     #[serde(default = "default_dauer", deserialize_with = "de_u32_flexible")]
     pub dauer: u32,
-    #[serde(default = "default_true")]
+    /// Intro clip on create — off by default (enable in settings / create form).
+    #[serde(default)]
     pub intro_enabled: bool,
     #[serde(default)]
     pub outside_video: bool,
@@ -199,6 +200,9 @@ pub struct AppConfig {
     /// Clear imported media (+ session form) after a successful create job.
     #[serde(default)]
     pub auto_clear_files_after_creation: bool,
+    /// First-run setup wizard finished (or skipped). Reset clears this.
+    #[serde(default)]
+    pub setup_completed: bool,
 }
 
 fn default_ort() -> String {
@@ -417,7 +421,7 @@ impl Default for AppConfig {
             speicherort: String::new(),
             ort: default_ort(),
             dauer: default_dauer(),
-            intro_enabled: true,
+            intro_enabled: false,
             outside_video: false,
             gast_name: String::new(),
             tandemmaster: String::new(),
@@ -457,6 +461,7 @@ impl Default for AppConfig {
             keep_tandemmaster_on_session_reset: false,
             keep_videospringer_on_session_reset: false,
             auto_clear_files_after_creation: false,
+            setup_completed: false,
         }
     }
 }
@@ -480,9 +485,12 @@ fn legacy_json_path(dir: &Path) -> PathBuf {
 
 /// Merge unknown/missing keys from defaults (legacy load_settings behaviour).
 pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
-    let had_entry_mode = partial
-        .as_object()
+    let obj = partial.as_object();
+    let had_entry_mode = obj
         .map(|o| o.contains_key("manual_entry_mode"))
+        .unwrap_or(false);
+    let had_setup_completed = obj
+        .map(|o| o.contains_key("setup_completed"))
         .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
     if let (Value::Object(base), Value::Object(overlay)) = (&mut defaults, partial) {
@@ -498,6 +506,12 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
         } else {
             "id".into()
         };
+    }
+    if !had_setup_completed {
+        // Pre-wizard installs: skip wizard when core paths/credentials exist.
+        cfg.setup_completed = !cfg.speicherort.trim().is_empty()
+            || !cfg.sd_backup_folder.trim().is_empty()
+            || !cfg.server_login.trim().is_empty();
     }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
@@ -622,6 +636,8 @@ mod tests {
         assert_eq!(loaded.ort, defaults.ort);
         assert_eq!(loaded.server_login, "");
         assert_eq!(loaded.dauer, defaults.dauer);
+        assert!(!loaded.setup_completed);
+        assert!(!loaded.intro_enabled);
         assert_eq!(loaded.crew_list, defaults.crew_list);
     }
 
@@ -642,7 +658,8 @@ mod tests {
         let cfg = merge_with_defaults(partial).unwrap();
         assert_eq!(cfg.ort, "Kassel");
         assert_eq!(cfg.dauer, 7);
-        assert!(cfg.intro_enabled);
+        assert!(!cfg.intro_enabled);
+        assert!(!cfg.setup_completed);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
@@ -733,13 +750,34 @@ mod tests {
           "sd_auto_import": false,
           "sd_skip_processed": false,
           "sd_size_limit_enabled": false,
-          "sd_size_limit_mb": 2000
+          "sd_size_limit_mb": 2000,
+          "setup_completed": false
         }"#;
         let cfg: AppConfig = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.ort, "Calden");
         assert_eq!(cfg.sd_size_limit_mb, 2000);
+        assert!(!cfg.setup_completed);
         assert_eq!(cfg.crew_list, default_crew_list());
         assert!(cfg.crew_list.iter().any(|c| c.name == "Andy" && c.tandemmaster));
+    }
+
+    #[test]
+    fn setup_completed_inferred_for_legacy_configs() {
+        let empty = merge_with_defaults(serde_json::json!({ "ort": "Calden" })).unwrap();
+        assert!(!empty.setup_completed);
+
+        let with_path = merge_with_defaults(serde_json::json!({
+            "speicherort": "D:/Jobs"
+        }))
+        .unwrap();
+        assert!(with_path.setup_completed);
+
+        let explicit = merge_with_defaults(serde_json::json!({
+            "setup_completed": false,
+            "speicherort": "D:/Jobs"
+        }))
+        .unwrap();
+        assert!(!explicit.setup_completed);
     }
 
     #[test]

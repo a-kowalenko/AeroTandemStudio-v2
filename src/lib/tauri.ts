@@ -96,6 +96,8 @@ export type AppConfig = {
   keep_videospringer_on_session_reset: boolean;
   /** Clear imported media and session form after successful create. */
   auto_clear_files_after_creation: boolean;
+  /** First-run setup wizard finished or skipped. */
+  setup_completed: boolean;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox. */

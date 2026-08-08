@@ -11,6 +11,7 @@ import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
 import { PendingCutsDialog } from "./components/PendingCutsDialog";
 import { CustomerForm, CustomerFormToolbar } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/SettingsDialog";
+import { SetupWizard } from "./components/SetupWizard";
 import { ErrorDialog } from "./components/ErrorDialog";
 import { SuccessDialog } from "./components/SuccessDialog";
 import {
@@ -164,6 +165,7 @@ function App() {
   const [splashError, setSplashError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [ready, setReady] = useState(false);
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [createReady, setCreateReady] = useState(false);
   const [createHints, setCreateHints] = useState<string[]>([]);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
@@ -498,9 +500,20 @@ function App() {
   }, [loadConfig, showError]);
 
   useEffect(() => {
-    if (!config?.server_url || !ready) return;
+    if (!ready || !config || splashOpen) return;
+    if (!config.setup_completed) setSetupWizardOpen(true);
+  }, [ready, config, splashOpen]);
+
+  useEffect(() => {
+    if (!config?.server_url || !ready || setupWizardOpen) return;
     void checkServerConnection();
-  }, [config?.server_url, config?.server_login, checkServerConnection, ready]);
+  }, [
+    config?.server_url,
+    config?.server_login,
+    checkServerConnection,
+    ready,
+    setupWizardOpen,
+  ]);
 
   useEffect(() => {
     if (!config || defaultsApplied.current) return;
@@ -764,7 +777,7 @@ function App() {
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
       const encodingSig = previewEncodingSignature(
-        Boolean(config?.intro_enabled ?? true),
+        Boolean(config?.intro_enabled ?? false),
         config?.dauer ?? 5,
         config?.intro_mux_mode ?? "reencode",
       );
@@ -773,7 +786,7 @@ function App() {
         watermark_clip_index: watermarkClipIndex,
         watermark_photo_indices: wmPhotos,
         dauer: config?.dauer ?? 5,
-        intro_enabled: config?.intro_enabled ?? true,
+        intro_enabled: config?.intro_enabled ?? false,
         video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
         crf: config?.preview_encode_crf ?? 18,
         parallel_enabled: config?.parallel_processing_enabled ?? true,
@@ -1189,7 +1202,15 @@ function App() {
           setSettingsOpen(open);
         }}
         onRequestUpdateCheck={() => void runUpdateCheck(true)}
+        onAfterFactoryReset={() => {
+          setSettingsOpen(false);
+          setSetupWizardOpen(true);
+        }}
         suppressDismiss={updateDialogOpen}
+      />
+      <SetupWizard
+        open={setupWizardOpen}
+        onComplete={() => setSetupWizardOpen(false)}
       />
       <UpdateDialog
         open={updateDialogOpen}

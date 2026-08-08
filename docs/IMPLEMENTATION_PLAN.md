@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 15 Linux erledigt — manuelle VM-Abnahme laut Feature-Matrix / `LINUX_BUILD.md`)*
+*(Phase 15 Linux + Phase 16 Setup-Wizard erledigt)*
 
 ---
 
@@ -825,6 +825,32 @@ scripts/download-ffmpeg.mjs
 
 ---
 
+### Phase 16 — First-Run Setup-Wizard
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 5 (Config), Phase 11 (Splash)  
+**Ziel:** Beim ersten Start (und nach Werkseinstellungen) kurze Einrichtung der Kern-Settings
+
+#### Aufgaben
+
+- [x] `setup_completed` in `AppConfig` + Migration für bestehende Installationen
+- [x] `intro_enabled` Default `false`
+- [x] `SetupWizard.tsx`: Theme, Speicherort/Ort, Backup/PC-Name, Server, Zusammenfassung
+- [x] Dezenter Skip; Abschluss setzt `setup_completed`
+- [x] Boot-Gate nach Splash; Factory-Reset öffnet Wizard erneut
+- [x] Unit-Tests für Setup-Migration
+
+#### Referenzen
+
+```
+src/components/SetupWizard.tsx
+src-tauri/src/storage/config.rs
+src/components/SettingsDialog.tsx
+src/App.tsx
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -834,7 +860,7 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "speicherort": "",
   "ort": "Calden",
   "dauer": 5,
-  "intro_enabled": true,
+  "intro_enabled": false,
   "outside_video": false,
   "gast_name": "",
   "tandemmaster": "",
@@ -855,7 +881,8 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "sd_auto_import": false,
   "sd_skip_processed": false,
   "sd_size_limit_enabled": false,
-  "sd_size_limit_mb": 2000
+  "sd_size_limit_mb": 2000,
+  "setup_completed": false
 }
 ```
 
