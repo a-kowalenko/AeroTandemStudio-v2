@@ -32,16 +32,19 @@ will still warn when opening the app on another machine until notarized.
 
 Release CI builds **both** targets on `macos-latest` (arm64 host):
 
-| Target | FFmpeg | Command |
-|--------|--------|---------|
-| Apple Silicon | Homebrew → `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
+| Target | FFmpeg (static) | Command |
+|--------|-----------------|---------|
+| Apple Silicon | martin-riedl.de → `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
 | Intel | evermeet.cx → `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
+
+Do **not** copy Homebrew `ffmpeg` into the bundle — it links `/opt/homebrew` dylibs and
+breaks on other Macs (`could not parse video stream` on import).
 
 ```bash
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
-# Native arch
-npm run download-ffmpeg
+# Apple Silicon (static arm64 sidecar)
+FFMPEG_MAC_ARCH=arm64 npm run download-ffmpeg
 npm run tauri build -- --target aarch64-apple-darwin --bundles app,dmg
 
 # Intel from Apple Silicon host (cross-compile)

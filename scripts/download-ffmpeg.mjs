@@ -2,7 +2,9 @@
  * Download / install the FFmpeg sidecar for the current platform.
  *
  * Windows: essentials build from gyan.dev (zip → win/ffmpeg.exe)
- * macOS:   brew (native arch) or evermeet.cx static zip (Intel / cross-arch)
+ * macOS:   static zips only (never Homebrew — dylibs break on other Macs)
+ *          arm64 → martin-riedl.de (+ osxexperts.net fallback)
+ *          x86_64 → evermeet.cx
  * Linux:   BtbN static GPL tarball → linux/x86_64/ffmpeg (+ fallback linux/ffmpeg)
  *
  * Usage:
@@ -27,6 +29,17 @@ const GYAN_ESSENTIALS =
 
 /** Intel (x86_64) static macOS builds — includes VideoToolbox / libx264. */
 const EVERMEET_FFMPEG_ZIP = "https://evermeet.cx/ffmpeg/getrelease/zip";
+
+/**
+ * Apple Silicon static builds (portable — no /opt/homebrew dylibs).
+ * Scripting URLs: https://ffmpeg.martin-riedl.de/ (signed zips).
+ */
+const MARTIN_RIEDL_ARM64_RELEASE =
+  "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip";
+const MARTIN_RIEDL_ARM64_SNAPSHOT =
+  "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/snapshot/ffmpeg.zip";
+/** Fallback if martin-riedl is unreachable. */
+const OSXEXPERTS_ARM64_ZIP = "https://www.osxexperts.net/ffmpeg81arm.zip";
 
 /**
  * Linux x86_64 static GPL build (libx264, drawtext, h264_nvenc).
@@ -76,42 +89,39 @@ function resolveMacArchDir() {
   );
 }
 
-function installMacFromBrew(archDest, fallback) {
-  let src;
+function clearMacQuarantine(path) {
   try {
-    execSync("brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg", {
-      stdio: "inherit",
-      shell: true,
-    });
-    src = execSync("brew --prefix ffmpeg", { encoding: "utf8" }).trim();
-    src = join(src, "bin", "ffmpeg");
+    execFileSync("xattr", ["-cr", path], { stdio: "ignore" });
   } catch {
-    src = execSync("which ffmpeg", { encoding: "utf8" }).trim();
+    /* ignore — not present or already cleared */
   }
+}
 
-  if (!existsSync(src)) {
-    throw new Error(
-      "Could not locate ffmpeg. Install Homebrew ffmpeg or place a binary under resources/ffmpeg/mac/",
-    );
-  }
-
+function installMacBinary(found, archDest, fallback, label) {
   ensureDir(dirname(archDest));
   ensureDir(dirname(fallback));
-  copyFileSync(src, archDest);
-  copyFileSync(src, fallback);
+  copyFileSync(found, archDest);
+  copyFileSync(found, fallback);
   chmodSync(archDest, 0o755);
   chmodSync(fallback, 0o755);
-  console.log(`Installed ${archDest} (Homebrew)`);
+  clearMacQuarantine(archDest);
+  clearMacQuarantine(fallback);
+  console.log(`Installed ${archDest} (${label})`);
   console.log(`Installed ${fallback}`);
 }
 
-async function installMacFromEvermeet(archDest, fallback) {
+/**
+ * Download a zip that contains an `ffmpeg` binary and install it.
+ * Works on any host (CI can fetch arm64 while building on arm64 runners).
+ */
+async function installMacFromZip(url, archDest, fallback, label) {
   const macDir = join(ffmpegRoot, "mac");
-  const zipPath = join(macDir, "ffmpeg-evermeet.zip");
-  const extractDir = join(macDir, "_evermeet_extract");
+  const safeLabel = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const zipPath = join(macDir, `ffmpeg-${safeLabel}.zip`);
+  const extractDir = join(macDir, `_extract_${safeLabel}`);
 
   ensureDir(macDir);
-  await download(EVERMEET_FFMPEG_ZIP, zipPath);
+  await download(url, zipPath);
 
   rmSync(extractDir, { recursive: true, force: true });
   ensureDir(extractDir);
@@ -123,17 +133,10 @@ async function installMacFromEvermeet(archDest, fallback) {
   ).trim();
 
   if (!found || !existsSync(found)) {
-    throw new Error("ffmpeg binary not found inside evermeet.cx zip");
+    throw new Error(`ffmpeg binary not found inside ${label} zip`);
   }
 
-  ensureDir(dirname(archDest));
-  ensureDir(dirname(fallback));
-  copyFileSync(found, archDest);
-  copyFileSync(found, fallback);
-  chmodSync(archDest, 0o755);
-  chmodSync(fallback, 0o755);
-  console.log(`Installed ${archDest} (evermeet.cx Intel static)`);
-  console.log(`Installed ${fallback}`);
+  installMacBinary(found, archDest, fallback, label);
 
   try {
     rmSync(extractDir, { recursive: true, force: true });
@@ -141,6 +144,29 @@ async function installMacFromEvermeet(archDest, fallback) {
   } catch {
     /* ignore */
   }
+}
+
+async function installMacArm64(archDest, fallback) {
+  const sources = [
+    [MARTIN_RIEDL_ARM64_RELEASE, "martin-riedl arm64 release"],
+    [MARTIN_RIEDL_ARM64_SNAPSHOT, "martin-riedl arm64 snapshot"],
+    [OSXEXPERTS_ARM64_ZIP, "osxexperts.net ffmpeg81arm"],
+  ];
+
+  let lastErr;
+  for (const [url, label] of sources) {
+    try {
+      await installMacFromZip(url, archDest, fallback, label);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`arm64 FFmpeg source failed (${label}): ${err.message}`);
+    }
+  }
+  throw new Error(
+    `Could not download static arm64 FFmpeg. Last error: ${lastErr?.message ?? "unknown"}. ` +
+      "Place a portable binary at resources/ffmpeg/mac/arm64/ffmpeg manually.",
+  );
 }
 
 async function installMac() {
@@ -151,19 +177,17 @@ async function installMac() {
 
   console.log(`macOS FFmpeg target arch: ${archDir} (host: ${hostDir})`);
 
-  if (archDir === hostDir) {
-    installMacFromBrew(archDest, fallback);
+  // Always ship static binaries — Homebrew copies break on Macs without matching cellar libs.
+  if (archDir === "arm64") {
+    await installMacArm64(archDest, fallback);
     return;
   }
 
-  // Cross-arch on CI (arm64 runner → Intel app): evermeet ships x86_64 only.
-  if (archDir === "x86_64") {
-    await installMacFromEvermeet(archDest, fallback);
-    return;
-  }
-
-  throw new Error(
-    `Cannot fetch arm64 FFmpeg while host is ${hostDir}. Build on Apple Silicon or place mac/arm64/ffmpeg manually.`,
+  await installMacFromZip(
+    EVERMEET_FFMPEG_ZIP,
+    archDest,
+    fallback,
+    "evermeet.cx Intel static",
   );
 }
 

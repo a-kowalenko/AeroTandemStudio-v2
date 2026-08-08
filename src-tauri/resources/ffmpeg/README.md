@@ -28,9 +28,12 @@ npm run download-ffmpeg
 
 ## macOS
 
-1. Prefer a **static** build matching the machine you build on (`arm64` or `x86_64`).
-2. Place the binary at `mac/arm64/ffmpeg` or `mac/x86_64/ffmpeg` (or `mac/ffmpeg`).
-3. Make it executable:
+Always ship a **static** binary (no Homebrew cellar links). Homebrew copies fail on
+other Macs with missing `/opt/homebrew/...` dylibs.
+
+1. Prefer `npm run download-ffmpeg` (respects `FFMPEG_MAC_ARCH` / `--arch=`).
+2. Or place a portable binary at `mac/arm64/ffmpeg` or `mac/x86_64/ffmpeg` (or `mac/ffmpeg`).
+3. Make it executable and clear quarantine:
 
 ```bash
 chmod +x src-tauri/resources/ffmpeg/mac/ffmpeg
@@ -43,14 +46,16 @@ xattr -dr com.apple.quarantine src-tauri/resources/ffmpeg/mac 2>/dev/null || tru
 
 | Arch | Source |
 |------|--------|
-| Native host arch | `npm run download-ffmpeg` (Homebrew) |
-| Intel (`x86_64`), also when cross-building on Apple Silicon | `FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg` → [evermeet.cx](https://evermeet.cx/ffmpeg/) |
-| Manual | https://evermeet.cx/ffmpeg/ (Intel) · https://www.osxexperts.net/ (arm64) |
+| Apple Silicon (`arm64`) | `FFMPEG_MAC_ARCH=arm64 npm run download-ffmpeg` → [martin-riedl.de](https://ffmpeg.martin-riedl.de/) (fallback [osxexperts.net](https://www.osxexperts.net/)) |
+| Intel (`x86_64`) | `FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg` → [evermeet.cx](https://evermeet.cx/ffmpeg/) |
+| Manual | evermeet (Intel) · martin-riedl / osxexperts (arm64) |
 
 The binary **must** include `h264_videotoolbox` (and ideally `libx264` as fallback):
 
 ```bash
-./mac/ffmpeg -hide_banner -encoders | grep videotoolbox
+./mac/arm64/ffmpeg -hide_banner -encoders | grep videotoolbox
+# and must not depend on Homebrew:
+otool -L ./mac/arm64/ffmpeg | grep -i homebrew   # expect empty
 ```
 
 ## Linux

@@ -144,7 +144,7 @@ jobs:
             args: ""
             ffmpeg_arch: ""
             bundles: ""
-          # Apple Silicon (M1+) — native on macos-latest (arm64)
+          # Apple Silicon (M1+) — native on macos-latest (arm64) + static arm64 FFmpeg
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
             ffmpeg_arch: arm64
