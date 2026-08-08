@@ -1,12 +1,11 @@
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 
 /**
- * URL for local video playback via the custom `media` URI scheme.
+ * URL for local video playback via the loopback HTTP media server.
  *
- * Prefer this over bare `convertFileSrc` (asset protocol): on Linux, WebKitGTK
- * often requests the whole file without Range, and asset:// would read multi‑GB
- * clips into memory and freeze the UI.
+ * WebKitGTK cannot reliably play custom schemes (`asset://` / `media://`);
+ * Range-capable `http://127.0.0.1` works for preview and multi‑GB clips.
  */
-export function videoFileSrc(path: string): string {
-  return convertFileSrc(path, "media");
+export async function videoFileSrc(path: string): Promise<string> {
+  return invoke<string>("media_file_url", { path });
 }

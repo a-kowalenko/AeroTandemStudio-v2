@@ -1,11 +1,18 @@
 import { create } from "zustand";
-import { deleteWorkingCopy, getFileSizes, importPhotos } from "../lib/tauri";
+import {
+  deleteWorkingCopy,
+  getFileSizes,
+  importPhotos,
+  type PhotoMetadata,
+} from "../lib/tauri";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 
 export type PhotoItem = {
   path: string;
   filename: string;
   sizeBytes?: number;
+  camera_make?: string;
+  camera_model?: string;
 };
 
 type PhotoListState = {
@@ -30,10 +37,17 @@ type PhotoListState = {
   refreshSizes: (paths?: string[]) => Promise<void>;
 };
 
-function toItem(path: string): PhotoItem {
+function toItem(meta: PhotoMetadata): PhotoItem {
+  const path = meta.path;
   const normalized = path.replace(/\\/g, "/");
-  const filename = normalized.split("/").pop() || path;
-  return { path, filename };
+  const filename = meta.filename || normalized.split("/").pop() || path;
+  return {
+    path,
+    filename,
+    sizeBytes: meta.size_bytes,
+    camera_make: meta.camera_make || undefined,
+    camera_model: meta.camera_model || undefined,
+  };
 }
 
 export const usePhotoStore = create<PhotoListState>((set, get) => ({
@@ -52,7 +66,7 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       const imported = await importPhotos(paths);
       const existing = new Set(get().photoList.map((p) => p.path.toLowerCase()));
       const fresh = imported
-        .filter((p) => !existing.has(p.toLowerCase()))
+        .filter((p) => !existing.has(p.path.toLowerCase()))
         .map(toItem);
       if (fresh.length === 0) {
         set({
@@ -71,7 +85,9 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
         importing: false,
         importError: null,
       });
-      void get().refreshSizes(fresh.map((p) => p.path));
+      void get().refreshSizes(
+        fresh.filter((p) => p.sizeBytes == null).map((p) => p.path),
+      );
       syncProductsFromMedia({ hasVideos: false, hasPhotos: true });
     } catch (e) {
       set({ importing: false, importError: String(e) });

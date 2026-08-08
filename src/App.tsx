@@ -1210,7 +1210,18 @@ function App() {
       />
       <SetupWizard
         open={setupWizardOpen}
-        onComplete={() => setSetupWizardOpen(false)}
+        onComplete={() => {
+          setSetupWizardOpen(false);
+          const cfg = useConfigStore.getState().config;
+          if (!cfg) return;
+          applyDefaultsFromConfig({
+            ort: cfg.ort,
+            tandemmaster: cfg.tandemmaster,
+            videospringer: cfg.videospringer,
+            gast_name: cfg.gast_name,
+            outside_video: cfg.outside_video,
+          });
+        }}
       />
       <UpdateDialog
         open={updateDialogOpen}

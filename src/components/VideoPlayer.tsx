@@ -61,10 +61,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [durationMs, setDurationMs] = useState(0);
     const [volume, setVolume] = useState(0.7);
     const [dragging, setDragging] = useState(false);
+    const [src, setSrc] = useState<string | null>(null);
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
-
-    const src = srcPath ? videoFileSrc(srcPath) : null;
 
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
@@ -93,6 +92,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setPlaying(false);
       setCurrentMs(0);
       setDurationMs(0);
+      setSrc(null);
+      if (!srcPath) return;
+      let cancelled = false;
+      void videoFileSrc(srcPath)
+        .then((url) => {
+          if (!cancelled) setSrc(url);
+        })
+        .catch(() => {
+          if (!cancelled) setSrc(null);
+        });
+      return () => {
+        cancelled = true;
+      };
     }, [srcPath]);
 
     useEffect(() => {

@@ -22,6 +22,15 @@ static VIDEO_META_RE: Lazy<Regex> = Lazy::new(|| {
 static FPS_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?:,|\s)(\d+(?:\.\d+)?)\s*fps").unwrap());
 
+/// Container metadata keys written by many cameras (MP4/MOV).
+/// Prefer explicit make/model; ignore `encoder` (usually Lavf / app software).
+static CAMERA_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?im)^\s*(?:com\.apple\.quicktime\.)?(make|model|manufacturer)\s*:\s*(.+?)\s*$",
+    )
+    .unwrap()
+});
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VideoMetadata {
     pub path: String,
@@ -33,6 +42,10 @@ pub struct VideoMetadata {
     /// Approximate FPS when parsed from the stream line; 0 if unknown.
     pub fps: f64,
     pub size_bytes: u64,
+    /// Camera / device brand from container metadata (empty if unknown).
+    pub camera_make: String,
+    /// Camera / device model from container metadata (empty if unknown).
+    pub camera_model: String,
 }
 
 /// Probe a single video file for duration, resolution, and codec.
@@ -54,6 +67,7 @@ pub fn probe_video(ffmpeg: &Path, input: &str) -> Result<VideoMetadata, FfmpegEr
         .and_then(|n| n.to_str())
         .unwrap_or(input)
         .to_string();
+    let (camera_make, camera_model) = parse_camera_from_probe(&stderr);
 
     Ok(VideoMetadata {
         path: input.to_string(),
@@ -64,7 +78,67 @@ pub fn probe_video(ffmpeg: &Path, input: &str) -> Result<VideoMetadata, FfmpegEr
         codec: parsed.codec,
         fps: parsed.fps,
         size_bytes,
+        camera_make,
+        camera_model,
     })
+}
+
+/// Parse camera make/model from FFmpeg `-i` stderr metadata lines.
+pub fn parse_camera_from_probe(stderr: &str) -> (String, String) {
+    let mut make = String::new();
+    let mut model = String::new();
+    for caps in CAMERA_TAG_RE.captures_iter(stderr) {
+        let key = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+        let val = caps
+            .get(2)
+            .map(|m| sanitize_meta_value(m.as_str()))
+            .unwrap_or_default();
+        if val.is_empty() {
+            continue;
+        }
+        match key.as_str() {
+            "make" | "manufacturer" => {
+                if make.is_empty() {
+                    make = val;
+                }
+            }
+            "model" => {
+                if model.is_empty() {
+                    model = val;
+                }
+            }
+            _ => {}
+        }
+    }
+    (make, model)
+}
+
+fn sanitize_meta_value(raw: &str) -> String {
+    raw.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string()
+}
+
+/// Compact label for UI / logs, e.g. `"DJI OsmoAction4"`. `None` if both empty.
+pub fn format_camera_label(make: &str, model: &str) -> Option<String> {
+    let make = make.trim();
+    let model = model.trim();
+    if make.is_empty() && model.is_empty() {
+        return None;
+    }
+    if make.is_empty() {
+        return Some(model.to_string());
+    }
+    if model.is_empty() {
+        return Some(make.to_string());
+    }
+    if model.to_ascii_lowercase().starts_with(&make.to_ascii_lowercase()) {
+        Some(model.to_string())
+    } else {
+        Some(format!("{make} {model}"))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -158,5 +232,48 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
         assert!(is_video_path("photo.mov"));
         assert!(!is_video_path("photo.jpg"));
         assert!(!is_video_path("readme.txt"));
+    }
+
+    #[test]
+    fn parse_camera_quicktime_tags() {
+        let stderr = r#"
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':
+  Metadata:
+    major_brand     : qt  
+    encoder         : Lavf58.76.100
+    com.apple.quicktime.make: DJI
+    com.apple.quicktime.model: OsmoAction4
+  Stream #0:0(eng): Video: hevc (Main), yuv420p, 1920x1080, 59.94 fps
+"#;
+        let (make, model) = parse_camera_from_probe(stderr);
+        assert_eq!(make, "DJI");
+        assert_eq!(model, "OsmoAction4");
+        assert_eq!(
+            format_camera_label(&make, &model).as_deref(),
+            Some("DJI OsmoAction4")
+        );
+    }
+
+    #[test]
+    fn parse_camera_plain_make_model() {
+        let stderr = r#"
+  Metadata:
+    make            : GoPro
+    model           : HERO11 Black
+  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps
+"#;
+        let (make, model) = parse_camera_from_probe(stderr);
+        assert_eq!(make, "GoPro");
+        assert_eq!(model, "HERO11 Black");
+    }
+
+    #[test]
+    fn format_camera_label_dedupes_make_prefix() {
+        assert_eq!(
+            format_camera_label("DJI", "DJI FC3582").as_deref(),
+            Some("DJI FC3582")
+        );
+        assert_eq!(format_camera_label("", "").as_deref(), None);
+        assert_eq!(format_camera_label("Sony", "").as_deref(), Some("Sony"));
     }
 }

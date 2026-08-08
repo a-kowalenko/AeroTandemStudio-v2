@@ -637,15 +637,19 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         for path in &working {
             match probe::probe_video(&ffmpeg, path) {
                 Ok(meta) => {
+                    let device = probe::format_camera_label(&meta.camera_make, &meta.camera_model)
+                        .map(|l| format!(", Gerät: {l}"))
+                        .unwrap_or_default();
                     logging::debug(
                         "import",
                         format!(
-                            "Probe OK: {} ({}x{}, {:.1}s, {})",
+                            "Probe OK: {} ({}x{}, {:.1}s, {}{})",
                             file_name(path),
                             meta.width,
                             meta.height,
                             meta.duration_secs,
-                            meta.codec
+                            meta.codec,
+                            device
                         ),
                     );
                     out.push(meta);
@@ -669,9 +673,19 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
 
     match result {
         Ok(out) => {
+            let with_device = out
+                .iter()
+                .filter(|m| {
+                    probe::format_camera_label(&m.camera_make, &m.camera_model).is_some()
+                })
+                .count();
             logging::info(
                 "import",
-                format!("Video-Import fertig: {} Clip(s)", out.len()),
+                format!(
+                    "Video-Import fertig: {} Clip(s), {} mit Geräte-Tag",
+                    out.len(),
+                    with_device
+                ),
             );
             Ok(out)
         }

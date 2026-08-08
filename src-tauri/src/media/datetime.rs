@@ -9,6 +9,31 @@ use exif::{In, Reader as ExifReader, Tag};
 
 use crate::util::file_times::{get_creation_timestamp, get_mtime_timestamp};
 
+fn sanitize_exif_text(raw: &str) -> String {
+    raw.trim().trim_matches('"').trim_matches('\'').trim().to_string()
+}
+
+/// EXIF Make / Model → `(make, model)`; empty strings when missing.
+pub fn get_exif_camera(path: &Path) -> (String, String) {
+    let Ok(file) = File::open(path) else {
+        return (String::new(), String::new());
+    };
+    let mut reader = BufReader::new(file);
+    let Ok(exif) = ExifReader::new().read_from_container(&mut reader) else {
+        return (String::new(), String::new());
+    };
+
+    let make = exif
+        .get_field(Tag::Make, In::PRIMARY)
+        .map(|f| sanitize_exif_text(&f.display_value().to_string()))
+        .unwrap_or_default();
+    let model = exif
+        .get_field(Tag::Model, In::PRIMARY)
+        .map(|f| sanitize_exif_text(&f.display_value().to_string()))
+        .unwrap_or_default();
+    (make, model)
+}
+
 /// EXIF DateTimeOriginal (+ SubSec) → (local datetime epoch, ms string).
 pub fn get_exif_capture_epoch(path: &Path) -> Option<(f64, String)> {
     let file = File::open(path).ok()?;
@@ -18,8 +43,7 @@ pub fn get_exif_capture_epoch(path: &Path) -> Option<(f64, String)> {
     let raw = exif
         .get_field(Tag::DateTimeOriginal, In::PRIMARY)
         .or_else(|| exif.get_field(Tag::DateTime, In::PRIMARY))?;
-    let text = raw.display_value().to_string();
-    let text = text.trim().trim_matches('"');
+    let text = sanitize_exif_text(&raw.display_value().to_string());
     if text.len() < 19 {
         return None;
     }

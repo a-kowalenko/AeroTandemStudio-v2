@@ -22,7 +22,11 @@ type ComboboxProps = {
   disabled?: boolean;
   placeholder?: string;
   hint?: string;
+  /** Inline validation message; also styles the input as invalid. */
+  error?: string;
   id?: string;
+  /** Portal list z-index (raise above modals, default 80). */
+  listZIndex?: number;
 };
 
 type ListPos = {
@@ -45,7 +49,9 @@ export function Combobox({
   disabled,
   placeholder,
   hint,
+  error,
   id: idProp,
+  listZIndex = 80,
 }: ComboboxProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
@@ -167,7 +173,7 @@ export function Combobox({
         left: listPos.left,
         width: listPos.width,
         maxHeight: listPos.maxHeight,
-        zIndex: 80,
+        zIndex: listZIndex,
       }
     : undefined;
 
@@ -216,6 +222,7 @@ export function Combobox({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
+          aria-invalid={error ? true : undefined}
           autoComplete="off"
           value={value}
           disabled={disabled}
@@ -228,7 +235,12 @@ export function Combobox({
           }}
           onFocus={() => openList()}
           onKeyDown={onKeyDown}
-          className={cn("pr-9", disabled && "bg-card-elevated")}
+          className={cn(
+            "pr-9",
+            disabled && "bg-card-elevated",
+            error &&
+              "border-destructive focus-visible:ring-destructive/40",
+          )}
         />
         <button
           type="button"
@@ -249,7 +261,13 @@ export function Combobox({
         </button>
       </div>
       {list}
-      {hint ? <p className="text-[10px] leading-snug text-muted">{hint}</p> : null}
+      {error ? (
+        <p className="text-[11px] leading-snug text-destructive" role="alert">
+          {error}
+        </p>
+      ) : hint ? (
+        <p className="text-[10px] leading-snug text-muted">{hint}</p>
+      ) : null}
     </div>
   );
 }

@@ -1,11 +1,17 @@
 //! Media import helpers (folder expand, working-session copy, etc.).
 
-use serde::Serialize;
+use std::path::Path;
 
+use serde::Serialize;
+use tauri::State;
+
+use crate::media::datetime::get_exif_camera;
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
+use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
 use crate::storage::working_session;
 use crate::util::natural_sort::sort_paths_by_basename;
+use crate::video::probe::format_camera_label;
 
 /// Expand file/folder paths into a flat list of media files (videos + photos).
 /// Directories are walked recursively.
@@ -69,16 +75,45 @@ pub async fn get_file_sizes(paths: Vec<String>) -> Vec<FileSizeEntry> {
 }
 
 fn is_photo_path(path: &str) -> bool {
-    std::path::Path::new(path)
+    Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .map(is_photo_ext)
         .unwrap_or(false)
 }
 
-/// Copy photos into the session working folder (`…/photos/`) and return dest paths.
+#[derive(Debug, Clone, Serialize)]
+pub struct PhotoMetadata {
+    pub path: String,
+    pub filename: String,
+    pub size_bytes: u64,
+    /// Camera brand from EXIF Make (empty if unknown).
+    pub camera_make: String,
+    /// Camera model from EXIF Model (empty if unknown).
+    pub camera_model: String,
+}
+
+fn photo_metadata_for(path: &str) -> PhotoMetadata {
+    let pb = Path::new(path);
+    let filename = pb
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
+        .to_string();
+    let size_bytes = std::fs::metadata(pb).map(|m| m.len()).unwrap_or(0);
+    let (camera_make, camera_model) = get_exif_camera(pb);
+    PhotoMetadata {
+        path: path.to_string(),
+        filename,
+        size_bytes,
+        camera_make,
+        camera_model,
+    }
+}
+
+/// Copy photos into the session working folder (`…/photos/`) and return metadata.
 #[tauri::command]
-pub async fn import_photos(paths: Vec<String>) -> Result<Vec<String>, String> {
+pub async fn import_photos(paths: Vec<String>) -> Result<Vec<PhotoMetadata>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -98,11 +133,37 @@ pub async fn import_photos(paths: Vec<String>) -> Result<Vec<String>, String> {
         );
         match working_session::import_photos_to_session(&sorted) {
             Ok(dest) => {
+                let mut with_device = 0usize;
+                let out: Vec<PhotoMetadata> = dest
+                    .iter()
+                    .map(|p| {
+                        let meta = photo_metadata_for(p);
+                        if let Some(label) =
+                            format_camera_label(&meta.camera_make, &meta.camera_model)
+                        {
+                            with_device += 1;
+                            logging::debug(
+                                "import",
+                                format!("Foto OK: {} (Gerät: {label})", meta.filename),
+                            );
+                        } else {
+                            logging::debug(
+                                "import",
+                                format!("Foto OK: {} (kein Geräte-Tag)", meta.filename),
+                            );
+                        }
+                        meta
+                    })
+                    .collect();
                 logging::info(
                     "import",
-                    format!("Foto-Import fertig: {} Datei(en)", dest.len()),
+                    format!(
+                        "Foto-Import fertig: {} Datei(en), {} mit Geräte-Tag",
+                        out.len(),
+                        with_device
+                    ),
                 );
-                Ok(dest)
+                Ok(out)
             }
             Err(e) => {
                 let msg = e.to_string();
@@ -153,4 +214,17 @@ pub fn delete_working_copy(path: String) -> bool {
         );
     }
     ok
+}
+
+/// Base URL of the loopback media HTTP server (`http://127.0.0.1:<port>`).
+#[tauri::command]
+pub fn get_media_server_base(state: State<'_, MediaServerState>) -> String {
+    state.base_url.clone()
+}
+
+/// Playback URL for a local video file (loopback HTTP with Range support).
+#[tauri::command]
+pub fn media_file_url(path: String, state: State<'_, MediaServerState>) -> Result<String, String> {
+    ensure_media_file(&path)?;
+    Ok(state.url_for_path(path.trim()))
 }

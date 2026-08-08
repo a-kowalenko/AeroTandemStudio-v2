@@ -11,6 +11,20 @@ export type VideoMetadata = {
   codec: string;
   fps: number;
   size_bytes: number;
+  /** Camera brand from container metadata (empty if unknown). */
+  camera_make?: string;
+  /** Camera model from container metadata (empty if unknown). */
+  camera_model?: string;
+};
+
+export type PhotoMetadata = {
+  path: string;
+  filename: string;
+  size_bytes: number;
+  /** Camera brand from EXIF Make (empty if unknown). */
+  camera_make?: string;
+  /** Camera model from EXIF Model (empty if unknown). */
+  camera_model?: string;
 };
 
 export type Kunde = {
@@ -168,6 +182,37 @@ export function crewNamesForRole(
     .sort((a, b) => a.localeCompare(b, "de"));
 }
 
+/** Add or update a crew member so `name` has the given role (creates if missing). */
+export function ensureCrewRole(
+  list: CrewMember[],
+  name: string,
+  role: "tandemmaster" | "videospringer",
+): CrewMember[] {
+  const trimmed = name.trim();
+  if (!trimmed) return list;
+  const idx = list.findIndex(
+    (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (idx >= 0) {
+    const next = [...list];
+    const prev = next[idx];
+    next[idx] = {
+      ...prev,
+      name: prev.name.trim() || trimmed,
+      [role]: true,
+    };
+    return next;
+  }
+  return [
+    ...list,
+    {
+      name: trimmed,
+      tandemmaster: role === "tandemmaster",
+      videospringer: role === "videospringer",
+    },
+  ].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
 export type ValidationResult = {
   valid: boolean;
   errors: string[];
@@ -262,9 +307,9 @@ export async function importVideos(paths: string[]): Promise<VideoMetadata[]> {
   return invoke<VideoMetadata[]>("import_videos", { paths });
 }
 
-/** Copy photos into the session working folder; returns destination paths. */
-export async function importPhotos(paths: string[]): Promise<string[]> {
-  return invoke<string[]>("import_photos", { paths });
+/** Copy photos into the session working folder; returns metadata (path + camera). */
+export async function importPhotos(paths: string[]): Promise<PhotoMetadata[]> {
+  return invoke<PhotoMetadata[]>("import_photos", { paths });
 }
 
 export async function getWorkingDir(): Promise<string | null> {
@@ -279,6 +324,11 @@ export async function clearWorkingSession(): Promise<void> {
 /** Delete one file if it belongs to the session working folder. */
 export async function deleteWorkingCopy(path: string): Promise<boolean> {
   return invoke<boolean>("delete_working_copy", { path });
+}
+
+/** Loopback HTTP URL for HTML5 video playback (Range-capable). */
+export async function mediaFileUrl(path: string): Promise<string> {
+  return invoke<string>("media_file_url", { path });
 }
 
 export async function probeVideo(path: string): Promise<VideoMetadata> {

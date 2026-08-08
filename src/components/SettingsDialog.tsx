@@ -26,6 +26,8 @@ import type { AppConfig, AvailableRelease, CrewMember, ManualEntryMode } from "@
 import {
   cleanupCache,
   clearWorkingSession,
+  crewNamesForRole,
+  ensureCrewRole,
   getAppInfo,
   installSpecificVersion,
   listAvailableVersions,
@@ -96,6 +98,15 @@ export function SettingsDialog({
       .map((member, index) => ({ member, index }))
       .sort((a, b) => a.member.name.localeCompare(b.member.name, "de"));
   }, [draft]);
+
+  const tandemmasterOptions = useMemo(
+    () => crewNamesForRole(draft?.crew_list, "tandemmaster"),
+    [draft?.crew_list],
+  );
+  const videospringerOptions = useMemo(
+    () => crewNamesForRole(draft?.crew_list, "videospringer"),
+    [draft?.crew_list],
+  );
 
   const filteredReleases = useMemo(() => {
     if (showPrereleases) return releases;
@@ -292,12 +303,36 @@ export function SettingsDialog({
       showError("Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.");
       return;
     }
+    if (
+      draft.keep_tandemmaster_on_session_reset &&
+      !draft.tandemmaster.trim()
+    ) {
+      showError("Bitte einen Tandemmaster wählen oder anlegen.");
+      return;
+    }
+    if (
+      draft.keep_videospringer_on_session_reset &&
+      !draft.videospringer.trim()
+    ) {
+      showError("Bitte einen Videospringer wählen oder anlegen.");
+      return;
+    }
+    let crew_list = [...draft.crew_list];
+    const tm = draft.tandemmaster.trim();
+    const vs = draft.videospringer.trim();
+    if (draft.keep_tandemmaster_on_session_reset && tm) {
+      crew_list = ensureCrewRole(crew_list, tm, "tandemmaster");
+    }
+    if (draft.keep_videospringer_on_session_reset && vs) {
+      crew_list = ensureCrewRole(crew_list, vs, "videospringer");
+    }
+    crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
     const toSave: AppConfig = {
       ...draft,
+      tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
+      videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
       sd_pc_name: draft.sd_pc_name.trim(),
-      crew_list: [...draft.crew_list].sort((a, b) =>
-        a.name.localeCompare(b.name, "de"),
-      ),
+      crew_list,
     };
     const saved = await persist(toSave);
     if (saved) {
@@ -478,25 +513,65 @@ export function SettingsDialog({
               </Select>
             </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.keep_tandemmaster_on_session_reset}
-                onCheckedChange={(v) =>
-                  patch("keep_tandemmaster_on_session_reset", v === true)
-                }
-              />
-              Tandemmaster beim Zurücksetzen beibehalten
-            </label>
+            <div className="space-y-3 rounded-lg border border-border bg-card-elevated/40 p-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.keep_tandemmaster_on_session_reset}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            keep_tandemmaster_on_session_reset: on,
+                            tandemmaster: on ? prev.tandemmaster : "",
+                          }
+                        : prev,
+                    );
+                  }}
+                />
+                Tandemmaster beim Zurücksetzen beibehalten
+              </label>
+              {draft.keep_tandemmaster_on_session_reset ? (
+                <Combobox
+                  label="Tandemmaster"
+                  value={draft.tandemmaster}
+                  onChange={(v) => patch("tandemmaster", v)}
+                  options={tandemmasterOptions}
+                  placeholder="Name wählen oder neu eintippen…"
+                  listZIndex={100}
+                />
+              ) : null}
 
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.keep_videospringer_on_session_reset}
-                onCheckedChange={(v) =>
-                  patch("keep_videospringer_on_session_reset", v === true)
-                }
-              />
-              Videospringer beim Zurücksetzen beibehalten
-            </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.keep_videospringer_on_session_reset}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    setDraft((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            keep_videospringer_on_session_reset: on,
+                            videospringer: on ? prev.videospringer : "",
+                          }
+                        : prev,
+                    );
+                  }}
+                />
+                Videospringer beim Zurücksetzen beibehalten
+              </label>
+              {draft.keep_videospringer_on_session_reset ? (
+                <Combobox
+                  label="Videospringer"
+                  value={draft.videospringer}
+                  onChange={(v) => patch("videospringer", v)}
+                  options={videospringerOptions}
+                  placeholder="Name wählen oder neu eintippen…"
+                  listZIndex={100}
+                />
+              ) : null}
+            </div>
 
             <div className="space-y-1.5">
               <Label>Server-URL</Label>

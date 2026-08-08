@@ -169,7 +169,7 @@ pub fn path_from_uri(uri_path: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-fn mime_for_path(path: &Path) -> &'static str {
+pub fn mime_for_path(path: &Path) -> &'static str {
     match path
         .extension()
         .and_then(|e| e.to_str())

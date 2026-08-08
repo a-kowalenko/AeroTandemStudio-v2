@@ -44,6 +44,7 @@ import {
   scanQrVideo,
   scanQrVideos,
 } from "../lib/tauri";
+import { formatCameraLabel } from "../lib/cameraLabel";
 import {
   formatQrCleanupSummary,
   maybeRemoveQrPhoto,
@@ -120,6 +121,7 @@ function SortableVideoRow({
     transition,
     opacity: isDragging ? 0.7 : 1,
   };
+  const device = formatCameraLabel(video.camera_make, video.camera_model);
 
   return (
     <tr
@@ -142,6 +144,11 @@ function SortableVideoRow({
       <td className="w-8 px-1 py-2 tabular-nums text-muted">{index + 1}</td>
       <td className="max-w-[12rem] px-2 py-2 font-medium" title={video.path}>
         <div className="truncate">{video.filename}</div>
+        {device ? (
+          <div className="truncate text-xs text-muted" title={device}>
+            {device}
+          </div>
+        ) : null}
         <QrScanRowBar path={video.path} />
       </td>
       <td className="whitespace-nowrap px-2 py-2 text-muted">{formatLabel(video)}</td>
@@ -999,7 +1006,12 @@ export function MediaDropZone({
                     </tr>
                   </thead>
                   <tbody>
-                    {photoList.map((p, i) => (
+                    {photoList.map((p, i) => {
+                      const device = formatCameraLabel(
+                        p.camera_make,
+                        p.camera_model,
+                      );
+                      return (
                       <tr
                         key={p.path}
                         className="border-b border-border/70 text-sm last:border-0"
@@ -1013,6 +1025,14 @@ export function MediaDropZone({
                           title={p.path}
                         >
                           <div className="truncate">{p.filename}</div>
+                          {device ? (
+                            <div
+                              className="truncate text-xs text-muted"
+                              title={device}
+                            >
+                              {device}
+                            </div>
+                          ) : null}
                           <QrScanRowBar path={p.path} />
                         </td>
                         {fotoWmNeeded ? (
@@ -1056,7 +1076,8 @@ export function MediaDropZone({
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

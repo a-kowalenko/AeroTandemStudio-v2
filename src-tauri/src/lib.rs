@@ -18,8 +18,8 @@ use commands::config::{
     ConfigState,
 };
 use commands::media::{
-    clear_working_session, delete_working_copy, expand_media_paths, get_file_sizes, get_working_dir,
-    import_photos,
+    clear_working_session, delete_working_copy, expand_media_paths, get_file_sizes,
+    get_media_server_base, get_working_dir, import_photos, media_file_url,
 };
 use commands::qr::{scan_qr_photo, scan_qr_photos, scan_qr_video, scan_qr_videos};
 use commands::sd_card::{
@@ -69,18 +69,25 @@ pub fn run() {
     let config_state = ConfigState::new().unwrap_or_else(|e| {
         panic!("failed to initialize config store: {e}");
     });
+    let media_server = media::http_server::start().unwrap_or_else(|e| {
+        panic!("failed to start media HTTP server: {e}");
+    });
+    let media_base_url = media_server.base_url.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(config_state)
+        .manage(media_server)
         .register_asynchronous_uri_scheme_protocol("media", |_ctx, request, responder| {
+            // Kept for compatibility; HTML5 video uses the loopback HTTP server
+            // (WebKitGTK cannot play custom schemes reliably).
             std::thread::spawn(move || {
                 let response = media::stream_protocol::build_response(request);
                 responder.respond(response);
             });
         })
-        .setup(|app| {
+        .setup(move |app| {
             match init_logging() {
                 Ok(path) => {
                     log_info(&format!("Logging initialized at {}", path.display()));
@@ -104,6 +111,7 @@ pub fn run() {
             }
             init_sd_monitor(app.handle());
             log_info("SD monitor initialized");
+            log_info(&format!("Media HTTP server at {media_base_url}"));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -137,6 +145,8 @@ pub fn run() {
             get_working_dir,
             clear_working_session,
             delete_working_copy,
+            get_media_server_base,
+            media_file_url,
             start_sd_monitor,
             stop_sd_monitor,
             get_sd_status,
