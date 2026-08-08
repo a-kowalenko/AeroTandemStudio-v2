@@ -341,6 +341,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const busy = saving || finishing;
 
   function keepSummary(): string {
+    if (!draft) return "—";
     if (skippedSteps.has(1)) return "— übersprungen —";
     const parts: string[] = [];
     if (draft.keep_tandemmaster_on_session_reset) {
