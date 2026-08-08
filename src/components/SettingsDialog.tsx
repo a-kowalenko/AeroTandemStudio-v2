@@ -105,14 +105,34 @@ export function SettingsDialog({
   );
 
   useEffect(() => {
-    if (open && config) {
-      const list = [...(config.crew_list ?? [])].sort((a, b) =>
-        a.name.localeCompare(b.name, "de"),
-      );
-      setDraft({ ...config, crew_list: list });
-      setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
-      setCrewEditIndex(null);
+    if (!open || !config) return;
+    let cancelled = false;
+    const list = [...(config.crew_list ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name, "de"),
+    );
+    setDraft({ ...config, crew_list: list });
+    setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
+    setCrewEditIndex(null);
+
+    // Legacy: empty sd_pc_name → show current computer name in the field.
+    if (!config.sd_pc_name?.trim()) {
+      void getAppInfo()
+        .then((info) => {
+          if (cancelled) return;
+          setDraft((d) =>
+            d && !d.sd_pc_name.trim()
+              ? { ...d, sd_pc_name: info.computer_name || "" }
+              : d,
+          );
+        })
+        .catch(() => {
+          /* keep empty */
+        });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, config]);
 
   useEffect(() => {
@@ -271,6 +291,7 @@ export function SettingsDialog({
     }
     const toSave: AppConfig = {
       ...draft,
+      sd_pc_name: draft.sd_pc_name.trim(),
       crew_list: [...draft.crew_list].sort((a, b) =>
         a.name.localeCompare(b.name, "de"),
       ),
@@ -1037,6 +1058,18 @@ export function SettingsDialog({
               </div>
             </div>
 
+            <div className="space-y-1.5">
+              <Label>PC Name</Label>
+              <Input
+                value={draft.sd_pc_name}
+                placeholder="Computername"
+                onChange={(e) => patch("sd_pc_name", e.target.value)}
+              />
+              <p className="text-xs text-muted">
+                Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[PC]_…
+              </p>
+            </div>
+
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.sd_server_backup_enabled}
@@ -1099,7 +1132,7 @@ export function SettingsDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="confirm">Nachfragen</SelectItem>
+                  <SelectItem value="confirm">Vorher bestätigen</SelectItem>
                   <SelectItem value="auto">Automatisch</SelectItem>
                   <SelectItem value="disabled">Deaktiviert</SelectItem>
                 </SelectContent>
@@ -1109,13 +1142,34 @@ export function SettingsDialog({
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.sd_auto_backup}
-                onCheckedChange={(v) => patch("sd_auto_backup", v === true)}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          sd_auto_backup: on,
+                          sd_clear_after_backup: on
+                            ? prev.sd_clear_after_backup
+                            : false,
+                        }
+                      : prev,
+                  );
+                }}
               />
               Auto-Backup
             </label>
-            <label className="flex items-center gap-2 text-sm">
+            <label
+              className={`flex items-center gap-2 text-sm ${!draft.sd_auto_backup ? "opacity-50" : ""}`}
+              title={
+                draft.sd_auto_backup
+                  ? "SD-Karte nach erfolgreichem Backup leeren"
+                  : "Nur möglich, wenn Auto-Backup aktiviert ist"
+              }
+            >
               <Checkbox
-                checked={draft.sd_clear_after_backup}
+                checked={draft.sd_clear_after_backup && draft.sd_auto_backup}
+                disabled={!draft.sd_auto_backup}
                 onCheckedChange={(v) => patch("sd_clear_after_backup", v === true)}
               />
               SD nach Backup leeren
@@ -1154,8 +1208,9 @@ export function SettingsDialog({
               />
             </div>
             <p className="text-xs text-muted">
-              Backup-Modus, optionaler zweiter Backup-Pfad, Auto-Import und Größen-Limit für
-              Action-Cam SD-Karten.
+              Modus Auto verarbeitet die SD-Karte ohne Nachfrage (Backup / Import /
+              Bereinigen laut Schaltern). Modus „Nachfragen“ öffnet die Dateiauswahl
+              mit denselben Optionen.
             </p>
           </TabsContent>
           </div>

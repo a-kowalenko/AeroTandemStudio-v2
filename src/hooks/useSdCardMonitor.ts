@@ -1,14 +1,12 @@
 import { useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import {
-  backupSdCard,
-  declineSdBackup,
   getSdStatus,
-  listSdFiles,
   scanSdDrives,
   startSdMonitor,
   type BackupProgress,
   type SdInsertedPayload,
+  type SdWorkflowActions,
 } from "../lib/sdCard";
 import { useConfigStore } from "../store/configStore";
 import { useSdStore } from "../store/sdStore";
@@ -18,10 +16,15 @@ import { useUiStore } from "../store/uiStore";
  * Starts SD monitoring when config allows it and wires Tauri events into sdStore.
  */
 export function useSdCardMonitor(opts?: {
-  onRequestImport?: (drive: string) => void;
+  /** Confirm / size-limit: open file selector for the drive. */
+  onRequestSelect?: (drive: string, mode: "backup" | "size_limit") => void;
+  /** Auto mode: run backup/import/clear from settings without a dialog. */
+  onAutoProcess?: (drive: string, actions: SdWorkflowActions) => void;
 }) {
-  const onRequestImportRef = useRef(opts?.onRequestImport);
-  onRequestImportRef.current = opts?.onRequestImport;
+  const onRequestSelectRef = useRef(opts?.onRequestSelect);
+  onRequestSelectRef.current = opts?.onRequestSelect;
+  const onAutoProcessRef = useRef(opts?.onAutoProcess);
+  onAutoProcessRef.current = opts?.onAutoProcess;
 
   const config = useConfigStore((s) => s.config);
   const setMonitoring = useSdStore((s) => s.setMonitoring);
@@ -30,11 +33,7 @@ export function useSdCardMonitor(opts?: {
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const setPendingInsert = useSdStore((s) => s.setPendingInsert);
   const setBackupProgress = useSdStore((s) => s.setBackupProgress);
-  const openSelector = useSdStore((s) => s.openSelector);
-  const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
-  const showWarning = useUiStore((s) => s.showWarning);
-  const setLoading = useUiStore((s) => s.setLoading);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,29 +84,31 @@ export function useSdCardMonitor(opts?: {
         /* ignore */
       }
 
-      if (payload.size_limit_exceeded) {
-        try {
-          const listed = await listSdFiles(payload.drive);
-          openSelector({
-            drive: payload.drive,
-            files: listed.files,
-            totalMb: listed.total_size_mb,
-            mode: "size_limit",
-          });
-        } catch (e) {
-          showError(String(e));
-        }
+      const mode = config?.sd_backup_mode ?? "confirm";
+      if (mode === "disabled" || !config?.sd_auto_backup) {
         return;
       }
 
-      if (payload.needs_confirmation) {
-        showWarning(
-          `SD-Karte ${payload.drive} erkannt (${payload.file_count} Dateien, ${payload.total_size_mb.toFixed(1)} MB).\n` +
-            `Backup starten? Öffne den Dateiauswahl-Dialog über „SD öffnen“.`,
-          "SD-Karte erkannt",
-        );
-      } else if (config?.sd_auto_import) {
-        onRequestImportRef.current?.(payload.drive);
+      const actionsFromSettings: SdWorkflowActions = {
+        backup: Boolean(config.sd_auto_backup),
+        import: Boolean(config.sd_auto_import),
+        clear:
+          Boolean(config.sd_auto_backup) && Boolean(config.sd_clear_after_backup),
+      };
+
+      if (payload.size_limit_exceeded) {
+        onRequestSelectRef.current?.(payload.drive, "size_limit");
+        return;
+      }
+
+      if (payload.needs_confirmation || mode === "confirm") {
+        onRequestSelectRef.current?.(payload.drive, "backup");
+        return;
+      }
+
+      // Auto: run enabled actions without a dialog
+      if (actionsFromSettings.backup || actionsFromSettings.import || actionsFromSettings.clear) {
+        onAutoProcessRef.current?.(payload.drive, actionsFromSettings);
       }
     }).then((fn) => unlisteners.push(fn));
 
@@ -145,54 +146,14 @@ export function useSdCardMonitor(opts?: {
       for (const u of unlisteners) u();
     };
   }, [
+    config?.sd_auto_backup,
     config?.sd_auto_import,
-    openSelector,
+    config?.sd_backup_mode,
+    config?.sd_clear_after_backup,
     setActiveDrive,
     setBackupProgress,
     setDrives,
     setPendingInsert,
     setPhase,
-    showError,
-    showWarning,
   ]);
-
-  async function runBackup(drive: string, selected?: string[] | null) {
-    setPhase("backing_up");
-    setLoading(true, "SD-Backup läuft…");
-    try {
-      const res = await backupSdCard(drive, selected);
-      if (res.success) {
-        showSuccess(
-          `Backup OK: ${res.copied_count} Dateien` +
-            (res.backup_path ? `\n${res.backup_path}` : "") +
-            (res.secondary_backup_path
-              ? `\nZweiter Pfad: ${res.secondary_backup_path}`
-              : "") +
-            (res.skipped_count ? `\nÜbersprungen: ${res.skipped_count}` : ""),
-        );
-        if (res.secondary_warning) {
-          showWarning(res.secondary_warning);
-        }
-        if (config?.sd_auto_import) {
-          onRequestImportRef.current?.(drive);
-        }
-      } else {
-        showError(res.error_message || "Backup fehlgeschlagen");
-      }
-    } catch (e) {
-      showError(String(e));
-    } finally {
-      setLoading(false);
-      setPhase("monitoring");
-      setBackupProgress(null);
-    }
-  }
-
-  async function decline(drive: string) {
-    await declineSdBackup(drive);
-    setPendingInsert(null);
-    setPhase("monitoring");
-  }
-
-  return { runBackup, decline };
 }

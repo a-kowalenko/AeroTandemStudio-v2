@@ -9,16 +9,20 @@ import { useConfigStore } from "../store/configStore";
 import { cn } from "../lib/utils";
 
 const MODE_OPTIONS = [
-  { key: "auto", label: "Auto", tip: "SD-Karte wird bei Einstecken automatisch gesichert." },
+  {
+    key: "auto",
+    label: "Auto",
+    tip: "Nach Erkennung: Backup, Import und Bereinigen laut Einstellungen — ohne Nachfrage.",
+  },
   {
     key: "confirm",
     label: "Vorher bestätigen",
-    tip: "Vor dem Backup erscheint ein Bestätigungsdialog.",
+    tip: "Dateiauswahl mit Optionen für Backup, Import und Bereinigen.",
   },
   {
     key: "disabled",
     label: "Deaktiviert",
-    tip: "SD wird erkannt, aber nicht automatisch gesichert.",
+    tip: "SD wird erkannt, aber nicht automatisch verarbeitet.",
   },
 ] as const;
 

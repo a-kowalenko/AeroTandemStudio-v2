@@ -31,6 +31,8 @@ export type BackupResult = {
   error_message: string | null;
   copied_count: number;
   skipped_count: number;
+  copied_dest_paths: string[];
+  copied_source_paths: string[];
   secondary_backup_path: string | null;
   secondary_warning: string | null;
 };
@@ -55,6 +57,12 @@ export type BackupProgress = {
   total_mb: number;
   speed_mbps: number;
   percent: number;
+};
+
+export type SdWorkflowActions = {
+  backup: boolean;
+  import: boolean;
+  clear: boolean;
 };
 
 export type ProcessedFileEntry = {
@@ -97,15 +105,21 @@ export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
 export async function backupSdCard(
   drive: string,
   selectedFiles?: string[] | null,
+  clearAfter?: boolean | null,
 ): Promise<BackupResult> {
   return invoke<BackupResult>("backup_sd_card", {
     drive,
     selectedFiles: selectedFiles ?? null,
+    clearAfter: clearAfter ?? null,
   });
 }
 
 export async function importSdFiles(paths: string[]): Promise<ImportSdResult> {
   return invoke<ImportSdResult>("import_sd_files", { paths });
+}
+
+export async function clearSdFiles(paths: string[]): Promise<number> {
+  return invoke<number>("clear_sd_files", { paths });
 }
 
 export async function declineSdBackup(drive: string): Promise<void> {

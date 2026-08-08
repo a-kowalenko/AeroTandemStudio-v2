@@ -172,6 +172,9 @@ pub struct AppConfig {
     pub sd_server_backup_mode: String,
     #[serde(default = "default_sd_backup_mode")]
     pub sd_backup_mode: String,
+    /// Label embedded in SD backup folder names (`SD_Backup_…[pc]_…`). Empty → no tag.
+    #[serde(default)]
+    pub sd_pc_name: String,
     #[serde(default)]
     pub sd_clear_after_backup: bool,
     #[serde(default = "default_true")]
@@ -443,6 +446,7 @@ impl Default for AppConfig {
             sd_server_backup_path: String::new(),
             sd_server_backup_mode: default_sd_server_backup_mode(),
             sd_backup_mode: default_sd_backup_mode(),
+            sd_pc_name: String::new(),
             sd_clear_after_backup: false,
             sd_auto_import: true,
             sd_skip_processed: false,

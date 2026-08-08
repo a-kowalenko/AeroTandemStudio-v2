@@ -19,6 +19,8 @@ pub struct AppInfo {
     pub version: String,
     pub log_path: Option<String>,
     pub config_dir: Option<String>,
+    /// Current OS computer name (legacy settings default for `sd_pc_name`).
+    pub computer_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -52,6 +54,7 @@ pub fn get_app_info() -> AppInfo {
         version: env!("CARGO_PKG_VERSION").into(),
         log_path: log,
         config_dir,
+        computer_name: crate::util::host::current_computer_name(),
     }
 }
 

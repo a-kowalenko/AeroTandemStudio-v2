@@ -65,7 +65,12 @@ import {
   type UpdateInstallProgress,
   type UploadProgressEvent,
 } from "./lib/tauri";
-import { importSdFiles, listSdFiles } from "./lib/sdCard";
+import {
+  backupSdCard,
+  importSdFiles,
+  listSdFiles,
+  type SdWorkflowActions,
+} from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
@@ -210,10 +215,10 @@ function App() {
 
   async function openSdSelector(
     drive: string,
-    mode: "backup" | "import" = "import",
+    mode: "backup" | "import" | "size_limit" = "backup",
   ) {
     setActiveDrive(drive);
-    setPhase(mode === "backup" ? "detected" : "importing");
+    setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
       const listed = await listSdFiles(drive);
@@ -231,30 +236,184 @@ function App() {
     }
   }
 
-  function openSdImport(drive: string) {
-    return openSdSelector(drive, "import");
-  }
-
   function openSdDriveFromHeader(drive: string) {
-    const mode =
-      config?.sd_auto_backup && config.sd_backup_mode !== "disabled"
-        ? "backup"
-        : "import";
-    return openSdSelector(drive, mode);
+    return openSdSelector(drive, "backup");
   }
 
-  const { runBackup } = useSdCardMonitor({
-    onRequestImport: (drive) => {
-      void openSdImport(drive);
+  function settingsSdActions(): SdWorkflowActions {
+    const backup = Boolean(config?.sd_auto_backup);
+    return {
+      backup,
+      import: Boolean(config?.sd_auto_import),
+      // Clear only together with backup
+      clear: backup && Boolean(config?.sd_clear_after_backup),
+    };
+  }
+
+  async function importPathsIntoApp(paths: string[]): Promise<string> {
+    if (paths.length === 0) return "";
+
+    const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
+    const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
+
+    const result = await importSdFiles(paths);
+    if (result.imported_videos.length > 0) {
+      await addVideos(result.imported_videos);
+    }
+    if (result.imported_photos.length > 0) {
+      await addPhotos(result.imported_photos);
+    }
+
+    const newVideoPaths = pathsAddedSince(
+      beforeVideoPaths,
+      useVideoStore.getState().videoList.map((v) => v.path),
+    );
+    const newPhotoPaths = pathsAddedSince(
+      beforePhotoPaths,
+      usePhotoStore.getState().photoList.map((p) => p.path),
+    );
+
+    if (result.imported_photos.length > 0 && result.imported_videos.length === 0) {
+      setMediaTab("foto");
+    } else if (result.imported_videos.length > 0) {
+      setMediaTab("video");
+    }
+
+    const willAutoScan =
+      (config?.qr_check_enabled && newVideoPaths.length > 0) ||
+      (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
+
+    let qrNote = "";
+    if (willAutoScan) {
+      setLoading(false);
+      try {
+        const outcome = await withQrScanProgress(
+          [...newVideoPaths, ...newPhotoPaths],
+          () =>
+            runAutoQrAfterImport({
+              videoPaths: newVideoPaths,
+              photoPaths: newPhotoPaths,
+              onBeforeRemoveVideo: (p) => pendingCuts.discardForPath(p),
+            }),
+        );
+        if (outcome.attempted) {
+          qrNote = `\nAuto-QR: ${outcome.message}`;
+        }
+      } catch (qrErr) {
+        qrNote = `\nAuto-QR fehlgeschlagen: ${String(qrErr)}`;
+      }
+    }
+
+    return (
+      `Import: ${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
+      (result.skipped ? `, ${result.skipped} übersprungen` : "") +
+      qrNote
+    );
+  }
+
+  /** Unified SD pipeline: optional backup → import; clear only after successful backup. */
+  async function runSdWorkflow(
+    drive: string,
+    selectedPaths: string[] | null,
+    actions: SdWorkflowActions,
+  ) {
+    // Safety: never clear without a backup in the same run.
+    const doBackup = actions.backup;
+    const doImport = actions.import;
+    const doClear = actions.clear && doBackup;
+
+    if (!doBackup && !doImport) {
+      showWarning(
+        doClear || actions.clear
+          ? "Bereinigen ist nur nach einem Backup möglich."
+          : "Keine Aktion ausgewählt.",
+      );
+      return;
+    }
+
+    if (doBackup && !config?.sd_backup_folder?.trim()) {
+      showError("Bitte in den Einstellungen einen Backup-Ordner wählen.");
+      return;
+    }
+
+    setLoading(true, "SD-Verarbeitung…");
+    const notes: string[] = [];
+
+    try {
+      let importPaths: string[] = selectedPaths ? [...selectedPaths] : [];
+
+      if (doBackup) {
+        setPhase("backing_up");
+        setLoading(true, "SD-Backup läuft…");
+        const res = await backupSdCard(drive, selectedPaths, doClear);
+        if (!res.success) {
+          showError(res.error_message || "Backup fehlgeschlagen");
+          return;
+        }
+        notes.push(
+          `Backup OK: ${res.copied_count} Dateien` +
+            (res.backup_path ? `\n${res.backup_path}` : "") +
+            (res.secondary_backup_path
+              ? `\nZweiter Pfad: ${res.secondary_backup_path}`
+              : "") +
+            (res.skipped_count ? `\nÜbersprungen: ${res.skipped_count}` : ""),
+        );
+        if (res.secondary_warning) {
+          showWarning(res.secondary_warning);
+        }
+        // Import from backup copies so clear-after-backup is safe
+        if (doImport) {
+          importPaths =
+            res.copied_dest_paths.length > 0
+              ? res.copied_dest_paths
+              : selectedPaths ?? [];
+        }
+        if (doClear) {
+          notes.push("SD nach Backup bereinigt.");
+        }
+      } else if (doImport && !selectedPaths) {
+        const listed = await listSdFiles(drive);
+        importPaths = listed.files.map((f) => f.path);
+      }
+
+      if (doImport) {
+        if (importPaths.length === 0) {
+          notes.push("Import: keine Dateien.");
+        } else {
+          setPhase("importing");
+          setLoading(true, "Importiere SD-Dateien…");
+          const importNote = await importPathsIntoApp(importPaths);
+          if (importNote) notes.push(importNote);
+        }
+      }
+
+      if (notes.length) {
+        showSuccess(notes.join("\n\n"));
+      }
+    } catch (e) {
+      showError(String(e));
+    } finally {
+      setLoading(false);
+      setPhase("monitoring");
+      useSdStore.getState().setBackupProgress(null);
+    }
+  }
+
+  useSdCardMonitor({
+    onRequestSelect: (drive, mode) => {
+      void openSdSelector(drive, mode);
+    },
+    onAutoProcess: (drive, actions) => {
+      void runSdWorkflow(drive, null, actions);
     },
   });
 
   async function handleSdPrimaryAction(drive: string) {
-    if (config?.sd_auto_backup && config.sd_backup_mode !== "disabled") {
-      await runBackup(drive, null);
+    if (config?.sd_backup_mode === "auto") {
+      await runSdWorkflow(drive, null, settingsSdActions());
       return;
     }
-    await openSdSelector(drive, "import");
+    await openSdSelector(drive, "backup");
   }
 
   useEffect(() => {
@@ -680,84 +839,11 @@ function App() {
     }
   }
 
-  async function handleSelectorConfirm(paths: string[]) {
+  async function handleSelectorConfirm(paths: string[], actions: SdWorkflowActions) {
     const drive = selectorDrive;
-    const modeSel = selectorMode;
     closeSelector();
     if (!drive) return;
-
-    if (modeSel === "backup" || modeSel === "size_limit") {
-      await runBackup(drive, paths);
-      return;
-    }
-
-    setLoading(true, "Importiere SD-Dateien…");
-    setPhase("importing");
-    try {
-      const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
-      const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
-
-      const result = await importSdFiles(paths);
-      if (result.imported_videos.length > 0) {
-        await addVideos(result.imported_videos);
-      }
-      if (result.imported_photos.length > 0) {
-        await addPhotos(result.imported_photos);
-      }
-
-      const newVideoPaths = pathsAddedSince(
-        beforeVideoPaths,
-        useVideoStore.getState().videoList.map((v) => v.path),
-      );
-      const newPhotoPaths = pathsAddedSince(
-        beforePhotoPaths,
-        usePhotoStore.getState().photoList.map((p) => p.path),
-      );
-
-      if (result.imported_photos.length > 0 && result.imported_videos.length === 0) {
-        setMediaTab("foto");
-      } else if (result.imported_videos.length > 0) {
-        setMediaTab("video");
-      }
-
-      const willAutoScan =
-        (config?.qr_check_enabled && newVideoPaths.length > 0) ||
-        (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
-
-      let qrNote = "";
-      if (willAutoScan) {
-        setLoading(false);
-        try {
-          const outcome = await withQrScanProgress(
-            [...newVideoPaths, ...newPhotoPaths],
-            () =>
-              runAutoQrAfterImport({
-                videoPaths: newVideoPaths,
-                photoPaths: newPhotoPaths,
-                onBeforeRemoveVideo: (p) => pendingCuts.discardForPath(p),
-              }),
-          );
-          if (outcome.attempted && outcome.found) {
-            qrNote = `\nAuto-QR: ${outcome.message}`;
-          } else if (outcome.attempted) {
-            qrNote = `\nAuto-QR: ${outcome.message}`;
-          }
-        } catch (qrErr) {
-          qrNote = `\nAuto-QR fehlgeschlagen: ${String(qrErr)}`;
-        }
-      }
-
-      showSuccess(
-        `Import: ${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
-          (result.skipped ? `, ${result.skipped} übersprungen` : "") +
-          qrNote,
-      );
-    } catch (e) {
-      showError(String(e));
-    } finally {
-      setLoading(false);
-      setPhase("monitoring");
-    }
+    await runSdWorkflow(drive, paths, actions);
   }
 
   function handleSessionReset() {
@@ -1115,12 +1201,13 @@ function App() {
         files={selectorFiles}
         totalSizeMb={selectorTotalMb}
         mode={selectorMode}
+        defaultActions={settingsSdActions()}
         onClose={closeSelector}
-        onConfirm={(paths) => void handleSelectorConfirm(paths)}
-        onProceedAll={() => {
+        onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
+        onProceedAll={(actions) => {
           const drive = selectorDrive;
           closeSelector();
-          if (drive) void runBackup(drive, null);
+          if (drive) void runSdWorkflow(drive, null, actions);
         }}
       />
       <ProcessedFilesDialog open={processedOpen} onOpenChange={setProcessedOpen} />

@@ -48,10 +48,10 @@ export function SdDriveSelector({
   const canBackup =
     Boolean(config?.sd_auto_backup) && config?.sd_backup_mode !== "disabled";
   const ctaLabel =
-    canBackup && config?.sd_auto_import
-      ? "Sichern & Import"
+    config?.sd_backup_mode === "auto"
+      ? "Auto starten"
       : canBackup
-        ? "Backup"
+        ? "Dateien wählen"
         : "Öffnen";
 
   async function refreshDrives() {
@@ -118,11 +118,9 @@ export function SdDriveSelector({
         className="h-8 text-xs"
         disabled={controlsDisabled || !hasDrive}
         title={
-          canBackup && config?.sd_auto_import
-            ? "Backup starten, danach Import-Dialog"
-            : canBackup
-              ? "Backup der ausgewählten SD-Karte"
-              : "Dateiauswahl für die ausgewählte SD-Karte"
+          config?.sd_backup_mode === "auto"
+            ? "Backup, Import und Bereinigen laut Einstellungen starten"
+            : "Dateiauswahl mit Optionen für Backup, Import und Bereinigen"
         }
         onClick={() => {
           if (selected) onPrimaryAction(selected);

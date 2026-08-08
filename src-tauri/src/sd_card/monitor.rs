@@ -82,6 +82,10 @@ pub struct BackupResult {
     pub error_message: Option<String>,
     pub copied_count: usize,
     pub skipped_count: usize,
+    /// Destination paths inside the primary backup folder (for import after clear).
+    pub copied_dest_paths: Vec<String>,
+    /// Source paths on the SD card that were successfully copied.
+    pub copied_source_paths: Vec<String>,
     /// Second backup root folder when dual-write succeeded.
     pub secondary_backup_path: Option<String>,
     /// Soft-fail message for the optional second path (primary may still succeed).
@@ -96,6 +100,8 @@ impl BackupResult {
             error_message: Some(msg.into()),
             copied_count: 0,
             skipped_count: skipped,
+            copied_dest_paths: Vec::new(),
+            copied_source_paths: Vec::new(),
             secondary_backup_path: None,
             secondary_warning: None,
         }
@@ -298,7 +304,7 @@ impl SdCardMonitor {
         self.pending_drives.lock().unwrap().insert(drive.to_string());
         let mode = self.config().sd_backup_mode;
 
-        // Always notify UI about insertion.
+        // Frontend orchestrates backup/import/clear for both auto and confirm.
         let needs_confirmation = mode == "confirm" || (mode == "auto" && !is_new_insertion);
         self.emit_inserted(drive, needs_confirmation && mode != "disabled");
 
@@ -307,25 +313,11 @@ impl SdCardMonitor {
         }
 
         if mode == "auto" && is_new_insertion {
-            self.processing_drives.lock().unwrap().insert(drive.to_string());
-            let cfg = self.config();
-            if cfg.sd_auto_backup && !cfg.sd_backup_folder.is_empty() {
-                let drive_clone = drive.to_string();
-                thread::spawn(move || {
-                    let _ = SD_MONITOR.backup_drive(&drive_clone, None);
-                    SD_MONITOR
-                        .processing_drives
-                        .lock()
-                        .unwrap()
-                        .remove(&drive_clone);
-                });
-            } else {
-                self.processing_drives.lock().unwrap().remove(drive);
-            }
+            // Auto pipeline runs in the UI (settings-driven, no file dialog).
             return;
         }
 
-        // confirm (or auto on already-present): frontend shows dialog
+        // confirm (or auto on already-present): frontend shows file selector
         let info = gather_drive_info(drive);
         self.emit_status(
             "backup_confirmation_required",
@@ -501,10 +493,20 @@ impl SdCardMonitor {
         drive: &str,
         selected_files: Option<Vec<String>>,
     ) -> Result<BackupResult, SdError> {
+        self.backup_drive_with_options(drive, selected_files, None)
+    }
+
+    /// `clear_after`: `None` uses config `sd_clear_after_backup`; `Some(v)` overrides.
+    pub fn backup_drive_with_options(
+        &self,
+        drive: &str,
+        selected_files: Option<Vec<String>>,
+        clear_after: Option<bool>,
+    ) -> Result<BackupResult, SdError> {
         if self.backup_in_progress.swap(true, Ordering::SeqCst) {
             return Err(SdError::Message("Backup läuft bereits".into()));
         }
-        let result = self.backup_drive_inner(drive, selected_files);
+        let result = self.backup_drive_inner(drive, selected_files, clear_after);
         self.backup_in_progress.store(false, Ordering::SeqCst);
         if result.as_ref().map(|r| r.success).unwrap_or(false) {
             self.mark_processed(drive);
@@ -514,6 +516,7 @@ impl SdCardMonitor {
             serde_json::json!({
                 "success": result.as_ref().map(|r| r.success).unwrap_or(false),
                 "drive": drive,
+                "backup_path": result.as_ref().ok().and_then(|r| r.backup_path.clone()),
             }),
         );
         result
@@ -523,6 +526,7 @@ impl SdCardMonitor {
         &self,
         drive: &str,
         selected_files: Option<Vec<String>>,
+        clear_after: Option<bool>,
     ) -> Result<BackupResult, SdError> {
         let cfg = self.config();
         let backup_folder = cfg.sd_backup_folder.trim().to_string();
@@ -600,7 +604,8 @@ impl SdCardMonitor {
                 .map(|d| d.as_nanos() as u16)
                 .unwrap_or(0)
         );
-        let backup_dir_name = format!("SD_Backup_{timestamp}_{short_hash}");
+        let backup_dir_name =
+            build_backup_dir_name(&timestamp.to_string(), &cfg.sd_pc_name, &short_hash);
         let backup_path = PathBuf::from(&backup_folder).join(&backup_dir_name);
         fs::create_dir_all(&backup_path)?;
 
@@ -639,6 +644,7 @@ impl SdCardMonitor {
 
         let mut used_names = HashSet::new();
         let mut copied_sources = Vec::new();
+        let mut copied_dests = Vec::new();
         let mut manifest_entries = Vec::new();
         let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
         let mut copied_size: u64 = 0;
@@ -664,6 +670,7 @@ impl SdCardMonitor {
                     }
                     copied_size += n;
                     copied_sources.push(src_file.clone());
+                    copied_dests.push(dst.to_string_lossy().into_owned());
                     manifest_entries.push(ManifestEntry {
                         dest: dst_filename.clone(),
                         src: Some(src_file.clone()),
@@ -728,6 +735,8 @@ impl SdCardMonitor {
                         )),
                         copied_count: copied_sources.len(),
                         skipped_count,
+                        copied_dest_paths: Vec::new(),
+                        copied_source_paths: Vec::new(),
                         secondary_backup_path: None,
                         secondary_warning: None,
                     });
@@ -776,7 +785,7 @@ impl SdCardMonitor {
             }
         }
 
-        if cfg.sd_clear_after_backup && !copied_sources.is_empty() {
+        if clear_after.unwrap_or(cfg.sd_clear_after_backup) && !copied_sources.is_empty() {
             self.emit_status("clearing_started", serde_json::json!(drive));
             clear_sd_files(&copied_sources);
             self.emit_status("clearing_finished", serde_json::json!(drive));
@@ -788,6 +797,8 @@ impl SdCardMonitor {
             error_message: None,
             copied_count: copied_sources.len(),
             skipped_count,
+            copied_dest_paths: copied_dests,
+            copied_source_paths: copied_sources,
             secondary_backup_path: if secondary_ok {
                 secondary_path.map(|p| p.to_string_lossy().into_owned())
             } else {
@@ -795,6 +806,22 @@ impl SdCardMonitor {
             },
             secondary_warning,
         })
+    }
+
+    /// Delete media files from the SD card (selected paths only).
+    pub fn clear_media_files(&self, paths: &[String]) -> Result<usize, SdError> {
+        let existing: Vec<String> = paths
+            .iter()
+            .filter(|p| Path::new(p).is_file())
+            .cloned()
+            .collect();
+        if existing.is_empty() {
+            return Ok(0);
+        }
+        self.emit_status("clearing_started", serde_json::json!({ "count": existing.len() }));
+        clear_sd_files(&existing);
+        self.emit_status("clearing_finished", serde_json::json!({ "count": existing.len() }));
+        Ok(existing.len())
     }
 
     /// Import selected SD/backup files: mark history + return video/photo paths for UI.
@@ -877,6 +904,34 @@ impl SdCardMonitor {
             })
             .collect()
     }
+}
+
+/// Sanitize PC name for use inside backup folder names (legacy regex + 32-char cap).
+pub fn sanitize_pc_name_for_backup(raw: &str) -> String {
+    let mut out = String::new();
+    for ch in raw.trim().chars() {
+        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control()
+        {
+            out.push('_');
+        } else {
+            out.push(ch);
+        }
+        if out.chars().count() >= 32 {
+            break;
+        }
+    }
+    out
+}
+
+/// `SD_Backup_{timestamp}[{pc}]_{hash}` — PC segment omitted when empty (legacy).
+pub fn build_backup_dir_name(timestamp: &str, pc_name: &str, short_hash: &str) -> String {
+    let safe = sanitize_pc_name_for_backup(pc_name);
+    let pc_part = if safe.is_empty() {
+        String::new()
+    } else {
+        format!("[{safe}]")
+    };
+    format!("SD_Backup_{timestamp}{pc_part}_{short_hash}")
 }
 
 fn gather_drive_info(drive: &str) -> (String, usize, f64) {
@@ -1156,6 +1211,28 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_pc_name_replaces_invalid_and_caps_length() {
+        assert_eq!(sanitize_pc_name_for_backup("  Desk:Top  "), "Desk_Top");
+        assert_eq!(
+            sanitize_pc_name_for_backup("a".repeat(40).as_str()).chars().count(),
+            32
+        );
+        assert!(sanitize_pc_name_for_backup("   ").is_empty());
+    }
+
+    #[test]
+    fn backup_dir_name_includes_bracketed_pc() {
+        assert_eq!(
+            build_backup_dir_name("20240101_120000", "Office-PC", "ab12"),
+            "SD_Backup_20240101_120000[Office-PC]_ab12"
+        );
+        assert_eq!(
+            build_backup_dir_name("20240101_120000", "", "ab12"),
+            "SD_Backup_20240101_120000_ab12"
+        );
+    }
+
+    #[test]
     fn resolve_dcim_macos_volume_path() {
         let p = resolve_drive_dcim_path("/Volumes/NO NAME");
         let normalized = p.replace('\\', "/");
@@ -1253,6 +1330,7 @@ mod tests {
                 move || {
                     let mut c = AppConfig::default();
                     c.sd_backup_folder = bp.to_string_lossy().into_owned();
+                    c.sd_pc_name = "TestPC".into();
                     c
                 }
             })),
@@ -1268,8 +1346,15 @@ mod tests {
         assert_eq!(result.copied_count, 2);
         assert!(result.secondary_backup_path.is_none());
         let primary = PathBuf::from(result.backup_path.unwrap());
+        let folder_name = primary.file_name().unwrap().to_string_lossy();
+        assert!(
+            folder_name.contains("[TestPC]"),
+            "expected PC tag in folder name: {folder_name}"
+        );
         assert!(primary.join("a.mp4").is_file());
         assert!(primary.join("b.jpg").is_file());
+        assert_eq!(result.copied_dest_paths.len(), 2);
+        assert_eq!(result.copied_source_paths.len(), 2);
         assert!(primary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
     }
 

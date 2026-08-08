@@ -82,6 +82,8 @@ export type AppConfig = {
   /** "direct_dual_write" | "local_then_server" */
   sd_server_backup_mode: string;
   sd_backup_mode: string;
+  /** Label in backup folder names; empty uses hostname when opening settings. */
+  sd_pc_name: string;
   sd_clear_after_backup: boolean;
   sd_auto_import: boolean;
   sd_skip_processed: boolean;
@@ -539,6 +541,7 @@ export type AppInfo = {
   version: string;
   log_path: string | null;
   config_dir: string | null;
+  computer_name: string;
 };
 
 export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";

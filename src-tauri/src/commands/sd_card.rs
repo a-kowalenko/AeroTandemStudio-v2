@@ -148,18 +148,19 @@ pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
 pub fn backup_sd_card(
     drive: String,
     selected_files: Option<Vec<String>>,
+    clear_after: Option<bool>,
 ) -> Result<BackupResult, String> {
     let count = selected_files.as_ref().map(|v| v.len());
     logging::info(
         "sd",
         format!(
-            "Backup start: drive={drive}, selected={}",
+            "Backup start: drive={drive}, selected={}, clear_after={clear_after:?}",
             count
                 .map(|n| n.to_string())
                 .unwrap_or_else(|| "all".into())
         ),
     );
-    match SD_MONITOR.backup_drive(&drive, selected_files) {
+    match SD_MONITOR.backup_drive_with_options(&drive, selected_files, clear_after) {
         Ok(res) => {
             logging::info(
                 "sd",
@@ -179,6 +180,25 @@ pub fn backup_sd_card(
         Err(e) => {
             let msg = e.to_string();
             logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+            Err(msg)
+        }
+    }
+}
+
+#[tauri::command]
+pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
+    logging::info(
+        "sd",
+        format!("SD bereinigen: {} Datei(en)", paths.len()),
+    );
+    match SD_MONITOR.clear_media_files(&paths) {
+        Ok(n) => {
+            logging::info("sd", format!("SD bereinigt: {n} Datei(en)"));
+            Ok(n)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("SD bereinigen fehlgeschlagen: {msg}"));
             Err(msg)
         }
     }

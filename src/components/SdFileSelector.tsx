@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import type { SdFileInfo } from "../lib/sdCard";
+import type { SdFileInfo, SdWorkflowActions } from "../lib/sdCard";
 import { getMediaThumbnail } from "../lib/sdCard";
 import { cn } from "../lib/utils";
 
@@ -27,9 +27,11 @@ type Props = {
   files: SdFileInfo[];
   totalSizeMb: number;
   mode: "backup" | "import" | "size_limit";
+  /** Defaults for action checkboxes (from settings). */
+  defaultActions?: SdWorkflowActions;
   onClose: () => void;
-  onConfirm: (selectedPaths: string[]) => void;
-  onProceedAll?: () => void;
+  onConfirm: (selectedPaths: string[], actions: SdWorkflowActions) => void;
+  onProceedAll?: (actions: SdWorkflowActions) => void;
 };
 
 type FilterType = "all" | "video" | "photo";
@@ -48,12 +50,22 @@ function formatEpoch(epoch: number): string {
   return d.toLocaleString("de-DE");
 }
 
+function confirmLabel(actions: SdWorkflowActions, count: number): string {
+  const parts: string[] = [];
+  if (actions.backup) parts.push("Backup");
+  if (actions.import) parts.push("Import");
+  if (actions.clear) parts.push("Bereinigen");
+  if (parts.length === 0) return `Ausführen (${count})`;
+  return `${parts.join(" · ")} (${count})`;
+}
+
 export function SdFileSelector({
   open,
   drive,
   files,
   totalSizeMb,
   mode,
+  defaultActions,
   onClose,
   onConfirm,
   onProceedAll,
@@ -64,6 +76,11 @@ export function SdFileSelector({
   const [sortAsc, setSortAsc] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [actions, setActions] = useState<SdWorkflowActions>({
+    backup: true,
+    import: true,
+    clear: false,
+  });
   const [dragBox, setDragBox] = useState<{
     x0: number;
     y0: number;
@@ -77,6 +94,14 @@ export function SdFileSelector({
     if (!open) return;
     setSelected(new Set());
     setThumbs({});
+    setActions({
+      backup: defaultActions?.backup ?? true,
+      import: defaultActions?.import ?? true,
+      // Clear only with backup
+      clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
+    });
+    // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, files]);
 
   const filtered = useMemo(() => {
@@ -142,6 +167,19 @@ export function SdFileSelector({
     setSelected(new Set());
   }
 
+  function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
+    setActions((prev) => {
+      if (key === "backup" && !value) {
+        // Clear is only allowed together with backup.
+        return { ...prev, backup: false, clear: false };
+      }
+      if (key === "clear" && value && !prev.backup) {
+        return prev;
+      }
+      return { ...prev, [key]: value };
+    });
+  }
+
   function onGridPointerDown(e: React.PointerEvent) {
     if (e.button !== 0 || viewMode !== "thumbnail") return;
     const target = e.target as HTMLElement;
@@ -193,9 +231,9 @@ export function SdFileSelector({
   const title =
     mode === "size_limit"
       ? "Größen-Limit überschritten — Dateien wählen"
-      : mode === "backup"
-        ? "SD-Backup — Dateien wählen"
-        : "SD-Import — Dateien wählen";
+      : "SD-Karte — Dateien wählen";
+
+  const anyAction = actions.backup || actions.import || actions.clear;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -257,6 +295,47 @@ export function SdFileSelector({
           <Button type="button" size="sm" variant="ghost" onClick={clearSelection}>
             Keine
           </Button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 rounded-md border border-border/60 bg-card-elevated px-3 py-2 text-sm">
+          <span className="text-xs font-medium text-muted">Aktionen:</span>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={actions.backup}
+              onCheckedChange={(v) => patchAction("backup", v === true)}
+            />
+            Backup
+          </label>
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={actions.import}
+              onCheckedChange={(v) => patchAction("import", v === true)}
+            />
+            Import
+          </label>
+          <label
+            className={cn(
+              "flex items-center gap-2",
+              !actions.backup && "opacity-50",
+            )}
+            title={
+              actions.backup
+                ? "SD-Karte nach erfolgreichem Backup leeren"
+                : "Nur möglich, wenn Backup aktiviert ist"
+            }
+          >
+            <Checkbox
+              checked={actions.clear}
+              disabled={!actions.backup}
+              onCheckedChange={(v) => patchAction("clear", v === true)}
+            />
+            SD bereinigen
+          </label>
+          {!actions.backup ? (
+            <span className="text-[11px] text-muted">
+              Bereinigen nur nach Backup möglich.
+            </span>
+          ) : null}
         </div>
 
         {viewMode === "thumbnail" ? (
@@ -365,16 +444,21 @@ export function SdFileSelector({
             Abbrechen
           </Button>
           {mode === "size_limit" && onProceedAll && (
-            <Button type="button" variant="secondary" onClick={onProceedAll}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={!anyAction}
+              onClick={() => onProceedAll(actions)}
+            >
               Alle trotzdem
             </Button>
           )}
           <Button
             type="button"
-            disabled={selected.size === 0}
-            onClick={() => onConfirm([...selected])}
+            disabled={selected.size === 0 || !anyAction}
+            onClick={() => onConfirm([...selected], actions)}
           >
-            {mode === "backup" ? "Backup starten" : "Importieren"} ({selected.size})
+            {confirmLabel(actions, selected.size)}
           </Button>
         </DialogFooter>
       </DialogContent>
