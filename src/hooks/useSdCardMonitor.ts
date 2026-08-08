@@ -89,13 +89,6 @@ export function useSdCardMonitor(opts?: {
         return;
       }
 
-      const actionsFromSettings: SdWorkflowActions = {
-        backup: Boolean(config.sd_auto_backup),
-        import: Boolean(config.sd_auto_import),
-        clear:
-          Boolean(config.sd_auto_backup) && Boolean(config.sd_clear_after_backup),
-      };
-
       if (payload.size_limit_exceeded) {
         onRequestSelectRef.current?.(payload.drive, "size_limit");
         return;
@@ -106,9 +99,16 @@ export function useSdCardMonitor(opts?: {
         return;
       }
 
-      // Auto: run enabled actions without a dialog
-      if (actionsFromSettings.backup || actionsFromSettings.import || actionsFromSettings.clear) {
-        onAutoProcessRef.current?.(payload.drive, actionsFromSettings);
+      // Auto: run enabled actions without a dialog.
+      // Clear only together with backup (same rule as Confirm).
+      const actionsSafe: SdWorkflowActions = {
+        backup: true,
+        import: Boolean(config.sd_auto_import),
+        clear: Boolean(config.sd_clear_after_backup),
+      };
+
+      if (actionsSafe.backup || actionsSafe.import) {
+        onAutoProcessRef.current?.(payload.drive, actionsSafe);
       }
     }).then((fn) => unlisteners.push(fn));
 

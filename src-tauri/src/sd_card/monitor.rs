@@ -785,10 +785,23 @@ impl SdCardMonitor {
             }
         }
 
-        if clear_after.unwrap_or(cfg.sd_clear_after_backup) && !copied_sources.is_empty() {
+        // Only ever clear files that were successfully copied in THIS backup run.
+        // Never clear from config alone when the caller did not opt in via `clear_after`.
+        let should_clear = matches!(clear_after, Some(true))
+            || (clear_after.is_none() && cfg.sd_clear_after_backup);
+        if should_clear && !copied_sources.is_empty() {
             self.emit_status("clearing_started", serde_json::json!(drive));
             clear_sd_files(&copied_sources);
             self.emit_status("clearing_finished", serde_json::json!(drive));
+        } else if should_clear && copied_sources.is_empty() {
+            // Safety: requested clear but nothing was backed up → do not touch SD.
+            self.emit_status(
+                "clearing_skipped",
+                serde_json::json!({
+                    "drive": drive,
+                    "reason": "no_files_backed_up",
+                }),
+            );
         }
 
         Ok(BackupResult {
@@ -808,20 +821,12 @@ impl SdCardMonitor {
         })
     }
 
-    /// Delete media files from the SD card (selected paths only).
-    pub fn clear_media_files(&self, paths: &[String]) -> Result<usize, SdError> {
-        let existing: Vec<String> = paths
-            .iter()
-            .filter(|p| Path::new(p).is_file())
-            .cloned()
-            .collect();
-        if existing.is_empty() {
-            return Ok(0);
-        }
-        self.emit_status("clearing_started", serde_json::json!({ "count": existing.len() }));
-        clear_sd_files(&existing);
-        self.emit_status("clearing_finished", serde_json::json!({ "count": existing.len() }));
-        Ok(existing.len())
+    /// Standalone SD wipe is intentionally disabled — clear only after a successful backup.
+    #[allow(dead_code)]
+    pub fn clear_media_files(&self, _paths: &[String]) -> Result<usize, SdError> {
+        Err(SdError::Message(
+            "SD-Bereinigung ist nur nach erfolgreichem Backup erlaubt".into(),
+        ))
     }
 
     /// Import selected SD/backup files: mark history + return video/photo paths for UI.

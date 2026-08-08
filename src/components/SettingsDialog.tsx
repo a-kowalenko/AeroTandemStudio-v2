@@ -1208,9 +1208,8 @@ export function SettingsDialog({
               />
             </div>
             <p className="text-xs text-muted">
-              Modus Auto verarbeitet die SD-Karte ohne Nachfrage (Backup / Import /
-              Bereinigen laut Schaltern). Modus „Nachfragen“ öffnet die Dateiauswahl
-              mit denselben Optionen.
+              Modus Auto und „Vorher bestätigen“: Backup / Import / Bereinigen laut
+              Schaltern. Bereinigen nur nach erfolgreichem Backup.
             </p>
           </TabsContent>
           </div>

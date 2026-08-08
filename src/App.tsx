@@ -311,20 +311,20 @@ function App() {
     );
   }
 
-  /** Unified SD pipeline: optional backup → import; clear only after successful backup. */
+  /** Unified SD pipeline: backup → import; clear only after successful backup. */
   async function runSdWorkflow(
     drive: string,
     selectedPaths: string[] | null,
     actions: SdWorkflowActions,
   ) {
-    // Safety: never clear without a backup in the same run.
-    const doBackup = actions.backup;
+    // Safety (Auto + Confirm): never clear without a backup in the same run.
+    const doBackup = actions.backup || actions.clear;
     const doImport = actions.import;
     const doClear = actions.clear && doBackup;
 
     if (!doBackup && !doImport) {
       showWarning(
-        doClear || actions.clear
+        actions.clear
           ? "Bereinigen ist nur nach einem Backup möglich."
           : "Keine Aktion ausgewählt.",
       );
@@ -347,7 +347,12 @@ function App() {
         setLoading(true, "SD-Backup läuft…");
         const res = await backupSdCard(drive, selectedPaths, doClear);
         if (!res.success) {
-          showError(res.error_message || "Backup fehlgeschlagen");
+          showError(
+            (res.error_message || "Backup fehlgeschlagen") +
+              (actions.clear
+                ? "\n\nSD wurde nicht bereinigt (kein erfolgreiches Backup)."
+                : ""),
+          );
           return;
         }
         notes.push(
@@ -369,7 +374,11 @@ function App() {
               : selectedPaths ?? [];
         }
         if (doClear) {
-          notes.push("SD nach Backup bereinigt.");
+          if (res.copied_count > 0) {
+            notes.push("SD nach Backup bereinigt.");
+          } else {
+            notes.push("SD nicht bereinigt (keine Dateien im Backup).");
+          }
         }
       } else if (doImport && !selectedPaths) {
         const listed = await listSdFiles(drive);
