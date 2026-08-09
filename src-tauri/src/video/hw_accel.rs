@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use once_cell::sync::Lazy;
 
 use super::ffmpeg::find_ffmpeg;
+use crate::util::process::apply_no_window;
 
 static HW_CACHE: Lazy<Mutex<Option<HwAccelInfo>>> = Lazy::new(|| Mutex::new(None));
 
@@ -158,14 +159,14 @@ fn encoder_listed(encoder_name: &str) -> bool {
         return false;
     };
 
-    let output = Command::new(&ffmpeg)
-        .args(["-nostdin", "-hide_banner", "-encoders"])
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args(["-nostdin", "-hide_banner", "-encoders"])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output();
+        .stderr(Stdio::null());
+    apply_no_window(&mut cmd);
 
-    match output {
+    match cmd.output() {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
             stdout.contains(encoder_name)
@@ -177,7 +178,13 @@ fn encoder_listed(encoder_name: &str) -> bool {
 /// True when an NVIDIA GPU is visible to the OS (`nvidia-smi`, plus Windows CIM fallback).
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn has_nvidia_gpu() -> bool {
-    if let Ok(out) = Command::new("nvidia-smi").arg("-L").output() {
+    let mut cmd = Command::new("nvidia-smi");
+    cmd.arg("-L")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    apply_no_window(&mut cmd);
+    if let Ok(out) = cmd.output() {
         if out.status.success() {
             let text = String::from_utf8_lossy(&out.stdout);
             if text.contains("GPU") {
@@ -190,10 +197,20 @@ fn has_nvidia_gpu() -> bool {
     {
         // Fallback: enumerate video controllers via PowerShell (wmic is deprecated)
         let script = "(Get-CimInstance Win32_VideoController).Name -join '|'";
-        if let Ok(out) = Command::new("powershell")
-            .args(["-NoProfile", "-Command", script])
-            .output()
-        {
+        let mut cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+        apply_no_window(&mut cmd);
+        if let Ok(out) = cmd.output() {
             if out.status.success() {
                 let text = String::from_utf8_lossy(&out.stdout).to_lowercase();
                 if text.contains("nvidia")

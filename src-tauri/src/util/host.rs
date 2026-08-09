@@ -1,5 +1,9 @@
 //! Hostname / computer-name helpers (legacy: `COMPUTERNAME` / `socket.gethostname()`).
 
+use std::process::{Command, Stdio};
+
+use super::process::apply_no_window;
+
 /// Best-effort local computer name for UI defaults and diagnostics.
 pub fn current_computer_name() -> String {
     if let Ok(name) = std::env::var("COMPUTERNAME") {
@@ -14,7 +18,12 @@ pub fn current_computer_name() -> String {
             return trimmed.to_string();
         }
     }
-    if let Ok(out) = std::process::Command::new("hostname").output() {
+    let mut cmd = Command::new("hostname");
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    apply_no_window(&mut cmd);
+    if let Ok(out) = cmd.output() {
         if out.status.success() {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !s.is_empty() {

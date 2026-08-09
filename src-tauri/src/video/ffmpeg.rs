@@ -288,23 +288,10 @@ fn kill_all_children() -> bool {
     any
 }
 
-fn apply_no_window(cmd: &mut Command) {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = cmd;
-    }
-}
-
 /// GUI-/background-safe FFmpeg spawn defaults (null stdin, no console window on Windows).
 fn apply_noninteractive(cmd: &mut Command) {
     cmd.stdin(Stdio::null());
-    apply_no_window(cmd);
+    crate::util::process::apply_no_window(cmd);
 }
 
 /// Run FFmpeg without progress parsing (stream-copy remux, probes, validation).

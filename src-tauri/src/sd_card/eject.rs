@@ -213,9 +213,22 @@ fn eject_windows_shell(letter: char) -> Result<(), EjectError> {
          if(-not $n){{ throw 'Laufwerk nicht gefunden' }}; \
          $n.InvokeVerb('Eject')"
     );
-    let output = Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
-        .output()?;
+    let mut cmd = Command::new("powershell");
+    cmd.args([
+        "-NoProfile",
+        "-NonInteractive",
+        "-WindowStyle",
+        "Hidden",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        &script,
+    ])
+    .stdin(std::process::Stdio::null())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped());
+    crate::util::process::apply_no_window(&mut cmd);
+    let output = cmd.output()?;
     if output.status.success() {
         Ok(())
     } else {

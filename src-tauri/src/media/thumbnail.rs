@@ -10,6 +10,7 @@ use image::{DynamicImage, ImageFormat};
 use thiserror::Error;
 
 use crate::media::dji_paths::{is_photo_ext, is_video_ext};
+use crate::util::process::apply_no_window;
 use crate::video::ffmpeg::find_ffmpeg;
 
 pub const THUMB_MAX_SIZE: u32 = 78; // ~60 * 1.3 like legacy
@@ -66,12 +67,32 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
         .map_err(|e| ThumbnailError::Message(e.to_string()))?;
     let out_path = tmp.path().to_path_buf();
 
-    let status = Command::new(&ffmpeg)
-        .args([
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args([
+        "-nostdin",
+        "-y",
+        "-ss",
+        "0.5",
+        "-i",
+        &path.to_string_lossy(),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "5",
+        &out_path.to_string_lossy(),
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+    apply_no_window(&mut cmd);
+    let status = cmd.status()?;
+
+    if !status.success() {
+        // Retry from start without seek.
+        let mut cmd2 = Command::new(&ffmpeg);
+        cmd2.args([
             "-nostdin",
             "-y",
-            "-ss",
-            "0.5",
             "-i",
             &path.to_string_lossy(),
             "-frames:v",
@@ -82,27 +103,9 @@ fn extract_video_frame(path: &Path) -> Result<DynamicImage, ThumbnailError> {
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    if !status.success() {
-        // Retry from start without seek.
-        let status2 = Command::new(&ffmpeg)
-            .args([
-                "-nostdin",
-                "-y",
-                "-i",
-                &path.to_string_lossy(),
-                "-frames:v",
-                "1",
-                "-q:v",
-                "5",
-                &out_path.to_string_lossy(),
-            ])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()?;
+        .stderr(Stdio::null());
+        apply_no_window(&mut cmd2);
+        let status2 = cmd2.status()?;
         if !status2.success() {
             return Err(ThumbnailError::Message(
                 "FFmpeg could not extract video frame".into(),
