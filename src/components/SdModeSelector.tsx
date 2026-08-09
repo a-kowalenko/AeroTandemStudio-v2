@@ -12,12 +12,12 @@ const MODE_OPTIONS = [
   {
     key: "auto",
     label: "Auto",
-    tip: "Nach Erkennung: Backup, Import und Bereinigen laut Einstellungen — ohne Nachfrage.",
+    tip: "Nach Erkennung: Backup, Import, Bereinigen und Auswerfen laut Einstellungen — ohne Nachfrage.",
   },
   {
     key: "confirm",
     label: "Vorher bestätigen",
-    tip: "Dateiauswahl mit Optionen für Backup, Import und Bereinigen.",
+    tip: "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen.",
   },
   {
     key: "disabled",

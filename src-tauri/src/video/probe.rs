@@ -114,28 +114,24 @@ pub fn parse_camera_from_probe(stderr: &str) -> (String, String) {
 }
 
 fn sanitize_meta_value(raw: &str) -> String {
-    raw.trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .trim()
-        .to_string()
+    crate::media::datetime::sanitize_camera_text(raw)
 }
 
 /// Compact label for UI / logs, e.g. `"DJI OsmoAction4"`. `None` if both empty.
 pub fn format_camera_label(make: &str, model: &str) -> Option<String> {
-    let make = make.trim();
-    let model = model.trim();
+    let make = sanitize_meta_value(make);
+    let model = sanitize_meta_value(model);
     if make.is_empty() && model.is_empty() {
         return None;
     }
     if make.is_empty() {
-        return Some(model.to_string());
+        return Some(model);
     }
     if model.is_empty() {
-        return Some(make.to_string());
+        return Some(make);
     }
     if model.to_ascii_lowercase().starts_with(&make.to_ascii_lowercase()) {
-        Some(model.to_string())
+        Some(model)
     } else {
         Some(format!("{make} {model}"))
     }
@@ -275,5 +271,22 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':
         );
         assert_eq!(format_camera_label("", "").as_deref(), None);
         assert_eq!(format_camera_label("Sony", "").as_deref(), Some("Sony"));
+        assert_eq!(
+            format_camera_label("\"\", \"\", \"\"", "\"\"").as_deref(),
+            None
+        );
+        assert_eq!(
+            format_camera_label("\"GoPro\"", "\"HERO11 Black\"").as_deref(),
+            Some("GoPro HERO11 Black")
+        );
+    }
+
+    #[test]
+    fn parse_camera_ignores_empty_quoted_probe_values() {
+        let stderr = "\n  Metadata:\n    make            : \"\", \"\", \"\"\n    model           : \"\"\n  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps\n";
+        let (make, model) = parse_camera_from_probe(stderr);
+        assert_eq!(make, "");
+        assert_eq!(model, "");
+        assert_eq!(format_camera_label(&make, &model).as_deref(), None);
     }
 }

@@ -68,6 +68,7 @@ import {
 } from "./lib/tauri";
 import {
   backupSdCard,
+  ejectSdCard,
   importSdFiles,
   listSdFiles,
   type SdWorkflowActions,
@@ -139,8 +140,10 @@ function App() {
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
+  const sdPhase = useSdStore((s) => s.phase);
   useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
+  const backupProgress = useSdStore((s) => s.backupProgress);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -173,6 +176,8 @@ function App() {
     reason: string;
     timeoutSecs: number;
   } | null>(null);
+  /** Locks SdFileSelector while confirm workflow runs (incl. QR scan with loading off). */
+  const [selectorSubmitting, setSelectorSubmitting] = useState(false);
 
   const pendingCuts = usePendingVideoCuts();
   useQrScanProgressListener();
@@ -249,6 +254,7 @@ function App() {
       import: Boolean(config?.sd_auto_import),
       // Clear only together with backup
       clear: backup && Boolean(config?.sd_clear_after_backup),
+      eject: Boolean(config?.sd_eject_after_workflow),
     };
   }
 
@@ -313,16 +319,19 @@ function App() {
     );
   }
 
-  /** Unified SD pipeline: backup → import; clear only after successful backup. */
+  /** Unified SD pipeline: backup → import → optional eject; clear only after successful backup.
+   *  @returns false if validation failed before any work started. */
   async function runSdWorkflow(
     drive: string,
     selectedPaths: string[] | null,
     actions: SdWorkflowActions,
-  ) {
+    hooks?: { onStart?: () => void },
+  ): Promise<boolean> {
     // Safety (Auto + Confirm): never clear without a backup in the same run.
     const doBackup = actions.backup || actions.clear;
     const doImport = actions.import;
     const doClear = actions.clear && doBackup;
+    const doEject = actions.eject;
 
     if (!doBackup && !doImport) {
       showWarning(
@@ -330,14 +339,15 @@ function App() {
           ? "Bereinigen ist nur nach einem Backup möglich."
           : "Keine Aktion ausgewählt.",
       );
-      return;
+      return false;
     }
 
     if (doBackup && !config?.sd_backup_folder?.trim()) {
       showError("Bitte in den Einstellungen einen Backup-Ordner wählen.");
-      return;
+      return false;
     }
 
+    hooks?.onStart?.();
     setLoading(true, "SD-Verarbeitung…");
     const notes: string[] = [];
 
@@ -355,7 +365,7 @@ function App() {
                 ? "\n\nSD wurde nicht bereinigt (kein erfolgreiches Backup)."
                 : ""),
           );
-          return;
+          return true;
         }
         notes.push(
           `Backup OK: ${res.copied_count} Dateien` +
@@ -392,17 +402,32 @@ function App() {
           notes.push("Import: keine Dateien.");
         } else {
           setPhase("importing");
+          useSdStore.getState().setBackupProgress(null);
           setLoading(true, "Importiere SD-Dateien…");
           const importNote = await importPathsIntoApp(importPaths);
           if (importNote) notes.push(importNote);
         }
       }
 
+      if (doEject) {
+        setLoading(true, "SD-Karte wird ausgeworfen…");
+        try {
+          await ejectSdCard(drive);
+          notes.push("SD-Karte ausgeworfen.");
+        } catch (e) {
+          showWarning(
+            `Auswerfen fehlgeschlagen:\n${String(e)}\n\nBitte die Karte manuell sicher entfernen.`,
+          );
+        }
+      }
+
       if (notes.length) {
         showSuccess(notes.join("\n\n"), "Erfolg", { autoCloseSecs: 10 });
       }
+      return true;
     } catch (e) {
       showError(String(e));
+      return true;
     } finally {
       setLoading(false);
       setPhase("monitoring");
@@ -863,13 +888,32 @@ function App() {
 
   async function handleSelectorConfirm(paths: string[], actions: SdWorkflowActions) {
     const drive = selectorDrive;
-    closeSelector();
     if (!drive) return;
-    await runSdWorkflow(drive, paths, actions);
+    try {
+      const ran = await runSdWorkflow(drive, paths, actions, {
+        onStart: () => setSelectorSubmitting(true),
+      });
+      if (ran) closeSelector();
+    } finally {
+      setSelectorSubmitting(false);
+    }
+  }
+
+  async function handleSelectorProceedAll(actions: SdWorkflowActions) {
+    const drive = selectorDrive;
+    if (!drive) return;
+    try {
+      const ran = await runSdWorkflow(drive, null, actions, {
+        onStart: () => setSelectorSubmitting(true),
+      });
+      if (ran) closeSelector();
+    } finally {
+      setSelectorSubmitting(false);
+    }
   }
 
   function handleSessionReset() {
-    if (busy || loading) {
+    if (busy || loading || selectorSubmitting) {
       showWarning(
         "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
         "Zurücksetzen",
@@ -1245,13 +1289,28 @@ function App() {
         totalSizeMb={selectorTotalMb}
         mode={selectorMode}
         defaultActions={settingsSdActions()}
+        submitting={selectorSubmitting}
+        progress={
+          selectorSubmitting
+            ? sdPhase === "backing_up" && backupProgress
+              ? {
+                  percent: backupProgress.percent,
+                  label: "SD-Backup läuft…",
+                  detail:
+                    `${backupProgress.current_mb.toFixed(0)}/${backupProgress.total_mb.toFixed(0)} MB` +
+                    (backupProgress.speed_mbps > 0
+                      ? ` · ${backupProgress.speed_mbps.toFixed(1)} MB/s`
+                      : ""),
+                }
+              : {
+                  percent: 0,
+                  label: loadingMessage || "SD-Verarbeitung…",
+                }
+            : null
+        }
         onClose={closeSelector}
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
-        onProceedAll={(actions) => {
-          const drive = selectorDrive;
-          closeSelector();
-          if (drive) void runSdWorkflow(drive, null, actions);
-        }}
+        onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
       />
       <ProcessedFilesDialog open={processedOpen} onOpenChange={setProcessedOpen} />
       <VideoCutter
@@ -1320,7 +1379,7 @@ function App() {
           void onIntroMuxChoice(choice);
         }}
       />
-      <LoadingOverlay open={loading} message={loadingMessage} />
+      <LoadingOverlay open={loading && !selectorSubmitting} message={loadingMessage} />
     </div>
   );
 }

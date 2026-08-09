@@ -105,6 +105,7 @@ export function useSdCardMonitor(opts?: {
         backup: true,
         import: Boolean(config.sd_auto_import),
         clear: Boolean(config.sd_clear_after_backup),
+        eject: Boolean(config.sd_eject_after_workflow),
       };
 
       if (actionsSafe.backup || actionsSafe.import) {
@@ -150,6 +151,7 @@ export function useSdCardMonitor(opts?: {
     config?.sd_auto_import,
     config?.sd_backup_mode,
     config?.sd_clear_after_backup,
+    config?.sd_eject_after_workflow,
     setActiveDrive,
     setBackupProgress,
     setDrives,

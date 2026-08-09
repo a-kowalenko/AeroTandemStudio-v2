@@ -20,7 +20,14 @@ import {
 import type { SdFileInfo, SdWorkflowActions } from "../lib/sdCard";
 import { getMediaThumbnail } from "../lib/sdCard";
 import { cn } from "../lib/utils";
+import { ProgressIndicator } from "./ProgressIndicator";
 import { SdVideoTile } from "./SdVideoTile";
+
+export type SdSelectorProgress = {
+  percent: number;
+  label?: string;
+  detail?: string;
+};
 
 type Props = {
   open: boolean;
@@ -30,6 +37,10 @@ type Props = {
   mode: "backup" | "import" | "size_limit";
   /** Defaults for action checkboxes (from settings). */
   defaultActions?: SdWorkflowActions;
+  /** True while backup/import runs after confirm — locks UI. */
+  submitting?: boolean;
+  /** Optional determinate progress (e.g. backup MB). */
+  progress?: SdSelectorProgress | null;
   onClose: () => void;
   onConfirm: (selectedPaths: string[], actions: SdWorkflowActions) => void;
   onProceedAll?: (actions: SdWorkflowActions) => void;
@@ -56,6 +67,7 @@ function confirmLabel(actions: SdWorkflowActions, count: number): string {
   if (actions.backup) parts.push("Backup");
   if (actions.import) parts.push("Import");
   if (actions.clear) parts.push("Bereinigen");
+  if (actions.eject) parts.push("Auswerfen");
   if (parts.length === 0) return `Ausführen (${count})`;
   return `${parts.join(" · ")} (${count})`;
 }
@@ -67,6 +79,8 @@ export function SdFileSelector({
   totalSizeMb,
   mode,
   defaultActions,
+  submitting = false,
+  progress = null,
   onClose,
   onConfirm,
   onProceedAll,
@@ -81,6 +95,7 @@ export function SdFileSelector({
     backup: true,
     import: true,
     clear: false,
+    eject: false,
   });
   const [dragBox, setDragBox] = useState<{
     x0: number;
@@ -103,6 +118,7 @@ export function SdFileSelector({
       import: defaultActions?.import ?? true,
       // Clear only with backup
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
+      eject: Boolean(defaultActions?.eject),
     });
     // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,6 +175,7 @@ export function SdFileSelector({
   }, [open, viewMode, filtered]);
 
   function toggle(path: string) {
+    if (submitting) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
@@ -168,14 +185,17 @@ export function SdFileSelector({
   }
 
   function selectAllFiltered() {
+    if (submitting) return;
     setSelected(new Set(filtered.map((f) => f.path)));
   }
 
   function clearSelection() {
+    if (submitting) return;
     setSelected(new Set());
   }
 
   function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
+    if (submitting) return;
     setActions((prev) => {
       if (key === "backup" && !value) {
         // Clear is only allowed together with backup.
@@ -189,7 +209,7 @@ export function SdFileSelector({
   }
 
   function onGridPointerDown(e: React.PointerEvent) {
-    if (e.button !== 0 || viewMode !== "thumbnail") return;
+    if (submitting || e.button !== 0 || viewMode !== "thumbnail") return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-tile]")) return;
     const rect = gridRef.current?.getBoundingClientRect();
@@ -244,8 +264,22 @@ export function SdFileSelector({
   const anyAction = actions.backup || actions.import || actions.clear;
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="flex max-h-[90vh] w-[min(1100px,95vw)] max-w-none flex-col gap-3 overflow-hidden">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v && !submitting) onClose();
+      }}
+    >
+      <DialogContent
+        className="flex max-h-[90vh] w-[min(1100px,95vw)] max-w-none flex-col gap-3 overflow-hidden"
+        hideCloseButton={submitting}
+        onPointerDownOutside={(e) => {
+          if (submitting) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (submitting) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
@@ -261,6 +295,7 @@ export function SdFileSelector({
               type="button"
               size="sm"
               variant={viewMode === "thumbnail" ? "default" : "secondary"}
+              disabled={submitting}
               onClick={() => setViewMode("thumbnail")}
             >
               Kacheln
@@ -269,12 +304,17 @@ export function SdFileSelector({
               type="button"
               size="sm"
               variant={viewMode === "details" ? "default" : "secondary"}
+              disabled={submitting}
               onClick={() => setViewMode("details")}
             >
               Details
             </Button>
           </div>
-          <Select value={filterType} onValueChange={(v) => setFilterType(v as FilterType)}>
+          <Select
+            value={filterType}
+            disabled={submitting}
+            onValueChange={(v) => setFilterType(v as FilterType)}
+          >
             <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -284,7 +324,11 @@ export function SdFileSelector({
               <SelectItem value="photo">Fotos</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={sortKey} onValueChange={(v) => setSortKey(v as SortKey)}>
+          <Select
+            value={sortKey}
+            disabled={submitting}
+            onValueChange={(v) => setSortKey(v as SortKey)}
+          >
             <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -294,13 +338,31 @@ export function SdFileSelector({
               <SelectItem value="size">Größe</SelectItem>
             </SelectContent>
           </Select>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setSortAsc((v) => !v)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={submitting}
+            onClick={() => setSortAsc((v) => !v)}
+          >
             {sortAsc ? "↑ Auf" : "↓ Ab"}
           </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={selectAllFiltered}>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={submitting}
+            onClick={selectAllFiltered}
+          >
             Alle
           </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={clearSelection}>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={submitting}
+            onClick={clearSelection}
+          >
             Keine
           </Button>
         </div>
@@ -310,6 +372,7 @@ export function SdFileSelector({
           <label className="flex items-center gap-2">
             <Checkbox
               checked={actions.backup}
+              disabled={submitting}
               onCheckedChange={(v) => patchAction("backup", v === true)}
             />
             Backup
@@ -317,6 +380,7 @@ export function SdFileSelector({
           <label className="flex items-center gap-2">
             <Checkbox
               checked={actions.import}
+              disabled={submitting}
               onCheckedChange={(v) => patchAction("import", v === true)}
             />
             Import
@@ -334,10 +398,21 @@ export function SdFileSelector({
           >
             <Checkbox
               checked={actions.clear}
-              disabled={!actions.backup}
+              disabled={submitting || !actions.backup}
               onCheckedChange={(v) => patchAction("clear", v === true)}
             />
             SD bereinigen
+          </label>
+          <label
+            className="flex items-center gap-2"
+            title="SD-Karte nach erfolgreichem Workflow sicher auswerfen"
+          >
+            <Checkbox
+              checked={actions.eject}
+              disabled={submitting}
+              onCheckedChange={(v) => patchAction("eject", v === true)}
+            />
+            Auswerfen
           </label>
           {!actions.backup ? (
             <span className="text-[11px] text-muted">
@@ -349,7 +424,10 @@ export function SdFileSelector({
         {viewMode === "thumbnail" ? (
           <div
             ref={gridRef}
-            className="relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2"
+            className={cn(
+              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2",
+              submitting && "pointer-events-none opacity-70",
+            )}
             onPointerDown={onGridPointerDown}
             onPointerMove={onGridPointerMove}
             onPointerUp={onGridPointerUp}
@@ -444,7 +522,12 @@ export function SdFileSelector({
             )}
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60">
+          <div
+            className={cn(
+              "min-h-0 flex-1 overflow-auto rounded-md border border-border/60",
+              submitting && "pointer-events-none opacity-70",
+            )}
+          >
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 bg-card">
                 <tr className="border-b border-border/60">
@@ -482,15 +565,27 @@ export function SdFileSelector({
           </div>
         )}
 
+        {submitting && (
+          <div className="shrink-0 space-y-2 border-t border-border/60 pt-3">
+            <ProgressIndicator
+              percent={progress?.percent ?? 0}
+              label={progress?.label ?? "SD-Verarbeitung…"}
+            />
+            {progress?.detail ? (
+              <p className="text-xs tabular-nums text-muted">{progress.detail}</p>
+            ) : null}
+          </div>
+        )}
+
         <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="secondary" disabled={submitting} onClick={onClose}>
             Abbrechen
           </Button>
           {mode === "size_limit" && onProceedAll && (
             <Button
               type="button"
               variant="secondary"
-              disabled={!anyAction}
+              disabled={submitting || !anyAction}
               onClick={() => onProceedAll(actions)}
             >
               Alle trotzdem
@@ -498,10 +593,10 @@ export function SdFileSelector({
           )}
           <Button
             type="button"
-            disabled={selected.size === 0 || !anyAction}
+            disabled={submitting || selected.size === 0 || !anyAction}
             onClick={() => onConfirm([...selected], actions)}
           >
-            {confirmLabel(actions, selected.size)}
+            {submitting ? "Läuft…" : confirmLabel(actions, selected.size)}
           </Button>
         </DialogFooter>
       </DialogContent>

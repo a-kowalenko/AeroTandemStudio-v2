@@ -1254,6 +1254,16 @@ export function SettingsDialog({
               />
               SD nach Backup leeren
             </label>
+            <label
+              className="flex items-center gap-2 text-sm"
+              title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
+            >
+              <Checkbox
+                checked={draft.sd_eject_after_workflow}
+                onCheckedChange={(v) => patch("sd_eject_after_workflow", v === true)}
+              />
+              SD nach Workflow auswerfen
+            </label>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.sd_auto_import}
@@ -1288,7 +1298,7 @@ export function SettingsDialog({
               />
             </div>
             <p className="text-xs text-muted">
-              Modus Auto und „Vorher bestätigen“: Backup / Import / Bereinigen laut
+              Modus Auto und „Vorher bestätigen“: Backup / Import / Bereinigen / Auswerfen laut
               Schaltern. Bereinigen nur nach erfolgreichem Backup.
             </p>
           </TabsContent>

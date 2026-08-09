@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::config::ConfigState;
 use crate::media::thumbnail::{generate_thumbnail_jpeg, THUMB_MAX_SIZE};
+use crate::sd_card::eject::eject_drive;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
     SdInsertedPayload, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_SD_INSERTED,
@@ -236,6 +237,22 @@ pub fn decline_sd_backup(drive: String) -> Result<(), String> {
     logging::info("sd", format!("Backup abgelehnt: {drive}"));
     SD_MONITOR.decline_drive(&drive);
     Ok(())
+}
+
+#[tauri::command]
+pub fn eject_sd_card(drive: String) -> Result<(), String> {
+    logging::info("sd", format!("SD auswerfen: {drive}"));
+    match eject_drive(&drive) {
+        Ok(()) => {
+            logging::info("sd", format!("SD ausgeworfen: {drive}"));
+            Ok(())
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("SD auswerfen fehlgeschlagen ({drive}): {msg}"));
+            Err(msg)
+        }
+    }
 }
 
 #[tauri::command]

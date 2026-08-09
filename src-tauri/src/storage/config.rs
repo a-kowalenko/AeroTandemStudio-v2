@@ -178,6 +178,9 @@ pub struct AppConfig {
     pub sd_pc_name: String,
     #[serde(default)]
     pub sd_clear_after_backup: bool,
+    /// Eject / safely remove the SD volume after a successful backup/import workflow.
+    #[serde(default)]
+    pub sd_eject_after_workflow: bool,
     #[serde(default = "default_true")]
     pub sd_auto_import: bool,
     #[serde(default)]
@@ -258,7 +261,17 @@ fn default_crew_list() -> Vec<CrewMember> {
             videospringer: false,
         },
         CrewMember {
+            name: "Jojo".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
             name: "Kai".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
+            name: "Käthe".into(),
             tandemmaster: false,
             videospringer: true,
         },
@@ -452,6 +465,7 @@ impl Default for AppConfig {
             sd_backup_mode: default_sd_backup_mode(),
             sd_pc_name: String::new(),
             sd_clear_after_backup: false,
+            sd_eject_after_workflow: false,
             sd_auto_import: true,
             sd_skip_processed: false,
             sd_size_limit_enabled: true,
@@ -669,6 +683,8 @@ mod tests {
         assert!(cfg.sd_auto_backup);
         assert!(cfg.sd_auto_import);
         assert_eq!(cfg.sd_backup_mode, "confirm");
+        assert!(!cfg.sd_clear_after_backup);
+        assert!(!cfg.sd_eject_after_workflow);
         assert!(!cfg.sd_server_backup_enabled);
         assert!(cfg.sd_server_backup_path.is_empty());
         assert_eq!(cfg.sd_server_backup_mode, "direct_dual_write");
@@ -829,7 +845,7 @@ mod tests {
     #[test]
     fn default_crew_list_has_expected_tandemmasters() {
         let list = default_crew_list();
-        assert_eq!(list.len(), 25);
+        assert_eq!(list.len(), 27);
         assert_eq!(list.first().unwrap().name, "Alberto");
         assert_eq!(list.last().unwrap().name, "Torsten");
         let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
@@ -839,7 +855,7 @@ mod tests {
         for name in ["Jan", "Pascal", "Rene"] {
             assert!(list.iter().any(|c| c.name == name && c.tandemmaster && !c.videospringer));
         }
-        for name in ["Kai", "Robert", "Robin", "Sabrina"] {
+        for name in ["Jojo", "Kai", "Käthe", "Robert", "Robin", "Sabrina"] {
             assert!(list.iter().any(|c| c.name == name && !c.tandemmaster && c.videospringer));
         }
         let vs: Vec<_> = list
@@ -850,8 +866,8 @@ mod tests {
         assert_eq!(
             vs,
             [
-                "Ana", "Andy", "Futti", "Harry", "Henrik", "Kai", "Ralph", "Robert", "Robin",
-                "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
+                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Ralph",
+                "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
             ]
         );
     }

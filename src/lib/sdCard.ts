@@ -63,6 +63,7 @@ export type SdWorkflowActions = {
   backup: boolean;
   import: boolean;
   clear: boolean;
+  eject: boolean;
 };
 
 export type ProcessedFileEntry = {
@@ -124,6 +125,10 @@ export async function clearSdFiles(paths: string[]): Promise<number> {
 
 export async function declineSdBackup(drive: string): Promise<void> {
   return invoke("decline_sd_backup", { drive });
+}
+
+export async function ejectSdCard(drive: string): Promise<void> {
+  return invoke("eject_sd_card", { drive });
 }
 
 export async function getMediaThumbnail(

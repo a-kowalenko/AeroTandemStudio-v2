@@ -99,6 +99,8 @@ export type AppConfig = {
   /** Label in backup folder names; empty uses hostname when opening settings. */
   sd_pc_name: string;
   sd_clear_after_backup: boolean;
+  /** Eject SD volume after a successful backup/import workflow. */
+  sd_eject_after_workflow: boolean;
   sd_auto_import: boolean;
   sd_skip_processed: boolean;
   sd_size_limit_enabled: boolean;
@@ -152,7 +154,9 @@ export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Harry", tandemmaster: true, videospringer: true },
   { name: "Henrik", tandemmaster: true, videospringer: true },
   { name: "Jan", tandemmaster: true, videospringer: false },
+  { name: "Jojo", tandemmaster: false, videospringer: true },
   { name: "Kai", tandemmaster: false, videospringer: true },
+  { name: "Käthe", tandemmaster: false, videospringer: true },
   { name: "Max", tandemmaster: true, videospringer: false },
   { name: "Mayo", tandemmaster: true, videospringer: false },
   { name: "Pascal", tandemmaster: true, videospringer: false },
