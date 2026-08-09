@@ -87,6 +87,7 @@ export function UpdateDialog({
           // Prefer primary action over the Patchnotes toggle (first tabbable).
           e.preventDefault();
           const root = e.currentTarget;
+          if (!(root instanceof HTMLElement)) return;
           const primary =
             root.querySelector<HTMLElement>('[data-update-primary]') ??
             root.querySelector<HTMLElement>("button:not([disabled])");
