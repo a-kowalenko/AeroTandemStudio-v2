@@ -220,6 +220,7 @@ export function VideoPreview({
           ? `Kombinierte Vorschau erstellt (${strategy}, mit Intro).${reasonSuffix}`
           : `Kombinierte Vorschau erstellt (${strategy}).${reasonSuffix}`,
         "Vorschau",
+        { autoCloseSecs: 5 },
       );
     } catch (e) {
       if (isCancellationError(e)) {

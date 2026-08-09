@@ -78,7 +78,12 @@ export function SetupWizard({ open, onComplete }: Props) {
   useEffect(() => {
     if (!open || !config) return;
     let cancelled = false;
-    const next = { ...config };
+    // Wizard defaults: QR auto-scan for videos & photos on.
+    const next = {
+      ...config,
+      qr_check_enabled: true,
+      photo_qr_check_enabled: true,
+    };
     setDraft(next);
     setStep(0);
     setSkippedSteps(new Set());

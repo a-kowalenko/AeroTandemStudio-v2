@@ -81,7 +81,18 @@ export function UpdateDialog({
         if (!v && !installing) onClose();
       }}
     >
-      <DialogContent className="max-w-lg overflow-hidden">
+      <DialogContent
+        className="max-w-lg overflow-hidden"
+        onOpenAutoFocus={(e) => {
+          // Prefer primary action over the Patchnotes toggle (first tabbable).
+          e.preventDefault();
+          const root = e.currentTarget;
+          const primary =
+            root.querySelector<HTMLElement>('[data-update-primary]') ??
+            root.querySelector<HTMLElement>("button:not([disabled])");
+          primary?.focus();
+        }}
+      >
         <DialogHeader className="min-w-0">
           <DialogTitle>
             {available ? "Update verfügbar" : "Update-Prüfung"}
@@ -101,7 +112,7 @@ export function UpdateDialog({
             <div className="min-w-0 space-y-1.5">
               <button
                 type="button"
-                className="inline-flex items-center gap-1 text-xs font-medium text-muted transition-colors hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-sm text-xs font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-expanded={notesOpen}
                 disabled={installing}
                 onClick={() => setNotesOpen((v) => !v)}
@@ -148,12 +159,17 @@ export function UpdateDialog({
               <Button type="button" variant="secondary" onClick={onLater} disabled={installing}>
                 Später
               </Button>
-              <Button type="button" onClick={onInstall} disabled={installing}>
+              <Button
+                type="button"
+                data-update-primary
+                onClick={onInstall}
+                disabled={installing}
+              >
                 {installing ? "Installiere…" : "Jetzt aktualisieren"}
               </Button>
             </>
           ) : (
-            <Button type="button" onClick={onClose}>
+            <Button type="button" data-update-primary onClick={onClose}>
               OK
             </Button>
           )}

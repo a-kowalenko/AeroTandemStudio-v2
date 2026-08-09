@@ -399,7 +399,7 @@ function App() {
       }
 
       if (notes.length) {
-        showSuccess(notes.join("\n\n"));
+        showSuccess(notes.join("\n\n"), "Erfolg", { autoCloseSecs: 10 });
       }
     } catch (e) {
       showError(String(e));
@@ -889,7 +889,9 @@ function App() {
       tandemmaster: config?.keep_tandemmaster_on_session_reset,
       videospringer: config?.keep_videospringer_on_session_reset,
     });
-    showSuccess("Session zurückgesetzt.", "Zurücksetzen");
+    showSuccess("Session zurückgesetzt.", "Zurücksetzen", {
+      autoCloseSecs: 5,
+    });
   }
 
   const hwLabel = hwInfo

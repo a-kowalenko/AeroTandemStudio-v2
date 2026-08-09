@@ -438,8 +438,8 @@ impl Default for AppConfig {
             reencode_matching_clips: false,
             intro_mux_mode: default_intro_mux_mode(),
             preview_encode_crf: default_preview_crf(),
-            qr_check_enabled: false,
-            photo_qr_check_enabled: false,
+            qr_check_enabled: true,
+            photo_qr_check_enabled: true,
             qr_video_scan_seconds: default_qr_scan_seconds(),
             qr_remove_photo_after_scan: true,
             qr_remove_video_after_scan: true,
@@ -674,6 +674,8 @@ mod tests {
         assert_eq!(cfg.sd_server_backup_mode, "direct_dual_write");
         assert_eq!(cfg.sd_size_limit_mb, 3000);
         assert!(cfg.sd_size_limit_enabled);
+        assert!(cfg.qr_check_enabled);
+        assert!(cfg.photo_qr_check_enabled);
         assert!(cfg.qr_remove_photo_after_scan);
         assert!(cfg.qr_remove_video_after_scan);
         assert_eq!(cfg.qr_remove_video_max_duration_sec, 10);

@@ -391,12 +391,26 @@ export function SdFileSelector({
                     ref={setTileEl}
                     onClick={() => toggle(file.path)}
                     className={cn(
-                      "relative flex flex-col overflow-hidden rounded-md border text-left transition",
-                      isSel ? "border-primary ring-2 ring-primary/40" : "border-border/70",
+                      "relative flex flex-col overflow-hidden rounded-md text-left transition",
+                      isSel
+                        ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
+                        : "border border-border/70",
                       file.already_processed && "opacity-70",
                     )}
                   >
-                    <div className="flex aspect-video items-center justify-center bg-black/5">
+                    <div className="relative flex aspect-video items-center justify-center bg-black/5">
+                      <div
+                        className="absolute top-1.5 left-1.5 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={isSel}
+                          onCheckedChange={() => toggle(file.path)}
+                          aria-label={`${file.filename} auswählen`}
+                          className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+                        />
+                      </div>
                       {thumbs[file.path] ? (
                         <img
                           src={thumbs[file.path]}

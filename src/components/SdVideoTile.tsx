@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Film, Maximize, Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { videoFileSrc } from "../lib/mediaUrl";
 import { cn } from "../lib/utils";
+import { Checkbox } from "./ui/checkbox";
 
 const HOVER_PLAY_DELAY_MS = 180;
 
@@ -215,10 +216,15 @@ export function SdVideoTile({
       data-tile
       ref={tileRef}
       className={cn(
-        "relative flex flex-col overflow-hidden rounded-md border text-left transition",
-        selected ? "border-primary ring-2 ring-primary/40" : "border-border/70",
+        "relative flex flex-col overflow-hidden rounded-md text-left transition",
+        selected
+          ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
+          : "border border-border/70",
         alreadyProcessed && "opacity-70",
-        (pinned || playing) && isActive && "ring-2 ring-primary/50",
+        (pinned || playing) &&
+          isActive &&
+          !selected &&
+          "ring-2 ring-primary/50",
       )}
     >
       <div
@@ -230,6 +236,19 @@ export function SdVideoTile({
           onToggleSelect();
         }}
       >
+        <div
+          data-controls
+          className="absolute top-1.5 left-1.5 z-10"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onToggleSelect()}
+            aria-label={`${filename} auswählen`}
+            className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+          />
+        </div>
         {showVideo && src && !loadError ? (
           <video
             key={src}
