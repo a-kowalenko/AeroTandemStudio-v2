@@ -94,11 +94,13 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md border-l-4 border-l-success gap-5">
-        <DialogHeader className="space-y-3">
-          <div className="flex items-center gap-3">
+      <DialogContent className="max-w-[min(28rem,calc(100vw-2rem))] border-l-4 border-l-success gap-5">
+        <DialogHeader className="min-w-0 space-y-3 pr-6">
+          <div className="flex min-w-0 items-center gap-3">
             <CheckCircle2 className="h-8 w-8 shrink-0 text-success" aria-hidden />
-            <DialogTitle className="text-success">Erfolgreich erstellt</DialogTitle>
+            <DialogTitle className="min-w-0 break-words text-success">
+              Erfolgreich erstellt
+            </DialogTitle>
           </div>
           <DialogDescription className="sr-only">
             Zusammenfassung der erstellten Dateien und Ordner.
@@ -106,28 +108,38 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
         </DialogHeader>
 
         {info && (
-          <div className="space-y-3">
-            <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2">
+          <div className="min-w-0 space-y-3">
+            <div className="min-w-0 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
               <p className="text-xs font-medium text-muted">Ordner</p>
-              <p className="break-all text-sm text-foreground" title={outputDir}>
+              <p
+                className="break-all text-sm text-foreground [overflow-wrap:anywhere]"
+                title={outputDir}
+              >
                 {basename(outputDir) || outputDir || "—"}
               </p>
               {outputDir && basename(outputDir) !== outputDir && (
-                <p className="mt-1 break-all text-[11px] text-muted">{outputDir}</p>
+                <p className="mt-1 break-all text-[11px] text-muted [overflow-wrap:anywhere]">
+                  {outputDir}
+                </p>
               )}
             </div>
 
-            <ul className="space-y-2">
+            <ul className="min-w-0 space-y-2">
               {rows.map((row) => (
                 <li
                   key={`${row.label}-${row.detail ?? ""}`}
-                  className="flex gap-2 rounded-md border border-border/50 px-3 py-2"
+                  className="flex min-w-0 gap-2 rounded-md border border-border/50 px-3 py-2"
                 >
                   <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{row.label}</p>
+                    <p className="break-words text-sm font-medium text-foreground">
+                      {row.label}
+                    </p>
                     {row.detail && (
-                      <p className="truncate text-xs text-muted" title={row.detail}>
+                      <p
+                        className="break-all text-xs text-muted [overflow-wrap:anywhere]"
+                        title={row.detail}
+                      >
                         {row.detail}
                       </p>
                     )}
@@ -142,13 +154,14 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
           <Button
             type="button"
             variant="secondary"
+            className="w-full sm:w-auto"
             disabled={!outputDir}
             onClick={() => void openOutputDir()}
           >
-            <FolderOpen className="h-4 w-4" />
+            <FolderOpen className="h-4 w-4 shrink-0" />
             Zum Speicherort
           </Button>
-          <Button type="button" onClick={onClose}>
+          <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
             OK
           </Button>
         </DialogFooter>
