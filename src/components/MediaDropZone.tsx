@@ -706,6 +706,88 @@ export function MediaDropZone({
         )}
       </div>
 
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card-elevated/70 px-3 py-2.5">
+        <div className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
+          <QrCode className="h-3.5 w-3.5 text-primary" aria-hidden />
+          Auto-QR beim Import
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="auto-qr-videos"
+              checked={autoQrVideos}
+              disabled={!config || busy}
+              onCheckedChange={(v) => void setAutoQrFlag("qr_check_enabled", v)}
+            />
+            <Label
+              htmlFor="auto-qr-videos"
+              className="cursor-pointer text-sm font-normal"
+            >
+              Videos
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="auto-qr-photos"
+              checked={autoQrPhotos}
+              disabled={!config || busy}
+              onCheckedChange={(v) =>
+                void setAutoQrFlag("photo_qr_check_enabled", v)
+              }
+            />
+            <Label
+              htmlFor="auto-qr-photos"
+              className="cursor-pointer text-sm font-normal"
+            >
+              Fotos
+            </Label>
+          </div>
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => void scanAllVideos()}
+            disabled={busy || videoList.length === 0}
+            title={
+              videoList.length === 0
+                ? "Keine Videos in der Liste"
+                : `${videoList.length} Clip(s) parallel scannen`
+            }
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Videos ({videoList.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => void scanAllPhotos()}
+            disabled={busy || photoList.length === 0}
+            title={
+              photoList.length === 0
+                ? "Keine Fotos in der Liste"
+                : `${photoList.length} Foto(s) parallel scannen`
+            }
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            Fotos ({photoList.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={() => void scanExternalMediaFile()}
+            disabled={busy}
+            title="Foto oder Video wählen — nur QR-Scan, kein Import"
+          >
+            <ScanSearch className="h-3.5 w-3.5" />
+            Datei scannen…
+          </Button>
+        </div>
+      </div>
+
       <div
         className={cn(
           "relative overflow-hidden rounded-xl border-2 border-dashed px-4 py-7 text-center transition-[border-color,background-color,box-shadow,transform] duration-200",
@@ -798,88 +880,6 @@ export function MediaDropZone({
               {statusMsg}
             </p>
           )}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card-elevated/70 px-3 py-2.5">
-        <div className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
-          <QrCode className="h-3.5 w-3.5 text-primary" aria-hidden />
-          Auto-QR beim Import
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="auto-qr-videos"
-              checked={autoQrVideos}
-              disabled={!config || busy}
-              onCheckedChange={(v) => void setAutoQrFlag("qr_check_enabled", v)}
-            />
-            <Label
-              htmlFor="auto-qr-videos"
-              className="cursor-pointer text-sm font-normal"
-            >
-              Videos
-            </Label>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="auto-qr-photos"
-              checked={autoQrPhotos}
-              disabled={!config || busy}
-              onCheckedChange={(v) =>
-                void setAutoQrFlag("photo_qr_check_enabled", v)
-              }
-            />
-            <Label
-              htmlFor="auto-qr-photos"
-              className="cursor-pointer text-sm font-normal"
-            >
-              Fotos
-            </Label>
-          </div>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void scanAllVideos()}
-            disabled={busy || videoList.length === 0}
-            title={
-              videoList.length === 0
-                ? "Keine Videos in der Liste"
-                : `${videoList.length} Clip(s) parallel scannen`
-            }
-          >
-            <QrCode className="h-3.5 w-3.5" />
-            Videos ({videoList.length})
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void scanAllPhotos()}
-            disabled={busy || photoList.length === 0}
-            title={
-              photoList.length === 0
-                ? "Keine Fotos in der Liste"
-                : `${photoList.length} Foto(s) parallel scannen`
-            }
-          >
-            <QrCode className="h-3.5 w-3.5" />
-            Fotos ({photoList.length})
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onClick={() => void scanExternalMediaFile()}
-            disabled={busy}
-            title="Foto oder Video wählen — nur QR-Scan, kein Import"
-          >
-            <ScanSearch className="h-3.5 w-3.5" />
-            Datei scannen…
-          </Button>
         </div>
       </div>
 

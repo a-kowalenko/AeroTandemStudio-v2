@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Eject, HardDrive } from "lucide-react";
+import { HardDrive, Unplug } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -177,7 +177,7 @@ export function SdDriveSelector({
                     void handleEject(d.drive);
                   }}
                 >
-                  <Eject
+                  <Unplug
                     className={cn("h-3.5 w-3.5", isEjecting && "animate-pulse")}
                   />
                 </button>
