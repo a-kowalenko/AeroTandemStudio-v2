@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Film, Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ import {
 import type { SdFileInfo, SdWorkflowActions } from "../lib/sdCard";
 import { getMediaThumbnail } from "../lib/sdCard";
 import { cn } from "../lib/utils";
+import { SdVideoTile } from "./SdVideoTile";
 
 type Props = {
   open: boolean;
@@ -87,6 +88,8 @@ export function SdFileSelector({
     x1: number;
     y1: number;
   } | null>(null);
+  /** At most one video tile may be actively previewing / playing. */
+  const [activeVideoPath, setActiveVideoPath] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
 
@@ -94,6 +97,7 @@ export function SdFileSelector({
     if (!open) return;
     setSelected(new Set());
     setThumbs({});
+    setActiveVideoPath(null);
     setActions({
       backup: defaultActions?.backup ?? true,
       import: defaultActions?.import ?? true,
@@ -103,6 +107,10 @@ export function SdFileSelector({
     // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, files]);
+
+  useEffect(() => {
+    if (!open) setActiveVideoPath(null);
+  }, [open]);
 
   const filtered = useMemo(() => {
     let list = [...files];
@@ -349,15 +357,38 @@ export function SdFileSelector({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
               {filtered.map((file) => {
                 const isSel = selected.has(file.path);
+                const setTileEl = (el: HTMLElement | null) => {
+                  if (el) tileRefs.current.set(file.path, el);
+                  else tileRefs.current.delete(file.path);
+                };
+
+                if (file.is_video) {
+                  return (
+                    <SdVideoTile
+                      key={file.path}
+                      path={file.path}
+                      filename={file.filename}
+                      sizeLabel={formatBytes(file.size_bytes)}
+                      thumbUrl={thumbs[file.path]}
+                      selected={isSel}
+                      alreadyProcessed={file.already_processed}
+                      isActive={activeVideoPath === file.path}
+                      onActivate={() => setActiveVideoPath(file.path)}
+                      onDeactivate={() =>
+                        setActiveVideoPath((prev) => (prev === file.path ? null : prev))
+                      }
+                      onToggleSelect={() => toggle(file.path)}
+                      tileRef={setTileEl}
+                    />
+                  );
+                }
+
                 return (
                   <button
                     key={file.path}
                     type="button"
                     data-tile
-                    ref={(el) => {
-                      if (el) tileRefs.current.set(file.path, el);
-                      else tileRefs.current.delete(file.path);
-                    }}
+                    ref={setTileEl}
                     onClick={() => toggle(file.path)}
                     className={cn(
                       "relative flex flex-col overflow-hidden rounded-md border text-left transition",
@@ -373,8 +404,6 @@ export function SdFileSelector({
                           className="h-full w-full object-cover"
                           draggable={false}
                         />
-                      ) : file.is_video ? (
-                        <Film className="h-8 w-8 text-muted" />
                       ) : (
                         <ImageIcon className="h-8 w-8 text-muted" />
                       )}
