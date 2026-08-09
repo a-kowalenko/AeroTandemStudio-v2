@@ -29,7 +29,7 @@ export function ServerStatusIndicator({ className }: Props) {
     label = "Verbunden";
     tone = "text-success";
   } else if (phase === "error") {
-    label = "Fehler";
+    label = "Nicht verbunden";
     tone = "text-destructive";
   }
 
