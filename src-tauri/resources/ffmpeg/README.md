@@ -17,10 +17,8 @@ At runtime `find_ffmpeg` picks the arch-specific binary first, then the fallback
 
 ## Windows
 
-1. Download **ffmpeg essentials** (GPL): https://www.gyan.dev/ffmpeg/builds/
-2. Extract `ffmpeg.exe` → `win/ffmpeg.exe`
-
-Or run from the repo root:
+1. Prefer `npm run download-ffmpeg` (gyan.dev essentials, then [BtbN win64-gpl](https://github.com/BtbN/FFmpeg-Builds/releases) fallback).
+2. Or download **ffmpeg essentials** (GPL): https://www.gyan.dev/ffmpeg/builds/ → extract `ffmpeg.exe` → `win/ffmpeg.exe`
 
 ```powershell
 npm run download-ffmpeg

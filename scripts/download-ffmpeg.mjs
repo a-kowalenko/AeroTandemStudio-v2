@@ -1,7 +1,7 @@
 /**
  * Download / install the FFmpeg sidecar for the current platform.
  *
- * Windows: essentials build from gyan.dev (zip → win/ffmpeg.exe)
+ * Windows: gyan.dev essentials (+ BtbN win64-gpl fallback; zip → win/ffmpeg.exe)
  * macOS:   static zips only (never Homebrew — dylibs break on other Macs)
  *          arm64 → martin-riedl.de (+ osxexperts.net fallback)
  *          x86_64 → evermeet.cx
@@ -19,6 +19,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { platform, arch } from "node:os";
 import { Readable } from "node:stream";
+import { setTimeout as sleep } from "node:timers/promises";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -26,6 +27,12 @@ const ffmpegRoot = join(root, "src-tauri", "resources", "ffmpeg");
 
 const GYAN_ESSENTIALS =
   "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+/**
+ * Windows x64 static GPL (libx264, NVENC). GitHub-hosted — reliable in CI when gyan.dev is down.
+ * Floating `latest` tag — pin to a dated autobuild URL if reproducibility is required.
+ */
+const BTBN_WIN64_GPL =
+  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
 
 /** Intel (x86_64) static macOS builds — includes VideoToolbox / libx264. */
 const EVERMEET_FFMPEG_ZIP = "https://evermeet.cx/ffmpeg/getrelease/zip";
@@ -51,18 +58,45 @@ const BTBN_LINUX64_GPL =
 const JOHNVANSICKLE_LINUX64 =
   "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz";
 
+/** Transient HTTP statuses worth retrying (mirror/CDN blips, rate limits). */
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+
 function ensureDir(p) {
   mkdirSync(p, { recursive: true });
 }
 
-async function download(url, dest) {
-  console.log(`Downloading ${url}`);
-  const res = await fetch(url, { redirect: "follow" });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} for ${url}`);
-  }
+function httpStatusFromError(err) {
+  if (!(err instanceof Error)) return null;
+  const m = /^HTTP (\d+) /.exec(err.message);
+  return m ? Number(m[1]) : null;
+}
+
+async function download(url, dest, { attempts = 3 } = {}) {
   ensureDir(dirname(dest));
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    console.log(`Downloading ${url}${i > 1 ? ` (attempt ${i}/${attempts})` : ""}`);
+    try {
+      const res = await fetch(url, { redirect: "follow" });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} for ${url}`);
+      }
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
+      return;
+    } catch (err) {
+      lastErr = err;
+      const status = httpStatusFromError(err);
+      const retryable =
+        status == null ? true : RETRYABLE_STATUS.has(status);
+      if (!retryable || i === attempts) {
+        throw err;
+      }
+      const waitMs = 1000 * 2 ** (i - 1);
+      console.warn(`Download failed (${err.message}); retrying in ${waitMs}ms…`);
+      await sleep(waitMs);
+    }
+  }
+  throw lastErr ?? new Error(`Download failed for ${url}`);
 }
 
 function hostMacArchDir() {
@@ -191,19 +225,16 @@ async function installMac() {
   );
 }
 
-async function installWindows() {
-  const winDir = join(ffmpegRoot, "win");
-  const dest = join(winDir, "ffmpeg.exe");
-  if (existsSync(dest)) {
-    console.log(`Already present: ${dest}`);
-    return;
-  }
-  ensureDir(winDir);
-  const zipPath = join(winDir, "ffmpeg-essentials.zip");
-  await download(GYAN_ESSENTIALS, zipPath);
+async function installWindowsFromZip(url, dest, label) {
+  const winDir = dirname(dest);
+  const safeLabel = label.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const zipPath = join(winDir, `ffmpeg-${safeLabel}.zip`);
+  const extractDir = join(winDir, `_extract_${safeLabel}`);
 
-  // Prefer PowerShell Expand-Archive + find ffmpeg.exe
-  const extractDir = join(winDir, "_extract");
+  ensureDir(winDir);
+  await download(url, zipPath);
+
+  rmSync(extractDir, { recursive: true, force: true });
   ensureDir(extractDir);
   execFileSync(
     "powershell",
@@ -225,26 +256,57 @@ async function installWindows() {
     { encoding: "utf8" },
   ).trim();
 
-  if (!found) {
-    throw new Error("ffmpeg.exe not found inside essentials zip");
+  if (!found || !existsSync(found)) {
+    throw new Error(`ffmpeg.exe not found inside ${label} zip`);
   }
   copyFileSync(found, dest);
-  console.log(`Installed ${dest}`);
+  console.log(`Installed ${dest} (${label})`);
 
-  // Cleanup extract + zip to keep tree small
   try {
-    execFileSync(
-      "powershell",
-      [
-        "-NoProfile",
-        "-Command",
-        `Remove-Item -LiteralPath '${extractDir}' -Recurse -Force; Remove-Item -LiteralPath '${zipPath}' -Force`,
-      ],
-      { stdio: "inherit" },
-    );
+    rmSync(extractDir, { recursive: true, force: true });
+    rmSync(zipPath, { force: true });
   } catch {
     /* ignore */
   }
+}
+
+async function installWindows() {
+  const dest = join(ffmpegRoot, "win", "ffmpeg.exe");
+  if (existsSync(dest)) {
+    console.log(`Already present: ${dest}`);
+    return;
+  }
+
+  // gyan.dev is often flaky (503); BtbN is GitHub-hosted and reliable in Actions.
+  const sources = process.env.GITHUB_ACTIONS
+    ? [
+        [BTBN_WIN64_GPL, "BtbN win64-gpl"],
+        [GYAN_ESSENTIALS, "gyan.dev essentials"],
+      ]
+    : [
+        [GYAN_ESSENTIALS, "gyan.dev essentials"],
+        [BTBN_WIN64_GPL, "BtbN win64-gpl"],
+      ];
+
+  let lastErr;
+  for (const [url, label] of sources) {
+    try {
+      await installWindowsFromZip(url, dest, label);
+      return;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`Windows FFmpeg source failed (${label}): ${err.message}`);
+      try {
+        rmSync(dest, { force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  throw new Error(
+    `Could not download Windows FFmpeg. Last error: ${lastErr?.message ?? "unknown"}. ` +
+      "Place ffmpeg.exe at resources/ffmpeg/win/ffmpeg.exe manually.",
+  );
 }
 
 async function installLinuxFromTarball(url, archDest, fallback, label) {
