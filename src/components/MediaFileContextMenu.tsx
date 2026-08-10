@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Copy, FolderOpen, ExternalLink } from "lucide-react";
+import { Copy, FolderOpen, ExternalLink, QrCode, Trash2 } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +15,12 @@ type Props = {
   onClose: () => void;
   onError?: (message: string) => void;
   onCopied?: () => void;
+  /** Optional: scan QR for this file */
+  onScanQr?: (path: string) => void;
+  /** Optional: remove this file from the session list */
+  onRemove?: (path: string) => void;
+  /** Disable QR / remove while busy */
+  actionsDisabled?: boolean;
 };
 
 function basename(path: string): string {
@@ -27,7 +33,15 @@ export async function revealMediaInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
-export function MediaFileContextMenu({ state, onClose, onError, onCopied }: Props) {
+export function MediaFileContextMenu({
+  state,
+  onClose,
+  onError,
+  onCopied,
+  onScanQr,
+  onRemove,
+  actionsDisabled = false,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -103,6 +117,8 @@ export function MediaFileContextMenu({ state, onClose, onError, onCopied }: Prop
     }
   }
 
+  const showExtra = Boolean(onScanQr || onRemove);
+
   return createPortal(
     <div
       ref={ref}
@@ -128,6 +144,37 @@ export function MediaFileContextMenu({ state, onClose, onError, onCopied }: Prop
       <MenuItem icon={<Copy className="h-3.5 w-3.5" />} onClick={() => void copyPath()}>
         Pfad kopieren
       </MenuItem>
+      {showExtra && <div className="my-1 border-t border-border/60" role="separator" />}
+      {onScanQr && (
+        <MenuItem
+          icon={<QrCode className="h-3.5 w-3.5" />}
+          disabled={actionsDisabled}
+          onClick={() => {
+            const path = state.path;
+            onClose();
+            onScanQr(path);
+          }}
+        >
+          QR scannen
+        </MenuItem>
+      )}
+      {onScanQr && onRemove && (
+        <div className="my-1 border-t border-border/60" role="separator" />
+      )}
+      {onRemove && (
+        <MenuItem
+          icon={<Trash2 className="h-3.5 w-3.5" />}
+          disabled={actionsDisabled}
+          destructive
+          onClick={() => {
+            const path = state.path;
+            onClose();
+            onRemove(path);
+          }}
+        >
+          Entfernen
+        </MenuItem>
+      )}
     </div>,
     document.body,
   );
@@ -137,19 +184,27 @@ function MenuItem({
   icon,
   children,
   onClick,
+  disabled = false,
+  destructive = false,
 }: {
   icon: ReactNode;
   children: ReactNode;
   onClick: () => void;
+  disabled?: boolean;
+  destructive?: boolean;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
-      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-foreground hover:bg-primary-soft"
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-primary-soft disabled:pointer-events-none disabled:opacity-50",
+        destructive ? "text-destructive" : "text-foreground",
+      )}
       onClick={onClick}
     >
-      <span className="text-muted">{icon}</span>
+      <span className={destructive ? "text-destructive" : "text-muted"}>{icon}</span>
       {children}
     </button>
   );

@@ -1,5 +1,5 @@
-import { CheckCircle2, FolderOpen } from "lucide-react";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { CheckCircle2, FolderOpen, Play } from "lucide-react";
+import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,8 @@ export type CreateSuccessInfo = {
   serverUploaded?: boolean;
   /** Optional short note (success path or failure hint). */
   uploadNote?: string | null;
+  vorname?: string | null;
+  nachname?: string | null;
 };
 
 type Props = {
@@ -81,7 +83,12 @@ function buildRows(info: CreateSuccessInfo): Row[] {
 
 export function CreateSuccessDialog({ open, info, onClose }: Props) {
   const outputDir = info?.result.base_output_dir?.trim() ?? "";
+  const videoPath = info?.result.video_output?.trim() ?? "";
   const rows = info ? buildRows(info) : [];
+  const customerName = [info?.vorname, info?.nachname]
+    .map((s) => s?.trim())
+    .filter(Boolean)
+    .join(" ");
 
   async function openOutputDir() {
     if (!outputDir) return;
@@ -89,6 +96,15 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
       await revealItemInDir(outputDir);
     } catch (e) {
       console.error("Speicherort öffnen fehlgeschlagen:", e);
+    }
+  }
+
+  async function playVideo() {
+    if (!videoPath) return;
+    try {
+      await openPath(videoPath);
+    } catch (e) {
+      console.error("Video abspielen fehlgeschlagen:", e);
     }
   }
 
@@ -109,6 +125,12 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
 
         {info && (
           <div className="min-w-0 space-y-3">
+            {customerName && (
+              <p className="break-words text-center text-lg font-semibold tracking-tight text-foreground">
+                {customerName}
+              </p>
+            )}
+
             <div className="min-w-0 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
               <p className="text-xs font-medium text-muted">Ordner</p>
               <p
@@ -151,16 +173,30 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
         )}
 
         <DialogFooter className="sm:justify-between">
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full sm:w-auto"
-            disabled={!outputDir}
-            onClick={() => void openOutputDir()}
-          >
-            <FolderOpen className="h-4 w-4 shrink-0" />
-            Zum Speicherort
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              disabled={!outputDir}
+              onClick={() => void openOutputDir()}
+            >
+              <FolderOpen className="h-4 w-4 shrink-0" />
+              Zum Speicherort
+            </Button>
+            {videoPath && (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full border-success/35 bg-success/10 text-success hover:bg-success/20 sm:w-auto"
+                onClick={() => void playVideo()}
+                title={basename(videoPath)}
+              >
+                <Play className="h-4 w-4 shrink-0" />
+                Abspielen
+              </Button>
+            )}
+          </div>
           <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
             OK
           </Button>

@@ -918,6 +918,8 @@ function App() {
         result: res,
         serverUploaded,
         uploadNote,
+        vorname: kunde.vorname,
+        nachname: kunde.nachname,
       });
       setPercent(100);
       setStatus("Vorgang fertig");
@@ -1168,7 +1170,7 @@ function App() {
                     });
                   }}
                 />
-                Intro erstellen
+                Intro erstellen (experimentell)
               </label>
             </div>
             {createHints.length > 0 && (

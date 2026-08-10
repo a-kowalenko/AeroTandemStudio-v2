@@ -245,8 +245,10 @@ export function VideoPreview({
     }
   }
 
-  async function handleQrScan() {
-    const clip = videoList[activeClip];
+  async function handleQrScan(path?: string) {
+    const clip = path
+      ? videoList.find((v) => v.path === path)
+      : videoList[activeClip];
     if (!clip) return;
     setQrBusy(true);
     try {
@@ -600,6 +602,12 @@ export function VideoPreview({
         onClose={() => setCtxMenu(null)}
         onError={(msg) => showError(msg, "Datei")}
         onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        actionsDisabled={busy || qrBusy}
+        onScanQr={(path) => void handleQrScan(path)}
+        onRemove={(path) => {
+          onBeforeRemoveClip?.(path);
+          removeVideo(path);
+        }}
       />
     </div>
   );

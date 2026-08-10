@@ -1091,6 +1091,23 @@ export function MediaDropZone({
         onClose={() => setCtxMenu(null)}
         onError={(msg) => showError(msg, "Datei")}
         onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        actionsDisabled={qrBusy || busy}
+        onScanQr={(path) => {
+          if (videoList.some((v) => v.path === path)) {
+            void scanVideoQr(path);
+          } else {
+            void scanPhotoQr(path);
+          }
+        }}
+        onRemove={(path) => {
+          if (videoList.some((v) => v.path === path)) {
+            onRemoveVideo?.(path);
+            removeVideo(path);
+            return;
+          }
+          const idx = photoList.findIndex((p) => p.path === path);
+          if (idx >= 0) removePhotos([idx]);
+        }}
       />
     </section>
   );

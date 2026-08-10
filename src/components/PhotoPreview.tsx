@@ -14,6 +14,11 @@ import {
   maybeRemoveQrPhoto,
 } from "../lib/qrCleanup";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
+import {
+  MediaFileContextMenu,
+  mediaContextMenuHandler,
+  type MediaContextMenuState,
+} from "./MediaFileContextMenu";
 import { cn } from "../lib/utils";
 
 type PhotoPreviewProps = {
@@ -47,6 +52,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
   const showSuccess = useUiStore((s) => s.showSuccess);
 
   const [scanning, setScanning] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
 
   const current = currentIndex >= 0 ? photoList[currentIndex] : null;
 
@@ -127,16 +133,19 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
     }
   }
 
-  async function handleQrScan() {
-    if (!current) return;
+  async function handleQrScan(path?: string) {
+    const photo = path
+      ? photoList.find((p) => p.path === path)
+      : current;
+    if (!photo) return;
     setScanning(true);
     try {
-      const result = await withQrScanProgress([current.path], () =>
-        scanQrPhoto(current.path),
+      const result = await withQrScanProgress([photo.path], () =>
+        scanQrPhoto(photo.path),
       );
       if (result.found && result.kunde) {
         applyFromQr(result.kunde);
-        const cleanup = await maybeRemoveQrPhoto(result.source_path ?? current.path);
+        const cleanup = await maybeRemoveQrPhoto(result.source_path ?? photo.path);
         showSuccess(
           `Kundendaten aus Foto übernommen.${formatQrCleanupSummary(cleanup)}`,
           "QR-Scan",
@@ -188,6 +197,11 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
       <div
         className="relative aspect-video w-full overflow-hidden rounded-xl bg-[var(--ats-preview-stage)] ring-1 ring-border"
         tabIndex={0}
+        onContextMenu={
+          current
+            ? mediaContextMenuHandler(current.path, setCtxMenu)
+            : undefined
+        }
       >
         {previewSrc ? (
           <>
@@ -238,6 +252,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
                 key={p.path}
                 type="button"
                 onClick={(e) => onThumbClick(i, e)}
+                onContextMenu={mediaContextMenuHandler(p.path, setCtxMenu)}
                 className={cn(
                   "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-card transition",
                   isSelected
@@ -341,6 +356,19 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
           </div>
         </div>
       </div>
+
+      <MediaFileContextMenu
+        state={ctxMenu}
+        onClose={() => setCtxMenu(null)}
+        onError={(msg) => showError(msg, "Datei")}
+        onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        actionsDisabled={disabled || scanning}
+        onScanQr={(path) => void handleQrScan(path)}
+        onRemove={(path) => {
+          const idx = photoList.findIndex((p) => p.path === path);
+          if (idx >= 0) removePhotos([idx]);
+        }}
+      />
     </div>
   );
 }
