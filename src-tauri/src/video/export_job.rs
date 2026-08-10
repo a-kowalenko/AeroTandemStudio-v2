@@ -7,11 +7,11 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use chrono::{Local, TimeZone};
 use serde::{Deserialize, Serialize};
 
-use crate::media::datetime::get_photo_display_epoch;
-use crate::media::dji_paths::is_timelapse_photo_filename;
+use crate::media::datetime::{
+    build_chrono_photo_filename, claim_unique_photo_filename, is_chrono_photo_filename,
+};
 use crate::model::Kunde;
 use crate::storage::config::AppConfig;
 use crate::storage::logging::{self, file_name};
@@ -190,34 +190,13 @@ fn build_photo_rename_map(photo_paths: &[String]) -> HashMap<String, String> {
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "photo.jpg".into());
 
-        let mut candidate = if is_timelapse_photo_filename(&basename) {
-            basename.clone()
+        // Already chrono-named on import → keep (with `_001` on collision).
+        // Otherwise rebuild from EXIF/mtime so export order matches capture time.
+        let candidate = if is_chrono_photo_filename(&basename) {
+            claim_unique_photo_filename(&basename, &mut used)
         } else {
-            let epoch = get_photo_display_epoch(path, None);
-            let prefix = Local
-                .timestamp_opt(epoch as i64, 0)
-                .single()
-                .map(|dt| dt.format("%Y%m%d%H%M%S").to_string())
-                .unwrap_or_else(|| "00000000000000".into());
-            format!("{prefix}_{basename}")
+            build_chrono_photo_filename(path, &mut used)
         };
-
-        if used.contains(&candidate) {
-            let (base, ext) = match candidate.rsplit_once('.') {
-                Some((b, e)) => (b.to_string(), format!(".{e}")),
-                None => (candidate.clone(), String::new()),
-            };
-            let mut n = 1;
-            loop {
-                let try_name = format!("{base} ({n}){ext}");
-                if !used.contains(&try_name) {
-                    candidate = try_name;
-                    break;
-                }
-                n += 1;
-            }
-        }
-        used.insert(candidate.clone());
         mapping.insert(src.clone(), candidate);
     }
     mapping

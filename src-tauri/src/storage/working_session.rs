@@ -12,6 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 
+use crate::media::datetime::{build_chrono_photo_filename, collect_used_filenames_in};
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::logging::{self, file_name};
 
@@ -108,6 +109,9 @@ impl WorkingSession {
     }
 
     /// Copy a photo into `{temp}/photos/` (or return path if already there).
+    ///
+    /// Destination name is chronological (`Foto_yyyyMMddHHmmssSSS[_nnn].JPG`) so
+    /// DJI series with identical camera filenames stay in capture order when sorted.
     pub fn import_photo(&mut self, source: &Path) -> Result<PathBuf, WorkingSessionError> {
         if !source.is_file() {
             return Err(WorkingSessionError::Message(format!(
@@ -125,7 +129,14 @@ impl WorkingSession {
         }
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
-        let dest = unique_dest_in(&photos, &safe_filename(source))?;
+        let mut used = collect_used_filenames_in(&photos);
+        let dest_name = build_chrono_photo_filename(source, &mut used);
+        let dest = photos.join(&dest_name);
+        if dest.exists() {
+            return Err(WorkingSessionError::Message(format!(
+                "Zielname bereits vorhanden: {dest_name}"
+            )));
+        }
         copy_file(source, &dest)?;
         logging::info(
             "import",
@@ -342,7 +353,17 @@ mod tests {
         assert_ne!(v_dest, video);
         assert_ne!(p_dest, photo);
 
-        // Second import of same names → unique suffix
+        // Second import of same photo → chrono name with `_001` collision suffix
+        let p2 = session.import_photo(&photo).unwrap();
+        let p_name = p_dest.file_name().unwrap().to_string_lossy().to_string();
+        let p2_name = p2.file_name().unwrap().to_string_lossy().to_string();
+        assert!(p_name.starts_with("Foto_"), "{p_name}");
+        assert!(crate::media::datetime::is_chrono_photo_filename(&p_name));
+        assert_ne!(p_name, p2_name);
+        assert!(p2_name.contains("_001"), "{p2_name}");
+        assert!(crate::media::datetime::is_chrono_photo_filename(&p2_name));
+
+        // Second import of same video names → unique suffix
         let v2 = session.import_video(&video).unwrap();
         assert!(v2
             .file_name()

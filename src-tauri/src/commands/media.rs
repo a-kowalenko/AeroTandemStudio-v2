@@ -5,12 +5,11 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::State;
 
-use crate::media::datetime::get_exif_camera;
+use crate::media::datetime::{get_exif_camera, get_photo_display_epoch};
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
 use crate::storage::working_session;
-use crate::util::natural_sort::sort_paths_by_basename;
 use crate::video::probe::format_camera_label;
 
 /// Expand file/folder paths into a flat list of media files (videos + photos).
@@ -126,7 +125,15 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             .into_iter()
             .filter(|p| is_photo_path(p))
             .collect();
-        let sorted = sort_paths_by_basename(&photo_paths);
+        // Capture-time order (not basename) so DJI series with identical names stay sequential.
+        let mut sorted = photo_paths;
+        sorted.sort_by(|a, b| {
+            let ea = get_photo_display_epoch(Path::new(a), None);
+            let eb = get_photo_display_epoch(Path::new(b), None);
+            ea.partial_cmp(&eb)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(b))
+        });
         if sorted.is_empty() {
             logging::warn("import", "Foto-Import: keine gültigen Bildpfade");
             return Ok(Vec::new());

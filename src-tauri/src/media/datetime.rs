@@ -1,8 +1,10 @@
 //! Display / sort timestamps for media (port of legacy `media_datetime.py`).
 
-use std::fs::File;
+use std::collections::HashSet;
+use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{Local, NaiveDateTime, TimeZone};
 use exif::{In, Reader as ExifReader, Tag, Value};
@@ -133,9 +135,113 @@ pub fn resolve_video_display_epoch(
         .unwrap_or(0.0)
 }
 
-#[allow(dead_code)]
 pub fn get_photo_display_epoch(photo_path: &Path, source_import_epoch: Option<f64>) -> f64 {
     resolve_video_display_epoch(photo_path, source_import_epoch, None)
+}
+
+/// Capture instant for naming: EXIF (+ SubSec), else filesystem creation/mtime, else now.
+fn photo_capture_parts(photo_path: &Path) -> (NaiveDateTime, String) {
+    if let Some((epoch, ms)) = get_exif_capture_epoch(photo_path) {
+        let secs = epoch.floor() as i64;
+        if let Some(dt) = Local.timestamp_opt(secs, 0).single() {
+            return (dt.naive_local(), ms);
+        }
+    }
+    let epoch = get_creation_timestamp(photo_path)
+        .or_else(|| get_mtime_timestamp(photo_path))
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs_f64())
+                .unwrap_or(0.0)
+        });
+    let secs = epoch.floor() as i64;
+    let frac = epoch - secs as f64;
+    let ms = format!("{:03}", ((frac * 1000.0).round() as u32).min(999));
+    let dt = Local
+        .timestamp_opt(secs, 0)
+        .single()
+        .map(|d| d.naive_local())
+        .unwrap_or_else(|| Local::now().naive_local());
+    (dt, ms)
+}
+
+fn normalize_photo_extension(photo_path: &Path) -> String {
+    let ext = photo_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("JPG");
+    if ext.eq_ignore_ascii_case("jpg") || ext.eq_ignore_ascii_case("jpeg") {
+        ".JPG".into()
+    } else {
+        format!(".{}", ext.to_ascii_uppercase())
+    }
+}
+
+/// Claim `name` in `used` (case-insensitive). Returns false if already taken.
+fn try_claim_name(name: &str, used: &mut HashSet<String>) -> bool {
+    let key = name.to_ascii_lowercase();
+    if used.contains(&key) {
+        return false;
+    }
+    used.insert(key);
+    true
+}
+
+/// Append `_001`, `_002`, … before the extension until unique in `used`.
+pub fn claim_unique_photo_filename(base_name: &str, used: &mut HashSet<String>) -> String {
+    if try_claim_name(base_name, used) {
+        return base_name.to_string();
+    }
+    let (stem, ext) = match base_name.rsplit_once('.') {
+        Some((s, e)) => (s.to_string(), format!(".{e}")),
+        None => (base_name.to_string(), String::new()),
+    };
+    let mut counter = 1u32;
+    loop {
+        let candidate = format!("{stem}_{counter:03}{ext}");
+        if try_claim_name(&candidate, used) {
+            return candidate;
+        }
+        counter += 1;
+        if counter > 10_000 {
+            let fallback = format!("{stem}_{counter}{ext}");
+            used.insert(fallback.to_ascii_lowercase());
+            return fallback;
+        }
+    }
+}
+
+/// Chronological photo name: `Foto_yyyyMMddHHmmssSSS[_nnn].JPG` (legacy timelapse scheme).
+///
+/// Used on import so DJI series with identical camera names stay sortable by filename.
+/// `used_names` holds lowercase basenames already reserved (updated in place).
+pub fn build_chrono_photo_filename(photo_path: &Path, used_names: &mut HashSet<String>) -> String {
+    let (dt, ms) = photo_capture_parts(photo_path);
+    let ext = normalize_photo_extension(photo_path);
+    let base = format!("Foto_{}{}{ext}", dt.format("%Y%m%d%H%M%S"), ms);
+    claim_unique_photo_filename(&base, used_names)
+}
+
+/// Lowercase basenames of existing files in `dir` (for collision tracking across imports).
+pub fn collect_used_filenames_in(dir: &Path) -> HashSet<String> {
+    let mut used = HashSet::new();
+    let Ok(entries) = fs::read_dir(dir) else {
+        return used;
+    };
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            if let Some(name) = entry.file_name().to_str() {
+                used.insert(name.to_ascii_lowercase());
+            }
+        }
+    }
+    used
+}
+
+/// Whether `filename` already follows the chrono import pattern (`Foto_…`).
+pub fn is_chrono_photo_filename(filename: &str) -> bool {
+    crate::media::dji_paths::is_timelapse_photo_filename(filename)
 }
 
 #[cfg(test)]
@@ -176,5 +282,48 @@ mod tests {
         assert_eq!(sanitize_camera_text("\"DJI\", \"\""), "DJI");
         assert_eq!(sanitize_camera_text("OsmoAction4"), "OsmoAction4");
         assert_eq!(sanitize_camera_text("  GoPro  "), "GoPro");
+    }
+
+    #[test]
+    fn chrono_photo_filename_claims_and_collides() {
+        let mut f = NamedTempFile::with_suffix(".JPG").unwrap();
+        writeln!(f, "x").unwrap();
+        let mut used = HashSet::new();
+        let a = build_chrono_photo_filename(f.path(), &mut used);
+        assert!(a.starts_with("Foto_"), "{a}");
+        assert!(a.ends_with(".JPG"), "{a}");
+        assert!(is_chrono_photo_filename(&a));
+
+        let b = build_chrono_photo_filename(f.path(), &mut used);
+        assert_ne!(a, b);
+        assert!(b.contains("_001") || b.contains("_002"), "{b}");
+        assert!(is_chrono_photo_filename(&b));
+    }
+
+    #[test]
+    fn claim_unique_keeps_first_and_suffixes() {
+        let mut used = HashSet::new();
+        assert_eq!(
+            claim_unique_photo_filename("Foto_20240101120000000.JPG", &mut used),
+            "Foto_20240101120000000.JPG"
+        );
+        assert_eq!(
+            claim_unique_photo_filename("Foto_20240101120000000.JPG", &mut used),
+            "Foto_20240101120000000_001.JPG"
+        );
+        assert_eq!(
+            claim_unique_photo_filename("foto_20240101120000000.jpg", &mut used),
+            "foto_20240101120000000_002.jpg"
+        );
+    }
+
+    #[test]
+    fn collect_used_filenames_reads_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("Foto_20240101120000000.JPG"), b"a").unwrap();
+        fs::write(dir.path().join("other.PNG"), b"b").unwrap();
+        let used = collect_used_filenames_in(dir.path());
+        assert!(used.contains("foto_20240101120000000.jpg"));
+        assert!(used.contains("other.png"));
     }
 }

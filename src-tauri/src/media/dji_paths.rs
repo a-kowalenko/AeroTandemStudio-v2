@@ -445,11 +445,11 @@ pub fn unique_dest_name(original: &str, used: &mut HashSet<String>) -> String {
     candidate
 }
 
-/// Timelapse photo filename pattern from legacy.
-#[allow(dead_code)]
+/// Chronological photo filename pattern (`Foto_yyyyMMddHHmmssSSS[_nnn].ext`).
+/// Used for DJI timelapse imports and for all photo imports in the working folder.
 pub fn is_timelapse_photo_filename(filename: &str) -> bool {
     static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-        Regex::new(r"(?i)^Foto_\d{17}(?:_\d{3})?\.(jpg|jpeg)$").unwrap()
+        Regex::new(r"(?i)^Foto_\d{17}(?:_\d{3})?\.[a-z0-9]+$").unwrap()
     });
     let base = Path::new(filename)
         .file_name()
@@ -538,6 +538,7 @@ mod tests {
     fn timelapse_filename_regex() {
         assert!(is_timelapse_photo_filename("Foto_20240101120000000.JPG"));
         assert!(is_timelapse_photo_filename("Foto_20240101120000000_001.jpg"));
+        assert!(is_timelapse_photo_filename("Foto_20240101120000000.PNG"));
         assert!(!is_timelapse_photo_filename("DJI_0001.JPG"));
     }
 }
