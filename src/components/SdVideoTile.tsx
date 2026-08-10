@@ -49,8 +49,10 @@ export function SdVideoTile({
   tileRef,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaShellRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<number | null>(null);
+  const pendingFullscreenRef = useRef(false);
 
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -95,6 +97,7 @@ export function SdVideoTile({
   // Another tile took over → unpin and stop.
   useEffect(() => {
     if (isActive) return;
+    pendingFullscreenRef.current = false;
     setPinned(false);
     setWantPreview(false);
     setPlaying(false);
@@ -129,6 +132,66 @@ export function SdVideoTile({
       if (hoverTimerRef.current != null) window.clearTimeout(hoverTimerRef.current);
     };
   }, []);
+
+  async function enterFullscreen() {
+    const v = videoRef.current;
+    const shell = mediaShellRef.current;
+    const target = (v ?? shell) as
+      | (HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void })
+      | null;
+    if (!target) return false;
+    try {
+      if (document.fullscreenElement === target) return true;
+      if (typeof target.requestFullscreen === "function") {
+        await target.requestFullscreen();
+        return true;
+      }
+      if (typeof target.webkitRequestFullscreen === "function") {
+        await target.webkitRequestFullscreen();
+        return true;
+      }
+      // iOS / some WebViews: video-only fullscreen API
+      const anyVideo = v as
+        | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+        | null;
+      if (anyVideo && typeof anyVideo.webkitEnterFullscreen === "function") {
+        anyVideo.webkitEnterFullscreen();
+        return true;
+      }
+    } catch (err) {
+      console.warn("Fullscreen failed:", err);
+    }
+    return false;
+  }
+
+  // Retry fullscreen once the <video> mounts after a thumbnail-only click.
+  useEffect(() => {
+    if (!pendingFullscreenRef.current || !src || loadError) return;
+    const v = videoRef.current;
+    if (!v) return;
+
+    let cancelled = false;
+    const run = () => {
+      if (cancelled || !pendingFullscreenRef.current) return;
+      pendingFullscreenRef.current = false;
+      void enterFullscreen();
+    };
+
+    if (v.readyState >= 1) {
+      run();
+      return;
+    }
+    v.addEventListener("loadedmetadata", run, { once: true });
+    // Fallback if metadata is slow / already cached oddly
+    const t = window.setTimeout(run, 400);
+    return () => {
+      cancelled = true;
+      v.removeEventListener("loadedmetadata", run);
+      window.clearTimeout(t);
+    };
+    // enterFullscreen closes over refs — intentionally omit from deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src, loadError]);
 
   function clearHoverTimer() {
     if (hoverTimerRef.current != null) {
@@ -198,17 +261,26 @@ export function SdVideoTile({
     setPinned(true);
     setWantPreview(true);
     onActivate();
+
     const v = videoRef.current;
-    if (!v) return;
-    try {
-      if (document.fullscreenElement === v) {
+    const shell = mediaShellRef.current;
+    const currentFs = document.fullscreenElement;
+    if (currentFs && (currentFs === v || currentFs === shell)) {
+      pendingFullscreenRef.current = false;
+      try {
         await document.exitFullscreen();
-      } else {
-        await v.requestFullscreen();
+      } catch (err) {
+        console.warn("Exit fullscreen failed:", err);
       }
-    } catch {
-      /* fullscreen may be blocked */
+      return;
     }
+
+    if (!v || !src) {
+      pendingFullscreenRef.current = true;
+      return;
+    }
+    pendingFullscreenRef.current = false;
+    await enterFullscreen();
   }
 
   const playhead = duration > 0 ? current / duration : 0;
@@ -231,6 +303,7 @@ export function SdVideoTile({
       )}
     >
       <div
+        ref={mediaShellRef}
         className="relative isolate flex aspect-video items-center justify-center bg-black/90"
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}

@@ -16,6 +16,8 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ArrowDown,
+  ArrowUp,
   Film,
   FolderOpen,
   GripVertical,
@@ -249,6 +251,8 @@ export function MediaDropZone({
   const addVideos = useVideoStore((s) => s.addVideos);
   const removeVideo = useVideoStore((s) => s.removeVideo);
   const reorderVideos = useVideoStore((s) => s.reorderVideos);
+  const sortVideos = useVideoStore((s) => s.sortVideos);
+  const listSort = useVideoStore((s) => s.listSort);
   const clearVideos = useVideoStore((s) => s.clearVideos);
   const clearError = useVideoStore((s) => s.clearError);
 
@@ -284,6 +288,11 @@ export function MediaDropZone({
   const [qrBusy, setQrBusy] = useState(false);
   const [internalTab, setInternalTab] = useState<"video" | "foto">("video");
   const dropZoneId = useId();
+
+  function toggleVideoColumnSort(key: "name" | "duration" | "size") {
+    const nextAsc = listSort?.key === key ? !listSort.asc : true;
+    sortVideos(key, nextAsc);
+  }
 
   const autoQrVideos = Boolean(config?.qr_check_enabled);
   const autoQrPhotos = Boolean(config?.photo_qr_check_enabled);
@@ -945,10 +954,67 @@ export function MediaDropZone({
                       <tr className="sticky top-0 z-[1] border-b border-border bg-card-elevated text-left text-xs font-semibold tracking-wide text-muted uppercase">
                         <th className="px-2 py-2" aria-label="Sortieren" />
                         <th className="px-1 py-2">#</th>
-                        <th className="px-2 py-2">Dateiname</th>
+                        <th className="px-2 py-2">
+                          <button
+                            type="button"
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded px-0.5 py-0.5 hover:text-foreground",
+                              listSort?.key === "name" && "text-foreground",
+                            )}
+                            onClick={() => toggleVideoColumnSort("name")}
+                            title="Nach Dateiname sortieren"
+                          >
+                            Dateiname
+                            {listSort?.key === "name" ? (
+                              listSort.asc ? (
+                                <ArrowUp className="h-3 w-3" aria-hidden />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" aria-hidden />
+                              )
+                            ) : null}
+                          </button>
+                        </th>
                         <th className="px-2 py-2">Format</th>
-                        <th className="px-2 py-2">Dauer</th>
-                        <th className="px-2 py-2">Größe</th>
+                        <th className="px-2 py-2">
+                          <button
+                            type="button"
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded px-0.5 py-0.5 hover:text-foreground",
+                              listSort?.key === "duration" && "text-foreground",
+                            )}
+                            onClick={() => toggleVideoColumnSort("duration")}
+                            title="Nach Dauer sortieren"
+                          >
+                            Dauer
+                            {listSort?.key === "duration" ? (
+                              listSort.asc ? (
+                                <ArrowUp className="h-3 w-3" aria-hidden />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" aria-hidden />
+                              )
+                            ) : null}
+                          </button>
+                        </th>
+                        <th className="px-2 py-2">
+                          <button
+                            type="button"
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded px-0.5 py-0.5 hover:text-foreground",
+                              listSort?.key === "size" && "text-foreground",
+                            )}
+                            onClick={() => toggleVideoColumnSort("size")}
+                            title="Nach Größe sortieren"
+                          >
+                            Größe
+                            {listSort?.key === "size" ? (
+                              listSort.asc ? (
+                                <ArrowUp className="h-3 w-3" aria-hidden />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" aria-hidden />
+                              )
+                            ) : null}
+                          </button>
+                        </th>
                         <th className="px-2 py-2">Codec</th>
                         {videoWmNeeded ? (
                           <th className="px-1 py-2 text-center" title="Wasserzeichen">

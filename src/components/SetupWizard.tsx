@@ -22,7 +22,8 @@ import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import {
-  mapServerErrorDetail,
+  presentServerConnectionError,
+  SERVER_GUEST_HINT,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
 
@@ -328,7 +329,16 @@ export function SetupWizard({ open, onComplete }: Props) {
         server_password: draft.server_password,
       });
       if (result.ok) showSuccess(result.message, "Server");
-      else showError(mapServerErrorDetail(result.message).text, "Server");
+      else {
+        const presented = presentServerConnectionError({
+          rawMessage: result.message,
+          serverUrl: draft.server_url,
+          login: draft.server_login,
+          password: draft.server_password,
+          omitSettingsAction: true,
+        });
+        showError(presented.message, "Server");
+      }
     } finally {
       setTestingServer(false);
     }
@@ -749,24 +759,27 @@ export function SetupWizard({ open, onComplete }: Props) {
                   placeholder="smb://…"
                 />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Login</Label>
-                  <Input
-                    value={draft.server_login}
-                    onChange={(e) => patch("server_login", e.target.value)}
-                    autoComplete="username"
-                  />
+              <div className="space-y-1.5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Login</Label>
+                    <Input
+                      value={draft.server_login}
+                      onChange={(e) => patch("server_login", e.target.value)}
+                      autoComplete="username"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Passwort</Label>
+                    <Input
+                      type="password"
+                      value={draft.server_password}
+                      onChange={(e) => patch("server_password", e.target.value)}
+                      autoComplete="current-password"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Passwort</Label>
-                  <Input
-                    type="password"
-                    value={draft.server_password}
-                    onChange={(e) => patch("server_password", e.target.value)}
-                    autoComplete="current-password"
-                  />
-                </div>
+                <p className="text-[11px] text-muted">{SERVER_GUEST_HINT}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button

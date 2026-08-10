@@ -91,8 +91,8 @@ export function SdFileSelector({
 }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>("thumbnail");
   const [filterType, setFilterType] = useState<FilterType>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("date");
-  const [sortAsc, setSortAsc] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortAsc, setSortAsc] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [thumbs, setThumbs] = useState<Record<string, ThumbState>>({});
   const [actions, setActions] = useState<SdWorkflowActions>({

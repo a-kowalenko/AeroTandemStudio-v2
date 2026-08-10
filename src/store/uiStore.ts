@@ -5,7 +5,7 @@ export type DialogKind = "error" | "success" | "warning" | null;
 export type DialogVariant = "default" | "qr";
 
 /** SD-workflow (and similar) action rows in SuccessDialog. */
-export type DialogActionKind = "qr" | "backup" | "import" | "eject";
+export type DialogActionKind = "qr" | "backup" | "import" | "clear" | "eject";
 
 export type DialogActionTone = "success" | "error" | "warning" | "skipped";
 
@@ -29,6 +29,28 @@ export type DialogOptions = {
   actions?: DialogActionStatus[];
 };
 
+export type SettingsTab =
+  | "allgemein"
+  | "crew"
+  | "qr"
+  | "encoding"
+  | "sd";
+
+export type SettingsFocusTarget = "server-url" | "server-credentials";
+
+/** Primary CTA on error dialogs (e.g. deep-link into Settings). */
+export type DialogPrimaryAction = {
+  label: string;
+  openSettings?: {
+    tab?: SettingsTab;
+    focus?: SettingsFocusTarget;
+  };
+};
+
+export type ErrorDialogOptions = {
+  primaryAction?: DialogPrimaryAction;
+};
+
 type UiState = {
   dialogKind: DialogKind;
   dialogTitle: string;
@@ -37,15 +59,30 @@ type UiState = {
   dialogVariant: DialogVariant;
   dialogHighlight: string;
   dialogActions: DialogActionStatus[];
+  dialogPrimaryAction: DialogPrimaryAction | null;
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
-  showError: (message: string, title?: string) => void;
+  settingsTab: SettingsTab;
+  settingsFocus: SettingsFocusTarget | null;
+  /** Bumps so the same focus target re-triggers scroll/highlight. */
+  settingsFocusNonce: number;
+  showError: (
+    message: string,
+    title?: string,
+    options?: ErrorDialogOptions,
+  ) => void;
   showSuccess: (message: string, title?: string, options?: DialogOptions) => void;
   showWarning: (message: string, title?: string) => void;
   closeDialog: () => void;
   setLoading: (loading: boolean, message?: string) => void;
   setSettingsOpen: (open: boolean) => void;
+  openSettings: (opts?: {
+    tab?: SettingsTab;
+    focus?: SettingsFocusTarget;
+  }) => void;
+  setSettingsTab: (tab: SettingsTab) => void;
+  clearSettingsFocus: () => void;
 };
 
 const emptyDialogFields = {
@@ -55,6 +92,7 @@ const emptyDialogFields = {
   dialogVariant: "default" as DialogVariant,
   dialogHighlight: "",
   dialogActions: [] as DialogActionStatus[],
+  dialogPrimaryAction: null as DialogPrimaryAction | null,
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -63,13 +101,17 @@ export const useUiStore = create<UiState>((set) => ({
   loading: false,
   loadingMessage: "",
   settingsOpen: false,
+  settingsTab: "allgemein",
+  settingsFocus: null,
+  settingsFocusNonce: 0,
 
-  showError: (message, title = "Fehler") =>
+  showError: (message, title = "Fehler", options) =>
     set({
       dialogKind: "error",
       ...emptyDialogFields,
       dialogTitle: title,
       dialogMessage: message,
+      dialogPrimaryAction: options?.primaryAction ?? null,
     }),
   showSuccess: (message, title = "Erfolg", options) =>
     set({
@@ -83,6 +125,7 @@ export const useUiStore = create<UiState>((set) => ({
       dialogVariant: options?.variant ?? "default",
       dialogHighlight: options?.highlight?.trim() ?? "",
       dialogActions: options?.actions?.length ? [...options.actions] : [],
+      dialogPrimaryAction: null,
     }),
   showWarning: (message, title = "Hinweis") =>
     set({
@@ -98,5 +141,25 @@ export const useUiStore = create<UiState>((set) => ({
     }),
   setLoading: (loading, message = "Bitte warten…") =>
     set({ loading, loadingMessage: message }),
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsOpen: (open) =>
+    set((state) =>
+      open
+        ? { settingsOpen: true }
+        : {
+            settingsOpen: false,
+            settingsFocus: null,
+            settingsTab: state.settingsTab,
+          },
+    ),
+  openSettings: (opts) =>
+    set((state) => ({
+      settingsOpen: true,
+      settingsTab: opts?.tab ?? "allgemein",
+      settingsFocus: opts?.focus ?? null,
+      settingsFocusNonce: opts?.focus
+        ? state.settingsFocusNonce + 1
+        : state.settingsFocusNonce,
+    })),
+  setSettingsTab: (tab) => set({ settingsTab: tab }),
+  clearSettingsFocus: () => set({ settingsFocus: null }),
 }));

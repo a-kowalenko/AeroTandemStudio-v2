@@ -4,6 +4,7 @@ import {
   Archive,
   CheckCircle2,
   Download,
+  Eraser,
   MinusCircle,
   QrCode,
   XCircle,
@@ -50,7 +51,7 @@ type Props = {
   variant?: DialogVariant;
   /** Prominent line under the title (e.g. customer name for QR). */
   highlight?: string;
-  /** Per-action rows (QR, Backup, Import, Eject). */
+  /** Per-action rows (QR, Backup, Import, Clear, Eject). */
   actions?: DialogActionStatus[];
   onClose: () => void;
 };
@@ -64,6 +65,8 @@ function actionKindIcon(kind: DialogActionKind): ReactNode {
       return <Archive className={cls} aria-hidden />;
     case "import":
       return <Download className={cls} aria-hidden />;
+    case "clear":
+      return <Eraser className={cls} aria-hidden />;
     case "eject":
       return <EjectIcon className={cls} />;
   }

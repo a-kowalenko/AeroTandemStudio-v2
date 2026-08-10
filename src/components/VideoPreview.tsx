@@ -1,4 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  closestCenter,
+  defaultDropAnimationSideEffects,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+  type DropAnimation,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Film, Play, QrCode, RefreshCw, RotateCcw, Scissors, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -11,7 +30,13 @@ import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "../store/previewCacheStore";
 import { withQrScanProgress } from "../store/qrScanStore";
-import { generatePreview, validateKunde, scanQrVideo, type PreviewResult } from "../lib/tauri";
+import {
+  generatePreview,
+  validateKunde,
+  scanQrVideo,
+  type PreviewResult,
+  type VideoMetadata,
+} from "../lib/tauri";
 import { useConfigStore } from "../store/configStore";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import { maybeRemoveQrVideo } from "../lib/qrCleanup";
@@ -22,6 +47,172 @@ import {
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
 import { cn, isCancellationError } from "../lib/utils";
+
+/** Snappy ease-out — close to iOS spring settle without extra deps. */
+const CLIP_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const CLIP_MS = 220;
+
+const clipDropAnimation: DropAnimation = {
+  duration: CLIP_MS,
+  easing: CLIP_EASE,
+  sideEffects: defaultDropAnimationSideEffects({
+    styles: { active: { opacity: "0.35" } },
+  }),
+};
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatDuration(secs: number): string {
+  if (!Number.isFinite(secs) || secs <= 0) return "—";
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+type ClipChipProps = {
+  video: VideoMetadata;
+  index: number;
+  active: boolean;
+  isWm: boolean;
+  cutMark: "trim" | "split" | null;
+  revision: number;
+  onSelect: (index: number) => void;
+  onContextMenu: (e: MouseEvent, path: string) => void;
+  /** Drag overlay: no sortable bindings. */
+  overlay?: boolean;
+  dragging?: boolean;
+};
+
+function ClipChipFace({
+  video,
+  isWm,
+  cutMark,
+  overlay,
+}: Omit<ClipChipProps, "index" | "revision" | "onSelect" | "onContextMenu" | "active" | "dragging"> & {
+  overlay?: boolean;
+}) {
+  return (
+    <>
+      <div className="truncate font-medium">{video.filename}</div>
+      <div className="text-muted">
+        {video.width}×{video.height} · {formatDuration(video.duration_secs)}
+      </div>
+      {!overlay && <QrScanRowBar path={video.path} />}
+      {cutMark && (
+        <span
+          className="absolute top-1 right-1 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+          aria-label={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
+        >
+          {cutMark === "trim" ? "Trim" : "Split"}
+        </span>
+      )}
+      {isWm && (
+        <span
+          className={cn(
+            "absolute top-1 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm",
+            cutMark ? "right-9" : "right-1",
+          )}
+          aria-label="Wasserzeichen"
+        >
+          WM
+        </span>
+      )}
+    </>
+  );
+}
+
+function SortableClipChip({
+  video,
+  index,
+  active,
+  isWm,
+  cutMark,
+  revision,
+  onSelect,
+  onContextMenu,
+}: ClipChipProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: video.path,
+    transition: {
+      duration: CLIP_MS,
+      easing: CLIP_EASE,
+    },
+  });
+
+  // With DragOverlay: keep the source as a stationary ghost (no pointer delta).
+  // Sibling chips still receive layout transforms for the snappy shuffle.
+  const style: CSSProperties = {
+    transform: isDragging ? undefined : CSS.Translate.toString(transform),
+    transition: transition ?? undefined,
+  };
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onSelect(index)}
+      onContextMenu={(e) => onContextMenu(e, video.path)}
+      className={cn(
+        "relative min-w-[7.5rem] max-w-[9rem] shrink-0 touch-none rounded-lg border px-2 py-1.5 pr-7 text-left text-xs",
+        "cursor-grab active:cursor-grabbing",
+        "will-change-transform",
+        active
+          ? "border-primary bg-primary-soft"
+          : "border-border/70 bg-card/70 hover:border-primary/40",
+        isDragging && "opacity-35 shadow-none",
+      )}
+      title={isWm ? `${video.path} (Wasserzeichen)` : video.path}
+      data-revision={revision}
+    >
+      <ClipChipFace
+        video={video}
+        isWm={isWm}
+        cutMark={cutMark}
+      />
+    </button>
+  );
+}
+
+function ClipChipOverlay({
+  video,
+  active,
+  isWm,
+  cutMark,
+}: {
+  video: VideoMetadata;
+  active: boolean;
+  isWm: boolean;
+  cutMark: "trim" | "split" | null;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative min-w-[7.5rem] max-w-[9rem] rounded-lg border px-2 py-1.5 pr-7 text-left text-xs",
+        "shadow-xl ring-2 ring-primary/35",
+        "cursor-grabbing",
+        active
+          ? "border-primary bg-primary-soft"
+          : "border-border bg-card",
+      )}
+    >
+      <ClipChipFace video={video} isWm={isWm} cutMark={cutMark} overlay />
+    </div>
+  );
+}
 
 type TaskProgressState = {
   taskId: number;
@@ -57,19 +248,6 @@ type VideoPreviewProps = {
   formHints?: string[];
 };
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function formatDuration(secs: number): string {
-  if (!Number.isFinite(secs) || secs <= 0) return "—";
-  const m = Math.floor(secs / 60);
-  const s = Math.floor(secs % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 export function VideoPreview({
   busy: busyProp,
   onBusyChange,
@@ -87,6 +265,7 @@ export function VideoPreview({
 }: VideoPreviewProps) {
   const videoList = useVideoStore((s) => s.videoList);
   const removeVideo = useVideoStore((s) => s.removeVideo);
+  const reorderVideos = useVideoStore((s) => s.reorderVideos);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
   const toggleWatermarkClip = useVideoStore((s) => s.toggleWatermarkClip);
   const getCutMark = useVideoStore((s) => s.getCutMark);
@@ -118,6 +297,62 @@ export function VideoPreview({
   const [localTasks, setLocalTasks] = useState<TaskProgressState[]>([]);
   const [qrBusy, setQrBusy] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
+  const [draggingPath, setDraggingPath] = useState<string | null>(null);
+  const clipStripRef = useRef<HTMLDivElement>(null);
+
+  const clipSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  // While reordering: keep page scrollbars (avoid width jump) but freeze scroll
+  // position. Only the clip strip may auto-scroll via dnd-kit.
+  useEffect(() => {
+    if (!draggingPath) return;
+
+    const locked: { el: HTMLElement; top: number; left: number }[] = [];
+    const lock = (el: HTMLElement | null) => {
+      if (!el || locked.some((l) => l.el === el)) return;
+      locked.push({ el, top: el.scrollTop, left: el.scrollLeft });
+    };
+
+    lock(document.documentElement);
+    lock(document.body);
+
+    let node: HTMLElement | null = clipStripRef.current?.parentElement ?? null;
+    while (node) {
+      const { overflowY: oy, overflowX: ox } = getComputedStyle(node);
+      const yScrollable = oy === "auto" || oy === "scroll" || oy === "overlay";
+      const xScrollable = ox === "auto" || ox === "scroll" || ox === "overlay";
+      if (node !== clipStripRef.current && (yScrollable || xScrollable)) {
+        lock(node);
+      }
+      node = node.parentElement;
+    }
+
+    const pinLocked = () => {
+      for (const { el, top, left } of locked) {
+        if (el.scrollTop !== top) el.scrollTop = top;
+        if (el.scrollLeft !== left) el.scrollLeft = left;
+      }
+    };
+
+    const blockWheelTouch = (e: Event) => {
+      const strip = clipStripRef.current;
+      if (strip && e.target instanceof Node && strip.contains(e.target)) return;
+      e.preventDefault();
+      pinLocked();
+    };
+
+    window.addEventListener("scroll", pinLocked, true);
+    window.addEventListener("wheel", blockWheelTouch, { passive: false });
+    window.addEventListener("touchmove", blockWheelTouch, { passive: false });
+
+    return () => {
+      window.removeEventListener("scroll", pinLocked, true);
+      window.removeEventListener("wheel", blockWheelTouch);
+      window.removeEventListener("touchmove", blockWheelTouch);
+    };
+  }, [draggingPath]);
 
   const hasPreviewFile = Boolean(preview?.preview_path);
   const showingCombined = hasPreviewFile && playerMode === "combined";
@@ -289,6 +524,28 @@ export function VideoPreview({
     setActiveClip(index);
   }
 
+  function onClipDragStart(event: DragStartEvent) {
+    setDraggingPath(String(event.active.id));
+  }
+
+  function onClipDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    setDraggingPath(null);
+    if (!over || active.id === over.id) return;
+    const keepPath = videoList[activeClip]?.path;
+    reorderVideos(String(active.id), String(over.id));
+    if (keepPath) {
+      const next = useVideoStore
+        .getState()
+        .videoList.findIndex((v) => v.path === keepPath);
+      if (next >= 0) setActiveClip(next);
+    }
+  }
+
+  function onClipDragCancel() {
+    setDraggingPath(null);
+  }
+
   function showCombinedPreview() {
     if (!preview?.preview_path) return;
     setPlayOnLoad(false);
@@ -446,81 +703,101 @@ export function VideoPreview({
       )}
 
       {videoList.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-5">
-          {videoList.map((v, i) => {
-            const isWm = videoWmNeeded && watermarkClipIndex === i;
-            const clipActive = einzelclipMode && i === activeClip;
-            const cutMark = getCutMark(v.path);
-            // Subscribe to cutMarks so chips update
-            void cutMarks;
-            return (
+        <DndContext
+          sensors={clipSensors}
+          collisionDetection={closestCenter}
+          onDragStart={onClipDragStart}
+          onDragEnd={onClipDragEnd}
+          onDragCancel={onClipDragCancel}
+          autoScroll={{
+            threshold: { x: 0.18, y: 0 },
+            // Only the horizontal clip strip — never the window / main view.
+            canScroll: (el) => el === clipStripRef.current,
+          }}
+        >
+          <div
+            ref={clipStripRef}
+            data-clip-carousel
+            className="flex gap-2 overflow-x-auto overscroll-x-contain pb-5"
+          >
+            <SortableContext
+              items={videoList.map((v) => v.path)}
+              strategy={horizontalListSortingStrategy}
+            >
+              {videoList.map((v, i) => {
+                const isWm = videoWmNeeded && watermarkClipIndex === i;
+                const clipActive = einzelclipMode && i === activeClip;
+                const cutMark = getCutMark(v.path);
+                // Subscribe to cutMarks so chips update
+                void cutMarks;
+                return (
+                  <SortableClipChip
+                    key={v.path}
+                    video={v}
+                    index={i}
+                    active={clipActive}
+                    isWm={isWm}
+                    cutMark={cutMark}
+                    revision={getMediaRevision(v.path)}
+                    onSelect={(idx) => selectClip(idx, autoNextClip)}
+                    onContextMenu={(e, path) =>
+                      mediaContextMenuHandler(path, setCtxMenu)(e)
+                    }
+                  />
+                );
+              })}
+            </SortableContext>
+            {hasPreviewFile && (
               <button
-                key={`${v.path}:${getMediaRevision(v.path)}`}
                 type="button"
-                onClick={() => selectClip(i, autoNextClip)}
-                onContextMenu={mediaContextMenuHandler(v.path, setCtxMenu)}
+                onClick={showCombinedPreview}
+                disabled={busy}
                 className={cn(
-                  "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 pr-7 text-left text-xs transition",
-                  clipActive
+                  "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 text-left text-xs transition",
+                  showingCombined
                     ? "border-primary bg-primary-soft"
                     : "border-border/70 bg-card/70 hover:border-primary/40",
                 )}
-                title={isWm ? `${v.path} (Wasserzeichen)` : v.path}
+                title={
+                  previewStale
+                    ? "Gespeicherte Vorschau (veraltet) anzeigen"
+                    : "Gespeicherte kombinierte Vorschau anzeigen"
+                }
               >
-                <div className="truncate font-medium">{v.filename}</div>
-                <div className="text-muted">
-                  {v.width}×{v.height} · {formatDuration(v.duration_secs)}
+                <div className="flex items-center gap-1 truncate font-medium">
+                  <Film className="h-3 w-3 shrink-0" aria-hidden />
+                  Vorschau
                 </div>
-                <QrScanRowBar path={v.path} />
-                {cutMark && (
-                  <span
-                    className="absolute top-1 right-1 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-                    aria-label={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
-                  >
-                    {cutMark === "trim" ? "Trim" : "Split"}
-                  </span>
-                )}
-                {isWm && (
-                  <span
-                    className={cn(
-                      "absolute top-1 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm",
-                      cutMark ? "right-9" : "right-1",
-                    )}
-                    aria-label="Wasserzeichen"
-                  >
-                    WM
-                  </span>
-                )}
+                <div className="text-muted">
+                  {previewStale ? "veraltet" : "kombiniert"}
+                </div>
               </button>
-            );
-          })}
-          {hasPreviewFile && (
-            <button
-              type="button"
-              onClick={showCombinedPreview}
-              disabled={busy}
-              className={cn(
-                "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 text-left text-xs transition",
-                showingCombined
-                  ? "border-primary bg-primary-soft"
-                  : "border-border/70 bg-card/70 hover:border-primary/40",
-              )}
-              title={
-                previewStale
-                  ? "Gespeicherte Vorschau (veraltet) anzeigen"
-                  : "Gespeicherte kombinierte Vorschau anzeigen"
-              }
-            >
-              <div className="flex items-center gap-1 truncate font-medium">
-                <Film className="h-3 w-3 shrink-0" aria-hidden />
-                Vorschau
-              </div>
-              <div className="text-muted">
-                {previewStale ? "veraltet" : "kombiniert"}
-              </div>
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+          {typeof document !== "undefined" &&
+            createPortal(
+              <DragOverlay dropAnimation={clipDropAnimation}>
+                {draggingPath
+                  ? (() => {
+                      const idx = videoList.findIndex(
+                        (v) => v.path === draggingPath,
+                      );
+                      const v = idx >= 0 ? videoList[idx] : null;
+                      if (!v) return null;
+                      return (
+                        <ClipChipOverlay
+                          video={v}
+                          active={einzelclipMode && idx === activeClip}
+                          isWm={videoWmNeeded && watermarkClipIndex === idx}
+                          cutMark={getCutMark(v.path)}
+                        />
+                      );
+                    })()
+                  : null}
+              </DragOverlay>,
+              document.body,
+            )}
+        </DndContext>
       )}
 
       <div className="grid gap-3 text-xs sm:grid-cols-2">

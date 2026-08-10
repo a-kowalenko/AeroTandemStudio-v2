@@ -50,6 +50,10 @@
   --ats-progress-from: #009d8b;
   --ats-progress-to: #2bc4ae;
   --ats-preview-stage: #1a2220;
+  --ats-scrollbar-size: 6px;
+  --ats-scrollbar-thumb: rgba(18, 32, 28, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(0, 157, 139, 0.55);
+  --ats-scrollbar-track: transparent;
 }
 
 .dark {
@@ -76,11 +80,42 @@
   --ats-progress-from: #1ab5a0;
   --ats-progress-to: #4ad4be;
   --ats-preview-stage: #0a0e0c;
+  --ats-scrollbar-thumb: rgba(232, 239, 236, 0.18);
+  --ats-scrollbar-thumb-hover: rgba(26, 181, 160, 0.55);
+  --ats-scrollbar-track: transparent;
 }
 
 @layer base {
   * {
     @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: var(--ats-scrollbar-thumb) var(--ats-scrollbar-track);
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--ats-scrollbar-size);
+    height: var(--ats-scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: var(--ats-scrollbar-track);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: var(--ats-scrollbar-thumb);
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--ats-scrollbar-thumb-hover);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   html,
@@ -187,5 +222,44 @@
   }
   100% {
     transform: translateX(400%);
+  }
+}
+
+@keyframes ats-settings-focus-flash {
+  0% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+  14% {
+    background-color: color-mix(in srgb, var(--ats-primary) 18%, transparent);
+    box-shadow:
+      inset 0 0 0 1.5px color-mix(in srgb, var(--ats-primary) 42%, transparent),
+      inset 0 0 24px color-mix(in srgb, var(--ats-primary) 10%, transparent);
+  }
+  42% {
+    background-color: color-mix(in srgb, var(--ats-primary) 14%, transparent);
+    box-shadow:
+      inset 0 0 0 1.5px color-mix(in srgb, var(--ats-primary) 32%, transparent),
+      inset 0 0 18px color-mix(in srgb, var(--ats-primary) 7%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 0 0 0 0 transparent;
+  }
+}
+
+.ats-settings-focus-flash {
+  border-radius: 0.75rem;
+  animation: ats-settings-focus-flash 2.25s cubic-bezier(0.22, 1, 0.36, 1) 1;
+  will-change: background-color, box-shadow;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ats-settings-focus-flash {
+    animation: none;
+    will-change: auto;
+    background-color: color-mix(in srgb, var(--ats-primary) 12%, transparent);
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--ats-primary) 38%, transparent);
   }
 }

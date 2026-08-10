@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
@@ -40,12 +40,17 @@ import {
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
-import { useUiStore } from "@/store/uiStore";
+import {
+  useUiStore,
+  type SettingsFocusTarget,
+  type SettingsTab,
+} from "@/store/uiStore";
 import { useVideoStore } from "@/store/videoStore";
 import { usePhotoStore } from "@/store/photoStore";
 import { cn } from "@/lib/utils";
 import {
-  mapServerErrorDetail,
+  presentServerConnectionError,
+  SERVER_GUEST_HINT,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
 
@@ -72,6 +77,11 @@ export function SettingsDialog({
   const saving = useConfigStore((s) => s.saving);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
+  const settingsTab = useUiStore((s) => s.settingsTab);
+  const setSettingsTab = useUiStore((s) => s.setSettingsTab);
+  const settingsFocus = useUiStore((s) => s.settingsFocus);
+  const settingsFocusNonce = useUiStore((s) => s.settingsFocusNonce);
+  const clearSettingsFocus = useUiStore((s) => s.clearSettingsFocus);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const serverPhase = useServerStore((s) => s.phase);
   const serverMessage = useServerStore((s) => s.message);
@@ -86,6 +96,11 @@ export function SettingsDialog({
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [testingServer, setTestingServer] = useState(false);
   const [cleaningCache, setCleaningCache] = useState(false);
+  const [flashFocus, setFlashFocus] = useState<SettingsFocusTarget | null>(null);
+  const serverUrlRef = useRef<HTMLDivElement | null>(null);
+  const serverCredentialsRef = useRef<HTMLDivElement | null>(null);
+  const serverUrlInputRef = useRef<HTMLInputElement | null>(null);
+  const serverLoginInputRef = useRef<HTMLInputElement | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [releases, setReleases] = useState<AvailableRelease[]>([]);
   const [releasesLoading, setReleasesLoading] = useState(false);
@@ -214,7 +229,49 @@ export function SettingsDialog({
     );
   }, [appVersion, open, releases, showPrereleases]);
 
+  useEffect(() => {
+    if (!open || !settingsFocus || !draft) return;
+
+    const target = settingsFocus;
+
+    const scrollTimer = window.setTimeout(() => {
+      const container =
+        target === "server-url"
+          ? serverUrlRef.current
+          : serverCredentialsRef.current;
+      const input =
+        target === "server-url"
+          ? serverUrlInputRef.current
+          : serverLoginInputRef.current;
+      container?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setFlashFocus(target);
+      window.setTimeout(() => {
+        input?.focus({ preventScroll: true });
+      }, 120);
+    }, 80);
+
+    const clearFlash = window.setTimeout(() => {
+      setFlashFocus((current) => (current === target ? null : current));
+      clearSettingsFocus();
+    }, 2400);
+
+    return () => {
+      window.clearTimeout(scrollTimer);
+      window.clearTimeout(clearFlash);
+    };
+  }, [open, draft, settingsFocus, settingsFocusNonce, clearSettingsFocus]);
+
   if (!draft) return null;
+
+  function flashServerSection(target: SettingsFocusTarget) {
+    const container =
+      target === "server-url" ? serverUrlRef.current : serverCredentialsRef.current;
+    container?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlashFocus(target);
+    window.setTimeout(() => {
+      setFlashFocus((current) => (current === target ? null : current));
+    }, 2400);
+  }
 
   function patch<K extends keyof AppConfig>(key: K, value: AppConfig[K]) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -318,7 +375,17 @@ export function SettingsDialog({
         server_password: draft.server_password,
       });
       if (result.ok) showSuccess(result.message, "Server");
-      else showError(mapServerErrorDetail(result.message).text, "Server");
+      else {
+        const presented = presentServerConnectionError({
+          rawMessage: result.message,
+          serverUrl: draft.server_url,
+          login: draft.server_login,
+          password: draft.server_password,
+          omitSettingsAction: true,
+        });
+        showError(presented.message, "Server");
+        if (presented.focus) flashServerSection(presented.focus);
+      }
     } finally {
       setTestingServer(false);
     }
@@ -354,10 +421,23 @@ export function SettingsDialog({
       sd_pc_name: draft.sd_pc_name.trim(),
       crew_list,
     };
+    const prev = config;
+    const serverChanged =
+      !prev ||
+      prev.server_url !== toSave.server_url ||
+      prev.server_login !== toSave.server_login ||
+      prev.server_password !== toSave.server_password;
     const saved = await persist(toSave);
     if (saved) {
       showSuccess("Einstellungen wurden gespeichert.");
       onOpenChange(false);
+      if (serverChanged && toSave.server_url.trim()) {
+        void checkConnection({
+          server_url: toSave.server_url,
+          server_login: toSave.server_login,
+          server_password: toSave.server_password,
+        });
+      }
     } else {
       showError("Einstellungen konnten nicht gespeichert werden.");
     }
@@ -453,7 +533,11 @@ export function SettingsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="allgemein" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Tabs
+          value={settingsTab}
+          onValueChange={(v) => setSettingsTab(v as SettingsTab)}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
           <TabsList className="flex h-auto shrink-0 flex-wrap gap-1">
             <TabsTrigger value="allgemein">Allgemein</TabsTrigger>
             <TabsTrigger value="crew">Crew</TabsTrigger>
@@ -462,7 +546,7 @@ export function SettingsDialog({
             <TabsTrigger value="sd">SD / Backup</TabsTrigger>
           </TabsList>
 
-          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pr-3">
           <TabsContent value="allgemein" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Speicherort</Label>
@@ -594,30 +678,49 @@ export function SettingsDialog({
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div ref={serverUrlRef} className="relative space-y-1.5">
+              {flashFocus === "server-url" ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -inset-2.5 rounded-xl ats-settings-focus-flash"
+                />
+              ) : null}
               <Label>Server-URL</Label>
               <Input
+                ref={serverUrlInputRef}
                 value={draft.server_url}
                 onChange={(e) => patch("server_url", e.target.value)}
                 placeholder="smb://…"
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label>Login</Label>
-                <Input
-                  value={draft.server_login}
-                  onChange={(e) => patch("server_login", e.target.value)}
+            <div ref={serverCredentialsRef} className="relative space-y-1.5">
+              {flashFocus === "server-credentials" ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -inset-2.5 rounded-xl ats-settings-focus-flash"
                 />
+              ) : null}
+              <div className="relative grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label>Login</Label>
+                  <Input
+                    ref={serverLoginInputRef}
+                    value={draft.server_login}
+                    onChange={(e) => patch("server_login", e.target.value)}
+                    autoComplete="username"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Passwort</Label>
+                  <Input
+                    type="password"
+                    value={draft.server_password}
+                    onChange={(e) => patch("server_password", e.target.value)}
+                    autoComplete="current-password"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Passwort</Label>
-                <Input
-                  type="password"
-                  value={draft.server_password}
-                  onChange={(e) => patch("server_password", e.target.value)}
-                />
-              </div>
+              <p className="relative text-[11px] text-muted">{SERVER_GUEST_HINT}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button

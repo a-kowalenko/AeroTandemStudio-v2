@@ -184,6 +184,7 @@ function App() {
   const dialogVariant = useUiStore((s) => s.dialogVariant);
   const dialogHighlight = useUiStore((s) => s.dialogHighlight);
   const dialogActions = useUiStore((s) => s.dialogActions);
+  const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -193,6 +194,7 @@ function App() {
   const setLoading = useUiStore((s) => s.setLoading);
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
+  const openSettings = useUiStore((s) => s.openSettings);
 
   const checkServerConnection = useServerStore((s) => s.checkConnection);
   const setServerPhase = useServerStore((s) => s.setPhase);
@@ -518,11 +520,6 @@ function App() {
             ? `Zweiter Pfad: ${res.secondary_backup_path}`
             : "",
           res.skipped_count ? `Übersprungen: ${res.skipped_count}` : "",
-          doClear
-            ? res.copied_count > 0
-              ? "SD nach Backup bereinigt."
-              : "SD nicht bereinigt (keine Dateien im Backup)."
-            : "",
           res.secondary_warning?.trim() ?? "",
         ]
           .map((s) => s.trim())
@@ -534,6 +531,23 @@ function App() {
           summary: `${res.copied_count} Dateien kopiert`,
           detail: backupDetails.length ? backupDetails.join("\n") : undefined,
         });
+        if (doClear) {
+          if (res.copied_count > 0) {
+            statusActions.push({
+              kind: "clear",
+              label: "SD bereinigen",
+              tone: "success",
+              summary: "SD nach Backup bereinigt",
+            });
+          } else {
+            statusActions.push({
+              kind: "clear",
+              label: "SD bereinigen",
+              tone: "skipped",
+              summary: "Nicht bereinigt (keine Dateien im Backup)",
+            });
+          }
+        }
         // Import from backup copies so clear-after-backup is safe
         if (doImport) {
           importPaths =
@@ -589,12 +603,13 @@ function App() {
       }
 
       if (statusActions.length) {
-        // Show QR first when present, then backup / import / eject.
+        // Show QR first when present, then backup / import / clear / eject.
         const order: Record<DialogActionStatus["kind"], number> = {
           qr: 0,
           backup: 1,
           import: 2,
-          eject: 3,
+          clear: 3,
+          eject: 4,
         };
         statusActions.sort((a, b) => order[a.kind] - order[b.kind]);
 
@@ -731,6 +746,7 @@ function App() {
   }, [
     config?.server_url,
     config?.server_login,
+    config?.server_password,
     checkServerConnection,
     ready,
     setupWizardOpen,
@@ -1566,6 +1582,14 @@ function App() {
         open={dialogKind === "error"}
         title={dialogTitle}
         message={dialogMessage}
+        primaryAction={dialogPrimaryAction}
+        onPrimaryAction={() => {
+          const action = dialogPrimaryAction;
+          closeDialog();
+          if (action?.openSettings) {
+            openSettings(action.openSettings);
+          }
+        }}
         onClose={closeDialog}
       />
       <SuccessDialog

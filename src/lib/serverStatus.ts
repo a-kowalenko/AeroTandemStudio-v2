@@ -1,4 +1,8 @@
 import type { ServerPhase } from "@/store/serverStore";
+import type {
+  DialogPrimaryAction,
+  SettingsFocusTarget,
+} from "@/store/uiStore";
 
 /** Compact label next to „Verbindung testen“ / status chip. */
 export function serverConnectionStatusLabel(
@@ -109,4 +113,112 @@ export function mapServerErrorDetail(message: string): {
     short = `${short.slice(0, 49)}…`;
   }
   return { kind: "error", text: short || "Nicht verbunden" };
+}
+
+/** Neither login nor password configured (empty login → Guest on the backend). */
+export function serverCredentialsMissing(
+  login: string,
+  password: string,
+): boolean {
+  return !login.trim() && !password.trim();
+}
+
+export const SERVER_CREDENTIALS_SOFT_HINT =
+  "Zugangsdaten sind nicht hinterlegt. Das kann (muss aber nicht) der Grund sein.";
+
+export const SERVER_AUTH_HINT =
+  "Bitte Benutzername und Passwort prüfen.";
+
+export const SERVER_URL_MISSING_HINT =
+  "Es ist keine Server-URL hinterlegt.";
+
+export const SERVER_GUEST_HINT =
+  "Ohne Login wird als Guest verbunden.";
+
+export type ServerErrorPresentation = {
+  /** Dialog / toast body (may include soft hint). */
+  message: string;
+  /** Suggested settings deep-link target. */
+  focus: SettingsFocusTarget | null;
+  /** CTA for ErrorDialog; null when omitSettingsAction or no guidance. */
+  primaryAction: DialogPrimaryAction | null;
+};
+
+/**
+ * Build user-facing server error copy + optional Settings deep-link.
+ * Soft-hints stay speculative; transport/auth diagnosis stays in the first line.
+ */
+export function presentServerConnectionError(opts: {
+  rawMessage: string;
+  serverUrl: string;
+  login: string;
+  password: string;
+  /** Already in Settings / Wizard — no „open settings“ button. */
+  omitSettingsAction?: boolean;
+}): ServerErrorPresentation {
+  const detail = mapServerErrorDetail(opts.rawMessage);
+  const urlMissing = !opts.serverUrl.trim();
+  const credsMissing = serverCredentialsMissing(opts.login, opts.password);
+  const isAuthFailure = detail.text === "Login fehlgeschlagen";
+  const isInvalidUrl = detail.text === "Ungültige Server-URL";
+
+  const withAction = (
+    label: string,
+    focus: SettingsFocusTarget,
+  ): DialogPrimaryAction | null =>
+    opts.omitSettingsAction
+      ? null
+      : {
+          label,
+          openSettings: { tab: "allgemein", focus },
+        };
+
+  // URL missing or invalid → point at the URL field first.
+  if (urlMissing || isInvalidUrl) {
+    const hint = urlMissing ? SERVER_URL_MISSING_HINT : null;
+    return {
+      message: hint ? `${detail.text}\n\n${hint}` : detail.text,
+      focus: "server-url",
+      primaryAction: withAction("Server-URL öffnen", "server-url"),
+    };
+  }
+
+  if (isAuthFailure) {
+    return {
+      message: `${detail.text}\n\n${SERVER_AUTH_HINT}`,
+      focus: "server-credentials",
+      primaryAction: withAction("Zugangsdaten prüfen", "server-credentials"),
+    };
+  }
+
+  if (detail.kind === "unreachable" && credsMissing) {
+    return {
+      message: `${detail.text}\n\n${SERVER_CREDENTIALS_SOFT_HINT}`,
+      focus: "server-credentials",
+      primaryAction: withAction("Zugangsdaten öffnen", "server-credentials"),
+    };
+  }
+
+  return {
+    message: detail.text,
+    focus: null,
+    primaryAction: null,
+  };
+}
+
+/** Tooltip / title soft-hint when the status chip is in error. */
+export function serverStatusErrorTooltip(
+  message: string,
+  login: string,
+  password: string,
+  serverUrl = "",
+): string {
+  const presented = presentServerConnectionError({
+    rawMessage: message,
+    serverUrl,
+    login,
+    password,
+    omitSettingsAction: true,
+  });
+  return presented.message;
 }

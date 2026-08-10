@@ -1,9 +1,13 @@
 import { Server } from "lucide-react";
+import type { MouseEvent } from "react";
+import { useConfigStore } from "../store/configStore";
 import { useServerStore } from "../store/serverStore";
 import { useUiStore } from "../store/uiStore";
 import {
-  mapServerErrorDetail,
   mapServerErrorLabel,
+  presentServerConnectionError,
+  serverCredentialsMissing,
+  serverStatusErrorTooltip,
 } from "../lib/serverStatus";
 import { cn } from "../lib/utils";
 
@@ -17,12 +21,19 @@ export function ServerStatusIndicator({ className }: Props) {
   const message = useServerStore((s) => s.message);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const checkConnection = useServerStore((s) => s.checkConnection);
+  const config = useConfigStore((s) => s.config);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
+  const openSettings = useUiStore((s) => s.openSettings);
 
   if (phase === "idle" && !connected) {
     return null;
   }
+
+  const login = config?.server_login ?? "";
+  const password = config?.server_password ?? "";
+  const serverUrl = config?.server_url ?? "";
+  const credsMissing = serverCredentialsMissing(login, password);
 
   let label = "Server";
   let tone = "text-muted";
@@ -42,17 +53,51 @@ export function ServerStatusIndicator({ className }: Props) {
   }
 
   const canRetry = phase === "error" || phase === "connected";
+  const errorTooltip =
+    phase === "error" && message
+      ? serverStatusErrorTooltip(message, login, password, serverUrl)
+      : "";
   const title = canRetry
-    ? message
-      ? `${message}\nKlicken zum erneuten Prüfen`
-      : "Klicken zum erneuten Prüfen"
+    ? [
+        errorTooltip || message || "Server-Status",
+        credsMissing && phase === "error"
+          ? "Klicken: erneut prüfen · Rechtsklick: Einstellungen"
+          : "Klicken zum erneuten Prüfen",
+      ]
+        .filter(Boolean)
+        .join("\n")
     : message || "Server-Status";
 
   async function onRetry() {
     if (!canRetry) return;
     const result = await checkConnection();
     if (result.ok) showSuccess(result.message, "Server");
-    else showError(mapServerErrorDetail(result.message).text, "Server");
+    else {
+      const presented = presentServerConnectionError({
+        rawMessage: result.message,
+        serverUrl: config?.server_url ?? "",
+        login: config?.server_login ?? "",
+        password: config?.server_password ?? "",
+      });
+      showError(presented.message, "Server", {
+        primaryAction: presented.primaryAction ?? undefined,
+      });
+    }
+  }
+
+  function onContextMenu(e: MouseEvent) {
+    if (phase !== "error") return;
+    e.preventDefault();
+    const presented = presentServerConnectionError({
+      rawMessage: message,
+      serverUrl,
+      login,
+      password,
+    });
+    openSettings({
+      tab: "allgemein",
+      focus: presented.focus ?? "server-credentials",
+    });
   }
 
   const classNames = cn(
@@ -82,6 +127,7 @@ export function ServerStatusIndicator({ className }: Props) {
         className={classNames}
         title={title}
         onClick={() => void onRetry()}
+        onContextMenu={onContextMenu}
       >
         {body}
       </button>

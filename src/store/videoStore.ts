@@ -5,6 +5,8 @@ import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 
 export type CutMarkKind = "trim" | "split";
 
+export type VideoSortKey = "name" | "duration" | "size";
+
 function normPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
 }
@@ -15,6 +17,8 @@ type VideoListState = {
   importError: string | null;
   /** Index of clip selected for unpaid-video watermark (Preview_Video). */
   watermarkClipIndex: number | null;
+  /** Active column-header sort; null after manual drag reorder. */
+  listSort: { key: VideoSortKey; asc: boolean } | null;
   /** path(lower) → cut kind for UI chips */
   cutMarks: Record<string, CutMarkKind>;
   /** path(lower) → bumped when file bytes change in place (player cache bust) */
@@ -22,6 +26,8 @@ type VideoListState = {
   addVideos: (paths: string[]) => Promise<void>;
   removeVideo: (path: string) => void;
   reorderVideos: (activePath: string, overPath: string) => void;
+  /** Stable reorder by column (preserves watermark by path). */
+  sortVideos: (key: VideoSortKey, ascending: boolean) => void;
   replaceVideo: (oldPath: string, meta: VideoMetadata) => void;
   applySplitInList: (oldPath: string, part1: VideoMetadata, part2: VideoMetadata) => void;
   restoreAfterSplitUndo: (
@@ -59,6 +65,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
   importing: false,
   importError: null,
   watermarkClipIndex: null,
+  listSort: null,
   cutMarks: {},
   mediaRevision: {},
 
@@ -120,6 +127,42 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     set({
       videoList: list,
       watermarkClipIndex: wm != null && wm >= 0 ? wm : null,
+      listSort: null,
+    });
+  },
+
+  sortVideos: (key, ascending) => {
+    const list = [...get().videoList];
+    if (list.length < 2) {
+      set({ listSort: { key, asc: ascending } });
+      return;
+    }
+    const wmPath =
+      get().watermarkClipIndex != null
+        ? list[get().watermarkClipIndex!]?.path
+        : null;
+    const dir = ascending ? 1 : -1;
+    list.sort((a, b) => {
+      let cmp = 0;
+      if (key === "name") {
+        cmp = a.filename.localeCompare(b.filename, undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+      } else if (key === "duration") {
+        cmp = (a.duration_secs || 0) - (b.duration_secs || 0);
+      } else {
+        cmp = (a.size_bytes || 0) - (b.size_bytes || 0);
+      }
+      if (cmp !== 0) return cmp * dir;
+      return a.path.localeCompare(b.path);
+    });
+    const wm =
+      wmPath != null ? list.findIndex((v) => v.path === wmPath) : null;
+    set({
+      videoList: list,
+      watermarkClipIndex: wm != null && wm >= 0 ? wm : null,
+      listSort: { key, asc: ascending },
     });
   },
 
@@ -198,6 +241,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       videoList: [],
       importError: null,
       watermarkClipIndex: null,
+      listSort: null,
       cutMarks: {},
       mediaRevision: {},
     });
