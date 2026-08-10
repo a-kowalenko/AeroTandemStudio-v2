@@ -781,16 +781,18 @@ export function SetupWizard({ open, onComplete }: Props) {
                 {!testingServer &&
                 serverPhase !== "checking" &&
                 serverPhase !== "idle" ? (
-                  <span
-                    className="text-xs text-muted"
+                  <button
+                    type="button"
+                    className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     title={
                       serverPhase === "error" && serverMessage
-                        ? serverMessage
-                        : undefined
+                        ? `${serverMessage}\nKlicken zum erneuten Prüfen`
+                        : "Klicken zum erneuten Prüfen"
                     }
+                    onClick={() => void onTestServer()}
                   >
                     {serverConnectionStatusLabel(serverPhase, serverMessage)}
-                  </span>
+                  </button>
                 ) : null}
               </div>
             </>

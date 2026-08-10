@@ -48,6 +48,104 @@ pub struct SdDriveInfo {
     pub drive: String,
     pub dcim_path: String,
     pub ready: bool,
+    /// Volume label when available (Windows API; Unix last path segment).
+    pub volume_name: String,
+}
+
+fn make_sd_drive_info(drive: String) -> SdDriveInfo {
+    let dcim_path = resolve_drive_dcim_path(&drive);
+    let raw = volume_name_for_drive(&drive);
+    let volume_name = if is_generic_volume_name(&raw) {
+        String::new()
+    } else {
+        raw
+    };
+    SdDriveInfo {
+        drive,
+        dcim_path,
+        ready: true,
+        volume_name,
+    }
+}
+
+/// Volume label for UI (empty when unavailable).
+pub fn volume_name_for_drive(drive: &str) -> String {
+    #[cfg(windows)]
+    {
+        windows_volume_name(drive)
+    }
+    #[cfg(not(windows))]
+    {
+        unix_volume_name(drive)
+    }
+}
+
+/// True for empty / vendor-default labels that add no disambiguation value.
+pub fn is_generic_volume_name(name: &str) -> bool {
+    let n = name.trim().to_lowercase();
+    n.is_empty()
+        || matches!(
+            n.as_str(),
+            "no name"
+                | "untitled"
+                | "removable disk"
+                | "wechseldatenträger"
+                | "neuer datenträger"
+                | "unbenannt"
+        )
+}
+
+#[cfg(windows)]
+fn windows_volume_name(drive: &str) -> String {
+    use std::os::windows::ffi::OsStrExt;
+
+    let trimmed = drive.trim_end_matches(['\\', '/']);
+    let root = format!("{trimmed}\\");
+    let wide: Vec<u16> = std::ffi::OsStr::new(&root)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    unsafe extern "system" {
+        fn GetVolumeInformationW(
+            lp_root_path_name: *const u16,
+            lp_volume_name_buffer: *mut u16,
+            n_volume_name_size: u32,
+            lp_volume_serial_number: *mut u32,
+            lp_maximum_component_length: *mut u32,
+            lp_file_system_flags: *mut u32,
+            lp_file_system_name_buffer: *mut u16,
+            n_file_system_name_size: u32,
+        ) -> i32;
+    }
+
+    let mut name_buf = [0u16; 261];
+    let ok = unsafe {
+        GetVolumeInformationW(
+            wide.as_ptr(),
+            name_buf.as_mut_ptr(),
+            name_buf.len() as u32,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if ok == 0 {
+        return String::new();
+    }
+    let end = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
+    String::from_utf16_lossy(&name_buf[..end]).trim().to_string()
+}
+
+#[cfg(not(windows))]
+fn unix_volume_name(drive: &str) -> String {
+    let trimmed = drive.trim_end_matches(['/', '\\']);
+    Path::new(trimmed)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -988,14 +1086,7 @@ impl SdCardMonitor {
             .collect();
         ready_action_cam_drives(&ready)
             .into_iter()
-            .map(|drive| {
-                let dcim = resolve_drive_dcim_path(&drive);
-                SdDriveInfo {
-                    drive,
-                    dcim_path: dcim,
-                    ready: true,
-                }
-            })
+            .map(make_sd_drive_info)
             .collect()
     }
 }
@@ -1292,14 +1383,7 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
     available_drives()
         .into_iter()
         .filter(|d| is_drive_ready(d) && is_action_cam_sd_card(d))
-        .map(|drive| {
-            let dcim = resolve_drive_dcim_path(&drive);
-            SdDriveInfo {
-                drive,
-                dcim_path: dcim,
-                ready: true,
-            }
-        })
+        .map(make_sd_drive_info)
         .collect()
 }
 
@@ -1307,6 +1391,27 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn generic_volume_names_filtered() {
+        assert!(is_generic_volume_name(""));
+        assert!(is_generic_volume_name("  "));
+        assert!(is_generic_volume_name("NO NAME"));
+        assert!(is_generic_volume_name("Untitled"));
+        assert!(is_generic_volume_name("Removable Disk"));
+        assert!(is_generic_volume_name("Wechseldatenträger"));
+        assert!(is_generic_volume_name("Neuer Datenträger"));
+        assert!(!is_generic_volume_name("DJI_001"));
+        assert!(!is_generic_volume_name("GOPRO"));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unix_volume_name_uses_basename() {
+        assert_eq!(unix_volume_name("/Volumes/DJI_001"), "DJI_001");
+        assert_eq!(unix_volume_name("/run/media/alice/SDCARD/"), "SDCARD");
+        assert_eq!(unix_volume_name("/media/usb"), "usb");
+    }
 
     #[test]
     fn resolve_dcim_join() {

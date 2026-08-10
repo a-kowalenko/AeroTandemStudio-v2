@@ -6,6 +6,8 @@ export type SdDriveInfo = {
   drive: string;
   dcim_path: string;
   ready: boolean;
+  /** Volume label when available (may be empty / generic). */
+  volume_name: string;
 };
 
 export type SdFileInfo = {

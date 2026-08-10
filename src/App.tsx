@@ -25,7 +25,6 @@ import {
 } from "./components/IntroMuxFallbackDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { SplashScreen } from "./components/SplashScreen";
-import { SdStatusIndicator } from "./components/SdStatusIndicator";
 import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
@@ -1076,7 +1075,6 @@ function App() {
             onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
           />
           <SdModeSelector visible={Boolean(config?.sd_auto_backup)} />
-          <SdStatusIndicator />
           <ServerStatusIndicator />
           <Button
             type="button"

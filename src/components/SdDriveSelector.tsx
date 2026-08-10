@@ -12,6 +12,12 @@ import { useConfigStore } from "../store/configStore";
 import { useSdStore } from "../store/sdStore";
 import { useUiStore } from "../store/uiStore";
 import { ejectSdCard, scanSdDrives } from "../lib/sdCard";
+import {
+  compactDriveLabel,
+  driveTooltip,
+  listDriveLabel,
+  usefulVolumeName,
+} from "../lib/sdDriveLabel";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -23,14 +29,26 @@ type Props = {
   onPrimaryAction: (drive: string) => void;
 };
 
-function driveLabel(drive: string): string {
-  // Prefer the volume name on Unix mounts for a compact macOS-like row.
-  const trimmed = drive.replace(/[/\\]+$/, "");
-  const parts = trimmed.split(/[/\\]/).filter(Boolean);
-  if (parts.length > 1 && (trimmed.startsWith("/") || trimmed.includes("\\"))) {
-    return parts[parts.length - 1] || drive;
+function phaseStatusLabel(
+  phase: string,
+  progress: {
+    current_mb: number;
+    total_mb: number;
+    speed_mbps: number;
+  } | null,
+): string | null {
+  if (phase === "backing_up") {
+    if (!progress) return "Backup…";
+    const speed =
+      progress.speed_mbps > 0
+        ? ` · ${progress.speed_mbps.toFixed(1)} MB/s`
+        : "";
+    return `Backup ${progress.current_mb.toFixed(0)}/${progress.total_mb.toFixed(0)} MB${speed}`;
   }
-  return drive;
+  if (phase === "clearing") return "Leeren…";
+  if (phase === "importing") return "Import…";
+  if (phase === "confirming") return "Bestätigung";
+  return null;
 }
 
 export function SdDriveSelector({
@@ -45,6 +63,8 @@ export function SdDriveSelector({
   const setDrives = useSdStore((s) => s.setDrives);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const phase = useSdStore((s) => s.phase);
+  const monitoring = useSdStore((s) => s.monitoring);
+  const progress = useSdStore((s) => s.backupProgress);
   const showWarning = useUiStore((s) => s.showWarning);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -56,10 +76,13 @@ export function SdDriveSelector({
       ? activeDrive
       : drives[0]?.drive ?? "";
 
+  const selectedInfo = drives.find((d) => d.drive === selected);
   const busyPhase =
     phase === "backing_up" || phase === "clearing" || phase === "importing";
   const hasDrive = Boolean(selected);
   const controlsDisabled = disabled || busyPhase || ejecting !== null;
+  const watching = monitoring && drives.length === 0 && !busyPhase;
+  const statusLabel = phaseStatusLabel(phase, progress);
 
   const canBackup =
     Boolean(config?.sd_auto_backup) && config?.sd_backup_mode !== "disabled";
@@ -112,6 +135,20 @@ export function SdDriveSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount scan
   }, []);
 
+  const triggerTitle = (() => {
+    if (busyPhase) return statusLabel ?? "SD-Vorgang läuft";
+    if (selectedInfo) {
+      const tip = driveTooltip(selectedInfo);
+      return `${tip} — SD-Karte wählen / Dateiauswahl`;
+    }
+    if (drives.length === 0) {
+      return watching
+        ? "SD-Überwachung aktiv — keine Action-Cam SD-Karte (DCIM) gefunden"
+        : "Keine Action-Cam SD-Karte (DCIM) gefunden";
+    }
+    return "SD-Karte wählen — öffnet Dateiauswahl";
+  })();
+
   return (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
       <span className="text-muted">SD:</span>
@@ -130,30 +167,57 @@ export function SdDriveSelector({
         }}
       >
         <SelectTrigger
-          className="h-8 min-w-[5.5rem] max-w-[9rem] text-xs"
-          title={
-            drives.length === 0
-              ? "Keine Action-Cam SD-Karte (DCIM) gefunden"
-              : "SD-Karte wählen — öffnet Dateiauswahl"
-          }
+          className="h-8 min-w-[5.5rem] max-w-[11rem] text-xs"
+          title={triggerTitle}
         >
           <span className="flex min-w-0 items-center gap-1">
-            <HardDrive className="h-3.5 w-3.5 shrink-0 text-primary" />
-            <SelectValue placeholder="Keine SD" />
+            <span className="relative shrink-0">
+              <HardDrive
+                className={cn(
+                  "h-3.5 w-3.5 text-primary",
+                  busyPhase && "animate-pulse",
+                )}
+              />
+              {watching && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-success"
+                  title="SD-Überwachung aktiv"
+                  aria-hidden
+                />
+              )}
+            </span>
+            {/* Compact trigger; list items use the richer label via ItemText. */}
+            {selectedInfo ? (
+              <span className="truncate">
+                {compactDriveLabel(selectedInfo.drive)}
+              </span>
+            ) : (
+              <SelectValue
+                placeholder={watching ? "Überwachung" : "Keine SD"}
+              />
+            )}
           </span>
         </SelectTrigger>
-        <SelectContent className="min-w-[11rem]">
+        <SelectContent className="min-w-[12rem]">
           {drives.map((d) => {
-            const label = driveLabel(d.drive);
+            const label = listDriveLabel(d);
+            const volume = usefulVolumeName(d.drive, d.volume_name);
             const isEjecting = ejecting === d.drive;
             return (
               <div key={d.drive} className="relative flex items-center">
                 <SelectItem
                   value={d.drive}
                   className="w-full pr-9"
-                  title={d.drive}
+                  title={driveTooltip(d)}
                 >
-                  <span className="block max-w-[9rem] truncate">{label}</span>
+                  <span className="flex min-w-0 max-w-[10rem] items-baseline gap-1">
+                    <span className="shrink-0 not-italic">
+                      {compactDriveLabel(d.drive)}
+                    </span>
+                    {volume && (
+                      <span className="min-w-0 truncate italic">{volume}</span>
+                    )}
+                  </span>
                 </SelectItem>
                 <button
                   type="button"
@@ -203,6 +267,14 @@ export function SdDriveSelector({
       >
         {ctaLabel}
       </Button>
+      {statusLabel && (
+        <span
+          className="max-w-[14rem] truncate tabular-nums text-muted"
+          title={statusLabel}
+        >
+          {statusLabel}
+        </span>
+      )}
     </div>
   );
 }

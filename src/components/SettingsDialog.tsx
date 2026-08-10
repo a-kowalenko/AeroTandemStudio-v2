@@ -308,6 +308,22 @@ export function SettingsDialog({
     if (typeof selected === "string") patch(key, selected);
   }
 
+  async function onTestServer() {
+    if (!draft || testingServer) return;
+    setTestingServer(true);
+    try {
+      const result = await checkConnection({
+        server_url: draft.server_url,
+        server_login: draft.server_login,
+        server_password: draft.server_password,
+      });
+      if (result.ok) showSuccess(result.message, "Server");
+      else showError(mapServerErrorDetail(result.message).text, "Server");
+    } finally {
+      setTestingServer(false);
+    }
+  }
+
   async function onSave() {
     if (!draft) return;
     if (draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
@@ -609,38 +625,23 @@ export function SettingsDialog({
                 variant="secondary"
                 size="sm"
                 disabled={testingServer}
-                onClick={async () => {
-                  setTestingServer(true);
-                  try {
-                    const result = await checkConnection({
-                      server_url: draft.server_url,
-                      server_login: draft.server_login,
-                      server_password: draft.server_password,
-                    });
-                    if (result.ok) showSuccess(result.message, "Server");
-                    else
-                      showError(
-                        mapServerErrorDetail(result.message).text,
-                        "Server",
-                      );
-                  } finally {
-                    setTestingServer(false);
-                  }
-                }}
+                onClick={() => void onTestServer()}
               >
                 {testingServer ? "Prüfe…" : "Verbindung testen"}
               </Button>
               {!testingServer && serverPhase !== "checking" ? (
-                <span
-                  className="text-xs text-muted"
+                <button
+                  type="button"
+                  className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   title={
                     serverPhase === "error" && serverMessage
-                      ? serverMessage
-                      : undefined
+                      ? `${serverMessage}\nKlicken zum erneuten Prüfen`
+                      : "Klicken zum erneuten Prüfen"
                   }
+                  onClick={() => void onTestServer()}
                 >
                   {serverConnectionStatusLabel(serverPhase, serverMessage)}
-                </span>
+                </button>
               ) : null}
             </div>
             <label className="flex items-center gap-2 text-sm">
