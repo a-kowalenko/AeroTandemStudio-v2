@@ -716,6 +716,8 @@ export type StartupCheckResult = {
   cache: CacheCleanupResult | null;
   version: string;
   message: string;
+  /** Linux: missing GStreamer codecs → HTML5 video will not play. */
+  media_warning: string | null;
 };
 
 export type CleanupCacheArgs = {

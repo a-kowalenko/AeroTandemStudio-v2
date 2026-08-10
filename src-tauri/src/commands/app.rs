@@ -32,6 +32,8 @@ pub struct StartupCheckResult {
     pub cache: Option<CacheCleanupResult>,
     pub version: String,
     pub message: String,
+    /// Linux: GStreamer / H.264 missing → HTML5 video will not play.
+    pub media_warning: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -116,6 +118,18 @@ pub fn run_startup_checks(
         None
     };
 
+    log_info("Startup checks: Linux media (GStreamer)…");
+    let media_warning = match crate::media::linux_gst::check_linux_media_playback() {
+        crate::media::linux_gst::LinuxMediaStatus::Ok => {
+            log_info("GStreamer H.264 decode: OK (or non-Linux)");
+            None
+        }
+        crate::media::linux_gst::LinuxMediaStatus::Warning(msg) => {
+            log_warn(&msg);
+            Some(msg)
+        }
+    };
+
     let ok = ffmpeg_path.is_some();
     let message = if ok {
         format!("Bereit — FFmpeg OK, Encoder {}", hw.encoder)
@@ -137,6 +151,7 @@ pub fn run_startup_checks(
         cache,
         version,
         message,
+        media_warning,
     })
 }
 

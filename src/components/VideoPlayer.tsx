@@ -108,6 +108,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [muted, setMuted] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [src, setSrc] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
@@ -152,6 +153,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setCurrentMs(0);
       setDurationMs(0);
       setSrc(null);
+      setLoadError(null);
       if (!srcPath) return;
       let cancelled = false;
       void videoFileSrc(srcPath, cacheKey)
@@ -159,7 +161,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           if (!cancelled) setSrc(url);
         })
         .catch(() => {
-          if (!cancelled) setSrc(null);
+          if (!cancelled) {
+            setSrc(null);
+            setLoadError("Video-URL konnte nicht geladen werden.");
+          }
         });
       return () => {
         cancelled = true;
@@ -264,7 +269,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 setPlaying(false);
                 onEnded?.();
               }}
+              onError={(e) => {
+                const code = e.currentTarget.error?.code;
+                // 4 = MEDIA_ERR_SRC_NOT_SUPPORTED — typical on Linux without GStreamer codecs
+                if (code === 4) {
+                  setLoadError(
+                    "Video nicht abspielbar (Codec/WebView). Unter Linux: GStreamer-Plugins installieren (gstreamer1.0-libav, plugins-good/bad).",
+                  );
+                } else {
+                  setLoadError("Video konnte nicht geladen werden.");
+                }
+              }}
               onLoadedMetadata={(e) => {
+                setLoadError(null);
                 e.currentTarget.muted = mutedRef.current;
                 e.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
                 const d = e.currentTarget.duration * 1000;
@@ -284,6 +301,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/70">
               Kein Video
+            </div>
+          )}
+          {loadError && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/70 px-4 text-center text-xs text-white/90">
+              {loadError}
             </div>
           )}
         </div>

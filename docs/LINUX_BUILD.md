@@ -36,8 +36,19 @@ sudo apt install -y \
   libayatana-appindicator3-dev \
   librsvg2-dev \
   patchelf \
-  fonts-dejavu-core
+  fonts-dejavu-core \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  gstreamer1.0-plugins-bad \
+  gstreamer1.0-libav \
+  gstreamer1.0-tools
 ```
+
+**GStreamer is required for HTML5 video** (WebKitGTK). Without these packages,
+SD hover previews and the main VideoPlayer stay black / report
+`MEDIA_ERR_SRC_NOT_SUPPORTED`. AppImage `bundleMediaFramework: true` only
+bundles plugins that exist on the **build** machine — CI and local release
+builds must install the same packages above.
 
 Also:
 
@@ -283,6 +294,7 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
 | Video import freezes UI / player black | WebKitGTK cannot play custom `asset://`/`media://` schemes | Loopback HTTP media server (`http://127.0.0.1`); ensure GStreamer plugins present |
+| No video playback at all (SD tiles + preview) | Missing GStreamer codecs on host / incomplete AppImage media bundle | Install packages from Prerequisites (`gstreamer1.0-libav` + plugins-good/bad); rebuild AppImage on a host that has them; startup shows a media warning |
 | `webkit` / linker errors at build | Missing GTK/WebKit deps | Install Prerequisites apt packages |
 | AppImage won’t start | Missing `chmod +x` / FUSE | `chmod +x`; install `libfuse2` on older hosts if needed |
 | Encode fails / no x264 | System ffmpeg copied into resources | Use static sidecar download |

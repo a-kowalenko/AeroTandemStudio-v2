@@ -691,6 +691,8 @@ function App() {
               "FFmpeg wurde nicht gefunden. Encoding ist nicht verfügbar.",
             "FFmpeg",
           );
+        } else if (checks.media_warning) {
+          showWarning(checks.media_warning, "Video-Wiedergabe");
         }
 
         setSplashStatus("Bereit!");
@@ -716,7 +718,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [loadConfig, showError]);
+  }, [loadConfig, showError, showWarning]);
 
   useEffect(() => {
     if (!ready || !config || splashOpen) return;

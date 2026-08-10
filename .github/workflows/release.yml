@@ -189,7 +189,12 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            fonts-dejavu-core
+            fonts-dejavu-core \
+            gstreamer1.0-plugins-base \
+            gstreamer1.0-plugins-good \
+            gstreamer1.0-plugins-bad \
+            gstreamer1.0-libav \
+            gstreamer1.0-tools
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
