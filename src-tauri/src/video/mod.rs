@@ -1,4 +1,5 @@
 pub mod concat;
+pub mod cut_undo;
 pub mod cutter;
 pub mod encoding_quality;
 pub mod export_job;

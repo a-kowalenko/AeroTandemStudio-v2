@@ -140,9 +140,18 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
         );
     }
 
+    // Open file and serve with no-store so in-place trims are not cached by the browser.
     let mut file = File::open(&path).map_err(|e| e.to_string())?;
     let len = file.metadata().map_err(|e| e.to_string())?.len();
     let mime = mime_for_path(&path);
+    let mtime = file
+        .metadata()
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let etag = format!("\"{mtime}-{len}\"");
     let range_header = headers
         .iter()
         .find(|(k, _)| k == "range")
@@ -155,11 +164,13 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
             &[
                 ("Access-Control-Allow-Origin", "*"),
                 ("Accept-Ranges", "bytes"),
+                ("Cache-Control", "no-store"),
+                ("ETag", &etag),
                 ("Content-Type", mime),
                 ("Content-Length", &len.to_string()),
                 (
                     "Access-Control-Expose-Headers",
-                    "content-range, accept-ranges, content-length",
+                    "content-range, accept-ranges, content-length, etag",
                 ),
             ],
             &[],
@@ -197,12 +208,14 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
             &[
                 ("Access-Control-Allow-Origin", "*"),
                 ("Accept-Ranges", "bytes"),
+                ("Cache-Control", "no-store"),
+                ("ETag", &etag),
                 ("Content-Type", mime),
                 ("Content-Range", &content_range),
                 ("Content-Length", &nbytes.to_string()),
                 (
                     "Access-Control-Expose-Headers",
-                    "content-range, accept-ranges, content-length",
+                    "content-range, accept-ranges, content-length, etag",
                 ),
             ],
             &buf,
@@ -217,11 +230,13 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
         &[
             ("Access-Control-Allow-Origin", "*"),
             ("Accept-Ranges", "bytes"),
+            ("Cache-Control", "no-store"),
+            ("ETag", &etag),
             ("Content-Type", mime),
             ("Content-Length", &len.to_string()),
             (
                 "Access-Control-Expose-Headers",
-                "content-range, accept-ranges, content-length",
+                "content-range, accept-ranges, content-length, etag",
             ),
         ],
     )?;

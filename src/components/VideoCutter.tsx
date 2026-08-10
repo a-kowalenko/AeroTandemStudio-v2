@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Scissors, SplitSquareHorizontal } from "lucide-react";
 import {
   Dialog,
@@ -9,13 +9,25 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { VideoPlayer, type VideoPlayerHandle } from "./VideoPlayer";
+import {
+  VideoPlayer,
+  formatPlayerTimeMs,
+  type TrimHandle,
+  type VideoPlayerHandle,
+} from "./VideoPlayer";
 import { useUiStore } from "../store/uiStore";
+import { listVideoKeyframes } from "../lib/tauri";
+import { useVideoStore } from "../store/videoStore";
+import {
+  keyframeAtOrAfter,
+  keyframeAtOrBefore,
+  nearestKeyframe,
+} from "../lib/keyframes";
 
 export type VideoCutterResult =
   | { action: "cancel" }
-  | { action: "queue_trim"; startMs: number; endMs: number }
-  | { action: "queue_split"; splitMs: number };
+  | { action: "apply_trim"; startMs: number; endMs: number }
+  | { action: "apply_split"; splitMs: number };
 
 type VideoCutterProps = {
   open: boolean;
@@ -26,8 +38,9 @@ type VideoCutterProps = {
 };
 
 /**
- * Modal cutter UI (legacy `video_cutter.py`): set IN/OUT or split at playhead,
- * then enqueue — FFmpeg runs via the pending-cuts batch.
+ * Modal cutter UI: Apple-style trim handles with live preview seek.
+ * On release, handles snap to keyframes for stream-copy-friendly cuts.
+ * Confirm applies trim/split immediately (caller runs FFmpeg).
  */
 export function VideoCutter({
   open,
@@ -39,22 +52,66 @@ export function VideoCutter({
   const playerRef = useRef<VideoPlayerHandle>(null);
   const committedRef = useRef(false);
   const showWarning = useUiStore((s) => s.showWarning);
-  const [startMs, setStartMs] = useState<number | null>(null);
-  const [endMs, setEndMs] = useState<number | null>(null);
+  const [startMs, setStartMs] = useState(0);
+  const [endMs, setEndMs] = useState(0);
   const [durationMs, setDurationMs] = useState(
     durationSecsHint && durationSecsHint > 0 ? durationSecsHint * 1000 : 0,
   );
+  const [keyframesSecs, setKeyframesSecs] = useState<number[]>([]);
+  const [kfLoading, setKfLoading] = useState(false);
+  const [kfError, setKfError] = useState<string | null>(null);
+  const rangeInitializedRef = useRef(false);
+  const startMsRef = useRef(startMs);
+  const endMsRef = useRef(endMs);
+  startMsRef.current = startMs;
+  endMsRef.current = endMs;
 
-  function resetMarks() {
-    setStartMs(null);
-    setEndMs(null);
-  }
+  useEffect(() => {
+    if (!open) {
+      rangeInitializedRef.current = false;
+      setKeyframesSecs([]);
+      setKfError(null);
+      setKfLoading(false);
+      setStartMs(0);
+      setEndMs(0);
+      return;
+    }
+    const hintMs =
+      durationSecsHint && durationSecsHint > 0 ? durationSecsHint * 1000 : 0;
+    if (hintMs > 0) {
+      setDurationMs(hintMs);
+      setStartMs(0);
+      setEndMs(hintMs);
+      rangeInitializedRef.current = true;
+    }
+  }, [open, videoPath, durationSecsHint]);
+
+  useEffect(() => {
+    if (!open || !videoPath) return;
+    let cancelled = false;
+    setKfLoading(true);
+    setKfError(null);
+    void listVideoKeyframes(videoPath)
+      .then((times) => {
+        if (cancelled) return;
+        setKeyframesSecs(times);
+        setKfLoading(false);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setKeyframesSecs([]);
+        setKfLoading(false);
+        setKfError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, videoPath]);
 
   function finish(result: VideoCutterResult) {
     committedRef.current = true;
     playerRef.current?.pause();
     onComplete(result);
-    resetMarks();
     onClose();
   }
 
@@ -67,51 +124,85 @@ export function VideoCutter({
       onComplete({ action: "cancel" });
     }
     committedRef.current = false;
-    resetMarks();
     onClose();
   }
 
-  function setIn() {
-    const t = playerRef.current?.getCurrentTimeMs() ?? 0;
-    if (endMs != null && t > endMs) {
-      setStartMs(endMs);
-      setEndMs(t);
-    } else {
-      setStartMs(t);
-    }
+  function handleTrimChange(handle: TrimHandle, ms: number) {
+    if (handle === "start") setStartMs(ms);
+    else setEndMs(ms);
   }
 
-  function setOut() {
-    const t = playerRef.current?.getCurrentTimeMs() ?? 0;
-    if (startMs != null && t < startMs) {
-      setEndMs(startMs);
-      setStartMs(t);
+  function handleTrimCommit(handle: TrimHandle, ms: number) {
+    const dur = playerRef.current?.getDurationMs() || durationMs;
+    let nextStart = startMsRef.current;
+    let nextEnd = endMsRef.current > 0 ? endMsRef.current : dur;
+
+    if (handle === "start") {
+      let s = ms / 1000;
+      if (keyframesSecs.length > 0) {
+        const floored = keyframeAtOrBefore(keyframesSecs, s);
+        s = floored ?? keyframeAtOrAfter(keyframesSecs, s) ?? s;
+      }
+      nextStart = s * 1000;
+      if (nextStart >= nextEnd - 100) {
+        const after = keyframeAtOrAfter(keyframesSecs, nextStart / 1000 + 1e-3);
+        nextEnd = after != null ? after * 1000 : Math.min(dur, nextStart + 100);
+      }
     } else {
-      setEndMs(t);
+      let e = ms / 1000;
+      if (keyframesSecs.length > 0) {
+        const ceiled = keyframeAtOrAfter(keyframesSecs, e);
+        e = ceiled ?? keyframeAtOrBefore(keyframesSecs, e) ?? e;
+      }
+      nextEnd = e * 1000;
+      if (nextEnd <= nextStart + 100) {
+        const before = keyframeAtOrBefore(keyframesSecs, nextEnd / 1000 - 1e-3);
+        nextStart = before != null ? before * 1000 : Math.max(0, nextEnd - 100);
+      }
     }
+
+    nextStart = Math.max(0, Math.min(nextStart, (dur || nextEnd) - 100));
+    nextEnd = Math.min(dur || nextEnd, Math.max(nextEnd, nextStart + 100));
+
+    setStartMs(nextStart);
+    setEndMs(nextEnd);
+    playerRef.current?.seekMs(handle === "start" ? nextStart : nextEnd);
   }
 
-  function queueTrim() {
-    if (startMs == null && endMs == null) {
+  function resetRange() {
+    const dur = playerRef.current?.getDurationMs() || durationMs;
+    setStartMs(0);
+    setEndMs(dur);
+    playerRef.current?.seekMs(0);
+  }
+
+  function applyTrim() {
+    const dur = playerRef.current?.getDurationMs() || durationMs;
+    let s = startMs;
+    let e = endMs > 0 ? endMs : dur;
+    if (e < s) [s, e] = [e, s];
+
+    const nearFull =
+      s <= 50 && dur > 0 && Math.abs(e - dur) <= 50;
+    if (nearFull || e - s < 100) {
       showWarning(
-        "Sie haben keinen IN- oder OUT-Punkt gesetzt. Es gibt nichts zu schneiden.",
+        nearFull
+          ? "Der behaltene Bereich ist das ganze Video. Ziehen Sie die Handles, um zuzuschneiden."
+          : "Der behaltene Bereich ist zu kurz.",
         "Keine Änderung",
       );
       return;
     }
-    let s = startMs ?? 0;
-    let e = endMs ?? durationMs;
-    if (e < s) [s, e] = [e, s];
-    if (e - s < 100) {
-      showWarning("Der behaltene Bereich ist zu kurz.", "Ungültiger Schnitt");
-      return;
-    }
-    finish({ action: "queue_trim", startMs: s, endMs: e });
+    finish({ action: "apply_trim", startMs: s, endMs: e });
   }
 
-  function queueSplit() {
-    const splitMs = playerRef.current?.getCurrentTimeMs() ?? 0;
+  function applySplit() {
+    let splitMs = playerRef.current?.getCurrentTimeMs() ?? 0;
     const total = playerRef.current?.getDurationMs() || durationMs;
+    if (keyframesSecs.length > 0) {
+      const nearest = nearestKeyframe(keyframesSecs, splitMs / 1000);
+      if (nearest != null) splitMs = nearest * 1000;
+    }
     if (splitMs <= 100 || splitMs >= total - 100) {
       showWarning(
         "Sie können nicht zu nah am Anfang oder Ende des Clips teilen.",
@@ -119,16 +210,23 @@ export function VideoCutter({
       );
       return;
     }
-    finish({ action: "queue_split", splitMs });
+    finish({ action: "apply_split", splitMs });
   }
 
   const keepRange =
     durationMs > 0
       ? {
-          start: (startMs ?? 0) / durationMs,
-          end: (endMs ?? durationMs) / durationMs,
+          start: startMs / durationMs,
+          end: (endMs > 0 ? endMs : durationMs) / durationMs,
         }
-      : null;
+      : { start: 0, end: 1 };
+
+  const keyframeMarks =
+    durationMs > 0
+      ? keyframesSecs
+          .map((t) => (t * 1000) / durationMs)
+          .filter((r) => r > 0.001 && r < 0.999)
+      : [];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -146,40 +244,65 @@ export function VideoCutter({
         <VideoPlayer
           ref={playerRef}
           srcPath={open ? videoPath : null}
+          cacheKey={
+            videoPath
+              ? `${useVideoStore.getState().getMediaRevision(videoPath)}-${durationMs}`
+              : null
+          }
           keepRange={keepRange}
+          keyframeMarks={keyframeMarks}
+          onTrimChange={handleTrimChange}
+          onTrimCommit={handleTrimCommit}
           onTimeUpdate={(_c, d) => {
-            if (d > 0) setDurationMs(d);
+            if (d <= 0) return;
+            setDurationMs(d);
+            if (!rangeInitializedRef.current) {
+              rangeInitializedRef.current = true;
+              setStartMs(0);
+              setEndMs(d);
+            } else if (endMs <= 0) {
+              setEndMs(d);
+            }
           }}
         />
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="secondary" onClick={setIn}>
-            IN setzen
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span className="font-mono">
+            Start {formatPlayerTimeMs(startMs)} · Ende{" "}
+            {formatPlayerTimeMs(endMs > 0 ? endMs : durationMs)}
+          </span>
+          <Button type="button" size="sm" variant="ghost" onClick={resetRange}>
+            Auswahl zurücksetzen
           </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={setOut}>
-            OUT setzen
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={resetMarks}>
-            Marken löschen
-          </Button>
-          <span className="ml-auto self-center font-mono text-xs text-muted">
-            IN {startMs != null ? `${(startMs / 1000).toFixed(2)}s` : "—"} · OUT{" "}
-            {endMs != null ? `${(endMs / 1000).toFixed(2)}s` : "—"}
+          <span className="ml-auto">
+            {kfLoading
+              ? "Keyframes werden geladen…"
+              : kfError
+                ? "Keyframe-Snap nicht verfügbar"
+                : keyframesSecs.length > 0
+                  ? `${keyframesSecs.length} Keyframes · Snap aktiv`
+                  : "Keine Keyframes gefunden"}
           </span>
         </div>
+
+        <p className="text-xs text-muted">
+          Handles ziehen: Vorschau folgt dem Schnittpunkt. Beim Loslassen
+          Einrasten auf Keyframes (Stream-Copy). Timeline tippen setzt den
+          Playhead zum Teilen.
+        </p>
 
         <DialogFooter className="gap-2 sm:justify-between">
           <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>
             Abbrechen
           </Button>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={queueSplit}>
+            <Button type="button" variant="secondary" onClick={applySplit}>
               <SplitSquareHorizontal className="h-4 w-4" />
-              Teilen in Warteschlange
+              Teilen
             </Button>
-            <Button type="button" onClick={queueTrim}>
+            <Button type="button" onClick={applyTrim}>
               <Scissors className="h-4 w-4" />
-              Trim in Warteschlange
+              Trim übernehmen
             </Button>
           </div>
         </DialogFooter>

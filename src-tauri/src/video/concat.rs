@@ -712,6 +712,100 @@ pub fn keyframe_at_or_after(times: &[f64], min_secs: f64) -> Option<f64> {
     times.iter().copied().find(|&t| t >= floor)
 }
 
+/// Last keyframe time at or before `max_secs` (within floating epsilon).
+pub fn keyframe_at_or_before(times: &[f64], max_secs: f64) -> Option<f64> {
+    let ceil = max_secs + 1e-6;
+    times.iter().copied().rev().find(|&t| t <= ceil)
+}
+
+/// Nearest keyframe to `target_secs` (empty list → `None`).
+#[allow(dead_code)] // used by unit tests + available for callers
+pub fn nearest_keyframe(times: &[f64], target_secs: f64) -> Option<f64> {
+    if times.is_empty() {
+        return None;
+    }
+    times
+        .iter()
+        .copied()
+        .min_by(|a, b| {
+            let da = (a - target_secs).abs();
+            let db = (b - target_secs).abs();
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+/// Snap a keep-range to stream-copy-friendly keyframes.
+///
+/// - Start → keyframe at or before (floor)
+/// - End → keyframe at or after (ceil)
+///
+/// Guarantees `end > start` when at least two distinct keyframes exist; otherwise
+/// falls back to the raw range (clamped).
+#[allow(dead_code)] // used by unit tests + frontend parity helper
+pub fn snap_trim_range_to_keyframes(
+    times: &[f64],
+    start_secs: f64,
+    end_secs: f64,
+) -> (f64, f64) {
+    let mut start = start_secs.max(0.0);
+    let mut end = end_secs.max(start);
+    if times.is_empty() {
+        return (start, end);
+    }
+
+    if let Some(s) = keyframe_at_or_before(times, start) {
+        start = s;
+    } else if let Some(s) = keyframe_at_or_after(times, start) {
+        start = s;
+    }
+
+    if let Some(e) = keyframe_at_or_after(times, end) {
+        end = e;
+    } else if let Some(e) = keyframe_at_or_before(times, end) {
+        end = e;
+    }
+
+    if end <= start {
+        // Pick the next keyframe after start when ceil collapsed onto start.
+        if let Some(e) = times.iter().copied().find(|&t| t > start + 1e-6) {
+            end = e;
+        }
+    }
+
+    if end <= start {
+        (start_secs.max(0.0), end_secs.max(start_secs.max(0.0) + 0.1))
+    } else {
+        (start, end)
+    }
+}
+
+/// List all keyframe timestamps (seconds) for `video_path`.
+///
+/// Scans the full duration via FFmpeg `showinfo` (`-skip_frame nokey`).
+pub fn list_keyframes(ffmpeg: &Path, video_path: &str) -> Result<Vec<f64>, ConcatError> {
+    if !Path::new(video_path).is_file() {
+        return Err(ConcatError::Message(format!(
+            "input file not found: {video_path}"
+        )));
+    }
+    let duration = probe_duration_secs(ffmpeg, video_path).unwrap_or(0.0);
+    let scan = if duration > 0.0 {
+        duration + 1.0
+    } else {
+        3600.0
+    };
+
+    let args = build_keyframe_scan_args(video_path, scan);
+    let (_code, stderr) = run_ffmpeg_capture_stderr(ffmpeg, &args)?;
+    let mut times = parse_keyframe_times(&stderr);
+    if times.is_empty() {
+        let args2 = build_keyframe_scan_args_pict_type(video_path, scan);
+        let (_c2, stderr2) = run_ffmpeg_capture_stderr(ffmpeg, &args2)?;
+        times = parse_keyframe_times(&stderr2);
+    }
+    Ok(times)
+}
+
 pub fn body_starts_with_keyframe(ffmpeg: &Path, video_path: &str) -> bool {
     match get_first_keyframe_time(ffmpeg, video_path, 1.0) {
         Some(t) => t <= 0.05,
@@ -1298,6 +1392,28 @@ pts_time:4.000000 type:I
         assert!((keyframe_at_or_after(&times, 1.0).unwrap() - 2.0).abs() < 0.001);
         assert!((keyframe_at_or_after(&times, 2.0).unwrap() - 2.0).abs() < 0.001);
         assert!(keyframe_at_or_after(&times, 5.0).is_none());
+    }
+
+    #[test]
+    fn keyframe_at_or_before_and_nearest() {
+        let times = vec![0.0, 2.0, 4.0];
+        assert!((keyframe_at_or_before(&times, 1.5).unwrap() - 0.0).abs() < 0.001);
+        assert!((keyframe_at_or_before(&times, 2.0).unwrap() - 2.0).abs() < 0.001);
+        assert!(keyframe_at_or_before(&times, -0.1).is_none());
+        assert!((nearest_keyframe(&times, 1.4).unwrap() - 2.0).abs() < 0.001);
+        assert!((nearest_keyframe(&times, 0.4).unwrap() - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn snap_trim_range_floors_start_ceils_end() {
+        let times = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let (s, e) = snap_trim_range_to_keyframes(&times, 0.4, 2.3);
+        assert!((s - 0.0).abs() < 0.001);
+        assert!((e - 3.0).abs() < 0.001);
+
+        let (s2, e2) = snap_trim_range_to_keyframes(&times, 2.0, 2.0);
+        assert!((s2 - 2.0).abs() < 0.001);
+        assert!((e2 - 3.0).abs() < 0.001);
     }
 
     #[test]

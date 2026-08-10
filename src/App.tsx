@@ -8,7 +8,6 @@ import { MediaDropZone } from "./components/MediaDropZone";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
-import { PendingCutsDialog } from "./components/PendingCutsDialog";
 import { CustomerForm, CustomerFormToolbar } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { SetupWizard } from "./components/SetupWizard";
@@ -45,11 +44,12 @@ import { useSdStore } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
-import { usePendingVideoCuts } from "./hooks/usePendingVideoCuts";
+import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { useLogListener } from "./hooks/useLogListener";
 import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
+  discardVideoCutUndoForPath,
   clearWorkingSession,
   createJob,
   getAppInfo,
@@ -225,7 +225,6 @@ function App() {
   const defaultsApplied = useRef(false);
   const [cutterOpen, setCutterOpen] = useState(false);
   const [cutterPath, setCutterPath] = useState<string | null>(null);
-  const [cutterIndex, setCutterIndex] = useState(0);
   const [cutterDuration, setCutterDuration] = useState(0);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
@@ -248,7 +247,7 @@ function App() {
   /** Locks SdFileSelector while confirm workflow runs (incl. QR scan with loading off). */
   const [selectorSubmitting, setSelectorSubmitting] = useState(false);
 
-  const pendingCuts = usePendingVideoCuts();
+  const videoCuts = useVideoCutApply();
   useQrScanProgressListener();
   useLogListener();
   const consoleOpen = useLogStore((s) => s.open);
@@ -374,7 +373,10 @@ function App() {
             runAutoQrAfterImport({
               videoPaths: newVideoPaths,
               photoPaths: newPhotoPaths,
-              onBeforeRemoveVideo: (p) => pendingCuts.discardForPath(p),
+              onBeforeRemoveVideo: (p) => {
+                useVideoStore.getState().clearCutMarksFor([p]);
+                void discardVideoCutUndoForPath(p);
+              },
             }),
         );
       } catch (qrErr) {
@@ -788,13 +790,8 @@ function App() {
           if (!config?.speicherort?.trim()) {
             hints.push("Speicherort wird beim Erstellen abgefragt und gespeichert.");
           }
-          if (pendingCuts.count > 0) {
-            hints.push(
-              `${pendingCuts.count} geplante(r) Schnitt(e) — bitte zuerst Warteschlange anwenden.`,
-            );
-          }
           setCreateHints(hints);
-          setCreateReady(validation.valid && pendingCuts.count === 0);
+          setCreateReady(validation.valid);
         } catch {
           if (!cancelled) {
             setCreateReady(false);
@@ -816,7 +813,6 @@ function App() {
     config?.oldschool_mode,
     config?.manual_entry_mode,
     config?.speicherort,
-    pendingCuts.count,
   ]);
 
   async function ensureSpeicherort(forcePick = false): Promise<string | null> {
@@ -847,14 +843,6 @@ function App() {
   }
 
   async function startCreate() {
-    if (pendingCuts.count > 0) {
-      showWarning(
-        `Es liegen noch ${pendingCuts.count} geplante Videoschnitte in der Warteschlange.\n\nBitte zuerst „Warteschlange anwenden“, bevor „Erstellen“ startet.`,
-        "Ausstehende Schnitte",
-      );
-      return;
-    }
-
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
 
@@ -943,7 +931,7 @@ function App() {
       setTaskProgress([]);
 
       if (config?.auto_clear_files_after_creation) {
-        pendingCuts.clearAll();
+        videoCuts.clearUndoState();
         clearVideos();
         clearPhotos();
         clearPreviewCache();
@@ -1015,7 +1003,7 @@ function App() {
       "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
     );
     if (!ok) return;
-    pendingCuts.clearAll();
+    videoCuts.clearUndoState();
     clearVideos();
     clearPhotos();
     clearPreviewCache();
@@ -1244,11 +1232,11 @@ function App() {
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
-                    {busy ? "Erstellungsfortschritt" : "Fortschritt"}
+                    Fortschritt
                   </h2>
                   <p className="text-xs text-muted">
                     {busy
-                      ? "Aktuelle Schritte und Clips — Abbrechen stoppt FFmpeg und den Vorgang."
+                      ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
                       : "Zuletzt abgeschlossener Lauf"}
                   </p>
                 </div>
@@ -1272,9 +1260,27 @@ function App() {
           )}
 
           <MediaDropZone
-            pendingCutsCount={pendingCuts.count}
-            onOpenPendingCuts={pendingCuts.openReview}
-            onRemoveVideo={pendingCuts.discardForPath}
+            onRemoveVideo={(path) => {
+              useVideoStore.getState().clearCutMarksFor([path]);
+              void discardVideoCutUndoForPath(path);
+            }}
+            onCutVideo={(path) => {
+              const meta = videoList.find((v) => v.path === path);
+              setCutterPath(path);
+              setCutterDuration(meta?.duration_secs ?? 0);
+              setCutterOpen(true);
+              setMediaTab("video");
+            }}
+            onUndoVideoCut={(path) => {
+              void videoCuts.undoForPath(path, {
+                onBusyChange: setBusy,
+                onProgressReset: resetProgress,
+                onStatus: setStatus,
+              });
+            }}
+            onSessionCleared={() => {
+              videoCuts.clearUndoState();
+            }}
             listTab={mediaTab}
             onListTabChange={setMediaTab}
             onImported={({ videosAdded, photosAdded }) => {
@@ -1325,14 +1331,31 @@ function App() {
                   onProgressReset={resetProgress}
                   formReady={createReady}
                   formHints={createHints}
-                  onCutClip={(path, listIndex) => {
+                  canUndoCuts={videoCuts.canUndo}
+                  onUndoAllCuts={() => {
+                    void videoCuts.undoAll({
+                      onBusyChange: setBusy,
+                      onProgressReset: resetProgress,
+                      onStatus: setStatus,
+                    });
+                  }}
+                  onUndoClipCut={(path) => {
+                    void videoCuts.undoForPath(path, {
+                      onBusyChange: setBusy,
+                      onProgressReset: resetProgress,
+                      onStatus: setStatus,
+                    });
+                  }}
+                  onCutClip={(path) => {
                     const meta = videoList.find((v) => v.path === path);
                     setCutterPath(path);
-                    setCutterIndex(listIndex >= 0 ? listIndex : pendingCuts.indexForPath(path));
                     setCutterDuration(meta?.duration_secs ?? 0);
                     setCutterOpen(true);
                   }}
-                  onBeforeRemoveClip={pendingCuts.discardForPath}
+                  onBeforeRemoveClip={(path) => {
+                    useVideoStore.getState().clearCutMarksFor([path]);
+                    void discardVideoCutUndoForPath(path);
+                  }}
                 />
               </TabsContent>
               <TabsContent value="foto" className="mt-3">
@@ -1416,28 +1439,20 @@ function App() {
         }}
         onComplete={(result: VideoCutterResult) => {
           if (!cutterPath || result.action === "cancel") return;
-          const idx = cutterIndex >= 0 ? cutterIndex : pendingCuts.indexForPath(cutterPath);
-          if (result.action === "queue_trim") {
-            pendingCuts.enqueueTrim(cutterPath, idx, result.startMs, result.endMs);
-            showSuccess("Trim in die Warteschlange gelegt.");
-          } else if (result.action === "queue_split") {
-            pendingCuts.enqueueSplit(cutterPath, idx, result.splitMs);
-            showSuccess("Split in die Warteschlange gelegt.");
+          const path = cutterPath;
+          if (result.action === "apply_trim") {
+            void videoCuts.applyTrim(path, result.startMs, result.endMs, {
+              onBusyChange: setBusy,
+              onProgressReset: resetProgress,
+              onStatus: setStatus,
+            });
+          } else if (result.action === "apply_split") {
+            void videoCuts.applySplit(path, result.splitMs, {
+              onBusyChange: setBusy,
+              onProgressReset: resetProgress,
+              onStatus: setStatus,
+            });
           }
-        }}
-      />
-      <PendingCutsDialog
-        open={pendingCuts.reviewOpen}
-        onOpenChange={pendingCuts.setReviewOpen}
-        summaries={pendingCuts.summaries}
-        onRemoveAt={pendingCuts.removeAt}
-        onClearAll={pendingCuts.clearAll}
-        applying={pendingCuts.applying}
-        onApply={() => {
-          void pendingCuts.applyAll({
-            onBusyChange: setBusy,
-            onProgressReset: resetProgress,
-          });
         }}
       />
       <ErrorDialog

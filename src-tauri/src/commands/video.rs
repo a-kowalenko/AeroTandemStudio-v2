@@ -350,6 +350,68 @@ pub async fn cut_video(
     }
 }
 
+/// Undo the last overwrite trim/split (restores working-copy backup).
+#[tauri::command]
+pub async fn undo_last_video_cut() -> Result<crate::video::cut_undo::UndoCutResult, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::video::cut_undo::undo_last_cut().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Undo the cut for a specific clip path (trim path or either split part).
+#[tauri::command]
+pub async fn undo_video_cut_for_path(
+    path: String,
+) -> Result<crate::video::cut_undo::UndoCutResult, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::video::cut_undo::undo_cut_for_path(&path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Undo every recorded cut/split.
+#[tauri::command]
+pub async fn undo_all_video_cuts() -> Result<Vec<crate::video::cut_undo::UndoCutResult>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::video::cut_undo::undo_all_cuts().map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Whether any cut undo is available.
+#[tauri::command]
+pub fn has_video_cut_undo() -> bool {
+    crate::video::cut_undo::has_cut_undo()
+}
+
+/// Paths currently marked as cut (for UI chips).
+#[tauri::command]
+pub fn list_video_cut_marks() -> Vec<String> {
+    crate::video::cut_undo::cut_mark_paths()
+}
+
+/// Discard all cut-undo backups without restoring.
+#[tauri::command]
+pub fn clear_video_cut_undo() {
+    crate::video::cut_undo::clear_cut_undo();
+}
+
+/// Drop undo backup for one path without restoring (clip removed from list).
+#[tauri::command]
+pub fn discard_video_cut_undo_for_path(path: String) {
+    if path.trim().is_empty() {
+        return;
+    }
+    crate::video::cut_undo::discard_cut_undo_for_path(&path);
+}
+
 /// Split video at `split_secs` into two parts. With `overwrite`, writes `name_1` / `name_2`.
 /// Emits `encode-progress`.
 #[tauri::command]
@@ -435,6 +497,23 @@ pub async fn probe_video(app: AppHandle, path: String) -> Result<VideoMetadata, 
     let ffmpeg = resolve_ffmpeg(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         probe::probe_video(&ffmpeg, &path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// List keyframe timestamps (seconds) for stream-copy-friendly trim snapping.
+#[tauri::command]
+pub async fn list_video_keyframes(app: AppHandle, path: String) -> Result<Vec<f64>, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    if !std::path::Path::new(&path).is_file() {
+        return Err(format!("input file not found: {path}"));
+    }
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        concat::list_keyframes(&ffmpeg, &path).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

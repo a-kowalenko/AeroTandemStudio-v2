@@ -100,6 +100,7 @@ type SortableRowProps = {
   showWatermark?: boolean;
   watermarkSelected?: boolean;
   onToggleWatermark?: (index: number) => void;
+  cutMark?: "trim" | "split" | null;
 };
 
 function SortableVideoRow({
@@ -112,6 +113,7 @@ function SortableVideoRow({
   showWatermark,
   watermarkSelected,
   onToggleWatermark,
+  cutMark,
 }: SortableRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: video.path });
@@ -143,7 +145,17 @@ function SortableVideoRow({
       </td>
       <td className="w-8 px-1 py-2 tabular-nums text-muted">{index + 1}</td>
       <td className="max-w-[12rem] px-2 py-2 font-medium" title={video.path}>
-        <div className="truncate">{video.filename}</div>
+        <div className="flex items-center gap-1.5">
+          <div className="min-w-0 truncate">{video.filename}</div>
+          {cutMark ? (
+            <span
+              className="shrink-0 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white"
+              title={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
+            >
+              {cutMark === "trim" ? "Trim" : "Split"}
+            </span>
+          ) : null}
+        </div>
         {device ? (
           <div className="truncate text-xs text-muted" title={device}>
             {device}
@@ -208,22 +220,29 @@ export type MediaImportSummary = {
 };
 
 export function MediaDropZone({
-  pendingCutsCount = 0,
-  onOpenPendingCuts,
   onRemoveVideo,
+  onCutVideo,
+  onUndoVideoCut,
+  onSessionCleared,
   onImported,
   listTab,
   onListTabChange,
 }: {
-  pendingCutsCount?: number;
-  onOpenPendingCuts?: () => void;
   onRemoveVideo?: (path: string) => void;
+  /** Open cutter for a video from the list context menu */
+  onCutVideo?: (path: string) => void;
+  /** Undo trim/split for a video from the list context menu */
+  onUndoVideoCut?: (path: string) => void;
+  /** Fired when the user clears all media (working session wiped). */
+  onSessionCleared?: () => void;
   /** Fired after a successful import (for preview-tab switching). */
   onImported?: (summary: MediaImportSummary) => void;
   listTab?: "video" | "foto";
   onListTabChange?: (tab: "video" | "foto") => void;
 }) {
   const videoList = useVideoStore((s) => s.videoList);
+  const getCutMark = useVideoStore((s) => s.getCutMark);
+  const cutMarks = useVideoStore((s) => s.cutMarks);
   const importing = useVideoStore((s) => s.importing);
   const photoImporting = usePhotoStore((s) => s.importing);
   const importError = useVideoStore((s) => s.importError);
@@ -844,6 +863,7 @@ export function MediaDropZone({
                 clearVideos();
                 clearPhotos();
                 void clearWorkingSession();
+                onSessionCleared?.();
                 setStatusMsg(null);
               }}
               disabled={busy || totalCount === 0}
@@ -851,17 +871,6 @@ export function MediaDropZone({
               <Trash2 className="h-3.5 w-3.5" />
               Alles leeren
             </Button>
-            {pendingCutsCount > 0 && onOpenPendingCuts && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={onOpenPendingCuts}
-                disabled={busy}
-              >
-                Warteschlange ({pendingCutsCount})
-              </Button>
-            )}
           </div>
           {busy && (
             <p className="mt-3 text-sm text-muted">
@@ -956,7 +965,9 @@ export function MediaDropZone({
                         items={videoList.map((v) => v.path)}
                         strategy={verticalListSortingStrategy}
                       >
-                        {videoList.map((v, i) => (
+                        {videoList.map((v, i) => {
+                          void cutMarks;
+                          return (
                           <SortableVideoRow
                             key={v.path}
                             video={v}
@@ -965,6 +976,7 @@ export function MediaDropZone({
                             showWatermark={videoWmNeeded}
                             watermarkSelected={watermarkClipIndex === i}
                             onToggleWatermark={toggleWatermarkClip}
+                            cutMark={getCutMark(v.path)}
                             onScanQr={(path) => void scanVideoQr(path)}
                             onContextMenu={openMediaMenu}
                             onRemove={(path) => {
@@ -972,7 +984,8 @@ export function MediaDropZone({
                               removeVideo(path);
                             }}
                           />
-                        ))}
+                          );
+                        })}
                       </SortableContext>
                     </tbody>
                   </table>
@@ -1097,6 +1110,17 @@ export function MediaDropZone({
             void scanPhotoQr(path);
           }
         }}
+        onCut={
+          onCutVideo && ctxMenu && videoList.some((v) => v.path === ctxMenu.path)
+            ? (path) => onCutVideo(path)
+            : undefined
+        }
+        canUndoCut={Boolean(
+          ctxMenu &&
+            videoList.some((v) => v.path === ctxMenu.path) &&
+            getCutMark(ctxMenu.path),
+        )}
+        onUndoCut={onUndoVideoCut}
         onRemove={(path) => {
           if (videoList.some((v) => v.path === path)) {
             onRemoveVideo?.(path);

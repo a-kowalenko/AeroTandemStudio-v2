@@ -34,9 +34,16 @@ export type VideoPlayerHandle = {
   play: () => void;
 };
 
+export type TrimHandle = "start" | "end";
+
 type VideoPlayerProps = {
   /** Absolute filesystem path (converted via media URI scheme). */
   srcPath: string | null;
+  /**
+   * Cache-bust token when the file is overwritten in place (trim).
+   * Changes force a new media URL so the browser does not reuse the old body.
+   */
+  cacheKey?: string | number | null;
   className?: string;
   /** Called when currentTime / duration update. */
   onTimeUpdate?: (currentMs: number, durationMs: number) => void;
@@ -46,6 +53,14 @@ type VideoPlayerProps = {
   autoPlay?: boolean;
   /** Optional overlay marks for keep-range (0–1). */
   keepRange?: { start: number; end: number } | null;
+  /**
+   * When set with keepRange, shows draggable trim handles.
+   * Drag seeks the preview to the handle time; commit fires on pointer-up.
+   */
+  onTrimChange?: (handle: TrimHandle, ms: number) => void;
+  onTrimCommit?: (handle: TrimHandle, ms: number) => void;
+  /** Keyframe markers as ratios 0–1 (optional visual ticks). */
+  keyframeMarks?: number[];
   disabled?: boolean;
 };
 
@@ -60,13 +75,28 @@ function formatMs(ms: number): string {
     .padStart(3, "0")}`;
 }
 
+const HANDLE_HIT_PX = 14;
+const MIN_RANGE_MS = 100;
+
 /**
  * HTML5 video player (Phase-9 interim — libmpv deferred).
- * Supports seek, play/pause, volume, and a custom timeline with keep-range.
+ * Supports seek, play/pause, volume, and a custom timeline with keep-range / trim handles.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   function VideoPlayer(
-    { srcPath, className, onTimeUpdate, onEnded, autoPlay, keepRange, disabled },
+    {
+      srcPath,
+      cacheKey,
+      className,
+      onTimeUpdate,
+      onEnded,
+      autoPlay,
+      keepRange,
+      onTrimChange,
+      onTrimCommit,
+      keyframeMarks,
+      disabled,
+    },
     ref,
   ) {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -78,12 +108,21 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [muted, setMuted] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [src, setSrc] = useState<string | null>(null);
+    const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
     const volumeRef = useRef(volume);
     volumeRef.current = volume;
     const mutedRef = useRef(muted);
     mutedRef.current = muted;
+    const keepRangeRef = useRef(keepRange);
+    keepRangeRef.current = keepRange;
+    const durationMsRef = useRef(durationMs);
+    durationMsRef.current = durationMs;
+    const onTrimChangeRef = useRef(onTrimChange);
+    onTrimChangeRef.current = onTrimChange;
+    const onTrimCommitRef = useRef(onTrimCommit);
+    onTrimCommitRef.current = onTrimCommit;
 
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
@@ -115,7 +154,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setSrc(null);
       if (!srcPath) return;
       let cancelled = false;
-      void videoFileSrc(srcPath)
+      void videoFileSrc(srcPath, cacheKey)
         .then((url) => {
           if (!cancelled) setSrc(url);
         })
@@ -125,7 +164,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       return () => {
         cancelled = true;
       };
-    }, [srcPath]);
+    }, [srcPath, cacheKey]);
 
     // Re-apply on `src` too: `key={src}` remounts <video> at browser defaults.
     useEffect(() => {
@@ -151,20 +190,62 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       else v.pause();
     }
 
-    function seekFromClientX(clientX: number) {
+    function msFromClientX(clientX: number): number | null {
       const bar = barRef.current;
-      const v = videoRef.current;
-      if (!bar || !v || !durationMs) return;
+      const dur = durationMsRef.current;
+      if (!bar || !dur) return null;
       const rect = bar.getBoundingClientRect();
       const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const ms = ratio * durationMs;
+      return ratio * dur;
+    }
+
+    function seekFromClientX(clientX: number) {
+      const v = videoRef.current;
+      const ms = msFromClientX(clientX);
+      if (ms == null || !v) return;
       v.currentTime = ms / 1000;
-      emitTime(ms, durationMs);
+      emitTime(ms, durationMsRef.current);
+    }
+
+    function applyTrimDrag(handle: TrimHandle, clientX: number) {
+      const ms = msFromClientX(clientX);
+      const v = videoRef.current;
+      const dur = durationMsRef.current;
+      const kr = keepRangeRef.current;
+      if (ms == null || !v || !dur || !kr) return;
+
+      let next = ms;
+      if (handle === "start") {
+        const endMs = kr.end * dur;
+        next = Math.max(0, Math.min(ms, endMs - MIN_RANGE_MS));
+      } else {
+        const startMs = kr.start * dur;
+        next = Math.min(dur, Math.max(ms, startMs + MIN_RANGE_MS));
+      }
+
+      v.pause();
+      v.currentTime = next / 1000;
+      emitTime(next, dur);
+      onTrimChangeRef.current?.(handle, next);
+    }
+
+    function hitTestHandle(clientX: number): TrimHandle | "seek" {
+      const bar = barRef.current;
+      const kr = keepRangeRef.current;
+      if (!bar || !kr || !onTrimChangeRef.current) return "seek";
+      const rect = bar.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const startX = kr.start * rect.width;
+      const endX = kr.end * rect.width;
+      if (Math.abs(x - startX) <= HANDLE_HIT_PX) return "start";
+      if (Math.abs(x - endX) <= HANDLE_HIT_PX) return "end";
+      return "seek";
     }
 
     const playhead = durationMs > 0 ? currentMs / durationMs : 0;
     const keepStart = keepRange?.start ?? 0;
     const keepEnd = keepRange?.end ?? 1;
+    const trimEditable = Boolean(keepRange && onTrimChange);
 
     return (
       <div className={cn("flex flex-col gap-2", className)}>
@@ -210,38 +291,101 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         <div
           ref={barRef}
           className={cn(
-            "relative h-6 cursor-pointer rounded bg-[#555]",
+            "relative h-8 touch-none select-none rounded bg-[#555]",
             disabled && "pointer-events-none opacity-50",
+            trimEditable ? "cursor-default" : "cursor-pointer",
           )}
           onPointerDown={(e) => {
+            if (disabled) return;
+            const mode = hitTestHandle(e.clientX);
+            dragModeRef.current = mode;
             setDragging(true);
-            (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-            seekFromClientX(e.clientX);
+            (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+            if (mode === "seek") seekFromClientX(e.clientX);
+            else applyTrimDrag(mode, e.clientX);
           }}
           onPointerMove={(e) => {
-            if (!dragging) return;
-            seekFromClientX(e.clientX);
+            if (!dragging || !dragModeRef.current) return;
+            if (dragModeRef.current === "seek") seekFromClientX(e.clientX);
+            else applyTrimDrag(dragModeRef.current, e.clientX);
           }}
-          onPointerUp={() => setDragging(false)}
-          onPointerCancel={() => setDragging(false)}
+          onPointerUp={(e) => {
+            const mode = dragModeRef.current;
+            if (mode === "start" || mode === "end") {
+              const ms = msFromClientX(e.clientX);
+              if (ms != null) {
+                const dur = durationMsRef.current;
+                const kr = keepRangeRef.current;
+                let committed = ms;
+                if (kr && dur > 0) {
+                  if (mode === "start") {
+                    committed = Math.max(
+                      0,
+                      Math.min(ms, kr.end * dur - MIN_RANGE_MS),
+                    );
+                  } else {
+                    committed = Math.min(
+                      dur,
+                      Math.max(ms, kr.start * dur + MIN_RANGE_MS),
+                    );
+                  }
+                }
+                onTrimCommitRef.current?.(mode, committed);
+              }
+            }
+            dragModeRef.current = null;
+            setDragging(false);
+          }}
+          onPointerCancel={() => {
+            dragModeRef.current = null;
+            setDragging(false);
+          }}
         >
           <div
-            className="absolute inset-y-[25%] left-0 bg-[#888]"
+            className="absolute inset-y-[28%] left-0 bg-[#888]"
             style={{ width: `${keepStart * 100}%` }}
           />
           <div
-            className="absolute inset-y-[25%] bg-[#0078d4]"
+            className="absolute inset-y-[28%] bg-[#0078d4]"
             style={{
               left: `${keepStart * 100}%`,
               width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
             }}
           />
           <div
-            className="absolute inset-y-[25%] right-0 bg-[#888]"
+            className="absolute inset-y-[28%] right-0 bg-[#888]"
             style={{ left: `${keepEnd * 100}%`, right: 0 }}
           />
+
+          {keyframeMarks?.map((r) => (
+            <div
+              key={`kf-${r}`}
+              className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
+              style={{ left: `${r * 100}%` }}
+            />
+          ))}
+
+          {trimEditable && (
+            <>
+              <div
+                className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize"
+                style={{ left: `${keepStart * 100}%` }}
+                aria-hidden
+              >
+                <div className="absolute inset-y-0.5 left-1/2 w-1.5 -translate-x-1/2 rounded-sm bg-white shadow" />
+              </div>
+              <div
+                className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize"
+                style={{ left: `${keepEnd * 100}%` }}
+                aria-hidden
+              >
+                <div className="absolute inset-y-0.5 left-1/2 w-1.5 -translate-x-1/2 rounded-sm bg-white shadow" />
+              </div>
+            </>
+          )}
+
           <div
-            className="absolute inset-y-0 w-0.5 bg-[#E74C3C]"
+            className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-[#E74C3C]"
             style={{ left: `${playhead * 100}%` }}
           />
         </div>

@@ -3,19 +3,32 @@ import type { VideoMetadata } from "../lib/tauri";
 import { deleteWorkingCopy, importVideos, probeVideo } from "../lib/tauri";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 
+export type CutMarkKind = "trim" | "split";
+
+function normPath(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
 type VideoListState = {
   videoList: VideoMetadata[];
   importing: boolean;
   importError: string | null;
   /** Index of clip selected for unpaid-video watermark (Preview_Video). */
   watermarkClipIndex: number | null;
+  /** path(lower) → cut kind for UI chips */
+  cutMarks: Record<string, CutMarkKind>;
+  /** path(lower) → bumped when file bytes change in place (player cache bust) */
+  mediaRevision: Record<string, number>;
   addVideos: (paths: string[]) => Promise<void>;
   removeVideo: (path: string) => void;
   reorderVideos: (activePath: string, overPath: string) => void;
-  /** Replace one list entry by path (e.g. after trim overwrite). */
   replaceVideo: (oldPath: string, meta: VideoMetadata) => void;
-  /** After split: replace original with part1, insert part2 after it. */
   applySplitInList: (oldPath: string, part1: VideoMetadata, part2: VideoMetadata) => void;
+  restoreAfterSplitUndo: (
+    part1Path: string,
+    part2Path: string,
+    restored: VideoMetadata,
+  ) => void;
   refreshVideo: (path: string) => Promise<void>;
   clearVideos: () => void;
   clearError: () => void;
@@ -23,13 +36,31 @@ type VideoListState = {
   toggleWatermarkClip: (index: number) => void;
   ensureDefaultWatermarkClip: () => void;
   clearWatermarkSelection: () => void;
+  markTrimmed: (path: string) => void;
+  markSplit: (part1: string, part2: string, originalPath: string) => void;
+  clearCutMarksFor: (paths: string[]) => void;
+  clearAllCutMarks: () => void;
+  bumpMediaRevision: (path: string) => void;
+  getCutMark: (path: string) => CutMarkKind | null;
+  getMediaRevision: (path: string) => number;
+  hasAnyCutMarks: () => boolean;
 };
+
+function bumpRev(
+  map: Record<string, number>,
+  path: string,
+): Record<string, number> {
+  const k = normPath(path);
+  return { ...map, [k]: (map[k] ?? 0) + 1 };
+}
 
 export const useVideoStore = create<VideoListState>((set, get) => ({
   videoList: [],
   importing: false,
   importError: null,
   watermarkClipIndex: null,
+  cutMarks: {},
+  mediaRevision: {},
 
   addVideos: async (paths: string[]) => {
     if (paths.length === 0) return;
@@ -66,7 +97,10 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       if (wm === idx) wm = null;
       else if (idx >= 0 && wm > idx) wm -= 1;
     }
-    set({ videoList: next, watermarkClipIndex: wm });
+    const k = normPath(path);
+    const { [k]: _m, ...cutMarks } = get().cutMarks;
+    const { [k]: _r, ...mediaRevision } = get().mediaRevision;
+    set({ videoList: next, watermarkClipIndex: wm, cutMarks, mediaRevision });
     void deleteWorkingCopy(path);
   },
 
@@ -90,10 +124,20 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
   },
 
   replaceVideo: (oldPath: string, meta: VideoMetadata) => {
+    const oldK = normPath(oldPath);
+    const newK = normPath(meta.path);
+    let cutMarks = { ...get().cutMarks };
+    let mediaRevision = bumpRev(get().mediaRevision, meta.path);
+    if (oldK !== newK && cutMarks[oldK]) {
+      cutMarks[newK] = cutMarks[oldK]!;
+      delete cutMarks[oldK];
+    }
     set({
       videoList: get().videoList.map((v) =>
         v.path.toLowerCase() === oldPath.toLowerCase() ? meta : v,
       ),
+      cutMarks,
+      mediaRevision,
     });
   },
 
@@ -110,6 +154,35 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     set({ videoList: list, watermarkClipIndex: wm });
   },
 
+  restoreAfterSplitUndo: (part1Path, part2Path, restored) => {
+    const list = [...get().videoList];
+    const i1 = list.findIndex(
+      (v) => v.path.toLowerCase() === part1Path.toLowerCase(),
+    );
+    const i2 = list.findIndex(
+      (v) => v.path.toLowerCase() === part2Path.toLowerCase(),
+    );
+    const insertAt = i1 >= 0 ? i1 : i2 >= 0 ? i2 : list.length;
+    const next = list.filter(
+      (v) =>
+        v.path.toLowerCase() !== part1Path.toLowerCase() &&
+        v.path.toLowerCase() !== part2Path.toLowerCase(),
+    );
+    const adjustedInsert =
+      insertAt > next.length ? next.length : Math.min(insertAt, next.length);
+    next.splice(adjustedInsert, 0, restored);
+    let wm = get().watermarkClipIndex;
+    if (wm != null) {
+      if (i1 === wm || i2 === wm) wm = adjustedInsert;
+      else if (wm > adjustedInsert) wm = Math.max(0, wm - 1);
+    }
+    set({
+      videoList: next,
+      watermarkClipIndex: wm,
+      mediaRevision: bumpRev(get().mediaRevision, restored.path),
+    });
+  },
+
   refreshVideo: async (path: string) => {
     try {
       const meta = await probeVideo(path);
@@ -121,7 +194,13 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
 
   clearVideos: () => {
     const paths = get().videoList.map((v) => v.path);
-    set({ videoList: [], importError: null, watermarkClipIndex: null });
+    set({
+      videoList: [],
+      importError: null,
+      watermarkClipIndex: null,
+      cutMarks: {},
+      mediaRevision: {},
+    });
     for (const p of paths) {
       void deleteWorkingCopy(p);
     }
@@ -145,10 +224,52 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     if (watermarkClipIndex != null && watermarkClipIndex < videoList.length) return;
     let best = 0;
     for (let i = 1; i < videoList.length; i++) {
-      if (videoList[i].duration_secs > videoList[best].duration_secs) best = i;
+      if (videoList[i]!.duration_secs > videoList[best]!.duration_secs) best = i;
     }
     set({ watermarkClipIndex: best });
   },
 
   clearWatermarkSelection: () => set({ watermarkClipIndex: null }),
+
+  markTrimmed: (path) => {
+    const k = normPath(path);
+    set({
+      cutMarks: { ...get().cutMarks, [k]: "trim" },
+      mediaRevision: bumpRev(get().mediaRevision, path),
+    });
+  },
+
+  markSplit: (part1, part2, originalPath) => {
+    const marks = { ...get().cutMarks };
+    delete marks[normPath(originalPath)];
+    marks[normPath(part1)] = "split";
+    marks[normPath(part2)] = "split";
+    let rev = { ...get().mediaRevision };
+    rev = bumpRev(rev, part1);
+    rev = bumpRev(rev, part2);
+    set({ cutMarks: marks, mediaRevision: rev });
+  },
+
+  clearCutMarksFor: (paths) => {
+    const marks = { ...get().cutMarks };
+    let rev = { ...get().mediaRevision };
+    for (const p of paths) {
+      const k = normPath(p);
+      delete marks[k];
+      rev = bumpRev(rev, p);
+    }
+    set({ cutMarks: marks, mediaRevision: rev });
+  },
+
+  clearAllCutMarks: () => set({ cutMarks: {} }),
+
+  bumpMediaRevision: (path) => {
+    set({ mediaRevision: bumpRev(get().mediaRevision, path) });
+  },
+
+  getCutMark: (path) => get().cutMarks[normPath(path)] ?? null,
+
+  getMediaRevision: (path) => get().mediaRevision[normPath(path)] ?? 0,
+
+  hasAnyCutMarks: () => Object.keys(get().cutMarks).length > 0,
 }));

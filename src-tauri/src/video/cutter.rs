@@ -235,50 +235,76 @@ pub fn cut_video(
     };
     let target_str = target.to_string_lossy().to_string();
 
-    let method = if precise {
-        // trim_video emits the re-encode reason in its progress status
-        concat::trim_video(
-            ffmpeg,
-            input,
-            start_secs,
-            end_secs,
-            &target_str,
-            true,
-            on_progress.clone(),
-        )?;
-        "re-encode".to_string()
+    let backup = if is_overwrite {
+        Some(
+            super::cut_undo::prepare_overwrite_backup(input)
+                .map_err(|e| CutterError::Message(e.to_string()))?,
+        )
     } else {
-        emit(&on_progress, 5.0, "stream-copy cut");
-        let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
-        let args = build_cut_stream_copy_args(input, &target_str, start_secs, duration, has_audio);
-        run_ffmpeg(ffmpeg, &args, duration, on_progress.clone())?;
-        "stream-copy".to_string()
+        None
     };
 
-    let final_output = if is_overwrite {
-        emit(&on_progress, 98.0, "replacing original");
-        if !target.is_file() {
-            return Err(CutterError::Message("temp cut output missing".into()));
-        }
-        fs::rename(&target, input)?;
-        input.to_string()
-    } else {
-        target_str
-    };
-
-    emit(&on_progress, 100.0, "end");
-    Ok(CutResult {
-        output: final_output,
-        method: method.clone(),
-        overwritten: is_overwrite,
-        reencode_reason: if method == "re-encode" {
-            Some(
-                "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
-            )
+    let cut_result = (|| -> Result<CutResult, CutterError> {
+        let method = if precise {
+            concat::trim_video(
+                ffmpeg,
+                input,
+                start_secs,
+                end_secs,
+                &target_str,
+                true,
+                on_progress.clone(),
+            )?;
+            "re-encode".to_string()
         } else {
-            None
-        },
-    })
+            emit(&on_progress, 5.0, "stream-copy cut");
+            let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
+            let args = build_cut_stream_copy_args(input, &target_str, start_secs, duration, has_audio);
+            run_ffmpeg(ffmpeg, &args, duration, on_progress.clone())?;
+            "stream-copy".to_string()
+        };
+
+        let final_output = if is_overwrite {
+            emit(&on_progress, 98.0, "replacing original");
+            if !target.is_file() {
+                return Err(CutterError::Message("temp cut output missing".into()));
+            }
+            fs::rename(&target, input)?;
+            input.to_string()
+        } else {
+            target_str.clone()
+        };
+
+        emit(&on_progress, 100.0, "end");
+        Ok(CutResult {
+            output: final_output,
+            method: method.clone(),
+            overwritten: is_overwrite,
+            reencode_reason: if method == "re-encode" {
+                Some(
+                    "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
+                )
+            } else {
+                None
+            },
+        })
+    })();
+
+    match cut_result {
+        Ok(res) => {
+            if let Some(b) = backup {
+                super::cut_undo::commit_trim_undo(input, b);
+            }
+            Ok(res)
+        }
+        Err(e) => {
+            if let Some(Some(b)) = backup {
+                super::cut_undo::discard_backup(&b);
+            }
+            let _ = fs::remove_file(&target);
+            Err(e)
+        }
+    }
 }
 
 /// Split at `split_secs` into two files.
@@ -321,62 +347,99 @@ pub fn split_video(
     let p1_str = part1_path.to_string_lossy().to_string();
     let p2_str = part2_path.to_string_lossy().to_string();
 
-    emit(&on_progress, 10.0, "split part 1");
-    let args1 = build_split_part1_args(input, &p1_str, split_secs, has_audio);
-    let on1 = on_progress.clone();
-    let wrapped1: ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let scaled = EncodeProgress {
-            percent: 10.0 + p.percent * 0.4,
-            ..p
-        };
-        on1(scaled);
-    });
-    run_ffmpeg(ffmpeg, &args1, split_secs, wrapped1)?;
-
-    emit(&on_progress, 55.0, "split part 2");
-    let args2 = build_split_part2_args(input, &p2_str, split_secs, has_audio);
-    let on2 = on_progress.clone();
-    let wrapped2: ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let scaled = EncodeProgress {
-            percent: 55.0 + p.percent * 0.4,
-            ..p
-        };
-        on2(scaled);
-    });
-    // Duration unknown for part2 — use a generous estimate from split point.
-    run_ffmpeg(ffmpeg, &args2, split_secs.max(1.0), wrapped2)?;
-
-    let (final1, final2) = if is_overwrite {
-        emit(&on_progress, 95.0, "renaming split outputs");
-        let (dest1, dest2) = split_output_paths(input);
-        if !part1_path.is_file() || !part2_path.is_file() {
-            let _ = fs::remove_file(&part1_path);
-            let _ = fs::remove_file(&part2_path);
-            return Err(CutterError::Message("split outputs missing".into()));
-        }
-        // Legacy: replace original with part1 temp, then rename to _1; _2 already written.
-        fs::rename(&part1_path, input)?;
-        if dest1.exists() {
-            let _ = fs::remove_file(&dest1);
-        }
-        fs::rename(input, &dest1)?;
-        // part2 already at dest2 (= part2_path when overwrite)
-        let _ = dest2;
-        (
-            dest1.to_string_lossy().to_string(),
-            part2_path.to_string_lossy().to_string(),
+    let backup = if is_overwrite {
+        Some(
+            super::cut_undo::prepare_overwrite_backup(input)
+                .map_err(|e| CutterError::Message(e.to_string()))?,
         )
     } else {
-        (p1_str, p2_str)
+        None
     };
 
-    emit(&on_progress, 100.0, "end");
-    Ok(SplitResult {
-        part1_path: final1,
-        part2_path: final2,
-        method: "stream-copy".into(),
-        overwritten: is_overwrite,
-    })
+    let split_result = (|| -> Result<SplitResult, CutterError> {
+        emit(&on_progress, 10.0, "split part 1");
+        let args1 = build_split_part1_args(input, &p1_str, split_secs, has_audio);
+        let on1 = on_progress.clone();
+        let wrapped1: ProgressCallback = Arc::new(move |p: EncodeProgress| {
+            let scaled = EncodeProgress {
+                percent: 10.0 + p.percent * 0.4,
+                ..p
+            };
+            on1(scaled);
+        });
+        run_ffmpeg(ffmpeg, &args1, split_secs, wrapped1)?;
+
+        emit(&on_progress, 55.0, "split part 2");
+        let args2 = build_split_part2_args(input, &p2_str, split_secs, has_audio);
+        let on2 = on_progress.clone();
+        let wrapped2: ProgressCallback = Arc::new(move |p: EncodeProgress| {
+            let scaled = EncodeProgress {
+                percent: 55.0 + p.percent * 0.4,
+                ..p
+            };
+            on2(scaled);
+        });
+        run_ffmpeg(ffmpeg, &args2, split_secs.max(1.0), wrapped2)?;
+
+        let (final1, final2) = if is_overwrite {
+            emit(&on_progress, 95.0, "renaming split outputs");
+            let (dest1, dest2) = split_output_paths(input);
+            if !part1_path.is_file() || !part2_path.is_file() {
+                let _ = fs::remove_file(&part1_path);
+                let _ = fs::remove_file(&part2_path);
+                return Err(CutterError::Message("split outputs missing".into()));
+            }
+            fs::rename(&part1_path, input)?;
+            if dest1.exists() {
+                let _ = fs::remove_file(&dest1);
+            }
+            fs::rename(input, &dest1)?;
+            let _ = dest2;
+            (
+                dest1.to_string_lossy().to_string(),
+                part2_path.to_string_lossy().to_string(),
+            )
+        } else {
+            (p1_str.clone(), p2_str.clone())
+        };
+
+        emit(&on_progress, 100.0, "end");
+        Ok(SplitResult {
+            part1_path: final1,
+            part2_path: final2,
+            method: "stream-copy".into(),
+            overwritten: is_overwrite,
+        })
+    })();
+
+    match split_result {
+        Ok(res) => {
+            if let Some(b) = backup {
+                super::cut_undo::commit_split_undo(
+                    input,
+                    &res.part1_path,
+                    &res.part2_path,
+                    b,
+                );
+            }
+            Ok(res)
+        }
+        Err(e) => {
+            if let Some(Some(b)) = backup {
+                super::cut_undo::discard_backup(&b);
+            }
+            let _ = fs::remove_file(&part1_path);
+            if is_overwrite {
+                let (_d1, d2) = split_output_paths(input);
+                if d2.exists() && Path::new(input).is_file() {
+                    let _ = fs::remove_file(&d2);
+                }
+            } else {
+                let _ = fs::remove_file(&part2_path);
+            }
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]

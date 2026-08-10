@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Film, Play, QrCode, RefreshCw, Scissors, Trash2 } from "lucide-react";
+import { Film, Play, QrCode, RefreshCw, RotateCcw, Scissors, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
@@ -40,10 +40,16 @@ type VideoPreviewProps = {
   onProgressReset?: () => void;
   /** Open cutter for the active clip */
   onCutClip?: (path: string, listIndex: number) => void;
+  /** Undo cut/trim for one clip */
+  onUndoClipCut?: (path: string) => void;
+  /** Undo all cut/trim actions */
+  onUndoAllCuts?: () => void;
+  /** Whether any clip has an undoable cut */
+  canUndoCuts?: boolean;
   /** Called before removing a clip from the list */
   onBeforeRemoveClip?: (path: string) => void;
   /**
-   * Same readiness gate as „Erstellen“ (form + products + pending cuts).
+   * Same readiness gate as „Erstellen“ (form + products).
    * When false, preview encode is blocked.
    */
   formReady?: boolean;
@@ -72,6 +78,9 @@ export function VideoPreview({
   taskProgress: tasksProp,
   onProgressReset,
   onCutClip,
+  onUndoClipCut,
+  onUndoAllCuts,
+  canUndoCuts = false,
   onBeforeRemoveClip,
   formReady = true,
   formHints = [],
@@ -80,6 +89,9 @@ export function VideoPreview({
   const removeVideo = useVideoStore((s) => s.removeVideo);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
   const toggleWatermarkClip = useVideoStore((s) => s.toggleWatermarkClip);
+  const getCutMark = useVideoStore((s) => s.getCutMark);
+  const getMediaRevision = useVideoStore((s) => s.getMediaRevision);
+  const cutMarks = useVideoStore((s) => s.cutMarks);
   const kunde = useKundeStore((s) => s.kunde);
   const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const oldschoolMode = useConfigStore((s) => s.config?.oldschool_mode);
@@ -297,6 +309,19 @@ export function VideoPreview({
           Video-Vorschau
         </h3>
         <div className="flex flex-wrap gap-2">
+          {canUndoCuts && onUndoAllCuts && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onUndoAllCuts()}
+              disabled={busy}
+              title="Alle Trim-/Teilen-Aktionen rückgängig machen"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Alle Schnitte rückgängig
+            </Button>
+          )}
           {videoList.length > 0 &&
             (!hasPreviewFile ? (
               <Button
@@ -372,6 +397,7 @@ export function VideoPreview({
         <VideoPlayer
           ref={clipPlayerRef}
           srcPath={current.path}
+          cacheKey={`${current.size_bytes}-${current.duration_secs}-${getMediaRevision(current.path)}`}
           disabled={busy}
           autoPlay={playOnLoad}
           onEnded={handleClipEnded}
@@ -424,9 +450,12 @@ export function VideoPreview({
           {videoList.map((v, i) => {
             const isWm = videoWmNeeded && watermarkClipIndex === i;
             const clipActive = einzelclipMode && i === activeClip;
+            const cutMark = getCutMark(v.path);
+            // Subscribe to cutMarks so chips update
+            void cutMarks;
             return (
               <button
-                key={v.path}
+                key={`${v.path}:${getMediaRevision(v.path)}`}
                 type="button"
                 onClick={() => selectClip(i, autoNextClip)}
                 onContextMenu={mediaContextMenuHandler(v.path, setCtxMenu)}
@@ -443,9 +472,20 @@ export function VideoPreview({
                   {v.width}×{v.height} · {formatDuration(v.duration_secs)}
                 </div>
                 <QrScanRowBar path={v.path} />
+                {cutMark && (
+                  <span
+                    className="absolute top-1 right-1 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+                    aria-label={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
+                  >
+                    {cutMark === "trim" ? "Trim" : "Split"}
+                  </span>
+                )}
                 {isWm && (
                   <span
-                    className="absolute top-1 right-1 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+                    className={cn(
+                      "absolute top-1 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm",
+                      cutMark ? "right-9" : "right-1",
+                    )}
                     aria-label="Wasserzeichen"
                   >
                     WM
@@ -498,6 +538,13 @@ export function VideoPreview({
               <div>Codec: {current.codec || "—"}</div>
               <div>Dauer: {formatDuration(current.duration_secs)}</div>
               <div>Größe: {formatBytes(current.size_bytes)}</div>
+              {getCutMark(current.path) && (
+                <div className="pt-1">
+                  <span className="inline-block rounded bg-sky-600/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:text-sky-300">
+                    {getCutMark(current.path) === "trim" ? "Getrimmt" : "Geteilt"}
+                  </span>
+                </div>
+              )}
               {videoWmNeeded && (
                 <label className="mt-1.5 flex items-center gap-2 text-foreground">
                   <Checkbox
@@ -535,6 +582,19 @@ export function VideoPreview({
                 <Scissors className="h-3.5 w-3.5" />
                 Schneiden
               </Button>
+              {getCutMark(current.path) && onUndoClipCut && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onUndoClipCut(current.path)}
+                  title="Diesen Schnitt rückgängig machen"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Schnitt rückgängig
+                </Button>
+              )}
               <Button
                 type="button"
                 size="sm"
@@ -580,6 +640,16 @@ export function VideoPreview({
         onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
         actionsDisabled={busy || qrBusy}
         onScanQr={(path) => void handleQrScan(path)}
+        onCut={
+          onCutClip
+            ? (path) => {
+                const idx = videoList.findIndex((v) => v.path === path);
+                onCutClip(path, idx >= 0 ? idx : 0);
+              }
+            : undefined
+        }
+        canUndoCut={Boolean(ctxMenu && getCutMark(ctxMenu.path))}
+        onUndoCut={onUndoClipCut}
         onRemove={(path) => {
           onBeforeRemoveClip?.(path);
           removeVideo(path);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Copy, FolderOpen, ExternalLink, QrCode, Trash2 } from "lucide-react";
+import { Copy, FolderOpen, ExternalLink, QrCode, RotateCcw, Scissors, Trash2 } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,12 @@ type Props = {
   onCopied?: () => void;
   /** Optional: scan QR for this file */
   onScanQr?: (path: string) => void;
+  /** Optional: open cutter for this video clip */
+  onCut?: (path: string) => void;
+  /** Optional: undo trim/split for this clip (shown when `canUndoCut`) */
+  onUndoCut?: (path: string) => void;
+  /** Show undo-cut item (clip was trimmed/split) */
+  canUndoCut?: boolean;
   /** Optional: remove this file from the session list */
   onRemove?: (path: string) => void;
   /** Disable QR / remove while busy */
@@ -39,6 +45,9 @@ export function MediaFileContextMenu({
   onError,
   onCopied,
   onScanQr,
+  onCut,
+  onUndoCut,
+  canUndoCut = false,
   onRemove,
   actionsDisabled = false,
 }: Props) {
@@ -117,7 +126,8 @@ export function MediaFileContextMenu({
     }
   }
 
-  const showExtra = Boolean(onScanQr || onRemove);
+  const showClipActions = Boolean(onScanQr || onCut || (canUndoCut && onUndoCut));
+  const showExtra = Boolean(showClipActions || onRemove);
 
   return createPortal(
     <div
@@ -158,7 +168,33 @@ export function MediaFileContextMenu({
           QR scannen
         </MenuItem>
       )}
-      {onScanQr && onRemove && (
+      {onCut && (
+        <MenuItem
+          icon={<Scissors className="h-3.5 w-3.5" />}
+          disabled={actionsDisabled}
+          onClick={() => {
+            const path = state.path;
+            onClose();
+            onCut(path);
+          }}
+        >
+          Schneiden
+        </MenuItem>
+      )}
+      {canUndoCut && onUndoCut && (
+        <MenuItem
+          icon={<RotateCcw className="h-3.5 w-3.5" />}
+          disabled={actionsDisabled}
+          onClick={() => {
+            const path = state.path;
+            onClose();
+            onUndoCut(path);
+          }}
+        >
+          Schnitt rückgängig
+        </MenuItem>
+      )}
+      {showClipActions && onRemove && (
         <div className="my-1 border-t border-border/60" role="separator" />
       )}
       {onRemove && (

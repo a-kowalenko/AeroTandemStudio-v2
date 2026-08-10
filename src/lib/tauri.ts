@@ -381,6 +381,11 @@ export async function probeVideo(path: string): Promise<VideoMetadata> {
   return invoke<VideoMetadata>("probe_video", { path });
 }
 
+/** Keyframe timestamps in seconds (for trim snapping / stream-copy). */
+export async function listVideoKeyframes(path: string): Promise<number[]> {
+  return invoke<number[]>("list_video_keyframes", { path });
+}
+
 export async function createVideo(
   kunde: Kunde,
   videoPaths: string[],
@@ -464,6 +469,41 @@ export async function cutVideo(opts: {
     overwrite: opts.overwrite ?? false,
     precise: opts.precise ?? false,
   });
+}
+
+export type UndoCutResult = {
+  kind: string;
+  restore_path: string;
+  removed_paths: string[];
+  cleared_mark_paths: string[];
+};
+
+export async function undoLastVideoCut(): Promise<UndoCutResult> {
+  return invoke<UndoCutResult>("undo_last_video_cut");
+}
+
+export async function undoVideoCutForPath(path: string): Promise<UndoCutResult> {
+  return invoke<UndoCutResult>("undo_video_cut_for_path", { path });
+}
+
+export async function undoAllVideoCuts(): Promise<UndoCutResult[]> {
+  return invoke<UndoCutResult[]>("undo_all_video_cuts");
+}
+
+export async function hasVideoCutUndo(): Promise<boolean> {
+  return invoke<boolean>("has_video_cut_undo");
+}
+
+export async function listVideoCutMarks(): Promise<string[]> {
+  return invoke<string[]>("list_video_cut_marks");
+}
+
+export async function clearVideoCutUndo(): Promise<void> {
+  return invoke("clear_video_cut_undo");
+}
+
+export async function discardVideoCutUndoForPath(path: string): Promise<void> {
+  return invoke("discard_video_cut_undo_for_path", { path });
 }
 
 /** Split at `splitSecs`. With `overwrite` writes `name_1` / `name_2`. */
