@@ -15,6 +15,25 @@ import { Checkbox } from "./ui/checkbox";
 
 const HOVER_PLAY_DELAY_MS = 180;
 
+/** Path of the tile currently in immersive preview — blocks hover on siblings. */
+let immersiveOwnerPath: string | null = null;
+
+function claimImmersive(path: string) {
+  immersiveOwnerPath = path;
+  document.documentElement.dataset.sdVideoImmersive = "1";
+}
+
+function releaseImmersive(path: string) {
+  if (immersiveOwnerPath === path) {
+    immersiveOwnerPath = null;
+    delete document.documentElement.dataset.sdVideoImmersive;
+  }
+}
+
+function isImmersiveBlocked(path: string): boolean {
+  return immersiveOwnerPath != null && immersiveOwnerPath !== path;
+}
+
 type Props = {
   path: string;
   filename: string;
@@ -38,30 +57,13 @@ function formatClock(secs: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-async function requestElFullscreen(el: HTMLElement): Promise<boolean> {
-  const anyEl = el as HTMLElement & {
-    webkitRequestFullscreen?: () => Promise<void> | void;
-  };
-  try {
-    if (document.fullscreenElement === el) return true;
-    if (typeof el.requestFullscreen === "function") {
-      await el.requestFullscreen();
-      return document.fullscreenElement === el || !!document.fullscreenElement;
-    }
-    if (typeof anyEl.webkitRequestFullscreen === "function") {
-      await anyEl.webkitRequestFullscreen();
-      return true;
-    }
-  } catch (err) {
-    console.warn("Fullscreen API failed:", err);
-  }
-  return false;
-}
-
 /**
  * SD selector video tile: YouTube-style muted hover preview, pinned play
  * (keeps playing after mouse leave), scrub bar, mute/volume, fullscreen.
  * Selection is only via click outside `[data-controls]`.
+ *
+ * Fullscreen uses a body-portaled overlay (not the Fullscreen API) so hit-testing
+ * works above Radix dialogs / Tauri WebView.
  */
 export function SdVideoTile({
   path,
@@ -79,10 +81,10 @@ export function SdVideoTile({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const immersiveVideoRef = useRef<HTMLVideoElement>(null);
-  const mediaShellRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const immersiveBarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<number | null>(null);
+  const immersiveRef = useRef(false);
 
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -96,13 +98,12 @@ export function SdVideoTile({
   const [duration, setDuration] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  /** Pseudo-fullscreen when Fullscreen API is blocked (common in dialogs / WebView). */
   const [immersive, setImmersive] = useState(false);
-  const [nativeFs, setNativeFs] = useState(false);
+
+  immersiveRef.current = immersive;
 
   const showVideo = wantPreview || pinned || immersive;
   const showControls = hovering || pinned || playing || immersive;
-  const isExpanded = immersive || nativeFs;
 
   // Resolve media URL when preview is wanted.
   useEffect(() => {
@@ -128,17 +129,10 @@ export function SdVideoTile({
     };
   }, [showVideo, path]);
 
-  // Another tile took over → unpin and stop.
+  // Another tile took over → unpin and stop (but never kill immersive overlay).
   useEffect(() => {
     if (isActive) return;
-    setImmersive(false);
-    setNativeFs(false);
-    if (document.fullscreenElement && mediaShellRef.current) {
-      const fs = document.fullscreenElement;
-      if (fs === mediaShellRef.current || fs === videoRef.current) {
-        void document.exitFullscreen().catch(() => undefined);
-      }
-    }
+    if (immersiveRef.current) return;
     setPinned(false);
     setWantPreview(false);
     setPlaying(false);
@@ -161,7 +155,7 @@ export function SdVideoTile({
     apply(immersiveVideoRef.current);
   }, [muted, volume, src, immersive]);
 
-  // Autoplay when preview becomes ready (hover or pinned / immersive).
+  // Autoplay when preview becomes ready.
   useEffect(() => {
     const v = immersive ? immersiveVideoRef.current : videoRef.current;
     if (!v || !src) return;
@@ -171,7 +165,7 @@ export function SdVideoTile({
     });
   }, [src, wantPreview, pinned, immersive]);
 
-  // Sync playback position into immersive player on enter.
+  // Sync playback into immersive player on enter.
   useEffect(() => {
     if (!immersive || !src) return;
     const tile = videoRef.current;
@@ -192,23 +186,38 @@ export function SdVideoTile({
     else full.addEventListener("loadedmetadata", seekAndPlay, { once: true });
   }, [immersive, src]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // While immersive: claim lock, inert underlying dialogs, Esc to close.
   useEffect(() => {
-    function onFsChange() {
-      const shell = mediaShellRef.current;
-      const v = videoRef.current;
-      const active =
-        document.fullscreenElement === shell || document.fullscreenElement === v;
-      setNativeFs(active);
-      if (!active && !immersive) {
-        /* native FS exited */
-      }
+    if (!immersive) {
+      releaseImmersive(path);
+      return;
     }
-    document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
-  }, [immersive]);
+    claimImmersive(path);
+    onActivate();
 
-  useEffect(() => {
-    if (!immersive) return;
+    const frozen: { el: HTMLElement; pe: string }[] = [];
+    const freeze = (el: Element | null) => {
+      if (!(el instanceof HTMLElement)) return;
+      if (frozen.some((f) => f.el === el)) return;
+      frozen.push({ el, pe: el.style.pointerEvents });
+      el.style.pointerEvents = "none";
+      el.setAttribute("inert", "");
+    };
+
+    // Block the whole React app tree; overlay is portaled on document.body (outside #root).
+    freeze(document.getElementById("root"));
+    // Radix mounts dialog portals as siblings of #root — freeze those too.
+    document.querySelectorAll('[role="dialog"]').forEach((node) => {
+      if (node instanceof HTMLElement && node.hasAttribute("data-sd-immersive-overlay")) {
+        return;
+      }
+      freeze(node);
+      const prev = node.previousElementSibling;
+      if (prev instanceof HTMLElement && getComputedStyle(prev).position === "fixed") {
+        freeze(prev);
+      }
+    });
+
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -217,14 +226,23 @@ export function SdVideoTile({
       }
     }
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [immersive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    return () => {
+      releaseImmersive(path);
+      for (const { el, pe } of frozen) {
+        el.style.pointerEvents = pe;
+        el.removeAttribute("inert");
+      }
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [immersive, path]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {
       if (hoverTimerRef.current != null) window.clearTimeout(hoverTimerRef.current);
+      releaseImmersive(path);
     };
-  }, []);
+  }, [path]);
 
   function clearHoverTimer() {
     if (hoverTimerRef.current != null) {
@@ -234,9 +252,11 @@ export function SdVideoTile({
   }
 
   function onMediaEnter() {
+    if (isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
     clearHoverTimer();
     hoverTimerRef.current = window.setTimeout(() => {
+      if (isImmersiveBlocked(path)) return;
       setWantPreview(true);
       onActivate();
     }, HOVER_PLAY_DELAY_MS);
@@ -296,13 +316,10 @@ export function SdVideoTile({
       ? !immersiveVideoRef.current.paused
       : playing;
     setImmersive(false);
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => undefined);
-    }
-    setNativeFs(false);
+    releaseImmersive(path);
     setPinned(true);
     setWantPreview(true);
-    // Restore tile video time after immersive unmounts
+    onActivate();
     requestAnimationFrame(() => {
       const v = videoRef.current;
       if (!v) return;
@@ -315,31 +332,18 @@ export function SdVideoTile({
     });
   }
 
-  async function toggleFullscreen(e: SyntheticEvent) {
+  function toggleFullscreen(e: SyntheticEvent) {
     e.stopPropagation();
     e.preventDefault();
     setPinned(true);
     setWantPreview(true);
     onActivate();
 
-    // Exit if already expanded
-    if (immersive || document.fullscreenElement) {
+    if (immersive) {
       exitExpanded();
       return;
     }
-
-    // Prefer native Fullscreen API on the shell — always mounted, called
-    // synchronously within the user gesture (no deferred retry).
-    const shell = mediaShellRef.current;
-    if (shell) {
-      const ok = await requestElFullscreen(shell);
-      if (ok) {
-        setNativeFs(true);
-        return;
-      }
-    }
-
-    // Fallback: app-level immersive overlay (portaled — avoids dialog transform / WebView blocks)
+    // Always use portaled overlay — Fullscreen API fails hit-testing inside Radix dialogs.
     setImmersive(true);
   }
 
@@ -350,21 +354,24 @@ export function SdVideoTile({
     video: RefObject<HTMLVideoElement | null>;
     large?: boolean;
   }) {
+    // In immersive mode controls stay visible and fully interactive.
+    const controlsVisible = opts.large || showControls;
     return (
       <>
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity [transform:translateZ(1px)]",
-            showControls ? "opacity-100" : "opacity-0",
+            "absolute inset-0 z-10 flex items-center justify-center transition-opacity [transform:translateZ(1px)]",
+            opts.large ? "pointer-events-none" : "pointer-events-none",
+            controlsVisible ? "opacity-100" : "opacity-0",
           )}
         >
           <button
             type="button"
             data-controls
             className={cn(
-              "flex items-center justify-center rounded-full bg-black/55 text-white shadow hover:bg-black/70",
+              "pointer-events-auto flex items-center justify-center rounded-full bg-black/55 text-white shadow hover:bg-black/70",
               opts.large ? "h-14 w-14" : "h-9 w-9",
-              showControls ? "pointer-events-auto" : "pointer-events-none",
+              !controlsVisible && "pointer-events-none",
             )}
             aria-label={playing ? "Pause" : "Play"}
             onClick={togglePlay}
@@ -386,9 +393,9 @@ export function SdVideoTile({
         <div
           data-controls
           className={cn(
-            "absolute top-1 right-1 z-10 flex items-center gap-0.5 transition-opacity [transform:translateZ(1px)]",
+            "absolute top-1 right-1 z-20 flex items-center gap-0.5 transition-opacity [transform:translateZ(1px)]",
             opts.large && "top-3 right-3 gap-1",
-            showControls ? "opacity-100" : "pointer-events-none opacity-0",
+            controlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
@@ -447,10 +454,10 @@ export function SdVideoTile({
               "flex items-center justify-center rounded bg-black/55 text-white hover:bg-black/70",
               opts.large ? "h-9 w-9" : "h-7 w-7",
             )}
-            aria-label={isExpanded ? "Vollbild beenden" : "Vollbild"}
-            onClick={(ev) => void toggleFullscreen(ev)}
+            aria-label={immersive ? "Vollbild beenden" : "Vollbild"}
+            onClick={(ev) => toggleFullscreen(ev)}
           >
-            {isExpanded ? (
+            {immersive ? (
               <Minimize className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
             ) : (
               <Maximize className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
@@ -461,8 +468,8 @@ export function SdVideoTile({
         <div
           data-controls
           className={cn(
-            "absolute inset-x-0 bottom-0 z-10 transition-opacity [transform:translateZ(1px)]",
-            showControls ? "opacity-100" : "pointer-events-none opacity-0",
+            "absolute inset-x-0 bottom-0 z-20 transition-opacity [transform:translateZ(1px)]",
+            controlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
@@ -532,15 +539,12 @@ export function SdVideoTile({
       )}
     >
       <div
-        ref={mediaShellRef}
-        className={cn(
-          "relative isolate flex aspect-video items-center justify-center bg-black/90",
-          nativeFs && "aspect-auto h-full w-full",
-        )}
+        className="relative isolate flex aspect-video items-center justify-center bg-black/90"
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-controls]")) return;
+          if (immersive || isImmersiveBlocked(path)) return;
           onToggleSelect();
         }}
       >
@@ -561,10 +565,7 @@ export function SdVideoTile({
           <video
             key={src}
             ref={videoRef}
-            className={cn(
-              "relative z-0 h-full w-full",
-              nativeFs ? "object-contain" : "object-cover",
-            )}
+            className="relative z-0 h-full w-full object-cover"
             src={src}
             playsInline
             muted={muted}
@@ -641,10 +642,13 @@ export function SdVideoTile({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="fixed inset-0 z-[200] flex flex-col bg-black"
+            className="pointer-events-auto fixed inset-0 z-[9999] flex flex-col bg-black"
             role="dialog"
             aria-modal="true"
             aria-label={`${filename} Vollbild`}
+            data-sd-immersive-overlay=""
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative flex min-h-0 flex-1 items-center justify-center">
@@ -683,7 +687,7 @@ export function SdVideoTile({
                 large: true,
               })}
             </div>
-            <div className="shrink-0 truncate px-4 py-2 text-center text-sm text-white/80">
+            <div className="pointer-events-none shrink-0 truncate px-4 py-2 text-center text-sm text-white/80">
               {filename}
               <span className="ml-2 text-xs text-white/50">Esc zum Beenden</span>
             </div>
