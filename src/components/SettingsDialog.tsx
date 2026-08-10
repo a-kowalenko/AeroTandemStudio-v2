@@ -114,6 +114,7 @@ export function SettingsDialog({
     videospringer: false,
   });
   const [crewEditIndex, setCrewEditIndex] = useState<number | null>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const sortedCrew = useMemo(() => {
     if (!draft) return [];
@@ -444,13 +445,7 @@ export function SettingsDialog({
   }
 
   async function onResetDefaults() {
-    if (
-      !window.confirm(
-        "Alle Einstellungen auf die Werkseinstellungen zurücksetzen?\n\nSpeicherort, Server-Zugangsdaten und individuelle Anpassungen gehen verloren.",
-      )
-    ) {
-      return;
-    }
+    setResetConfirmOpen(false);
     const restored = await resetToDefaults();
     if (restored) {
       const list = [...(restored.crew_list ?? [])].sort((a, b) =>
@@ -501,29 +496,48 @@ export function SettingsDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) setResetConfirmOpen(false);
+        onOpenChange(v);
+      }}
+    >
       <DialogContent
         className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-visible"
         onPointerDownOutside={(e) => {
           const t = e.target as HTMLElement | null;
-          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+          if (
+            suppressDismiss ||
+            resetConfirmOpen ||
+            t?.closest?.("[data-ats-combobox-list]")
+          ) {
             e.preventDefault();
           }
         }}
         onFocusOutside={(e) => {
           const t = e.target as HTMLElement | null;
-          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+          if (
+            suppressDismiss ||
+            resetConfirmOpen ||
+            t?.closest?.("[data-ats-combobox-list]")
+          ) {
             e.preventDefault();
           }
         }}
         onInteractOutside={(e) => {
           const t = e.target as HTMLElement | null;
-          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+          if (
+            suppressDismiss ||
+            resetConfirmOpen ||
+            t?.closest?.("[data-ats-combobox-list]")
+          ) {
             e.preventDefault();
           }
         }}
         onEscapeKeyDown={(e) => {
-          if (suppressDismiss) e.preventDefault();
+          if (suppressDismiss || resetConfirmOpen) e.preventDefault();
         }}
       >
         <DialogHeader className="shrink-0">
@@ -908,7 +922,7 @@ export function SettingsDialog({
                 variant="destructive"
                 size="sm"
                 disabled={saving}
-                onClick={() => void onResetDefaults()}
+                onClick={() => setResetConfirmOpen(true)}
               >
                 Auf Standardeinstellungen zurücksetzen
               </Button>
@@ -1439,5 +1453,43 @@ export function SettingsDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
+      <DialogContent
+        className="z-[60] max-w-md border-l-4 border-l-destructive"
+        overlayClassName="z-[60]"
+      >
+        <DialogHeader>
+          <DialogTitle className="text-destructive">
+            Standardeinstellungen wiederherstellen?
+          </DialogTitle>
+          <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
+            Alle Einstellungen werden auf die Werkseinstellungen zurückgesetzt.
+            {"\n\n"}
+            Speicherort, Server-Zugangsdaten und individuelle Anpassungen gehen
+            verloren.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2 sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={saving}
+            onClick={() => setResetConfirmOpen(false)}
+          >
+            Abbrechen
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={saving}
+            onClick={() => void onResetDefaults()}
+          >
+            Zurücksetzen
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
