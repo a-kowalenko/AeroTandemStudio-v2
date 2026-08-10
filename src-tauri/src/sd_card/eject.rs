@@ -280,6 +280,14 @@ fn eject_macos(drive: &str) -> Result<(), EjectError> {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
+fn host_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    // AppImage/bundle LD_LIBRARY_PATH must not leak into distro tools (udisksctl).
+    crate::util::process::apply_host_library_path(&mut cmd);
+    cmd
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
 fn eject_linux(drive: &str) -> Result<(), EjectError> {
     let mount = drive.trim_end_matches('/');
     if !Path::new(mount).exists() {
@@ -292,14 +300,16 @@ fn eject_linux(drive: &str) -> Result<(), EjectError> {
         EjectError::Message(format!("Blockgerät für Mount nicht gefunden: {mount}"))
     })?;
 
+    let mut last_err = String::new();
+
     // Prefer udisks2 (desktop-friendly; no root required for user mounts).
     if command_exists("udisksctl") {
-        let _ = Command::new("udisksctl")
+        let _ = host_command("udisksctl")
             .args(["unmount", "-b", &device])
             .output();
 
         let whole = whole_disk_device(&device);
-        let power = Command::new("udisksctl")
+        let power = host_command("udisksctl")
             .args(["power-off", "-b", &whole])
             .output()?;
         if power.status.success() {
@@ -311,32 +321,42 @@ fn eject_linux(drive: &str) -> Result<(), EjectError> {
             return Ok(());
         }
 
-        let err = String::from_utf8_lossy(&power.stderr);
-        return Err(EjectError::Message(format!(
+        last_err = format!(
             "udisksctl power-off fehlgeschlagen: {}",
-            err.trim()
-        )));
+            String::from_utf8_lossy(&power.stderr).trim()
+        );
     }
 
-    // Fallback: plain umount (+ optional eject).
-    let umount = Command::new("umount").arg(mount).output()?;
-    if !umount.status.success() {
-        let err = String::from_utf8_lossy(&umount.stderr);
-        return Err(EjectError::Message(format!(
+    // Fallback: plain umount (+ optional eject) — also used if udisksctl failed.
+    let umount = host_command("umount").arg(mount).output()?;
+    if umount.status.success() {
+        if command_exists("eject") {
+            let _ = host_command("eject").arg(&device).output();
+        }
+        return Ok(());
+    }
+
+    if !Path::new(mount).exists() {
+        return Ok(());
+    }
+
+    let umount_err = String::from_utf8_lossy(&umount.stderr);
+    if last_err.is_empty() {
+        Err(EjectError::Message(format!(
             "umount fehlgeschlagen: {}",
-            err.trim()
-        )));
+            umount_err.trim()
+        )))
+    } else {
+        Err(EjectError::Message(format!(
+            "{last_err}; umount: {}",
+            umount_err.trim()
+        )))
     }
-
-    if command_exists("eject") {
-        let _ = Command::new("eject").arg(&device).output();
-    }
-    Ok(())
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
 fn command_exists(name: &str) -> bool {
-    Command::new("sh")
+    host_command("sh")
         .args(["-c", &format!("command -v {name} >/dev/null 2>&1")])
         .status()
         .map(|s| s.success())

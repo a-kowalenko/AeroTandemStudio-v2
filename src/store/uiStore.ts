@@ -4,12 +4,29 @@ export type DialogKind = "error" | "success" | "warning" | null;
 
 export type DialogVariant = "default" | "qr";
 
+/** SD-workflow (and similar) action rows in SuccessDialog. */
+export type DialogActionKind = "qr" | "backup" | "import" | "eject";
+
+export type DialogActionTone = "success" | "error" | "warning" | "skipped";
+
+export type DialogActionStatus = {
+  kind: DialogActionKind;
+  label: string;
+  tone: DialogActionTone;
+  /** Short result line, e.g. "10 Dateien kopiert". */
+  summary: string;
+  /** Optional detail (path, error text). */
+  detail?: string;
+};
+
 export type DialogOptions = {
   autoCloseSecs?: number;
   /** Visual emphasis for QR customer recognition. */
   variant?: DialogVariant;
   /** Prominent line under the title (e.g. customer name). */
   highlight?: string;
+  /** Per-action icon + status rows (QR, Backup, Import, Eject, …). */
+  actions?: DialogActionStatus[];
 };
 
 type UiState = {
@@ -19,6 +36,7 @@ type UiState = {
   dialogAutoCloseSecs: number | null;
   dialogVariant: DialogVariant;
   dialogHighlight: string;
+  dialogActions: DialogActionStatus[];
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
@@ -30,13 +48,18 @@ type UiState = {
   setSettingsOpen: (open: boolean) => void;
 };
 
-export const useUiStore = create<UiState>((set) => ({
-  dialogKind: null,
+const emptyDialogFields = {
   dialogTitle: "",
   dialogMessage: "",
-  dialogAutoCloseSecs: null,
-  dialogVariant: "default",
+  dialogAutoCloseSecs: null as number | null,
+  dialogVariant: "default" as DialogVariant,
   dialogHighlight: "",
+  dialogActions: [] as DialogActionStatus[],
+};
+
+export const useUiStore = create<UiState>((set) => ({
+  dialogKind: null,
+  ...emptyDialogFields,
   loading: false,
   loadingMessage: "",
   settingsOpen: false,
@@ -44,11 +67,9 @@ export const useUiStore = create<UiState>((set) => ({
   showError: (message, title = "Fehler") =>
     set({
       dialogKind: "error",
+      ...emptyDialogFields,
       dialogTitle: title,
       dialogMessage: message,
-      dialogAutoCloseSecs: null,
-      dialogVariant: "default",
-      dialogHighlight: "",
     }),
   showSuccess: (message, title = "Erfolg", options) =>
     set({
@@ -61,24 +82,19 @@ export const useUiStore = create<UiState>((set) => ({
           : null,
       dialogVariant: options?.variant ?? "default",
       dialogHighlight: options?.highlight?.trim() ?? "",
+      dialogActions: options?.actions?.length ? [...options.actions] : [],
     }),
   showWarning: (message, title = "Hinweis") =>
     set({
       dialogKind: "warning",
+      ...emptyDialogFields,
       dialogTitle: title,
       dialogMessage: message,
-      dialogAutoCloseSecs: null,
-      dialogVariant: "default",
-      dialogHighlight: "",
     }),
   closeDialog: () =>
     set({
       dialogKind: null,
-      dialogTitle: "",
-      dialogMessage: "",
-      dialogAutoCloseSecs: null,
-      dialogVariant: "default",
-      dialogHighlight: "",
+      ...emptyDialogFields,
     }),
   setLoading: (loading, message = "Bitte warten…") =>
     set({ loading, loadingMessage: message }),

@@ -39,7 +39,7 @@ import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
 import { useKundeStore } from "./store/kundeStore";
-import { useUiStore } from "./store/uiStore";
+import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
@@ -75,7 +75,7 @@ import {
   type WorkflowProgress,
 } from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport, type AutoQrScanOutcome } from "./lib/autoQrScan";
-import { QR_SUCCESS_TITLE } from "./lib/qrSuccess";
+import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
 import { applyMonotonicPercent, resolveProgressLabel, shouldClearTaskProgress, taskProgressLabel } from "./lib/progressLabels";
@@ -183,6 +183,7 @@ function App() {
   const dialogAutoCloseSecs = useUiStore((s) => s.dialogAutoCloseSecs);
   const dialogVariant = useUiStore((s) => s.dialogVariant);
   const dialogHighlight = useUiStore((s) => s.dialogHighlight);
+  const dialogActions = useUiStore((s) => s.dialogActions);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -326,10 +327,27 @@ function App() {
     };
   }
 
-  async function importPathsIntoApp(
-    paths: string[],
-  ): Promise<{ note: string; qr: AutoQrScanOutcome | null }> {
-    if (paths.length === 0) return { note: "", qr: null };
+  async function importPathsIntoApp(paths: string[]): Promise<{
+    importAction: DialogActionStatus;
+    qrAction: DialogActionStatus | null;
+    qrHit: AutoQrScanOutcome | null;
+  }> {
+    const emptyImport = (): {
+      importAction: DialogActionStatus;
+      qrAction: DialogActionStatus | null;
+      qrHit: AutoQrScanOutcome | null;
+    } => ({
+      importAction: {
+        kind: "import",
+        label: "Import",
+        tone: "skipped",
+        summary: "Keine Dateien.",
+      },
+      qrAction: null,
+      qrHit: null,
+    });
+
+    if (paths.length === 0) return emptyImport();
 
     const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
     const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
@@ -357,42 +375,91 @@ function App() {
       setMediaTab("video");
     }
 
+    const importSummary =
+      `${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
+      (result.skipped ? ` · ${result.skipped} übersprungen` : "");
+
+    const importAction: DialogActionStatus = {
+      kind: "import",
+      label: "Import",
+      tone: "success",
+      summary: importSummary,
+    };
+
     const willAutoScan =
       (config?.qr_check_enabled && newVideoPaths.length > 0) ||
       (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
 
-    let qr: AutoQrScanOutcome | null = null;
-    let qrFailNote = "";
-    if (willAutoScan) {
-      useSdStore.getState().setWorkflowProgress(null);
-      setLoading(true, "QR-Scan…");
-      try {
-        qr = await withQrScanProgress(
-          [...newVideoPaths, ...newPhotoPaths],
-          () =>
-            runAutoQrAfterImport({
-              videoPaths: newVideoPaths,
-              photoPaths: newPhotoPaths,
-              onBeforeRemoveVideo: (p) => {
-                useVideoStore.getState().clearCutMarksFor([p]);
-                void discardVideoCutUndoForPath(p);
-              },
-            }),
-        );
-      } catch (qrErr) {
-        qrFailNote = `Auto-QR fehlgeschlagen: ${String(qrErr)}`;
-      }
+    if (!willAutoScan) {
+      return { importAction, qrAction: null, qrHit: null };
     }
 
-    const note =
-      `Import: ${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
-      (result.skipped ? `, ${result.skipped} übersprungen` : "") +
-      (qrFailNote ? `\n${qrFailNote}` : "") +
-      (qr && qr.attempted && !qr.found && qr.message
-        ? `\nAuto-QR: ${qr.message}`
-        : "");
+    useSdStore.getState().setWorkflowProgress(null);
+    setLoading(true, "QR-Scan…");
+    try {
+      const qr = await withQrScanProgress(
+        [...newVideoPaths, ...newPhotoPaths],
+        () =>
+          runAutoQrAfterImport({
+            videoPaths: newVideoPaths,
+            photoPaths: newPhotoPaths,
+            onBeforeRemoveVideo: (p) => {
+              useVideoStore.getState().clearCutMarksFor([p]);
+              void discardVideoCutUndoForPath(p);
+            },
+          }),
+      );
 
-    return { note, qr: qr?.attempted && qr.found ? qr : null };
+      if (!qr.attempted) {
+        return { importAction, qrAction: null, qrHit: null };
+      }
+
+      if (qr.found) {
+        const src = fileBaseName(qr.source_path);
+        const detailLines = qr.message
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith("Kundendaten wurden") && !l.startsWith("QR-Code erkannt"));
+        return {
+          importAction,
+          qrAction: {
+            kind: "qr",
+            label: "QR-Code",
+            tone: "success",
+            summary: "Kundendaten übernommen",
+            detail: detailLines.length
+              ? detailLines.join("\n")
+              : src
+                ? `Quelle: ${src}`
+                : undefined,
+          },
+          qrHit: qr,
+        };
+      }
+
+      return {
+        importAction,
+        qrAction: {
+          kind: "qr",
+          label: "QR-Code",
+          tone: "warning",
+          summary: qr.message || "Kein QR-Code gefunden.",
+        },
+        qrHit: null,
+      };
+    } catch (qrErr) {
+      return {
+        importAction,
+        qrAction: {
+          kind: "qr",
+          label: "QR-Code",
+          tone: "error",
+          summary: "Scan fehlgeschlagen",
+          detail: String(qrErr),
+        },
+        qrHit: null,
+      };
+    }
   }
 
   /** Unified SD pipeline: backup → import → optional eject; clear only after successful backup.
@@ -426,7 +493,7 @@ function App() {
     hooks?.onStart?.();
     useSdStore.getState().setWorkflowActive(true);
     setLoading(true, "SD-Verarbeitung…");
-    const notes: string[] = [];
+    const statusActions: DialogActionStatus[] = [];
     let qrHit: AutoQrScanOutcome | null = null;
 
     try {
@@ -445,30 +512,34 @@ function App() {
           );
           return true;
         }
-        notes.push(
-          `Backup OK: ${res.copied_count} Dateien` +
-            (res.backup_path ? `\n${res.backup_path}` : "") +
-            (res.secondary_backup_path
-              ? `\nZweiter Pfad: ${res.secondary_backup_path}`
-              : "") +
-            (res.skipped_count ? `\nÜbersprungen: ${res.skipped_count}` : ""),
-        );
-        if (res.secondary_warning) {
-          showWarning(res.secondary_warning);
-        }
+        const backupDetails = [
+          res.backup_path ?? "",
+          res.secondary_backup_path
+            ? `Zweiter Pfad: ${res.secondary_backup_path}`
+            : "",
+          res.skipped_count ? `Übersprungen: ${res.skipped_count}` : "",
+          doClear
+            ? res.copied_count > 0
+              ? "SD nach Backup bereinigt."
+              : "SD nicht bereinigt (keine Dateien im Backup)."
+            : "",
+          res.secondary_warning?.trim() ?? "",
+        ]
+          .map((s) => s.trim())
+          .filter(Boolean);
+        statusActions.push({
+          kind: "backup",
+          label: "Backup",
+          tone: res.secondary_warning?.trim() ? "warning" : "success",
+          summary: `${res.copied_count} Dateien kopiert`,
+          detail: backupDetails.length ? backupDetails.join("\n") : undefined,
+        });
         // Import from backup copies so clear-after-backup is safe
         if (doImport) {
           importPaths =
             res.copied_dest_paths.length > 0
               ? res.copied_dest_paths
               : selectedPaths ?? [];
-        }
-        if (doClear) {
-          if (res.copied_count > 0) {
-            notes.push("SD nach Backup bereinigt.");
-          } else {
-            notes.push("SD nicht bereinigt (keine Dateien im Backup).");
-          }
         }
       } else if (doImport && !selectedPaths) {
         const listed = await listSdFiles(drive);
@@ -477,15 +548,21 @@ function App() {
 
       if (doImport) {
         if (importPaths.length === 0) {
-          notes.push("Import: keine Dateien.");
+          statusActions.push({
+            kind: "import",
+            label: "Import",
+            tone: "skipped",
+            summary: "Keine Dateien.",
+          });
         } else {
           setPhase("importing");
           useSdStore.getState().setBackupProgress(null);
           useSdStore.getState().setWorkflowProgress(null);
           setLoading(true, "Importiere SD-Dateien…");
-          const { note: importNote, qr } = await importPathsIntoApp(importPaths);
-          if (importNote) notes.push(importNote);
-          if (qr) qrHit = qr;
+          const imported = await importPathsIntoApp(importPaths);
+          statusActions.push(imported.importAction);
+          if (imported.qrAction) statusActions.push(imported.qrAction);
+          if (imported.qrHit) qrHit = imported.qrHit;
         }
       }
 
@@ -493,25 +570,51 @@ function App() {
         setLoading(true, "SD-Karte wird ausgeworfen…");
         try {
           await ejectSdCard(drive);
-          notes.push("SD-Karte ausgeworfen.");
+          statusActions.push({
+            kind: "eject",
+            label: "Auswerfen",
+            tone: "success",
+            summary: "SD-Karte ausgeworfen",
+            detail: drive,
+          });
         } catch (e) {
-          showWarning(
-            `Auswerfen fehlgeschlagen:\n${String(e)}\n\nBitte die Karte manuell sicher entfernen.`,
-          );
+          statusActions.push({
+            kind: "eject",
+            label: "Auswerfen",
+            tone: "error",
+            summary: "Auswerfen fehlgeschlagen",
+            detail: `${String(e)}\nBitte die Karte manuell sicher entfernen.`,
+          });
         }
       }
 
-      if (qrHit) {
-        const body = [qrHit.message, ...notes].filter(Boolean).join("\n\n");
-        showSuccess(body, qrHit.successTitle ?? QR_SUCCESS_TITLE, {
-          ...(qrHit.successOptions ?? {
-            variant: "qr",
-            highlight: qrHit.kundeName || "Kunde erkannt",
-          }),
+      if (statusActions.length) {
+        // Show QR first when present, then backup / import / eject.
+        const order: Record<DialogActionStatus["kind"], number> = {
+          qr: 0,
+          backup: 1,
+          import: 2,
+          eject: 3,
+        };
+        statusActions.sort((a, b) => order[a.kind] - order[b.kind]);
+
+        const hasError = statusActions.some((a) => a.tone === "error");
+        const title = hasError
+          ? "Teilweise erfolgreich"
+          : qrHit
+            ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
+            : "Erfolg";
+
+        showSuccess("", title, {
+          ...(qrHit
+            ? (qrHit.successOptions ?? {
+                variant: "qr" as const,
+                highlight: qrHit.kundeName || "Kunde erkannt",
+              })
+            : {}),
           autoCloseSecs: 10,
+          actions: statusActions,
         });
-      } else if (notes.length) {
-        showSuccess(notes.join("\n\n"), "Erfolg", { autoCloseSecs: 10 });
       }
       return true;
     } catch (e) {
@@ -1470,6 +1573,7 @@ function App() {
         autoCloseSecs={dialogAutoCloseSecs}
         variant={dialogVariant}
         highlight={dialogHighlight}
+        actions={dialogActions}
         onClose={closeDialog}
       />
       <CreateSuccessDialog

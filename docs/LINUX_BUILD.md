@@ -288,6 +288,7 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 | Encode fails / no x264 | System ffmpeg copied into resources | Use static sidecar download |
 | Intro text missing | Font not found | Bundle TTF + `fontfile=` |
 | SD never appears | Mount outside scanned roots | Check `/run/media/$USER`; harden monitor |
+| SD eject: `undefined symbol: g_once_init_leave_pointer` | AppImage `LD_LIBRARY_PATH` leaks into `udisksctl` | Fixed via `apply_host_library_path` when spawning host tools |
 | Updater “nicht unterstützt” | Linux stubs still present | Implement pick/launch for AppImage |
 | NVENC not selected | Detection Windows-only or sidecar without nvenc | Extend `hw_accel`; ship capable FFmpeg |
 
