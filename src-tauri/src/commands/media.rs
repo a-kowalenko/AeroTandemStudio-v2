@@ -10,6 +10,7 @@ use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
 use crate::storage::working_session;
+use crate::util::file_times::get_mtime_timestamp;
 use crate::video::probe::format_camera_label;
 
 /// Expand file/folder paths into a flat list of media files (videos + photos).
@@ -125,13 +126,22 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             .into_iter()
             .filter(|p| is_photo_path(p))
             .collect();
-        // Capture-time order (not basename) so DJI series with identical names stay sequential.
+        // Same time basis as SD "Nach Datum": EXIF, else mtime (not Windows copy-creation).
         let mut sorted = photo_paths;
         sorted.sort_by(|a, b| {
-            let ea = get_photo_display_epoch(Path::new(a), None);
-            let eb = get_photo_display_epoch(Path::new(b), None);
+            let pa = Path::new(a);
+            let pb = Path::new(b);
+            let ma = get_mtime_timestamp(pa);
+            let mb = get_mtime_timestamp(pb);
+            let ea = get_photo_display_epoch(pa, ma);
+            let eb = get_photo_display_epoch(pb, mb);
             ea.partial_cmp(&eb)
                 .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    ma.unwrap_or(0.0)
+                        .partial_cmp(&mb.unwrap_or(0.0))
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
                 .then_with(|| a.cmp(b))
         });
         if sorted.is_empty() {

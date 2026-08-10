@@ -125,39 +125,60 @@ pub fn resolve_video_display_epoch(
     }
     if let Some(alt) = alternate_original_path {
         if alt != copy_path {
-            if let Some(ts) = get_creation_timestamp(alt) {
+            if let Some(ts) = filesystem_capture_epoch(alt) {
                 return ts;
             }
         }
     }
-    get_creation_timestamp(copy_path)
-        .or_else(|| get_mtime_timestamp(copy_path))
-        .unwrap_or(0.0)
+    // Prefer mtime over creation: after backup/copy, Windows `created` is the copy
+    // instant (walk order), while mtime is preserved from the SD card (matches the
+    // "Vorher bestätigen" date sort).
+    filesystem_capture_epoch(copy_path).unwrap_or(0.0)
 }
 
 pub fn get_photo_display_epoch(photo_path: &Path, source_import_epoch: Option<f64>) -> f64 {
     resolve_video_display_epoch(photo_path, source_import_epoch, None)
 }
 
-/// Capture instant for naming: EXIF (+ SubSec), else filesystem creation/mtime, else now.
+/// mtime first, then creation — same priority as the SD confirm dialog fallback.
+fn filesystem_capture_epoch(path: &Path) -> Option<f64> {
+    get_mtime_timestamp(path).or_else(|| get_creation_timestamp(path))
+}
+
+fn ms_digits_from_epoch(epoch: f64) -> String {
+    let frac = epoch - epoch.floor();
+    format!("{:03}", ((frac * 1000.0).round() as u32).min(999))
+}
+
+/// When EXIF has no SubSec, borrow sub-second digits from mtime so bursts in the
+/// same second stay distinguishable and sortable by filename.
+fn refine_ms_with_mtime(photo_path: &Path, ms: String) -> String {
+    if ms != "000" {
+        return ms;
+    }
+    match get_mtime_timestamp(photo_path).map(ms_digits_from_epoch) {
+        Some(m) if m != "000" => m,
+        _ => ms,
+    }
+}
+
+/// Capture instant for naming: EXIF (+ SubSec), else filesystem mtime/creation, else now.
 fn photo_capture_parts(photo_path: &Path) -> (NaiveDateTime, String) {
     if let Some((epoch, ms)) = get_exif_capture_epoch(photo_path) {
         let secs = epoch.floor() as i64;
         if let Some(dt) = Local.timestamp_opt(secs, 0).single() {
+            let ms = refine_ms_with_mtime(photo_path, ms);
             return (dt.naive_local(), ms);
         }
     }
-    let epoch = get_creation_timestamp(photo_path)
-        .or_else(|| get_mtime_timestamp(photo_path))
-        .unwrap_or_else(|| {
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_secs_f64())
-                .unwrap_or(0.0)
-        });
+    let epoch = filesystem_capture_epoch(photo_path).unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0)
+    });
     let secs = epoch.floor() as i64;
-    let frac = epoch - secs as f64;
-    let ms = format!("{:03}", ((frac * 1000.0).round() as u32).min(999));
+    let ms = ms_digits_from_epoch(epoch);
     let dt = Local
         .timestamp_opt(secs, 0)
         .single()
@@ -247,6 +268,7 @@ pub fn is_chrono_photo_filename(filename: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::util::file_times::get_mtime_timestamp;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -256,6 +278,25 @@ mod tests {
         writeln!(f, "x").unwrap();
         let epoch = resolve_video_display_epoch(f.path(), None, None);
         assert!(epoch > 0.0);
+    }
+
+    #[test]
+    fn filesystem_fallback_matches_mtime_when_no_exif() {
+        let mut f = NamedTempFile::new().unwrap();
+        writeln!(f, "x").unwrap();
+        let epoch = resolve_video_display_epoch(f.path(), None, None);
+        let mtime = get_mtime_timestamp(f.path()).unwrap();
+        // No EXIF on a text temp file → must use mtime (not a divergent creation stamp).
+        assert!(
+            (epoch - mtime).abs() < 1.0,
+            "epoch={epoch} mtime={mtime}"
+        );
+    }
+
+    #[test]
+    fn ms_digits_from_epoch_uses_fraction() {
+        assert_eq!(ms_digits_from_epoch(1_700_000_000.123), "123");
+        assert_eq!(ms_digits_from_epoch(1_700_000_000.0), "000");
     }
 
     #[test]
