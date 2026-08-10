@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HardDrive, Unplug } from "lucide-react";
+import { HardDrive } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -19,6 +19,22 @@ import {
   usefulVolumeName,
 } from "../lib/sdDriveLabel";
 import { cn } from "../lib/utils";
+
+/** Classic macOS / SF Symbol eject glyph (triangle over bar). */
+function EjectIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path d="M12 4.2 4.85 14.4A1.1 1.1 0 0 0 5.78 16h12.44a1.1 1.1 0 0 0 .93-1.6L12 4.2Z" />
+      <rect x="5.25" y="17.6" width="13.5" height="2.35" rx="0.7" />
+    </svg>
+  );
+}
 
 type Props = {
   className?: string;
@@ -241,7 +257,7 @@ export function SdDriveSelector({
                     void handleEject(d.drive);
                   }}
                 >
-                  <Unplug
+                  <EjectIcon
                     className={cn("h-3.5 w-3.5", isEjecting && "animate-pulse")}
                   />
                 </button>
