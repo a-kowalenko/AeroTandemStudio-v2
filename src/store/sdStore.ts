@@ -18,6 +18,8 @@ type SdPhase =
 type SdState = {
   monitoring: boolean;
   phase: SdPhase;
+  /** True only while `runSdWorkflow` is in flight — gates shared progress events. */
+  workflowActive: boolean;
   drives: SdDriveInfo[];
   activeDrive: string | null;
   pendingInsert: SdInsertedPayload | null;
@@ -32,6 +34,7 @@ type SdState = {
   setMonitoring: (v: boolean) => void;
   setDrives: (drives: SdDriveInfo[]) => void;
   setPhase: (phase: SdPhase) => void;
+  setWorkflowActive: (active: boolean) => void;
   setActiveDrive: (drive: string | null) => void;
   setPendingInsert: (payload: SdInsertedPayload | null) => void;
   setBackupProgress: (p: BackupProgress | null) => void;
@@ -49,6 +52,7 @@ type SdState = {
 export const useSdStore = create<SdState>((set) => ({
   monitoring: false,
   phase: "idle",
+  workflowActive: false,
   drives: [],
   activeDrive: null,
   pendingInsert: null,
@@ -65,6 +69,7 @@ export const useSdStore = create<SdState>((set) => ({
     set({ monitoring, phase: monitoring ? "monitoring" : "idle" }),
   setDrives: (drives) => set({ drives }),
   setPhase: (phase) => set({ phase }),
+  setWorkflowActive: (workflowActive) => set({ workflowActive }),
   setActiveDrive: (activeDrive) => set({ activeDrive }),
   setPendingInsert: (pendingInsert) => set({ pendingInsert }),
   setBackupProgress: (backupProgress) => set({ backupProgress }),

@@ -424,6 +424,7 @@ function App() {
     }
 
     hooks?.onStart?.();
+    useSdStore.getState().setWorkflowActive(true);
     setLoading(true, "SD-Verarbeitung…");
     const notes: string[] = [];
     let qrHit: AutoQrScanOutcome | null = null;
@@ -518,6 +519,7 @@ function App() {
       return true;
     } finally {
       setLoading(false);
+      useSdStore.getState().setWorkflowActive(false);
       setPhase("monitoring");
       useSdStore.getState().setBackupProgress(null);
       useSdStore.getState().setWorkflowProgress(null);

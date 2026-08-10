@@ -74,6 +74,14 @@ export function useSdCardMonitor(opts?: {
   useEffect(() => {
     const unlisteners: Array<() => void> = [];
 
+    // Heal "Import…" stuck from media import emitting the shared SD progress event.
+    const { workflowActive, phase } = useSdStore.getState();
+    if (!workflowActive && (phase === "importing" || phase === "clearing")) {
+      setPhase("monitoring");
+      setWorkflowProgress(null);
+      setBackupProgress(null);
+    }
+
     listen<SdInsertedPayload>("sd-card-inserted", async (event) => {
       const payload = event.payload;
       setPendingInsert(payload);
@@ -134,6 +142,17 @@ export function useSdCardMonitor(opts?: {
     }).then((fn) => unlisteners.push(fn));
 
     listen<WorkflowProgress>("sd-workflow-progress", (event) => {
+      // Shared by media import_videos/photos AND SD clear/import. Only the SD
+      // workflow may own the header phase — otherwise "Import…" sticks forever.
+      const { workflowActive, phase } = useSdStore.getState();
+      if (!workflowActive) {
+        if (phase === "importing" || phase === "clearing") {
+          setPhase("monitoring");
+          setWorkflowProgress(null);
+          setBackupProgress(null);
+        }
+        return;
+      }
       const p = event.payload;
       if (p.stage === "clear") setPhase("clearing");
       else if (p.stage === "import") setPhase("importing");
