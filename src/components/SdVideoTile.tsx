@@ -231,7 +231,7 @@ export function SdVideoTile({
       )}
     >
       <div
-        className="relative flex aspect-video items-center justify-center bg-black/90"
+        className="relative isolate flex aspect-video items-center justify-center bg-black/90"
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}
         onClick={(e) => {
@@ -241,7 +241,7 @@ export function SdVideoTile({
       >
         <div
           data-controls
-          className="absolute top-1.5 left-1.5 z-10"
+          className="absolute top-1.5 left-1.5 z-10 [transform:translateZ(1px)]"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
@@ -256,7 +256,7 @@ export function SdVideoTile({
           <video
             key={src}
             ref={videoRef}
-            className="h-full w-full object-cover"
+            className="relative z-0 h-full w-full object-cover"
             src={src}
             playsInline
             muted={muted}
@@ -299,15 +299,16 @@ export function SdVideoTile({
         )}
 
         {loadError && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/50 px-2 text-center text-[10px] text-white/90">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/50 px-2 text-center text-[10px] text-white/90 [transform:translateZ(1px)]">
             Keine Vorschau
           </div>
         )}
 
-        {/* Center play/pause — container ignores hits so clicks elsewhere still select */}
+        {/* Center play/pause — container ignores hits so clicks elsewhere still select.
+            z-10 + translateZ: keep overlays above WKWebView video compositing layers. */}
         <div
           className={cn(
-            "pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity",
+            "pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity [transform:translateZ(1px)]",
             showControls ? "opacity-100" : "opacity-0",
           )}
         >
@@ -330,7 +331,7 @@ export function SdVideoTile({
         <div
           data-controls
           className={cn(
-            "absolute top-1 right-1 flex items-center gap-0.5 transition-opacity",
+            "absolute top-1 right-1 z-10 flex items-center gap-0.5 transition-opacity [transform:translateZ(1px)]",
             showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(e) => e.stopPropagation()}
@@ -392,7 +393,7 @@ export function SdVideoTile({
         <div
           data-controls
           className={cn(
-            "absolute inset-x-0 bottom-0 transition-opacity",
+            "absolute inset-x-0 bottom-0 z-10 transition-opacity [transform:translateZ(1px)]",
             showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(e) => e.stopPropagation()}
