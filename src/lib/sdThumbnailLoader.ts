@@ -82,12 +82,21 @@ export class SdThumbnailLoader {
     this.flush();
   }
 
-  setVisible(path: string, visible: boolean) {
+  /**
+   * Mark a path as in/out of viewport. When `upgradeToHq` is false (details rows),
+   * only LQ is requested — enough for small list thumbs and cheaper while scrolling.
+   */
+  setVisible(
+    path: string,
+    visible: boolean,
+    opts?: { upgradeToHq?: boolean },
+  ) {
     if (this.stopped) return;
+    const upgradeToHq = opts?.upgradeToHq !== false;
     if (visible) {
       this.visible.add(path);
       this.enqueue(path, "lq", 10);
-      this.scheduleHq(path);
+      if (upgradeToHq) this.scheduleHq(path);
     } else {
       this.visible.delete(path);
       const t = this.hqTimers.get(path);
@@ -100,6 +109,13 @@ export class SdThumbnailLoader {
       this.pending.delete(hqKey);
     }
     this.pump();
+  }
+
+  /** Clear viewport tracking (e.g. when switching thumbnail ↔ details). */
+  releaseAllVisible() {
+    for (const path of [...this.visible]) {
+      this.setVisible(path, false);
+    }
   }
 
   private scheduleHq(path: string) {

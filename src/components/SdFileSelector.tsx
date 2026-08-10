@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,10 @@ type Props = {
 type FilterType = "all" | "video" | "photo";
 type SortKey = "date" | "name" | "size";
 type ViewMode = "thumbnail" | "details";
+type SelectMode = "toggle" | "range";
+type MarqueeMod = "replace" | "add" | "remove";
+
+const MARQUEE_THRESHOLD_PX = 7;
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -107,16 +111,51 @@ export function SdFileSelector({
     x1: number;
     y1: number;
   } | null>(null);
+  /** True while marquee is past the movement threshold. */
+  const [selectionDragging, setSelectionDragging] = useState(false);
   /** At most one video tile may be actively previewing / playing. */
   const [activeVideoPath, setActiveVideoPath] = useState<string | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  /** Grid element state — Radix Presence mounts dialog content one frame late; ref-only misses IO setup. */
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const [detailsEl, setDetailsEl] = useState<HTMLDivElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
   const loaderRef = useRef(createSdThumbnailLoader());
+  /** Last non-range select path — Shift-range is resolved against `filtered`. */
+  const anchorPathRef = useRef<string | null>(null);
+  const pendingMarqueeRef = useRef<{
+    pointerId: number;
+    x0: number;
+    y0: number;
+    clientX0: number;
+    clientY0: number;
+    mod: MarqueeMod;
+  } | null>(null);
+  const marqueeModRef = useRef<MarqueeMod>("replace");
+  /** Suppress tile click after a completed marquee gesture. */
+  const suppressClickRef = useRef(false);
+  const dragBoxRef = useRef<typeof dragBox>(null);
+  /** Skip the following checkbox onCheckedChange after Shift-range via pointer. */
+  const shiftCheckboxRef = useRef(false);
+
+  const attachGridRef = useCallback((el: HTMLDivElement | null) => {
+    gridRef.current = el;
+    setGridEl((prev) => (prev === el ? prev : el));
+  }, []);
+
+  const attachDetailsRef = useCallback((el: HTMLDivElement | null) => {
+    setDetailsEl((prev) => (prev === el ? prev : el));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
     setActiveVideoPath(null);
+    anchorPathRef.current = null;
+    pendingMarqueeRef.current = null;
+    dragBoxRef.current = null;
+    setDragBox(null);
+    setSelectionDragging(false);
     setActions({
       backup: defaultActions?.backup ?? true,
       import: defaultActions?.import ?? true,
@@ -182,27 +221,33 @@ export function SdFileSelector({
     return sum / (1024 * 1024);
   }, [files, selected]);
 
-  // Eager first page + IntersectionObserver for the rest
+  // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
+  // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
   useEffect(() => {
-    if (!open || viewMode !== "thumbnail") return;
-    const loader = loaderRef.current;
-    // Always kick the first screen without waiting for IO.
-    for (const file of filtered.slice(0, 32)) {
-      loader.setVisible(file.path, true);
-    }
-
-    const root = gridRef.current;
+    if (!open) return;
+    const root = viewMode === "thumbnail" ? gridEl : detailsEl;
     if (!root) return;
+
+    const loader = loaderRef.current;
+    const upgradeToHq = viewMode === "thumbnail";
+    const eagerCount = viewMode === "thumbnail" ? 32 : 28;
+    for (const file of filtered.slice(0, eagerCount)) {
+      loader.setVisible(file.path, true, { upgradeToHq });
+    }
 
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const path = (entry.target as HTMLElement).dataset.thumbPath;
           if (!path) continue;
-          loader.setVisible(path, entry.isIntersecting);
+          loader.setVisible(path, entry.isIntersecting, { upgradeToHq });
         }
       },
-      { root, rootMargin: "240px 0px", threshold: 0 },
+      {
+        root,
+        rootMargin: viewMode === "thumbnail" ? "240px 0px" : "160px 0px",
+        threshold: 0,
+      },
     );
 
     const observed = new WeakSet<Element>();
@@ -222,27 +267,76 @@ export function SdFileSelector({
       window.clearTimeout(t);
       mo.disconnect();
       io.disconnect();
+      loader.releaseAllVisible();
     };
-  }, [open, viewMode, filtered]);
+  }, [open, viewMode, filtered, gridEl, detailsEl]);
 
-  function toggle(path: string) {
+  function selectPath(path: string, mode: SelectMode) {
     if (submitting) return;
+    if (suppressClickRef.current) return;
+
+    if (mode === "range") {
+      const anchor = anchorPathRef.current;
+      const startIdx =
+        anchor != null ? filtered.findIndex((f) => f.path === anchor) : -1;
+      const endIdx = filtered.findIndex((f) => f.path === path);
+      if (startIdx < 0 || endIdx < 0) {
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(path)) next.delete(path);
+          else next.add(path);
+          return next;
+        });
+        anchorPathRef.current = path;
+        return;
+      }
+      const lo = Math.min(startIdx, endIdx);
+      const hi = Math.max(startIdx, endIdx);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = lo; i <= hi; i++) next.add(filtered[i].path);
+        return next;
+      });
+      return;
+    }
+
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(path)) next.delete(path);
       else next.add(path);
       return next;
     });
+    anchorPathRef.current = path;
+  }
+
+  /** Checkbox: Shift-range on pointerdown; plain click / Space via onCheckedChange. */
+  function onCheckboxPointerDown(path: string, e: React.PointerEvent) {
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    shiftCheckboxRef.current = true;
+    selectPath(path, "range");
+  }
+
+  function onCheckboxCheckedChange(path: string) {
+    if (shiftCheckboxRef.current) {
+      shiftCheckboxRef.current = false;
+      return;
+    }
+    selectPath(path, "toggle");
   }
 
   function selectAllFiltered() {
     if (submitting) return;
     setSelected(new Set(filtered.map((f) => f.path)));
+    anchorPathRef.current =
+      filtered.length > 0 ? filtered[filtered.length - 1].path : null;
   }
 
   function clearSelection() {
     if (submitting) return;
     setSelected(new Set());
+    anchorPathRef.current = null;
   }
 
   function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
@@ -259,52 +353,155 @@ export function SdFileSelector({
     });
   }
 
+  function gridLocalPoint(e: { clientX: number; clientY: number }) {
+    const el = gridRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left + el.scrollLeft,
+      y: e.clientY - rect.top + el.scrollTop,
+    };
+  }
+
+  function marqueeModFromEvent(e: {
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+  }): MarqueeMod {
+    if (e.altKey) return "remove";
+    if (e.ctrlKey || e.metaKey) return "add";
+    return "replace";
+  }
+
+  function collectMarqueeHits(box: {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+  }): string[] {
+    const left = Math.min(box.x0, box.x1);
+    const right = Math.max(box.x0, box.x1);
+    const top = Math.min(box.y0, box.y1);
+    const bottom = Math.max(box.y0, box.y1);
+    if (right - left <= 4 || bottom - top <= 4) return [];
+
+    const gridRect = gridRef.current?.getBoundingClientRect();
+    if (!gridRect) return [];
+    const scrollLeft = gridRef.current?.scrollLeft ?? 0;
+    const scrollTop = gridRef.current?.scrollTop ?? 0;
+    const hits: string[] = [];
+    for (const [path, el] of tileRefs.current) {
+      const r = el.getBoundingClientRect();
+      const tx = r.left - gridRect.left + scrollLeft;
+      const ty = r.top - gridRect.top + scrollTop;
+      const overlaps =
+        tx < right && tx + r.width > left && ty < bottom && ty + r.height > top;
+      if (overlaps) hits.push(path);
+    }
+    return hits;
+  }
+
+  function commitMarquee(mod: MarqueeMod, hits: string[]) {
+    if (hits.length === 0) return;
+    setSelected((prev) => {
+      if (mod === "replace") return new Set(hits);
+      if (mod === "add") {
+        const next = new Set(prev);
+        for (const p of hits) next.add(p);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const p of hits) next.delete(p);
+      return next;
+    });
+    anchorPathRef.current = hits[hits.length - 1] ?? null;
+  }
+
   function onGridPointerDown(e: React.PointerEvent) {
     if (submitting || e.button !== 0 || viewMode !== "thumbnail") return;
     const target = e.target as HTMLElement;
-    if (target.closest("[data-tile]")) return;
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft ?? 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop ?? 0);
-    setDragBox({ x0: x, y0: y, x1: x, y1: y });
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (target.closest("[data-controls]")) return;
+    if (target.closest("[data-no-marquee]")) return;
+    if (target.closest('[role="checkbox"]')) return;
+    if (target.closest("[data-sd-immersive-overlay]")) return;
+
+    const onMarqueeOk = target.closest("[data-marquee-ok]");
+    const onTile = target.closest("[data-tile]");
+    // Empty chrome always; tiles only via data-marquee-ok (photo / video caption).
+    if (onTile && !onMarqueeOk) return;
+
+    const pt = gridLocalPoint(e);
+    if (!pt) return;
+    pendingMarqueeRef.current = {
+      pointerId: e.pointerId,
+      x0: pt.x,
+      y0: pt.y,
+      clientX0: e.clientX,
+      clientY0: e.clientY,
+      mod: marqueeModFromEvent(e),
+    };
   }
 
   function onGridPointerMove(e: React.PointerEvent) {
-    if (!dragBox) return;
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const x = e.clientX - rect.left + (gridRef.current?.scrollLeft ?? 0);
-    const y = e.clientY - rect.top + (gridRef.current?.scrollTop ?? 0);
-    setDragBox({ ...dragBox, x1: x, y1: y });
+    const pending = pendingMarqueeRef.current;
+    if (pending && !dragBoxRef.current) {
+      if (e.pointerId !== pending.pointerId) return;
+      const dx = Math.abs(e.clientX - pending.clientX0);
+      const dy = Math.abs(e.clientY - pending.clientY0);
+      if (dx > MARQUEE_THRESHOLD_PX || dy > MARQUEE_THRESHOLD_PX) {
+        const pt = gridLocalPoint(e);
+        if (!pt) return;
+        marqueeModRef.current = pending.mod;
+        suppressClickRef.current = true;
+        const next = {
+          x0: pending.x0,
+          y0: pending.y0,
+          x1: pt.x,
+          y1: pt.y,
+        };
+        dragBoxRef.current = next;
+        setSelectionDragging(true);
+        setDragBox(next);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+
+    if (!dragBoxRef.current) return;
+    const pt = gridLocalPoint(e);
+    if (!pt) return;
+    const next = { ...dragBoxRef.current, x1: pt.x, y1: pt.y };
+    dragBoxRef.current = next;
+    setDragBox(next);
+  }
+
+  function endMarqueeGesture(activeBox: typeof dragBox) {
+    pendingMarqueeRef.current = null;
+    dragBoxRef.current = null;
+    if (activeBox) {
+      const hits = collectMarqueeHits(activeBox);
+      commitMarquee(marqueeModRef.current, hits);
+      setDragBox(null);
+      setSelectionDragging(false);
+      // Keep suppress until after the synthetic click from the originating element.
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      return;
+    }
+    suppressClickRef.current = false;
   }
 
   function onGridPointerUp() {
-    if (!dragBox) return;
-    const left = Math.min(dragBox.x0, dragBox.x1);
-    const right = Math.max(dragBox.x0, dragBox.x1);
-    const top = Math.min(dragBox.y0, dragBox.y1);
-    const bottom = Math.max(dragBox.y0, dragBox.y1);
-    if (right - left > 4 && bottom - top > 4) {
-      const gridRect = gridRef.current?.getBoundingClientRect();
-      const scrollLeft = gridRef.current?.scrollLeft ?? 0;
-      const scrollTop = gridRef.current?.scrollTop ?? 0;
-      const hit = new Set(selected);
-      for (const [path, el] of tileRefs.current) {
-        const r = el.getBoundingClientRect();
-        if (!gridRect) continue;
-        const tx = r.left - gridRect.left + scrollLeft;
-        const ty = r.top - gridRect.top + scrollTop;
-        const tw = r.width;
-        const th = r.height;
-        const overlaps =
-          tx < right && tx + tw > left && ty < bottom && ty + th > top;
-        if (overlaps) hit.add(path);
-      }
-      setSelected(hit);
-    }
+    endMarqueeGesture(dragBoxRef.current);
+  }
+
+  function onGridPointerCancel() {
+    pendingMarqueeRef.current = null;
+    dragBoxRef.current = null;
     setDragBox(null);
+    setSelectionDragging(false);
+    suppressClickRef.current = false;
   }
 
   const title =
@@ -474,14 +671,16 @@ export function SdFileSelector({
 
         {viewMode === "thumbnail" ? (
           <div
-            ref={gridRef}
+            ref={attachGridRef}
             className={cn(
-              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2",
+              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2 pr-3 [scrollbar-gutter:stable]",
               submitting && "pointer-events-none opacity-70",
+              selectionDragging && "select-none",
             )}
             onPointerDown={onGridPointerDown}
             onPointerMove={onGridPointerMove}
             onPointerUp={onGridPointerUp}
+            onPointerCancel={onGridPointerCancel}
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
               {filtered.map((file) => {
@@ -503,11 +702,14 @@ export function SdFileSelector({
                       selected={isSel}
                       alreadyProcessed={file.already_processed}
                       isActive={activeVideoPath === file.path}
+                      selectionLocked={selectionDragging}
                       onActivate={() => setActiveVideoPath(file.path)}
                       onDeactivate={() =>
                         setActiveVideoPath((prev) => (prev === file.path ? null : prev))
                       }
-                      onToggleSelect={() => toggle(file.path)}
+                      onSelect={(ev) =>
+                        selectPath(file.path, ev.shiftKey ? "range" : "toggle")
+                      }
                       tileRef={setTileEl}
                     />
                   );
@@ -518,9 +720,12 @@ export function SdFileSelector({
                     key={file.path}
                     type="button"
                     data-tile
+                    data-marquee-ok=""
                     data-thumb-path={file.path}
                     ref={setTileEl}
-                    onClick={() => toggle(file.path)}
+                    onClick={(e) =>
+                      selectPath(file.path, e.shiftKey ? "range" : "toggle")
+                    }
                     className={cn(
                       "relative flex flex-col overflow-hidden rounded-md text-left transition",
                       isSel
@@ -532,12 +737,18 @@ export function SdFileSelector({
                     <div className="relative flex aspect-video items-center justify-center bg-muted/40">
                       <div
                         className="absolute top-1.5 left-1.5 z-10"
+                        data-no-marquee=""
                         onClick={(e) => e.stopPropagation()}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         <Checkbox
                           checked={isSel}
-                          onCheckedChange={() => toggle(file.path)}
+                          onPointerDown={(e) =>
+                            onCheckboxPointerDown(file.path, e)
+                          }
+                          onCheckedChange={() =>
+                            onCheckboxCheckedChange(file.path)
+                          }
                           aria-label={`${file.filename} auswählen`}
                           className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         />
@@ -579,15 +790,17 @@ export function SdFileSelector({
           </div>
         ) : (
           <div
+            ref={attachDetailsRef}
             className={cn(
               "min-h-0 flex-1 overflow-auto rounded-md border border-border/60",
               submitting && "pointer-events-none opacity-70",
             )}
           >
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-card">
+              <thead className="sticky top-0 z-[1] bg-card">
                 <tr className="border-b border-border/60">
                   <th className="w-8 p-2" />
+                  <th className="w-14 p-2">Vorschau</th>
                   <th className="p-2">Name</th>
                   <th className="p-2">Typ</th>
                   <th className="p-2">Größe</th>
@@ -595,27 +808,59 @@ export function SdFileSelector({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((file) => (
-                  <tr
-                    key={file.path}
-                    className={cn(
-                      "border-b border-border/40 hover:bg-black/5",
-                      selected.has(file.path) && "bg-primary-soft",
-                    )}
-                    onClick={() => toggle(file.path)}
-                  >
-                    <td className="p-2" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selected.has(file.path)}
-                        onCheckedChange={() => toggle(file.path)}
-                      />
-                    </td>
-                    <td className="max-w-[280px] truncate p-2">{file.filename}</td>
-                    <td className="p-2">{file.is_video ? "Video" : "Foto"}</td>
-                    <td className="p-2">{formatBytes(file.size_bytes)}</td>
-                    <td className="p-2">{formatEpoch(file.display_epoch)}</td>
-                  </tr>
-                ))}
+                {filtered.map((file) => {
+                  const thumb = thumbs[file.path];
+                  return (
+                    <tr
+                      key={file.path}
+                      className={cn(
+                        "border-b border-border/40 hover:bg-black/5",
+                        selected.has(file.path) && "bg-primary-soft",
+                      )}
+                      onClick={(e) =>
+                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
+                      }
+                    >
+                      <td
+                        className="p-2"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={selected.has(file.path)}
+                          onPointerDown={(e) =>
+                            onCheckboxPointerDown(file.path, e)
+                          }
+                          onCheckedChange={() =>
+                            onCheckboxCheckedChange(file.path)
+                          }
+                        />
+                      </td>
+                      <td className="p-1.5">
+                        <div
+                          data-thumb-path={file.path}
+                          className="h-9 w-14 overflow-hidden rounded bg-muted/40"
+                        >
+                          {thumb?.url ? (
+                            <img
+                              src={thumb.url}
+                              alt=""
+                              className="h-full w-full object-cover"
+                              draggable={false}
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-muted/50 to-muted/20" />
+                          )}
+                        </div>
+                      </td>
+                      <td className="max-w-[280px] truncate p-2">{file.filename}</td>
+                      <td className="p-2">{file.is_video ? "Video" : "Foto"}</td>
+                      <td className="p-2">{formatBytes(file.size_bytes)}</td>
+                      <td className="p-2">{formatEpoch(file.display_epoch)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

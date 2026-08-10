@@ -50,7 +50,10 @@ type Props = {
   isActive: boolean;
   onActivate: () => void;
   onDeactivate: () => void;
-  onToggleSelect: () => void;
+  /** Toggle or Shift-range; parent owns selection state. */
+  onSelect: (e: { shiftKey: boolean }) => void;
+  /** True while marquee drag is active — blocks hover preview. */
+  selectionLocked?: boolean;
   tileRef?: (el: HTMLElement | null) => void;
 };
 
@@ -64,7 +67,9 @@ function formatClock(secs: number): string {
 /**
  * SD selector video tile: YouTube-style muted hover preview, pinned play
  * (keeps playing after mouse leave), scrub bar, mute/volume, fullscreen.
- * Selection is only via click outside `[data-controls]`.
+ * Selection is via click outside `[data-controls]` (Shift = range in parent).
+ * Caption carries `data-marquee-ok` so the grid can start marquee there;
+ * the media area never starts marquee.
  *
  * Fullscreen uses a body-portaled overlay (not the Fullscreen API) so hit-testing
  * works above Radix dialogs / Tauri WebView.
@@ -80,7 +85,8 @@ export function SdVideoTile({
   isActive,
   onActivate,
   onDeactivate,
-  onToggleSelect,
+  onSelect,
+  selectionLocked = false,
   tileRef,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -106,6 +112,7 @@ export function SdVideoTile({
   const [dragging, setDragging] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [immersive, setImmersive] = useState(false);
+  const shiftCheckboxRef = useRef(false);
 
   immersiveRef.current = immersive;
 
@@ -151,6 +158,28 @@ export function SdVideoTile({
     }
     setSrc(null);
   }, [isActive]);
+
+  // Marquee drag: freeze hover preview so tiles under the box don't autoplay.
+  useEffect(() => {
+    if (!selectionLocked) return;
+    clearHoverTimer();
+    setHovering(false);
+    setShowVolume(false);
+    if (pinned || immersive) return;
+    setWantPreview(false);
+    setPlaying(false);
+    const v = videoRef.current;
+    if (v) {
+      v.pause();
+      try {
+        v.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (isActive) onDeactivate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to lock edge
+  }, [selectionLocked]);
 
   useEffect(() => {
     const apply = (v: HTMLVideoElement | null) => {
@@ -275,11 +304,11 @@ export function SdVideoTile({
   }
 
   function onMediaEnter() {
-    if (isImmersiveBlocked(path) || immersive) return;
+    if (selectionLocked || isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
     clearHoverTimer();
     hoverTimerRef.current = window.setTimeout(() => {
-      if (isImmersiveBlocked(path)) return;
+      if (selectionLocked || isImmersiveBlocked(path)) return;
       setWantPreview(true);
       onActivate();
     }, linuxMediaGuards ? LINUX_HOVER_PLAY_DELAY_MS : HOVER_PLAY_DELAY_MS);
@@ -584,18 +613,32 @@ export function SdVideoTile({
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-controls]")) return;
           if (immersive || isImmersiveBlocked(path)) return;
-          onToggleSelect();
+          onSelect({ shiftKey: e.shiftKey });
         }}
       >
         <div
           data-controls
+          data-no-marquee=""
           className="absolute top-1.5 left-1.5 z-10 [transform:translateZ(1px)]"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
         >
           <Checkbox
             checked={selected}
-            onCheckedChange={() => onToggleSelect()}
+            onPointerDown={(e) => {
+              if (!e.shiftKey) return;
+              e.preventDefault();
+              e.stopPropagation();
+              shiftCheckboxRef.current = true;
+              onSelect({ shiftKey: true });
+            }}
+            onCheckedChange={() => {
+              if (shiftCheckboxRef.current) {
+                shiftCheckboxRef.current = false;
+                return;
+              }
+              onSelect({ shiftKey: false });
+            }}
             aria-label={`${filename} auswählen`}
             className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           />
@@ -664,16 +707,18 @@ export function SdVideoTile({
 
       <button
         type="button"
+        data-marquee-ok=""
         className="truncate px-2 py-1 text-left text-[11px] hover:bg-black/5"
-        onClick={onToggleSelect}
+        onClick={(e) => onSelect({ shiftKey: e.shiftKey })}
         title={filename}
       >
         {filename}
       </button>
       <button
         type="button"
+        data-marquee-ok=""
         className="px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
-        onClick={onToggleSelect}
+        onClick={(e) => onSelect({ shiftKey: e.shiftKey })}
       >
         {sizeLabel}
         {alreadyProcessed ? " · bekannt" : ""}
