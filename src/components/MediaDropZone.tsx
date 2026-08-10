@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useId, useState, type CSSProperties, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+} from "react";
 import {
   DndContext,
   closestCenter,
@@ -287,6 +296,13 @@ export function MediaDropZone({
   const [expanding, setExpanding] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const [internalTab, setInternalTab] = useState<"video" | "foto">("video");
+  const [scanActionsLayout, setScanActionsLayout] = useState<
+    "full" | "compact" | "wrap"
+  >("full");
+  const qrBarRef = useRef<HTMLDivElement>(null);
+  const qrLeadRef = useRef<HTMLDivElement>(null);
+  const qrFullMeasureRef = useRef<HTMLDivElement>(null);
+  const qrCompactMeasureRef = useRef<HTMLDivElement>(null);
   const dropZoneId = useId();
 
   function toggleVideoColumnSort(key: "name" | "duration" | "size") {
@@ -296,6 +312,42 @@ export function MediaDropZone({
 
   const autoQrVideos = Boolean(config?.qr_check_enabled);
   const autoQrPhotos = Boolean(config?.photo_qr_check_enabled);
+
+  // full → compact labels → wrap button row (only if compact still doesn't fit)
+  useLayoutEffect(() => {
+    const bar = qrBarRef.current;
+    const lead = qrLeadRef.current;
+    const fullMeasure = qrFullMeasureRef.current;
+    const compactMeasure = qrCompactMeasureRef.current;
+    if (!bar || !lead || !fullMeasure || !compactMeasure) return;
+
+    const GAP_X = 16; // matches gap-x-4
+
+    const update = () => {
+      const style = getComputedStyle(bar);
+      const padX =
+        (parseFloat(style.paddingLeft) || 0) +
+        (parseFloat(style.paddingRight) || 0);
+      const available = bar.clientWidth - padX;
+      const leadW = lead.offsetWidth;
+      const fullNeeded = leadW + GAP_X + fullMeasure.offsetWidth;
+      const compactNeeded = leadW + GAP_X + compactMeasure.offsetWidth;
+      if (fullNeeded <= available) setScanActionsLayout("full");
+      else if (compactNeeded <= available) setScanActionsLayout("compact");
+      else setScanActionsLayout("wrap");
+    };
+
+    const ro = new ResizeObserver(update);
+    ro.observe(bar);
+    ro.observe(lead);
+    ro.observe(fullMeasure);
+    ro.observe(compactMeasure);
+    update();
+    return () => ro.disconnect();
+  }, [videoList.length, photoList.length]);
+
+  const compactScanLabels = scanActionsLayout !== "full";
+  const wrapScanActions = scanActionsLayout === "wrap";
 
   const videoWmNeeded =
     (kunde.handcam_video && !kunde.ist_bezahlt_handcam_video) ||
@@ -732,48 +784,67 @@ export function MediaDropZone({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card-elevated/70 px-3 py-2.5">
-        <div className="flex items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
-          <QrCode className="h-3.5 w-3.5 text-primary" aria-hidden />
-          Auto-QR beim Import
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Switch
-              id="auto-qr-videos"
-              checked={autoQrVideos}
-              disabled={!config || busy}
-              onCheckedChange={(v) => void setAutoQrFlag("qr_check_enabled", v)}
-            />
-            <Label
-              htmlFor="auto-qr-videos"
-              className="cursor-pointer text-sm font-normal"
-            >
-              Videos
-            </Label>
+      <div
+        ref={qrBarRef}
+        className={cn(
+          "relative flex items-center gap-x-4 rounded-lg border border-border bg-card-elevated/70 px-3 py-2.5",
+          wrapScanActions ? "flex-wrap gap-y-2" : "flex-nowrap",
+        )}
+      >
+        <div
+          ref={qrLeadRef}
+          className="flex shrink-0 items-center gap-x-4"
+        >
+          <div className="flex shrink-0 items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
+            <QrCode className="h-3.5 w-3.5 text-primary" aria-hidden />
+            Auto-QR beim Import
           </div>
-          <div className="flex items-center gap-2">
-            <Switch
-              id="auto-qr-photos"
-              checked={autoQrPhotos}
-              disabled={!config || busy}
-              onCheckedChange={(v) =>
-                void setAutoQrFlag("photo_qr_check_enabled", v)
-              }
-            />
-            <Label
-              htmlFor="auto-qr-photos"
-              className="cursor-pointer text-sm font-normal"
-            >
-              Fotos
-            </Label>
+          <div className="flex shrink-0 items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="auto-qr-videos"
+                checked={autoQrVideos}
+                disabled={!config || busy}
+                onCheckedChange={(v) => void setAutoQrFlag("qr_check_enabled", v)}
+              />
+              <Label
+                htmlFor="auto-qr-videos"
+                className="cursor-pointer text-sm font-normal"
+              >
+                Videos
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="auto-qr-photos"
+                checked={autoQrPhotos}
+                disabled={!config || busy}
+                onCheckedChange={(v) =>
+                  void setAutoQrFlag("photo_qr_check_enabled", v)
+                }
+              />
+              <Label
+                htmlFor="auto-qr-photos"
+                className="cursor-pointer text-sm font-normal"
+              >
+                Fotos
+              </Label>
+            </div>
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div
+          className={cn(
+            "flex items-center gap-2",
+            wrapScanActions
+              ? "w-full flex-wrap justify-start"
+              : "ml-auto shrink-0",
+          )}
+        >
           <Button
             type="button"
             size="sm"
             variant="secondary"
+            className="whitespace-nowrap"
             onClick={() => void scanAllVideos()}
             disabled={busy || videoList.length === 0}
             title={
@@ -783,12 +854,15 @@ export function MediaDropZone({
             }
           >
             <QrCode className="h-3.5 w-3.5" />
-            Videos scannen ({videoList.length})
+            {compactScanLabels
+              ? `Videos (${videoList.length})`
+              : `Videos scannen (${videoList.length})`}
           </Button>
           <Button
             type="button"
             size="sm"
             variant="secondary"
+            className="whitespace-nowrap"
             onClick={() => void scanAllPhotos()}
             disabled={busy || photoList.length === 0}
             title={
@@ -798,18 +872,58 @@ export function MediaDropZone({
             }
           >
             <QrCode className="h-3.5 w-3.5" />
-            Fotos scannen ({photoList.length})
+            {compactScanLabels
+              ? `Fotos (${photoList.length})`
+              : `Fotos scannen (${photoList.length})`}
           </Button>
           <Button
             type="button"
             size="sm"
             variant="ghost"
+            className="whitespace-nowrap"
             onClick={() => void scanExternalMediaFile()}
             disabled={busy}
             title="Foto oder Video wählen — nur QR-Scan, kein Import"
           >
             <ScanSearch className="h-3.5 w-3.5" />
+            {compactScanLabels ? "Datei…" : "Datei scannen…"}
+          </Button>
+        </div>
+        {/* Off-layout measures — pick full / compact / wrap without flicker */}
+        <div
+          ref={qrFullMeasureRef}
+          aria-hidden
+          className="pointer-events-none invisible absolute top-0 left-0 flex items-center gap-2 whitespace-nowrap"
+        >
+          <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
+            <QrCode className="h-3.5 w-3.5" />
+            Videos scannen ({videoList.length})
+          </Button>
+          <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
+            <QrCode className="h-3.5 w-3.5" />
+            Fotos scannen ({photoList.length})
+          </Button>
+          <Button type="button" size="sm" variant="ghost" tabIndex={-1}>
+            <ScanSearch className="h-3.5 w-3.5" />
             Datei scannen…
+          </Button>
+        </div>
+        <div
+          ref={qrCompactMeasureRef}
+          aria-hidden
+          className="pointer-events-none invisible absolute top-0 left-0 flex items-center gap-2 whitespace-nowrap"
+        >
+          <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
+            <QrCode className="h-3.5 w-3.5" />
+            Videos ({videoList.length})
+          </Button>
+          <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
+            <QrCode className="h-3.5 w-3.5" />
+            Fotos ({photoList.length})
+          </Button>
+          <Button type="button" size="sm" variant="ghost" tabIndex={-1}>
+            <ScanSearch className="h-3.5 w-3.5" />
+            Datei…
           </Button>
         </div>
       </div>
