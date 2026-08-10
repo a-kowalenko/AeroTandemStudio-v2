@@ -40,6 +40,8 @@ export function emptyKunde(partial?: Partial<Kunde>): Kunde {
 
 type KundeState = {
   kunde: Kunde;
+  /** Last QR-applied customer; used to restore QR mode after a manual switch. */
+  qrSnapshot: Kunde | null;
   /** Bumps on each successful QR apply (for UI lock sync). */
   qrRevision: number;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
@@ -58,6 +60,8 @@ type KundeState = {
     outside_video?: boolean;
   }) => void;
   applyFromQr: (scanned: Kunde) => void;
+  /** Toggle QR ↔ manual; restoring QR re-applies qrSnapshot (manual identity edits discarded). */
+  switchFormMode: (mode: "kunde" | "manual") => void;
   resetSession: (keep?: {
     tandemmaster?: boolean;
     videospringer?: boolean;
@@ -66,6 +70,7 @@ type KundeState = {
 
 export const useKundeStore = create<KundeState>((set, get) => ({
   kunde: emptyKunde(),
+  qrSnapshot: null,
   qrRevision: 0,
 
   setField: (key, value) => {
@@ -179,38 +184,81 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       video_mode = "outside";
     }
 
+    const next: Kunde = {
+      ...prev,
+      // QR payloads use hash IDs — plain IDs / contact stay empty in QR mode.
+      kunden_id: null,
+      kunden_id_hash: scanned.kunden_id_hash ?? null,
+      booking_id: null,
+      booking_id_hash: scanned.booking_id_hash ?? null,
+      vorname: scanned.vorname ?? null,
+      nachname: scanned.nachname ?? null,
+      email: null,
+      telefon: null,
+      gast: gastFromName || scanned.gast || prev.gast,
+      form_mode: "kunde",
+      video_mode,
+      handcam_foto: scanned.handcam_foto,
+      handcam_video: scanned.handcam_video,
+      outside_foto: scanned.outside_foto,
+      outside_video: scanned.outside_video,
+      ist_bezahlt_handcam_foto: scanned.ist_bezahlt_handcam_foto,
+      ist_bezahlt_handcam_video: scanned.ist_bezahlt_handcam_video,
+      ist_bezahlt_outside_foto: scanned.ist_bezahlt_outside_foto,
+      ist_bezahlt_outside_video: scanned.ist_bezahlt_outside_video,
+      // Keep session fields from the form / config.
+      ort: prev.ort,
+      datum: prev.datum,
+      tandemmaster: prev.tandemmaster,
+      videospringer: prev.videospringer,
+    };
+
     set({
       qrRevision: get().qrRevision + 1,
-      kunde: {
-        ...prev,
-        // QR payloads use hash IDs — plain IDs / contact stay empty in QR mode.
-        kunden_id: null,
-        kunden_id_hash: scanned.kunden_id_hash ?? null,
-        booking_id: null,
-        booking_id_hash: scanned.booking_id_hash ?? null,
-        vorname: scanned.vorname ?? null,
-        nachname: scanned.nachname ?? null,
-        email: null,
-        telefon: null,
-        gast: gastFromName || scanned.gast || prev.gast,
-        form_mode: "kunde",
-        video_mode,
-        handcam_foto: scanned.handcam_foto,
-        handcam_video: scanned.handcam_video,
-        outside_foto: scanned.outside_foto,
-        outside_video: scanned.outside_video,
-        ist_bezahlt_handcam_foto: scanned.ist_bezahlt_handcam_foto,
-        ist_bezahlt_handcam_video: scanned.ist_bezahlt_handcam_video,
-        ist_bezahlt_outside_foto: scanned.ist_bezahlt_outside_foto,
-        ist_bezahlt_outside_video: scanned.ist_bezahlt_outside_video,
-        // Keep session fields from the form / config.
-        ort: prev.ort,
-        datum: prev.datum,
-        tandemmaster: prev.tandemmaster,
-        videospringer: prev.videospringer,
-      },
+      qrSnapshot: { ...next },
+      kunde: next,
     });
     // Lazy: vermeidet zirkulären Import mit video/photo stores.
+    void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
+      syncProductsFromMedia();
+    });
+  },
+
+  switchFormMode: (mode) => {
+    const { kunde, qrSnapshot } = get();
+    if (mode === "manual") {
+      if (kunde.form_mode === "manual") return;
+      // Capture current QR state (incl. in-form edits) before leaving.
+      const snapshot = { ...kunde, form_mode: "kunde" as const };
+      set({
+        qrSnapshot: snapshot,
+        kunde: {
+          ...kunde,
+          form_mode: "manual",
+          kunden_id_hash: null,
+          booking_id_hash: null,
+          email: null,
+          telefon: null,
+        },
+      });
+      return;
+    }
+
+    // Restore QR from snapshot — manual identity edits are discarded.
+    if (!qrSnapshot || kunde.form_mode === "kunde") return;
+    const restored: Kunde = {
+      ...qrSnapshot,
+      form_mode: "kunde",
+      ort: kunde.ort,
+      datum: kunde.datum,
+      tandemmaster: kunde.tandemmaster,
+      videospringer: kunde.videospringer,
+    };
+    set({
+      qrRevision: get().qrRevision + 1,
+      kunde: restored,
+      qrSnapshot: { ...restored },
+    });
     void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
       syncProductsFromMedia();
     });
@@ -220,6 +268,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     const prev = get().kunde;
     set({
       qrRevision: 0,
+      qrSnapshot: null,
       kunde: emptyKunde({
         ort: prev.ort,
         tandemmaster: keep?.tandemmaster ? prev.tandemmaster : "",

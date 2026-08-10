@@ -46,10 +46,10 @@ import {
 } from "../lib/tauri";
 import { formatCameraLabel } from "../lib/cameraLabel";
 import {
-  formatQrCleanupSummary,
   maybeRemoveQrPhoto,
   maybeRemoveQrVideo,
 } from "../lib/qrCleanup";
+import { formatQrSuccess } from "../lib/qrSuccess";
 import { pathsAddedSince, runAutoQrAfterImport } from "../lib/autoQrScan";
 import {
   PHOTO_EXTENSIONS,
@@ -383,7 +383,15 @@ export function MediaDropZone({
               }),
             );
             if (outcome.attempted && outcome.found) {
-              showSuccess(outcome.message, "Auto-QR", { autoCloseSecs: 5 });
+              showSuccess(
+                outcome.message,
+                outcome.successTitle ?? "QR-Code erkannt",
+                outcome.successOptions ?? {
+                  variant: "qr",
+                  highlight: outcome.kundeName || "Kunde erkannt",
+                  autoCloseSecs: 5,
+                },
+              );
               setStatusMsg(`${parts.join(", ")} · QR übernommen`);
             } else if (outcome.attempted && outcome.message) {
               setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
@@ -491,12 +499,12 @@ export function MediaDropZone({
         const cleanup = maybeRemoveQrVideo(result.source_path ?? path, {
           onBeforeRemove: (p) => onRemoveVideo?.(p),
         });
-        const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        showSuccess(
-          `Kundendaten übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          cleanup,
+          sourcePath: result.source_path ?? path,
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
       }
@@ -516,12 +524,12 @@ export function MediaDropZone({
       } else if (result.found && result.kunde) {
         applyFromQr(result.kunde);
         const cleanup = await maybeRemoveQrPhoto(result.source_path ?? path);
-        const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        showSuccess(
-          `Kundendaten aus Foto übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          cleanup,
+          sourcePath: result.source_path ?? path,
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Foto.", "QR-Scan");
       }
@@ -548,16 +556,12 @@ export function MediaDropZone({
         const cleanup = maybeRemoveQrVideo(result.source_path, {
           onBeforeRemove: (p) => onRemoveVideo?.(p),
         });
-        const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        const srcName = result.source_path
-          ? result.source_path.replace(/^.*[/\\]/, "")
-          : "";
-        const src = srcName ? `\nQuelle: ${srcName}` : "";
-        showSuccess(
-          `Kundendaten übernommen${name ? `: ${name}` : ""}.${src}${formatQrCleanupSummary(cleanup)}`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          cleanup,
+          sourcePath: result.source_path,
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
       }
@@ -582,16 +586,12 @@ export function MediaDropZone({
       } else if (result.found && result.kunde) {
         applyFromQr(result.kunde);
         const cleanup = await maybeRemoveQrPhoto(result.source_path);
-        const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        const srcName = result.source_path
-          ? result.source_path.replace(/^.*[/\\]/, "")
-          : "";
-        const src = srcName ? `\nQuelle: ${srcName}` : "";
-        showSuccess(
-          `Kundendaten übernommen${name ? `: ${name}` : ""}.${src}${formatQrCleanupSummary(cleanup)}`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          cleanup,
+          sourcePath: result.source_path,
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
       }
@@ -632,15 +632,13 @@ export function MediaDropZone({
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
         applyFromQr(result.kunde);
-        const name = [result.kunde.vorname, result.kunde.nachname]
-          .filter(Boolean)
-          .join(" ");
         const typeLabel = kind === "video" ? "Video" : "Foto";
-        showSuccess(
-          `Kundendaten aus ${typeLabel} übernommen${name ? `: ${name}` : ""} (Datei nicht importiert).`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          sourcePath: selected,
+          notes: [`Externes ${typeLabel} — Datei nicht importiert.`],
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(
           result.message ||

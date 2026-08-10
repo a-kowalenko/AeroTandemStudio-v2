@@ -6,10 +6,25 @@ import {
   useState,
   forwardRef,
 } from "react";
-import { Pause, Play, Volume2 } from "lucide-react";
+import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
 import { cn } from "../lib/utils";
+
+function VolumeLevelIcon({
+  volume,
+  muted,
+  className,
+}: {
+  volume: number;
+  muted: boolean;
+  className?: string;
+}) {
+  if (muted || volume <= 0) return <VolumeX className={className} />;
+  if (volume <= 0.1) return <Volume className={className} />;
+  if (volume < 0.5) return <Volume1 className={className} />;
+  return <Volume2 className={className} />;
+}
 
 export type VideoPlayerHandle = {
   getCurrentTimeMs: () => number;
@@ -60,10 +75,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [currentMs, setCurrentMs] = useState(0);
     const [durationMs, setDurationMs] = useState(0);
     const [volume, setVolume] = useState(0.7);
+    const [muted, setMuted] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [src, setSrc] = useState<string | null>(null);
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
+    const volumeRef = useRef(volume);
+    volumeRef.current = volume;
+    const mutedRef = useRef(muted);
+    mutedRef.current = muted;
 
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
@@ -107,10 +127,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       };
     }, [srcPath]);
 
+    // Re-apply on `src` too: `key={src}` remounts <video> at browser defaults.
     useEffect(() => {
       const v = videoRef.current;
-      if (v) v.volume = volume;
-    }, [volume]);
+      if (!v) return;
+      v.muted = muted;
+      v.volume = muted ? 0 : volume;
+    }, [volume, muted, src]);
 
     const emitTime = useCallback(
       (cur: number, dur: number) => {
@@ -161,6 +184,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 onEnded?.();
               }}
               onLoadedMetadata={(e) => {
+                e.currentTarget.muted = mutedRef.current;
+                e.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
                 const d = e.currentTarget.duration * 1000;
                 emitTime(0, d);
                 if (autoPlayRef.current && !disabled) {
@@ -236,15 +261,38 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             {formatMs(currentMs)} / {formatMs(durationMs)}
           </span>
           <div className="ml-auto flex items-center gap-2">
-            <Volume2 className="h-3.5 w-3.5 text-muted" />
+            <button
+              type="button"
+              disabled={disabled}
+              className="rounded p-0.5 text-muted hover:text-foreground disabled:opacity-50"
+              aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+              onClick={() => {
+                if (muted || volume === 0) {
+                  setMuted(false);
+                  if (volume === 0) setVolume(0.7);
+                } else {
+                  setMuted(true);
+                }
+              }}
+            >
+              <VolumeLevelIcon
+                volume={volume}
+                muted={muted}
+                className="h-3.5 w-3.5"
+              />
+            </button>
             <input
               type="range"
               min={0}
               max={1}
               step={0.01}
-              value={volume}
+              value={muted ? 0 : volume}
               disabled={disabled}
-              onChange={(e) => setVolume(Number(e.target.value))}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setVolume(next);
+                setMuted(next === 0);
+              }}
               className="w-20"
               aria-label="Lautstärke"
             />

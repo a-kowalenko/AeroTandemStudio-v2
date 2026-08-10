@@ -75,7 +75,8 @@ import {
   type SdWorkflowActions,
   type WorkflowProgress,
 } from "./lib/sdCard";
-import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
+import { pathsAddedSince, runAutoQrAfterImport, type AutoQrScanOutcome } from "./lib/autoQrScan";
+import { QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
 import { applyMonotonicPercent, resolveProgressLabel, shouldClearTaskProgress, taskProgressLabel } from "./lib/progressLabels";
@@ -181,6 +182,8 @@ function App() {
   const dialogTitle = useUiStore((s) => s.dialogTitle);
   const dialogMessage = useUiStore((s) => s.dialogMessage);
   const dialogAutoCloseSecs = useUiStore((s) => s.dialogAutoCloseSecs);
+  const dialogVariant = useUiStore((s) => s.dialogVariant);
+  const dialogHighlight = useUiStore((s) => s.dialogHighlight);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -325,8 +328,10 @@ function App() {
     };
   }
 
-  async function importPathsIntoApp(paths: string[]): Promise<string> {
-    if (paths.length === 0) return "";
+  async function importPathsIntoApp(
+    paths: string[],
+  ): Promise<{ note: string; qr: AutoQrScanOutcome | null }> {
+    if (paths.length === 0) return { note: "", qr: null };
 
     const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
     const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
@@ -358,12 +363,13 @@ function App() {
       (config?.qr_check_enabled && newVideoPaths.length > 0) ||
       (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
 
-    let qrNote = "";
+    let qr: AutoQrScanOutcome | null = null;
+    let qrFailNote = "";
     if (willAutoScan) {
       useSdStore.getState().setWorkflowProgress(null);
       setLoading(true, "QR-Scan…");
       try {
-        const outcome = await withQrScanProgress(
+        qr = await withQrScanProgress(
           [...newVideoPaths, ...newPhotoPaths],
           () =>
             runAutoQrAfterImport({
@@ -372,19 +378,20 @@ function App() {
               onBeforeRemoveVideo: (p) => pendingCuts.discardForPath(p),
             }),
         );
-        if (outcome.attempted) {
-          qrNote = `\nAuto-QR: ${outcome.message}`;
-        }
       } catch (qrErr) {
-        qrNote = `\nAuto-QR fehlgeschlagen: ${String(qrErr)}`;
+        qrFailNote = `Auto-QR fehlgeschlagen: ${String(qrErr)}`;
       }
     }
 
-    return (
+    const note =
       `Import: ${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
       (result.skipped ? `, ${result.skipped} übersprungen` : "") +
-      qrNote
-    );
+      (qrFailNote ? `\n${qrFailNote}` : "") +
+      (qr && qr.attempted && !qr.found && qr.message
+        ? `\nAuto-QR: ${qr.message}`
+        : "");
+
+    return { note, qr: qr?.attempted && qr.found ? qr : null };
   }
 
   /** Unified SD pipeline: backup → import → optional eject; clear only after successful backup.
@@ -418,6 +425,7 @@ function App() {
     hooks?.onStart?.();
     setLoading(true, "SD-Verarbeitung…");
     const notes: string[] = [];
+    let qrHit: AutoQrScanOutcome | null = null;
 
     try {
       let importPaths: string[] = selectedPaths ? [...selectedPaths] : [];
@@ -473,8 +481,9 @@ function App() {
           useSdStore.getState().setBackupProgress(null);
           useSdStore.getState().setWorkflowProgress(null);
           setLoading(true, "Importiere SD-Dateien…");
-          const importNote = await importPathsIntoApp(importPaths);
+          const { note: importNote, qr } = await importPathsIntoApp(importPaths);
           if (importNote) notes.push(importNote);
+          if (qr) qrHit = qr;
         }
       }
 
@@ -490,7 +499,16 @@ function App() {
         }
       }
 
-      if (notes.length) {
+      if (qrHit) {
+        const body = [qrHit.message, ...notes].filter(Boolean).join("\n\n");
+        showSuccess(body, qrHit.successTitle ?? QR_SUCCESS_TITLE, {
+          ...(qrHit.successOptions ?? {
+            variant: "qr",
+            highlight: qrHit.kundeName || "Kunde erkannt",
+          }),
+          autoCloseSecs: 10,
+        });
+      } else if (notes.length) {
         showSuccess(notes.join("\n\n"), "Erfolg", { autoCloseSecs: 10 });
       }
       return true;
@@ -1096,7 +1114,7 @@ function App() {
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
-          <div className="flex items-center gap-3 border-b border-border/80 px-4 py-3">
+          <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
             <h2 className="shrink-0 text-sm font-semibold tracking-wide text-muted uppercase">
               Kunde
             </h2>
@@ -1419,6 +1437,8 @@ function App() {
         title={dialogTitle}
         message={dialogMessage}
         autoCloseSecs={dialogAutoCloseSecs}
+        variant={dialogVariant}
+        highlight={dialogHighlight}
         onClose={closeDialog}
       />
       <CreateSuccessDialog

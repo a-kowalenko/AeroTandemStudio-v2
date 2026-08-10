@@ -2,8 +2,14 @@ import { create } from "zustand";
 
 export type DialogKind = "error" | "success" | "warning" | null;
 
+export type DialogVariant = "default" | "qr";
+
 export type DialogOptions = {
   autoCloseSecs?: number;
+  /** Visual emphasis for QR customer recognition. */
+  variant?: DialogVariant;
+  /** Prominent line under the title (e.g. customer name). */
+  highlight?: string;
 };
 
 type UiState = {
@@ -11,6 +17,8 @@ type UiState = {
   dialogTitle: string;
   dialogMessage: string;
   dialogAutoCloseSecs: number | null;
+  dialogVariant: DialogVariant;
+  dialogHighlight: string;
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
@@ -27,6 +35,8 @@ export const useUiStore = create<UiState>((set) => ({
   dialogTitle: "",
   dialogMessage: "",
   dialogAutoCloseSecs: null,
+  dialogVariant: "default",
+  dialogHighlight: "",
   loading: false,
   loadingMessage: "",
   settingsOpen: false,
@@ -37,6 +47,8 @@ export const useUiStore = create<UiState>((set) => ({
       dialogTitle: title,
       dialogMessage: message,
       dialogAutoCloseSecs: null,
+      dialogVariant: "default",
+      dialogHighlight: "",
     }),
   showSuccess: (message, title = "Erfolg", options) =>
     set({
@@ -47,6 +59,8 @@ export const useUiStore = create<UiState>((set) => ({
         options?.autoCloseSecs && options.autoCloseSecs > 0
           ? options.autoCloseSecs
           : null,
+      dialogVariant: options?.variant ?? "default",
+      dialogHighlight: options?.highlight?.trim() ?? "",
     }),
   showWarning: (message, title = "Hinweis") =>
     set({
@@ -54,6 +68,8 @@ export const useUiStore = create<UiState>((set) => ({
       dialogTitle: title,
       dialogMessage: message,
       dialogAutoCloseSecs: null,
+      dialogVariant: "default",
+      dialogHighlight: "",
     }),
   closeDialog: () =>
     set({
@@ -61,6 +77,8 @@ export const useUiStore = create<UiState>((set) => ({
       dialogTitle: "",
       dialogMessage: "",
       dialogAutoCloseSecs: null,
+      dialogVariant: "default",
+      dialogHighlight: "",
     }),
   setLoading: (loading, message = "Bitte warten…") =>
     set({ loading, loadingMessage: message }),

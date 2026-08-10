@@ -165,8 +165,67 @@ type CustomerFormProps = {
   disabled?: boolean;
 };
 
+const FORM_MODES: { id: "kunde" | "manual"; label: string; icon: typeof QrCode }[] = [
+  { id: "kunde", label: "QR", icon: QrCode },
+  { id: "manual", label: "Manuell", icon: UserRound },
+];
+
+const MANUAL_ENTRY_MODES: { id: ManualEntryMode; label: string }[] = [
+  { id: "id", label: "ID" },
+  { id: "oldschool", label: "Oldschool" },
+  { id: "lokal", label: "Lokal" },
+];
+
+/** Compact QR ↔ Manuell toggle for the sidebar header (fixed width, no siblings). */
 export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
-  const kunde = useKundeStore((s) => s.kunde);
+  const formMode = useKundeStore((s) => s.kunde.form_mode);
+  const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
+  const switchFormMode = useKundeStore((s) => s.switchFormMode);
+  const busy = Boolean(disabled);
+  const isQrMode = formMode === "kunde";
+  const canSwitchToQr = Boolean(qrSnapshot);
+
+  return (
+    <div
+      role="group"
+      aria-label="Eingabemodus"
+      className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
+    >
+      {FORM_MODES.map(({ id, label, icon: Icon }) => {
+        const active = id === "kunde" ? isQrMode : !isQrMode;
+        const qrDisabled = id === "kunde" && !isQrMode && !canSwitchToQr;
+        return (
+          <button
+            key={id}
+            type="button"
+            disabled={busy || qrDisabled}
+            aria-pressed={active}
+            title={
+              qrDisabled
+                ? "Kein QR in dieser Session — zuerst scannen"
+                : id === "kunde"
+                  ? "QR-Daten wiederherstellen"
+                  : "Zur manuellen Eingabe"
+            }
+            onClick={() => switchFormMode(id)}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+              "disabled:pointer-events-none disabled:opacity-50",
+              active
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="h-3 w-3" />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   const patch = useKundeStore((s) => s.patch);
   const config = useConfigStore((s) => s.config);
   const persistConfig = useConfigStore((s) => s.persist);
@@ -175,18 +234,6 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
     config?.oldschool_mode ?? false,
   );
   const busy = Boolean(disabled);
-  const isQrMode = kunde.form_mode === "kunde";
-  const qrName = [kunde.vorname, kunde.nachname].filter(Boolean).join(" ");
-
-  function switchToManual() {
-    patch({
-      form_mode: "manual",
-      kunden_id_hash: null,
-      booking_id_hash: null,
-      email: null,
-      telefon: null,
-    });
-  }
 
   async function setManualEntryMode(next: ManualEntryMode) {
     if (!config || entryMode === next) return;
@@ -205,67 +252,30 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
     }
   }
 
-  const modes: { id: ManualEntryMode; label: string }[] = [
-    { id: "id", label: "ID" },
-    { id: "oldschool", label: "Oldschool" },
-    { id: "lokal", label: "Lokal" },
-  ];
-
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-      <span
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide uppercase",
-          isQrMode
-            ? "bg-primary text-primary-foreground"
-            : "bg-card-elevated text-muted ring-1 ring-border",
-        )}
-      >
-        {isQrMode ? <QrCode className="h-3 w-3" /> : <UserRound className="h-3 w-3" />}
-        {isQrMode ? "QR-Modus" : "Manuell"}
-      </span>
-      {isQrMode && qrName ? (
-        <span className="min-w-0 truncate text-xs font-medium text-foreground">{qrName}</span>
-      ) : null}
-      {!isQrMode ? (
-        <div
-          role="group"
-          aria-label="Manueller Eingabemodus"
-          className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
-        >
-          {modes.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              disabled={busy || !config}
-              aria-pressed={entryMode === id}
-              onClick={() => void setManualEntryMode(id)}
-              className={cn(
-                "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
-                "disabled:pointer-events-none disabled:opacity-50",
-                entryMode === id
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted hover:text-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <Button
+    <div
+      role="group"
+      aria-label="Manueller Eingabemodus"
+      className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
+    >
+      {MANUAL_ENTRY_MODES.map(({ id, label }) => (
+        <button
+          key={id}
           type="button"
-          size="sm"
-          variant="ghost"
-          className="h-7 shrink-0 px-2 text-[11px]"
-          disabled={busy}
-          onClick={switchToManual}
-          title="Zurück zur manuellen Eingabe"
+          disabled={busy || !config}
+          aria-pressed={entryMode === id}
+          onClick={() => void setManualEntryMode(id)}
+          className={cn(
+            "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+            "disabled:pointer-events-none disabled:opacity-50",
+            entryMode === id
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted hover:text-foreground",
+          )}
         >
-          <PencilLine className="h-3 w-3" />
-          Manuell
-        </Button>
-      )}
+          {label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -367,12 +377,26 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               <PencilLine className="h-3 w-3" />
               {nameLocked ? "Bearbeiten" : "Sperren"}
             </Button>
-          ) : null
+          ) : (
+            <ManualEntryModeToggle disabled={busy} />
+          )
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
           {isQrMode ? (
             <>
+              <Field
+                label="Vorname"
+                value={kunde.vorname ?? ""}
+                onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
+                disabled={busy || nameLocked}
+              />
+              <Field
+                label="Nachname"
+                value={kunde.nachname ?? ""}
+                onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
+                disabled={busy || nameLocked}
+              />
               <Field
                 label="Kunden-ID Hash"
                 value={kunde.kunden_id_hash ?? ""}
@@ -386,18 +410,6 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
                 onChange={(v) => setField("booking_id_hash", v || null)}
                 disabled={busy || nameLocked}
                 mono
-              />
-              <Field
-                label="Vorname"
-                value={kunde.vorname ?? ""}
-                onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
-                disabled={busy || nameLocked}
-              />
-              <Field
-                label="Nachname"
-                value={kunde.nachname ?? ""}
-                onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
-                disabled={busy || nameLocked}
               />
             </>
           ) : (

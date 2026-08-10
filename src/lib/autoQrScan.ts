@@ -8,11 +8,15 @@ import {
   type QrScanResult,
 } from "@/lib/tauri";
 import {
-  formatQrCleanupSummary,
   maybeRemoveQrPhoto,
   maybeRemoveQrVideo,
   type QrCleanupResult,
 } from "@/lib/qrCleanup";
+import {
+  formatQrSuccess,
+  kundeDisplayName,
+} from "@/lib/qrSuccess";
+import type { DialogOptions } from "@/store/uiStore";
 
 export type AutoQrScanInput = {
   videoPaths?: string[];
@@ -26,20 +30,42 @@ export type AutoQrScanOutcome = {
   found: boolean;
   message: string;
   source_path: string | null;
+  kundeName: string;
+  /** Ready-to-use SuccessDialog options when found. */
+  successOptions: DialogOptions | null;
+  successTitle: string | null;
 };
 
 function emptyOutcome(): AutoQrScanOutcome {
-  return { attempted: false, found: false, message: "", source_path: null };
+  return {
+    attempted: false,
+    found: false,
+    message: "",
+    source_path: null,
+    kundeName: "",
+    successOptions: null,
+    successTitle: null,
+  };
 }
 
-function formatHit(result: QrScanResult, cleanup: QrCleanupResult): string {
-  const name = result.kunde
-    ? [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ")
-    : "";
-  return (
-    `Kundendaten übernommen${name ? `: ${name}` : ""}.` +
-    formatQrCleanupSummary(cleanup)
-  );
+function formatHit(
+  result: QrScanResult,
+  cleanup: QrCleanupResult,
+): Pick<
+  AutoQrScanOutcome,
+  "message" | "kundeName" | "successOptions" | "successTitle"
+> {
+  const formatted = formatQrSuccess({
+    kunde: result.kunde,
+    cleanup,
+    sourcePath: result.source_path,
+  });
+  return {
+    message: formatted.message,
+    kundeName: kundeDisplayName(result.kunde),
+    successOptions: formatted.options,
+    successTitle: formatted.title,
+  };
 }
 
 /**
@@ -69,6 +95,9 @@ export async function runAutoQrAfterImport(
         found: false,
         message: result.message || "QR-Scan abgebrochen.",
         source_path: null,
+        kundeName: "",
+        successOptions: null,
+        successTitle: null,
       };
     }
     if (result.found && result.kunde) {
@@ -79,8 +108,8 @@ export async function runAutoQrAfterImport(
       return {
         attempted: true,
         found: true,
-        message: formatHit(result, cleanup),
         source_path: result.source_path,
+        ...formatHit(result, cleanup),
       };
     }
   }
@@ -93,6 +122,9 @@ export async function runAutoQrAfterImport(
         found: false,
         message: result.message || "QR-Scan abgebrochen.",
         source_path: null,
+        kundeName: "",
+        successOptions: null,
+        successTitle: null,
       };
     }
     if (result.found && result.kunde) {
@@ -101,8 +133,8 @@ export async function runAutoQrAfterImport(
       return {
         attempted: true,
         found: true,
-        message: formatHit(result, cleanup),
         source_path: result.source_path,
+        ...formatHit(result, cleanup),
       };
     }
   }
@@ -112,6 +144,9 @@ export async function runAutoQrAfterImport(
     found: false,
     message: "Kein QR-Code in den neuen Dateien gefunden.",
     source_path: null,
+    kundeName: "",
+    successOptions: null,
+    successTitle: null,
   };
 }
 

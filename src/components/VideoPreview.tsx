@@ -15,10 +15,8 @@ import { withQrScanProgress } from "../store/qrScanStore";
 import { generatePreview, validateKunde, scanQrVideo, type PreviewResult } from "../lib/tauri";
 import { useConfigStore } from "../store/configStore";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
-import {
-  formatQrCleanupSummary,
-  maybeRemoveQrVideo,
-} from "../lib/qrCleanup";
+import { maybeRemoveQrVideo } from "../lib/qrCleanup";
+import { formatQrSuccess } from "../lib/qrSuccess";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
@@ -260,12 +258,12 @@ export function VideoPreview({
         const cleanup = maybeRemoveQrVideo(result.source_path ?? clip.path, {
           onBeforeRemove: (p) => onBeforeRemoveClip?.(p),
         });
-        const name = [result.kunde.vorname, result.kunde.nachname].filter(Boolean).join(" ");
-        showSuccess(
-          `Kundendaten übernommen${name ? `: ${name}` : ""}.${formatQrCleanupSummary(cleanup)}`,
-          "QR-Scan",
-          { autoCloseSecs: 5 },
-        );
+        const success = formatQrSuccess({
+          kunde: result.kunde,
+          cleanup,
+          sourcePath: result.source_path ?? clip.path,
+        });
+        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
       }

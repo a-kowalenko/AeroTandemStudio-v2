@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, QrCode } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import type { DialogVariant } from "@/store/uiStore";
 
 type Props = {
   open: boolean;
@@ -15,6 +17,9 @@ type Props = {
   message: string;
   /** When set, OK auto-confirms after this many seconds (countdown on the button). */
   autoCloseSecs?: number | null;
+  variant?: DialogVariant;
+  /** Prominent line under the title (e.g. customer name for QR). */
+  highlight?: string;
   onClose: () => void;
 };
 
@@ -23,6 +28,8 @@ export function SuccessDialog({
   title = "Erfolg",
   message,
   autoCloseSecs = null,
+  variant = "default",
+  highlight = "",
   onClose,
 }: Props) {
   const timeoutSecs = autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
@@ -31,6 +38,8 @@ export function SuccessDialog({
   const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const isQr = variant === "qr";
+  const highlightText = highlight.trim();
 
   useEffect(() => {
     if (!open || !timeoutSecs) {
@@ -60,7 +69,7 @@ export function SuccessDialog({
       window.cancelAnimationFrame(startRaf);
       window.clearInterval(id);
     };
-  }, [open, timeoutSecs, message, title]);
+  }, [open, timeoutSecs, message, title, variant, highlightText]);
 
   function close() {
     if (closedRef.current) return;
@@ -72,7 +81,26 @@ export function SuccessDialog({
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent className="max-w-md border-l-4 border-l-success pb-7">
         <DialogHeader>
-          <DialogTitle className="text-success">{title}</DialogTitle>
+          {isQr ? (
+            <div className="mb-1 flex items-center gap-2.5">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-success/15 text-success">
+                <QrCode className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="flex items-center gap-1.5 text-success">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                  {title}
+                </DialogTitle>
+              </div>
+            </div>
+          ) : (
+            <DialogTitle className="text-success">{title}</DialogTitle>
+          )}
+          {isQr && highlightText ? (
+            <p className="pt-1 text-xl font-semibold tracking-tight text-foreground">
+              {highlightText}
+            </p>
+          ) : null}
           <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
             {message}
           </DialogDescription>
@@ -88,7 +116,11 @@ export function SuccessDialog({
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={barActive ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100) : 0}
+            aria-valuenow={
+              barActive
+                ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100)
+                : 0
+            }
             aria-label="Automatisches Schließen"
           >
             <div
