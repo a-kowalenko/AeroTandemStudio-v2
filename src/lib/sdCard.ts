@@ -50,6 +50,8 @@ export type SdInsertedPayload = {
   needs_confirmation: boolean;
   size_limit_exceeded: boolean;
   limit_mb: number;
+  /** True when the card was just plugged in (not only present at monitor start). */
+  hotplug: boolean;
 };
 
 export type BackupProgress = {
@@ -57,6 +59,15 @@ export type BackupProgress = {
   total_mb: number;
   speed_mbps: number;
   percent: number;
+};
+
+/** File-count progress for clear / import (i/n). */
+export type WorkflowProgress = {
+  stage: "clear" | "import" | string;
+  current: number;
+  total: number;
+  percent: number;
+  label: string;
 };
 
 export type SdWorkflowActions = {

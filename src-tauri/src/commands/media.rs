@@ -113,11 +113,15 @@ fn photo_metadata_for(path: &str) -> PhotoMetadata {
 
 /// Copy photos into the session working folder (`…/photos/`) and return metadata.
 #[tauri::command]
-pub async fn import_photos(paths: Vec<String>) -> Result<Vec<PhotoMetadata>, String> {
+pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<PhotoMetadata>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
+    let app_progress = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        use crate::sd_card::monitor::{workflow_progress, EVENT_WORKFLOW_PROGRESS};
+        use tauri::Emitter;
+
         let photo_paths: Vec<String> = paths
             .into_iter()
             .filter(|p| is_photo_path(p))
@@ -131,46 +135,49 @@ pub async fn import_photos(paths: Vec<String>) -> Result<Vec<PhotoMetadata>, Str
             "import",
             format!("Importiere {} Foto(s) in Arbeitsordner…", sorted.len()),
         );
-        match working_session::import_photos_to_session(&sorted) {
-            Ok(dest) => {
-                let mut with_device = 0usize;
-                let out: Vec<PhotoMetadata> = dest
-                    .iter()
-                    .map(|p| {
-                        let meta = photo_metadata_for(p);
-                        if let Some(label) =
-                            format_camera_label(&meta.camera_make, &meta.camera_model)
-                        {
-                            with_device += 1;
-                            logging::debug(
-                                "import",
-                                format!("Foto OK: {} (Gerät: {label})", meta.filename),
-                            );
-                        } else {
-                            logging::debug(
-                                "import",
-                                format!("Foto OK: {} (kein Geräte-Tag)", meta.filename),
-                            );
-                        }
-                        meta
-                    })
-                    .collect();
-                logging::info(
-                    "import",
-                    format!(
-                        "Foto-Import fertig: {} Datei(en), {} mit Geräte-Tag",
-                        out.len(),
-                        with_device
-                    ),
-                );
-                Ok(out)
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                logging::error("import", format!("Foto-Import fehlgeschlagen: {msg}"));
-                Err(msg)
-            }
+        let total = sorted.len() as u64;
+        let emit = |current: u64| {
+            let _ = app_progress.emit(
+                EVENT_WORKFLOW_PROGRESS,
+                workflow_progress("import", current, total, "Importiere Fotos…"),
+            );
+        };
+        emit(0);
+        let mut dest = Vec::with_capacity(sorted.len());
+        for (i, path) in sorted.iter().enumerate() {
+            let d = working_session::import_photo_to_session(path).map_err(|e| e.to_string())?;
+            dest.push(d.to_string_lossy().into_owned());
+            emit((i as u64) + 1);
         }
+        let mut with_device = 0usize;
+        let out: Vec<PhotoMetadata> = dest
+            .iter()
+            .map(|p| {
+                let meta = photo_metadata_for(p);
+                if let Some(label) = format_camera_label(&meta.camera_make, &meta.camera_model) {
+                    with_device += 1;
+                    logging::debug(
+                        "import",
+                        format!("Foto OK: {} (Gerät: {label})", meta.filename),
+                    );
+                } else {
+                    logging::debug(
+                        "import",
+                        format!("Foto OK: {} (kein Geräte-Tag)", meta.filename),
+                    );
+                }
+                meta
+            })
+            .collect();
+        logging::info(
+            "import",
+            format!(
+                "Foto-Import fertig: {} Datei(en), {} mit Geräte-Tag",
+                out.len(),
+                with_device
+            ),
+        );
+        Ok(out)
     })
     .await
     .map_err(|e| e.to_string())?

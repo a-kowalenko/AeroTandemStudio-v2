@@ -757,7 +757,7 @@ export function MediaDropZone({
             }
           >
             <QrCode className="h-3.5 w-3.5" />
-            Videos ({videoList.length})
+            Videos scannen ({videoList.length})
           </Button>
           <Button
             type="button"
@@ -772,7 +772,7 @@ export function MediaDropZone({
             }
           >
             <QrCode className="h-3.5 w-3.5" />
-            Fotos ({photoList.length})
+            Fotos scannen ({photoList.length})
           </Button>
           <Button
             type="button"

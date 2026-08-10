@@ -27,6 +27,8 @@ export type SdSelectorProgress = {
   percent: number;
   label?: string;
   detail?: string;
+  /** True when no reliable percentage is available (import / waiting). */
+  indeterminate?: boolean;
 };
 
 type Props = {
@@ -570,6 +572,7 @@ export function SdFileSelector({
             <ProgressIndicator
               percent={progress?.percent ?? 0}
               label={progress?.label ?? "SD-Verarbeitung…"}
+              indeterminate={Boolean(progress?.indeterminate)}
             />
             {progress?.detail ? (
               <p className="text-xs tabular-nums text-muted">{progress.detail}</p>

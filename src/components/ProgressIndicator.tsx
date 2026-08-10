@@ -9,6 +9,8 @@ type TaskProgress = {
 type ProgressIndicatorProps = {
   percent: number;
   label?: string;
+  /** Animated bar without a meaningful percentage (import / waiting). */
+  indeterminate?: boolean;
   /** Per-task bars when parallel encoding is active */
   tasks?: TaskProgress[];
 };
@@ -16,11 +18,32 @@ type ProgressIndicatorProps = {
 function Bar({
   percent,
   tone = "primary",
+  indeterminate = false,
 }: {
   percent: number;
   tone?: "primary" | "secondary";
+  indeterminate?: boolean;
 }) {
   const clamped = Math.max(0, Math.min(100, percent));
+  const gradient =
+    tone === "primary"
+      ? "linear-gradient(90deg, var(--ats-progress-from), var(--ats-progress-to))"
+      : "linear-gradient(90deg, color-mix(in srgb, var(--ats-progress-from) 70%, #fff), var(--ats-progress-to))";
+
+  if (indeterminate) {
+    return (
+      <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
+        <div
+          className="h-full w-1/3 rounded-full opacity-90"
+          style={{
+            background: gradient,
+            animation: "ats-progress-indeterminate 1.2s ease-in-out infinite",
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="h-2.5 overflow-hidden rounded-full bg-border/60">
       <div
@@ -31,17 +54,19 @@ function Bar({
         }
         style={{
           width: `${clamped}%`,
-          background:
-            tone === "primary"
-              ? "linear-gradient(90deg, var(--ats-progress-from), var(--ats-progress-to))"
-              : "linear-gradient(90deg, color-mix(in srgb, var(--ats-progress-from) 70%, #fff), var(--ats-progress-to))",
+          background: gradient,
         }}
       />
     </div>
   );
 }
 
-export function ProgressIndicator({ percent, label, tasks }: ProgressIndicatorProps) {
+export function ProgressIndicator({
+  percent,
+  label,
+  indeterminate = false,
+  tasks,
+}: ProgressIndicatorProps) {
   const clamped = Math.max(0, Math.min(100, percent));
   const showTasks = tasks && tasks.length > 0;
 
@@ -49,7 +74,7 @@ export function ProgressIndicator({ percent, label, tasks }: ProgressIndicatorPr
     <div className="space-y-3">
       <div
         role="progressbar"
-        aria-valuenow={clamped}
+        aria-valuenow={indeterminate ? undefined : clamped}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={label ?? "Gesamtfortschritt"}
@@ -61,9 +86,11 @@ export function ProgressIndicator({ percent, label, tasks }: ProgressIndicatorPr
           ) : (
             <span />
           )}
-          <p className="shrink-0 text-sm tabular-nums text-muted">{clamped.toFixed(1)}%</p>
+          <p className="shrink-0 text-sm tabular-nums text-muted">
+            {indeterminate ? "…" : `${clamped.toFixed(1)}%`}
+          </p>
         </div>
-        <Bar percent={clamped} />
+        <Bar percent={clamped} indeterminate={indeterminate} />
       </div>
 
       {showTasks ? (

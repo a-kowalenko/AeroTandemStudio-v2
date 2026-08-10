@@ -169,7 +169,17 @@ export function SettingsDialog({
         if (cancelled) return;
         setReleases([]);
         setSelectedVersion("");
-        setReleasesError(String(e));
+        const raw = String(e);
+        // Backend returns a short German message; fall back if older builds leak raw errors.
+        const looksTechnical =
+          /error sending request|dns error|reqwest|os error|failed to lookup|timed out|connection refused/i.test(
+            raw,
+          );
+        setReleasesError(
+          looksTechnical
+            ? "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen."
+            : raw,
+        );
       })
       .finally(() => {
         if (!cancelled) setReleasesLoading(false);
@@ -756,7 +766,7 @@ export function SettingsDialog({
                   </Button>
                 </div>
                 {releasesError ? (
-                  <p className="text-xs text-destructive">{releasesError}</p>
+                  <p className="text-xs text-muted">{releasesError}</p>
                 ) : null}
               </div>
 

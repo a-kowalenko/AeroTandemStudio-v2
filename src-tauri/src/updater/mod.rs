@@ -252,6 +252,40 @@ pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, Str
     }
 }
 
+/// Shown in Settings when the releases API cannot be reached (offline / DNS / timeout).
+pub const RELEASES_OFFLINE_MESSAGE: &str =
+    "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen.";
+
+const RELEASES_UNAVAILABLE_MESSAGE: &str = "Versionsliste vorübergehend nicht verfügbar.";
+
+fn is_network_error_message(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    lower.contains("dns")
+        || lower.contains("resolve")
+        || lower.contains("lookup")
+        || lower.contains("connection")
+        || lower.contains("network")
+        || lower.contains("offline")
+        || lower.contains("unreachable")
+        || lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("failed to connect")
+        || lower.contains("error sending request")
+}
+
+/// Map reqwest failures to a short, user-facing German message (no raw stack/DNS text).
+fn map_releases_fetch_error(err: &reqwest::Error) -> String {
+    if err.is_connect()
+        || err.is_timeout()
+        || err.is_request()
+        || is_network_error_message(&err.to_string())
+    {
+        RELEASES_OFFLINE_MESSAGE.into()
+    } else {
+        RELEASES_UNAVAILABLE_MESSAGE.into()
+    }
+}
+
 /// List published releases that include a platform installer (for version switching).
 #[tauri::command]
 pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> {
@@ -260,19 +294,16 @@ pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> 
         .get(RELEASES_API_URL)
         .send()
         .await
-        .map_err(|e| format!("Releases konnten nicht geladen werden: {e}"))?;
+        .map_err(|e| map_releases_fetch_error(&e))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "Releases konnten nicht geladen werden (HTTP {}).",
-            response.status()
-        ));
+        return Err(RELEASES_UNAVAILABLE_MESSAGE.into());
     }
 
     let payload: Vec<GitHubRelease> = response
         .json()
         .await
-        .map_err(|e| format!("Release-Antwort ungültig: {e}"))?;
+        .map_err(|_| RELEASES_UNAVAILABLE_MESSAGE.to_string())?;
 
     let mut releases = Vec::new();
     for release in payload {
@@ -604,6 +635,15 @@ mod tests {
         assert!(updater_endpoints()
             .iter()
             .any(|e| e.contains("aero-tandem-studio-releases")));
+    }
+
+    #[test]
+    fn releases_fetch_error_maps_network_keywords() {
+        assert!(is_network_error_message(
+            "error sending request for url (https://example): dns error: failed to lookup address information"
+        ));
+        assert!(is_network_error_message("connection timed out"));
+        assert!(!is_network_error_message("unexpected parser failure"));
     }
 
     #[test]

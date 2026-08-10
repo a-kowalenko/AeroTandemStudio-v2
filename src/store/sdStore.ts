@@ -1,5 +1,10 @@
 import { create } from "zustand";
-import type { BackupProgress, SdDriveInfo, SdInsertedPayload } from "../lib/sdCard";
+import type {
+  BackupProgress,
+  SdDriveInfo,
+  SdInsertedPayload,
+  WorkflowProgress,
+} from "../lib/sdCard";
 
 type SdPhase =
   | "idle"
@@ -17,6 +22,7 @@ type SdState = {
   activeDrive: string | null;
   pendingInsert: SdInsertedPayload | null;
   backupProgress: BackupProgress | null;
+  workflowProgress: WorkflowProgress | null;
   selectorOpen: boolean;
   selectorDrive: string | null;
   selectorFiles: import("../lib/sdCard").SdFileInfo[];
@@ -29,6 +35,7 @@ type SdState = {
   setActiveDrive: (drive: string | null) => void;
   setPendingInsert: (payload: SdInsertedPayload | null) => void;
   setBackupProgress: (p: BackupProgress | null) => void;
+  setWorkflowProgress: (p: WorkflowProgress | null) => void;
   openSelector: (opts: {
     drive: string;
     files: import("../lib/sdCard").SdFileInfo[];
@@ -46,6 +53,7 @@ export const useSdStore = create<SdState>((set) => ({
   activeDrive: null,
   pendingInsert: null,
   backupProgress: null,
+  workflowProgress: null,
   selectorOpen: false,
   selectorDrive: null,
   selectorFiles: [],
@@ -60,6 +68,7 @@ export const useSdStore = create<SdState>((set) => ({
   setActiveDrive: (activeDrive) => set({ activeDrive }),
   setPendingInsert: (pendingInsert) => set({ pendingInsert }),
   setBackupProgress: (backupProgress) => set({ backupProgress }),
+  setWorkflowProgress: (workflowProgress) => set({ workflowProgress }),
   openSelector: ({ drive, files, totalMb, mode }) =>
     set({
       selectorOpen: true,

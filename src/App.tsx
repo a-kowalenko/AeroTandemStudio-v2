@@ -30,7 +30,7 @@ import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
 import { SdDriveSelector } from "./components/SdDriveSelector";
-import { SdFileSelector } from "./components/SdFileSelector";
+import { SdFileSelector, type SdSelectorProgress } from "./components/SdFileSelector";
 import { ProcessedFilesDialog } from "./components/ProcessedFilesDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
@@ -71,7 +71,9 @@ import {
   ejectSdCard,
   importSdFiles,
   listSdFiles,
+  type BackupProgress,
   type SdWorkflowActions,
+  type WorkflowProgress,
 } from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport } from "./lib/autoQrScan";
 import { withQrScanProgress } from "./store/qrScanStore";
@@ -79,6 +81,70 @@ import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
 import { applyMonotonicPercent, resolveProgressLabel, shouldClearTaskProgress, taskProgressLabel } from "./lib/progressLabels";
 import { cn, isCancellationError } from "./lib/utils";
 import "./App.css";
+
+function resolveSdSelectorProgress(opts: {
+  submitting: boolean;
+  phase: string;
+  backupProgress: BackupProgress | null;
+  workflowProgress: WorkflowProgress | null;
+  loadingMessage: string;
+}): SdSelectorProgress | null {
+  if (!opts.submitting) return null;
+
+  const { phase, backupProgress, workflowProgress, loadingMessage } = opts;
+  const msg = loadingMessage.trim();
+
+  if (workflowProgress && (workflowProgress.stage === "clear" || workflowProgress.stage === "import")) {
+    const current = workflowProgress.current;
+    const total = workflowProgress.total;
+    return {
+      percent: workflowProgress.percent,
+      label: workflowProgress.label || (workflowProgress.stage === "clear"
+        ? "SD wird bereinigt…"
+        : msg || "Importiere…"),
+      detail: total > 0 ? `${current}/${total}` : undefined,
+    };
+  }
+
+  if (backupProgress) {
+    const isClearing = phase === "clearing";
+    const detailParts = [
+      `${backupProgress.current_mb.toFixed(0)}/${backupProgress.total_mb.toFixed(0)} MB`,
+    ];
+    if (backupProgress.speed_mbps > 0 && !isClearing) {
+      detailParts.push(`${backupProgress.speed_mbps.toFixed(1)} MB/s`);
+    }
+    return {
+      percent: backupProgress.percent,
+      label: isClearing
+        ? "SD wird bereinigt…"
+        : msg || "SD-Backup läuft…",
+      detail: detailParts.join(" · "),
+    };
+  }
+
+  if (phase === "clearing") {
+    return {
+      percent: 100,
+      label: "SD wird bereinigt…",
+      indeterminate: true,
+    };
+  }
+
+  if (phase === "importing" || /import/i.test(msg)) {
+    return {
+      percent: 0,
+      label: msg || "Importiere SD-Dateien…",
+      indeterminate: true,
+    };
+  }
+
+  return {
+    percent: 0,
+    label: msg || "SD-Verarbeitung…",
+    indeterminate: true,
+  };
+}
 
 type EncodeProgress = {
   percent: number;
@@ -144,6 +210,7 @@ function App() {
   useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const backupProgress = useSdStore((s) => s.backupProgress);
+  const workflowProgress = useSdStore((s) => s.workflowProgress);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -293,7 +360,8 @@ function App() {
 
     let qrNote = "";
     if (willAutoScan) {
-      setLoading(false);
+      useSdStore.getState().setWorkflowProgress(null);
+      setLoading(true, "QR-Scan…");
       try {
         const outcome = await withQrScanProgress(
           [...newVideoPaths, ...newPhotoPaths],
@@ -403,6 +471,7 @@ function App() {
         } else {
           setPhase("importing");
           useSdStore.getState().setBackupProgress(null);
+          useSdStore.getState().setWorkflowProgress(null);
           setLoading(true, "Importiere SD-Dateien…");
           const importNote = await importPathsIntoApp(importPaths);
           if (importNote) notes.push(importNote);
@@ -432,6 +501,7 @@ function App() {
       setLoading(false);
       setPhase("monitoring");
       useSdStore.getState().setBackupProgress(null);
+      useSdStore.getState().setWorkflowProgress(null);
     }
   }
 
@@ -1290,24 +1360,13 @@ function App() {
         mode={selectorMode}
         defaultActions={settingsSdActions()}
         submitting={selectorSubmitting}
-        progress={
-          selectorSubmitting
-            ? sdPhase === "backing_up" && backupProgress
-              ? {
-                  percent: backupProgress.percent,
-                  label: "SD-Backup läuft…",
-                  detail:
-                    `${backupProgress.current_mb.toFixed(0)}/${backupProgress.total_mb.toFixed(0)} MB` +
-                    (backupProgress.speed_mbps > 0
-                      ? ` · ${backupProgress.speed_mbps.toFixed(1)} MB/s`
-                      : ""),
-                }
-              : {
-                  percent: 0,
-                  label: loadingMessage || "SD-Verarbeitung…",
-                }
-            : null
-        }
+        progress={resolveSdSelectorProgress({
+          submitting: selectorSubmitting,
+          phase: sdPhase,
+          backupProgress,
+          workflowProgress,
+          loadingMessage,
+        })}
         onClose={closeSelector}
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
         onProceedAll={(actions) => void handleSelectorProceedAll(actions)}

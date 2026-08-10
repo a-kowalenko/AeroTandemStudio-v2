@@ -285,6 +285,7 @@ pub fn delete_working_copy(path: &str) -> bool {
     with_session(|s| s.delete_owned_file(Path::new(path))).unwrap_or(false)
 }
 
+#[allow(dead_code)]
 pub fn import_videos_to_session(paths: &[String]) -> Result<Vec<String>, WorkingSessionError> {
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {
@@ -294,6 +295,7 @@ pub fn import_videos_to_session(paths: &[String]) -> Result<Vec<String>, Working
     Ok(out)
 }
 
+#[allow(dead_code)]
 pub fn import_photos_to_session(paths: &[String]) -> Result<Vec<String>, WorkingSessionError> {
     let mut out = Vec::with_capacity(paths.len());
     for path in paths {

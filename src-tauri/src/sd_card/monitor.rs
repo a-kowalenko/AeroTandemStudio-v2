@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -20,6 +20,7 @@ use crate::media::dji_paths::{
     is_photo_ext, is_video_ext, media_type_from_filename, resolve_drive_dcim_path,
     unique_dest_name, write_backup_manifest, ManifestEntry,
 };
+use crate::sd_card::copy_progress::copy_file_with_progress;
 use crate::storage::media_history::MediaHistoryStore;
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
@@ -28,6 +29,7 @@ pub const EVENT_SD_INSERTED: &str = "sd-card-inserted";
 pub const EVENT_SD_REMOVED: &str = "sd-card-removed";
 pub const EVENT_BACKUP_PROGRESS: &str = "sd-backup-progress";
 pub const EVENT_BACKUP_STATUS: &str = "sd-backup-status";
+pub const EVENT_WORKFLOW_PROGRESS: &str = "sd-workflow-progress";
 #[allow(dead_code)]
 pub const EVENT_BACKUP_CONFIRM: &str = "sd-backup-confirmation-required";
 #[allow(dead_code)]
@@ -73,6 +75,32 @@ pub struct BackupProgress {
     pub total_mb: f64,
     pub speed_mbps: f64,
     pub percent: f64,
+}
+
+/// File-count progress for clear / import (i/n).
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkflowProgress {
+    /// `"clear"` | `"import"`
+    pub stage: String,
+    pub current: u64,
+    pub total: u64,
+    pub percent: f64,
+    pub label: String,
+}
+
+pub fn workflow_progress(stage: &str, current: u64, total: u64, label: &str) -> WorkflowProgress {
+    let percent = if total > 0 {
+        ((current as f64 / total as f64) * 100.0).min(100.0)
+    } else {
+        0.0
+    };
+    WorkflowProgress {
+        stage: stage.to_string(),
+        current,
+        total,
+        percent,
+        label: label.to_string(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,9 +151,12 @@ pub struct SdInsertedPayload {
     pub needs_confirmation: bool,
     pub size_limit_exceeded: bool,
     pub limit_mb: u32,
+    /// True when the card was just plugged in (not merely present at monitor start).
+    pub hotplug: bool,
 }
 
 type ProgressCb = Arc<dyn Fn(BackupProgress) + Send + Sync>;
+type WorkflowCb = Arc<dyn Fn(WorkflowProgress) + Send + Sync>;
 type StatusCb = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 type InsertedCb = Arc<dyn Fn(SdInsertedPayload) + Send + Sync>;
 type RemovedCb = Arc<dyn Fn(Vec<String>) + Send + Sync>;
@@ -142,6 +173,7 @@ pub struct SdCardMonitor {
     history: Mutex<MediaHistoryStore>,
     config_provider: Mutex<Box<dyn Fn() -> AppConfig + Send>>,
     on_progress: Mutex<Option<ProgressCb>>,
+    on_workflow: Mutex<Option<WorkflowCb>>,
     on_status: Mutex<Option<StatusCb>>,
     on_inserted: Mutex<Option<InsertedCb>>,
     on_removed: Mutex<Option<RemovedCb>>,
@@ -170,6 +202,7 @@ impl SdCardMonitor {
             history: Mutex::new(history),
             config_provider: Mutex::new(Box::new(config_provider)),
             on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
             on_status: Mutex::new(None),
             on_inserted: Mutex::new(None),
             on_removed: Mutex::new(None),
@@ -188,14 +221,22 @@ impl SdCardMonitor {
     pub fn set_callbacks(
         &self,
         on_progress: Option<ProgressCb>,
+        on_workflow: Option<WorkflowCb>,
         on_status: Option<StatusCb>,
         on_inserted: Option<InsertedCb>,
         on_removed: Option<RemovedCb>,
     ) {
         *self.on_progress.lock().unwrap() = on_progress;
+        *self.on_workflow.lock().unwrap() = on_workflow;
         *self.on_status.lock().unwrap() = on_status;
         *self.on_inserted.lock().unwrap() = on_inserted;
         *self.on_removed.lock().unwrap() = on_removed;
+    }
+
+    fn emit_workflow(&self, progress: WorkflowProgress) {
+        if let Some(cb) = self.on_workflow.lock().unwrap().as_ref() {
+            cb(progress);
+        }
     }
 
     fn config(&self) -> AppConfig {
@@ -231,7 +272,7 @@ impl SdCardMonitor {
         for drive in ready_action_cam_drives(&ready) {
             self.pending_drives.lock().unwrap().insert(drive.clone());
             self.action_cam_drives.lock().unwrap().insert(drive.clone());
-            self.emit_inserted(&drive, false);
+            self.emit_inserted(&drive, false, false);
         }
 
         let this = Arc::clone(self);
@@ -306,7 +347,11 @@ impl SdCardMonitor {
 
         // Frontend orchestrates backup/import/clear for both auto and confirm.
         let needs_confirmation = mode == "confirm" || (mode == "auto" && !is_new_insertion);
-        self.emit_inserted(drive, needs_confirmation && mode != "disabled");
+        self.emit_inserted(
+            drive,
+            needs_confirmation && mode != "disabled",
+            is_new_insertion,
+        );
 
         if mode == "disabled" {
             return;
@@ -329,7 +374,7 @@ impl SdCardMonitor {
         );
     }
 
-    fn emit_inserted(&self, drive: &str, needs_confirmation: bool) {
+    fn emit_inserted(&self, drive: &str, needs_confirmation: bool, hotplug: bool) {
         let cfg = self.config();
         let (file_count, total_mb) = {
             let info = gather_drive_info(drive);
@@ -344,6 +389,7 @@ impl SdCardMonitor {
             needs_confirmation,
             size_limit_exceeded,
             limit_mb: cfg.sd_size_limit_mb,
+            hotplug,
         };
         if let Some(cb) = self.on_inserted.lock().unwrap().as_ref() {
             cb(payload);
@@ -649,6 +695,38 @@ impl SdCardMonitor {
         let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
         let mut copied_size: u64 = 0;
         let start = SystemTime::now();
+        let mut last_progress_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+
+        let emit_progress = |copied_size: u64, total_mb: f64, start: SystemTime, force: bool, last: &mut Instant| {
+            if !force && last.elapsed() < Duration::from_millis(150) {
+                return;
+            }
+            if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
+                let current_mb = copied_size as f64 / (1024.0 * 1024.0);
+                let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
+                let speed = if elapsed > 0.0 {
+                    current_mb / elapsed
+                } else {
+                    0.0
+                };
+                let percent = if total_mb > 0.0 {
+                    ((current_mb / total_mb) * 100.0).min(100.0)
+                } else {
+                    0.0
+                };
+                cb(BackupProgress {
+                    current_mb,
+                    total_mb,
+                    speed_mbps: speed,
+                    percent,
+                });
+                *last = Instant::now();
+            }
+        };
+
+        emit_progress(0, total_mb, start, true, &mut last_progress_emit);
 
         for src_file in &filtered {
             let src_path = Path::new(src_file);
@@ -660,15 +738,23 @@ impl SdCardMonitor {
             let dst_filename = unique_dest_name(&original_name, &mut used_names);
             let dst = backup_path.join(&dst_filename);
 
-            match fs::copy(src_path, &dst) {
-                Ok(n) => {
+            match copy_file_with_progress(src_path, &dst, |delta| {
+                copied_size += delta;
+                emit_progress(
+                    copied_size,
+                    total_mb,
+                    start,
+                    false,
+                    &mut last_progress_emit,
+                );
+            }) {
+                Ok(_) => {
                     // Preserve mtime roughly via copy; copy2 equivalent:
                     if let Ok(meta) = fs::metadata(src_path) {
                         if let Ok(mtime) = meta.modified() {
                             let _ = filetime_set_mtime(&dst, mtime);
                         }
                     }
-                    copied_size += n;
                     copied_sources.push(src_file.clone());
                     copied_dests.push(dst.to_string_lossy().into_owned());
                     manifest_entries.push(ManifestEntry {
@@ -700,26 +786,8 @@ impl SdCardMonitor {
                     if let Ok(hist) = self.history.lock() {
                         let _ = hist.mark_backed_up(src_path);
                     }
-                    if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
-                        let current_mb = copied_size as f64 / (1024.0 * 1024.0);
-                        let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
-                        let speed = if elapsed > 0.0 {
-                            current_mb / elapsed
-                        } else {
-                            0.0
-                        };
-                        let percent = if total_mb > 0.0 {
-                            (current_mb / total_mb) * 100.0
-                        } else {
-                            0.0
-                        };
-                        cb(BackupProgress {
-                            current_mb,
-                            total_mb,
-                            speed_mbps: speed,
-                            percent,
-                        });
-                    }
+                    // Always emit once per completed file (smooth bar + accurate end-of-file %).
+                    emit_progress(copied_size, total_mb, start, true, &mut last_progress_emit);
                 }
                 Err(e) => {
                     // Card removed mid-backup
@@ -790,8 +858,29 @@ impl SdCardMonitor {
         let should_clear = matches!(clear_after, Some(true))
             || (clear_after.is_none() && cfg.sd_clear_after_backup);
         if should_clear && !copied_sources.is_empty() {
+            if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
+                let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
+                let current_mb = copied_size as f64 / (1024.0 * 1024.0);
+                cb(BackupProgress {
+                    current_mb,
+                    total_mb,
+                    speed_mbps: if elapsed > 0.0 {
+                        current_mb / elapsed
+                    } else {
+                        0.0
+                    },
+                    percent: 100.0,
+                });
+            }
             self.emit_status("clearing_started", serde_json::json!(drive));
-            clear_sd_files(&copied_sources);
+            clear_sd_files(&copied_sources, Some(|current, total| {
+                self.emit_workflow(workflow_progress(
+                    "clear",
+                    current,
+                    total,
+                    "SD wird bereinigt…",
+                ));
+            }));
             self.emit_status("clearing_finished", serde_json::json!(drive));
         } else if should_clear && copied_sources.is_empty() {
             // Safety: requested clear but nothing was backed up → do not touch SD.
@@ -954,10 +1043,20 @@ fn gather_drive_info(drive: &str) -> (String, usize, f64) {
     )
 }
 
-fn clear_sd_files(files: &[String]) {
+fn clear_sd_files<F>(files: &[String], mut on_progress: Option<F>)
+where
+    F: FnMut(u64, u64),
+{
     let expanded = expand_files_for_sd_clear(files);
-    for path in &expanded {
+    let total = expanded.len() as u64;
+    if let Some(ref mut cb) = on_progress {
+        cb(0, total);
+    }
+    for (idx, path) in expanded.iter().enumerate() {
         let _ = fs::remove_file(path);
+        if let Some(ref mut cb) = on_progress {
+            cb((idx as u64) + 1, total);
+        }
     }
     // Remove empty dirs deepest-first
     let mut dirs: HashSet<PathBuf> = HashSet::new();
@@ -1340,6 +1439,7 @@ mod tests {
                 }
             })),
             on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
             on_status: Mutex::new(None),
             on_inserted: Mutex::new(None),
             on_removed: Mutex::new(None),
@@ -1397,6 +1497,7 @@ mod tests {
                 }
             })),
             on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
             on_status: Mutex::new(None),
             on_inserted: Mutex::new(None),
             on_removed: Mutex::new(None),
@@ -1448,6 +1549,7 @@ mod tests {
                 }
             })),
             on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
             on_status: Mutex::new(None),
             on_inserted: Mutex::new(None),
             on_removed: Mutex::new(None),

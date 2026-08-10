@@ -624,17 +624,36 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         format!("Importiere {} Video(s) (Kopie + Probe)…", sorted.len()),
     );
     let ffmpeg = resolve_ffmpeg(&app)?;
+    let app_progress = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        // Copy into session working folder first (Legacy: never mutate originals).
-        let working = crate::storage::working_session::import_videos_to_session(&sorted)
-            .map_err(|e| e.to_string())?;
+        use crate::sd_card::monitor::{workflow_progress, EVENT_WORKFLOW_PROGRESS};
+        use tauri::Emitter;
+
+        let n = sorted.len() as u64;
+        // Copy + probe = 2 steps per file.
+        let total_steps = n.saturating_mul(2);
+        let emit = |current: u64, label: &str| {
+            let _ = app_progress.emit(
+                EVENT_WORKFLOW_PROGRESS,
+                workflow_progress("import", current, total_steps, label),
+            );
+        };
+
+        emit(0, "Importiere Videos…");
+        let mut working = Vec::with_capacity(sorted.len());
+        for (i, path) in sorted.iter().enumerate() {
+            let dest = crate::storage::working_session::import_video_to_session(path)
+                .map_err(|e| e.to_string())?;
+            working.push(dest.to_string_lossy().into_owned());
+            emit((i as u64) * 2 + 1, "Kopiere Videos…");
+        }
         logging::info(
             "import",
             format!("Videos kopiert: {} Datei(en), starte Probe…", working.len()),
         );
         let mut out = Vec::with_capacity(working.len());
         let mut errors = Vec::new();
-        for path in &working {
+        for (i, path) in working.iter().enumerate() {
             match probe::probe_video(&ffmpeg, path) {
                 Ok(meta) => {
                     let device = probe::format_camera_label(&meta.camera_make, &meta.camera_model)
@@ -662,6 +681,7 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                     errors.push(format!("{path}: {e}"));
                 }
             }
+            emit((i as u64) * 2 + 2, "Analysiere Videos…");
         }
         if out.is_empty() && !errors.is_empty() {
             return Err(errors.join("; "));

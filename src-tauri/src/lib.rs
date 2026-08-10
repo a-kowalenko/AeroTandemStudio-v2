@@ -178,6 +178,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
+                sd_card::autoplay::uninstall();
                 let result = cleanup_on_app_exit();
                 if result.deleted_dirs.is_empty() && result.deleted_files.is_empty() {
                     log_info("Exit cleanup: nothing to remove");

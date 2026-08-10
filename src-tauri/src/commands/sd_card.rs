@@ -7,11 +7,12 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::config::ConfigState;
 use crate::media::thumbnail::{generate_thumbnail_jpeg, THUMB_MAX_SIZE};
+use crate::sd_card::autoplay;
 use crate::sd_card::eject::eject_drive;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
-    SdInsertedPayload, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_SD_INSERTED,
-    EVENT_SD_REMOVED, SD_MONITOR,
+    SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS,
+    EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
@@ -34,10 +35,14 @@ fn wire_monitor_events(app: &AppHandle) {
     let handle2 = app.clone();
     let handle3 = app.clone();
     let handle4 = app.clone();
+    let handle5 = app.clone();
 
     SD_MONITOR.set_callbacks(
         Some(Arc::new(move |progress: BackupProgress| {
             let _ = handle.emit(EVENT_BACKUP_PROGRESS, progress);
+        })),
+        Some(Arc::new(move |progress: WorkflowProgress| {
+            let _ = handle5.emit(EVENT_WORKFLOW_PROGRESS, progress);
         })),
         Some(Arc::new(move |kind: &str, data: serde_json::Value| {
             let _ = handle2.emit(
@@ -53,6 +58,9 @@ fn wire_monitor_events(app: &AppHandle) {
                     payload.drive, payload.needs_confirmation
                 ),
             );
+            if payload.hotplug {
+                autoplay::on_sd_inserted(&handle3, &payload.drive);
+            }
             let _ = handle3.emit(EVENT_SD_INSERTED, payload);
         })),
         Some(Arc::new(move |drives: Vec<String>| {
@@ -74,6 +82,7 @@ pub fn init_sd_monitor(app: &AppHandle) {
         crate::storage::AppConfig::default()
     });
     wire_monitor_events(app);
+    autoplay::install(app);
 
     let cfg = {
         if let Some(state) = app.try_state::<ConfigState>() {
@@ -146,7 +155,7 @@ pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
 }
 
 #[tauri::command]
-pub fn backup_sd_card(
+pub async fn backup_sd_card(
     drive: String,
     selected_files: Option<Vec<String>>,
     clear_after: Option<bool>,
@@ -161,7 +170,13 @@ pub fn backup_sd_card(
                 .unwrap_or_else(|| "all".into())
         ),
     );
-    match SD_MONITOR.backup_drive_with_options(&drive, selected_files, clear_after) {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        SD_MONITOR.backup_drive_with_options(&drive, selected_files, clear_after)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
         Ok(res) => {
             logging::info(
                 "sd",
@@ -206,12 +221,16 @@ pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
 }
 
 #[tauri::command]
-pub fn import_sd_files(paths: Vec<String>) -> Result<ImportSdResult, String> {
+pub async fn import_sd_files(paths: Vec<String>) -> Result<ImportSdResult, String> {
     logging::info(
         "sd",
         format!("SD-Import start: {} Datei(en)", paths.len()),
     );
-    match SD_MONITOR.import_files(&paths) {
+    let result = tauri::async_runtime::spawn_blocking(move || SD_MONITOR.import_files(&paths))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    match result {
         Ok(res) => {
             logging::info(
                 "sd",

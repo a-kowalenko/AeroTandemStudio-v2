@@ -7,6 +7,7 @@ import {
   type BackupProgress,
   type SdInsertedPayload,
   type SdWorkflowActions,
+  type WorkflowProgress,
 } from "../lib/sdCard";
 import { useConfigStore } from "../store/configStore";
 import { useSdStore } from "../store/sdStore";
@@ -33,6 +34,7 @@ export function useSdCardMonitor(opts?: {
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const setPendingInsert = useSdStore((s) => s.setPendingInsert);
   const setBackupProgress = useSdStore((s) => s.setBackupProgress);
+  const setWorkflowProgress = useSdStore((s) => s.setWorkflowProgress);
   const showError = useUiStore((s) => s.showError);
 
   useEffect(() => {
@@ -118,6 +120,7 @@ export function useSdCardMonitor(opts?: {
       setPhase("monitoring");
       setPendingInsert(null);
       setBackupProgress(null);
+      setWorkflowProgress(null);
       if (removed.length) {
         setActiveDrive(null);
         void scanSdDrives().then(setDrives).catch(() => undefined);
@@ -126,7 +129,16 @@ export function useSdCardMonitor(opts?: {
 
     listen<BackupProgress>("sd-backup-progress", (event) => {
       setPhase("backing_up");
+      setWorkflowProgress(null);
       setBackupProgress(event.payload);
+    }).then((fn) => unlisteners.push(fn));
+
+    listen<WorkflowProgress>("sd-workflow-progress", (event) => {
+      const p = event.payload;
+      if (p.stage === "clear") setPhase("clearing");
+      else if (p.stage === "import") setPhase("importing");
+      setBackupProgress(null);
+      setWorkflowProgress(p);
     }).then((fn) => unlisteners.push(fn));
 
     listen<{ kind: string; data: unknown }>("sd-backup-status", (event) => {
@@ -135,8 +147,8 @@ export function useSdCardMonitor(opts?: {
       if (kind === "clearing_started") setPhase("clearing");
       if (kind === "clearing_finished") setPhase("backing_up");
       if (kind === "backup_finished") {
+        // Keep last backupProgress until the App workflow clears it (import / finally).
         setPhase("monitoring");
-        setBackupProgress(null);
       }
       if (kind === "backup_confirmation_required") {
         setPhase("confirming");
@@ -154,6 +166,7 @@ export function useSdCardMonitor(opts?: {
     config?.sd_eject_after_workflow,
     setActiveDrive,
     setBackupProgress,
+    setWorkflowProgress,
     setDrives,
     setPendingInsert,
     setPhase,
