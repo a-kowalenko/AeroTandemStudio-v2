@@ -144,9 +144,12 @@ export async function ejectSdCard(drive: string): Promise<void> {
 
 export async function getMediaThumbnail(
   path: string,
-): Promise<{ path: string; data_url: string }> {
-  return invoke("get_media_thumbnail", { path });
+  quality: ThumbQuality = "lq",
+): Promise<{ path: string; data_url: string; quality?: string }> {
+  return invoke("get_media_thumbnail", { path, quality });
 }
+
+export type ThumbQuality = "lq" | "hq";
 
 export async function listProcessedFiles(
   limit?: number,

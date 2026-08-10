@@ -11,6 +11,7 @@ type Props = {
   filename: string;
   sizeLabel: string;
   thumbUrl?: string;
+  thumbQuality?: "lq" | "hq";
   selected: boolean;
   alreadyProcessed?: boolean;
   /** Another tile (or this one) owns the single active session. */
@@ -38,6 +39,7 @@ export function SdVideoTile({
   filename,
   sizeLabel,
   thumbUrl,
+  thumbQuality,
   selected,
   alreadyProcessed,
   isActive,
@@ -214,6 +216,7 @@ export function SdVideoTile({
   return (
     <div
       data-tile
+      data-thumb-path={path}
       ref={tileRef}
       className={cn(
         "relative flex flex-col overflow-hidden rounded-md text-left transition",
@@ -282,11 +285,17 @@ export function SdVideoTile({
           <img
             src={thumbUrl}
             alt=""
-            className="h-full w-full object-cover"
+            className={cn(
+              "h-full w-full object-cover transition-[filter,transform] duration-300",
+              thumbQuality === "lq" && "scale-[1.03] blur-[0.6px]",
+            )}
             draggable={false}
           />
         ) : (
-          <Film className="h-8 w-8 text-muted" />
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-black/40">
+            <div className="absolute inset-0 animate-pulse bg-muted/30" />
+            <Film className="relative h-8 w-8 text-muted" />
+          </div>
         )}
 
         {loadError && (

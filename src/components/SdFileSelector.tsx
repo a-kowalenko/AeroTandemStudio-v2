@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +17,10 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { SdFileInfo, SdWorkflowActions } from "../lib/sdCard";
-import { getMediaThumbnail } from "../lib/sdCard";
+import {
+  createSdThumbnailLoader,
+  type ThumbState,
+} from "../lib/sdThumbnailLoader";
 import { cn } from "../lib/utils";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { SdVideoTile } from "./SdVideoTile";
@@ -92,7 +94,7 @@ export function SdFileSelector({
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortAsc, setSortAsc] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  const [thumbs, setThumbs] = useState<Record<string, ThumbState>>({});
   const [actions, setActions] = useState<SdWorkflowActions>({
     backup: true,
     import: true,
@@ -109,11 +111,11 @@ export function SdFileSelector({
   const [activeVideoPath, setActiveVideoPath] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const loaderRef = useRef(createSdThumbnailLoader());
 
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
-    setThumbs({});
     setActiveVideoPath(null);
     setActions({
       backup: defaultActions?.backup ?? true,
@@ -122,13 +124,41 @@ export function SdFileSelector({
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
       eject: Boolean(defaultActions?.eject),
     });
+    setThumbs(loaderRef.current.snapshotFor(files.map((f) => f.path)));
     // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, files]);
 
+  // Loader lifetime must follow `open` only — stopping on unrelated re-renders
+  // cancels in-flight FFmpeg thumbs before they finish.
   useEffect(() => {
-    if (!open) setActiveVideoPath(null);
+    const loader = loaderRef.current;
+    if (!open) {
+      loader.stop();
+      return;
+    }
+    loader.start();
+    return () => loader.stop();
   }, [open]);
+
+  useEffect(() => {
+    const loader = loaderRef.current;
+    loader.setListener((batch) => {
+      setThumbs((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const [path, state] of batch) {
+          const cur = next[path];
+          if (cur?.quality === "hq" && state.quality === "lq") continue;
+          if (cur?.url === state.url && cur?.quality === state.quality) continue;
+          next[path] = state;
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    });
+    return () => loader.setListener(null);
+  }, []);
 
   const filtered = useMemo(() => {
     let list = [...files];
@@ -152,28 +182,47 @@ export function SdFileSelector({
     return sum / (1024 * 1024);
   }, [files, selected]);
 
-  // Lazy-load thumbnails for visible items (first 40)
+  // Eager first page + IntersectionObserver for the rest
   useEffect(() => {
     if (!open || viewMode !== "thumbnail") return;
-    let cancelled = false;
-    const batch = filtered.slice(0, 40);
-    (async () => {
-      for (const file of batch) {
-        if (cancelled || thumbs[file.path]) continue;
-        try {
-          const res = await getMediaThumbnail(file.path);
-          if (!cancelled) {
-            setThumbs((prev) => ({ ...prev, [file.path]: res.data_url }));
-          }
-        } catch {
-          // ignore missing thumbs
+    const loader = loaderRef.current;
+    // Always kick the first screen without waiting for IO.
+    for (const file of filtered.slice(0, 32)) {
+      loader.setVisible(file.path, true);
+    }
+
+    const root = gridRef.current;
+    if (!root) return;
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const path = (entry.target as HTMLElement).dataset.thumbPath;
+          if (!path) continue;
+          loader.setVisible(path, entry.isIntersecting);
         }
-      }
-    })();
-    return () => {
-      cancelled = true;
+      },
+      { root, rootMargin: "240px 0px", threshold: 0 },
+    );
+
+    const observed = new WeakSet<Element>();
+    const observeAll = () => {
+      root.querySelectorAll<HTMLElement>("[data-thumb-path]").forEach((el) => {
+        if (observed.has(el)) return;
+        observed.add(el);
+        io.observe(el);
+      });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    observeAll();
+    const mo = new MutationObserver(() => observeAll());
+    mo.observe(root, { childList: true, subtree: true });
+    const t = window.setTimeout(observeAll, 0);
+
+    return () => {
+      window.clearTimeout(t);
+      mo.disconnect();
+      io.disconnect();
+    };
   }, [open, viewMode, filtered]);
 
   function toggle(path: string) {
@@ -449,7 +498,8 @@ export function SdFileSelector({
                       path={file.path}
                       filename={file.filename}
                       sizeLabel={formatBytes(file.size_bytes)}
-                      thumbUrl={thumbs[file.path]}
+                      thumbUrl={thumbs[file.path]?.url}
+                      thumbQuality={thumbs[file.path]?.quality}
                       selected={isSel}
                       alreadyProcessed={file.already_processed}
                       isActive={activeVideoPath === file.path}
@@ -468,6 +518,7 @@ export function SdFileSelector({
                     key={file.path}
                     type="button"
                     data-tile
+                    data-thumb-path={file.path}
                     ref={setTileEl}
                     onClick={() => toggle(file.path)}
                     className={cn(
@@ -478,7 +529,7 @@ export function SdFileSelector({
                       file.already_processed && "opacity-70",
                     )}
                   >
-                    <div className="relative flex aspect-video items-center justify-center bg-black/5">
+                    <div className="relative flex aspect-video items-center justify-center bg-muted/40">
                       <div
                         className="absolute top-1.5 left-1.5 z-10"
                         onClick={(e) => e.stopPropagation()}
@@ -491,15 +542,18 @@ export function SdFileSelector({
                           className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         />
                       </div>
-                      {thumbs[file.path] ? (
+                      {thumbs[file.path]?.url ? (
                         <img
-                          src={thumbs[file.path]}
+                          src={thumbs[file.path].url}
                           alt=""
-                          className="h-full w-full object-cover"
+                          className={cn(
+                            "h-full w-full object-cover transition-[filter] duration-300",
+                            thumbs[file.path].quality === "lq" && "blur-[0.5px] scale-[1.02]",
+                          )}
                           draggable={false}
                         />
                       ) : (
-                        <ImageIcon className="h-8 w-8 text-muted" />
+                        <div className="h-full w-full animate-pulse bg-gradient-to-br from-muted/60 to-muted/20" />
                       )}
                     </div>
                     <div className="truncate px-2 py-1 text-[11px]">{file.filename}</div>

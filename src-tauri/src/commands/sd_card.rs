@@ -6,7 +6,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::config::ConfigState;
-use crate::media::thumbnail::{generate_thumbnail_jpeg, THUMB_MAX_SIZE};
+use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
+use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
 use crate::sd_card::autoplay;
 use crate::sd_card::eject::eject_drive;
 use crate::sd_card::monitor::{
@@ -275,10 +276,31 @@ pub fn eject_sd_card(drive: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_media_thumbnail(path: String) -> Result<ThumbnailResult, String> {
-    let (_bytes, data_url) = generate_thumbnail_jpeg(std::path::Path::new(&path), THUMB_MAX_SIZE)
-        .map_err(|e| e.to_string())?;
-    Ok(ThumbnailResult { path, data_url })
+pub async fn get_media_thumbnail(
+    app: AppHandle,
+    path: String,
+    quality: Option<String>,
+) -> Result<ThumbnailResult, String> {
+    let q = ThumbQuality::parse(quality.as_deref().unwrap_or("lq"));
+    let resource_dir = app.path().resource_dir().ok();
+    let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok();
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = generate_thumbnail_cached_with_ffmpeg(
+            std::path::Path::new(&path),
+            q,
+            ffmpeg.as_deref(),
+        );
+        match result {
+            Ok((_bytes, data_url)) => Ok(ThumbnailResult { path, data_url }),
+            Err(e) => {
+                let msg = e.to_string();
+                logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
+                Err(msg)
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
