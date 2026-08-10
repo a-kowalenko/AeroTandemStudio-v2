@@ -952,6 +952,8 @@ function App() {
         resetSession({
           tandemmaster: config.keep_tandemmaster_on_session_reset,
           videospringer: config.keep_videospringer_on_session_reset,
+          tandemmasterFixed: config.tandemmaster,
+          videospringerFixed: config.videospringer,
         });
       }
     } catch (e) {
@@ -1022,6 +1024,8 @@ function App() {
     resetSession({
       tandemmaster: config?.keep_tandemmaster_on_session_reset,
       videospringer: config?.keep_videospringer_on_session_reset,
+      tandemmasterFixed: config?.tandemmaster,
+      videospringerFixed: config?.videospringer,
     });
     showSuccess("Session zurückgesetzt.", "Zurücksetzen", {
       autoCloseSecs: 5,
@@ -1140,22 +1144,27 @@ function App() {
                     : "Speicherort beim Erstellen wählen…"}
                 </p>
               </div>
-              <label className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card-elevated/80 px-2 py-1 text-xs text-muted">
+              <label
+                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card-elevated/80 px-2 py-1 text-xs text-muted"
+                title={
+                  !serverConnected && config?.upload_to_server
+                    ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
+                    : !serverConnected
+                      ? "Server nicht verbunden"
+                      : undefined
+                }
+              >
                 <Checkbox
-                  checked={Boolean(config?.upload_to_server)}
-                  disabled={busy || !config}
+                  checked={Boolean(
+                    config?.upload_to_server && serverConnected,
+                  )}
+                  disabled={busy || !config || !serverConnected}
                   onCheckedChange={(v) => {
-                    if (!config) return;
-                    const enabled = v === true;
-                    if (enabled && !serverConnected) {
-                      showWarning(
-                        "Server nicht erreichbar — Upload bleibt deaktiviert.",
-                        "Server",
-                      );
-                      void checkServerConnection();
-                      return;
-                    }
-                    void persistConfig({ ...config, upload_to_server: enabled });
+                    if (!config || !serverConnected) return;
+                    void persistConfig({
+                      ...config,
+                      upload_to_server: v === true,
+                    });
                   }}
                 />
                 Upload
@@ -1217,8 +1226,15 @@ function App() {
                   void startCreate();
                 }}
                 disabled={busy || !createReady}
+                title={
+                  config?.upload_to_server && serverConnected
+                    ? "Vorgang erstellen und auf den Server hochladen"
+                    : undefined
+                }
               >
-                Erstellen
+                {config?.upload_to_server && serverConnected
+                  ? "Erstellen & Upload"
+                  : "Erstellen"}
               </Button>
             </div>
           </div>

@@ -19,6 +19,8 @@ type ComboboxProps = {
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
+  /** Always listed at the top of the dropdown (e.g. mode choices). */
+  pinnedOptions?: readonly { value: string; label: string }[];
   disabled?: boolean;
   placeholder?: string;
   hint?: string;
@@ -30,6 +32,7 @@ type ComboboxProps = {
 };
 
 type ListPos = {
+  mode: "fixed" | "absolute";
   top?: number;
   bottom?: number;
   left: number;
@@ -37,15 +40,24 @@ type ListPos = {
   maxHeight: number;
 };
 
+type ListEntry =
+  | { kind: "pinned"; value: string; label: string }
+  | { kind: "option"; value: string; label: string }
+  | { kind: "separator" };
+
+const EMPTY_PINNED: readonly { value: string; label: string }[] = [];
+
 /**
  * Text input with filtered suggestion list. Free text always allowed.
- * List is portaled so it can overlay scroll parents and the sidebar footer.
+ * List is portaled — into the nearest dialog when inside one (Radix modal
+ * marks body siblings as inert, so a body portal would not receive clicks).
  */
 export function Combobox({
   label,
   value,
   onChange,
   options,
+  pinnedOptions = EMPTY_PINNED,
   disabled,
   placeholder,
   hint,
@@ -64,22 +76,61 @@ export function Combobox({
   /** null = show all options (open via focus/chevron); string = filter while typing */
   const [filterQuery, setFilterQuery] = useState<string | null>(null);
   const [listPos, setListPos] = useState<ListPos | null>(null);
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
-  const filtered = useMemo(() => {
-    const unique = [...new Set(options.map((o) => o.trim()).filter(Boolean))];
-    if (filterQuery === null) return unique;
-    const q = filterQuery.trim().toLowerCase();
-    if (!q) return unique;
-    return unique.filter((o) => o.toLowerCase().includes(q));
-  }, [options, filterQuery]);
+  const pinnedLabel = useMemo(() => {
+    const hit = pinnedOptions.find((p) => p.value === value);
+    return hit?.label ?? null;
+  }, [pinnedOptions, value]);
+
+  /** What the text field shows (pinned sentinels → human label). */
+  const inputDisplay = pinnedLabel ?? value;
+
+  const entries = useMemo((): ListEntry[] => {
+    const q =
+      filterQuery === null ? "" : filterQuery.trim().toLowerCase();
+    const pinned = pinnedOptions.filter((p) => {
+      if (!q) return true;
+      return (
+        p.label.toLowerCase().includes(q) ||
+        p.value.toLowerCase().includes(q)
+      );
+    });
+    const pinnedValues = new Set(pinnedOptions.map((p) => p.value));
+    const unique = [
+      ...new Set(options.map((o) => o.trim()).filter(Boolean)),
+    ].filter((o) => !pinnedValues.has(o));
+    const regular = q
+      ? unique.filter((o) => o.toLowerCase().includes(q))
+      : unique;
+
+    const out: ListEntry[] = pinned.map((p) => ({
+      kind: "pinned" as const,
+      value: p.value,
+      label: p.label,
+    }));
+    if (pinned.length > 0 && regular.length > 0) {
+      out.push({ kind: "separator" });
+    }
+    for (const o of regular) {
+      out.push({ kind: "option", value: o, label: o });
+    }
+    return out;
+  }, [options, pinnedOptions, filterQuery]);
+
+  const selectable = useMemo(
+    () => entries.filter((e) => e.kind !== "separator"),
+    [entries],
+  );
 
   useEffect(() => {
     setHighlight(0);
-  }, [filtered, filterQuery]);
+  }, [entries, filterQuery]);
 
   useLayoutEffect(() => {
-    if (!open || disabled || filtered.length === 0) {
+    if (!open || disabled || selectable.length === 0) {
       setListPos(null);
+      setPortalEl(null);
       return;
     }
 
@@ -87,8 +138,13 @@ export function Combobox({
       const el = triggerRef.current;
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      const dialog = el.closest('[role="dialog"]');
+      const portal =
+        dialog instanceof HTMLElement ? dialog : document.body;
+      setPortalEl(portal);
+
       const gap = 4;
-      const preferredMax = 192; // max-h-48
+      const preferredMax = 240;
       const spaceBelow = window.innerHeight - rect.bottom - gap - 8;
       const spaceAbove = rect.top - gap - 8;
       const openUp = spaceBelow < 120 && spaceAbove > spaceBelow;
@@ -96,38 +152,64 @@ export function Combobox({
         80,
         Math.min(preferredMax, openUp ? spaceAbove : spaceBelow),
       );
-      setListPos(
-        openUp
-          ? {
-              bottom: window.innerHeight - rect.top + gap,
-              left: rect.left,
-              width: rect.width,
-              maxHeight,
-            }
-          : {
-              top: rect.bottom + gap,
-              left: rect.left,
-              width: rect.width,
-              maxHeight,
-            },
-      );
+
+      if (dialog instanceof HTMLElement) {
+        // Dialog uses transform → fixed is relative to dialog; use absolute + dialog coords.
+        const d = dialog.getBoundingClientRect();
+        setListPos(
+          openUp
+            ? {
+                mode: "absolute",
+                bottom: d.bottom - rect.top + gap,
+                left: rect.left - d.left,
+                width: rect.width,
+                maxHeight,
+              }
+            : {
+                mode: "absolute",
+                top: rect.bottom - d.top + gap,
+                left: rect.left - d.left,
+                width: rect.width,
+                maxHeight,
+              },
+        );
+      } else {
+        setListPos(
+          openUp
+            ? {
+                mode: "fixed",
+                bottom: window.innerHeight - rect.top + gap,
+                left: rect.left,
+                width: rect.width,
+                maxHeight,
+              }
+            : {
+                mode: "fixed",
+                top: rect.bottom + gap,
+                left: rect.left,
+                width: rect.width,
+                maxHeight,
+              },
+        );
+      }
     }
 
     updatePos();
     window.addEventListener("resize", updatePos);
-    // Capture scroll from any ancestor (sidebar overflow-y-auto).
     window.addEventListener("scroll", updatePos, true);
     return () => {
       window.removeEventListener("resize", updatePos);
       window.removeEventListener("scroll", updatePos, true);
     };
-  }, [open, disabled, filtered.length, value]);
+  }, [open, disabled, selectable.length, value]);
 
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      const t = e.target as Node;
-      if (rootRef.current?.contains(t) || listRef.current?.contains(t)) return;
+      const t = e.target as HTMLElement | null;
+      if (!t) return;
+      if (rootRef.current?.contains(t)) return;
+      if (t.closest?.("[data-ats-combobox-list]")) return;
       setOpen(false);
       setFilterQuery(null);
     }
@@ -140,8 +222,8 @@ export function Combobox({
     setOpen(true);
   }
 
-  function select(option: string) {
-    onChange(option);
+  function select(optionValue: string) {
+    onChange(optionValue);
     setFilterQuery(null);
     setOpen(false);
   }
@@ -151,14 +233,17 @@ export function Combobox({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (!open) openList();
-      setHighlight((i) => Math.min(i + 1, Math.max(filtered.length - 1, 0)));
+      setHighlight((i) =>
+        Math.min(i + 1, Math.max(selectable.length - 1, 0)),
+      );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (!open) openList();
       setHighlight((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter" && open && filtered[highlight]) {
+    } else if (e.key === "Enter" && open && selectable[highlight]) {
       e.preventDefault();
-      select(filtered[highlight]);
+      const entry = selectable[highlight];
+      if (entry.kind !== "separator") select(entry.value);
     } else if (e.key === "Escape") {
       setOpen(false);
       setFilterQuery(null);
@@ -167,46 +252,72 @@ export function Combobox({
 
   const listStyle: CSSProperties | undefined = listPos
     ? {
-        position: "fixed",
+        position: listPos.mode,
         top: listPos.top,
         bottom: listPos.bottom,
         left: listPos.left,
         width: listPos.width,
         maxHeight: listPos.maxHeight,
         zIndex: listZIndex,
+        pointerEvents: "auto",
       }
     : undefined;
 
+  let selectableIndex = -1;
   const list =
-    open && !disabled && filtered.length > 0 && listPos
+    open && !disabled && selectable.length > 0 && listPos && portalEl
       ? createPortal(
           <ul
             ref={listRef}
             id={listId}
             role="listbox"
+            data-ats-combobox-list=""
             style={listStyle}
             className="overflow-auto rounded-md border border-border bg-card py-1 shadow-md"
           >
-            {filtered.map((option, i) => (
-              <li key={option} role="option" aria-selected={i === highlight}>
-                <button
-                  type="button"
-                  className={cn(
-                    "flex w-full px-3 py-1.5 text-left text-sm",
-                    i === highlight
-                      ? "bg-primary-soft text-foreground"
-                      : "text-foreground hover:bg-card-elevated",
-                  )}
-                  onMouseEnter={() => setHighlight(i)}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => select(option)}
+            {entries.map((entry, i) => {
+              if (entry.kind === "separator") {
+                return (
+                  <li
+                    key={`sep-${i}`}
+                    role="presentation"
+                    className="my-1 border-t border-border"
+                  />
+                );
+              }
+              selectableIndex += 1;
+              const idx = selectableIndex;
+              const selected = value === entry.value;
+              return (
+                <li
+                  key={`${entry.kind}-${entry.value}`}
+                  role="option"
+                  aria-selected={idx === highlight}
                 >
-                  {option}
-                </button>
-              </li>
-            ))}
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex w-full px-3 py-1.5 text-left text-sm",
+                      idx === highlight
+                        ? "bg-primary-soft text-foreground"
+                        : "text-foreground hover:bg-card-elevated",
+                      entry.kind === "pinned" && "font-medium",
+                      selected && "text-primary",
+                    )}
+                    onMouseEnter={() => setHighlight(idx)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      select(entry.value);
+                    }}
+                  >
+                    {entry.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>,
-          document.body,
+          portalEl,
         )
       : null;
 
@@ -224,13 +335,20 @@ export function Combobox({
           aria-autocomplete="list"
           aria-invalid={error ? true : undefined}
           autoComplete="off"
-          value={value}
+          value={filterQuery !== null ? filterQuery : inputDisplay}
           disabled={disabled}
           placeholder={placeholder}
           onChange={(e) => {
-            const next = e.target.value;
-            onChange(next);
+            let next = e.target.value;
+            // First keystroke while showing a pinned label: don't keep the label text.
+            if (pinnedLabel && filterQuery === null) {
+              const prev = pinnedLabel;
+              if (next.startsWith(prev)) next = next.slice(prev.length);
+              else if (next.endsWith(prev)) next = next.slice(0, -prev.length);
+              else if (next.includes(prev)) next = next.replace(prev, "");
+            }
             setFilterQuery(next);
+            onChange(next);
             setOpen(true);
           }}
           onFocus={() => openList()}

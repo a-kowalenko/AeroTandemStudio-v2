@@ -26,8 +26,11 @@ import type { AppConfig, AvailableRelease, CrewMember, ManualEntryMode } from "@
 import {
   cleanupCache,
   clearWorkingSession,
+  crewKeepComboboxValue,
+  CREW_KEEP_PINNED_OPTIONS,
   crewNamesForRole,
   ensureCrewRole,
+  parseCrewKeepComboboxValue,
   getAppInfo,
   installSpecificVersion,
   listAvailableVersions,
@@ -41,6 +44,10 @@ import { useUiStore } from "@/store/uiStore";
 import { useVideoStore } from "@/store/videoStore";
 import { usePhotoStore } from "@/store/photoStore";
 import { cn } from "@/lib/utils";
+import {
+  mapServerErrorDetail,
+  serverConnectionStatusLabel,
+} from "@/lib/serverStatus";
 
 type Props = {
   open: boolean;
@@ -67,6 +74,7 @@ export function SettingsDialog({
   const showError = useUiStore((s) => s.showError);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const serverPhase = useServerStore((s) => s.phase);
+  const serverMessage = useServerStore((s) => s.message);
   // Select stable list refs — mapping inside the selector returns a new array
   // every getSnapshot and triggers React 19's "getSnapshot should be cached" crash.
   const videoList = useVideoStore((s) => s.videoList);
@@ -313,20 +321,6 @@ export function SettingsDialog({
       showError("Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.");
       return;
     }
-    if (
-      draft.keep_tandemmaster_on_session_reset &&
-      !draft.tandemmaster.trim()
-    ) {
-      showError("Bitte einen Tandemmaster wählen oder anlegen.");
-      return;
-    }
-    if (
-      draft.keep_videospringer_on_session_reset &&
-      !draft.videospringer.trim()
-    ) {
-      showError("Bitte einen Videospringer wählen oder anlegen.");
-      return;
-    }
     let crew_list = [...draft.crew_list];
     const tm = draft.tandemmaster.trim();
     const vs = draft.videospringer.trim();
@@ -413,15 +407,24 @@ export function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-hidden"
+        className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-visible"
         onPointerDownOutside={(e) => {
-          if (suppressDismiss) e.preventDefault();
+          const t = e.target as HTMLElement | null;
+          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+            e.preventDefault();
+          }
         }}
         onFocusOutside={(e) => {
-          if (suppressDismiss) e.preventDefault();
+          const t = e.target as HTMLElement | null;
+          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+            e.preventDefault();
+          }
         }}
         onInteractOutside={(e) => {
-          if (suppressDismiss) e.preventDefault();
+          const t = e.target as HTMLElement | null;
+          if (suppressDismiss || t?.closest?.("[data-ats-combobox-list]")) {
+            e.preventDefault();
+          }
         }}
         onEscapeKeyDown={(e) => {
           if (suppressDismiss) e.preventDefault();
@@ -482,6 +485,7 @@ export function SettingsDialog({
                   onChange={(v) => patch("ort", v)}
                   options={ORT_OPTIONS}
                   placeholder="Ort…"
+                  listZIndex={200}
                 />
               </div>
             </div>
@@ -491,7 +495,7 @@ export function SettingsDialog({
                 checked={draft.intro_enabled}
                 onCheckedChange={(v) => patch("intro_enabled", v === true)}
               />
-              Intro beim Erstellen verwenden
+              Intro beim Erstellen verwenden (experimentell)
             </label>
 
             <div className="space-y-1.5">
@@ -524,63 +528,54 @@ export function SettingsDialog({
             </div>
 
             <div className="space-y-3 rounded-lg border border-border bg-card-elevated/40 p-3">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.keep_tandemmaster_on_session_reset}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            keep_tandemmaster_on_session_reset: on,
-                            tandemmaster: on ? prev.tandemmaster : "",
-                          }
-                        : prev,
-                    );
-                  }}
-                />
-                Tandemmaster beim Zurücksetzen beibehalten
-              </label>
-              {draft.keep_tandemmaster_on_session_reset ? (
-                <Combobox
-                  label="Tandemmaster"
-                  value={draft.tandemmaster}
-                  onChange={(v) => patch("tandemmaster", v)}
-                  options={tandemmasterOptions}
-                  placeholder="Name wählen oder neu eintippen…"
-                  listZIndex={100}
-                />
-              ) : null}
-
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.keep_videospringer_on_session_reset}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            keep_videospringer_on_session_reset: on,
-                            videospringer: on ? prev.videospringer : "",
-                          }
-                        : prev,
-                    );
-                  }}
-                />
-                Videospringer beim Zurücksetzen beibehalten
-              </label>
-              {draft.keep_videospringer_on_session_reset ? (
-                <Combobox
-                  label="Videospringer"
-                  value={draft.videospringer}
-                  onChange={(v) => patch("videospringer", v)}
-                  options={videospringerOptions}
-                  placeholder="Name wählen oder neu eintippen…"
-                  listZIndex={100}
-                />
-              ) : null}
+              <Combobox
+                label="Tandemmaster beim Zurücksetzen"
+                value={crewKeepComboboxValue(
+                  draft.keep_tandemmaster_on_session_reset,
+                  draft.tandemmaster,
+                )}
+                onChange={(v) => {
+                  const { keep, name } = parseCrewKeepComboboxValue(v);
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          keep_tandemmaster_on_session_reset: keep,
+                          tandemmaster: name,
+                        }
+                      : prev,
+                  );
+                }}
+                options={tandemmasterOptions}
+                pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                placeholder="Modus oder Name wählen…"
+                hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
+                listZIndex={200}
+              />
+              <Combobox
+                label="Videospringer beim Zurücksetzen"
+                value={crewKeepComboboxValue(
+                  draft.keep_videospringer_on_session_reset,
+                  draft.videospringer,
+                )}
+                onChange={(v) => {
+                  const { keep, name } = parseCrewKeepComboboxValue(v);
+                  setDraft((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          keep_videospringer_on_session_reset: keep,
+                          videospringer: name,
+                        }
+                      : prev,
+                  );
+                }}
+                options={videospringerOptions}
+                pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                placeholder="Modus oder Name wählen…"
+                hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
+                listZIndex={200}
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -623,7 +618,11 @@ export function SettingsDialog({
                       server_password: draft.server_password,
                     });
                     if (result.ok) showSuccess(result.message, "Server");
-                    else showError(result.message, "Server");
+                    else
+                      showError(
+                        mapServerErrorDetail(result.message).text,
+                        "Server",
+                      );
                   } finally {
                     setTestingServer(false);
                   }
@@ -631,15 +630,18 @@ export function SettingsDialog({
               >
                 {testingServer ? "Prüfe…" : "Verbindung testen"}
               </Button>
-              <span className="text-xs text-muted">
-                {serverPhase === "connected"
-                  ? "✓ Verbunden"
-                  : serverPhase === "error"
-                    ? "✗ Fehler"
-                    : serverPhase === "checking"
-                      ? "Prüfe…"
-                      : "Nicht geprüft"}
-              </span>
+              {!testingServer && serverPhase !== "checking" ? (
+                <span
+                  className="text-xs text-muted"
+                  title={
+                    serverPhase === "error" && serverMessage
+                      ? serverMessage
+                      : undefined
+                  }
+                >
+                  {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                </span>
+              ) : null}
             </div>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox

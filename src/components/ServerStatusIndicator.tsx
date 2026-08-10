@@ -1,5 +1,6 @@
 import { Server } from "lucide-react";
 import { useServerStore } from "../store/serverStore";
+import { mapServerErrorLabel } from "../lib/serverStatus";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -29,7 +30,7 @@ export function ServerStatusIndicator({ className }: Props) {
     label = "Verbunden";
     tone = "text-success";
   } else if (phase === "error") {
-    label = "Nicht verbunden";
+    label = mapServerErrorLabel(message);
     tone = "text-destructive";
   }
 

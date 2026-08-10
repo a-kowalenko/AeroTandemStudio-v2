@@ -65,6 +65,9 @@ type KundeState = {
   resetSession: (keep?: {
     tandemmaster?: boolean;
     videospringer?: boolean;
+    /** When keep is set and non-empty, restore this name; otherwise keep previous. */
+    tandemmasterFixed?: string;
+    videospringerFixed?: string;
   }) => void;
 };
 
@@ -271,8 +274,12 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       qrSnapshot: null,
       kunde: emptyKunde({
         ort: prev.ort,
-        tandemmaster: keep?.tandemmaster ? prev.tandemmaster : "",
-        videospringer: keep?.videospringer ? prev.videospringer : "",
+        tandemmaster: keep?.tandemmaster
+          ? keep.tandemmasterFixed?.trim() || prev.tandemmaster
+          : "",
+        videospringer: keep?.videospringer
+          ? keep.videospringerFixed?.trim() || prev.videospringer
+          : "",
       }),
     });
   },

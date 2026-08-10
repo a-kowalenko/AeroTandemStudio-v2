@@ -8,16 +8,23 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import type { AppConfig } from "@/lib/tauri";
 import {
+  CREW_KEEP_PINNED_OPTIONS,
+  crewKeepComboboxValue,
   crewNamesForRole,
   ensureCrewRole,
   getAppInfo,
   ORT_OPTIONS,
+  parseCrewKeepComboboxValue,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
 import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
+import {
+  mapServerErrorDetail,
+  serverConnectionStatusLabel,
+} from "@/lib/serverStatus";
 
 const STEPS = [
   "Willkommen",
@@ -65,6 +72,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const setThemeMode = useThemeStore((s) => s.setMode);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const serverPhase = useServerStore((s) => s.phase);
+  const serverMessage = useServerStore((s) => s.message);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -144,50 +152,33 @@ export function SetupWizard({ open, onComplete }: Props) {
     }
   }
 
-  function setKeepRole(
+  function setCrewKeep(
     role: "tandemmaster" | "videospringer",
-    keep: boolean,
+    raw: string,
   ) {
+    const { keep, name } = parseCrewKeepComboboxValue(raw);
     setDraft((prev) => {
       if (!prev) return prev;
       if (role === "tandemmaster") {
         return {
           ...prev,
           keep_tandemmaster_on_session_reset: keep,
-          tandemmaster: keep ? prev.tandemmaster : "",
+          tandemmaster: name,
         };
       }
       return {
         ...prev,
         keep_videospringer_on_session_reset: keep,
-        videospringer: keep ? prev.videospringer : "",
+        videospringer: name,
       };
     });
-    if (!keep) clearFieldError(role);
-  }
-
-  function setRoleName(role: "tandemmaster" | "videospringer", name: string) {
-    setDraft((prev) => (prev ? { ...prev, [role]: name } : prev));
-    if (name.trim()) clearFieldError(role);
+    clearFieldError(role);
   }
 
   function collectFieldErrors(index: number): FieldErrors {
     const errors: FieldErrors = {};
     if (!draft) return errors;
-    if (index === 1) {
-      if (
-        draft.keep_tandemmaster_on_session_reset &&
-        !draft.tandemmaster.trim()
-      ) {
-        errors.tandemmaster = "Name wählen oder anlegen.";
-      }
-      if (
-        draft.keep_videospringer_on_session_reset &&
-        !draft.videospringer.trim()
-      ) {
-        errors.videospringer = "Name wählen oder anlegen.";
-      }
-    }
+    // Step 1: keep-last (empty name) and keep-off are both valid; only fixed names need crew sync on finish.
     if (index === 2 && !draft.speicherort.trim()) {
       errors.speicherort = "Bitte einen Ordner wählen.";
     }
@@ -337,7 +328,7 @@ export function SetupWizard({ open, onComplete }: Props) {
         server_password: draft.server_password,
       });
       if (result.ok) showSuccess(result.message, "Server");
-      else showError(result.message, "Server");
+      else showError(mapServerErrorDetail(result.message).text, "Server");
     } finally {
       setTestingServer(false);
     }
@@ -350,10 +341,12 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (skippedSteps.has(1)) return "— übersprungen —";
     const parts: string[] = [];
     if (draft.keep_tandemmaster_on_session_reset) {
-      parts.push(`TM: ${draft.tandemmaster.trim() || "—"}`);
+      const tm = draft.tandemmaster.trim();
+      parts.push(tm ? `TM: ${tm}` : "TM: zuletzt verwendet");
     }
     if (draft.keep_videospringer_on_session_reset) {
-      parts.push(`VS: ${draft.videospringer.trim() || "—"}`);
+      const vs = draft.videospringer.trim();
+      parts.push(vs ? `VS: ${vs}` : "VS: zuletzt verwendet");
     }
     return parts.length > 0 ? parts.join(", ") : "Keine (werden zurückgesetzt)";
   }
@@ -441,55 +434,42 @@ export function SetupWizard({ open, onComplete }: Props) {
             <>
               <p className="text-sm text-muted">
                 Nach dem Erstellen eines Vorgangs wird die Session
-                zurückgesetzt. Wähle, welche Rollen und Namen erhalten bleiben.
+                zurückgesetzt. Wähle oben im Dropdown den Modus oder einen
+                festen Namen.
               </p>
 
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.keep_tandemmaster_on_session_reset}
-                    onCheckedChange={(v) =>
-                      setKeepRole("tandemmaster", v === true)
-                    }
-                  />
-                  Tandemmaster beibehalten
-                </label>
-                {draft.keep_tandemmaster_on_session_reset ? (
-                  <Combobox
-                    label="Tandemmaster"
-                    value={draft.tandemmaster}
-                    onChange={(v) => setRoleName("tandemmaster", v)}
-                    options={tandemmasterOptions}
-                    placeholder="Name wählen oder neu eintippen…"
-                    hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
-                    error={fieldErrors.tandemmaster}
-                    listZIndex={100}
-                  />
-                ) : null}
+                <Combobox
+                  label="Tandemmaster"
+                  value={crewKeepComboboxValue(
+                    draft.keep_tandemmaster_on_session_reset,
+                    draft.tandemmaster,
+                  )}
+                  onChange={(v) => setCrewKeep("tandemmaster", v)}
+                  options={tandemmasterOptions}
+                  pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                  placeholder="Modus oder Name wählen…"
+                  hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
+                  error={fieldErrors.tandemmaster}
+                  listZIndex={200}
+                />
               </div>
 
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.keep_videospringer_on_session_reset}
-                    onCheckedChange={(v) =>
-                      setKeepRole("videospringer", v === true)
-                    }
-                  />
-                  Videospringer beibehalten
-                </label>
-                {draft.keep_videospringer_on_session_reset ? (
-                  <Combobox
-                    label="Videospringer"
-                    value={draft.videospringer}
-                    onChange={(v) => setRoleName("videospringer", v)}
-                    options={videospringerOptions}
-                    placeholder="Name wählen oder neu eintippen…"
-                    hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
-                    error={fieldErrors.videospringer}
-                    listZIndex={100}
-                  />
-                ) : null}
+                <Combobox
+                  label="Videospringer"
+                  value={crewKeepComboboxValue(
+                    draft.keep_videospringer_on_session_reset,
+                    draft.videospringer,
+                  )}
+                  onChange={(v) => setCrewKeep("videospringer", v)}
+                  options={videospringerOptions}
+                  pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                  placeholder="Modus oder Name wählen…"
+                  hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
+                  error={fieldErrors.videospringer}
+                  listZIndex={200}
+                />
               </div>
             </>
           ) : null}
@@ -532,7 +512,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                 onChange={(v) => patch("ort", v)}
                 options={ORT_OPTIONS}
                 placeholder="Ort…"
-                listZIndex={100}
+                listZIndex={200}
               />
             </>
           ) : null}
@@ -798,13 +778,20 @@ export function SetupWizard({ open, onComplete }: Props) {
                 >
                   {testingServer ? "Prüfe…" : "Verbindung testen"}
                 </Button>
-                <span className="text-xs text-muted">
-                  {serverPhase === "connected"
-                    ? "✓ Verbunden"
-                    : serverPhase === "error"
-                      ? "Nicht erreichbar"
-                      : null}
-                </span>
+                {!testingServer &&
+                serverPhase !== "checking" &&
+                serverPhase !== "idle" ? (
+                  <span
+                    className="text-xs text-muted"
+                    title={
+                      serverPhase === "error" && serverMessage
+                        ? serverMessage
+                        : undefined
+                    }
+                  >
+                    {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                  </span>
+                ) : null}
               </div>
             </>
           ) : null}

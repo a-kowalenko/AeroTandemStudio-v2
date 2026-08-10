@@ -258,7 +258,7 @@ async fn connect_smb(
         dfs_target_overrides: Default::default(),
     })
     .await
-    .map_err(|e| format!("SMB-Verbindung fehlgeschlagen: {e}"))
+    .map_err(|e| map_connect_error(&e.to_string()))
 }
 
 fn join_smb_path(base: &str, rest: &str) -> String {
@@ -378,14 +378,68 @@ pub async fn test_connection(
     }
 }
 
+fn map_connect_error(err: &str) -> String {
+    let lower = err.to_lowercase();
+    if lower.contains("timed out")
+        || lower.contains("timeout")
+        || lower.contains("os error 10060")
+        || lower.contains("os error 110")
+    {
+        "Server nicht erreichbar (Zeitüberschreitung).".into()
+    } else if lower.contains("connection refused")
+        || lower.contains("actively refused")
+        || lower.contains("os error 10061")
+        || lower.contains("os error 111")
+    {
+        "Server nicht erreichbar (Verbindung abgelehnt).".into()
+    } else if lower.contains("failed to lookup")
+        || lower.contains("name or service not known")
+        || lower.contains("no such host")
+        || lower.contains("nodename nor servname")
+        || lower.contains("dns")
+    {
+        "Server nicht erreichbar (Host nicht gefunden).".into()
+    } else if lower.contains("network is unreachable")
+        || lower.contains("no route to host")
+        || lower.contains("host is unreachable")
+    {
+        "Server nicht erreichbar (Netzwerk).".into()
+    } else if lower.contains("logon")
+        || (lower.contains("access_denied") && lower.contains("session"))
+        || lower.contains("status_logon_failure")
+        || lower.contains("wrong password")
+    {
+        "Verbindung fehlgeschlagen: Ungültiger Benutzername oder Passwort.".into()
+    } else {
+        format!("SMB-Verbindung fehlgeschlagen: {err}")
+    }
+}
+
 fn map_smb_error(err: &str, share: &str) -> String {
     let lower = err.to_lowercase();
-    if lower.contains("logon") || lower.contains("access_denied") && lower.contains("session") {
+    if lower.contains("logon")
+        || (lower.contains("access_denied") && lower.contains("session"))
+        || lower.contains("status_logon_failure")
+        || lower.contains("wrong password")
+    {
         "Verbindung fehlgeschlagen: Ungültiger Benutzername oder Passwort.".into()
-    } else if lower.contains("bad_network_name") || lower.contains("object_name_not_found") {
+    } else if lower.contains("bad_network_name")
+        || lower.contains("object_name_not_found")
+        || lower.contains("status_bad_network_name")
+    {
         format!("Verbindung fehlgeschlagen: Server oder Freigabe '{share}' nicht gefunden.")
+    } else if lower.contains("access_denied") {
+        format!("Verbindung fehlgeschlagen: Kein Zugriff auf Freigabe '{share}'.")
     } else {
-        format!("Verbindung fehlgeschlagen: {err}")
+        // Reuse connect mapping for transport-ish share errors, else keep short.
+        let mapped = map_connect_error(err);
+        if mapped.starts_with("Server nicht erreichbar")
+            || mapped.starts_with("Verbindung fehlgeschlagen: Ungültiger")
+        {
+            mapped
+        } else {
+            format!("Verbindung fehlgeschlagen: {err}")
+        }
     }
 }
 
@@ -1040,6 +1094,33 @@ mod tests {
         assert_eq!(u, "alice");
         assert_eq!(p, "secret");
         assert_eq!(d, "CORP.LOCAL");
+    }
+
+    #[test]
+    fn map_connect_timeout() {
+        let msg = map_connect_error("io error: timed out");
+        assert!(msg.contains("nicht erreichbar"));
+        assert!(msg.contains("Zeitüberschreitung"));
+    }
+
+    #[test]
+    fn map_connect_refused() {
+        let msg = map_connect_error("Connection refused (os error 111)");
+        assert!(msg.contains("nicht erreichbar"));
+        assert!(msg.contains("abgelehnt"));
+    }
+
+    #[test]
+    fn map_smb_logon_failure() {
+        let msg = map_smb_error("STATUS_LOGON_FAILURE", "videos");
+        assert!(msg.contains("Benutzername oder Passwort"));
+    }
+
+    #[test]
+    fn map_smb_bad_share() {
+        let msg = map_smb_error("STATUS_BAD_NETWORK_NAME", "videos");
+        assert!(msg.contains("videos"));
+        assert!(msg.contains("nicht gefunden"));
     }
 
     #[test]

@@ -131,7 +131,7 @@ function ProductRow({ label, checked, paid, onChecked, onPaid, disabled }: Produ
             onPaid(on);
             if (on) onChecked(true);
           }}
-          disabled={disabled || !checked}
+          disabled={disabled}
         />
         Bezahlt
       </label>

@@ -144,6 +144,48 @@ export function withManualEntryMode(
   };
 }
 
+/** Combobox sentinel: do not keep role on session reset. */
+export const CREW_KEEP_OFF_VALUE = "__keep_off__";
+/** Combobox sentinel: keep last form value on session reset. */
+export const CREW_KEEP_LAST_VALUE = "__keep_last__";
+
+export type CrewKeepPinnedOption = { value: string; label: string };
+
+/** Leading options for TM/VS keep dropdown (Settings / Setup). */
+export const CREW_KEEP_PINNED_OPTIONS: readonly CrewKeepPinnedOption[] = [
+  { value: CREW_KEEP_OFF_VALUE, label: "Nicht beibehalten" },
+  {
+    value: CREW_KEEP_LAST_VALUE,
+    label: "Zuletzt verwendeten beibehalten",
+  },
+];
+
+/** Map config keep flag + stored name → combobox value. */
+export function crewKeepComboboxValue(keep: boolean, name: string): string {
+  if (!keep) return CREW_KEEP_OFF_VALUE;
+  const n = name.trim();
+  if (!n) return CREW_KEEP_LAST_VALUE;
+  return n;
+}
+
+/** Map combobox value → config keep flag + stored name. */
+export function parseCrewKeepComboboxValue(raw: string): {
+  keep: boolean;
+  name: string;
+} {
+  const v = raw.trim();
+  if (!v || v === CREW_KEEP_OFF_VALUE || v === "Nicht beibehalten") {
+    return { keep: false, name: "" };
+  }
+  if (
+    v === CREW_KEEP_LAST_VALUE ||
+    v === "Zuletzt verwendeten beibehalten"
+  ) {
+    return { keep: true, name: "" };
+  }
+  return { keep: true, name: v };
+}
+
 export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Alberto", tandemmaster: true, videospringer: false },
   { name: "Ana", tandemmaster: true, videospringer: true },

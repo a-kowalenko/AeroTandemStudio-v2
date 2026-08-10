@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { Film, Play, QrCode, RefreshCw, Scissors, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -234,15 +233,6 @@ export function VideoPreview({
 
   const canGeneratePreview = formReady && videoList.length >= 1;
 
-  async function handleCancel() {
-    try {
-      await invoke("cancel_encode");
-      setLocalStatus("cancelled");
-    } catch (e) {
-      if (!isCancellationError(e)) showError(String(e));
-    }
-  }
-
   async function handleQrScan(path?: string) {
     const clip = path
       ? videoList.find((v) => v.path === path)
@@ -307,68 +297,56 @@ export function VideoPreview({
           Video-Vorschau
         </h3>
         <div className="flex flex-wrap gap-2">
-          {!hasPreviewFile ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void handleGenerate()}
-              disabled={busy || !canGeneratePreview}
-              title={
-                canGeneratePreview
-                  ? undefined
-                  : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                    (videoList.length < 1
-                      ? "Keine Videos in der Liste"
-                      : "Formular unvollständig")
-              }
-            >
-              <Play className="h-4 w-4" />
-              Vorschau generieren
-            </Button>
-          ) : (
-            <>
+          {videoList.length > 0 &&
+            (!hasPreviewFile ? (
               <Button
                 type="button"
                 size="sm"
-                variant={showingCombined ? "default" : "secondary"}
-                onClick={showCombinedPreview}
-                disabled={busy}
-                title="Gespeicherte kombinierte Vorschau anzeigen (ohne neu zu generieren)"
-              >
-                <Play className="h-4 w-4" />
-                Vorschau anzeigen
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={previewStale ? "default" : "secondary"}
                 onClick={() => void handleGenerate()}
                 disabled={busy || !canGeneratePreview}
                 title={
                   canGeneratePreview
-                    ? previewStale
-                      ? "Formular oder Clips haben sich geändert — Vorschau neu generieren"
-                      : "Kombinierte Vorschau neu erzeugen und überschreiben"
+                    ? undefined
                     : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                      (videoList.length < 1
-                        ? "Keine Videos in der Liste"
-                        : "Formular unvollständig")
+                      "Formular unvollständig"
                 }
               >
-                <RefreshCw className="h-4 w-4" />
-                {previewStale ? "Vorschau aktualisieren" : "Neu"}
+                <Play className="h-4 w-4" />
+                Vorschau generieren
               </Button>
-            </>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant="destructive"
-            onClick={() => void handleCancel()}
-            disabled={!busy}
-          >
-            Abbrechen
-          </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={showingCombined ? "default" : "secondary"}
+                  onClick={showCombinedPreview}
+                  disabled={busy}
+                  title="Gespeicherte kombinierte Vorschau anzeigen (ohne neu zu generieren)"
+                >
+                  <Play className="h-4 w-4" />
+                  Vorschau anzeigen
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={previewStale ? "default" : "secondary"}
+                  onClick={() => void handleGenerate()}
+                  disabled={busy || !canGeneratePreview}
+                  title={
+                    canGeneratePreview
+                      ? previewStale
+                        ? "Formular oder Clips haben sich geändert — Vorschau neu generieren"
+                        : "Kombinierte Vorschau neu erzeugen und überschreiben"
+                      : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
+                        "Formular unvollständig"
+                  }
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  {previewStale ? "Vorschau aktualisieren" : "Neu"}
+                </Button>
+              </>
+            ))}
         </div>
       </div>
 
