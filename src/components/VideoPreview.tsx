@@ -292,6 +292,10 @@ export function VideoPreview({
   /** One-shot: play after src change (used when auto-advancing). */
   const [playOnLoad, setPlayOnLoad] = useState(false);
   const clipPlayerRef = useRef<VideoPlayerHandle>(null);
+  const autoNextClipRef = useRef(autoNextClip);
+  autoNextClipRef.current = autoNextClip;
+  const activeClipRef = useRef(activeClip);
+  activeClipRef.current = activeClip;
   const [localPercent, setLocalPercent] = useState(0);
   const [localStatus, setLocalStatus] = useState("");
   const [localTasks, setLocalTasks] = useState<TaskProgressState[]>([]);
@@ -303,6 +307,13 @@ export function VideoPreview({
   const clipSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
+
+  // One-shot autoplay flag — clear after the clip switch so later seeks don't re-trigger.
+  useEffect(() => {
+    if (!playOnLoad) return;
+    const t = window.setTimeout(() => setPlayOnLoad(false), 700);
+    return () => window.clearTimeout(t);
+  }, [playOnLoad, activeClip]);
 
   // While reordering: keep page scrollbars (avoid width jump) but freeze scroll
   // position. Only the clip strip may auto-scroll via dnd-kit.
@@ -553,9 +564,10 @@ export function VideoPreview({
   }
 
   function handleClipEnded() {
-    if (!einzelclipMode || !autoNextClip || busy) return;
-    if (activeClip >= videoList.length - 1) return;
-    selectClip(activeClip + 1, true);
+    if (!einzelclipMode || !autoNextClipRef.current || busy) return;
+    const idx = activeClipRef.current;
+    if (idx >= videoList.length - 1) return;
+    selectClip(idx + 1, true);
   }
 
   return (

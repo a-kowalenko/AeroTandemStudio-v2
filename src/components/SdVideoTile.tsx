@@ -10,10 +10,14 @@ import {
   VolumeX,
 } from "lucide-react";
 import { videoFileSrc } from "../lib/mediaUrl";
-import { cn } from "../lib/utils";
+import { cn, isLinuxHost } from "../lib/utils";
 import { Checkbox } from "./ui/checkbox";
 
 const HOVER_PLAY_DELAY_MS = 180;
+const LINUX_HOVER_PLAY_DELAY_MS = 280;
+/** Linux/WebKitGTK only: spurious `ended` while scrubbing. */
+const LINUX_SEEK_ENDED_GUARD_MS = 450;
+const LINUX_ENDED_NEAR_END_SEC = 0.4;
 
 /** Path of the tile currently in immersive preview — blocks hover on siblings. */
 let immersiveOwnerPath: string | null = null;
@@ -85,6 +89,9 @@ export function SdVideoTile({
   const immersiveBarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<number | null>(null);
   const immersiveRef = useRef(false);
+  const linuxMediaGuards = useRef(isLinuxHost()).current;
+  const draggingRef = useRef(false);
+  const ignoreEndedUntilRef = useRef(0);
 
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -244,6 +251,22 @@ export function SdVideoTile({
     };
   }, [path]);
 
+  function markLinuxUserSeek() {
+    if (!linuxMediaGuards) return;
+    ignoreEndedUntilRef.current =
+      performance.now() + LINUX_SEEK_ENDED_GUARD_MS;
+  }
+
+  function shouldAcceptEnded(v: HTMLVideoElement): boolean {
+    if (!linuxMediaGuards) return true;
+    if (draggingRef.current) return false;
+    if (performance.now() < ignoreEndedUntilRef.current) return false;
+    if (v.seeking) return false;
+    const dur = v.duration;
+    if (!Number.isFinite(dur) || dur <= 0) return false;
+    return v.currentTime >= dur - LINUX_ENDED_NEAR_END_SEC;
+  }
+
   function clearHoverTimer() {
     if (hoverTimerRef.current != null) {
       window.clearTimeout(hoverTimerRef.current);
@@ -259,7 +282,7 @@ export function SdVideoTile({
       if (isImmersiveBlocked(path)) return;
       setWantPreview(true);
       onActivate();
-    }, HOVER_PLAY_DELAY_MS);
+    }, linuxMediaGuards ? LINUX_HOVER_PLAY_DELAY_MS : HOVER_PLAY_DELAY_MS);
   }
 
   function onMediaLeave() {
@@ -272,7 +295,12 @@ export function SdVideoTile({
     const v = videoRef.current;
     if (v) {
       v.pause();
-      v.currentTime = 0;
+      markLinuxUserSeek();
+      try {
+        v.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
     }
     if (isActive) onDeactivate();
   }
@@ -306,6 +334,7 @@ export function SdVideoTile({
     if (!bar || !video || !duration) return;
     const rect = bar.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    markLinuxUserSeek();
     video.currentTime = ratio * duration;
     setCurrent(video.currentTime);
   }
@@ -492,10 +521,12 @@ export function SdVideoTile({
             )}
             onPointerDown={(ev) => {
               ev.stopPropagation();
+              draggingRef.current = true;
               setDragging(true);
               setPinned(true);
               setWantPreview(true);
               onActivate();
+              markLinuxUserSeek();
               (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
               seekFromClientX(ev.clientX, opts.bar.current, opts.video.current);
             }}
@@ -503,8 +534,16 @@ export function SdVideoTile({
               if (!dragging) return;
               seekFromClientX(ev.clientX, opts.bar.current, opts.video.current);
             }}
-            onPointerUp={() => setDragging(false)}
-            onPointerCancel={() => setDragging(false)}
+            onPointerUp={() => {
+              draggingRef.current = false;
+              markLinuxUserSeek();
+              setDragging(false);
+            }}
+            onPointerCancel={() => {
+              draggingRef.current = false;
+              markLinuxUserSeek();
+              setDragging(false);
+            }}
           >
             <div className="absolute inset-x-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-white/35" />
             <div
@@ -569,10 +608,12 @@ export function SdVideoTile({
             src={src}
             playsInline
             muted={muted}
-            preload="metadata"
+            preload={linuxMediaGuards ? "none" : "metadata"}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
-            onEnded={() => {
+            onSeeking={() => markLinuxUserSeek()}
+            onEnded={(e) => {
+              if (!shouldAcceptEnded(e.currentTarget)) return;
               setPlaying(false);
               setPinned(false);
               setWantPreview(false);
@@ -662,7 +703,9 @@ export function SdVideoTile({
                   preload="auto"
                   onPlay={() => setPlaying(true)}
                   onPause={() => setPlaying(false)}
-                  onEnded={() => {
+                  onSeeking={() => markLinuxUserSeek()}
+                  onEnded={(e) => {
+                    if (!shouldAcceptEnded(e.currentTarget)) return;
                     setPlaying(false);
                   }}
                   onLoadedMetadata={(e) => {

@@ -9,7 +9,7 @@ import {
 import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
-import { cn } from "../lib/utils";
+import { cn, isLinuxHost } from "../lib/utils";
 
 function VolumeLevelIcon({
   volume,
@@ -77,6 +77,9 @@ function formatMs(ms: number): string {
 
 const HANDLE_HIT_PX = 14;
 const MIN_RANGE_MS = 100;
+/** Linux/WebKitGTK only: GStreamer often fires `ended` during/after seek. */
+const LINUX_SEEK_ENDED_GUARD_MS = 450;
+const LINUX_ENDED_NEAR_END_SEC = 0.4;
 
 /**
  * HTML5 video player (Phase-9 interim — libmpv deferred).
@@ -110,6 +113,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [src, setSrc] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
+    /** Linux-only: suppress spurious `ended` while/after scrubbing. */
+    const linuxMediaGuards = useRef(isLinuxHost()).current;
+    const draggingRef = useRef(false);
+    const ignoreEndedUntilRef = useRef(0);
     const autoPlayRef = useRef(autoPlay);
     autoPlayRef.current = autoPlay;
     const volumeRef = useRef(volume);
@@ -125,6 +132,22 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const onTrimCommitRef = useRef(onTrimCommit);
     onTrimCommitRef.current = onTrimCommit;
 
+    function markLinuxUserSeek() {
+      if (!linuxMediaGuards) return;
+      ignoreEndedUntilRef.current =
+        performance.now() + LINUX_SEEK_ENDED_GUARD_MS;
+    }
+
+    function shouldAcceptEnded(v: HTMLVideoElement): boolean {
+      if (!linuxMediaGuards) return true;
+      if (draggingRef.current || dragModeRef.current) return false;
+      if (performance.now() < ignoreEndedUntilRef.current) return false;
+      if (v.seeking) return false;
+      const dur = v.duration;
+      if (!Number.isFinite(dur) || dur <= 0) return false;
+      return v.currentTime >= dur - LINUX_ENDED_NEAR_END_SEC;
+    }
+
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
         const v = videoRef.current;
@@ -137,6 +160,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       seekMs: (ms: number) => {
         const v = videoRef.current;
         if (!v) return;
+        markLinuxUserSeek();
         v.currentTime = Math.max(0, ms / 1000);
         setCurrentMs(ms);
       },
@@ -208,6 +232,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const v = videoRef.current;
       const ms = msFromClientX(clientX);
       if (ms == null || !v) return;
+      markLinuxUserSeek();
       v.currentTime = ms / 1000;
       emitTime(ms, durationMsRef.current);
     }
@@ -229,6 +254,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
 
       v.pause();
+      markLinuxUserSeek();
       v.currentTime = next / 1000;
       emitTime(next, dur);
       onTrimChangeRef.current?.(handle, next);
@@ -265,9 +291,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               preload="metadata"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
-              onEnded={() => {
+              onEnded={(e) => {
+                if (!shouldAcceptEnded(e.currentTarget)) return;
                 setPlaying(false);
                 onEnded?.();
+              }}
+              onSeeking={() => {
+                markLinuxUserSeek();
               }}
               onError={(e) => {
                 const code = e.currentTarget.error?.code;
@@ -321,7 +351,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             if (disabled) return;
             const mode = hitTestHandle(e.clientX);
             dragModeRef.current = mode;
+            draggingRef.current = true;
             setDragging(true);
+            markLinuxUserSeek();
             (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
             if (mode === "seek") seekFromClientX(e.clientX);
             else applyTrimDrag(mode, e.clientX);
@@ -356,10 +388,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               }
             }
             dragModeRef.current = null;
+            draggingRef.current = false;
+            markLinuxUserSeek();
             setDragging(false);
           }}
           onPointerCancel={() => {
             dragModeRef.current = null;
+            draggingRef.current = false;
+            markLinuxUserSeek();
             setDragging(false);
           }}
         >

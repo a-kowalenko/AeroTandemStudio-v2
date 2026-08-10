@@ -295,6 +295,8 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 |---------|--------------|-----|
 | Video import freezes UI / player black | WebKitGTK cannot play custom `asset://`/`media://` schemes | Loopback HTTP media server (`http://127.0.0.1`); ensure GStreamer plugins present |
 | No video playback at all (SD tiles + preview) | Missing GStreamer codecs on host / incomplete AppImage media bundle | Install packages from Prerequisites (`gstreamer1.0-libav` + plugins-good/bad); rebuild AppImage on a host that has them; startup shows a media warning |
+| Startup warns „GStreamer nicht gefunden“ but video plays | Probe used to require `gst-inspect-1.0` on PATH; AppImage bundles plugins via `GST_PLUGIN_*` / `APPDIR` without shipping inspect | Fixed: probe also checks plugin `.so` dirs (AppImage + system). Rebuild/update app |
+| Scrubbing playhead advances to next clip / tiles glitch | WebKitGTK fires spurious `ended` during seek | Fixed: ignore `ended` while scrubbing / shortly after seek / unless near real EOF |
 | `webkit` / linker errors at build | Missing GTK/WebKit deps | Install Prerequisites apt packages |
 | AppImage won’t start | Missing `chmod +x` / FUSE | `chmod +x`; install `libfuse2` on older hosts if needed |
 | Encode fails / no x264 | System ffmpeg copied into resources | Use static sidecar download |

@@ -546,7 +546,7 @@ export function SettingsDialog({
             <TabsTrigger value="sd">SD / Backup</TabsTrigger>
           </TabsList>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pr-3">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-1 pr-5 [scrollbar-gutter:stable]">
           <TabsContent value="allgemein" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Speicherort</Label>
@@ -678,26 +678,27 @@ export function SettingsDialog({
               />
             </div>
 
-            <div ref={serverUrlRef} className="relative space-y-1.5">
+            <div ref={serverUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
               {flashFocus === "server-url" ? (
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute -inset-2.5 rounded-xl ats-settings-focus-flash"
+                  className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
                 />
               ) : null}
-              <Label>Server-URL</Label>
+              <Label className="relative">Server-URL</Label>
               <Input
                 ref={serverUrlInputRef}
+                className="relative"
                 value={draft.server_url}
                 onChange={(e) => patch("server_url", e.target.value)}
                 placeholder="smb://…"
               />
             </div>
-            <div ref={serverCredentialsRef} className="relative space-y-1.5">
+            <div ref={serverCredentialsRef} className="relative space-y-1.5 rounded-xl p-2.5">
               {flashFocus === "server-credentials" ? (
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute -inset-2.5 rounded-xl ats-settings-focus-flash"
+                  className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
                 />
               ) : null}
               <div className="relative grid gap-3 sm:grid-cols-2">
