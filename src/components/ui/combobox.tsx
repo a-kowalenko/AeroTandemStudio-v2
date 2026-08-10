@@ -242,8 +242,7 @@ export function Combobox({
       setHighlight((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter" && open && selectable[highlight]) {
       e.preventDefault();
-      const entry = selectable[highlight];
-      if (entry.kind !== "separator") select(entry.value);
+      select(selectable[highlight].value);
     } else if (e.key === "Escape") {
       setOpen(false);
       setFilterQuery(null);
