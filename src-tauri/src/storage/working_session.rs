@@ -12,7 +12,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 
-use crate::media::datetime::{build_chrono_photo_filename, collect_used_filenames_in};
+use crate::media::datetime::{
+    build_chrono_photo_filename_sequenced, collect_used_filenames_in, sort_paths_by_photo_capture_time,
+};
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::logging::{self, file_name};
 
@@ -110,9 +112,18 @@ impl WorkingSession {
 
     /// Copy a photo into `{temp}/photos/` (or return path if already there).
     ///
-    /// Destination name is chronological (`Foto_yyyyMMddHHmmssSSS[_nnn].JPG`) so
-    /// DJI series with identical camera filenames stay in capture order when sorted.
+    /// Destination name is chronological from EXIF DateTimeOriginal
+    /// (`Foto_yyyyMMddHHmmssSSS_NNNN.JPG`). Sequence is for uniqueness within a
+    /// single-file import; prefer [`Self::import_photos_by_capture_time`] for batches.
     pub fn import_photo(&mut self, source: &Path) -> Result<PathBuf, WorkingSessionError> {
+        self.import_photo_sequenced(source, 1)
+    }
+
+    fn import_photo_sequenced(
+        &mut self,
+        source: &Path,
+        sequence: u32,
+    ) -> Result<PathBuf, WorkingSessionError> {
         if !source.is_file() {
             return Err(WorkingSessionError::Message(format!(
                 "Datei nicht gefunden: {}",
@@ -130,7 +141,7 @@ impl WorkingSession {
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
         let mut used = collect_used_filenames_in(&photos);
-        let dest_name = build_chrono_photo_filename(source, &mut used);
+        let dest_name = build_chrono_photo_filename_sequenced(source, sequence, &mut used);
         let dest = photos.join(&dest_name);
         if dest.exists() {
             return Err(WorkingSessionError::Message(format!(
@@ -147,6 +158,59 @@ impl WorkingSession {
             ),
         );
         Ok(dest)
+    }
+
+    /// Import photos sorted by EXIF capture time, rename with matching sequence, return
+    /// paths sorted by the new filename (dialog order is ignored).
+    pub fn import_photos_by_capture_time(
+        &mut self,
+        sources: &[String],
+    ) -> Result<Vec<PathBuf>, WorkingSessionError> {
+        let mut sorted: Vec<String> = sources
+            .iter()
+            .filter(|p| Path::new(p).is_file())
+            .cloned()
+            .collect();
+        sort_paths_by_photo_capture_time(&mut sorted);
+
+        let root = self.ensure_dir()?;
+        let photos = root.join("photos");
+        fs::create_dir_all(&photos)?;
+        let mut used = collect_used_filenames_in(&photos);
+        let mut dests = Vec::with_capacity(sorted.len());
+
+        for (idx, source) in sorted.iter().enumerate() {
+            let source_path = Path::new(source);
+            if self.is_under_working_dir(source_path) {
+                dests.push(source_path.to_path_buf());
+                continue;
+            }
+            let seq = (idx + 1) as u32;
+            let dest_name = build_chrono_photo_filename_sequenced(source_path, seq, &mut used);
+            let dest = photos.join(&dest_name);
+            if dest.exists() {
+                return Err(WorkingSessionError::Message(format!(
+                    "Zielname bereits vorhanden: {dest_name}"
+                )));
+            }
+            copy_file(source_path, &dest)?;
+            logging::info(
+                "import",
+                format!(
+                    "Foto kopiert: {} → {}",
+                    file_name(source_path),
+                    file_name(&dest)
+                ),
+            );
+            dests.push(dest);
+        }
+
+        dests.sort_by(|a, b| {
+            a.file_name()
+                .unwrap_or_default()
+                .cmp(b.file_name().unwrap_or_default())
+        });
+        Ok(dests)
     }
 
     /// Delete a file if it lives under the session working folder.
@@ -307,14 +371,15 @@ pub fn import_videos_to_session(paths: &[String]) -> Result<Vec<String>, Working
     Ok(out)
 }
 
-#[allow(dead_code)]
+/// Import photos sorted by EXIF capture time; returns paths sorted by new filename.
 pub fn import_photos_to_session(paths: &[String]) -> Result<Vec<String>, WorkingSessionError> {
-    let mut out = Vec::with_capacity(paths.len());
-    for path in paths {
-        let dest = import_photo_to_session(path)?;
-        out.push(dest.to_string_lossy().into_owned());
-    }
-    Ok(out)
+    with_session(|s| {
+        let dests = s.import_photos_by_capture_time(paths)?;
+        Ok(dests
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect::<Vec<_>>())
+    })?
 }
 
 #[cfg(test)]
@@ -359,8 +424,9 @@ mod tests {
         let p2_name = p2.file_name().unwrap().to_string_lossy().to_string();
         assert!(p_name.starts_with("Foto_"), "{p_name}");
         assert!(crate::media::datetime::is_chrono_photo_filename(&p_name));
+        assert!(p_name.contains("_0001"), "{p_name}");
         assert_ne!(p_name, p2_name);
-        assert!(p2_name.contains("_001"), "{p2_name}");
+        assert!(p2_name.contains("_0001") || p2_name.contains("_0002") || p2_name.contains("_001"), "{p2_name}");
         assert!(crate::media::datetime::is_chrono_photo_filename(&p2_name));
 
         // Second import of same video names → unique suffix

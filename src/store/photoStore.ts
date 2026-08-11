@@ -37,6 +37,10 @@ type PhotoListState = {
   refreshSizes: (paths?: string[]) => Promise<void>;
 };
 
+function comparePhotoFilename(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
 function toItem(meta: PhotoMetadata): PhotoItem {
   const path = meta.path;
   const normalized = path.replace(/\\/g, "/");
@@ -78,10 +82,34 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
         });
         return;
       }
-      const next = [...get().photoList, ...fresh];
+      const prev = get().photoList;
+      const currentPath =
+        get().currentIndex >= 0 ? prev[get().currentIndex]?.path : undefined;
+      const wmPaths = new Set(
+        [...get().watermarkIndices]
+          .map((i) => prev[i]?.path)
+          .filter((p): p is string => Boolean(p)),
+      );
+      // Full list by chrono filename — independent of confirm-dialog order.
+      const next = [...prev, ...fresh].sort((a, b) =>
+        comparePhotoFilename(a.filename, b.filename),
+      );
+      const watermarkIndices = new Set<number>();
+      next.forEach((p, i) => {
+        if (wmPaths.has(p.path)) watermarkIndices.add(i);
+      });
+      const currentIndex = currentPath
+        ? Math.max(
+            0,
+            next.findIndex((p) => p.path === currentPath),
+          )
+        : 0;
       set({
         photoList: next,
-        currentIndex: get().currentIndex < 0 ? 0 : get().currentIndex,
+        currentIndex,
+        selected: new Set(),
+        explicitlySelected: false,
+        watermarkIndices,
         importing: false,
         importError: null,
       });

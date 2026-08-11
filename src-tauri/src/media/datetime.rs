@@ -79,37 +79,97 @@ pub fn get_exif_camera(path: &Path) -> (String, String) {
 }
 
 /// EXIF DateTimeOriginal (+ SubSec) → (local datetime epoch, ms string).
+///
+/// Prefers `DateTimeOriginal` (capture). Falls back to `DateTime` for display
+/// compatibility. Parsing uses ASCII/`DateTime::from_ascii`, not only `display_value`.
 pub fn get_exif_capture_epoch(path: &Path) -> Option<(f64, String)> {
     let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+    read_exif_datetime_epoch(&exif, true)
+}
 
-    let raw = exif
-        .get_field(Tag::DateTimeOriginal, In::PRIMARY)
-        .or_else(|| exif.get_field(Tag::DateTime, In::PRIMARY))?;
-    let text = sanitize_exif_text(&raw.display_value().to_string());
-    if text.len() < 19 {
-        return None;
+/// Capture time for photo **naming/sort**: `DateTimeOriginal` only (not IFD0 `DateTime`,
+/// which is often a modification stamp and can scramble series).
+pub fn get_exif_datetime_original_epoch(path: &Path) -> Option<(f64, String)> {
+    let file = File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+    read_exif_datetime_epoch(&exif, false)
+}
+
+fn read_exif_datetime_epoch(exif: &exif::Exif, allow_datetime_fallback: bool) -> Option<(f64, String)> {
+    let field = find_exif_field(exif, Tag::DateTimeOriginal).or_else(|| {
+        if allow_datetime_fallback {
+            find_exif_field(exif, Tag::DateTime)
+        } else {
+            None
+        }
+    })?;
+
+    let mut edt = parse_exif_datetime_value(&field.value)?;
+    if let Some(sub) = find_exif_field(exif, Tag::SubSecTimeOriginal)
+        .or_else(|| find_exif_field(exif, Tag::SubSecTime))
+    {
+        if let Value::Ascii(parts) = &sub.value {
+            if let Some(raw) = parts.first() {
+                let _ = edt.parse_subsec(raw);
+            }
+        }
     }
-    let dt = NaiveDateTime::parse_from_str(&text[..19], "%Y:%m:%d %H:%M:%S").ok()?;
-    let local = Local.from_local_datetime(&dt).single()?;
+
+    let naive = NaiveDateTime::new(
+        chrono::NaiveDate::from_ymd_opt(edt.year as i32, edt.month as u32, edt.day as u32)?,
+        chrono::NaiveTime::from_hms_opt(edt.hour as u32, edt.minute as u32, edt.second as u32)?,
+    );
+    // EXIF timestamps are naive camera-local; interpret as local wall time.
+    let local = Local.from_local_datetime(&naive).single()
+        .or_else(|| Local.from_local_datetime(&naive).earliest())?;
     let mut epoch = local.timestamp() as f64;
-
-    let subsec = exif
-        .get_field(Tag::SubSecTimeOriginal, In::PRIMARY)
-        .or_else(|| exif.get_field(Tag::SubSecTime, In::PRIMARY))
-        .map(|f| f.display_value().to_string())
-        .unwrap_or_default();
-    let digits: String = subsec.chars().filter(|c| c.is_ascii_digit()).take(3).collect();
-    let ms = if digits.is_empty() {
-        "000".into()
-    } else {
-        format!("{:0<3}", digits)
+    let ms = match edt.nanosecond {
+        Some(ns) => {
+            let ms_val = ns / 1_000_000;
+            epoch += f64::from(ms_val) / 1000.0;
+            format!("{ms_val:03}")
+        }
+        None => "000".into(),
     };
-    if let Ok(ms_val) = ms.parse::<u32>() {
-        epoch += f64::from(ms_val) / 1000.0;
-    }
     Some((epoch, ms))
+}
+
+fn find_exif_field(exif: &exif::Exif, tag: Tag) -> Option<&exif::Field> {
+    exif.get_field(tag, In::PRIMARY)
+        .or_else(|| exif.fields().find(|f| f.tag == tag))
+}
+
+fn parse_exif_datetime_value(value: &Value) -> Option<exif::DateTime> {
+    let Value::Ascii(parts) = value else {
+        return None;
+    };
+    let raw = parts.first()?;
+    if let Ok(dt) = exif::DateTime::from_ascii(raw) {
+        return Some(dt);
+    }
+    // Trim trailing NULs / spaces from padded ASCII fields.
+    let trimmed: Vec<u8> = raw
+        .iter()
+        .copied()
+        .rev()
+        .skip_while(|&b| b == 0 || b == b' ')
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    if trimmed.len() >= 19 {
+        if let Ok(dt) = exif::DateTime::from_ascii(&trimmed[..19]) {
+            return Some(dt);
+        }
+    }
+    let text = sanitize_exif_text(&String::from_utf8_lossy(raw));
+    if text.len() >= 19 {
+        return exif::DateTime::from_ascii(text[..19].as_bytes()).ok();
+    }
+    None
 }
 
 pub fn resolve_video_display_epoch(
@@ -150,26 +210,35 @@ fn ms_digits_from_epoch(epoch: f64) -> String {
     format!("{:03}", ((frac * 1000.0).round() as u32).min(999))
 }
 
-/// When EXIF has no SubSec, borrow sub-second digits from mtime so bursts in the
-/// same second stay distinguishable and sortable by filename.
-fn refine_ms_with_mtime(photo_path: &Path, ms: String) -> String {
-    if ms != "000" {
-        return ms;
-    }
-    match get_mtime_timestamp(photo_path).map(ms_digits_from_epoch) {
-        Some(m) if m != "000" => m,
-        _ => ms,
+/// Capture instant used for photo **sort + rename** (independent of SD dialog order).
+///
+/// 1. EXIF `DateTimeOriginal` (+ SubSec)
+/// 2. else file mtime (preserved from SD on backup)
+/// 3. else creation / now
+#[derive(Debug, Clone)]
+pub struct PhotoCaptureInstant {
+    pub epoch: f64,
+    pub wall: NaiveDateTime,
+    pub ms: String,
+}
+
+impl PhotoCaptureInstant {
+    fn from_epoch_and_ms(epoch: f64, ms: String) -> Self {
+        let secs = epoch.floor() as i64;
+        let wall = Local
+            .timestamp_opt(secs, 0)
+            .single()
+            .or_else(|| Local.timestamp_opt(secs, 0).earliest())
+            .map(|d| d.naive_local())
+            .unwrap_or_else(|| Local::now().naive_local());
+        Self { epoch, wall, ms }
     }
 }
 
-/// Capture instant for naming: EXIF (+ SubSec), else filesystem mtime/creation, else now.
-fn photo_capture_parts(photo_path: &Path) -> (NaiveDateTime, String) {
-    if let Some((epoch, ms)) = get_exif_capture_epoch(photo_path) {
-        let secs = epoch.floor() as i64;
-        if let Some(dt) = Local.timestamp_opt(secs, 0).single() {
-            let ms = refine_ms_with_mtime(photo_path, ms);
-            return (dt.naive_local(), ms);
-        }
+/// Resolve capture time for naming/sorting — same source for both so names match list order.
+pub fn resolve_photo_capture_instant(photo_path: &Path) -> PhotoCaptureInstant {
+    if let Some((epoch, ms)) = get_exif_datetime_original_epoch(photo_path) {
+        return PhotoCaptureInstant::from_epoch_and_ms(epoch, ms);
     }
     let epoch = filesystem_capture_epoch(photo_path).unwrap_or_else(|| {
         SystemTime::now()
@@ -177,14 +246,12 @@ fn photo_capture_parts(photo_path: &Path) -> (NaiveDateTime, String) {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0)
     });
-    let secs = epoch.floor() as i64;
-    let ms = ms_digits_from_epoch(epoch);
-    let dt = Local
-        .timestamp_opt(secs, 0)
-        .single()
-        .map(|d| d.naive_local())
-        .unwrap_or_else(|| Local::now().naive_local());
-    (dt, ms)
+    PhotoCaptureInstant::from_epoch_and_ms(epoch, ms_digits_from_epoch(epoch))
+}
+
+/// Sort key for photo import: EXIF DateTimeOriginal, else mtime. Dialog order is ignored.
+pub fn photo_capture_sort_epoch(photo_path: &Path) -> f64 {
+    resolve_photo_capture_instant(photo_path).epoch
 }
 
 fn normalize_photo_extension(photo_path: &Path) -> String {
@@ -233,14 +300,37 @@ pub fn claim_unique_photo_filename(base_name: &str, used: &mut HashSet<String>) 
     }
 }
 
-/// Chronological photo name: `Foto_yyyyMMddHHmmssSSS[_nnn].JPG` (legacy timelapse scheme).
+/// Chronological photo name from capture time + import sequence.
 ///
-/// Used on import so DJI series with identical camera names stay sortable by filename.
-/// `used_names` holds lowercase basenames already reserved (updated in place).
-pub fn build_chrono_photo_filename(photo_path: &Path, used_names: &mut HashSet<String>) -> String {
-    let (dt, ms) = photo_capture_parts(photo_path);
+/// `Foto_yyyyMMddHHmmssSSS_NNNN.ext` — the 4-digit sequence is the position after
+/// sorting by EXIF capture time, so filename order matches capture order even when
+/// several shots share the same second. Dialog sort order is irrelevant.
+pub fn build_chrono_photo_filename_sequenced(
+    photo_path: &Path,
+    sequence: u32,
+    used_names: &mut HashSet<String>,
+) -> String {
+    let instant = resolve_photo_capture_instant(photo_path);
     let ext = normalize_photo_extension(photo_path);
-    let base = format!("Foto_{}{}{ext}", dt.format("%Y%m%d%H%M%S"), ms);
+    let seq = sequence.max(1);
+    let base = format!(
+        "Foto_{}{}_{:04}{ext}",
+        instant.wall.format("%Y%m%d%H%M%S"),
+        instant.ms,
+        seq
+    );
+    claim_unique_photo_filename(&base, used_names)
+}
+
+/// Chronological photo name without sequence (export / single-file helpers).
+pub fn build_chrono_photo_filename(photo_path: &Path, used_names: &mut HashSet<String>) -> String {
+    let instant = resolve_photo_capture_instant(photo_path);
+    let ext = normalize_photo_extension(photo_path);
+    let base = format!(
+        "Foto_{}{}{ext}",
+        instant.wall.format("%Y%m%d%H%M%S"),
+        instant.ms
+    );
     claim_unique_photo_filename(&base, used_names)
 }
 
@@ -263,6 +353,17 @@ pub fn collect_used_filenames_in(dir: &Path) -> HashSet<String> {
 /// Whether `filename` already follows the chrono import pattern (`Foto_…`).
 pub fn is_chrono_photo_filename(filename: &str) -> bool {
     crate::media::dji_paths::is_timelapse_photo_filename(filename)
+}
+
+/// Sort paths by EXIF capture time (then path). Used by photo import.
+pub fn sort_paths_by_photo_capture_time(paths: &mut [String]) {
+    paths.sort_by(|a, b| {
+        let ea = photo_capture_sort_epoch(Path::new(a));
+        let eb = photo_capture_sort_epoch(Path::new(b));
+        ea.partial_cmp(&eb)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.cmp(b))
+    });
 }
 
 #[cfg(test)]
@@ -330,15 +431,39 @@ mod tests {
         let mut f = NamedTempFile::with_suffix(".JPG").unwrap();
         writeln!(f, "x").unwrap();
         let mut used = HashSet::new();
-        let a = build_chrono_photo_filename(f.path(), &mut used);
+        let a = build_chrono_photo_filename_sequenced(f.path(), 1, &mut used);
         assert!(a.starts_with("Foto_"), "{a}");
+        assert!(a.contains("_0001"), "{a}");
         assert!(a.ends_with(".JPG"), "{a}");
         assert!(is_chrono_photo_filename(&a));
 
-        let b = build_chrono_photo_filename(f.path(), &mut used);
+        let b = build_chrono_photo_filename_sequenced(f.path(), 2, &mut used);
         assert_ne!(a, b);
-        assert!(b.contains("_001") || b.contains("_002"), "{b}");
+        assert!(b.contains("_0002"), "{b}");
         assert!(is_chrono_photo_filename(&b));
+    }
+
+    #[test]
+    fn sort_paths_orders_by_mtime_without_exif() {
+        let dir = tempfile::tempdir().unwrap();
+        let early = dir.path().join("a.jpg");
+        let late = dir.path().join("b.jpg");
+        fs::write(&early, b"a").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&late, b"b").unwrap();
+        // Ensure distinct mtimes even on coarse FS.
+        let t_early = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let t_late = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_100);
+        let _ = fs::File::options().write(true).open(&early).and_then(|f| f.set_modified(t_early));
+        let _ = fs::File::options().write(true).open(&late).and_then(|f| f.set_modified(t_late));
+
+        let mut paths = vec![
+            late.to_string_lossy().into_owned(),
+            early.to_string_lossy().into_owned(),
+        ];
+        sort_paths_by_photo_capture_time(&mut paths);
+        assert_eq!(Path::new(&paths[0]), early.as_path());
+        assert_eq!(Path::new(&paths[1]), late.as_path());
     }
 
     #[test]

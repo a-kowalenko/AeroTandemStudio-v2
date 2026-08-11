@@ -5,12 +5,11 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::State;
 
-use crate::media::datetime::{get_exif_camera, get_photo_display_epoch};
+use crate::media::datetime::get_exif_camera;
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
 use crate::storage::working_session;
-use crate::util::file_times::get_mtime_timestamp;
 use crate::video::probe::format_camera_label;
 
 /// Expand file/folder paths into a flat list of media files (videos + photos).
@@ -126,33 +125,18 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             .into_iter()
             .filter(|p| is_photo_path(p))
             .collect();
-        // Same time basis as SD "Nach Datum": EXIF, else mtime (not Windows copy-creation).
-        let mut sorted = photo_paths;
-        sorted.sort_by(|a, b| {
-            let pa = Path::new(a);
-            let pb = Path::new(b);
-            let ma = get_mtime_timestamp(pa);
-            let mb = get_mtime_timestamp(pb);
-            let ea = get_photo_display_epoch(pa, ma);
-            let eb = get_photo_display_epoch(pb, mb);
-            ea.partial_cmp(&eb)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| {
-                    ma.unwrap_or(0.0)
-                        .partial_cmp(&mb.unwrap_or(0.0))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })
-                .then_with(|| a.cmp(b))
-        });
-        if sorted.is_empty() {
+        if photo_paths.is_empty() {
             logging::warn("import", "Foto-Import: keine gültigen Bildpfade");
             return Ok(Vec::new());
         }
         logging::info(
             "import",
-            format!("Importiere {} Foto(s) in Arbeitsordner…", sorted.len()),
+            format!(
+                "Importiere {} Foto(s) in Arbeitsordner (Sortierung: EXIF DateTimeOriginal)…",
+                photo_paths.len()
+            ),
         );
-        let total = sorted.len() as u64;
+        let total = photo_paths.len() as u64;
         let emit = |current: u64| {
             let _ = app_progress.emit(
                 EVENT_WORKFLOW_PROGRESS,
@@ -160,12 +144,11 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             );
         };
         emit(0);
-        let mut dest = Vec::with_capacity(sorted.len());
-        for (i, path) in sorted.iter().enumerate() {
-            let d = working_session::import_photo_to_session(path).map_err(|e| e.to_string())?;
-            dest.push(d.to_string_lossy().into_owned());
-            emit((i as u64) + 1);
-        }
+        // Sort by EXIF capture time, rename with sequence, return filename order.
+        // Confirm-dialog order is intentionally ignored.
+        let dest = working_session::import_photos_to_session(&photo_paths)
+            .map_err(|e| e.to_string())?;
+        emit(total);
         let mut with_device = 0usize;
         let out: Vec<PhotoMetadata> = dest
             .iter()
