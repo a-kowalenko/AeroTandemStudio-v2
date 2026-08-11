@@ -28,6 +28,7 @@ import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { SdVideoTile } from "./SdVideoTile";
+import { Film, HardDrive, ImageIcon } from "lucide-react";
 
 export type SdSelectorProgress = {
   percent: number;
@@ -72,6 +73,19 @@ function formatEpoch(epoch: number): string {
   if (!epoch) return "—";
   const d = new Date(epoch * 1000);
   return d.toLocaleString("de-DE");
+}
+
+/** Compact capture time for the tile meta row (next to file size). */
+function formatCaptureTime(epoch: number): string {
+  if (!epoch) return "";
+  const d = new Date(epoch * 1000);
+  return d.toLocaleString("de-DE", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function confirmLabel(actions: SdWorkflowActions, count: number): string {
@@ -154,6 +168,9 @@ export function SdFileSelector({
     setDetailsEl((prev) => (prev === el ? prev : el));
   }, []);
 
+  // Path set only — enrich must not reset selection / thumbs.
+  const filePathsKey = files.map((f) => f.path).join("\0");
+
   useEffect(() => {
     if (!open) return;
     setSelected(new Set());
@@ -177,9 +194,9 @@ export function SdFileSelector({
       scanQr: isQrMode ? false : settingsQrOn,
     });
     setThumbs(loaderRef.current.snapshotFor(files.map((f) => f.path)));
-    // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
+    // Reset only when dialog opens or the path set changes — not on EXIF enrich patches.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, files]);
+  }, [open, filePathsKey]);
 
   // Loader lifetime must follow `open` only — stopping on unrelated re-renders
   // cancels in-flight FFmpeg thumbs before they finish.
@@ -232,6 +249,27 @@ export function SdFileSelector({
       if (selected.has(f.path)) sum += f.size_bytes;
     }
     return sum / (1024 * 1024);
+  }, [files, selected]);
+
+  const mediaCounts = useMemo(() => {
+    let videos = 0;
+    let photos = 0;
+    for (const f of files) {
+      if (f.is_video) videos += 1;
+      else photos += 1;
+    }
+    return { videos, photos };
+  }, [files]);
+
+  const selectedCounts = useMemo(() => {
+    let videos = 0;
+    let photos = 0;
+    for (const f of files) {
+      if (!selected.has(f.path)) continue;
+      if (f.is_video) videos += 1;
+      else photos += 1;
+    }
+    return { videos, photos, total: videos + photos };
   }, [files, selected]);
 
   // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
@@ -555,13 +593,69 @@ export function SdFileSelector({
           if (submitting) e.preventDefault();
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="space-y-2.5 pr-8">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {drive ? `Laufwerk ${drive}` : "SD-Karte"} · {files.length} Dateien ·{" "}
-            {totalSizeMb.toFixed(1)} MB gesamt
-            {selected.size > 0 && ` · gewählt: ${selected.size} (${selectedSizeMb.toFixed(1)} MB)`}
+          <DialogDescription className="sr-only">
+            {drive ? `Laufwerk ${drive}` : "SD-Karte"}
+            {`, ${files.length} Dateien, ${totalSizeMb.toFixed(1)} MB`}
+            {mediaCounts.videos > 0 ? `, ${mediaCounts.videos} Videos` : ""}
+            {mediaCounts.photos > 0 ? `, ${mediaCounts.photos} Fotos` : ""}
+            {selectedCounts.total > 0
+              ? `, gewählt: ${selectedCounts.total} (${selectedSizeMb.toFixed(1)} MB)`
+              : ""}
           </DialogDescription>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-card-elevated/80 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary ring-1 ring-primary/20">
+                <HardDrive className="h-4 w-4" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold tracking-tight text-foreground">
+                  {drive ? `Laufwerk ${drive}` : "SD-Karte"}
+                </p>
+                <p className="text-xs tabular-nums text-muted">
+                  {files.length} Dateien · {totalSizeMb.toFixed(1)} MB
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {mediaCounts.videos > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
+                  <Film className="h-3 w-3" aria-hidden />
+                  {mediaCounts.videos}{" "}
+                  {mediaCounts.videos === 1 ? "Video" : "Videos"}
+                </span>
+              ) : null}
+              {mediaCounts.photos > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
+                  <ImageIcon className="h-3 w-3" aria-hidden />
+                  {mediaCounts.photos}{" "}
+                  {mediaCounts.photos === 1 ? "Foto" : "Fotos"}
+                </span>
+              ) : null}
+              {selectedCounts.total > 0 ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-card px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">
+                  <span>
+                    gewählt: {selectedCounts.total} · {selectedSizeMb.toFixed(1)}{" "}
+                    MB
+                  </span>
+                  {selectedCounts.videos > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 text-primary/90">
+                      <Film className="h-3 w-3" aria-hidden />
+                      {selectedCounts.videos}
+                    </span>
+                  ) : null}
+                  {selectedCounts.photos > 0 ? (
+                    <span className="inline-flex items-center gap-0.5 text-primary/90">
+                      <ImageIcon className="h-3 w-3" aria-hidden />
+                      {selectedCounts.photos}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </div>
+          </div>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -739,6 +833,7 @@ export function SdFileSelector({
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
               {filtered.map((file) => {
                 const isSel = selected.has(file.path);
+                const captureLabel = formatCaptureTime(file.display_epoch);
                 const setTileEl = (el: HTMLElement | null) => {
                   if (el) tileRefs.current.set(file.path, el);
                   else tileRefs.current.delete(file.path);
@@ -751,6 +846,7 @@ export function SdFileSelector({
                       path={file.path}
                       filename={file.filename}
                       sizeLabel={formatBytes(file.size_bytes)}
+                      captureLabel={captureLabel}
                       thumbUrl={thumbs[file.path]?.url}
                       thumbQuality={thumbs[file.path]?.quality}
                       selected={isSel}
@@ -822,9 +918,14 @@ export function SdFileSelector({
                       )}
                     </div>
                     <div className="truncate px-2 py-1 text-[11px]">{file.filename}</div>
-                    <div className="px-2 pb-1 text-[10px] text-muted">
-                      {formatBytes(file.size_bytes)}
-                      {file.already_processed ? " · bekannt" : ""}
+                    <div className="flex items-baseline justify-between gap-2 px-2 pb-1 text-[10px] text-muted">
+                      <span className="min-w-0 truncate">
+                        {formatBytes(file.size_bytes)}
+                        {file.already_processed ? " · bekannt" : ""}
+                      </span>
+                      {captureLabel ? (
+                        <span className="shrink-0 tabular-nums">{captureLabel}</span>
+                      ) : null}
                     </div>
                   </button>
                 );

@@ -42,6 +42,8 @@ type Props = {
   path: string;
   filename: string;
   sizeLabel: string;
+  /** Compact capture time shown right-aligned next to file size. */
+  captureLabel?: string;
   thumbUrl?: string;
   thumbQuality?: "lq" | "hq";
   selected: boolean;
@@ -78,6 +80,7 @@ export function SdVideoTile({
   path,
   filename,
   sizeLabel,
+  captureLabel,
   thumbUrl,
   thumbQuality,
   selected,
@@ -717,11 +720,16 @@ export function SdVideoTile({
       <button
         type="button"
         data-marquee-ok=""
-        className="px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
+        className="flex w-full items-baseline justify-between gap-2 px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
         onClick={(e) => onSelect({ shiftKey: e.shiftKey })}
       >
-        {sizeLabel}
-        {alreadyProcessed ? " · bekannt" : ""}
+        <span className="min-w-0 truncate">
+          {sizeLabel}
+          {alreadyProcessed ? " · bekannt" : ""}
+        </span>
+        {captureLabel ? (
+          <span className="shrink-0 tabular-nums">{captureLabel}</span>
+        ) : null}
       </button>
 
       {immersive &&

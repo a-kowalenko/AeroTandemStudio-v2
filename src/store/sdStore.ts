@@ -45,6 +45,13 @@ type SdState = {
     totalMb: number;
     mode: "backup" | "import" | "size_limit";
   }) => void;
+  patchSelectorFiles: (
+    updates: Array<{
+      path: string;
+      display_epoch: number;
+      already_processed: boolean;
+    }>,
+  ) => void;
   closeSelector: () => void;
   setProcessedOpen: (open: boolean) => void;
 };
@@ -81,6 +88,29 @@ export const useSdStore = create<SdState>((set) => ({
       selectorFiles: files,
       selectorTotalMb: totalMb,
       selectorMode: mode,
+    }),
+  patchSelectorFiles: (updates) =>
+    set((state) => {
+      if (!updates.length || !state.selectorOpen) return state;
+      const map = new Map(updates.map((u) => [u.path, u]));
+      let changed = false;
+      const selectorFiles = state.selectorFiles.map((f) => {
+        const u = map.get(f.path);
+        if (!u) return f;
+        if (
+          f.display_epoch === u.display_epoch &&
+          f.already_processed === u.already_processed
+        ) {
+          return f;
+        }
+        changed = true;
+        return {
+          ...f,
+          display_epoch: u.display_epoch,
+          already_processed: u.already_processed,
+        };
+      });
+      return changed ? { selectorFiles } : state;
     }),
   closeSelector: () =>
     set({

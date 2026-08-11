@@ -20,6 +20,12 @@ export type SdFileInfo = {
   already_processed: boolean;
 };
 
+export type SdFileEnrichment = {
+  path: string;
+  display_epoch: number;
+  already_processed: boolean;
+};
+
 export type ListSdFilesResult = {
   drive: string;
   files: SdFileInfo[];
@@ -131,6 +137,17 @@ export async function scanSdDrives(): Promise<SdDriveInfo[]> {
 
 export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
   return invoke<ListSdFilesResult>("list_sd_files", { drive });
+}
+
+/** Fill EXIF dates + history flags after a fast `listSdFiles` (non-blocking for the dialog). */
+export async function enrichSdFiles(
+  drive: string,
+  paths?: string[] | null,
+): Promise<SdFileEnrichment[]> {
+  return invoke<SdFileEnrichment[]>("enrich_sd_files", {
+    drive,
+    paths: paths ?? null,
+  });
 }
 
 export async function backupSdCard(

@@ -57,6 +57,27 @@ pub fn is_media_ext(ext: &str) -> bool {
     is_photo_ext(ext) || is_video_ext(ext)
 }
 
+/// macOS AppleDouble / Finder junk that still has a media-looking extension
+/// (e.g. `._DJI_0123.JPG` on FAT/exFAT SD cards after Finder copy).
+pub fn is_ignored_media_filename(name: &str) -> bool {
+    let name = name.trim();
+    if name.is_empty() {
+        return true;
+    }
+    // AppleDouble resource-fork sidecar, or any other dotted/hidden name.
+    name.starts_with('.')
+}
+
+fn should_include_media_path(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    if is_ignored_media_filename(name) {
+        return false;
+    }
+    is_media_ext(&ext_of(path))
+}
+
 pub fn media_type_from_filename(filename: &str) -> &'static str {
     let lower = filename.to_ascii_lowercase();
     if VIDEO_EXTENSIONS.iter().any(|e| lower.ends_with(e)) {
@@ -242,8 +263,7 @@ pub fn collect_media_paths_from_tree(scan_root: &Path) -> Vec<String> {
     let mut found = Vec::new();
     let walker = walkdir_simple(scan_root);
     for path in walker {
-        let ext = ext_of(&path);
-        if is_media_ext(&ext) {
+        if should_include_media_path(&path) {
             found.push(path.to_string_lossy().into_owned());
         }
     }
@@ -270,8 +290,7 @@ pub fn expand_import_paths(paths: &[String]) -> Vec<String> {
                 }
             }
         } else if path.is_file() {
-            let ext = ext_of(&path);
-            if !is_media_ext(&ext) {
+            if !should_include_media_path(&path) {
                 continue;
             }
             let media = path.to_string_lossy().into_owned();
@@ -327,7 +346,17 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
             pb.parent().map(|p| p.to_path_buf()),
             pb.file_stem().and_then(|s| s.to_str()).map(|s| s.to_ascii_lowercase()),
         ) {
-            stems_by_dir.entry(dir).or_default().insert(stem);
+            stems_by_dir.entry(dir.clone()).or_default().insert(stem);
+            // macOS AppleDouble companion next to the media file (`._` + filename).
+            if let Some(name) = pb.file_name().and_then(|n| n.to_str()) {
+                if !name.starts_with("._") {
+                    let apple = dir.join(format!("._{name}"));
+                    if apple.is_file() {
+                        let full_s = apple.to_string_lossy().into_owned();
+                        to_delete.insert(normalize_key(&full_s), full_s);
+                    }
+                }
+            }
         }
     }
 
@@ -538,6 +567,39 @@ mod tests {
         assert_eq!(paths.len(), 2);
         assert!(paths.iter().any(|p| p.ends_with("a.mp4")));
         assert!(paths.iter().any(|p| p.ends_with("b.jpg")));
+    }
+
+    #[test]
+    fn ignores_macos_appledouble_and_dotfiles() {
+        assert!(is_ignored_media_filename("._DJI_0123.JPG"));
+        assert!(is_ignored_media_filename(".hidden.jpg"));
+        assert!(is_ignored_media_filename(".DS_Store"));
+        assert!(!is_ignored_media_filename("DJI_0123.JPG"));
+        assert!(!is_ignored_media_filename("clip.mp4"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let dcim = dir.path().join("DCIM").join("100");
+        fs::create_dir_all(&dcim).unwrap();
+        fs::write(dcim.join("real.jpg"), b"photo").unwrap();
+        fs::write(dcim.join("._real.jpg"), b"appledouble").unwrap();
+        fs::write(dcim.join(".hidden.mp4"), b"hidden").unwrap();
+
+        let paths = collect_media_paths_from_tree(&dir.path().join("DCIM"));
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("real.jpg"));
+    }
+
+    #[test]
+    fn sd_clear_includes_appledouble_companion() {
+        let dir = tempfile::tempdir().unwrap();
+        let media = dir.path().join("clip.mp4");
+        let apple = dir.path().join("._clip.mp4");
+        fs::write(&media, b"v").unwrap();
+        fs::write(&apple, b"meta").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[media.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("clip.mp4")));
+        assert!(expanded.iter().any(|p| p.ends_with("._clip.mp4")));
     }
 
     #[test]

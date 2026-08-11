@@ -69,6 +69,7 @@ import {
 import {
   backupSdCard,
   ejectSdCard,
+  enrichSdFiles,
   importSdFiles,
   listSdFiles,
   type BackupProgress,
@@ -265,6 +266,7 @@ function App() {
   const selectorMode = useSdStore((s) => s.selectorMode);
   const closeSelector = useSdStore((s) => s.closeSelector);
   const openSelector = useSdStore((s) => s.openSelector);
+  const patchSelectorFiles = useSdStore((s) => s.patchSelectorFiles);
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
@@ -283,6 +285,7 @@ function App() {
   const [mediaTab, setMediaTab] = useState<"video" | "foto">("video");
   const photoList = usePhotoStore((s) => s.photoList);
   const defaultsApplied = useRef(false);
+  const sdEnrichGenRef = useRef(0);
   const [cutterOpen, setCutterOpen] = useState(false);
   const [cutterPath, setCutterPath] = useState<string | null>(null);
   const [cutterDuration, setCutterDuration] = useState(0);
@@ -363,6 +366,17 @@ function App() {
         totalMb: listed.total_size_mb,
         mode,
       });
+      // EXIF / "bekannt" in background — dialog already open with mtime dates.
+      const gen = ++sdEnrichGenRef.current;
+      const paths = listed.files.map((f) => f.path);
+      void enrichSdFiles(drive, paths)
+        .then((updates) => {
+          if (gen !== sdEnrichGenRef.current) return;
+          const st = useSdStore.getState();
+          if (!st.selectorOpen || st.selectorDrive !== drive) return;
+          patchSelectorFiles(updates);
+        })
+        .catch(() => undefined);
     } catch (e) {
       showError(String(e));
     } finally {
@@ -1626,7 +1640,10 @@ function App() {
           workflowProgress,
           loadingMessage,
         })}
-        onClose={closeSelector}
+        onClose={() => {
+          sdEnrichGenRef.current += 1;
+          closeSelector();
+        }}
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
         onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
       />
