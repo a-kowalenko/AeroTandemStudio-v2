@@ -26,6 +26,11 @@ type ComboboxProps = {
   hint?: string;
   /** Inline validation message; also styles the input as invalid. */
   error?: string;
+  /**
+   * Soft attention (e.g. missing crew after QR); ignored when `error` is set.
+   * Pass `true` for border-only, or a string for border + message.
+   */
+  warning?: boolean | string;
   id?: string;
   /** Portal list z-index (raise above modals, default 80). */
   listZIndex?: number;
@@ -33,6 +38,8 @@ type ComboboxProps = {
   hideLabel?: boolean;
   /** Extra classes for the text input. */
   inputClassName?: string;
+  /** Fired when a list suggestion is chosen (not on free-text typing). */
+  onSelectOption?: (value: string) => void;
 };
 
 type ListPos = {
@@ -66,10 +73,12 @@ export function Combobox({
   placeholder,
   hint,
   error,
+  warning,
   id: idProp,
   listZIndex = 80,
   hideLabel = false,
   inputClassName,
+  onSelectOption,
 }: ComboboxProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
@@ -230,6 +239,7 @@ export function Combobox({
 
   function select(optionValue: string) {
     onChange(optionValue);
+    onSelectOption?.(optionValue);
     setFilterQuery(null);
     setOpen(false);
   }
@@ -267,6 +277,17 @@ export function Combobox({
         pointerEvents: "auto",
       }
     : undefined;
+
+  const warningActive = Boolean(warning);
+  const warningText =
+    typeof warning === "string" && warning.trim() ? warning.trim() : undefined;
+  const attention = error
+    ? ("error" as const)
+    : warningActive
+      ? ("warning" as const)
+      : null;
+  const attentionMsg = error || warningText || undefined;
+  const msgId = attentionMsg ? `${id}-msg` : undefined;
 
   let selectableIndex = -1;
   const list =
@@ -341,7 +362,8 @@ export function Combobox({
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
-          aria-invalid={error ? true : undefined}
+          aria-invalid={attention === "error" ? true : undefined}
+          aria-describedby={msgId}
           autoComplete="off"
           value={filterQuery !== null ? filterQuery : inputDisplay}
           disabled={disabled}
@@ -364,8 +386,10 @@ export function Combobox({
           className={cn(
             "pr-9",
             disabled && "bg-card-elevated",
-            error &&
+            attention === "error" &&
               "border-destructive focus-visible:ring-destructive/40",
+            attention === "warning" &&
+              "border-warning/70 bg-warning/5 focus-visible:ring-warning/35",
             inputClassName,
           )}
         />
@@ -388,9 +412,21 @@ export function Combobox({
         </button>
       </div>
       {list}
-      {error ? (
-        <p className="text-[11px] leading-snug text-destructive" role="alert">
+      {attention === "error" ? (
+        <p
+          id={msgId}
+          className="text-[11px] leading-snug text-destructive"
+          role="alert"
+        >
           {error}
+        </p>
+      ) : attention === "warning" && warningText ? (
+        <p
+          id={msgId}
+          className="text-[11px] leading-snug text-warning"
+          role="status"
+        >
+          {warningText}
         </p>
       ) : hint ? (
         <p className="text-[10px] leading-snug text-muted">{hint}</p>

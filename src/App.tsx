@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { CloudUpload, History, RotateCcw, Settings } from "lucide-react";
+import { CloudUpload, Film, History, ImageIcon, RotateCcw, Settings } from "lucide-react";
 import { ProgressIndicator } from "./components/ProgressIndicator";
 import { MediaDropZone } from "./components/MediaDropZone";
+import { MediaListPanel } from "./components/MediaListPanel";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
@@ -1525,7 +1526,7 @@ function App() {
           </div>
         </aside>
 
-        <main className={cn("flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4")}>
+        <main className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4")}>
           {showProgressPanel && (
             <section className="ats-surface sticky top-0 z-10 rounded-xl p-4 shadow-sm backdrop-blur-sm">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
@@ -1581,64 +1582,76 @@ function App() {
               useVideoStore.getState().clearCutMarksFor([path]);
               void discardVideoCutUndoForPath(path);
             }}
-            onCutVideo={(path) => {
-              const meta = videoList.find((v) => v.path === path);
-              setCutterPath(path);
-              setCutterDuration(meta?.duration_secs ?? 0);
-              setCutterOpen(true);
-              setMediaTab("video");
-            }}
-            onUndoVideoCut={(path) => {
-              void videoCuts.undoForPath(path, {
-                onBusyChange: setBusy,
-                onProgressReset: resetProgress,
-                onStatus: setStatus,
-              });
-            }}
             onSessionCleared={() => {
               videoCuts.clearUndoState();
             }}
-            listTab={mediaTab}
-            onListTabChange={setMediaTab}
             onImported={({ videosAdded, photosAdded }) => {
               if (photosAdded > 0 && videosAdded === 0) setMediaTab("foto");
               else if (videosAdded > 0) setMediaTab("video");
             }}
           />
 
-          <section className="ats-surface space-y-3 rounded-xl p-4 shadow-sm backdrop-blur-sm">
+          <section className="ats-surface rounded-xl shadow-sm backdrop-blur-sm">
             <Tabs
               value={mediaTab}
               onValueChange={(v) => setMediaTab(v === "foto" ? "foto" : "video")}
               className="w-full"
             >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
-                    Vorschau
-                  </h2>
-                  <p className="text-xs text-muted">
-                    {mediaTab === "video"
-                      ? "Player, Cutter & Preview-Encode"
-                      : "Galerie, Auswahl & QR-Scan"}
-                  </p>
-                </div>
-                <TabsList>
-                  <TabsTrigger value="video" className="gap-1.5">
-                    Video
+              <div className="flex flex-wrap items-center gap-3 rounded-t-xl border-b border-border/70 bg-card-elevated/50 px-3 py-2.5 sm:px-4">
+                <TabsList
+                  className="h-11 w-full max-w-md flex-1 p-1 sm:w-auto"
+                  aria-label="Medienart"
+                >
+                  <TabsTrigger
+                    value="video"
+                    className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
+                  >
+                    <Film className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>Video</span>
                     {videoList.length > 0 && (
-                      <span className="tabular-nums text-muted">({videoList.length})</span>
+                      <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
+                        {videoList.length}
+                      </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="foto" className="gap-1.5">
-                    Foto
+                  <TabsTrigger
+                    value="foto"
+                    className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
+                  >
+                    <ImageIcon className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>Foto</span>
                     {photoList.length > 0 && (
-                      <span className="tabular-nums text-muted">({photoList.length})</span>
+                      <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
+                        {photoList.length}
+                      </span>
                     )}
                   </TabsTrigger>
                 </TabsList>
+                <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    className={cn(
+                      "text-xs",
+                      !(uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)) &&
+                        "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+                    )}
+                    disabled={uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)}
+                    onClick={() => {
+                      if (mediaTab === "video") {
+                        useVideoStore.getState().clearVideos();
+                        videoCuts.clearUndoState();
+                      } else {
+                        usePhotoStore.getState().clearPhotos();
+                      }
+                    }}
+                  >
+                    {mediaTab === "video" ? "Videos leeren" : "Fotos leeren"}
+                  </Button>
+                </div>
               </div>
-              <TabsContent value="video" className="mt-3 space-y-4">
+              <TabsContent value="video" className="mt-0 space-y-4 p-4">
                 <VideoPreview
                   busy={busy || autoPanelActive}
                   onBusyChange={setBusy}
@@ -1675,9 +1688,32 @@ function App() {
                     void discardVideoCutUndoForPath(path);
                   }}
                 />
+                <MediaListPanel
+                  kind="video"
+                  disabled={uiLocked}
+                  onRemoveVideo={(path) => {
+                    useVideoStore.getState().clearCutMarksFor([path]);
+                    void discardVideoCutUndoForPath(path);
+                  }}
+                  onCutVideo={(path) => {
+                    const meta = videoList.find((v) => v.path === path);
+                    setCutterPath(path);
+                    setCutterDuration(meta?.duration_secs ?? 0);
+                    setCutterOpen(true);
+                    setMediaTab("video");
+                  }}
+                  onUndoVideoCut={(path) => {
+                    void videoCuts.undoForPath(path, {
+                      onBusyChange: setBusy,
+                      onProgressReset: resetProgress,
+                      onStatus: setStatus,
+                    });
+                  }}
+                />
               </TabsContent>
-              <TabsContent value="foto" className="mt-3">
+              <TabsContent value="foto" className="mt-0 space-y-4 p-4">
                 <PhotoPreview disabled={uiLocked} />
+                <MediaListPanel kind="foto" disabled={uiLocked} />
               </TabsContent>
             </Tabs>
           </section>

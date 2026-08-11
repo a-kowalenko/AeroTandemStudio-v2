@@ -239,7 +239,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/75">
             <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
-            <p>Keine Fotos — per Drag & Drop oben hinzufügen</p>
+            <p>Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen</p>
           </div>
         )}
       </div>

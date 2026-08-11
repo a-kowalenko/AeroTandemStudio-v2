@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { Eye, Hash, QrCode, UserRound, PencilLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,10 +18,20 @@ import { QrHitMeta } from "@/components/QrHitMeta";
 import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
+import { useUiStore } from "@/store/uiStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { kundeDisplayName, fileBaseName } from "@/lib/qrSuccess";
+
+const CREW_TM_INPUT_ID = "crew-tandemmaster";
+const CREW_VS_INPUT_ID = "crew-videospringer";
+
+function focusCrewField(id: string) {
+  window.setTimeout(() => {
+    document.getElementById(id)?.focus();
+  }, 50);
+}
 
 /** Allow digits and optional leading `#`; store only digits. */
 function sanitizeNumericIdInput(raw: string): string {
@@ -437,6 +447,9 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
   const patch = useKundeStore((s) => s.patch);
   const setVideoMode = useKundeStore((s) => s.setVideoMode);
   const qrRevision = useKundeStore((s) => s.qrRevision);
+  const crewAttentionAfterQr = useKundeStore((s) => s.crewAttentionAfterQr);
+  const dialogKind = useUiStore((s) => s.dialogKind);
+  const dialogVariant = useUiStore((s) => s.dialogVariant);
   const config = useConfigStore((s) => s.config);
   const entryMode = normalizeManualEntryMode(
     config?.manual_entry_mode,
@@ -454,6 +467,8 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
     [crewList],
   );
   const [nameLocked, setNameLocked] = useState(true);
+  const crewSectionRef = useRef<HTMLDivElement>(null);
+  const qrSuccessDialogWasOpen = useRef(false);
 
   const mode = (kunde.video_mode || "") as "" | "handcam" | "outside";
   const isQrMode = kunde.form_mode === "kunde";
@@ -466,10 +481,61 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
       kunde.outside_video);
   const productsLocked = productsFromQr && nameLocked;
 
+  const warnTandemmaster =
+    crewAttentionAfterQr && !kunde.tandemmaster.trim();
+  const warnVideospringer =
+    crewAttentionAfterQr &&
+    mode === "outside" &&
+    !kunde.videospringer.trim();
+
   // Re-lock after QR apply (including Auto-QR / Medienliste / Vorschau).
   useEffect(() => {
     if (qrRevision > 0) setNameLocked(true);
   }, [qrRevision]);
+
+  // After QR success dialog closes: scroll/focus first missing crew field.
+  useEffect(() => {
+    const open = dialogKind === "success" && dialogVariant === "qr";
+    let focusTimer: number | undefined;
+    if (qrSuccessDialogWasOpen.current && !open) {
+      const state = useKundeStore.getState();
+      if (state.crewAttentionAfterQr) {
+        const videoMode = (state.kunde.video_mode || "") as
+          | ""
+          | "handcam"
+          | "outside";
+        const needsTm = !state.kunde.tandemmaster.trim();
+        const needsVs =
+          videoMode === "outside" && !state.kunde.videospringer.trim();
+        if (needsTm || needsVs) {
+          const focusId = needsTm ? CREW_TM_INPUT_ID : CREW_VS_INPUT_ID;
+          // Wait for SuccessDialog unmount so focus is not stolen back.
+          focusTimer = window.setTimeout(() => {
+            crewSectionRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "nearest",
+            });
+            document.getElementById(focusId)?.focus();
+          }, 80);
+        }
+      }
+    }
+    qrSuccessDialogWasOpen.current = open;
+    return () => {
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
+    };
+  }, [dialogKind, dialogVariant]);
+
+  function focusVideospringerIfEmpty() {
+    const state = useKundeStore.getState();
+    const videoMode = state.kunde.video_mode || "";
+    if (
+      videoMode === "outside" &&
+      !state.kunde.videospringer.trim()
+    ) {
+      focusCrewField(CREW_VS_INPUT_ID);
+    }
+  }
 
   function syncGastFromName(vorname: string, nachname: string) {
     const gast = `${vorname} ${nachname}`.trim();
@@ -604,27 +670,33 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
       </section>
       <Section title="Crew">
         <div
+          ref={crewSectionRef}
           className={cn(
             "grid gap-3",
             mode === "outside" ? "sm:grid-cols-2" : "sm:grid-cols-1",
           )}
         >
           <Combobox
+            id={CREW_TM_INPUT_ID}
             label="Tandemmaster"
             value={kunde.tandemmaster}
             onChange={(v) => setField("tandemmaster", v)}
+            onSelectOption={() => focusVideospringerIfEmpty()}
             options={tandemmasterOptions}
             disabled={busy}
             placeholder="Name…"
+            warning={warnTandemmaster}
           />
           {mode === "outside" ? (
             <Combobox
+              id={CREW_VS_INPUT_ID}
               label="Videospringer"
               value={kunde.videospringer}
               onChange={(v) => setField("videospringer", v)}
               options={videospringerOptions}
               disabled={busy}
               placeholder="Name…"
+              warning={warnVideospringer}
             />
           ) : null}
         </div>

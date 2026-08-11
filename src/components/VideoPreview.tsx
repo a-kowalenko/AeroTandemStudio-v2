@@ -694,7 +694,7 @@ export function VideoPreview({
       ) : (
         <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--ats-preview-stage)] text-sm text-white/75 ring-1 ring-border">
           <Film className="h-8 w-8 opacity-50" aria-hidden />
-          <p>Keine Videos — per Drag & Drop oben hinzufügen</p>
+          <p>Keine Videos — per Drag & Drop im Medien-Bereich hinzufügen</p>
         </div>
       )}
 

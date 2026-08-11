@@ -57,6 +57,11 @@ type KundeState = {
   qrPreviewSource: string | null;
   /** Bumps on each successful QR apply (for UI lock sync). */
   qrRevision: number;
+  /**
+   * After QR apply: soft-highlight empty crew fields until filled or session reset.
+   * Scroll/focus runs when the QR success dialog closes.
+   */
+  crewAttentionAfterQr: boolean;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
   patch: (partial: Partial<Kunde>) => void;
   setVideoMode: (mode: "" | "handcam" | "outside") => void;
@@ -90,6 +95,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   qrPreview: null,
   qrPreviewSource: null,
   qrRevision: 0,
+  crewAttentionAfterQr: false,
 
   setField: (key, value) => {
     set({ kunde: { ...get().kunde, [key]: value } });
@@ -242,6 +248,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
 
     set({
       qrRevision: get().qrRevision + 1,
+      crewAttentionAfterQr: true,
       qrSnapshot: { ...next },
       qrPreview: preview,
       qrPreviewSource: sourcePath,
@@ -299,6 +306,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     discardQrPreviewBestEffort(oldPreview?.path);
     set({
       qrRevision: 0,
+      crewAttentionAfterQr: false,
       qrSnapshot: null,
       qrPreview: null,
       qrPreviewSource: null,
