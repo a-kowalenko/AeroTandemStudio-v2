@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { History, RotateCcw, Settings } from "lucide-react";
+import { CloudUpload, History, RotateCcw, Settings } from "lucide-react";
 import { ProgressIndicator } from "./components/ProgressIndicator";
 import { MediaDropZone } from "./components/MediaDropZone";
 import { VideoPreview } from "./components/VideoPreview";
@@ -34,6 +34,7 @@ import { ThemeToggle } from "./components/ThemeToggle";
 import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
+import { Switch } from "./components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
@@ -1146,6 +1147,16 @@ function App() {
     ? `${hwInfo.encoder}${hwInfo.available ? "" : " (Software)"}`
     : null;
 
+  const uploadActive = Boolean(config?.upload_to_server && serverConnected);
+  const uploadBlocked = Boolean(config?.upload_to_server) && !serverConnected;
+  const uploadTitle = !serverConnected
+    ? uploadBlocked
+      ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
+      : "Server nicht verbunden — Upload nicht möglich"
+    : uploadActive
+      ? "Aktiv — Vorgang wird nach Erstellen hochgeladen"
+      : "Nach dem Erstellen auf den Server laden";
+
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
       <SplashScreen
@@ -1254,19 +1265,24 @@ function App() {
                 </p>
               </div>
               <label
-                className="flex shrink-0 items-center gap-1.5 rounded-md border border-border bg-card-elevated/80 px-2 py-1 text-xs text-muted"
-                title={
-                  !serverConnected && config?.upload_to_server
-                    ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
-                    : !serverConnected
-                      ? "Server nicht verbunden"
-                      : undefined
-                }
+                htmlFor="vorgang-upload"
+                className={cn(
+                  "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                  uploadActive
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : uploadBlocked
+                      ? "border-warning/40 bg-warning/10 text-warning"
+                      : "border-border bg-card-elevated/80 text-muted",
+                  (!serverConnected || busy || !config) && "cursor-not-allowed",
+                )}
+                title={uploadTitle}
               >
-                <Checkbox
-                  checked={Boolean(
-                    config?.upload_to_server && serverConnected,
-                  )}
+                <CloudUpload className="h-3.5 w-3.5" aria-hidden />
+                Upload
+                <Switch
+                  id="vorgang-upload"
+                  className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
+                  checked={uploadActive}
                   disabled={busy || !config || !serverConnected}
                   onCheckedChange={(v) => {
                     if (!config || !serverConnected) return;
@@ -1275,10 +1291,11 @@ function App() {
                       upload_to_server: v === true,
                     });
                   }}
+                  aria-label="Server-Upload"
                 />
-                Upload
               </label>
             </div>
+
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <label className="flex items-center gap-2 text-xs text-muted">
                 <Checkbox
@@ -1316,7 +1333,7 @@ function App() {
               </Button>
               <Button
                 type="button"
-                className="flex-1"
+                className="flex-1 gap-1.5"
                 onClick={() => {
                   void startCreate();
                 }}
@@ -1327,9 +1344,14 @@ function App() {
                     : undefined
                 }
               >
-                {config?.upload_to_server && serverConnected
-                  ? "Erstellen & Upload"
-                  : "Erstellen"}
+                {config?.upload_to_server && serverConnected ? (
+                  <>
+                    <CloudUpload className="h-4 w-4" aria-hidden />
+                    Erstellen & Upload
+                  </>
+                ) : (
+                  "Erstellen"
+                )}
               </Button>
             </div>
           </div>
