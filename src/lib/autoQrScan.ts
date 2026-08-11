@@ -32,6 +32,8 @@ export type AutoQrScanInput = {
 export type AutoQrScanOutcome = {
   attempted: boolean;
   found: boolean;
+  /** User aborted via cancel_encode / progress Abbrechen. */
+  cancelled: boolean;
   /** Kundedata written (false when user kept the existing QR customer). */
   applied: boolean;
   keptExisting: boolean;
@@ -47,6 +49,7 @@ function emptyOutcome(): AutoQrScanOutcome {
   return {
     attempted: false,
     found: false,
+    cancelled: false,
     applied: false,
     keptExisting: false,
     message: "",
@@ -129,6 +132,7 @@ export async function runAutoQrAfterImport(
       return {
         ...emptyOutcome(),
         attempted: true,
+        cancelled: true,
         message: result.message || "QR-Scan abgebrochen.",
       };
     }
@@ -148,6 +152,7 @@ export async function runAutoQrAfterImport(
       return {
         attempted: true,
         found: true,
+        cancelled: false,
         applied: presented.applied,
         keptExisting: presented.keptExisting,
         source_path: result.source_path,
@@ -166,6 +171,7 @@ export async function runAutoQrAfterImport(
       return {
         ...emptyOutcome(),
         attempted: true,
+        cancelled: true,
         message: result.message || "QR-Scan abgebrochen.",
       };
     }
@@ -183,6 +189,7 @@ export async function runAutoQrAfterImport(
       return {
         attempted: true,
         found: true,
+        cancelled: false,
         applied: presented.applied,
         keptExisting: presented.keptExisting,
         source_path: result.source_path,

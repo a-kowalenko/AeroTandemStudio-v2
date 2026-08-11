@@ -294,6 +294,13 @@ export function MediaDropZone({
                     ? `${parts.join(", ")} · Kunde behalten`
                     : `${parts.join(", ")} · QR`,
               );
+            } else if (outcome.attempted && outcome.cancelled) {
+              showWarning(
+                outcome.message || "QR-Scan abgebrochen.",
+                "QR-Scan",
+                { autoCloseSecs: 5 },
+              );
+              setStatusMsg(`${parts.join(", ")} · QR abgebrochen`);
             } else if (outcome.attempted && outcome.message) {
               setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
             }
@@ -401,7 +408,7 @@ export function MediaDropZone({
     try {
       const result = await withQrScanProgress(paths, () => scanQrVideos(paths));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan");
+        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -432,7 +439,7 @@ export function MediaDropZone({
     try {
       const result = await withQrScanProgress(paths, () => scanQrPhotos(paths));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan");
+        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -477,7 +484,7 @@ export function MediaDropZone({
         kind === "video" ? scanQrVideo(selected) : scanQrPhoto(selected),
       );
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan");
+        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         const typeLabel = kind === "video" ? "Video" : "Foto";
         await presentQrHit({

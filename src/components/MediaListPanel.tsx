@@ -250,7 +250,7 @@ export function MediaListPanel({
     try {
       const result = await withQrScanProgress([path], () => scanQrVideo(path));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan");
+        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -276,7 +276,7 @@ export function MediaListPanel({
     try {
       const result = await withQrScanProgress([path], () => scanQrPhoto(path));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan");
+        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,

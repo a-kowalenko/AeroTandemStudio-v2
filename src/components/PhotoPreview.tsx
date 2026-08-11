@@ -47,6 +47,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
   const kunde = useKundeStore((s) => s.kunde);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
+  const showWarning = useUiStore((s) => s.showWarning);
 
   const [scanning, setScanning] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
@@ -140,7 +141,11 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
       const result = await withQrScanProgress([photo.path], () =>
         scanQrPhoto(photo.path),
       );
-      if (result.found && result.kunde) {
+      if (result.cancelled) {
+        showWarning(result.message || "QR-Scan abgebrochen.", "QR-Scan", {
+          autoCloseSecs: 5,
+        });
+      } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
           sourcePath: result.source_path ?? photo.path,

@@ -50,6 +50,9 @@ type Props = {
   submitting?: boolean;
   /** Optional determinate progress (e.g. backup MB). */
   progress?: SdSelectorProgress | null;
+  /** When true during submit, show cancel for the current QR step. */
+  canCancelProgress?: boolean;
+  onCancelProgress?: () => void;
   onClose: () => void;
   onConfirm: (selectedPaths: string[], actions: SdWorkflowActions) => void;
   onProceedAll?: (actions: SdWorkflowActions) => void;
@@ -107,6 +110,8 @@ export function SdFileSelector({
   defaultActions,
   submitting = false,
   progress = null,
+  canCancelProgress = false,
+  onCancelProgress,
   onClose,
   onConfirm,
   onProceedAll,
@@ -1041,14 +1046,29 @@ export function SdFileSelector({
 
         {submitting && (
           <div className="shrink-0 space-y-2 border-t border-border/60 pt-3">
-            <ProgressIndicator
-              percent={progress?.percent ?? 0}
-              label={progress?.label ?? "SD-Verarbeitung…"}
-              indeterminate={Boolean(progress?.indeterminate)}
-            />
-            {progress?.detail ? (
-              <p className="text-xs tabular-nums text-muted">{progress.detail}</p>
-            ) : null}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 space-y-2">
+                <ProgressIndicator
+                  percent={progress?.percent ?? 0}
+                  label={progress?.label ?? "SD-Verarbeitung…"}
+                  indeterminate={Boolean(progress?.indeterminate)}
+                />
+                {progress?.detail ? (
+                  <p className="text-xs tabular-nums text-muted">{progress.detail}</p>
+                ) : null}
+              </div>
+              {canCancelProgress && onCancelProgress ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={onCancelProgress}
+                >
+                  Abbrechen
+                </Button>
+              ) : null}
+            </div>
           </div>
         )}
 

@@ -546,6 +546,19 @@ function App() {
         return { importAction, qrAction: null, qrHit: null };
       }
 
+      if (qr.cancelled) {
+        return {
+          importAction,
+          qrAction: {
+            kind: "qr",
+            label: "QR-Code",
+            tone: "warning",
+            summary: qr.message || "QR-Scan abgebrochen.",
+          },
+          qrHit: null,
+        };
+      }
+
       if (qr.found) {
         const fromOptions = qr.successOptions?.actions?.find((a) => a.kind === "qr");
         const src = fileBaseName(qr.source_path);
@@ -1236,10 +1249,14 @@ function App() {
   }
 
   async function cancel() {
+    const cancellingQr = qrScanBusy && !busy;
     try {
       await invoke("cancel_encode");
-      setStatus("cancelled");
-      showWarning("Vorgang abgebrochen.");
+      if (!cancellingQr) {
+        setStatus("cancelled");
+        showWarning("Vorgang abgebrochen.");
+      }
+      // QR: callers show "QR-Scan abgebrochen." once the scan returns.
     } catch (e) {
       if (!isCancellationError(e)) showError(String(e));
     }
@@ -1593,17 +1610,19 @@ function App() {
                   </h2>
                   <p className="text-xs text-muted">
                     {showSdAutoProgress && !busy
-                      ? "SD Auto — Backup, Import und weitere Aktionen"
+                      ? qrScanBusy
+                        ? "SD Auto — QR-Scan (Abbrechen stoppt nur den Scan)"
+                        : "SD Auto — Backup, Import und weitere Aktionen"
                       : showManualImportProgress && !busy
                         ? "Medien werden in den Arbeitsordner kopiert"
                         : showManualQrProgress && !busy
-                          ? "QR-Scan der Medien"
+                          ? "QR-Scan — Abbrechen stoppt den Scan"
                           : busy
                             ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
                             : "Zuletzt abgeschlossener Lauf"}
                   </p>
                 </div>
-                {busy && (
+                {(busy || qrScanBusy) && (
                   <Button type="button" variant="destructive" size="sm" onClick={() => void cancel()}>
                     Abbrechen
                   </Button>
@@ -1869,6 +1888,8 @@ function App() {
           qrByPath: qrScanByPath,
           qrFollowup,
         })}
+        canCancelProgress={selectorSubmitting && qrScanBusy}
+        onCancelProgress={() => void cancel()}
         onClose={() => {
           sdEnrichGenRef.current += 1;
           closeSelector();
@@ -1938,6 +1959,7 @@ function App() {
         open={dialogKind === "warning"}
         title={dialogTitle}
         message={dialogMessage}
+        autoCloseSecs={dialogAutoCloseSecs}
         onClose={closeDialog}
       />
       <IntroMuxFallbackDialog

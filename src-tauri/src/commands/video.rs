@@ -481,7 +481,7 @@ pub async fn split_video(
     }
 }
 
-/// Cancel all currently running FFmpeg processes.
+/// Cancel currently running FFmpeg work (encode, QR frame extract, etc.).
 #[tauri::command]
 pub fn cancel_encode() -> Result<bool, String> {
     logging::warn("encode", "Abbruch angefordert (cancel_encode)");

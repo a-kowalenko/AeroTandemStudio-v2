@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
+use crate::video::ffmpeg;
+
 use super::analyser::{
     photo_has_customer_qr, QrScanError, QrScanOptions, MAX_QR_FOLLOWUP_DECODE_WIDTH,
 };
@@ -43,6 +45,9 @@ fn walk_direction(
     let mut i = hit_idx as i32 + step;
 
     while i >= 0 && (i as usize) < ordered_paths.len() {
+        if ffmpeg::is_cancelled() {
+            break;
+        }
         if scans_used.load(Ordering::SeqCst) >= scan_cap {
             break;
         }

@@ -90,7 +90,11 @@ type UiState = {
     options?: ErrorDialogOptions,
   ) => void;
   showSuccess: (message: string, title?: string, options?: DialogOptions) => void;
-  showWarning: (message: string, title?: string) => void;
+  showWarning: (
+    message: string,
+    title?: string,
+    options?: Pick<DialogOptions, "autoCloseSecs">,
+  ) => void;
   closeDialog: () => void;
   setLoading: (loading: boolean, message?: string) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -148,12 +152,16 @@ export const useUiStore = create<UiState>((set) => ({
       dialogPrimaryAction: null,
       dialogConfirm: options?.confirm ?? null,
     }),
-  showWarning: (message, title = "Hinweis") =>
+  showWarning: (message, title = "Hinweis", options) =>
     set({
       dialogKind: "warning",
       ...emptyDialogFields,
       dialogTitle: title,
       dialogMessage: message,
+      dialogAutoCloseSecs:
+        options?.autoCloseSecs && options.autoCloseSecs > 0
+          ? options.autoCloseSecs
+          : null,
     }),
   closeDialog: () =>
     set({
