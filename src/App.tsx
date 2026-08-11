@@ -78,7 +78,11 @@ import {
 } from "./lib/sdCard";
 import { pathsAddedSince, runAutoQrAfterImport, type AutoQrScanOutcome } from "./lib/autoQrScan";
 import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
-import { withQrScanProgress } from "./store/qrScanStore";
+import {
+  summarizeQrScanProgress,
+  useQrScanStore,
+  withQrScanProgress,
+} from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
 import {
   applyMonotonicPercent,
@@ -131,6 +135,10 @@ function resolveSdSelectorProgress(opts: {
   backupProgress: BackupProgress | null;
   workflowProgress: WorkflowProgress | null;
   loadingMessage: string;
+  qrBusy: boolean;
+  qrStage: import("./store/qrScanStore").QrScanJobStage;
+  qrByPath: Record<string, import("./store/qrScanStore").QrScanPhase>;
+  qrFollowup: import("./store/qrScanStore").QrFollowupStatus | null;
 }): SdSelectorProgress | null {
   if (!opts.submitting) return null;
 
@@ -185,6 +193,25 @@ function resolveSdSelectorProgress(opts: {
       percent: 100,
       label: "SD wird bereinigt…",
       indeterminate: true,
+    };
+  }
+
+  // Prefer QR status over generic "importing" once import workflow progress is cleared.
+  const qrActive =
+    opts.qrBusy || opts.qrStage !== "idle" || /qr/i.test(msg);
+  if (qrActive) {
+    const summary = summarizeQrScanProgress(
+      opts.qrByPath,
+      opts.qrStage,
+      opts.qrFollowup,
+    );
+    return {
+      percent: summary.percent,
+      label: msg && !/^QR-Scan…?$/i.test(msg) && opts.qrStage !== "followup"
+        ? msg
+        : summary.label,
+      detail: summary.detail || undefined,
+      indeterminate: summary.indeterminate,
     };
   }
 
@@ -275,6 +302,10 @@ function App() {
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const backupProgress = useSdStore((s) => s.backupProgress);
   const workflowProgress = useSdStore((s) => s.workflowProgress);
+  const qrScanBusy = useQrScanStore((s) => s.busy);
+  const qrScanStage = useQrScanStore((s) => s.stage);
+  const qrScanByPath = useQrScanStore((s) => s.byPath);
+  const qrFollowup = useQrScanStore((s) => s.followup);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1625,6 +1656,10 @@ function App() {
           backupProgress,
           workflowProgress,
           loadingMessage,
+          qrBusy: qrScanBusy,
+          qrStage: qrScanStage,
+          qrByPath: qrScanByPath,
+          qrFollowup,
         })}
         onClose={() => {
           sdEnrichGenRef.current += 1;

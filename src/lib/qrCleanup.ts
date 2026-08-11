@@ -3,10 +3,7 @@
 import { useConfigStore } from "@/store/configStore";
 import { usePhotoStore } from "@/store/photoStore";
 import { useVideoStore } from "@/store/videoStore";
-import { scanQrPhoto } from "@/lib/tauri";
-
-/** How many photos after a QR hit are also checked/removed. */
-export const QR_PHOTO_FOLLOWUP_COUNT = 10;
+import { scanQrPhotoFollowups } from "@/lib/tauri";
 
 export type QrCleanupResult = {
   removedVideos: string[];
@@ -80,8 +77,8 @@ export function maybeRemoveQrVideo(
 /**
  * After a successful photo QR scan:
  * 1. Remove the QR photo if `qr_remove_photo_after_scan` is on.
- * 2. Check the next {@link QR_PHOTO_FOLLOWUP_COUNT} photos for QR codes and
- *    remove those that also contain a valid QR.
+ * 2. Bidirectionally scan same-series neighbors (gap ≤ 10s); remove QR carriers.
+ *    Stops per direction after 3 consecutive non-QR photos (scan cap 40).
  */
 export async function maybeRemoveQrPhoto(
   sourcePath: string | null | undefined,
@@ -96,21 +93,16 @@ export async function maybeRemoveQrPhoto(
   const idx = list.findIndex((p) => pathKey(p.path) === pathKey(sourcePath));
   if (idx < 0) return result;
 
-  const followUpPaths = list
-    .slice(idx + 1, idx + 1 + QR_PHOTO_FOLLOWUP_COUNT)
-    .map((p) => p.path);
-
   const toRemove = new Set<string>([list[idx].path]);
+  const orderedPaths = list.map((p) => p.path);
 
-  for (const path of followUpPaths) {
-    try {
-      const scan = await scanQrPhoto(path);
-      if (scan.found && scan.kunde && !scan.cancelled) {
-        toRemove.add(path);
-      }
-    } catch (e) {
-      console.warn(`QR-Follow-up Scan fehlgeschlagen (${path}):`, e);
+  try {
+    const followHits = await scanQrPhotoFollowups(orderedPaths, list[idx].path);
+    for (const path of followHits) {
+      toRemove.add(path);
     }
+  } catch (e) {
+    console.warn(`QR-Follow-up Scan fehlgeschlagen:`, e);
   }
 
   result.removedPhotos = removePhotosByPaths([...toRemove]);

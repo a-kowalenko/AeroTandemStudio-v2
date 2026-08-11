@@ -22,7 +22,8 @@ use commands::media::{
     get_media_server_base, get_working_dir, import_photos, media_file_url,
 };
 use commands::qr::{
-    discard_qr_preview_file, scan_qr_photo, scan_qr_photos, scan_qr_video, scan_qr_videos,
+    discard_qr_preview_file, scan_qr_photo, scan_qr_photo_followups, scan_qr_photos, scan_qr_video,
+    scan_qr_videos,
 };
 use commands::sd_card::{
     backup_sd_card, clear_sd_files, decline_sd_backup, delete_processed_files, eject_sd_card,
@@ -154,6 +155,7 @@ pub fn run() {
             scan_qr_photo,
             scan_qr_videos,
             scan_qr_photos,
+            scan_qr_photo_followups,
             discard_qr_preview_file,
             expand_media_paths,
             get_file_sizes,

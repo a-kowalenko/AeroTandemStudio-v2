@@ -3,6 +3,11 @@
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import {
+  useQrScanStore,
+  type QrScanJobStage,
+} from "@/store/qrScanStore";
+import { useUiStore } from "@/store/uiStore";
+import {
   scanQrPhotos,
   scanQrVideos,
   type QrScanResult,
@@ -53,6 +58,16 @@ function emptyOutcome(): AutoQrScanOutcome {
   };
 }
 
+function setQrUi(message: string, stage: QrScanJobStage, paths?: string[]) {
+  useUiStore.getState().setLoading(true, message);
+  const store = useQrScanStore.getState();
+  if (paths) {
+    store.begin(paths, stage);
+  } else {
+    store.setStage(stage);
+  }
+}
+
 function formatHit(
   result: QrScanResult,
   cleanup: QrCleanupResult,
@@ -98,6 +113,11 @@ export async function runAutoQrAfterImport(
   const applyFromQr = useKundeStore.getState().applyFromQr;
 
   if (scanVideos) {
+    setQrUi(
+      `QR-Scan: ${videoPaths.length} Video(s)…`,
+      "scanning_videos",
+      videoPaths,
+    );
     const result = await scanQrVideos(videoPaths);
     if (result.cancelled) {
       return {
@@ -115,6 +135,7 @@ export async function runAutoQrAfterImport(
         preview: result.preview,
         sourcePath: result.source_path,
       });
+      setQrUi("QR gefunden — Clip prüfen…", "followup");
       const cleanup = maybeRemoveQrVideo(result.source_path, {
         onBeforeRemove: input.onBeforeRemoveVideo,
       });
@@ -128,6 +149,11 @@ export async function runAutoQrAfterImport(
   }
 
   if (scanPhotos) {
+    setQrUi(
+      `QR-Scan: ${photoPaths.length} Foto(s)…`,
+      "scanning_photos",
+      photoPaths,
+    );
     const result = await scanQrPhotos(photoPaths);
     if (result.cancelled) {
       return {
@@ -145,6 +171,7 @@ export async function runAutoQrAfterImport(
         preview: result.preview,
         sourcePath: result.source_path,
       });
+      setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
       const cleanup = await maybeRemoveQrPhoto(result.source_path);
       return {
         attempted: true,

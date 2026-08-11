@@ -354,6 +354,8 @@ export type QrPreview = {
   spotlight: QrSpotlight | null;
 };
 
+export type CleanupDirection = "forward" | "backward";
+
 export type QrScanResult = {
   found: boolean;
   kunde: Kunde | null;
@@ -361,6 +363,8 @@ export type QrScanResult = {
   cancelled: boolean;
   message: string;
   preview: QrPreview | null;
+  /** From parallel worker: reverse quarter → backward series cleanup. */
+  cleanup_direction?: CleanupDirection | null;
 };
 
 export async function importVideos(paths: string[]): Promise<VideoMetadata[]> {
@@ -596,6 +600,17 @@ export async function scanQrVideos(paths: string[]): Promise<QrScanResult> {
 
 export async function scanQrPhotos(paths: string[]): Promise<QrScanResult> {
   return invoke<QrScanResult>("scan_qr_photos", { paths });
+}
+
+/** Bidirectional same-series follow-up; returns paths that also contain a QR. */
+export async function scanQrPhotoFollowups(
+  orderedPaths: string[],
+  hitPath: string,
+): Promise<string[]> {
+  return invoke<string[]>("scan_qr_photo_followups", {
+    orderedPaths,
+    hitPath,
+  });
 }
 
 /** Remove a QR hit-frame preview temp file/dir after the success dialog closes. */

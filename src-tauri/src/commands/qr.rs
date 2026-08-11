@@ -7,9 +7,10 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::model::Kunde;
 use crate::qr::analyser::{
-    discard_qr_preview, scan_photo, scan_video_clip, QrPreview, QrScanOptions,
+    discard_qr_preview, scan_photo, scan_video_clip, CleanupDirection, QrPreview, QrScanOptions,
     QrScanResult as CoreResult, QrSpotlight,
 };
+use crate::qr::followup::scan_series_followup_hits;
 use crate::qr::parallel::{
     scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
 };
@@ -63,6 +64,7 @@ pub struct QrScanResultDto {
     pub cancelled: bool,
     pub message: String,
     pub preview: Option<QrPreviewDto>,
+    pub cleanup_direction: CleanupDirection,
 }
 
 /// Per-file QR scan progress for the media grid UI.
@@ -71,6 +73,18 @@ pub struct QrScanProgressEvent {
     pub path: String,
     /// `start` | `done` | `hit`
     pub phase: String,
+}
+
+/// Live status while removing neighboring QR carrier photos after a hit.
+#[derive(Debug, Clone, Serialize)]
+pub struct QrFollowupProgressEvent {
+    pub path: String,
+    /// `start` | `hit` | `miss`
+    pub phase: String,
+    /// Follow-up files scanned so far (completed start→result cycles).
+    pub scanned: u32,
+    /// Additional QR carriers found in follow-up (excludes the original hit).
+    pub extra_hits: u32,
 }
 
 impl From<CoreResult> for QrScanResultDto {
@@ -82,6 +96,7 @@ impl From<CoreResult> for QrScanResultDto {
             cancelled: r.cancelled,
             message: r.message,
             preview: r.preview.map(Into::into),
+            cleanup_direction: r.cleanup_direction,
         }
     }
 }
@@ -330,6 +345,65 @@ pub async fn scan_qr_photos(
         logging::info("qr", format!("Foto-Batch-Scan ohne Treffer: {}", dto.message));
     }
     Ok(dto)
+}
+
+/// Bidirectional series follow-up: neighbors with customer QR (for cleanup removal).
+#[tauri::command]
+pub async fn scan_qr_photo_followups(
+    app: AppHandle,
+    config: tauri::State<'_, ConfigState>,
+    ordered_paths: Vec<String>,
+    hit_path: String,
+) -> Result<Vec<String>, String> {
+    let hit_path = hit_path.trim().to_string();
+    if hit_path.is_empty() {
+        return Err("hit_path is required".into());
+    }
+    let ordered_paths: Vec<String> = ordered_paths
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if ordered_paths.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    reset_cancel_flag();
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    let opts = options_from_config(&read_config(&config));
+    logging::info(
+        "qr",
+        format!(
+            "Foto-Follow-up start (bidirektional): hit={}, list={}",
+            file_name(&hit_path),
+            ordered_paths.len()
+        ),
+    );
+
+    let app_progress = app.clone();
+    let hits = tauri::async_runtime::spawn_blocking(move || {
+        let cb = |path: &str, phase: &str, scanned: usize, extra_hits: usize| {
+            let _ = app_progress.emit(
+                "qr-followup-progress",
+                QrFollowupProgressEvent {
+                    path: path.to_string(),
+                    phase: phase.to_string(),
+                    scanned: scanned as u32,
+                    extra_hits: extra_hits as u32,
+                },
+            );
+        };
+        scan_series_followup_hits(&ffmpeg, &ordered_paths, &hit_path, &opts, Some(&cb))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    logging::info(
+        "qr",
+        format!("Foto-Follow-up: {} weitere QR-Träger", hits.len()),
+    );
+    Ok(hits)
 }
 
 /// Remove a persisted QR hit-frame preview (and its temp directory).

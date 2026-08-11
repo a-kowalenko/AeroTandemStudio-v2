@@ -11,12 +11,22 @@ export type QrScanProgressPayload = {
   phase: string;
 };
 
+export type QrFollowupProgressPayload = {
+  path: string;
+  phase: string;
+  scanned: number;
+  extra_hits: number;
+};
+
 /** Keep grid QR progress in sync with Rust `qr-scan-progress` events. */
 export function useQrScanProgressListener() {
   const setPhase = useQrScanStore((s) => s.setPhase);
+  const setFollowup = useQrScanStore((s) => s.setFollowup);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    let unlistenScan: (() => void) | undefined;
+    let unlistenFollowup: (() => void) | undefined;
+
     void listen<QrScanProgressPayload>("qr-scan-progress", (event) => {
       const { path, phase } = event.payload;
       if (!path) return;
@@ -24,10 +34,37 @@ export function useQrScanProgressListener() {
       else if (phase === "hit") setPhase(path, "hit");
       else if (phase === "done") setPhase(path, "done");
     }).then((fn) => {
-      unlisten = fn;
+      unlistenScan = fn;
     });
-    return () => unlisten?.();
-  }, [setPhase]);
+
+    void listen<QrFollowupProgressPayload>("qr-followup-progress", (event) => {
+      const { path, phase, scanned, extra_hits } = event.payload;
+      const p =
+        phase === "hit" || phase === "miss" || phase === "start"
+          ? phase
+          : null;
+      setFollowup({
+        currentPath: path || null,
+        phase: p,
+        scanned: Number(scanned) || 0,
+        extraHits: Number(extra_hits) || 0,
+      });
+      if (path && phase === "start") {
+        setPhase(path, "active");
+      } else if (path && phase === "hit") {
+        setPhase(path, "hit");
+      } else if (path && phase === "miss") {
+        setPhase(path, "done");
+      }
+    }).then((fn) => {
+      unlistenFollowup = fn;
+    });
+
+    return () => {
+      unlistenScan?.();
+      unlistenFollowup?.();
+    };
+  }, [setPhase, setFollowup]);
 }
 
 export function QrScanRowBar({ path }: { path: string }) {

@@ -14,7 +14,7 @@ use std::thread;
 use crate::video::ffmpeg;
 
 use super::analyser::{
-    scan_photo, scan_video_clip, QrScanError, QrScanOptions, QrScanResult,
+    scan_photo, scan_video_clip, CleanupDirection, QrScanError, QrScanOptions, QrScanResult,
 };
 
 /// One worker segment: inclusive start index, exclusive end, and scan direction.
@@ -207,7 +207,12 @@ where
                         Ok(res) if res.found => {
                             stop.store(true, Ordering::SeqCst);
                             notify(path, "hit");
-                            let _ = tx.send(Ok(res));
+                            let direction = if range.reverse {
+                                CleanupDirection::Backward
+                            } else {
+                                CleanupDirection::Forward
+                            };
+                            let _ = tx.send(Ok(res.with_cleanup_direction(direction)));
                             break;
                         }
                         Ok(res) if res.cancelled => {

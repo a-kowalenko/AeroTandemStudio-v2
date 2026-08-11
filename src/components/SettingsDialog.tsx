@@ -1107,8 +1107,8 @@ export function SettingsDialog({
                 QR-Foto nach erfolgreicher Analyse entfernen
               </label>
               <p className="pl-6 text-[11px] leading-relaxed text-muted">
-                Zusätzlich werden die nächsten 10 Fotos auf QR geprüft und bei Treffer
-                ebenfalls entfernt.
+                Nachbarfotos derselben Serie (≤10s Abstand) werden in beide Richtungen
+                geprüft; nach 3 Fotos ohne QR je Richtung Stopp.
               </p>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox

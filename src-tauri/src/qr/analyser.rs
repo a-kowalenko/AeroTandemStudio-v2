@@ -63,6 +63,15 @@ pub struct QrPreview {
     pub spotlight: Option<QrSpotlight>,
 }
 
+/// Direction for post-hit QR photo cleanup within a capture series.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum CleanupDirection {
+    #[default]
+    Forward,
+    Backward,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct QrScanResult {
     pub found: bool,
@@ -71,6 +80,8 @@ pub struct QrScanResult {
     pub cancelled: bool,
     pub message: String,
     pub preview: Option<QrPreview>,
+    /// Which way to walk the photo series after a hit (from parallel worker direction).
+    pub cleanup_direction: CleanupDirection,
 }
 
 impl QrScanResult {
@@ -83,7 +94,13 @@ impl QrScanResult {
             cancelled: false,
             message: format!("QR-Code gefunden: {source_path}"),
             preview,
+            cleanup_direction: CleanupDirection::Forward,
         }
+    }
+
+    pub fn with_cleanup_direction(mut self, direction: CleanupDirection) -> Self {
+        self.cleanup_direction = direction;
+        self
     }
 
     pub fn miss(message: impl Into<String>) -> Self {
@@ -94,6 +111,7 @@ impl QrScanResult {
             cancelled: false,
             message: message.into(),
             preview: None,
+            cleanup_direction: CleanupDirection::Forward,
         }
     }
 
@@ -105,6 +123,7 @@ impl QrScanResult {
             cancelled: true,
             message: "QR-Scan abgebrochen.".into(),
             preview: None,
+            cleanup_direction: CleanupDirection::Forward,
         }
     }
 }
@@ -403,12 +422,19 @@ pub fn decode_kunde_from_image_path(
     max_width: u32,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let img = image::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
-    decode_kunde_from_dynamic_image(img, max_width)
+    decode_kunde_from_dynamic_image(img, max_width, true)
+}
+
+/// Detect a valid customer QR without persisting a preview image (follow-up cleanup).
+pub fn photo_has_customer_qr(path: &Path, max_width: u32) -> Result<bool, QrScanError> {
+    let img = image::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
+    Ok(decode_kunde_from_dynamic_image(img, max_width, false)?.is_some())
 }
 
 fn decode_kunde_from_dynamic_image(
     img: image::DynamicImage,
     max_width: u32,
+    persist_preview: bool,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let (w, _h) = img.dimensions();
     let img = if w > max_width {
@@ -428,6 +454,18 @@ fn decode_kunde_from_dynamic_image(
 
     match parse_kunde_from_qr_string(&text) {
         Ok(kunde) => {
+            if !persist_preview {
+                // Follow-up / detect-only: no spotlight file on disk.
+                return Ok(Some((
+                    kunde,
+                    QrPreview {
+                        path: String::new(),
+                        width,
+                        height,
+                        spotlight: None,
+                    },
+                )));
+            }
             let preview_path = persist_qr_preview_image(&img)?;
             let spotlight = spotlight_from_points(&points, width, height);
             Ok(Some((
