@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { DateField } from "@/components/ui/date-field";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -77,61 +78,6 @@ function Field({
         />
       </div>
       {hint ? <p className="text-[10px] leading-snug text-muted">{hint}</p> : null}
-    </div>
-  );
-}
-
-/** Convert stored DE `dd.mm.yyyy` (or ISO) → HTML date value `yyyy-mm-dd`. */
-function datumToInputValue(datum: string): string {
-  const raw = datum.trim();
-  if (!raw) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  if (iso) return raw;
-  const de = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(raw);
-  if (!de) return "";
-  const dd = de[1].padStart(2, "0");
-  const mm = de[2].padStart(2, "0");
-  return `${de[3]}-${mm}-${dd}`;
-}
-
-/** HTML date value `yyyy-mm-dd` → DE `dd.mm.yyyy` (app storage / export). */
-function inputValueToDatum(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  if (!m) return "";
-  return `${m[3]}.${m[2]}.${m[1]}`;
-}
-
-function DateField({
-  label,
-  value,
-  onChange,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <Label className="text-xs text-muted">{label}</Label>
-      <Input
-        type="date"
-        value={datumToInputValue(value)}
-        onChange={(e) => onChange(inputValueToDatum(e.target.value))}
-        disabled={disabled}
-        className={cn(
-          "relative pr-9",
-          "[&::-webkit-calendar-picker-indicator]:absolute",
-          "[&::-webkit-calendar-picker-indicator]:right-2.5",
-          "[&::-webkit-calendar-picker-indicator]:top-1/2",
-          "[&::-webkit-calendar-picker-indicator]:h-4",
-          "[&::-webkit-calendar-picker-indicator]:w-4",
-          "[&::-webkit-calendar-picker-indicator]:-translate-y-1/2",
-          "[&::-webkit-calendar-picker-indicator]:cursor-pointer",
-          disabled && "bg-card-elevated",
-        )}
-      />
     </div>
   );
 }
