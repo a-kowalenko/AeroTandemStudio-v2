@@ -29,6 +29,10 @@ type ComboboxProps = {
   id?: string;
   /** Portal list z-index (raise above modals, default 80). */
   listZIndex?: number;
+  /** Visually hide the label (keeps it for screen readers). */
+  hideLabel?: boolean;
+  /** Extra classes for the text input. */
+  inputClassName?: string;
 };
 
 type ListPos = {
@@ -64,6 +68,8 @@ export function Combobox({
   error,
   id: idProp,
   listZIndex = 80,
+  hideLabel = false,
+  inputClassName,
 }: ComboboxProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
@@ -321,8 +327,11 @@ export function Combobox({
       : null;
 
   return (
-    <div className="space-y-1.5" ref={rootRef}>
-      <Label htmlFor={id} className="text-xs text-muted">
+    <div className={cn(!hideLabel && "space-y-1.5")} ref={rootRef}>
+      <Label
+        htmlFor={id}
+        className={cn("text-xs text-muted", hideLabel && "sr-only")}
+      >
         {label}
       </Label>
       <div className="relative" ref={triggerRef}>
@@ -357,6 +366,7 @@ export function Combobox({
             disabled && "bg-card-elevated",
             error &&
               "border-destructive focus-visible:ring-destructive/40",
+            inputClassName,
           )}
         />
         <button

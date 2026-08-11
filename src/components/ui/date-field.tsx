@@ -99,6 +99,10 @@ type DateFieldProps = {
   disabled?: boolean;
   /** Portal panel z-index (raise above modals, default 80). */
   panelZIndex?: number;
+  /** Visually hide the label (keeps it for screen readers). */
+  hideLabel?: boolean;
+  /** Extra classes for the text input. */
+  inputClassName?: string;
 };
 
 /**
@@ -111,6 +115,8 @@ export function DateField({
   onChange,
   disabled,
   panelZIndex = 80,
+  hideLabel = false,
+  inputClassName,
 }: DateFieldProps) {
   const autoId = useId();
   const panelId = `${autoId}-panel`;
@@ -401,8 +407,11 @@ export function DateField({
       : null;
 
   return (
-    <div className="space-y-1.5" ref={rootRef}>
-      <Label htmlFor={autoId} className="text-xs text-muted">
+    <div className={cn(!hideLabel && "space-y-1.5")} ref={rootRef}>
+      <Label
+        htmlFor={autoId}
+        className={cn("text-xs text-muted", hideLabel && "sr-only")}
+      >
         {label}
       </Label>
       <div className="relative" ref={triggerRef}>
@@ -420,7 +429,11 @@ export function DateField({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => commitDraft(draft)}
           onKeyDown={onKeyDown}
-          className={cn("pr-9", disabled && "bg-card-elevated")}
+          className={cn(
+            "pr-9",
+            disabled && "bg-card-elevated",
+            inputClassName,
+          )}
         />
         <button
           type="button"

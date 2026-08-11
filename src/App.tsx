@@ -8,7 +8,7 @@ import { MediaDropZone } from "./components/MediaDropZone";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
-import { CustomerForm } from "./components/CustomerForm";
+import { CustomerForm, CustomerSessionStrip } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { SetupWizard } from "./components/SetupWizard";
 import { ErrorDialog } from "./components/ErrorDialog";
@@ -1408,8 +1408,13 @@ function App() {
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 [scrollbar-gutter:stable]">
-            <CustomerForm disabled={uiLocked} />
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+            <div className="border-b border-border/40 px-3 pt-1.5 pb-1.5">
+              <CustomerSessionStrip disabled={uiLocked} />
+            </div>
+            <div className="p-4">
+              <CustomerForm disabled={uiLocked} />
+            </div>
           </div>
 
           <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">

@@ -166,31 +166,45 @@ const MANUAL_ENTRY_MODES: { id: ManualEntryMode; label: string }[] = [
   { id: "lokal", label: "Lokal" },
 ];
 
-/** Dropzone / Datum — above Kunde in the form (scrolls with content). */
-function CustomerSessionSection({ disabled }: CustomerFormProps) {
+/** Quiet chrome for session strip — reads as sidebar chrome, not form cards. */
+const SESSION_STRIP_INPUT =
+  "h-8 rounded-md border-transparent bg-transparent px-2.5 shadow-none placeholder:text-muted/70 hover:bg-foreground/[0.04] focus-visible:border-border/50 focus-visible:bg-foreground/[0.03] focus-visible:ring-1 focus-visible:ring-ring/35 disabled:bg-transparent disabled:opacity-60";
+
+/**
+ * Slim Dropzone / Datum strip for the sidebar top (scrolls with content, not sticky).
+ * Rendered outside the padded form body so it sits flush under the app header.
+ */
+export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
   const busy = Boolean(disabled);
 
   return (
-    <Section title="Session">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="flex items-center gap-0.5">
+      <div className="min-w-0 flex-1">
         <Combobox
           label="Dropzone"
+          hideLabel
           value={kunde.ort}
           onChange={(v) => setField("ort", v)}
           options={ORT_OPTIONS}
           disabled={busy}
           placeholder="Dropzone…"
+          inputClassName={SESSION_STRIP_INPUT}
         />
+      </div>
+      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden />
+      <div className="w-[138px] shrink-0">
         <DateField
           label="Datum"
+          hideLabel
           value={kunde.datum}
           onChange={(v) => setField("datum", v)}
           disabled={busy}
+          inputClassName={cn(SESSION_STRIP_INPUT, "tabular-nums")}
         />
       </div>
-    </Section>
+    </div>
   );
 }
 
@@ -448,8 +462,6 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
 
   return (
     <div className="space-y-5">
-      <CustomerSessionSection disabled={busy} />
-
       <section className="space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
