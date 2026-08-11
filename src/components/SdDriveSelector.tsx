@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HardDrive } from "lucide-react";
+import { FolderOpen, HardDrive } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -45,37 +45,6 @@ type Props = {
   onPrimaryAction: (drive: string) => void;
 };
 
-function phaseStatusLabel(
-  phase: string,
-  progress: {
-    current_mb: number;
-    total_mb: number;
-    speed_mbps: number;
-    file_index?: number | null;
-    file_total?: number | null;
-  } | null,
-): string | null {
-  if (phase === "backing_up") {
-    if (!progress) return "Backup…";
-    const speed =
-      progress.speed_mbps > 0
-        ? ` · ${progress.speed_mbps.toFixed(1)} MB/s`
-        : "";
-    const files =
-      progress.file_total != null &&
-      progress.file_total > 0 &&
-      progress.file_index != null &&
-      progress.file_index > 0
-        ? ` (${progress.file_index}/${progress.file_total})`
-        : "";
-    return `Backup ${progress.current_mb.toFixed(0)}/${progress.total_mb.toFixed(0)} MB${speed}${files}`;
-  }
-  if (phase === "clearing") return "Leeren…";
-  if (phase === "importing") return "Import…";
-  if (phase === "confirming") return "Bestätigung";
-  return null;
-}
-
 export function SdDriveSelector({
   className,
   disabled = false,
@@ -89,7 +58,6 @@ export function SdDriveSelector({
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const phase = useSdStore((s) => s.phase);
   const monitoring = useSdStore((s) => s.monitoring);
-  const progress = useSdStore((s) => s.backupProgress);
   const showWarning = useUiStore((s) => s.showWarning);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -107,16 +75,11 @@ export function SdDriveSelector({
   const hasDrive = Boolean(selected);
   const controlsDisabled = disabled || busyPhase || ejecting !== null;
   const watching = monitoring && drives.length === 0 && !busyPhase;
-  const statusLabel = phaseStatusLabel(phase, progress);
 
-  const canBackup =
-    Boolean(config?.sd_auto_backup) && config?.sd_backup_mode !== "disabled";
-  const ctaLabel =
+  const ctaTitle =
     config?.sd_backup_mode === "auto"
-      ? "Auto starten"
-      : canBackup
-        ? "Dateien wählen"
-        : "Öffnen";
+      ? "Backup, Import, Bereinigen und Auswerfen laut Einstellungen starten"
+      : "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen";
 
   async function refreshDrives() {
     try {
@@ -161,7 +124,7 @@ export function SdDriveSelector({
   }, []);
 
   const triggerTitle = (() => {
-    if (busyPhase) return statusLabel ?? "SD-Vorgang läuft";
+    if (busyPhase) return "SD-Vorgang läuft";
     if (selectedInfo) {
       const tip = driveTooltip(selectedInfo);
       return `${tip} — SD-Karte wählen / Dateiauswahl`;
@@ -176,7 +139,6 @@ export function SdDriveSelector({
 
   return (
     <div className={cn("flex items-center gap-1.5 text-xs", className)}>
-      <span className="text-muted">SD:</span>
       <Select
         value={selected || undefined}
         open={open}
@@ -194,6 +156,7 @@ export function SdDriveSelector({
         <SelectTrigger
           className="h-8 min-w-[5.5rem] max-w-[11rem] text-xs"
           title={triggerTitle}
+          aria-label="SD-Karte"
         >
           <span className="flex min-w-0 items-center gap-1">
             <span className="relative shrink-0">
@@ -279,27 +242,17 @@ export function SdDriveSelector({
         type="button"
         size="sm"
         variant="secondary"
-        className="h-8 text-xs"
+        className="h-8 gap-1.5 px-2.5 text-xs"
         disabled={controlsDisabled || !hasDrive}
-        title={
-          config?.sd_backup_mode === "auto"
-            ? "Backup, Import, Bereinigen und Auswerfen laut Einstellungen starten"
-            : "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen"
-        }
+        title={ctaTitle}
+        aria-label={ctaTitle}
         onClick={() => {
           if (selected) onPrimaryAction(selected);
         }}
       >
-        {ctaLabel}
+        <FolderOpen className="h-3.5 w-3.5" />
+        Öffnen
       </Button>
-      {statusLabel && (
-        <span
-          className="max-w-[14rem] truncate tabular-nums text-muted"
-          title={statusLabel}
-        >
-          {statusLabel}
-        </span>
-      )}
     </div>
   );
 }

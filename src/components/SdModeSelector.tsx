@@ -50,7 +50,6 @@ export function SdModeSelector({
 
   return (
     <div className={cn("flex items-center gap-2 text-xs", className)} title={tip}>
-      <span className="text-muted">Backup:</span>
       <Select
         value={mode}
         disabled={disabled}
@@ -59,7 +58,11 @@ export function SdModeSelector({
           void persist({ ...config, sd_backup_mode: v });
         }}
       >
-        <SelectTrigger className="h-8 w-[160px] text-xs">
+        <SelectTrigger
+          className="h-8 w-[160px] text-xs"
+          aria-label="Backup-Modus"
+          title={tip}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
