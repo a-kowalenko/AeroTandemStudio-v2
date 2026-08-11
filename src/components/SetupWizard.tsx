@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
+import { Check, Eye, EyeOff, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -211,6 +211,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [skippedSteps, setSkippedSteps] = useState<Set<number>>(() => new Set());
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [testingServer, setTestingServer] = useState(false);
+  const [showServerPassword, setShowServerPassword] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [mediaDirsProposal, setMediaDirsProposal] =
     useState<DefaultMediaDirsProposal | null>(null);
@@ -1013,12 +1014,43 @@ export function SetupWizard({ open, onComplete }: Props) {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Passwort</Label>
-                    <Input
-                      type="password"
-                      value={draft.server_password}
-                      onChange={(e) => patch("server_password", e.target.value)}
-                      autoComplete="current-password"
-                    />
+                    <div className="relative">
+                      <Input
+                        type={showServerPassword ? "text" : "password"}
+                        value={draft.server_password}
+                        onChange={(e) =>
+                          patch("server_password", e.target.value)
+                        }
+                        autoComplete="current-password"
+                        className="pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowServerPassword((prev) => !prev)
+                        }
+                        title={
+                          showServerPassword
+                            ? "Passwort verbergen"
+                            : "Passwort anzeigen"
+                        }
+                        aria-label={
+                          showServerPassword
+                            ? "Passwort verbergen"
+                            : "Passwort anzeigen"
+                        }
+                        className={cn(
+                          "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+                          "hover:bg-primary-soft hover:text-foreground",
+                        )}
+                      >
+                        {showServerPassword ? (
+                          <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">{SERVER_GUEST_HINT}</p>

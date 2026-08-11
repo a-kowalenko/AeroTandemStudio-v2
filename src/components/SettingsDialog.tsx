@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -565,11 +565,25 @@ export function SettingsDialog({
           <TabsContent value="allgemein" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Speicherort</Label>
-              <div className="flex gap-2">
-                <Input value={draft.speicherort} readOnly placeholder="Ordner wählen…" />
-                <Button type="button" variant="secondary" onClick={() => pickFolder("speicherort")}>
-                  Wählen…
-                </Button>
+              <div className="relative">
+                <Input
+                  value={draft.speicherort}
+                  readOnly
+                  placeholder="Ordner wählen…"
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => pickFolder("speicherort")}
+                  title="Ordner wählen"
+                  aria-label="Ordner wählen"
+                  className={cn(
+                    "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+                    "hover:bg-primary-soft hover:text-foreground",
+                  )}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                </button>
               </div>
             </div>
 
@@ -1258,15 +1272,25 @@ export function SettingsDialog({
           <TabsContent value="sd" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Backup-Ordner</Label>
-              <div className="flex gap-2">
-                <Input value={draft.sd_backup_folder} readOnly placeholder="Ordner wählen…" />
-                <Button
+              <div className="relative">
+                <Input
+                  value={draft.sd_backup_folder}
+                  readOnly
+                  placeholder="Ordner wählen…"
+                  className="pr-9"
+                />
+                <button
                   type="button"
-                  variant="secondary"
                   onClick={() => pickFolder("sd_backup_folder")}
+                  title="Ordner wählen"
+                  aria-label="Ordner wählen"
+                  className={cn(
+                    "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+                    "hover:bg-primary-soft hover:text-foreground",
+                  )}
                 >
-                  Wählen…
-                </Button>
+                  <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                </button>
               </div>
             </div>
 
@@ -1295,19 +1319,25 @@ export function SettingsDialog({
               <>
                 <div className="space-y-1.5">
                   <Label>Zweiter Backup-Ordner</Label>
-                  <div className="flex gap-2">
+                  <div className="relative">
                     <Input
                       value={draft.sd_server_backup_path}
                       readOnly
                       placeholder="Ordner wählen…"
+                      className="pr-9"
                     />
-                    <Button
+                    <button
                       type="button"
-                      variant="secondary"
                       onClick={() => pickFolder("sd_server_backup_path")}
+                      title="Ordner wählen"
+                      aria-label="Ordner wählen"
+                      className={cn(
+                        "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+                        "hover:bg-primary-soft hover:text-foreground",
+                      )}
                     >
-                      Wählen…
-                    </Button>
+                      <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                    </button>
                   </div>
                 </div>
                 <div className="space-y-1.5">
