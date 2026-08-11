@@ -3,6 +3,7 @@ import type {
   BackupProgress,
   SdDriveInfo,
   SdInsertedPayload,
+  SecondaryBackupEvent,
   WorkflowProgress,
 } from "../lib/sdCard";
 
@@ -25,6 +26,8 @@ type SdState = {
   pendingInsert: SdInsertedPayload | null;
   backupProgress: BackupProgress | null;
   workflowProgress: WorkflowProgress | null;
+  /** Background mirror to second backup path (non-blocking). */
+  secondaryBackup: SecondaryBackupEvent | null;
   selectorOpen: boolean;
   selectorDrive: string | null;
   selectorFiles: import("../lib/sdCard").SdFileInfo[];
@@ -39,6 +42,7 @@ type SdState = {
   setPendingInsert: (payload: SdInsertedPayload | null) => void;
   setBackupProgress: (p: BackupProgress | null) => void;
   setWorkflowProgress: (p: WorkflowProgress | null) => void;
+  setSecondaryBackup: (p: SecondaryBackupEvent | null) => void;
   openSelector: (opts: {
     drive: string;
     files: import("../lib/sdCard").SdFileInfo[];
@@ -65,6 +69,7 @@ export const useSdStore = create<SdState>((set) => ({
   pendingInsert: null,
   backupProgress: null,
   workflowProgress: null,
+  secondaryBackup: null,
   selectorOpen: false,
   selectorDrive: null,
   selectorFiles: [],
@@ -81,6 +86,7 @@ export const useSdStore = create<SdState>((set) => ({
   setPendingInsert: (pendingInsert) => set({ pendingInsert }),
   setBackupProgress: (backupProgress) => set({ backupProgress }),
   setWorkflowProgress: (workflowProgress) => set({ workflowProgress }),
+  setSecondaryBackup: (secondaryBackup) => set({ secondaryBackup }),
   openSelector: ({ drive, files, totalMb, mode }) =>
     set({
       selectorOpen: true,

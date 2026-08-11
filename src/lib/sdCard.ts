@@ -43,6 +43,20 @@ export type BackupResult = {
   copied_source_paths: string[];
   secondary_backup_path: string | null;
   secondary_warning: string | null;
+  /** True when second-path mirror was queued in the background. */
+  secondary_async_started: boolean;
+};
+
+export type SecondaryBackupEvent = {
+  state: "started" | "progress" | "done" | "failed" | string;
+  job_id: string;
+  primary_path: string;
+  secondary_path: string | null;
+  current: number;
+  total: number;
+  percent: number;
+  file_name?: string | null;
+  message?: string | null;
 };
 
 export type ImportSdResult = {

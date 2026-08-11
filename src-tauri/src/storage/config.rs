@@ -168,7 +168,7 @@ pub struct AppConfig {
     pub sd_server_backup_enabled: bool,
     #[serde(default)]
     pub sd_server_backup_path: String,
-    /// `"direct_dual_write"` | `"local_then_server"`.
+    /// `"direct_dual_write"` | `"local_then_server"` | `"local_then_server_async"`.
     #[serde(default = "default_sd_server_backup_mode")]
     pub sd_server_backup_mode: String,
     #[serde(default = "default_sd_backup_mode")]
@@ -396,7 +396,7 @@ fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
 fn default_sd_server_backup_mode() -> String {
-    "direct_dual_write".into()
+    "local_then_server_async".into()
 }
 fn default_sd_size_limit() -> u32 {
     3000
@@ -687,7 +687,7 @@ mod tests {
         assert!(!cfg.sd_eject_after_workflow);
         assert!(!cfg.sd_server_backup_enabled);
         assert!(cfg.sd_server_backup_path.is_empty());
-        assert_eq!(cfg.sd_server_backup_mode, "direct_dual_write");
+        assert_eq!(cfg.sd_server_backup_mode, "local_then_server_async");
         assert_eq!(cfg.sd_size_limit_mb, 3000);
         assert!(cfg.sd_size_limit_enabled);
         assert!(cfg.qr_check_enabled);

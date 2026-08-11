@@ -7,6 +7,7 @@ import {
   type BackupProgress,
   type SdInsertedPayload,
   type SdWorkflowActions,
+  type SecondaryBackupEvent,
   type WorkflowProgress,
 } from "../lib/sdCard";
 import { useConfigStore } from "../store/configStore";
@@ -35,7 +36,9 @@ export function useSdCardMonitor(opts?: {
   const setPendingInsert = useSdStore((s) => s.setPendingInsert);
   const setBackupProgress = useSdStore((s) => s.setBackupProgress);
   const setWorkflowProgress = useSdStore((s) => s.setWorkflowProgress);
+  const setSecondaryBackup = useSdStore((s) => s.setSecondaryBackup);
   const showError = useUiStore((s) => s.showError);
+  const showWarning = useUiStore((s) => s.showWarning);
 
   useEffect(() => {
     let cancelled = false;
@@ -174,6 +177,26 @@ export function useSdCardMonitor(opts?: {
       }
     }).then((fn) => unlisteners.push(fn));
 
+    listen<SecondaryBackupEvent>("sd-secondary-backup", (event) => {
+      const p = event.payload;
+      setSecondaryBackup(p);
+      if (p.state === "failed") {
+        showWarning(
+          p.message?.trim() || "Server-Backup (zweiter Pfad) fehlgeschlagen.",
+          "Server-Backup",
+        );
+      }
+      if (p.state === "done") {
+        // Clear after a short moment so the header can show "fertig".
+        window.setTimeout(() => {
+          const cur = useSdStore.getState().secondaryBackup;
+          if (cur?.job_id === p.job_id && cur.state === "done") {
+            setSecondaryBackup(null);
+          }
+        }, 4000);
+      }
+    }).then((fn) => unlisteners.push(fn));
+
     return () => {
       for (const u of unlisteners) u();
     };
@@ -186,8 +209,10 @@ export function useSdCardMonitor(opts?: {
     setActiveDrive,
     setBackupProgress,
     setWorkflowProgress,
+    setSecondaryBackup,
     setDrives,
     setPendingInsert,
     setPhase,
+    showWarning,
   ]);
 }

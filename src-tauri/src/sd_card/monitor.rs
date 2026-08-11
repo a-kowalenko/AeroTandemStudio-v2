@@ -21,6 +21,9 @@ use crate::media::dji_paths::{
     unique_dest_name, write_backup_manifest, ManifestEntry,
 };
 use crate::sd_card::copy_progress::copy_file_with_progress;
+use crate::sd_card::secondary_backup::{
+    new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
+};
 use crate::storage::media_history::MediaHistoryStore;
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
@@ -310,6 +313,8 @@ pub struct BackupResult {
     pub secondary_backup_path: Option<String>,
     /// Soft-fail message for the optional second path (primary may still succeed).
     pub secondary_warning: Option<String>,
+    /// True when a background mirror to the second path was queued (async mode).
+    pub secondary_async_started: bool,
 }
 
 impl BackupResult {
@@ -324,6 +329,7 @@ impl BackupResult {
             copied_source_paths: Vec::new(),
             secondary_backup_path: None,
             secondary_warning: None,
+            secondary_async_started: false,
         }
     }
 }
@@ -917,16 +923,18 @@ impl SdCardMonitor {
 
         let dual_mode = {
             let m = cfg.sd_server_backup_mode.trim();
-            if m == "local_then_server" {
-                "local_then_server"
-            } else {
-                "direct_dual_write"
+            match m {
+                "local_then_server" => "local_then_server",
+                "local_then_server_async" => "local_then_server_async",
+                _ => "direct_dual_write",
             }
         };
+        let async_secondary = dual_mode == "local_then_server_async";
         let mut secondary_active = cfg.sd_server_backup_enabled;
         let dual_root = cfg.sd_server_backup_path.trim().to_string();
         let mut secondary_path: Option<PathBuf> = None;
         let mut secondary_warning: Option<String> = None;
+        let mut secondary_async_started = false;
 
         if secondary_active {
             if dual_root.is_empty() || !Path::new(&dual_root).is_dir() {
@@ -934,6 +942,9 @@ impl SdCardMonitor {
                     "Zweiter Backup-Pfad ungültig (Primär bleibt erfolgreich): {dual_root}"
                 ));
                 secondary_active = false;
+            } else if async_secondary {
+                // Folder is created by the background worker after primary returns.
+                secondary_path = None;
             } else {
                 let sp = PathBuf::from(&dual_root).join(&backup_dir_name);
                 match fs::create_dir_all(&sp) {
@@ -1054,7 +1065,7 @@ impl SdCardMonitor {
                         media_type: media_type_from_filename(&original_name).to_string(),
                     });
 
-                    if secondary_active {
+                    if secondary_active && !async_secondary {
                         if let Some(ref sp) = secondary_path {
                             if dual_mode == "direct_dual_write" {
                                 let secondary_dst = sp.join(&dst_filename);
@@ -1072,6 +1083,8 @@ impl SdCardMonitor {
                                 local_to_secondary.push((dst.clone(), dst_filename.clone()));
                             }
                         }
+                    } else if secondary_active && async_secondary {
+                        local_to_secondary.push((dst.clone(), dst_filename.clone()));
                     }
 
                     if let Ok(hist) = self.history.lock() {
@@ -1106,6 +1119,7 @@ impl SdCardMonitor {
                         copied_source_paths: Vec::new(),
                         secondary_backup_path: None,
                         secondary_warning: None,
+                        secondary_async_started: false,
                     });
                 }
             }
@@ -1142,7 +1156,33 @@ impl SdCardMonitor {
             session_active,
         );
 
+        if secondary_active && async_secondary && !local_to_secondary.is_empty() {
+            let filenames: Vec<String> = local_to_secondary
+                .iter()
+                .map(|(_, name)| name.clone())
+                .collect();
+            SECONDARY_BACKUP.enqueue(SecondaryBackupJob {
+                id: new_job_id(),
+                primary_path: backup_path.clone(),
+                secondary_root: PathBuf::from(&dual_root),
+                backup_dir_name: backup_dir_name.clone(),
+                filenames,
+                dcim_source: dcim.clone(),
+                manifest_entries: manifest_entries.clone(),
+                timelapse_session_active: session_active,
+            });
+            secondary_async_started = true;
+            self.emit_status(
+                "secondary_backup_queued",
+                serde_json::json!({
+                    "primary_path": backup_path.to_string_lossy(),
+                    "secondary_root": dual_root,
+                }),
+            );
+        }
+
         let secondary_ok = secondary_active
+            && !async_secondary
             && secondary_path.is_some()
             && secondary_warning.is_none()
             && !copied_sources.is_empty();
@@ -1213,6 +1253,7 @@ impl SdCardMonitor {
                 None
             },
             secondary_warning,
+            secondary_async_started,
         })
     }
 
@@ -1900,8 +1941,75 @@ mod tests {
         assert!(result.success, "{:?}", result.error_message);
         assert!(result.secondary_backup_path.is_none());
         assert!(result.secondary_warning.is_some());
+        assert!(!result.secondary_async_started);
         let primary = PathBuf::from(result.backup_path.unwrap());
         assert!(primary.join("clip.mp4").is_file());
+    }
+
+    #[test]
+    fn backup_async_secondary_returns_before_mirror_finishes() {
+        use crate::sd_card::secondary_backup::{with_queue_lock, SECONDARY_BACKUP};
+        use std::time::Duration;
+
+        with_queue_lock(|| {
+            let src = tempdir().unwrap();
+            let dcim = src.path().join("DCIM").join("100");
+            fs::create_dir_all(&dcim).unwrap();
+            fs::write(dcim.join("clip.mp4"), b"async-bytes").unwrap();
+
+            let primary_root = tempdir().unwrap();
+            let secondary_root = tempdir().unwrap();
+            let hist = tempdir().unwrap();
+
+            let monitor = SdCardMonitor {
+                monitoring: AtomicBool::new(false),
+                known_drives: Mutex::new(HashSet::new()),
+                action_cam_drives: Mutex::new(HashSet::new()),
+                pending_drives: Mutex::new(HashSet::new()),
+                declined_drives: Mutex::new(HashSet::new()),
+                processed_drives: Mutex::new(HashSet::new()),
+                processing_drives: Mutex::new(HashSet::new()),
+                backup_in_progress: AtomicBool::new(false),
+                history: Mutex::new(
+                    MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap(),
+                ),
+                list_cache: Mutex::new(None),
+                config_provider: Mutex::new(Box::new({
+                    let p = primary_root.path().to_path_buf();
+                    let s = secondary_root.path().to_path_buf();
+                    move || {
+                        let mut c = AppConfig::default();
+                        c.sd_backup_folder = p.to_string_lossy().into_owned();
+                        c.sd_server_backup_enabled = true;
+                        c.sd_server_backup_path = s.to_string_lossy().into_owned();
+                        c.sd_server_backup_mode = "local_then_server_async".into();
+                        c
+                    }
+                })),
+                on_progress: Mutex::new(None),
+                on_workflow: Mutex::new(None),
+                on_status: Mutex::new(None),
+                on_inserted: Mutex::new(None),
+                on_removed: Mutex::new(None),
+            };
+
+            let drive = src.path().to_string_lossy().into_owned();
+            let result = monitor.backup_drive(&drive, None).unwrap();
+            assert!(result.success, "{:?}", result.error_message);
+            assert!(result.secondary_async_started);
+            assert!(result.secondary_backup_path.is_none());
+            assert!(result.secondary_warning.is_none());
+            let primary = PathBuf::from(result.backup_path.as_ref().unwrap());
+            assert!(primary.join("clip.mp4").is_file());
+
+            assert!(SECONDARY_BACKUP.wait_idle(Duration::from_secs(5)));
+            let folder_name = primary.file_name().unwrap().to_string_lossy();
+            let secondary = secondary_root.path().join(folder_name.as_ref());
+            assert!(secondary.join("clip.mp4").is_file());
+            assert!(secondary
+                .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
+                .is_file());
+        });
     }
 
     #[test]

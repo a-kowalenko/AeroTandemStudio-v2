@@ -28,16 +28,16 @@ import {
 } from "@/lib/serverStatus";
 
 const STEPS = [
-  "Willkommen",
+  "Darstellung",
   "Crew",
-  "Pfade",
-  "Backup",
-  "QR",
+  "Speicherort",
+  "SD-Backup",
+  "QR-Scan",
   "Server",
-  "Abschluss",
+  "Fertig",
 ] as const;
 
-/** Steps that can be skipped individually (not Abschluss). */
+/** Steps that can be skipped individually (not Fertig). */
 const SKIPPABLE_STEPS = new Set([0, 1, 2, 3, 4, 5]);
 
 const STEP_SKIP_HINT: Record<number, string> = {
@@ -287,7 +287,9 @@ export function SetupWizard({ open, onComplete }: Props) {
         return;
       }
       if (markCompleted) {
-        showSuccess("Einrichtung abgeschlossen.");
+        showSuccess("Einrichtung abgeschlossen.", "Erfolg", {
+          autoCloseSecs: 5,
+        });
       }
       onComplete();
     } finally {
@@ -384,7 +386,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             id="setup-wizard-title"
             className="mt-1 font-display text-xl font-bold tracking-tight text-primary"
           >
-            Einrichtung
+            {STEPS[step]}
           </h2>
           <div className="mt-3 flex gap-1.5" aria-hidden>
             {STEPS.map((_, i) => (
@@ -408,8 +410,8 @@ export function SetupWizard({ open, onComplete }: Props) {
             <>
               <p className="text-sm text-foreground">
                 Willkommen bei Aero Tandem Studio. In wenigen Schritten legst du
-                Theme, Crew, Pfade, Backup, QR und Server fest — alles später in
-                den Einstellungen änderbar.
+                Darstellung, Crew, Speicherort, SD-Backup, QR-Scan und Server
+                fest — alles später in den Einstellungen änderbar.
               </p>
               <div className="space-y-2">
                 <Label>Darstellung</Label>

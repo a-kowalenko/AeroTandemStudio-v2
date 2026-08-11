@@ -93,7 +93,7 @@ export type AppConfig = {
   /** Optional second backup root (dual write). */
   sd_server_backup_enabled: boolean;
   sd_server_backup_path: string;
-  /** "direct_dual_write" | "local_then_server" */
+  /** "direct_dual_write" | "local_then_server" | "local_then_server_async" */
   sd_server_backup_mode: string;
   sd_backup_mode: string;
   /** Label in backup folder names; empty uses hostname when opening settings. */

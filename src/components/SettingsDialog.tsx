@@ -1313,7 +1313,9 @@ export function SettingsDialog({
                     value={
                       draft.sd_server_backup_mode === "local_then_server"
                         ? "local_then_server"
-                        : "direct_dual_write"
+                        : draft.sd_server_backup_mode === "local_then_server_async"
+                          ? "local_then_server_async"
+                          : "direct_dual_write"
                     }
                     onValueChange={(v) => patch("sd_server_backup_mode", v)}
                   >
@@ -1321,14 +1323,21 @@ export function SettingsDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="local_then_server_async">
+                        Hintergrund: lokal fertig → Server parallel
+                      </SelectItem>
+                      <SelectItem value="local_then_server">
+                        Spiegeln: erst lokal, dann warten → zweiter Pfad
+                      </SelectItem>
                       <SelectItem value="direct_dual_write">
                         Direkt: pro Datei SD → beide
                       </SelectItem>
-                      <SelectItem value="local_then_server">
-                        Spiegeln: erst lokal, dann → zweiter Pfad
-                      </SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted">
+                    Empfohlen für Netzwerkziele: Hintergrund — der Workflow
+                    wartet nicht auf den zweiten Pfad.
+                  </p>
                 </div>
               </>
             ) : null}

@@ -15,6 +15,7 @@ use crate::sd_card::monitor::{
     SdFileEnrichment, SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS,
     EVENT_BACKUP_STATUS, EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
+use crate::sd_card::secondary_backup::{SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP};
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
 
@@ -37,6 +38,7 @@ fn wire_monitor_events(app: &AppHandle) {
     let handle3 = app.clone();
     let handle4 = app.clone();
     let handle5 = app.clone();
+    let handle6 = app.clone();
 
     SD_MONITOR.set_callbacks(
         Some(Arc::new(move |progress: BackupProgress| {
@@ -69,6 +71,10 @@ fn wire_monitor_events(app: &AppHandle) {
             let _ = handle4.emit(EVENT_SD_REMOVED, serde_json::json!({ "drives": drives }));
         })),
     );
+
+    SECONDARY_BACKUP.set_callback(Some(Arc::new(move |event: SecondaryBackupEvent| {
+        let _ = handle6.emit(EVENT_SECONDARY_BACKUP, event);
+    })));
 }
 
 /// Called once at app startup to bind config + events and optionally start polling.

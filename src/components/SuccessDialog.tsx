@@ -263,7 +263,12 @@ export function SuccessDialog({
             </DialogTitle>
           )}
           {isQr && highlightText ? (
-            <p className="pt-1 text-xl font-semibold tracking-tight text-foreground">
+            <p
+              className={cn(
+                "pt-1.5 text-2xl font-semibold tracking-tight",
+                accent === "success" ? "text-primary" : "text-warning",
+              )}
+            >
               {highlightText}
             </p>
           ) : null}

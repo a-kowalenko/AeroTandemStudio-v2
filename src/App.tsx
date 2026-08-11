@@ -302,6 +302,7 @@ function App() {
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const backupProgress = useSdStore((s) => s.backupProgress);
   const workflowProgress = useSdStore((s) => s.workflowProgress);
+  const secondaryBackup = useSdStore((s) => s.secondaryBackup);
   const qrScanBusy = useQrScanStore((s) => s.busy);
   const qrScanStage = useQrScanStore((s) => s.stage);
   const qrScanByPath = useQrScanStore((s) => s.byPath);
@@ -627,7 +628,9 @@ function App() {
           res.backup_path ?? "",
           res.secondary_backup_path
             ? `Zweiter Pfad: ${res.secondary_backup_path}`
-            : "",
+            : res.secondary_async_started
+              ? "Zweiter Pfad: läuft im Hintergrund…"
+              : "",
           res.skipped_count ? `Übersprungen: ${res.skipped_count}` : "",
           res.secondary_warning?.trim() ?? "",
         ]
@@ -1336,7 +1339,20 @@ function App() {
               <span className="text-[11px] text-muted">v{appVersion}</span>
             </div>
             <p className="truncate text-xs text-muted">
-              {hwLabel ? `Encoder: ${hwLabel}` : ready ? "Bereit" : "Start…"}
+              {secondaryBackup &&
+              (secondaryBackup.state === "started" ||
+                secondaryBackup.state === "progress")
+                ? `Server-Backup ${Math.round(secondaryBackup.percent)}%` +
+                  (secondaryBackup.file_name
+                    ? ` · ${secondaryBackup.file_name}`
+                    : "")
+                : secondaryBackup?.state === "done"
+                  ? "Server-Backup fertig"
+                  : hwLabel
+                    ? `Encoder: ${hwLabel}`
+                    : ready
+                      ? "Bereit"
+                      : "Start…"}
             </p>
           </div>
         </div>
