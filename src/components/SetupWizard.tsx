@@ -517,11 +517,11 @@ export function SetupWizard({ open, onComplete }: Props) {
                 ) : null}
               </div>
               <Combobox
-                label="Ort (Standard)"
+                label="Dropzone (Standard)"
                 value={draft.ort}
                 onChange={(v) => patch("ort", v)}
                 options={ORT_OPTIONS}
-                placeholder="Ort…"
+                placeholder="Dropzone…"
                 listZIndex={200}
               />
             </>
@@ -828,7 +828,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                       : draft.speicherort || "— nicht gesetzt —"
                   }
                 />
-                <SummaryRow label="Ort" value={draft.ort || "—"} />
+                <SummaryRow label="Dropzone" value={draft.ort || "—"} />
                 <SummaryRow
                   label="Backup"
                   value={

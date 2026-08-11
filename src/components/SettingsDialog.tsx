@@ -594,11 +594,11 @@ export function SettingsDialog({
               </div>
               <div className="space-y-1.5">
                 <Combobox
-                  label="Ort (Standard)"
+                  label="Dropzone (Standard)"
                   value={draft.ort}
                   onChange={(v) => patch("ort", v)}
                   options={ORT_OPTIONS}
-                  placeholder="Ort…"
+                  placeholder="Dropzone…"
                   listZIndex={200}
                 />
               </div>
@@ -632,7 +632,7 @@ export function SettingsDialog({
                 <SelectContent>
                   <SelectItem value="id">ID (Kunden-/Booking-ID)</SelectItem>
                   <SelectItem value="oldschool">
-                    Oldschool (Name + E-Mail/Telefon)
+                    Kontakt (Name + E-Mail/Telefon)
                   </SelectItem>
                   <SelectItem value="lokal">
                     Lokal (Name, ohne _fertig.txt)

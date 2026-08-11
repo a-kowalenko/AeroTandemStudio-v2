@@ -8,7 +8,7 @@ import { MediaDropZone } from "./components/MediaDropZone";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
-import { CustomerForm, CustomerFormToolbar } from "./components/CustomerForm";
+import { CustomerForm } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { SetupWizard } from "./components/SetupWizard";
 import { ErrorDialog } from "./components/ErrorDialog";
@@ -1322,13 +1322,6 @@ function App() {
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
-          <div className="flex items-center justify-between gap-3 border-b border-border/80 px-4 py-3">
-            <h2 className="shrink-0 text-sm font-semibold tracking-wide text-muted uppercase">
-              Kunde
-            </h2>
-            <CustomerFormToolbar disabled={busy} />
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto p-4 [scrollbar-gutter:stable]">
             <CustomerForm disabled={busy} />
           </div>

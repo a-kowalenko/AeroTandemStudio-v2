@@ -205,11 +205,39 @@ const FORM_MODES: { id: "kunde" | "manual"; label: string; icon: typeof QrCode }
 
 const MANUAL_ENTRY_MODES: { id: ManualEntryMode; label: string }[] = [
   { id: "id", label: "ID" },
-  { id: "oldschool", label: "Oldschool" },
+  { id: "oldschool", label: "Kontakt" },
   { id: "lokal", label: "Lokal" },
 ];
 
-/** Compact QR ↔ Manuell toggle for the sidebar header (fixed width, no siblings). */
+/** Dropzone / Datum — above Kunde in the form (scrolls with content). */
+function CustomerSessionSection({ disabled }: CustomerFormProps) {
+  const kunde = useKundeStore((s) => s.kunde);
+  const setField = useKundeStore((s) => s.setField);
+  const busy = Boolean(disabled);
+
+  return (
+    <Section title="Session">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Combobox
+          label="Dropzone"
+          value={kunde.ort}
+          onChange={(v) => setField("ort", v)}
+          options={ORT_OPTIONS}
+          disabled={busy}
+          placeholder="Dropzone…"
+        />
+        <DateField
+          label="Datum"
+          value={kunde.datum}
+          onChange={(v) => setField("datum", v)}
+          disabled={busy}
+        />
+      </div>
+    </Section>
+  );
+}
+
+/** Compact QR ↔ Manuell toggle. */
 export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
   const formMode = useKundeStore((s) => s.kunde.form_mode);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
@@ -289,7 +317,7 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
     <div
       role="group"
       aria-label="Manueller Eingabemodus"
-      className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
+      className="flex w-full items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
     >
       {MANUAL_ENTRY_MODES.map(({ id, label }) => (
         <button
@@ -299,7 +327,7 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
           aria-pressed={entryMode === id}
           onClick={() => void setManualEntryMode(id)}
           className={cn(
-            "rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+            "flex-1 rounded-[5px] px-2.5 py-1 text-[11px] font-semibold tracking-wide uppercase transition-colors",
             "disabled:pointer-events-none disabled:opacity-50",
             entryMode === id
               ? "bg-primary text-primary-foreground shadow-sm"
@@ -368,45 +396,33 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
 
   return (
     <div className="space-y-5">
-      <Section title="Session">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Combobox
-            label="Ort"
-            value={kunde.ort}
-            onChange={(v) => setField("ort", v)}
-            options={ORT_OPTIONS}
-            disabled={busy}
-            placeholder="Ort…"
-          />
-          <DateField
-            label="Datum"
-            value={kunde.datum}
-            onChange={(v) => setField("datum", v)}
-            disabled={busy}
-          />
-        </div>
-      </Section>
+      <CustomerSessionSection disabled={busy} />
 
-      <Section
-        title={isQrMode ? "Kunde (QR)" : "Gast"}
-        action={
-          isQrMode ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-[11px]"
-              disabled={busy}
-              onClick={() => setNameLocked((v) => !v)}
-            >
-              <PencilLine className="h-3 w-3" />
-              {nameLocked ? "Bearbeiten" : "Sperren"}
-            </Button>
-          ) : (
-            <ManualEntryModeToggle disabled={busy} />
-          )
-        }
-      >
+      <section className="space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+            Kunde
+          </h3>
+          <div className="flex items-center gap-1.5">
+            {isQrMode ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[11px]"
+                disabled={busy}
+                onClick={() => setNameLocked((v) => !v)}
+              >
+                <PencilLine className="h-3 w-3" />
+                {nameLocked ? "Bearbeiten" : "Sperren"}
+              </Button>
+            ) : null}
+            <CustomerFormToolbar disabled={busy} />
+          </div>
+        </div>
+
+        {!isQrMode ? <ManualEntryModeToggle disabled={busy} /> : null}
+
         <div className="grid gap-3 sm:grid-cols-2">
           {isQrMode ? (
             <>
@@ -497,7 +513,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
             </>
           )}
         </div>
-      </Section>
+      </section>
       <Section title="Crew">
         <div
           className={cn(

@@ -41,6 +41,13 @@ type Props = {
 type TypeFilter = "all" | "video" | "photo";
 type PeriodFilter = "all" | "today" | "7d" | "30d" | "365d";
 
+type PendingConfirm = {
+  title: string;
+  description: string;
+  actionLabel: string;
+  run: () => Promise<void>;
+};
+
 function formatBytes(n: number | null | undefined): string {
   if (n == null || Number.isNaN(n)) return "—";
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -112,7 +119,7 @@ function entryModeLabel(formMode: string, manualEntryMode: string): string | nul
     case "id":
       return "Manuell · ID";
     case "oldschool":
-      return "Manuell · Oldschool";
+      return "Manuell · Kontakt";
     case "lokal":
       return "Manuell · Lokal";
     default:
@@ -127,61 +134,147 @@ export function ProcessedFilesDialog(props: Props) {
 
 export function HistoryDialog({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const confirmOpen = pendingConfirm != null;
+
+  async function runConfirm() {
+    if (!pendingConfirm || confirmBusy) return;
+    setConfirmBusy(true);
+    try {
+      await pendingConfirm.run();
+      setPendingConfirm(null);
+    } finally {
+      setConfirmBusy(false);
+    }
+  }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!flex h-[min(85vh,640px)] w-[min(1100px,96vw)] max-w-none flex-col gap-3 overflow-hidden">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>Historie</DialogTitle>
-          <DialogDescription>
-            Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).
-          </DialogDescription>
-        </DialogHeader>
-
-        <Tabs
-          value={tab}
-          onValueChange={(v) => setTab(v as "vorgaenge" | "medien")}
-          className="flex min-h-0 flex-1 flex-col gap-3"
+    <>
+      <Dialog
+        open={open}
+        onOpenChange={(v) => {
+          if (!v) setPendingConfirm(null);
+          onOpenChange(v);
+        }}
+      >
+        <DialogContent
+          className="!flex h-[min(85vh,640px)] w-[min(1100px,96vw)] max-w-none flex-col gap-3 overflow-hidden"
+          onPointerDownOutside={(e) => {
+            if (confirmOpen) e.preventDefault();
+          }}
+          onFocusOutside={(e) => {
+            if (confirmOpen) e.preventDefault();
+          }}
+          onInteractOutside={(e) => {
+            if (confirmOpen) e.preventDefault();
+          }}
+          onEscapeKeyDown={(e) => {
+            if (confirmOpen) e.preventDefault();
+          }}
         >
-          <TabsList className="h-9 w-fit shrink-0">
-            <TabsTrigger value="vorgaenge" className="text-xs">
-              Vorgänge
-            </TabsTrigger>
-            <TabsTrigger value="medien" className="text-xs">
-              Medien
-            </TabsTrigger>
-          </TabsList>
+          <DialogHeader className="shrink-0">
+            <DialogTitle>Historie</DialogTitle>
+            <DialogDescription>
+              Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).
+            </DialogDescription>
+          </DialogHeader>
 
-          {/* Fixed panel slot: both tabs force-mounted, inactive only hidden → no height jump / remount flicker */}
-          <div className="relative min-h-0 flex-1">
-            <TabsContent
-              value="vorgaenge"
-              forceMount
-              className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
-            >
-              <VorgaengePanel dialogOpen={open} />
-            </TabsContent>
-            <TabsContent
-              value="medien"
-              forceMount
-              className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
-            >
-              <MedienPanel dialogOpen={open} />
-            </TabsContent>
-          </div>
-        </Tabs>
+          <Tabs
+            value={tab}
+            onValueChange={(v) => setTab(v as "vorgaenge" | "medien")}
+            className="flex min-h-0 flex-1 flex-col gap-3"
+          >
+            <TabsList className="h-9 w-fit shrink-0">
+              <TabsTrigger value="vorgaenge" className="text-xs">
+                Vorgänge
+              </TabsTrigger>
+              <TabsTrigger value="medien" className="text-xs">
+                Medien
+              </TabsTrigger>
+            </TabsList>
 
-        <DialogFooter className="shrink-0">
-          <Button type="button" onClick={() => onOpenChange(false)}>
-            Schließen
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <div className="relative min-h-0 flex-1">
+              <TabsContent
+                value="vorgaenge"
+                forceMount
+                className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
+              >
+                <VorgaengePanel
+                  dialogOpen={open}
+                  onRequestConfirm={setPendingConfirm}
+                />
+              </TabsContent>
+              <TabsContent
+                value="medien"
+                forceMount
+                className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
+              >
+                <MedienPanel
+                  dialogOpen={open}
+                  onRequestConfirm={setPendingConfirm}
+                />
+              </TabsContent>
+            </div>
+          </Tabs>
+
+          <DialogFooter className="shrink-0">
+            <Button type="button" onClick={() => onOpenChange(false)}>
+              Schließen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(v) => {
+          if (!v && !confirmBusy) setPendingConfirm(null);
+        }}
+      >
+        <DialogContent
+          className="z-[60] max-w-md border-l-4 border-l-destructive"
+          overlayClassName="z-[60]"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-destructive">
+              {pendingConfirm?.title}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
+              {pendingConfirm?.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={confirmBusy}
+              onClick={() => setPendingConfirm(null)}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={confirmBusy}
+              onClick={() => void runConfirm()}
+            >
+              {pendingConfirm?.actionLabel ?? "Löschen"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
-function VorgaengePanel({ dialogOpen }: { dialogOpen: boolean }) {
+function VorgaengePanel({
+  dialogOpen,
+  onRequestConfirm,
+}: {
+  dialogOpen: boolean;
+  onRequestConfirm: (pending: PendingConfirm) => void;
+}) {
   const [entries, setEntries] = useState<VorgangEntry[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -212,7 +305,6 @@ function VorgaengePanel({ dialogOpen }: { dialogOpen: boolean }) {
     }
   }
 
-  // Load once when dialog opens — not on tab switches.
   useEffect(() => {
     if (!dialogOpen) return;
     void reload(searchRef.current);
@@ -267,10 +359,25 @@ function VorgaengePanel({ dialogOpen }: { dialogOpen: boolean }) {
     });
   }
 
-  async function removeSelected() {
+  function requestRemoveSelected() {
     if (checked.size === 0) return;
-    await deleteVorgaenge([...checked]);
-    await reload(search);
+    const ids = [...checked];
+    const n = ids.length;
+    onRequestConfirm({
+      title:
+        n === 1
+          ? "Vorgang aus der Historie entfernen?"
+          : `${n} Vorgänge aus der Historie entfernen?`,
+      description:
+        n === 1
+          ? "Der ausgewählte Vorgang wird nur aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten."
+          : "Die ausgewählten Vorgänge werden nur aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten.",
+      actionLabel: "Entfernen",
+      run: async () => {
+        await deleteVorgaenge(ids);
+        await reload(search);
+      },
+    });
   }
 
   const showEmptyList = ready && !loading && entries.length === 0;
@@ -292,7 +399,7 @@ function VorgaengePanel({ dialogOpen }: { dialogOpen: boolean }) {
           variant="secondary"
           size="sm"
           disabled={checked.size === 0}
-          onClick={() => void removeSelected()}
+          onClick={requestRemoveSelected}
         >
           Auswahl entfernen
         </Button>
@@ -456,7 +563,13 @@ function VorgaengePanel({ dialogOpen }: { dialogOpen: boolean }) {
   );
 }
 
-function MedienPanel({ dialogOpen }: { dialogOpen: boolean }) {
+function MedienPanel({
+  dialogOpen,
+  onRequestConfirm,
+}: {
+  dialogOpen: boolean;
+  onRequestConfirm: (pending: PendingConfirm) => void;
+}) {
   const [entries, setEntries] = useState<ProcessedFileEntry[]>([]);
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -518,16 +631,38 @@ function MedienPanel({ dialogOpen }: { dialogOpen: boolean }) {
     });
   }
 
-  async function removeSelected() {
+  function requestRemoveSelected() {
     if (selected.size === 0) return;
-    await deleteProcessedFiles([...selected]);
-    await reload(search);
+    const ids = [...selected];
+    const n = ids.length;
+    onRequestConfirm({
+      title:
+        n === 1
+          ? "Medien-Eintrag aus der Historie entfernen?"
+          : `${n} Medien-Einträge aus der Historie entfernen?`,
+      description:
+        n === 1
+          ? "Der Eintrag wird aus der Medien-Historie gelöscht. Die Datei selbst bleibt erhalten."
+          : "Die Einträge werden aus der Medien-Historie gelöscht. Die Dateien selbst bleiben erhalten.",
+      actionLabel: "Entfernen",
+      run: async () => {
+        await deleteProcessedFiles(ids);
+        await reload(search);
+      },
+    });
   }
 
-  async function purgeAll() {
-    if (!window.confirm("Gesamte Medien-Historie löschen?")) return;
-    await purgeProcessedFiles();
-    await reload(search);
+  function requestPurgeAll() {
+    onRequestConfirm({
+      title: "Gesamte Medien-Historie löschen?",
+      description:
+        "Alle Einträge der Medien-Historie (Duplikat-Erkennung) werden entfernt. Die Dateien selbst bleiben erhalten.",
+      actionLabel: "Alles löschen",
+      run: async () => {
+        await purgeProcessedFiles();
+        await reload(search);
+      },
+    });
   }
 
   const showEmpty = ready && !loading && filtered.length === 0;
@@ -566,7 +701,7 @@ function MedienPanel({ dialogOpen }: { dialogOpen: boolean }) {
         <span className="ml-auto min-w-[12rem] text-right text-xs text-muted tabular-nums">
           {!ready || loading ? "Laden…" : stats}
         </span>
-        <Button type="button" variant="destructive" size="sm" onClick={() => void purgeAll()}>
+        <Button type="button" variant="destructive" size="sm" onClick={requestPurgeAll}>
           Alles löschen
         </Button>
         <Button
@@ -574,7 +709,7 @@ function MedienPanel({ dialogOpen }: { dialogOpen: boolean }) {
           variant="secondary"
           size="sm"
           disabled={selected.size === 0}
-          onClick={() => void removeSelected()}
+          onClick={requestRemoveSelected}
         >
           Auswahl entfernen
         </Button>
