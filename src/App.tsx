@@ -340,6 +340,8 @@ function App() {
   } | null>(null);
   /** Locks SdFileSelector while confirm workflow runs (incl. QR scan with loading off). */
   const [selectorSubmitting, setSelectorSubmitting] = useState(false);
+  /** Auto SD workflow: sticky progress panel (overlay only during prepare). */
+  const [autoPanelActive, setAutoPanelActive] = useState(false);
 
   const videoCuts = useVideoCutApply();
   useQrScanProgressListener();
@@ -753,18 +755,39 @@ function App() {
     }
   }
 
+  /**
+   * Auto mode: LoadingOverlay while listing the card (like Confirm),
+   * then sticky ProgressIndicator panel for the actual workflow.
+   */
+  async function runAutoSdWorkflow(drive: string, actions: SdWorkflowActions) {
+    setActiveDrive(drive);
+    setAutoPanelActive(false);
+    setLoading(true, "SD-Dateien werden gelesen…");
+    try {
+      await listSdFiles(drive);
+      await runSdWorkflow(drive, null, actions, {
+        onStart: () => setAutoPanelActive(true),
+      });
+    } catch (e) {
+      showError(String(e));
+    } finally {
+      setAutoPanelActive(false);
+      setLoading(false);
+    }
+  }
+
   useSdCardMonitor({
     onRequestSelect: (drive, mode) => {
       void openSdSelector(drive, mode);
     },
     onAutoProcess: (drive, actions) => {
-      void runSdWorkflow(drive, null, actions);
+      void runAutoSdWorkflow(drive, actions);
     },
   });
 
   async function handleSdPrimaryAction(drive: string) {
     if (config?.sd_backup_mode === "auto") {
-      await runSdWorkflow(drive, null, settingsSdActions());
+      await runAutoSdWorkflow(drive, settingsSdActions());
       return;
     }
     await openSdSelector(drive, "backup");
@@ -1075,6 +1098,7 @@ function App() {
   }
 
   async function startCreate() {
+    if (busy || autoPanelActive || loading || selectorSubmitting) return;
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
 
@@ -1224,7 +1248,7 @@ function App() {
   }
 
   function handleSessionReset() {
-    if (busy || loading || selectorSubmitting) {
+    if (busy || loading || selectorSubmitting || autoPanelActive) {
       showWarning(
         "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
         "Zurücksetzen",
@@ -1265,6 +1289,24 @@ function App() {
       ? "Aktiv — Vorgang wird nach Erstellen hochgeladen"
       : "Nach dem Erstellen auf den Server laden";
 
+  const uiLocked =
+    busy || autoPanelActive || selectorSubmitting || loading;
+  const sdAutoProgress = resolveSdSelectorProgress({
+    submitting: autoPanelActive,
+    phase: sdPhase,
+    backupProgress,
+    workflowProgress,
+    loadingMessage,
+    qrBusy: qrScanBusy,
+    qrStage: qrScanStage,
+    qrByPath: qrScanByPath,
+    qrFollowup,
+  });
+  const showCreateProgress =
+    busy || percent > 0 || taskProgress.length > 0;
+  const showSdAutoProgress = Boolean(autoPanelActive && sdAutoProgress);
+  const showProgressPanel = showCreateProgress || showSdAutoProgress;
+
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
       <SplashScreen
@@ -1300,11 +1342,14 @@ function App() {
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <SdDriveSelector
-            disabled={busy || !ready}
+            disabled={uiLocked || !ready}
             onOpenDrive={(drive) => void openSdDriveFromHeader(drive)}
             onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
           />
-          <SdModeSelector visible={Boolean(config?.sd_auto_backup)} />
+          <SdModeSelector
+            visible={Boolean(config?.sd_auto_backup)}
+            disabled={uiLocked}
+          />
           <ServerStatusIndicator />
           <Button
             type="button"
@@ -1322,7 +1367,7 @@ function App() {
             variant="secondary"
             size="sm"
             onClick={handleSessionReset}
-            disabled={busy || !ready}
+            disabled={uiLocked || !ready}
             title="Formular und Medien zurücksetzen"
             className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
           >
@@ -1348,7 +1393,7 @@ function App() {
       <div className="flex min-h-0 flex-1">
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
           <div className="min-h-0 flex-1 overflow-y-auto p-4 [scrollbar-gutter:stable]">
-            <CustomerForm disabled={busy} />
+            <CustomerForm disabled={uiLocked} />
           </div>
 
           <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
@@ -1375,7 +1420,7 @@ function App() {
                     : uploadBlocked
                       ? "border-warning/40 bg-warning/10 text-warning"
                       : "border-border bg-card-elevated/80 text-muted",
-                  (!serverConnected || busy || !config) && "cursor-not-allowed",
+                  (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
                 )}
                 title={uploadTitle}
               >
@@ -1385,7 +1430,7 @@ function App() {
                   id="vorgang-upload"
                   className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
                   checked={uploadActive}
-                  disabled={busy || !config || !serverConnected}
+                  disabled={uiLocked || !config || !serverConnected}
                   onCheckedChange={(v) => {
                     if (!config || !serverConnected) return;
                     void persistConfig({
@@ -1402,7 +1447,7 @@ function App() {
               <label className="flex items-center gap-2 text-xs text-muted">
                 <Checkbox
                   checked={Boolean(config?.auto_clear_files_after_creation)}
-                  disabled={busy || !config}
+                  disabled={uiLocked || !config}
                   onCheckedChange={(v) => {
                     if (!config) return;
                     void persistConfig({
@@ -1428,7 +1473,7 @@ function App() {
                 size="sm"
                 className="shrink-0"
                 onClick={() => void ensureSpeicherort(true)}
-                disabled={busy}
+                disabled={uiLocked}
                 title="Speicherort ändern"
               >
                 Ordner…
@@ -1439,7 +1484,7 @@ function App() {
                 onClick={() => {
                   void startCreate();
                 }}
-                disabled={busy || !createReady}
+                disabled={uiLocked || !createReady}
                 title={
                   config?.upload_to_server && serverConnected
                     ? "Vorgang erstellen und auf den Server hochladen"
@@ -1460,7 +1505,7 @@ function App() {
         </aside>
 
         <main className={cn("flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4")}>
-          {(busy || percent > 0 || taskProgress.length > 0) && (
+          {showProgressPanel && (
             <section className="ats-surface sticky top-0 z-10 rounded-xl p-4 shadow-sm backdrop-blur-sm">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -1468,9 +1513,11 @@ function App() {
                     Fortschritt
                   </h2>
                   <p className="text-xs text-muted">
-                    {busy
-                      ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
-                      : "Zuletzt abgeschlossener Lauf"}
+                    {showSdAutoProgress && !showCreateProgress
+                      ? "SD Auto — Backup, Import und weitere Aktionen"
+                      : busy
+                        ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
+                        : "Zuletzt abgeschlossener Lauf"}
                   </p>
                 </div>
                 {busy && (
@@ -1479,20 +1526,36 @@ function App() {
                   </Button>
                 )}
               </div>
-              <ProgressIndicator
-                percent={percent}
-                label={formatOverallProgressLabel(status, busy ? "In Arbeit…" : "Fertig")}
-                tasks={taskProgress.map((t) => ({
-                  taskId: t.taskId,
-                  percent: t.percent,
-                  label: taskProgressLabel(t.taskId, t.status),
-                  status: t.status,
-                }))}
-              />
+              {showSdAutoProgress && !showCreateProgress && sdAutoProgress ? (
+                <div className="space-y-2">
+                  <ProgressIndicator
+                    percent={sdAutoProgress.percent}
+                    label={sdAutoProgress.label}
+                    indeterminate={Boolean(sdAutoProgress.indeterminate)}
+                  />
+                  {sdAutoProgress.detail ? (
+                    <p className="text-xs tabular-nums text-muted">
+                      {sdAutoProgress.detail}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <ProgressIndicator
+                  percent={percent}
+                  label={formatOverallProgressLabel(status, busy ? "In Arbeit…" : "Fertig")}
+                  tasks={taskProgress.map((t) => ({
+                    taskId: t.taskId,
+                    percent: t.percent,
+                    label: taskProgressLabel(t.taskId, t.status),
+                    status: t.status,
+                  }))}
+                />
+              )}
             </section>
           )}
 
           <MediaDropZone
+            disabled={uiLocked}
             onRemoveVideo={(path) => {
               useVideoStore.getState().clearCutMarksFor([path]);
               void discardVideoCutUndoForPath(path);
@@ -1556,7 +1619,7 @@ function App() {
               </div>
               <TabsContent value="video" className="mt-3 space-y-4">
                 <VideoPreview
-                  busy={busy}
+                  busy={busy || autoPanelActive}
                   onBusyChange={setBusy}
                   percent={percent}
                   status={status}
@@ -1593,7 +1656,7 @@ function App() {
                 />
               </TabsContent>
               <TabsContent value="foto" className="mt-3">
-                <PhotoPreview disabled={busy} />
+                <PhotoPreview disabled={uiLocked} />
               </TabsContent>
             </Tabs>
           </section>
@@ -1740,7 +1803,10 @@ function App() {
           void onIntroMuxChoice(choice);
         }}
       />
-      <LoadingOverlay open={loading && !selectorSubmitting} message={loadingMessage} />
+      <LoadingOverlay
+        open={loading && !selectorSubmitting && !autoPanelActive}
+        message={loadingMessage}
+      />
     </div>
   );
 }

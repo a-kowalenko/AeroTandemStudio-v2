@@ -112,85 +112,91 @@ export async function runAutoQrAfterImport(
 
   const applyFromQr = useKundeStore.getState().applyFromQr;
 
-  if (scanVideos) {
-    setQrUi(
-      `QR-Scan: ${videoPaths.length} Video(s)…`,
-      "scanning_videos",
-      videoPaths,
-    );
-    const result = await scanQrVideos(videoPaths);
-    if (result.cancelled) {
-      return {
-        attempted: true,
-        found: false,
-        message: result.message || "QR-Scan abgebrochen.",
-        source_path: null,
-        kundeName: "",
-        successOptions: null,
-        successTitle: null,
-      };
+  // setQrUi turns on the global LoadingOverlay; always clear it here.
+  // (Manual import has no SD-workflow finally — that used to leave the overlay stuck.)
+  try {
+    if (scanVideos) {
+      setQrUi(
+        `QR-Scan: ${videoPaths.length} Video(s)…`,
+        "scanning_videos",
+        videoPaths,
+      );
+      const result = await scanQrVideos(videoPaths);
+      if (result.cancelled) {
+        return {
+          attempted: true,
+          found: false,
+          message: result.message || "QR-Scan abgebrochen.",
+          source_path: null,
+          kundeName: "",
+          successOptions: null,
+          successTitle: null,
+        };
+      }
+      if (result.found && result.kunde) {
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path,
+        });
+        setQrUi("QR gefunden — Clip prüfen…", "followup");
+        const cleanup = maybeRemoveQrVideo(result.source_path, {
+          onBeforeRemove: input.onBeforeRemoveVideo,
+        });
+        return {
+          attempted: true,
+          found: true,
+          source_path: result.source_path,
+          ...formatHit(result, cleanup),
+        };
+      }
     }
-    if (result.found && result.kunde) {
-      applyFromQr(result.kunde, {
-        preview: result.preview,
-        sourcePath: result.source_path,
-      });
-      setQrUi("QR gefunden — Clip prüfen…", "followup");
-      const cleanup = maybeRemoveQrVideo(result.source_path, {
-        onBeforeRemove: input.onBeforeRemoveVideo,
-      });
-      return {
-        attempted: true,
-        found: true,
-        source_path: result.source_path,
-        ...formatHit(result, cleanup),
-      };
-    }
-  }
 
-  if (scanPhotos) {
-    setQrUi(
-      `QR-Scan: ${photoPaths.length} Foto(s)…`,
-      "scanning_photos",
-      photoPaths,
-    );
-    const result = await scanQrPhotos(photoPaths);
-    if (result.cancelled) {
-      return {
-        attempted: true,
-        found: false,
-        message: result.message || "QR-Scan abgebrochen.",
-        source_path: null,
-        kundeName: "",
-        successOptions: null,
-        successTitle: null,
-      };
+    if (scanPhotos) {
+      setQrUi(
+        `QR-Scan: ${photoPaths.length} Foto(s)…`,
+        "scanning_photos",
+        photoPaths,
+      );
+      const result = await scanQrPhotos(photoPaths);
+      if (result.cancelled) {
+        return {
+          attempted: true,
+          found: false,
+          message: result.message || "QR-Scan abgebrochen.",
+          source_path: null,
+          kundeName: "",
+          successOptions: null,
+          successTitle: null,
+        };
+      }
+      if (result.found && result.kunde) {
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path,
+        });
+        setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
+        const cleanup = await maybeRemoveQrPhoto(result.source_path);
+        return {
+          attempted: true,
+          found: true,
+          source_path: result.source_path,
+          ...formatHit(result, cleanup),
+        };
+      }
     }
-    if (result.found && result.kunde) {
-      applyFromQr(result.kunde, {
-        preview: result.preview,
-        sourcePath: result.source_path,
-      });
-      setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
-      const cleanup = await maybeRemoveQrPhoto(result.source_path);
-      return {
-        attempted: true,
-        found: true,
-        source_path: result.source_path,
-        ...formatHit(result, cleanup),
-      };
-    }
-  }
 
-  return {
-    attempted: true,
-    found: false,
-    message: "Kein QR-Code in den neuen Dateien gefunden.",
-    source_path: null,
-    kundeName: "",
-    successOptions: null,
-    successTitle: null,
-  };
+    return {
+      attempted: true,
+      found: false,
+      message: "Kein QR-Code in den neuen Dateien gefunden.",
+      source_path: null,
+      kundeName: "",
+      successOptions: null,
+      successTitle: null,
+    };
+  } finally {
+    useUiStore.getState().setLoading(false);
+  }
 }
 
 /** Paths that were added relative to a snapshot of existing paths. */

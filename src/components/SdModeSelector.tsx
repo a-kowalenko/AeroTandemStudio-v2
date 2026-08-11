@@ -29,9 +29,14 @@ const MODE_OPTIONS = [
 type Props = {
   className?: string;
   visible?: boolean;
+  disabled?: boolean;
 };
 
-export function SdModeSelector({ className, visible = true }: Props) {
+export function SdModeSelector({
+  className,
+  visible = true,
+  disabled = false,
+}: Props) {
   const config = useConfigStore((s) => s.config);
   const updateLocal = useConfigStore((s) => s.updateLocal);
   const persist = useConfigStore((s) => s.persist);
@@ -48,6 +53,7 @@ export function SdModeSelector({ className, visible = true }: Props) {
       <span className="text-muted">Backup:</span>
       <Select
         value={mode}
+        disabled={disabled}
         onValueChange={(v) => {
           updateLocal({ sd_backup_mode: v });
           void persist({ ...config, sd_backup_mode: v });

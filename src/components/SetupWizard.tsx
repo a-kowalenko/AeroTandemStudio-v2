@@ -44,7 +44,7 @@ const STEP_SKIP_HINT: Record<number, string> = {
   0: "Darstellung kannst du später jederzeit umschalten.",
   1: "Crew-Defaults können später in den Einstellungen gesetzt werden.",
   2: "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
-  3: "Backup, Auto-Import und Limits sind optional und später änderbar.",
+  3: "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
   4: "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
   5: "Server-Zugang kann später eingerichtet werden.",
 };
@@ -530,7 +530,8 @@ export function SetupWizard({ open, onComplete }: Props) {
           {step === 3 ? (
             <>
               <p className="text-sm text-muted">
-                SD-Karten-Backups, Auto-Import und optionales Größenlimit.
+                SD-Karten-Backups, Aufräumen nach dem Workflow und optionales
+                Größenlimit.
               </p>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
@@ -593,6 +594,38 @@ export function SetupWizard({ open, onComplete }: Props) {
                   Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[PC]_…
                 </p>
               </div>
+              <label
+                className={cn(
+                  "flex items-center gap-2 text-sm",
+                  !draft.sd_auto_backup && "opacity-50",
+                )}
+                title={
+                  draft.sd_auto_backup
+                    ? "SD-Karte nach erfolgreichem Backup leeren"
+                    : "Nur möglich, wenn Auto-Backup aktiviert ist"
+                }
+              >
+                <Checkbox
+                  checked={draft.sd_clear_after_backup && draft.sd_auto_backup}
+                  disabled={!draft.sd_auto_backup}
+                  onCheckedChange={(v) =>
+                    patch("sd_clear_after_backup", v === true)
+                  }
+                />
+                SD nach Backup leeren
+              </label>
+              <label
+                className="flex items-center gap-2 text-sm"
+                title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
+              >
+                <Checkbox
+                  checked={draft.sd_eject_after_workflow}
+                  onCheckedChange={(v) =>
+                    patch("sd_eject_after_workflow", v === true)
+                  }
+                />
+                SD nach Workflow auswerfen
+              </label>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
                   checked={draft.sd_auto_import}
@@ -838,6 +871,18 @@ export function SetupWizard({ open, onComplete }: Props) {
                         ? draft.sd_backup_folder || "— Ordner fehlt —"
                         : "Deaktiviert"
                   }
+                />
+                <SummaryRow
+                  label="SD leeren"
+                  value={
+                    draft.sd_clear_after_backup && draft.sd_auto_backup
+                      ? "An"
+                      : "Aus"
+                  }
+                />
+                <SummaryRow
+                  label="SD auswerfen"
+                  value={draft.sd_eject_after_workflow ? "An" : "Aus"}
                 />
                 <SummaryRow
                   label="Auto-Import"

@@ -238,6 +238,7 @@ export function MediaDropZone({
   onImported,
   listTab,
   onListTabChange,
+  disabled = false,
 }: {
   onRemoveVideo?: (path: string) => void;
   /** Open cutter for a video from the list context menu */
@@ -250,6 +251,8 @@ export function MediaDropZone({
   onImported?: (summary: MediaImportSummary) => void;
   listTab?: "video" | "foto";
   onListTabChange?: (tab: "video" | "foto") => void;
+  /** External lock (e.g. SD auto workflow) — disables import / list actions. */
+  disabled?: boolean;
 }) {
   const videoList = useVideoStore((s) => s.videoList);
   const getCutMark = useVideoStore((s) => s.getCutMark);
@@ -286,6 +289,7 @@ export function MediaDropZone({
   const showWarning = useUiStore((s) => s.showWarning);
 
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
+  const dropLockedRef = useRef(false);
 
   function openMediaMenu(e: MouseEvent, path: string) {
     mediaContextMenuHandler(path, setCtxMenu)(e);
@@ -528,11 +532,12 @@ export function MediaDropZone({
       void getCurrentWebview()
         .onDragDropEvent((event) => {
           if (event.payload.type === "enter" || event.payload.type === "over") {
-            setDragOver(true);
+            if (!dropLockedRef.current) setDragOver(true);
           } else if (event.payload.type === "leave") {
             setDragOver(false);
           } else if (event.payload.type === "drop") {
             setDragOver(false);
+            if (dropLockedRef.current) return;
             void handlePaths(event.payload.paths);
           }
         })
@@ -787,7 +792,8 @@ export function MediaDropZone({
   }
 
   const totalCount = videoList.length + photoList.length;
-  const busy = importing || photoImporting || expanding || qrBusy;
+  const busy = disabled || importing || photoImporting || expanding || qrBusy;
+  dropLockedRef.current = busy;
 
   return (
     <section
