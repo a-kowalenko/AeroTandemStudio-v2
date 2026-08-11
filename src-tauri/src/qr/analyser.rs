@@ -3,8 +3,10 @@
 //! Behaviour port of legacy `qr_analyser.py` (without OpenCV / pyzbar).
 
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::imageops::FilterType;
 use image::GenericImageView;
@@ -23,6 +25,12 @@ pub const DEFAULT_QR_VIDEO_SCAN_SECONDS: f64 = 5.0;
 pub const DEFAULT_QR_FRAME_STEP: u32 = 10;
 pub const MAX_QR_DECODE_WIDTH: u32 = 1920;
 pub const MAX_QR_VIDEO_DECODE_WIDTH: u32 = 1280;
+/// Temp dirs for hit-frame previews shown in SuccessDialog.
+pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
+/// Extra padding around the QR AABB before forming a square (fraction of side).
+const SPOTLIGHT_PAD: f32 = 0.2;
+/// Minimum spotlight size as a fraction of the shorter image side.
+const SPOTLIGHT_MIN_FRAC: f32 = 0.08;
 
 #[derive(Debug, Error)]
 pub enum QrScanError {
@@ -38,6 +46,23 @@ pub enum QrScanError {
     Message(String),
 }
 
+/// Normalized square over the preview image (0–1), for CSS spotlight overlay.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct QrSpotlight {
+    pub x: f32,
+    pub y: f32,
+    pub size: f32,
+}
+
+/// Persisted hit-frame (or decode image) for the success dialog.
+#[derive(Debug, Clone, Serialize)]
+pub struct QrPreview {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    pub spotlight: Option<QrSpotlight>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct QrScanResult {
     pub found: bool,
@@ -45,10 +70,11 @@ pub struct QrScanResult {
     pub source_path: Option<String>,
     pub cancelled: bool,
     pub message: String,
+    pub preview: Option<QrPreview>,
 }
 
 impl QrScanResult {
-    pub fn hit(kunde: Kunde, source_path: impl Into<String>) -> Self {
+    pub fn hit(kunde: Kunde, source_path: impl Into<String>, preview: Option<QrPreview>) -> Self {
         let source_path = source_path.into();
         Self {
             found: true,
@@ -56,6 +82,7 @@ impl QrScanResult {
             source_path: Some(source_path.clone()),
             cancelled: false,
             message: format!("QR-Code gefunden: {source_path}"),
+            preview,
         }
     }
 
@@ -66,6 +93,7 @@ impl QrScanResult {
             source_path: None,
             cancelled: false,
             message: message.into(),
+            preview: None,
         }
     }
 
@@ -76,8 +104,89 @@ impl QrScanResult {
             source_path: None,
             cancelled: true,
             message: "QR-Scan abgebrochen.".into(),
+            preview: None,
         }
     }
+}
+
+/// Build an axis-aligned square covering the QR finder/corner points.
+/// Coordinates are normalized 0–1; `size` is a fraction of **image width**
+/// (so CSS `width`% + equal aspect yields a square on the image box).
+pub fn spotlight_from_points(
+    points: &[(f32, f32)],
+    image_width: u32,
+    image_height: u32,
+) -> Option<QrSpotlight> {
+    if points.is_empty() || image_width == 0 || image_height == 0 {
+        return None;
+    }
+    let w = image_width as f32;
+    let h = image_height as f32;
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+    for &(x, y) in points {
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    let aabb_w = (max_x - min_x).max(1.0);
+    let aabb_h = (max_y - min_y).max(1.0);
+    let mut side = aabb_w.max(aabb_h) * (1.0 + SPOTLIGHT_PAD);
+    let min_side = w.min(h) * SPOTLIGHT_MIN_FRAC;
+    side = side.max(min_side).min(w).min(h);
+
+    let cx = (min_x + max_x) * 0.5;
+    let cy = (min_y + max_y) * 0.5;
+    let mut left = cx - side * 0.5;
+    let mut top = cy - side * 0.5;
+    left = left.clamp(0.0, (w - side).max(0.0));
+    top = top.clamp(0.0, (h - side).max(0.0));
+
+    Some(QrSpotlight {
+        x: (left / w).clamp(0.0, 1.0),
+        y: (top / h).clamp(0.0, 1.0),
+        size: (side / w).clamp(0.0, 1.0),
+    })
+}
+
+fn persist_qr_preview_image(img: &image::DynamicImage) -> Result<PathBuf, QrScanError> {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!(
+        "{QR_PREVIEW_DIR_PREFIX}{}_{millis}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir).map_err(|e| QrScanError::Message(e.to_string()))?;
+    let path = dir.join("hit.png");
+    img.save(&path)
+        .map_err(|e| QrScanError::Image(format!("preview save failed: {e}")))?;
+    Ok(path)
+}
+
+/// Delete a QR preview file and its parent `aero_studio_qr_preview_*` directory when safe.
+pub fn discard_qr_preview(path: &str) -> Result<(), String> {
+    let path = Path::new(path.trim());
+    if path.as_os_str().is_empty() {
+        return Ok(());
+    }
+    if path.is_file() {
+        let _ = fs::remove_file(path);
+    }
+    if let Some(parent) = path.parent() {
+        let name = parent
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        if name.starts_with(QR_PREVIEW_DIR_PREFIX) {
+            let _ = fs::remove_dir_all(parent);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -253,8 +362,12 @@ fn is_stop(cancel: Option<&AtomicBool>) -> bool {
     ffmpeg::is_cancelled() || cancel.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
 }
 
-/// Decode QR text from a greyscale luma8 buffer.
-pub fn decode_qr_text_from_luma(luma: Vec<u8>, width: u32, height: u32) -> Option<String> {
+/// Decode QR text + corner points from a greyscale luma8 buffer.
+pub fn decode_qr_from_luma(
+    luma: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Option<(String, Vec<(f32, f32)>)> {
     if width == 0 || height == 0 || luma.len() < (width as usize) * (height as usize) {
         return None;
     }
@@ -272,18 +385,23 @@ pub fn decode_qr_text_from_luma(luma: Vec<u8>, width: u32, height: u32) -> Optio
             if text.is_empty() {
                 None
             } else {
-                Some(text)
+                let points = result
+                    .getPoints()
+                    .iter()
+                    .map(|p| (p.x, p.y))
+                    .collect::<Vec<_>>();
+                Some((text, points))
             }
         }
         Err(_) => None,
     }
 }
 
-/// Load image path, optionally downscale, convert to luma, decode QR → Kunde.
+/// Load image path, optionally downscale, convert to luma, decode QR → Kunde + preview.
 pub fn decode_kunde_from_image_path(
     path: &Path,
     max_width: u32,
-) -> Result<Option<Kunde>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let img = image::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
     decode_kunde_from_dynamic_image(img, max_width)
 }
@@ -291,7 +409,7 @@ pub fn decode_kunde_from_image_path(
 fn decode_kunde_from_dynamic_image(
     img: image::DynamicImage,
     max_width: u32,
-) -> Result<Option<Kunde>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let (w, _h) = img.dimensions();
     let img = if w > max_width {
         img.resize(max_width, u32::MAX, FilterType::Triangle)
@@ -304,12 +422,24 @@ fn decode_kunde_from_dynamic_image(
     let height = gray.height();
     let luma = gray.into_raw();
 
-    let Some(text) = decode_qr_text_from_luma(luma, width, height) else {
+    let Some((text, points)) = decode_qr_from_luma(luma, width, height) else {
         return Ok(None);
     };
 
     match parse_kunde_from_qr_string(&text) {
-        Ok(kunde) => Ok(Some(kunde)),
+        Ok(kunde) => {
+            let preview_path = persist_qr_preview_image(&img)?;
+            let spotlight = spotlight_from_points(&points, width, height);
+            Ok(Some((
+                kunde,
+                QrPreview {
+                    path: preview_path.to_string_lossy().to_string(),
+                    width,
+                    height,
+                    spotlight,
+                },
+            )))
+        }
         Err(e) => {
             // QR found but not a valid customer payload — treat as miss for this frame.
             eprintln!("QR found but parse failed: {e}");
@@ -334,7 +464,7 @@ pub fn scan_photo(
     }
 
     match decode_kunde_from_image_path(Path::new(path), options.max_photo_width)? {
-        Some(kunde) => Ok(QrScanResult::hit(kunde, path)),
+        Some((kunde, preview)) => Ok(QrScanResult::hit(kunde, path, Some(preview))),
         None => Ok(QrScanResult::miss(format!(
             "Kein gültiger QR-Code im Foto: {path}"
         ))),
@@ -383,10 +513,10 @@ pub fn scan_video_clip(
         }
         frames_read += 1;
 
-        if let Some(kunde) =
+        if let Some((kunde, preview)) =
             decode_kunde_from_image_path(&frame_path, options.max_video_width)?
         {
-            return Ok(QrScanResult::hit(kunde, path));
+            return Ok(QrScanResult::hit(kunde, path, Some(preview)));
         }
     }
 
@@ -413,10 +543,10 @@ pub fn scan_video_clip(
             if !frame_path.is_file() {
                 continue;
             }
-            if let Some(kunde) =
+            if let Some((kunde, preview)) =
                 decode_kunde_from_image_path(&frame_path, options.max_video_width)?
             {
-                return Ok(QrScanResult::hit(kunde, path));
+                return Ok(QrScanResult::hit(kunde, path, Some(preview)));
             }
         }
     }
@@ -535,5 +665,34 @@ mod tests {
         let k = parse_kunde_from_qr_string(payload).unwrap();
         assert!(!k.handcam_foto && !k.handcam_video);
         assert_eq!(k.video_mode, "");
+    }
+
+    #[test]
+    fn spotlight_from_points_makes_padded_square() {
+        let pts = [(100.0, 100.0), (100.0, 200.0), (200.0, 100.0), (200.0, 200.0)];
+        let spot = spotlight_from_points(&pts, 1000, 800).unwrap();
+        // AABB 100×100 → side 120 with 20% pad; center (150,150)
+        assert!((spot.size - 0.12).abs() < 1e-4, "size={}", spot.size);
+        assert!((spot.x - 0.09).abs() < 1e-4, "x={}", spot.x); // (150-60)/1000
+        assert!((spot.y - 0.1125).abs() < 1e-4, "y={}", spot.y); // (150-60)/800
+    }
+
+    #[test]
+    fn spotlight_from_points_empty_is_none() {
+        assert!(spotlight_from_points(&[], 100, 100).is_none());
+    }
+
+    #[test]
+    fn discard_qr_preview_removes_dir() {
+        let dir = std::env::temp_dir().join(format!(
+            "{QR_PREVIEW_DIR_PREFIX}test_{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("hit.png");
+        fs::write(&file, b"x").unwrap();
+        discard_qr_preview(file.to_str().unwrap()).unwrap();
+        assert!(!file.exists());
+        assert!(!dir.exists());
     }
 }

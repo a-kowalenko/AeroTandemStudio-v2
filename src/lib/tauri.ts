@@ -341,12 +341,26 @@ export type SplitResult = {
   overwritten: boolean;
 };
 
+export type QrSpotlight = {
+  x: number;
+  y: number;
+  size: number;
+};
+
+export type QrPreview = {
+  path: string;
+  width: number;
+  height: number;
+  spotlight: QrSpotlight | null;
+};
+
 export type QrScanResult = {
   found: boolean;
   kunde: Kunde | null;
   source_path: string | null;
   cancelled: boolean;
   message: string;
+  preview: QrPreview | null;
 };
 
 export async function importVideos(paths: string[]): Promise<VideoMetadata[]> {
@@ -582,6 +596,12 @@ export async function scanQrVideos(paths: string[]): Promise<QrScanResult> {
 
 export async function scanQrPhotos(paths: string[]): Promise<QrScanResult> {
   return invoke<QrScanResult>("scan_qr_photos", { paths });
+}
+
+/** Remove a QR hit-frame preview temp file/dir after the success dialog closes. */
+export async function discardQrPreview(path: string): Promise<void> {
+  if (!path.trim()) return;
+  await invoke("discard_qr_preview_file", { path });
 }
 
 /** Expand files + folders into a flat media path list (recursive for directories). */

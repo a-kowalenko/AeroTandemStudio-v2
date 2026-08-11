@@ -64,6 +64,7 @@ function formatHit(
     kunde: result.kunde,
     cleanup,
     sourcePath: result.source_path,
+    preview: result.preview,
   });
   return {
     message: formatted.message,

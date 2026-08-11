@@ -10,6 +10,8 @@ use crate::storage::working_session;
 use crate::video::hw_accel::clear_hw_cache;
 
 pub const PREVIEW_DIR_PREFIX: &str = "aero_studio_preview_";
+/// QR hit-frame previews from Phase 17 (`qr/analyser.rs`).
+pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
 /// Concat work dirs from `video/concat.rs` (`make_work_dir("concat"|"concat_re")`).
 pub const ATS_CONCAT_DIR_PREFIX: &str = "ats_concat_";
 pub const AEROTANDEM_WORK_DIRNAME: &str = ".aerotandem_work";
@@ -174,6 +176,7 @@ pub fn cleanup_on_app_exit() -> CacheCleanupResult {
 /// True when a `%TEMP%` directory name is an ATS orphan candidate.
 pub fn is_orphan_temp_dir_name(name: &str) -> bool {
     name.starts_with(PREVIEW_DIR_PREFIX)
+        || name.starts_with(QR_PREVIEW_DIR_PREFIX)
         || name.starts_with(ATS_CONCAT_DIR_PREFIX)
         || name.starts_with(ATS_WORK_DIR_PREFIX)
 }
@@ -426,6 +429,8 @@ mod tests {
         assert!(is_ats_work_dir_name(".ats_work_99"));
         assert!(!is_ats_work_dir_name(".ats_other"));
         assert!(is_orphan_temp_dir_name("aero_studio_preview_1"));
+        assert!(is_orphan_temp_dir_name("aero_studio_qr_preview_9_1"));
+        assert!(!is_orphan_temp_dir_name("other_temp"));
         assert!(is_orphan_temp_dir_name("ats_concat_1234_99"));
         assert!(is_orphan_temp_dir_name("ats_concat_re_1234_99"));
         assert!(is_orphan_temp_dir_name(".ats_work_123"));

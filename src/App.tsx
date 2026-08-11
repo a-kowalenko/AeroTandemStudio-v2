@@ -191,6 +191,7 @@ function App() {
   const dialogVariant = useUiStore((s) => s.dialogVariant);
   const dialogHighlight = useUiStore((s) => s.dialogHighlight);
   const dialogActions = useUiStore((s) => s.dialogActions);
+  const dialogQrPreview = useUiStore((s) => s.dialogQrPreview);
   const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
@@ -1629,6 +1630,7 @@ function App() {
         variant={dialogVariant}
         highlight={dialogHighlight}
         actions={dialogActions}
+        qrPreview={dialogQrPreview}
         onClose={closeDialog}
       />
       <CreateSuccessDialog

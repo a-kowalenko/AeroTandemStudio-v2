@@ -522,6 +522,7 @@ export function VideoPreview({
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path ?? clip.path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {

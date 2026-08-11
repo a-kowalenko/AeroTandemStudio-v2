@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { QrPreview } from "@/lib/tauri";
 
 export type DialogKind = "error" | "success" | "warning" | null;
 
@@ -27,6 +28,8 @@ export type DialogOptions = {
   highlight?: string;
   /** Per-action icon + status rows (QR, Backup, Import, Eject, …). */
   actions?: DialogActionStatus[];
+  /** Optional QR hit-frame spotlight preview (right column). */
+  qrPreview?: QrPreview | null;
 };
 
 export type SettingsTab =
@@ -59,6 +62,7 @@ type UiState = {
   dialogVariant: DialogVariant;
   dialogHighlight: string;
   dialogActions: DialogActionStatus[];
+  dialogQrPreview: QrPreview | null;
   dialogPrimaryAction: DialogPrimaryAction | null;
   loading: boolean;
   loadingMessage: string;
@@ -92,6 +96,7 @@ const emptyDialogFields = {
   dialogVariant: "default" as DialogVariant,
   dialogHighlight: "",
   dialogActions: [] as DialogActionStatus[],
+  dialogQrPreview: null as QrPreview | null,
   dialogPrimaryAction: null as DialogPrimaryAction | null,
 };
 
@@ -125,6 +130,7 @@ export const useUiStore = create<UiState>((set) => ({
       dialogVariant: options?.variant ?? "default",
       dialogHighlight: options?.highlight?.trim() ?? "",
       dialogActions: options?.actions?.length ? [...options.actions] : [],
+      dialogQrPreview: options?.qrPreview ?? null,
       dialogPrimaryAction: null,
     }),
   showWarning: (message, title = "Hinweis") =>

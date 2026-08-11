@@ -7,7 +7,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::model::Kunde;
 use crate::qr::analyser::{
-    scan_photo, scan_video_clip, QrScanOptions, QrScanResult as CoreResult,
+    discard_qr_preview, scan_photo, scan_video_clip, QrPreview, QrScanOptions,
+    QrScanResult as CoreResult, QrSpotlight,
 };
 use crate::qr::parallel::{
     scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
@@ -19,12 +20,49 @@ use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 use super::config::ConfigState;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct QrSpotlightDto {
+    pub x: f32,
+    pub y: f32,
+    pub size: f32,
+}
+
+impl From<QrSpotlight> for QrSpotlightDto {
+    fn from(s: QrSpotlight) -> Self {
+        Self {
+            x: s.x,
+            y: s.y,
+            size: s.size,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QrPreviewDto {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+    pub spotlight: Option<QrSpotlightDto>,
+}
+
+impl From<QrPreview> for QrPreviewDto {
+    fn from(p: QrPreview) -> Self {
+        Self {
+            path: p.path,
+            width: p.width,
+            height: p.height,
+            spotlight: p.spotlight.map(Into::into),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct QrScanResultDto {
     pub found: bool,
     pub kunde: Option<Kunde>,
     pub source_path: Option<String>,
     pub cancelled: bool,
     pub message: String,
+    pub preview: Option<QrPreviewDto>,
 }
 
 /// Per-file QR scan progress for the media grid UI.
@@ -43,6 +81,7 @@ impl From<CoreResult> for QrScanResultDto {
             source_path: r.source_path,
             cancelled: r.cancelled,
             message: r.message,
+            preview: r.preview.map(Into::into),
         }
     }
 }
@@ -291,4 +330,10 @@ pub async fn scan_qr_photos(
         logging::info("qr", format!("Foto-Batch-Scan ohne Treffer: {}", dto.message));
     }
     Ok(dto)
+}
+
+/// Remove a persisted QR hit-frame preview (and its temp directory).
+#[tauri::command]
+pub fn discard_qr_preview_file(path: String) -> Result<(), String> {
+    discard_qr_preview(&path)
 }

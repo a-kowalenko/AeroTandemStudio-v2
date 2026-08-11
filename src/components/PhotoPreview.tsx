@@ -148,6 +148,7 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path ?? photo.path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {

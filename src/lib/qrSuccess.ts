@@ -1,6 +1,6 @@
 /** Shared copy + dialog options for successful QR customer recognition. */
 
-import type { Kunde } from "@/lib/tauri";
+import type { Kunde, QrPreview } from "@/lib/tauri";
 import {
   formatQrCleanupSummary,
   type QrCleanupResult,
@@ -27,6 +27,8 @@ export type FormatQrSuccessInput = {
   sourcePath?: string | null;
   /** Extra detail lines (e.g. "Datei nicht importiert.") */
   notes?: string[];
+  /** Hit-frame preview for SuccessDialog spotlight. */
+  preview?: QrPreview | null;
 };
 
 /** Build title, body and QR-variant options for SuccessDialog. */
@@ -59,6 +61,7 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
       variant: "qr",
       highlight: name || "Kunde erkannt",
       autoCloseSecs: 5,
+      qrPreview: input.preview ?? null,
     },
   };
 }

@@ -583,6 +583,7 @@ export function MediaDropZone({
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path ?? path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {
@@ -608,6 +609,7 @@ export function MediaDropZone({
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path ?? path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {
@@ -640,6 +642,7 @@ export function MediaDropZone({
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {
@@ -670,6 +673,7 @@ export function MediaDropZone({
           kunde: result.kunde,
           cleanup,
           sourcePath: result.source_path,
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {
@@ -717,6 +721,7 @@ export function MediaDropZone({
           kunde: result.kunde,
           sourcePath: selected,
           notes: [`Externes ${typeLabel} — Datei nicht importiert.`],
+          preview: result.preview,
         });
         showSuccess(success.message, success.title, success.options);
       } else {

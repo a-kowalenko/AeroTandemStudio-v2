@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 15 Linux + Phase 16 Setup-Wizard erledigt)*
+*(Phase 15–17 erledigt: Linux, Setup-Wizard, QR-Spotlight)*
 
 ---
 
@@ -851,6 +851,53 @@ src/App.tsx
 
 ---
 
+### Phase 17 — QR-Treffer-Preview (Spotlight)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 6 (QR), Phase 5 (`SuccessDialog`)  
+**Ziel:** Bei erkanntem QR im Erfolgsdialog den Treffer-Frame zeigen — QR in klar markiertem Quadrat, Umgebung abgedunkelt (Spotlight)
+
+#### UX / Layout
+
+- Links: bestehender QR-Erfolgsdialog unverändert (Titel, Highlight/Name, Actions, Auto-Close)
+- Rechts: Frame-Preview (2-Spalten-Dialog, etwas breiter; mobil: Text oben, Preview darunter)
+- Spotlight: QR-Region als Quadrat mit Border; alles außerhalb abgedunkelt
+- Kurzes Fade-in der Abdunklung (~200 ms)
+- Fallback: keine Punkte / kein Frame → Dialog wie heute (nur Text)
+
+#### Technik
+
+1. **Primär:** CSS-Overlay auf dem Treffer-Frame; Bounding-Box aus rxing `getPoints()` (Rust → DTO)
+2. Preview nur beim Hit persistieren (`aero_studio_qr_preview_*`), nicht jeden Scan-Frame annotieren
+3. Temp-Preview nach Dialog-Close + Orphan-Cleanup
+
+#### Aufgaben
+
+- [x] Decode: Corner-Punkte aus rxing; Spotlight-Quadrat (Padding) normalisiert [0,1]
+- [x] Bei Video-Hit: Treffer-Frame persistieren; bei Foto: Decode-Bild als Preview (überlebt Quellen-Cleanup)
+- [x] `QrScanResultDto` / Frontend-Typen um Preview + Spotlight erweitern
+- [x] `SuccessDialog` Variante `qr`: optionale rechte Preview-Spalte
+- [x] Temp-Preview nach Dialog-Close aufräumen; Orphan-Prefix in Cache-Cleanup
+- [x] Unit-Tests für Spotlight-Geometrie
+
+#### Nicht-Ziele
+
+- Live-Kamera-Scanner / Dauer-Overlay während des Scans
+- Änderung der Scan-Logik oder Cleanup-Regeln für Medien
+
+#### Referenzen
+
+```
+src-tauri/src/qr/analyser.rs
+src-tauri/src/commands/qr.rs
+src/components/SuccessDialog.tsx
+src/components/QrSpotlightPreview.tsx
+src/lib/qrSuccess.ts
+src/lib/autoQrScan.ts
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1006,6 +1053,8 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 13 | macOS Build & Plattform-Tests | ✅ |
 | 14 | ML Foto-Klassifikation (optional) | ⬜ |
 | 15 | Linux Build & Plattform-Parity | ✅ |
+| 16 | First-Run Setup-Wizard | ✅ |
+| 17 | QR-Treffer-Preview (Spotlight) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1024,4 +1073,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-07 · Projekt: Aero Tandem Studio v2 · Phase 15 Linux*
+*Letzte Aktualisierung: 2026-08-11 · Projekt: Aero Tandem Studio v2 · Phase 17 QR-Preview*
