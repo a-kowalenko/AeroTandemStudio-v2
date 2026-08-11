@@ -454,9 +454,10 @@ export function SettingsDialog({
       setDraft({ ...restored, crew_list: list });
       setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
       setCrewEditIndex(null);
-      showSuccess("Einstellungen wurden auf die Standardeinstellungen zurückgesetzt.");
+      // Skip toast: open SuccessDialog would inert the SetupWizard underneath.
       onOpenChange(false);
       onAfterFactoryReset?.();
+
     } else {
       showError("Standardeinstellungen konnten nicht wiederhergestellt werden.");
     }
