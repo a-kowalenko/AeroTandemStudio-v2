@@ -159,6 +159,14 @@ pub struct SdFileInfo {
     pub already_processed: bool,
 }
 
+/// Deferred EXIF / history fields for the SD file selector (after fast list).
+#[derive(Debug, Clone, Serialize)]
+pub struct SdFileEnrichment {
+    pub path: String,
+    pub display_epoch: f64,
+    pub already_processed: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ListSdFilesResult {
     pub drive: String,
@@ -345,6 +353,16 @@ type StatusCb = Arc<dyn Fn(&str, serde_json::Value) + Send + Sync>;
 type InsertedCb = Arc<dyn Fn(SdInsertedPayload) + Send + Sync>;
 type RemovedCb = Arc<dyn Fn(Vec<String>) + Send + Sync>;
 
+/// Short-lived DCIM scan cache so insert sizing and list_files share one walk.
+struct DcimListCache {
+    drive: String,
+    filtered_paths: Vec<String>,
+    total_bytes: u64,
+    at: Instant,
+}
+
+const DCIM_LIST_CACHE_TTL: Duration = Duration::from_secs(45);
+
 pub struct SdCardMonitor {
     monitoring: AtomicBool,
     known_drives: Mutex<HashSet<String>>,
@@ -355,6 +373,7 @@ pub struct SdCardMonitor {
     processing_drives: Mutex<HashSet<String>>,
     backup_in_progress: AtomicBool,
     history: Mutex<MediaHistoryStore>,
+    list_cache: Mutex<Option<DcimListCache>>,
     config_provider: Mutex<Box<dyn Fn() -> AppConfig + Send>>,
     on_progress: Mutex<Option<ProgressCb>>,
     on_workflow: Mutex<Option<WorkflowCb>>,
@@ -384,6 +403,7 @@ impl SdCardMonitor {
             processing_drives: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(history),
+            list_cache: Mutex::new(None),
             config_provider: Mutex::new(Box::new(config_provider)),
             on_progress: Mutex::new(None),
             on_workflow: Mutex::new(None),
@@ -547,7 +567,7 @@ impl SdCardMonitor {
         }
 
         // confirm (or auto on already-present): frontend shows file selector
-        let info = gather_drive_info(drive);
+        let info = self.gather_drive_info(drive);
         self.emit_status(
             "backup_confirmation_required",
             serde_json::json!({
@@ -561,7 +581,7 @@ impl SdCardMonitor {
     fn emit_inserted(&self, drive: &str, needs_confirmation: bool, hotplug: bool) {
         let cfg = self.config();
         let (file_count, total_mb) = {
-            let info = gather_drive_info(drive);
+            let info = self.gather_drive_info(drive);
             (info.1, info.2)
         };
         let size_limit_exceeded =
@@ -587,6 +607,7 @@ impl SdCardMonitor {
             self.processed_drives.lock().unwrap().remove(d);
             self.processing_drives.lock().unwrap().remove(d);
         }
+        self.invalidate_list_cache_for(drives);
         if let Some(cb) = self.on_removed.lock().unwrap().as_ref() {
             cb(drives.to_vec());
         }
@@ -620,6 +641,7 @@ impl SdCardMonitor {
             drop(processed);
             drop(action);
             drop(processing);
+            self.invalidate_list_cache_for(&removed);
             if let Some(cb) = self.on_removed.lock().unwrap().as_ref() {
                 cb(removed);
             }
@@ -645,62 +667,15 @@ impl SdCardMonitor {
     }
 
     /// List media files on an SD drive (or any path with DCIM).
+    /// Fast listing for the confirm dialog: walk + metadata only.
+    /// EXIF dates and `already_processed` are filled later via [`Self::enrich_files`].
     pub fn list_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
-        let dcim = resolve_drive_dcim_path(drive);
-        let dcim_path = PathBuf::from(&dcim);
-        if !dcim_path.is_dir() {
-            return Err(SdError::Message(format!("DCIM nicht gefunden: {dcim}")));
-        }
-
-        let cfg = self.config();
-        let all = collect_media_paths_from_tree(&dcim_path);
-        let (filtered, _) =
-            filter_media_paths_for_backup(&all, &dcim, true);
-
-        let history = self.history.lock().unwrap();
-        let mut files = Vec::new();
-        let mut total: u64 = 0;
-
+        let (filtered, total) = self.scan_drive_media(drive)?;
+        let mut files = Vec::with_capacity(filtered.len());
         for path in filtered {
-            let pb = PathBuf::from(&path);
-            let meta = match fs::metadata(&pb) {
-                Ok(m) => m,
-                Err(_) => continue,
-            };
-            let size = meta.len();
-            total += size;
-            let filename = pb
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
-            let ext = pb
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(|e| format!(".{}", e.to_ascii_lowercase()))
-                .unwrap_or_default();
-            let already = if cfg.sd_skip_processed {
-                MediaHistoryStore::compute_identity(&pb)
-                    .ok()
-                    .and_then(|(h, _)| history.contains(&h).ok())
-                    .unwrap_or(false)
-            } else {
-                MediaHistoryStore::compute_identity(&pb)
-                    .ok()
-                    .and_then(|(h, _)| history.contains(&h).ok())
-                    .unwrap_or(false)
-            };
-            let mtime = get_mtime_timestamp(&pb).unwrap_or(0.0);
-            let display_epoch = resolve_video_display_epoch(&pb, Some(mtime), None);
-            files.push(SdFileInfo {
-                path,
-                filename,
-                size_bytes: size,
-                is_video: is_video_ext(&ext),
-                mtime,
-                display_epoch,
-                already_processed: already,
-            });
+            if let Some(info) = sd_file_info_light(&path) {
+                files.push(info);
+            }
         }
 
         files.sort_by(|a, b| {
@@ -715,6 +690,107 @@ impl SdCardMonitor {
             total_size_bytes: total,
             files,
         })
+    }
+
+    /// Fill EXIF display dates + history flags after a fast [`Self::list_files`].
+    pub fn enrich_files(
+        &self,
+        drive: &str,
+        paths: Option<Vec<String>>,
+    ) -> Result<Vec<SdFileEnrichment>, SdError> {
+        let paths = match paths {
+            Some(p) if !p.is_empty() => p,
+            _ => self.scan_drive_media(drive)?.0,
+        };
+
+        let mut identities: Vec<(String, Option<String>)> = Vec::with_capacity(paths.len());
+        let mut enrichments = Vec::with_capacity(paths.len());
+
+        for path in &paths {
+            let pb = Path::new(path);
+            let mtime = get_mtime_timestamp(pb).unwrap_or(0.0);
+            let display_epoch = resolve_video_display_epoch(pb, Some(mtime), None);
+            let hash = MediaHistoryStore::compute_identity(pb)
+                .ok()
+                .map(|(h, _)| h);
+            identities.push((path.clone(), hash));
+            enrichments.push(SdFileEnrichment {
+                path: path.clone(),
+                display_epoch,
+                already_processed: false,
+            });
+        }
+
+        let hashes: Vec<String> = identities
+            .iter()
+            .filter_map(|(_, h)| h.clone())
+            .collect();
+        let known = {
+            let history = self.history.lock().unwrap();
+            history.known_hashes(&hashes).unwrap_or_default()
+        };
+        for (i, (_, hash)) in identities.iter().enumerate() {
+            if let Some(h) = hash {
+                enrichments[i].already_processed = known.contains(h);
+            }
+        }
+
+        Ok(enrichments)
+    }
+
+    fn invalidate_list_cache_for(&self, drives: &[String]) {
+        let mut cache = self.list_cache.lock().unwrap();
+        if let Some(c) = cache.as_ref() {
+            if drives.iter().any(|d| drive_keys_equal(d, &c.drive)) {
+                *cache = None;
+            }
+        }
+    }
+
+    fn gather_drive_info(&self, drive: &str) -> (String, usize, f64) {
+        match self.scan_drive_media(drive) {
+            Ok((paths, total)) => (
+                drive.to_string(),
+                paths.len(),
+                total as f64 / (1024.0 * 1024.0),
+            ),
+            Err(_) => (drive.to_string(), 0, 0.0),
+        }
+    }
+
+    /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes.
+    fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+        if let Ok(cache) = self.list_cache.lock() {
+            if let Some(c) = cache.as_ref() {
+                if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
+                    return Ok((c.filtered_paths.clone(), c.total_bytes));
+                }
+            }
+        }
+
+        let dcim = resolve_drive_dcim_path(drive);
+        let dcim_path = PathBuf::from(&dcim);
+        if !dcim_path.is_dir() {
+            return Err(SdError::Message(format!("DCIM nicht gefunden: {dcim}")));
+        }
+
+        let all = collect_media_paths_from_tree(&dcim_path);
+        let (filtered, _) = filter_media_paths_for_backup(&all, &dcim, true);
+        let total: u64 = filtered
+            .iter()
+            .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
+            .sum();
+
+        if let Ok(mut cache) = self.list_cache.lock() {
+            *cache = Some(DcimListCache {
+                drive: drive.to_string(),
+                filtered_paths: filtered.clone(),
+                total_bytes: total,
+                at: Instant::now(),
+            });
+        }
+
+        Ok((filtered, total))
     }
 
     /// Backup SD card media to configured folder (flat structure + manifest).
@@ -1251,19 +1327,43 @@ pub fn build_backup_dir_name(timestamp: &str, pc_name: &str, short_hash: &str) -
     format!("SD_Backup_{timestamp}{pc_part}_{short_hash}")
 }
 
-fn gather_drive_info(drive: &str) -> (String, usize, f64) {
-    let dcim = resolve_drive_dcim_path(drive);
-    let paths = collect_media_paths_from_tree(Path::new(&dcim));
-    let (filtered, _) = filter_media_paths_for_backup(&paths, &dcim, true);
-    let total: u64 = filtered
-        .iter()
-        .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
-        .sum();
-    (
-        drive.to_string(),
-        filtered.len(),
-        total as f64 / (1024.0 * 1024.0),
-    )
+fn drive_keys_equal(a: &str, b: &str) -> bool {
+    #[cfg(windows)]
+    {
+        a.trim_end_matches(['/', '\\'])
+            .eq_ignore_ascii_case(b.trim_end_matches(['/', '\\']))
+    }
+    #[cfg(not(windows))]
+    {
+        a.trim_end_matches('/') == b.trim_end_matches('/')
+    }
+}
+
+fn sd_file_info_light(path: &str) -> Option<SdFileInfo> {
+    let pb = PathBuf::from(path);
+    let meta = fs::metadata(&pb).ok()?;
+    let size = meta.len();
+    let filename = pb
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let ext = pb
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{}", e.to_ascii_lowercase()))
+        .unwrap_or_default();
+    let mtime = get_mtime_timestamp(&pb).unwrap_or(0.0);
+    Some(SdFileInfo {
+        path: path.to_string(),
+        filename,
+        size_bytes: size,
+        is_video: is_video_ext(&ext),
+        mtime,
+        // Provisional: EXIF capture time is filled by enrich_files.
+        display_epoch: mtime,
+        already_processed: false,
+    })
 }
 
 fn clear_sd_files<F>(files: &[String], mut on_progress: Option<F>)
@@ -1666,6 +1766,7 @@ mod tests {
             processing_drives: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
             config_provider: Mutex::new(Box::new({
                 let bp = backup_path.clone();
                 move || {
@@ -1721,6 +1822,7 @@ mod tests {
             processing_drives: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
             config_provider: Mutex::new(Box::new({
                 let p = primary_root.path().to_path_buf();
                 let s = secondary_root.path().to_path_buf();
@@ -1775,6 +1877,7 @@ mod tests {
             processing_drives: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
             config_provider: Mutex::new(Box::new({
                 let p = primary_root.path().to_path_buf();
                 move || {
@@ -1838,5 +1941,54 @@ mod tests {
         assert!(p.speed_mbps.is_none());
         assert_eq!(p.file_index, Some(3));
         assert_eq!(p.file_name.as_deref(), Some("clip.mp4"));
+    }
+
+    #[test]
+    fn list_files_is_metadata_only_until_enrich() {
+        let src = tempdir().unwrap();
+        let dcim = src.path().join("DCIM").join("100");
+        fs::create_dir_all(&dcim).unwrap();
+        fs::write(dcim.join("a.jpg"), vec![0u8; 2048]).unwrap();
+        fs::write(dcim.join("b.mp4"), vec![0u8; 4096]).unwrap();
+
+        let hist = tempdir().unwrap();
+        let monitor = SdCardMonitor {
+            monitoring: AtomicBool::new(false),
+            known_drives: Mutex::new(HashSet::new()),
+            action_cam_drives: Mutex::new(HashSet::new()),
+            pending_drives: Mutex::new(HashSet::new()),
+            declined_drives: Mutex::new(HashSet::new()),
+            processed_drives: Mutex::new(HashSet::new()),
+            processing_drives: Mutex::new(HashSet::new()),
+            backup_in_progress: AtomicBool::new(false),
+            history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
+            config_provider: Mutex::new(Box::new(AppConfig::default)),
+            on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
+            on_status: Mutex::new(None),
+            on_inserted: Mutex::new(None),
+            on_removed: Mutex::new(None),
+        };
+
+        let drive = src.path().to_string_lossy().into_owned();
+        let listed = monitor.list_files(&drive).unwrap();
+        assert_eq!(listed.files.len(), 2);
+        for f in &listed.files {
+            assert!(!f.already_processed);
+            assert_eq!(f.display_epoch, f.mtime);
+        }
+
+        // Second list should hit cache (same paths / totals).
+        let listed2 = monitor.list_files(&drive).unwrap();
+        assert_eq!(listed2.files.len(), 2);
+        assert_eq!(listed2.total_size_bytes, listed.total_size_bytes);
+
+        let enriched = monitor.enrich_files(&drive, None).unwrap();
+        assert_eq!(enriched.len(), 2);
+        for e in &enriched {
+            assert!(!e.already_processed);
+            assert!(e.display_epoch > 0.0 || e.display_epoch == 0.0);
+        }
     }
 }

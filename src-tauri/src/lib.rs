@@ -26,8 +26,9 @@ use commands::qr::{
 };
 use commands::sd_card::{
     backup_sd_card, clear_sd_files, decline_sd_backup, delete_processed_files, eject_sd_card,
-    get_media_thumbnail, get_sd_status, import_sd_files, init_sd_monitor, list_processed_files,
-    list_sd_files, purge_processed_files, scan_sd_drives, start_sd_monitor, stop_sd_monitor,
+    enrich_sd_files, get_media_thumbnail, get_sd_status, import_sd_files, init_sd_monitor,
+    list_processed_files, list_sd_files, purge_processed_files, scan_sd_drives, start_sd_monitor,
+    stop_sd_monitor,
 };
 use commands::smb::{test_server_connection, upload_to_server};
 use commands::video::{
@@ -166,6 +167,7 @@ pub fn run() {
             get_sd_status,
             scan_sd_drives,
             list_sd_files,
+            enrich_sd_files,
             backup_sd_card,
             clear_sd_files,
             import_sd_files,

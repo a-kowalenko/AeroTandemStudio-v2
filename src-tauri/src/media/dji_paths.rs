@@ -294,10 +294,15 @@ fn walkdir_simple(root: &Path) -> Vec<PathBuf> {
             Err(_) => continue,
         };
         for entry in entries.flatten() {
+            // Prefer DirEntry::file_type — avoids an extra stat per path on many FS.
+            let ft = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
             let path = entry.path();
-            if path.is_dir() {
+            if ft.is_dir() {
                 stack.push(path);
-            } else if path.is_file() {
+            } else if ft.is_file() {
                 out.push(path);
             }
         }

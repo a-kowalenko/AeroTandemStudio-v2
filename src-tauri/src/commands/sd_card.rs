@@ -12,8 +12,8 @@ use crate::sd_card::autoplay;
 use crate::sd_card::eject::eject_drive;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
-    SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS,
-    EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
+    SdFileEnrichment, SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS,
+    EVENT_BACKUP_STATUS, EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
@@ -150,6 +150,35 @@ pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
         Err(e) => {
             let msg = e.to_string();
             logging::error("sd", format!("SD-Liste fehlgeschlagen ({drive}): {msg}"));
+            Err(msg)
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn enrich_sd_files(
+    drive: String,
+    paths: Option<Vec<String>>,
+) -> Result<Vec<SdFileEnrichment>, String> {
+    let count = paths.as_ref().map(|v| v.len()).unwrap_or(0);
+    logging::debug(
+        "sd",
+        format!("SD-Enrich start: drive={drive}, paths={count}"),
+    );
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        SD_MONITOR.enrich_files(&drive, paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::debug("sd", format!("SD-Enrich fertig: {} Datei(en)", res.len()));
+            Ok(res)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::warn("sd", format!("SD-Enrich fehlgeschlagen: {msg}"));
             Err(msg)
         }
     }

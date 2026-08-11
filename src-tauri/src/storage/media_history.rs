@@ -1,9 +1,10 @@
 //! Hash-based media history store (port of legacy `media_history.py`).
 
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
 use thiserror::Error;
@@ -109,6 +110,30 @@ impl MediaHistoryStore {
             |row| row.get(0),
         )?;
         Ok(count > 0)
+    }
+
+    /// Batch lookup of known identity hashes (single DB connection, chunked IN).
+    pub fn known_hashes(&self, hashes: &[String]) -> Result<HashSet<String>, MediaHistoryError> {
+        let mut known = HashSet::new();
+        if hashes.is_empty() {
+            return Ok(known);
+        }
+        let conn = self.connect()?;
+        const CHUNK: usize = 400;
+        for chunk in hashes.chunks(CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT identity_hash FROM processed_files WHERE identity_hash IN ({placeholders})"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(chunk.iter()), |row| {
+                row.get::<_, String>(0)
+            })?;
+            for row in rows {
+                known.insert(row?);
+            }
+        }
+        Ok(known)
     }
 
     pub fn was_imported(&self, identity_hash: &str) -> Result<bool, MediaHistoryError> {
