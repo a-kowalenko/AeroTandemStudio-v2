@@ -388,15 +388,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
       </Section>
 
       <Section
-        title={
-          isQrMode
-            ? "Kunde (QR)"
-            : oldschool
-              ? "Kontakt"
-              : nameEntry
-                ? "Name"
-                : "Identität"
-        }
+        title={isQrMode ? "Kunde (QR)" : "Gast"}
         action={
           isQrMode ? (
             <Button
