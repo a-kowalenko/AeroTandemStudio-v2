@@ -533,164 +533,199 @@ export function SetupWizard({ open, onComplete }: Props) {
                 SD-Karten-Backups, Aufräumen nach dem Workflow und optionales
                 Größenlimit.
               </p>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.sd_auto_backup}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    setDraft((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            sd_auto_backup: on,
-                            sd_clear_after_backup: on
-                              ? prev.sd_clear_after_backup
-                              : false,
-                          }
-                        : prev,
-                    );
-                    if (!on) clearFieldError("sd_backup_folder");
-                  }}
-                />
-                Auto-Backup
-              </label>
-              <div className="space-y-1.5">
-                <Label>Backup-Ordner</Label>
-                <div className="flex gap-2">
+
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  Backup
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.sd_auto_backup}
+                    onCheckedChange={(v) => {
+                      const on = v === true;
+                      setDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              sd_auto_backup: on,
+                              sd_clear_after_backup: on
+                                ? prev.sd_clear_after_backup
+                                : false,
+                            }
+                          : prev,
+                      );
+                      if (!on) clearFieldError("sd_backup_folder");
+                    }}
+                  />
+                  Auto-Backup
+                </label>
+                <div
+                  className={cn(
+                    "space-y-3 border-l-2 border-border/80 pl-3",
+                    !draft.sd_auto_backup && "opacity-50",
+                  )}
+                >
+                  <div className="space-y-1.5">
+                    <Label>Backup-Ordner</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={draft.sd_backup_folder}
+                        readOnly
+                        placeholder="Ordner wählen…"
+                        disabled={!draft.sd_auto_backup}
+                        aria-invalid={
+                          fieldErrors.sd_backup_folder ? true : undefined
+                        }
+                        className={cn(
+                          fieldErrors.sd_backup_folder &&
+                            "border-destructive focus-visible:ring-destructive/40",
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!draft.sd_auto_backup}
+                        onClick={() => void pickFolder("sd_backup_folder")}
+                      >
+                        Wählen…
+                      </Button>
+                    </div>
+                    {fieldErrors.sd_backup_folder ? (
+                      <p
+                        className="text-[11px] leading-snug text-destructive"
+                        role="alert"
+                      >
+                        {fieldErrors.sd_backup_folder}
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>PC Name</Label>
+                    <Input
+                      value={draft.sd_pc_name}
+                      placeholder="Computername"
+                      disabled={!draft.sd_auto_backup}
+                      onChange={(e) => patch("sd_pc_name", e.target.value)}
+                    />
+                    <p className="text-xs text-muted">
+                      Wird im Backup-Ordnernamen verwendet, z.B.
+                      SD_Backup_…[PC]_…
+                    </p>
+                  </div>
+                  <label
+                    className={cn(
+                      "flex items-center gap-2 text-sm",
+                      !draft.sd_auto_backup && "pointer-events-none",
+                    )}
+                    title={
+                      draft.sd_auto_backup
+                        ? "SD-Karte nach erfolgreichem Backup leeren"
+                        : "Nur möglich, wenn Auto-Backup aktiviert ist"
+                    }
+                  >
+                    <Checkbox
+                      checked={
+                        draft.sd_clear_after_backup && draft.sd_auto_backup
+                      }
+                      disabled={!draft.sd_auto_backup}
+                      onCheckedChange={(v) =>
+                        patch("sd_clear_after_backup", v === true)
+                      }
+                    />
+                    SD nach Backup leeren
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  Import & Auswerfen
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.sd_auto_import}
+                    onCheckedChange={(v) => patch("sd_auto_import", v === true)}
+                  />
+                  Auto-Import
+                </label>
+                <p className="text-[11px] leading-snug text-muted">
+                  Nach dem Backup passende Medien automatisch in die Session
+                  laden.
+                </p>
+                <label
+                  className="flex items-center gap-2 text-sm"
+                  title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
+                >
+                  <Checkbox
+                    checked={draft.sd_eject_after_workflow}
+                    onCheckedChange={(v) =>
+                      patch("sd_eject_after_workflow", v === true)
+                    }
+                  />
+                  SD nach Workflow auswerfen
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  Warnschwelle
+                </p>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.sd_size_limit_enabled}
+                    onCheckedChange={(v) => {
+                      const on = v === true;
+                      patch("sd_size_limit_enabled", on);
+                      if (!on) clearFieldError("sd_size_limit_mb");
+                    }}
+                  />
+                  Größen-Limit aktivieren
+                </label>
+                <div
+                  className={cn(
+                    "space-y-1.5 pl-1",
+                    !draft.sd_size_limit_enabled &&
+                      "pointer-events-none opacity-50",
+                  )}
+                >
+                  <Label>Größen-Limit (MB)</Label>
                   <Input
-                    value={draft.sd_backup_folder}
-                    readOnly
-                    placeholder="Ordner wählen…"
+                    type="number"
+                    min={1}
+                    value={draft.sd_size_limit_mb}
+                    disabled={!draft.sd_size_limit_enabled}
                     aria-invalid={
-                      fieldErrors.sd_backup_folder ? true : undefined
+                      fieldErrors.sd_size_limit_mb ? true : undefined
                     }
                     className={cn(
-                      fieldErrors.sd_backup_folder &&
+                      fieldErrors.sd_size_limit_mb &&
                         "border-destructive focus-visible:ring-destructive/40",
                     )}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      patch(
+                        "sd_size_limit_mb",
+                        Number.isFinite(n) && n > 0 ? Math.round(n) : 0,
+                      );
+                      if (Number.isFinite(n) && n >= 1) {
+                        clearFieldError("sd_size_limit_mb");
+                      }
+                    }}
                   />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => void pickFolder("sd_backup_folder")}
-                  >
-                    Wählen…
-                  </Button>
-                </div>
-                {fieldErrors.sd_backup_folder ? (
-                  <p className="text-[11px] leading-snug text-destructive" role="alert">
-                    {fieldErrors.sd_backup_folder}
-                  </p>
-                ) : null}
-              </div>
-              <div className="space-y-1.5">
-                <Label>PC Name</Label>
-                <Input
-                  value={draft.sd_pc_name}
-                  placeholder="Computername"
-                  onChange={(e) => patch("sd_pc_name", e.target.value)}
-                />
-                <p className="text-xs text-muted">
-                  Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[PC]_…
-                </p>
-              </div>
-              <label
-                className={cn(
-                  "flex items-center gap-2 text-sm",
-                  !draft.sd_auto_backup && "opacity-50",
-                )}
-                title={
-                  draft.sd_auto_backup
-                    ? "SD-Karte nach erfolgreichem Backup leeren"
-                    : "Nur möglich, wenn Auto-Backup aktiviert ist"
-                }
-              >
-                <Checkbox
-                  checked={draft.sd_clear_after_backup && draft.sd_auto_backup}
-                  disabled={!draft.sd_auto_backup}
-                  onCheckedChange={(v) =>
-                    patch("sd_clear_after_backup", v === true)
-                  }
-                />
-                SD nach Backup leeren
-              </label>
-              <label
-                className="flex items-center gap-2 text-sm"
-                title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
-              >
-                <Checkbox
-                  checked={draft.sd_eject_after_workflow}
-                  onCheckedChange={(v) =>
-                    patch("sd_eject_after_workflow", v === true)
-                  }
-                />
-                SD nach Workflow auswerfen
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.sd_auto_import}
-                  onCheckedChange={(v) => patch("sd_auto_import", v === true)}
-                />
-                Auto-Import
-              </label>
-              <p className="text-[11px] leading-snug text-muted">
-                Nach dem Backup passende Medien automatisch in die Session laden.
-              </p>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.sd_size_limit_enabled}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    patch("sd_size_limit_enabled", on);
-                    if (!on) clearFieldError("sd_size_limit_mb");
-                  }}
-                />
-                Größen-Limit aktivieren
-              </label>
-              <div
-                className={cn(
-                  "space-y-1.5",
-                  !draft.sd_size_limit_enabled &&
-                    "pointer-events-none opacity-50",
-                )}
-              >
-                <Label>Größen-Limit (MB)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={draft.sd_size_limit_mb}
-                  disabled={!draft.sd_size_limit_enabled}
-                  aria-invalid={
-                    fieldErrors.sd_size_limit_mb ? true : undefined
-                  }
-                  className={cn(
-                    fieldErrors.sd_size_limit_mb &&
-                      "border-destructive focus-visible:ring-destructive/40",
+                  {fieldErrors.sd_size_limit_mb ? (
+                    <p
+                      className="text-[11px] leading-snug text-destructive"
+                      role="alert"
+                    >
+                      {fieldErrors.sd_size_limit_mb}
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted">
+                      Warnung / Bestätigung, wenn die SD-Karte dieses Limit
+                      überschreitet (Standard: 3000 MB).
+                    </p>
                   )}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    patch(
-                      "sd_size_limit_mb",
-                      Number.isFinite(n) && n > 0 ? Math.round(n) : 0,
-                    );
-                    if (Number.isFinite(n) && n >= 1) {
-                      clearFieldError("sd_size_limit_mb");
-                    }
-                  }}
-                />
-                {fieldErrors.sd_size_limit_mb ? (
-                  <p
-                    className="text-[11px] leading-snug text-destructive"
-                    role="alert"
-                  >
-                    {fieldErrors.sd_size_limit_mb}
-                  </p>
-                ) : (
-                  <p className="text-[11px] text-muted">
-                    Warnung / Bestätigung, wenn die SD-Karte dieses Limit
-                    überschreitet (Standard: 3000 MB).
-                  </p>
-                )}
+                </div>
               </div>
             </>
           ) : null}

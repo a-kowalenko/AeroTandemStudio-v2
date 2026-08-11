@@ -10,17 +10,17 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { QrHitMeta } from "@/components/QrHitMeta";
 import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
-import { fileBaseName } from "@/lib/qrSuccess";
+import { kundeDisplayName, fileBaseName } from "@/lib/qrSuccess";
 
 /** Allow digits and optional leading `#`; store only digits. */
 function sanitizeNumericIdInput(raw: string): string {
@@ -251,6 +251,7 @@ function CustomerSessionSection({ disabled }: CustomerFormProps) {
 /** Compact QR ↔ Manuell toggle + optional Scan-Frame viewer. */
 export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
   const formMode = useKundeStore((s) => s.kunde.form_mode);
+  const kunde = useKundeStore((s) => s.kunde);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
   const qrPreview = useKundeStore((s) => s.qrPreview);
   const qrPreviewSource = useKundeStore((s) => s.qrPreviewSource);
@@ -262,6 +263,16 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
   const [showShadow, setShowShadow] = useState(true);
   const hasPreview = Boolean(qrPreview?.path?.trim());
   const sourceLabel = fileBaseName(qrPreviewSource);
+  /** Prefer immutable QR snapshot for hit meta; fall back to current form. */
+  const metaKunde = qrSnapshot ?? kunde;
+  const metaMode =
+    metaKunde.video_mode === "handcam" || metaKunde.video_mode === "outside"
+      ? metaKunde.video_mode
+      : "";
+  const metaFoto =
+    metaMode === "handcam" ? metaKunde.handcam_foto : metaKunde.outside_foto;
+  const metaVideo =
+    metaMode === "handcam" ? metaKunde.handcam_video : metaKunde.outside_video;
 
   useEffect(() => {
     if (!hasPreview && scanOpen) setScanOpen(false);
@@ -290,35 +301,52 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
             <DialogContent className="max-w-4xl gap-4">
               <DialogHeader>
                 <DialogTitle>QR-Scan</DialogTitle>
-                <DialogDescription>
-                  {sourceLabel
-                    ? `Treffer-Frame aus ${sourceLabel}`
-                    : "Treffer-Frame aus dieser Session"}
-                </DialogDescription>
+                <DialogDescription>Treffer-Frame dieser Session</DialogDescription>
               </DialogHeader>
               <QrSpotlightPreview
                 preview={qrPreview}
                 showSpotlight={showShadow}
                 className="w-full"
               />
-              <label
-                htmlFor="qr-scan-shadow"
-                className="mx-auto flex w-fit cursor-pointer items-center gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
-              >
-                <Switch
-                  id="qr-scan-shadow"
-                  checked={showShadow}
-                  onCheckedChange={setShowShadow}
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-stretch">
+                <QrHitMeta
+                  fileName={sourceLabel || null}
+                  displayName={kundeDisplayName(metaKunde) || null}
+                  customerHash={metaKunde.kunden_id_hash}
+                  bookingHash={metaKunde.booking_id_hash}
+                  media={
+                    metaMode || metaFoto || metaVideo
+                      ? {
+                          mode: metaMode,
+                          foto: Boolean(metaFoto),
+                          video: Boolean(metaVideo),
+                        }
+                      : null
+                  }
                 />
-                <span className="text-sm font-medium text-foreground">
-                  Schatten
-                </span>
-              </label>
-              <DialogFooter>
-                <Button type="button" onClick={() => setScanOpen(false)}>
-                  Schließen
-                </Button>
-              </DialogFooter>
+                <div className="flex flex-col gap-3 sm:w-[10.5rem] sm:justify-between">
+                  <label
+                    htmlFor="qr-scan-shadow"
+                    className="flex h-fit cursor-pointer items-center gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+                  >
+                    <Switch
+                      id="qr-scan-shadow"
+                      checked={showShadow}
+                      onCheckedChange={setShowShadow}
+                    />
+                    <span className="text-sm font-medium text-foreground">
+                      Schatten
+                    </span>
+                  </label>
+                  <Button
+                    type="button"
+                    className="w-full sm:mt-auto"
+                    onClick={() => setScanOpen(false)}
+                  >
+                    Schließen
+                  </Button>
+                </div>
+              </div>
             </DialogContent>
           </Dialog>
         </>
