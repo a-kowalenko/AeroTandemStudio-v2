@@ -275,19 +275,19 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
             type="button"
             size="sm"
             variant="ghost"
-            className="h-7 gap-1 px-2 text-[11px]"
+            className="h-7 w-7 px-0"
             disabled={busy}
             title="QR-Scan-Frame anzeigen"
+            aria-label="QR-Scan-Frame anzeigen"
             onClick={() => {
               setShowShadow(true);
               setScanOpen(true);
             }}
           >
-            <Eye className="h-3 w-3" />
-            Scan
+            <Eye className="h-3.5 w-3.5" />
           </Button>
           <Dialog open={scanOpen} onOpenChange={setScanOpen}>
-            <DialogContent className="max-w-lg gap-4">
+            <DialogContent className="max-w-4xl gap-4">
               <DialogHeader>
                 <DialogTitle>QR-Scan</DialogTitle>
                 <DialogDescription>
