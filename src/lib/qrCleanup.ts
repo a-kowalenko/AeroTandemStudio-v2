@@ -10,6 +10,10 @@ export type QrCleanupResult = {
   removedPhotos: string[];
 };
 
+export function emptyCleanup(): QrCleanupResult {
+  return { removedVideos: [], removedPhotos: [] };
+}
+
 function pathKey(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
 }

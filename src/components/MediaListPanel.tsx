@@ -32,7 +32,7 @@ import {
   maybeRemoveQrPhoto,
   maybeRemoveQrVideo,
 } from "../lib/qrCleanup";
-import { formatQrSuccess } from "../lib/qrSuccess";
+import { presentQrHit } from "../lib/qrPresent";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -219,7 +219,6 @@ export function MediaListPanel({
   const togglePhotoWatermark = usePhotoStore((s) => s.toggleWatermark);
   const setCurrentIndex = usePhotoStore((s) => s.setCurrentIndex);
 
-  const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const kunde = useKundeStore((s) => s.kunde);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -253,20 +252,15 @@ export function MediaListPanel({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path ?? path,
-        });
-        const cleanup = maybeRemoveQrVideo(result.source_path ?? path, {
-          onBeforeRemove: (p) => onRemoveVideo?.(p),
-        });
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path ?? path,
           preview: result.preview,
+          runCleanup: () =>
+            maybeRemoveQrVideo(result.source_path ?? path, {
+              onBeforeRemove: (p) => onRemoveVideo?.(p),
+            }),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
       }
@@ -284,18 +278,12 @@ export function MediaListPanel({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path ?? path,
-        });
-        const cleanup = await maybeRemoveQrPhoto(result.source_path ?? path);
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path ?? path,
           preview: result.preview,
+          runCleanup: () => maybeRemoveQrPhoto(result.source_path ?? path),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Foto.", "QR-Scan");
       }

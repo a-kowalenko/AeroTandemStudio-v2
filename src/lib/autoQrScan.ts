@@ -10,17 +10,12 @@ import { useUiStore } from "@/store/uiStore";
 import {
   scanQrPhotos,
   scanQrVideos,
-  type QrScanResult,
 } from "@/lib/tauri";
 import {
   maybeRemoveQrPhoto,
   maybeRemoveQrVideo,
-  type QrCleanupResult,
 } from "@/lib/qrCleanup";
-import {
-  formatQrSuccess,
-  kundeDisplayName,
-} from "@/lib/qrSuccess";
+import { presentQrHit } from "@/lib/qrPresent";
 import type { DialogOptions } from "@/store/uiStore";
 
 export type AutoQrScanInput = {
@@ -38,6 +33,9 @@ export type AutoQrScanInput = {
 export type AutoQrScanOutcome = {
   attempted: boolean;
   found: boolean;
+  /** Kundedata written (false when user kept the existing QR customer). */
+  applied: boolean;
+  keptExisting: boolean;
   message: string;
   source_path: string | null;
   kundeName: string;
@@ -50,6 +48,8 @@ function emptyOutcome(): AutoQrScanOutcome {
   return {
     attempted: false,
     found: false,
+    applied: false,
+    keptExisting: false,
     message: "",
     source_path: null,
     kundeName: "",
@@ -68,30 +68,39 @@ function setQrUi(message: string, stage: QrScanJobStage, paths?: string[]) {
   }
 }
 
-function formatHit(
-  result: QrScanResult,
-  cleanup: QrCleanupResult,
-): Pick<
-  AutoQrScanOutcome,
-  "message" | "kundeName" | "successOptions" | "successTitle"
-> {
-  const formatted = formatQrSuccess({
-    kunde: result.kunde,
-    cleanup,
-    sourcePath: result.source_path,
-    preview: result.preview,
-  });
-  return {
-    message: formatted.message,
-    kundeName: kundeDisplayName(result.kunde),
-    successOptions: formatted.options,
-    successTitle: formatted.title,
-  };
+/** Session already filled from a successful QR scan (`form_mode === "kunde"`). */
+export function sessionHasQrKunde(): boolean {
+  return useKundeStore.getState().kunde.form_mode === "kunde";
+}
+
+/**
+ * Whether post-import auto QR should run.
+ *
+ * When the session is already in QR/kunde mode, skip unless `force` is true
+ * (confirm-dialog checkbox). Matches SdFileSelector default and legacy photo skip.
+ */
+export function shouldAutoQrAfterImport(opts: {
+  force?: boolean;
+  videoPaths?: Iterable<string>;
+  photoPaths?: Iterable<string>;
+  qrCheckEnabled?: boolean | null;
+  photoQrCheckEnabled?: boolean | null;
+}): boolean {
+  const videoPaths = [...(opts.videoPaths ?? [])].filter(Boolean);
+  const photoPaths = [...(opts.photoPaths ?? [])].filter(Boolean);
+  const force = Boolean(opts.force);
+  if (!force && sessionHasQrKunde()) return false;
+  if (force) return videoPaths.length > 0 || photoPaths.length > 0;
+  return (
+    (Boolean(opts.qrCheckEnabled) && videoPaths.length > 0) ||
+    (Boolean(opts.photoQrCheckEnabled) && photoPaths.length > 0)
+  );
 }
 
 /**
  * Scan newly imported media when the matching config flags are on,
  * or when `forceScan` is set (confirm-dialog override).
+ * Skips when the session already has QR kundedata unless forced.
  * Prefers video hits; falls back to photos if videos find nothing.
  */
 export async function runAutoQrAfterImport(
@@ -103,14 +112,16 @@ export async function runAutoQrAfterImport(
   const videoPaths = input.videoPaths?.filter(Boolean) ?? [];
   const photoPaths = input.photoPaths?.filter(Boolean) ?? [];
   const force = Boolean(input.forceScan);
+
+  // Active QR session: keep existing kundedata; confirm can force via checkbox.
+  if (!force && sessionHasQrKunde()) return emptyOutcome();
+
   const scanVideos =
     (force || cfg.qr_check_enabled) && videoPaths.length > 0;
   const scanPhotos =
     (force || cfg.photo_qr_check_enabled) && photoPaths.length > 0;
 
   if (!scanVideos && !scanPhotos) return emptyOutcome();
-
-  const applyFromQr = useKundeStore.getState().applyFromQr;
 
   // setQrUi turns on the global LoadingOverlay; always clear it here.
   // (Manual import has no SD-workflow finally — that used to leave the overlay stuck.)
@@ -124,29 +135,35 @@ export async function runAutoQrAfterImport(
       const result = await scanQrVideos(videoPaths);
       if (result.cancelled) {
         return {
+          ...emptyOutcome(),
           attempted: true,
-          found: false,
           message: result.message || "QR-Scan abgebrochen.",
-          source_path: null,
-          kundeName: "",
-          successOptions: null,
-          successTitle: null,
         };
       }
       if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
+        useUiStore.getState().setLoading(false);
+        const presented = await presentQrHit({
+          kunde: result.kunde,
           sourcePath: result.source_path,
-        });
-        setQrUi("QR gefunden — Clip prüfen…", "followup");
-        const cleanup = maybeRemoveQrVideo(result.source_path, {
-          onBeforeRemove: input.onBeforeRemoveVideo,
+          preview: result.preview,
+          showDialog: false,
+          runCleanup: () => {
+            setQrUi("QR gefunden — Clip prüfen…", "followup");
+            return maybeRemoveQrVideo(result.source_path, {
+              onBeforeRemove: input.onBeforeRemoveVideo,
+            });
+          },
         });
         return {
           attempted: true,
           found: true,
+          applied: presented.applied,
+          keptExisting: presented.keptExisting,
           source_path: result.source_path,
-          ...formatHit(result, cleanup),
+          message: presented.message,
+          kundeName: presented.kundeName,
+          successOptions: presented.successOptions,
+          successTitle: presented.successTitle,
         };
       }
     }
@@ -160,39 +177,41 @@ export async function runAutoQrAfterImport(
       const result = await scanQrPhotos(photoPaths);
       if (result.cancelled) {
         return {
+          ...emptyOutcome(),
           attempted: true,
-          found: false,
           message: result.message || "QR-Scan abgebrochen.",
-          source_path: null,
-          kundeName: "",
-          successOptions: null,
-          successTitle: null,
         };
       }
       if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
+        useUiStore.getState().setLoading(false);
+        const presented = await presentQrHit({
+          kunde: result.kunde,
           sourcePath: result.source_path,
+          preview: result.preview,
+          showDialog: false,
+          runCleanup: async () => {
+            setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
+            return maybeRemoveQrPhoto(result.source_path);
+          },
         });
-        setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
-        const cleanup = await maybeRemoveQrPhoto(result.source_path);
         return {
           attempted: true,
           found: true,
+          applied: presented.applied,
+          keptExisting: presented.keptExisting,
           source_path: result.source_path,
-          ...formatHit(result, cleanup),
+          message: presented.message,
+          kundeName: presented.kundeName,
+          successOptions: presented.successOptions,
+          successTitle: presented.successTitle,
         };
       }
     }
 
     return {
+      ...emptyOutcome(),
       attempted: true,
-      found: false,
       message: "Kein QR-Code in den neuen Dateien gefunden.",
-      source_path: null,
-      kundeName: "",
-      successOptions: null,
-      successTitle: null,
     };
   } finally {
     useUiStore.getState().setLoading(false);

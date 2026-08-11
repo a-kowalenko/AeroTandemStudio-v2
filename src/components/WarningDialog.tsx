@@ -18,7 +18,10 @@ type Props = {
 export function WarningDialog({ open, title = "Hinweis", message, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md border-l-4 border-l-warning">
+      <DialogContent
+        className="z-[100] max-w-md border-l-4 border-l-warning"
+        overlayClassName="z-[100]"
+      >
         <DialogHeader>
           <DialogTitle className="text-warning">{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">

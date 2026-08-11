@@ -111,7 +111,10 @@ export type SdWorkflowActions = {
   eject: boolean;
   /**
    * Confirm-dialog override for post-import QR.
-   * `undefined` = use settings (auto mode). `true` = force scan. `false` = skip.
+   * `undefined` = use settings (auto mode), but skip when session already
+   * has QR kundedata (`form_mode === "kunde"`).
+   * `true` = force scan (even with active QR session).
+   * `false` = skip.
    */
   scanQr?: boolean;
 };

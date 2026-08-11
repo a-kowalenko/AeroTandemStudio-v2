@@ -10,7 +10,7 @@ import { useUiStore } from "../store/uiStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import { scanQrPhoto } from "../lib/tauri";
 import { maybeRemoveQrPhoto } from "../lib/qrCleanup";
-import { formatQrSuccess } from "../lib/qrSuccess";
+import { presentQrHit } from "../lib/qrPresent";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import {
   MediaFileContextMenu,
@@ -45,7 +45,6 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
   const refreshSizes = usePhotoStore((s) => s.refreshSizes);
 
   const kunde = useKundeStore((s) => s.kunde);
-  const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -142,18 +141,12 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
         scanQrPhoto(photo.path),
       );
       if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path ?? photo.path,
-        });
-        const cleanup = await maybeRemoveQrPhoto(result.source_path ?? photo.path);
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path ?? photo.path,
           preview: result.preview,
+          runCleanup: () => maybeRemoveQrPhoto(result.source_path ?? photo.path),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showError(result.message || "Kein QR-Code gefunden.");
       }

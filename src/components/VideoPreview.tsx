@@ -40,7 +40,7 @@ import {
 import { useConfigStore } from "../store/configStore";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import { maybeRemoveQrVideo } from "../lib/qrCleanup";
-import { formatQrSuccess } from "../lib/qrSuccess";
+import { presentQrHit } from "../lib/qrPresent";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
@@ -275,7 +275,6 @@ export function VideoPreview({
   const getMediaRevision = useVideoStore((s) => s.getMediaRevision);
   const cutMarks = useVideoStore((s) => s.cutMarks);
   const kunde = useKundeStore((s) => s.kunde);
-  const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const oldschoolMode = useConfigStore((s) => s.config?.oldschool_mode);
   const config = useConfigStore((s) => s.config);
   const showError = useUiStore((s) => s.showError);
@@ -514,20 +513,15 @@ export function VideoPreview({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path ?? clip.path,
-        });
-        const cleanup = maybeRemoveQrVideo(result.source_path ?? clip.path, {
-          onBeforeRemove: (p) => onBeforeRemoveClip?.(p),
-        });
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path ?? clip.path,
           preview: result.preview,
+          runCleanup: () =>
+            maybeRemoveQrVideo(result.source_path ?? clip.path, {
+              onBeforeRemove: (p) => onBeforeRemoveClip?.(p),
+            }),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
       }

@@ -98,6 +98,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 15: Linux Build & Plattform-Parity (static FFmpeg, fontfile, NVENC, SD-Heuristik, AppImage-Updater, Ubuntu CI)
 - ✅ Phase 16: First-Run Setup-Wizard (`setup_completed`, Theme/Pfade/Backup/Server, Skip, Reset → Wizard; Intro default aus)
 - ✅ Phase 17: QR-Treffer-Preview (Spotlight im SuccessDialog; rxing-Punkte + Hit-Frame)
+- ✅ Phase 18: Standard-Medienordner anlegen (nur Wizard; `Erstellt` / `SD-Backups` je Klick)
 
 **Nächster Schritt:** optional Phase 14 — ML Foto-Klassifikation (Backlog) aus `@docs/IMPLEMENTATION_PLAN.md`  
 *(oder manuelle Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*

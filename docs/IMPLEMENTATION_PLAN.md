@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 15–17 erledigt: Linux, Setup-Wizard, QR-Spotlight)*
+*(Phase 15–18: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner)*
 
 ---
 
@@ -889,12 +889,64 @@ src/App.tsx
 #### Referenzen
 
 ```
-src-tauri/src/qr/analyser.rs
-src-tauri/src/commands/qr.rs
 src/components/SuccessDialog.tsx
 src/components/QrSpotlightPreview.tsx
 src/lib/qrSuccess.ts
 src/lib/autoQrScan.ts
+src-tauri/src/qr/analyser.rs
+src-tauri/src/commands/qr.rs
+```
+
+---
+
+### Phase 18 — Standard-Medienordner anlegen (Wizard + Settings)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 16 (Setup-Wizard), Phase 5 (Config)  
+**Ziel:** Ein Klick legt OS-passende Standardordner an und setzt `speicherort` + `sd_backup_folder` konsistent — ohne stille Config-Änderung vor User-Aktion.
+
+#### Defaults (OS)
+
+Gemeinsame Wurzel, getrennte Unterordner (pro Klick nur einer):
+
+| OS | Wurzel | `speicherort` | `sd_backup_folder` |
+|---|---|---|---|
+| Windows | `%USERPROFILE%\Videos\AeroTandemStudio` | `…\Erstellt` | `…\SD-Backups` |
+| macOS | `~/Movies/AeroTandemStudio` | `…/Erstellt` | `…/SD-Backups` |
+| Linux | `~/Videos/AeroTandemStudio` (XDG) | `…/Erstellt` | `…/SD-Backups` |
+
+Resolver: `directories::UserDirs::video_dir()` (macOS → Movies). Fallback: `home/Videos` bzw. `home/Movies`.  
+**Nicht** App-Config-Dir.
+
+#### UX
+
+- Button **„Standard anlegen“** nur im SetupWizard (je Feld eigener Klick)
+- Label darunter: `Standard: <Pfad>` für das jeweilige Feld
+- Alternate Fixed-Volume-Vorschlag mit Bestätigung; Cloud-/Platz-Warnungen
+- `openDialog` `defaultPath` = vorgeschlagene Wurzel
+- Leeres `sd_pc_name` → Hostname beim Anlegen des Backup-Ordners
+
+#### Technik
+
+- `storage/default_media_dirs.rs`: `propose_default_media_dirs`, `ensure_default_media_dir(kind)`
+- Tauri: `propose_default_media_dirs`, `ensure_default_media_dir`
+- Frontend: `src/lib/defaultMediaDirs.ts` (nur Wizard)
+
+#### Nicht-Ziele
+
+- Feature in SettingsDialog
+- Beide Ordner mit einem Klick anlegen
+- Automatisches Setzen beim ersten Start ohne User-Aktion
+- Verschieben bestehender Vorgänge/Backups
+- Server-/SMB-Backup-Pfade
+
+#### Referenzen
+
+```
+src/components/SetupWizard.tsx
+src/lib/defaultMediaDirs.ts
+src-tauri/src/storage/default_media_dirs.rs
+src-tauri/src/commands/config.rs
 ```
 
 ---
@@ -1056,6 +1108,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 15 | Linux Build & Plattform-Parity | ✅ |
 | 16 | First-Run Setup-Wizard | ✅ |
 | 17 | QR-Treffer-Preview (Spotlight) | ✅ |
+| 18 | Standard-Medienordner anlegen | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1074,4 +1127,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-11 · Projekt: Aero Tandem Studio v2 · Phase 17 QR-Preview*
+*Letzte Aktualisierung: 2026-08-11 · Projekt: Aero Tandem Studio v2 · Phase 18 Standard-Medienordner*

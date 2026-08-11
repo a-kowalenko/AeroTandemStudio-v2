@@ -31,7 +31,10 @@ export function ErrorDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md border-l-4 border-l-destructive">
+      <DialogContent
+        className="z-[100] max-w-md border-l-4 border-l-destructive"
+        overlayClassName="z-[100]"
+      >
         <DialogHeader>
           <DialogTitle className="text-destructive">{title}</DialogTitle>
           <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">

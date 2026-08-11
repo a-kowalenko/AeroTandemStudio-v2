@@ -77,7 +77,12 @@ import {
   type SdWorkflowActions,
   type WorkflowProgress,
 } from "./lib/sdCard";
-import { pathsAddedSince, runAutoQrAfterImport, type AutoQrScanOutcome } from "./lib/autoQrScan";
+import {
+  pathsAddedSince,
+  runAutoQrAfterImport,
+  shouldAutoQrAfterImport,
+  type AutoQrScanOutcome,
+} from "./lib/autoQrScan";
 import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import {
   summarizeQrScanProgress,
@@ -271,6 +276,7 @@ function App() {
   const dialogActions = useUiStore((s) => s.dialogActions);
   const dialogQrPreview = useUiStore((s) => s.dialogQrPreview);
   const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
+  const dialogConfirm = useUiStore((s) => s.dialogConfirm);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -497,17 +503,20 @@ function App() {
       summary: importSummary,
     };
 
-    // Confirm dialog: `scanQr` true/false overrides settings.
-    // Auto mode: leave undefined → follow qr_check / photo_qr_check.
+    // Confirm: `scanQr` true/false overrides settings.
+    // Auto / unset: follow qr_check flags, but skip when session already has QR kunde.
     const scanOverride = opts?.scanQr;
     const forceScan = scanOverride === true;
     const willAutoScan =
       scanOverride === false
         ? false
-        : forceScan
-          ? newVideoPaths.length > 0 || newPhotoPaths.length > 0
-          : (config?.qr_check_enabled && newVideoPaths.length > 0) ||
-            (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
+        : shouldAutoQrAfterImport({
+            force: forceScan,
+            videoPaths: newVideoPaths,
+            photoPaths: newPhotoPaths,
+            qrCheckEnabled: config?.qr_check_enabled,
+            photoQrCheckEnabled: config?.photo_qr_check_enabled,
+          });
 
     if (!willAutoScan) {
       return { importAction, qrAction: null, qrHit: null };
@@ -703,7 +712,7 @@ function App() {
             kind: "eject",
             label: "Auswerfen",
             tone: "success",
-            summary: "SD-Karte ausgeworfen",
+            summary: "SD-Karte ausgeworfen — kann sicher entfernt werden",
             detail: drive,
           });
         } catch (e) {
@@ -731,12 +740,16 @@ function App() {
         const hasError = statusActions.some((a) => a.tone === "error");
         const title = hasError
           ? "Teilweise erfolgreich"
-          : qrHit
+          : qrHit?.applied
             ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
-            : "Erfolg";
+            : qrHit?.keptExisting
+              ? "Erfolg"
+              : qrHit
+                ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
+                : "Erfolg";
 
         showSuccess("", title, {
-          ...(qrHit
+          ...(qrHit?.applied || qrHit?.keptExisting
             ? (qrHit.successOptions ?? {
                 variant: "qr" as const,
                 highlight: qrHit.kundeName || "Kunde erkannt",
@@ -1839,6 +1852,7 @@ function App() {
         highlight={dialogHighlight}
         actions={dialogActions}
         qrPreview={dialogQrPreview}
+        confirm={dialogConfirm}
         onClose={closeDialog}
       />
       <CreateSuccessDialog

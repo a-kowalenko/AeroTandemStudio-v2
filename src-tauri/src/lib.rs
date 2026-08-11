@@ -14,8 +14,8 @@ use commands::app::{
     cleanup_cache, clear_log_buffer, get_app_info, get_recent_logs, run_startup_checks,
 };
 use commands::config::{
-    get_config, get_config_paths, reload_config, reset_config, save_config, validate_kunde_cmd,
-    ConfigState,
+    ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
+    reload_config, reset_config, save_config, validate_kunde_cmd, ConfigState,
 };
 use commands::media::{
     clear_working_session, delete_working_copy, expand_media_paths, get_file_sizes,
@@ -150,6 +150,8 @@ pub fn run() {
             reload_config,
             reset_config,
             get_config_paths,
+            propose_default_media_dirs_cmd,
+            ensure_default_media_dirs_cmd,
             validate_kunde_cmd,
             scan_qr_video,
             scan_qr_photo,

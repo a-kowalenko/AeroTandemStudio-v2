@@ -1,11 +1,16 @@
 //! Tauri commands for config and customer validation.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 use serde::Serialize;
 use tauri::State;
 
 use crate::model::{validate_kunde, Kunde, ValidationResult};
+use crate::storage::default_media_dirs::{
+    ensure_default_media_dir, propose_default_media_dirs, DefaultMediaDirKind,
+    DefaultMediaDirsProposal, EnsureDefaultMediaDirResult,
+};
 use crate::storage::{AppConfig, ConfigStore};
 
 pub struct ConfigState {
@@ -104,4 +109,22 @@ pub fn validate_kunde_cmd(
     };
     let paths = video_paths.unwrap_or_default();
     Ok(validate_kunde(&kunde, &paths, oldschool))
+}
+
+#[tauri::command(rename = "propose_default_media_dirs")]
+pub fn propose_default_media_dirs_cmd() -> Result<DefaultMediaDirsProposal, String> {
+    propose_default_media_dirs().map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename = "ensure_default_media_dir")]
+pub fn ensure_default_media_dirs_cmd(
+    kind: DefaultMediaDirKind,
+    root: Option<String>,
+) -> Result<EnsureDefaultMediaDirResult, String> {
+    let override_root = root
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    ensure_default_media_dir(kind, override_root.as_deref()).map_err(|e| e.to_string())
 }

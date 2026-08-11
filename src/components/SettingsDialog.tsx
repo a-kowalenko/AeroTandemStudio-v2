@@ -1278,7 +1278,9 @@ export function SettingsDialog({
                 onChange={(e) => patch("sd_pc_name", e.target.value)}
               />
               <p className="text-xs text-muted">
-                Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[PC]_…
+                Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[
+                {draft.sd_pc_name.trim() || "PC"}
+                ]_…
               </p>
             </div>
 

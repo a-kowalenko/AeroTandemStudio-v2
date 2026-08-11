@@ -103,9 +103,13 @@ export function SdDriveSelector({
     setEjecting(drive);
     try {
       await ejectSdCard(drive);
-      showSuccess(`SD-Karte ausgeworfen:\n${drive}`, "Ausgeworfen", {
-        autoCloseSecs: 4,
-      });
+      showSuccess(
+        `SD-Karte ausgeworfen:\n${drive}\n\nDie Karte kann jetzt sicher entfernt werden.`,
+        "Ausgeworfen",
+        {
+          autoCloseSecs: 4,
+        },
+      );
       await refreshDrives();
     } catch (e) {
       showWarning(

@@ -30,6 +30,18 @@ export type DialogOptions = {
   actions?: DialogActionStatus[];
   /** Optional QR hit-frame spotlight preview (right column). */
   qrPreview?: QrPreview | null;
+  /**
+   * Dual-button confirm footer (e.g. QR customer switch).
+   * Escape / overlay dismiss calls `onSecondary` (safe default).
+   */
+  confirm?: DialogConfirmOptions | null;
+};
+
+export type DialogConfirmOptions = {
+  secondaryLabel: string;
+  primaryLabel: string;
+  onSecondary: () => void;
+  onPrimary: () => void;
 };
 
 export type SettingsTab =
@@ -64,6 +76,7 @@ type UiState = {
   dialogActions: DialogActionStatus[];
   dialogQrPreview: QrPreview | null;
   dialogPrimaryAction: DialogPrimaryAction | null;
+  dialogConfirm: DialogConfirmOptions | null;
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
@@ -98,6 +111,7 @@ const emptyDialogFields = {
   dialogActions: [] as DialogActionStatus[],
   dialogQrPreview: null as QrPreview | null,
   dialogPrimaryAction: null as DialogPrimaryAction | null,
+  dialogConfirm: null as DialogConfirmOptions | null,
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -132,6 +146,7 @@ export const useUiStore = create<UiState>((set) => ({
       dialogActions: options?.actions?.length ? [...options.actions] : [],
       dialogQrPreview: options?.qrPreview ?? null,
       dialogPrimaryAction: null,
+      dialogConfirm: options?.confirm ?? null,
     }),
   showWarning: (message, title = "Hinweis") =>
     set({

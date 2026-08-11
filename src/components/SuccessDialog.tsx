@@ -25,6 +25,7 @@ import type {
   DialogActionKind,
   DialogActionStatus,
   DialogActionTone,
+  DialogConfirmOptions,
   DialogVariant,
 } from "@/store/uiStore";
 
@@ -57,6 +58,8 @@ type Props = {
   actions?: DialogActionStatus[];
   /** QR hit-frame spotlight (right column when present). */
   qrPreview?: QrPreview | null;
+  /** Dual-button confirm (e.g. QR customer switch). Dismiss = secondary. */
+  confirm?: DialogConfirmOptions | null;
   onClose: () => void;
 };
 
@@ -161,19 +164,24 @@ export function SuccessDialog({
   highlight = "",
   actions = [],
   qrPreview = null,
+  confirm = null,
   onClose,
 }: Props) {
-  const timeoutSecs = autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
+  const timeoutSecs =
+    !confirm && autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
   const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
   const [barActive, setBarActive] = useState(false);
   const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
   const isQr = variant === "qr";
   const highlightText = highlight.trim();
   const hasActions = actions.length > 0;
   const hasError = actions.some((a) => a.tone === "error");
-  const hasWarning = actions.some((a) => a.tone === "warning");
+  const hasWarning =
+    Boolean(confirm) || actions.some((a) => a.tone === "warning");
   const accent = hasError ? "warning" : hasWarning ? "warning" : "success";
   const messageText = message.trim();
   const hasPreview = Boolean(qrPreview?.path?.trim());
@@ -208,21 +216,43 @@ export function SuccessDialog({
     };
   }, [open, timeoutSecs, message, title, variant, highlightText, actions]);
 
-  function close() {
+  function dismissSafe() {
     if (closedRef.current) return;
     closedRef.current = true;
+    const c = confirmRef.current;
+    if (c) {
+      c.onSecondary();
+      return;
+    }
     onCloseRef.current();
+  }
+
+  function onPrimaryConfirm() {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    confirmRef.current?.onPrimary();
+  }
+
+  function onSecondaryConfirm() {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    confirmRef.current?.onSecondary();
+  }
+
+  function close() {
+    dismissSafe();
   }
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent
         className={cn(
-          "pb-7",
+          "z-[100] pb-7",
           hasPreview ? "max-w-3xl" : "max-w-md",
           accent === "success" && "border-l-4 border-l-success",
           accent === "warning" && "border-l-4 border-l-warning",
         )}
+        overlayClassName="z-[100]"
       >
         <DialogHeader>
           {isQr ? (
@@ -319,9 +349,29 @@ export function SuccessDialog({
         </div>
 
         <DialogFooter>
-          <Button className="shrink-0" onClick={close}>
-            OK{timeoutSecs && remaining > 0 ? ` (${remaining}s)` : ""}
-          </Button>
+          {confirm ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0"
+                onClick={onSecondaryConfirm}
+              >
+                {confirm.secondaryLabel}
+              </Button>
+              <Button
+                type="button"
+                className="shrink-0"
+                onClick={onPrimaryConfirm}
+              >
+                {confirm.primaryLabel}
+              </Button>
+            </>
+          ) : (
+            <Button className="shrink-0" onClick={close}>
+              OK{timeoutSecs && remaining > 0 ? ` (${remaining}s)` : ""}
+            </Button>
+          )}
         </DialogFooter>
         {timeoutSecs ? (
           <div

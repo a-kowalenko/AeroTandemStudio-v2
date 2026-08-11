@@ -574,6 +574,42 @@ export async function resetConfig(): Promise<AppConfig> {
   return invoke<AppConfig>("reset_config");
 }
 
+export type DefaultMediaDirKind = "speicherort" | "sd_backup_folder";
+
+export type DefaultMediaDirsProposal = {
+  root: string;
+  speicherort: string;
+  sd_backup_folder: string;
+  warnings: string[];
+  alternate_root: string | null;
+  alternate_speicherort: string | null;
+  alternate_sd_backup_folder: string | null;
+  free_bytes: number | null;
+  alternate_free_bytes: number | null;
+};
+
+export type EnsureDefaultMediaDirResult = {
+  kind: DefaultMediaDirKind;
+  root: string;
+  path: string;
+  created: boolean;
+  warnings: string[];
+};
+
+export async function proposeDefaultMediaDirs(): Promise<DefaultMediaDirsProposal> {
+  return invoke<DefaultMediaDirsProposal>("propose_default_media_dirs");
+}
+
+export async function ensureDefaultMediaDir(
+  kind: DefaultMediaDirKind,
+  root?: string | null,
+): Promise<EnsureDefaultMediaDirResult> {
+  return invoke<EnsureDefaultMediaDirResult>("ensure_default_media_dir", {
+    kind,
+    root: root?.trim() ? root : null,
+  });
+}
+
 export async function validateKunde(
   kunde: Kunde,
   videoPaths: string[] = [],

@@ -32,12 +32,13 @@ import {
   scanQrVideo,
   scanQrVideos,
 } from "../lib/tauri";
+import { emptyCleanup, maybeRemoveQrPhoto, maybeRemoveQrVideo } from "../lib/qrCleanup";
+import { presentQrHit } from "../lib/qrPresent";
 import {
-  maybeRemoveQrPhoto,
-  maybeRemoveQrVideo,
-} from "../lib/qrCleanup";
-import { formatQrSuccess } from "../lib/qrSuccess";
-import { pathsAddedSince, runAutoQrAfterImport } from "../lib/autoQrScan";
+  pathsAddedSince,
+  runAutoQrAfterImport,
+  shouldAutoQrAfterImport,
+} from "../lib/autoQrScan";
 import {
   PHOTO_EXTENSIONS,
   VIDEO_EXTENSIONS,
@@ -80,7 +81,6 @@ export function MediaDropZone({
   const addPhotos = usePhotoStore((s) => s.addPhotos);
   const clearPhotos = usePhotoStore((s) => s.clearPhotos);
 
-  const applyFromQr = useKundeStore((s) => s.applyFromQr);
   const kunde = useKundeStore((s) => s.kunde);
   const ensureDefaultWatermarkClip = useVideoStore((s) => s.ensureDefaultWatermarkClip);
   const clearVideoWatermark = useVideoStore((s) => s.clearWatermarkSelection);
@@ -237,9 +237,12 @@ export function MediaDropZone({
         onImported?.({ videosAdded, photosAdded });
 
         const cfg = useConfigStore.getState().config;
-        const willAutoScan =
-          (cfg?.qr_check_enabled && newVideoPaths.length > 0) ||
-          (cfg?.photo_qr_check_enabled && newPhotoPaths.length > 0);
+        const willAutoScan = shouldAutoQrAfterImport({
+          videoPaths: newVideoPaths,
+          photoPaths: newPhotoPaths,
+          qrCheckEnabled: cfg?.qr_check_enabled,
+          photoQrCheckEnabled: cfg?.photo_qr_check_enabled,
+        });
 
         if (willAutoScan) {
           setExpanding(false);
@@ -273,7 +276,13 @@ export function MediaDropZone({
                   },
                 ],
               });
-              setStatusMsg(`${parts.join(", ")} · QR übernommen`);
+              setStatusMsg(
+                outcome.applied
+                  ? `${parts.join(", ")} · QR übernommen`
+                  : outcome.keptExisting
+                    ? `${parts.join(", ")} · Kunde behalten`
+                    : `${parts.join(", ")} · QR`,
+              );
             } else if (outcome.attempted && outcome.message) {
               setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
             }
@@ -381,20 +390,15 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path,
-        });
-        const cleanup = maybeRemoveQrVideo(result.source_path, {
-          onBeforeRemove: (p) => onRemoveVideo?.(p),
-        });
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path,
           preview: result.preview,
+          runCleanup: () =>
+            maybeRemoveQrVideo(result.source_path, {
+              onBeforeRemove: (p) => onRemoveVideo?.(p),
+            }),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
       }
@@ -417,18 +421,12 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: result.source_path,
-        });
-        const cleanup = await maybeRemoveQrPhoto(result.source_path);
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
-          cleanup,
           sourcePath: result.source_path,
           preview: result.preview,
+          runCleanup: () => maybeRemoveQrPhoto(result.source_path),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
       }
@@ -468,18 +466,14 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde, {
-          preview: result.preview,
-          sourcePath: selected,
-        });
         const typeLabel = kind === "video" ? "Video" : "Foto";
-        const success = formatQrSuccess({
+        await presentQrHit({
           kunde: result.kunde,
           sourcePath: selected,
-          notes: [`Externes ${typeLabel} — Datei nicht importiert.`],
           preview: result.preview,
+          notes: [`Externes ${typeLabel} — Datei nicht importiert.`],
+          runCleanup: async () => emptyCleanup(),
         });
-        showSuccess(success.message, success.title, success.options);
       } else {
         showWarning(
           result.message ||

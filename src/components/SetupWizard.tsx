@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Moon, Sun } from "lucide-react";
+import { Check, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
-import type { AppConfig } from "@/lib/tauri";
+import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
+import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
   CREW_KEEP_PINNED_OPTIONS,
   crewKeepComboboxValue,
@@ -15,6 +16,7 @@ import {
   getAppInfo,
   ORT_OPTIONS,
   parseCrewKeepComboboxValue,
+  proposeDefaultMediaDirs,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
@@ -26,6 +28,133 @@ import {
   SERVER_GUEST_HINT,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
+
+type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
+
+function StandardDirButton({
+  busy,
+  done,
+  disabled,
+  onClick,
+}: {
+  busy: boolean;
+  done: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  // Avoid native `disabled` while busy/done — opacity flash + WebView focus quirks.
+  const locked = busy || done || Boolean(disabled);
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      aria-disabled={locked || undefined}
+      aria-busy={busy || undefined}
+      onClick={() => {
+        if (locked) return;
+        onClick();
+      }}
+      className={cn(
+        "h-7 shrink-0 gap-1.5 px-2.5 text-xs transition-[color,background-color,border-color,box-shadow] duration-300 ease-out",
+        locked && "pointer-events-none",
+        done &&
+          "border-emerald-500/35 bg-emerald-500/15 text-emerald-900 shadow-none hover:bg-emerald-500/20 hover:brightness-100 dark:border-emerald-400/30 dark:bg-emerald-400/15 dark:text-emerald-50",
+      )}
+    >
+      {done ? (
+        <Check className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
+      ) : busy ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+      ) : null}
+      {done ? "Angelegt" : "Standard anlegen"}
+    </Button>
+  );
+}
+
+function FolderDirField({
+  label,
+  value,
+  placeholder,
+  standardPath,
+  inputDisabled,
+  pickDisabled,
+  invalid,
+  onPick,
+  busy,
+  done,
+  createDisabled,
+  onCreate,
+  error,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  standardPath?: string | null;
+  inputDisabled?: boolean;
+  pickDisabled?: boolean;
+  invalid?: boolean;
+  onPick: () => void;
+  busy: boolean;
+  done: boolean;
+  createDisabled?: boolean;
+  onCreate: () => void;
+  error?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <div className="relative">
+        <Input
+          value={value}
+          readOnly
+          placeholder={placeholder}
+          disabled={inputDisabled}
+          aria-invalid={invalid || undefined}
+          className={cn(
+            "pr-9",
+            invalid && "border-destructive focus-visible:ring-destructive/40",
+          )}
+        />
+        <button
+          type="button"
+          disabled={pickDisabled || inputDisabled}
+          onClick={onPick}
+          title="Ordner wählen"
+          aria-label="Ordner wählen"
+          className={cn(
+            "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+            "hover:bg-primary-soft hover:text-foreground",
+            "disabled:pointer-events-none disabled:opacity-50",
+          )}
+        >
+          <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      </div>
+      {standardPath ? (
+        <div className="flex items-center gap-2">
+          <p
+            className="min-w-0 flex-1 truncate text-xs text-muted"
+            title={standardPath}
+          >
+            Standard: {standardPath}
+          </p>
+          <StandardDirButton
+            busy={busy}
+            done={done}
+            disabled={createDisabled}
+            onClick={onCreate}
+          />
+        </div>
+      ) : null}
+      {error ? (
+        <p className="text-[11px] leading-snug text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 const STEPS = [
   "Darstellung",
@@ -83,6 +212,11 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [testingServer, setTestingServer] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [mediaDirsProposal, setMediaDirsProposal] =
+    useState<DefaultMediaDirsProposal | null>(null);
+  const [creatingDefaultDir, setCreatingDefaultDir] =
+    useState<DefaultMediaDirKind | null>(null);
+  const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
 
   useEffect(() => {
     if (!open || !config) return;
@@ -97,6 +231,16 @@ export function SetupWizard({ open, onComplete }: Props) {
     setStep(0);
     setSkippedSteps(new Set());
     setFieldErrors({});
+    setMediaDirsProposal(null);
+    setCreatingDefaultDir(null);
+    setDefaultDirDone({});
+    void proposeDefaultMediaDirs()
+      .then((p) => {
+        if (!cancelled) setMediaDirsProposal(p);
+      })
+      .catch(() => {
+        if (!cancelled) setMediaDirsProposal(null);
+      });
 
     if (!next.sd_pc_name?.trim()) {
       void getAppInfo()
@@ -146,10 +290,55 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   async function pickFolder(key: "speicherort" | "sd_backup_folder") {
-    const selected = await openDialog({ directory: true, multiple: false });
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      defaultPath: mediaDirsProposal?.root || undefined,
+    });
     if (typeof selected === "string") {
       patch(key, selected);
       clearFieldError(key);
+      setDefaultDirDone((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function onCreateDefaultDir(kind: DefaultMediaDirKind) {
+    if (creatingDefaultDir || defaultDirDone[kind]) return;
+    setCreatingDefaultDir(kind);
+    try {
+      const result = await applyDefaultMediaDir(kind);
+      if (!result) return;
+      const { ensured, computerName } = result;
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev };
+        if (kind === "speicherort") {
+          next.speicherort = ensured.path;
+        } else {
+          next.sd_backup_folder = ensured.path;
+          if (!next.sd_pc_name.trim() && computerName) {
+            next.sd_pc_name = computerName;
+          }
+        }
+        return next;
+      });
+      clearFieldError(kind);
+      setDefaultDirDone((prev) => ({ ...prev, [kind]: true }));
+      // Warnings already surfaced via confirm before create; avoid SuccessDialog
+      // under the wizard (z-50 vs wizard z-90) which ate the next click.
+    } catch (e) {
+      showError(
+        e instanceof Error ? e.message : String(e),
+        "Standardordner",
+      );
+    } finally {
+      setCreatingDefaultDir(null);
+      // Release focus from the locked button / native confirm handoff.
+      queueMicrotask(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      });
     }
   }
 
@@ -491,41 +680,37 @@ export function SetupWizard({ open, onComplete }: Props) {
               <p className="text-sm text-muted">
                 Fertige Vorgänge werden im Speicherort abgelegt.
               </p>
-              <div className="space-y-1.5">
-                <Label>Speicherort</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={draft.speicherort}
-                    readOnly
-                    placeholder="Ordner wählen…"
-                    aria-invalid={fieldErrors.speicherort ? true : undefined}
-                    className={cn(
-                      fieldErrors.speicherort &&
-                        "border-destructive focus-visible:ring-destructive/40",
-                    )}
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => void pickFolder("speicherort")}
-                  >
-                    Wählen…
-                  </Button>
-                </div>
-                {fieldErrors.speicherort ? (
-                  <p className="text-[11px] leading-snug text-destructive" role="alert">
-                    {fieldErrors.speicherort}
-                  </p>
-                ) : null}
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  Ablage
+                </p>
+                <FolderDirField
+                  label="Speicherort"
+                  value={draft.speicherort}
+                  placeholder="Ordner wählen…"
+                  standardPath={mediaDirsProposal?.speicherort}
+                  invalid={Boolean(fieldErrors.speicherort)}
+                  onPick={() => void pickFolder("speicherort")}
+                  busy={creatingDefaultDir === "speicherort"}
+                  done={Boolean(defaultDirDone.speicherort)}
+                  createDisabled={
+                    creatingDefaultDir !== null &&
+                    creatingDefaultDir !== "speicherort"
+                  }
+                  onCreate={() => void onCreateDefaultDir("speicherort")}
+                  error={fieldErrors.speicherort}
+                />
               </div>
-              <Combobox
-                label="Dropzone (Standard)"
-                value={draft.ort}
-                onChange={(v) => patch("ort", v)}
-                options={ORT_OPTIONS}
-                placeholder="Dropzone…"
-                listZIndex={200}
-              />
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <Combobox
+                  label="Dropzone (Standard)"
+                  value={draft.ort}
+                  onChange={(v) => patch("ort", v)}
+                  options={ORT_OPTIONS}
+                  placeholder="Dropzone…"
+                  listZIndex={200}
+                />
+              </div>
             </>
           ) : null}
 
@@ -563,44 +748,29 @@ export function SetupWizard({ open, onComplete }: Props) {
                 </label>
                 <div
                   className={cn(
-                    "space-y-3 border-l-2 border-border/80 pl-3",
+                    "space-y-3",
                     !draft.sd_auto_backup && "opacity-50",
                   )}
                 >
-                  <div className="space-y-1.5">
-                    <Label>Backup-Ordner</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        value={draft.sd_backup_folder}
-                        readOnly
-                        placeholder="Ordner wählen…"
-                        disabled={!draft.sd_auto_backup}
-                        aria-invalid={
-                          fieldErrors.sd_backup_folder ? true : undefined
-                        }
-                        className={cn(
-                          fieldErrors.sd_backup_folder &&
-                            "border-destructive focus-visible:ring-destructive/40",
-                        )}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={!draft.sd_auto_backup}
-                        onClick={() => void pickFolder("sd_backup_folder")}
-                      >
-                        Wählen…
-                      </Button>
-                    </div>
-                    {fieldErrors.sd_backup_folder ? (
-                      <p
-                        className="text-[11px] leading-snug text-destructive"
-                        role="alert"
-                      >
-                        {fieldErrors.sd_backup_folder}
-                      </p>
-                    ) : null}
-                  </div>
+                  <FolderDirField
+                    label="Backup-Ordner"
+                    value={draft.sd_backup_folder}
+                    placeholder="Ordner wählen…"
+                    standardPath={mediaDirsProposal?.sd_backup_folder}
+                    inputDisabled={!draft.sd_auto_backup}
+                    pickDisabled={!draft.sd_auto_backup}
+                    invalid={Boolean(fieldErrors.sd_backup_folder)}
+                    onPick={() => void pickFolder("sd_backup_folder")}
+                    busy={creatingDefaultDir === "sd_backup_folder"}
+                    done={Boolean(defaultDirDone.sd_backup_folder)}
+                    createDisabled={
+                      !draft.sd_auto_backup ||
+                      (creatingDefaultDir !== null &&
+                        creatingDefaultDir !== "sd_backup_folder")
+                    }
+                    onCreate={() => void onCreateDefaultDir("sd_backup_folder")}
+                    error={fieldErrors.sd_backup_folder}
+                  />
                   <div className="space-y-1.5">
                     <Label>PC Name</Label>
                     <Input
@@ -611,7 +781,9 @@ export function SetupWizard({ open, onComplete }: Props) {
                     />
                     <p className="text-xs text-muted">
                       Wird im Backup-Ordnernamen verwendet, z.B.
-                      SD_Backup_…[PC]_…
+                      SD_Backup_…[
+                      {draft.sd_pc_name.trim() || "PC"}
+                      ]_…
                     </p>
                   </div>
                   <label
