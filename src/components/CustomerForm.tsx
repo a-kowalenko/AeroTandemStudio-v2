@@ -171,6 +171,8 @@ function Section({
 
 type CustomerFormProps = {
   disabled?: boolean;
+  /** When set, locks only Crew fields (Tandemmaster/Videospringer). Defaults to `disabled`. */
+  crewDisabled?: boolean;
 };
 
 const FORM_MODES: { id: "kunde" | "manual"; label: string; icon: typeof QrCode }[] = [
@@ -441,7 +443,7 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   );
 }
 
-export function CustomerForm({ disabled }: CustomerFormProps) {
+export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
   const patch = useKundeStore((s) => s.patch);
@@ -473,6 +475,8 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
   const mode = (kunde.video_mode || "") as "" | "handcam" | "outside";
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
+  // Crew is independent of import/QR locks; only freeze during Vorgang create unless overridden.
+  const crewBusy = Boolean(crewDisabled ?? disabled);
   const productsFromQr =
     isQrMode &&
     (kunde.handcam_foto ||
@@ -683,7 +687,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
             onChange={(v) => setField("tandemmaster", v)}
             onSelectOption={() => focusVideospringerIfEmpty()}
             options={tandemmasterOptions}
-            disabled={busy}
+            disabled={crewBusy}
             placeholder="Name…"
             warning={warnTandemmaster}
           />
@@ -694,7 +698,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               value={kunde.videospringer}
               onChange={(v) => setField("videospringer", v)}
               options={videospringerOptions}
-              disabled={busy}
+              disabled={crewBusy}
               placeholder="Name…"
               warning={warnVideospringer}
             />

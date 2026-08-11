@@ -1443,7 +1443,7 @@ function App() {
               <CustomerSessionStrip disabled={uiLocked} />
             </div>
             <div className="p-4">
-              <CustomerForm disabled={uiLocked} />
+              <CustomerForm disabled={uiLocked} crewDisabled={busy} />
             </div>
           </div>
 
