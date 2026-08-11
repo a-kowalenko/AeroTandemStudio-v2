@@ -82,7 +82,7 @@ function Field({
   );
 }
 
-type ProductRowProps = {
+type MediaOptionCellProps = {
   label: string;
   checked: boolean;
   paid: boolean;
@@ -91,17 +91,24 @@ type ProductRowProps = {
   disabled?: boolean;
 };
 
-function ProductRow({ label, checked, paid, onChecked, onPaid, disabled }: ProductRowProps) {
+function MediaOptionCell({
+  label,
+  checked,
+  paid,
+  onChecked,
+  onPaid,
+  disabled,
+}: MediaOptionCellProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+        "flex flex-col gap-2 rounded-lg border px-2.5 py-2 transition-colors",
         checked
           ? "border-primary/35 bg-primary-soft/40"
           : "border-border bg-card-elevated/80",
       )}
     >
-      <label className="flex items-center gap-2 text-sm font-medium">
+      <label className="flex min-w-0 items-center gap-2 text-sm font-medium">
         <Checkbox
           checked={checked}
           onCheckedChange={(v) => {
@@ -111,10 +118,11 @@ function ProductRow({ label, checked, paid, onChecked, onPaid, disabled }: Produ
           }}
           disabled={disabled}
         />
-        {label}
+        <span className="truncate">{label}</span>
       </label>
-      <label className="flex items-center gap-2 text-xs text-muted">
-        <Checkbox
+      <label className="flex items-center justify-between gap-2 text-[11px] text-muted">
+        <span>Bezahlt</span>
+        <Switch
           checked={paid}
           onCheckedChange={(v) => {
             const on = v === true;
@@ -122,8 +130,8 @@ function ProductRow({ label, checked, paid, onChecked, onPaid, disabled }: Produ
             if (on) onChecked(true);
           }}
           disabled={disabled}
+          aria-label={`${label} bezahlt`}
         />
-        Bezahlt
       </label>
     </div>
   );
@@ -241,6 +249,13 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
     if (!hasPreview && scanOpen) setScanOpen(false);
   }, [hasPreview, scanOpen]);
 
+  const scanFrameAr =
+    qrPreview && qrPreview.width > 0 && qrPreview.height > 0
+      ? qrPreview.width / qrPreview.height
+      : 16 / 9;
+  // Frame (max-h × aspect) drives width; +3rem for dialog p-6. Floor ~22rem so meta stays usable.
+  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${scanFrameAr} + 3rem)), calc(100vw - 2rem))`;
+
   return (
     <div className="inline-flex shrink-0 items-center gap-1.5">
       {hasPreview && qrPreview ? (
@@ -261,18 +276,24 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
             <Eye className="h-3.5 w-3.5" />
           </Button>
           <Dialog open={scanOpen} onOpenChange={setScanOpen}>
-            <DialogContent className="max-w-4xl gap-4">
-              <DialogHeader>
+            <DialogContent
+              className="flex w-auto max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-4"
+              style={{ width: scanDialogWidth }}
+            >
+              <DialogHeader className="shrink-0">
                 <DialogTitle>QR-Scan</DialogTitle>
-                <DialogDescription>Treffer-Frame dieser Session</DialogDescription>
+                <DialogDescription>
+                  Treffer-Frame dieser Session
+                </DialogDescription>
               </DialogHeader>
               <QrSpotlightPreview
                 preview={qrPreview}
                 showSpotlight={showShadow}
-                className="w-full"
+                className="max-w-full"
               />
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-stretch">
+              <div className="grid w-full shrink-0 gap-3 min-[28rem]:grid-cols-[1fr_auto] min-[28rem]:items-stretch">
                 <QrHitMeta
+                  className="min-w-0"
                   fileName={sourceLabel || null}
                   displayName={kundeDisplayName(metaKunde) || null}
                   customerHash={metaKunde.kunden_id_hash}
@@ -287,7 +308,7 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
                       : null
                   }
                 />
-                <div className="flex flex-col gap-3 sm:w-[10.5rem] sm:justify-between">
+                <div className="flex flex-col gap-3 min-[28rem]:w-[10.5rem] min-[28rem]:justify-between">
                   <label
                     htmlFor="qr-scan-shadow"
                     className="flex h-fit cursor-pointer items-center gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
@@ -303,7 +324,7 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
                   </label>
                   <Button
                     type="button"
-                    className="w-full sm:mt-auto"
+                    className="w-full min-[28rem]:mt-auto"
                     onClick={() => setScanOpen(false)}
                   >
                     Schließen
@@ -609,7 +630,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
         </div>
       </Section>
 
-      <Section title="Medien-Modus">
+      <Section title="Medien">
         <div
           className={cn(
             "inline-flex w-full max-w-sm rounded-lg border border-border bg-card-elevated/80 p-1",
@@ -657,9 +678,9 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
           </p>
         ) : null}
 
-        {mode === "handcam" && (
-          <div className="mt-2 space-y-2">
-            <ProductRow
+        {mode === "handcam" ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <MediaOptionCell
               label="Handcam Foto"
               checked={kunde.handcam_foto}
               paid={kunde.ist_bezahlt_handcam_foto}
@@ -667,7 +688,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               onPaid={(v) => setField("ist_bezahlt_handcam_foto", v)}
               disabled={busy || productsLocked}
             />
-            <ProductRow
+            <MediaOptionCell
               label="Handcam Video"
               checked={kunde.handcam_video}
               paid={kunde.ist_bezahlt_handcam_video}
@@ -676,11 +697,11 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               disabled={busy || productsLocked}
             />
           </div>
-        )}
+        ) : null}
 
-        {mode === "outside" && (
-          <div className="mt-2 space-y-2">
-            <ProductRow
+        {mode === "outside" ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <MediaOptionCell
               label="Outside Foto"
               checked={kunde.outside_foto}
               paid={kunde.ist_bezahlt_outside_foto}
@@ -688,7 +709,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               onPaid={(v) => setField("ist_bezahlt_outside_foto", v)}
               disabled={busy || productsLocked}
             />
-            <ProductRow
+            <MediaOptionCell
               label="Outside Video"
               checked={kunde.outside_video}
               paid={kunde.ist_bezahlt_outside_video}
@@ -697,7 +718,7 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
               disabled={busy || productsLocked}
             />
           </div>
-        )}
+        ) : null}
 
         {productsLocked ? (
           <p className="text-[11px] text-muted">
