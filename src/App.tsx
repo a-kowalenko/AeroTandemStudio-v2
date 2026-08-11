@@ -330,7 +330,10 @@ function App() {
     };
   }
 
-  async function importPathsIntoApp(paths: string[]): Promise<{
+  async function importPathsIntoApp(
+    paths: string[],
+    opts?: { scanQr?: boolean },
+  ): Promise<{
     importAction: DialogActionStatus;
     qrAction: DialogActionStatus | null;
     qrHit: AutoQrScanOutcome | null;
@@ -389,9 +392,17 @@ function App() {
       summary: importSummary,
     };
 
+    // Confirm dialog: `scanQr` true/false overrides settings.
+    // Auto mode: leave undefined → follow qr_check / photo_qr_check.
+    const scanOverride = opts?.scanQr;
+    const forceScan = scanOverride === true;
     const willAutoScan =
-      (config?.qr_check_enabled && newVideoPaths.length > 0) ||
-      (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
+      scanOverride === false
+        ? false
+        : forceScan
+          ? newVideoPaths.length > 0 || newPhotoPaths.length > 0
+          : (config?.qr_check_enabled && newVideoPaths.length > 0) ||
+            (config?.photo_qr_check_enabled && newPhotoPaths.length > 0);
 
     if (!willAutoScan) {
       return { importAction, qrAction: null, qrHit: null };
@@ -406,6 +417,7 @@ function App() {
           runAutoQrAfterImport({
             videoPaths: newVideoPaths,
             photoPaths: newPhotoPaths,
+            forceScan,
             onBeforeRemoveVideo: (p) => {
               useVideoStore.getState().clearCutMarksFor([p]);
               void discardVideoCutUndoForPath(p);
@@ -574,7 +586,9 @@ function App() {
           useSdStore.getState().setBackupProgress(null);
           useSdStore.getState().setWorkflowProgress(null);
           setLoading(true, "Importiere SD-Dateien…");
-          const imported = await importPathsIntoApp(importPaths);
+          const imported = await importPathsIntoApp(importPaths, {
+            scanQr: actions.scanQr,
+          });
           statusActions.push(imported.importAction);
           if (imported.qrAction) statusActions.push(imported.qrAction);
           if (imported.qrHit) qrHit = imported.qrHit;

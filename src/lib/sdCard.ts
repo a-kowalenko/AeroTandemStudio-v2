@@ -77,6 +77,11 @@ export type SdWorkflowActions = {
   import: boolean;
   clear: boolean;
   eject: boolean;
+  /**
+   * Confirm-dialog override for post-import QR.
+   * `undefined` = use settings (auto mode). `true` = force scan. `false` = skip.
+   */
+  scanQr?: boolean;
 };
 
 export type ProcessedFileEntry = {

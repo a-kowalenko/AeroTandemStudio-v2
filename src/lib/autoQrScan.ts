@@ -21,6 +21,11 @@ import type { DialogOptions } from "@/store/uiStore";
 export type AutoQrScanInput = {
   videoPaths?: string[];
   photoPaths?: string[];
+  /**
+   * When true, scan imported videos/photos regardless of
+   * `qr_check_enabled` / `photo_qr_check_enabled`.
+   */
+  forceScan?: boolean;
   /** Called before a QR video clip is removed from the session list. */
   onBeforeRemoveVideo?: (path: string) => void;
 };
@@ -69,7 +74,8 @@ function formatHit(
 }
 
 /**
- * Scan newly imported media when the matching config flags are on.
+ * Scan newly imported media when the matching config flags are on,
+ * or when `forceScan` is set (confirm-dialog override).
  * Prefers video hits; falls back to photos if videos find nothing.
  */
 export async function runAutoQrAfterImport(
@@ -80,8 +86,11 @@ export async function runAutoQrAfterImport(
 
   const videoPaths = input.videoPaths?.filter(Boolean) ?? [];
   const photoPaths = input.photoPaths?.filter(Boolean) ?? [];
-  const scanVideos = cfg.qr_check_enabled && videoPaths.length > 0;
-  const scanPhotos = cfg.photo_qr_check_enabled && photoPaths.length > 0;
+  const force = Boolean(input.forceScan);
+  const scanVideos =
+    (force || cfg.qr_check_enabled) && videoPaths.length > 0;
+  const scanPhotos =
+    (force || cfg.photo_qr_check_enabled) && photoPaths.length > 0;
 
   if (!scanVideos && !scanPhotos) return emptyOutcome();
 

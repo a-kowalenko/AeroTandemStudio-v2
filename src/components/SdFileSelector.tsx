@@ -9,6 +9,8 @@ import {
 } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
+import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
 import {
   Select,
   SelectContent,
@@ -22,6 +24,8 @@ import {
   type ThumbState,
 } from "../lib/sdThumbnailLoader";
 import { cn } from "../lib/utils";
+import { useConfigStore } from "../store/configStore";
+import { useKundeStore } from "../store/kundeStore";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { SdVideoTile } from "./SdVideoTile";
 
@@ -104,7 +108,10 @@ export function SdFileSelector({
     import: true,
     clear: false,
     eject: false,
+    scanQr: false,
   });
+  const config = useConfigStore((s) => s.config);
+  const formMode = useKundeStore((s) => s.kunde.form_mode);
   const [dragBox, setDragBox] = useState<{
     x0: number;
     y0: number;
@@ -156,12 +163,18 @@ export function SdFileSelector({
     dragBoxRef.current = null;
     setDragBox(null);
     setSelectionDragging(false);
+    const isQrMode = formMode === "kunde";
+    const settingsQrOn =
+      Boolean(config?.qr_check_enabled) ||
+      Boolean(config?.photo_qr_check_enabled);
     setActions({
       backup: defaultActions?.backup ?? true,
       import: defaultActions?.import ?? true,
       // Clear only with backup
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
       eject: Boolean(defaultActions?.eject),
+      // QR mode already on → skip auto-scan by default; else follow settings.
+      scanQr: isQrMode ? false : settingsQrOn,
     });
     setThumbs(loaderRef.current.snapshotFor(files.map((f) => f.path)));
     // Intentionally only when dialog opens or file list changes — not on every defaultActions identity change.
@@ -348,6 +361,20 @@ export function SdFileSelector({
       }
       if (key === "clear" && value && !prev.backup) {
         return prev;
+      }
+      if (key === "import" && !value) {
+        return { ...prev, import: false, scanQr: false };
+      }
+      if (key === "import" && value) {
+        const isQrMode = formMode === "kunde";
+        const settingsQrOn =
+          Boolean(config?.qr_check_enabled) ||
+          Boolean(config?.photo_qr_check_enabled);
+        return {
+          ...prev,
+          import: true,
+          scanQr: isQrMode ? false : settingsQrOn,
+        };
       }
       return { ...prev, [key]: value };
     });
@@ -667,6 +694,33 @@ export function SdFileSelector({
               Bereinigen nur nach Backup möglich.
             </span>
           ) : null}
+          <div
+            className={cn(
+              "ml-auto flex items-center gap-2",
+              !actions.import && "opacity-50",
+            )}
+            title={
+              actions.import
+                ? "Importierte Medien auf QR-Code prüfen"
+                : "Nur möglich, wenn Import aktiviert ist"
+            }
+          >
+            <Switch
+              id="sd-scan-qr"
+              checked={Boolean(actions.scanQr)}
+              disabled={submitting || !actions.import}
+              onCheckedChange={(v) => patchAction("scanQr", v === true)}
+            />
+            <Label
+              htmlFor="sd-scan-qr"
+              className={cn(
+                "cursor-pointer text-sm font-normal",
+                (submitting || !actions.import) && "pointer-events-none",
+              )}
+            >
+              QR scannen
+            </Label>
+          </div>
         </div>
 
         {viewMode === "thumbnail" ? (
