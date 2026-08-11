@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { cn } from "@/lib/utils";
-import { discardQrPreview, type QrPreview } from "@/lib/tauri";
+import type { QrPreview } from "@/lib/tauri";
 import type {
   DialogActionKind,
   DialogActionStatus,
@@ -169,8 +169,6 @@ export function SuccessDialog({
   const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const previewPathRef = useRef<string | null>(null);
-  previewPathRef.current = qrPreview?.path?.trim() || null;
   const isQr = variant === "qr";
   const highlightText = highlight.trim();
   const hasActions = actions.length > 0;
@@ -201,13 +199,6 @@ export function SuccessDialog({
       setRemaining(left);
       if (left <= 0 && !closedRef.current) {
         closedRef.current = true;
-        const path = previewPathRef.current;
-        previewPathRef.current = null;
-        if (path) {
-          void discardQrPreview(path).catch(() => {
-            /* best-effort temp cleanup */
-          });
-        }
         onCloseRef.current();
       }
     }, 250);
@@ -217,19 +208,9 @@ export function SuccessDialog({
     };
   }, [open, timeoutSecs, message, title, variant, highlightText, actions]);
 
-  function discardPreview() {
-    const path = previewPathRef.current;
-    if (!path) return;
-    previewPathRef.current = null;
-    void discardQrPreview(path).catch(() => {
-      /* best-effort temp cleanup */
-    });
-  }
-
   function close() {
     if (closedRef.current) return;
     closedRef.current = true;
-    discardPreview();
     onCloseRef.current();
   }
 
@@ -243,68 +224,74 @@ export function SuccessDialog({
           accent === "warning" && "border-l-4 border-l-warning",
         )}
       >
+        <DialogHeader>
+          {isQr ? (
+            <div className="mb-1 flex items-center gap-2.5">
+              <span
+                className={cn(
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                  accent === "success"
+                    ? "bg-success/15 text-success"
+                    : "bg-warning/15 text-warning",
+                )}
+              >
+                <QrCode className="h-5 w-5" aria-hidden />
+              </span>
+              <div className="min-w-0 flex-1">
+                <DialogTitle
+                  className={cn(
+                    "flex items-center gap-1.5",
+                    accent === "success" ? "text-success" : "text-warning",
+                  )}
+                >
+                  {accent === "success" ? (
+                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                  ) : (
+                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                  )}
+                  {title}
+                </DialogTitle>
+              </div>
+            </div>
+          ) : (
+            <DialogTitle
+              className={
+                accent === "success" ? "text-success" : "text-warning"
+              }
+            >
+              {title}
+            </DialogTitle>
+          )}
+          {isQr && highlightText ? (
+            <p className="pt-1 text-xl font-semibold tracking-tight text-foreground">
+              {highlightText}
+            </p>
+          ) : null}
+          {!hasPreview && messageText && !hasActions ? (
+            <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
+              {messageText}
+            </DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">
+              {messageText || "Zusammenfassung der Aktionen."}
+            </DialogDescription>
+          )}
+        </DialogHeader>
+
         <div
           className={cn(
             hasPreview && "grid gap-4 sm:grid-cols-2 sm:items-start",
           )}
         >
           <div className="min-w-0">
-            <DialogHeader>
-              {isQr ? (
-                <div className="mb-1 flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-                      accent === "success"
-                        ? "bg-success/15 text-success"
-                        : "bg-warning/15 text-warning",
-                    )}
-                  >
-                    <QrCode className="h-5 w-5" aria-hidden />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <DialogTitle
-                      className={cn(
-                        "flex items-center gap-1.5",
-                        accent === "success" ? "text-success" : "text-warning",
-                      )}
-                    >
-                      {accent === "success" ? (
-                        <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-                      ) : (
-                        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                      )}
-                      {title}
-                    </DialogTitle>
-                  </div>
-                </div>
-              ) : (
-                <DialogTitle
-                  className={
-                    accent === "success" ? "text-success" : "text-warning"
-                  }
-                >
-                  {title}
-                </DialogTitle>
-              )}
-              {isQr && highlightText ? (
-                <p className="pt-1 text-xl font-semibold tracking-tight text-foreground">
-                  {highlightText}
-                </p>
-              ) : null}
-              {messageText && !hasActions ? (
-                <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
-                  {messageText}
-                </DialogDescription>
-              ) : (
-                <DialogDescription className="sr-only">
-                  {messageText || "Zusammenfassung der Aktionen."}
-                </DialogDescription>
-              )}
-            </DialogHeader>
+            {hasPreview && messageText && !hasActions ? (
+              <p className="whitespace-pre-wrap break-words text-sm text-foreground [overflow-wrap:anywhere]">
+                {messageText}
+              </p>
+            ) : null}
 
             {hasActions ? (
-              <ul className="mt-4 min-w-0 space-y-2">
+              <ul className="min-w-0 space-y-2">
                 {actions.map((action) => (
                   <ActionRow
                     key={`${action.kind}-${action.label}-${action.summary}`}

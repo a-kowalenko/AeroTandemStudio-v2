@@ -142,7 +142,10 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
         scanQrPhoto(photo.path),
       );
       if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path ?? photo.path,
+        });
         const cleanup = await maybeRemoveQrPhoto(result.source_path ?? photo.path);
         const success = formatQrSuccess({
           kunde: result.kunde,

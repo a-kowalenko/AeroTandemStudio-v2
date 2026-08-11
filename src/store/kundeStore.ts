@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import type { Kunde } from "../lib/tauri";
+import type { Kunde, QrPreview } from "../lib/tauri";
+import {
+  discardQrPreviewBestEffort,
+  takeQrPreview,
+} from "../lib/qrPreviewSession";
 
 function todayDe(): string {
   const d = new Date();
@@ -38,10 +42,19 @@ export function emptyKunde(partial?: Partial<Kunde>): Kunde {
   };
 }
 
+export type ApplyFromQrOpts = {
+  preview?: QrPreview | null;
+  sourcePath?: string | null;
+};
+
 type KundeState = {
   kunde: Kunde;
   /** Last QR-applied customer; used to restore QR mode after a manual switch. */
   qrSnapshot: Kunde | null;
+  /** Hit-frame preview for the current QR session (survives SuccessDialog close). */
+  qrPreview: QrPreview | null;
+  /** Source media path of the last QR hit (for display). */
+  qrPreviewSource: string | null;
   /** Bumps on each successful QR apply (for UI lock sync). */
   qrRevision: number;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
@@ -59,7 +72,7 @@ type KundeState = {
     gast_name?: string;
     outside_video?: boolean;
   }) => void;
-  applyFromQr: (scanned: Kunde) => void;
+  applyFromQr: (scanned: Kunde, opts?: ApplyFromQrOpts) => void;
   /** Toggle QR ↔ manual; restoring QR re-applies qrSnapshot (manual identity edits discarded). */
   switchFormMode: (mode: "kunde" | "manual") => void;
   resetSession: (keep?: {
@@ -74,6 +87,8 @@ type KundeState = {
 export const useKundeStore = create<KundeState>((set, get) => ({
   kunde: emptyKunde(),
   qrSnapshot: null,
+  qrPreview: null,
+  qrPreviewSource: null,
   qrRevision: 0,
 
   setField: (key, value) => {
@@ -174,7 +189,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     });
   },
 
-  applyFromQr: (scanned) => {
+  applyFromQr: (scanned, opts) => {
     const prev = get().kunde;
     const vorname = scanned.vorname ?? "";
     const nachname = scanned.nachname ?? "";
@@ -216,9 +231,20 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       videospringer: prev.videospringer,
     };
 
+    const preview =
+      opts === undefined
+        ? get().qrPreview
+        : takeQrPreview(get().qrPreview, opts.preview ?? null);
+    const sourcePath =
+      opts === undefined
+        ? get().qrPreviewSource
+        : opts.sourcePath?.trim() || null;
+
     set({
       qrRevision: get().qrRevision + 1,
       qrSnapshot: { ...next },
+      qrPreview: preview,
+      qrPreviewSource: sourcePath,
       kunde: next,
     });
     // Lazy: vermeidet zirkulären Import mit video/photo stores.
@@ -269,9 +295,13 @@ export const useKundeStore = create<KundeState>((set, get) => ({
 
   resetSession: (keep) => {
     const prev = get().kunde;
+    const oldPreview = get().qrPreview;
+    discardQrPreviewBestEffort(oldPreview?.path);
     set({
       qrRevision: 0,
       qrSnapshot: null,
+      qrPreview: null,
+      qrPreviewSource: null,
       kunde: emptyKunde({
         ort: prev.ort,
         tandemmaster: keep?.tandemmaster

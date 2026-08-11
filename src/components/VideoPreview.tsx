@@ -514,7 +514,10 @@ export function VideoPreview({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path ?? clip.path,
+        });
         const cleanup = maybeRemoveQrVideo(result.source_path ?? clip.path, {
           onBeforeRemove: (p) => onBeforeRemoveClip?.(p),
         });

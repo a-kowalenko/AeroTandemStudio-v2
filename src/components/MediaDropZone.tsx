@@ -575,7 +575,10 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path ?? path,
+        });
         const cleanup = maybeRemoveQrVideo(result.source_path ?? path, {
           onBeforeRemove: (p) => onRemoveVideo?.(p),
         });
@@ -603,7 +606,10 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path ?? path,
+        });
         const cleanup = await maybeRemoveQrPhoto(result.source_path ?? path);
         const success = formatQrSuccess({
           kunde: result.kunde,
@@ -634,7 +640,10 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path,
+        });
         const cleanup = maybeRemoveQrVideo(result.source_path, {
           onBeforeRemove: (p) => onRemoveVideo?.(p),
         });
@@ -667,7 +676,10 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: result.source_path,
+        });
         const cleanup = await maybeRemoveQrPhoto(result.source_path);
         const success = formatQrSuccess({
           kunde: result.kunde,
@@ -715,7 +727,10 @@ export function MediaDropZone({
       if (result.cancelled) {
         showWarning(result.message, "QR-Scan");
       } else if (result.found && result.kunde) {
-        applyFromQr(result.kunde);
+        applyFromQr(result.kunde, {
+          preview: result.preview,
+          sourcePath: selected,
+        });
         const typeLabel = kind === "video" ? "Video" : "Foto";
         const success = formatQrSuccess({
           kunde: result.kunde,

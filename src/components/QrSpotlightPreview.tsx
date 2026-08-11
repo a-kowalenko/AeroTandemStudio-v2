@@ -6,10 +6,16 @@ import type { QrPreview } from "@/lib/tauri";
 type Props = {
   preview: QrPreview;
   className?: string;
+  /** When false, show the frame without dimming / QR square. Default true. */
+  showSpotlight?: boolean;
 };
 
-/** Hit-frame with QR spotlight square and dimmed surroundings. */
-export function QrSpotlightPreview({ preview, className }: Props) {
+/** Hit-frame with optional QR spotlight square and dimmed surroundings. */
+export function QrSpotlightPreview({
+  preview,
+  className,
+  showSpotlight = true,
+}: Props) {
   const [loaded, setLoaded] = useState(false);
   const src = convertFileSrc(preview.path);
   const spot = preview.spotlight;
@@ -33,7 +39,7 @@ export function QrSpotlightPreview({ preview, className }: Props) {
         draggable={false}
         onLoad={() => setLoaded(true)}
       />
-      {spot && loaded ? (
+      {showSpotlight && spot && loaded ? (
         <div
           className="pointer-events-none absolute rounded-[3px] border-2 border-success shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-opacity duration-200"
           style={{

@@ -111,7 +111,10 @@ export async function runAutoQrAfterImport(
       };
     }
     if (result.found && result.kunde) {
-      applyFromQr(result.kunde);
+      applyFromQr(result.kunde, {
+        preview: result.preview,
+        sourcePath: result.source_path,
+      });
       const cleanup = maybeRemoveQrVideo(result.source_path, {
         onBeforeRemove: input.onBeforeRemoveVideo,
       });
@@ -138,7 +141,10 @@ export async function runAutoQrAfterImport(
       };
     }
     if (result.found && result.kunde) {
-      applyFromQr(result.kunde);
+      applyFromQr(result.kunde, {
+        preview: result.preview,
+        sourcePath: result.source_path,
+      });
       const cleanup = await maybeRemoveQrPhoto(result.source_path);
       return {
         attempted: true,

@@ -1,15 +1,26 @@
 import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from "react";
-import { Hash, QrCode, UserRound, PencilLine } from "lucide-react";
+import { Eye, Hash, QrCode, UserRound, PencilLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { fileBaseName } from "@/lib/qrSuccess";
 
 /** Allow digits and optional leading `#`; store only digits. */
 function sanitizeNumericIdInput(raw: string): string {
@@ -237,51 +248,118 @@ function CustomerSessionSection({ disabled }: CustomerFormProps) {
   );
 }
 
-/** Compact QR ↔ Manuell toggle. */
+/** Compact QR ↔ Manuell toggle + optional Scan-Frame viewer. */
 export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
   const formMode = useKundeStore((s) => s.kunde.form_mode);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
+  const qrPreview = useKundeStore((s) => s.qrPreview);
+  const qrPreviewSource = useKundeStore((s) => s.qrPreviewSource);
   const switchFormMode = useKundeStore((s) => s.switchFormMode);
   const busy = Boolean(disabled);
   const isQrMode = formMode === "kunde";
   const canSwitchToQr = Boolean(qrSnapshot);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [showShadow, setShowShadow] = useState(true);
+  const hasPreview = Boolean(qrPreview?.path?.trim());
+  const sourceLabel = fileBaseName(qrPreviewSource);
+
+  useEffect(() => {
+    if (!hasPreview && scanOpen) setScanOpen(false);
+  }, [hasPreview, scanOpen]);
 
   return (
-    <div
-      role="group"
-      aria-label="Eingabemodus"
-      className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
-    >
-      {FORM_MODES.map(({ id, label, icon: Icon }) => {
-        const active = id === "kunde" ? isQrMode : !isQrMode;
-        const qrDisabled = id === "kunde" && !isQrMode && !canSwitchToQr;
-        return (
-          <button
-            key={id}
+    <div className="inline-flex shrink-0 items-center gap-1.5">
+      {hasPreview && qrPreview ? (
+        <>
+          <Button
             type="button"
-            disabled={busy || qrDisabled}
-            aria-pressed={active}
-            title={
-              qrDisabled
-                ? "Kein QR in dieser Session — zuerst scannen"
-                : id === "kunde"
-                  ? "QR-Daten wiederherstellen"
-                  : "Zur manuellen Eingabe"
-            }
-            onClick={() => switchFormMode(id)}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
-              "disabled:pointer-events-none disabled:opacity-50",
-              active
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted hover:text-foreground",
-            )}
+            size="sm"
+            variant="ghost"
+            className="h-7 gap-1 px-2 text-[11px]"
+            disabled={busy}
+            title="QR-Scan-Frame anzeigen"
+            onClick={() => {
+              setShowShadow(true);
+              setScanOpen(true);
+            }}
           >
-            <Icon className="h-3 w-3" />
-            {label}
-          </button>
-        );
-      })}
+            <Eye className="h-3 w-3" />
+            Scan
+          </Button>
+          <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+            <DialogContent className="max-w-lg gap-4">
+              <DialogHeader>
+                <DialogTitle>QR-Scan</DialogTitle>
+                <DialogDescription>
+                  {sourceLabel
+                    ? `Treffer-Frame aus ${sourceLabel}`
+                    : "Treffer-Frame aus dieser Session"}
+                </DialogDescription>
+              </DialogHeader>
+              <QrSpotlightPreview
+                preview={qrPreview}
+                showSpotlight={showShadow}
+                className="w-full"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <Label
+                  htmlFor="qr-scan-shadow"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Schatten
+                </Label>
+                <Switch
+                  id="qr-scan-shadow"
+                  checked={showShadow}
+                  onCheckedChange={setShowShadow}
+                />
+              </div>
+              <DialogFooter>
+                <Button type="button" onClick={() => setScanOpen(false)}>
+                  Schließen
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : null}
+
+      <div
+        role="group"
+        aria-label="Eingabemodus"
+        className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
+      >
+        {FORM_MODES.map(({ id, label, icon: Icon }) => {
+          const active = id === "kunde" ? isQrMode : !isQrMode;
+          const qrDisabled = id === "kunde" && !isQrMode && !canSwitchToQr;
+          return (
+            <button
+              key={id}
+              type="button"
+              disabled={busy || qrDisabled}
+              aria-pressed={active}
+              title={
+                qrDisabled
+                  ? "Kein QR in dieser Session — zuerst scannen"
+                  : id === "kunde"
+                    ? "QR-Daten wiederherstellen"
+                    : "Zur manuellen Eingabe"
+              }
+              onClick={() => switchFormMode(id)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-[5px] px-2.5 py-0.5 text-[11px] font-semibold tracking-wide uppercase transition-colors",
+                "disabled:pointer-events-none disabled:opacity-50",
+                active
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

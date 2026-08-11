@@ -879,6 +879,7 @@ src/App.tsx
 - [x] `SuccessDialog` Variante `qr`: optionale rechte Preview-Spalte
 - [x] Temp-Preview nach Dialog-Close aufräumen; Orphan-Prefix in Cache-Cleanup
 - [x] Unit-Tests für Spotlight-Geometrie
+- [x] Session-Replay: Button „Scan“ neben QR/Manuell; Dialog mit Schatten-Toggle; Preview im `kundeStore` bis Session-Reset
 
 #### Nicht-Ziele
 
