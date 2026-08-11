@@ -500,23 +500,16 @@ function App() {
       }
 
       if (qr.found) {
+        const fromOptions = qr.successOptions?.actions?.find((a) => a.kind === "qr");
         const src = fileBaseName(qr.source_path);
-        const detailLines = qr.message
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l && !l.startsWith("Kundendaten wurden") && !l.startsWith("QR-Code erkannt"));
         return {
           importAction,
-          qrAction: {
+          qrAction: fromOptions ?? {
             kind: "qr",
             label: "QR-Code",
             tone: "success",
             summary: "Kundendaten übernommen",
-            detail: detailLines.length
-              ? detailLines.join("\n")
-              : src
-                ? `Quelle: ${src}`
-                : undefined,
+            detail: src ? `Quelle: ${src}` : undefined,
           },
           qrHit: qr,
         };

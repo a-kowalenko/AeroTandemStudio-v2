@@ -5,7 +5,7 @@ import {
   formatQrCleanupSummary,
   type QrCleanupResult,
 } from "@/lib/qrCleanup";
-import type { DialogOptions } from "@/store/uiStore";
+import type { DialogActionStatus, DialogOptions } from "@/store/uiStore";
 
 export const QR_SUCCESS_TITLE = "QR-Code erkannt";
 
@@ -31,6 +31,31 @@ export type FormatQrSuccessInput = {
   preview?: QrPreview | null;
 };
 
+/** QR action tile (same shape as SD „Vorher bestätigen“ dialog). */
+export function buildQrSuccessAction(
+  input: FormatQrSuccessInput,
+): DialogActionStatus {
+  const detailParts: string[] = [];
+  const src = fileBaseName(input.sourcePath);
+  if (src) detailParts.push(`Quelle: ${src}`);
+  for (const note of input.notes ?? []) {
+    const trimmed = note.trim();
+    if (trimmed) detailParts.push(trimmed);
+  }
+  const cleanup = input.cleanup
+    ? formatQrCleanupSummary(input.cleanup).replace(/^\n/, "").trim().replace(/\.$/, "")
+    : "";
+  if (cleanup) detailParts.push(cleanup);
+
+  return {
+    kind: "qr",
+    label: "QR-Code",
+    tone: "success",
+    summary: "Kundendaten übernommen",
+    detail: detailParts.length ? detailParts.join("\n") : undefined,
+  };
+}
+
 /** Build title, body and QR-variant options for SuccessDialog. */
 export function formatQrSuccess(input: FormatQrSuccessInput): {
   title: string;
@@ -38,30 +63,18 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
   options: DialogOptions;
 } {
   const name = kundeDisplayName(input.kunde);
-  const lines: string[] = [
-    name
-      ? "Kundendaten wurden aus dem QR-Code übernommen."
-      : "QR-Code erkannt und Kundendaten übernommen.",
-  ];
-  const src = fileBaseName(input.sourcePath);
-  if (src) lines.push(`Quelle: ${src}`);
-  for (const note of input.notes ?? []) {
-    const trimmed = note.trim();
-    if (trimmed) lines.push(trimmed);
-  }
-  const cleanup = input.cleanup
-    ? formatQrCleanupSummary(input.cleanup).replace(/^\n/, "").trim()
-    : "";
-  if (cleanup) lines.push(cleanup);
+  const action = buildQrSuccessAction(input);
 
   return {
     title: QR_SUCCESS_TITLE,
-    message: lines.join("\n"),
+    // Body lives in action tiles; keep message empty to avoid duplicate text.
+    message: "",
     options: {
       variant: "qr",
       highlight: name || "Kunde erkannt",
       autoCloseSecs: 5,
       qrPreview: input.preview ?? null,
+      actions: [action],
     },
   };
 }

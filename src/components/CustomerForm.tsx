@@ -301,19 +301,19 @@ export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
                 showSpotlight={showShadow}
                 className="w-full"
               />
-              <div className="flex items-center justify-between gap-3">
-                <Label
-                  htmlFor="qr-scan-shadow"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Schatten
-                </Label>
+              <label
+                htmlFor="qr-scan-shadow"
+                className="mx-auto flex w-fit cursor-pointer items-center gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2"
+              >
                 <Switch
                   id="qr-scan-shadow"
                   checked={showShadow}
                   onCheckedChange={setShowShadow}
                 />
-              </div>
+                <span className="text-sm font-medium text-foreground">
+                  Schatten
+                </span>
+              </label>
               <DialogFooter>
                 <Button type="button" onClick={() => setScanOpen(false)}>
                   Schließen

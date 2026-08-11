@@ -303,7 +303,17 @@ export function MediaDropZone({
   const qrLeadRef = useRef<HTMLDivElement>(null);
   const qrFullMeasureRef = useRef<HTMLDivElement>(null);
   const qrCompactMeasureRef = useRef<HTMLDivElement>(null);
+  const prevMediaCountRef = useRef(videoList.length + photoList.length);
   const dropZoneId = useId();
+
+  // Clear import/QR status when media is wiped externally (e.g. session reset).
+  useEffect(() => {
+    const count = videoList.length + photoList.length;
+    if (prevMediaCountRef.current > 0 && count === 0) {
+      setStatusMsg(null);
+    }
+    prevMediaCountRef.current = count;
+  }, [videoList.length, photoList.length]);
 
   function toggleVideoColumnSort(key: "name" | "duration" | "size") {
     const nextAsc = listSort?.key === key ? !listSort.asc : true;
@@ -463,15 +473,25 @@ export function MediaDropZone({
               }),
             );
             if (outcome.attempted && outcome.found) {
-              showSuccess(
-                outcome.message,
-                outcome.successTitle ?? "QR-Code erkannt",
-                outcome.successOptions ?? {
-                  variant: "qr",
-                  highlight: outcome.kundeName || "Kunde erkannt",
-                  autoCloseSecs: 5,
-                },
-              );
+              const qrActions = outcome.successOptions?.actions ?? [];
+              showSuccess("", outcome.successTitle ?? "QR-Code erkannt", {
+                ...outcome.successOptions,
+                variant: "qr",
+                highlight:
+                  outcome.successOptions?.highlight ||
+                  outcome.kundeName ||
+                  "Kunde erkannt",
+                autoCloseSecs: outcome.successOptions?.autoCloseSecs ?? 5,
+                actions: [
+                  ...qrActions,
+                  {
+                    kind: "import",
+                    label: "Import",
+                    tone: "success",
+                    summary: `${videosAdded} Videos, ${photosAdded} Fotos`,
+                  },
+                ],
+              });
               setStatusMsg(`${parts.join(", ")} · QR übernommen`);
             } else if (outcome.attempted && outcome.message) {
               setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
