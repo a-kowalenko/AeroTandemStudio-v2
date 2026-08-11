@@ -28,7 +28,7 @@ import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { SdVideoTile } from "./SdVideoTile";
-import { Film, HardDrive, ImageIcon } from "lucide-react";
+import { Check, Film, HardDrive, ImageIcon, X } from "lucide-react";
 
 export type SdSelectorProgress = {
   percent: number;
@@ -271,6 +271,10 @@ export function SdFileSelector({
     }
     return { videos, photos, total: videos + photos };
   }, [files, selected]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((f) => selected.has(f.path));
+  const noneSelected = selected.size === 0;
 
   // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
   // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
@@ -716,22 +720,36 @@ export function SdFileSelector({
           >
             {sortAsc ? "↑ Auf" : "↓ Ab"}
           </Button>
+          <span
+            className="mx-1 h-6 w-px shrink-0 bg-border"
+            aria-hidden
+          />
           <Button
             type="button"
             size="sm"
             variant="secondary"
             disabled={submitting}
+            className={cn(
+              "gap-1.5",
+              allFilteredSelected &&
+                "border-primary/30 bg-primary-soft text-primary hover:bg-primary-soft",
+            )}
             onClick={selectAllFiltered}
           >
-            Alle
+            {allFilteredSelected ? (
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : null}
+            Alle auswählen
           </Button>
           <Button
             type="button"
             size="sm"
             variant="ghost"
             disabled={submitting}
+            className={cn("gap-1.5", noneSelected && "text-muted")}
             onClick={clearSelection}
           >
+            <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
             Keine
           </Button>
         </div>
