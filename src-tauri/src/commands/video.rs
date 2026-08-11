@@ -504,7 +504,11 @@ pub async fn probe_video(app: AppHandle, path: String) -> Result<VideoMetadata, 
 
 /// List keyframe timestamps (seconds) for stream-copy-friendly trim snapping.
 #[tauri::command]
-pub async fn list_video_keyframes(app: AppHandle, path: String) -> Result<Vec<f64>, String> {
+pub async fn list_video_keyframes(
+    app: AppHandle,
+    path: String,
+    duration_secs: Option<f64>,
+) -> Result<Vec<f64>, String> {
     if path.trim().is_empty() {
         return Err("path is required".into());
     }
@@ -513,19 +517,22 @@ pub async fn list_video_keyframes(app: AppHandle, path: String) -> Result<Vec<f6
     }
     let ffmpeg = resolve_ffmpeg(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        concat::list_keyframes(&ffmpeg, &path).map_err(|e| e.to_string())
+        crate::video::keyframe_cache::list_keyframes_cached(&ffmpeg, &path, duration_secs)
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// Evenly spaced JPEG filmstrip frames (data URLs) for the Apple-style trim timeline.
+/// Evenly spaced JPEG filmstrip frames (HTTP media URLs) for the Apple-style trim timeline.
 #[tauri::command]
 pub async fn get_video_filmstrip(
     app: AppHandle,
     path: String,
     count: Option<u32>,
     height: Option<u32>,
+    duration_secs: Option<f64>,
+    media: State<'_, crate::media::http_server::MediaServerState>,
 ) -> Result<Vec<String>, String> {
     if path.trim().is_empty() {
         return Err("path is required".into());
@@ -537,14 +544,20 @@ pub async fn get_video_filmstrip(
     let frame_count =
         count.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_COUNT as u32) as usize;
     let frame_height = height.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_HEIGHT);
+    let media_base = media.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::media::filmstrip::generate_filmstrip(
+        let paths = crate::media::filmstrip::generate_filmstrip(
             std::path::Path::new(&path),
             frame_count,
             frame_height,
+            duration_secs,
             Some(&ffmpeg),
         )
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+        Ok(paths
+            .into_iter()
+            .map(|p| media_base.url_for_path(&p.to_string_lossy()))
+            .collect::<Vec<_>>())
     })
     .await
     .map_err(|e| e.to_string())?

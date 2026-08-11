@@ -7,6 +7,7 @@ pub mod export_paths;
 pub mod ffmpeg;
 pub mod hw_accel;
 pub mod intro_mux_fallback;
+pub mod keyframe_cache;
 pub mod marker;
 pub mod parallel;
 pub mod preview_encode;

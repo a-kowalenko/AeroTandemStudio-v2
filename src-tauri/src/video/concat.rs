@@ -782,13 +782,21 @@ pub fn snap_trim_range_to_keyframes(
 /// List all keyframe timestamps (seconds) for `video_path`.
 ///
 /// Scans the full duration via FFmpeg `showinfo` (`-skip_frame nokey`).
-pub fn list_keyframes(ffmpeg: &Path, video_path: &str) -> Result<Vec<f64>, ConcatError> {
+/// When `duration_hint` is `Some(>0)`, skips an extra duration probe.
+pub fn list_keyframes(
+    ffmpeg: &Path,
+    video_path: &str,
+    duration_hint: Option<f64>,
+) -> Result<Vec<f64>, ConcatError> {
     if !Path::new(video_path).is_file() {
         return Err(ConcatError::Message(format!(
             "input file not found: {video_path}"
         )));
     }
-    let duration = probe_duration_secs(ffmpeg, video_path).unwrap_or(0.0);
+    let duration = duration_hint
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .or_else(|| probe_duration_secs(ffmpeg, video_path).ok())
+        .unwrap_or(0.0);
     let scan = if duration > 0.0 {
         duration + 1.0
     } else {

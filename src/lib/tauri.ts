@@ -382,17 +382,29 @@ export async function probeVideo(path: string): Promise<VideoMetadata> {
 }
 
 /** Keyframe timestamps in seconds (for trim snapping / stream-copy). */
-export async function listVideoKeyframes(path: string): Promise<number[]> {
-  return invoke<number[]>("list_video_keyframes", { path });
+export async function listVideoKeyframes(
+  path: string,
+  durationSecs?: number | null,
+): Promise<number[]> {
+  return invoke<number[]>("list_video_keyframes", {
+    path,
+    durationSecs: durationSecs ?? null,
+  });
 }
 
-/** Evenly spaced JPEG filmstrip frames (data URLs) for Apple-style trim UI. */
+/** Evenly spaced filmstrip frame URLs (HTTP media server) for Apple-style trim UI. */
 export async function getVideoFilmstrip(
   path: string,
   count = 14,
   height = 56,
+  durationSecs?: number | null,
 ): Promise<string[]> {
-  return invoke<string[]>("get_video_filmstrip", { path, count, height });
+  return invoke<string[]>("get_video_filmstrip", {
+    path,
+    count,
+    height,
+    durationSecs: durationSecs ?? null,
+  });
 }
 
 export async function createVideo(

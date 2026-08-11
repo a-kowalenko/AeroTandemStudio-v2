@@ -93,7 +93,9 @@ export function VideoCutter({
     let cancelled = false;
     setKfLoading(true);
     setKfError(null);
-    void listVideoKeyframes(videoPath)
+    const durationHint =
+      durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
+    void listVideoKeyframes(videoPath, durationHint)
       .then((times) => {
         if (cancelled) return;
         setKeyframesSecs(times);
@@ -108,13 +110,15 @@ export function VideoCutter({
     return () => {
       cancelled = true;
     };
-  }, [open, videoPath]);
+  }, [open, videoPath, durationSecsHint]);
 
   useEffect(() => {
     if (!open || !videoPath) return;
     let cancelled = false;
     setFilmstripFrames([]);
-    void getVideoFilmstrip(videoPath, 14, 56)
+    const durationHint =
+      durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
+    void getVideoFilmstrip(videoPath, 14, 56, durationHint)
       .then((frames) => {
         if (!cancelled) setFilmstripFrames(frames);
       })
@@ -124,7 +128,7 @@ export function VideoCutter({
     return () => {
       cancelled = true;
     };
-  }, [open, videoPath]);
+  }, [open, videoPath, durationSecsHint]);
 
   function finish(result: VideoCutterResult) {
     committedRef.current = true;
