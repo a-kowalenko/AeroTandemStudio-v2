@@ -79,7 +79,13 @@ import { pathsAddedSince, runAutoQrAfterImport, type AutoQrScanOutcome } from ".
 import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import { withQrScanProgress } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
-import { applyMonotonicPercent, resolveProgressLabel, shouldClearTaskProgress, taskProgressLabel } from "./lib/progressLabels";
+import {
+  applyMonotonicPercent,
+  formatOverallProgressLabel,
+  resolveProgressLabel,
+  shouldClearTaskProgress,
+  taskProgressLabel,
+} from "./lib/progressLabels";
 import { cn, isCancellationError } from "./lib/utils";
 import "./App.css";
 
@@ -809,12 +815,12 @@ function App() {
           ) {
             return prev;
           }
-          return resolveProgressLabel(p.status, prev);
+          return formatOverallProgressLabel(p.status, prev);
         });
       } else {
         setPercent((prev) => applyMonotonicPercent(prev, p.percent));
         const label = resolveProgressLabel(p.status, undefined);
-        setStatus((prev) => resolveProgressLabel(p.status, prev));
+        setStatus((prev) => formatOverallProgressLabel(p.status, prev));
         if (shouldClearTaskProgress(p.status) || shouldClearTaskProgress(label)) {
           setTaskProgress([]);
         }
@@ -1393,7 +1399,7 @@ function App() {
               </div>
               <ProgressIndicator
                 percent={percent}
-                label={resolveProgressLabel(status, busy ? "In Arbeit…" : "Fertig")}
+                label={formatOverallProgressLabel(status, busy ? "In Arbeit…" : "Fertig")}
                 tasks={taskProgress.map((t) => ({
                   taskId: t.taskId,
                   percent: t.percent,

@@ -41,11 +41,30 @@ const STATUS_LABELS: Record<string, string> = {
 /** FFmpeg pipe status — keep previous human label instead of showing these. */
 const TRANSIENT = new Set(["continue", "end"]);
 
+/** Parent stage for nested create_video progress inside create_job. */
+export const CREATE_VIDEO_STAGE = "Erstelle Video…";
+
 /**
  * Stages where per-clip task bars are not meaningful — clear them on overall events.
  */
 const CLEAR_TASK_BARS =
   /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video/i;
+
+/**
+ * create_job overall stages that must not be wrapped under „Erstelle Video…“.
+ */
+const CREATE_JOB_MAJOR_STAGE =
+  /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle video|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
+
+/**
+ * Nested processor / concat labels that belong under „Erstelle Video…“.
+ * Only applied while the overall UI is already in that create_job stage
+ * (so standalone cut/preview/create_video keep their own labels).
+ */
+const CREATE_VIDEO_DETAIL =
+  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|probing|prepare/i;
+
+const MAX_DETAIL_LEN = 42;
 
 export function shouldClearTaskProgress(status: string | undefined | null): boolean {
   const s = (status ?? "").trim();
@@ -94,6 +113,70 @@ export function resolveProgressLabel(
   }
 
   return s;
+}
+
+function isCreateJobMajorStage(label: string): boolean {
+  return CREATE_JOB_MAJOR_STAGE.test(label.trim());
+}
+
+function isInCreateVideoStage(previous: string | undefined): boolean {
+  const p = (previous ?? "").trim();
+  return p === CREATE_VIDEO_STAGE || p.startsWith(`${CREATE_VIDEO_STAGE} (`);
+}
+
+function extractCreateVideoDetail(previous: string | undefined): string | null {
+  const p = (previous ?? "").trim();
+  const m = /^Erstelle Video…\s*\((.+)\)\s*$/.exec(p);
+  return m?.[1]?.trim() || null;
+}
+
+function isCreateVideoDetail(label: string): boolean {
+  const s = label.trim();
+  if (!s || s === CREATE_VIDEO_STAGE) return false;
+  if (isCreateJobMajorStage(s)) return false;
+  if (s.startsWith(`${CREATE_VIDEO_STAGE} (`)) return false;
+  return CREATE_VIDEO_DETAIL.test(s);
+}
+
+function shortenDetail(detail: string): string {
+  let d = detail.trim();
+  // Drop redundant trailing ellipsis inside parentheses; stage already has …
+  if (d.endsWith("…")) d = d.slice(0, -1).trimEnd();
+  if (d.length <= MAX_DETAIL_LEN) return d;
+  return `${d.slice(0, MAX_DETAIL_LEN - 1).trimEnd()}…`;
+}
+
+/**
+ * Overall progress label for create_job: keep „Erstelle Video…“ as parent and
+ * show nested encode steps in parentheses, e.g.
+ * `Erstelle Video… (Kodiere Intro+Video)`.
+ *
+ * Does not wrap standalone cut/preview/create_video flows (no prior stage).
+ */
+export function formatOverallProgressLabel(
+  raw: string | undefined | null,
+  previous?: string,
+): string {
+  const s = (raw ?? "").trim();
+  if (!s || TRANSIENT.has(s)) {
+    return previous?.trim() || "In Arbeit…";
+  }
+
+  const label = resolveProgressLabel(raw, previous);
+
+  if (label === CREATE_VIDEO_STAGE || label.startsWith(`${CREATE_VIDEO_STAGE} (`)) {
+    const detail = extractCreateVideoDetail(previous);
+    if (detail && label === CREATE_VIDEO_STAGE) {
+      return `${CREATE_VIDEO_STAGE} (${detail})`;
+    }
+    return label === CREATE_VIDEO_STAGE ? CREATE_VIDEO_STAGE : label;
+  }
+
+  if (isCreateVideoDetail(label) && isInCreateVideoStage(previous)) {
+    return `${CREATE_VIDEO_STAGE} (${shortenDetail(label)})`;
+  }
+
+  return label;
 }
 
 export function taskProgressLabel(taskId: number, status?: string): string {

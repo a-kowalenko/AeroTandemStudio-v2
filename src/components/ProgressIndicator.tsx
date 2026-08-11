@@ -82,7 +82,9 @@ export function ProgressIndicator({
       >
         <div className="flex items-baseline justify-between gap-3">
           {label ? (
-            <p className="min-w-0 flex-1 text-sm font-medium text-foreground">{label}</p>
+            <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground" title={label}>
+              {label}
+            </p>
           ) : (
             <span />
           )}
