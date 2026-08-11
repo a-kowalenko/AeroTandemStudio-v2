@@ -742,7 +742,11 @@ export function MediaDropZone({
           </div>
           {busy && (
             <p className="mt-2 text-sm text-muted">
-              {expanding ? "Ordner werden durchsucht…" : "Importiere…"}
+              {expanding
+                ? "Ordner werden durchsucht…"
+                : qrBusy
+                  ? "QR-Scan läuft…"
+                  : "Importiere…"}
             </p>
           )}
           {importError && (

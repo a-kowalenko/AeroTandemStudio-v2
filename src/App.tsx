@@ -523,6 +523,7 @@ function App() {
     }
 
     useSdStore.getState().setWorkflowProgress(null);
+    // Overlay stays suppressed while selectorSubmitting; message feeds SD progress.
     setLoading(true, "QR-Scan…");
     try {
       const qr = await withQrScanProgress(
@@ -581,6 +582,9 @@ function App() {
         },
         qrHit: null,
       };
+    } finally {
+      // autoQrScan no longer clears loading (avoids overlay on manual import).
+      setLoading(false);
     }
   }
 
@@ -1115,7 +1119,8 @@ function App() {
   }
 
   async function startCreate() {
-    if (busy || autoPanelActive || loading || selectorSubmitting) return;
+    if (busy || autoPanelActive || loading || selectorSubmitting || qrScanBusy)
+      return;
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
 
@@ -1265,7 +1270,7 @@ function App() {
   }
 
   function handleSessionReset() {
-    if (busy || loading || selectorSubmitting || autoPanelActive) {
+    if (busy || loading || selectorSubmitting || autoPanelActive || qrScanBusy) {
       showWarning(
         "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
         "Zurücksetzen",
@@ -1307,7 +1312,11 @@ function App() {
       : "Nach dem Erstellen auf den Server laden";
 
   const uiLocked =
-    busy || autoPanelActive || selectorSubmitting || loading;
+    busy ||
+    autoPanelActive ||
+    selectorSubmitting ||
+    loading ||
+    qrScanBusy;
   const sdAutoProgress = resolveSdSelectorProgress({
     submitting: autoPanelActive,
     phase: sdPhase,
@@ -1319,10 +1328,17 @@ function App() {
     qrByPath: qrScanByPath,
     qrFollowup,
   });
+  /** Same ProgressIndicator as SD Auto — for drop/manual QR (Confirm uses the dialog). */
+  const manualQrProgress =
+    qrScanBusy && !autoPanelActive && !selectorSubmitting
+      ? summarizeQrScanProgress(qrScanByPath, qrScanStage, qrFollowup)
+      : null;
   const showCreateProgress =
     busy || percent > 0 || taskProgress.length > 0;
   const showSdAutoProgress = Boolean(autoPanelActive && sdAutoProgress);
-  const showProgressPanel = showCreateProgress || showSdAutoProgress;
+  const showManualQrProgress = Boolean(manualQrProgress);
+  const showProgressPanel =
+    showCreateProgress || showSdAutoProgress || showManualQrProgress;
 
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
@@ -1548,11 +1564,13 @@ function App() {
                     Fortschritt
                   </h2>
                   <p className="text-xs text-muted">
-                    {showSdAutoProgress && !showCreateProgress
+                    {showSdAutoProgress && !busy
                       ? "SD Auto — Backup, Import und weitere Aktionen"
-                      : busy
-                        ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
-                        : "Zuletzt abgeschlossener Lauf"}
+                      : showManualQrProgress && !busy
+                        ? "QR-Scan der Medien"
+                        : busy
+                          ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
+                          : "Zuletzt abgeschlossener Lauf"}
                   </p>
                 </div>
                 {busy && (
@@ -1561,7 +1579,7 @@ function App() {
                   </Button>
                 )}
               </div>
-              {showSdAutoProgress && !showCreateProgress && sdAutoProgress ? (
+              {showSdAutoProgress && !busy && sdAutoProgress ? (
                 <div className="space-y-2">
                   <ProgressIndicator
                     percent={sdAutoProgress.percent}
@@ -1571,6 +1589,19 @@ function App() {
                   {sdAutoProgress.detail ? (
                     <p className="text-xs tabular-nums text-muted">
                       {sdAutoProgress.detail}
+                    </p>
+                  ) : null}
+                </div>
+              ) : showManualQrProgress && !busy && manualQrProgress ? (
+                <div className="space-y-2">
+                  <ProgressIndicator
+                    percent={manualQrProgress.percent}
+                    label={manualQrProgress.label}
+                    indeterminate={Boolean(manualQrProgress.indeterminate)}
+                  />
+                  {manualQrProgress.detail ? (
+                    <p className="text-xs tabular-nums text-muted">
+                      {manualQrProgress.detail}
                     </p>
                   ) : null}
                 </div>

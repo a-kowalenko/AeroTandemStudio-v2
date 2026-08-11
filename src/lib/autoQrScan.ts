@@ -6,7 +6,6 @@ import {
   useQrScanStore,
   type QrScanJobStage,
 } from "@/store/qrScanStore";
-import { useUiStore } from "@/store/uiStore";
 import {
   scanQrPhotos,
   scanQrVideos,
@@ -58,8 +57,8 @@ function emptyOutcome(): AutoQrScanOutcome {
   };
 }
 
-function setQrUi(message: string, stage: QrScanJobStage, paths?: string[]) {
-  useUiStore.getState().setLoading(true, message);
+/** Progress via qrScanStore only (row bars / SD dialog) — no global LoadingOverlay. */
+function setQrStage(stage: QrScanJobStage, paths?: string[]) {
   const store = useQrScanStore.getState();
   if (paths) {
     store.begin(paths, stage);
@@ -123,99 +122,83 @@ export async function runAutoQrAfterImport(
 
   if (!scanVideos && !scanPhotos) return emptyOutcome();
 
-  // setQrUi turns on the global LoadingOverlay; always clear it here.
-  // (Manual import has no SD-workflow finally — that used to leave the overlay stuck.)
-  try {
-    if (scanVideos) {
-      setQrUi(
-        `QR-Scan: ${videoPaths.length} Video(s)…`,
-        "scanning_videos",
-        videoPaths,
-      );
-      const result = await scanQrVideos(videoPaths);
-      if (result.cancelled) {
-        return {
-          ...emptyOutcome(),
-          attempted: true,
-          message: result.message || "QR-Scan abgebrochen.",
-        };
-      }
-      if (result.found && result.kunde) {
-        useUiStore.getState().setLoading(false);
-        const presented = await presentQrHit({
-          kunde: result.kunde,
-          sourcePath: result.source_path,
-          preview: result.preview,
-          showDialog: false,
-          runCleanup: () => {
-            setQrUi("QR gefunden — Clip prüfen…", "followup");
-            return maybeRemoveQrVideo(result.source_path, {
-              onBeforeRemove: input.onBeforeRemoveVideo,
-            });
-          },
-        });
-        return {
-          attempted: true,
-          found: true,
-          applied: presented.applied,
-          keptExisting: presented.keptExisting,
-          source_path: result.source_path,
-          message: presented.message,
-          kundeName: presented.kundeName,
-          successOptions: presented.successOptions,
-          successTitle: presented.successTitle,
-        };
-      }
+  if (scanVideos) {
+    setQrStage("scanning_videos", videoPaths);
+    const result = await scanQrVideos(videoPaths);
+    if (result.cancelled) {
+      return {
+        ...emptyOutcome(),
+        attempted: true,
+        message: result.message || "QR-Scan abgebrochen.",
+      };
     }
-
-    if (scanPhotos) {
-      setQrUi(
-        `QR-Scan: ${photoPaths.length} Foto(s)…`,
-        "scanning_photos",
-        photoPaths,
-      );
-      const result = await scanQrPhotos(photoPaths);
-      if (result.cancelled) {
-        return {
-          ...emptyOutcome(),
-          attempted: true,
-          message: result.message || "QR-Scan abgebrochen.",
-        };
-      }
-      if (result.found && result.kunde) {
-        useUiStore.getState().setLoading(false);
-        const presented = await presentQrHit({
-          kunde: result.kunde,
-          sourcePath: result.source_path,
-          preview: result.preview,
-          showDialog: false,
-          runCleanup: async () => {
-            setQrUi("QR gefunden — Nachbarfotos prüfen…", "followup");
-            return maybeRemoveQrPhoto(result.source_path);
-          },
-        });
-        return {
-          attempted: true,
-          found: true,
-          applied: presented.applied,
-          keptExisting: presented.keptExisting,
-          source_path: result.source_path,
-          message: presented.message,
-          kundeName: presented.kundeName,
-          successOptions: presented.successOptions,
-          successTitle: presented.successTitle,
-        };
-      }
+    if (result.found && result.kunde) {
+      const presented = await presentQrHit({
+        kunde: result.kunde,
+        sourcePath: result.source_path,
+        preview: result.preview,
+        showDialog: false,
+        runCleanup: () => {
+          setQrStage("followup");
+          return maybeRemoveQrVideo(result.source_path, {
+            onBeforeRemove: input.onBeforeRemoveVideo,
+          });
+        },
+      });
+      return {
+        attempted: true,
+        found: true,
+        applied: presented.applied,
+        keptExisting: presented.keptExisting,
+        source_path: result.source_path,
+        message: presented.message,
+        kundeName: presented.kundeName,
+        successOptions: presented.successOptions,
+        successTitle: presented.successTitle,
+      };
     }
-
-    return {
-      ...emptyOutcome(),
-      attempted: true,
-      message: "Kein QR-Code in den neuen Dateien gefunden.",
-    };
-  } finally {
-    useUiStore.getState().setLoading(false);
   }
+
+  if (scanPhotos) {
+    setQrStage("scanning_photos", photoPaths);
+    const result = await scanQrPhotos(photoPaths);
+    if (result.cancelled) {
+      return {
+        ...emptyOutcome(),
+        attempted: true,
+        message: result.message || "QR-Scan abgebrochen.",
+      };
+    }
+    if (result.found && result.kunde) {
+      const presented = await presentQrHit({
+        kunde: result.kunde,
+        sourcePath: result.source_path,
+        preview: result.preview,
+        showDialog: false,
+        runCleanup: async () => {
+          setQrStage("followup");
+          return maybeRemoveQrPhoto(result.source_path);
+        },
+      });
+      return {
+        attempted: true,
+        found: true,
+        applied: presented.applied,
+        keptExisting: presented.keptExisting,
+        source_path: result.source_path,
+        message: presented.message,
+        kundeName: presented.kundeName,
+        successOptions: presented.successOptions,
+        successTitle: presented.successTitle,
+      };
+    }
+  }
+
+  return {
+    ...emptyOutcome(),
+    attempted: true,
+    message: "Kein QR-Code in den neuen Dateien gefunden.",
+  };
 }
 
 /** Paths that were added relative to a snapshot of existing paths. */
