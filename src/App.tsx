@@ -1294,20 +1294,6 @@ function App() {
                 />
                 Nach Erstellen zurücksetzen
               </label>
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <Checkbox
-                  checked={Boolean(config?.intro_enabled)}
-                  disabled={busy || !config}
-                  onCheckedChange={(v) => {
-                    if (!config) return;
-                    void persistConfig({
-                      ...config,
-                      intro_enabled: v === true,
-                    });
-                  }}
-                />
-                Intro erstellen (experimentell)
-              </label>
             </div>
             {createHints.length > 0 && (
               <ul className="space-y-0.5 text-[11px] leading-snug text-muted">
