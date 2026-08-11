@@ -31,9 +31,9 @@ use commands::smb::{test_server_connection, upload_to_server};
 use commands::video::{
     cancel_encode, clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
     discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
-    has_video_cut_undo, import_videos, list_video_cut_marks, list_video_keyframes, probe_video,
-    resolve_intro_mux_fallback, split_video, trim_video, undo_all_video_cuts, undo_last_video_cut,
-    undo_video_cut_for_path, validate_create_job,
+    get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
+    list_video_keyframes, probe_video, resolve_intro_mux_fallback, split_video, trim_video,
+    undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path, validate_create_job,
 };
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
@@ -133,6 +133,7 @@ pub fn run() {
             cancel_encode,
             probe_video,
             list_video_keyframes,
+            get_video_filmstrip,
             import_videos,
             create_video,
             create_job,

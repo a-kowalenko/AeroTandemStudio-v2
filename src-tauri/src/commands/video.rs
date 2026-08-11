@@ -519,6 +519,37 @@ pub async fn list_video_keyframes(app: AppHandle, path: String) -> Result<Vec<f6
     .map_err(|e| e.to_string())?
 }
 
+/// Evenly spaced JPEG filmstrip frames (data URLs) for the Apple-style trim timeline.
+#[tauri::command]
+pub async fn get_video_filmstrip(
+    app: AppHandle,
+    path: String,
+    count: Option<u32>,
+    height: Option<u32>,
+) -> Result<Vec<String>, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    if !std::path::Path::new(&path).is_file() {
+        return Err(format!("input file not found: {path}"));
+    }
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    let frame_count =
+        count.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_COUNT as u32) as usize;
+    let frame_height = height.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_HEIGHT);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::filmstrip::generate_filmstrip(
+            std::path::Path::new(&path),
+            frame_count,
+            frame_height,
+            Some(&ffmpeg),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Create final MP4: optional intro (background + customer text) + body clips.
 #[tauri::command]
 pub async fn create_video(

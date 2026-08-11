@@ -246,6 +246,8 @@ type VideoPreviewProps = {
   formReady?: boolean;
   /** Optional hints from create validation (shown on click / title). */
   formHints?: string[];
+  /** Pause preview playback (e.g. while the cutter dialog is open). */
+  playbackSuspended?: boolean;
 };
 
 export function VideoPreview({
@@ -262,6 +264,7 @@ export function VideoPreview({
   onBeforeRemoveClip,
   formReady = true,
   formHints = [],
+  playbackSuspended = false,
 }: VideoPreviewProps) {
   const videoList = useVideoStore((s) => s.videoList);
   const removeVideo = useVideoStore((s) => s.removeVideo);
@@ -292,6 +295,7 @@ export function VideoPreview({
   /** One-shot: play after src change (used when auto-advancing). */
   const [playOnLoad, setPlayOnLoad] = useState(false);
   const clipPlayerRef = useRef<VideoPlayerHandle>(null);
+  const combinedPlayerRef = useRef<VideoPlayerHandle>(null);
   const autoNextClipRef = useRef(autoNextClip);
   autoNextClipRef.current = autoNextClip;
   const activeClipRef = useRef(activeClip);
@@ -314,6 +318,14 @@ export function VideoPreview({
     const t = window.setTimeout(() => setPlayOnLoad(false), 700);
     return () => window.clearTimeout(t);
   }, [playOnLoad, activeClip]);
+
+  // Pause clip/combined preview while the cutter (or other overlay) is open.
+  useEffect(() => {
+    if (!playbackSuspended) return;
+    setPlayOnLoad(false);
+    clipPlayerRef.current?.pause();
+    combinedPlayerRef.current?.pause();
+  }, [playbackSuspended]);
 
   // While reordering: keep page scrollbars (avoid width jump) but freeze scroll
   // position. Only the clip strip may auto-scroll via dnd-kit.
@@ -655,7 +667,11 @@ export function VideoPreview({
 
       {showingCombined && preview?.preview_path ? (
         <div className={cn("relative", previewStale && "opacity-80")}>
-          <VideoPlayer srcPath={preview.preview_path} disabled={busy} />
+          <VideoPlayer
+            ref={combinedPlayerRef}
+            srcPath={preview.preview_path}
+            disabled={busy}
+          />
           {previewStale && (
             <span className="pointer-events-none absolute top-2 right-2 rounded bg-amber-600/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
               Veraltet
@@ -668,7 +684,7 @@ export function VideoPreview({
           srcPath={current.path}
           cacheKey={`${current.size_bytes}-${current.duration_secs}-${getMediaRevision(current.path)}`}
           disabled={busy}
-          autoPlay={playOnLoad}
+          autoPlay={playOnLoad && !playbackSuspended}
           onEnded={handleClipEnded}
         />
       ) : (

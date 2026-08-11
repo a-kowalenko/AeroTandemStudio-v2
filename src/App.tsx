@@ -1454,6 +1454,7 @@ function App() {
                   onProgressReset={resetProgress}
                   formReady={createReady}
                   formHints={createHints}
+                  playbackSuspended={cutterOpen}
                   canUndoCuts={videoCuts.canUndo}
                   onUndoAllCuts={() => {
                     void videoCuts.undoAll({

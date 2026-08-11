@@ -386,6 +386,15 @@ export async function listVideoKeyframes(path: string): Promise<number[]> {
   return invoke<number[]>("list_video_keyframes", { path });
 }
 
+/** Evenly spaced JPEG filmstrip frames (data URLs) for Apple-style trim UI. */
+export async function getVideoFilmstrip(
+  path: string,
+  count = 14,
+  height = 56,
+): Promise<string[]> {
+  return invoke<string[]>("get_video_filmstrip", { path, count, height });
+}
+
 export async function createVideo(
   kunde: Kunde,
   videoPaths: string[],

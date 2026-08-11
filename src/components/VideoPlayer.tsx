@@ -61,6 +61,8 @@ type VideoPlayerProps = {
   onTrimCommit?: (handle: TrimHandle, ms: number) => void;
   /** Keyframe markers as ratios 0–1 (optional visual ticks). */
   keyframeMarks?: number[];
+  /** Filmstrip frame data URLs for Apple-style trim timeline (optional). */
+  filmstripFrames?: string[];
   disabled?: boolean;
 };
 
@@ -75,11 +77,15 @@ function formatMs(ms: number): string {
     .padStart(3, "0")}`;
 }
 
-const HANDLE_HIT_PX = 14;
+const HANDLE_HIT_PX = 20;
 const MIN_RANGE_MS = 100;
 /** Linux/WebKitGTK only: GStreamer often fires `ended` during/after seek. */
 const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
+/** iOS Photos–like trim handle yellow */
+const TRIM_CAP = "#FFD60A";
+const TRIM_CAP_ACTIVE = "#FFE566";
+const TRIM_BORDER = "#FFD60A";
 
 /**
  * HTML5 video player (Phase-9 interim — libmpv deferred).
@@ -98,6 +104,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTrimChange,
       onTrimCommit,
       keyframeMarks,
+      filmstripFrames,
       disabled,
     },
     ref,
@@ -110,6 +117,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [volume, setVolume] = useState(0.7);
     const [muted, setMuted] = useState(false);
     const [dragging, setDragging] = useState(false);
+    const [dragHandle, setDragHandle] = useState<TrimHandle | null>(null);
     const [src, setSrc] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
@@ -277,6 +285,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const keepStart = keepRange?.start ?? 0;
     const keepEnd = keepRange?.end ?? 1;
     const trimEditable = Boolean(keepRange && onTrimChange);
+    const startMsForBubble = keepStart * durationMs;
+    const endMsForBubble = keepEnd * durationMs;
 
     return (
       <div className={cn("flex flex-col gap-2", className)}>
@@ -343,9 +353,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         <div
           ref={barRef}
           className={cn(
-            "relative h-8 touch-none select-none rounded bg-[#555]",
+            "relative touch-none select-none",
+            trimEditable
+              ? "mt-7 h-14 cursor-default overflow-visible"
+              : "h-8 cursor-pointer overflow-hidden rounded bg-[#555]",
             disabled && "pointer-events-none opacity-50",
-            trimEditable ? "cursor-default" : "cursor-pointer",
           )}
           onPointerDown={(e) => {
             if (disabled) return;
@@ -353,6 +365,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             dragModeRef.current = mode;
             draggingRef.current = true;
             setDragging(true);
+            setDragHandle(mode === "seek" ? null : mode);
             markLinuxUserSeek();
             (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
             if (mode === "seek") seekFromClientX(e.clientX);
@@ -391,61 +404,165 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             draggingRef.current = false;
             markLinuxUserSeek();
             setDragging(false);
+            setDragHandle(null);
           }}
           onPointerCancel={() => {
             dragModeRef.current = null;
             draggingRef.current = false;
             markLinuxUserSeek();
             setDragging(false);
+            setDragHandle(null);
           }}
         >
-          <div
-            className="absolute inset-y-[28%] left-0 bg-[#888]"
-            style={{ width: `${keepStart * 100}%` }}
-          />
-          <div
-            className="absolute inset-y-[28%] bg-[#0078d4]"
-            style={{
-              left: `${keepStart * 100}%`,
-              width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
-            }}
-          />
-          <div
-            className="absolute inset-y-[28%] right-0 bg-[#888]"
-            style={{ left: `${keepEnd * 100}%`, right: 0 }}
-          />
-
-          {keyframeMarks?.map((r) => (
-            <div
-              key={`kf-${r}`}
-              className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
-              style={{ left: `${r * 100}%` }}
-            />
-          ))}
-
-          {trimEditable && (
+          {trimEditable ? (
             <>
-              <div
-                className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize"
-                style={{ left: `${keepStart * 100}%` }}
-                aria-hidden
-              >
-                <div className="absolute inset-y-0.5 left-1/2 w-1.5 -translate-x-1/2 rounded-sm bg-white shadow" />
+              {/* Filmstrip + dim + rails (clipped) */}
+              <div className="absolute inset-0 overflow-hidden rounded-md">
+                <div className="absolute inset-0 flex bg-neutral-800">
+                  {filmstripFrames && filmstripFrames.length > 0 ? (
+                    filmstripFrames.map((url, i) => (
+                      <div
+                        key={`fs-${i}`}
+                        className="h-full min-w-0 flex-1 bg-cover bg-center"
+                        style={{ backgroundImage: `url(${url})` }}
+                      />
+                    ))
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-b from-neutral-700 to-neutral-900" />
+                  )}
+                </div>
+
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-0 z-[1] bg-black/55"
+                  style={{ width: `${keepStart * 100}%` }}
+                />
+                <div
+                  className="pointer-events-none absolute inset-y-0 right-0 z-[1] bg-black/55"
+                  style={{ left: `${keepEnd * 100}%` }}
+                />
+
+                <div
+                  className="pointer-events-none absolute z-[2] border-y-[3px]"
+                  style={{
+                    left: `${keepStart * 100}%`,
+                    width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
+                    top: 0,
+                    bottom: 0,
+                    borderColor: TRIM_BORDER,
+                  }}
+                />
+
+                {keyframeMarks?.map((r) => (
+                  <div
+                    key={`kf-${r}`}
+                    className="pointer-events-none absolute inset-y-[22%] z-[2] w-px bg-white/25"
+                    style={{ left: `${r * 100}%` }}
+                  />
+                ))}
               </div>
+
+              {/* Start cap */}
               <div
-                className="absolute top-0 z-10 h-full w-3 -translate-x-1/2 cursor-ew-resize"
-                style={{ left: `${keepEnd * 100}%` }}
+                className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
+                style={{ left: `${keepStart * 100}%`, width: 18 }}
                 aria-hidden
               >
-                <div className="absolute inset-y-0.5 left-1/2 w-1.5 -translate-x-1/2 rounded-sm bg-white shadow" />
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-l-[6px] shadow-md transition-transform",
+                    dragHandle === "start" && "scale-105",
+                  )}
+                  style={{
+                    backgroundColor:
+                      dragHandle === "start" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                  }}
+                >
+                  <span className="flex gap-[3px]">
+                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                  </span>
+                </div>
+                {dragHandle === "start" && (
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
+                    {formatMs(startMsForBubble)}
+                  </div>
+                )}
+              </div>
+
+              {/* End cap */}
+              <div
+                className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
+                style={{ left: `${keepEnd * 100}%`, width: 18 }}
+                aria-hidden
+              >
+                <div
+                  className={cn(
+                    "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-r-[6px] shadow-md transition-transform",
+                    dragHandle === "end" && "scale-105",
+                  )}
+                  style={{
+                    backgroundColor:
+                      dragHandle === "end" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                  }}
+                >
+                  <span className="flex gap-[3px]">
+                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                  </span>
+                </div>
+                {dragHandle === "end" && (
+                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
+                    {formatMs(endMsForBubble)}
+                  </div>
+                )}
+              </div>
+
+              {/* White playhead needle */}
+              <div
+                className="pointer-events-none absolute z-20"
+                style={{
+                  left: `${playhead * 100}%`,
+                  top: -3,
+                  bottom: -3,
+                  transform: "translateX(-50%)",
+                }}
+              >
+                <div className="mx-auto h-2.5 w-2.5 rounded-full bg-white shadow" />
+                <div className="mx-auto h-[calc(100%-10px)] w-[2px] bg-white shadow" />
               </div>
             </>
-          )}
+          ) : (
+            <>
+              <div
+                className="absolute inset-y-[28%] left-0 bg-[#888]"
+                style={{ width: `${keepStart * 100}%` }}
+              />
+              <div
+                className="absolute inset-y-[28%] bg-[#0078d4]"
+                style={{
+                  left: `${keepStart * 100}%`,
+                  width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
+                }}
+              />
+              <div
+                className="absolute inset-y-[28%] right-0 bg-[#888]"
+                style={{ left: `${keepEnd * 100}%`, right: 0 }}
+              />
 
-          <div
-            className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-[#E74C3C]"
-            style={{ left: `${playhead * 100}%` }}
-          />
+              {keyframeMarks?.map((r) => (
+                <div
+                  key={`kf-${r}`}
+                  className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
+                  style={{ left: `${r * 100}%` }}
+                />
+              ))}
+
+              <div
+                className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-[#E74C3C]"
+                style={{ left: `${playhead * 100}%` }}
+              />
+            </>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

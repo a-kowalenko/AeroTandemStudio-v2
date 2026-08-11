@@ -16,7 +16,7 @@ import {
   type VideoPlayerHandle,
 } from "./VideoPlayer";
 import { useUiStore } from "../store/uiStore";
-import { listVideoKeyframes } from "../lib/tauri";
+import { listVideoKeyframes, getVideoFilmstrip } from "../lib/tauri";
 import { useVideoStore } from "../store/videoStore";
 import {
   keyframeAtOrAfter,
@@ -38,7 +38,7 @@ type VideoCutterProps = {
 };
 
 /**
- * Modal cutter UI: Apple-style trim handles with live preview seek.
+ * Modal cutter UI: Apple Photos–style filmstrip trim with live preview seek.
  * On release, handles snap to keyframes for stream-copy-friendly cuts.
  * Confirm applies trim/split immediately (caller runs FFmpeg).
  */
@@ -60,6 +60,7 @@ export function VideoCutter({
   const [keyframesSecs, setKeyframesSecs] = useState<number[]>([]);
   const [kfLoading, setKfLoading] = useState(false);
   const [kfError, setKfError] = useState<string | null>(null);
+  const [filmstripFrames, setFilmstripFrames] = useState<string[]>([]);
   const rangeInitializedRef = useRef(false);
   const startMsRef = useRef(startMs);
   const endMsRef = useRef(endMs);
@@ -72,6 +73,7 @@ export function VideoCutter({
       setKeyframesSecs([]);
       setKfError(null);
       setKfLoading(false);
+      setFilmstripFrames([]);
       setStartMs(0);
       setEndMs(0);
       return;
@@ -102,6 +104,22 @@ export function VideoCutter({
         setKeyframesSecs([]);
         setKfLoading(false);
         setKfError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, videoPath]);
+
+  useEffect(() => {
+    if (!open || !videoPath) return;
+    let cancelled = false;
+    setFilmstripFrames([]);
+    void getVideoFilmstrip(videoPath, 14, 56)
+      .then((frames) => {
+        if (!cancelled) setFilmstripFrames(frames);
+      })
+      .catch(() => {
+        if (!cancelled) setFilmstripFrames([]);
       });
     return () => {
       cancelled = true;
@@ -251,6 +269,7 @@ export function VideoCutter({
           }
           keepRange={keepRange}
           keyframeMarks={keyframeMarks}
+          filmstripFrames={filmstripFrames}
           onTrimChange={handleTrimChange}
           onTrimCommit={handleTrimCommit}
           onTimeUpdate={(_c, d) => {
