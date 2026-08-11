@@ -118,7 +118,10 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
     }
     let app_progress = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        use crate::sd_card::monitor::{workflow_progress, EVENT_WORKFLOW_PROGRESS};
+        use crate::sd_card::monitor::{
+            workflow_progress_import_copy, EVENT_WORKFLOW_PROGRESS,
+        };
+        use std::time::{Duration, Instant, SystemTime};
         use tauri::Emitter;
 
         let photo_paths: Vec<String> = paths
@@ -136,19 +139,63 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
                 photo_paths.len()
             ),
         );
-        let total = photo_paths.len() as u64;
-        let emit = |current: u64| {
+        let n = photo_paths.len() as u64;
+        let total_bytes: u64 = photo_paths
+            .iter()
+            .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+            .sum();
+        let mut copied_bytes: u64 = 0;
+        let start = SystemTime::now();
+        let mut last_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+
+        let emit_copy = |copied_bytes: u64,
+                         file_index: u64,
+                         file_name: &str,
+                         force: bool,
+                         last: &mut Instant| {
+            if !force && last.elapsed() < Duration::from_millis(150) {
+                return;
+            }
+            let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
+            let current_mb = copied_bytes as f64 / (1024.0 * 1024.0);
+            let speed = if elapsed > 0.0 {
+                current_mb / elapsed
+            } else {
+                0.0
+            };
             let _ = app_progress.emit(
                 EVENT_WORKFLOW_PROGRESS,
-                workflow_progress("import", current, total, "Importiere Fotos…"),
+                workflow_progress_import_copy(
+                    copied_bytes,
+                    total_bytes,
+                    speed,
+                    file_index,
+                    n,
+                    file_name,
+                    "Kopiere Fotos…",
+                ),
             );
+            *last = Instant::now();
         };
-        emit(0);
+
+        emit_copy(0, 0, "", true, &mut last_emit);
         // Sort by EXIF capture time, rename with sequence, return filename order.
         // Confirm-dialog order is intentionally ignored.
-        let dest = working_session::import_photos_to_session(&photo_paths)
-            .map_err(|e| e.to_string())?;
-        emit(total);
+        let dest = working_session::import_photos_to_session_with_progress(
+            &photo_paths,
+            |file_index, name, delta| {
+                if delta == 0 {
+                    emit_copy(copied_bytes, file_index, name, true, &mut last_emit);
+                    return;
+                }
+                copied_bytes += delta;
+                emit_copy(copied_bytes, file_index, name, false, &mut last_emit);
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        emit_copy(copied_bytes, n, "", true, &mut last_emit);
         let mut with_device = 0usize;
         let out: Vec<PhotoMetadata> = dest
             .iter()

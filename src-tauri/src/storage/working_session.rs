@@ -185,6 +185,22 @@ impl WorkingSession {
         &mut self,
         sources: &[String],
     ) -> Result<Vec<PathBuf>, WorkingSessionError> {
+        self.import_photos_by_capture_time_with_progress(sources, |_, _, _| {})
+    }
+
+    /// Like [`Self::import_photos_by_capture_time`], reporting copy progress.
+    ///
+    /// `on_progress(file_index_1based, file_name, delta_bytes)` — `delta_bytes` is 0 at
+    /// file start; when a source is already under the working folder, one call reports
+    /// the full file size so overall byte progress stays consistent.
+    pub fn import_photos_by_capture_time_with_progress<F>(
+        &mut self,
+        sources: &[String],
+        mut on_progress: F,
+    ) -> Result<Vec<PathBuf>, WorkingSessionError>
+    where
+        F: FnMut(u64, &str, u64),
+    {
         let mut sorted: Vec<String> = sources
             .iter()
             .filter(|p| Path::new(p).is_file())
@@ -200,7 +216,14 @@ impl WorkingSession {
 
         for (idx, source) in sorted.iter().enumerate() {
             let source_path = Path::new(source);
+            let file_index = (idx as u64) + 1;
+            let name = file_name(source_path);
+            on_progress(file_index, &name, 0);
             if self.is_under_working_dir(source_path) {
+                let size = fs::metadata(source_path).map(|m| m.len()).unwrap_or(0);
+                if size > 0 {
+                    on_progress(file_index, &name, size);
+                }
                 dests.push(source_path.to_path_buf());
                 continue;
             }
@@ -212,7 +235,9 @@ impl WorkingSession {
                     "Zielname bereits vorhanden: {dest_name}"
                 )));
             }
-            copy_file(source_path, &dest)?;
+            copy_file_reporting(source_path, &dest, &mut |delta| {
+                on_progress(file_index, &name, delta);
+            })?;
             logging::info(
                 "import",
                 format!(
@@ -413,8 +438,21 @@ pub fn import_videos_to_session(paths: &[String]) -> Result<Vec<String>, Working
 
 /// Import photos sorted by EXIF capture time; returns paths sorted by new filename.
 pub fn import_photos_to_session(paths: &[String]) -> Result<Vec<String>, WorkingSessionError> {
+    import_photos_to_session_with_progress(paths, |_, _, _| {})
+}
+
+/// Like [`import_photos_to_session`], reporting copy progress.
+///
+/// Callback: `(file_index_1based, file_name, delta_bytes)`.
+pub fn import_photos_to_session_with_progress<F>(
+    paths: &[String],
+    on_progress: F,
+) -> Result<Vec<String>, WorkingSessionError>
+where
+    F: FnMut(u64, &str, u64),
+{
     with_session(|s| {
-        let dests = s.import_photos_by_capture_time(paths)?;
+        let dests = s.import_photos_by_capture_time_with_progress(paths, on_progress)?;
         Ok(dests
             .into_iter()
             .map(|p| p.to_string_lossy().into_owned())

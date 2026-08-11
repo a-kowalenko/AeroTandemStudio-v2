@@ -23,6 +23,7 @@ import { usePhotoStore } from "../store/photoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useConfigStore } from "../store/configStore";
 import { useUiStore } from "../store/uiStore";
+import { useSdStore } from "../store/sdStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import {
   clearWorkingSession,
@@ -183,11 +184,20 @@ export function MediaDropZone({
     }
   }
 
+  const clearManualImportProgress = useCallback(() => {
+    const { workflowActive, workflowProgress, setWorkflowProgress } =
+      useSdStore.getState();
+    if (!workflowActive && workflowProgress?.stage === "import") {
+      setWorkflowProgress(null);
+    }
+  }, []);
+
   const handlePaths = useCallback(
     async (paths: string[]) => {
       if (paths.length === 0) return;
       clearError();
       setStatusMsg(null);
+      clearManualImportProgress();
       setExpanding(true);
 
       try {
@@ -246,6 +256,7 @@ export function MediaDropZone({
 
         if (willAutoScan) {
           setExpanding(false);
+          clearManualImportProgress();
           setQrBusy(true);
           try {
             const scanPaths = [...newVideoPaths, ...newPhotoPaths];
@@ -297,12 +308,14 @@ export function MediaDropZone({
         showError(String(e), "Import");
       } finally {
         setExpanding(false);
+        clearManualImportProgress();
       }
     },
     [
       addPhotos,
       addVideos,
       clearError,
+      clearManualImportProgress,
       onImported,
       onRemoveVideo,
       showError,

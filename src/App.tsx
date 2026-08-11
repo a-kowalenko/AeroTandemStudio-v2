@@ -310,6 +310,8 @@ function App() {
   const backupProgress = useSdStore((s) => s.backupProgress);
   const workflowProgress = useSdStore((s) => s.workflowProgress);
   const secondaryBackup = useSdStore((s) => s.secondaryBackup);
+  const videoImporting = useVideoStore((s) => s.importing);
+  const photoImporting = usePhotoStore((s) => s.importing);
   const qrScanBusy = useQrScanStore((s) => s.busy);
   const qrScanStage = useQrScanStore((s) => s.stage);
   const qrScanByPath = useQrScanStore((s) => s.byPath);
@@ -1316,7 +1318,9 @@ function App() {
     autoPanelActive ||
     selectorSubmitting ||
     loading ||
-    qrScanBusy;
+    qrScanBusy ||
+    videoImporting ||
+    photoImporting;
   const sdAutoProgress = resolveSdSelectorProgress({
     submitting: autoPanelActive,
     phase: sdPhase,
@@ -1328,6 +1332,26 @@ function App() {
     qrByPath: qrScanByPath,
     qrFollowup,
   });
+  /** Drop / Datei- / Ordner-Import — same sticky Fortschritt panel as SD Auto. */
+  const mediaImporting = videoImporting || photoImporting;
+  const manualImportProgress =
+    !autoPanelActive && !selectorSubmitting && !qrScanBusy
+      ? workflowProgress && workflowProgress.stage === "import"
+        ? {
+            percent: workflowProgress.percent,
+            label: formatWorkflowLabel(workflowProgress, "Importiere…"),
+            detail: formatWorkflowDetail(workflowProgress),
+            indeterminate: false as boolean | undefined,
+          }
+        : mediaImporting
+          ? {
+              percent: 0,
+              label: "Importiere…",
+              detail: undefined as string | undefined,
+              indeterminate: true,
+            }
+          : null
+      : null;
   /** Same ProgressIndicator as SD Auto — for drop/manual QR (Confirm uses the dialog). */
   const manualQrProgress =
     qrScanBusy && !autoPanelActive && !selectorSubmitting
@@ -1336,9 +1360,13 @@ function App() {
   const showCreateProgress =
     busy || percent > 0 || taskProgress.length > 0;
   const showSdAutoProgress = Boolean(autoPanelActive && sdAutoProgress);
+  const showManualImportProgress = Boolean(manualImportProgress);
   const showManualQrProgress = Boolean(manualQrProgress);
   const showProgressPanel =
-    showCreateProgress || showSdAutoProgress || showManualQrProgress;
+    showCreateProgress ||
+    showSdAutoProgress ||
+    showManualImportProgress ||
+    showManualQrProgress;
 
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
@@ -1566,11 +1594,13 @@ function App() {
                   <p className="text-xs text-muted">
                     {showSdAutoProgress && !busy
                       ? "SD Auto — Backup, Import und weitere Aktionen"
-                      : showManualQrProgress && !busy
-                        ? "QR-Scan der Medien"
-                        : busy
-                          ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
-                          : "Zuletzt abgeschlossener Lauf"}
+                      : showManualImportProgress && !busy
+                        ? "Medien werden in den Arbeitsordner kopiert"
+                        : showManualQrProgress && !busy
+                          ? "QR-Scan der Medien"
+                          : busy
+                            ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
+                            : "Zuletzt abgeschlossener Lauf"}
                   </p>
                 </div>
                 {busy && (
@@ -1589,6 +1619,19 @@ function App() {
                   {sdAutoProgress.detail ? (
                     <p className="text-xs tabular-nums text-muted">
                       {sdAutoProgress.detail}
+                    </p>
+                  ) : null}
+                </div>
+              ) : showManualImportProgress && !busy && manualImportProgress ? (
+                <div className="space-y-2">
+                  <ProgressIndicator
+                    percent={manualImportProgress.percent}
+                    label={manualImportProgress.label}
+                    indeterminate={Boolean(manualImportProgress.indeterminate)}
+                  />
+                  {manualImportProgress.detail ? (
+                    <p className="text-xs tabular-nums text-muted">
+                      {manualImportProgress.detail}
                     </p>
                   ) : null}
                 </div>

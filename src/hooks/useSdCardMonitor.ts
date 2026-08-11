@@ -145,18 +145,25 @@ export function useSdCardMonitor(opts?: {
     }).then((fn) => unlisteners.push(fn));
 
     listen<WorkflowProgress>("sd-workflow-progress", (event) => {
-      // Shared by media import_videos/photos AND SD clear/import. Only the SD
-      // workflow may own the header phase — otherwise "Import…" sticks forever.
+      // Shared by media import_videos/photos AND SD clear/import.
+      // Manual/drop import must update workflowProgress for the Fortschritt panel,
+      // but only the SD workflow may own the header phase — otherwise "Import…"
+      // sticks forever in the SD drive selector.
       const { workflowActive, phase } = useSdStore.getState();
+      const p = event.payload;
       if (!workflowActive) {
+        if (p.stage === "import") {
+          setWorkflowProgress(p);
+        }
         if (phase === "importing" || phase === "clearing") {
           setPhase("monitoring");
-          setWorkflowProgress(null);
-          setBackupProgress(null);
+          if (p.stage !== "import") {
+            setWorkflowProgress(null);
+            setBackupProgress(null);
+          }
         }
         return;
       }
-      const p = event.payload;
       if (p.stage === "clear") setPhase("clearing");
       else if (p.stage === "import") setPhase("importing");
       setBackupProgress(null);
