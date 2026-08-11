@@ -180,8 +180,8 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
   const busy = Boolean(disabled);
 
   return (
-    <div className="flex items-center gap-0.5">
-      <div className="min-w-0 flex-1">
+    <div className="grid grid-cols-2 items-center gap-1">
+      <div className="min-w-0">
         <Combobox
           label="Dropzone"
           hideLabel
@@ -193,8 +193,11 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
           inputClassName={SESSION_STRIP_INPUT}
         />
       </div>
-      <div className="mx-0.5 h-4 w-px shrink-0 bg-border/60" aria-hidden />
-      <div className="w-[138px] shrink-0">
+      <div className="relative min-w-0 pl-1.5">
+        <div
+          className="pointer-events-none absolute top-1/2 left-0 h-4 w-px -translate-y-1/2 bg-border/60"
+          aria-hidden
+        />
         <DateField
           label="Datum"
           hideLabel
