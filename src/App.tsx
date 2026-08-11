@@ -1324,6 +1324,7 @@ function App() {
             onClick={handleSessionReset}
             disabled={busy || !ready}
             title="Formular und Medien zurücksetzen"
+            className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
           >
             <RotateCcw className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Zurücksetzen</span>
