@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, type ReactNode } from "react";
-import { QrCode, UserRound, PencilLine } from "lucide-react";
+import { useState, useEffect, useMemo, type InputHTMLAttributes, type ReactNode } from "react";
+import { Hash, QrCode, UserRound, PencilLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,6 +11,12 @@ import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
+/** Allow digits and optional leading `#`; store only digits. */
+function sanitizeNumericIdInput(raw: string): string {
+  const withoutLeadingHash = raw.replace(/^#+/, "");
+  return withoutLeadingHash.replace(/\D/g, "");
+}
+
 type FieldProps = {
   label: string;
   value: string;
@@ -19,19 +25,46 @@ type FieldProps = {
   type?: string;
   mono?: boolean;
   hint?: string;
+  prefix?: ReactNode;
+  inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
 };
 
-function Field({ label, value, onChange, disabled, type = "text", mono, hint }: FieldProps) {
+function Field({
+  label,
+  value,
+  onChange,
+  disabled,
+  type = "text",
+  mono,
+  hint,
+  prefix,
+  inputMode,
+}: FieldProps) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted">{label}</Label>
-      <Input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={cn(mono && "font-mono text-[13px]", disabled && "bg-card-elevated")}
-      />
+      <div className="relative">
+        {prefix ? (
+          <span
+            className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-muted"
+            aria-hidden
+          >
+            {prefix}
+          </span>
+        ) : null}
+        <Input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          inputMode={inputMode}
+          className={cn(
+            mono && "font-mono text-[13px]",
+            disabled && "bg-card-elevated",
+            prefix && "pl-8",
+          )}
+        />
+      </div>
       {hint ? <p className="text-[10px] leading-snug text-muted">{hint}</p> : null}
     </div>
   );
@@ -448,16 +481,24 @@ export function CustomerForm({ disabled }: CustomerFormProps) {
                   <Field
                     label="Kunden-ID"
                     value={kunde.kunden_id ?? ""}
-                    onChange={(v) => setField("kunden_id", v || null)}
+                    onChange={(v) =>
+                      setField("kunden_id", sanitizeNumericIdInput(v) || null)
+                    }
                     disabled={busy}
                     mono
+                    inputMode="numeric"
+                    prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
                   />
                   <Field
                     label="Booking-ID"
                     value={kunde.booking_id ?? ""}
-                    onChange={(v) => setField("booking_id", v || null)}
+                    onChange={(v) =>
+                      setField("booking_id", sanitizeNumericIdInput(v) || null)
+                    }
                     disabled={busy}
                     mono
+                    inputMode="numeric"
+                    prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
                   />
                 </>
               ) : null}
