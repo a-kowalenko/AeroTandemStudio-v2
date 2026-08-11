@@ -29,7 +29,7 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
 import { SdDriveSelector } from "./components/SdDriveSelector";
 import { SdFileSelector, type SdSelectorProgress } from "./components/SdFileSelector";
-import { ProcessedFilesDialog } from "./components/ProcessedFilesDialog";
+import { HistoryDialog } from "./components/HistoryDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
 import { Button } from "./components/ui/button";
@@ -1647,7 +1647,7 @@ function App() {
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
         onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
       />
-      <ProcessedFilesDialog open={processedOpen} onOpenChange={setProcessedOpen} />
+      <HistoryDialog open={processedOpen} onOpenChange={setProcessedOpen} />
       <VideoCutter
         open={cutterOpen}
         videoPath={cutterPath}

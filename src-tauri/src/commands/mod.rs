@@ -5,3 +5,4 @@ pub mod qr;
 pub mod sd_card;
 pub mod smb;
 pub mod video;
+pub mod vorgang_history;

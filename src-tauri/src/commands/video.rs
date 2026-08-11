@@ -951,6 +951,11 @@ pub async fn create_job(
     };
     let opts = options.unwrap_or_default();
 
+    let kunde_for_history = kunde.clone();
+    let videos_for_history = video_paths.clone();
+    let photos_for_history = photo_paths.clone();
+    let manual_entry_mode_for_history = config.manual_entry_mode.clone();
+
     let app_for_cb = app.clone();
     let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
         let _ = app_for_cb.emit("encode-progress", &p);
@@ -992,6 +997,22 @@ pub async fn create_job(
                     res.encoder
                 ),
             );
+            if let Err(e) = crate::storage::vorgang_history::VorgangHistoryStore::open_default()
+                .and_then(|store| {
+                    store.record_create_job(
+                        &kunde_for_history,
+                        &videos_for_history,
+                        &photos_for_history,
+                        &res,
+                        &manual_entry_mode_for_history,
+                    )
+                })
+            {
+                logging::error(
+                    "vorgang_history",
+                    format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
+                );
+            }
             Ok(res)
         }
         Err(e) => {

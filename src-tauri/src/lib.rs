@@ -38,6 +38,7 @@ use commands::video::{
     list_video_keyframes, probe_video, resolve_intro_mux_fallback, split_video, trim_video,
     undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path, validate_create_job,
 };
+use commands::vorgang_history::{delete_vorgaenge, list_vorgang_dateien, list_vorgaenge};
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
 use updater::{
@@ -177,6 +178,9 @@ pub fn run() {
             list_processed_files,
             delete_processed_files,
             purge_processed_files,
+            list_vorgaenge,
+            list_vorgang_dateien,
+            delete_vorgaenge,
             test_server_connection,
             upload_to_server,
             get_updater_status,
