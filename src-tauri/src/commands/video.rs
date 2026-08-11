@@ -749,26 +749,69 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
     let ffmpeg = resolve_ffmpeg(&app)?;
     let app_progress = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        use crate::sd_card::monitor::{workflow_progress, EVENT_WORKFLOW_PROGRESS};
+        use crate::sd_card::monitor::{
+            workflow_progress_import_copy, workflow_progress_import_probe, EVENT_WORKFLOW_PROGRESS,
+        };
+        use std::time::{Duration, Instant, SystemTime};
         use tauri::Emitter;
 
         let n = sorted.len() as u64;
-        // Copy + probe = 2 steps per file.
-        let total_steps = n.saturating_mul(2);
-        let emit = |current: u64, label: &str| {
+        let total_bytes: u64 = sorted
+            .iter()
+            .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
+            .sum();
+        let mut copied_bytes: u64 = 0;
+        let start = SystemTime::now();
+        let mut last_emit = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+
+        let emit_copy = |copied_bytes: u64,
+                         file_index: u64,
+                         file_name: &str,
+                         force: bool,
+                         last: &mut Instant| {
+            if !force && last.elapsed() < Duration::from_millis(150) {
+                return;
+            }
+            let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
+            let current_mb = copied_bytes as f64 / (1024.0 * 1024.0);
+            let speed = if elapsed > 0.0 {
+                current_mb / elapsed
+            } else {
+                0.0
+            };
             let _ = app_progress.emit(
                 EVENT_WORKFLOW_PROGRESS,
-                workflow_progress("import", current, total_steps, label),
+                workflow_progress_import_copy(
+                    copied_bytes,
+                    total_bytes,
+                    speed,
+                    file_index,
+                    n,
+                    file_name,
+                    "Kopiere Videos…",
+                ),
             );
+            *last = Instant::now();
         };
 
-        emit(0, "Importiere Videos…");
+        emit_copy(0, 0, "", true, &mut last_emit);
         let mut working = Vec::with_capacity(sorted.len());
         for (i, path) in sorted.iter().enumerate() {
-            let dest = crate::storage::working_session::import_video_to_session(path)
-                .map_err(|e| e.to_string())?;
+            let file_index = (i as u64) + 1;
+            let name = file_name(path);
+            emit_copy(copied_bytes, file_index, &name, true, &mut last_emit);
+            let dest = crate::storage::working_session::import_video_to_session_with_progress(
+                path,
+                |delta| {
+                    copied_bytes += delta;
+                    emit_copy(copied_bytes, file_index, &name, false, &mut last_emit);
+                },
+            )
+            .map_err(|e| e.to_string())?;
             working.push(dest.to_string_lossy().into_owned());
-            emit((i as u64) * 2 + 1, "Kopiere Videos…");
+            emit_copy(copied_bytes, file_index, &name, true, &mut last_emit);
         }
         logging::info(
             "import",
@@ -777,6 +820,12 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         let mut out = Vec::with_capacity(working.len());
         let mut errors = Vec::new();
         for (i, path) in working.iter().enumerate() {
+            let file_index = (i as u64) + 1;
+            let name = file_name(path);
+            let _ = app_progress.emit(
+                EVENT_WORKFLOW_PROGRESS,
+                workflow_progress_import_probe(file_index, n, &name, "Analysiere Videos…"),
+            );
             match probe::probe_video(&ffmpeg, path) {
                 Ok(meta) => {
                     let device = probe::format_camera_label(&meta.camera_make, &meta.camera_model)
@@ -786,7 +835,7 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                         "import",
                         format!(
                             "Probe OK: {} ({}x{}, {:.1}s, {}{})",
-                            file_name(path),
+                            name,
                             meta.width,
                             meta.height,
                             meta.duration_secs,
@@ -799,12 +848,15 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                 Err(e) => {
                     logging::warn(
                         "import",
-                        format!("Probe fehlgeschlagen ({}): {e}", file_name(path)),
+                        format!("Probe fehlgeschlagen ({name}): {e}"),
                     );
                     errors.push(format!("{path}: {e}"));
                 }
             }
-            emit((i as u64) * 2 + 2, "Analysiere Videos…");
+            let _ = app_progress.emit(
+                EVENT_WORKFLOW_PROGRESS,
+                workflow_progress_import_probe(file_index, n, &name, "Analysiere Videos…"),
+            );
         }
         if out.is_empty() && !errors.is_empty() {
             return Err(errors.join("; "));

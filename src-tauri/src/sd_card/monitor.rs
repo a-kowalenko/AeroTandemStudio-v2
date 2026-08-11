@@ -173,9 +173,19 @@ pub struct BackupProgress {
     pub total_mb: f64,
     pub speed_mbps: f64,
     pub percent: f64,
+    /// 1-based index of the file currently being copied (omit at start).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_index: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
 }
 
 /// File-count progress for clear / import (i/n).
+///
+/// Import copy phase may also fill optional byte / file-name fields so the UI can
+/// show `MB · MB/s · Datei x/n · name` like backup.
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkflowProgress {
     /// `"clear"` | `"import"`
@@ -184,20 +194,96 @@ pub struct WorkflowProgress {
     pub total: u64,
     pub percent: f64,
     pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_mb: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_mb: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_mbps: Option<f64>,
+    /// 1-based index of the file currently being copied / probed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_index: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_total: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
 }
 
-pub fn workflow_progress(stage: &str, current: u64, total: u64, label: &str) -> WorkflowProgress {
-    let percent = if total > 0 {
+fn workflow_percent(current: u64, total: u64) -> f64 {
+    if total > 0 {
         ((current as f64 / total as f64) * 100.0).min(100.0)
     } else {
         0.0
-    };
+    }
+}
+
+pub fn workflow_progress(stage: &str, current: u64, total: u64, label: &str) -> WorkflowProgress {
     WorkflowProgress {
         stage: stage.to_string(),
         current,
         total,
+        percent: workflow_percent(current, total),
+        label: label.to_string(),
+        current_mb: None,
+        total_mb: None,
+        speed_mbps: None,
+        file_index: None,
+        file_total: None,
+        file_name: None,
+    }
+}
+
+/// Byte-level import copy progress (overall MB + speed + current file).
+pub fn workflow_progress_import_copy(
+    copied_bytes: u64,
+    total_bytes: u64,
+    speed_mbps: f64,
+    file_index: u64,
+    file_total: u64,
+    file_name: &str,
+    label: &str,
+) -> WorkflowProgress {
+    let current_mb = copied_bytes as f64 / (1024.0 * 1024.0);
+    let total_mb = total_bytes as f64 / (1024.0 * 1024.0);
+    let percent = if total_bytes > 0 {
+        ((copied_bytes as f64 / total_bytes as f64) * 100.0).min(100.0)
+    } else {
+        workflow_percent(file_index, file_total)
+    };
+    WorkflowProgress {
+        stage: "import".to_string(),
+        current: file_index,
+        total: file_total,
         percent,
         label: label.to_string(),
+        current_mb: Some(current_mb),
+        total_mb: Some(total_mb),
+        speed_mbps: Some(speed_mbps),
+        file_index: Some(file_index),
+        file_total: Some(file_total),
+        file_name: Some(file_name.to_string()),
+    }
+}
+
+/// Import probe / analyse progress (file counter only, no MB/s).
+pub fn workflow_progress_import_probe(
+    file_index: u64,
+    file_total: u64,
+    file_name: &str,
+    label: &str,
+) -> WorkflowProgress {
+    WorkflowProgress {
+        stage: "import".to_string(),
+        current: file_index,
+        total: file_total,
+        percent: workflow_percent(file_index, file_total),
+        label: label.to_string(),
+        current_mb: None,
+        total_mb: None,
+        speed_mbps: None,
+        file_index: Some(file_index),
+        file_total: Some(file_total),
+        file_name: Some(file_name.to_string()),
     }
 }
 
@@ -796,8 +882,15 @@ impl SdCardMonitor {
         let mut last_progress_emit = Instant::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
+        let file_total = filtered.len() as u64;
 
-        let emit_progress = |copied_size: u64, total_mb: f64, start: SystemTime, force: bool, last: &mut Instant| {
+        let emit_progress = |copied_size: u64,
+                             total_mb: f64,
+                             start: SystemTime,
+                             force: bool,
+                             last: &mut Instant,
+                             file_index: u64,
+                             file_name: &str| {
             if !force && last.elapsed() < Duration::from_millis(150) {
                 return;
             }
@@ -819,14 +912,26 @@ impl SdCardMonitor {
                     total_mb,
                     speed_mbps: speed,
                     percent,
+                    file_index: if file_index > 0 {
+                        Some(file_index)
+                    } else {
+                        None
+                    },
+                    file_total: Some(file_total),
+                    file_name: if file_name.is_empty() {
+                        None
+                    } else {
+                        Some(file_name.to_string())
+                    },
                 });
                 *last = Instant::now();
             }
         };
 
-        emit_progress(0, total_mb, start, true, &mut last_progress_emit);
+        emit_progress(0, total_mb, start, true, &mut last_progress_emit, 0, "");
 
-        for src_file in &filtered {
+        for (i, src_file) in filtered.iter().enumerate() {
+            let file_index = (i as u64) + 1;
             let src_path = Path::new(src_file);
             let original_name = src_path
                 .file_name()
@@ -836,6 +941,16 @@ impl SdCardMonitor {
             let dst_filename = unique_dest_name(&original_name, &mut used_names);
             let dst = backup_path.join(&dst_filename);
 
+            emit_progress(
+                copied_size,
+                total_mb,
+                start,
+                true,
+                &mut last_progress_emit,
+                file_index,
+                &original_name,
+            );
+
             match copy_file_with_progress(src_path, &dst, |delta| {
                 copied_size += delta;
                 emit_progress(
@@ -844,6 +959,8 @@ impl SdCardMonitor {
                     start,
                     false,
                     &mut last_progress_emit,
+                    file_index,
+                    &original_name,
                 );
             }) {
                 Ok(_) => {
@@ -885,7 +1002,15 @@ impl SdCardMonitor {
                         let _ = hist.mark_backed_up(src_path);
                     }
                     // Always emit once per completed file (smooth bar + accurate end-of-file %).
-                    emit_progress(copied_size, total_mb, start, true, &mut last_progress_emit);
+                    emit_progress(
+                        copied_size,
+                        total_mb,
+                        start,
+                        true,
+                        &mut last_progress_emit,
+                        file_index,
+                        &original_name,
+                    );
                 }
                 Err(e) => {
                     // Card removed mid-backup
@@ -968,6 +1093,13 @@ impl SdCardMonitor {
                         0.0
                     },
                     percent: 100.0,
+                    file_index: if file_total > 0 {
+                        Some(file_total)
+                    } else {
+                        None
+                    },
+                    file_total: Some(file_total),
+                    file_name: None,
                 });
             }
             self.emit_status("clearing_started", serde_json::json!(drive));
@@ -1667,5 +1799,44 @@ mod tests {
         assert!(result.secondary_warning.is_some());
         let primary = PathBuf::from(result.backup_path.unwrap());
         assert!(primary.join("clip.mp4").is_file());
+    }
+
+    #[test]
+    fn workflow_progress_steps_has_no_byte_fields() {
+        let p = workflow_progress("clear", 2, 5, "SD wird bereinigt…");
+        assert_eq!(p.percent, 40.0);
+        assert!(p.current_mb.is_none());
+        assert!(p.file_index.is_none());
+    }
+
+    #[test]
+    fn workflow_progress_import_copy_uses_bytes_for_percent() {
+        let p = workflow_progress_import_copy(
+            512 * 1024,
+            1024 * 1024,
+            12.5,
+            2,
+            4,
+            "DJI_0002.MP4",
+            "Kopiere Videos…",
+        );
+        assert_eq!(p.stage, "import");
+        assert!((p.percent - 50.0).abs() < 0.01);
+        assert!((p.current_mb.unwrap() - 0.5).abs() < 0.01);
+        assert!((p.total_mb.unwrap() - 1.0).abs() < 0.01);
+        assert_eq!(p.speed_mbps, Some(12.5));
+        assert_eq!(p.file_index, Some(2));
+        assert_eq!(p.file_total, Some(4));
+        assert_eq!(p.file_name.as_deref(), Some("DJI_0002.MP4"));
+    }
+
+    #[test]
+    fn workflow_progress_import_probe_has_no_speed() {
+        let p = workflow_progress_import_probe(3, 5, "clip.mp4", "Analysiere Videos…");
+        assert_eq!(p.percent, 60.0);
+        assert!(p.current_mb.is_none());
+        assert!(p.speed_mbps.is_none());
+        assert_eq!(p.file_index, Some(3));
+        assert_eq!(p.file_name.as_deref(), Some("clip.mp4"));
     }
 }

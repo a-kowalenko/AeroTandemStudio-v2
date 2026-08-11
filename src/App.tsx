@@ -89,6 +89,41 @@ import {
 import { cn, isCancellationError } from "./lib/utils";
 import "./App.css";
 
+function formatWorkflowDetail(p: WorkflowProgress): string | undefined {
+  const parts: string[] = [];
+  if (
+    p.total_mb != null &&
+    p.total_mb > 0 &&
+    p.current_mb != null
+  ) {
+    parts.push(`${p.current_mb.toFixed(0)}/${p.total_mb.toFixed(0)} MB`);
+  }
+  if (p.speed_mbps != null && p.speed_mbps > 0) {
+    parts.push(`${p.speed_mbps.toFixed(1)} MB/s`);
+  }
+  // Clear / simple step progress (no per-file index on the label).
+  if (
+    (p.file_index == null || p.file_index <= 0) &&
+    p.total > 0 &&
+    (p.current_mb == null || p.total_mb == null)
+  ) {
+    parts.push(`${p.current}/${p.total}`);
+  }
+  const name = p.file_name?.trim();
+  if (name) {
+    parts.push(name);
+  }
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+function formatWorkflowLabel(p: WorkflowProgress, fallback: string): string {
+  const base = (p.label || fallback).trim() || fallback;
+  if (p.file_total != null && p.file_total > 0 && p.file_index != null && p.file_index > 0) {
+    return `${base} (${p.file_index}/${p.file_total})`;
+  }
+  return base;
+}
+
 function resolveSdSelectorProgress(opts: {
   submitting: boolean;
   phase: string;
@@ -102,14 +137,14 @@ function resolveSdSelectorProgress(opts: {
   const msg = loadingMessage.trim();
 
   if (workflowProgress && (workflowProgress.stage === "clear" || workflowProgress.stage === "import")) {
-    const current = workflowProgress.current;
-    const total = workflowProgress.total;
+    const fallback =
+      workflowProgress.stage === "clear"
+        ? "SD wird bereinigt…"
+        : msg || "Importiere…";
     return {
       percent: workflowProgress.percent,
-      label: workflowProgress.label || (workflowProgress.stage === "clear"
-        ? "SD wird bereinigt…"
-        : msg || "Importiere…"),
-      detail: total > 0 ? `${current}/${total}` : undefined,
+      label: formatWorkflowLabel(workflowProgress, fallback),
+      detail: formatWorkflowDetail(workflowProgress),
     };
   }
 
@@ -121,11 +156,25 @@ function resolveSdSelectorProgress(opts: {
     if (backupProgress.speed_mbps > 0 && !isClearing) {
       detailParts.push(`${backupProgress.speed_mbps.toFixed(1)} MB/s`);
     }
+    const fileName = backupProgress.file_name?.trim();
+    if (fileName && !isClearing) {
+      detailParts.push(fileName);
+    }
+    let label = isClearing
+      ? "SD wird bereinigt…"
+      : msg || "SD-Backup läuft…";
+    if (
+      !isClearing &&
+      backupProgress.file_total != null &&
+      backupProgress.file_total > 0 &&
+      backupProgress.file_index != null &&
+      backupProgress.file_index > 0
+    ) {
+      label = `${label} (${backupProgress.file_index}/${backupProgress.file_total})`;
+    }
     return {
       percent: backupProgress.percent,
-      label: isClearing
-        ? "SD wird bereinigt…"
-        : msg || "SD-Backup läuft…",
+      label,
       detail: detailParts.join(" · "),
     };
   }

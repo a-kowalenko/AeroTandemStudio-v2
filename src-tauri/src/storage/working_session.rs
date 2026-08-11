@@ -83,6 +83,21 @@ impl WorkingSession {
 
     /// Copy a video into the working folder root (or return path if already there).
     pub fn import_video(&mut self, source: &Path) -> Result<PathBuf, WorkingSessionError> {
+        self.import_video_with_progress(source, |_| {})
+    }
+
+    /// Like [`Self::import_video`], reporting each written chunk via `on_chunk`.
+    ///
+    /// When the source is already under the working folder (no copy), `on_chunk` is
+    /// invoked once with the full file size so overall byte progress stays consistent.
+    pub fn import_video_with_progress<F>(
+        &mut self,
+        source: &Path,
+        mut on_chunk: F,
+    ) -> Result<PathBuf, WorkingSessionError>
+    where
+        F: FnMut(u64),
+    {
         if !source.is_file() {
             return Err(WorkingSessionError::Message(format!(
                 "Datei nicht gefunden: {}",
@@ -95,10 +110,14 @@ impl WorkingSession {
                 "import",
                 format!("Video bereits im Arbeitsordner: {}", file_name(source)),
             );
+            let size = fs::metadata(source).map(|m| m.len()).unwrap_or(0);
+            if size > 0 {
+                on_chunk(size);
+            }
             return Ok(source.to_path_buf());
         }
         let dest = unique_dest_in(&root, &safe_filename(source))?;
-        copy_file(source, &dest)?;
+        copy_file_reporting(source, &dest, &mut on_chunk)?;
         logging::info(
             "import",
             format!(
@@ -317,7 +336,18 @@ fn unique_dest_in(dir: &Path, filename: &str) -> Result<PathBuf, WorkingSessionE
 }
 
 fn copy_file(src: &Path, dest: &Path) -> Result<(), WorkingSessionError> {
-    fs::copy(src, dest)?;
+    copy_file_reporting(src, dest, &mut |_| {})
+}
+
+fn copy_file_reporting<F>(
+    src: &Path,
+    dest: &Path,
+    on_chunk: &mut F,
+) -> Result<(), WorkingSessionError>
+where
+    F: FnMut(u64),
+{
+    crate::sd_card::copy_progress::copy_file_with_progress(src, dest, |delta| on_chunk(delta))?;
     // Best-effort: preserve modified time like shutil.copy2
     if let Ok(meta) = fs::metadata(src) {
         if let Ok(mtime) = meta.modified() {
@@ -351,6 +381,16 @@ pub fn clear_working_session() {
 
 pub fn import_video_to_session(source: &str) -> Result<PathBuf, WorkingSessionError> {
     with_session(|s| s.import_video(Path::new(source)))?
+}
+
+pub fn import_video_to_session_with_progress<F>(
+    source: &str,
+    on_chunk: F,
+) -> Result<PathBuf, WorkingSessionError>
+where
+    F: FnMut(u64),
+{
+    with_session(|s| s.import_video_with_progress(Path::new(source), on_chunk))?
 }
 
 pub fn import_photo_to_session(source: &str) -> Result<PathBuf, WorkingSessionError> {
@@ -448,6 +488,35 @@ mod tests {
 
         session.clear();
         assert!(session.current_dir().is_none());
+    }
+
+    #[test]
+    fn import_video_reports_chunk_progress() {
+        let mut session = WorkingSession::default();
+        let src_root = tempfile::tempdir().unwrap();
+        let payload = vec![0xABu8; 64 * 1024];
+        let video = write_temp_file(src_root.path(), "BIG.MP4", &payload);
+
+        let mut reported = 0u64;
+        let dest = session
+            .import_video_with_progress(&video, |delta| {
+                reported += delta;
+            })
+            .unwrap();
+        assert_eq!(reported, payload.len() as u64);
+        assert_eq!(fs::read(&dest).unwrap(), payload);
+
+        // Already in working dir → one callback with full size
+        let mut skip_reported = 0u64;
+        let again = session
+            .import_video_with_progress(&dest, |delta| {
+                skip_reported += delta;
+            })
+            .unwrap();
+        assert_eq!(again, dest);
+        assert_eq!(skip_reported, payload.len() as u64);
+
+        session.clear();
     }
 
     #[test]

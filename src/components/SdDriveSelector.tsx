@@ -51,6 +51,8 @@ function phaseStatusLabel(
     current_mb: number;
     total_mb: number;
     speed_mbps: number;
+    file_index?: number | null;
+    file_total?: number | null;
   } | null,
 ): string | null {
   if (phase === "backing_up") {
@@ -59,7 +61,14 @@ function phaseStatusLabel(
       progress.speed_mbps > 0
         ? ` · ${progress.speed_mbps.toFixed(1)} MB/s`
         : "";
-    return `Backup ${progress.current_mb.toFixed(0)}/${progress.total_mb.toFixed(0)} MB${speed}`;
+    const files =
+      progress.file_total != null &&
+      progress.file_total > 0 &&
+      progress.file_index != null &&
+      progress.file_index > 0
+        ? ` (${progress.file_index}/${progress.file_total})`
+        : "";
+    return `Backup ${progress.current_mb.toFixed(0)}/${progress.total_mb.toFixed(0)} MB${speed}${files}`;
   }
   if (phase === "clearing") return "Leeren…";
   if (phase === "importing") return "Import…";

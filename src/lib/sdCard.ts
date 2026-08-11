@@ -61,6 +61,10 @@ export type BackupProgress = {
   total_mb: number;
   speed_mbps: number;
   percent: number;
+  /** 1-based file index while copying. */
+  file_index?: number | null;
+  file_total?: number | null;
+  file_name?: string | null;
 };
 
 /** File-count progress for clear / import (i/n). */
@@ -70,6 +74,14 @@ export type WorkflowProgress = {
   total: number;
   percent: number;
   label: string;
+  /** Present during import copy (byte progress). */
+  current_mb?: number | null;
+  total_mb?: number | null;
+  speed_mbps?: number | null;
+  /** 1-based file index during import copy / probe. */
+  file_index?: number | null;
+  file_total?: number | null;
+  file_name?: string | null;
 };
 
 export type SdWorkflowActions = {
