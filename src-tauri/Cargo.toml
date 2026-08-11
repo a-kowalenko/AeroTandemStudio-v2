@@ -33,6 +33,7 @@ rusqlite = { version = "0.40.1", features = ["bundled"] }
 directories = "6.0.0"
 rxing = { version = "0.9", default-features = false, features = ["image", "image_formats", "decoders", "qrcode", "encoding_rs"] }
 image = "0.25"
+jpeg-decoder = "0.3"
 tempfile = "3.27.0"
 sha1 = "0.10"
 base64 = "0.22"

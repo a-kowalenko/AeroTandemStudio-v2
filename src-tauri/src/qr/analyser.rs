@@ -3,13 +3,15 @@
 //! Behaviour port of legacy `qr_analyser.py` (without OpenCV / pyzbar).
 
 use std::collections::HashSet;
-use std::fs;
+use std::fs::{self, File};
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use image::imageops::FilterType;
-use image::GenericImageView;
+use image::{DynamicImage, GenericImageView, ImageBuffer};
+use jpeg_decoder::{Decoder as JpegDecoder, PixelFormat as JpegPixelFormat};
 use rxing::common::HybridBinarizer;
 use rxing::{
     BarcodeFormat, BinaryBitmap, DecodeHints, Luma8LuminanceSource, MultiFormatReader, Reader,
@@ -25,6 +27,8 @@ pub const DEFAULT_QR_VIDEO_SCAN_SECONDS: f64 = 5.0;
 pub const DEFAULT_QR_FRAME_STEP: u32 = 10;
 pub const MAX_QR_DECODE_WIDTH: u32 = 1920;
 pub const MAX_QR_VIDEO_DECODE_WIDTH: u32 = 1280;
+/// Downscale for follow-up neighbor scans (detect-only, no preview).
+pub const MAX_QR_FOLLOWUP_DECODE_WIDTH: u32 = 960;
 /// Temp dirs for hit-frame previews shown in SuccessDialog.
 pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
 /// Extra padding around the QR AABB before forming a square (fraction of side).
@@ -416,18 +420,94 @@ pub fn decode_qr_from_luma(
     }
 }
 
+/// Load image for QR: JPEG uses DCT-scaled decode (1/2, 1/4, 1/8) toward `max_width`
+/// so multi-MP files are not fully materialised. Other formats fall back to `image::open`.
+fn open_image_for_qr(path: &Path, max_width: u32) -> Result<DynamicImage, QrScanError> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(ext.as_str(), "jpg" | "jpeg") {
+        match open_jpeg_scaled(path, max_width) {
+            Ok(img) => return Ok(img),
+            Err(e) => {
+                eprintln!(
+                    "JPEG scaled decode failed ({}, fallback to full decode): {e}",
+                    path.display()
+                );
+            }
+        }
+    }
+    image::open(path).map_err(|e| QrScanError::Image(e.to_string()))
+}
+
+fn open_jpeg_scaled(path: &Path, max_width: u32) -> Result<DynamicImage, QrScanError> {
+    let file = File::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
+    let mut decoder = JpegDecoder::new(BufReader::new(file));
+    decoder
+        .read_info()
+        .map_err(|e| QrScanError::Image(format!("JPEG header: {e}")))?;
+    let info = decoder
+        .info()
+        .ok_or_else(|| QrScanError::Image("JPEG missing info after header".into()))?;
+
+    let max_w = max_width.max(1).min(u32::from(u16::MAX));
+    let req_w = max_w as u16;
+    let req_h = if info.width > 0 {
+        let h = (u64::from(max_w) * u64::from(info.height) / u64::from(info.width)).max(1);
+        h.min(u64::from(u16::MAX)) as u16
+    } else {
+        req_w
+    };
+
+    // Efficient IDCT downscale: factors 1/8, 1/4, 1/2, 1 — picks the smallest that
+    // still yields ≥ requested size on at least one axis.
+    decoder
+        .scale(req_w, req_h.max(1))
+        .map_err(|e| QrScanError::Image(format!("JPEG scale: {e}")))?;
+
+    let pixels = decoder
+        .decode()
+        .map_err(|e| QrScanError::Image(format!("JPEG decode: {e}")))?;
+    let info = decoder
+        .info()
+        .ok_or_else(|| QrScanError::Image("JPEG missing info after decode".into()))?;
+    let w = u32::from(info.width);
+    let h = u32::from(info.height);
+
+    let img = match info.pixel_format {
+        JpegPixelFormat::L8 => {
+            let buf = ImageBuffer::<image::Luma<u8>, _>::from_raw(w, h, pixels)
+                .ok_or_else(|| QrScanError::Image("JPEG L8 buffer size mismatch".into()))?;
+            DynamicImage::ImageLuma8(buf)
+        }
+        JpegPixelFormat::RGB24 => {
+            let buf = ImageBuffer::<image::Rgb<u8>, _>::from_raw(w, h, pixels)
+                .ok_or_else(|| QrScanError::Image("JPEG RGB buffer size mismatch".into()))?;
+            DynamicImage::ImageRgb8(buf)
+        }
+        other => {
+            return Err(QrScanError::Image(format!(
+                "JPEG pixel format {other:?} unsupported for scaled path"
+            )));
+        }
+    };
+    Ok(img)
+}
+
 /// Load image path, optionally downscale, convert to luma, decode QR → Kunde + preview.
 pub fn decode_kunde_from_image_path(
     path: &Path,
     max_width: u32,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
-    let img = image::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
+    let img = open_image_for_qr(path, max_width)?;
     decode_kunde_from_dynamic_image(img, max_width, true)
 }
 
 /// Detect a valid customer QR without persisting a preview image (follow-up cleanup).
 pub fn photo_has_customer_qr(path: &Path, max_width: u32) -> Result<bool, QrScanError> {
-    let img = image::open(path).map_err(|e| QrScanError::Image(e.to_string()))?;
+    let img = open_image_for_qr(path, max_width)?;
     Ok(decode_kunde_from_dynamic_image(img, max_width, false)?.is_some())
 }
 

@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::thread;
 
-use super::analyser::{photo_has_customer_qr, QrScanError, QrScanOptions};
+use super::analyser::{
+    photo_has_customer_qr, QrScanError, QrScanOptions, MAX_QR_FOLLOWUP_DECODE_WIDTH,
+};
 use super::series::{
     hit_index_in_list, path_key, same_series_step, QR_PHOTO_FOLLOWUP_SCAN_CAP,
     QR_PHOTO_MISS_STREAK_STOP, QR_PHOTO_SERIES_GAP_SECS,
@@ -110,7 +112,7 @@ pub fn scan_series_followup_hits(
     _ffmpeg_bin: &Path,
     ordered_paths: &[String],
     hit_path: &str,
-    options: &QrScanOptions,
+    _options: &QrScanOptions,
     on_progress: Option<&FollowupProgressCb<'_>>,
 ) -> Result<Vec<String>, QrScanError> {
     let Some(hit_idx) = hit_index_in_list(ordered_paths, hit_path) else {
@@ -124,7 +126,7 @@ pub fn scan_series_followup_hits(
     });
     let scans_used = AtomicUsize::new(0);
     let extra_hits = AtomicUsize::new(0);
-    let max_width = options.max_photo_width;
+    let max_width = MAX_QR_FOLLOWUP_DECODE_WIDTH;
 
     let detect = |path: &str| -> bool {
         match photo_has_customer_qr(Path::new(path), max_width) {
