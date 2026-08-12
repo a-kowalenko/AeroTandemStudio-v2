@@ -248,12 +248,19 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
                   <QrScanRowBar path={p.path} />
                 </div>
                 {isWm && (
-                  <span
-                    className="absolute top-0.5 right-0.5 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-                    aria-label="Wasserzeichen"
-                  >
-                    WM
-                  </span>
+                  <>
+                    <img
+                      src="/preview_stempel.png"
+                      alt=""
+                      className="pointer-events-none absolute left-1/2 top-1/2 max-h-[135%] max-w-[135%] -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-sm"
+                    />
+                    <span
+                      className="absolute top-0.5 right-0.5 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+                      aria-label="Wasserzeichen"
+                    >
+                      WM
+                    </span>
+                  </>
                 )}
               </button>
             );
