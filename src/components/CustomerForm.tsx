@@ -15,7 +15,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { QrHitMeta } from "@/components/QrHitMeta";
-import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
+import {
+  QR_PREVIEW_FRAME_AR,
+  QrSpotlightPreview,
+} from "@/components/QrSpotlightPreview";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
@@ -287,12 +290,8 @@ export function CustomerFormToolbar({
     if (!hasPreview && scanOpen) setScanOpen(false);
   }, [hasPreview, scanOpen]);
 
-  const scanFrameAr =
-    qrPreview && qrPreview.width > 0 && qrPreview.height > 0
-      ? qrPreview.width / qrPreview.height
-      : 16 / 9;
-  // Frame (max-h × aspect) drives width; +3rem for dialog p-6. Floor ~22rem so meta stays usable.
-  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${scanFrameAr} + 3rem)), calc(100vw - 2rem))`;
+  // Fixed landscape frame (max-h × 16:9) drives width; +3rem for dialog p-6. Floor ~22rem so meta stays usable.
+  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${QR_PREVIEW_FRAME_AR} + 3rem)), calc(100vw - 2rem))`;
 
   return (
     <div className="inline-flex shrink-0 items-center gap-1.5">

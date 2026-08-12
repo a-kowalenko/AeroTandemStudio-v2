@@ -34,7 +34,10 @@ import {
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
 import { QrHitMeta } from "@/components/QrHitMeta";
-import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
+import {
+  QR_PREVIEW_FRAME_AR,
+  QrSpotlightPreview,
+} from "@/components/QrSpotlightPreview";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -389,11 +392,7 @@ function VorgaengePanel({
     setShowShadow(true);
   }, [selectedId, onQrScanOpenChange]);
 
-  const scanFrameAr =
-    qrPreview && qrPreview.width > 0 && qrPreview.height > 0
-      ? qrPreview.width / qrPreview.height
-      : 16 / 9;
-  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${scanFrameAr} + 3rem)), calc(100vw - 2rem))`;
+  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${QR_PREVIEW_FRAME_AR} + 3rem)), calc(100vw - 2rem))`;
 
   const metaMode =
     selected?.video_mode === "handcam" || selected?.video_mode === "outside"
