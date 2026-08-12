@@ -24,19 +24,25 @@ use crate::video::ffmpeg::find_ffmpeg;
 pub const THUMB_MAX_SIZE: u32 = 78;
 pub const THUMB_LQ_SIZE: u32 = 48;
 pub const THUMB_HQ_SIZE: u32 = 160;
+/// Player poster / first-frame still (VideoPlayer on macOS WKWebView).
+pub const THUMB_PREVIEW_SIZE: u32 = 960;
 const THUMB_LQ_JPEG_Q: u8 = 55;
 const THUMB_HQ_JPEG_Q: u8 = 78;
+const THUMB_PREVIEW_JPEG_Q: u8 = 82;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbQuality {
     Lq,
     Hq,
+    /// Larger still for HTML5 `poster` / first-frame display.
+    Preview,
 }
 
 impl ThumbQuality {
     pub fn parse(s: &str) -> Self {
         match s.trim().to_ascii_lowercase().as_str() {
             "hq" | "high" => Self::Hq,
+            "preview" | "poster" | "player" => Self::Preview,
             _ => Self::Lq,
         }
     }
@@ -45,6 +51,7 @@ impl ThumbQuality {
         match self {
             Self::Lq => "lq",
             Self::Hq => "hq",
+            Self::Preview => "preview",
         }
     }
 
@@ -52,6 +59,7 @@ impl ThumbQuality {
         match self {
             Self::Lq => THUMB_LQ_SIZE,
             Self::Hq => THUMB_HQ_SIZE,
+            Self::Preview => THUMB_PREVIEW_SIZE,
         }
     }
 
@@ -59,6 +67,7 @@ impl ThumbQuality {
         match self {
             Self::Lq => THUMB_LQ_JPEG_Q,
             Self::Hq => THUMB_HQ_JPEG_Q,
+            Self::Preview => THUMB_PREVIEW_JPEG_Q,
         }
     }
 
@@ -67,6 +76,7 @@ impl ThumbQuality {
         match self {
             Self::Lq => 64,
             Self::Hq => 320,
+            Self::Preview => 960,
         }
     }
 
@@ -74,6 +84,7 @@ impl ThumbQuality {
         match self {
             Self::Lq => "10",
             Self::Hq => "5",
+            Self::Preview => "3",
         }
     }
 }
@@ -142,8 +153,10 @@ pub fn generate_thumbnail_jpeg(
 ) -> Result<(Vec<u8>, String), ThumbnailError> {
     let quality = if max_size <= THUMB_LQ_SIZE {
         ThumbQuality::Lq
-    } else {
+    } else if max_size <= THUMB_HQ_SIZE {
         ThumbQuality::Hq
+    } else {
+        ThumbQuality::Preview
     };
     generate_thumbnail_cached(path, quality)
 }
@@ -306,6 +319,14 @@ mod tests {
     use super::*;
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
+
+    #[test]
+    fn thumb_quality_parse_preview() {
+        assert_eq!(ThumbQuality::parse("preview"), ThumbQuality::Preview);
+        assert_eq!(ThumbQuality::parse("poster"), ThumbQuality::Preview);
+        assert_eq!(ThumbQuality::parse("hq"), ThumbQuality::Hq);
+        assert_eq!(ThumbQuality::parse("lq"), ThumbQuality::Lq);
+    }
 
     #[test]
     fn photo_thumbnail_produces_jpeg() {

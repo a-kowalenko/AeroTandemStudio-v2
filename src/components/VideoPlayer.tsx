@@ -9,6 +9,7 @@ import {
 import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
+import { getMediaThumbnail } from "../lib/sdCard";
 import { cn, isLinuxHost } from "../lib/utils";
 
 function VolumeLevelIcon({
@@ -84,6 +85,8 @@ const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
 /** Brief center overlay after touch tap (no persistent hover on touch). */
 const TOUCH_OVERLAY_MS = 1400;
+/** WebKit (macOS WKWebView): metadata preload often paints no frame until a tiny seek. */
+const WEBKIT_FIRST_FRAME_SEEK_SEC = 0.001;
 /** iOS Photos–like trim handle yellow */
 const TRIM_CAP = "#FFD60A";
 const TRIM_CAP_ACTIVE = "#FFE566";
@@ -121,6 +124,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [dragging, setDragging] = useState(false);
     const [dragHandle, setDragHandle] = useState<TrimHandle | null>(null);
     const [src, setSrc] = useState<string | null>(null);
+    const [posterUrl, setPosterUrl] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
     const [overlayVisible, setOverlayVisible] = useState(false);
@@ -191,6 +195,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setCurrentMs(0);
       setDurationMs(0);
       setSrc(null);
+      setPosterUrl(null);
       setLoadError(null);
       if (!srcPath) return;
       let cancelled = false;
@@ -203,6 +208,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             setSrc(null);
             setLoadError("Video-URL konnte nicht geladen werden.");
           }
+        });
+      // FFmpeg first-frame poster (cached) — fills black WKWebView until decode paints.
+      void getMediaThumbnail(srcPath, "preview")
+        .then((r) => {
+          if (!cancelled) setPosterUrl(r.data_url);
+        })
+        .catch(() => {
+          if (!cancelled) setPosterUrl(null);
         });
       return () => {
         cancelled = true;
@@ -344,6 +357,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               ref={videoRef}
               className="pointer-events-none h-full w-full object-contain"
               src={src}
+              poster={posterUrl ?? undefined}
               playsInline
               preload="metadata"
               onPlay={() => setPlaying(true)}
@@ -373,6 +387,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 e.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
                 const d = e.currentTarget.duration * 1000;
                 emitTime(0, d);
+                // WKWebView / Safari: metadata alone often leaves a black frame.
+                if (!autoPlayRef.current) {
+                  try {
+                    const v = e.currentTarget;
+                    if (v.currentTime === 0) {
+                      markLinuxUserSeek();
+                      v.currentTime = Math.min(
+                        WEBKIT_FIRST_FRAME_SEEK_SEC,
+                        Number.isFinite(v.duration) && v.duration > 0
+                          ? v.duration * 0.001
+                          : WEBKIT_FIRST_FRAME_SEEK_SEC,
+                      );
+                    }
+                  } catch {
+                    /* ignore seek failures */
+                  }
+                }
                 if (autoPlayRef.current && !disabled) {
                   void e.currentTarget.play().catch(() => {
                     /* autoplay may be blocked until user gesture */

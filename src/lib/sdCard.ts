@@ -202,7 +202,7 @@ export async function getMediaThumbnail(
   return invoke("get_media_thumbnail", { path, quality });
 }
 
-export type ThumbQuality = "lq" | "hq";
+export type ThumbQuality = "lq" | "hq" | "preview";
 
 export async function listProcessedFiles(
   limit?: number,
