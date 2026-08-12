@@ -170,7 +170,7 @@ export function presentServerConnectionError(opts: {
       ? null
       : {
           label,
-          openSettings: { tab: "allgemein", focus },
+          openSettings: { tab: "server", focus },
         };
 
   // URL missing or invalid → point at the URL field first.

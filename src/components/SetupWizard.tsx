@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
+import { Check, FolderOpen, Info, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -41,18 +41,22 @@ function pathsEqual(a: string, b: string): boolean {
 function StandardDirButton({
   busy,
   lockedDone,
+  tone = "default",
   label,
   disabled,
   onClick,
 }: {
   busy: boolean;
   lockedDone: boolean;
+  /** Amber hint for adopt-existing; green when locked adopted. */
+  tone?: "default" | "adopt" | "adopted";
   label: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
   // Avoid native `disabled` while busy/done — opacity flash + WebView focus quirks.
   const locked = busy || lockedDone || Boolean(disabled);
+  const resolvedTone = lockedDone ? "adopted" : tone;
   return (
     <Button
       type="button"
@@ -67,8 +71,10 @@ function StandardDirButton({
       className={cn(
         "h-7 shrink-0 gap-1.5 px-2.5 text-xs transition-[color,background-color,border-color,box-shadow] duration-300 ease-out",
         locked && "pointer-events-none",
-        lockedDone &&
+        resolvedTone === "adopted" &&
           "border-emerald-500/35 bg-emerald-500/15 text-emerald-900 shadow-none hover:bg-emerald-500/20 hover:brightness-100 dark:border-emerald-400/30 dark:bg-emerald-400/15 dark:text-emerald-50",
+        resolvedTone === "adopt" &&
+          "border-amber-400/45 bg-amber-100/90 text-amber-950 shadow-none hover:bg-amber-200/90 hover:brightness-100 dark:border-amber-400/35 dark:bg-amber-400/15 dark:text-amber-50 dark:hover:bg-amber-400/25",
       )}
     >
       {lockedDone ? (
@@ -162,7 +168,7 @@ function FolderDirField({
             "flex items-center gap-2.5 rounded-md border px-2.5 py-2 transition-colors duration-300",
             usingStandard
               ? "border-emerald-500/35 bg-emerald-500/12 dark:border-emerald-400/30 dark:bg-emerald-400/10"
-              : "border-emerald-500/20 bg-emerald-500/[0.07] dark:border-emerald-400/20 dark:bg-emerald-400/[0.07]",
+              : "border-amber-400/35 bg-amber-500/[0.08] dark:border-amber-400/30 dark:bg-amber-400/[0.08]",
           )}
         >
           <span
@@ -170,14 +176,25 @@ function FolderDirField({
               "flex size-7 shrink-0 items-center justify-center rounded-full",
               usingStandard
                 ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-100"
-                : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200",
+                : "bg-amber-500/15 text-amber-800 dark:text-amber-100",
             )}
             aria-hidden
           >
-            <Check className="size-3.5" strokeWidth={2.5} />
+            {usingStandard ? (
+              <Check className="size-3.5" strokeWidth={2.5} />
+            ) : (
+              <Info className="size-3.5" strokeWidth={2.5} />
+            )}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium text-emerald-950 dark:text-emerald-50">
+            <p
+              className={cn(
+                "text-xs font-medium",
+                usingStandard
+                  ? "text-emerald-950 dark:text-emerald-50"
+                  : "text-amber-950 dark:text-amber-50",
+              )}
+            >
               {usingStandard
                 ? "Standardordner aktiv"
                 : "Standardordner bereits vorhanden"}
@@ -192,6 +209,7 @@ function FolderDirField({
           <StandardDirButton
             busy={busy}
             lockedDone={usingStandard}
+            tone={usingStandard ? "adopted" : "adopt"}
             label={usingStandard ? "Aktiv" : "Übernehmen"}
             disabled={createDisabled}
             onClick={onUseStandard}

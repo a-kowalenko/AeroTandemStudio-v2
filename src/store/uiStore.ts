@@ -49,7 +49,9 @@ export type SettingsTab =
   | "crew"
   | "qr"
   | "encoding"
-  | "sd";
+  | "sd"
+  | "server"
+  | "system";
 
 export type SettingsFocusTarget = "server-url" | "server-credentials";
 

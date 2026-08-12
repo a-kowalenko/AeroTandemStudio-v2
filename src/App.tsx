@@ -18,7 +18,7 @@ import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
 import { CustomerForm, CustomerSessionStrip } from "./components/CustomerForm";
-import { SettingsDialog } from "./components/SettingsDialog";
+import { SettingsDialog } from "./components/settings/SettingsDialog";
 import { SetupWizard } from "./components/SetupWizard";
 import { ErrorDialog } from "./components/ErrorDialog";
 import { SuccessDialog } from "./components/SuccessDialog";
@@ -1624,19 +1624,21 @@ function App() {
       <LogConsole />
       </div>
 
-      <SettingsDialog
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          if (!open && updateDialogOpen) return;
-          setSettingsOpen(open);
-        }}
-        onRequestUpdateCheck={() => void runUpdateCheck(true)}
-        onAfterFactoryReset={() => {
-          setSettingsOpen(false);
-          setSetupWizardOpen(true);
-        }}
-        suppressDismiss={updateDialogOpen}
-      />
+      {config ? (
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={(open) => {
+            if (!open && updateDialogOpen) return;
+            setSettingsOpen(open);
+          }}
+          onRequestUpdateCheck={() => void runUpdateCheck(true)}
+          onAfterFactoryReset={() => {
+            setSettingsOpen(false);
+            setSetupWizardOpen(true);
+          }}
+          suppressDismiss={updateDialogOpen}
+        />
+      ) : null}
       <SetupWizard
         open={setupWizardOpen}
         onComplete={() => {

@@ -95,7 +95,7 @@ export function ServerStatusIndicator({ className }: Props) {
       password,
     });
     openSettings({
-      tab: "allgemein",
+      tab: "server",
       focus: presented.focus ?? "server-credentials",
     });
   }
