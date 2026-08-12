@@ -269,38 +269,51 @@
   will-change: background-color, box-shadow;
 }
 
-@keyframes ats-create-ready-flash {
+@keyframes ats-create-ready-halo {
   0% {
-    filter: brightness(1);
-    box-shadow:
-      0 1px 2px 0 rgb(0 0 0 / 0.06),
-      0 0 0 0 transparent;
+    opacity: 0;
+    transform: scale(0.92);
+    filter: blur(6px);
   }
-  22% {
-    filter: brightness(1.22);
-    box-shadow:
-      0 1px 2px 0 rgb(0 0 0 / 0.06),
-      0 0 0 3px color-mix(in srgb, var(--ats-primary) 55%, transparent),
-      0 0 22px color-mix(in srgb, var(--ats-primary) 40%, transparent);
-  }
-  55% {
-    filter: brightness(1.1);
-    box-shadow:
-      0 1px 2px 0 rgb(0 0 0 / 0.06),
-      0 0 0 2px color-mix(in srgb, var(--ats-primary) 32%, transparent),
-      0 0 12px color-mix(in srgb, var(--ats-primary) 22%, transparent);
+  32% {
+    opacity: 0.55;
+    transform: scale(1);
+    filter: blur(10px);
   }
   100% {
-    filter: brightness(1);
-    box-shadow:
-      0 1px 2px 0 rgb(0 0 0 / 0.06),
-      0 0 0 0 transparent;
+    opacity: 0;
+    transform: scale(1.12);
+    filter: blur(14px);
   }
 }
 
+@keyframes ats-create-ready-lift {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  28% {
+    transform: scale(1.018);
+    filter: brightness(1.06);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+.ats-create-ready-halo {
+  z-index: 0;
+  background: color-mix(in srgb, var(--ats-primary) 55%, transparent);
+  animation: ats-create-ready-halo 1.55s cubic-bezier(0.16, 1, 0.3, 1) 1;
+  will-change: opacity, transform, filter;
+}
+
 .ats-create-ready-flash {
-  animation: ats-create-ready-flash 1.25s cubic-bezier(0.22, 1, 0.36, 1) 1;
-  will-change: filter, box-shadow;
+  transform-origin: center;
+  transition: none !important;
+  animation: ats-create-ready-lift 1.55s cubic-bezier(0.16, 1, 0.3, 1) 1;
+  will-change: transform, filter;
 }
 
 /* Edge/Chromium native password reveal — we use Lucide Eye instead */
@@ -318,12 +331,18 @@ input[type="password"]::-ms-clear {
       color-mix(in srgb, var(--ats-primary) 38%, transparent);
   }
 
+  .ats-create-ready-halo {
+    animation: none;
+    will-change: auto;
+    opacity: 0.35;
+    transform: none;
+    filter: blur(8px);
+  }
+
   .ats-create-ready-flash {
     animation: none;
     will-change: auto;
-    filter: brightness(1.12);
-    box-shadow:
-      0 1px 2px 0 rgb(0 0 0 / 0.06),
-      0 0 0 2px color-mix(in srgb, var(--ats-primary) 45%, transparent);
+    transform: none;
+    filter: brightness(1.05);
   }
 }

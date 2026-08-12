@@ -550,12 +550,22 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
     return true;
   }
 
-  /** End QR crew dropdown workflow: blur so the list cannot reopen; nudge Erstellen when ready. */
+  /** End QR crew dropdown workflow: blur so the list cannot reopen. */
   function finishCrewAttentionWorkflow(inputId: string) {
     blurCrewField(inputId);
-    if (useKundeStore.getState().crewAttentionAfterQr) {
-      useUiStore.getState().requestCreateReadyPulse();
-    }
+    const state = useKundeStore.getState();
+    if (!state.crewAttentionAfterQr) return;
+
+    const k = state.kunde;
+    const videoMode = k.video_mode || "";
+    const tmOk = Boolean(k.tandemmaster.trim());
+    const vsOk =
+      videoMode !== "outside" || Boolean(k.videospringer.trim());
+    if (!tmOk || !vsOk) return;
+
+    // Orange attention satisfied — only then ask to pulse Erstellen if it unlocks.
+    state.clearCrewAttentionAfterQr();
+    useUiStore.getState().requestCreateReadyPulse();
   }
 
   function onTandemmasterSelect() {

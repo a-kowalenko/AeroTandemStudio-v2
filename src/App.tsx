@@ -160,6 +160,7 @@ function App() {
   const openSettings = useUiStore((s) => s.openSettings);
   const createReadyPulsePending = useUiStore((s) => s.createReadyPulsePending);
   const clearCreateReadyPulse = useUiStore((s) => s.clearCreateReadyPulse);
+  const createReadyWasFalseRef = useRef(true);
 
   const checkServerConnection = useServerStore((s) => s.checkConnection);
   const setServerPhase = useServerStore((s) => s.setPhase);
@@ -1228,12 +1229,26 @@ function App() {
     videoImporting ||
     photoImporting;
 
-  // After QR crew dropdown workflow: pulse Erstellen once validation unlocks it.
+  // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
   useEffect(() => {
-    if (!createReadyPulsePending || !createReady || uiLocked) return;
+    const becameReady = createReadyWasFalseRef.current && createReady;
+    createReadyWasFalseRef.current = !createReady;
+
+    if (!createReadyPulsePending) return;
+
+    if (!createReady) return;
+
+    // Already unlocked before this crew step — no pulse.
+    if (!becameReady) {
+      clearCreateReadyPulse();
+      return;
+    }
+
+    if (uiLocked) return;
+
     clearCreateReadyPulse();
     setCreateReadyPulse(true);
-    const t = window.setTimeout(() => setCreateReadyPulse(false), 1400);
+    const t = window.setTimeout(() => setCreateReadyPulse(false), 1800);
     return () => window.clearTimeout(t);
   }, [
     createReadyPulsePending,
@@ -1464,10 +1479,17 @@ function App() {
               >
                 <FolderOpen className="h-3.5 w-3.5" aria-hidden />
               </Button>
+            <div className="relative flex-1">
+              {createReadyPulse ? (
+                <span
+                  aria-hidden
+                  className="ats-create-ready-halo pointer-events-none absolute inset-[-5px] rounded-[0.7rem]"
+                />
+              ) : null}
               <Button
                 type="button"
                 className={cn(
-                  "flex-1 gap-1.5",
+                  "relative z-[1] w-full gap-1.5",
                   createReadyPulse && "ats-create-ready-flash",
                 )}
                 onClick={() => {
@@ -1475,7 +1497,10 @@ function App() {
                 }}
                 disabled={uiLocked || !createReady}
                 onAnimationEnd={(e) => {
-                  if (e.animationName === "ats-create-ready-flash") {
+                  if (
+                    e.target === e.currentTarget &&
+                    e.animationName === "ats-create-ready-lift"
+                  ) {
                     setCreateReadyPulse(false);
                   }
                 }}
@@ -1494,6 +1519,7 @@ function App() {
                   "Erstellen"
                 )}
               </Button>
+            </div>
             </div>
           </div>
         </aside>

@@ -62,6 +62,7 @@ type KundeState = {
    * Scroll/focus runs when the QR success dialog closes.
    */
   crewAttentionAfterQr: boolean;
+  clearCrewAttentionAfterQr: () => void;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
   patch: (partial: Partial<Kunde>) => void;
   setVideoMode: (mode: "" | "handcam" | "outside") => void;
@@ -96,6 +97,8 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   qrPreviewSource: null,
   qrRevision: 0,
   crewAttentionAfterQr: false,
+
+  clearCrewAttentionAfterQr: () => set({ crewAttentionAfterQr: false }),
 
   setField: (key, value) => {
     set({ kunde: { ...get().kunde, [key]: value } });
