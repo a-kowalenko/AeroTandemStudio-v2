@@ -127,8 +127,8 @@ export function SettingsCluster({
       >
         <Settings
           className={cn(
-            "h-4 w-4 origin-center transition-transform duration-[160ms] ease-[cubic-bezier(0.2,0.9,0.2,1)] motion-reduce:transition-none",
-            open ? "-rotate-90" : "rotate-0",
+            "h-4 w-4 origin-center transition-transform duration-[320ms] ease-[cubic-bezier(0.2,0.9,0.2,1)] motion-reduce:transition-none",
+            open ? "-rotate-[135deg]" : "rotate-0",
           )}
           aria-hidden
         />
