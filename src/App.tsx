@@ -2,7 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { CloudUpload, Film, History, ImageIcon, RotateCcw, Settings } from "lucide-react";
+import {
+  CloudUpload,
+  Film,
+  FolderOpen,
+  History,
+  ImageIcon,
+  RotateCcw,
+  Settings,
+} from "lucide-react";
 import { ProgressIndicator } from "./components/ProgressIndicator";
 import { MediaDropZone } from "./components/MediaDropZone";
 import { MediaListPanel } from "./components/MediaListPanel";
@@ -1566,13 +1574,14 @@ function App() {
               <Button
                 type="button"
                 variant="secondary"
-                size="sm"
+                size="icon"
                 className="shrink-0"
                 onClick={() => void ensureSpeicherort(true)}
                 disabled={uiLocked}
                 title="Speicherort ändern"
+                aria-label="Ordner wählen"
               >
-                Ordner…
+                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
               </Button>
               <Button
                 type="button"
