@@ -14,13 +14,24 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
+export type ComboboxPinnedOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
 type ComboboxProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
-  /** Always listed at the top of the dropdown (e.g. mode choices). */
-  pinnedOptions?: readonly { value: string; label: string }[];
+  /** Always listed at the top of the dropdown (e.g. mode choices / self pin). */
+  pinnedOptions?: readonly ComboboxPinnedOption[];
+  /**
+   * Values that appear in the list but cannot be chosen (case-insensitive).
+   * Also disables matching pinned options unless they set `disabled` explicitly.
+   */
+  disabledValues?: readonly string[];
   disabled?: boolean;
   placeholder?: string;
   hint?: string;
@@ -54,11 +65,16 @@ type ListPos = {
 };
 
 type ListEntry =
-  | { kind: "pinned"; value: string; label: string }
-  | { kind: "option"; value: string; label: string }
+  | { kind: "pinned"; value: string; label: string; disabled: boolean }
+  | { kind: "option"; value: string; label: string; disabled: boolean }
   | { kind: "separator" };
 
-const EMPTY_PINNED: readonly { value: string; label: string }[] = [];
+const EMPTY_PINNED: readonly ComboboxPinnedOption[] = [];
+const EMPTY_DISABLED: readonly string[] = [];
+
+function normKey(s: string): string {
+  return s.trim().toLowerCase();
+}
 
 /**
  * Text input with filtered suggestion list. Free text always allowed.
@@ -71,6 +87,7 @@ export function Combobox({
   onChange,
   options,
   pinnedOptions = EMPTY_PINNED,
+  disabledValues = EMPTY_DISABLED,
   disabled,
   placeholder,
   hint,
@@ -99,6 +116,17 @@ export function Combobox({
   const [listPos, setListPos] = useState<ListPos | null>(null);
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
+  const disabledKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of disabledValues) {
+      const k = normKey(v);
+      if (k) set.add(k);
+    }
+    return set;
+  }, [disabledValues]);
+
+  const isDisabledValue = (v: string) => disabledKeys.has(normKey(v));
+
   const pinnedLabel = useMemo(() => {
     const hit = pinnedOptions.find((p) => p.value === value);
     return hit?.label ?? null;
@@ -117,10 +145,12 @@ export function Combobox({
         p.value.toLowerCase().includes(q)
       );
     });
-    const pinnedValues = new Set(pinnedOptions.map((p) => p.value));
+    const pinnedKeys = new Set(
+      pinnedOptions.map((p) => normKey(p.value)).filter(Boolean),
+    );
     const unique = [
       ...new Set(options.map((o) => o.trim()).filter(Boolean)),
-    ].filter((o) => !pinnedValues.has(o));
+    ].filter((o) => !pinnedKeys.has(normKey(o)));
     const regular = q
       ? unique.filter((o) => o.toLowerCase().includes(q))
       : unique;
@@ -129,17 +159,34 @@ export function Combobox({
       kind: "pinned" as const,
       value: p.value,
       label: p.label,
+      disabled: p.disabled === true || isDisabledValue(p.value),
     }));
     if (pinned.length > 0 && regular.length > 0) {
       out.push({ kind: "separator" });
     }
     for (const o of regular) {
-      out.push({ kind: "option", value: o, label: o });
+      out.push({
+        kind: "option",
+        value: o,
+        label: o,
+        disabled: isDisabledValue(o),
+      });
     }
     return out;
-  }, [options, pinnedOptions, filterQuery]);
+  }, [options, pinnedOptions, filterQuery, disabledKeys]);
 
+  /** Keyboard / Enter targets — skip separators and disabled rows. */
   const selectable = useMemo(
+    () =>
+      entries.filter(
+        (e): e is Exclude<ListEntry, { kind: "separator" }> =>
+          e.kind !== "separator" && !e.disabled,
+      ),
+    [entries],
+  );
+
+  /** All non-separator rows (for highlight mapping including disabled). */
+  const listRows = useMemo(
     () => entries.filter((e) => e.kind !== "separator"),
     [entries],
   );
@@ -149,7 +196,7 @@ export function Combobox({
   }, [entries, filterQuery]);
 
   useLayoutEffect(() => {
-    if (!open || disabled || selectable.length === 0) {
+    if (!open || disabled || listRows.length === 0) {
       setListPos(null);
       setPortalEl(null);
       return;
@@ -222,7 +269,7 @@ export function Combobox({
       window.removeEventListener("resize", updatePos);
       window.removeEventListener("scroll", updatePos, true);
     };
-  }, [open, disabled, selectable.length, value]);
+  }, [open, disabled, listRows.length, value]);
 
   useEffect(() => {
     if (!open) return;
@@ -244,6 +291,9 @@ export function Combobox({
   }
 
   function select(optionValue: string) {
+    if (isDisabledValue(optionValue)) return;
+    const pinned = pinnedOptions.find((p) => p.value === optionValue);
+    if (pinned?.disabled) return;
     skipOpenOnFocusRef.current = true;
     onChange(optionValue);
     onSelectOption?.(optionValue);
@@ -302,9 +352,11 @@ export function Combobox({
   const attentionMsg = error || warningText || undefined;
   const msgId = attentionMsg ? `${id}-msg` : undefined;
 
-  let selectableIndex = -1;
+  /** Map highlight (into selectable) → row index among non-separator entries for aria. */
+  const highlightedValue = selectable[highlight]?.value;
+
   const list =
-    open && !disabled && selectable.length > 0 && listPos && portalEl
+    open && !disabled && listRows.length > 0 && listPos && portalEl
       ? createPortal(
           <ul
             ref={listRef}
@@ -324,29 +376,40 @@ export function Combobox({
                   />
                 );
               }
-              selectableIndex += 1;
-              const idx = selectableIndex;
               const selected = value === entry.value;
+              const isHighlighted = highlightedValue === entry.value;
+              const rowDisabled = entry.disabled;
               return (
                 <li
                   key={`${entry.kind}-${entry.value}`}
                   role="option"
-                  aria-selected={idx === highlight}
+                  aria-selected={isHighlighted}
+                  aria-disabled={rowDisabled || undefined}
                 >
                   <button
                     type="button"
+                    disabled={rowDisabled}
                     className={cn(
                       "flex w-full px-3 py-1.5 text-left text-sm",
-                      idx === highlight
-                        ? "bg-primary-soft text-foreground"
-                        : "text-foreground hover:bg-card-elevated",
-                      entry.kind === "pinned" && "font-medium",
-                      selected && "text-primary",
+                      rowDisabled
+                        ? "cursor-not-allowed text-muted/50"
+                        : isHighlighted
+                          ? "bg-primary-soft text-foreground"
+                          : "text-foreground hover:bg-card-elevated",
+                      entry.kind === "pinned" && !rowDisabled && "font-medium",
+                      selected && !rowDisabled && "text-primary",
                     )}
-                    onMouseEnter={() => setHighlight(idx)}
+                    onMouseEnter={() => {
+                      if (rowDisabled) return;
+                      const idx = selectable.findIndex(
+                        (s) => s.value === entry.value,
+                      );
+                      if (idx >= 0) setHighlight(idx);
+                    }}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      if (rowDisabled) return;
                       select(entry.value);
                     }}
                   >

@@ -20,12 +20,23 @@ import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
-import { ORT_OPTIONS, crewNamesForRole, normalizeManualEntryMode, withManualEntryMode, type ManualEntryMode } from "@/lib/tauri";
+import {
+  ORT_OPTIONS,
+  crewNamesEqual,
+  crewNamesForRole,
+  crewPinnedSelfOption,
+  normalizeManualEntryMode,
+  withManualEntryMode,
+  type ManualEntryMode,
+} from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { kundeDisplayName, fileBaseName } from "@/lib/qrSuccess";
 
 const CREW_TM_INPUT_ID = "crew-tandemmaster";
 const CREW_VS_INPUT_ID = "crew-videospringer";
+const CREW_ROLE_CONFLICT =
+  "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein.";
+
 
 function focusCrewField(id: string) {
   window.setTimeout(() => {
@@ -467,6 +478,7 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
   const nameEntry = entryMode === "oldschool" || entryMode === "lokal";
   const oldschool = entryMode === "oldschool";
   const crewList = config?.crew_list;
+  const operatorName = config?.operator_name ?? "";
   const tandemmasterOptions = useMemo(
     () => crewNamesForRole(crewList, "tandemmaster"),
     [crewList],
@@ -475,6 +487,38 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
     () => crewNamesForRole(crewList, "videospringer"),
     [crewList],
   );
+  const tmBlockedByVs = Boolean(kunde.videospringer.trim());
+  const vsBlockedByTm = Boolean(kunde.tandemmaster.trim());
+  const tandemmasterPinned = useMemo(() => {
+    const pin = crewPinnedSelfOption(
+      crewList,
+      "tandemmaster",
+      operatorName,
+      { disabled: crewNamesEqual(operatorName, kunde.videospringer) },
+    );
+    return pin ? [pin] : [];
+  }, [crewList, operatorName, kunde.videospringer]);
+  const videospringerPinned = useMemo(() => {
+    const pin = crewPinnedSelfOption(
+      crewList,
+      "videospringer",
+      operatorName,
+      { disabled: crewNamesEqual(operatorName, kunde.tandemmaster) },
+    );
+    return pin ? [pin] : [];
+  }, [crewList, operatorName, kunde.tandemmaster]);
+  const tmDisabledValues = useMemo(
+    () => (tmBlockedByVs ? [kunde.videospringer.trim()] : []),
+    [tmBlockedByVs, kunde.videospringer],
+  );
+  const vsDisabledValues = useMemo(
+    () => (vsBlockedByTm ? [kunde.tandemmaster.trim()] : []),
+    [vsBlockedByTm, kunde.tandemmaster],
+  );
+  const tmConflict =
+    crewNamesEqual(kunde.tandemmaster, kunde.videospringer) &&
+    Boolean(kunde.tandemmaster.trim());
+  const vsConflict = tmConflict;
   const [nameLocked, setNameLocked] = useState(true);
   const crewSectionRef = useRef<HTMLDivElement>(null);
   const qrSuccessDialogWasOpen = useRef(false);
@@ -568,13 +612,29 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
     useUiStore.getState().requestCreateReadyPulse();
   }
 
-  function onTandemmasterSelect() {
+  function onTandemmasterChange(v: string) {
+    setField("tandemmaster", v);
+  }
+
+  function onVideospringerChange(v: string) {
+    setField("videospringer", v);
+  }
+
+  function onTandemmasterSelect(v: string) {
+    if (crewNamesEqual(v, useKundeStore.getState().kunde.videospringer)) {
+      setField("tandemmaster", "");
+      return;
+    }
     if (focusVideospringerIfEmpty()) {
       finishCrewAttentionWorkflow(CREW_TM_INPUT_ID);
     }
   }
 
-  function onVideospringerSelect() {
+  function onVideospringerSelect(v: string) {
+    if (crewNamesEqual(v, useKundeStore.getState().kunde.tandemmaster)) {
+      setField("videospringer", "");
+      return;
+    }
     finishCrewAttentionWorkflow(CREW_VS_INPUT_ID);
   }
 
@@ -721,24 +781,30 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
             id={CREW_TM_INPUT_ID}
             label="Tandemmaster"
             value={kunde.tandemmaster}
-            onChange={(v) => setField("tandemmaster", v)}
-            onSelectOption={() => onTandemmasterSelect()}
+            onChange={onTandemmasterChange}
+            onSelectOption={onTandemmasterSelect}
             options={tandemmasterOptions}
+            pinnedOptions={tandemmasterPinned}
+            disabledValues={tmDisabledValues}
             disabled={crewBusy}
             placeholder="Name…"
             warning={warnTandemmaster}
+            error={tmConflict ? CREW_ROLE_CONFLICT : undefined}
           />
           {mode === "outside" ? (
             <Combobox
               id={CREW_VS_INPUT_ID}
               label="Videospringer"
               value={kunde.videospringer}
-              onChange={(v) => setField("videospringer", v)}
-              onSelectOption={() => onVideospringerSelect()}
+              onChange={onVideospringerChange}
+              onSelectOption={onVideospringerSelect}
               options={videospringerOptions}
+              pinnedOptions={videospringerPinned}
+              disabledValues={vsDisabledValues}
               disabled={crewBusy}
               placeholder="Name…"
               warning={warnVideospringer}
+              error={vsConflict ? CREW_ROLE_CONFLICT : undefined}
             />
           ) : null}
         </div>
@@ -778,6 +844,15 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
                 onClick={() => {
                   if (mode === value) return;
                   setVideoMode(value);
+                  if (
+                    value === "outside" &&
+                    crewNamesEqual(
+                      useKundeStore.getState().kunde.tandemmaster,
+                      useKundeStore.getState().kunde.videospringer,
+                    )
+                  ) {
+                    setField("videospringer", "");
+                  }
                   syncProductsFromMedia();
                 }}
               >

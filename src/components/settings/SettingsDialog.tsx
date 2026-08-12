@@ -68,7 +68,11 @@ export function SettingsDialog({
     hasUnsavedChanges,
   } = useSettingsDraft(open, config);
   const releaseList = useReleaseList(open);
-  const crewEditor = useCrewEditor({ draft: draft ?? config, patch });
+  const crewEditor = useCrewEditor({
+    draft: draft ?? config,
+    patch,
+    setDraft,
+  });
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [flashFocus, setFlashFocus] = useState<SettingsFocusTarget | null>(null);

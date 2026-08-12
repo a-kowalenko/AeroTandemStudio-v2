@@ -45,6 +45,17 @@ pub fn validate_kunde(
         errors.push("Videospringer ist erforderlich bei Outside Video".into());
     }
 
+    let tm = kunde.tandemmaster.trim();
+    let vs = kunde.videospringer.trim();
+    if kunde.is_outside_video() && !tm.is_empty() && !vs.is_empty() {
+        if tm.to_lowercase() == vs.to_lowercase() {
+            errors.push(
+                "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein"
+                    .into(),
+            );
+        }
+    }
+
     for path in video_paths {
         let lower = path.to_lowercase();
         if !lower.ends_with(".mp4") {
@@ -107,6 +118,25 @@ mod tests {
         let r = validate_kunde(&k, &[], false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Videospringer")));
+    }
+
+    #[test]
+    fn outside_rejects_same_person_for_both_roles() {
+        let mut k = base_kunde();
+        k.outside_video = true;
+        k.videospringer = "anna".into();
+        let r = validate_kunde(&k, &[], false);
+        assert!(!r.valid);
+        assert!(r.errors.iter().any(|e| e.contains("zugleich")));
+    }
+
+    #[test]
+    fn outside_allows_different_crew() {
+        let mut k = base_kunde();
+        k.outside_video = true;
+        k.videospringer = "Ben".into();
+        let r = validate_kunde(&k, &[], false);
+        assert!(r.valid);
     }
 
     #[test]

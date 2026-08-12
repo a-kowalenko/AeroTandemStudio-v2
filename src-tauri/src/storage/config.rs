@@ -113,6 +113,10 @@ pub struct AppConfig {
     pub tandemmaster: String,
     #[serde(default)]
     pub videospringer: String,
+    /// Current operator ("Ich"); roles come from matching `crew_list` entry.
+    /// Empty = no favorite pin in TM/VS form comboboxes.
+    #[serde(default)]
+    pub operator_name: String,
     /// Editable crew roster; roles control which form comboboxes suggest a name.
     #[serde(default = "default_crew_list")]
     pub crew_list: Vec<CrewMember>,
@@ -439,6 +443,7 @@ impl Default for AppConfig {
             gast_name: String::new(),
             tandemmaster: String::new(),
             videospringer: String::new(),
+            operator_name: String::new(),
             crew_list: default_crew_list(),
             upload_to_server: false,
             server_url: default_server_url(),
@@ -818,6 +823,23 @@ mod tests {
         let cfg = merge_with_defaults(serde_json::json!({ "ort": "Gera" })).unwrap();
         assert_eq!(cfg.ort, "Gera");
         assert_eq!(cfg.crew_list, default_crew_list());
+    }
+
+    #[test]
+    fn operator_name_defaults_empty_when_missing() {
+        let cfg = merge_with_defaults(serde_json::json!({ "ort": "Gera" })).unwrap();
+        assert_eq!(cfg.operator_name, "");
+    }
+
+    #[test]
+    fn operator_name_roundtrips() {
+        let mut cfg = AppConfig::default();
+        cfg.operator_name = "Andy".into();
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.operator_name, "Andy");
     }
 
     #[test]

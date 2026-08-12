@@ -70,6 +70,11 @@ export type AppConfig = {
   gast_name: string;
   tandemmaster: string;
   videospringer: string;
+  /**
+   * Current operator ("Ich"). Roles come from the matching crew_list entry.
+   * Empty = no favorite pin in TM/VS form comboboxes.
+   */
+  operator_name: string;
   /** Editable crew roster; roles filter form combobox suggestions. */
   crew_list: CrewMember[];
   upload_to_server: boolean;
@@ -218,6 +223,35 @@ export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Torsten", tandemmaster: true, videospringer: true },
 ].sort((a, b) => a.name.localeCompare(b.name, "de"));
 
+/** Case-insensitive crew name equality (trimmed). */
+export function crewNamesEqual(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = (a ?? "").trim().toLowerCase();
+  const right = (b ?? "").trim().toLowerCase();
+  return Boolean(left) && left === right;
+}
+
+export function findCrewMember(
+  list: CrewMember[] | undefined | null,
+  name: string | null | undefined,
+): CrewMember | undefined {
+  const needle = (name ?? "").trim().toLowerCase();
+  if (!needle || !list?.length) return undefined;
+  return list.find((c) => c.name.trim().toLowerCase() === needle);
+}
+
+/** Canonical display name from crew list, or trimmed input if unknown. */
+export function canonicalCrewName(
+  list: CrewMember[] | undefined | null,
+  name: string | null | undefined,
+): string {
+  const trimmed = (name ?? "").trim();
+  if (!trimmed) return "";
+  return findCrewMember(list, trimmed)?.name.trim() || trimmed;
+}
+
 export function crewNamesForRole(
   list: CrewMember[] | undefined | null,
   role: "tandemmaster" | "videospringer",
@@ -228,6 +262,81 @@ export function crewNamesForRole(
     .map((c) => c.name)
     .filter((n) => n.trim().length > 0)
     .sort((a, b) => a.localeCompare(b, "de"));
+}
+
+/** All crew display names (any role), sorted. */
+export function crewAllNames(
+  list: CrewMember[] | undefined | null,
+): string[] {
+  if (!list?.length) return [];
+  return [
+    ...new Set(
+      list
+        .map((c) => c.name.trim())
+        .filter((n) => n.length > 0),
+    ),
+  ].sort((a, b) => a.localeCompare(b, "de"));
+}
+
+export type CrewPinnedOption = {
+  value: string;
+  label: string;
+  disabled?: boolean;
+};
+
+/**
+ * Favorite pin for form TM/VS comboboxes: only when operator matches a
+ * crew member that has the given role. Label uses "Du · {Name}".
+ */
+export function crewPinnedSelfOption(
+  list: CrewMember[] | undefined | null,
+  role: "tandemmaster" | "videospringer",
+  operatorName: string | null | undefined,
+  opts?: { disabled?: boolean },
+): CrewPinnedOption | null {
+  const member = findCrewMember(list, operatorName);
+  if (!member) return null;
+  const hasRole =
+    role === "tandemmaster" ? member.tandemmaster : member.videospringer;
+  if (!hasRole) return null;
+  const value = member.name.trim();
+  if (!value) return null;
+  return {
+    value,
+    label: `Du · ${value}`,
+    disabled: Boolean(opts?.disabled),
+  };
+}
+
+/**
+ * Ensure `name` exists in the crew list. New members get both roles so the
+ * operator pin can appear until roles are edited in Settings.
+ */
+export function ensureCrewMember(
+  list: CrewMember[],
+  name: string,
+): CrewMember[] {
+  const trimmed = name.trim();
+  if (!trimmed) return list;
+  if (findCrewMember(list, trimmed)) return list;
+  return [
+    ...list,
+    {
+      name: trimmed,
+      tandemmaster: true,
+      videospringer: true,
+    },
+  ].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+/** Sync operator_name when a crew member is renamed or removed. */
+export function syncOperatorName(
+  operatorName: string,
+  prevName: string,
+  nextName: string | null,
+): string {
+  if (!crewNamesEqual(operatorName, prevName)) return operatorName;
+  return (nextName ?? "").trim();
 }
 
 /** Add or update a crew member so `name` has the given role (creates if missing). */

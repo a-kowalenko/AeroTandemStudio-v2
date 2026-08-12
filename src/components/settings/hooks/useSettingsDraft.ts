@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppConfig } from "@/lib/tauri";
-import { ensureCrewRole, getAppInfo } from "@/lib/tauri";
+import {
+  canonicalCrewName,
+  ensureCrewMember,
+  ensureCrewRole,
+  getAppInfo,
+} from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
 import { useUiStore } from "@/store/uiStore";
@@ -77,12 +82,17 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     if (draft.keep_videospringer_on_session_reset && vs) {
       crew_list = ensureCrewRole(crew_list, vs, "videospringer");
     }
+    const op = draft.operator_name.trim();
+    if (op) {
+      crew_list = ensureCrewMember(crew_list, op);
+    }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
 
     const toSave: AppConfig = {
       ...draft,
       tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
       videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
+      operator_name: op ? canonicalCrewName(crew_list, op) : "",
       sd_pc_name: draft.sd_pc_name.trim(),
       crew_list,
     };

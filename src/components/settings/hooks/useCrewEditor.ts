@@ -1,15 +1,18 @@
 import { useMemo, useState } from "react";
 import type { AppConfig, CrewMember } from "@/lib/tauri";
+import { syncOperatorName } from "@/lib/tauri";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsTabBaseProps } from "../types";
 
 type Props = {
   draft: AppConfig | null;
   patch: SettingsTabBaseProps["patch"];
+  setDraft: SettingsTabBaseProps["setDraft"];
 };
 
-export function useCrewEditor({ draft, patch }: Props) {
+export function useCrewEditor({ draft, patch, setDraft }: Props) {
   const showError = useUiStore((s) => s.showError);
+  const showSuccess = useUiStore((s) => s.showSuccess);
   const [crewDraft, setCrewDraft] = useState<CrewMember>({
     name: "",
     tandemmaster: true,
@@ -55,6 +58,7 @@ export function useCrewEditor({ draft, patch }: Props) {
       return;
     }
     const list = [...crewList];
+    let prevName = "";
     if (crewEditIndex == null) {
       list.push({
         name,
@@ -63,6 +67,7 @@ export function useCrewEditor({ draft, patch }: Props) {
       });
     } else {
       const prev = list[crewEditIndex];
+      prevName = prev?.name ?? "";
       list[crewEditIndex] = {
         name,
         tandemmaster: prev?.tandemmaster ?? true,
@@ -70,7 +75,20 @@ export function useCrewEditor({ draft, patch }: Props) {
       };
     }
     list.sort((a, b) => a.name.localeCompare(b.name, "de"));
-    patch("crew_list", list);
+    const nextOperator = syncOperatorName(
+      draft.operator_name,
+      prevName,
+      name,
+    );
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            crew_list: list,
+            operator_name: nextOperator,
+          }
+        : prev,
+    );
     resetCrewForm();
   }
 
@@ -96,10 +114,28 @@ export function useCrewEditor({ draft, patch }: Props) {
     const member = crewList[index];
     if (!member) return;
     if (!window.confirm(`„${member.name}“ aus der Crew-Liste entfernen?`)) return;
-    patch(
-      "crew_list",
-      crewList.filter((_, i) => i !== index),
+    const nextOperator = syncOperatorName(
+      draft.operator_name,
+      member.name,
+      null,
     );
+    const clearedOperator =
+      nextOperator !== draft.operator_name && !nextOperator.trim();
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            crew_list: crewList.filter((_, i) => i !== index),
+            operator_name: nextOperator,
+          }
+        : prev,
+    );
+    if (clearedOperator) {
+      showSuccess(
+        `„${member.name}“ entfernt — Favorit („Ich“) zurückgesetzt.`,
+        "Crew",
+      );
+    }
     if (crewEditIndex === index) resetCrewForm();
     else if (crewEditIndex != null && crewEditIndex > index) {
       setCrewEditIndex(crewEditIndex - 1);

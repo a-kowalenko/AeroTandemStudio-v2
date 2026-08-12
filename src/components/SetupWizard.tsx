@@ -11,9 +11,13 @@ import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
   CREW_KEEP_PINNED_OPTIONS,
+  canonicalCrewName,
+  crewAllNames,
   crewKeepComboboxValue,
   crewNamesForRole,
+  ensureCrewMember,
   ensureCrewRole,
+  findCrewMember,
   getAppInfo,
   ORT_OPTIONS,
   parseCrewKeepComboboxValue,
@@ -256,7 +260,7 @@ const SKIPPABLE_STEPS = new Set([0, 1, 2, 3, 4, 5]);
 
 const STEP_SKIP_HINT: Record<number, string> = {
   0: "Darstellung kannst du später jederzeit umschalten.",
-  1: "Crew-Defaults können später in den Einstellungen gesetzt werden.",
+  1: "Crew-Defaults und „Ich bin“ können später in den Einstellungen gesetzt werden.",
   2: "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
   3: "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
   4: "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
@@ -355,6 +359,28 @@ export function SetupWizard({ open, onComplete }: Props) {
     () => crewNamesForRole(draft?.crew_list, "videospringer"),
     [draft?.crew_list],
   );
+  const allCrewNames = useMemo(
+    () => crewAllNames(draft?.crew_list),
+    [draft?.crew_list],
+  );
+  const operatorHint = useMemo(() => {
+    if (!draft) return undefined;
+    const name = draft.operator_name.trim();
+    if (!name) {
+      return "Erscheint oben in den Formular-Dropdowns bei passender Rolle.";
+    }
+    const member = findCrewMember(draft.crew_list, name);
+    if (!member) {
+      return "Neuer Name wird beim Speichern zur Crew-Liste hinzugefügt.";
+    }
+    const roles: string[] = [];
+    if (member.tandemmaster) roles.push("Tandemmaster");
+    if (member.videospringer) roles.push("Videospringer");
+    if (roles.length === 0) {
+      return "Noch keine Rolle — später in den Einstellungen setzen.";
+    }
+    return `Favorit in: ${roles.join(", ")}`;
+  }, [draft]);
 
   if (!open || !draft) return null;
 
@@ -514,6 +540,7 @@ export function SetupWizard({ open, onComplete }: Props) {
         prev
           ? {
               ...prev,
+              operator_name: "",
               keep_tandemmaster_on_session_reset: false,
               keep_videospringer_on_session_reset: false,
               tandemmaster: "",
@@ -549,10 +576,15 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (draft.keep_videospringer_on_session_reset && vs) {
       crew_list = ensureCrewRole(crew_list, vs, "videospringer");
     }
+    const op = draft.operator_name.trim();
+    if (op) {
+      crew_list = ensureCrewMember(crew_list, op);
+    }
     return {
       ...draft,
       tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
       videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
+      operator_name: op ? canonicalCrewName(crew_list, op) : "",
       crew_list,
       sd_pc_name: draft.sd_pc_name.trim(),
       setup_completed: markCompleted,
@@ -636,6 +668,8 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (!draft) return "—";
     if (skippedSteps.has(1)) return "— übersprungen —";
     const parts: string[] = [];
+    const op = draft.operator_name.trim();
+    if (op) parts.push(`Ich: ${op}`);
     if (draft.keep_tandemmaster_on_session_reset) {
       const tm = draft.tandemmaster.trim();
       parts.push(tm ? `TM: ${tm}` : "TM: zuletzt verwendet");
@@ -739,6 +773,23 @@ export function SetupWizard({ open, onComplete }: Props) {
 
           {step === 1 ? (
             <>
+              <p className="text-sm text-muted">
+                Wer bist du auf diesem PC? Dein Name erscheint als Favorit in den
+                Crew-Dropdowns. Darunter: Session-Reset nach dem Erstellen.
+              </p>
+
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <Combobox
+                  label="Ich bin"
+                  value={draft.operator_name}
+                  onChange={(v) => patch("operator_name", v)}
+                  options={allCrewNames}
+                  placeholder="Namen wählen oder eingeben…"
+                  hint={operatorHint}
+                  listZIndex={200}
+                />
+              </div>
+
               <p className="text-sm text-muted">
                 Nach dem Erstellen eines Vorgangs wird die Session
                 zurückgesetzt. Wähle oben im Dropdown den Modus oder einen

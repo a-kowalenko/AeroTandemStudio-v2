@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 15–18: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner)*
+*(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
 
 ---
 
@@ -951,6 +951,46 @@ src-tauri/src/commands/config.rs
 
 ---
 
+### Phase 19 — Operator-Identität (Ich / Favorit in Crew-Dropdowns)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 5 (Config/Crew), Phase 16 (Setup-Wizard)  
+**Ziel:** `operator_name` speichern; in TM/VS-Formular-Dropdowns als Favorit oben mit Divider (nur bei passender Crew-Rolle). Gegenseitiger Ausschluss TM ↔ VS.
+
+#### Datenmodell
+
+- Config: `operator_name: string` (Default `""`)
+- Rollen **nicht** separat — aus matching `CrewMember` (case-insensitive)
+- Neuer Freitext-Name → beim Speichern `ensureCrewMember` (beide Rollen)
+
+#### UI
+
+- Wizard Step Crew + Settings Crew-Tab: „Ich bin“
+- Formular: Pin `Du · {Name}` + Separator; Pin nur bei Rolle
+- Combobox: `disabledValues` / disabled pinned rows
+- TM und VS dürfen nicht dieselbe Person sein (Liste ausgegraut; Validation blockiert Create)
+
+#### Nicht-Ziele
+
+- Auto-Fill der Formularfelder allein durch Operator (bleibt Session-Keep)
+- Kopplung an `sd_pc_name` / Shared-PC-Logik
+- Session-Keep an Operator koppeln
+
+#### Referenzen
+
+```
+src-tauri/src/storage/config.rs
+src-tauri/src/model/validation.rs
+src/lib/tauri.ts
+src/components/ui/combobox.tsx
+src/components/CustomerForm.tsx
+src/components/SetupWizard.tsx
+src/components/settings/tabs/CrewTab.tsx
+src/components/settings/hooks/useCrewEditor.ts
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -965,6 +1005,7 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "gast_name": "",
   "tandemmaster": "",
   "videospringer": "",
+  "operator_name": "",
   "upload_to_server": false,
   "server_url": "smb://169.254.169.254/aktuell",
   "hardware_acceleration_enabled": true,
@@ -1109,6 +1150,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 16 | First-Run Setup-Wizard | ✅ |
 | 17 | QR-Treffer-Preview (Spotlight) | ✅ |
 | 18 | Standard-Medienordner anlegen | ✅ |
+| 19 | Operator-Identität (Ich / Favorit) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1127,4 +1169,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-11 · Projekt: Aero Tandem Studio v2 · Phase 18 Standard-Medienordner*
+*Letzte Aktualisierung: 2026-08-12 · Projekt: Aero Tandem Studio v2 · Phase 19 Operator-Identität*

@@ -7,9 +7,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import type { CrewMember } from "@/lib/tauri";
 import {
+  crewAllNames,
   crewKeepComboboxValue,
   CREW_KEEP_PINNED_OPTIONS,
+  crewNamesEqual,
   crewNamesForRole,
+  findCrewMember,
   parseCrewKeepComboboxValue,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
@@ -36,9 +39,30 @@ type Props = SettingsTabBaseProps & {
   crewEditor: CrewEditor;
 };
 
+function operatorRoleHint(
+  list: CrewMember[],
+  operatorName: string,
+): string | undefined {
+  const member = findCrewMember(list, operatorName);
+  if (!operatorName.trim()) {
+    return "Erscheint oben in den Formular-Dropdowns, wenn die passende Rolle gesetzt ist.";
+  }
+  if (!member) {
+    return "Name wird beim Speichern zur Crew-Liste hinzugefügt.";
+  }
+  const roles: string[] = [];
+  if (member.tandemmaster) roles.push("Tandemmaster");
+  if (member.videospringer) roles.push("Videospringer");
+  if (roles.length === 0) {
+    return "Noch keine Rolle — unten in der Crew-Liste setzen.";
+  }
+  return `Favorit in: ${roles.join(", ")}`;
+}
+
 export function CrewTab({ draft, setDraft, crewEditor }: Props) {
   const tandemmasterOptions = crewNamesForRole(draft.crew_list, "tandemmaster");
   const videospringerOptions = crewNamesForRole(draft.crew_list, "videospringer");
+  const allCrewNames = crewAllNames(draft.crew_list);
   const {
     crewDraft,
     setCrewDraft,
@@ -51,8 +75,27 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
     deleteCrewMember,
   } = crewEditor;
 
+  function setOperatorName(raw: string) {
+    setDraft((prev) => (prev ? { ...prev, operator_name: raw } : prev));
+  }
+
   return (
     <div className="space-y-4">
+      <SettingsSection
+        title="Wer bist du?"
+        description="Dein Name erscheint als Favorit oben in den Tandemmaster-/Videospringer-Dropdowns (nur bei passender Rolle)."
+      >
+        <Combobox
+          label="Ich bin"
+          value={draft.operator_name}
+          onChange={setOperatorName}
+          options={allCrewNames}
+          placeholder="Namen wählen oder eingeben…"
+          hint={operatorRoleHint(draft.crew_list, draft.operator_name)}
+          listZIndex={200}
+        />
+      </SettingsSection>
+
       <SettingsSection
         title="Session zurücksetzen"
         description="Nach dem Erstellen eines Vorgangs: Modus oder festen Namen für Tandemmaster und Videospringer."
@@ -171,6 +214,11 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                   >
                     <p className="truncate text-sm font-medium" title={member.name}>
                       {member.name}
+                      {crewNamesEqual(member.name, draft.operator_name) ? (
+                        <span className="ml-2 text-[10px] font-normal text-muted">
+                          (Ich)
+                        </span>
+                      ) : null}
                     </p>
                     <div className="flex w-28 justify-center">
                       <Checkbox
