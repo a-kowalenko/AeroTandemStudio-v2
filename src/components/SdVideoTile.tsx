@@ -10,6 +10,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { videoFileSrc } from "../lib/mediaUrl";
+import type { ThumbQuality } from "../lib/sdCard";
 import { cn, isLinuxHost } from "../lib/utils";
 import { Checkbox } from "./ui/checkbox";
 
@@ -52,7 +53,7 @@ type Props = {
   /** Compact capture time shown right-aligned next to file size. */
   captureLabel?: string;
   thumbUrl?: string;
-  thumbQuality?: "lq" | "hq";
+  thumbQuality?: ThumbQuality;
   selected: boolean;
   alreadyProcessed?: boolean;
   /** Another tile (or this one) owns the single active session. */
