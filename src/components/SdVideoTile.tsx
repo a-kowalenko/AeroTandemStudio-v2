@@ -638,19 +638,18 @@ export function SdVideoTile({
       data-thumb-path={path}
       ref={tileRef}
       className={cn(
-        "relative flex flex-col overflow-hidden rounded-md text-left transition",
+        // border-2 always — avoids 1px→2px layout jump on select
+        "relative flex flex-col overflow-hidden rounded-md border-2 text-left transition-colors",
         selected
-          ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
-          : "border border-border/70",
+          ? "border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
+          : "border-border/70",
         alreadyProcessed && "opacity-70",
-        (pinned || playing) &&
-          isActive &&
-          !selected &&
-          "ring-2 ring-primary/50",
+        // Ring only when pinned (not mere hover-preview) — no flash on play start
+        pinned && isActive && !selected && "ring-2 ring-primary/50",
       )}
     >
       <div
-        className="relative isolate flex aspect-video items-center justify-center bg-black/90"
+        className="relative isolate flex aspect-video items-center justify-center overflow-hidden bg-black/90"
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}
         onClick={(e) => {
@@ -686,11 +685,36 @@ export function SdVideoTile({
             className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           />
         </div>
+
+        {/* Poster stays mounted under the video to avoid swap/layout jitter. */}
+        {thumbUrl && !immersive ? (
+          <img
+            src={thumbUrl}
+            alt=""
+            className={cn(
+              "absolute inset-0 z-0 h-full w-full object-cover transition-[filter,transform] duration-300",
+              thumbQuality === "lq" &&
+                !(showVideo && src) &&
+                "scale-[1.03] blur-[0.6px]",
+            )}
+            draggable={false}
+          />
+        ) : !immersive && !(showVideo && src) ? (
+          <div className="absolute inset-0 z-0 flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-black/40">
+            <div className="absolute inset-0 animate-pulse bg-muted/30" />
+            <Film className="relative h-8 w-8 text-muted" />
+          </div>
+        ) : immersive ? (
+          <div className="absolute inset-0 z-0 flex h-full w-full items-center justify-center bg-black/80">
+            <Film className="h-8 w-8 text-white/40" />
+          </div>
+        ) : null}
+
         {showVideo && src && !loadError && !immersive ? (
           <video
             key={src}
             ref={videoRef}
-            className="relative z-0 h-full w-full object-cover"
+            className="absolute inset-0 z-[1] h-full w-full object-cover"
             src={src}
             playsInline
             muted={muted}
@@ -717,26 +741,7 @@ export function SdVideoTile({
             }}
             onError={() => setLoadError(true)}
           />
-        ) : thumbUrl && !immersive ? (
-          <img
-            src={thumbUrl}
-            alt=""
-            className={cn(
-              "h-full w-full object-cover transition-[filter,transform] duration-300",
-              thumbQuality === "lq" && "scale-[1.03] blur-[0.6px]",
-            )}
-            draggable={false}
-          />
-        ) : !immersive ? (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-black/40">
-            <div className="absolute inset-0 animate-pulse bg-muted/30" />
-            <Film className="relative h-8 w-8 text-muted" />
-          </div>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-black/80">
-            <Film className="h-8 w-8 text-white/40" />
-          </div>
-        )}
+        ) : null}
 
         {loadError && !immersive && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/50 px-2 text-center text-[10px] text-white/90 [transform:translateZ(1px)]">
