@@ -332,7 +332,7 @@
 .ats-settings-cluster-menu {
   --ats-cluster-ease: cubic-bezier(0.2, 0.9, 0.2, 1);
   visibility: hidden;
-  transition: visibility 0s linear 160ms;
+  transition: visibility 0s linear 240ms;
 }
 
 .ats-settings-cluster-menu[data-open="true"] {
@@ -342,10 +342,10 @@
 
 .ats-settings-cluster-item {
   opacity: 0;
-  transform: translateY(-0.35rem) scale(0.96);
+  transform: translateY(-0.85rem) scale(0.86);
   transition:
-    opacity 140ms var(--ats-cluster-ease),
-    transform 160ms var(--ats-cluster-ease);
+    opacity 200ms var(--ats-cluster-ease),
+    transform 240ms var(--ats-cluster-ease);
   transition-delay: 0ms;
   will-change: opacity, transform;
 }
@@ -353,12 +353,12 @@
 .ats-settings-cluster-menu[data-open="true"] .ats-settings-cluster-item {
   opacity: 1;
   transform: translateY(0) scale(1);
-  transition-delay: calc(var(--ats-cluster-i, 0) * 35ms);
+  transition-delay: calc(var(--ats-cluster-i, 0) * 55ms);
 }
 
 .ats-settings-cluster-menu[data-open="false"] .ats-settings-cluster-item {
-  transition-duration: 110ms, 120ms;
-  transition-delay: calc((1 - var(--ats-cluster-i, 0)) * 25ms);
+  transition-duration: 160ms, 200ms;
+  transition-delay: calc((1 - var(--ats-cluster-i, 0)) * 40ms);
 }
 
 /* Edge/Chromium native password reveal — we use Lucide Eye instead */
