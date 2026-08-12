@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { QrPreview } from "./tauri";
 
 export type VorgangEntry = {
   id: number;
@@ -32,6 +33,8 @@ export type VorgangEntry = {
   watermark_photos: number;
   marker_path: string;
   reused_preview: boolean;
+  /** Persisted QR hit-frame (QR-mode Vorgänge); deleted with the history entry. */
+  qr_preview: QrPreview | null;
   file_count: number;
 };
 

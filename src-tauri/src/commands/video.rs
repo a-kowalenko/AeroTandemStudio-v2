@@ -946,6 +946,7 @@ pub async fn create_job(
     video_paths: Vec<String>,
     photo_paths: Vec<String>,
     options: Option<CreateJobOptions>,
+    qr_preview: Option<crate::qr::analyser::QrPreview>,
 ) -> Result<CreateJobResult, String> {
     logging::info(
         "create",
@@ -969,6 +970,7 @@ pub async fn create_job(
     let videos_for_history = video_paths.clone();
     let photos_for_history = photo_paths.clone();
     let manual_entry_mode_for_history = config.manual_entry_mode.clone();
+    let qr_preview_for_history = qr_preview.filter(|p| !p.path.trim().is_empty());
 
     let app_for_cb = app.clone();
     let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
@@ -1019,6 +1021,7 @@ pub async fn create_job(
                         &photos_for_history,
                         &res,
                         &manual_entry_mode_for_history,
+                        qr_preview_for_history.as_ref(),
                     )
                 })
             {

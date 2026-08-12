@@ -16,7 +16,7 @@ use rxing::common::HybridBinarizer;
 use rxing::{
     BarcodeFormat, BinaryBitmap, DecodeHints, Luma8LuminanceSource, MultiFormatReader, Reader,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::model::Kunde;
@@ -51,15 +51,15 @@ pub enum QrScanError {
 }
 
 /// Normalized square over the preview image (0–1), for CSS spotlight overlay.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QrSpotlight {
     pub x: f32,
     pub y: f32,
     pub size: f32,
 }
 
-/// Persisted hit-frame (or decode image) for the success dialog.
-#[derive(Debug, Clone, Serialize)]
+/// Persisted hit-frame (or decode image) for the success dialog / Vorgang history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QrPreview {
     pub path: String,
     pub width: u32,

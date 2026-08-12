@@ -130,6 +130,7 @@ function App() {
   const loadConfig = useConfigStore((s) => s.loadConfig);
   const persistConfig = useConfigStore((s) => s.persist);
   const kunde = useKundeStore((s) => s.kunde);
+  const qrPreview = useKundeStore((s) => s.qrPreview);
   const applyDefaultsFromConfig = useKundeStore((s) => s.applyDefaultsFromConfig);
   const resetSession = useKundeStore((s) => s.resetSession);
   const previewCacheMatches = usePreviewCacheStore((s) => s.matches);
@@ -1047,21 +1048,27 @@ function App() {
         config?.intro_mux_mode ?? "reencode",
       );
       const canReusePreview = previewCacheMatches(videoList, kunde, encodingSig);
-      const res: CreateJobResult = await createJob(kunde, paths, photos, {
-        watermark_clip_index: watermarkClipIndex,
-        watermark_photo_indices: wmPhotos,
-        dauer: config?.dauer ?? 5,
-        intro_enabled: config?.intro_enabled ?? false,
-        video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
-        crf: config?.preview_encode_crf ?? 18,
-        parallel_enabled: config?.parallel_processing_enabled ?? true,
-        intro_mux_mode: config?.intro_mux_mode ?? "reencode",
-        hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
-        reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
-        reuse_preview_fingerprint: canReusePreview
-          ? cachedPreviewFingerprint
-          : null,
-      });
+      const res: CreateJobResult = await createJob(
+        kunde,
+        paths,
+        photos,
+        {
+          watermark_clip_index: watermarkClipIndex,
+          watermark_photo_indices: wmPhotos,
+          dauer: config?.dauer ?? 5,
+          intro_enabled: config?.intro_enabled ?? false,
+          video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
+          crf: config?.preview_encode_crf ?? 18,
+          parallel_enabled: config?.parallel_processing_enabled ?? true,
+          intro_mux_mode: config?.intro_mux_mode ?? "reencode",
+          hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
+          reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
+          reuse_preview_fingerprint: canReusePreview
+            ? cachedPreviewFingerprint
+            : null,
+        },
+        kunde.form_mode === "kunde" ? qrPreview : null,
+      );
 
       let uploadNote: string | null = null;
       let serverUploaded = false;

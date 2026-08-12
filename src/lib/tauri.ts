@@ -462,12 +462,15 @@ export async function createJob(
   videoPaths: string[],
   photoPaths: string[],
   options?: CreateJobOptions,
+  /** QR hit-frame for Vorgang history (QR mode only). */
+  qrPreview?: QrPreview | null,
 ): Promise<CreateJobResult> {
   return invoke<CreateJobResult>("create_job", {
     kunde,
     videoPaths,
     photoPaths,
     options: options ?? null,
+    qrPreview: qrPreview ?? null,
   });
 }
 

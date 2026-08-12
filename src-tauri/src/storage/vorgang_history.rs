@@ -8,11 +8,14 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::model::Kunde;
+use crate::qr::analyser::{QrPreview, QrSpotlight};
 use crate::storage::app_config_dir;
 use crate::storage::logging;
 use crate::video::export_job::CreateJobResult;
 
 const DB_FILE_NAME: &str = "vorgang_history.db";
+/// Durable QR hit-frames next to `vorgang_history.db` (not temp).
+const QR_PREVIEW_DIR_NAME: &str = "vorgang_qr_previews";
 
 #[derive(Debug, Error)]
 pub enum VorgangHistoryError {
@@ -58,6 +61,8 @@ pub struct VorgangEntry {
     pub watermark_photos: i64,
     pub marker_path: String,
     pub reused_preview: bool,
+    /// QR hit-frame persisted for QR-mode Vorgänge (app-owned; deleted with history entry).
+    pub qr_preview: Option<QrPreview>,
     pub file_count: i64,
 }
 
@@ -112,6 +117,18 @@ impl VorgangHistoryStore {
         Ok(conn)
     }
 
+    fn qr_preview_dir(&self) -> PathBuf {
+        self.db_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(QR_PREVIEW_DIR_NAME)
+    }
+
+    fn qr_preview_path_for_id(&self, vorgang_id: i64) -> PathBuf {
+        self.qr_preview_dir().join(format!("{vorgang_id}.png"))
+    }
+
     fn ensure_schema(&self) -> Result<(), VorgangHistoryError> {
         let conn = self.connect()?;
         conn.execute_batch(
@@ -146,7 +163,13 @@ impl VorgangHistoryStore {
                 photos_copied INTEGER NOT NULL DEFAULT 0,
                 watermark_photos INTEGER NOT NULL DEFAULT 0,
                 marker_path TEXT NOT NULL DEFAULT '',
-                reused_preview INTEGER NOT NULL DEFAULT 0
+                reused_preview INTEGER NOT NULL DEFAULT 0,
+                qr_preview_path TEXT NOT NULL DEFAULT '',
+                qr_preview_width INTEGER NOT NULL DEFAULT 0,
+                qr_preview_height INTEGER NOT NULL DEFAULT 0,
+                qr_spotlight_x REAL,
+                qr_spotlight_y REAL,
+                qr_spotlight_size REAL
             );
             CREATE TABLE IF NOT EXISTS vorgang_dateien (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,25 +183,105 @@ impl VorgangHistoryStore {
             CREATE INDEX IF NOT EXISTS idx_vorgaenge_created_at ON vorgaenge(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_vorgang_dateien_vorgang ON vorgang_dateien(vorgang_id);",
         )?;
-        // Migrate DBs created before manual_entry_mode existed.
-        let has_col: bool = {
-            let mut stmt = conn.prepare("PRAGMA table_info(vorgaenge)")?;
-            let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
-            let mut found = false;
-            for name in names {
-                if name? == "manual_entry_mode" {
-                    found = true;
-                    break;
-                }
-            }
-            found
-        };
-        if !has_col {
-            conn.execute(
-                "ALTER TABLE vorgaenge ADD COLUMN manual_entry_mode TEXT NOT NULL DEFAULT ''",
-                [],
-            )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "manual_entry_mode",
+            "ALTER TABLE vorgaenge ADD COLUMN manual_entry_mode TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_preview_path",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_preview_path TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_preview_width",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_preview_width INTEGER NOT NULL DEFAULT 0",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_preview_height",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_preview_height INTEGER NOT NULL DEFAULT 0",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_spotlight_x",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_spotlight_x REAL",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_spotlight_y",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_spotlight_y REAL",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "qr_spotlight_size",
+            "ALTER TABLE vorgaenge ADD COLUMN qr_spotlight_size REAL",
+        )?;
+        Ok(())
+    }
+
+    /// Copy session hit-frame into durable history storage (keeps session temp intact).
+    fn promote_qr_preview(
+        &self,
+        vorgang_id: i64,
+        source: &QrPreview,
+    ) -> Result<QrPreview, VorgangHistoryError> {
+        let src = Path::new(source.path.trim());
+        if !src.is_file() {
+            return Err(VorgangHistoryError::Message(format!(
+                "QR-Preview fehlt: {}",
+                source.path
+            )));
         }
+        let dir = self.qr_preview_dir();
+        fs::create_dir_all(&dir)?;
+        let dest = self.qr_preview_path_for_id(vorgang_id);
+        fs::copy(src, &dest)?;
+        Ok(QrPreview {
+            path: dest.to_string_lossy().to_string(),
+            width: source.width,
+            height: source.height,
+            spotlight: source.spotlight.clone(),
+        })
+    }
+
+    fn update_qr_preview(
+        &self,
+        conn: &Connection,
+        vorgang_id: i64,
+        preview: &QrPreview,
+    ) -> Result<(), VorgangHistoryError> {
+        let (sx, sy, ss) = match &preview.spotlight {
+            Some(s) => (Some(s.x as f64), Some(s.y as f64), Some(s.size as f64)),
+            None => (None, None, None),
+        };
+        conn.execute(
+            "UPDATE vorgaenge SET
+                qr_preview_path = ?1,
+                qr_preview_width = ?2,
+                qr_preview_height = ?3,
+                qr_spotlight_x = ?4,
+                qr_spotlight_y = ?5,
+                qr_spotlight_size = ?6
+             WHERE id = ?7",
+            params![
+                preview.path,
+                preview.width as i64,
+                preview.height as i64,
+                sx,
+                sy,
+                ss,
+                vorgang_id
+            ],
+        )?;
         Ok(())
     }
 
@@ -190,6 +293,7 @@ impl VorgangHistoryStore {
         photo_paths: &[String],
         result: &CreateJobResult,
         manual_entry_mode: &str,
+        qr_preview: Option<&QrPreview>,
     ) -> Result<i64, VorgangHistoryError> {
         let mut files = Vec::new();
         for p in video_paths {
@@ -211,7 +315,7 @@ impl VorgangHistoryStore {
                 "marker",
             ));
         }
-        self.insert_vorgang(kunde, result, manual_entry_mode, &files)
+        self.insert_vorgang(kunde, result, manual_entry_mode, &files, qr_preview)
     }
 
     pub fn insert_vorgang(
@@ -220,6 +324,7 @@ impl VorgangHistoryStore {
         result: &CreateJobResult,
         manual_entry_mode: &str,
         files: &[VorgangFileInput],
+        qr_preview: Option<&QrPreview>,
     ) -> Result<i64, VorgangHistoryError> {
         let conn = self.connect()?;
         let created_at = utc_now_iso();
@@ -295,6 +400,22 @@ impl VorgangHistoryStore {
             )?;
         }
 
+        if let Some(src) = qr_preview.filter(|p| !p.path.trim().is_empty()) {
+            match self.promote_qr_preview(vorgang_id, src) {
+                Ok(persisted) => {
+                    self.update_qr_preview(&tx, vorgang_id, &persisted)?;
+                }
+                Err(e) => {
+                    logging::error(
+                        "vorgang_history",
+                        format!(
+                            "QR-Scan-Frame konnte nicht gespeichert werden (id={vorgang_id}): {e}"
+                        ),
+                    );
+                }
+            }
+        }
+
         tx.commit()?;
         logging::info(
             "vorgang_history",
@@ -314,10 +435,7 @@ impl VorgangHistoryStore {
     ) -> Result<Vec<VorgangEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let limit = limit.max(1) as i64;
-        let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
-            let pattern = format!("%{q}%");
-            let mut stmt = conn.prepare(
-                "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
+        let select = "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
                         v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
                         v.manual_entry_mode,
                         v.handcam_foto, v.handcam_video, v.outside_foto, v.outside_video,
@@ -326,8 +444,14 @@ impl VorgangHistoryStore {
                         v.base_output_dir, v.base_filename, v.encoder, v.intro_created,
                         v.body_clips, v.photos_copied, v.watermark_photos, v.marker_path,
                         v.reused_preview,
+                        v.qr_preview_path, v.qr_preview_width, v.qr_preview_height,
+                        v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
                         (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count
-                 FROM vorgaenge v
+                 FROM vorgaenge v";
+        let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
+            let pattern = format!("%{q}%");
+            let sql = format!(
+                "{select}
                  WHERE v.gast LIKE ?1
                     OR IFNULL(v.vorname,'') LIKE ?1
                     OR IFNULL(v.nachname,'') LIKE ?1
@@ -340,26 +464,18 @@ impl VorgangHistoryStore {
                          WHERE d.vorgang_id = v.id AND d.filename LIKE ?1
                     )
                  ORDER BY v.created_at DESC, v.id DESC
-                 LIMIT ?2",
-            )?;
+                 LIMIT ?2"
+            );
+            let mut stmt = conn.prepare(&sql)?;
             let mapped = stmt.query_map(params![pattern, limit], map_vorgang_row)?;
             mapped.collect::<Result<Vec<_>, _>>()?
         } else {
-            let mut stmt = conn.prepare(
-                "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
-                        v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
-                        v.manual_entry_mode,
-                        v.handcam_foto, v.handcam_video, v.outside_foto, v.outside_video,
-                        v.ist_bezahlt_handcam_foto, v.ist_bezahlt_handcam_video,
-                        v.ist_bezahlt_outside_foto, v.ist_bezahlt_outside_video,
-                        v.base_output_dir, v.base_filename, v.encoder, v.intro_created,
-                        v.body_clips, v.photos_copied, v.watermark_photos, v.marker_path,
-                        v.reused_preview,
-                        (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count
-                 FROM vorgaenge v
+            let sql = format!(
+                "{select}
                  ORDER BY v.created_at DESC, v.id DESC
-                 LIMIT ?1",
-            )?;
+                 LIMIT ?1"
+            );
+            let mut stmt = conn.prepare(&sql)?;
             let mapped = stmt.query_map(params![limit], map_vorgang_row)?;
             mapped.collect::<Result<Vec<_>, _>>()?
         };
@@ -384,13 +500,54 @@ impl VorgangHistoryStore {
         }
         let conn = self.connect()?;
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        let sql = format!("DELETE FROM vorgaenge WHERE id IN ({placeholders})");
-        let mut stmt = conn.prepare(&sql)?;
+        let select_sql = format!(
+            "SELECT qr_preview_path FROM vorgaenge WHERE id IN ({placeholders}) AND qr_preview_path != ''"
+        );
+        let mut select_stmt = conn.prepare(&select_sql)?;
         let params_dyn: Vec<&dyn rusqlite::types::ToSql> =
             ids.iter().map(|i| i as &dyn rusqlite::types::ToSql).collect();
-        stmt.execute(params_dyn.as_slice())?;
+        let preview_paths: Vec<String> = select_stmt
+            .query_map(params_dyn.as_slice(), |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let delete_sql = format!("DELETE FROM vorgaenge WHERE id IN ({placeholders})");
+        let mut delete_stmt = conn.prepare(&delete_sql)?;
+        delete_stmt.execute(params_dyn.as_slice())?;
+
+        for path in preview_paths {
+            let p = Path::new(path.trim());
+            if p.is_file() {
+                let _ = fs::remove_file(p);
+            }
+        }
+        // Best-effort: remove empty preview dir.
+        let dir = self.qr_preview_dir();
+        if dir.is_dir() && fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+            let _ = fs::remove_dir(&dir);
+        }
         Ok(())
     }
+}
+
+fn ensure_column(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    alter_sql: &str,
+) -> Result<(), VorgangHistoryError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    let mut found = false;
+    for name in names {
+        if name? == column {
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        conn.execute(alter_sql, [])?;
+    }
+    Ok(())
 }
 
 fn file_input_from_path(path: &str, media_type: &str, role: &str) -> VorgangFileInput {
@@ -412,6 +569,34 @@ fn file_input_from_path(path: &str, media_type: &str, role: &str) -> VorgangFile
 
 fn opt_str(s: Option<&str>) -> Option<String> {
     s.map(str::trim).filter(|x| !x.is_empty()).map(str::to_string)
+}
+
+fn map_qr_preview(
+    path: String,
+    width: i64,
+    height: i64,
+    sx: Option<f64>,
+    sy: Option<f64>,
+    ss: Option<f64>,
+) -> Option<QrPreview> {
+    let path = path.trim().to_string();
+    if path.is_empty() {
+        return None;
+    }
+    let spotlight = match (sx, sy, ss) {
+        (Some(x), Some(y), Some(size)) => Some(QrSpotlight {
+            x: x as f32,
+            y: y as f32,
+            size: size as f32,
+        }),
+        _ => None,
+    };
+    Some(QrPreview {
+        path,
+        width: width.max(0) as u32,
+        height: height.max(0) as u32,
+        spotlight,
+    })
 }
 
 fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
@@ -447,7 +632,15 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
         watermark_photos: row.get(28)?,
         marker_path: row.get(29)?,
         reused_preview: row.get::<_, i64>(30)? != 0,
-        file_count: row.get(31)?,
+        qr_preview: map_qr_preview(
+            row.get(31)?,
+            row.get(32)?,
+            row.get(33)?,
+            row.get(34)?,
+            row.get(35)?,
+            row.get(36)?,
+        ),
+        file_count: row.get(37)?,
     })
 }
 
@@ -464,12 +657,14 @@ fn map_file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangFileEntry> {
 }
 
 fn utc_now_iso() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+    // Trailing Z so JS Date.parse treats the stamp as UTC (not local wall time).
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use image::{ImageBuffer, RgbImage};
     use tempfile::tempdir;
 
     fn sample_kunde() -> Kunde {
@@ -504,6 +699,18 @@ mod tests {
         }
     }
 
+    fn write_tiny_png(path: &Path) {
+        let img: RgbImage = ImageBuffer::from_pixel(4, 4, image::Rgb([10, 20, 30]));
+        img.save(path).unwrap();
+    }
+
+    #[test]
+    fn utc_now_iso_ends_with_z() {
+        let s = utc_now_iso();
+        assert!(s.ends_with('Z'), "{s}");
+        assert!(s.contains('T'), "{s}");
+    }
+
     #[test]
     fn insert_list_files_delete() {
         let dir = tempdir().unwrap();
@@ -527,7 +734,7 @@ mod tests {
             },
         ];
         let id = store
-            .insert_vorgang(&kunde, &result, "oldschool", &files)
+            .insert_vorgang(&kunde, &result, "oldschool", &files, None)
             .unwrap();
         assert!(id > 0);
 
@@ -539,6 +746,7 @@ mod tests {
         assert_eq!(list[0].manual_entry_mode, "oldschool");
         assert!(list[0].handcam_video);
         assert!(list[0].ist_bezahlt_handcam_video);
+        assert!(list[0].qr_preview.is_none());
 
         let found = store.list_vorgaenge(10, Some("Mustermann")).unwrap();
         assert_eq!(found.len(), 1);
@@ -552,6 +760,47 @@ mod tests {
         store.delete_by_ids(&[id]).unwrap();
         assert!(store.list_vorgaenge(10, None).unwrap().is_empty());
         assert!(store.list_files(id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn qr_preview_persisted_and_deleted_with_vorgang() {
+        let dir = tempdir().unwrap();
+        let hit = dir.path().join("hit.png");
+        write_tiny_png(&hit);
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let mut kunde = sample_kunde();
+        kunde.form_mode = "kunde".into();
+        let preview = QrPreview {
+            path: hit.to_string_lossy().to_string(),
+            width: 4,
+            height: 4,
+            spotlight: Some(QrSpotlight {
+                x: 0.1,
+                y: 0.2,
+                size: 0.3,
+            }),
+        };
+        let id = store
+            .insert_vorgang(&kunde, &sample_result(), "", &[], Some(&preview))
+            .unwrap();
+
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        let stored = entry.qr_preview.as_ref().expect("qr_preview");
+        assert!(Path::new(&stored.path).is_file());
+        assert_ne!(stored.path, preview.path);
+        assert_eq!(stored.width, 4);
+        assert_eq!(stored.height, 4);
+        let spot = stored.spotlight.as_ref().unwrap();
+        assert!((spot.x - 0.1).abs() < 1e-5);
+        assert!((spot.y - 0.2).abs() < 1e-5);
+        assert!((spot.size - 0.3).abs() < 1e-5);
+        // Session temp must remain (copy, not move).
+        assert!(hit.is_file());
+
+        let durable = stored.path.clone();
+        store.delete_by_ids(&[id]).unwrap();
+        assert!(!Path::new(&durable).is_file());
+        assert!(store.list_vorgaenge(10, None).unwrap().is_empty());
     }
 
     #[test]
@@ -581,6 +830,7 @@ mod tests {
                 &[photo.to_string_lossy().to_string()],
                 &result,
                 "id",
+                None,
             )
             .unwrap();
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];

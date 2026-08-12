@@ -320,7 +320,8 @@ fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProcessedFileEntry> {
 }
 
 fn utc_now_iso() -> String {
-    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string()
+    // Trailing Z so JS Date.parse treats the stamp as UTC (not local wall time).
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
 }
 
 #[cfg(test)]
@@ -338,6 +339,13 @@ mod tests {
         assert_eq!(h1, h2);
         assert_eq!(s1, s2);
         assert_eq!(h1.len(), 40);
+    }
+
+    #[test]
+    fn utc_now_iso_ends_with_z() {
+        let s = utc_now_iso();
+        assert!(s.ends_with('Z'), "{s}");
+        assert!(s.contains('T'), "{s}");
     }
 
     #[test]

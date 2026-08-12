@@ -31,6 +31,7 @@ import {
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
+import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -54,9 +55,20 @@ function formatBytes(n: number | null | undefined): string {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/**
+ * History rows were stored as UTC wall clock without a timezone marker.
+ * Treat missing offset/Z as UTC so display and filters match local time.
+ */
+function parseHistoryIso(iso: string): number {
+  const s = iso.trim();
+  if (!s) return Number.NaN;
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(s);
+  return Date.parse(hasZone ? s : `${s}Z`);
+}
+
 function withinPeriod(iso: string | null, period: PeriodFilter): boolean {
   if (period === "all" || !iso) return period === "all";
-  const t = Date.parse(iso);
+  const t = parseHistoryIso(iso);
   if (Number.isNaN(t)) return false;
   const now = Date.now();
   const day = 86400000;
@@ -98,7 +110,7 @@ function roleLabel(role: string): string {
 }
 
 function formatCreatedAt(iso: string): string {
-  const t = Date.parse(iso);
+  const t = parseHistoryIso(iso);
   if (Number.isNaN(t)) return iso;
   return new Date(t).toLocaleString("de-DE", {
     day: "2-digit",
@@ -370,8 +382,8 @@ function VorgaengePanel({
           : `${n} Vorgänge aus der Historie entfernen?`,
       description:
         n === 1
-          ? "Der ausgewählte Vorgang wird nur aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten."
-          : "Die ausgewählten Vorgänge werden nur aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten.",
+          ? "Der ausgewählte Vorgang wird aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; ein zugehöriger QR-Scan-Frame der App wird mit entfernt."
+          : "Die ausgewählten Vorgänge werden aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt.",
       actionLabel: "Entfernen",
       run: async () => {
         await deleteVorgaenge(ids);
@@ -518,6 +530,18 @@ function VorgaengePanel({
                 )}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
+                {selected.qr_preview?.path?.trim() ? (
+                  <div className="mb-2 shrink-0 border-b border-border/40 pb-2">
+                    <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">
+                      QR-Scan-Frame
+                    </div>
+                    <QrSpotlightPreview
+                      key={selected.qr_preview.path}
+                      preview={selected.qr_preview}
+                      className="max-h-[min(28vh,14rem)]"
+                    />
+                  </div>
+                ) : null}
                 <table className="w-full text-left text-xs">
                   <thead className="sticky top-0 bg-card">
                     <tr className="border-b border-border/60">
@@ -739,8 +763,12 @@ function MedienPanel({
                 <td className="max-w-[260px] truncate p-2">{e.filename}</td>
                 <td className="p-2">{e.media_type}</td>
                 <td className="p-2">{formatBytes(e.size_bytes)}</td>
-                <td className="p-2">{e.imported_at ?? "—"}</td>
-                <td className="p-2">{e.backed_up_at ?? "—"}</td>
+                <td className="p-2">
+                  {e.imported_at ? formatCreatedAt(e.imported_at) : "—"}
+                </td>
+                <td className="p-2">
+                  {e.backed_up_at ? formatCreatedAt(e.backed_up_at) : "—"}
+                </td>
               </tr>
             ))}
             {showEmpty && (
