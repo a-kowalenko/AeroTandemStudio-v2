@@ -9,7 +9,7 @@ import type { CrewMember } from "@/lib/tauri";
 import {
   crewAllNames,
   crewKeepComboboxValue,
-  CREW_KEEP_PINNED_OPTIONS,
+  crewKeepPinnedOptions,
   crewNamesEqual,
   crewNamesForRole,
   findCrewMember,
@@ -167,7 +167,11 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
             );
           }}
           options={tandemmasterOptions}
-          pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+          pinnedOptions={crewKeepPinnedOptions(
+            draft.crew_list,
+            "tandemmaster",
+            draft.operator_name,
+          )}
           placeholder="Modus oder Name wählen…"
           hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
           listZIndex={200}
@@ -191,7 +195,11 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
             );
           }}
           options={videospringerOptions}
-          pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+          pinnedOptions={crewKeepPinnedOptions(
+            draft.crew_list,
+            "videospringer",
+            draft.operator_name,
+          )}
           placeholder="Modus oder Name wählen…"
           hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
           listZIndex={200}

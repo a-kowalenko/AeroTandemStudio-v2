@@ -20,13 +20,24 @@ export type ComboboxPinnedOption = {
   disabled?: boolean;
 };
 
+/** Pinned row or an in-list divider (e.g. between keep-modes and „Ich“). */
+export type ComboboxPinnedEntry =
+  | ComboboxPinnedOption
+  | { kind: "separator" };
+
+function isPinnedOption(
+  entry: ComboboxPinnedEntry,
+): entry is ComboboxPinnedOption {
+  return !("kind" in entry && entry.kind === "separator");
+}
+
 type ComboboxProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: readonly string[];
   /** Always listed at the top of the dropdown (e.g. mode choices / self pin). */
-  pinnedOptions?: readonly ComboboxPinnedOption[];
+  pinnedOptions?: readonly ComboboxPinnedEntry[];
   /**
    * Values that appear in the list but cannot be chosen (case-insensitive).
    * Also disables matching pinned options unless they set `disabled` explicitly.
@@ -69,7 +80,7 @@ type ListEntry =
   | { kind: "option"; value: string; label: string; disabled: boolean }
   | { kind: "separator" };
 
-const EMPTY_PINNED: readonly ComboboxPinnedOption[] = [];
+const EMPTY_PINNED: readonly ComboboxPinnedEntry[] = [];
 const EMPTY_DISABLED: readonly string[] = [];
 
 function normKey(s: string): string {
@@ -128,7 +139,10 @@ export function Combobox({
   const isDisabledValue = (v: string) => disabledKeys.has(normKey(v));
 
   const pinnedLabel = useMemo(() => {
-    const hit = pinnedOptions.find((p) => p.value === value);
+    const hit = pinnedOptions.find(
+      (p): p is ComboboxPinnedOption =>
+        isPinnedOption(p) && p.value === value,
+    );
     return hit?.label ?? null;
   }, [pinnedOptions, value]);
 
@@ -138,15 +152,9 @@ export function Combobox({
   const entries = useMemo((): ListEntry[] => {
     const q =
       filterQuery === null ? "" : filterQuery.trim().toLowerCase();
-    const pinned = pinnedOptions.filter((p) => {
-      if (!q) return true;
-      return (
-        p.label.toLowerCase().includes(q) ||
-        p.value.toLowerCase().includes(q)
-      );
-    });
+    const pinnedOnly = pinnedOptions.filter(isPinnedOption);
     const pinnedKeys = new Set(
-      pinnedOptions.map((p) => normKey(p.value)).filter(Boolean),
+      pinnedOnly.map((p) => normKey(p.value)).filter(Boolean),
     );
     const unique = [
       ...new Set(options.map((o) => o.trim()).filter(Boolean)),
@@ -155,14 +163,36 @@ export function Combobox({
       ? unique.filter((o) => o.toLowerCase().includes(q))
       : unique;
 
-    const out: ListEntry[] = pinned.map((p) => ({
-      kind: "pinned" as const,
-      value: p.value,
-      label: p.label,
-      disabled: p.disabled === true || isDisabledValue(p.value),
-    }));
-    if (pinned.length > 0 && regular.length > 0) {
-      out.push({ kind: "separator" });
+    const out: ListEntry[] = [];
+    let pendingSeparator = false;
+    for (const entry of pinnedOptions) {
+      if (!isPinnedOption(entry)) {
+        if (out.length > 0) pendingSeparator = true;
+        continue;
+      }
+      if (
+        q &&
+        !entry.label.toLowerCase().includes(q) &&
+        !entry.value.toLowerCase().includes(q)
+      ) {
+        continue;
+      }
+      if (pendingSeparator) {
+        out.push({ kind: "separator" });
+        pendingSeparator = false;
+      }
+      out.push({
+        kind: "pinned",
+        value: entry.value,
+        label: entry.label,
+        disabled: entry.disabled === true || isDisabledValue(entry.value),
+      });
+    }
+    if (out.length > 0 && regular.length > 0) {
+      const last = out[out.length - 1];
+      if (last?.kind !== "separator") {
+        out.push({ kind: "separator" });
+      }
     }
     for (const o of regular) {
       out.push({
@@ -292,7 +322,10 @@ export function Combobox({
 
   function select(optionValue: string) {
     if (isDisabledValue(optionValue)) return;
-    const pinned = pinnedOptions.find((p) => p.value === optionValue);
+    const pinned = pinnedOptions.find(
+      (p): p is ComboboxPinnedOption =>
+        isPinnedOption(p) && p.value === optionValue,
+    );
     if (pinned?.disabled) return;
     skipOpenOnFocusRef.current = true;
     onChange(optionValue);

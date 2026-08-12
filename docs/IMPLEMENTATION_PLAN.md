@@ -966,8 +966,9 @@ src-tauri/src/commands/config.rs
 #### UI
 
 - Wizard Step Crew + Settings Crew-Tab: „Ich bin“
-- Formular: Pin `Du · {Name}` + Separator; Pin nur bei Rolle
-- Combobox: `disabledValues` / disabled pinned rows
+- Formular: Pin `{Name} (Ich)` + Separator; Pin nur bei Rolle
+- Session-Keep-Dropdowns (Wizard/Settings): nach Keep-Modi Divider + gleicher Ich-Pin bei Rolle
+- Combobox: `disabledValues` / disabled pinned rows; Separatoren auch innerhalb von `pinnedOptions`
 - TM und VS dürfen nicht dieselbe Person sein (Liste ausgegraut; Validation blockiert Create)
 
 #### Nicht-Ziele

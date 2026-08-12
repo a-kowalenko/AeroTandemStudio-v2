@@ -284,9 +284,13 @@ export type CrewPinnedOption = {
   disabled?: boolean;
 };
 
+export type CrewPinnedEntry =
+  | CrewPinnedOption
+  | { kind: "separator" };
+
 /**
  * Favorite pin for form TM/VS comboboxes: only when operator matches a
- * crew member that has the given role. Label uses "Du · {Name}".
+ * crew member that has the given role. Label uses "{Name} (Ich)".
  */
 export function crewPinnedSelfOption(
   list: CrewMember[] | undefined | null,
@@ -303,9 +307,22 @@ export function crewPinnedSelfOption(
   if (!value) return null;
   return {
     value,
-    label: `Du · ${value}`,
+    label: `${value} (Ich)`,
     disabled: Boolean(opts?.disabled),
   };
+}
+
+/**
+ * Keep-mode pins + optional „Ich“ pin (with divider) when operator has the role.
+ */
+export function crewKeepPinnedOptions(
+  list: CrewMember[] | undefined | null,
+  role: "tandemmaster" | "videospringer",
+  operatorName: string | null | undefined,
+): readonly CrewPinnedEntry[] {
+  const self = crewPinnedSelfOption(list, role, operatorName);
+  if (!self) return CREW_KEEP_PINNED_OPTIONS;
+  return [...CREW_KEEP_PINNED_OPTIONS, { kind: "separator" }, self];
 }
 
 /**

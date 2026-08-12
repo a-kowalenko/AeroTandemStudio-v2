@@ -10,10 +10,10 @@ import { Combobox } from "@/components/ui/combobox";
 import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
-  CREW_KEEP_PINNED_OPTIONS,
   canonicalCrewName,
   crewAllNames,
   crewKeepComboboxValue,
+  crewKeepPinnedOptions,
   crewNamesEqual,
   crewNamesForRole,
   ensureCrewRole,
@@ -950,9 +950,8 @@ export function SetupWizard({ open, onComplete }: Props) {
               </div>
 
               <p className="text-sm text-muted">
-                Nach dem Erstellen eines Vorgangs wird die Session
-                zurückgesetzt. Wähle oben im Dropdown den Modus oder einen
-                festen Namen.
+                Nach dem Erstellen eines Vorgangs: Modus wählen oder einen
+                festen Namen setzen.
               </p>
 
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
@@ -964,7 +963,11 @@ export function SetupWizard({ open, onComplete }: Props) {
                   )}
                   onChange={(v) => setCrewKeep("tandemmaster", v)}
                   options={tandemmasterOptions}
-                  pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                  pinnedOptions={crewKeepPinnedOptions(
+                    draft.crew_list,
+                    "tandemmaster",
+                    draft.operator_name,
+                  )}
                   placeholder="Modus oder Name wählen…"
                   hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
                   error={fieldErrors.tandemmaster}
@@ -981,7 +984,11 @@ export function SetupWizard({ open, onComplete }: Props) {
                   )}
                   onChange={(v) => setCrewKeep("videospringer", v)}
                   options={videospringerOptions}
-                  pinnedOptions={CREW_KEEP_PINNED_OPTIONS}
+                  pinnedOptions={crewKeepPinnedOptions(
+                    draft.crew_list,
+                    "videospringer",
+                    draft.operator_name,
+                  )}
                   placeholder="Modus oder Name wählen…"
                   hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
                   error={fieldErrors.videospringer}
