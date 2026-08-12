@@ -17,6 +17,7 @@ import { WorkflowProgressPanel } from "./components/WorkflowProgressPanel";
 import { MediaListPanel } from "./components/MediaListPanel";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
+import { PhotoEditor, type PhotoEditorResult } from "./components/PhotoEditor";
 import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
 import { CustomerForm, CustomerSessionStrip } from "./components/CustomerForm";
 import { SettingsDialog } from "./components/settings/SettingsDialog";
@@ -57,6 +58,7 @@ import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewC
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
+import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
 import { useLogStore } from "./store/logStore";
 import {
@@ -205,6 +207,8 @@ function App() {
   const [cutterOpen, setCutterOpen] = useState(false);
   const [cutterPath, setCutterPath] = useState<string | null>(null);
   const [cutterDuration, setCutterDuration] = useState(0);
+  const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
+  const [photoEditorPath, setPhotoEditorPath] = useState<string | null>(null);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
@@ -228,6 +232,7 @@ function App() {
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
 
   const videoCuts = useVideoCutApply();
+  const photoEdits = usePhotoEditApply();
   useQrScanProgressListener();
   useLogListener();
   const consoleOpen = useLogStore((s) => s.open);
@@ -1716,7 +1721,27 @@ function App() {
                 />
               </TabsContent>
               <TabsContent value="foto" className="mt-0 space-y-4 p-4">
-                <PhotoPreview disabled={uiLocked} />
+                <PhotoPreview
+                  disabled={uiLocked}
+                  onEditPhoto={(path) => {
+                    setPhotoEditorPath(path);
+                    setPhotoEditorOpen(true);
+                  }}
+                  onUndoPhotoEdit={(path) => {
+                    void photoEdits.undoForPath(path, {
+                      onBusyChange: setBusy,
+                      onProgressReset: resetProgress,
+                      onStatus: setStatus,
+                    });
+                  }}
+                  onBatchRotate={(paths, degrees) => {
+                    void photoEdits.applyRotateMany(paths, degrees, {
+                      onBusyChange: setBusy,
+                      onProgressReset: resetProgress,
+                      onStatus: setStatus,
+                    });
+                  }}
+                />
                 <MediaListPanel kind="foto" disabled={uiLocked} />
               </TabsContent>
             </Tabs>
@@ -1814,6 +1839,30 @@ function App() {
             });
           } else if (result.action === "apply_split") {
             void videoCuts.applySplit(path, result.splitMs, {
+              onBusyChange: setBusy,
+              onProgressReset: resetProgress,
+              onStatus: setStatus,
+            });
+          } else if (result.action === "apply_rotate") {
+            void videoCuts.applyRotate(path, result.degrees, {
+              onBusyChange: setBusy,
+              onProgressReset: resetProgress,
+              onStatus: setStatus,
+            });
+          }
+        }}
+      />
+      <PhotoEditor
+        open={photoEditorOpen}
+        photoPath={photoEditorPath}
+        onClose={() => {
+          setPhotoEditorOpen(false);
+          setPhotoEditorPath(null);
+        }}
+        onComplete={(result: PhotoEditorResult) => {
+          if (!photoEditorPath || result.action === "cancel") return;
+          if (result.action === "apply_rotate") {
+            void photoEdits.applyRotate(photoEditorPath, result.degrees, {
               onBusyChange: setBusy,
               onProgressReset: resetProgress,
               onStatus: setStatus,

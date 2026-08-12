@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { ChevronLeft, ChevronRight, ImageIcon, QrCode, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ImageIcon,
+  Pencil,
+  QrCode,
+  RotateCcw,
+  RotateCw,
+  Trash2,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { usePhotoStore } from "../store/photoStore";
@@ -20,6 +29,9 @@ import { cn } from "../lib/utils";
 
 type PhotoPreviewProps = {
   disabled?: boolean;
+  onEditPhoto?: (path: string) => void;
+  onUndoPhotoEdit?: (path: string) => void;
+  onBatchRotate?: (paths: string[], degrees: number) => void;
 };
 
 function formatBytes(n: number | undefined): string {
@@ -29,12 +41,20 @@ function formatBytes(n: number | undefined): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function PhotoPreview({ disabled }: PhotoPreviewProps) {
+export function PhotoPreview({
+  disabled,
+  onEditPhoto,
+  onUndoPhotoEdit,
+  onBatchRotate,
+}: PhotoPreviewProps) {
   const photoList = usePhotoStore((s) => s.photoList);
   const currentIndex = usePhotoStore((s) => s.currentIndex);
   const selected = usePhotoStore((s) => s.selected);
   const explicitlySelected = usePhotoStore((s) => s.explicitlySelected);
   const watermarkIndices = usePhotoStore((s) => s.watermarkIndices);
+  const getEditMark = usePhotoStore((s) => s.getEditMark);
+  const getMediaRevision = usePhotoStore((s) => s.getMediaRevision);
+  const editMarks = usePhotoStore((s) => s.editMarks);
   const removePhotos = usePhotoStore((s) => s.removePhotos);
   const setCurrentIndex = usePhotoStore((s) => s.setCurrentIndex);
   const toggleSelect = usePhotoStore((s) => s.toggleSelect);
@@ -158,7 +178,14 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
     toggleSelect(index, "replace");
   }
 
-  const previewSrc = current ? convertFileSrc(current.path) : null;
+  const previewSrc = useMemo(() => {
+    if (!current) return null;
+    const base = convertFileSrc(current.path);
+    return `${base}${base.includes("?") ? "&" : "?"}r=${getMediaRevision(current.path)}`;
+  }, [current, getMediaRevision]);
+
+  // Subscribe so revision bumps re-render thumbs.
+  void editMarks;
 
   return (
     <div className="flex flex-col gap-3">
@@ -222,6 +249,8 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
             const isCurrent = i === currentIndex;
             const isSelected = explicitlySelected && selected.has(i);
             const isWm = fotoWmNeeded && watermarkIndices.has(i);
+            const thumbBase = convertFileSrc(p.path);
+            const thumbSrc = `${thumbBase}${thumbBase.includes("?") ? "&" : "?"}r=${getMediaRevision(p.path)}`;
             return (
               <button
                 key={p.path}
@@ -239,11 +268,16 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
                 title={isWm ? `${p.filename} (Wasserzeichen)` : p.filename}
               >
                 <img
-                  src={convertFileSrc(p.path)}
+                  src={thumbSrc}
                   alt={p.filename}
                   className="h-full w-full object-cover"
                   loading="lazy"
                 />
+                {getEditMark(p.path) && (
+                  <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
+                    Rot
+                  </span>
+                )}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 px-0.5 pb-0.5">
                   <QrScanRowBar path={p.path} />
                 </div>
@@ -334,6 +368,29 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
                 type="button"
                 size="sm"
                 variant="secondary"
+                disabled={disabled || !onEditPhoto}
+                onClick={() => onEditPhoto?.(current.path)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Bearbeiten
+              </Button>
+              {getEditMark(current.path) && onUndoPhotoEdit && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={() => onUndoPhotoEdit(current.path)}
+                  title="Diese Bearbeitung rückgängig machen"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Bearbeitung rückgängig
+                </Button>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
                 disabled={disabled || scanning}
                 onClick={() => void handleQrScan()}
               >
@@ -368,6 +425,46 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
           </dl>
           {explicitlySelected && selected.size > 0 && (
             <div className="mt-auto flex flex-wrap gap-2 pt-2">
+              {onBatchRotate && (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={disabled}
+                    onClick={() =>
+                      onBatchRotate(
+                        [...selected]
+                          .map((i) => photoList[i]?.path)
+                          .filter((p): p is string => Boolean(p)),
+                        -90,
+                      )
+                    }
+                    title="Auswahl 90° gegen den Uhrzeigersinn"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Auswahl 90°
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={disabled}
+                    onClick={() =>
+                      onBatchRotate(
+                        [...selected]
+                          .map((i) => photoList[i]?.path)
+                          .filter((p): p is string => Boolean(p)),
+                        90,
+                      )
+                    }
+                    title="Auswahl 90° im Uhrzeigersinn"
+                  >
+                    <RotateCw className="h-3.5 w-3.5" />
+                    Auswahl 90°
+                  </Button>
+                </>
+              )}
               <Button
                 type="button"
                 size="sm"
@@ -388,6 +485,9 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
         onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
         actionsDisabled={disabled || scanning}
         onScanQr={(path) => void handleQrScan(path)}
+        onCut={onEditPhoto}
+        canUndoCut={Boolean(ctxMenu && getEditMark(ctxMenu.path))}
+        onUndoCut={onUndoPhotoEdit}
         onRemove={(path) => {
           const idx = photoList.findIndex((p) => p.path === path);
           if (idx >= 0) removePhotos([idx]);

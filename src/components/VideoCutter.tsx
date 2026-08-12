@@ -1,20 +1,17 @@
-import { useEffect, useRef, useState } from "react";
-import { Scissors, SplitSquareHorizontal } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import { Button } from "./ui/button";
+  Crop,
+  RotateCw,
+  SplitSquareHorizontal,
+} from "lucide-react";
 import {
   VideoPlayer,
   formatPlayerTimeMs,
   type TrimHandle,
   type VideoPlayerHandle,
 } from "./VideoPlayer";
+import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
+import { MediaEditRotateBar } from "./MediaEditRotateBar";
 import { useUiStore } from "../store/uiStore";
 import { listVideoKeyframes, getVideoFilmstrip } from "../lib/tauri";
 import { useVideoStore } from "../store/videoStore";
@@ -27,7 +24,10 @@ import {
 export type VideoCutterResult =
   | { action: "cancel" }
   | { action: "apply_trim"; startMs: number; endMs: number }
-  | { action: "apply_split"; splitMs: number };
+  | { action: "apply_split"; splitMs: number }
+  | { action: "apply_rotate"; degrees: number };
+
+type VideoEditMode = "trim" | "rotate" | "split";
 
 type VideoCutterProps = {
   open: boolean;
@@ -37,10 +37,26 @@ type VideoCutterProps = {
   onComplete: (result: VideoCutterResult) => void;
 };
 
+const VIDEO_MODES: MediaEditModeOption<VideoEditMode>[] = [
+  {
+    id: "trim",
+    label: "Zuschnitt",
+    icon: <Crop className="h-4 w-4" strokeWidth={2} />,
+  },
+  {
+    id: "rotate",
+    label: "Drehen",
+    icon: <RotateCw className="h-4 w-4" strokeWidth={2} />,
+  },
+  {
+    id: "split",
+    label: "Teilen",
+    icon: <SplitSquareHorizontal className="h-4 w-4" strokeWidth={2} />,
+  },
+];
+
 /**
- * Modal cutter UI: Apple Photos–style filmstrip trim with live preview seek.
- * On release, handles snap to keyframes for stream-copy-friendly cuts.
- * Confirm applies trim/split immediately (caller runs FFmpeg).
+ * Apple Photos–style video edit: one active mode, Fertig commits that mode.
  */
 export function VideoCutter({
   open,
@@ -52,32 +68,53 @@ export function VideoCutter({
   const playerRef = useRef<VideoPlayerHandle>(null);
   const committedRef = useRef(false);
   const showWarning = useUiStore((s) => s.showWarning);
+  const [mode, setMode] = useState<VideoEditMode>("trim");
   const [startMs, setStartMs] = useState(0);
   const [endMs, setEndMs] = useState(0);
   const [durationMs, setDurationMs] = useState(
     durationSecsHint && durationSecsHint > 0 ? durationSecsHint * 1000 : 0,
   );
   const [keyframesSecs, setKeyframesSecs] = useState<number[]>([]);
-  const [kfLoading, setKfLoading] = useState(false);
-  const [kfError, setKfError] = useState<string | null>(null);
   const [filmstripFrames, setFilmstripFrames] = useState<string[]>([]);
+  const [pendingRotateDeg, setPendingRotateDeg] = useState(0);
+  const [playheadMs, setPlayheadMs] = useState(0);
   const rangeInitializedRef = useRef(false);
   const startMsRef = useRef(startMs);
   const endMsRef = useRef(endMs);
   startMsRef.current = startMs;
   endMsRef.current = endMs;
 
+  const rotatePending = ((pendingRotateDeg % 360) + 360) % 360 !== 0;
+
+  const trimDirty = useMemo(() => {
+    const dur = durationMs;
+    if (dur <= 0) return false;
+    const s = startMs;
+    const e = endMs > 0 ? endMs : dur;
+    const nearFull = s <= 50 && Math.abs(e - dur) <= 50;
+    return !nearFull && e - s >= 100;
+  }, [startMs, endMs, durationMs]);
+
+  const doneEnabled =
+    mode === "trim"
+      ? trimDirty
+      : mode === "rotate"
+        ? rotatePending
+        : true;
+
   useEffect(() => {
     if (!open) {
       rangeInitializedRef.current = false;
       setKeyframesSecs([]);
-      setKfError(null);
-      setKfLoading(false);
       setFilmstripFrames([]);
       setStartMs(0);
       setEndMs(0);
+      setPendingRotateDeg(0);
+      setPlayheadMs(0);
+      setMode("trim");
       return;
     }
+    committedRef.current = false;
     const hintMs =
       durationSecsHint && durationSecsHint > 0 ? durationSecsHint * 1000 : 0;
     if (hintMs > 0) {
@@ -86,26 +123,23 @@ export function VideoCutter({
       setEndMs(hintMs);
       rangeInitializedRef.current = true;
     }
+    setPendingRotateDeg(0);
+    setMode("trim");
   }, [open, videoPath, durationSecsHint]);
 
   useEffect(() => {
     if (!open || !videoPath) return;
     let cancelled = false;
-    setKfLoading(true);
-    setKfError(null);
     const durationHint =
       durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
     void listVideoKeyframes(videoPath, durationHint)
       .then((times) => {
         if (cancelled) return;
         setKeyframesSecs(times);
-        setKfLoading(false);
       })
-      .catch((e) => {
+      .catch(() => {
         if (cancelled) return;
         setKeyframesSecs([]);
-        setKfLoading(false);
-        setKfError(String(e));
       });
     return () => {
       cancelled = true;
@@ -131,22 +165,34 @@ export function VideoCutter({
   }, [open, videoPath, durationSecsHint]);
 
   function finish(result: VideoCutterResult) {
+    if (committedRef.current) return;
     committedRef.current = true;
     playerRef.current?.pause();
     onComplete(result);
     onClose();
   }
 
-  function handleOpenChange(next: boolean) {
-    if (next) {
-      committedRef.current = false;
+  function cancel() {
+    if (committedRef.current) {
+      onClose();
       return;
     }
-    if (!committedRef.current) {
-      onComplete({ action: "cancel" });
-    }
-    committedRef.current = false;
+    committedRef.current = true;
+    playerRef.current?.pause();
+    onComplete({ action: "cancel" });
     onClose();
+  }
+
+  function switchMode(next: VideoEditMode) {
+    if (next === mode) return;
+    // Leaving a mode drops its pending preview state (Photos discards uncommitted tool tweaks).
+    if (mode === "rotate") setPendingRotateDeg(0);
+    if (mode === "trim") {
+      const dur = playerRef.current?.getDurationMs() || durationMs;
+      setStartMs(0);
+      setEndMs(dur);
+    }
+    setMode(next);
   }
 
   function handleTrimChange(handle: TrimHandle, ms: number) {
@@ -204,12 +250,11 @@ export function VideoCutter({
     let e = endMs > 0 ? endMs : dur;
     if (e < s) [s, e] = [e, s];
 
-    const nearFull =
-      s <= 50 && dur > 0 && Math.abs(e - dur) <= 50;
+    const nearFull = s <= 50 && dur > 0 && Math.abs(e - dur) <= 50;
     if (nearFull || e - s < 100) {
       showWarning(
         nearFull
-          ? "Der behaltene Bereich ist das ganze Video. Ziehen Sie die Handles, um zuzuschneiden."
+          ? "Ziehen Sie die Handles, um den Clip zuzuschneiden."
           : "Der behaltene Bereich ist zu kurz.",
         "Keine Änderung",
       );
@@ -219,7 +264,7 @@ export function VideoCutter({
   }
 
   function applySplit() {
-    let splitMs = playerRef.current?.getCurrentTimeMs() ?? 0;
+    let splitMs = playerRef.current?.getCurrentTimeMs() ?? playheadMs;
     const total = playerRef.current?.getDurationMs() || durationMs;
     if (keyframesSecs.length > 0) {
       const nearest = nearestKeyframe(keyframesSecs, splitMs / 1000);
@@ -227,12 +272,27 @@ export function VideoCutter({
     }
     if (splitMs <= 100 || splitMs >= total - 100) {
       showWarning(
-        "Sie können nicht zu nah am Anfang oder Ende des Clips teilen.",
+        "Playhead näher an die Mitte setzen — nicht zu nah am Anfang oder Ende.",
         "Ungültiger Split-Punkt",
       );
       return;
     }
     finish({ action: "apply_split", splitMs });
+  }
+
+  function applyRotate() {
+    const deg = ((pendingRotateDeg % 360) + 360) % 360;
+    if (deg === 0) {
+      showWarning("Keine Drehung ausgewählt.", "Keine Änderung");
+      return;
+    }
+    finish({ action: "apply_rotate", degrees: deg });
+  }
+
+  function handleDone() {
+    if (mode === "trim") applyTrim();
+    else if (mode === "rotate") applyRotate();
+    else applySplit();
   }
 
   const keepRange =
@@ -250,33 +310,72 @@ export function VideoCutter({
           .filter((r) => r > 0.001 && r < 0.999)
       : [];
 
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Scissors className="h-4 w-4" />
-            Video schneiden
-          </DialogTitle>
-          <DialogDescription className="truncate text-xs">
-            {videoPath ?? "—"}
-          </DialogDescription>
-        </DialogHeader>
+  const trimActive = mode === "trim";
+  const rotateActive = mode === "rotate";
 
+  const controls =
+    mode === "trim" ? (
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="font-mono text-[12px] tabular-nums text-white/55">
+          {formatPlayerTimeMs(startMs)} –{" "}
+          {formatPlayerTimeMs(endMs > 0 ? endMs : durationMs)}
+        </p>
+        <button
+          type="button"
+          onClick={resetRange}
+          className="text-[13px] font-medium text-[#8eb8b0] transition hover:text-white"
+        >
+          Zurücksetzen
+        </button>
+      </div>
+    ) : mode === "rotate" ? (
+      <MediaEditRotateBar
+        degrees={pendingRotateDeg}
+        onRotateCw={() => setPendingRotateDeg((d) => d + 90)}
+        onRotateCcw={() => setPendingRotateDeg((d) => d - 90)}
+        onReset={() => setPendingRotateDeg(0)}
+      />
+    ) : (
+      <div className="flex flex-col items-center gap-1 text-center">
+        <p className="font-mono text-[12px] tabular-nums text-white/55">
+          Playhead {formatPlayerTimeMs(playheadMs)}
+        </p>
+        <p className="text-[11px] text-white/35">Timeline setzen, dann Fertig</p>
+      </div>
+    );
+
+  return (
+    <MediaEditShell
+      open={open}
+      title="Bearbeiten"
+      description={videoPath}
+      mode={mode}
+      modes={VIDEO_MODES}
+      onModeChange={switchMode}
+      onCancel={cancel}
+      onDone={handleDone}
+      doneEnabled={doneEnabled}
+      controls={controls}
+    >
+      <div className="flex h-full min-h-0 w-full flex-col">
         <VideoPlayer
           ref={playerRef}
+          fillAvailable
+          className="min-h-0 flex-1"
           srcPath={open ? videoPath : null}
           cacheKey={
             videoPath
               ? `${useVideoStore.getState().getMediaRevision(videoPath)}-${durationMs}`
               : null
           }
-          keepRange={keepRange}
-          keyframeMarks={keyframeMarks}
+          keepRange={trimActive ? keepRange : { start: 0, end: 1 }}
+          keyframeMarks={trimActive || mode === "split" ? keyframeMarks : []}
           filmstripFrames={filmstripFrames}
-          onTrimChange={handleTrimChange}
-          onTrimCommit={handleTrimCommit}
-          onTimeUpdate={(_c, d) => {
+          previewRotateDeg={rotateActive ? pendingRotateDeg : 0}
+          onTrimChange={trimActive ? handleTrimChange : undefined}
+          onTrimCommit={trimActive ? handleTrimCommit : undefined}
+          onTimeUpdate={(c, d) => {
+            setPlayheadMs(c);
             if (d <= 0) return;
             setDurationMs(d);
             if (!rangeInitializedRef.current) {
@@ -288,48 +387,7 @@ export function VideoCutter({
             }
           }}
         />
-
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-          <span className="font-mono">
-            Start {formatPlayerTimeMs(startMs)} · Ende{" "}
-            {formatPlayerTimeMs(endMs > 0 ? endMs : durationMs)}
-          </span>
-          <Button type="button" size="sm" variant="ghost" onClick={resetRange}>
-            Auswahl zurücksetzen
-          </Button>
-          <span className="ml-auto">
-            {kfLoading
-              ? "Keyframes werden geladen…"
-              : kfError
-                ? "Keyframe-Snap nicht verfügbar"
-                : keyframesSecs.length > 0
-                  ? `${keyframesSecs.length} Keyframes · Snap aktiv`
-                  : "Keine Keyframes gefunden"}
-          </span>
-        </div>
-
-        <p className="text-xs text-muted">
-          Handles ziehen: Vorschau folgt dem Schnittpunkt. Beim Loslassen
-          Einrasten auf Keyframes (Stream-Copy). Timeline tippen setzt den
-          Playhead zum Teilen.
-        </p>
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          <Button type="button" variant="ghost" onClick={() => handleOpenChange(false)}>
-            Abbrechen
-          </Button>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={applySplit}>
-              <SplitSquareHorizontal className="h-4 w-4" />
-              Teilen
-            </Button>
-            <Button type="button" onClick={applyTrim}>
-              <Scissors className="h-4 w-4" />
-              Trim übernehmen
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </MediaEditShell>
   );
 }

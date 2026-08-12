@@ -11,6 +11,10 @@ import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
 import { getMediaThumbnail } from "../lib/sdCard";
 import { cn, isLinuxHost } from "../lib/utils";
+import {
+  previewRotateMediaStyle,
+  previewRotateStageClass,
+} from "../lib/mediaPreviewRotate";
 
 function VolumeLevelIcon({
   volume,
@@ -64,6 +68,13 @@ type VideoPlayerProps = {
   keyframeMarks?: number[];
   /** Filmstrip frame data URLs for Apple-style trim timeline (optional). */
   filmstripFrames?: string[];
+  /** Optional CSS preview rotation (degrees clockwise) for edit dialogs. */
+  previewRotateDeg?: number;
+  /**
+   * Fill parent height: video stage flex-shrinks, timeline stays visible.
+   * Use inside constrained edit shells (avoids aspect-video clipping the scrubber).
+   */
+  fillAvailable?: boolean;
   disabled?: boolean;
 };
 
@@ -110,6 +121,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTrimCommit,
       keyframeMarks,
       filmstripFrames,
+      previewRotateDeg = 0,
+      fillAvailable = false,
       disabled,
     },
     ref,
@@ -333,11 +346,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const trimEditable = Boolean(keepRange && onTrimChange);
     const startMsForBubble = keepStart * durationMs;
     const endMsForBubble = keepEnd * durationMs;
+    const rotateMediaStyle = previewRotateMediaStyle(previewRotateDeg);
 
     return (
-      <div className={cn("flex flex-col gap-2", className)}>
+      <div
+        className={cn(
+          "flex flex-col gap-2",
+          fillAvailable && "h-full min-h-0",
+          className,
+        )}
+      >
         <div
-          className="relative aspect-video w-full overflow-hidden rounded-md bg-black"
+          className={cn(
+            "relative overflow-hidden rounded-md bg-black transition-[aspect-ratio] duration-200",
+            fillAvailable
+              ? "min-h-0 w-full flex-1"
+              : previewRotateStageClass(previewRotateDeg),
+          )}
           onMouseEnter={() => {
             if (!canTogglePlayback) return;
             clearOverlayHideTimer();
@@ -355,7 +380,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             <video
               key={src}
               ref={videoRef}
-              className="pointer-events-none h-full w-full object-contain"
+              className={cn(
+                "pointer-events-none object-contain transition-transform duration-200",
+                rotateMediaStyle ? null : "h-full w-full",
+              )}
+              style={rotateMediaStyle}
               src={src}
               poster={posterUrl ?? undefined}
               playsInline
@@ -460,9 +489,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         <div
           ref={barRef}
           className={cn(
-            "relative touch-none select-none",
+            "relative shrink-0 touch-none select-none",
             trimEditable
-              ? "mt-7 h-14 cursor-default overflow-visible"
+              ? fillAvailable
+                ? "mt-5 h-12 cursor-default overflow-visible"
+                : "mt-7 h-14 cursor-default overflow-visible"
               : "h-8 cursor-pointer overflow-hidden rounded bg-[#555]",
             disabled && "pointer-events-none opacity-50",
           )}

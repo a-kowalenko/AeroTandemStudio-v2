@@ -18,8 +18,9 @@ use commands::config::{
     reload_config, reset_config, save_config, validate_kunde_cmd, ConfigState,
 };
 use commands::media::{
-    clear_working_session, delete_working_copy, expand_media_paths, get_file_sizes,
-    get_media_server_base, get_working_dir, import_photos, media_file_url,
+    clear_photo_edit_undo, clear_working_session, delete_working_copy, discard_photo_edit_undo_for_path,
+    expand_media_paths, get_file_sizes, get_media_server_base, get_working_dir, has_photo_edit_undo,
+    import_photos, list_photo_edit_marks, media_file_url, rotate_photo, undo_photo_edit_for_path,
 };
 use commands::qr::{
     discard_qr_preview_file, scan_qr_photo, scan_qr_photo_followups, scan_qr_photos, scan_qr_video,
@@ -36,8 +37,9 @@ use commands::video::{
     cancel_encode, clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
     discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
     get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
-    list_video_keyframes, probe_video, resolve_intro_mux_fallback, split_video, trim_video,
-    undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path, validate_create_job,
+    list_video_keyframes, probe_video, resolve_intro_mux_fallback, rotate_video, split_video,
+    trim_video, undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path,
+    validate_create_job,
 };
 use commands::vorgang_history::{delete_vorgaenge, list_vorgang_dateien, list_vorgaenge};
 use storage::logging::{init_logging, log_info, set_log_emitter};
@@ -128,6 +130,7 @@ pub fn run() {
             trim_video,
             cut_video,
             split_video,
+            rotate_video,
             undo_last_video_cut,
             undo_video_cut_for_path,
             undo_all_video_cuts,
@@ -162,6 +165,12 @@ pub fn run() {
             expand_media_paths,
             get_file_sizes,
             import_photos,
+            rotate_photo,
+            undo_photo_edit_for_path,
+            has_photo_edit_undo,
+            list_photo_edit_marks,
+            clear_photo_edit_undo,
+            discard_photo_edit_undo_for_path,
             get_working_dir,
             clear_working_session,
             delete_working_copy,

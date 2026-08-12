@@ -15,4 +15,5 @@ pub mod preview_reuse;
 pub mod probe;
 pub mod processor;
 pub mod progress;
+pub mod rotate;
 pub mod watermark;

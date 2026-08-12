@@ -350,6 +350,72 @@ pub async fn cut_video(
     }
 }
 
+/// Rotate video by 90° steps (pixel transpose + re-encode). Emits `encode-progress`.
+#[tauri::command]
+pub async fn rotate_video(
+    app: AppHandle,
+    input: String,
+    degrees: i32,
+    output: Option<String>,
+    overwrite: Option<bool>,
+) -> Result<CutResult, String> {
+    if input.trim().is_empty() {
+        return Err("input path is required".into());
+    }
+    if !std::path::Path::new(&input).is_file() {
+        return Err(format!("input file not found: {input}"));
+    }
+
+    let overwrite = overwrite.unwrap_or(false);
+    logging::info(
+        "edit",
+        format!(
+            "Rotate start: {} by {degrees}° overwrite={overwrite}",
+            file_name(&input)
+        ),
+    );
+    reset_cancel_flag();
+    let ffmpeg = resolve_ffmpeg(&app)?;
+
+    let app_for_cb = app.clone();
+    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
+        let _ = app_for_cb.emit("encode-progress", &p);
+    });
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        crate::video::rotate::rotate_video(
+            &ffmpeg,
+            &input,
+            degrees,
+            output.as_deref(),
+            overwrite,
+            on_progress,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(res) => {
+            logging::info(
+                "edit",
+                format!(
+                    "Rotate fertig: {} (method={}, overwrite={})",
+                    file_name(&res.output),
+                    res.method,
+                    res.overwritten
+                ),
+            );
+            Ok(res)
+        }
+        Err(e) => {
+            log_job_failure("edit", "Drehen", &e);
+            Err(e)
+        }
+    }
+}
+
 /// Undo the last overwrite trim/split (restores working-copy backup).
 #[tauri::command]
 pub async fn undo_last_video_cut() -> Result<crate::video::cut_undo::UndoCutResult, String> {

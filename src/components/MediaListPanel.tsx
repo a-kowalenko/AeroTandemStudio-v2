@@ -81,7 +81,7 @@ type SortableRowProps = {
   showWatermark?: boolean;
   watermarkSelected?: boolean;
   onToggleWatermark?: (index: number) => void;
-  cutMark?: "trim" | "split" | null;
+  cutMark?: "trim" | "split" | "rotate" | null;
 };
 
 function SortableVideoRow({
@@ -131,9 +131,15 @@ function SortableVideoRow({
           {cutMark ? (
             <span
               className="shrink-0 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white"
-              title={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
+              title={
+                cutMark === "trim"
+                  ? "Getrimmt"
+                  : cutMark === "rotate"
+                    ? "Gedreht"
+                    : "Geteilt"
+              }
             >
-              {cutMark === "trim" ? "Trim" : "Split"}
+              {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
             </span>
           ) : null}
         </div>

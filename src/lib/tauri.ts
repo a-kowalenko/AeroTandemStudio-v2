@@ -672,6 +672,69 @@ export async function cutVideo(opts: {
   });
 }
 
+/** Rotate video by 90° steps (re-encode). With `overwrite` replaces the source. */
+export async function rotateVideo(opts: {
+  input: string;
+  degrees: number;
+  output?: string | null;
+  overwrite?: boolean;
+}): Promise<CutResult> {
+  return invoke<CutResult>("rotate_video", {
+    input: opts.input,
+    degrees: opts.degrees,
+    output: opts.output ?? null,
+    overwrite: opts.overwrite ?? false,
+  });
+}
+
+export type PhotoRotateResult = {
+  output: string;
+  degrees: number;
+  overwritten: boolean;
+  width: number;
+  height: number;
+};
+
+export async function rotatePhoto(opts: {
+  input: string;
+  degrees: number;
+  output?: string | null;
+  overwrite?: boolean;
+}): Promise<PhotoRotateResult> {
+  return invoke<PhotoRotateResult>("rotate_photo", {
+    input: opts.input,
+    degrees: opts.degrees,
+    output: opts.output ?? null,
+    overwrite: opts.overwrite ?? true,
+  });
+}
+
+export type UndoPhotoEditResult = {
+  restore_path: string;
+};
+
+export async function undoPhotoEditForPath(
+  path: string,
+): Promise<UndoPhotoEditResult> {
+  return invoke<UndoPhotoEditResult>("undo_photo_edit_for_path", { path });
+}
+
+export async function hasPhotoEditUndo(): Promise<boolean> {
+  return invoke<boolean>("has_photo_edit_undo");
+}
+
+export async function listPhotoEditMarks(): Promise<string[]> {
+  return invoke<string[]>("list_photo_edit_marks");
+}
+
+export async function clearPhotoEditUndo(): Promise<void> {
+  return invoke("clear_photo_edit_undo");
+}
+
+export async function discardPhotoEditUndoForPath(path: string): Promise<void> {
+  return invoke("discard_photo_edit_undo_for_path", { path });
+}
+
 export type UndoCutResult = {
   kind: string;
   restore_path: string;

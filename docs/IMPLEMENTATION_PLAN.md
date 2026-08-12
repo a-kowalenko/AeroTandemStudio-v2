@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
+*(Phase 20 Medien-Drehen ist erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
 
 ---
@@ -992,6 +993,48 @@ src/components/settings/hooks/useCrewEditor.ts
 
 ---
 
+### Phase 20 — Medien-Bearbeitung: Drehen (Video + Foto)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 9 (Cutter), Phase 8 (PhotoPreview)  
+**Ziel:** Medien 90°-weise drehen; Schneiden-Dialog → **Bearbeiten**; Foto-Editor analog.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Video-Rotation | Pixel-`transpose` + Re-Encode (kein Metadata-only) |
+| Foto-Rotation | `image`-Crate, EXIF-Orientation vorher einbacken |
+| Preview | CSS im Dialog; Apply schreibt Working-Copy |
+| Trim + Rotate | Nicht gleichzeitig: Trim/Split gesperrt bei ausstehender Drehung |
+| Undo | Video: bestehendes Cut-Undo; Foto: `photo_edit_undo` |
+| Batch | Auswahl drehen in Foto-Vorschau |
+
+#### Aufgaben
+
+- [x] `video/rotate.rs` — FFmpeg-Args + `rotate_video` Command + Unit-Tests
+- [x] `media/rotate.rs` + `media/photo_edit_undo.rs` — Foto drehen / Undo
+- [x] Rename UI: Schneiden → **Bearbeiten**; Undo → **Bearbeitung rückgängig**
+- [x] `VideoCutter`: Drehen-Bar, CSS-Preview, „Drehen übernehmen“
+- [x] `PhotoEditor` + Entry in `PhotoPreview` / Kontextmenü
+- [x] Batch-Rotate für Foto-Auswahl
+- [x] `mediaRevision` / Edit-Marks für Cache-Bust
+
+#### Referenzen
+
+```
+src-tauri/src/video/rotate.rs
+src-tauri/src/media/rotate.rs
+src-tauri/src/media/photo_edit_undo.rs
+src/components/VideoCutter.tsx
+src/components/PhotoEditor.tsx
+src/components/MediaEditRotateBar.tsx
+src/hooks/useVideoCutApply.ts
+src/hooks/usePhotoEditApply.ts
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1086,7 +1129,8 @@ cargo test
 | 5 | Config speichern/laden, Formular validieren |
 | 6 | QR-Code aus Testvideo scannen |
 | 7 | SD-Karte einstecken → Backup/Dialog |
-| 9 | Video schneiden und teilen |
+| 9 | Video schneiden/teilen/drehen |
+| 20 | Foto drehen, Undo, Auswahl-Batch |
 | 10 | SMB-Upload, Update-Check |
 | 13 | macOS: VT encode, SD `/Volumes`, DMG |
 | 15 | Linux: AppImage, FFmpeg sidecar, SD mounts, SMB, Updater |
@@ -1152,6 +1196,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 17 | QR-Treffer-Preview (Spotlight) | ✅ |
 | 18 | Standard-Medienordner anlegen | ✅ |
 | 19 | Operator-Identität (Ich / Favorit) | ✅ |
+| 20 | Medien-Bearbeitung: Drehen | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1170,4 +1215,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-12 · Projekt: Aero Tandem Studio v2 · Phase 19 Operator-Identität*
+*Letzte Aktualisierung: 2026-08-12 · Projekt: Aero Tandem Studio v2 · Phase 20 Medien-Drehen*

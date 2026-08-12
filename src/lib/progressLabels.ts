@@ -12,6 +12,8 @@ const STATUS_LABELS: Record<string, string> = {
   "re-encode": "Kodiere neu…",
   "re-encode trim": "Zuschneiden (präzise)…",
   "stream-copy trim": "Zuschneiden…",
+  "Drehen erfordert Neu-Kodierung…": "Drehen…",
+  "Ersetze Original…": "Ersetze Datei…",
   "re-encode cut": "Schnitt (präzise)…",
   "stream-copy cut": "Schnitt…",
   "replacing original": "Ersetze Original…",

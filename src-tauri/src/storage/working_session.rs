@@ -413,6 +413,7 @@ pub fn get_working_dir() -> Option<PathBuf> {
 
 pub fn clear_working_session() {
     crate::video::cut_undo::clear_cut_undo();
+    crate::media::photo_edit_undo::clear_photo_edit_undo();
     let _ = with_session(|s| s.clear());
 }
 

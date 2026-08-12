@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   cutVideo,
   probeVideo,
+  rotateVideo,
   splitVideo,
   undoAllVideoCuts,
   undoVideoCutForPath,
@@ -39,11 +40,13 @@ async function applyUndoResult(res: UndoCutResult) {
     const meta = await probeVideo(res.restore_path);
     replaceVideo(res.restore_path, meta);
   }
-  clearCutMarksFor(res.cleared_mark_paths?.length ? res.cleared_mark_paths : [res.restore_path]);
+  clearCutMarksFor(
+    res.cleared_mark_paths?.length ? res.cleared_mark_paths : [res.restore_path],
+  );
 }
 
 /**
- * Apply trim/split immediately. Multi-clip undo via working-copy backups.
+ * Apply trim/split/rotate immediately. Multi-clip undo via working-copy backups.
  * Progress uses the sticky top ProgressIndicator (same as encode) — no blur overlay.
  */
 export function useVideoCutApply() {
@@ -54,6 +57,7 @@ export function useVideoCutApply() {
   const replaceVideo = useVideoStore((s) => s.replaceVideo);
   const applySplitInList = useVideoStore((s) => s.applySplitInList);
   const markTrimmed = useVideoStore((s) => s.markTrimmed);
+  const markRotated = useVideoStore((s) => s.markRotated);
   const markSplit = useVideoStore((s) => s.markSplit);
   const clearAllCutMarks = useVideoStore((s) => s.clearAllCutMarks);
   const showError = useUiStore((s) => s.showError);
@@ -85,8 +89,8 @@ export function useVideoCutApply() {
         markTrimmed(sourcePath);
         opts?.onStatus?.("Schnitt fertig");
         showSuccess(
-          "Schnitt übernommen. Rückgängig über den Clip oder „Alle Schnitte rückgängig“.",
-          "Schnitt",
+          "Schnitt übernommen. Rückgängig über den Clip oder „Alle Bearbeitungen rückgängig“.",
+          "Bearbeiten",
           { autoCloseSecs: 5 },
         );
       } catch (e) {
@@ -118,8 +122,8 @@ export function useVideoCutApply() {
         markSplit(res.part1_path, res.part2_path, sourcePath);
         opts?.onStatus?.("Teilen fertig");
         showSuccess(
-          "Video geteilt. Rückgängig über einen Teil-Clip oder „Alle Schnitte rückgängig“.",
-          "Teilen",
+          "Video geteilt. Rückgängig über einen Teil-Clip oder „Alle Bearbeitungen rückgängig“.",
+          "Bearbeiten",
           { autoCloseSecs: 5 },
         );
       } catch (e) {
@@ -132,18 +136,50 @@ export function useVideoCutApply() {
     [applying, applySplitInList, markSplit, showError, showSuccess],
   );
 
+  const applyRotate = useCallback(
+    async (sourcePath: string, degrees: number, opts?: ApplyOptions) => {
+      if (applying) return;
+      setApplying(true);
+      beginProgress(opts, "Video wird gedreht (Neu-Kodierung)…");
+      try {
+        await rotateVideo({
+          input: sourcePath,
+          degrees,
+          overwrite: true,
+        });
+        const meta = await probeVideo(sourcePath);
+        replaceVideo(sourcePath, meta);
+        markRotated(sourcePath);
+        opts?.onStatus?.("Drehen fertig");
+        showSuccess(
+          "Drehung übernommen. Rückgängig über den Clip oder „Alle Bearbeitungen rückgängig“.",
+          "Bearbeiten",
+          { autoCloseSecs: 5 },
+        );
+      } catch (e) {
+        showError(String(e), "Drehen fehlgeschlagen");
+      } finally {
+        setApplying(false);
+        endProgress(opts);
+      }
+    },
+    [applying, replaceVideo, markRotated, showError, showSuccess],
+  );
+
   const undoForPath = useCallback(
     async (path: string, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Schnitt wird rückgängig gemacht…");
+      beginProgress(opts, "Bearbeitung wird rückgängig gemacht…");
       try {
         const res = await undoVideoCutForPath(path);
         await applyUndoResult(res);
         opts?.onStatus?.("Rückgängig fertig");
-        showSuccess("Schnitt für diesen Clip rückgängig gemacht.", "Rückgängig", {
-          autoCloseSecs: 5,
-        });
+        showSuccess(
+          "Bearbeitung für diesen Clip rückgängig gemacht.",
+          "Rückgängig",
+          { autoCloseSecs: 5 },
+        );
       } catch (e) {
         showError(String(e), "Rückgängig fehlgeschlagen");
       } finally {
@@ -158,7 +194,7 @@ export function useVideoCutApply() {
     async (opts?: ApplyOptions) => {
       if (applying || !canUndo) return;
       setApplying(true);
-      beginProgress(opts, "Alle Schnitte werden rückgängig gemacht…");
+      beginProgress(opts, "Alle Bearbeitungen werden rückgängig gemacht…");
       try {
         const results = await undoAllVideoCuts();
         for (const res of results) {
@@ -167,7 +203,7 @@ export function useVideoCutApply() {
         clearAllCutMarks();
         opts?.onStatus?.("Rückgängig fertig");
         showSuccess(
-          `${results.length} Schnitt-Aktion(en) rückgängig gemacht.`,
+          `${results.length} Bearbeitung(en) rückgängig gemacht.`,
           "Rückgängig",
           { autoCloseSecs: 5 },
         );
@@ -189,6 +225,7 @@ export function useVideoCutApply() {
     canUndo,
     applyTrim,
     applySplit,
+    applyRotate,
     undoForPath,
     undoAll,
     undoLast,

@@ -18,7 +18,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Film, Play, QrCode, RefreshCw, RotateCcw, Scissors, Trash2 } from "lucide-react";
+import { Film, Pencil, Play, QrCode, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
@@ -77,7 +77,7 @@ type ClipChipProps = {
   index: number;
   active: boolean;
   isWm: boolean;
-  cutMark: "trim" | "split" | null;
+  cutMark: "trim" | "split" | "rotate" | null;
   revision: number;
   onSelect: (index: number) => void;
   onContextMenu: (e: MouseEvent, path: string) => void;
@@ -104,9 +104,15 @@ function ClipChipFace({
       {cutMark && (
         <span
           className="absolute top-1 right-1 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-          aria-label={cutMark === "trim" ? "Getrimmt" : "Geteilt"}
+          aria-label={
+            cutMark === "trim"
+              ? "Getrimmt"
+              : cutMark === "rotate"
+                ? "Gedreht"
+                : "Geteilt"
+          }
         >
-          {cutMark === "trim" ? "Trim" : "Split"}
+          {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
         </span>
       )}
       {isWm && (
@@ -195,7 +201,7 @@ function ClipChipOverlay({
   video: VideoMetadata;
   active: boolean;
   isWm: boolean;
-  cutMark: "trim" | "split" | null;
+  cutMark: "trim" | "split" | "rotate" | null;
 }) {
   return (
     <div
@@ -591,7 +597,7 @@ export function VideoPreview({
               title="Alle Trim-/Teilen-Aktionen rückgängig machen"
             >
               <RotateCcw className="h-4 w-4" />
-              Alle Schnitte rückgängig
+              Alle Bearbeitungen rückgängig
             </Button>
           )}
           {videoList.length > 0 &&
@@ -825,7 +831,11 @@ export function VideoPreview({
               {getCutMark(current.path) && (
                 <div className="pt-1">
                   <span className="inline-block rounded bg-sky-600/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:text-sky-300">
-                    {getCutMark(current.path) === "trim" ? "Getrimmt" : "Geteilt"}
+                    {getCutMark(current.path) === "trim"
+                      ? "Getrimmt"
+                      : getCutMark(current.path) === "rotate"
+                        ? "Gedreht"
+                        : "Geteilt"}
                   </span>
                 </div>
               )}
@@ -887,8 +897,8 @@ export function VideoPreview({
                 disabled={busy || !onCutClip}
                 onClick={() => onCutClip?.(current.path, activeClip)}
               >
-                <Scissors className="h-3.5 w-3.5" />
-                Schneiden
+                <Pencil className="h-3.5 w-3.5" />
+                Bearbeiten
               </Button>
               {getCutMark(current.path) && onUndoClipCut && (
                 <Button
@@ -897,10 +907,10 @@ export function VideoPreview({
                   variant="outline"
                   disabled={busy}
                   onClick={() => onUndoClipCut(current.path)}
-                  title="Diesen Schnitt rückgängig machen"
+                  title="Diese Bearbeitung rückgängig machen"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Schnitt rückgängig
+                  Bearbeitung rückgängig
                 </Button>
               )}
               <Button

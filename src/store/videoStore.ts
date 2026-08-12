@@ -5,7 +5,7 @@ import { getMediaThumbnail } from "../lib/sdCard";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
 
-export type CutMarkKind = "trim" | "split";
+export type CutMarkKind = "trim" | "split" | "rotate";
 
 export type VideoSortKey = "name" | "duration" | "size";
 
@@ -45,6 +45,7 @@ type VideoListState = {
   ensureDefaultWatermarkClip: () => void;
   clearWatermarkSelection: () => void;
   markTrimmed: (path: string) => void;
+  markRotated: (path: string) => void;
   markSplit: (part1: string, part2: string, originalPath: string) => void;
   clearCutMarksFor: (paths: string[]) => void;
   clearAllCutMarks: () => void;
@@ -286,6 +287,14 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     const k = normPath(path);
     set({
       cutMarks: { ...get().cutMarks, [k]: "trim" },
+      mediaRevision: bumpRev(get().mediaRevision, path),
+    });
+  },
+
+  markRotated: (path) => {
+    const k = normPath(path);
+    set({
+      cutMarks: { ...get().cutMarks, [k]: "rotate" },
       mediaRevision: bumpRev(get().mediaRevision, path),
     });
   },

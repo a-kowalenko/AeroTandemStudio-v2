@@ -288,3 +288,70 @@ pub fn media_file_url(path: String, state: State<'_, MediaServerState>) -> Resul
     ensure_media_file(&path)?;
     Ok(state.url_for_path(path.trim()))
 }
+
+/// Rotate a photo working copy by 90° steps (pixels + EXIF orientation baked).
+#[tauri::command]
+pub async fn rotate_photo(
+    input: String,
+    degrees: i32,
+    output: Option<String>,
+    overwrite: Option<bool>,
+) -> Result<crate::media::rotate::PhotoRotateResult, String> {
+    if input.trim().is_empty() {
+        return Err("input path is required".into());
+    }
+    if !Path::new(&input).is_file() {
+        return Err(format!("input file not found: {input}"));
+    }
+    let overwrite = overwrite.unwrap_or(true);
+    logging::info(
+        "edit",
+        format!(
+            "Photo rotate: {} by {degrees}° overwrite={overwrite}",
+            file_name(&input)
+        ),
+    );
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::rotate::rotate_photo(&input, degrees, output.as_deref(), overwrite)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn undo_photo_edit_for_path(
+    path: String,
+) -> Result<crate::media::photo_edit_undo::UndoPhotoEditResult, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::photo_edit_undo::undo_edit_for_path(&path).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn has_photo_edit_undo() -> bool {
+    crate::media::photo_edit_undo::has_photo_edit_undo()
+}
+
+#[tauri::command]
+pub fn list_photo_edit_marks() -> Vec<String> {
+    crate::media::photo_edit_undo::photo_edit_mark_paths()
+}
+
+#[tauri::command]
+pub fn clear_photo_edit_undo() {
+    crate::media::photo_edit_undo::clear_photo_edit_undo();
+}
+
+#[tauri::command]
+pub fn discard_photo_edit_undo_for_path(path: String) {
+    if path.trim().is_empty() {
+        return;
+    }
+    crate::media::photo_edit_undo::discard_edit_undo_for_path(&path);
+}

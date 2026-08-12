@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   deleteWorkingCopy,
+  discardPhotoEditUndoForPath,
   getFileSizes,
   importPhotos,
   type PhotoMetadata,
@@ -18,6 +19,20 @@ export type PhotoItem = {
   camera_model?: string;
 };
 
+export type PhotoEditMarkKind = "rotate";
+
+function normPath(path: string): string {
+  return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function bumpRev(
+  map: Record<string, number>,
+  path: string,
+): Record<string, number> {
+  const k = normPath(path);
+  return { ...map, [k]: (map[k] ?? 0) + 1 };
+}
+
 type PhotoListState = {
   photoList: PhotoItem[];
   currentIndex: number;
@@ -25,6 +40,10 @@ type PhotoListState = {
   explicitlySelected: boolean;
   /** Indices marked for unpaid-foto watermark (Preview_Foto). */
   watermarkIndices: Set<number>;
+  /** path(lower) → edit kind for UI chips / undo */
+  editMarks: Record<string, PhotoEditMarkKind>;
+  /** path(lower) → bumped when file bytes change in place */
+  mediaRevision: Record<string, number>;
   importing: boolean;
   importError: string | null;
   addPhotos: (paths: string[]) => Promise<void>;
@@ -38,6 +57,17 @@ type PhotoListState = {
   clearWatermarkSelection: () => void;
   /** Fill missing `sizeBytes` from disk (no-op if all present). */
   refreshSizes: (paths?: string[]) => Promise<void>;
+  updatePhotoMeta: (
+    path: string,
+    patch: Partial<Pick<PhotoItem, "width" | "height" | "sizeBytes">>,
+  ) => void;
+  markRotated: (path: string) => void;
+  clearEditMarksFor: (paths: string[]) => void;
+  clearAllEditMarks: () => void;
+  bumpMediaRevision: (path: string) => void;
+  getEditMark: (path: string) => PhotoEditMarkKind | null;
+  getMediaRevision: (path: string) => number;
+  hasAnyEditMarks: () => boolean;
 };
 
 function comparePhotoFilename(a: string, b: string): number {
@@ -65,6 +95,8 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
   selected: new Set(),
   explicitlySelected: false,
   watermarkIndices: new Set(),
+  editMarks: {},
+  mediaRevision: {},
   importing: false,
   importError: null,
 
@@ -140,14 +172,24 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       const removedBefore = [...remove].filter((r) => r < i).length;
       wm.add(i - removedBefore);
     });
+    const editMarks = { ...get().editMarks };
+    const mediaRevision = { ...get().mediaRevision };
+    for (const p of removedPaths) {
+      const k = normPath(p);
+      delete editMarks[k];
+      delete mediaRevision[k];
+    }
     set({
       photoList: next,
       currentIndex: next.length === 0 ? -1 : Math.min(get().currentIndex, next.length - 1),
       selected: new Set(),
       explicitlySelected: false,
       watermarkIndices: wm,
+      editMarks,
+      mediaRevision,
     });
     for (const p of removedPaths) {
+      void discardPhotoEditUndoForPath(p);
       void deleteWorkingCopy(p);
     }
   },
@@ -199,6 +241,8 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       selected: new Set(),
       explicitlySelected: false,
       watermarkIndices: new Set(),
+      editMarks: {},
+      mediaRevision: {},
       importError: null,
     });
     for (const p of paths) {
@@ -244,4 +288,44 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       /* keep previous sizes */
     }
   },
+
+  updatePhotoMeta: (path, patch) => {
+    const key = normPath(path);
+    set({
+      photoList: get().photoList.map((p) =>
+        normPath(p.path) === key ? { ...p, ...patch } : p,
+      ),
+    });
+  },
+
+  markRotated: (path) => {
+    const k = normPath(path);
+    set({
+      editMarks: { ...get().editMarks, [k]: "rotate" },
+      mediaRevision: bumpRev(get().mediaRevision, path),
+    });
+  },
+
+  clearEditMarksFor: (paths) => {
+    const marks = { ...get().editMarks };
+    let rev = { ...get().mediaRevision };
+    for (const p of paths) {
+      const k = normPath(p);
+      delete marks[k];
+      rev = bumpRev(rev, p);
+    }
+    set({ editMarks: marks, mediaRevision: rev });
+  },
+
+  clearAllEditMarks: () => set({ editMarks: {} }),
+
+  bumpMediaRevision: (path) => {
+    set({ mediaRevision: bumpRev(get().mediaRevision, path) });
+  },
+
+  getEditMark: (path) => get().editMarks[normPath(path)] ?? null,
+
+  getMediaRevision: (path) => get().mediaRevision[normPath(path)] ?? 0,
+
+  hasAnyEditMarks: () => Object.keys(get().editMarks).length > 0,
 }));

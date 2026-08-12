@@ -1,6 +1,6 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Copy, FolderOpen, ExternalLink, QrCode, RotateCcw, Scissors, Trash2 } from "lucide-react";
+import { Copy, FolderOpen, ExternalLink, Pencil, QrCode, RotateCcw, Trash2 } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { cn } from "@/lib/utils";
 
@@ -17,11 +17,11 @@ type Props = {
   onCopied?: () => void;
   /** Optional: scan QR for this file */
   onScanQr?: (path: string) => void;
-  /** Optional: open cutter for this video clip */
+  /** Optional: open edit dialog for this video/photo */
   onCut?: (path: string) => void;
-  /** Optional: undo trim/split for this clip (shown when `canUndoCut`) */
+  /** Optional: undo trim/split/rotate for this clip (shown when `canUndoCut`) */
   onUndoCut?: (path: string) => void;
-  /** Show undo-cut item (clip was trimmed/split) */
+  /** Show undo-edit item (clip/photo was edited) */
   canUndoCut?: boolean;
   /** Optional: remove this file from the session list */
   onRemove?: (path: string) => void;
@@ -170,7 +170,7 @@ export function MediaFileContextMenu({
       )}
       {onCut && (
         <MenuItem
-          icon={<Scissors className="h-3.5 w-3.5" />}
+          icon={<Pencil className="h-3.5 w-3.5" />}
           disabled={actionsDisabled}
           onClick={() => {
             const path = state.path;
@@ -178,7 +178,7 @@ export function MediaFileContextMenu({
             onCut(path);
           }}
         >
-          Schneiden
+          Bearbeiten
         </MenuItem>
       )}
       {canUndoCut && onUndoCut && (
@@ -191,7 +191,7 @@ export function MediaFileContextMenu({
             onUndoCut(path);
           }}
         >
-          Schnitt rückgängig
+          Bearbeitung rückgängig
         </MenuItem>
       )}
       {showClipActions && onRemove && (
