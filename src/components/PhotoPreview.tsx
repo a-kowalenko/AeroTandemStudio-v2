@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { ChevronLeft, ChevronRight, ImageIcon, QrCode, Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -36,7 +35,6 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
   const selected = usePhotoStore((s) => s.selected);
   const explicitlySelected = usePhotoStore((s) => s.explicitlySelected);
   const watermarkIndices = usePhotoStore((s) => s.watermarkIndices);
-  const addPhotos = usePhotoStore((s) => s.addPhotos);
   const removePhotos = usePhotoStore((s) => s.removePhotos);
   const setCurrentIndex = usePhotoStore((s) => s.setCurrentIndex);
   const toggleSelect = usePhotoStore((s) => s.toggleSelect);
@@ -117,20 +115,6 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
     toggleSelect,
   ]);
 
-  async function handleAdd() {
-    const selectedPaths = await open({
-      multiple: true,
-      filters: [
-        { name: "Fotos", extensions: ["jpg", "jpeg", "png", "webp", "heic", "dng"] },
-      ],
-    });
-    if (Array.isArray(selectedPaths) && selectedPaths.length > 0) {
-      await addPhotos(selectedPaths);
-    } else if (typeof selectedPaths === "string") {
-      await addPhotos([selectedPaths]);
-    }
-  }
-
   async function handleQrScan(path?: string) {
     const photo = path
       ? photoList.find((p) => p.path === path)
@@ -178,21 +162,11 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
           <ImageIcon className="h-4 w-4 text-primary" />
           Foto-Vorschau
         </h3>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => void handleAdd()}
-          disabled={disabled}
-          title="Weitere Fotos wählen (auch per Drag & Drop oben)"
-        >
-          Weitere hinzufügen…
-        </Button>
       </div>
 
       <div

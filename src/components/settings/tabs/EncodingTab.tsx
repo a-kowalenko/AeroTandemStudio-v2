@@ -21,38 +21,6 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Intro"
-        description="Intro-Clip beim Erstellen eines Vorgangs vor das Flugvideo setzen."
-      >
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={draft.intro_enabled}
-            onCheckedChange={(v) => patch("intro_enabled", v === true)}
-          />
-          Intro beim Erstellen verwenden (experimentell)
-        </label>
-        <div className="space-y-1.5">
-          <Label>Intro-Dauer (Sek.)</Label>
-          <Select
-            value={String(draft.dauer)}
-            onValueChange={(v) => patch("dauer", Number(v))}
-            disabled={!draft.intro_enabled}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {n}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
         title="Standard"
         description="Empfohlene Einstellungen für die meisten Nutzer."
       >
@@ -131,6 +99,32 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
         </Button>
         {advancedOpen ? (
           <div className="space-y-4 border-t border-border px-3 pt-3 pb-3">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.intro_enabled}
+                onCheckedChange={(v) => patch("intro_enabled", v === true)}
+              />
+              Intro beim Erstellen verwenden (experimentell)
+            </label>
+            <div className="space-y-1.5">
+              <Label>Intro-Dauer (Sek.)</Label>
+              <Select
+                value={String(draft.dauer)}
+                onValueChange={(v) => patch("dauer", Number(v))}
+                disabled={!draft.intro_enabled}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="space-y-1.5">
               <Label>Intro zusammenfügen</Label>
               <Select

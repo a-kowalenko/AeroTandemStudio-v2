@@ -672,17 +672,28 @@ export function SetupWizard({ open, onComplete }: Props) {
           >
             {STEPS[step]}
           </h2>
-          <div className="mt-3 flex gap-1.5" aria-hidden>
-            {STEPS.map((_, i) => (
+          <div
+            className="mt-3 flex h-2 items-center gap-1.5"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={STEPS.length}
+            aria-valuenow={step + 1}
+            aria-label={`Einrichtung: Schritt ${step + 1} von ${STEPS.length}`}
+          >
+            {STEPS.map((name, i) => (
               <span
-                key={STEPS[i]}
+                key={name}
+                title={name}
+                aria-current={i === step ? "step" : undefined}
                 className={cn(
-                  "h-1.5 flex-1 rounded-full transition-colors",
-                  skippedSteps.has(i)
-                    ? "bg-primary/35"
-                    : i <= step
-                      ? "bg-primary"
-                      : "bg-border",
+                  "flex-1 self-center rounded-full transition-[height,background-color,box-shadow] duration-300 ease-out",
+                  i === step
+                    ? "h-2 bg-primary shadow-[inset_0_0_0_1px] shadow-primary/40"
+                    : skippedSteps.has(i)
+                      ? "h-1.5 bg-primary/30"
+                      : i < step
+                        ? "h-1.5 bg-primary/55"
+                        : "h-1.5 bg-border",
                 )}
               />
             ))}

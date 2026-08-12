@@ -1552,7 +1552,7 @@ function App() {
                   }}
                   formReady={createReady}
                   formHints={createHints}
-                  playbackSuspended={cutterOpen}
+                  playbackSuspended={cutterOpen || busy}
                   canUndoCuts={videoCuts.canUndo}
                   onUndoAllCuts={() => {
                     void videoCuts.undoAll({
