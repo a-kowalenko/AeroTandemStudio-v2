@@ -14,14 +14,15 @@ import {
   canonicalCrewName,
   crewAllNames,
   crewKeepComboboxValue,
+  crewNamesEqual,
   crewNamesForRole,
-  ensureCrewMember,
   ensureCrewRole,
   findCrewMember,
   getAppInfo,
   ORT_OPTIONS,
   parseCrewKeepComboboxValue,
   proposeDefaultMediaDirs,
+  upsertCrewMember,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
@@ -273,11 +274,19 @@ type Props = {
 };
 
 type FieldErrors = {
+  operator_roles?: string;
   tandemmaster?: string;
   videospringer?: string;
   speicherort?: string;
   sd_backup_folder?: string;
   sd_size_limit_mb?: string;
+};
+
+type OperatorRoleDraft = {
+  /** Lowercase trimmed name this draft belongs to. */
+  key: string;
+  tandemmaster: boolean;
+  videospringer: boolean;
 };
 
 const SKIP_BTN_CLASS =
@@ -306,6 +315,9 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [creatingDefaultDir, setCreatingDefaultDir] =
     useState<DefaultMediaDirKind | null>(null);
   const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
+  const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!open || !config) return;
@@ -323,6 +335,19 @@ export function SetupWizard({ open, onComplete }: Props) {
     setMediaDirsProposal(null);
     setCreatingDefaultDir(null);
     setDefaultDirDone({});
+    {
+      const op = next.operator_name.trim();
+      if (!op) {
+        setOperatorRoles(null);
+      } else {
+        const member = findCrewMember(next.crew_list, op);
+        setOperatorRoles({
+          key: op.toLowerCase(),
+          tandemmaster: member?.tandemmaster ?? false,
+          videospringer: member?.videospringer ?? false,
+        });
+      }
+    }
     void proposeDefaultMediaDirs()
       .then((p) => {
         if (!cancelled) setMediaDirsProposal(p);
@@ -371,15 +396,9 @@ export function SetupWizard({ open, onComplete }: Props) {
     }
     const member = findCrewMember(draft.crew_list, name);
     if (!member) {
-      return "Neuer Name wird beim Speichern zur Crew-Liste hinzugefügt.";
+      return "Mindestens eine Rolle wählen — dann wird der Name zur Crew hinzugefügt.";
     }
-    const roles: string[] = [];
-    if (member.tandemmaster) roles.push("Tandemmaster");
-    if (member.videospringer) roles.push("Videospringer");
-    if (roles.length === 0) {
-      return "Noch keine Rolle — später in den Einstellungen setzen.";
-    }
-    return `Favorit in: ${roles.join(", ")}`;
+    return undefined;
   }, [draft]);
 
   if (!open || !draft) return null;
@@ -389,6 +408,86 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (key === "speicherort" || key === "sd_backup_folder") {
       clearFieldError(key);
     }
+  }
+
+  function setOperatorName(raw: string) {
+    if (!draft) return;
+    patch("operator_name", raw);
+    const key = raw.trim().toLowerCase();
+    if (!key) {
+      setOperatorRoles(null);
+      clearFieldError("operator_roles");
+      return;
+    }
+    const crewList = draft.crew_list;
+    setOperatorRoles((prev) => {
+      if (prev?.key === key) return prev;
+      const member = findCrewMember(crewList, raw);
+      return {
+        key,
+        tandemmaster: member?.tandemmaster ?? false,
+        videospringer: member?.videospringer ?? false,
+      };
+    });
+    clearFieldError("operator_roles");
+  }
+
+  function setOperatorRole(
+    role: "tandemmaster" | "videospringer",
+    value: boolean,
+  ) {
+    if (!draft) return;
+    const name = draft.operator_name.trim();
+    if (!name || !operatorRoles) return;
+
+    const nextRoles = {
+      key: operatorRoles.key,
+      tandemmaster:
+        role === "tandemmaster" ? value : operatorRoles.tandemmaster,
+      videospringer:
+        role === "videospringer" ? value : operatorRoles.videospringer,
+    };
+
+    if (!nextRoles.tandemmaster && !nextRoles.videospringer) {
+      const existing = findCrewMember(draft.crew_list, name);
+      if (existing) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          operator_roles: "Mindestens eine Rolle muss aktiv sein.",
+        }));
+        return;
+      }
+      setOperatorRoles(nextRoles);
+      setDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              crew_list: prev.crew_list.filter(
+                (c) => !crewNamesEqual(c.name, name),
+              ),
+            }
+          : prev,
+      );
+      setFieldErrors((prev) => ({
+        ...prev,
+        operator_roles: "Mindestens eine Rolle wählen.",
+      }));
+      return;
+    }
+
+    setOperatorRoles(nextRoles);
+    clearFieldError("operator_roles");
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            crew_list: upsertCrewMember(prev.crew_list, name, {
+              tandemmaster: nextRoles.tandemmaster,
+              videospringer: nextRoles.videospringer,
+            }),
+          }
+        : prev,
+    );
   }
 
   function clearFieldError(key: keyof FieldErrors) {
@@ -489,7 +588,23 @@ export function SetupWizard({ open, onComplete }: Props) {
   function collectFieldErrors(index: number): FieldErrors {
     const errors: FieldErrors = {};
     if (!draft) return errors;
-    // Step 1: keep-last (empty name) and keep-off are both valid; only fixed names need crew sync on finish.
+    if (index === 1) {
+      const op = draft.operator_name.trim();
+      if (op) {
+        const roles =
+          operatorRoles && operatorRoles.key === op.toLowerCase()
+            ? operatorRoles
+            : null;
+        const member = findCrewMember(draft.crew_list, op);
+        const hasRole = Boolean(
+          (roles?.tandemmaster ?? member?.tandemmaster) ||
+            (roles?.videospringer ?? member?.videospringer),
+        );
+        if (!hasRole) {
+          errors.operator_roles = "Mindestens eine Rolle wählen.";
+        }
+      }
+    }
     if (index === 2 && !draft.speicherort.trim()) {
       errors.speicherort = "Bitte einen Ordner wählen.";
     }
@@ -536,6 +651,7 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (!SKIPPABLE_STEPS.has(step) || saving || finishing) return;
 
     if (step === 1) {
+      setOperatorRoles(null);
       setDraft((prev) =>
         prev
           ? {
@@ -577,8 +693,16 @@ export function SetupWizard({ open, onComplete }: Props) {
       crew_list = ensureCrewRole(crew_list, vs, "videospringer");
     }
     const op = draft.operator_name.trim();
-    if (op) {
-      crew_list = ensureCrewMember(crew_list, op);
+    if (
+      op &&
+      operatorRoles &&
+      operatorRoles.key === op.toLowerCase() &&
+      (operatorRoles.tandemmaster || operatorRoles.videospringer)
+    ) {
+      crew_list = upsertCrewMember(crew_list, op, {
+        tandemmaster: operatorRoles.tandemmaster,
+        videospringer: operatorRoles.videospringer,
+      });
     }
     return {
       ...draft,
@@ -782,12 +906,47 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <Combobox
                   label="Ich bin"
                   value={draft.operator_name}
-                  onChange={(v) => patch("operator_name", v)}
+                  onChange={setOperatorName}
                   options={allCrewNames}
                   placeholder="Namen wählen oder eingeben…"
                   hint={operatorHint}
+                  error={fieldErrors.operator_roles}
                   listZIndex={200}
                 />
+                {draft.operator_name.trim() && operatorRoles ? (
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                      Rollen
+                    </p>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <Checkbox
+                          checked={operatorRoles.tandemmaster}
+                          onCheckedChange={(v) =>
+                            setOperatorRole("tandemmaster", v === true)
+                          }
+                        />
+                        Tandemmaster
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-foreground">
+                        <Checkbox
+                          checked={operatorRoles.videospringer}
+                          onCheckedChange={(v) =>
+                            setOperatorRole("videospringer", v === true)
+                          }
+                        />
+                        Videospringer
+                      </label>
+                    </div>
+                    {!findCrewMember(draft.crew_list, draft.operator_name) &&
+                    !operatorRoles.tandemmaster &&
+                    !operatorRoles.videospringer ? (
+                      <p className="text-[10px] leading-snug text-muted">
+                        Neu in der Crew — bitte mindestens eine Rolle setzen.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               <p className="text-sm text-muted">

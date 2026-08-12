@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { AppConfig } from "@/lib/tauri";
 import {
   canonicalCrewName,
-  ensureCrewMember,
   ensureCrewRole,
+  findCrewMember,
   getAppInfo,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
@@ -83,8 +83,12 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       crew_list = ensureCrewRole(crew_list, vs, "videospringer");
     }
     const op = draft.operator_name.trim();
-    if (op) {
-      crew_list = ensureCrewMember(crew_list, op);
+    if (op && !findCrewMember(crew_list, op)) {
+      showError(
+        "„Ich bin“: Bitte mindestens eine Rolle setzen oder einen bestehenden Crew-Namen wählen.",
+        "Crew",
+      );
+      return false;
     }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
 

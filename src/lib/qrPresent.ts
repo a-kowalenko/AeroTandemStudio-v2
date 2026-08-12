@@ -1,4 +1,4 @@
-/** Present a QR hit: apply immediately, or confirm when switching customers. */
+/** Present a QR hit: apply immediately, or confirm when switching / overriding manual. */
 
 import type { Kunde, QrPreview } from "@/lib/tauri";
 import {
@@ -23,12 +23,12 @@ export type PresentQrHitInput = {
   preview?: QrPreview | null;
   notes?: string[];
   /**
-   * Cleanup runs only after kundedata is applied (incl. after switch confirm).
+   * Cleanup runs only after kundedata is applied (incl. after confirm).
    */
   runCleanup: () => QrCleanupResult | Promise<QrCleanupResult>;
   /**
-   * When true (default), show SuccessDialog after apply / for switch confirm.
-   * When false, only confirm-switch uses a dialog; caller embeds success options.
+   * When true (default), show SuccessDialog after apply / for confirms.
+   * When false, only confirm dialogs use SuccessDialog; caller embeds success options.
    */
   showDialog?: boolean;
 };
@@ -36,9 +36,9 @@ export type PresentQrHitInput = {
 export type PresentQrHitResult = {
   /** Kundedata was written to the session. */
   applied: boolean;
-  /** User kept the existing QR session customer. */
+  /** User kept the existing session customer (QR or manual). */
   keptExisting: boolean;
-  /** True when a switch confirm was shown. */
+  /** True when a switch / manual-override confirm was shown. */
   switchConfirmShown: boolean;
   kundeName: string;
   cleanup: QrCleanupResult;
@@ -49,6 +49,47 @@ export type PresentQrHitResult = {
 
 function normHash(value: string | null | undefined): string {
   return (value ?? "").trim().toLowerCase();
+}
+
+function trimField(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+/** Label for confirm dialogs when name may be empty (IDs / contact only). */
+export function manualKundeLabel(kunde: Kunde): string {
+  const name = kundeDisplayName(kunde);
+  if (name) return name;
+
+  const id = trimField(kunde.kunden_id);
+  const booking = trimField(kunde.booking_id);
+  if (id || booking) {
+    return [id && `#${id}`, booking && `Booking #${booking}`]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  const email = trimField(kunde.email);
+  if (email) return email;
+  const telefon = trimField(kunde.telefon);
+  if (telefon) return telefon;
+
+  return "Manuelle Eingabe";
+}
+
+/**
+ * Manual session has typed identity (name / plain IDs / contact).
+ * Ignores gast alone (config defaults / derived display) and crew / products.
+ */
+export function hasMeaningfulManualKunde(current: Kunde): boolean {
+  if (current.form_mode !== "manual") return false;
+  return Boolean(
+    trimField(current.vorname) ||
+      trimField(current.nachname) ||
+      trimField(current.kunden_id) ||
+      trimField(current.booking_id) ||
+      trimField(current.email) ||
+      trimField(current.telefon),
+  );
 }
 
 /** True when both sides identify the same booking/customer. */
@@ -86,6 +127,11 @@ export function needsQrSwitchConfirm(
   return !isSameQrKunde(current, scanned);
 }
 
+/** Manual session with typed kundedata — QR would discard those fields. */
+export function needsManualOverrideConfirm(current: Kunde): boolean {
+  return hasMeaningfulManualKunde(current);
+}
+
 function buildAppliedResult(
   kunde: Kunde,
   cleanup: QrCleanupResult,
@@ -113,54 +159,120 @@ function buildAppliedResult(
   };
 }
 
-function askQrSwitch(opts: {
-  previousName: string;
+function buildKeptResult(opts: {
+  previousLabel: string;
   nextName: string;
+  summary: string;
+  detail: string;
+}): PresentQrHitResult {
+  return {
+    applied: false,
+    keptExisting: true,
+    switchConfirmShown: true,
+    kundeName: opts.previousLabel,
+    cleanup: emptyCleanup(),
+    successTitle: QR_SUCCESS_TITLE,
+    successOptions: {
+      variant: "qr",
+      highlight: opts.previousLabel || "Kunde behalten",
+      autoCloseSecs: 5,
+      actions: [
+        {
+          kind: "qr",
+          label: "QR-Code",
+          tone: "skipped",
+          summary: opts.summary,
+          detail: opts.detail,
+        },
+      ],
+    },
+    message: "",
+  };
+}
+
+function askQrConfirm(opts: {
+  body: string;
+  nextName: string;
+  actionSummary: string;
+  actionDetail: string;
+  primaryLabel: string;
+  secondaryLabel: string;
   preview?: QrPreview | null;
-}): Promise<"switch" | "keep"> {
+}): Promise<"apply" | "keep"> {
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (choice: "switch" | "keep") => {
+    const finish = (choice: "apply" | "keep") => {
       if (settled) return;
       settled = true;
       useUiStore.getState().closeDialog();
       resolve(choice);
     };
 
-    const previous = opts.previousName.trim() || "Aktueller Kunde";
     const next = opts.nextName.trim() || "Neuer Kunde";
 
-    useUiStore.getState().showSuccess(
-      `Aktuell: ${previous}\nNeu: ${next}\n\nKundendaten wirklich wechseln? Medien bleiben erhalten.`,
-      QR_SUCCESS_TITLE,
-      {
-        variant: "qr",
-        highlight: next,
-        autoCloseSecs: 0,
-        qrPreview: opts.preview ?? null,
-        actions: [
-          {
-            kind: "qr",
-            label: "QR-Code",
-            tone: "warning",
-            summary: "Anderer Kunde erkannt",
-            detail: `${previous} → ${next}`,
-          },
-        ],
-        confirm: {
-          secondaryLabel: "Behalten",
-          primaryLabel: "Wechseln",
-          onSecondary: () => finish("keep"),
-          onPrimary: () => finish("switch"),
+    useUiStore.getState().showSuccess(opts.body, QR_SUCCESS_TITLE, {
+      variant: "qr",
+      highlight: next,
+      autoCloseSecs: 0,
+      qrPreview: opts.preview ?? null,
+      actions: [
+        {
+          kind: "qr",
+          label: "QR-Code",
+          tone: "warning",
+          summary: opts.actionSummary,
+          detail: opts.actionDetail,
         },
+      ],
+      confirm: {
+        secondaryLabel: opts.secondaryLabel,
+        primaryLabel: opts.primaryLabel,
+        onSecondary: () => finish("keep"),
+        onPrimary: () => finish("apply"),
       },
-    );
+    });
+  });
+}
+
+function askQrSwitch(opts: {
+  previousName: string;
+  nextName: string;
+  preview?: QrPreview | null;
+}): Promise<"apply" | "keep"> {
+  const previous = opts.previousName.trim() || "Aktueller Kunde";
+  const next = opts.nextName.trim() || "Neuer Kunde";
+  return askQrConfirm({
+    body: `Aktuell: ${previous}\nNeu: ${next}\n\nKundendaten wirklich wechseln? Medien bleiben erhalten.`,
+    nextName: next,
+    actionSummary: "Anderer Kunde erkannt",
+    actionDetail: `${previous} → ${next}`,
+    primaryLabel: "Wechseln",
+    secondaryLabel: "Behalten",
+    preview: opts.preview,
+  });
+}
+
+function askManualOverride(opts: {
+  previousLabel: string;
+  nextName: string;
+  preview?: QrPreview | null;
+}): Promise<"apply" | "keep"> {
+  const previous = opts.previousLabel.trim() || "Manuelle Eingabe";
+  const next = opts.nextName.trim() || "Neuer Kunde";
+  return askQrConfirm({
+    body: `Manuell: ${previous}\nQR: ${next}\n\nManuelle Kundendaten verwerfen und QR übernehmen?\nOrt, Datum und Crew bleiben erhalten.`,
+    nextName: next,
+    actionSummary: "Manuelle Eingabe überschreiben",
+    actionDetail: `${previous} → ${next}`,
+    primaryLabel: "QR übernehmen",
+    secondaryLabel: "Behalten",
+    preview: opts.preview,
   });
 }
 
 /**
- * Apply QR kundedata (with switch confirm when needed), run cleanup, optionally
- * show the success dialog.
+ * Apply QR kundedata (with switch / manual-override confirm when needed),
+ * run cleanup, optionally show the success dialog.
  */
 export async function presentQrHit(
   input: PresentQrHitInput,
@@ -169,64 +281,49 @@ export async function presentQrHit(
   const current = useKundeStore.getState().kunde;
   const scanned = input.kunde;
   const nextName = kundeDisplayName(scanned);
-  const previousName = kundeDisplayName(current);
+
+  let confirmShown = false;
 
   if (needsQrSwitchConfirm(current, scanned)) {
+    const previousName = kundeDisplayName(current);
     const choice = await askQrSwitch({
       previousName,
       nextName,
       preview: input.preview,
     });
+    confirmShown = true;
 
     if (choice === "keep") {
       discardQrPreviewBestEffort(input.preview?.path);
-      const cleanup = emptyCleanup();
-      return {
-        applied: false,
-        keptExisting: true,
-        switchConfirmShown: true,
-        kundeName: previousName,
-        cleanup,
-        successTitle: QR_SUCCESS_TITLE,
-        successOptions: {
-          variant: "qr",
-          highlight: previousName || "Kunde behalten",
-          autoCloseSecs: 5,
-          actions: [
-            {
-              kind: "qr",
-              label: "QR-Code",
-              tone: "skipped",
-              summary: "Bestehenden Kunden behalten",
-              detail: nextName
-                ? `Neuer Scan ignoriert: ${nextName}`
-                : "Neuer Scan ignoriert",
-            },
-          ],
-        },
-        message: "",
-      };
+      return buildKeptResult({
+        previousLabel: previousName,
+        nextName,
+        summary: "Bestehenden Kunden behalten",
+        detail: nextName
+          ? `Neuer Scan ignoriert: ${nextName}`
+          : "Neuer Scan ignoriert",
+      });
     }
-
-    useKundeStore.getState().applyFromQr(scanned, {
+  } else if (needsManualOverrideConfirm(current)) {
+    const previousLabel = manualKundeLabel(current);
+    const choice = await askManualOverride({
+      previousLabel,
+      nextName,
       preview: input.preview,
-      sourcePath: input.sourcePath,
     });
-    const cleanup = await input.runCleanup();
-    const result = buildAppliedResult(
-      scanned,
-      cleanup,
-      input.sourcePath,
-      input.preview,
-      input.notes,
-      true,
-    );
-    if (showDialog) {
-      useUiStore
-        .getState()
-        .showSuccess(result.message, result.successTitle, result.successOptions);
+    confirmShown = true;
+
+    if (choice === "keep") {
+      discardQrPreviewBestEffort(input.preview?.path);
+      return buildKeptResult({
+        previousLabel,
+        nextName,
+        summary: "Manuelle Eingabe behalten",
+        detail: nextName
+          ? `QR ignoriert: ${nextName}`
+          : "QR ignoriert",
+      });
     }
-    return result;
   }
 
   useKundeStore.getState().applyFromQr(scanned, {
@@ -240,7 +337,7 @@ export async function presentQrHit(
     input.sourcePath,
     input.preview,
     input.notes,
-    false,
+    confirmShown,
   );
   if (showDialog) {
     useUiStore

@@ -14,6 +14,7 @@ import {
   crewNamesForRole,
   findCrewMember,
   parseCrewKeepComboboxValue,
+  upsertCrewMember,
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "../SettingsSection";
@@ -39,30 +40,12 @@ type Props = SettingsTabBaseProps & {
   crewEditor: CrewEditor;
 };
 
-function operatorRoleHint(
-  list: CrewMember[],
-  operatorName: string,
-): string | undefined {
-  const member = findCrewMember(list, operatorName);
-  if (!operatorName.trim()) {
-    return "Erscheint oben in den Formular-Dropdowns, wenn die passende Rolle gesetzt ist.";
-  }
-  if (!member) {
-    return "Name wird beim Speichern zur Crew-Liste hinzugefügt.";
-  }
-  const roles: string[] = [];
-  if (member.tandemmaster) roles.push("Tandemmaster");
-  if (member.videospringer) roles.push("Videospringer");
-  if (roles.length === 0) {
-    return "Noch keine Rolle — unten in der Crew-Liste setzen.";
-  }
-  return `Favorit in: ${roles.join(", ")}`;
-}
-
 export function CrewTab({ draft, setDraft, crewEditor }: Props) {
   const tandemmasterOptions = crewNamesForRole(draft.crew_list, "tandemmaster");
   const videospringerOptions = crewNamesForRole(draft.crew_list, "videospringer");
   const allCrewNames = crewAllNames(draft.crew_list);
+  const operatorMember = findCrewMember(draft.crew_list, draft.operator_name);
+  const opName = draft.operator_name.trim();
   const {
     crewDraft,
     setCrewDraft,
@@ -79,6 +62,45 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
     setDraft((prev) => (prev ? { ...prev, operator_name: raw } : prev));
   }
 
+  function setOperatorRole(
+    role: "tandemmaster" | "videospringer",
+    value: boolean,
+  ) {
+    if (!opName) return;
+    const current = findCrewMember(draft.crew_list, opName);
+    const next = {
+      tandemmaster:
+        role === "tandemmaster" ? value : Boolean(current?.tandemmaster),
+      videospringer:
+        role === "videospringer" ? value : Boolean(current?.videospringer),
+    };
+    if (!next.tandemmaster && !next.videospringer) {
+      if (current) {
+        // Keep at least one role for existing roster entries.
+        return;
+      }
+      setDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              crew_list: prev.crew_list.filter(
+                (c) => !crewNamesEqual(c.name, opName),
+              ),
+            }
+          : prev,
+      );
+      return;
+    }
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            crew_list: upsertCrewMember(prev.crew_list, opName, next),
+          }
+        : prev,
+    );
+  }
+
   return (
     <div className="space-y-4">
       <SettingsSection
@@ -91,9 +113,35 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
           onChange={setOperatorName}
           options={allCrewNames}
           placeholder="Namen wählen oder eingeben…"
-          hint={operatorRoleHint(draft.crew_list, draft.operator_name)}
+          hint={
+            opName && !operatorMember
+              ? "Neu — bitte mindestens eine Rolle setzen."
+              : "Erscheint oben in den Formular-Dropdowns bei passender Rolle."
+          }
           listZIndex={200}
         />
+        {opName ? (
+          <div className="flex flex-wrap gap-4 pt-1">
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox
+                checked={Boolean(operatorMember?.tandemmaster)}
+                onCheckedChange={(v) =>
+                  setOperatorRole("tandemmaster", v === true)
+                }
+              />
+              Tandemmaster
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox
+                checked={Boolean(operatorMember?.videospringer)}
+                onCheckedChange={(v) =>
+                  setOperatorRole("videospringer", v === true)
+                }
+              />
+              Videospringer
+            </label>
+          </div>
+        ) : null}
       </SettingsSection>
 
       <SettingsSection

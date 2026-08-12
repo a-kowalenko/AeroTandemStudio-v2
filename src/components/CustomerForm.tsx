@@ -191,6 +191,11 @@ type CustomerFormProps = {
   disabled?: boolean;
   /** When set, locks only Crew fields (Tandemmaster/Videospringer). Defaults to `disabled`. */
   crewDisabled?: boolean;
+  /**
+   * Locks QR↔Manuell toggle (and Scan-Frame button). Defaults to `disabled`.
+   * Use during pipeline so Manual fields stay editable without mid-scan mode flips.
+   */
+  modeToggleDisabled?: boolean;
 };
 
 const FORM_MODES: { id: "kunde" | "manual"; label: string; icon: typeof QrCode }[] = [
@@ -250,14 +255,17 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
 }
 
 /** Compact QR ↔ Manuell toggle + optional Scan-Frame viewer. */
-export function CustomerFormToolbar({ disabled }: CustomerFormProps) {
+export function CustomerFormToolbar({
+  disabled,
+  modeToggleDisabled,
+}: CustomerFormProps) {
   const formMode = useKundeStore((s) => s.kunde.form_mode);
   const kunde = useKundeStore((s) => s.kunde);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
   const qrPreview = useKundeStore((s) => s.qrPreview);
   const qrPreviewSource = useKundeStore((s) => s.qrPreviewSource);
   const switchFormMode = useKundeStore((s) => s.switchFormMode);
-  const busy = Boolean(disabled);
+  const busy = Boolean(modeToggleDisabled ?? disabled);
   const isQrMode = formMode === "kunde";
   const canSwitchToQr = Boolean(qrSnapshot);
   const [scanOpen, setScanOpen] = useState(false);
@@ -461,7 +469,11 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   );
 }
 
-export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
+export function CustomerForm({
+  disabled,
+  crewDisabled,
+  modeToggleDisabled,
+}: CustomerFormProps) {
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
   const patch = useKundeStore((s) => s.patch);
@@ -528,6 +540,7 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
   const busy = Boolean(disabled);
   // Crew is independent of import/QR locks; only freeze during Vorgang create unless overridden.
   const crewBusy = Boolean(crewDisabled ?? disabled);
+  const modeToggleBusy = Boolean(modeToggleDisabled ?? disabled);
   const productsFromQr =
     isQrMode &&
     (kunde.handcam_foto ||
@@ -672,7 +685,10 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
                 {nameLocked ? "Bearbeiten" : "Sperren"}
               </Button>
             ) : null}
-            <CustomerFormToolbar disabled={busy} />
+            <CustomerFormToolbar
+              disabled={busy}
+              modeToggleDisabled={modeToggleBusy}
+            />
           </div>
         </div>
 

@@ -309,24 +309,55 @@ export function crewPinnedSelfOption(
 }
 
 /**
- * Ensure `name` exists in the crew list. New members get both roles so the
- * operator pin can appear until roles are edited in Settings.
+ * Insert or update a crew member with explicit roles.
+ * No-op when both roles are false (caller validates "at least one").
  */
-export function ensureCrewMember(
+export function upsertCrewMember(
   list: CrewMember[],
   name: string,
+  roles: { tandemmaster: boolean; videospringer: boolean },
 ): CrewMember[] {
   const trimmed = name.trim();
   if (!trimmed) return list;
-  if (findCrewMember(list, trimmed)) return list;
+  if (!roles.tandemmaster && !roles.videospringer) return list;
+  const idx = list.findIndex(
+    (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (idx >= 0) {
+    const next = [...list];
+    const prev = next[idx];
+    next[idx] = {
+      ...prev,
+      name: prev.name.trim() || trimmed,
+      tandemmaster: roles.tandemmaster,
+      videospringer: roles.videospringer,
+    };
+    return next;
+  }
   return [
     ...list,
     {
       name: trimmed,
-      tandemmaster: true,
-      videospringer: true,
+      tandemmaster: roles.tandemmaster,
+      videospringer: roles.videospringer,
     },
   ].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+/**
+ * Ensure `name` exists in the crew list. Existing entries are left unchanged.
+ * Missing names are added only when `roles` has at least one role set.
+ */
+export function ensureCrewMember(
+  list: CrewMember[],
+  name: string,
+  roles?: { tandemmaster: boolean; videospringer: boolean },
+): CrewMember[] {
+  const trimmed = name.trim();
+  if (!trimmed) return list;
+  if (findCrewMember(list, trimmed)) return list;
+  if (!roles || (!roles.tandemmaster && !roles.videospringer)) return list;
+  return upsertCrewMember(list, trimmed, roles);
 }
 
 /** Sync operator_name when a crew member is renamed or removed. */

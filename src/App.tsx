@@ -1229,6 +1229,28 @@ function App() {
     videoImporting ||
     photoImporting;
 
+  /** SD / Import / Copy / QR pipeline — media & actions stay locked. */
+  const pipelineActive =
+    sdWorkflowUiActive ||
+    loading ||
+    qrScanBusy ||
+    videoImporting ||
+    photoImporting;
+
+  /**
+   * Manual mode: Kundensektion bleibt während Pipeline editierbar.
+   * QR mode: Formular gesperrt (Crew weiter separat über crewDisabled).
+   * Encode/Vorgang (`busy`): immer gesperrt.
+   */
+  const customerFormLocked =
+    busy || (kunde.form_mode === "kunde" && pipelineActive);
+
+  /** Ort/Datum wie Crew: parallel zur Pipeline nutzbar, nur bei Encode/Vorgang zu. */
+  const sessionStripLocked = busy;
+
+  /** Kein QR↔Manuell-Wechsel mitten in Backup/Import/Scan. */
+  const formModeToggleLocked = busy || pipelineActive;
+
   // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
   useEffect(() => {
     const becameReady = createReadyWasFalseRef.current && createReady;
@@ -1389,10 +1411,14 @@ function App() {
         <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
           <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             <div className="border-b border-border/40 px-3 pt-1.5 pb-1.5">
-              <CustomerSessionStrip disabled={uiLocked} />
+              <CustomerSessionStrip disabled={sessionStripLocked} />
             </div>
             <div className="p-4">
-              <CustomerForm disabled={uiLocked} crewDisabled={busy} />
+              <CustomerForm
+                disabled={customerFormLocked}
+                crewDisabled={busy}
+                modeToggleDisabled={formModeToggleLocked}
+              />
             </div>
           </div>
 
