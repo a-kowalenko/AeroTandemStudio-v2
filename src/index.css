@@ -328,6 +328,39 @@
   will-change: transform, box-shadow;
 }
 
+/* Header settings cluster: snappy flyout under the gear */
+.ats-settings-cluster-menu {
+  --ats-cluster-ease: cubic-bezier(0.2, 0.9, 0.2, 1);
+  visibility: hidden;
+  transition: visibility 0s linear 160ms;
+}
+
+.ats-settings-cluster-menu[data-open="true"] {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.ats-settings-cluster-item {
+  opacity: 0;
+  transform: translateY(-0.35rem) scale(0.96);
+  transition:
+    opacity 140ms var(--ats-cluster-ease),
+    transform 160ms var(--ats-cluster-ease);
+  transition-delay: 0ms;
+  will-change: opacity, transform;
+}
+
+.ats-settings-cluster-menu[data-open="true"] .ats-settings-cluster-item {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition-delay: calc(var(--ats-cluster-i, 0) * 35ms);
+}
+
+.ats-settings-cluster-menu[data-open="false"] .ats-settings-cluster-item {
+  transition-duration: 110ms, 120ms;
+  transition-delay: calc((1 - var(--ats-cluster-i, 0)) * 25ms);
+}
+
 /* Edge/Chromium native password reveal — we use Lucide Eye instead */
 input[type="password"]::-ms-reveal,
 input[type="password"]::-ms-clear {
@@ -335,6 +368,24 @@ input[type="password"]::-ms-clear {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ats-settings-cluster-menu {
+    transition: none;
+  }
+
+  .ats-settings-cluster-item {
+    transition: none;
+    will-change: auto;
+    transform: none;
+  }
+
+  .ats-settings-cluster-menu[data-open="false"] .ats-settings-cluster-item {
+    opacity: 0;
+  }
+
+  .ats-settings-cluster-menu[data-open="true"] .ats-settings-cluster-item {
+    opacity: 1;
+  }
+
   .ats-settings-focus-flash {
     animation: none;
     will-change: auto;

@@ -9,7 +9,6 @@ import {
   History,
   ImageIcon,
   RotateCcw,
-  Settings,
 } from "lucide-react";
 import { MediaDropZone } from "./components/MediaDropZone";
 import { WorkflowProgressPanel } from "./components/WorkflowProgressPanel";
@@ -39,8 +38,8 @@ import { SdModeSelector } from "./components/SdModeSelector";
 import { SdDriveSelector } from "./components/SdDriveSelector";
 import { SdFileSelector } from "./components/SdFileSelector";
 import { HistoryDialog } from "./components/HistoryDialog";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
+import { LogConsole } from "./components/LogConsole";
+import { SettingsCluster } from "./components/SettingsCluster";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { Switch } from "./components/ui/switch";
@@ -1391,18 +1390,10 @@ function App() {
             <RotateCcw className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Zurücksetzen</span>
           </Button>
-          <ThemeToggle />
-          <LogConsoleToggleButton disabled={!ready} />
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            onClick={() => setSettingsOpen(true)}
-            aria-label="Einstellungen"
+          <SettingsCluster
             disabled={!ready}
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+            onOpenSettings={() => setSettingsOpen(true)}
+          />
         </div>
       </header>
 
