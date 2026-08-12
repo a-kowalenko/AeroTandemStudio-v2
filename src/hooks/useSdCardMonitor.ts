@@ -75,6 +75,7 @@ export function useSdCardMonitor(opts?: {
   }, [config?.sd_auto_backup, setMonitoring, showError]);
 
   useEffect(() => {
+    let cancelled = false;
     const unlisteners: Array<() => void> = [];
 
     // Heal "Import…" stuck from media import emitting the shared SD progress event.
@@ -85,134 +86,141 @@ export function useSdCardMonitor(opts?: {
       setBackupProgress(null);
     }
 
-    listen<SdInsertedPayload>("sd-card-inserted", async (event) => {
-      const payload = event.payload;
-      setPendingInsert(payload);
-      setActiveDrive(payload.drive);
-      setPhase(payload.needs_confirmation ? "confirming" : "detected");
-      try {
-        const drives = await scanSdDrives();
-        setDrives(drives);
-      } catch {
-        /* ignore */
-      }
+    void (async () => {
+      unlisteners.push(
+        await listen<SdInsertedPayload>("sd-card-inserted", (event) => {
+          const payload = event.payload;
+          const cfg = useConfigStore.getState().config;
 
-      const mode = config?.sd_backup_mode ?? "confirm";
-      if (mode === "disabled" || !config?.sd_auto_backup) {
-        return;
-      }
+          setPendingInsert(payload);
+          setActiveDrive(payload.drive);
+          setPhase(payload.needs_confirmation ? "confirming" : "detected");
 
-      if (payload.size_limit_exceeded) {
-        onRequestSelectRef.current?.(payload.drive, "size_limit");
-        return;
-      }
+          void scanSdDrives()
+            .then(setDrives)
+            .catch(() => undefined);
 
-      if (payload.needs_confirmation || mode === "confirm") {
-        onRequestSelectRef.current?.(payload.drive, "backup");
-        return;
-      }
+          if (!cfg?.sd_auto_backup || cfg.sd_backup_mode === "disabled") {
+            return;
+          }
 
-      // Auto: run enabled actions without a dialog.
-      // Clear only together with backup (same rule as Confirm).
-      const actionsSafe: SdWorkflowActions = {
-        backup: true,
-        import: Boolean(config.sd_auto_import),
-        clear: Boolean(config.sd_clear_after_backup),
-        eject: Boolean(config.sd_eject_after_workflow),
-      };
+          if (payload.size_limit_exceeded) {
+            onRequestSelectRef.current?.(payload.drive, "size_limit");
+            return;
+          }
 
-      if (actionsSafe.backup || actionsSafe.import) {
-        onAutoProcessRef.current?.(payload.drive, actionsSafe);
-      }
-    }).then((fn) => unlisteners.push(fn));
+          // Trust backend `needs_confirmation` — do not re-check frontend mode here
+          // (stale listeners with old mode caused dialog + auto in parallel).
+          if (payload.needs_confirmation) {
+            onRequestSelectRef.current?.(payload.drive, "backup");
+            return;
+          }
 
-    listen<{ drives: string[] }>("sd-card-removed", (event) => {
-      const removed = event.payload.drives ?? [];
-      setPhase("monitoring");
-      setPendingInsert(null);
-      setBackupProgress(null);
-      setWorkflowProgress(null);
-      if (removed.length) {
-        setActiveDrive(null);
-        void scanSdDrives().then(setDrives).catch(() => undefined);
-      }
-    }).then((fn) => unlisteners.push(fn));
+          const actionsSafe: SdWorkflowActions = {
+            backup: true,
+            import: Boolean(cfg.sd_auto_import),
+            clear: Boolean(cfg.sd_clear_after_backup),
+            eject: Boolean(cfg.sd_eject_after_workflow),
+          };
 
-    listen<BackupProgress>("sd-backup-progress", (event) => {
-      setPhase("backing_up");
-      setWorkflowProgress(null);
-      setBackupProgress(event.payload);
-    }).then((fn) => unlisteners.push(fn));
+          if (actionsSafe.backup || actionsSafe.import) {
+            onAutoProcessRef.current?.(payload.drive, actionsSafe);
+          }
+        }),
+      );
 
-    listen<WorkflowProgress>("sd-workflow-progress", (event) => {
-      // Shared by media import_videos/photos AND SD clear/import.
-      // Manual/drop import must update workflowProgress for the Fortschritt panel,
-      // but only the SD workflow may own the header phase — otherwise "Import…"
-      // sticks forever in the SD drive selector.
-      const { workflowActive, phase } = useSdStore.getState();
-      const p = event.payload;
-      if (!workflowActive) {
-        if (p.stage === "import") {
-          setWorkflowProgress(p);
-        }
-        if (phase === "importing" || phase === "clearing") {
+      unlisteners.push(
+        await listen<{ drives: string[] }>("sd-card-removed", (event) => {
+          const removed = event.payload.drives ?? [];
           setPhase("monitoring");
-          if (p.stage !== "import") {
-            setWorkflowProgress(null);
-            setBackupProgress(null);
+          setPendingInsert(null);
+          setBackupProgress(null);
+          setWorkflowProgress(null);
+          if (removed.length) {
+            setActiveDrive(null);
+            void scanSdDrives().then(setDrives).catch(() => undefined);
           }
-        }
-        return;
-      }
-      if (p.stage === "clear") setPhase("clearing");
-      else if (p.stage === "import") setPhase("importing");
-      setBackupProgress(null);
-      setWorkflowProgress(p);
-    }).then((fn) => unlisteners.push(fn));
+        }),
+      );
 
-    listen<{ kind: string; data: unknown }>("sd-backup-status", (event) => {
-      const kind = event.payload.kind;
-      if (kind === "backup_started") setPhase("backing_up");
-      if (kind === "clearing_started") setPhase("clearing");
-      if (kind === "clearing_finished") setPhase("backing_up");
-      if (kind === "backup_finished") {
-        // Keep last backupProgress until the App workflow clears it (import / finally).
-        setPhase("monitoring");
-      }
-      if (kind === "backup_confirmation_required") {
-        setPhase("confirming");
-      }
-    }).then((fn) => unlisteners.push(fn));
+      unlisteners.push(
+        await listen<BackupProgress>("sd-backup-progress", (event) => {
+          setPhase("backing_up");
+          setWorkflowProgress(null);
+          setBackupProgress(event.payload);
+        }),
+      );
 
-    listen<SecondaryBackupEvent>("sd-secondary-backup", (event) => {
-      const p = event.payload;
-      setSecondaryBackup(p);
-      if (p.state === "failed") {
-        showWarning(
-          p.message?.trim() || "Server-Backup (zweiter Pfad) fehlgeschlagen.",
-          "Server-Backup",
-        );
-      }
-      if (p.state === "done") {
-        // Clear after a short moment so the header can show "fertig".
-        window.setTimeout(() => {
-          const cur = useSdStore.getState().secondaryBackup;
-          if (cur?.job_id === p.job_id && cur.state === "done") {
-            setSecondaryBackup(null);
+      unlisteners.push(
+        await listen<WorkflowProgress>("sd-workflow-progress", (event) => {
+          const { workflowActive, phase } = useSdStore.getState();
+          const p = event.payload;
+          if (!workflowActive) {
+            if (p.stage === "import") {
+              setWorkflowProgress(p);
+            }
+            if (phase === "importing" || phase === "clearing") {
+              setPhase("monitoring");
+              if (p.stage !== "import") {
+                setWorkflowProgress(null);
+                setBackupProgress(null);
+              }
+            }
+            return;
           }
-        }, 4000);
+          if (p.stage === "clear") setPhase("clearing");
+          else if (p.stage === "import") setPhase("importing");
+          setBackupProgress(null);
+          setWorkflowProgress(p);
+        }),
+      );
+
+      unlisteners.push(
+        await listen<{ kind: string; data: unknown }>("sd-backup-status", (event) => {
+          const kind = event.payload.kind;
+          if (kind === "backup_started") setPhase("backing_up");
+          if (kind === "clearing_started") setPhase("clearing");
+          if (kind === "clearing_finished") setPhase("backing_up");
+          if (kind === "backup_finished") {
+            setPhase("monitoring");
+          }
+          if (kind === "backup_confirmation_required") {
+            setPhase("confirming");
+          }
+        }),
+      );
+
+      unlisteners.push(
+        await listen<SecondaryBackupEvent>("sd-secondary-backup", (event) => {
+          const p = event.payload;
+          setSecondaryBackup(p);
+          if (p.state === "failed") {
+            showWarning(
+              p.message?.trim() || "Server-Backup (zweiter Pfad) fehlgeschlagen.",
+              "Server-Backup",
+            );
+          }
+          if (p.state === "done") {
+            window.setTimeout(() => {
+              const cur = useSdStore.getState().secondaryBackup;
+              if (cur?.job_id === p.job_id && cur.state === "done") {
+                setSecondaryBackup(null);
+              }
+            }, 4000);
+          }
+        }),
+      );
+
+      if (cancelled) {
+        for (const u of unlisteners) u();
       }
-    }).then((fn) => unlisteners.push(fn));
+    })();
 
     return () => {
+      cancelled = true;
       for (const u of unlisteners) u();
     };
   }, [
-    config?.sd_auto_backup,
-    config?.sd_auto_import,
-    config?.sd_backup_mode,
-    config?.sd_clear_after_backup,
-    config?.sd_eject_after_workflow,
     setActiveDrive,
     setBackupProgress,
     setWorkflowProgress,

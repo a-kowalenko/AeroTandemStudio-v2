@@ -6,6 +6,7 @@ import {
   type PhotoMetadata,
 } from "../lib/tauri";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
+import { isCancellationError } from "../lib/utils";
 
 export type PhotoItem = {
   path: string;
@@ -119,6 +120,7 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       syncProductsFromMedia({ hasVideos: false, hasPhotos: true });
     } catch (e) {
       set({ importing: false, importError: String(e) });
+      if (isCancellationError(e)) throw e;
     }
   },
 

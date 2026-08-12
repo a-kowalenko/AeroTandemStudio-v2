@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FolderOpen, HardDrive } from "lucide-react";
 import {
   Select,
@@ -63,6 +63,8 @@ export function SdDriveSelector({
 
   const [open, setOpen] = useState(false);
   const [ejecting, setEjecting] = useState<string | null>(null);
+  /** True while the user has the drive dropdown open (ignore programmatic value sync). */
+  const userPickingDriveRef = useRef(false);
 
   const selected =
     activeDrive && drives.some((d) => d.drive === activeDrive)
@@ -150,11 +152,22 @@ export function SdDriveSelector({
         onOpenChange={(next) => {
           if (ejecting) return;
           setOpen(next);
-          if (next) void refreshDrives();
+          if (next) {
+            userPickingDriveRef.current = true;
+            void refreshDrives();
+          } else {
+            // Defer clear so onValueChange (same pick) still sees the flag.
+            window.setTimeout(() => {
+              userPickingDriveRef.current = false;
+            }, 0);
+          }
         }}
         onValueChange={(drive) => {
           setActiveDrive(drive);
-          onOpenDrive(drive);
+          if (userPickingDriveRef.current) {
+            userPickingDriveRef.current = false;
+            onOpenDrive(drive);
+          }
         }}
       >
         <SelectTrigger

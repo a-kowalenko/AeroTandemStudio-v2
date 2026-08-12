@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { VideoMetadata } from "../lib/tauri";
 import { deleteWorkingCopy, importVideos, probeVideo } from "../lib/tauri";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
+import { isCancellationError } from "../lib/utils";
 
 export type CutMarkKind = "trim" | "split";
 
@@ -92,6 +93,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       }
     } catch (e) {
       set({ importing: false, importError: String(e) });
+      if (isCancellationError(e)) throw e;
     }
   },
 

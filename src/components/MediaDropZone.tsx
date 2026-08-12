@@ -26,6 +26,10 @@ import { useUiStore } from "../store/uiStore";
 import { useSdStore } from "../store/sdStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import {
+  isImportCancellation,
+  rollbackImportBatch,
+} from "../lib/importRollback";
+import {
   clearWorkingSession,
   expandMediaPaths,
   scanQrPhoto,
@@ -206,11 +210,18 @@ export function MediaDropZone({
         const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
         const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
 
-        if (videos.length > 0) {
-          await addVideos(videos);
-        }
-        if (photos.length > 0) {
-          await addPhotos(photos);
+        try {
+          if (videos.length > 0) {
+            await addVideos(videos);
+          }
+          if (photos.length > 0) {
+            await addPhotos(photos);
+          }
+        } catch (importErr) {
+          if (isImportCancellation(importErr)) {
+            await rollbackImportBatch({ beforeVideoPaths, beforePhotoPaths });
+          }
+          throw importErr;
         }
 
         const afterVideos = useVideoStore.getState().videoList;
@@ -312,7 +323,11 @@ export function MediaDropZone({
         }
       } catch (e) {
         setStatusMsg(null);
-        showError(String(e), "Import");
+        if (isImportCancellation(e)) {
+          showWarning("Import abgebrochen — keine Dateien übernommen.", "Import");
+        } else {
+          showError(String(e), "Import");
+        }
       } finally {
         setExpanding(false);
         clearManualImportProgress();

@@ -17,6 +17,7 @@ use crate::media::datetime::{
 };
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::logging::{self, file_name};
+use crate::video::ffmpeg::WORKFLOW_CANCELLED;
 
 static WORKING_SESSION: Lazy<Mutex<WorkingSession>> =
     Lazy::new(|| Mutex::new(WorkingSession::default()));
@@ -212,9 +213,15 @@ impl WorkingSession {
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
         let mut used = collect_used_filenames_in(&photos);
-        let mut dests = Vec::with_capacity(sorted.len());
+        let mut dests: Vec<PathBuf> = Vec::with_capacity(sorted.len());
 
         for (idx, source) in sorted.iter().enumerate() {
+            if crate::video::ffmpeg::is_cancelled() {
+                for d in &dests {
+                    let _ = self.delete_owned_file(d);
+                }
+                return Err(WorkingSessionError::Message(WORKFLOW_CANCELLED.into()));
+            }
             let source_path = Path::new(source);
             let file_index = (idx as u64) + 1;
             let name = file_name(source_path);
@@ -235,9 +242,14 @@ impl WorkingSession {
                     "Zielname bereits vorhanden: {dest_name}"
                 )));
             }
-            copy_file_reporting(source_path, &dest, &mut |delta| {
+            if let Err(e) = copy_file_reporting(source_path, &dest, &mut |delta| {
                 on_progress(file_index, &name, delta);
-            })?;
+            }) {
+                for d in &dests {
+                    let _ = self.delete_owned_file(d);
+                }
+                return Err(e.into());
+            }
             logging::info(
                 "import",
                 format!(
@@ -424,6 +436,13 @@ pub fn import_photo_to_session(source: &str) -> Result<PathBuf, WorkingSessionEr
 
 pub fn delete_working_copy(path: &str) -> bool {
     with_session(|s| s.delete_owned_file(Path::new(path))).unwrap_or(false)
+}
+
+/// Remove working-folder copies from a cancelled import batch.
+pub fn rollback_working_import_paths(paths: &[String]) {
+    for path in paths {
+        let _ = delete_working_copy(path);
+    }
 }
 
 #[allow(dead_code)]

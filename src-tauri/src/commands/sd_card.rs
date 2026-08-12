@@ -206,6 +206,7 @@ pub async fn backup_sd_card(
                 .unwrap_or_else(|| "all".into())
         ),
     );
+    crate::video::ffmpeg::reset_cancel_flag();
     let result = tauri::async_runtime::spawn_blocking(move || {
         SD_MONITOR.backup_drive_with_options(&drive, selected_files, clear_after)
     })

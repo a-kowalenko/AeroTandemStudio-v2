@@ -116,6 +116,7 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
     if paths.is_empty() {
         return Ok(Vec::new());
     }
+    crate::video::ffmpeg::reset_cancel_flag();
     let app_progress = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         use crate::sd_card::monitor::{

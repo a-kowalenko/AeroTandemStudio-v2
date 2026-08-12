@@ -11,8 +11,8 @@ use crate::util::natural_sort::sort_paths_by_basename;
 use crate::video::concat;
 use crate::video::cutter::{self, CutResult, SplitResult};
 use crate::video::ffmpeg::{
-    cancel_encode as ffmpeg_cancel, find_ffmpeg_with_resource_dir, probe_duration_secs,
-    reset_cancel_flag, run_ffmpeg,
+    cancel_encode as ffmpeg_cancel, find_ffmpeg_with_resource_dir, is_cancelled,
+    probe_duration_secs, reset_cancel_flag, run_ffmpeg, WORKFLOW_CANCELLED,
 };
 use crate::video::hw_accel::{build_encode_command, detect_hardware, HwAccelInfo, HwType};
 use crate::video::preview_encode::{self, PreviewResult};
@@ -746,6 +746,7 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         "import",
         format!("Importiere {} Video(s) (Kopie + Probe)…", sorted.len()),
     );
+    reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
     let app_progress = app.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -799,18 +800,27 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         emit_copy(0, 0, "", true, &mut last_emit);
         let mut working = Vec::with_capacity(sorted.len());
         for (i, path) in sorted.iter().enumerate() {
+            if is_cancelled() {
+                crate::storage::working_session::rollback_working_import_paths(&working);
+                return Err(WORKFLOW_CANCELLED.into());
+            }
             let file_index = (i as u64) + 1;
             let name = file_name(path);
             emit_copy(copied_bytes, file_index, &name, true, &mut last_emit);
-            let dest = crate::storage::working_session::import_video_to_session_with_progress(
+            let dest = match crate::storage::working_session::import_video_to_session_with_progress(
                 path,
                 |delta| {
                     copied_bytes += delta;
                     emit_copy(copied_bytes, file_index, &name, false, &mut last_emit);
                 },
-            )
-            .map_err(|e| e.to_string())?;
-            working.push(dest.to_string_lossy().into_owned());
+            ) {
+                Ok(dest) => dest.to_string_lossy().into_owned(),
+                Err(e) => {
+                    crate::storage::working_session::rollback_working_import_paths(&working);
+                    return Err(e.to_string());
+                }
+            };
+            working.push(dest);
             emit_copy(copied_bytes, file_index, &name, true, &mut last_emit);
         }
         logging::info(
@@ -820,6 +830,10 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         let mut out = Vec::with_capacity(working.len());
         let mut errors = Vec::new();
         for (i, path) in working.iter().enumerate() {
+            if is_cancelled() {
+                crate::storage::working_session::rollback_working_import_paths(&working);
+                return Err(WORKFLOW_CANCELLED.into());
+            }
             let file_index = (i as u64) + 1;
             let name = file_name(path);
             let _ = app_progress.emit(

@@ -11,8 +11,8 @@ import {
   RotateCcw,
   Settings,
 } from "lucide-react";
-import { ProgressIndicator } from "./components/ProgressIndicator";
 import { MediaDropZone } from "./components/MediaDropZone";
+import { WorkflowProgressPanel } from "./components/WorkflowProgressPanel";
 import { MediaListPanel } from "./components/MediaListPanel";
 import { VideoPreview } from "./components/VideoPreview";
 import { PhotoPreview } from "./components/PhotoPreview";
@@ -37,7 +37,7 @@ import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
 import { SdDriveSelector } from "./components/SdDriveSelector";
-import { SdFileSelector, type SdSelectorProgress } from "./components/SdFileSelector";
+import { SdFileSelector } from "./components/SdFileSelector";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { LogConsole, LogConsoleToggleButton } from "./components/LogConsole";
@@ -54,6 +54,7 @@ import { useSdStore } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
+import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { useLogListener } from "./hooks/useLogListener";
 import { useLogStore } from "./store/logStore";
@@ -81,9 +82,7 @@ import {
   enrichSdFiles,
   importSdFiles,
   listSdFiles,
-  type BackupProgress,
   type SdWorkflowActions,
-  type WorkflowProgress,
 } from "./lib/sdCard";
 import {
   pathsAddedSince,
@@ -93,7 +92,6 @@ import {
 } from "./lib/autoQrScan";
 import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import {
-  summarizeQrScanProgress,
   useQrScanStore,
   withQrScanProgress,
 } from "./store/qrScanStore";
@@ -103,146 +101,10 @@ import {
   formatOverallProgressLabel,
   resolveProgressLabel,
   shouldClearTaskProgress,
-  taskProgressLabel,
 } from "./lib/progressLabels";
 import { cn, isCancellationError } from "./lib/utils";
+import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
 import "./App.css";
-
-function formatWorkflowDetail(p: WorkflowProgress): string | undefined {
-  const parts: string[] = [];
-  if (
-    p.total_mb != null &&
-    p.total_mb > 0 &&
-    p.current_mb != null
-  ) {
-    parts.push(`${p.current_mb.toFixed(0)}/${p.total_mb.toFixed(0)} MB`);
-  }
-  if (p.speed_mbps != null && p.speed_mbps > 0) {
-    parts.push(`${p.speed_mbps.toFixed(1)} MB/s`);
-  }
-  // Clear / simple step progress (no per-file index on the label).
-  if (
-    (p.file_index == null || p.file_index <= 0) &&
-    p.total > 0 &&
-    (p.current_mb == null || p.total_mb == null)
-  ) {
-    parts.push(`${p.current}/${p.total}`);
-  }
-  const name = p.file_name?.trim();
-  if (name) {
-    parts.push(name);
-  }
-  return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-function formatWorkflowLabel(p: WorkflowProgress, fallback: string): string {
-  const base = (p.label || fallback).trim() || fallback;
-  if (p.file_total != null && p.file_total > 0 && p.file_index != null && p.file_index > 0) {
-    return `${base} (${p.file_index}/${p.file_total})`;
-  }
-  return base;
-}
-
-function resolveSdSelectorProgress(opts: {
-  submitting: boolean;
-  phase: string;
-  backupProgress: BackupProgress | null;
-  workflowProgress: WorkflowProgress | null;
-  loadingMessage: string;
-  qrBusy: boolean;
-  qrStage: import("./store/qrScanStore").QrScanJobStage;
-  qrByPath: Record<string, import("./store/qrScanStore").QrScanPhase>;
-  qrFollowup: import("./store/qrScanStore").QrFollowupStatus | null;
-}): SdSelectorProgress | null {
-  if (!opts.submitting) return null;
-
-  const { phase, backupProgress, workflowProgress, loadingMessage } = opts;
-  const msg = loadingMessage.trim();
-
-  if (workflowProgress && (workflowProgress.stage === "clear" || workflowProgress.stage === "import")) {
-    const fallback =
-      workflowProgress.stage === "clear"
-        ? "SD wird bereinigt…"
-        : msg || "Importiere…";
-    return {
-      percent: workflowProgress.percent,
-      label: formatWorkflowLabel(workflowProgress, fallback),
-      detail: formatWorkflowDetail(workflowProgress),
-    };
-  }
-
-  if (backupProgress) {
-    const isClearing = phase === "clearing";
-    const detailParts = [
-      `${backupProgress.current_mb.toFixed(0)}/${backupProgress.total_mb.toFixed(0)} MB`,
-    ];
-    if (backupProgress.speed_mbps > 0 && !isClearing) {
-      detailParts.push(`${backupProgress.speed_mbps.toFixed(1)} MB/s`);
-    }
-    const fileName = backupProgress.file_name?.trim();
-    if (fileName && !isClearing) {
-      detailParts.push(fileName);
-    }
-    let label = isClearing
-      ? "SD wird bereinigt…"
-      : msg || "SD-Backup läuft…";
-    if (
-      !isClearing &&
-      backupProgress.file_total != null &&
-      backupProgress.file_total > 0 &&
-      backupProgress.file_index != null &&
-      backupProgress.file_index > 0
-    ) {
-      label = `${label} (${backupProgress.file_index}/${backupProgress.file_total})`;
-    }
-    return {
-      percent: backupProgress.percent,
-      label,
-      detail: detailParts.join(" · "),
-    };
-  }
-
-  if (phase === "clearing") {
-    return {
-      percent: 100,
-      label: "SD wird bereinigt…",
-      indeterminate: true,
-    };
-  }
-
-  // Prefer QR status over generic "importing" once import workflow progress is cleared.
-  const qrActive =
-    opts.qrBusy || opts.qrStage !== "idle" || /qr/i.test(msg);
-  if (qrActive) {
-    const summary = summarizeQrScanProgress(
-      opts.qrByPath,
-      opts.qrStage,
-      opts.qrFollowup,
-    );
-    return {
-      percent: summary.percent,
-      label: msg && !/^QR-Scan…?$/i.test(msg) && opts.qrStage !== "followup"
-        ? msg
-        : summary.label,
-      detail: summary.detail || undefined,
-      indeterminate: summary.indeterminate,
-    };
-  }
-
-  if (phase === "importing" || /import/i.test(msg)) {
-    return {
-      percent: 0,
-      label: msg || "Importiere SD-Dateien…",
-      indeterminate: true,
-    };
-  }
-
-  return {
-    percent: 0,
-    label: msg || "SD-Verarbeitung…",
-    indeterminate: true,
-  };
-}
 
 type EncodeProgress = {
   percent: number;
@@ -356,10 +218,8 @@ function App() {
     reason: string;
     timeoutSecs: number;
   } | null>(null);
-  /** Locks SdFileSelector while confirm workflow runs (incl. QR scan with loading off). */
-  const [selectorSubmitting, setSelectorSubmitting] = useState(false);
-  /** Auto SD workflow: sticky progress panel (overlay only during prepare). */
-  const [autoPanelActive, setAutoPanelActive] = useState(false);
+  /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
+  const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
 
   const videoCuts = useVideoCutApply();
   useQrScanProgressListener();
@@ -480,11 +340,18 @@ function App() {
     const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
 
     const result = await importSdFiles(paths);
-    if (result.imported_videos.length > 0) {
-      await addVideos(result.imported_videos);
-    }
-    if (result.imported_photos.length > 0) {
-      await addPhotos(result.imported_photos);
+    try {
+      if (result.imported_videos.length > 0) {
+        await addVideos(result.imported_videos);
+      }
+      if (result.imported_photos.length > 0) {
+        await addPhotos(result.imported_photos);
+      }
+    } catch (e) {
+      if (isImportCancellation(e)) {
+        await rollbackImportBatch({ beforeVideoPaths, beforePhotoPaths });
+      }
+      throw e;
     }
 
     const newVideoPaths = pathsAddedSince(
@@ -533,7 +400,7 @@ function App() {
     }
 
     useSdStore.getState().setWorkflowProgress(null);
-    // Overlay stays suppressed while selectorSubmitting; message feeds SD progress.
+    // Overlay stays suppressed while sdWorkflowUiActive; message feeds SD progress.
     setLoading(true, "QR-Scan…");
     try {
       const qr = await withQrScanProgress(
@@ -653,6 +520,10 @@ function App() {
         setLoading(true, "SD-Backup läuft…");
         const res = await backupSdCard(drive, selectedPaths, doClear);
         if (!res.success) {
+          if (isCancellationError(res.error_message)) {
+            showWarning("SD-Backup abgebrochen.", "Backup");
+            return true;
+          }
           showError(
             (res.error_message || "Backup fehlgeschlagen") +
               (actions.clear
@@ -788,6 +659,10 @@ function App() {
       }
       return true;
     } catch (e) {
+      if (isCancellationError(e)) {
+        showWarning("SD-Workflow abgebrochen.", "SD");
+        return true;
+      }
       showError(String(e));
       return true;
     } finally {
@@ -801,21 +676,21 @@ function App() {
 
   /**
    * Auto mode: LoadingOverlay while listing the card (like Confirm),
-   * then sticky ProgressIndicator panel for the actual workflow.
+   * then floating progress panel for the actual workflow.
    */
   async function runAutoSdWorkflow(drive: string, actions: SdWorkflowActions) {
     setActiveDrive(drive);
-    setAutoPanelActive(false);
+    setSdWorkflowUiActive(false);
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
       await listSdFiles(drive);
       await runSdWorkflow(drive, null, actions, {
-        onStart: () => setAutoPanelActive(true),
+        onStart: () => setSdWorkflowUiActive(true),
       });
     } catch (e) {
       showError(String(e));
     } finally {
-      setAutoPanelActive(false);
+      setSdWorkflowUiActive(false);
       setLoading(false);
     }
   }
@@ -1057,17 +932,6 @@ function App() {
     setTaskProgress([]);
   }
 
-  // Nach Abschluss kurz anzeigen, dann ausblenden (sonst bleibt percent=100 sichtbar).
-  useEffect(() => {
-    if (busy || (percent <= 0 && taskProgress.length === 0)) return;
-    const t = window.setTimeout(() => {
-      setPercent(0);
-      setStatus("");
-      setTaskProgress([]);
-    }, 3500);
-    return () => window.clearTimeout(t);
-  }, [busy, percent, taskProgress.length]);
-
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
@@ -1142,7 +1006,7 @@ function App() {
   }
 
   async function startCreate() {
-    if (busy || autoPanelActive || loading || selectorSubmitting || qrScanBusy)
+    if (busy || sdWorkflowUiActive || loading || qrScanBusy)
       return;
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
@@ -1260,11 +1124,11 @@ function App() {
     const cancellingQr = qrScanBusy && !busy;
     try {
       await invoke("cancel_encode");
-      if (!cancellingQr) {
+      if (!cancellingQr && busy) {
         setStatus("cancelled");
         showWarning("Vorgang abgebrochen.");
       }
-      // QR: callers show "QR-Scan abgebrochen." once the scan returns.
+      // SD backup/import and QR: dedicated message when the job returns.
     } catch (e) {
       if (!isCancellationError(e)) showError(String(e));
     }
@@ -1274,12 +1138,14 @@ function App() {
     const drive = selectorDrive;
     if (!drive) return;
     try {
-      const ran = await runSdWorkflow(drive, paths, actions, {
-        onStart: () => setSelectorSubmitting(true),
+      await runSdWorkflow(drive, paths, actions, {
+        onStart: () => {
+          setSdWorkflowUiActive(true);
+          closeSelector();
+        },
       });
-      if (ran) closeSelector();
     } finally {
-      setSelectorSubmitting(false);
+      setSdWorkflowUiActive(false);
     }
   }
 
@@ -1287,17 +1153,19 @@ function App() {
     const drive = selectorDrive;
     if (!drive) return;
     try {
-      const ran = await runSdWorkflow(drive, null, actions, {
-        onStart: () => setSelectorSubmitting(true),
+      await runSdWorkflow(drive, null, actions, {
+        onStart: () => {
+          setSdWorkflowUiActive(true);
+          closeSelector();
+        },
       });
-      if (ran) closeSelector();
     } finally {
-      setSelectorSubmitting(false);
+      setSdWorkflowUiActive(false);
     }
   }
 
   function handleSessionReset() {
-    if (busy || loading || selectorSubmitting || autoPanelActive || qrScanBusy) {
+    if (busy || loading || sdWorkflowUiActive || qrScanBusy) {
       showWarning(
         "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
         "Zurücksetzen",
@@ -1340,58 +1208,36 @@ function App() {
 
   const uiLocked =
     busy ||
-    autoPanelActive ||
-    selectorSubmitting ||
+    sdWorkflowUiActive ||
     loading ||
     qrScanBusy ||
     videoImporting ||
     photoImporting;
-  const sdAutoProgress = resolveSdSelectorProgress({
-    submitting: autoPanelActive,
-    phase: sdPhase,
+
+  const workflowView = useWorkflowProgress({
+    sdWorkflowActive: sdWorkflowUiActive,
+    sdPhase,
     backupProgress,
     workflowProgress,
     loadingMessage,
-    qrBusy: qrScanBusy,
-    qrStage: qrScanStage,
-    qrByPath: qrScanByPath,
+    qrScanBusy,
+    qrScanStage,
+    qrScanByPath,
     qrFollowup,
+    videoImporting,
+    photoImporting,
+    encodeBusy: busy,
+    percent,
+    status,
+    taskProgress,
   });
-  /** Drop / Datei- / Ordner-Import — same sticky Fortschritt panel as SD Auto. */
-  const mediaImporting = videoImporting || photoImporting;
-  const manualImportProgress =
-    !autoPanelActive && !selectorSubmitting && !qrScanBusy
-      ? workflowProgress && workflowProgress.stage === "import"
-        ? {
-            percent: workflowProgress.percent,
-            label: formatWorkflowLabel(workflowProgress, "Importiere…"),
-            detail: formatWorkflowDetail(workflowProgress),
-            indeterminate: false as boolean | undefined,
-          }
-        : mediaImporting
-          ? {
-              percent: 0,
-              label: "Importiere…",
-              detail: undefined as string | undefined,
-              indeterminate: true,
-            }
-          : null
-      : null;
-  /** Same ProgressIndicator as SD Auto — for drop/manual QR (Confirm uses the dialog). */
-  const manualQrProgress =
-    qrScanBusy && !autoPanelActive && !selectorSubmitting
-      ? summarizeQrScanProgress(qrScanByPath, qrScanStage, qrFollowup)
-      : null;
-  const showCreateProgress =
-    busy || percent > 0 || taskProgress.length > 0;
-  const showSdAutoProgress = Boolean(autoPanelActive && sdAutoProgress);
-  const showManualImportProgress = Boolean(manualImportProgress);
-  const showManualQrProgress = Boolean(manualQrProgress);
-  const showProgressPanel =
-    showCreateProgress ||
-    showSdAutoProgress ||
-    showManualImportProgress ||
-    showManualQrProgress;
+
+  useEffect(() => {
+    if (busy) return;
+    if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
+    if (workflowView.visible) return;
+    resetProgress();
+  }, [busy, percent, taskProgress.length, status, workflowView.visible]);
 
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
@@ -1609,88 +1455,13 @@ function App() {
           </div>
         </aside>
 
-        <main className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto p-4")}>
-          {showProgressPanel && (
-            <section className="ats-surface sticky top-0 z-10 rounded-xl p-4 shadow-sm backdrop-blur-sm">
-              <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
-                    Fortschritt
-                  </h2>
-                  <p className="text-xs text-muted">
-                    {showSdAutoProgress && !busy
-                      ? qrScanBusy
-                        ? "SD Auto — QR-Scan (Abbrechen stoppt nur den Scan)"
-                        : "SD Auto — Backup, Import und weitere Aktionen"
-                      : showManualImportProgress && !busy
-                        ? "Medien werden in den Arbeitsordner kopiert"
-                        : showManualQrProgress && !busy
-                          ? "QR-Scan — Abbrechen stoppt den Scan"
-                          : busy
-                            ? "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
-                            : "Zuletzt abgeschlossener Lauf"}
-                  </p>
-                </div>
-                {(busy || qrScanBusy) && (
-                  <Button type="button" variant="destructive" size="sm" onClick={() => void cancel()}>
-                    Abbrechen
-                  </Button>
-                )}
-              </div>
-              {showSdAutoProgress && !busy && sdAutoProgress ? (
-                <div className="space-y-2">
-                  <ProgressIndicator
-                    percent={sdAutoProgress.percent}
-                    label={sdAutoProgress.label}
-                    indeterminate={Boolean(sdAutoProgress.indeterminate)}
-                  />
-                  {sdAutoProgress.detail ? (
-                    <p className="text-xs tabular-nums text-muted">
-                      {sdAutoProgress.detail}
-                    </p>
-                  ) : null}
-                </div>
-              ) : showManualImportProgress && !busy && manualImportProgress ? (
-                <div className="space-y-2">
-                  <ProgressIndicator
-                    percent={manualImportProgress.percent}
-                    label={manualImportProgress.label}
-                    indeterminate={Boolean(manualImportProgress.indeterminate)}
-                  />
-                  {manualImportProgress.detail ? (
-                    <p className="text-xs tabular-nums text-muted">
-                      {manualImportProgress.detail}
-                    </p>
-                  ) : null}
-                </div>
-              ) : showManualQrProgress && !busy && manualQrProgress ? (
-                <div className="space-y-2">
-                  <ProgressIndicator
-                    percent={manualQrProgress.percent}
-                    label={manualQrProgress.label}
-                    indeterminate={Boolean(manualQrProgress.indeterminate)}
-                  />
-                  {manualQrProgress.detail ? (
-                    <p className="text-xs tabular-nums text-muted">
-                      {manualQrProgress.detail}
-                    </p>
-                  ) : null}
-                </div>
-              ) : (
-                <ProgressIndicator
-                  percent={percent}
-                  label={formatOverallProgressLabel(status, busy ? "In Arbeit…" : "Fertig")}
-                  tasks={taskProgress.map((t) => ({
-                    taskId: t.taskId,
-                    percent: t.percent,
-                    label: taskProgressLabel(t.taskId, t.status),
-                    status: t.status,
-                  }))}
-                />
-              )}
-            </section>
-          )}
-
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4",
+              workflowView.reserveSpace && "pb-36",
+            )}
+          >
           <MediaDropZone
             disabled={uiLocked}
             onRemoveVideo={(path) => {
@@ -1768,12 +1539,17 @@ function App() {
               </div>
               <TabsContent value="video" className="mt-0 space-y-4 p-4">
                 <VideoPreview
-                  busy={busy || autoPanelActive}
+                  busy={busy || sdWorkflowUiActive}
                   onBusyChange={setBusy}
+                  onStatus={setStatus}
                   percent={percent}
                   status={status}
                   taskProgress={taskProgress}
                   onProgressReset={resetProgress}
+                  onProgressComplete={(finalStatus) => {
+                    setPercent(100);
+                    setStatus(finalStatus);
+                  }}
                   formReady={createReady}
                   formHints={createHints}
                   playbackSuspended={cutterOpen}
@@ -1832,6 +1608,17 @@ function App() {
               </TabsContent>
             </Tabs>
           </section>
+          </div>
+
+          <div
+            className="pointer-events-none absolute inset-x-4 bottom-4 z-20"
+          >
+            <WorkflowProgressPanel
+              view={workflowView}
+              onCancel={() => void cancel()}
+              className="mx-auto max-w-2xl"
+            />
+          </div>
         </main>
       </div>
       <LogConsole />
@@ -1885,20 +1672,6 @@ function App() {
         totalSizeMb={selectorTotalMb}
         mode={selectorMode}
         defaultActions={settingsSdActions()}
-        submitting={selectorSubmitting}
-        progress={resolveSdSelectorProgress({
-          submitting: selectorSubmitting,
-          phase: sdPhase,
-          backupProgress,
-          workflowProgress,
-          loadingMessage,
-          qrBusy: qrScanBusy,
-          qrStage: qrScanStage,
-          qrByPath: qrScanByPath,
-          qrFollowup,
-        })}
-        canCancelProgress={selectorSubmitting && qrScanBusy}
-        onCancelProgress={() => void cancel()}
         onClose={() => {
           sdEnrichGenRef.current += 1;
           closeSelector();
@@ -1980,7 +1753,7 @@ function App() {
         }}
       />
       <LoadingOverlay
-        open={loading && !selectorSubmitting && !autoPanelActive}
+        open={loading && !sdWorkflowUiActive}
         message={loadingMessage}
       />
     </div>

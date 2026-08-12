@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { ExternalLink, FolderOpen, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -64,6 +65,72 @@ type Props = {
   /** Keep settings open while another dialog (e.g. Update) is stacked on top. */
   suppressDismiss?: boolean;
 };
+
+type FolderPathInputProps = {
+  value: string;
+  onPick: () => void;
+  onOpenError: (message: string) => void;
+  placeholder?: string;
+};
+
+function FolderPathInput({
+  value,
+  onPick,
+  onOpenError,
+  placeholder = "Ordner wählen…",
+}: FolderPathInputProps) {
+  const canOpen = Boolean(value.trim());
+
+  async function openFolder() {
+    const path = value.trim();
+    if (!path) {
+      onOpenError("Kein Ordner gesetzt.");
+      return;
+    }
+    try {
+      await revealItemInDir(path);
+    } catch (e) {
+      onOpenError(String(e));
+    }
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        readOnly
+        placeholder={placeholder}
+        className="pr-[4.5rem]"
+      />
+      <button
+        type="button"
+        onClick={() => void openFolder()}
+        disabled={!canOpen}
+        title="Ordner im Explorer öffnen"
+        aria-label="Ordner im Explorer öffnen"
+        className={cn(
+          "absolute top-1/2 right-9 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+          "hover:bg-primary-soft hover:text-foreground",
+          "disabled:pointer-events-none disabled:opacity-40",
+        )}
+      >
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={onPick}
+        title="Ordner wählen"
+        aria-label="Ordner wählen"
+        className={cn(
+          "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+          "hover:bg-primary-soft hover:text-foreground",
+        )}
+      >
+        <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+      </button>
+    </div>
+  );
+}
 
 export function SettingsDialog({
   open,
@@ -566,26 +633,11 @@ export function SettingsDialog({
           <TabsContent value="allgemein" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Speicherort</Label>
-              <div className="relative">
-                <Input
-                  value={draft.speicherort}
-                  readOnly
-                  placeholder="Ordner wählen…"
-                  className="pr-9"
-                />
-                <button
-                  type="button"
-                  onClick={() => pickFolder("speicherort")}
-                  title="Ordner wählen"
-                  aria-label="Ordner wählen"
-                  className={cn(
-                    "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
-                    "hover:bg-primary-soft hover:text-foreground",
-                  )}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </div>
+              <FolderPathInput
+                value={draft.speicherort}
+                onPick={() => void pickFolder("speicherort")}
+                onOpenError={(message) => showError(message, "Ordner")}
+              />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1272,26 +1324,11 @@ export function SettingsDialog({
           <TabsContent value="sd" className="mt-4 space-y-4">
             <div className="space-y-1.5">
               <Label>Backup-Ordner</Label>
-              <div className="relative">
-                <Input
-                  value={draft.sd_backup_folder}
-                  readOnly
-                  placeholder="Ordner wählen…"
-                  className="pr-9"
-                />
-                <button
-                  type="button"
-                  onClick={() => pickFolder("sd_backup_folder")}
-                  title="Ordner wählen"
-                  aria-label="Ordner wählen"
-                  className={cn(
-                    "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
-                    "hover:bg-primary-soft hover:text-foreground",
-                  )}
-                >
-                  <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </div>
+              <FolderPathInput
+                value={draft.sd_backup_folder}
+                onPick={() => void pickFolder("sd_backup_folder")}
+                onOpenError={(message) => showError(message, "Ordner")}
+              />
             </div>
 
             <div className="space-y-1.5">
@@ -1319,26 +1356,11 @@ export function SettingsDialog({
               <>
                 <div className="space-y-1.5">
                   <Label>Zweiter Backup-Ordner</Label>
-                  <div className="relative">
-                    <Input
-                      value={draft.sd_server_backup_path}
-                      readOnly
-                      placeholder="Ordner wählen…"
-                      className="pr-9"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => pickFolder("sd_server_backup_path")}
-                      title="Ordner wählen"
-                      aria-label="Ordner wählen"
-                      className={cn(
-                        "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
-                        "hover:bg-primary-soft hover:text-foreground",
-                      )}
-                    >
-                      <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  </div>
+                  <FolderPathInput
+                    value={draft.sd_server_backup_path}
+                    onPick={() => void pickFolder("sd_server_backup_path")}
+                    onOpenError={(message) => showError(message, "Ordner")}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Kopierstrategie (zweiter Pfad)</Label>

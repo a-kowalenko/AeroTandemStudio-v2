@@ -5,6 +5,8 @@ use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::Path;
 
+use crate::video::ffmpeg::{is_cancelled, workflow_cancelled_io};
+
 /// Default read/write chunk size (256 KiB).
 pub const DEFAULT_COPY_BUFFER: usize = 256 * 1024;
 
@@ -37,9 +39,15 @@ where
         let mut written = 0u64;
 
         loop {
+            if is_cancelled() {
+                return Err(workflow_cancelled_io());
+            }
             let n = src.read(&mut buf)?;
             if n == 0 {
                 break;
+            }
+            if is_cancelled() {
+                return Err(workflow_cancelled_io());
             }
             dst.write_all(&buf[..n])?;
             let n_u = n as u64;
@@ -104,6 +112,20 @@ mod tests {
         let dst = dir.path().join("dst.bin");
         let err = copy_file_with_progress(&src, &dst, |_| {}).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(!dst.exists());
+    }
+
+    #[test]
+    fn aborts_when_cancelled_before_copy() {
+        crate::video::ffmpeg::reset_cancel_flag();
+        crate::video::ffmpeg::cancel_encode();
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.bin");
+        let dst = dir.path().join("dst.bin");
+        fs::write(&src, b"data").unwrap();
+        let err = copy_file_with_progress(&src, &dst, |_| {}).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::Interrupted);
+        assert!(err.to_string().contains("Abgebrochen"));
         assert!(!dst.exists());
     }
 }

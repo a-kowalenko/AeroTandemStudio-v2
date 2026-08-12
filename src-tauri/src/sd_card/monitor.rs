@@ -24,6 +24,7 @@ use crate::sd_card::copy_progress::copy_file_with_progress;
 use crate::sd_card::secondary_backup::{
     new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
 };
+use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
 use crate::storage::media_history::MediaHistoryStore;
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
@@ -1018,6 +1019,24 @@ impl SdCardMonitor {
         emit_progress(0, total_mb, start, true, &mut last_progress_emit, 0, "");
 
         for (i, src_file) in filtered.iter().enumerate() {
+            if is_cancelled() {
+                let _ = fs::remove_dir_all(&backup_path);
+                if let Some(ref sp) = secondary_path {
+                    let _ = fs::remove_dir_all(sp);
+                }
+                return Ok(BackupResult {
+                    success: false,
+                    backup_path: None,
+                    error_message: Some(WORKFLOW_CANCELLED.into()),
+                    copied_count: copied_sources.len(),
+                    skipped_count,
+                    copied_dest_paths: Vec::new(),
+                    copied_source_paths: Vec::new(),
+                    secondary_backup_path: None,
+                    secondary_warning: None,
+                    secondary_async_started: false,
+                });
+            }
             let file_index = (i as u64) + 1;
             let src_path = Path::new(src_file);
             let original_name = src_path
@@ -1102,17 +1121,19 @@ impl SdCardMonitor {
                     );
                 }
                 Err(e) => {
-                    // Card removed mid-backup
                     let _ = fs::remove_dir_all(&backup_path);
                     if let Some(ref sp) = secondary_path {
                         let _ = fs::remove_dir_all(sp);
                     }
+                    let msg = if is_cancelled() || e.to_string().contains(WORKFLOW_CANCELLED) {
+                        WORKFLOW_CANCELLED.to_string()
+                    } else {
+                        format!("SD-Karte wurde während des Backups entfernt: {e}")
+                    };
                     return Ok(BackupResult {
                         success: false,
                         backup_path: None,
-                        error_message: Some(format!(
-                            "SD-Karte wurde während des Backups entfernt: {e}"
-                        )),
+                        error_message: Some(msg),
                         copied_count: copied_sources.len(),
                         skipped_count,
                         copied_dest_paths: Vec::new(),

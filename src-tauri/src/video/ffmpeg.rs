@@ -221,6 +221,17 @@ pub fn is_cancelled() -> bool {
     CANCEL_FLAG.load(Ordering::SeqCst)
 }
 
+/// Stable user-facing message for workflow cancellation (copy, backup, import, encode).
+pub const WORKFLOW_CANCELLED: &str = "Abgebrochen";
+
+pub fn workflow_cancelled_io() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Interrupted, WORKFLOW_CANCELLED)
+}
+
+pub fn workflow_cancelled_message() -> String {
+    WORKFLOW_CANCELLED.into()
+}
+
 /// Probe media duration in seconds by running `ffmpeg -i` (parses stderr).
 pub fn probe_duration_secs(ffmpeg: &Path, input: &str) -> Result<f64, FfmpegError> {
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;

@@ -23,7 +23,6 @@ import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
-import { ProgressIndicator } from "./ProgressIndicator";
 import { VideoPlayer, type VideoPlayerHandle } from "./VideoPlayer";
 import { useVideoStore } from "../store/videoStore";
 import { useKundeStore } from "../store/kundeStore";
@@ -224,11 +223,15 @@ type VideoPreviewProps = {
   /** Shared busy flag from App so Cancel works globally */
   busy?: boolean;
   onBusyChange?: (busy: boolean) => void;
+  /** Status line for the floating progress panel. */
+  onStatus?: (message: string) => void;
   /** External progress when App already listens — if omitted, listens locally */
   percent?: number;
   status?: string;
   taskProgress?: TaskProgressState[];
   onProgressReset?: () => void;
+  /** Called when preview encode finishes successfully. */
+  onProgressComplete?: (status: string) => void;
   /** Open cutter for the active clip */
   onCutClip?: (path: string, listIndex: number) => void;
   /** Undo cut/trim for one clip */
@@ -253,10 +256,9 @@ type VideoPreviewProps = {
 export function VideoPreview({
   busy: busyProp,
   onBusyChange,
-  percent: percentProp,
-  status: statusProp,
-  taskProgress: tasksProp,
+  onStatus,
   onProgressReset,
+  onProgressComplete,
   onCutClip,
   onUndoClipCut,
   onUndoAllCuts,
@@ -299,9 +301,6 @@ export function VideoPreview({
   autoNextClipRef.current = autoNextClip;
   const activeClipRef = useRef(activeClip);
   activeClipRef.current = activeClip;
-  const [localPercent, setLocalPercent] = useState(0);
-  const [localStatus, setLocalStatus] = useState("");
-  const [localTasks, setLocalTasks] = useState<TaskProgressState[]>([]);
   const [qrBusy, setQrBusy] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
@@ -381,9 +380,6 @@ export function VideoPreview({
   const einzelclipMode = !showingCombined;
 
   const busy = busyProp ?? localBusy;
-  const percent = percentProp ?? localPercent;
-  const status = statusProp ?? localStatus;
-  const taskProgress = tasksProp ?? localTasks;
 
   const totalDuration = useMemo(
     () => videoList.reduce((sum, v) => sum + (v.duration_secs || 0), 0),
@@ -431,9 +427,6 @@ export function VideoPreview({
   }
 
   function resetLocalProgress() {
-    setLocalPercent(0);
-    setLocalStatus("starting");
-    setLocalTasks([]);
     onProgressReset?.();
   }
 
@@ -463,13 +456,13 @@ export function VideoPreview({
 
     setBusy(true);
     resetLocalProgress();
+    onStatus?.("Vorschau wird erzeugt…");
     try {
       const result = await generatePreview(paths, kunde);
       setPreview(result);
       setPreviewCache(result, videoList, kunde, encodingSig);
       setPlayerMode("combined");
-      setLocalPercent(100);
-      setLocalStatus("end");
+      onProgressComplete?.("Vorschau fertig");
       const strategy =
         result.strategy === "stream_copy_only"
           ? "Stream-Copy"
@@ -490,7 +483,7 @@ export function VideoPreview({
       );
     } catch (e) {
       if (isCancellationError(e)) {
-        setLocalStatus("cancelled");
+        onStatus?.("Abgebrochen");
         showWarning("Vorschau abgebrochen.");
       } else {
         showError(String(e));
@@ -714,18 +707,6 @@ export function VideoPreview({
             </Label>
           </div>
         </div>
-      )}
-
-      {(busy || percent > 0 || taskProgress.length > 0) && percentProp == null && (
-        <ProgressIndicator
-          percent={percent}
-          label={busy ? `Vorschau… (${status})` : `Fertig (${status})`}
-          tasks={taskProgress.map((t) => ({
-            taskId: t.taskId,
-            percent: t.percent,
-            status: t.status,
-          }))}
-        />
       )}
 
       {videoList.length > 0 && (

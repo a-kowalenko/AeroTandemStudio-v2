@@ -225,6 +225,21 @@
   }
 }
 
+@keyframes ats-progress-float-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ats-progress-float-in {
+  animation: ats-progress-float-in 200ms ease-out;
+}
+
 @keyframes ats-settings-focus-flash {
   0% {
     background-color: transparent;

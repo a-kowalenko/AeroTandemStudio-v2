@@ -84,6 +84,18 @@ export function LogConsole({ className }: Props) {
   }, [filtered, open, autoScroll]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    if (!open) {
+      root.style.setProperty("--log-console-height", "0px");
+      return;
+    }
+    root.style.setProperty("--log-console-height", `${height}px`);
+    return () => {
+      root.style.setProperty("--log-console-height", "0px");
+    };
+  }, [open, height]);
+
+  useEffect(() => {
     function onMove(e: MouseEvent) {
       if (!dragRef.current) return;
       const delta = dragRef.current.startY - e.clientY;
