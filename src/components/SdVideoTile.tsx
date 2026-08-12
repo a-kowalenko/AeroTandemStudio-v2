@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   Film,
@@ -18,6 +18,10 @@ const LINUX_HOVER_PLAY_DELAY_MS = 280;
 /** Sustained hover → pin (keep playing after mouse leave), like an explicit play click. */
 const HOVER_PIN_DELAY_MS = 1400;
 const LINUX_HOVER_PIN_DELAY_MS = 1600;
+/** Hide immersive chrome after mouse idle (YouTube-style). */
+const IMMERSIVE_IDLE_HIDE_MS = 2200;
+/** Brief chrome after touch tap in immersive. */
+const IMMERSIVE_TOUCH_CHROME_MS = 1400;
 /** Linux/WebKitGTK only: spurious `ended` while scrubbing. */
 const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
@@ -102,10 +106,12 @@ export function SdVideoTile({
   const immersiveBarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<number | null>(null);
   const pinTimerRef = useRef<number | null>(null);
+  const immersiveChromeTimerRef = useRef<number | null>(null);
   const immersiveRef = useRef(false);
   const linuxMediaGuards = useRef(isLinuxHost()).current;
   const draggingRef = useRef(false);
   const ignoreEndedUntilRef = useRef(0);
+  const lastPointerTypeRef = useRef<string>("mouse");
 
   const [hovering, setHovering] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -120,16 +126,18 @@ export function SdVideoTile({
   const [dragging, setDragging] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [immersive, setImmersive] = useState(false);
+  /** Immersive center + bottom chrome (mousemove / touch; idle-hides). */
+  const [immersiveChrome, setImmersiveChrome] = useState(true);
   const shiftCheckboxRef = useRef(false);
 
   immersiveRef.current = immersive;
 
   const showVideo = wantPreview || pinned || immersive;
   /**
-   * Transport chrome: hover / immersive, or paused-while-pinned (resume affordance).
-   * While pinned play-without-hover, hide controls (incl. center pause) so the frame stays clear.
+   * Tile transport chrome: hover, or paused-while-pinned (resume affordance).
+   * While pinned play-without-hover, hide controls so the frame stays clear.
    */
-  const showControls = hovering || immersive || (pinned && !playing);
+  const showControls = hovering || (pinned && !playing);
 
   // Resolve media URL when preview is wanted.
   useEffect(() => {
@@ -291,6 +299,9 @@ export function SdVideoTile({
     return () => {
       if (hoverTimerRef.current != null) window.clearTimeout(hoverTimerRef.current);
       if (pinTimerRef.current != null) window.clearTimeout(pinTimerRef.current);
+      if (immersiveChromeTimerRef.current != null) {
+        window.clearTimeout(immersiveChromeTimerRef.current);
+      }
       releaseImmersive(path);
     };
   }, [path]);
@@ -321,6 +332,39 @@ export function SdVideoTile({
       pinTimerRef.current = null;
     }
   }
+
+  function clearImmersiveChromeTimer() {
+    if (immersiveChromeTimerRef.current != null) {
+      window.clearTimeout(immersiveChromeTimerRef.current);
+      immersiveChromeTimerRef.current = null;
+    }
+  }
+
+  function scheduleImmersiveChromeHide(delayMs = IMMERSIVE_IDLE_HIDE_MS) {
+    clearImmersiveChromeTimer();
+    immersiveChromeTimerRef.current = window.setTimeout(() => {
+      immersiveChromeTimerRef.current = null;
+      if (draggingRef.current) return;
+      setImmersiveChrome(false);
+      setShowVolume(false);
+    }, delayMs);
+  }
+
+  /** Show immersive chrome; idle-hides so the frame stays clear. */
+  function bumpImmersiveChrome(delayMs = IMMERSIVE_IDLE_HIDE_MS) {
+    setImmersiveChrome(true);
+    scheduleImmersiveChromeHide(delayMs);
+  }
+
+  useEffect(() => {
+    if (!immersive) {
+      clearImmersiveChromeTimer();
+      return;
+    }
+    bumpImmersiveChrome();
+    return () => clearImmersiveChromeTimer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enter immersive only
+  }, [immersive]);
 
   function onMediaEnter() {
     if (selectionLocked || isImmersiveBlocked(path) || immersive) return;
@@ -439,43 +483,30 @@ export function SdVideoTile({
 
   const playhead = duration > 0 ? current / duration : 0;
 
-  function renderTransportControls(opts: {
-    bar: RefObject<HTMLDivElement | null>;
-    video: RefObject<HTMLVideoElement | null>;
-    large?: boolean;
-  }) {
-    // In immersive mode controls stay visible and fully interactive.
-    const controlsVisible = opts.large || showControls;
+  function renderTileTransportControls() {
     return (
       <>
         <div
           className={cn(
-            "absolute inset-0 z-10 flex items-center justify-center transition-opacity [transform:translateZ(1px)]",
-            opts.large ? "pointer-events-none" : "pointer-events-none",
-            controlsVisible ? "opacity-100" : "opacity-0",
+            "pointer-events-none absolute inset-0 z-10 flex items-center justify-center transition-opacity [transform:translateZ(1px)]",
+            showControls ? "opacity-100" : "opacity-0",
           )}
         >
           <button
             type="button"
             data-controls
             className={cn(
-              "pointer-events-auto flex items-center justify-center rounded-full bg-black/55 text-white shadow hover:bg-black/70",
-              opts.large ? "h-14 w-14" : "h-9 w-9",
-              !controlsVisible && "pointer-events-none",
+              "pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow hover:bg-black/70",
+              !showControls && "pointer-events-none",
             )}
             aria-label={playing ? "Pause" : "Play"}
             onClick={togglePlay}
             onPointerDown={(ev) => ev.stopPropagation()}
           >
             {playing ? (
-              <Pause className={opts.large ? "h-6 w-6" : "h-4 w-4"} />
+              <Pause className="h-4 w-4" />
             ) : (
-              <Play
-                className={cn(
-                  opts.large ? "h-6 w-6" : "h-4 w-4",
-                  "fill-current",
-                )}
-              />
+              <Play className="h-4 w-4 fill-current" />
             )}
           </button>
         </div>
@@ -484,8 +515,7 @@ export function SdVideoTile({
           data-controls
           className={cn(
             "absolute top-1 right-1 z-20 flex items-center gap-0.5 transition-opacity [transform:translateZ(1px)]",
-            opts.large && "top-3 right-3 gap-1",
-            controlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
@@ -503,10 +533,7 @@ export function SdVideoTile({
                 step={0.01}
                 value={muted ? 0 : volume}
                 aria-label="Lautstärke"
-                className={cn(
-                  "mr-1 h-1 cursor-pointer accent-white",
-                  opts.large ? "w-24" : "w-14",
-                )}
+                className="mr-1 h-1 w-14 cursor-pointer accent-white"
                 onChange={(ev) => {
                   const next = Number(ev.target.value);
                   setVolume(next);
@@ -516,10 +543,7 @@ export function SdVideoTile({
             )}
             <button
               type="button"
-              className={cn(
-                "flex items-center justify-center rounded bg-black/55 text-white hover:bg-black/70",
-                opts.large ? "h-9 w-9" : "h-7 w-7",
-              )}
+              className="flex h-7 w-7 items-center justify-center rounded bg-black/55 text-white hover:bg-black/70"
               aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
               onClick={(ev) => {
                 ev.stopPropagation();
@@ -532,26 +556,19 @@ export function SdVideoTile({
               }}
             >
               {muted || volume === 0 ? (
-                <VolumeX className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
+                <VolumeX className="h-3.5 w-3.5" />
               ) : (
-                <Volume2 className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
+                <Volume2 className="h-3.5 w-3.5" />
               )}
             </button>
           </div>
           <button
             type="button"
-            className={cn(
-              "flex items-center justify-center rounded bg-black/55 text-white hover:bg-black/70",
-              opts.large ? "h-9 w-9" : "h-7 w-7",
-            )}
-            aria-label={immersive ? "Vollbild beenden" : "Vollbild"}
+            className="flex h-7 w-7 items-center justify-center rounded bg-black/55 text-white hover:bg-black/70"
+            aria-label="Vollbild"
             onClick={(ev) => toggleFullscreen(ev)}
           >
-            {immersive ? (
-              <Minimize className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
-            ) : (
-              <Maximize className={opts.large ? "h-4 w-4" : "h-3.5 w-3.5"} />
-            )}
+            <Maximize className="h-3.5 w-3.5" />
           </button>
         </div>
 
@@ -559,27 +576,19 @@ export function SdVideoTile({
           data-controls
           className={cn(
             "absolute inset-x-0 bottom-0 z-20 transition-opacity [transform:translateZ(1px)]",
-            controlsVisible ? "opacity-100" : "pointer-events-none opacity-0",
+            showControls ? "opacity-100" : "pointer-events-none opacity-0",
           )}
           onClick={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
         >
           {showControls && duration > 0 && (
-            <div
-              className={cn(
-                "px-1.5 pb-0.5 text-right font-mono text-white/90 drop-shadow",
-                opts.large ? "px-3 text-xs" : "text-[9px]",
-              )}
-            >
+            <div className="px-1.5 pb-0.5 text-right font-mono text-[9px] text-white/90 drop-shadow">
               {formatClock(current)} / {formatClock(duration)}
             </div>
           )}
           <div
-            ref={opts.bar}
-            className={cn(
-              "relative cursor-pointer bg-black/40 px-1",
-              opts.large ? "h-4 px-3" : "h-3",
-            )}
+            ref={barRef}
+            className="relative h-3 cursor-pointer bg-black/40 px-1"
             onPointerDown={(ev) => {
               ev.stopPropagation();
               draggingRef.current = true;
@@ -589,11 +598,11 @@ export function SdVideoTile({
               onActivate();
               markLinuxUserSeek();
               (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
-              seekFromClientX(ev.clientX, opts.bar.current, opts.video.current);
+              seekFromClientX(ev.clientX, barRef.current, videoRef.current);
             }}
             onPointerMove={(ev) => {
               if (!dragging) return;
-              seekFromClientX(ev.clientX, opts.bar.current, opts.video.current);
+              seekFromClientX(ev.clientX, barRef.current, videoRef.current);
             }}
             onPointerUp={() => {
               draggingRef.current = false;
@@ -620,6 +629,8 @@ export function SdVideoTile({
       </>
     );
   }
+
+  const immersiveChromeVisible = immersiveChrome || dragging;
 
   return (
     <div
@@ -733,8 +744,7 @@ export function SdVideoTile({
           </div>
         )}
 
-        {!immersive &&
-          renderTransportControls({ bar: barRef, video: videoRef })}
+        {!immersive && renderTileTransportControls()}
       </div>
 
       <button
@@ -765,20 +775,24 @@ export function SdVideoTile({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="pointer-events-auto fixed inset-0 z-[9999] flex flex-col bg-black"
+            className="pointer-events-auto fixed inset-0 z-[9999] bg-black"
             role="dialog"
             aria-modal="true"
             aria-label={`${filename} Vollbild`}
             data-sd-immersive-overlay=""
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              lastPointerTypeRef.current = e.pointerType;
+            }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
+            onMouseMove={() => bumpImmersiveChrome()}
           >
-            <div className="relative flex min-h-0 flex-1 items-center justify-center">
+            <div className="relative flex h-full w-full items-center justify-center">
               {src && !loadError ? (
                 <video
                   ref={immersiveVideoRef}
-                  className="max-h-full max-w-full object-contain"
+                  className="pointer-events-none max-h-full max-w-full object-contain"
                   src={src}
                   playsInline
                   muted={muted}
@@ -789,6 +803,7 @@ export function SdVideoTile({
                   onEnded={(e) => {
                     if (!shouldAcceptEnded(e.currentTarget)) return;
                     setPlaying(false);
+                    bumpImmersiveChrome();
                   }}
                   onLoadedMetadata={(e) => {
                     setDuration(e.currentTarget.duration);
@@ -806,15 +821,187 @@ export function SdVideoTile({
                   {loadError ? "Keine Vorschau (Codec/WebView)" : "Lädt…"}
                 </div>
               )}
-              {renderTransportControls({
-                bar: immersiveBarRef,
-                video: immersiveVideoRef,
-                large: true,
-              })}
-            </div>
-            <div className="pointer-events-none shrink-0 truncate px-4 py-2 text-center text-sm text-white/80">
-              {filename}
-              <span className="ml-2 text-xs text-white/50">Esc zum Beenden</span>
+
+              {/* Center play/pause — same pattern as VideoPlayer */}
+              <button
+                type="button"
+                className="group/play absolute inset-0 z-[1] flex cursor-pointer items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
+                onClick={(ev) => {
+                  togglePlay(ev);
+                  if (lastPointerTypeRef.current === "touch") {
+                    bumpImmersiveChrome(IMMERSIVE_TOUCH_CHROME_MS);
+                  } else {
+                    bumpImmersiveChrome();
+                  }
+                }}
+                aria-label={playing ? "Pause" : "Play"}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none flex h-16 w-16 items-center justify-center rounded-full bg-black/50 text-white shadow-md transition-all duration-200",
+                    immersiveChromeVisible
+                      ? "scale-100 opacity-100"
+                      : "scale-95 opacity-0 group-focus-visible/play:scale-100 group-focus-visible/play:opacity-100",
+                  )}
+                  aria-hidden
+                >
+                  {playing ? (
+                    <Pause className="h-10 w-10" />
+                  ) : (
+                    <Play className="ml-0.5 h-10 w-10" />
+                  )}
+                </span>
+              </button>
+
+              {/* Bottom chrome */}
+              <div
+                data-controls
+                className={cn(
+                  "absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-5 pt-16 pb-5 transition-opacity duration-200",
+                  immersiveChromeVisible
+                    ? "opacity-100"
+                    : "pointer-events-none opacity-0",
+                )}
+                onClick={(ev) => ev.stopPropagation()}
+                onPointerDown={(ev) => ev.stopPropagation()}
+                onMouseMove={(ev) => {
+                  ev.stopPropagation();
+                  bumpImmersiveChrome();
+                }}
+              >
+                <div
+                  ref={immersiveBarRef}
+                  className="group/scrub relative mb-3 h-5 cursor-pointer"
+                  onPointerDown={(ev) => {
+                    ev.stopPropagation();
+                    draggingRef.current = true;
+                    setDragging(true);
+                    clearImmersiveChromeTimer();
+                    setImmersiveChrome(true);
+                    markLinuxUserSeek();
+                    (ev.currentTarget as HTMLElement).setPointerCapture?.(
+                      ev.pointerId,
+                    );
+                    seekFromClientX(
+                      ev.clientX,
+                      immersiveBarRef.current,
+                      immersiveVideoRef.current,
+                    );
+                  }}
+                  onPointerMove={(ev) => {
+                    if (!dragging) return;
+                    seekFromClientX(
+                      ev.clientX,
+                      immersiveBarRef.current,
+                      immersiveVideoRef.current,
+                    );
+                  }}
+                  onPointerUp={() => {
+                    draggingRef.current = false;
+                    markLinuxUserSeek();
+                    setDragging(false);
+                    bumpImmersiveChrome();
+                  }}
+                  onPointerCancel={() => {
+                    draggingRef.current = false;
+                    markLinuxUserSeek();
+                    setDragging(false);
+                    bumpImmersiveChrome();
+                  }}
+                >
+                  <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/25 transition-[height] group-hover/scrub:h-1.5" />
+                  <div
+                    className="absolute top-1/2 left-0 h-1 -translate-y-1/2 rounded-full bg-white transition-[height] group-hover/scrub:h-1.5"
+                    style={{ width: `${playhead * 100}%` }}
+                  />
+                  <div
+                    className={cn(
+                      "absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow transition-transform",
+                      "scale-90 group-hover/scrub:scale-100",
+                      dragging && "scale-110",
+                    )}
+                    style={{ left: `${playhead * 100}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="min-w-[5.5rem] font-mono text-xs tabular-nums text-white/90">
+                    {formatClock(current)} / {formatClock(duration)}
+                  </span>
+
+                  <div className="min-w-0 flex-1 truncate text-sm text-white/70">
+                    {filename}
+                    <span className="ml-2 text-xs text-white/40">
+                      Esc zum Beenden
+                    </span>
+                  </div>
+
+                  <div
+                    className="flex items-center gap-1"
+                    onMouseEnter={() => {
+                      setShowVolume(true);
+                      clearImmersiveChromeTimer();
+                      setImmersiveChrome(true);
+                    }}
+                    onMouseLeave={() => {
+                      setShowVolume(false);
+                      bumpImmersiveChrome();
+                    }}
+                  >
+                    <div
+                      className={cn(
+                        "overflow-hidden transition-all duration-200",
+                        showVolume ? "w-24 opacity-100" : "w-0 opacity-0",
+                      )}
+                    >
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={muted ? 0 : volume}
+                        aria-label="Lautstärke"
+                        className="h-1 w-24 cursor-pointer accent-white"
+                        onChange={(ev) => {
+                          const next = Number(ev.target.value);
+                          setVolume(next);
+                          setMuted(next === 0);
+                        }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
+                      aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        if (muted || volume === 0) {
+                          setMuted(false);
+                          if (volume === 0) setVolume(0.7);
+                        } else {
+                          setMuted(true);
+                        }
+                        bumpImmersiveChrome();
+                      }}
+                    >
+                      {muted || volume === 0 ? (
+                        <VolumeX className="h-5 w-5" />
+                      ) : (
+                        <Volume2 className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
+                    aria-label="Vollbild beenden"
+                    onClick={(ev) => toggleFullscreen(ev)}
+                  >
+                    <Minimize className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>,
           document.body,
