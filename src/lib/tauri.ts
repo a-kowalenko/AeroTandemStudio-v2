@@ -21,6 +21,8 @@ export type PhotoMetadata = {
   path: string;
   filename: string;
   size_bytes: number;
+  width: number;
+  height: number;
   /** Camera brand from EXIF Make (empty if unknown). */
   camera_make?: string;
   /** Camera model from EXIF Model (empty if unknown). */

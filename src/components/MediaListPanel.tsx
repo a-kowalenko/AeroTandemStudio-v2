@@ -57,6 +57,14 @@ function formatSize(bytes: number): string {
   return `${bytes} B`;
 }
 
+function photoFormatLabel(width?: number, height?: number): string {
+  if (!width || !height || width <= 0 || height <= 0) return "—";
+  const mp = (width * height) / 1_000_000;
+  const mpLabel =
+    mp >= 10 ? `${Math.round(mp)} MP` : `${mp.toFixed(1)} MP`;
+  return `${width}×${height} · ${mpLabel}`;
+}
+
 function formatLabel(v: VideoMetadata): string {
   const res = v.height > 0 ? `${v.height}p` : "—";
   const fps = v.fps > 0 ? `@${Math.round(v.fps)}` : "";
@@ -479,6 +487,8 @@ export function MediaListPanel({
             <tr className="sticky top-0 z-[1] border-b border-border bg-card-elevated text-left text-xs font-semibold tracking-wide text-muted uppercase">
               <th className="px-2 py-2">#</th>
               <th className="px-2 py-2">Dateiname</th>
+              <th className="px-2 py-2">Format</th>
+              <th className="px-2 py-2">Größe</th>
               {fotoWmNeeded ? (
                 <th className="px-1 py-2 text-center" title="Wasserzeichen">
                   WM
@@ -508,6 +518,14 @@ export function MediaListPanel({
                       </div>
                     ) : null}
                     <QrScanRowBar path={p.path} />
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-muted">
+                    {photoFormatLabel(p.width, p.height)}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 tabular-nums text-muted">
+                    {p.sizeBytes != null && p.sizeBytes > 0
+                      ? formatSize(p.sizeBytes)
+                      : "—"}
                   </td>
                   {fotoWmNeeded ? (
                     <td

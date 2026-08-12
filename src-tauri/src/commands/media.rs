@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::State;
 
-use crate::media::datetime::get_exif_camera;
+use crate::media::datetime::{get_exif_camera, get_image_dimensions};
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
@@ -86,6 +86,8 @@ pub struct PhotoMetadata {
     pub path: String,
     pub filename: String,
     pub size_bytes: u64,
+    pub width: u32,
+    pub height: u32,
     /// Camera brand from EXIF Make (empty if unknown).
     pub camera_make: String,
     /// Camera model from EXIF Model (empty if unknown).
@@ -100,11 +102,14 @@ fn photo_metadata_for(path: &str) -> PhotoMetadata {
         .unwrap_or(path)
         .to_string();
     let size_bytes = std::fs::metadata(pb).map(|m| m.len()).unwrap_or(0);
+    let (width, height) = get_image_dimensions(pb);
     let (camera_make, camera_model) = get_exif_camera(pb);
     PhotoMetadata {
         path: path.to_string(),
         filename,
         size_bytes,
+        width,
+        height,
         camera_make,
         camera_model,
     }

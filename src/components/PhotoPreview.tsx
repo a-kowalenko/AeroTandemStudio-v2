@@ -262,73 +262,115 @@ export function PhotoPreview({ disabled }: PhotoPreviewProps) {
       )}
 
       <div className="grid gap-3 text-xs sm:grid-cols-2">
-        <div className="rounded-lg border border-border/60 bg-card-elevated/80 p-3">
+        <div className="flex flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
           <p className="mb-1 font-semibold">Aktuelles Foto</p>
           {current ? (
             <dl className="space-y-0.5 text-muted">
-              <div className="break-all">
-                <span className="text-foreground">Dateiname: </span>
-                {current.filename}
+              <div>
+                <dt className="inline text-foreground">Datei: </dt>
+                <dd className="inline break-all">{current.filename}</dd>
               </div>
               <div>Größe: {formatBytes(current.sizeBytes)}</div>
               <div>
                 Position: {currentIndex + 1} / {photoList.length}
               </div>
-              {fotoWmNeeded && (
-                <label className="mt-1.5 flex items-center gap-2 text-foreground">
-                  <Checkbox
-                    checked={watermarkIndices.has(currentIndex)}
-                    disabled={disabled}
-                    onCheckedChange={() => toggleWatermark(currentIndex)}
-                    aria-label="Wasserzeichen-Foto"
-                  />
-                  Wasserzeichen (Preview_Foto)
-                </label>
+              {(current.camera_make || current.camera_model) && (
+                <div>
+                  Kamera:{" "}
+                  {[current.camera_make, current.camera_model]
+                    .filter(Boolean)
+                    .join(" ")}
+                </div>
               )}
             </dl>
           ) : (
             <p className="text-muted">—</p>
           )}
+          {current && fotoWmNeeded && (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-pressed={watermarkIndices.has(currentIndex)}
+              aria-label="Preview-Foto mit Wasserzeichen-Stempel"
+              onClick={() => toggleWatermark(currentIndex)}
+              className={cn(
+                "mt-2 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                watermarkIndices.has(currentIndex)
+                  ? "border-amber-500/50 bg-amber-500/15 ring-1 ring-inset ring-amber-500/30"
+                  : "border-border/60 bg-background/40 hover:border-border hover:bg-background/70",
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-foreground">
+                  Preview
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted">
+                  Mit Wasserzeichen-Stempel exportieren
+                </span>
+              </span>
+              <Checkbox
+                checked={watermarkIndices.has(currentIndex)}
+                tabIndex={-1}
+                aria-hidden
+                className={cn(
+                  "pointer-events-none h-6 w-6 [&_svg]:h-4 [&_svg]:w-4",
+                  watermarkIndices.has(currentIndex) &&
+                    "border-amber-500 data-[state=checked]:border-amber-500 data-[state=checked]:bg-amber-500",
+                )}
+              />
+            </button>
+          )}
+          {current && (
+            <div className="mt-auto flex flex-wrap gap-2 pt-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={disabled || scanning}
+                onClick={() => void handleQrScan()}
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                QR scannen
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={disabled || effectiveSelection.size === 0}
+                onClick={() => removePhotos([...effectiveSelection])}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {effectiveSelection.size > 1
+                  ? `${effectiveSelection.size} Entfernen`
+                  : "Entfernen"}
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="rounded-lg border border-border/60 bg-card-elevated/80 p-3">
+        <div className="flex flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
           <p className="mb-1 font-semibold">Gesamt</p>
           <dl className="space-y-0.5 text-muted">
             <div>Anzahl: {photoList.length}</div>
             <div>Größe: {totalSizeHint}</div>
+            {fotoWmNeeded && (
+              <div>
+                Wasserzeichen: {watermarkIndices.size} / {photoList.length}
+              </div>
+            )}
           </dl>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              disabled={disabled || effectiveSelection.size === 0}
-              onClick={() => removePhotos([...effectiveSelection])}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {effectiveSelection.size > 1
-                ? `${effectiveSelection.size} Entfernen`
-                : "Entfernen"}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={!explicitlySelected || selected.size === 0}
-              onClick={clearSelection}
-            >
-              Auswahl aufheben
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              disabled={disabled || !current || scanning}
-              onClick={() => void handleQrScan()}
-            >
-              <QrCode className="h-3.5 w-3.5" />
-              QR
-            </Button>
-          </div>
+          {explicitlySelected && selected.size > 0 && (
+            <div className="mt-auto flex flex-wrap gap-2 pt-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={clearSelection}
+              >
+                Auswahl aufheben
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 

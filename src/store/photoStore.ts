@@ -12,6 +12,8 @@ export type PhotoItem = {
   path: string;
   filename: string;
   sizeBytes?: number;
+  width?: number;
+  height?: number;
   camera_make?: string;
   camera_model?: string;
 };
@@ -50,6 +52,8 @@ function toItem(meta: PhotoMetadata): PhotoItem {
     path,
     filename,
     sizeBytes: meta.size_bytes,
+    width: meta.width || undefined,
+    height: meta.height || undefined,
     camera_make: meta.camera_make || undefined,
     camera_model: meta.camera_model || undefined,
   };

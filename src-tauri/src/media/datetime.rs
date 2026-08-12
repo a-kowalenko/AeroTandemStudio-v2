@@ -78,6 +78,51 @@ pub fn get_exif_camera(path: &Path) -> (String, String) {
     (make, model)
 }
 
+fn exif_u32(field: &exif::Field) -> Option<u32> {
+    match &field.value {
+        Value::Long(v) => v.first().copied(),
+        Value::Short(v) => v.first().map(|n| u32::from(*n)),
+        _ => field
+            .display_value()
+            .to_string()
+            .split_whitespace()
+            .next()
+            .and_then(|s| s.parse().ok()),
+    }
+}
+
+fn get_exif_dimensions(path: &Path) -> Option<(u32, u32)> {
+    let file = File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+
+    let pair = |x: Tag, y: Tag| -> Option<(u32, u32)> {
+        let w = exif.get_field(x, In::PRIMARY).and_then(exif_u32)?;
+        let h = exif.get_field(y, In::PRIMARY).and_then(exif_u32)?;
+        if w > 0 && h > 0 {
+            Some((w, h))
+        } else {
+            None
+        }
+    };
+
+    pair(Tag::PixelXDimension, Tag::PixelYDimension)
+        .or_else(|| pair(Tag::ImageWidth, Tag::ImageLength))
+}
+
+/// Pixel size `(width, height)`; `(0, 0)` when unknown.
+/// Prefers EXIF dimensions, then container headers via the `image` crate.
+pub fn get_image_dimensions(path: &Path) -> (u32, u32) {
+    if let Some(dims) = get_exif_dimensions(path) {
+        return dims;
+    }
+    image::ImageReader::open(path)
+        .ok()
+        .and_then(|r| r.with_guessed_format().ok())
+        .and_then(|r| r.into_dimensions().ok())
+        .unwrap_or((0, 0))
+}
+
 /// EXIF DateTimeOriginal (+ SubSec) → (local datetime epoch, ms string).
 ///
 /// Prefers `DateTimeOriginal` (capture). Falls back to `DateTime` for display

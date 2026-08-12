@@ -829,20 +829,44 @@ export function VideoPreview({
                   </span>
                 </div>
               )}
-              {videoWmNeeded && (
-                <label className="mt-1.5 flex items-center gap-2 text-foreground">
-                  <Checkbox
-                    checked={watermarkClipIndex === activeClip}
-                    disabled={busy}
-                    onCheckedChange={() => toggleWatermarkClip(activeClip)}
-                    aria-label="Wasserzeichen-Clip"
-                  />
-                  Wasserzeichen (Preview_Video)
-                </label>
-              )}
             </dl>
           ) : (
             <p className="text-muted">—</p>
+          )}
+          {current && videoWmNeeded && (
+            <button
+              type="button"
+              disabled={busy}
+              aria-pressed={watermarkClipIndex === activeClip}
+              aria-label="Preview-Video mit Wasserzeichen-Stempel"
+              onClick={() => toggleWatermarkClip(activeClip)}
+              className={cn(
+                "mt-2 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                watermarkClipIndex === activeClip
+                  ? "border-amber-500/50 bg-amber-500/15 ring-1 ring-inset ring-amber-500/30"
+                  : "border-border/60 bg-background/40 hover:border-border hover:bg-background/70",
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-semibold text-foreground">
+                  Preview
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-snug text-muted">
+                  Mit Wasserzeichen-Stempel exportieren
+                </span>
+              </span>
+              <Checkbox
+                checked={watermarkClipIndex === activeClip}
+                tabIndex={-1}
+                aria-hidden
+                className={cn(
+                  "pointer-events-none h-6 w-6 [&_svg]:h-4 [&_svg]:w-4",
+                  watermarkClipIndex === activeClip &&
+                    "border-amber-500 data-[state=checked]:border-amber-500 data-[state=checked]:bg-amber-500",
+                )}
+              />
+            </button>
           )}
           {current && (
             <div className="mt-2 flex flex-wrap gap-2">
