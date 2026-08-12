@@ -269,51 +269,63 @@
   will-change: background-color, box-shadow;
 }
 
-@keyframes ats-create-ready-halo {
+/* Soft Apple-like attention: single ripple + gentle lift/glow */
+@keyframes ats-create-ready-ripple {
   0% {
-    opacity: 0;
-    transform: scale(0.92);
-    filter: blur(6px);
-  }
-  32% {
-    opacity: 0.55;
+    opacity: 0.42;
     transform: scale(1);
-    filter: blur(10px);
   }
   100% {
     opacity: 0;
-    transform: scale(1.12);
-    filter: blur(14px);
+    transform: scale(1.55);
   }
 }
 
 @keyframes ats-create-ready-lift {
   0% {
     transform: scale(1);
-    filter: brightness(1);
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent);
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }
-  28% {
-    transform: scale(1.018);
-    filter: brightness(1.06);
+  16% {
+    transform: scale(1.028);
+    box-shadow:
+      0 0 0 3px color-mix(in srgb, var(--ats-primary) 26%, transparent),
+      0 8px 26px color-mix(in srgb, var(--ats-primary) 28%, transparent);
+    /* Long, soft settle — ease gently into rest (no mid-keyframe kink) */
+    animation-timing-function: cubic-bezier(0.25, 0.1, 0.2, 1);
   }
   100% {
     transform: scale(1);
-    filter: brightness(1);
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent),
+      0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent);
   }
 }
 
 .ats-create-ready-halo {
   z-index: 0;
-  background: color-mix(in srgb, var(--ats-primary) 55%, transparent);
-  animation: ats-create-ready-halo 1.55s cubic-bezier(0.16, 1, 0.3, 1) 1;
-  will-change: opacity, transform, filter;
+  opacity: 0;
+  border-radius: inherit;
+  border: 1.5px solid color-mix(in srgb, var(--ats-primary) 55%, transparent);
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--ats-primary) 28%, transparent) 0%,
+    color-mix(in srgb, var(--ats-primary) 10%, transparent) 45%,
+    transparent 70%
+  );
+  animation: ats-create-ready-ripple 2.05s cubic-bezier(0.22, 1, 0.36, 1) 1
+    forwards;
+  will-change: opacity, transform;
 }
 
 .ats-create-ready-flash {
   transform-origin: center;
   transition: none !important;
-  animation: ats-create-ready-lift 1.55s cubic-bezier(0.16, 1, 0.3, 1) 1;
-  will-change: transform, filter;
+  animation: ats-create-ready-lift 2.05s linear 1 forwards;
+  will-change: transform, box-shadow;
 }
 
 /* Edge/Chromium native password reveal — we use Lucide Eye instead */
@@ -334,15 +346,16 @@ input[type="password"]::-ms-clear {
   .ats-create-ready-halo {
     animation: none;
     will-change: auto;
-    opacity: 0.35;
+    opacity: 0.4;
     transform: none;
-    filter: blur(8px);
   }
 
   .ats-create-ready-flash {
     animation: none;
     will-change: auto;
     transform: none;
-    filter: brightness(1.05);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--ats-primary) 28%, transparent),
+      0 6px 18px color-mix(in srgb, var(--ats-primary) 22%, transparent);
   }
 }

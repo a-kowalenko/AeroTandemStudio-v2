@@ -1270,7 +1270,7 @@ function App() {
 
     clearCreateReadyPulse();
     setCreateReadyPulse(true);
-    const t = window.setTimeout(() => setCreateReadyPulse(false), 1800);
+    const t = window.setTimeout(() => setCreateReadyPulse(false), 2150);
     return () => window.clearTimeout(t);
   }, [
     createReadyPulsePending,
@@ -1505,11 +1505,11 @@ function App() {
               >
                 <FolderOpen className="h-3.5 w-3.5" aria-hidden />
               </Button>
-            <div className="relative flex-1">
+            <div className="relative flex-1 overflow-visible">
               {createReadyPulse ? (
                 <span
                   aria-hidden
-                  className="ats-create-ready-halo pointer-events-none absolute inset-[-5px] rounded-[0.7rem]"
+                  className="ats-create-ready-halo pointer-events-none absolute inset-0 rounded-md"
                 />
               ) : null}
               <Button
