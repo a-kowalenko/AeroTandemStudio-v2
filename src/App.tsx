@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   CloudUpload,
+  ExternalLink,
   Film,
+  FolderClock,
   FolderOpen,
-  History,
   ImageIcon,
   RotateCcw,
 } from "lucide-react";
@@ -1009,6 +1011,19 @@ function App() {
     return selected;
   }
 
+  async function openSpeicherortFolder() {
+    const path = config?.speicherort?.trim() ?? "";
+    if (!path) {
+      showError("Kein Speicherort gesetzt.");
+      return;
+    }
+    try {
+      await revealItemInDir(path);
+    } catch (e) {
+      showError(String(e), "Speicherort");
+    }
+  }
+
   async function startCreate() {
     if (busy || sdWorkflowUiActive || loading || qrScanBusy)
       return;
@@ -1375,7 +1390,7 @@ function App() {
             disabled={busy || !ready}
             title="Verarbeitete Dateien"
           >
-            <History className="h-4 w-4" />
+            <FolderClock className="h-4 w-4" />
             <span className="hidden sm:inline">Historie</span>
           </Button>
           <Button
@@ -1492,9 +1507,21 @@ function App() {
                 onClick={() => void ensureSpeicherort(true)}
                 disabled={uiLocked}
                 title="Speicherort ändern"
-                aria-label="Ordner wählen"
+                aria-label="Speicherort ändern"
               >
                 <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon"
+                className="shrink-0"
+                onClick={() => void openSpeicherortFolder()}
+                disabled={uiLocked || !config?.speicherort?.trim()}
+                title="Ordner im Explorer öffnen"
+                aria-label="Ordner im Explorer öffnen"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               </Button>
             <div className="relative flex-1 overflow-visible">
               {createReadyPulse ? (
