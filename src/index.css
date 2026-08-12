@@ -254,6 +254,12 @@
   will-change: background-color, box-shadow;
 }
 
+/* Edge/Chromium native password reveal — we use Lucide Eye instead */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ats-settings-focus-flash {
     animation: none;

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Check, Eye, EyeOff, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
+import { Check, FolderOpen, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
@@ -31,19 +32,27 @@ import {
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
 
+function pathsEqual(a: string, b: string): boolean {
+  const norm = (p: string) =>
+    p.trim().replace(/[/\\]+$/, "").replace(/\\/g, "/").toLowerCase();
+  return Boolean(a.trim()) && norm(a) === norm(b);
+}
+
 function StandardDirButton({
   busy,
-  done,
+  lockedDone,
+  label,
   disabled,
   onClick,
 }: {
   busy: boolean;
-  done: boolean;
+  lockedDone: boolean;
+  label: string;
   disabled?: boolean;
   onClick: () => void;
 }) {
   // Avoid native `disabled` while busy/done — opacity flash + WebView focus quirks.
-  const locked = busy || done || Boolean(disabled);
+  const locked = busy || lockedDone || Boolean(disabled);
   return (
     <Button
       type="button"
@@ -58,16 +67,16 @@ function StandardDirButton({
       className={cn(
         "h-7 shrink-0 gap-1.5 px-2.5 text-xs transition-[color,background-color,border-color,box-shadow] duration-300 ease-out",
         locked && "pointer-events-none",
-        done &&
+        lockedDone &&
           "border-emerald-500/35 bg-emerald-500/15 text-emerald-900 shadow-none hover:bg-emerald-500/20 hover:brightness-100 dark:border-emerald-400/30 dark:bg-emerald-400/15 dark:text-emerald-50",
       )}
     >
-      {done ? (
+      {lockedDone ? (
         <Check className="size-3.5 shrink-0" strokeWidth={2.5} aria-hidden />
       ) : busy ? (
         <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
       ) : null}
-      {done ? "Angelegt" : "Standard anlegen"}
+      {label}
     </Button>
   );
 }
@@ -77,6 +86,7 @@ function FolderDirField({
   value,
   placeholder,
   standardPath,
+  standardExists,
   inputDisabled,
   pickDisabled,
   invalid,
@@ -85,22 +95,34 @@ function FolderDirField({
   done,
   createDisabled,
   onCreate,
+  onUseStandard,
   error,
 }: {
   label: string;
   value: string;
   placeholder: string;
   standardPath?: string | null;
+  /** Folder already present on disk (from propose). */
+  standardExists?: boolean;
   inputDisabled?: boolean;
   pickDisabled?: boolean;
   invalid?: boolean;
   onPick: () => void;
   busy: boolean;
+  /** Created / adopted in this wizard session. */
   done: boolean;
   createDisabled?: boolean;
   onCreate: () => void;
+  /** Adopt existing standard path without mkdir. */
+  onUseStandard: () => void;
   error?: string;
 }) {
+  const usingStandard = Boolean(
+    standardPath && pathsEqual(value, standardPath),
+  );
+  const alreadyOnDisk = Boolean(standardExists) || done;
+  const showExistsStrip = Boolean(standardPath) && alreadyOnDisk;
+
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
@@ -114,6 +136,9 @@ function FolderDirField({
           className={cn(
             "pr-9",
             invalid && "border-destructive focus-visible:ring-destructive/40",
+            usingStandard &&
+              !invalid &&
+              "border-emerald-500/40 focus-visible:ring-emerald-500/25",
           )}
         />
         <button
@@ -131,7 +156,48 @@ function FolderDirField({
           <FolderOpen className="h-3.5 w-3.5" aria-hidden />
         </button>
       </div>
-      {standardPath ? (
+      {standardPath && showExistsStrip ? (
+        <div
+          className={cn(
+            "flex items-center gap-2.5 rounded-md border px-2.5 py-2 transition-colors duration-300",
+            usingStandard
+              ? "border-emerald-500/35 bg-emerald-500/12 dark:border-emerald-400/30 dark:bg-emerald-400/10"
+              : "border-emerald-500/20 bg-emerald-500/[0.07] dark:border-emerald-400/20 dark:bg-emerald-400/[0.07]",
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-7 shrink-0 items-center justify-center rounded-full",
+              usingStandard
+                ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-100"
+                : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-200",
+            )}
+            aria-hidden
+          >
+            <Check className="size-3.5" strokeWidth={2.5} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-emerald-950 dark:text-emerald-50">
+              {usingStandard
+                ? "Standardordner aktiv"
+                : "Standardordner bereits vorhanden"}
+            </p>
+            <p
+              className="truncate text-[11px] text-muted"
+              title={standardPath}
+            >
+              {standardPath}
+            </p>
+          </div>
+          <StandardDirButton
+            busy={busy}
+            lockedDone={usingStandard}
+            label={usingStandard ? "Aktiv" : "Übernehmen"}
+            disabled={createDisabled}
+            onClick={onUseStandard}
+          />
+        </div>
+      ) : standardPath ? (
         <div className="flex items-center gap-2">
           <p
             className="min-w-0 flex-1 truncate text-xs text-muted"
@@ -141,7 +207,8 @@ function FolderDirField({
           </p>
           <StandardDirButton
             busy={busy}
-            done={done}
+            lockedDone={false}
+            label="Standard anlegen"
             disabled={createDisabled}
             onClick={onCreate}
           />
@@ -211,7 +278,6 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [skippedSteps, setSkippedSteps] = useState<Set<number>>(() => new Set());
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [testingServer, setTestingServer] = useState(false);
-  const [showServerPassword, setShowServerPassword] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [mediaDirsProposal, setMediaDirsProposal] =
     useState<DefaultMediaDirsProposal | null>(null);
@@ -341,6 +407,16 @@ export function SetupWizard({ open, onComplete }: Props) {
         }
       });
     }
+  }
+
+  function onUseExistingStandardDir(kind: DefaultMediaDirKind) {
+    const path =
+      kind === "speicherort"
+        ? mediaDirsProposal?.speicherort
+        : mediaDirsProposal?.sd_backup_folder;
+    if (!path?.trim()) return;
+    patch(kind, path);
+    setDefaultDirDone((prev) => ({ ...prev, [kind]: true }));
   }
 
   function setCrewKeep(
@@ -690,6 +766,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   value={draft.speicherort}
                   placeholder="Ordner wählen…"
                   standardPath={mediaDirsProposal?.speicherort}
+                  standardExists={Boolean(mediaDirsProposal?.speicherort_exists)}
                   invalid={Boolean(fieldErrors.speicherort)}
                   onPick={() => void pickFolder("speicherort")}
                   busy={creatingDefaultDir === "speicherort"}
@@ -699,6 +776,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                     creatingDefaultDir !== "speicherort"
                   }
                   onCreate={() => void onCreateDefaultDir("speicherort")}
+                  onUseStandard={() => onUseExistingStandardDir("speicherort")}
                   error={fieldErrors.speicherort}
                 />
               </div>
@@ -758,6 +836,9 @@ export function SetupWizard({ open, onComplete }: Props) {
                     value={draft.sd_backup_folder}
                     placeholder="Ordner wählen…"
                     standardPath={mediaDirsProposal?.sd_backup_folder}
+                    standardExists={Boolean(
+                      mediaDirsProposal?.sd_backup_folder_exists,
+                    )}
                     inputDisabled={!draft.sd_auto_backup}
                     pickDisabled={!draft.sd_auto_backup}
                     invalid={Boolean(fieldErrors.sd_backup_folder)}
@@ -770,6 +851,9 @@ export function SetupWizard({ open, onComplete }: Props) {
                         creatingDefaultDir !== "sd_backup_folder")
                     }
                     onCreate={() => void onCreateDefaultDir("sd_backup_folder")}
+                    onUseStandard={() =>
+                      onUseExistingStandardDir("sd_backup_folder")
+                    }
                     error={fieldErrors.sd_backup_folder}
                   />
                   <div className="space-y-1.5">
@@ -1014,43 +1098,13 @@ export function SetupWizard({ open, onComplete }: Props) {
                   </div>
                   <div className="space-y-1.5">
                     <Label>Passwort</Label>
-                    <div className="relative">
-                      <Input
-                        type={showServerPassword ? "text" : "password"}
-                        value={draft.server_password}
-                        onChange={(e) =>
-                          patch("server_password", e.target.value)
-                        }
-                        autoComplete="current-password"
-                        className="pr-9"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setShowServerPassword((prev) => !prev)
-                        }
-                        title={
-                          showServerPassword
-                            ? "Passwort verbergen"
-                            : "Passwort anzeigen"
-                        }
-                        aria-label={
-                          showServerPassword
-                            ? "Passwort verbergen"
-                            : "Passwort anzeigen"
-                        }
-                        className={cn(
-                          "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
-                          "hover:bg-primary-soft hover:text-foreground",
-                        )}
-                      >
-                        {showServerPassword ? (
-                          <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5" aria-hidden />
-                        )}
-                      </button>
-                    </div>
+                    <PasswordInput
+                      value={draft.server_password}
+                      onChange={(e) =>
+                        patch("server_password", e.target.value)
+                      }
+                      autoComplete="current-password"
+                    />
                   </div>
                 </div>
                 <p className="text-[11px] text-muted">{SERVER_GUEST_HINT}</p>

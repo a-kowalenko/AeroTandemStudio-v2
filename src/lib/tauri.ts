@@ -580,6 +580,8 @@ export type DefaultMediaDirsProposal = {
   root: string;
   speicherort: string;
   sd_backup_folder: string;
+  speicherort_exists: boolean;
+  sd_backup_folder_exists: boolean;
   warnings: string[];
   alternate_root: string | null;
   alternate_speicherort: string | null;

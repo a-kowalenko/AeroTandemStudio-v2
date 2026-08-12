@@ -12,6 +12,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
@@ -742,8 +743,7 @@ export function SettingsDialog({
                 </div>
                 <div className="space-y-1.5">
                   <Label>Passwort</Label>
-                  <Input
-                    type="password"
+                  <PasswordInput
                     value={draft.server_password}
                     onChange={(e) => patch("server_password", e.target.value)}
                     autoComplete="current-password"

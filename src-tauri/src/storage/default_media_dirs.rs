@@ -31,6 +31,10 @@ pub struct DefaultMediaDirsProposal {
     pub root: String,
     pub speicherort: String,
     pub sd_backup_folder: String,
+    /// `true` when `…/Erstellt` already exists as a directory.
+    pub speicherort_exists: bool,
+    /// `true` when `…/SD-Backups` already exists as a directory.
+    pub sd_backup_folder_exists: bool,
     pub warnings: Vec<String>,
     pub alternate_root: Option<String>,
     pub alternate_speicherort: Option<String>,
@@ -113,6 +117,8 @@ pub fn propose_default_media_dirs() -> Result<DefaultMediaDirsProposal, DefaultM
         root: path_to_string(&root),
         speicherort: path_to_string(&speicherort),
         sd_backup_folder: path_to_string(&backup),
+        speicherort_exists: speicherort.is_dir(),
+        sd_backup_folder_exists: backup.is_dir(),
         warnings,
         alternate_root,
         alternate_speicherort,
@@ -472,6 +478,28 @@ mod tests {
         let backup_parent = PathBuf::from(&p.sd_backup_folder).parent().map(PathBuf::from);
         assert_eq!(speicher_parent, backup_parent);
         assert_eq!(speicher_parent.map(|x| path_to_string(&x)), Some(p.root.clone()));
+        assert_eq!(p.speicherort_exists, PathBuf::from(&p.speicherort).is_dir());
+        assert_eq!(
+            p.sd_backup_folder_exists,
+            PathBuf::from(&p.sd_backup_folder).is_dir()
+        );
+    }
+
+    #[test]
+    fn propose_existence_flags_reflect_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(APP_MEDIA_ROOT_NAME);
+        let (speicher, backup) = paths_under_root(&root);
+        fs::create_dir_all(&speicher).unwrap();
+
+        // Exercise the same existence check used by propose_default_media_dirs.
+        assert!(speicher.is_dir());
+        assert!(!backup.is_dir());
+        assert_eq!(path_for_kind(&root, DefaultMediaDirKind::Speicherort), speicher);
+        assert_eq!(
+            path_for_kind(&root, DefaultMediaDirKind::SdBackupFolder),
+            backup
+        );
     }
 
     #[test]
