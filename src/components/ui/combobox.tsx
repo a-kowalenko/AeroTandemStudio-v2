@@ -40,6 +40,8 @@ type ComboboxProps = {
   inputClassName?: string;
   /** Fired when a list suggestion is chosen (not on free-text typing). */
   onSelectOption?: (value: string) => void;
+  /** Blur the input after choosing a suggestion (ends focus so the list cannot reopen). */
+  blurOnSelect?: boolean;
 };
 
 type ListPos = {
@@ -79,6 +81,7 @@ export function Combobox({
   hideLabel = false,
   inputClassName,
   onSelectOption,
+  blurOnSelect = false,
 }: ComboboxProps) {
   const autoId = useId();
   const id = idProp ?? autoId;
@@ -86,6 +89,9 @@ export function Combobox({
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  /** Avoid reopen when focus briefly returns after select / blur. */
+  const skipOpenOnFocusRef = useRef(false);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   /** null = show all options (open via focus/chevron); string = filter while typing */
@@ -238,10 +244,17 @@ export function Combobox({
   }
 
   function select(optionValue: string) {
+    skipOpenOnFocusRef.current = true;
     onChange(optionValue);
     onSelectOption?.(optionValue);
     setFilterQuery(null);
     setOpen(false);
+    if (blurOnSelect) {
+      inputRef.current?.blur();
+    }
+    window.setTimeout(() => {
+      skipOpenOnFocusRef.current = false;
+    }, 120);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -357,6 +370,7 @@ export function Combobox({
       </Label>
       <div className="relative" ref={triggerRef}>
         <Input
+          ref={inputRef}
           id={id}
           role="combobox"
           aria-expanded={open}
@@ -381,7 +395,10 @@ export function Combobox({
             onChange(next);
             setOpen(true);
           }}
-          onFocus={() => openList()}
+          onFocus={() => {
+            if (skipOpenOnFocusRef.current) return;
+            openList();
+          }}
           onKeyDown={onKeyDown}
           className={cn(
             "pr-9",

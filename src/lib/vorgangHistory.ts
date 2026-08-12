@@ -9,6 +9,8 @@ export type VorgangEntry = {
   nachname: string | null;
   kunden_id: string | null;
   booking_id: string | null;
+  kunden_id_hash: string | null;
+  booking_id_hash: string | null;
   datum: string;
   ort: string;
   tandemmaster: string;

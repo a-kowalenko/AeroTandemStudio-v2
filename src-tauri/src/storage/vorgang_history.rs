@@ -36,6 +36,9 @@ pub struct VorgangEntry {
     pub nachname: Option<String>,
     pub kunden_id: Option<String>,
     pub booking_id: Option<String>,
+    /// QR payload hashes (shown in Scan-Frame meta; may be empty for older rows).
+    pub kunden_id_hash: Option<String>,
+    pub booking_id_hash: Option<String>,
     pub datum: String,
     pub ort: String,
     pub tandemmaster: String,
@@ -140,6 +143,8 @@ impl VorgangHistoryStore {
                 nachname TEXT,
                 kunden_id TEXT,
                 booking_id TEXT,
+                kunden_id_hash TEXT,
+                booking_id_hash TEXT,
                 datum TEXT NOT NULL DEFAULT '',
                 ort TEXT NOT NULL DEFAULT '',
                 tandemmaster TEXT NOT NULL DEFAULT '',
@@ -224,6 +229,18 @@ impl VorgangHistoryStore {
             "vorgaenge",
             "qr_spotlight_size",
             "ALTER TABLE vorgaenge ADD COLUMN qr_spotlight_size REAL",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "kunden_id_hash",
+            "ALTER TABLE vorgaenge ADD COLUMN kunden_id_hash TEXT",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "booking_id_hash",
+            "ALTER TABLE vorgaenge ADD COLUMN booking_id_hash TEXT",
         )?;
         Ok(())
     }
@@ -338,6 +355,7 @@ impl VorgangHistoryStore {
         tx.execute(
             "INSERT INTO vorgaenge (
                 created_at, gast, vorname, nachname, kunden_id, booking_id,
+                kunden_id_hash, booking_id_hash,
                 datum, ort, tandemmaster, videospringer, video_mode, form_mode, manual_entry_mode,
                 handcam_foto, handcam_video, outside_foto, outside_video,
                 ist_bezahlt_handcam_foto, ist_bezahlt_handcam_video,
@@ -345,9 +363,9 @@ impl VorgangHistoryStore {
                 base_output_dir, base_filename, encoder, intro_created,
                 body_clips, photos_copied, watermark_photos, marker_path, reused_preview
             ) VALUES (
-                ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,
-                ?14,?15,?16,?17,?18,?19,?20,?21,
-                ?22,?23,?24,?25,?26,?27,?28,?29,?30
+                ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
+                ?16,?17,?18,?19,?20,?21,?22,?23,
+                ?24,?25,?26,?27,?28,?29,?30,?31,?32
             )",
             params![
                 created_at,
@@ -356,6 +374,8 @@ impl VorgangHistoryStore {
                 opt_str(kunde.nachname.as_deref()),
                 opt_str(kunde.kunden_id.as_deref()),
                 opt_str(kunde.booking_id.as_deref()),
+                opt_str(kunde.kunden_id_hash.as_deref()),
+                opt_str(kunde.booking_id_hash.as_deref()),
                 kunde.datum.trim(),
                 kunde.ort.trim(),
                 kunde.tandemmaster.trim(),
@@ -436,6 +456,7 @@ impl VorgangHistoryStore {
         let conn = self.connect()?;
         let limit = limit.max(1) as i64;
         let select = "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
+                        v.kunden_id_hash, v.booking_id_hash,
                         v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
                         v.manual_entry_mode,
                         v.handcam_foto, v.handcam_video, v.outside_foto, v.outside_video,
@@ -457,6 +478,8 @@ impl VorgangHistoryStore {
                     OR IFNULL(v.nachname,'') LIKE ?1
                     OR IFNULL(v.kunden_id,'') LIKE ?1
                     OR IFNULL(v.booking_id,'') LIKE ?1
+                    OR IFNULL(v.kunden_id_hash,'') LIKE ?1
+                    OR IFNULL(v.booking_id_hash,'') LIKE ?1
                     OR v.base_filename LIKE ?1
                     OR v.datum LIKE ?1
                     OR EXISTS (
@@ -608,39 +631,41 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
         nachname: row.get(4)?,
         kunden_id: row.get(5)?,
         booking_id: row.get(6)?,
-        datum: row.get(7)?,
-        ort: row.get(8)?,
-        tandemmaster: row.get(9)?,
-        videospringer: row.get(10)?,
-        video_mode: row.get(11)?,
-        form_mode: row.get(12)?,
-        manual_entry_mode: row.get(13)?,
-        handcam_foto: row.get::<_, i64>(14)? != 0,
-        handcam_video: row.get::<_, i64>(15)? != 0,
-        outside_foto: row.get::<_, i64>(16)? != 0,
-        outside_video: row.get::<_, i64>(17)? != 0,
-        ist_bezahlt_handcam_foto: row.get::<_, i64>(18)? != 0,
-        ist_bezahlt_handcam_video: row.get::<_, i64>(19)? != 0,
-        ist_bezahlt_outside_foto: row.get::<_, i64>(20)? != 0,
-        ist_bezahlt_outside_video: row.get::<_, i64>(21)? != 0,
-        base_output_dir: row.get(22)?,
-        base_filename: row.get(23)?,
-        encoder: row.get(24)?,
-        intro_created: row.get::<_, i64>(25)? != 0,
-        body_clips: row.get(26)?,
-        photos_copied: row.get(27)?,
-        watermark_photos: row.get(28)?,
-        marker_path: row.get(29)?,
-        reused_preview: row.get::<_, i64>(30)? != 0,
+        kunden_id_hash: row.get(7)?,
+        booking_id_hash: row.get(8)?,
+        datum: row.get(9)?,
+        ort: row.get(10)?,
+        tandemmaster: row.get(11)?,
+        videospringer: row.get(12)?,
+        video_mode: row.get(13)?,
+        form_mode: row.get(14)?,
+        manual_entry_mode: row.get(15)?,
+        handcam_foto: row.get::<_, i64>(16)? != 0,
+        handcam_video: row.get::<_, i64>(17)? != 0,
+        outside_foto: row.get::<_, i64>(18)? != 0,
+        outside_video: row.get::<_, i64>(19)? != 0,
+        ist_bezahlt_handcam_foto: row.get::<_, i64>(20)? != 0,
+        ist_bezahlt_handcam_video: row.get::<_, i64>(21)? != 0,
+        ist_bezahlt_outside_foto: row.get::<_, i64>(22)? != 0,
+        ist_bezahlt_outside_video: row.get::<_, i64>(23)? != 0,
+        base_output_dir: row.get(24)?,
+        base_filename: row.get(25)?,
+        encoder: row.get(26)?,
+        intro_created: row.get::<_, i64>(27)? != 0,
+        body_clips: row.get(28)?,
+        photos_copied: row.get(29)?,
+        watermark_photos: row.get(30)?,
+        marker_path: row.get(31)?,
+        reused_preview: row.get::<_, i64>(32)? != 0,
         qr_preview: map_qr_preview(
-            row.get(31)?,
-            row.get(32)?,
             row.get(33)?,
             row.get(34)?,
             row.get(35)?,
             row.get(36)?,
+            row.get(37)?,
+            row.get(38)?,
         ),
-        file_count: row.get(37)?,
+        file_count: row.get(39)?,
     })
 }
 
@@ -770,6 +795,8 @@ mod tests {
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let mut kunde = sample_kunde();
         kunde.form_mode = "kunde".into();
+        kunde.kunden_id_hash = Some("cust_hash_abc".into());
+        kunde.booking_id_hash = Some("book_hash_xyz".into());
         let preview = QrPreview {
             path: hit.to_string_lossy().to_string(),
             width: 4,
@@ -785,6 +812,10 @@ mod tests {
             .unwrap();
 
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.kunden_id_hash.as_deref(), Some("cust_hash_abc"));
+        assert_eq!(entry.booking_id_hash.as_deref(), Some("book_hash_xyz"));
+        let by_hash = store.list_vorgaenge(10, Some("cust_hash_abc")).unwrap();
+        assert_eq!(by_hash.len(), 1);
         let stored = entry.qr_preview.as_ref().expect("qr_preview");
         assert!(Path::new(&stored.path).is_file());
         assert_ne!(stored.path, preview.path);

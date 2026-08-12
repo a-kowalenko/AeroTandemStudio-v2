@@ -33,6 +33,13 @@ function focusCrewField(id: string) {
   }, 50);
 }
 
+function blurCrewField(id: string) {
+  window.setTimeout(() => {
+    const el = document.getElementById(id);
+    if (el instanceof HTMLElement) el.blur();
+  }, 0);
+}
+
 /** Allow digits and optional leading `#`; store only digits. */
 function sanitizeNumericIdInput(raw: string): string {
   const withoutLeadingHash = raw.replace(/^#+/, "");
@@ -538,7 +545,27 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
       !state.kunde.videospringer.trim()
     ) {
       focusCrewField(CREW_VS_INPUT_ID);
+      return false;
     }
+    return true;
+  }
+
+  /** End QR crew dropdown workflow: blur so the list cannot reopen; nudge Erstellen when ready. */
+  function finishCrewAttentionWorkflow(inputId: string) {
+    blurCrewField(inputId);
+    if (useKundeStore.getState().crewAttentionAfterQr) {
+      useUiStore.getState().requestCreateReadyPulse();
+    }
+  }
+
+  function onTandemmasterSelect() {
+    if (focusVideospringerIfEmpty()) {
+      finishCrewAttentionWorkflow(CREW_TM_INPUT_ID);
+    }
+  }
+
+  function onVideospringerSelect() {
+    finishCrewAttentionWorkflow(CREW_VS_INPUT_ID);
   }
 
   function syncGastFromName(vorname: string, nachname: string) {
@@ -685,7 +712,7 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
             label="Tandemmaster"
             value={kunde.tandemmaster}
             onChange={(v) => setField("tandemmaster", v)}
-            onSelectOption={() => focusVideospringerIfEmpty()}
+            onSelectOption={() => onTandemmasterSelect()}
             options={tandemmasterOptions}
             disabled={crewBusy}
             placeholder="Name…"
@@ -697,6 +724,7 @@ export function CustomerForm({ disabled, crewDisabled }: CustomerFormProps) {
               label="Videospringer"
               value={kunde.videospringer}
               onChange={(v) => setField("videospringer", v)}
+              onSelectOption={() => onVideospringerSelect()}
               options={videospringerOptions}
               disabled={crewBusy}
               placeholder="Name…"

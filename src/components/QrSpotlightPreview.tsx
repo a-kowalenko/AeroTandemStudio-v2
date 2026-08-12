@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import type { QrPreview } from "@/lib/tauri";
@@ -16,7 +15,6 @@ export function QrSpotlightPreview({
   className,
   showSpotlight = true,
 }: Props) {
-  const [loaded, setLoaded] = useState(false);
   const src = convertFileSrc(preview.path);
   const spot = preview.spotlight;
   const ar =
@@ -42,16 +40,16 @@ export function QrSpotlightPreview({
         alt="QR-Treffer Frame"
         className="absolute inset-0 h-full w-full object-fill"
         draggable={false}
-        onLoad={() => setLoaded(true)}
       />
-      {showSpotlight && spot && loaded ? (
+      {showSpotlight && spot ? (
         // Extra clip layer so the 9999px dim shadow never paints over sibling UI.
+        // Render immediately (no onLoad gate / fade) to avoid flicker when opening.
         <div
           className="pointer-events-none absolute inset-0 overflow-hidden"
           aria-hidden
         >
           <div
-            className="absolute rounded-[3px] border-2 border-success shadow-[0_0_0_9999px_rgba(0,0,0,0.55)] transition-opacity duration-200"
+            className="absolute rounded-[3px] border-2 border-success shadow-[0_0_0_9999px_rgba(0,0,0,0.55)]"
             style={{
               left: `${spot.x * 100}%`,
               top: `${spot.y * 100}%`,

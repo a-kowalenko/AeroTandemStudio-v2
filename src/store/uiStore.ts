@@ -86,6 +86,10 @@ type UiState = {
   settingsFocus: SettingsFocusTarget | null;
   /** Bumps so the same focus target re-triggers scroll/highlight. */
   settingsFocusNonce: number;
+  /**
+   * After QR crew dropdown workflow finishes: pulse Erstellen once it becomes ready.
+   */
+  createReadyPulsePending: boolean;
   showError: (
     message: string,
     title?: string,
@@ -106,6 +110,8 @@ type UiState = {
   }) => void;
   setSettingsTab: (tab: SettingsTab) => void;
   clearSettingsFocus: () => void;
+  requestCreateReadyPulse: () => void;
+  clearCreateReadyPulse: () => void;
 };
 
 const emptyDialogFields = {
@@ -129,6 +135,7 @@ export const useUiStore = create<UiState>((set) => ({
   settingsTab: "allgemein",
   settingsFocus: null,
   settingsFocusNonce: 0,
+  createReadyPulsePending: false,
 
   showError: (message, title = "Fehler", options) =>
     set({
@@ -193,4 +200,6 @@ export const useUiStore = create<UiState>((set) => ({
     })),
   setSettingsTab: (tab) => set({ settingsTab: tab }),
   clearSettingsFocus: () => set({ settingsFocus: null }),
+  requestCreateReadyPulse: () => set({ createReadyPulsePending: true }),
+  clearCreateReadyPulse: () => set({ createReadyPulsePending: false }),
 }));

@@ -158,6 +158,8 @@ function App() {
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const openSettings = useUiStore((s) => s.openSettings);
+  const createReadyPulsePending = useUiStore((s) => s.createReadyPulsePending);
+  const clearCreateReadyPulse = useUiStore((s) => s.clearCreateReadyPulse);
 
   const checkServerConnection = useServerStore((s) => s.checkConnection);
   const setServerPhase = useServerStore((s) => s.setPhase);
@@ -214,6 +216,7 @@ function App() {
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [createReady, setCreateReady] = useState(false);
   const [createHints, setCreateHints] = useState<string[]>([]);
+  const [createReadyPulse, setCreateReadyPulse] = useState(false);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
   const [introMuxFallback, setIntroMuxFallback] = useState<{
     reason: string;
@@ -1114,6 +1117,8 @@ function App() {
           tandemmasterFixed: config.tandemmaster,
           videospringerFixed: config.videospringer,
         });
+        clearCreateReadyPulse();
+        setCreateReadyPulse(false);
       }
     } catch (e) {
       if (isCancellationError(e)) {
@@ -1194,6 +1199,8 @@ function App() {
       tandemmasterFixed: config?.tandemmaster,
       videospringerFixed: config?.videospringer,
     });
+    clearCreateReadyPulse();
+    setCreateReadyPulse(false);
     showSuccess("Session zurückgesetzt.", "Zurücksetzen", {
       autoCloseSecs: 5,
     });
@@ -1220,6 +1227,27 @@ function App() {
     qrScanBusy ||
     videoImporting ||
     photoImporting;
+
+  // After QR crew dropdown workflow: pulse Erstellen once validation unlocks it.
+  useEffect(() => {
+    if (!createReadyPulsePending || !createReady || uiLocked) return;
+    clearCreateReadyPulse();
+    setCreateReadyPulse(true);
+    const t = window.setTimeout(() => setCreateReadyPulse(false), 1400);
+    return () => window.clearTimeout(t);
+  }, [
+    createReadyPulsePending,
+    createReady,
+    uiLocked,
+    clearCreateReadyPulse,
+  ]);
+
+  // Drop stale pulse requests if create stays blocked (e.g. missing media).
+  useEffect(() => {
+    if (!createReadyPulsePending || createReady) return;
+    const t = window.setTimeout(() => clearCreateReadyPulse(), 900);
+    return () => window.clearTimeout(t);
+  }, [createReadyPulsePending, createReady, clearCreateReadyPulse]);
 
   const workflowView = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
@@ -1438,11 +1466,19 @@ function App() {
               </Button>
               <Button
                 type="button"
-                className="flex-1 gap-1.5"
+                className={cn(
+                  "flex-1 gap-1.5",
+                  createReadyPulse && "ats-create-ready-flash",
+                )}
                 onClick={() => {
                   void startCreate();
                 }}
                 disabled={uiLocked || !createReady}
+                onAnimationEnd={(e) => {
+                  if (e.animationName === "ats-create-ready-flash") {
+                    setCreateReadyPulse(false);
+                  }
+                }}
                 title={
                   config?.upload_to_server && serverConnected
                     ? "Vorgang erstellen und auf den Server hochladen"

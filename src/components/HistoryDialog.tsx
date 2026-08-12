@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +18,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import {
   deleteProcessedFiles,
@@ -31,6 +33,7 @@ import {
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
+import { QrHitMeta } from "@/components/QrHitMeta";
 import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { cn } from "@/lib/utils";
 
@@ -148,7 +151,9 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [qrScanOpen, setQrScanOpen] = useState(false);
   const confirmOpen = pendingConfirm != null;
+  const nestedOpen = confirmOpen || qrScanOpen;
 
   async function runConfirm() {
     if (!pendingConfirm || confirmBusy) return;
@@ -166,23 +171,26 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
       <Dialog
         open={open}
         onOpenChange={(v) => {
-          if (!v) setPendingConfirm(null);
+          if (!v) {
+            setPendingConfirm(null);
+            setQrScanOpen(false);
+          }
           onOpenChange(v);
         }}
       >
         <DialogContent
           className="!flex h-[min(85vh,640px)] w-[min(1100px,96vw)] max-w-none flex-col gap-3 overflow-hidden"
           onPointerDownOutside={(e) => {
-            if (confirmOpen) e.preventDefault();
+            if (nestedOpen) e.preventDefault();
           }}
           onFocusOutside={(e) => {
-            if (confirmOpen) e.preventDefault();
+            if (nestedOpen) e.preventDefault();
           }}
           onInteractOutside={(e) => {
-            if (confirmOpen) e.preventDefault();
+            if (nestedOpen) e.preventDefault();
           }}
           onEscapeKeyDown={(e) => {
-            if (confirmOpen) e.preventDefault();
+            if (nestedOpen) e.preventDefault();
           }}
         >
           <DialogHeader className="shrink-0">
@@ -214,6 +222,8 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               >
                 <VorgaengePanel
                   dialogOpen={open}
+                  qrScanOpen={qrScanOpen}
+                  onQrScanOpenChange={setQrScanOpen}
                   onRequestConfirm={setPendingConfirm}
                 />
               </TabsContent>
@@ -282,9 +292,13 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
 
 function VorgaengePanel({
   dialogOpen,
+  qrScanOpen,
+  onQrScanOpenChange,
   onRequestConfirm,
 }: {
   dialogOpen: boolean;
+  qrScanOpen: boolean;
+  onQrScanOpenChange: (open: boolean) => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
   const [entries, setEntries] = useState<VorgangEntry[]>([]);
@@ -295,6 +309,7 @@ function VorgaengePanel({
   const [ready, setReady] = useState(false);
   const [filesReady, setFilesReady] = useState(false);
   const [checked, setChecked] = useState<Set<number>>(new Set());
+  const [showShadow, setShowShadow] = useState(true);
   const searchRef = useRef(search);
   searchRef.current = search;
 
@@ -361,6 +376,37 @@ function VorgaengePanel({
   const selectedMode = selected
     ? entryModeLabel(selected.form_mode, selected.manual_entry_mode)
     : null;
+  const qrPreview = selected?.qr_preview?.path?.trim()
+    ? selected.qr_preview
+    : null;
+
+  useEffect(() => {
+    if (!qrPreview && qrScanOpen) onQrScanOpenChange(false);
+  }, [qrPreview, qrScanOpen, onQrScanOpenChange]);
+
+  useEffect(() => {
+    onQrScanOpenChange(false);
+    setShowShadow(true);
+  }, [selectedId, onQrScanOpenChange]);
+
+  const scanFrameAr =
+    qrPreview && qrPreview.width > 0 && qrPreview.height > 0
+      ? qrPreview.width / qrPreview.height
+      : 16 / 9;
+  const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${scanFrameAr} + 3rem)), calc(100vw - 2rem))`;
+
+  const metaMode =
+    selected?.video_mode === "handcam" || selected?.video_mode === "outside"
+      ? selected.video_mode
+      : "";
+  const metaFoto =
+    metaMode === "handcam"
+      ? Boolean(selected?.handcam_foto)
+      : Boolean(selected?.outside_foto);
+  const metaVideo =
+    metaMode === "handcam"
+      ? Boolean(selected?.handcam_video)
+      : Boolean(selected?.outside_video);
 
   function toggleCheck(id: number) {
     setChecked((prev) => {
@@ -500,9 +546,29 @@ function VorgaengePanel({
           {selected ? (
             <>
               <div className="shrink-0 space-y-1 border-b border-border/40 pb-2 text-xs">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <span className="font-medium">{selected.gast}</span>
-                  {selectedMode && <span className="text-muted">· {selectedMode}</span>}
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-medium">{selected.gast}</span>
+                    {selectedMode && (
+                      <span className="text-muted"> · {selectedMode}</span>
+                    )}
+                  </div>
+                  {qrPreview ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 shrink-0 px-0"
+                      title="QR-Scan-Frame anzeigen"
+                      aria-label="QR-Scan-Frame anzeigen"
+                      onClick={() => {
+                        setShowShadow(true);
+                        onQrScanOpenChange(true);
+                      }}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="text-muted">
                   {[
@@ -530,18 +596,6 @@ function VorgaengePanel({
                 )}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
-                {selected.qr_preview?.path?.trim() ? (
-                  <div className="mb-2 shrink-0 border-b border-border/40 pb-2">
-                    <div className="mb-1 text-[10px] uppercase tracking-wide text-muted">
-                      QR-Scan-Frame
-                    </div>
-                    <QrSpotlightPreview
-                      key={selected.qr_preview.path}
-                      preview={selected.qr_preview}
-                      className="max-h-[min(28vh,14rem)]"
-                    />
-                  </div>
-                ) : null}
                 <table className="w-full text-left text-xs">
                   <thead className="sticky top-0 bg-card">
                     <tr className="border-b border-border/60">
@@ -575,6 +629,68 @@ function VorgaengePanel({
                   </tbody>
                 </table>
               </div>
+
+              {qrPreview ? (
+                <Dialog open={qrScanOpen} onOpenChange={onQrScanOpenChange}>
+                  <DialogContent
+                    className="z-[60] flex w-auto max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-4"
+                    overlayClassName="z-[60]"
+                    style={{ width: scanDialogWidth }}
+                  >
+                    <DialogHeader className="shrink-0">
+                      <DialogTitle>QR-Scan</DialogTitle>
+                      <DialogDescription>
+                        Treffer-Frame dieses Vorgangs
+                      </DialogDescription>
+                    </DialogHeader>
+                    <QrSpotlightPreview
+                      key={qrPreview.path}
+                      preview={qrPreview}
+                      showSpotlight={showShadow}
+                      className="max-w-full"
+                    />
+                    <div className="grid w-full shrink-0 gap-3 min-[28rem]:grid-cols-[1fr_auto] min-[28rem]:items-stretch">
+                      <QrHitMeta
+                        className="min-w-0"
+                        displayName={selected.gast || null}
+                        customerHash={selected.kunden_id_hash}
+                        bookingHash={selected.booking_id_hash}
+                        media={
+                          metaMode || metaFoto || metaVideo
+                            ? {
+                                mode: metaMode,
+                                foto: metaFoto,
+                                video: metaVideo,
+                              }
+                            : null
+                        }
+                      />
+                      <div className="flex flex-col gap-3 min-[28rem]:w-[10.5rem] min-[28rem]:justify-between">
+                        <label
+                          htmlFor="history-qr-scan-shadow"
+                          className="flex h-fit cursor-pointer items-center gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+                        >
+                          <Switch
+                            id="history-qr-scan-shadow"
+                            checked={showShadow}
+                            onCheckedChange={setShowShadow}
+                          />
+                          <span className="text-sm font-medium text-foreground">
+                            Schatten
+                          </span>
+                        </label>
+                        <Button
+                          type="button"
+                          className="w-full min-[28rem]:mt-auto"
+                          onClick={() => onQrScanOpenChange(false)}
+                        >
+                          Schließen
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              ) : null}
             </>
           ) : ready ? (
             <div className="flex flex-1 items-center justify-center text-xs text-muted">
