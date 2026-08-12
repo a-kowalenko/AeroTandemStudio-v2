@@ -15,6 +15,9 @@ import { Checkbox } from "./ui/checkbox";
 
 const HOVER_PLAY_DELAY_MS = 180;
 const LINUX_HOVER_PLAY_DELAY_MS = 280;
+/** Sustained hover → pin (keep playing after mouse leave), like an explicit play click. */
+const HOVER_PIN_DELAY_MS = 1400;
+const LINUX_HOVER_PIN_DELAY_MS = 1600;
 /** Linux/WebKitGTK only: spurious `ended` while scrubbing. */
 const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
@@ -68,7 +71,8 @@ function formatClock(secs: number): string {
 
 /**
  * SD selector video tile: YouTube-style muted hover preview, pinned play
- * (keeps playing after mouse leave), scrub bar, mute/volume, fullscreen.
+ * (keeps playing after mouse leave — via click/scrub or sustained hover),
+ * scrub bar, mute/volume, fullscreen.
  * Selection is via click outside `[data-controls]` (Shift = range in parent).
  * Caption carries `data-marquee-ok` so the grid can start marquee there;
  * the media area never starts marquee.
@@ -97,6 +101,7 @@ export function SdVideoTile({
   const barRef = useRef<HTMLDivElement>(null);
   const immersiveBarRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<number | null>(null);
+  const pinTimerRef = useRef<number | null>(null);
   const immersiveRef = useRef(false);
   const linuxMediaGuards = useRef(isLinuxHost()).current;
   const draggingRef = useRef(false);
@@ -120,7 +125,11 @@ export function SdVideoTile({
   immersiveRef.current = immersive;
 
   const showVideo = wantPreview || pinned || immersive;
-  const showControls = hovering || pinned || playing || immersive;
+  /**
+   * Transport chrome: hover / immersive, or paused-while-pinned (resume affordance).
+   * While pinned play-without-hover, hide controls (incl. center pause) so the frame stays clear.
+   */
+  const showControls = hovering || immersive || (pinned && !playing);
 
   // Resolve media URL when preview is wanted.
   useEffect(() => {
@@ -165,7 +174,7 @@ export function SdVideoTile({
   // Marquee drag: freeze hover preview so tiles under the box don't autoplay.
   useEffect(() => {
     if (!selectionLocked) return;
-    clearHoverTimer();
+    clearHoverTimers();
     setHovering(false);
     setShowVolume(false);
     if (pinned || immersive) return;
@@ -194,15 +203,17 @@ export function SdVideoTile({
     apply(immersiveVideoRef.current);
   }, [muted, volume, src, immersive]);
 
-  // Autoplay when preview becomes ready.
+  // Autoplay for hover preview / immersive only.
+  // Do not depend on `pinned`: pause→setPinned(true) must not restart playback.
+  // Explicit pin-play is handled in `togglePlay` / `exitExpanded`.
   useEffect(() => {
     const v = immersive ? immersiveVideoRef.current : videoRef.current;
     if (!v || !src) return;
-    if (!(wantPreview || pinned || immersive)) return;
+    if (!(wantPreview || immersive)) return;
     void v.play().catch(() => {
       /* autoplay may fail until gesture */
     });
-  }, [src, wantPreview, pinned, immersive]);
+  }, [src, wantPreview, immersive]);
 
   // Sync playback into immersive player on enter.
   useEffect(() => {
@@ -279,6 +290,7 @@ export function SdVideoTile({
   useEffect(() => {
     return () => {
       if (hoverTimerRef.current != null) window.clearTimeout(hoverTimerRef.current);
+      if (pinTimerRef.current != null) window.clearTimeout(pinTimerRef.current);
       releaseImmersive(path);
     };
   }, [path]);
@@ -299,28 +311,45 @@ export function SdVideoTile({
     return v.currentTime >= dur - LINUX_ENDED_NEAR_END_SEC;
   }
 
-  function clearHoverTimer() {
+  function clearHoverTimers() {
     if (hoverTimerRef.current != null) {
       window.clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
+    }
+    if (pinTimerRef.current != null) {
+      window.clearTimeout(pinTimerRef.current);
+      pinTimerRef.current = null;
     }
   }
 
   function onMediaEnter() {
     if (selectionLocked || isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
-    clearHoverTimer();
+    clearHoverTimers();
+    const playDelay = linuxMediaGuards
+      ? LINUX_HOVER_PLAY_DELAY_MS
+      : HOVER_PLAY_DELAY_MS;
+    const pinDelay = linuxMediaGuards
+      ? LINUX_HOVER_PIN_DELAY_MS
+      : HOVER_PIN_DELAY_MS;
     hoverTimerRef.current = window.setTimeout(() => {
       if (selectionLocked || isImmersiveBlocked(path)) return;
       setWantPreview(true);
       onActivate();
-    }, linuxMediaGuards ? LINUX_HOVER_PLAY_DELAY_MS : HOVER_PLAY_DELAY_MS);
+    }, playDelay);
+    // Sustained hover ≈ play click: keep playing after mouse leave.
+    pinTimerRef.current = window.setTimeout(() => {
+      if (selectionLocked || isImmersiveBlocked(path)) return;
+      setWantPreview(true);
+      setPinned(true);
+      onActivate();
+    }, pinDelay);
   }
 
   function onMediaLeave() {
     setHovering(false);
     setShowVolume(false);
-    clearHoverTimer();
+    clearHoverTimers();
     if (pinned || immersive) return;
     setWantPreview(false);
     setPlaying(false);
@@ -535,7 +564,7 @@ export function SdVideoTile({
           onClick={(ev) => ev.stopPropagation()}
           onPointerDown={(ev) => ev.stopPropagation()}
         >
-          {(hovering || pinned || playing || immersive) && duration > 0 && (
+          {showControls && duration > 0 && (
             <div
               className={cn(
                 "px-1.5 pb-0.5 text-right font-mono text-white/90 drop-shadow",
