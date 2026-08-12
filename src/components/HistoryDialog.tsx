@@ -489,8 +489,9 @@ function VorgaengePanel({
                   <tr
                     key={e.id}
                     className={cn(
-                      "cursor-pointer border-b border-border/40 hover:bg-black/5",
-                      selectedId === e.id && "bg-black/8",
+                      "cursor-pointer border-b border-border/40 border-l-2 border-l-transparent hover:bg-muted/40",
+                      selectedId === e.id &&
+                        "bg-primary/10 hover:bg-primary/12 border-l-primary",
                     )}
                     onClick={() => setSelectedId(e.id)}
                   >
@@ -856,10 +857,18 @@ function MedienPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60">
-        <table className="w-full text-left text-xs">
+        <table className="w-full table-fixed text-left text-xs">
+          <colgroup>
+            <col className="w-10" />
+            <col />
+            <col className="w-[12%]" />
+            <col className="w-[14%]" />
+            <col className="w-[20%]" />
+            <col className="w-[20%]" />
+          </colgroup>
           <thead className="sticky top-0 bg-card">
             <tr className="border-b border-border/60">
-              <th className="w-8 p-2" />
+              <th className="p-2" />
               <th className="p-2">Dateiname</th>
               <th className="p-2">Typ</th>
               <th className="p-2">Größe</th>
@@ -869,20 +878,24 @@ function MedienPanel({
           </thead>
           <tbody>
             {filtered.map((e) => (
-              <tr key={e.id} className="border-b border-border/40 hover:bg-black/5">
-                <td className="p-2">
-                  <Checkbox
-                    checked={selected.has(e.id)}
-                    onCheckedChange={() => toggle(e.id)}
-                  />
+              <tr key={e.id} className="border-b border-border/40 hover:bg-muted/40">
+                <td className="p-2 align-middle">
+                  <div className="flex h-4 w-4 items-center justify-center">
+                    <Checkbox
+                      checked={selected.has(e.id)}
+                      onCheckedChange={() => toggle(e.id)}
+                    />
+                  </div>
                 </td>
-                <td className="max-w-[260px] truncate p-2">{e.filename}</td>
-                <td className="p-2">{e.media_type}</td>
-                <td className="p-2">{formatBytes(e.size_bytes)}</td>
-                <td className="p-2">
+                <td className="truncate p-2" title={e.filename}>
+                  {e.filename}
+                </td>
+                <td className="truncate p-2">{e.media_type}</td>
+                <td className="truncate p-2">{formatBytes(e.size_bytes)}</td>
+                <td className="truncate p-2">
                   {e.imported_at ? formatCreatedAt(e.imported_at) : "—"}
                 </td>
-                <td className="p-2">
+                <td className="truncate p-2">
                   {e.backed_up_at ? formatCreatedAt(e.backed_up_at) : "—"}
                 </td>
               </tr>
