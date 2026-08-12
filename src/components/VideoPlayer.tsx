@@ -82,6 +82,8 @@ const MIN_RANGE_MS = 100;
 /** Linux/WebKitGTK only: GStreamer often fires `ended` during/after seek. */
 const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
+/** Brief center overlay after touch tap (no persistent hover on touch). */
+const TOUCH_OVERLAY_MS = 1400;
 /** iOS Photos–like trim handle yellow */
 const TRIM_CAP = "#FFD60A";
 const TRIM_CAP_ACTIVE = "#FFE566";
@@ -120,7 +122,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [dragHandle, setDragHandle] = useState<TrimHandle | null>(null);
     const [src, setSrc] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
+    const [overlayVisible, setOverlayVisible] = useState(false);
     const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
+    const overlayHideTimerRef = useRef<number | null>(null);
+    const lastPointerTypeRef = useRef<string>("mouse");
     /** Linux-only: suppress spurious `ended` while/after scrubbing. */
     const linuxMediaGuards = useRef(isLinuxHost()).current;
     const draggingRef = useRef(false);
@@ -220,12 +226,39 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       [onTimeUpdate, durationMs],
     );
 
+    function clearOverlayHideTimer() {
+      if (overlayHideTimerRef.current != null) {
+        window.clearTimeout(overlayHideTimerRef.current);
+        overlayHideTimerRef.current = null;
+      }
+    }
+
+    function showOverlayTemporarily() {
+      clearOverlayHideTimer();
+      setOverlayVisible(true);
+      overlayHideTimerRef.current = window.setTimeout(() => {
+        setOverlayVisible(false);
+        overlayHideTimerRef.current = null;
+      }, TOUCH_OVERLAY_MS);
+    }
+
+    useEffect(() => () => clearOverlayHideTimer(), []);
+
+    useEffect(() => {
+      if (disabled || !src || loadError) {
+        clearOverlayHideTimer();
+        setOverlayVisible(false);
+      }
+    }, [disabled, src, loadError]);
+
     function togglePlay() {
       const v = videoRef.current;
       if (!v || disabled) return;
       if (v.paused) void v.play();
       else v.pause();
     }
+
+    const canTogglePlayback = Boolean(src && !disabled && !loadError);
 
     function msFromClientX(clientX: number): number | null {
       const bar = barRef.current;
@@ -290,12 +323,26 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     return (
       <div className={cn("flex flex-col gap-2", className)}>
-        <div className="relative aspect-video w-full overflow-hidden rounded-md bg-black">
+        <div
+          className="relative aspect-video w-full overflow-hidden rounded-md bg-black"
+          onMouseEnter={() => {
+            if (!canTogglePlayback) return;
+            clearOverlayHideTimer();
+            setOverlayVisible(true);
+          }}
+          onMouseLeave={() => {
+            clearOverlayHideTimer();
+            setOverlayVisible(false);
+          }}
+          onPointerDown={(e) => {
+            lastPointerTypeRef.current = e.pointerType;
+          }}
+        >
           {src ? (
             <video
               key={src}
               ref={videoRef}
-              className="h-full w-full object-contain"
+              className="pointer-events-none h-full w-full object-contain"
               src={src}
               playsInline
               preload="metadata"
@@ -343,8 +390,37 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               Kein Video
             </div>
           )}
+          {canTogglePlayback && (
+            <button
+              type="button"
+              className="group/play absolute inset-0 z-[1] flex cursor-pointer items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/70"
+              onClick={() => {
+                togglePlay();
+                if (lastPointerTypeRef.current === "touch") {
+                  showOverlayTemporarily();
+                }
+              }}
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none flex h-16 w-16 items-center justify-center rounded-full bg-black/50 text-white shadow-md transition-all duration-200",
+                  overlayVisible
+                    ? "scale-100 opacity-100"
+                    : "scale-95 opacity-0 group-focus-visible/play:scale-100 group-focus-visible/play:opacity-100",
+                )}
+                aria-hidden
+              >
+                {playing ? (
+                  <Pause className="h-10 w-10" />
+                ) : (
+                  <Play className="ml-0.5 h-10 w-10" />
+                )}
+              </span>
+            </button>
+          )}
           {loadError && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/70 px-4 text-center text-xs text-white/90">
+            <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center bg-black/70 px-4 text-center text-xs text-white/90">
               {loadError}
             </div>
           )}
