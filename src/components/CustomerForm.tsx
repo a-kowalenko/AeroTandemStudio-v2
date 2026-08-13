@@ -498,26 +498,40 @@ export function CustomerForm({
     () => crewNamesForRole(crewList, "videospringer"),
     [crewList],
   );
-  const tmBlockedByVs = Boolean(kunde.videospringer.trim());
-  const vsBlockedByTm = Boolean(kunde.tandemmaster.trim());
+  const mode = (kunde.video_mode || "") as "" | "handcam" | "outside";
+  // TM↔VS exclusion only when VS is relevant (Outside). Kept/default VS must not
+  // block TM selection in Handcam where the VS combobox is hidden.
+  const crewRoleExclusionActive = mode === "outside";
+  const tmBlockedByVs =
+    crewRoleExclusionActive && Boolean(kunde.videospringer.trim());
+  const vsBlockedByTm =
+    crewRoleExclusionActive && Boolean(kunde.tandemmaster.trim());
   const tandemmasterPinned = useMemo(() => {
     const pin = crewPinnedSelfOption(
       crewList,
       "tandemmaster",
       operatorName,
-      { disabled: crewNamesEqual(operatorName, kunde.videospringer) },
+      {
+        disabled:
+          crewRoleExclusionActive &&
+          crewNamesEqual(operatorName, kunde.videospringer),
+      },
     );
     return pin ? [pin] : [];
-  }, [crewList, operatorName, kunde.videospringer]);
+  }, [crewList, operatorName, kunde.videospringer, crewRoleExclusionActive]);
   const videospringerPinned = useMemo(() => {
     const pin = crewPinnedSelfOption(
       crewList,
       "videospringer",
       operatorName,
-      { disabled: crewNamesEqual(operatorName, kunde.tandemmaster) },
+      {
+        disabled:
+          crewRoleExclusionActive &&
+          crewNamesEqual(operatorName, kunde.tandemmaster),
+      },
     );
     return pin ? [pin] : [];
-  }, [crewList, operatorName, kunde.tandemmaster]);
+  }, [crewList, operatorName, kunde.tandemmaster, crewRoleExclusionActive]);
   const tmDisabledValues = useMemo(
     () => (tmBlockedByVs ? [kunde.videospringer.trim()] : []),
     [tmBlockedByVs, kunde.videospringer],
@@ -527,6 +541,7 @@ export function CustomerForm({
     [vsBlockedByTm, kunde.tandemmaster],
   );
   const tmConflict =
+    crewRoleExclusionActive &&
     crewNamesEqual(kunde.tandemmaster, kunde.videospringer) &&
     Boolean(kunde.tandemmaster.trim());
   const vsConflict = tmConflict;
@@ -534,7 +549,6 @@ export function CustomerForm({
   const crewSectionRef = useRef<HTMLDivElement>(null);
   const qrSuccessDialogWasOpen = useRef(false);
 
-  const mode = (kunde.video_mode || "") as "" | "handcam" | "outside";
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
   // Crew is independent of import/QR locks; only freeze during Vorgang create unless overridden.
@@ -633,7 +647,11 @@ export function CustomerForm({
   }
 
   function onTandemmasterSelect(v: string) {
-    if (crewNamesEqual(v, useKundeStore.getState().kunde.videospringer)) {
+    const k = useKundeStore.getState().kunde;
+    if (
+      k.video_mode === "outside" &&
+      crewNamesEqual(v, k.videospringer)
+    ) {
       setField("tandemmaster", "");
       return;
     }
@@ -643,7 +661,11 @@ export function CustomerForm({
   }
 
   function onVideospringerSelect(v: string) {
-    if (crewNamesEqual(v, useKundeStore.getState().kunde.tandemmaster)) {
+    const k = useKundeStore.getState().kunde;
+    if (
+      k.video_mode === "outside" &&
+      crewNamesEqual(v, k.tandemmaster)
+    ) {
       setField("videospringer", "");
       return;
     }
