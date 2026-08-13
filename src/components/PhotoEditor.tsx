@@ -449,8 +449,8 @@ export function PhotoEditor({
               className={cn(
                 "rounded-md px-2 py-1 text-[12px] font-medium tabular-nums transition",
                 aspectPreset === p.id
-                  ? "bg-white/15 text-white"
-                  : "text-white/45 hover:bg-white/8 hover:text-white/80",
+                  ? "bg-primary-soft text-foreground"
+                  : "text-muted hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8",
               )}
             >
               {p.label}
@@ -464,7 +464,7 @@ export function PhotoEditor({
             updateCrop(FULL_CROP);
           }}
           className={cn(
-            "h-5 text-[13px] font-medium text-[#8eb8b0] transition hover:text-white",
+            "h-5 text-[13px] font-medium text-accent transition hover:text-foreground",
             !cropPending && aspectPreset === "free" && "invisible",
           )}
         >

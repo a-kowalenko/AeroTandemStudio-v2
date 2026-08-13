@@ -35,9 +35,11 @@ export const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
     hideCloseButton?: boolean;
     overlayClassName?: string;
+    /** Classes for the fixed flex wrapper (alignment, chrome insets). */
+    containerClassName?: string;
   }
->(({ className, children, hideCloseButton = false, overlayClassName, ...props }, ref) => {
-  const layerZ = layerZIndexClass(overlayClassName, className);
+>(({ className, children, hideCloseButton = false, overlayClassName, containerClassName, ...props }, ref) => {
+  const layerZ = layerZIndexClass(overlayClassName, className, containerClassName);
 
   return (
     <DialogPortal>
@@ -50,6 +52,7 @@ export const DialogContent = React.forwardRef<
         className={cn(
           "pointer-events-none fixed inset-0 flex items-center justify-center p-4",
           layerZ,
+          containerClassName,
         )}
       >
         <DialogPrimitive.Content

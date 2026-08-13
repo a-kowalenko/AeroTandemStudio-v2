@@ -333,14 +333,14 @@ export function VideoCutter({
   const controls =
     mode === "trim" ? (
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className="font-mono text-[12px] tabular-nums text-white/55">
+        <p className="font-mono text-[12px] tabular-nums text-muted">
           {formatPlayerTimeMs(startMs)} –{" "}
           {formatPlayerTimeMs(endMs > 0 ? endMs : durationMs)}
         </p>
         <button
           type="button"
           onClick={resetRange}
-          className="text-[13px] font-medium text-[#8eb8b0] transition hover:text-white"
+          className="text-[13px] font-medium text-accent transition hover:text-foreground"
         >
           Zurücksetzen
         </button>
@@ -354,10 +354,10 @@ export function VideoCutter({
       />
     ) : (
       <div className="flex flex-col items-center gap-1 text-center">
-        <p className="font-mono text-[12px] tabular-nums text-white/55">
+        <p className="font-mono text-[12px] tabular-nums text-muted">
           Playhead {formatPlayerTimeMs(playheadMs)}
         </p>
-        <p className="text-[11px] text-white/35">
+        <p className="text-[11px] text-muted/80">
           Beide Teile ≥ 10 s — dann Fertig
         </p>
       </div>

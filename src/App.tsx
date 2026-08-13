@@ -1469,25 +1469,27 @@ function App() {
           </>
         }
       >
-        <div className="pointer-events-none flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
+        <div className="pointer-events-none flex min-w-0 items-center gap-2.5">
+          <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
             <img
               src="/logo.png"
               alt=""
-              className="h-6 w-6 object-contain"
+              className="h-[22px] w-[22px] object-contain"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <h1 className="font-display truncate text-base font-semibold tracking-tight text-primary">
+          <div className="flex min-h-[34px] min-w-0 flex-col justify-center gap-0.5">
+            <div className="flex min-w-0 items-baseline gap-x-1.5">
+              <h1 className="font-display truncate text-base font-semibold leading-none tracking-tight text-primary">
                 Aero Tandem Studio
               </h1>
-              <span className="text-[11px] text-muted">v{appVersion}</span>
+              <span className="shrink-0 text-[11px] leading-none text-muted">
+                v{appVersion}
+              </span>
             </div>
-            <p className="truncate text-xs text-muted">
+            <p className="truncate text-[10px] leading-none text-muted">
               {secondaryBackup &&
               (secondaryBackup.state === "started" ||
                 secondaryBackup.state === "progress")

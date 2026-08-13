@@ -38,16 +38,16 @@ export function AppChrome({ children, actions, className }: Props) {
         className,
       )}
     >
-      {/* py-2.5 (10px): logo top must match macOS trafficLightPosition.y — see macTrafficLights.ts */}
+      {/* py-[5px]: logo top must match macOS trafficLightPosition.y — see macTrafficLights.ts */}
       <div
-        className="flex min-w-0 flex-1 cursor-default items-center gap-3 px-4 py-2.5"
+        className="flex min-w-0 flex-1 cursor-default items-center gap-3 px-4 py-[5px]"
         data-tauri-drag-region
         onMouseDown={onDragMouseDown}
       >
         {children}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 py-2.5 pr-2 pl-1">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 py-[5px] pr-2 pl-1">
         {actions}
       </div>
 

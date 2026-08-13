@@ -29,6 +29,9 @@ type MediaEditShellProps<T extends string> = {
 /**
  * Apple Photos–style edit chrome:
  * top Cancel | title | Done · canvas · mode tools · bottom mode rail.
+ *
+ * Stacks under AppChrome (z-110) like Splash/Wizard so window controls stay usable;
+ * top inset keeps the panel clear of the sticky titlebar.
  */
 export function MediaEditShell<T extends string>({
   open,
@@ -53,10 +56,11 @@ export function MediaEditShell<T extends string>({
     >
       <DialogContent
         hideCloseButton
-        overlayClassName="bg-black/55 backdrop-blur-[3px] dark:bg-black/70"
+        overlayClassName="z-[100] bg-black/40 backdrop-blur-[3px] dark:bg-black/60"
+        containerClassName="z-[100] items-start justify-center pt-14 pb-3 sm:pt-16 sm:pb-4"
         className={cn(
-          "flex h-[min(92vh,calc(100dvh-1.25rem))] w-full max-w-[min(44rem,calc(100vw-1.25rem))] flex-col gap-0 overflow-hidden border-border/50 bg-[#0e1110] p-0 text-[#f2f5f4] shadow-2xl",
-          "grid-cols-none dark:bg-[#0a0d0c]",
+          "flex h-[min(88vh,calc(100dvh-4.75rem))] w-full max-w-[min(44rem,calc(100vw-1.25rem))] flex-col gap-0 overflow-hidden border-border bg-card p-0 text-foreground shadow-2xl",
+          "grid-cols-none",
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
@@ -72,11 +76,11 @@ export function MediaEditShell<T extends string>({
           <button
             type="button"
             onClick={onCancel}
-            className="justify-self-start rounded-md px-1.5 py-1 text-[15px] font-normal text-[#8eb8b0] transition hover:text-white"
+            className="justify-self-start rounded-md px-1.5 py-1 text-[15px] font-normal text-muted transition hover:text-foreground"
           >
             Abbrechen
           </button>
-          <h2 className="text-center text-[15px] font-semibold tracking-tight text-white">
+          <h2 className="text-center text-[15px] font-semibold tracking-tight text-foreground">
             {title}
           </h2>
           <button
@@ -86,8 +90,8 @@ export function MediaEditShell<T extends string>({
             className={cn(
               "justify-self-end rounded-md px-1.5 py-1 text-[15px] font-semibold transition",
               doneEnabled
-                ? "text-primary hover:brightness-125"
-                : "cursor-not-allowed text-white/25",
+                ? "text-primary hover:brightness-110"
+                : "cursor-not-allowed text-muted/40",
             )}
           >
             {doneLabel}
@@ -96,7 +100,7 @@ export function MediaEditShell<T extends string>({
 
         {/* Canvas — fixed flex share so mode changes don't resize the stage */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 sm:px-4">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-black">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[var(--ats-preview-stage)]">
             {children}
           </div>
         </div>
@@ -108,7 +112,7 @@ export function MediaEditShell<T extends string>({
 
         {/* Mode rail */}
         <nav
-          className="shrink-0 border-t border-white/10 px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+          className="shrink-0 border-t border-border px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
           aria-label="Bearbeitungsmodus"
         >
           <ul className="mx-auto flex max-w-md items-stretch justify-center gap-1 sm:gap-2">
@@ -123,14 +127,14 @@ export function MediaEditShell<T extends string>({
                     className={cn(
                       "flex w-full flex-col items-center gap-1 rounded-xl px-1 py-2 transition",
                       active
-                        ? "bg-white/10 text-white"
-                        : "text-white/45 hover:bg-white/5 hover:text-white/80",
+                        ? "bg-primary-soft text-foreground"
+                        : "text-muted hover:bg-black/5 hover:text-foreground dark:hover:bg-white/5",
                     )}
                   >
                     <span
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full transition",
-                        active ? "bg-primary text-primary-foreground" : "bg-white/8",
+                        active ? "bg-primary text-primary-foreground" : "bg-black/8 dark:bg-white/10",
                       )}
                     >
                       {m.icon}

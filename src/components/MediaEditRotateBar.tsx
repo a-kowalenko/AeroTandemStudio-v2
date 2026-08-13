@@ -34,7 +34,7 @@ export function MediaEditRotateBar({
         >
           <RotateCcw className="h-5 w-5" strokeWidth={1.75} />
         </ToolCircle>
-        <div className="min-w-[3.25rem] text-center font-mono text-sm tabular-nums text-white/70">
+        <div className="min-w-[3.25rem] text-center font-mono text-sm tabular-nums text-muted">
           {normalized}°
         </div>
         <ToolCircle
@@ -51,7 +51,7 @@ export function MediaEditRotateBar({
           disabled={disabled || normalized === 0}
           onClick={onReset}
           className={cn(
-            "h-5 text-[13px] font-medium text-[#8eb8b0] transition hover:text-white disabled:opacity-40",
+            "h-5 text-[13px] font-medium text-accent transition hover:text-foreground disabled:opacity-40",
             normalized === 0 && "invisible",
           )}
         >
@@ -61,7 +61,7 @@ export function MediaEditRotateBar({
         <div className="h-5" aria-hidden />
       )}
       {hint ? (
-        <p className="max-w-sm text-center text-[11px] leading-snug text-white/35">
+        <p className="max-w-sm text-center text-[11px] leading-snug text-muted">
           {hint}
         </p>
       ) : null}
@@ -88,8 +88,8 @@ function ToolCircle({
       title={label}
       aria-label={label}
       className={cn(
-        "flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition",
-        "hover:bg-white/16 active:scale-95",
+        "flex h-11 w-11 items-center justify-center rounded-full bg-black/8 text-foreground transition dark:bg-white/10",
+        "hover:bg-black/12 active:scale-95 dark:hover:bg-white/16",
         "disabled:pointer-events-none disabled:opacity-40",
       )}
     >
