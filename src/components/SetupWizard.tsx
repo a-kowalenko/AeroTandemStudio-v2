@@ -810,7 +810,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[90] flex items-center justify-center p-4 pt-16"
       style={{
         background:
           "radial-gradient(ellipse 70% 50% at 50% 30%, var(--ats-bg-glow-1), transparent 60%), color-mix(in srgb, var(--ats-bg) 92%, black)",

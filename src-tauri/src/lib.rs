@@ -122,6 +122,22 @@ pub fn run() {
             init_sd_monitor(app.handle());
             log_info("SD monitor initialized");
             log_info(&format!("Media HTTP server at {media_base_url}"));
+
+            // Win/Linux: frameless (`decorations: false` in conf) + custom titlebar in React.
+            // macOS: keep native traffic lights with a transparent overlay titlebar.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::{Manager, TitleBarStyle};
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(e) = window.set_decorations(true) {
+                        eprintln!("macOS set_decorations failed: {e}");
+                    }
+                    if let Err(e) = window.set_title_bar_style(TitleBarStyle::Overlay) {
+                        eprintln!("macOS set_title_bar_style failed: {e}");
+                    }
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

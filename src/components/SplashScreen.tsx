@@ -34,7 +34,7 @@ export function SplashScreen({ open, status, version, error, className }: Props)
   return (
     <div
       className={cn(
-        "fixed inset-0 z-[100] flex items-center justify-center transition-opacity duration-300",
+        "fixed inset-0 z-[100] flex items-center justify-center pt-14 transition-opacity duration-300",
         fading ? "opacity-0" : "opacity-100",
         className,
       )}

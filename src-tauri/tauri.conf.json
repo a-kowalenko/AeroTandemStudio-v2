@@ -12,11 +12,16 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Aero Tandem Studio",
         "width": 1280,
         "height": 860,
         "minWidth": 960,
-        "minHeight": 640
+        "minHeight": 640,
+        "decorations": false,
+        "shadow": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {

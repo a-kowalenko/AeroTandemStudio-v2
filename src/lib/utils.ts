@@ -11,12 +11,8 @@ export function isCancellationError(error: unknown): boolean {
   return /cancel|abgebrochen|abbruch/i.test(msg);
 }
 
-/**
- * Host OS is Linux (WebKitGTK). Used to gate GStreamer/WebKit-only media workarounds
- * so Windows (WebView2) and macOS (WKWebView) keep their previous playback behavior.
- */
-export function isLinuxHost(): boolean {
-  if (typeof navigator === "undefined") return false;
+function hostPlatformString(): string {
+  if (typeof navigator === "undefined") return "";
   const ua = navigator.userAgent || "";
   const plat =
     (
@@ -26,5 +22,24 @@ export function isLinuxHost(): boolean {
     ).userAgentData?.platform ||
     navigator.platform ||
     "";
-  return /linux/i.test(ua) || /linux/i.test(plat);
+  return `${ua} ${plat}`;
+}
+
+/**
+ * Host OS is Linux (WebKitGTK). Used to gate GStreamer/WebKit-only media workarounds
+ * so Windows (WebView2) and macOS (WKWebView) keep their previous playback behavior.
+ */
+export function isLinuxHost(): boolean {
+  return /linux/i.test(hostPlatformString());
+}
+
+/** Host OS is macOS (WKWebView). */
+export function isMacOsHost(): boolean {
+  const s = hostPlatformString();
+  return /mac/i.test(s) || /darwin/i.test(s);
+}
+
+/** Host OS is Windows (WebView2). */
+export function isWindowsHost(): boolean {
+  return /win/i.test(hostPlatformString());
 }

@@ -14,7 +14,15 @@
 | Storage | SQLite (ab Phase 5) |
 | SMB Upload | `smb2` crate (Phase 10) |
 | Auto-Update | Tauri Updater Plugin (Endpoint-Stub bis Production-Feed) |
-| Plattformen | Windows 10+, macOS |
+| Plattformen | Windows 10+, macOS, Linux |
+
+## Window Chrome
+
+Custom titlebar (Phase 11 polish):
+
+- **Windows / Linux:** `decorations: false` + Min/Max/Close in `AppChrome` (`src/components/chrome/`)
+- **macOS:** native traffic lights with `TitleBarStyle::Overlay` + left inset (no custom close buttons)
+- Rollback: `localStorage.setItem('ats-custom-titlebar', '0')` then reload
 
 ## Projektstruktur
 

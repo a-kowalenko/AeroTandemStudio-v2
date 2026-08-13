@@ -35,6 +35,7 @@ import {
 } from "./components/IntroMuxFallbackDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { SplashScreen } from "./components/SplashScreen";
+import { AppChrome } from "./components/chrome/AppChrome";
 import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { SdModeSelector } from "./components/SdModeSelector";
@@ -1339,26 +1340,80 @@ function App() {
         error={splashError}
       />
 
-      <header className="ats-header-bg sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 backdrop-blur-md">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
+      <AppChrome
+        actions={
+          <>
+            <SdDriveSelector
+              disabled={uiLocked || !ready}
+              onOpenDrive={(drive) => void openSdDriveFromHeader(drive)}
+              onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
+            />
+            <SdModeSelector
+              visible={Boolean(config?.sd_auto_backup)}
+              disabled={uiLocked}
+            />
+            <ServerStatusIndicator />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setProcessedOpen(true)}
+              disabled={busy || !ready}
+              title="Verarbeitete Dateien"
+            >
+              <FolderClock className="h-4 w-4" />
+              <span className="hidden sm:inline">Historie</span>
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleSessionReset}
+              disabled={uiLocked || !ready}
+              title="Formular und Medien zurücksetzen"
+              className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Zurücksetzen</span>
+            </Button>
+            <SettingsCluster
+              disabled={!ready}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </>
+        }
+      >
+        <div className="flex min-w-0 items-center gap-3" data-tauri-drag-region>
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20"
+            data-tauri-drag-region
+          >
             <img
               src="/logo.png"
               alt=""
               className="h-6 w-6 object-contain"
+              data-tauri-drag-region
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <h1 className="font-display truncate text-base font-semibold tracking-tight text-primary">
+          <div className="min-w-0" data-tauri-drag-region>
+            <div
+              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
+              data-tauri-drag-region
+            >
+              <h1
+                className="font-display truncate text-base font-semibold tracking-tight text-primary"
+                data-tauri-drag-region
+              >
                 Aero Tandem Studio
               </h1>
-              <span className="text-[11px] text-muted">v{appVersion}</span>
+              <span className="text-[11px] text-muted" data-tauri-drag-region>
+                v{appVersion}
+              </span>
             </div>
-            <p className="truncate text-xs text-muted">
+            <p className="truncate text-xs text-muted" data-tauri-drag-region>
               {secondaryBackup &&
               (secondaryBackup.state === "started" ||
                 secondaryBackup.state === "progress")
@@ -1376,46 +1431,7 @@ function App() {
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <SdDriveSelector
-            disabled={uiLocked || !ready}
-            onOpenDrive={(drive) => void openSdDriveFromHeader(drive)}
-            onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
-          />
-          <SdModeSelector
-            visible={Boolean(config?.sd_auto_backup)}
-            disabled={uiLocked}
-          />
-          <ServerStatusIndicator />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setProcessedOpen(true)}
-            disabled={busy || !ready}
-            title="Verarbeitete Dateien"
-          >
-            <FolderClock className="h-4 w-4" />
-            <span className="hidden sm:inline">Historie</span>
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleSessionReset}
-            disabled={uiLocked || !ready}
-            title="Formular und Medien zurücksetzen"
-            className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Zurücksetzen</span>
-          </Button>
-          <SettingsCluster
-            disabled={!ready}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
-        </div>
-      </header>
+      </AppChrome>
 
       <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
