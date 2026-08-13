@@ -1383,37 +1383,25 @@ function App() {
           </>
         }
       >
-        <div className="flex min-w-0 items-center gap-3" data-tauri-drag-region>
-          <div
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20"
-            data-tauri-drag-region
-          >
+        <div className="pointer-events-none flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
             <img
               src="/logo.png"
               alt=""
               className="h-6 w-6 object-contain"
-              data-tauri-drag-region
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = "none";
               }}
             />
           </div>
-          <div className="min-w-0" data-tauri-drag-region>
-            <div
-              className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5"
-              data-tauri-drag-region
-            >
-              <h1
-                className="font-display truncate text-base font-semibold tracking-tight text-primary"
-                data-tauri-drag-region
-              >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <h1 className="font-display truncate text-base font-semibold tracking-tight text-primary">
                 Aero Tandem Studio
               </h1>
-              <span className="text-[11px] text-muted" data-tauri-drag-region>
-                v{appVersion}
-              </span>
+              <span className="text-[11px] text-muted">v{appVersion}</span>
             </div>
-            <p className="truncate text-xs text-muted" data-tauri-drag-region>
+            <p className="truncate text-xs text-muted">
               {secondaryBackup &&
               (secondaryBackup.state === "started" ||
                 secondaryBackup.state === "progress")

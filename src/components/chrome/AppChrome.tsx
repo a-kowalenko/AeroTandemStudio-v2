@@ -32,13 +32,13 @@ export function AppChrome({ children, actions, className }: Props) {
   return (
     <header
       className={cn(
-        "ats-header-bg sticky top-0 z-[110] flex items-stretch border-b border-border backdrop-blur-md",
+        "ats-header-bg sticky top-0 z-[110] flex select-none items-stretch border-b border-border backdrop-blur-md",
         macOverlayInset && "pl-[76px]",
         className,
       )}
     >
       <div
-        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-2.5"
+        className="flex min-w-0 flex-1 cursor-default items-center gap-3 px-4 py-2.5"
         data-tauri-drag-region
         onMouseDown={onDragMouseDown}
       >

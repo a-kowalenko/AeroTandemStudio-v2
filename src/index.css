@@ -154,6 +154,13 @@
     background: var(--ats-header);
   }
 
+  /* Titlebar drag targets: no text caret / selection (native chrome feel). */
+  [data-tauri-drag-region] {
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
   .ats-sidebar-bg {
     background: var(--ats-sidebar);
   }
