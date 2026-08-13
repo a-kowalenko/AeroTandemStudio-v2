@@ -968,7 +968,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 ? "mt-5"
                 : isTrimChrome && trimEditable
                   ? "mt-7"
-                  : null,
+                  : showSplitFilmstrip
+                    ? "mt-7"
+                    : null,
             )}
             style={
               isTrimChrome && trimEditable
@@ -976,7 +978,13 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     paddingLeft: TRIM_CAP_GUTTER,
                     paddingRight: TRIM_CAP_GUTTER,
                   }
-                : undefined
+                : showSplitFilmstrip
+                  ? {
+                      /* Room for playhead head so it isn’t clipped at 0%/100%. */
+                      paddingLeft: 6,
+                      paddingRight: 6,
+                    }
+                  : undefined
             }
           >
             <div
@@ -984,10 +992,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               className={cn(
                 "relative touch-none select-none overflow-visible",
                 fillAvailable
-                  ? "h-12"
+                  ? isTrimChrome && trimEditable
+                    ? "h-14"
+                    : showSplitFilmstrip
+                      ? "h-14"
+                      : "h-12"
                   : isTrimChrome && trimEditable
                     ? "h-14 cursor-default"
-                    : "h-10 cursor-pointer overflow-hidden rounded-md",
+                    : showSplitFilmstrip
+                      ? "h-14 cursor-pointer"
+                      : "h-10 cursor-pointer overflow-hidden rounded-md",
                 timelineInteractive
                   ? isTrimChrome && trimEditable
                     ? "cursor-default"
@@ -1130,7 +1144,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 </>
               ) : (
                 <>
-                  <div className="absolute inset-0 overflow-hidden rounded-md">
+                  <div className="absolute inset-0 overflow-hidden rounded-md ring-1 ring-inset ring-white/10">
                     <div className="absolute inset-0 flex bg-neutral-800">
                       {filmstripFrames?.map((url, i) => (
                         <div
@@ -1140,20 +1154,63 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                         />
                       ))}
                     </div>
+                    {/* Soft dim left/right with a narrow undimmed seam at the cut */}
+                    <div
+                      className="pointer-events-none absolute inset-y-0 left-0 z-[1] bg-black/30"
+                      style={{
+                        width: `${Math.max(0, playhead - 0.006) * 100}%`,
+                      }}
+                    />
+                    <div
+                      className="pointer-events-none absolute inset-y-0 right-0 z-[1] bg-black/30"
+                      style={{
+                        left: `${Math.min(1, playhead + 0.006) * 100}%`,
+                      }}
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-px bg-white/25" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-px bg-white/25" />
                     {keyframeMarks?.map((r) => (
                       <div
                         key={`kf-split-${r}`}
-                        className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
+                        className="pointer-events-none absolute inset-y-[28%] z-[2] w-px bg-white/15"
                         style={{ left: `${r * 100}%` }}
                       />
                     ))}
+                  </div>
+
+                  <div
+                    className="pointer-events-none absolute z-20"
+                    style={{
+                      left: `${playhead * 100}%`,
+                      top: -3,
+                      bottom: -3,
+                      transform: `translateX(-50%)${
+                        dragging && dragHandle == null ? " scale(1.1)" : ""
+                      }`,
+                    }}
+                  >
                     <div
-                      className={cn(
-                        "pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-white",
-                        emphasizePlayhead && "w-1 bg-sky-300",
-                      )}
-                      style={{ left: `${playhead * 100}%` }}
+                      className="mx-auto h-2.5 w-2.5 rounded-full shadow"
+                      style={{
+                        backgroundColor: emphasizePlayhead
+                          ? TRIM_CAP
+                          : "#ffffff",
+                      }}
                     />
+                    <div
+                      className="mx-auto w-[2px] shadow"
+                      style={{
+                        height: "calc(100% - 10px)",
+                        backgroundColor: emphasizePlayhead
+                          ? TRIM_CAP
+                          : "#ffffff",
+                      }}
+                    />
+                    {dragging && dragHandle == null ? (
+                      <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
+                        {formatMs(currentMs)}
+                      </div>
+                    ) : null}
                   </div>
                 </>
               )}
