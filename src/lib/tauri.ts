@@ -709,6 +709,35 @@ export async function rotatePhoto(opts: {
   });
 }
 
+export type PhotoCropResult = {
+  output: string;
+  overwritten: boolean;
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+};
+
+export async function cropPhoto(opts: {
+  input: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  output?: string | null;
+  overwrite?: boolean;
+}): Promise<PhotoCropResult> {
+  return invoke<PhotoCropResult>("crop_photo", {
+    input: opts.input,
+    x: opts.x,
+    y: opts.y,
+    w: opts.w,
+    h: opts.h,
+    output: opts.output ?? null,
+    overwrite: opts.overwrite ?? true,
+  });
+}
+
 export type UndoPhotoEditResult = {
   restore_path: string;
 };

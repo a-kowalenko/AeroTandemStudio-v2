@@ -319,6 +319,39 @@ pub async fn rotate_photo(
     .map_err(|e| e.to_string())?
 }
 
+/// Crop a photo working copy (normalized rect 0–1 after EXIF bake).
+#[tauri::command]
+pub async fn crop_photo(
+    input: String,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    output: Option<String>,
+    overwrite: Option<bool>,
+) -> Result<crate::media::crop::PhotoCropResult, String> {
+    if input.trim().is_empty() {
+        return Err("input path is required".into());
+    }
+    if !Path::new(&input).is_file() {
+        return Err(format!("input file not found: {input}"));
+    }
+    let overwrite = overwrite.unwrap_or(true);
+    logging::info(
+        "edit",
+        format!(
+            "Photo crop: {} rect=({x:.3},{y:.3},{w:.3},{h:.3}) overwrite={overwrite}",
+            file_name(&input)
+        ),
+    );
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::media::crop::crop_photo(&input, x, y, w, h, output.as_deref(), overwrite)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn undo_photo_edit_for_path(
     path: String,

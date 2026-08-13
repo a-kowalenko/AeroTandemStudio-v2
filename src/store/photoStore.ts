@@ -19,7 +19,7 @@ export type PhotoItem = {
   camera_model?: string;
 };
 
-export type PhotoEditMarkKind = "rotate";
+export type PhotoEditMarkKind = "rotate" | "crop";
 
 function normPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
@@ -62,6 +62,7 @@ type PhotoListState = {
     patch: Partial<Pick<PhotoItem, "width" | "height" | "sizeBytes">>,
   ) => void;
   markRotated: (path: string) => void;
+  markCropped: (path: string) => void;
   clearEditMarksFor: (paths: string[]) => void;
   clearAllEditMarks: () => void;
   bumpMediaRevision: (path: string) => void;
@@ -302,6 +303,14 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
     const k = normPath(path);
     set({
       editMarks: { ...get().editMarks, [k]: "rotate" },
+      mediaRevision: bumpRev(get().mediaRevision, path),
+    });
+  },
+
+  markCropped: (path) => {
+    const k = normPath(path);
+    set({
+      editMarks: { ...get().editMarks, [k]: "crop" },
       mediaRevision: bumpRev(get().mediaRevision, path),
     });
   },

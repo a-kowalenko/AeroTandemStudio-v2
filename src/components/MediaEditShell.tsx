@@ -102,7 +102,7 @@ export function MediaEditShell<T extends string>({
         </div>
 
         {/* Mode tools — fixed height keeps canvas size stable across modes */}
-        <div className="flex h-[5.25rem] shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4">
+        <div className="flex h-[6.25rem] shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4">
           {controls}
         </div>
 

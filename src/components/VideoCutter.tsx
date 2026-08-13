@@ -380,6 +380,14 @@ export function VideoCutter({
           className="min-h-0 flex-1"
           chrome={trimActive ? "trim" : "playback"}
           emphasizePlayhead={mode === "split"}
+          snapSeekMs={
+            mode === "split" && keyframesSecs.length > 0
+              ? (ms) => {
+                  const nearest = nearestKeyframe(keyframesSecs, ms / 1000);
+                  return nearest != null ? nearest * 1000 : ms;
+                }
+              : undefined
+          }
           srcPath={open ? videoPath : null}
           cacheKey={
             videoPath

@@ -886,16 +886,6 @@ export function VideoPreview({
                 type="button"
                 size="sm"
                 variant="secondary"
-                disabled={busy || qrBusy}
-                onClick={() => void handleQrScan()}
-              >
-                <QrCode className="h-3.5 w-3.5" />
-                QR scannen
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
                 disabled={busy || !onCutClip}
                 onClick={() => onCutClip?.(current.path, activeClip)}
               >
@@ -915,6 +905,16 @@ export function VideoPreview({
                   Bearbeitung rückgängig
                 </Button>
               )}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={busy || qrBusy}
+                onClick={() => void handleQrScan()}
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                QR scannen
+              </Button>
               <Button
                 type="button"
                 size="sm"

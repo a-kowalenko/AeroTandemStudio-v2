@@ -1861,12 +1861,20 @@ function App() {
         }}
         onComplete={(result: PhotoEditorResult) => {
           if (!photoEditorPath || result.action === "cancel") return;
-          if (result.action === "apply_rotate") {
-            void photoEdits.applyRotate(photoEditorPath, result.degrees, {
-              onBusyChange: setBusy,
-              onProgressReset: resetProgress,
-              onStatus: setStatus,
-            });
+          if (result.action === "apply_edits") {
+            void photoEdits.applyEdits(
+              photoEditorPath,
+              {
+                degrees: result.degrees,
+                crop: result.crop,
+                order: result.order,
+              },
+              {
+                onBusyChange: setBusy,
+                onProgressReset: resetProgress,
+                onStatus: setStatus,
+              },
+            );
           }
         }}
       />

@@ -43,3 +43,33 @@ export function previewRotateMediaStyle(
     transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
   };
 }
+
+/**
+ * CSS rotate when the parent frame is already sized to the *post*-rotation aspect
+ * (e.g. PhotoEditor contain-box). Uses px so Tailwind w/h-full cannot fight percentages.
+ */
+export function previewRotateMediaStyleInFrame(
+  degrees: number,
+  frameW: number,
+  frameH: number,
+): CSSProperties | undefined {
+  if (degrees === 0) return undefined;
+  if (!(frameW > 0 && frameH > 0)) {
+    return { transform: `rotate(${degrees}deg)` };
+  }
+  const swapped = isQuarterTurnSwap(degrees);
+  // Pre-rotate box = frame with axes swapped when quarter-turn.
+  const mediaW = swapped ? frameH : frameW;
+  const mediaH = swapped ? frameW : frameH;
+  return {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: mediaW,
+    height: mediaH,
+    maxWidth: "none",
+    maxHeight: "none",
+    objectFit: "fill",
+    transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+  };
+}

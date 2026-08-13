@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 20 Medien-Drehen ist erledigt.)*
+*(Phase 20–21: Medien-Drehen + Foto-Crop erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
 
 ---
@@ -1035,6 +1035,39 @@ src/hooks/usePhotoEditApply.ts
 
 ---
 
+### Phase 21 — Foto-Zuschnitt (Crop)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 20 (PhotoEditor, photo_edit_undo)  
+**Ziel:** Freies Zuschneiden der Foto-Working-Copy im Bearbeiten-Dialog.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Koordinaten | Normiert 0–1 nach EXIF-Bake |
+| Apply | `image`-Crate Crop + Undo wie Rotate |
+| UI | Mode „Zuschnitt“ + Overlay (Maske, Handles) |
+| Video-Crop / Batch / Aspect-Presets | Out of scope v1 |
+
+#### Aufgaben
+
+- [x] `media/crop.rs` — `crop_photo` + Unit-Tests + Command
+- [x] `PhotoCropOverlay` + Mode in `PhotoEditor`
+- [x] `usePhotoEditApply.applyCrop` + Marks/Revision
+- [x] Preview-Badge Crop/Rot
+
+#### Referenzen
+
+```
+src-tauri/src/media/crop.rs
+src/components/PhotoCropOverlay.tsx
+src/components/PhotoEditor.tsx
+src/hooks/usePhotoEditApply.ts
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1197,6 +1230,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 18 | Standard-Medienordner anlegen | ✅ |
 | 19 | Operator-Identität (Ich / Favorit) | ✅ |
 | 20 | Medien-Bearbeitung: Drehen | ✅ |
+| 21 | Foto-Zuschnitt (Crop) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1215,4 +1249,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-12 · Projekt: Aero Tandem Studio v2 · Phase 20 Medien-Drehen*
+*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 21 Foto-Crop*

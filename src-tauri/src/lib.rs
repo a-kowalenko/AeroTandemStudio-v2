@@ -18,9 +18,10 @@ use commands::config::{
     reload_config, reset_config, save_config, validate_kunde_cmd, ConfigState,
 };
 use commands::media::{
-    clear_photo_edit_undo, clear_working_session, delete_working_copy, discard_photo_edit_undo_for_path,
-    expand_media_paths, get_file_sizes, get_media_server_base, get_working_dir, has_photo_edit_undo,
-    import_photos, list_photo_edit_marks, media_file_url, rotate_photo, undo_photo_edit_for_path,
+    clear_photo_edit_undo, clear_working_session, crop_photo, delete_working_copy,
+    discard_photo_edit_undo_for_path, expand_media_paths, get_file_sizes, get_media_server_base,
+    get_working_dir, has_photo_edit_undo, import_photos, list_photo_edit_marks, media_file_url,
+    rotate_photo, undo_photo_edit_for_path,
 };
 use commands::qr::{
     discard_qr_preview_file, scan_qr_photo, scan_qr_photo_followups, scan_qr_photos, scan_qr_video,
@@ -166,6 +167,7 @@ pub fn run() {
             get_file_sizes,
             import_photos,
             rotate_photo,
+            crop_photo,
             undo_photo_edit_for_path,
             has_photo_edit_undo,
             list_photo_edit_marks,

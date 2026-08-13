@@ -275,7 +275,7 @@ export function PhotoPreview({
                 />
                 {getEditMark(p.path) && (
                   <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
-                    Rot
+                    {getEditMark(p.path) === "crop" ? "Crop" : "Rot"}
                   </span>
                 )}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 px-0.5 pb-0.5">

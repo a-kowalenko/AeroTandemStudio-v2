@@ -45,7 +45,7 @@ pub fn normalize_rotation_degrees(degrees: i32) -> Result<u32, PhotoRotateError>
     Ok(d as u32)
 }
 
-fn read_exif_orientation(path: &Path) -> u32 {
+pub(crate) fn read_exif_orientation(path: &Path) -> u32 {
     let Ok(file) = fs::File::open(path) else {
         return 1;
     };
@@ -87,7 +87,7 @@ pub fn rotate_dynamic(img: DynamicImage, degrees: u32) -> Result<DynamicImage, P
     }
 }
 
-fn detect_format(path: &Path) -> ImageFormat {
+pub(crate) fn detect_format(path: &Path) -> ImageFormat {
     ImageFormat::from_path(path).unwrap_or_else(|_| {
         match path
             .extension()
@@ -117,7 +117,11 @@ fn temp_rotate_path(photo_path: &str) -> PathBuf {
     path.with_file_name(format!("{stem}.__temp_rotate__.{ext}"))
 }
 
-fn save_image(img: &DynamicImage, path: &Path, format: ImageFormat) -> Result<(), PhotoRotateError> {
+pub(crate) fn save_image(
+    img: &DynamicImage,
+    path: &Path,
+    format: ImageFormat,
+) -> Result<(), PhotoRotateError> {
     match format {
         ImageFormat::Jpeg => {
             let rgb = img.to_rgb8();
