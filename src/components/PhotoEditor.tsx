@@ -42,8 +42,12 @@ type PhotoEditorProps = {
   onComplete: (result: PhotoEditorResult) => void;
 };
 
-/** iOS Photos: brief idle after crop drag before viewport settles to the new size. */
-const CROP_SETTLE_MS = 320;
+/** Idle after crop drag before viewport settles (iOS-style, pre-commit). */
+const CROP_SETTLE_MS = 1400;
+/** Frame / inner / shadow transition while settling or unsettling. */
+const CROP_LAYOUT_MS = 350;
+const CROP_LAYOUT_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const CROP_LAYOUT_TRANSITION = `width ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, height ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, left ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, top ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}`;
 
 const PHOTO_MODES: MediaEditModeOption<PhotoEditMode>[] = [
   {
@@ -130,8 +134,9 @@ function previewContentSize(
 /**
  * Crop + rotate pendings survive mode switches; Fertig commits both in edit order.
  *
- * After a short idle, crop visually settles to the new size (iOS-style) without
- * writing the file — so rotate ↔ crop can still be tweaked until Fertig.
+ * After idle, crop visually settles to the new size (iOS-style) without
+ * writing the file — overlay chrome stays on the crop edge; drag unsettles
+ * and reveals outside pixels under the shadow.
  */
 export function PhotoEditor({
   open,
@@ -154,10 +159,14 @@ export function PhotoEditor({
   const [aspectPreset, setAspectPreset] = useState<CropAspectPreset>("free");
   const [editOrder, setEditOrder] = useState<PhotoEditOrder | null>(null);
   const [cropSettled, setCropSettled] = useState(false);
+  const [gesturing, setGesturing] = useState(false);
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(
     null,
   );
-  const [framePx, setFramePx] = useState<{ w: number; h: number } | null>(null);
+  const [stageSize, setStageSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
 
   editOrderRef.current = editOrder;
   cropRectRef.current = cropRect;
@@ -188,13 +197,14 @@ export function PhotoEditor({
   function resetSession() {
     clearSettleTimer();
     gesturingRef.current = false;
+    setGesturing(false);
     setPendingRotateDeg(0);
     setCropRect(FULL_CROP);
     setAspectPreset("free");
     setEditOrder(null);
     setCropSettled(false);
     setNaturalSize(null);
-    setFramePx(null);
+    setStageSize({ w: 0, h: 0 });
     setMode("crop");
   }
 
@@ -214,12 +224,16 @@ export function PhotoEditor({
     editOrder ??
     (cropPending ? "crop-first" : rotatePending ? "rotate-first" : null);
 
-  // iOS settle: cropped viewport after idle, or immediately in rotate mode.
+  // Settled crop viewport after idle, or immediately in rotate mode.
   const showCroppedViewport =
     cropPending && (cropSettled || mode === "rotate");
 
   const showRotatePreview =
-    rotatePending && !(order === "crop-first" && mode === "crop" && !showCroppedViewport);
+    rotatePending &&
+    !(order === "crop-first" && mode === "crop" && !showCroppedViewport);
+
+  /** Crop-mode uses unified full→crop layout (overlay always on real rect). */
+  const useUnifiedCropLayout = mode === "crop";
 
   const content = naturalSize
     ? previewContentSize(
@@ -228,30 +242,40 @@ export function PhotoEditor({
         order,
         pendingRotateDeg,
         showCroppedViewport,
-        showRotatePreview,
+        useUnifiedCropLayout ? false : showRotatePreview,
       )
     : { w: 0, h: 0 };
 
+  // Derive frame in-render so settle/unsettle never flashes a stale size.
+  const framePx =
+    content.w > 0 && content.h > 0 && stageSize.w > 0 && stageSize.h > 0
+      ? (() => {
+          const next = containSize(
+            stageSize.w,
+            stageSize.h,
+            content.w,
+            content.h,
+          );
+          return next.w > 0 && next.h > 0 ? next : null;
+        })()
+      : null;
+
   useEffect(() => {
     const stage = stageRef.current;
-    if (!stage || !naturalSize || content.w <= 0 || content.h <= 0) {
-      setFramePx(null);
+    if (!stage || !open) {
       return;
     }
     const update = () => {
-      const next = containSize(
-        stage.clientWidth,
-        stage.clientHeight,
-        content.w,
-        content.h,
-      );
-      setFramePx(next.w > 0 && next.h > 0 ? next : null);
+      setStageSize({
+        w: stage.clientWidth,
+        h: stage.clientHeight,
+      });
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(stage);
     return () => ro.disconnect();
-  }, [naturalSize, content.w, content.h, open]);
+  }, [open, naturalSize]);
 
   function ensureOrder(next: PhotoEditOrder) {
     setEditOrder((prev) => prev ?? next);
@@ -279,11 +303,13 @@ export function PhotoEditor({
 
   function beginCropGesture() {
     gesturingRef.current = true;
+    setGesturing(true);
     unsettleCrop();
   }
 
   function endCropGesture() {
     gesturingRef.current = false;
+    setGesturing(false);
     if (isCropDirty(cropRectRef.current)) {
       scheduleSettle();
     }
@@ -431,15 +457,30 @@ export function PhotoEditor({
       />
     );
 
-  const showCropOverlay =
-    mode === "crop" && !showCroppedViewport && framePx != null;
-  const showFullWithRotate = !showCroppedViewport && showRotatePreview;
+  const showFullWithRotate = !showCroppedViewport && showRotatePreview && !useUnifiedCropLayout;
 
   const rotateMediaStyle = previewRotateMediaStyleInFrame(
     pendingRotateDeg,
     framePx?.w ?? 1,
     framePx?.h ?? 1,
   );
+
+  const settledCrop = useUnifiedCropLayout && showCroppedViewport;
+  const innerStyle = settledCrop
+    ? {
+        width: `${100 / cropRect.w}%`,
+        height: `${100 / cropRect.h}%`,
+        left: `${(-cropRect.x / cropRect.w) * 100}%`,
+        top: `${(-cropRect.y / cropRect.h) * 100}%`,
+        transition: CROP_LAYOUT_TRANSITION,
+      }
+    : {
+        width: "100%",
+        height: "100%",
+        left: "0%",
+        top: "0%",
+        transition: CROP_LAYOUT_TRANSITION,
+      };
 
   return (
     <MediaEditShell
@@ -461,37 +502,55 @@ export function PhotoEditor({
         >
           {src ? (
             <div
-              className="relative shrink-0 overflow-visible"
+              className="relative shrink-0"
               style={
                 framePx
                   ? {
                       width: framePx.w,
                       height: framePx.h,
-                      transition:
-                        "width 320ms cubic-bezier(0.22, 1, 0.36, 1), height 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+                      overflow: "visible",
+                      transition: CROP_LAYOUT_TRANSITION,
                     }
                   : { width: "100%", height: "100%" }
               }
             >
-              {showCroppedViewport && framePx ? (
-                <button
-                  type="button"
-                  className="absolute inset-0 block overflow-hidden rounded-[1px] border-0 bg-transparent p-0"
-                  aria-label={
-                    mode === "crop"
-                      ? "Zuschnitt erneut anpassen"
-                      : "Foto-Vorschau"
-                  }
-                  onPointerDown={
-                    mode === "crop"
-                      ? (e) => {
-                          e.preventDefault();
-                          // Expand back to full frame + overlay (iOS re-edit).
-                          unsettleCrop();
-                        }
-                      : undefined
-                  }
-                >
+              {useUnifiedCropLayout && framePx ? (
+                <>
+                  {/* Clip only the photo; overlay chrome may overhang into the stage. */}
+                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                    <div className="absolute" style={innerStyle}>
+                      <img
+                        src={src}
+                        alt="Foto"
+                        className="block h-full w-full object-fill"
+                        draggable={false}
+                        onLoad={(e) => {
+                          const img = e.currentTarget;
+                          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                            setNaturalSize({
+                              w: img.naturalWidth,
+                              h: img.naturalHeight,
+                            });
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="absolute" style={innerStyle}>
+                    <PhotoCropOverlay
+                      value={cropRect}
+                      onChange={updateCrop}
+                      aspectNorm={aspectNorm}
+                      onGestureStart={beginCropGesture}
+                      onGestureEnd={endCropGesture}
+                      shadowOpacity={settledCrop ? 0 : 0.55}
+                      showGrid={gesturing && !settledCrop}
+                      settled={settledCrop}
+                    />
+                  </div>
+                </>
+              ) : showCroppedViewport && framePx ? (
+                <div className="absolute inset-0 overflow-hidden rounded-[1px]">
                   <PendingCropPreview
                     src={src}
                     crop={cropRect}
@@ -500,7 +559,7 @@ export function PhotoEditor({
                     frame={framePx}
                     onLoadSize={(w, h) => setNaturalSize({ w, h })}
                   />
-                </button>
+                </div>
               ) : (
                 <img
                   src={src}
@@ -523,16 +582,6 @@ export function PhotoEditor({
                   }}
                 />
               )}
-
-              {showCropOverlay ? (
-                <PhotoCropOverlay
-                  value={cropRect}
-                  onChange={updateCrop}
-                  aspectNorm={aspectNorm}
-                  onGestureStart={beginCropGesture}
-                  onGestureEnd={endCropGesture}
-                />
-              ) : null}
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/50">
@@ -545,7 +594,7 @@ export function PhotoEditor({
   );
 }
 
-/** Settled crop viewport: crop fills `frame` (optional CSS rotate). */
+/** Settled crop viewport for rotate mode (optional CSS rotate). */
 function PendingCropPreview({
   src,
   crop,

@@ -35,9 +35,12 @@ export const CROP_ASPECT_PRESETS: {
 export const FULL_CROP: NormCropRect = { x: 0, y: 0, w: 1, h: 1 };
 
 const MIN_EDGE = 0.05;
+/** Visual corner knob diameter. */
 const HANDLE_PX = 14;
+/** Touch/click hit target (iOS-ish). */
+const HANDLE_HIT_PX = 44;
 
-type Handle =
+export type CropHandle =
   | "move"
   | "n"
   | "s"
@@ -47,6 +50,8 @@ type Handle =
   | "ne"
   | "sw"
   | "se";
+
+type Handle = CropHandle;
 
 type Props = {
   value: NormCropRect;
@@ -60,6 +65,15 @@ type Props = {
   onGestureStart?: () => void;
   /** Pointer up / cancel after a drag. */
   onGestureEnd?: () => void;
+  /**
+   * Dim outside crop (0–1). Settled ≈ 0 (outside clipped by parent);
+   * editing ≈ 0.55. Animates via CSS when changed.
+   */
+  shadowOpacity?: number;
+  /** Rule-of-thirds grid — typically only while dragging. */
+  showGrid?: boolean;
+  /** Quieter chrome when viewport is settled on the crop. */
+  settled?: boolean;
   className?: string;
 };
 
@@ -211,6 +225,9 @@ export function PhotoCropOverlay({
   aspectNorm = null,
   onGestureStart,
   onGestureEnd,
+  shadowOpacity = 0.55,
+  showGrid = true,
+  settled = false,
   className,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -218,6 +235,9 @@ export function PhotoCropOverlay({
     handle: Handle;
     startX: number;
     startY: number;
+    /** Frozen at pointer-down so unsettle layout animation doesn't skew deltas. */
+    basisW: number;
+    basisH: number;
     origin: NormCropRect;
   } | null>(null);
 
@@ -225,11 +245,16 @@ export function PhotoCropOverlay({
     (handle: Handle) => (e: ReactPointerEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
+      const root = rootRef.current;
+      const rect = root?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       e.currentTarget.setPointerCapture(e.pointerId);
       dragRef.current = {
         handle,
         startX: e.clientX,
         startY: e.clientY,
+        basisW: rect.width,
+        basisH: rect.height,
         origin: value,
       };
       onGestureStart?.();
@@ -240,12 +265,9 @@ export function PhotoCropOverlay({
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
-      const root = rootRef.current;
-      if (!drag || !root) return;
-      const rect = root.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      const dx = (e.clientX - drag.startX) / rect.width;
-      const dy = (e.clientY - drag.startY) / rect.height;
+      if (!drag || drag.basisW <= 0 || drag.basisH <= 0) return;
+      const dx = (e.clientX - drag.startX) / drag.basisW;
+      const dy = (e.clientY - drag.startY) / drag.basisH;
       const o = drag.origin;
       let next = { ...o };
 
@@ -331,95 +353,109 @@ export function PhotoCropOverlay({
   const top = `${value.y * 100}%`;
   const width = `${value.w * 100}%`;
   const height = `${value.h * 100}%`;
+  const shadow = Math.max(0, Math.min(1, shadowOpacity));
 
   return (
     <div
       ref={rootRef}
-      className={cn("absolute inset-0 touch-none select-none", className)}
+      className={cn(
+        "pointer-events-none absolute inset-0 touch-none select-none",
+        className,
+      )}
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerCancel={endDrag}
     >
-      {/* Dim outside crop */}
+      {/* Dim outside crop — single alpha for smooth settle/unsettle */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 bg-black/55"
-        style={{ height: top }}
+        className="absolute inset-x-0 top-0 bg-black transition-opacity duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{ height: top, opacity: shadow }}
       />
       <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 bg-black/55"
-        style={{ height: `${(1 - value.y - value.h) * 100}%` }}
+        className="absolute inset-x-0 bottom-0 bg-black transition-opacity duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          height: `${(1 - value.y - value.h) * 100}%`,
+          opacity: shadow,
+        }}
       />
       <div
-        className="pointer-events-none absolute bg-black/55"
-        style={{ top, height, left: 0, width: left }}
+        className="absolute bg-black transition-opacity duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{ top, height, left: 0, width: left, opacity: shadow }}
       />
       <div
-        className="pointer-events-none absolute bg-black/55"
+        className="absolute bg-black transition-opacity duration-[350ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
         style={{
           top,
           height,
           left: `${(value.x + value.w) * 100}%`,
           right: 0,
+          opacity: shadow,
         }}
       />
 
       {/* Crop frame */}
       <div
-        className="absolute z-10 cursor-move border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
+        className={cn(
+          "pointer-events-auto absolute z-10 cursor-move border-white",
+          settled ? "border border-white/90" : "border-2",
+          "shadow-[0_0_0_1px_rgba(0,0,0,0.35)]",
+        )}
         style={{ left, top, width, height }}
         onPointerDown={onPointerDown("move")}
       >
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute top-0 bottom-0 left-1/3 w-px bg-white/35" />
-          <div className="absolute top-0 bottom-0 left-2/3 w-px bg-white/35" />
-          <div className="absolute left-0 right-0 top-1/3 h-px bg-white/35" />
-          <div className="absolute left-0 right-0 top-2/3 h-px bg-white/35" />
-        </div>
+        {showGrid ? (
+          <div className="absolute inset-0">
+            <div className="absolute top-0 bottom-0 left-1/3 w-px bg-white/35" />
+            <div className="absolute top-0 bottom-0 left-2/3 w-px bg-white/35" />
+            <div className="absolute left-0 right-0 top-1/3 h-px bg-white/35" />
+            <div className="absolute left-0 right-0 top-2/3 h-px bg-white/35" />
+          </div>
+        ) : null}
       </div>
 
-      {/* Edge handles — centered on border (half outside) */}
+      {/* Edge handles — large hit target, centered on border */}
       <div
-        className="absolute z-20 cursor-ns-resize touch-none"
+        className="pointer-events-auto absolute z-20 cursor-ns-resize touch-none"
         style={{
           left,
           width,
-          top: `calc(${top} - ${HANDLE_PX / 2}px)`,
-          height: HANDLE_PX,
+          top: `calc(${top} - ${HANDLE_HIT_PX / 2}px)`,
+          height: HANDLE_HIT_PX,
         }}
         onPointerDown={onPointerDown("n")}
       />
       <div
-        className="absolute z-20 cursor-ns-resize touch-none"
+        className="pointer-events-auto absolute z-20 cursor-ns-resize touch-none"
         style={{
           left,
           width,
-          top: `calc(${(value.y + value.h) * 100}% - ${HANDLE_PX / 2}px)`,
-          height: HANDLE_PX,
+          top: `calc(${(value.y + value.h) * 100}% - ${HANDLE_HIT_PX / 2}px)`,
+          height: HANDLE_HIT_PX,
         }}
         onPointerDown={onPointerDown("s")}
       />
       <div
-        className="absolute z-20 cursor-ew-resize touch-none"
+        className="pointer-events-auto absolute z-20 cursor-ew-resize touch-none"
         style={{
           top,
           height,
-          left: `calc(${left} - ${HANDLE_PX / 2}px)`,
-          width: HANDLE_PX,
+          left: `calc(${left} - ${HANDLE_HIT_PX / 2}px)`,
+          width: HANDLE_HIT_PX,
         }}
         onPointerDown={onPointerDown("w")}
       />
       <div
-        className="absolute z-20 cursor-ew-resize touch-none"
+        className="pointer-events-auto absolute z-20 cursor-ew-resize touch-none"
         style={{
           top,
           height,
-          left: `calc(${(value.x + value.w) * 100}% - ${HANDLE_PX / 2}px)`,
-          width: HANDLE_PX,
+          left: `calc(${(value.x + value.w) * 100}% - ${HANDLE_HIT_PX / 2}px)`,
+          width: HANDLE_HIT_PX,
         }}
         onPointerDown={onPointerDown("e")}
       />
 
-      {/* Corner knobs — centered on corners (half outside) */}
+      {/* Corner knobs — hit target ≥ visual knob */}
       {(
         [
           ["nw", value.x, value.y, "cursor-nwse-resize"],
@@ -433,17 +469,23 @@ export function PhotoCropOverlay({
           type="button"
           aria-label={`Crop ${id}`}
           className={cn(
-            "absolute z-30 rounded-full bg-white shadow-md touch-none",
+            "pointer-events-auto absolute z-30 touch-none",
             cursor,
+            settled ? "opacity-90" : "opacity-100",
           )}
           style={{
-            width: HANDLE_PX,
-            height: HANDLE_PX,
-            left: `calc(${hx * 100}% - ${HANDLE_PX / 2}px)`,
-            top: `calc(${hy * 100}% - ${HANDLE_PX / 2}px)`,
+            width: HANDLE_HIT_PX,
+            height: HANDLE_HIT_PX,
+            left: `calc(${hx * 100}% - ${HANDLE_HIT_PX / 2}px)`,
+            top: `calc(${hy * 100}% - ${HANDLE_HIT_PX / 2}px)`,
           }}
           onPointerDown={onPointerDown(id)}
-        />
+        >
+          <span
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md"
+            style={{ width: HANDLE_PX, height: HANDLE_PX }}
+          />
+        </button>
       ))}
     </div>
   );

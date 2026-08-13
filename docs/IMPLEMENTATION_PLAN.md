@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
-*(Phase 20–21: Medien-Drehen + Foto-Crop erledigt.)*
+*(Phase 20–21.1: Medien-Drehen + Foto-Crop + Crop-Settle UX erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
 
 ---
@@ -1068,6 +1068,41 @@ src/hooks/usePhotoEditApply.ts
 
 ---
 
+### Phase 21.1 — Crop-Settle UX
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 21  
+**Ziel:** iOS-näheres Settle nach Crop (vor Fertig-Commit): Idle-Settle, Overlay am gecroppten Rand, smooth Outside-Reveal im Shadow — ohne Click-to-reopen.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Idle bis Settle | ~1400 ms nach Gesture-Ende / Preset |
+| Settled-UI | Viewport = Crop; Overlay-Chrome am Rand (Handles bleiben) |
+| Re-Edit | Nur Handle/Move-Drag unsettled — kein Tap-to-reopen |
+| Preview | Eine Pipeline: Vollbild-Inner + Frame-Clip; kein Hart-Umschalten Settled↔Full |
+| Shadow | Outside fade-in bei Unsettle (`shadowOpacity` 0 → ~0.55) |
+| Grid | Nur während aktivem Drag |
+| Phasen | `editing` \| `settled` (Unsettle = zurück nach `editing`) |
+
+#### Aufgaben
+
+- [x] `CROP_SETTLE_MS = 1400`; Timer bei Gesture/Preset neu
+- [x] Unified Crop-Preview (Frame-Contain + Inner-Position, CSS-Transition)
+- [x] Overlay im Settled am Crop-Rand; Drag → Unsettle + kontinuierliche Gesture
+- [x] `PhotoCropOverlay`: `shadowOpacity`, Grid nur beim Drag, größeres Hit-Slop
+- [x] Preset/Reset/Rotate-Mode-Randfälle beibehalten
+
+#### Referenzen
+
+```
+src/components/PhotoEditor.tsx
+src/components/PhotoCropOverlay.tsx
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1231,6 +1266,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 19 | Operator-Identität (Ich / Favorit) | ✅ |
 | 20 | Medien-Bearbeitung: Drehen | ✅ |
 | 21 | Foto-Zuschnitt (Crop) | ✅ |
+| 21.1 | Crop-Settle UX | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1249,4 +1285,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 21 Foto-Crop*
+*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 21.1 Crop-Settle UX*
