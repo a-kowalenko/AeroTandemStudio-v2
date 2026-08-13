@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cleanupCache, clearWorkingSession } from "@/lib/tauri";
+import type { AvailableRelease } from "@/lib/tauri";
 import { useUiStore } from "@/store/uiStore";
 import { useVideoStore } from "@/store/videoStore";
 import { usePhotoStore } from "@/store/photoStore";
@@ -24,7 +25,9 @@ type Props = SettingsTabBaseProps & {
   onRequestUpdateCheck?: () => void;
   onRequestReset: () => void;
   releaseList: ReleaseList;
-  onVersionApplied?: () => void;
+  onRequestVersionSwitch?: (release: AvailableRelease) => void;
+  installBlockedReason?: string | null;
+  platformHint?: string | null;
 };
 
 export function SystemTab({
@@ -33,7 +36,9 @@ export function SystemTab({
   onRequestUpdateCheck,
   onRequestReset,
   releaseList,
-  onVersionApplied,
+  onRequestVersionSwitch,
+  installBlockedReason = null,
+  platformHint = null,
 }: Props) {
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
@@ -53,12 +58,29 @@ export function SystemTab({
     selectedVersion,
     setSelectedVersion,
     selectedRelease,
+    selectedRelation,
     showPrereleases,
     setShowPrereleases,
-    installingVersion,
-    applyVersion,
     formatReleaseDate,
+    releaseRelationLabel,
   } = releaseList;
+
+  const silentAvailable = Boolean(selectedRelease?.updater_json_url);
+  const hasInstaller = Boolean(selectedRelease?.installer_url);
+  const applyDisabled =
+    !selectedRelease ||
+    selectedRelation === "same" ||
+    Boolean(installBlockedReason) ||
+    (!silentAvailable && !hasInstaller);
+
+  const applyLabel =
+    !silentAvailable && hasInstaller
+      ? "Installer öffnen…"
+      : selectedRelation === "older"
+        ? "Ältere Version installieren"
+        : selectedRelation === "newer"
+          ? "Aktualisieren"
+          : "Version übernehmen";
 
   return (
     <div className="space-y-4">
@@ -99,16 +121,20 @@ export function SystemTab({
 
       <SettingsSection
         title="Update"
-        description="Beim Start wird automatisch nach neueren Versionen gesucht. Hier können Sie auch eine ältere oder neuere Version manuell auswählen."
+        description="Beim Start wird automatisch nach neueren Versionen gesucht. Hier können Sie auch eine ältere oder neuere Version manuell auswählen — Installation wie beim Auto-Update (still, mit Fortschritt)."
       >
         {appVersion ? (
           <p className="text-xs text-muted">Installierte Version: {appVersion}</p>
+        ) : null}
+        {platformHint ? (
+          <p className="text-xs text-muted">{platformHint}</p>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
             variant="secondary"
             size="sm"
+            disabled={Boolean(installBlockedReason)}
             onClick={() => onRequestUpdateCheck?.()}
           >
             Nach Updates suchen
@@ -142,10 +168,13 @@ export function SystemTab({
                 />
               </SelectTrigger>
               <SelectContent>
-                {filteredReleases.map((r) => {
+                {filteredReleases.map((r, index) => {
                   const labels: string[] = [];
-                  if (r.tag_name === appVersion) labels.push("Installiert");
+                  if (index === 0) labels.push("Neueste");
+                  const installed = releaseRelationLabel(r.tag_name);
+                  if (installed) labels.push(installed);
                   if (r.prerelease) labels.push("Prerelease");
+                  if (!r.updater_json_url) labels.push("nicht auto-installierbar");
                   const suffix =
                     labels.length > 0 ? ` (${labels.join(", ")})` : "";
                   return (
@@ -160,22 +189,31 @@ export function SystemTab({
             <Button
               type="button"
               size="sm"
-              disabled={
-                installingVersion ||
-                !selectedRelease ||
-                selectedRelease.tag_name === appVersion
-              }
-              onClick={() => void applyVersion(onVersionApplied)}
+              disabled={applyDisabled}
+              onClick={() => {
+                if (!selectedRelease) return;
+                onRequestVersionSwitch?.(selectedRelease);
+              }}
             >
-              {installingVersion ? "Lade…" : "Version übernehmen"}
+              {applyLabel}
             </Button>
           </div>
           {releasesError ? (
             <p className="text-xs text-muted">{releasesError}</p>
           ) : null}
+          {installBlockedReason ? (
+            <p className="text-xs text-destructive">{installBlockedReason}</p>
+          ) : null}
+          {selectedRelease &&
+          selectedRelation !== "same" &&
+          !selectedRelease.updater_json_url ? (
+            <p className="text-xs text-muted">
+              Für diese Version ist die automatische Installation nicht verfügbar.
+            </p>
+          ) : null}
         </div>
 
-        {selectedRelease && selectedRelease.tag_name !== appVersion ? (
+        {selectedRelease && selectedRelation !== "same" ? (
           <div className="space-y-1 rounded-md border border-border/50 bg-card/40 p-3">
             <p className="text-sm font-medium">
               Version {selectedRelease.tag_name}

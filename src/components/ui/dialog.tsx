@@ -32,7 +32,9 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 grid w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] -translate-x-1/2 -translate-y-1/2 gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
+        // inset + m-auto + h-fit centers without transform, so portaled Select/Combobox
+        // poppers keep correct fixed coords inside the dialog.
+        "fixed inset-0 z-50 m-auto grid h-fit w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
         className,
       )}
       {...props}

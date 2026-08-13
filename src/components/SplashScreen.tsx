@@ -62,7 +62,7 @@ export function SplashScreen({ open, status, version, error, className }: Props)
         <h1 className="font-display text-2xl font-bold tracking-tight text-primary">
           Aero Tandem Studio
         </h1>
-        <p className="mt-1 text-xs tracking-wide text-muted uppercase">Just Jump</p>
+        <p className="mt-1 text-xs tracking-wide text-muted uppercase">Jump. Cut. Done.</p>
         <div className="mt-7">
           <Spinner size={44} />
         </div>

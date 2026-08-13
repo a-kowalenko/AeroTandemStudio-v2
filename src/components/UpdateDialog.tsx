@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
   DialogContent,
@@ -11,14 +12,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { cn } from "@/lib/utils";
-import type { UpdateCheckResult, UpdateInstallProgress } from "@/lib/tauri";
+import type { UpdateInstallProgress } from "@/lib/tauri";
+import { compareVersionParts } from "@/lib/versionCompare";
 
-type Props = {
+export type VersionInstallDialogProps = {
   open: boolean;
-  result: UpdateCheckResult | null;
+  fromVersion: string;
+  toVersion: string | null;
+  notes: string | null;
+  /** Whether an install action is offered (update/switch available). */
+  available: boolean;
+  message: string;
   installing?: boolean;
   installProgress?: UpdateInstallProgress | null;
+  /** When false, show installer download escape hatch instead of silent install. */
+  silentAvailable?: boolean;
+  /** When set, install is disabled (encode/SD/QR/upload in progress). */
+  blockedReason?: string | null;
+  /** Install-location hint (e.g. macOS not in /Applications). */
+  platformHint?: string | null;
+  /** Escape hatch when silent install is unavailable for this release. */
+  installerUrl?: string | null;
   onInstall: () => void;
+  onCancelInstall?: () => void;
   onLater: () => void;
   onClose: () => void;
 };
@@ -36,30 +52,63 @@ function formatSpeed(bps: number): string {
   return `${formatBytes(bps)}/s`;
 }
 
+function installDirection(
+  from: string,
+  to: string | null,
+): "upgrade" | "downgrade" | "same" | null {
+  if (!to) return null;
+  const cmp = compareVersionParts(to, from);
+  if (cmp > 0) return "upgrade";
+  if (cmp < 0) return "downgrade";
+  return "same";
+}
+
 export function UpdateDialog({
   open,
-  result,
+  fromVersion,
+  toVersion,
+  notes,
+  available,
+  message,
   installing = false,
   installProgress = null,
+  silentAvailable = true,
+  blockedReason = null,
+  platformHint = null,
+  installerUrl = null,
   onInstall,
+  onCancelInstall,
   onLater,
   onClose,
-}: Props) {
-  const available = Boolean(result?.available);
+}: VersionInstallDialogProps) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const direction = installDirection(fromVersion, toVersion);
+  const isDowngrade = direction === "downgrade";
+  const canSilentInstall =
+    available &&
+    silentAvailable &&
+    Boolean(toVersion) &&
+    direction !== "same";
+  const installDisabled = installing || Boolean(blockedReason) || !canSilentInstall;
+  const phase = installProgress?.phase ?? (installing ? "download" : null);
+  const canCancelDownload =
+    installing && phase !== "install" && Boolean(onCancelInstall);
 
   useEffect(() => {
     if (!open) setNotesOpen(false);
   }, [open]);
 
-  const phase = installProgress?.phase ?? (installing ? "download" : null);
   const progressLabel =
     phase === "install"
-      ? "Update wird installiert…"
+      ? isDowngrade
+        ? "Version wird installiert…"
+        : "Update wird installiert…"
       : phase === "download"
-        ? "Update wird heruntergeladen…"
+        ? isDowngrade
+          ? "Version wird heruntergeladen…"
+          : "Update wird heruntergeladen…"
         : installing
-          ? "Update wird vorbereitet…"
+          ? "Installation wird vorbereitet…"
           : undefined;
 
   const detailParts: string[] = [];
@@ -74,6 +123,18 @@ export function UpdateDialog({
     if (speed) detailParts.push(speed);
   }
 
+  const title = !available
+    ? "Update-Prüfung"
+    : isDowngrade
+      ? "Ältere Version installieren"
+      : "Update verfügbar";
+
+  const primaryLabel = installing
+    ? "Installiere…"
+    : isDowngrade
+      ? "Jetzt wechseln"
+      : "Jetzt aktualisieren";
+
   return (
     <Dialog
       open={open}
@@ -82,9 +143,10 @@ export function UpdateDialog({
       }}
     >
       <DialogContent
-        className="max-w-lg overflow-hidden"
+        className="z-[70] max-w-lg overflow-hidden"
+        overlayClassName="z-[70]"
+        hideCloseButton={installing}
         onOpenAutoFocus={(e) => {
-          // Prefer primary action over the Patchnotes toggle (first tabbable).
           e.preventDefault();
           const root = e.currentTarget;
           if (!(root instanceof HTMLElement)) return;
@@ -93,23 +155,50 @@ export function UpdateDialog({
             root.querySelector<HTMLElement>("button:not([disabled])");
           primary?.focus();
         }}
+        onEscapeKeyDown={(e) => {
+          if (canCancelDownload) {
+            e.preventDefault();
+            onCancelInstall?.();
+            return;
+          }
+          if (installing) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (installing) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (installing) e.preventDefault();
+        }}
       >
         <DialogHeader className="min-w-0">
-          <DialogTitle>
-            {available ? "Update verfügbar" : "Update-Prüfung"}
-          </DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="min-w-0 break-words">
-            {result?.message || "Update-Status wird geladen…"}
+            {message || "Update-Status wird geladen…"}
           </DialogDescription>
         </DialogHeader>
 
-        {available && (
+        {available && toVersion ? (
           <div className="min-w-0 space-y-3 text-sm">
             <p className="min-w-0 break-words">
-              Version <strong>{result?.latest_version}</strong> kann installiert werden.
-              <br />
-              Aktuell: {result?.current_version}
+              {isDowngrade ? (
+                <>
+                  Version <strong>{toVersion}</strong> ersetzt die aktuelle{" "}
+                  <strong>{fromVersion}</strong>.
+                </>
+              ) : (
+                <>
+                  Version <strong>{toVersion}</strong> kann installiert werden.
+                  <br />
+                  Aktuell: {fromVersion}
+                </>
+              )}
             </p>
+            {isDowngrade ? (
+              <p className="text-xs text-muted">
+                Die App wird ersetzt und neu gestartet. Einstellungen bleiben in
+                der Regel erhalten.
+              </p>
+            ) : null}
             <div className="min-w-0 space-y-1.5">
               <button
                 type="button"
@@ -129,20 +218,27 @@ export function UpdateDialog({
               {notesOpen ? (
                 <div className="min-w-0 overflow-hidden border-l border-border/70 pl-3">
                   <pre className="max-h-48 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs leading-relaxed text-muted">
-                    {result?.body?.trim() || "Keine Details verfügbar."}
+                    {notes?.trim() || "Keine Details verfügbar."}
                   </pre>
                 </div>
               ) : null}
             </div>
           </div>
-        )}
+        ) : null}
+
+        {platformHint && !installing ? (
+          <p className="text-xs text-muted">{platformHint}</p>
+        ) : null}
+
+        {blockedReason && !installing ? (
+          <p className="text-xs text-destructive">{blockedReason}</p>
+        ) : null}
 
         {installing ? (
           <div className="min-w-0 space-y-2">
             <ProgressIndicator
               percent={
-                installProgress?.percent ??
-                (phase === "install" ? 100 : 0)
+                installProgress?.percent ?? (phase === "install" ? 100 : 0)
               }
               label={progressLabel}
             />
@@ -157,17 +253,46 @@ export function UpdateDialog({
         <DialogFooter className="min-w-0 gap-2">
           {available ? (
             <>
-              <Button type="button" variant="secondary" onClick={onLater} disabled={installing}>
-                Später
-              </Button>
-              <Button
-                type="button"
-                data-update-primary
-                onClick={onInstall}
-                disabled={installing}
-              >
-                {installing ? "Installiere…" : "Jetzt aktualisieren"}
-              </Button>
+              {canCancelDownload ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => onCancelInstall?.()}
+                >
+                  Abbrechen
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={onLater}
+                  disabled={installing}
+                >
+                  Später
+                </Button>
+              )}
+              {canSilentInstall ? (
+                <Button
+                  type="button"
+                  data-update-primary
+                  onClick={onInstall}
+                  disabled={installDisabled}
+                >
+                  {primaryLabel}
+                </Button>
+              ) : installerUrl ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  data-update-primary
+                  disabled={installing}
+                  onClick={() => {
+                    void openUrl(installerUrl).catch(() => undefined);
+                  }}
+                >
+                  Installer herunterladen
+                </Button>
+              ) : null}
             </>
           ) : (
             <Button type="button" data-update-primary onClick={onClose}>

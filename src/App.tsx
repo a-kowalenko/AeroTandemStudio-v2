@@ -68,18 +68,22 @@ import {
   clearWorkingSession,
   createJob,
   getAppInfo,
+  getUpdaterInstallHint,
+  cancelUpdateInstall,
+  installSpecificVersion,
   installUpdate,
   resolveIntroMuxFallback,
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
+  type AvailableRelease,
   type CreateJobResult,
   type HwAccelInfo,
   type IntroMuxFallbackPayload,
-  type UpdateCheckResult,
   type UpdateInstallProgress,
   type UploadProgressEvent,
 } from "./lib/tauri";
+import { compareVersionParts } from "./lib/versionCompare";
 import {
   backupSdCard,
   ejectSdCard,
@@ -211,10 +215,23 @@ function App() {
   const [photoEditorOpen, setPhotoEditorOpen] = useState(false);
   const [photoEditorPath, setPhotoEditorPath] = useState<string | null>(null);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [versionInstall, setVersionInstall] = useState<{
+    fromVersion: string;
+    toVersion: string | null;
+    notes: string | null;
+    available: boolean;
+    message: string;
+    /** null + silent → installUpdate() (latest feed); string → specific release */
+    updaterJsonUrl: string | null;
+    silentAvailable: boolean;
+    installerUrl: string | null;
+  } | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateInstallProgress, setUpdateInstallProgress] =
     useState<UpdateInstallProgress | null>(null);
+  const [updaterPlatformHint, setUpdaterPlatformHint] = useState<string | null>(
+    null,
+  );
   const [splashOpen, setSplashOpen] = useState(true);
   const [splashStatus, setSplashStatus] = useState("Wird geladen…");
   const [splashError, setSplashError] = useState<string | null>(null);
@@ -242,10 +259,30 @@ function App() {
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
   const watermarkPhotoIndices = usePhotoStore((s) => s.watermarkIndices);
 
+  const serverPhase = useServerStore((s) => s.phase);
+
+  const installBlockedReason = (() => {
+    if (updateInstalling) return "Installation läuft bereits…";
+    if (busy) return "Während der Verarbeitung nicht möglich.";
+    if (sdWorkflowUiActive) return "Während der SD-Aktion nicht möglich.";
+    if (qrScanBusy) return "Während der QR-Erkennung nicht möglich.";
+    if (serverPhase === "uploading") return "Während dem Upload nicht möglich.";
+    return null;
+  })();
+
   async function runUpdateCheck(forceDialog = false) {
     try {
       const result = await checkForUpdates();
-      setUpdateResult(result);
+      setVersionInstall({
+        fromVersion: result.current_version,
+        toVersion: result.latest_version,
+        notes: result.body,
+        available: result.available,
+        message: result.message,
+        updaterJsonUrl: null,
+        silentAvailable: true,
+        installerUrl: null,
+      });
       if (forceDialog || result.available) {
         setUpdateDialogOpen(true);
       }
@@ -254,23 +291,67 @@ function App() {
     }
   }
 
-  async function runInstallUpdate() {
+  function openVersionSwitchDialog(release: AvailableRelease) {
+    if (installBlockedReason) {
+      showError(installBlockedReason, "Update");
+      return;
+    }
+    const from = appVersion || "—";
+    const cmp = compareVersionParts(release.tag_name, from);
+    const isDowngrade = cmp < 0;
+    setVersionInstall({
+      fromVersion: from,
+      toVersion: release.tag_name,
+      notes: release.body,
+      available: true,
+      message: !release.updater_json_url
+        ? "Für diese Version ist die automatische Installation nicht verfügbar."
+        : isDowngrade
+          ? `Zu Version ${release.tag_name} wechseln?`
+          : `Update auf ${release.tag_name} verfügbar.`,
+      updaterJsonUrl: release.updater_json_url,
+      silentAvailable: Boolean(release.updater_json_url),
+      installerUrl: release.installer_url,
+    });
+    setUpdateDialogOpen(true);
+  }
+
+  async function runInstallVersion() {
+    if (!versionInstall || installBlockedReason) return;
+    if (!versionInstall.silentAvailable) return;
     setUpdateInstalling(true);
     setUpdateInstallProgress(null);
     try {
-      const msg = await installUpdate();
+      const msg = versionInstall.updaterJsonUrl
+        ? await installSpecificVersion(versionInstall.updaterJsonUrl)
+        : await installUpdate();
       showSuccess(msg, "Update");
       try {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       } catch {
-        showWarning("Update installiert — bitte App manuell neu starten.");
+        showWarning("Version installiert — bitte App manuell neu starten.");
       }
     } catch (e) {
-      showError(String(e), "Update");
+      const msg = String(e);
+      if (/abgebrochen/i.test(msg)) {
+        // Stay on dialog so user can retry or dismiss with Später.
+      } else {
+        showError(msg, "Update");
+      }
     } finally {
       setUpdateInstalling(false);
       setUpdateInstallProgress(null);
+    }
+  }
+
+  async function cancelInstallVersion() {
+    if (!updateInstalling) return;
+    if (updateInstallProgress?.phase === "install") return;
+    try {
+      await cancelUpdateInstall();
+    } catch {
+      // ignore — install command will surface cancel/error
     }
   }
 
@@ -750,6 +831,11 @@ function App() {
         setSplashStatus("Lade App-Info…");
         const info = await getAppInfo();
         if (!cancelled) setAppVersion(info.version);
+        void getUpdaterInstallHint()
+          .then((hint) => {
+            if (!cancelled) setUpdaterPlatformHint(hint);
+          })
+          .catch(() => undefined);
 
         setSplashStatus("Lade Einstellungen…");
         await loadConfig();
@@ -1770,15 +1856,18 @@ function App() {
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={(open) => {
-            if (!open && updateDialogOpen) return;
+            if (!open && (updateDialogOpen || updateInstalling)) return;
             setSettingsOpen(open);
           }}
           onRequestUpdateCheck={() => void runUpdateCheck(true)}
+          onRequestVersionSwitch={openVersionSwitchDialog}
+          installBlockedReason={installBlockedReason}
+          platformHint={updaterPlatformHint}
           onAfterFactoryReset={() => {
             setSettingsOpen(false);
             setSetupWizardOpen(true);
           }}
-          suppressDismiss={updateDialogOpen}
+          suppressDismiss={updateDialogOpen || updateInstalling}
         />
       ) : null}
       <SetupWizard
@@ -1798,10 +1887,19 @@ function App() {
       />
       <UpdateDialog
         open={updateDialogOpen}
-        result={updateResult}
+        fromVersion={versionInstall?.fromVersion ?? appVersion}
+        toVersion={versionInstall?.toVersion ?? null}
+        notes={versionInstall?.notes ?? null}
+        available={Boolean(versionInstall?.available)}
+        message={versionInstall?.message ?? ""}
         installing={updateInstalling}
         installProgress={updateInstallProgress}
-        onInstall={() => void runInstallUpdate()}
+        silentAvailable={versionInstall?.silentAvailable ?? true}
+        blockedReason={installBlockedReason}
+        platformHint={updaterPlatformHint}
+        installerUrl={versionInstall?.installerUrl ?? null}
+        onInstall={() => void runInstallVersion()}
+        onCancelInstall={() => void cancelInstallVersion()}
         onLater={() => {
           if (!updateInstalling) setUpdateDialogOpen(false);
         }}

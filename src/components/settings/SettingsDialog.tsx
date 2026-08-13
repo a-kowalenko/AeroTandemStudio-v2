@@ -25,11 +25,15 @@ import { QrTab } from "./tabs/QrTab";
 import { SdTab } from "./tabs/SdTab";
 import { ServerTab } from "./tabs/ServerTab";
 import { SystemTab } from "./tabs/SystemTab";
+import type { AvailableRelease } from "@/lib/tauri";
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onRequestUpdateCheck?: () => void;
+  onRequestVersionSwitch?: (release: AvailableRelease) => void;
+  installBlockedReason?: string | null;
+  platformHint?: string | null;
   onAfterFactoryReset?: () => void;
   suppressDismiss?: boolean;
 };
@@ -48,6 +52,9 @@ export function SettingsDialog({
   open,
   onOpenChange,
   onRequestUpdateCheck,
+  onRequestVersionSwitch,
+  installBlockedReason = null,
+  platformHint = null,
   onAfterFactoryReset,
   suppressDismiss = false,
 }: Props) {
@@ -242,7 +249,9 @@ export function SettingsDialog({
                   onRequestUpdateCheck={onRequestUpdateCheck}
                   onRequestReset={() => setResetConfirmOpen(true)}
                   releaseList={releaseList}
-                  onVersionApplied={() => onOpenChange(false)}
+                  onRequestVersionSwitch={onRequestVersionSwitch}
+                  installBlockedReason={installBlockedReason}
+                  platformHint={platformHint}
                 />
               </TabsContent>
             </div>
@@ -258,11 +267,14 @@ export function SettingsDialog({
               <Button
                 variant="secondary"
                 onClick={requestClose}
-                disabled={saving}
+                disabled={saving || suppressDismiss}
               >
                 Abbrechen
               </Button>
-              <Button onClick={() => void onSave()} disabled={saving}>
+              <Button
+                onClick={() => void onSave()}
+                disabled={saving || suppressDismiss}
+              >
                 {saving ? "Speichern…" : "Speichern"}
               </Button>
             </DialogFooter>

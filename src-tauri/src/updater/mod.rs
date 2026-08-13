@@ -5,16 +5,16 @@
 //!
 //! Signing: `TAURI_SIGNING_PRIVATE_KEY` (+ password) in CI; pubkey in
 //! `tauri.conf.json` → `plugins.updater.pubkey`.
+//!
+//! Manual version switch uses the same silent `download_and_install` path as
+//! auto-update, pointed at that release's `latest.json` (allows downgrade).
 
 use serde::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Runtime};
+use once_cell::sync::Lazy;
 
 /// Frontend listens for download/install progress while applying an update.
 pub const EVENT_UPDATE_INSTALL_PROGRESS: &str = "update-install-progress";
@@ -28,10 +28,41 @@ const UPDATER_ENDPOINT: &str =
 const RELEASES_API_URL: &str =
     "https://api.github.com/repos/a-kowalenko/aero-tandem-studio-releases/releases?per_page=100";
 
+const RELEASES_DOWNLOAD_PREFIX: &str =
+    "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/download/";
+
 /// Oldest version offered in the manual switcher (matches first public v2 builds).
 pub const MIN_SWITCHABLE_VERSION: &str = "0.1.0";
 
 const USER_AGENT: &str = "AeroTandemStudio-Updater";
+
+const SILENT_INSTALL_UNAVAILABLE: &str =
+    "Für diese Version ist die automatische Installation nicht verfügbar.";
+
+static UPDATE_CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+
+pub const UPDATE_CANCELLED_MESSAGE: &str = "Download abgebrochen.";
+
+fn clear_update_cancel() {
+    UPDATE_CANCEL_FLAG.store(false, Ordering::SeqCst);
+}
+
+fn is_update_cancelled() -> bool {
+    UPDATE_CANCEL_FLAG.load(Ordering::SeqCst)
+}
+
+/// Abort an in-progress update download (install phase cannot be cancelled).
+#[tauri::command]
+pub fn cancel_update_install() -> bool {
+    UPDATE_CANCEL_FLAG.store(true, Ordering::SeqCst);
+    true
+}
+
+async fn wait_update_cancelled() {
+    while !is_update_cancelled() {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdaterStatus {
@@ -55,7 +86,10 @@ pub struct AvailableRelease {
     pub tag_name: String,
     pub published_at: String,
     pub body: String,
-    pub installer_url: String,
+    /// Public installer asset (DMG/EXE/AppImage) — escape hatch only, never auto-launched.
+    pub installer_url: Option<String>,
+    /// Signed updater manifest for silent install (`latest.json` on the release).
+    pub updater_json_url: Option<String>,
     pub prerelease: bool,
 }
 
@@ -87,6 +121,38 @@ pub fn get_updater_status(app: AppHandle) -> UpdaterStatus {
             current_version,
             message: "Auto-Update ist derzeit nicht verfügbar.".into(),
         }
+    }
+}
+
+/// Optional UX hint when silent replace is unreliable from the current install location.
+#[tauri::command]
+pub fn get_updater_install_hint() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(exe) = std::env::current_exe() {
+            let path = exe.to_string_lossy();
+            if !path.contains("/Applications/") {
+                return Some(
+                    "Für automatische Updates sollte die App im Ordner „Programme“ liegen."
+                        .into(),
+                );
+            }
+        }
+        None
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("APPIMAGE").is_none() {
+            Some(
+                "Automatische Updates funktionieren zuverlässig nur als AppImage.".into(),
+            )
+        } else {
+            None
+        }
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        None
     }
 }
 
@@ -168,6 +234,98 @@ fn emit_update_progress<R: Runtime>(app: &AppHandle<R>, progress: &UpdateInstall
     let _ = app.emit(EVENT_UPDATE_INSTALL_PROGRESS, progress);
 }
 
+#[cfg(desktop)]
+async fn download_and_install_update<R: Runtime>(
+    app: &AppHandle<R>,
+    update: tauri_plugin_updater::Update,
+) -> Result<String, String> {
+    clear_update_cancel();
+
+    let version = update.version.clone();
+    let app_for_progress = app.clone();
+    let downloaded = Arc::new(AtomicU64::new(0));
+    let started = Instant::now();
+
+    emit_update_progress(
+        app,
+        &UpdateInstallProgress {
+            phase: "download".into(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            percent: 0.0,
+            speed_bps: 0.0,
+        },
+    );
+
+    let downloaded_cb = Arc::clone(&downloaded);
+    let download_fut = update.download(
+        move |chunk, total| {
+            if is_update_cancelled() {
+                return;
+            }
+            let done = downloaded_cb.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
+            let elapsed = started.elapsed().as_secs_f64().max(0.001);
+            let speed_bps = done as f64 / elapsed;
+            let percent = match total {
+                Some(t) if t > 0 => (done as f64 / t as f64 * 100.0).clamp(0.0, 100.0),
+                _ => 0.0,
+            };
+            emit_update_progress(
+                &app_for_progress,
+                &UpdateInstallProgress {
+                    phase: "download".into(),
+                    downloaded_bytes: done,
+                    total_bytes: total,
+                    percent,
+                    speed_bps,
+                },
+            );
+        },
+        || {},
+    );
+    tokio::pin!(download_fut);
+
+    let bytes = tokio::select! {
+        biased;
+        _ = wait_update_cancelled() => {
+            return Err(UPDATE_CANCELLED_MESSAGE.into());
+        }
+        result = &mut download_fut => {
+            result.map_err(|e| {
+                if is_update_cancelled() {
+                    UPDATE_CANCELLED_MESSAGE.to_string()
+                } else {
+                    format!("Update-Download fehlgeschlagen: {e}")
+                }
+            })?
+        }
+    };
+
+    if is_update_cancelled() {
+        return Err(UPDATE_CANCELLED_MESSAGE.into());
+    }
+
+    let done = downloaded.load(Ordering::Relaxed);
+    emit_update_progress(
+        app,
+        &UpdateInstallProgress {
+            phase: "install".into(),
+            downloaded_bytes: done,
+            total_bytes: Some(done).filter(|&n| n > 0),
+            percent: 100.0,
+            speed_bps: 0.0,
+        },
+    );
+
+    update
+        .install(bytes)
+        .map_err(|e| format!("Update-Installation fehlgeschlagen: {e}"))?;
+
+    Ok(format!(
+        "Version {version} installiert — App wird neu gestartet."
+    ))
+}
+
 /// Download + install a pending update (plugin API) with progress events.
 #[tauri::command]
 pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
@@ -188,66 +346,12 @@ pub async fn install_update<R: Runtime>(app: AppHandle<R>) -> Result<String, Str
             .map_err(|e| format!("Update-Prüfung fehlgeschlagen: {e}"))?
             .ok_or_else(|| "Kein Update verfügbar.".to_string())?;
 
-        let version = update.version.clone();
-        let app_for_progress = app.clone();
-        let downloaded = Arc::new(AtomicU64::new(0));
-        let started = Instant::now();
-
-        emit_update_progress(
-            &app,
-            &UpdateInstallProgress {
-                phase: "download".into(),
-                downloaded_bytes: 0,
-                total_bytes: None,
-                percent: 0.0,
-                speed_bps: 0.0,
-            },
-        );
-
-        let downloaded_cb = Arc::clone(&downloaded);
-        update
-            .download_and_install(
-                move |chunk, total| {
-                    let done = downloaded_cb.fetch_add(chunk as u64, Ordering::Relaxed) + chunk as u64;
-                    let elapsed = started.elapsed().as_secs_f64().max(0.001);
-                    let speed_bps = done as f64 / elapsed;
-                    let percent = match total {
-                        Some(t) if t > 0 => (done as f64 / t as f64 * 100.0).clamp(0.0, 100.0),
-                        _ => 0.0,
-                    };
-                    emit_update_progress(
-                        &app_for_progress,
-                        &UpdateInstallProgress {
-                            phase: "download".into(),
-                            downloaded_bytes: done,
-                            total_bytes: total,
-                            percent,
-                            speed_bps,
-                        },
-                    );
-                },
-                || {
-                    let done = downloaded.load(Ordering::Relaxed);
-                    emit_update_progress(
-                        &app,
-                        &UpdateInstallProgress {
-                            phase: "install".into(),
-                            downloaded_bytes: done,
-                            total_bytes: Some(done).filter(|&n| n > 0),
-                            percent: 100.0,
-                            speed_bps: 0.0,
-                        },
-                    );
-                },
-            )
-            .await
-            .map_err(|e| format!("Update-Installation fehlgeschlagen: {e}"))?;
-
-        Ok(format!("Update {version} installiert — App wird neu gestartet."))
+        download_and_install_update(&app, update).await
     }
 
     #[cfg(not(desktop))]
     {
+        let _ = app;
         Err("Updater nur auf Desktop verfügbar.".into())
     }
 }
@@ -286,7 +390,7 @@ fn map_releases_fetch_error(err: &reqwest::Error) -> String {
     }
 }
 
-/// List published releases that include a platform installer (for version switching).
+/// List published releases that include a platform installer and/or updater manifest.
 #[tauri::command]
 pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> {
     let client = http_client()?;
@@ -317,9 +421,11 @@ pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> 
         if !version_at_least(&tag, MIN_SWITCHABLE_VERSION) {
             continue;
         }
-        let Some(installer_url) = pick_installer_url(&release.assets) else {
+        let installer_url = pick_installer_url(&release.assets);
+        let updater_json_url = pick_updater_json_url(&release.assets);
+        if installer_url.is_none() && updater_json_url.is_none() {
             continue;
-        };
+        }
         releases.push(AvailableRelease {
             tag_name: tag,
             published_at: release.published_at.unwrap_or_default(),
@@ -327,6 +433,7 @@ pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> 
                 .body
                 .unwrap_or_else(|| "Keine Details verfügbar.".into()),
             installer_url,
+            updater_json_url,
             prerelease: release.prerelease,
         });
     }
@@ -335,28 +442,61 @@ pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> 
     Ok(releases)
 }
 
-/// Download a specific release installer and launch it (upgrade or downgrade).
+fn is_allowed_updater_json_url(url: &str) -> bool {
+    if url.starts_with(RELEASES_DOWNLOAD_PREFIX) && url.ends_with("/latest.json") {
+        return true;
+    }
+    // GitHub may redirect asset downloads through objects.githubusercontent.com
+    url.starts_with("https://objects.githubusercontent.com/") && url.contains("latest.json")
+}
+
+/// Silent install of a specific release via its updater manifest (upgrade or downgrade).
 #[tauri::command]
-pub async fn install_specific_version(installer_url: String) -> Result<String, String> {
-    if installer_url.trim().is_empty() {
-        return Err("Keine Installer-URL angegeben.".into());
+pub async fn install_specific_version<R: Runtime>(
+    app: AppHandle<R>,
+    updater_json_url: String,
+) -> Result<String, String> {
+    if !is_updater_configured() {
+        return Err("Update-Installation ist derzeit nicht möglich.".into());
     }
-    if !(installer_url.starts_with("https://github.com/a-kowalenko/aero-tandem-studio-releases/")
-        || installer_url.starts_with("https://objects.githubusercontent.com/"))
+    let url = updater_json_url.trim();
+    if url.is_empty() {
+        return Err(SILENT_INSTALL_UNAVAILABLE.into());
+    }
+    if !is_allowed_updater_json_url(url) {
+        return Err("Updater-URL ist nicht erlaubt.".into());
+    }
+
+    #[cfg(desktop)]
     {
-        return Err("Installer-URL ist nicht erlaubt.".into());
+        use tauri_plugin_updater::UpdaterExt;
+        use url::Url;
+
+        let endpoint = Url::parse(url).map_err(|e| format!("Ungültige Updater-URL: {e}"))?;
+        let updater = app
+            .updater_builder()
+            .endpoints(vec![endpoint])
+            .map_err(|e| format!("Updater-Endpunkt ungültig: {e}"))?
+            .version_comparator(|current, update| update.version != current)
+            .build()
+            .map_err(|e| format!("Updater konnte nicht initialisiert werden: {e}"))?;
+
+        let update = updater
+            .check()
+            .await
+            .map_err(|e| format!("Versionsprüfung fehlgeschlagen: {e}"))?
+            .ok_or_else(|| {
+                "Keine andere Version zum Installieren gefunden (bereits aktiv?).".to_string()
+            })?;
+
+        download_and_install_update(&app, update).await
     }
 
-    let dest = installer_download_path(&installer_url)?;
-    download_file(&installer_url, &dest).await?;
-    launch_installer(&dest)?;
-
-    Ok(format!(
-        "Installer gestartet ({})",
-        dest.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("setup")
-    ))
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Err("Updater nur auf Desktop verfügbar.".into())
+    }
 }
 
 fn nonempty_notes(notes: Option<&str>) -> Option<String> {
@@ -392,116 +532,6 @@ fn http_client() -> Result<reqwest::Client, String> {
         .map_err(|e| format!("HTTP-Client konnte nicht erstellt werden: {e}"))
 }
 
-async fn download_file(url: &str, dest: &PathBuf) -> Result<(), String> {
-    let client = http_client()?;
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("Download fehlgeschlagen: {e}"))?;
-
-    if !response.status().is_success() {
-        return Err(format!(
-            "Download fehlgeschlagen (HTTP {}).",
-            response.status()
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| format!("Download konnte nicht gelesen werden: {e}"))?;
-
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Temp-Ordner konnte nicht erstellt werden: {e}"))?;
-    }
-
-    let mut file =
-        File::create(dest).map_err(|e| format!("Installer-Datei konnte nicht angelegt werden: {e}"))?;
-    file.write_all(&bytes)
-        .map_err(|e| format!("Installer-Datei konnte nicht geschrieben werden: {e}"))?;
-    Ok(())
-}
-
-fn installer_download_path(url: &str) -> Result<PathBuf, String> {
-    let name = url
-        .rsplit('/')
-        .next()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(default_installer_name());
-    let safe = name
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    Ok(std::env::temp_dir().join(format!("ats_version_switch_{safe}")))
-}
-
-fn default_installer_name() -> &'static str {
-    #[cfg(target_os = "windows")]
-    {
-        "setup.exe"
-    }
-    #[cfg(target_os = "macos")]
-    {
-        "setup.dmg"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "setup.AppImage"
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        "setup.bin"
-    }
-}
-
-fn launch_installer(path: &PathBuf) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        Command::new(path)
-            .spawn()
-            .map_err(|e| format!("Installer konnte nicht gestartet werden: {e}"))?;
-        Ok(())
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| format!("Installer konnte nicht geöffnet werden: {e}"))?;
-        Ok(())
-    }
-    #[cfg(target_os = "linux")]
-    {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let meta = std::fs::metadata(path)
-                .map_err(|e| format!("AppImage konnte nicht gelesen werden: {e}"))?;
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o755);
-            std::fs::set_permissions(path, perms)
-                .map_err(|e| format!("AppImage konnte nicht ausführbar gemacht werden: {e}"))?;
-        }
-        Command::new(path)
-            .spawn()
-            .map_err(|e| format!("AppImage konnte nicht gestartet werden: {e}"))?;
-        Ok(())
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        let _ = path;
-        Err("Versionswechsel auf dieser Plattform nicht unterstützt.".into())
-    }
-}
-
 fn normalize_tag(tag: &str) -> String {
     tag.trim().trim_start_matches('v').to_string()
 }
@@ -534,6 +564,13 @@ fn compare_version_parts(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
         }
     }
     std::cmp::Ordering::Equal
+}
+
+fn pick_updater_json_url(assets: &[GitHubAsset]) -> Option<String> {
+    assets
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("latest.json"))
+        .map(|a| a.browser_download_url.clone())
 }
 
 fn pick_installer_url(assets: &[GitHubAsset]) -> Option<String> {
@@ -661,6 +698,38 @@ mod tests {
     fn normalize_strips_v_prefix() {
         assert_eq!(normalize_tag("v0.1.3"), "0.1.3");
         assert_eq!(normalize_tag("0.1.3"), "0.1.3");
+    }
+
+    #[test]
+    fn allowed_updater_json_urls() {
+        assert!(is_allowed_updater_json_url(
+            "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/download/v0.2.11/latest.json"
+        ));
+        assert!(!is_allowed_updater_json_url(
+            "https://evil.example/latest.json"
+        ));
+        assert!(!is_allowed_updater_json_url(
+            "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/download/v0.2.11/setup.exe"
+        ));
+    }
+
+    #[test]
+    fn pick_updater_json() {
+        let assets = vec![
+            GitHubAsset {
+                name: "latest.json".into(),
+                browser_download_url: "https://example/latest.json".into(),
+            },
+            GitHubAsset {
+                name: "setup.exe".into(),
+                browser_download_url: "https://example/setup".into(),
+            },
+        ];
+        assert_eq!(
+            pick_updater_json_url(&assets).as_deref(),
+            Some("https://example/latest.json")
+        );
+        assert!(pick_updater_json_url(&[]).is_none());
     }
 
     #[test]

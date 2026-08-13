@@ -46,8 +46,8 @@ use commands::vorgang_history::{delete_vorgaenge, list_vorgang_dateien, list_vor
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
 use updater::{
-    check_for_updates, get_updater_status, install_specific_version, install_update,
-    list_available_versions,
+    cancel_update_install, check_for_updates, get_updater_install_hint, get_updater_status,
+    install_specific_version, install_update, list_available_versions,
 };
 use tauri::Emitter;
 
@@ -215,8 +215,10 @@ pub fn run() {
             test_server_connection,
             upload_to_server,
             get_updater_status,
+            get_updater_install_hint,
             check_for_updates,
             install_update,
+            cancel_update_install,
             list_available_versions,
             install_specific_version,
             get_app_info,

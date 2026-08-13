@@ -980,7 +980,8 @@ export type AvailableRelease = {
   tag_name: string;
   published_at: string;
   body: string;
-  installer_url: string;
+  installer_url: string | null;
+  updater_json_url: string | null;
   prerelease: boolean;
 };
 
@@ -1006,6 +1007,10 @@ export async function getUpdaterStatus(): Promise<UpdaterStatus> {
   return invoke<UpdaterStatus>("get_updater_status");
 }
 
+export async function getUpdaterInstallHint(): Promise<string | null> {
+  return invoke<string | null>("get_updater_install_hint");
+}
+
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
   return invoke<UpdateCheckResult>("check_for_updates");
 }
@@ -1014,12 +1019,16 @@ export async function installUpdate(): Promise<string> {
   return invoke<string>("install_update");
 }
 
+export async function cancelUpdateInstall(): Promise<boolean> {
+  return invoke<boolean>("cancel_update_install");
+}
+
 export async function listAvailableVersions(): Promise<AvailableRelease[]> {
   return invoke<AvailableRelease[]>("list_available_versions");
 }
 
-export async function installSpecificVersion(installerUrl: string): Promise<string> {
-  return invoke<string>("install_specific_version", { installerUrl });
+export async function installSpecificVersion(updaterJsonUrl: string): Promise<string> {
+  return invoke<string>("install_specific_version", { updaterJsonUrl });
 }
 
 export type AppInfo = {

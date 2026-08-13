@@ -1,18 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AvailableRelease } from "@/lib/tauri";
-import { getAppInfo, installSpecificVersion, listAvailableVersions } from "@/lib/tauri";
-import { useUiStore } from "@/store/uiStore";
+import { getAppInfo, listAvailableVersions } from "@/lib/tauri";
+import { compareVersionParts } from "@/lib/versionCompare";
 
 export function useReleaseList(open: boolean) {
-  const showSuccess = useUiStore((s) => s.showSuccess);
-  const showError = useUiStore((s) => s.showError);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [releases, setReleases] = useState<AvailableRelease[]>([]);
   const [releasesLoading, setReleasesLoading] = useState(false);
   const [releasesError, setReleasesError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string>("");
   const [showPrereleases, setShowPrereleases] = useState(false);
-  const [installingVersion, setInstallingVersion] = useState(false);
 
   const filteredReleases = useMemo(() => {
     if (showPrereleases) return releases;
@@ -23,6 +20,14 @@ export function useReleaseList(open: boolean) {
     () => filteredReleases.find((r) => r.tag_name === selectedVersion) ?? null,
     [filteredReleases, selectedVersion],
   );
+
+  const selectedRelation = useMemo(() => {
+    if (!selectedRelease || !appVersion) return null;
+    const cmp = compareVersionParts(selectedRelease.tag_name, appVersion);
+    if (cmp > 0) return "newer" as const;
+    if (cmp < 0) return "older" as const;
+    return "same" as const;
+  }, [selectedRelease, appVersion]);
 
   useEffect(() => {
     if (!open) return;
@@ -80,28 +85,6 @@ export function useReleaseList(open: boolean) {
     );
   }, [appVersion, open, releases, showPrereleases]);
 
-  async function applyVersion(onSuccess?: () => void) {
-    if (!selectedRelease) return;
-    if (selectedRelease.tag_name === appVersion) return;
-    if (
-      !window.confirm(
-        `Zu Version ${selectedRelease.tag_name} wechseln?\n\nDer Installer wird heruntergeladen und gestartet. Die App sollte danach neu gestartet werden.`,
-      )
-    ) {
-      return;
-    }
-    setInstallingVersion(true);
-    try {
-      const msg = await installSpecificVersion(selectedRelease.installer_url);
-      showSuccess(msg, "Update");
-      onSuccess?.();
-    } catch (e) {
-      showError(String(e), "Update");
-    } finally {
-      setInstallingVersion(false);
-    }
-  }
-
   function formatReleaseDate(iso: string): string {
     if (!iso) return "";
     const d = new Date(iso);
@@ -113,6 +96,12 @@ export function useReleaseList(open: boolean) {
     });
   }
 
+  function releaseRelationLabel(tag: string): "Installiert" | null {
+    if (!appVersion) return null;
+    if (compareVersionParts(tag, appVersion) === 0) return "Installiert";
+    return null;
+  }
+
   return {
     appVersion,
     releasesLoading,
@@ -121,10 +110,10 @@ export function useReleaseList(open: boolean) {
     selectedVersion,
     setSelectedVersion,
     selectedRelease,
+    selectedRelation,
     showPrereleases,
     setShowPrereleases,
-    installingVersion,
-    applyVersion,
     formatReleaseDate,
+    releaseRelationLabel,
   };
 }
