@@ -3,10 +3,24 @@ import type { CSSProperties } from "react";
 /**
  * Layout helpers for CSS preview rotation (90° swaps landscape ↔ portrait).
  * Pixel apply still happens in Rust; this only fixes the edit-dialog preview.
+ *
+ * CSS `rotate()` must keep the continuous signed angle (…, −90, 0, 90, 180, 270, 360, …)
+ * so transitions take the short path. Never feed 0–359 normalized values into `rotate()`
+ * across a wrap (0→−90 must not become 0→270; 270→360 must not become 270→0).
  */
 
 export function normalizePreviewRotateDeg(degrees: number): number {
   return ((degrees % 360) + 360) % 360;
+}
+
+/** True when apply/commit would change pixels (360 ≡ 0). */
+export function hasNetPreviewRotate(degrees: number): boolean {
+  return normalizePreviewRotateDeg(degrees) !== 0;
+}
+
+/** Landed on a full turn (±360, ±720…) — snap to 0 without animating. */
+export function isFullTurnPreviewRotate(degrees: number): boolean {
+  return degrees !== 0 && degrees % 360 === 0;
 }
 
 /** True when a quarter-turn swaps width/height (portrait ↔ landscape). */
@@ -25,13 +39,14 @@ export function previewRotateStageClass(degrees: number): string {
     : "aspect-video w-full";
 }
 
+/**
+ * @param degrees Continuous signed angle, or `null` to disable rotate preview layout.
+ *                `0` still emits `rotate(0deg)` so the next ±90° takes the short path.
+ */
 export function previewRotateMediaStyle(
-  degrees: number,
+  degrees: number | null,
 ): CSSProperties | undefined {
-  // Keep the continuous signed angle for CSS `rotate()` so transitions take the
-  // short path (0→−90, not 0→270; 270→360, not 270→0). Layout still uses the
-  // normalized quarter-turn.
-  if (degrees === 0) return undefined;
+  if (degrees == null) return undefined;
   const swapped = isQuarterTurnSwap(degrees);
   return {
     position: "absolute",
@@ -47,13 +62,14 @@ export function previewRotateMediaStyle(
 /**
  * CSS rotate when the parent frame is already sized to the *post*-rotation aspect
  * (e.g. PhotoEditor contain-box). Uses px so Tailwind w/h-full cannot fight percentages.
+ *
+ * @param degrees Continuous signed angle — including 0 (always emits rotate).
  */
 export function previewRotateMediaStyleInFrame(
   degrees: number,
   frameW: number,
   frameH: number,
-): CSSProperties | undefined {
-  if (degrees === 0) return undefined;
+): CSSProperties {
   if (!(frameW > 0 && frameH > 0)) {
     return { transform: `rotate(${degrees}deg)` };
   }

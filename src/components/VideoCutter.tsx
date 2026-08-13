@@ -20,6 +20,9 @@ import {
   keyframeAtOrBefore,
   nearestKeyframe,
 } from "../lib/keyframes";
+import {
+  hasNetPreviewRotate,
+} from "../lib/mediaPreviewRotate";
 
 export type VideoCutterResult =
   | { action: "cancel" }
@@ -87,7 +90,7 @@ export function VideoCutter({
   startMsRef.current = startMs;
   endMsRef.current = endMs;
 
-  const rotatePending = ((pendingRotateDeg % 360) + 360) % 360 !== 0;
+  const rotatePending = hasNetPreviewRotate(pendingRotateDeg);
 
   const trimDirty = useMemo(() => {
     const dur = durationMs;
@@ -401,7 +404,7 @@ export function VideoCutter({
           filmstripFrames={
             trimActive || mode === "split" ? filmstripFrames : undefined
           }
-          previewRotateDeg={rotateActive ? pendingRotateDeg : 0}
+          previewRotateDeg={rotateActive ? pendingRotateDeg : null}
           onTrimChange={trimActive ? handleTrimChange : undefined}
           onTrimCommit={trimActive ? handleTrimCommit : undefined}
           onTimeUpdate={(c, d) => {

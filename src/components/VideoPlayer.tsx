@@ -74,7 +74,7 @@ type VideoPlayerProps = {
   /** Filmstrip frame data URLs for Apple-style trim timeline (optional). */
   filmstripFrames?: string[];
   /** Optional CSS preview rotation (degrees clockwise) for edit dialogs. */
-  previewRotateDeg?: number;
+  previewRotateDeg?: number | null;
   /**
    * Fill parent height: video stage flex-shrinks, timeline stays visible.
    * Use inside constrained edit shells (avoids aspect-video clipping the scrubber).
@@ -172,7 +172,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTrimCommit,
       keyframeMarks,
       filmstripFrames,
-      previewRotateDeg = 0,
+      previewRotateDeg = null,
       fillAvailable = false,
       emphasizePlayhead = false,
       snapSeekMs,
@@ -522,6 +522,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const startMsForBubble = keepStart * durationMs;
     const endMsForBubble = keepEnd * durationMs;
     const rotateMediaStyle = previewRotateMediaStyle(previewRotateDeg);
+    const rotateStageDeg = previewRotateDeg ?? 0;
     const showChromeControls =
       controlsVisible ||
       !playing ||
@@ -699,7 +700,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             "relative overflow-hidden rounded-md bg-black transition-[aspect-ratio] duration-200",
             fillAvailable
               ? "min-h-0 w-full flex-1"
-              : previewRotateStageClass(previewRotateDeg),
+              : previewRotateStageClass(rotateStageDeg),
           )}
           onMouseEnter={() => {
             setStageHovered(true);

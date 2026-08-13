@@ -16,6 +16,8 @@ import {
 import { useUiStore } from "../store/uiStore";
 import { usePhotoStore } from "../store/photoStore";
 import {
+  hasNetPreviewRotate,
+  isFullTurnPreviewRotate,
   isQuarterTurnSwap,
   normalizePreviewRotateDeg,
   previewRotateMediaStyleInFrame,
@@ -160,6 +162,8 @@ export function PhotoEditor({
   const [editOrder, setEditOrder] = useState<PhotoEditOrder | null>(null);
   const [cropSettled, setCropSettled] = useState(false);
   const [gesturing, setGesturing] = useState(false);
+  /** Disable CSS rotate transition when snapping ±360 → 0. */
+  const [rotateTransition, setRotateTransition] = useState(true);
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(
     null,
   );
@@ -198,6 +202,7 @@ export function PhotoEditor({
     clearSettleTimer();
     gesturingRef.current = false;
     setGesturing(false);
+    setRotateTransition(true);
     setPendingRotateDeg(0);
     setCropRect(FULL_CROP);
     setAspectPreset("free");
@@ -218,7 +223,7 @@ export function PhotoEditor({
     return () => clearSettleTimer();
   }, [open, photoPath]);
 
-  const rotatePending = normalizePreviewRotateDeg(pendingRotateDeg) !== 0;
+  const rotatePending = hasNetPreviewRotate(pendingRotateDeg);
   const cropPending = isCropDirty(cropRect);
   const order =
     editOrder ??
@@ -229,12 +234,26 @@ export function PhotoEditor({
     cropPending && (cropSettled || mode === "rotate");
 
   const showRotatePreview =
-    rotatePending &&
+    (rotatePending || mode === "rotate") &&
     !(order === "crop-first" && mode === "crop" && !showCroppedViewport);
 
   /** Crop-mode uses unified full→crop layout (overlay always on real rect). */
   const useUnifiedCropLayout = mode === "crop";
 
+  // After 270°→360° (or −270→−360), keep rotate(±360) for the short-path
+  // animation, then snap to 0 without transitioning so the next ±90° is short.
+  useEffect(() => {
+    if (!isFullTurnPreviewRotate(pendingRotateDeg)) return;
+    const ms = rotateTransition ? 220 : 0;
+    const id = window.setTimeout(() => {
+      setRotateTransition(false);
+      setPendingRotateDeg(0);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setRotateTransition(true));
+      });
+    }, ms);
+    return () => window.clearTimeout(id);
+  }, [pendingRotateDeg, rotateTransition]);
   const content = naturalSize
     ? previewContentSize(
         naturalSize,
@@ -350,7 +369,11 @@ export function PhotoEditor({
       nextRect = mapCropThroughRotation(rect, (360 - deg) % 360);
       setCropRect(nextRect);
     }
+    setRotateTransition(false);
     setPendingRotateDeg(0);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setRotateTransition(true));
+    });
     setEditOrder(isCropDirty(nextRect) ? "crop-first" : null);
     if (isCropDirty(nextRect)) {
       setCropSettled(true);
@@ -457,13 +480,20 @@ export function PhotoEditor({
       />
     );
 
-  const showFullWithRotate = !showCroppedViewport && showRotatePreview && !useUnifiedCropLayout;
+  // Rotate mode always uses the framed rotate layout (incl. 0°) so ±90°
+  // transitions take the short path instead of remounting layout.
+  const showFullWithRotate = mode === "rotate" && !showCroppedViewport;
 
   const rotateMediaStyle = previewRotateMediaStyleInFrame(
     pendingRotateDeg,
     framePx?.w ?? 1,
     framePx?.h ?? 1,
   );
+  if (!rotateTransition) {
+    rotateMediaStyle.transition = "none";
+  } else {
+    rotateMediaStyle.transition = "transform 200ms ease";
+  }
 
   const settledCrop = useUnifiedCropLayout && showCroppedViewport;
   const innerStyle = settledCrop
@@ -554,9 +584,14 @@ export function PhotoEditor({
                   <PendingCropPreview
                     src={src}
                     crop={cropRect}
-                    degrees={showRotatePreview ? pendingRotateDeg : 0}
+                    degrees={
+                      mode === "rotate" || showRotatePreview
+                        ? pendingRotateDeg
+                        : 0
+                    }
                     order={order === "rotate-first" ? "rotate-first" : "crop-first"}
                     frame={framePx}
+                    rotateTransition={rotateTransition}
                     onLoadSize={(w, h) => setNaturalSize({ w, h })}
                   />
                 </div>
@@ -565,7 +600,6 @@ export function PhotoEditor({
                   src={src}
                   alt="Foto"
                   className={cn(
-                    "transition-transform duration-200",
                     showFullWithRotate
                       ? "block"
                       : "block h-full w-full object-fill",
@@ -601,6 +635,7 @@ function PendingCropPreview({
   degrees,
   order,
   frame,
+  rotateTransition = true,
   onLoadSize,
 }: {
   src: string;
@@ -608,6 +643,7 @@ function PendingCropPreview({
   degrees: number;
   order: PhotoEditOrder;
   frame: { w: number; h: number };
+  rotateTransition?: boolean;
   onLoadSize: (w: number, h: number) => void;
 }) {
   const onLoad = (e: SyntheticEvent<HTMLImageElement>) => {
@@ -617,10 +653,16 @@ function PendingCropPreview({
     }
   };
 
+  const transformTransition = rotateTransition
+    ? "transform 200ms ease"
+    : "none";
+
   // rotate-first: crop lives in already-rotated space
-  if (order === "rotate-first" && degrees !== 0) {
+  if (order === "rotate-first") {
     const fullW = frame.w / crop.w;
     const fullH = frame.h / crop.h;
+    const mediaStyle = previewRotateMediaStyleInFrame(degrees, fullW, fullH);
+    mediaStyle.transition = transformTransition;
     return (
       <div className="absolute inset-0 overflow-hidden">
         <div
@@ -636,7 +678,7 @@ function PendingCropPreview({
             src={src}
             alt="Foto"
             className="block"
-            style={previewRotateMediaStyleInFrame(degrees, fullW, fullH)}
+            style={mediaStyle}
             onLoad={onLoad}
           />
         </div>
@@ -658,11 +700,8 @@ function PendingCropPreview({
           top: "50%",
           width: preW,
           height: preH,
-          transform:
-            degrees === 0
-              ? "translate(-50%, -50%)"
-              : `translate(-50%, -50%) rotate(${degrees}deg)`,
-          transition: "transform 200ms ease",
+          transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+          transition: transformTransition,
         }}
       >
         <img
