@@ -56,6 +56,8 @@ type Props = {
   thumbQuality?: ThumbQuality;
   selected: boolean;
   alreadyProcessed?: boolean;
+  /** When true and file is not known, show a Neu badge (mixed known+new list). */
+  showNewBadge?: boolean;
   /** Another tile (or this one) owns the single active session. */
   isActive: boolean;
   onActivate: () => void;
@@ -94,6 +96,7 @@ export function SdVideoTile({
   thumbQuality,
   selected,
   alreadyProcessed,
+  showNewBadge = false,
   isActive,
   onActivate,
   onDeactivate,
@@ -644,7 +647,6 @@ export function SdVideoTile({
         selected
           ? "border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
           : "border-border/70",
-        alreadyProcessed && "opacity-70",
         // Ring only when pinned (not mere hover-preview) — no flash on play start
         pinned && isActive && !selected && "ring-2 ring-primary/50",
       )}
@@ -686,6 +688,22 @@ export function SdVideoTile({
             className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           />
         </div>
+
+        {alreadyProcessed ? (
+          <span
+            className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-amber-400/80 bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-950 shadow-md shadow-black/35"
+            aria-label="Bereits bekannt"
+          >
+            Bekannt
+          </span>
+        ) : showNewBadge ? (
+          <span
+            className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-sky-300/90 bg-sky-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-950 shadow-md shadow-black/35"
+            aria-label="Neu"
+          >
+            Neu
+          </span>
+        ) : null}
 
         {/* Poster stays mounted under the video to avoid swap/layout jitter. */}
         {thumbUrl && !immersive ? (
@@ -770,7 +788,6 @@ export function SdVideoTile({
       >
         <span className="min-w-0 truncate">
           {sizeLabel}
-          {alreadyProcessed ? " · bekannt" : ""}
         </span>
         {captureLabel ? (
           <span className="shrink-0 tabular-nums">{captureLabel}</span>

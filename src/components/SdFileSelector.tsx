@@ -42,13 +42,64 @@ type Props = {
   onProceedAll?: (actions: SdWorkflowActions) => void;
 };
 
-type FilterType = "all" | "video" | "photo";
+type FilterType = "all" | "video" | "photo" | "new";
 type SortKey = "date" | "name" | "size";
 type ViewMode = "thumbnail" | "details";
 type SelectMode = "toggle" | "range";
 type MarqueeMod = "replace" | "add" | "remove";
 
 const MARQUEE_THRESHOLD_PX = 7;
+
+const statusBadgeBase =
+  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-md shadow-black/35";
+
+/** Overlay / row badge for files already known from prior SD runs. */
+function KnownBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        statusBadgeBase,
+        "border border-amber-400/80 bg-amber-500 text-amber-950",
+        className,
+      )}
+    >
+      Bekannt
+    </span>
+  );
+}
+
+/** Shown on new files only when the dialog also contains known files. */
+function NewBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        statusBadgeBase,
+        "border border-sky-300/90 bg-sky-500 text-sky-950",
+        className,
+      )}
+    >
+      Neu
+    </span>
+  );
+}
+
+function FileStatusBadge({
+  alreadyProcessed,
+  showNewBadge,
+  className,
+}: {
+  alreadyProcessed: boolean;
+  showNewBadge: boolean;
+  className?: string;
+}) {
+  if (alreadyProcessed) {
+    return <KnownBadge className={className} />;
+  }
+  if (showNewBadge) {
+    return <NewBadge className={className} />;
+  }
+  return null;
+}
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -217,7 +268,8 @@ export function SdFileSelector({
   const filtered = useMemo(() => {
     let list = [...files];
     if (filterType === "video") list = list.filter((f) => f.is_video);
-    if (filterType === "photo") list = list.filter((f) => !f.is_video);
+    else if (filterType === "photo") list = list.filter((f) => !f.is_video);
+    else if (filterType === "new") list = list.filter((f) => !f.already_processed);
     list.sort((a, b) => {
       let cmp = 0;
       if (sortKey === "date") cmp = a.display_epoch - b.display_epoch;
@@ -259,7 +311,26 @@ export function SdFileSelector({
 
   const allFilteredSelected =
     filtered.length > 0 && filtered.every((f) => selected.has(f.path));
+  const newInFiltered = useMemo(
+    () => filtered.filter((f) => !f.already_processed),
+    [filtered],
+  );
+  const allNewSelected =
+    newInFiltered.length > 0 &&
+    newInFiltered.every((f) => selected.has(f.path)) &&
+    selected.size === newInFiltered.length;
   const noneSelected = selected.size === 0;
+  /** Mixed known+new → show Neu badges; all-new → no status badges. */
+  const showNewBadges = useMemo(() => {
+    let hasKnown = false;
+    let hasNew = false;
+    for (const f of files) {
+      if (f.already_processed) hasKnown = true;
+      else hasNew = true;
+      if (hasKnown && hasNew) return true;
+    }
+    return false;
+  }, [files]);
 
   // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
   // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
@@ -369,6 +440,13 @@ export function SdFileSelector({
     setSelected(new Set(filtered.map((f) => f.path)));
     anchorPathRef.current =
       filtered.length > 0 ? filtered[filtered.length - 1].path : null;
+  }
+
+  function selectOnlyNew() {
+    const paths = newInFiltered.map((f) => f.path);
+    setSelected(new Set(paths));
+    anchorPathRef.current =
+      paths.length > 0 ? paths[paths.length - 1] : null;
   }
 
   function clearSelection() {
@@ -659,13 +737,14 @@ export function SdFileSelector({
             value={filterType}
             onValueChange={(v) => setFilterType(v as FilterType)}
           >
-            <SelectTrigger className="h-8 w-[120px] text-xs">
+            <SelectTrigger className="h-8 w-[128px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Alle</SelectItem>
               <SelectItem value="video">Videos</SelectItem>
               <SelectItem value="photo">Fotos</SelectItem>
+              <SelectItem value="new">Nur neue</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -708,6 +787,23 @@ export function SdFileSelector({
               <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
             ) : null}
             Alle auswählen
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={newInFiltered.length === 0}
+            className={cn(
+              "gap-1.5",
+              allNewSelected &&
+                "border-primary/30 bg-primary-soft text-primary hover:bg-primary-soft",
+            )}
+            onClick={selectOnlyNew}
+          >
+            {allNewSelected ? (
+              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            ) : null}
+            Nur neue
           </Button>
           <Button
             type="button"
@@ -832,6 +928,7 @@ export function SdFileSelector({
                       thumbQuality={thumbs[file.path]?.quality}
                       selected={isSel}
                       alreadyProcessed={file.already_processed}
+                      showNewBadge={showNewBadges}
                       isActive={activeVideoPath === file.path}
                       selectionLocked={selectionDragging}
                       onActivate={() => setActiveVideoPath(file.path)}
@@ -862,7 +959,6 @@ export function SdFileSelector({
                       isSel
                         ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
                         : "border border-border/70",
-                      file.already_processed && "opacity-70",
                     )}
                   >
                     <div className="relative flex aspect-video items-center justify-center bg-muted/40">
@@ -884,6 +980,11 @@ export function SdFileSelector({
                           className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         />
                       </div>
+                      <FileStatusBadge
+                        alreadyProcessed={file.already_processed}
+                        showNewBadge={showNewBadges}
+                        className="absolute top-1.5 right-1.5 z-10"
+                      />
                       {thumbs[file.path]?.url ? (
                         <img
                           src={thumbs[file.path].url}
@@ -902,7 +1003,6 @@ export function SdFileSelector({
                     <div className="flex items-baseline justify-between gap-2 px-2 pb-1 text-[10px] text-muted">
                       <span className="min-w-0 truncate">
                         {formatBytes(file.size_bytes)}
-                        {file.already_processed ? " · bekannt" : ""}
                       </span>
                       {captureLabel ? (
                         <span className="shrink-0 tabular-nums">{captureLabel}</span>
@@ -987,7 +1087,16 @@ export function SdFileSelector({
                           )}
                         </div>
                       </td>
-                      <td className="max-w-[280px] truncate p-2">{file.filename}</td>
+                      <td className="max-w-[280px] p-2">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{file.filename}</span>
+                          <FileStatusBadge
+                            alreadyProcessed={file.already_processed}
+                            showNewBadge={showNewBadges}
+                            className="shrink-0 shadow-sm"
+                          />
+                        </div>
+                      </td>
                       <td className="p-2">{file.is_video ? "Video" : "Foto"}</td>
                       <td className="p-2">{formatBytes(file.size_bytes)}</td>
                       <td className="p-2">{formatEpoch(file.display_epoch)}</td>
