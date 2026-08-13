@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
+*(Phase 22: macOS Titlebar-Align + Dialog-Zentrierung erledigt.)*
 *(Phase 20–21.1: Medien-Drehen + Foto-Crop + Crop-Settle UX erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
 
@@ -1103,6 +1104,39 @@ src/components/PhotoCropOverlay.tsx
 
 ---
 
+### Phase 22 — macOS Titlebar-Align & Dialog-Zentrierung
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 11 / AppChrome  
+**Ziel:** (1) Auf macOS (Overlay-Titlebar) schließt der **obere Rand der Traffic Lights** mit dem **oberen Rand des Logos** ab. (2) Dialoge (inkl. Update-Dialog) sind wieder stabil zentriert — Regression durch `inset-0`+`m-auto`+`h-fit` auf WKWebView behoben.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Traffic Lights | `trafficLightPosition: { x: 14, y: 10 }` in `tauri.conf.json` (y = Header `py-2.5` = Logo-Oberkante) |
+| Sync | Konstante/Kommentar in `macTrafficLights.ts` + `AppChrome` — Conf-Werte und Padding gekoppelt halten |
+| Dialog-Zentrierung | Flex-Wrapper um `DialogContent` (kein `transform`, kein `inset-0`+`m-auto`+`h-fit`) — Select/Combobox-Koordinaten bleiben korrekt, macOS-Layout stabil |
+
+#### Aufgaben
+
+- [x] `trafficLightPosition` in `tauri.conf.json` setzen (Overlay + decorations)
+- [x] `macTrafficLights.ts` + Header-Inset/`py-2.5`-Kommentar in `AppChrome`
+- [x] `DialogContent`: Flex-Center ohne Transform; z-Index-Layer für gestapelte Dialoge
+- [x] Win/Linux unverändert (Custom-Controls / kein Overlay)
+
+#### Referenzen
+
+```
+src-tauri/tauri.conf.json
+src/components/chrome/macTrafficLights.ts
+src/components/chrome/AppChrome.tsx
+src/components/ui/dialog.tsx
+src/components/UpdateDialog.tsx
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1267,6 +1301,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 20 | Medien-Bearbeitung: Drehen | ✅ |
 | 21 | Foto-Zuschnitt (Crop) | ✅ |
 | 21.1 | Crop-Settle UX | ✅ |
+| 22 | macOS Titlebar-Align & Dialog-Zentrierung | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1285,4 +1320,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 21.1 Crop-Settle UX*
+*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 22 macOS Titlebar-Align & Dialog-Zentrierung*

@@ -8,6 +8,16 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogPortal = DialogPrimitive.Portal;
 export const DialogClose = DialogPrimitive.Close;
 
+/** Prefer explicit z-[n] / z-n from overlay or content so stacked dialogs stay ordered. */
+function layerZIndexClass(...classNames: (string | undefined)[]): string {
+  for (const c of classNames) {
+    if (!c) continue;
+    const match = c.match(/(?:^|\s)(z-\[\d+\]|z-(?:\d+|auto|popover|modal|toast))(?:\s|$)/);
+    if (match) return match[1];
+  }
+  return "z-50";
+}
+
 export const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -26,29 +36,42 @@ export const DialogContent = React.forwardRef<
     hideCloseButton?: boolean;
     overlayClassName?: string;
   }
->(({ className, children, hideCloseButton = false, overlayClassName, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay className={overlayClassName} />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        // inset + m-auto + h-fit centers without transform, so portaled Select/Combobox
-        // poppers keep correct fixed coords inside the dialog.
-        "fixed inset-0 z-50 m-auto grid h-fit w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      {!hideCloseButton && (
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100">
-          <X className="h-4 w-4" />
-          <span className="sr-only">Schließen</span>
-        </DialogPrimitive.Close>
-      )}
-    </DialogPrimitive.Content>
-  </DialogPortal>
-));
+>(({ className, children, hideCloseButton = false, overlayClassName, ...props }, ref) => {
+  const layerZ = layerZIndexClass(overlayClassName, className);
+
+  return (
+    <DialogPortal>
+      <DialogOverlay className={overlayClassName} />
+      {/*
+        Flex-center the panel without transform on Content, so portaled Select/Combobox
+        fixed coords stay correct — and WebKit (macOS) doesn't break on inset+m-auto+h-fit.
+      */}
+      <div
+        className={cn(
+          "pointer-events-none fixed inset-0 flex items-center justify-center p-4",
+          layerZ,
+        )}
+      >
+        <DialogPrimitive.Content
+          ref={ref}
+          className={cn(
+            "pointer-events-auto relative grid w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+          {!hideCloseButton && (
+            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100">
+              <X className="h-4 w-4" />
+              <span className="sr-only">Schließen</span>
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </div>
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 export function DialogHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {

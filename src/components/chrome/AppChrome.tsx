@@ -1,5 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { MAC_TRAFFIC_LIGHT_INSET_CLASS } from "./macTrafficLights";
 import { TitleBarControls } from "./TitleBarControls";
 import { useWindowChrome } from "./useWindowChrome";
 
@@ -33,10 +34,11 @@ export function AppChrome({ children, actions, className }: Props) {
     <header
       className={cn(
         "ats-header-bg sticky top-0 z-[110] flex select-none items-stretch border-b border-border backdrop-blur-md",
-        macOverlayInset && "pl-[76px]",
+        macOverlayInset && MAC_TRAFFIC_LIGHT_INSET_CLASS,
         className,
       )}
     >
+      {/* py-2.5 (10px): logo top must match macOS trafficLightPosition.y — see macTrafficLights.ts */}
       <div
         className="flex min-w-0 flex-1 cursor-default items-center gap-3 px-4 py-2.5"
         data-tauri-drag-region
