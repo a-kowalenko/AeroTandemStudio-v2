@@ -182,7 +182,7 @@ pub struct AppConfig {
     pub sd_pc_name: String,
     #[serde(default)]
     pub sd_clear_after_backup: bool,
-    /// Eject / safely remove the SD volume after a successful backup/import workflow.
+    /// Eject after successful backup (before import/QR), or after import when no backup ran.
     #[serde(default)]
     pub sd_eject_after_workflow: bool,
     #[serde(default = "default_true")]

@@ -1159,7 +1159,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                 </p>
                 <label
                   className="flex items-center gap-2 text-sm"
-                  title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
+                  title="Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import."
                 >
                   <Checkbox
                     checked={draft.sd_eject_after_workflow}
@@ -1167,7 +1167,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("sd_eject_after_workflow", v === true)
                     }
                   />
-                  SD nach Workflow auswerfen
+                  SD früh auswerfen
                 </label>
               </div>
 
@@ -1422,7 +1422,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   }
                 />
                 <SummaryRow
-                  label="SD auswerfen"
+                  label="SD früh auswerfen"
                   value={draft.sd_eject_after_workflow ? "An" : "Aus"}
                 />
                 <SummaryRow

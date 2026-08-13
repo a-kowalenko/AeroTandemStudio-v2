@@ -166,7 +166,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
 
       <SettingsSection
         title="Import & Auswerfen"
-        description="Automatischer Import nach Backup und sicheres Auswerfen der SD-Karte."
+        description="Automatischer Import nach Backup; Auswerfen sobald die SD nicht mehr benötigt wird."
       >
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
@@ -180,14 +180,17 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         </p>
         <label
           className="flex items-center gap-2 text-sm"
-          title="SD-Karte nach erfolgreichem Backup/Import sicher auswerfen"
+          title="Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import."
         >
           <Checkbox
             checked={draft.sd_eject_after_workflow}
             onCheckedChange={(v) => patch("sd_eject_after_workflow", v === true)}
           />
-          SD nach Workflow auswerfen
+          SD früh auswerfen
         </label>
+        <p className="text-[11px] leading-snug text-muted">
+          Mit Backup direkt danach; ohne Backup erst nach dem Import.
+        </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_skip_processed}

@@ -154,8 +154,9 @@
     background: var(--ats-header);
   }
 
-  /* Titlebar drag targets: no text caret / selection (native chrome feel). */
-  [data-tauri-drag-region] {
+  /* Titlebar drag targets (incl. deep): no text caret / selection. */
+  [data-tauri-drag-region],
+  [data-tauri-drag-region="deep"] {
     cursor: default;
     user-select: none;
     -webkit-user-select: none;
@@ -245,6 +246,29 @@
 
 .ats-progress-float-in {
   animation: ats-progress-float-in 200ms ease-out;
+}
+
+@keyframes ats-toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.ats-toast-progress {
+  animation-name: ats-toast-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* react-hot-toast wrapper — keep default chrome invisible for custom cards */
+.ats-hot-toast {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  max-width: none !important;
 }
 
 @keyframes ats-settings-focus-flash {

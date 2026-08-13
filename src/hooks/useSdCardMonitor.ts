@@ -10,8 +10,13 @@ import {
   type SecondaryBackupEvent,
   type WorkflowProgress,
 } from "../lib/sdCard";
+import { jobKindFromInsert } from "../lib/sdQueue";
+import {
+  showSdQueueDroppedToast,
+  showSdQueuedToast,
+} from "../lib/sdQueueToast";
 import { useConfigStore } from "../store/configStore";
-import { useSdStore } from "../store/sdStore";
+import { isSdPipelineBusy, useSdStore } from "../store/sdStore";
 import { useUiStore } from "../store/uiStore";
 
 /**
@@ -22,11 +27,15 @@ export function useSdCardMonitor(opts?: {
   onRequestSelect?: (drive: string, mode: "backup" | "size_limit") => void;
   /** Auto mode: run backup/import/clear from settings without a dialog. */
   onAutoProcess?: (drive: string, actions: SdWorkflowActions) => void;
+  /** After queue changes that may unblock the next job (e.g. card removed). */
+  onRequestDrain?: () => void;
 }) {
   const onRequestSelectRef = useRef(opts?.onRequestSelect);
   onRequestSelectRef.current = opts?.onRequestSelect;
   const onAutoProcessRef = useRef(opts?.onAutoProcess);
   onAutoProcessRef.current = opts?.onAutoProcess;
+  const onRequestDrainRef = useRef(opts?.onRequestDrain);
+  onRequestDrainRef.current = opts?.onRequestDrain;
 
   const config = useConfigStore((s) => s.config);
   const setMonitoring = useSdStore((s) => s.setMonitoring);
@@ -37,6 +46,9 @@ export function useSdCardMonitor(opts?: {
   const setBackupProgress = useSdStore((s) => s.setBackupProgress);
   const setWorkflowProgress = useSdStore((s) => s.setWorkflowProgress);
   const setSecondaryBackup = useSdStore((s) => s.setSecondaryBackup);
+  const enqueueSdJob = useSdStore((s) => s.enqueueSdJob);
+  const dropQueuedDrives = useSdStore((s) => s.dropQueuedDrives);
+  const closeSelector = useSdStore((s) => s.closeSelector);
   const showError = useUiStore((s) => s.showError);
   const showWarning = useUiStore((s) => s.showWarning);
 
@@ -93,35 +105,48 @@ export function useSdCardMonitor(opts?: {
           const cfg = useConfigStore.getState().config;
 
           setPendingInsert(payload);
-          setActiveDrive(payload.drive);
-          setPhase(payload.needs_confirmation ? "confirming" : "detected");
-
           void scanSdDrives()
             .then(setDrives)
             .catch(() => undefined);
 
           if (!cfg?.sd_auto_backup || cfg.sd_backup_mode === "disabled") {
+            setActiveDrive(payload.drive);
+            setPhase(payload.needs_confirmation ? "confirming" : "detected");
             return;
           }
 
-          if (payload.size_limit_exceeded) {
-            onRequestSelectRef.current?.(payload.drive, "size_limit");
-            return;
-          }
-
-          // Trust backend `needs_confirmation` — do not re-check frontend mode here
-          // (stale listeners with old mode caused dialog + auto in parallel).
-          if (payload.needs_confirmation) {
-            onRequestSelectRef.current?.(payload.drive, "backup");
-            return;
-          }
-
+          const kind = jobKindFromInsert(payload);
           const actionsSafe: SdWorkflowActions = {
             backup: true,
             import: Boolean(cfg.sd_auto_import),
             clear: Boolean(cfg.sd_clear_after_backup),
             eject: Boolean(cfg.sd_eject_after_workflow),
           };
+
+          // While a session pipeline/QR runs: enqueue only — do not clobber phase.
+          if (isSdPipelineBusy()) {
+            enqueueSdJob({
+              drive: payload.drive,
+              kind,
+              actions: kind === "auto" ? actionsSafe : undefined,
+              payload,
+              enqueuedAt: Date.now(),
+            });
+            showSdQueuedToast(payload.drive);
+            return;
+          }
+
+          setActiveDrive(payload.drive);
+          setPhase(payload.needs_confirmation ? "confirming" : "detected");
+
+          if (kind === "size_limit") {
+            onRequestSelectRef.current?.(payload.drive, "size_limit");
+            return;
+          }
+          if (kind === "confirm") {
+            onRequestSelectRef.current?.(payload.drive, "backup");
+            return;
+          }
 
           if (actionsSafe.backup || actionsSafe.import) {
             onAutoProcessRef.current?.(payload.drive, actionsSafe);
@@ -132,14 +157,64 @@ export function useSdCardMonitor(opts?: {
       unlisteners.push(
         await listen<{ drives: string[] }>("sd-card-removed", (event) => {
           const removed = event.payload.drives ?? [];
-          setPhase("monitoring");
-          setPendingInsert(null);
-          setBackupProgress(null);
-          setWorkflowProgress(null);
-          if (removed.length) {
-            setActiveDrive(null);
-            void scanSdDrives().then(setDrives).catch(() => undefined);
+          const st = useSdStore.getState();
+          const removedSet = new Set(removed);
+
+          const dropped = dropQueuedDrives(removed);
+          for (const job of dropped) {
+            showSdQueueDroppedToast(job.drive);
           }
+
+          if (removed.length) {
+            void scanSdDrives()
+              .then((list) => {
+                setDrives(list);
+                const cur = useSdStore.getState().activeDrive;
+                if (cur && removedSet.has(cur)) {
+                  setActiveDrive(list[0]?.drive ?? null);
+                }
+              })
+              .catch(() => undefined);
+          }
+
+          const selectorGone =
+            st.selectorOpen &&
+            Boolean(st.selectorDrive) &&
+            removedSet.has(st.selectorDrive!);
+
+          if (selectorGone) {
+            closeSelector();
+            onRequestDrainRef.current?.();
+          }
+
+          const workflowMountGone =
+            Boolean(st.workflowMountDrive) &&
+            removedSet.has(st.workflowMountDrive!);
+
+          // Early eject is expected — keep import/QR progress alive.
+          if (st.workflowActive && workflowMountGone) {
+            if (st.workflowMountReleased) {
+              if (dropped.length) onRequestDrainRef.current?.();
+              return;
+            }
+            setBackupProgress(null);
+            setWorkflowProgress(null);
+            setPhase("monitoring");
+            setPendingInsert(null);
+            return;
+          }
+
+          // Idle (or busy on another drive): don't wipe progress of an active job.
+          if (!st.workflowActive && !st.selectorOpen) {
+            setPhase("monitoring");
+            setPendingInsert(null);
+            setBackupProgress(null);
+            setWorkflowProgress(null);
+            if (dropped.length) onRequestDrainRef.current?.();
+            return;
+          }
+
+          if (dropped.length) onRequestDrainRef.current?.();
         }),
       );
 
@@ -221,6 +296,9 @@ export function useSdCardMonitor(opts?: {
       for (const u of unlisteners) u();
     };
   }, [
+    closeSelector,
+    dropQueuedDrives,
+    enqueueSdJob,
     setActiveDrive,
     setBackupProgress,
     setWorkflowProgress,

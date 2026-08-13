@@ -106,7 +106,7 @@ export type AppConfig = {
   /** Label in backup folder names; empty uses hostname when opening settings. */
   sd_pc_name: string;
   sd_clear_after_backup: boolean;
-  /** Eject SD volume after a successful backup/import workflow. */
+  /** Eject after backup (before import/QR), or after import when no backup ran. */
   sd_eject_after_workflow: boolean;
   sd_auto_import: boolean;
   sd_skip_processed: boolean;

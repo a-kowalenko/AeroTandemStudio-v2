@@ -19,7 +19,7 @@ export function TitleBarControls({
   return (
     <div
       className={cn("flex h-full shrink-0 items-stretch", className)}
-      data-no-drag
+      data-tauri-drag-region="false"
     >
       <button
         type="button"

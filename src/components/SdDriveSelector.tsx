@@ -10,8 +10,11 @@ import {
 import { Button } from "./ui/button";
 import { useConfigStore } from "../store/configStore";
 import { useSdStore } from "../store/sdStore";
-import { useUiStore } from "../store/uiStore";
 import { ejectSdCard, scanSdDrives } from "../lib/sdCard";
+import {
+  resolveSdEjectDetail,
+  showSdEjectToast,
+} from "../lib/sdEjectToast";
 import {
   compactDriveLabel,
   driveTooltip,
@@ -58,9 +61,6 @@ export function SdDriveSelector({
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const phase = useSdStore((s) => s.phase);
   const monitoring = useSdStore((s) => s.monitoring);
-  const showWarning = useUiStore((s) => s.showWarning);
-  const showSuccess = useUiStore((s) => s.showSuccess);
-
   const [open, setOpen] = useState(false);
   const [ejecting, setEjecting] = useState<string | null>(null);
   /** True while the user has the drive dropdown open (ignore programmatic value sync). */
@@ -103,20 +103,13 @@ export function SdDriveSelector({
     if (ejecting || busyPhase || disabled) return;
     setOpen(false);
     setEjecting(drive);
+    const detail = resolveSdEjectDetail(drive);
     try {
       await ejectSdCard(drive);
-      showSuccess(
-        `SD-Karte ausgeworfen:\n${drive}\n\nDie Karte kann jetzt sicher entfernt werden.`,
-        "Ausgeworfen",
-        {
-          autoCloseSecs: 4,
-        },
-      );
+      showSdEjectToast({ drive, detail, ok: true });
       await refreshDrives();
     } catch (e) {
-      showWarning(
-        `Auswerfen fehlgeschlagen:\n${String(e)}\n\nBitte die Karte manuell sicher entfernen.`,
-      );
+      showSdEjectToast({ drive, detail, ok: false, error: String(e) });
       await refreshDrives();
     } finally {
       setEjecting(null);

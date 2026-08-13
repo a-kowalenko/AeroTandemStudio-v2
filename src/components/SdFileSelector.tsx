@@ -757,7 +757,7 @@ export function SdFileSelector({
           </label>
           <label
             className="flex items-center gap-2"
-            title="SD-Karte nach erfolgreichem Workflow sicher auswerfen"
+            title="Nach Backup sofort auswerfen (Import/QR von Kopien). Ohne Backup: nach dem Import."
           >
             <Checkbox
               checked={actions.eject}

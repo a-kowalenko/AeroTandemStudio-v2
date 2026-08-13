@@ -34,6 +34,7 @@ import {
   type IntroMuxFallbackChoice,
 } from "./components/IntroMuxFallbackDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
+import { ToastHost } from "./components/ToastHost";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppChrome } from "./components/chrome/AppChrome";
 import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
@@ -53,7 +54,7 @@ import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
 import { useKundeStore } from "./store/kundeStore";
 import { useUiStore, type DialogActionStatus } from "./store/uiStore";
-import { useSdStore } from "./store/sdStore";
+import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
@@ -90,8 +91,14 @@ import {
   enrichSdFiles,
   importSdFiles,
   listSdFiles,
+  scanSdDrives,
   type SdWorkflowActions,
 } from "./lib/sdCard";
+import {
+  resolveSdEjectDetail,
+  showSdEjectToast,
+} from "./lib/sdEjectToast";
+import { showSdQueueDroppedToast } from "./lib/sdQueueToast";
 import {
   pathsAddedSince,
   runAutoQrAfterImport,
@@ -183,6 +190,11 @@ function App() {
   const closeSelector = useSdStore((s) => s.closeSelector);
   const openSelector = useSdStore((s) => s.openSelector);
   const patchSelectorFiles = useSdStore((s) => s.patchSelectorFiles);
+  const setIntakeBusy = useSdStore((s) => s.setIntakeBusy);
+  const shiftSdJob = useSdStore((s) => s.shiftSdJob);
+  const pruneQueueToMounted = useSdStore((s) => s.pruneQueueToMounted);
+  const clearSdQueue = useSdStore((s) => s.clearSdQueue);
+  const setDrives = useSdStore((s) => s.setDrives);
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
@@ -248,6 +260,8 @@ function App() {
   } | null>(null);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
+  const sdDrainLockRef = useRef(false);
+  const sdDrainTimerRef = useRef<number | null>(null);
 
   const videoCuts = useVideoCutApply();
   const photoEdits = usePhotoEditApply();
@@ -355,12 +369,88 @@ function App() {
     }
   }
 
+  function scheduleSdQueueDrain(delayMs = 0) {
+    if (sdDrainTimerRef.current != null) {
+      window.clearTimeout(sdDrainTimerRef.current);
+    }
+    sdDrainTimerRef.current = window.setTimeout(() => {
+      sdDrainTimerRef.current = null;
+      void drainSdQueue();
+    }, delayMs);
+  }
+
+  async function drainSdQueue() {
+    if (sdDrainLockRef.current) return;
+    if (isSdPipelineBusy()) return;
+
+    // Never force-close dialogs: QR confirm awaits a Promise that would hang
+    // if we clear dialogKind without resolving onSecondary/onPrimary.
+    const ui = useUiStore.getState();
+    if (ui.dialogKind != null) {
+      scheduleSdQueueDrain(ui.dialogConfirm ? 600 : 400);
+      return;
+    }
+
+    sdDrainLockRef.current = true;
+    let job = null as ReturnType<typeof shiftSdJob>;
+    try {
+      try {
+        const list = await scanSdDrives();
+        setDrives(list);
+        const dropped = pruneQueueToMounted(list.map((d) => d.drive));
+        for (const d of dropped) {
+          showSdQueueDroppedToast(d.drive);
+        }
+      } catch {
+        /* ignore — still try queued drives */
+      }
+
+      if (isSdPipelineBusy() || useUiStore.getState().dialogKind != null) {
+        return;
+      }
+      job = shiftSdJob();
+    } finally {
+      sdDrainLockRef.current = false;
+    }
+
+    if (!job) return;
+
+    const stillThere = useSdStore
+      .getState()
+      .drives.some((d) => d.drive === job!.drive);
+    if (!stillThere) {
+      showSdQueueDroppedToast(job.drive);
+      scheduleSdQueueDrain();
+      return;
+    }
+
+    await new Promise((r) => window.setTimeout(r, 400));
+
+    if (isSdPipelineBusy() || useUiStore.getState().dialogKind != null) {
+      useSdStore.getState().prependSdJob(job);
+      scheduleSdQueueDrain(500);
+      return;
+    }
+
+    if (job.kind === "auto") {
+      const actions = job.actions ?? settingsSdActions();
+      await runAutoSdWorkflow(job.drive, actions);
+      return;
+    }
+
+    await openSdSelector(
+      job.drive,
+      job.kind === "size_limit" ? "size_limit" : "backup",
+    );
+  }
+
   async function openSdSelector(
     drive: string,
     mode: "backup" | "import" | "size_limit" = "backup",
   ) {
     setActiveDrive(drive);
     setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
+    setIntakeBusy(true);
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
       const listed = await listSdFiles(drive);
@@ -383,7 +473,9 @@ function App() {
         .catch(() => undefined);
     } catch (e) {
       showError(String(e));
+      scheduleSdQueueDrain();
     } finally {
+      setIntakeBusy(false);
       setLoading(false);
       setPhase("monitoring");
     }
@@ -571,7 +663,8 @@ function App() {
     }
   }
 
-  /** Unified SD pipeline: backup → import → optional eject; clear only after successful backup.
+  /** Unified SD pipeline: backup → eject → import/QR; clear only after successful backup.
+   *  Import-only (no backup): eject after import. SD is free as soon as copies exist.
    *  @returns false if validation failed before any work started. */
   async function runSdWorkflow(
     drive: string,
@@ -601,9 +694,48 @@ function App() {
 
     hooks?.onStart?.();
     useSdStore.getState().setWorkflowActive(true);
+    useSdStore.getState().beginWorkflowMount(drive);
     setLoading(true, "SD-Verarbeitung…");
     const statusActions: DialogActionStatus[] = [];
     let qrHit: AutoQrScanOutcome | null = null;
+    let ejected = false;
+
+    async function tryEjectSd(opts?: { midWorkflowToast?: boolean }): Promise<void> {
+      if (!doEject || ejected) return;
+      ejected = true;
+      const ejectDetail = resolveSdEjectDetail(drive);
+      setLoading(true, "SD-Karte wird ausgeworfen…");
+      try {
+        await ejectSdCard(drive);
+        useSdStore.getState().markWorkflowMountReleased();
+        statusActions.push({
+          kind: "eject",
+          label: "Auswerfen",
+          tone: "success",
+          summary: "SD-Karte ausgeworfen — kann sicher entfernt werden",
+          detail: ejectDetail,
+        });
+        if (opts?.midWorkflowToast) {
+          showSdEjectToast({ drive, detail: ejectDetail, ok: true });
+        }
+      } catch (e) {
+        statusActions.push({
+          kind: "eject",
+          label: "Auswerfen",
+          tone: "error",
+          summary: "Auswerfen fehlgeschlagen",
+          detail: `${String(e)}\nBitte die Karte manuell sicher entfernen.`,
+        });
+        if (opts?.midWorkflowToast) {
+          showSdEjectToast({
+            drive,
+            detail: ejectDetail,
+            ok: false,
+            error: String(e),
+          });
+        }
+      }
+    }
 
     try {
       let importPaths: string[] = selectedPaths ? [...selectedPaths] : [];
@@ -668,6 +800,18 @@ function App() {
               ? res.copied_dest_paths
               : selectedPaths ?? [];
         }
+
+        // Free the card as soon as import no longer needs SD paths.
+        const importNeedsSd =
+          doImport &&
+          importPaths.length > 0 &&
+          res.copied_dest_paths.length === 0;
+        if (!importNeedsSd) {
+          await tryEjectSd({
+            // Toast only while more work (import/QR) continues — final dialog covers end-of-run.
+            midWorkflowToast: Boolean(doImport && importPaths.length > 0),
+          });
+        }
       } else if (doImport && !selectedPaths) {
         const listed = await listSdFiles(drive);
         importPaths = listed.files.map((f) => f.path);
@@ -695,36 +839,17 @@ function App() {
         }
       }
 
-      if (doEject) {
-        setLoading(true, "SD-Karte wird ausgeworfen…");
-        try {
-          await ejectSdCard(drive);
-          statusActions.push({
-            kind: "eject",
-            label: "Auswerfen",
-            tone: "success",
-            summary: "SD-Karte ausgeworfen — kann sicher entfernt werden",
-            detail: drive,
-          });
-        } catch (e) {
-          statusActions.push({
-            kind: "eject",
-            label: "Auswerfen",
-            tone: "error",
-            summary: "Auswerfen fehlgeschlagen",
-            detail: `${String(e)}\nBitte die Karte manuell sicher entfernen.`,
-          });
-        }
-      }
+      // Import-only, or backup with no dest copies still pointing at SD paths.
+      await tryEjectSd();
 
       if (statusActions.length) {
-        // Show QR first when present, then backup / import / clear / eject.
+        // QR first for spotlight; then chronological: backup → clear → eject → import.
         const order: Record<DialogActionStatus["kind"], number> = {
           qr: 0,
           backup: 1,
-          import: 2,
-          clear: 3,
-          eject: 4,
+          clear: 2,
+          eject: 3,
+          import: 4,
         };
         statusActions.sort((a, b) => order[a.kind] - order[b.kind]);
 
@@ -739,6 +864,7 @@ function App() {
                 ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
                 : "Erfolg";
 
+        const queuedNext = useSdStore.getState().jobQueue.length > 0;
         showSuccess("", title, {
           ...(qrHit?.applied || qrHit?.keptExisting
             ? (qrHit.successOptions ?? {
@@ -746,7 +872,8 @@ function App() {
                 highlight: qrHit.kundeName || "Kunde erkannt",
               })
             : {}),
-          autoCloseSecs: 10,
+          // Free the pipeline sooner when another SD is waiting.
+          autoCloseSecs: queuedNext ? 2 : 10,
           actions: statusActions,
         });
       }
@@ -761,9 +888,11 @@ function App() {
     } finally {
       setLoading(false);
       useSdStore.getState().setWorkflowActive(false);
+      useSdStore.getState().clearWorkflowMount();
       setPhase("monitoring");
       useSdStore.getState().setBackupProgress(null);
       useSdStore.getState().setWorkflowProgress(null);
+      scheduleSdQueueDrain();
     }
   }
 
@@ -774,15 +903,19 @@ function App() {
   async function runAutoSdWorkflow(drive: string, actions: SdWorkflowActions) {
     setActiveDrive(drive);
     setSdWorkflowUiActive(false);
+    setIntakeBusy(true);
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
       await listSdFiles(drive);
+      setIntakeBusy(false);
       await runSdWorkflow(drive, null, actions, {
         onStart: () => setSdWorkflowUiActive(true),
       });
     } catch (e) {
       showError(String(e));
+      scheduleSdQueueDrain();
     } finally {
+      setIntakeBusy(false);
       setSdWorkflowUiActive(false);
       setLoading(false);
     }
@@ -795,6 +928,7 @@ function App() {
     onAutoProcess: (drive, actions) => {
       void runAutoSdWorkflow(drive, actions);
     },
+    onRequestDrain: () => scheduleSdQueueDrain(),
   });
 
   async function handleSdPrimaryAction(drive: string) {
@@ -1295,6 +1429,7 @@ function App() {
       "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
     );
     if (!ok) return;
+    clearSdQueue();
     videoCuts.clearUndoState();
     clearVideos();
     clearPhotos();
@@ -1920,6 +2055,7 @@ function App() {
         onClose={() => {
           sdEnrichGenRef.current += 1;
           closeSelector();
+          scheduleSdQueueDrain();
         }}
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
         onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
@@ -2007,7 +2143,10 @@ function App() {
         actions={dialogActions}
         qrPreview={dialogQrPreview}
         confirm={dialogConfirm}
-        onClose={closeDialog}
+        onClose={() => {
+          closeDialog();
+          scheduleSdQueueDrain();
+        }}
       />
       <CreateSuccessDialog
         open={createSuccess !== null}
@@ -2033,6 +2172,7 @@ function App() {
         open={loading && !sdWorkflowUiActive}
         message={loadingMessage}
       />
+      <ToastHost />
     </div>
   );
 }
