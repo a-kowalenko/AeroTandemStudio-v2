@@ -123,17 +123,15 @@ pub fn run() {
             log_info("SD monitor initialized");
             log_info(&format!("Media HTTP server at {media_base_url}"));
 
-            // Win/Linux: frameless (`decorations: false` in conf) + custom titlebar in React.
-            // macOS: keep native traffic lights with a transparent overlay titlebar.
-            #[cfg(target_os = "macos")]
+            // macOS: conf creates the window with decorations + Overlay + hiddenTitle
+            // (do not toggle decorations false→true — that restores a normal title bar).
+            // Win/Linux: strip native chrome; React AppChrome draws Min/Max/Close.
+            #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
-                use tauri::{Manager, TitleBarStyle};
+                use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
-                    if let Err(e) = window.set_decorations(true) {
-                        eprintln!("macOS set_decorations failed: {e}");
-                    }
-                    if let Err(e) = window.set_title_bar_style(TitleBarStyle::Overlay) {
-                        eprintln!("macOS set_title_bar_style failed: {e}");
+                    if let Err(e) = window.set_decorations(false) {
+                        eprintln!("set_decorations(false) failed: {e}");
                     }
                 }
             }

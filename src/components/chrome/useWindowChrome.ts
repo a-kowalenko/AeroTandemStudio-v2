@@ -28,9 +28,10 @@ export function useWindowChrome() {
         if (!isCustomTitlebarEnabled()) {
           await appWindow.setDecorations(true);
         } else if (mode === "custom-controls") {
+          // Win/Linux: ensure frameless even if conf started decorated for macOS Overlay.
           await appWindow.setDecorations(false);
         }
-        // macos-overlay: Rust setup already applied decorations + Overlay.
+        // macos-overlay: leave decorations + Overlay from window create as-is.
 
         const max = await appWindow.isMaximized();
         if (!cancelled) setIsMaximized(max);

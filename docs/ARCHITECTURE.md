@@ -20,8 +20,8 @@
 
 Custom titlebar (Phase 11 polish):
 
-- **Windows / Linux:** `decorations: false` + Min/Max/Close in `AppChrome` (`src/components/chrome/`)
-- **macOS:** native traffic lights with `TitleBarStyle::Overlay` + left inset (no custom close buttons)
+- **Windows / Linux:** window created decorated for macOS Overlay compatibility; `set_decorations(false)` at startup + Min/Max/Close in `AppChrome` (`src/components/chrome/`)
+- **macOS:** `decorations` + `titleBarStyle: Overlay` + `hiddenTitle` at create time (no false→true toggle) + left inset; no custom close buttons
 - Rollback: `localStorage.setItem('ats-custom-titlebar', '0')` then reload
 
 ## Projektstruktur
