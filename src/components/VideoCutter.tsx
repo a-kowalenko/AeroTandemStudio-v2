@@ -404,7 +404,10 @@ export function VideoCutter({
           filmstripFrames={
             trimActive || mode === "split" ? filmstripFrames : undefined
           }
-          previewRotateDeg={rotateActive ? pendingRotateDeg : null}
+          // Always pass a number (0 outside rotate) so absolute centering stays
+          // mounted — toggling null↔layout + transition-transform slides the video.
+          previewRotateDeg={pendingRotateDeg}
+          previewRotateTransition={rotateActive}
           onTrimChange={trimActive ? handleTrimChange : undefined}
           onTrimCommit={trimActive ? handleTrimCommit : undefined}
           onTimeUpdate={(c, d) => {

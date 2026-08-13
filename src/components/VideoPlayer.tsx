@@ -76,6 +76,11 @@ type VideoPlayerProps = {
   /** Optional CSS preview rotation (degrees clockwise) for edit dialogs. */
   previewRotateDeg?: number | null;
   /**
+   * Animate CSS rotate preview. Disable when entering/leaving rotate layout so
+   * `translate(-50%, -50%)` is not interpolated (avoids corner slide-in).
+   */
+  previewRotateTransition?: boolean;
+  /**
    * Fill parent height: video stage flex-shrinks, timeline stays visible.
    * Use inside constrained edit shells (avoids aspect-video clipping the scrubber).
    */
@@ -173,6 +178,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       keyframeMarks,
       filmstripFrames,
       previewRotateDeg = null,
+      previewRotateTransition = true,
       fillAvailable = false,
       emphasizePlayhead = false,
       snapSeekMs,
@@ -521,7 +527,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       (isTrimChrome && trimEditable) || showSplitFilmstrip;
     const startMsForBubble = keepStart * durationMs;
     const endMsForBubble = keepEnd * durationMs;
-    const rotateMediaStyle = previewRotateMediaStyle(previewRotateDeg);
+    const rotateLayout = previewRotateMediaStyle(previewRotateDeg);
+    // Only transition while rotate layout stays active; null↔layout must not
+    // interpolate translate(-50%, -50%) or the video slides in from a corner.
+    const rotateMediaStyle = rotateLayout
+      ? {
+          ...rotateLayout,
+          transition:
+            previewRotateTransition && previewRotateDeg != null
+              ? "transform 200ms ease"
+              : "none",
+        }
+      : undefined;
     const rotateStageDeg = previewRotateDeg ?? 0;
     const showChromeControls =
       controlsVisible ||
@@ -738,7 +755,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               key={src}
               ref={videoRef}
               className={cn(
-                "pointer-events-none object-contain transition-transform duration-200",
+                "pointer-events-none object-contain",
                 rotateMediaStyle ? null : "h-full w-full",
               )}
               style={rotateMediaStyle}
