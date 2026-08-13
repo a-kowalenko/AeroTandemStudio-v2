@@ -55,6 +55,9 @@ const VIDEO_MODES: MediaEditModeOption<VideoEditMode>[] = [
   },
 ];
 
+/** Minimum length of each part after a split (both sides). */
+const MIN_SPLIT_PART_MS = 10_000;
+
 /**
  * Apple Photos–style video edit: one active mode, Fertig commits that mode.
  */
@@ -95,12 +98,23 @@ export function VideoCutter({
     return !nearFull && e - s >= 100;
   }, [startMs, endMs, durationMs]);
 
+  const splitValid = useMemo(() => {
+    const total = durationMs;
+    if (total < MIN_SPLIT_PART_MS * 2) return false;
+    let at = playheadMs;
+    if (keyframesSecs.length > 0) {
+      const nearest = nearestKeyframe(keyframesSecs, at / 1000);
+      if (nearest != null) at = nearest * 1000;
+    }
+    return at >= MIN_SPLIT_PART_MS && at <= total - MIN_SPLIT_PART_MS;
+  }, [playheadMs, durationMs, keyframesSecs]);
+
   const doneEnabled =
     mode === "trim"
       ? trimDirty
       : mode === "rotate"
         ? rotatePending
-        : true;
+        : splitValid;
 
   useEffect(() => {
     if (!open) {
@@ -270,9 +284,9 @@ export function VideoCutter({
       const nearest = nearestKeyframe(keyframesSecs, splitMs / 1000);
       if (nearest != null) splitMs = nearest * 1000;
     }
-    if (splitMs <= 100 || splitMs >= total - 100) {
+    if (splitMs < MIN_SPLIT_PART_MS || splitMs > total - MIN_SPLIT_PART_MS) {
       showWarning(
-        "Playhead näher an die Mitte setzen — nicht zu nah am Anfang oder Ende.",
+        "Beide Teile müssen mindestens 10 Sekunden lang sein — Playhead weiter von Anfang und Ende wegsetzen.",
         "Ungültiger Split-Punkt",
       );
       return;
@@ -340,7 +354,9 @@ export function VideoCutter({
         <p className="font-mono text-[12px] tabular-nums text-white/55">
           Playhead {formatPlayerTimeMs(playheadMs)}
         </p>
-        <p className="text-[11px] text-white/35">Timeline setzen, dann Fertig</p>
+        <p className="text-[11px] text-white/35">
+          Beide Teile ≥ 10 s — dann Fertig
+        </p>
       </div>
     );
 
@@ -362,15 +378,21 @@ export function VideoCutter({
           ref={playerRef}
           fillAvailable
           className="min-h-0 flex-1"
+          chrome={trimActive ? "trim" : "playback"}
+          emphasizePlayhead={mode === "split"}
           srcPath={open ? videoPath : null}
           cacheKey={
             videoPath
               ? `${useVideoStore.getState().getMediaRevision(videoPath)}-${durationMs}`
               : null
           }
-          keepRange={trimActive ? keepRange : { start: 0, end: 1 }}
-          keyframeMarks={trimActive || mode === "split" ? keyframeMarks : []}
-          filmstripFrames={filmstripFrames}
+          keepRange={trimActive ? keepRange : undefined}
+          keyframeMarks={
+            trimActive || mode === "split" ? keyframeMarks : undefined
+          }
+          filmstripFrames={
+            trimActive || mode === "split" ? filmstripFrames : undefined
+          }
           previewRotateDeg={rotateActive ? pendingRotateDeg : 0}
           onTrimChange={trimActive ? handleTrimChange : undefined}
           onTrimCommit={trimActive ? handleTrimCommit : undefined}

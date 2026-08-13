@@ -55,7 +55,7 @@ export function MediaEditShell<T extends string>({
         hideCloseButton
         overlayClassName="bg-black/55 backdrop-blur-[3px] dark:bg-black/70"
         className={cn(
-          "flex max-h-[min(92vh,calc(100dvh-1.25rem))] w-full max-w-[min(44rem,calc(100vw-1.25rem))] flex-col gap-0 overflow-hidden border-border/50 bg-[#0e1110] p-0 text-[#f2f5f4] shadow-2xl",
+          "flex h-[min(92vh,calc(100dvh-1.25rem))] w-full max-w-[min(44rem,calc(100vw-1.25rem))] flex-col gap-0 overflow-hidden border-border/50 bg-[#0e1110] p-0 text-[#f2f5f4] shadow-2xl",
           "grid-cols-none dark:bg-[#0a0d0c]",
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -94,19 +94,17 @@ export function MediaEditShell<T extends string>({
           </button>
         </header>
 
-        {/* Canvas — must shrink so timeline/controls never cover the player */}
+        {/* Canvas — fixed flex share so mode changes don't resize the stage */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 sm:px-4">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-black">
             {children}
           </div>
         </div>
 
-        {/* Mode tools */}
-        {controls ? (
-          <div className="max-h-[28%] shrink-0 overflow-y-auto px-3 pb-1 pt-2 sm:max-h-none sm:px-4 sm:pt-3">
-            {controls}
-          </div>
-        ) : null}
+        {/* Mode tools — fixed height keeps canvas size stable across modes */}
+        <div className="flex h-[5.25rem] shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4">
+          {controls}
+        </div>
 
         {/* Mode rail */}
         <nav

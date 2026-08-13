@@ -17,8 +17,17 @@ use serde::Serialize;
 use thiserror::Error;
 
 use super::concat::{self, ConcatError};
-use super::ffmpeg::{run_ffmpeg, ProgressCallback};
+use super::ffmpeg::{probe_duration_secs, run_ffmpeg, ProgressCallback};
 use super::progress::EncodeProgress;
+
+/// Minimum duration (seconds) required for each half of a split.
+const MIN_SPLIT_PART_SECS: f64 = 10.0;
+
+fn split_point_valid(split_secs: f64, duration_secs: f64) -> bool {
+    split_secs >= MIN_SPLIT_PART_SECS
+        && duration_secs >= MIN_SPLIT_PART_SECS * 2.0
+        && split_secs <= duration_secs - MIN_SPLIT_PART_SECS
+}
 
 #[derive(Debug, Error)]
 pub enum CutterError {
@@ -323,10 +332,11 @@ pub fn split_video(
     if !Path::new(input).is_file() {
         return Err(CutterError::Message(format!("input file not found: {input}")));
     }
-    if !(split_secs > 0.1) {
-        return Err(CutterError::Message(
-            "split point must be > 0.1 seconds".into(),
-        ));
+    let duration = probe_duration_secs(ffmpeg, input).unwrap_or(0.0);
+    if !split_point_valid(split_secs, duration) {
+        return Err(CutterError::Message(format!(
+            "each split part must be at least {MIN_SPLIT_PART_SECS:.0}s (split={split_secs:.3}s, duration={duration:.3}s)"
+        )));
     }
 
     let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
@@ -465,6 +475,16 @@ mod tests {
         let args = build_cut_stream_copy_args("in.mp4", "out.mp4", 0.0, 2.0, false);
         assert!(!args.iter().any(|a| a == "0:a:0?"));
         assert!(args.contains(&"0:v:0?".into()));
+    }
+
+    #[test]
+    fn split_requires_10s_each_side() {
+        assert!(split_point_valid(10.0, 20.0));
+        assert!(split_point_valid(15.0, 40.0));
+        assert!(!split_point_valid(9.99, 40.0));
+        assert!(!split_point_valid(30.1, 40.0));
+        assert!(!split_point_valid(10.0, 19.9));
+        assert!(!split_point_valid(0.2, 60.0));
     }
 
     #[test]

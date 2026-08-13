@@ -45,16 +45,21 @@ export function MediaEditRotateBar({
           <RotateCw className="h-5 w-5" strokeWidth={1.75} />
         </ToolCircle>
       </div>
-      {onReset && normalized !== 0 ? (
+      {onReset ? (
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || normalized === 0}
           onClick={onReset}
-          className="text-[13px] font-medium text-[#8eb8b0] transition hover:text-white disabled:opacity-40"
+          className={cn(
+            "h-5 text-[13px] font-medium text-[#8eb8b0] transition hover:text-white disabled:opacity-40",
+            normalized === 0 && "invisible",
+          )}
         >
           Zurücksetzen
         </button>
-      ) : null}
+      ) : (
+        <div className="h-5" aria-hidden />
+      )}
       {hint ? (
         <p className="max-w-sm text-center text-[11px] leading-snug text-white/35">
           {hint}

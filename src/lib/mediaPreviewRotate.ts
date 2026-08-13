@@ -28,9 +28,11 @@ export function previewRotateStageClass(degrees: number): string {
 export function previewRotateMediaStyle(
   degrees: number,
 ): CSSProperties | undefined {
-  const turn = normalizePreviewRotateDeg(degrees);
-  if (turn === 0) return undefined;
-  const swapped = turn === 90 || turn === 270;
+  // Keep the continuous signed angle for CSS `rotate()` so transitions take the
+  // short path (0→−90, not 0→270; 270→360, not 270→0). Layout still uses the
+  // normalized quarter-turn.
+  if (degrees === 0) return undefined;
+  const swapped = isQuarterTurnSwap(degrees);
   return {
     position: "absolute",
     left: "50%",
@@ -38,6 +40,6 @@ export function previewRotateMediaStyle(
     // Portrait stage W×(16/9 W): pre-rotate box is (16/9 W)×W = 177.78% × 56.25% of stage.
     width: swapped ? "177.7778%" : "100%",
     height: swapped ? "56.25%" : "100%",
-    transform: `translate(-50%, -50%) rotate(${turn}deg)`,
+    transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
   };
 }

@@ -666,6 +666,7 @@ export function VideoPreview({
         <div className={cn("relative", previewStale && "opacity-80")}>
           <VideoPlayer
             ref={combinedPlayerRef}
+            chrome="playback"
             srcPath={preview.preview_path}
             disabled={busy}
           />
@@ -678,6 +679,7 @@ export function VideoPreview({
       ) : current ? (
         <VideoPlayer
           ref={clipPlayerRef}
+          chrome="playback"
           srcPath={current.path}
           cacheKey={`${current.size_bytes}-${current.duration_secs}-${getMediaRevision(current.path)}`}
           disabled={busy}

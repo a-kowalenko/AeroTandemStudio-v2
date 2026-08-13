@@ -1,10 +1,11 @@
-import {
+﻿import {
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
   forwardRef,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
@@ -41,6 +42,8 @@ export type VideoPlayerHandle = {
 
 export type TrimHandle = "start" | "end";
 
+export type VideoChrome = "auto" | "trim" | "playback";
+
 type VideoPlayerProps = {
   /** Absolute filesystem path (converted via media URI scheme). */
   srcPath: string | null;
@@ -56,6 +59,8 @@ type VideoPlayerProps = {
   onEnded?: () => void;
   /** Start playback once metadata/data is ready (e.g. after advancing clips). */
   autoPlay?: boolean;
+  /** UI chrome: trim = filmstrip + caps; playback = overlay scrub + transport. */
+  chrome?: VideoChrome;
   /** Optional overlay marks for keep-range (0–1). */
   keepRange?: { start: number; end: number } | null;
   /**
@@ -75,18 +80,52 @@ type VideoPlayerProps = {
    * Use inside constrained edit shells (avoids aspect-video clipping the scrubber).
    */
   fillAvailable?: boolean;
+  /** Emphasize playhead / draw a vertical “cut here” guide (split mode). */
+  emphasizePlayhead?: boolean;
   disabled?: boolean;
 };
 
+/** Precise clock for trim / scrub bubbles. */
 function formatMs(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return "--:--";
-  const total = Math.floor(ms / 1000);
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  const frac = Math.floor(ms % 1000);
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}.${frac
-    .toString()
-    .padStart(3, "0")}`;
+  if (!Number.isFinite(ms) || ms < 0) return "--:--.-";
+  const totalSec = Math.floor(ms / 1000);
+  const tenths = Math.floor((ms % 1000) / 100);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const frac = `.${tenths}`;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}${frac}`;
+  }
+  return `${m}:${s.toString().padStart(2, "0")}${frac}`;
+}
+
+/** Transport clock — whole seconds only. */
+function formatClockMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0:00";
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function bufferedEndRatio(video: HTMLVideoElement, durationMs: number): number {
+  if (!durationMs || !Number.isFinite(durationMs) || video.buffered.length === 0) {
+    return 0;
+  }
+  try {
+    let end = 0;
+    for (let i = 0; i < video.buffered.length; i += 1) {
+      end = Math.max(end, video.buffered.end(i));
+    }
+    return Math.min(1, (end * 1000) / durationMs);
+  } catch {
+    return 0;
+  }
 }
 
 const HANDLE_HIT_PX = 20;
@@ -96,6 +135,12 @@ const LINUX_SEEK_ENDED_GUARD_MS = 450;
 const LINUX_ENDED_NEAR_END_SEC = 0.4;
 /** Brief center overlay after touch tap (no persistent hover on touch). */
 const TOUCH_OVERLAY_MS = 1400;
+/** Auto-hide bottom chrome while playing (desktop). */
+const CONTROLS_HIDE_MS = 2400;
+/** Brief center play/pause flash. */
+const CENTER_CUE_MS = 520;
+const SEEK_STEP_MS = 5000;
+const DOUBLE_TAP_SKIP_MS = 10_000;
 /** WebKit (macOS WKWebView): metadata preload often paints no frame until a tiny seek. */
 const WEBKIT_FIRST_FRAME_SEEK_SEC = 0.001;
 /** iOS Photos–like trim handle yellow */
@@ -116,6 +161,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTimeUpdate,
       onEnded,
       autoPlay,
+      chrome = "auto",
       keepRange,
       onTrimChange,
       onTrimCommit,
@@ -123,12 +169,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       filmstripFrames,
       previewRotateDeg = 0,
       fillAvailable = false,
+      emphasizePlayhead = false,
       disabled,
     },
     ref,
   ) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const barRef = useRef<HTMLDivElement>(null);
+    const scrubBarRef = useRef<HTMLDivElement>(null);
+    const stageRef = useRef<HTMLDivElement>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
     const [playing, setPlaying] = useState(false);
     const [currentMs, setCurrentMs] = useState(0);
     const [durationMs, setDurationMs] = useState(0);
@@ -141,8 +191,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [loadError, setLoadError] = useState<string | null>(null);
     /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
     const [overlayVisible, setOverlayVisible] = useState(false);
+    const [controlsVisible, setControlsVisible] = useState(true);
+    const [stageHovered, setStageHovered] = useState(false);
+    const [volumeHovered, setVolumeHovered] = useState(false);
+    const [bufferedRatio, setBufferedRatio] = useState(0);
+    const [scrubHoverRatio, setScrubHoverRatio] = useState<number | null>(null);
+    const [centerCue, setCenterCue] = useState<"play" | "pause" | null>(null);
     const dragModeRef = useRef<"seek" | TrimHandle | null>(null);
     const overlayHideTimerRef = useRef<number | null>(null);
+    const controlsHideTimerRef = useRef<number | null>(null);
+    const centerCueTimerRef = useRef<number | null>(null);
+    const wasPlayingBeforeScrubRef = useRef(false);
     const lastPointerTypeRef = useRef<string>("mouse");
     /** Linux-only: suppress spurious `ended` while/after scrubbing. */
     const linuxMediaGuards = useRef(isLinuxHost()).current;
@@ -202,6 +261,45 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         void videoRef.current?.play();
       },
     }));
+
+    function clearControlsHideTimer() {
+      if (controlsHideTimerRef.current != null) {
+        window.clearTimeout(controlsHideTimerRef.current);
+        controlsHideTimerRef.current = null;
+      }
+    }
+
+    function clearCenterCueTimer() {
+      if (centerCueTimerRef.current != null) {
+        window.clearTimeout(centerCueTimerRef.current);
+        centerCueTimerRef.current = null;
+      }
+    }
+
+    function flashCenterCue(kind: "play" | "pause") {
+      clearCenterCueTimer();
+      setCenterCue(kind);
+      centerCueTimerRef.current = window.setTimeout(() => {
+        setCenterCue(null);
+        centerCueTimerRef.current = null;
+      }, CENTER_CUE_MS);
+    }
+
+    function bumpControlsVisibility() {
+      clearControlsHideTimer();
+      setControlsVisible(true);
+      if (
+        playing &&
+        !stageHovered &&
+        !volumeHovered &&
+        !draggingRef.current
+      ) {
+        controlsHideTimerRef.current = window.setTimeout(() => {
+          setControlsVisible(false);
+          controlsHideTimerRef.current = null;
+        }, CONTROLS_HIDE_MS);
+      }
+    }
 
     useEffect(() => {
       setPlaying(false);
@@ -268,7 +366,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }, TOUCH_OVERLAY_MS);
     }
 
-    useEffect(() => () => clearOverlayHideTimer(), []);
+    useEffect(() => () => {
+      clearOverlayHideTimer();
+      clearControlsHideTimer();
+      clearCenterCueTimer();
+    }, []);
 
     useEffect(() => {
       if (disabled || !src || loadError) {
@@ -277,17 +379,42 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       }
     }, [disabled, src, loadError]);
 
+    useEffect(() => {
+      bumpControlsVisibility();
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- visibility driven by play/hover
+    }, [playing, stageHovered, volumeHovered, dragging]);
+
     function togglePlay() {
       const v = videoRef.current;
       if (!v || disabled) return;
-      if (v.paused) void v.play();
-      else v.pause();
+      if (v.paused) {
+        flashCenterCue("play");
+        void v.play();
+      } else {
+        flashCenterCue("pause");
+        v.pause();
+      }
+      bumpControlsVisibility();
+    }
+
+    function seekBy(deltaMs: number) {
+      const v = videoRef.current;
+      const dur = durationMsRef.current;
+      if (!v || !dur) return;
+      const next = Math.max(0, Math.min(dur, v.currentTime * 1000 + deltaMs));
+      markLinuxUserSeek();
+      v.currentTime = next / 1000;
+      emitTime(next, dur);
+      bumpControlsVisibility();
     }
 
     const canTogglePlayback = Boolean(src && !disabled && !loadError);
 
-    function msFromClientX(clientX: number): number | null {
-      const bar = barRef.current;
+    function msFromClientX(
+      clientX: number,
+      barEl?: HTMLDivElement | null,
+    ): number | null {
+      const bar = barEl ?? scrubBarRef.current ?? barRef.current;
       const dur = durationMsRef.current;
       if (!bar || !dur) return null;
       const rect = bar.getBoundingClientRect();
@@ -295,17 +422,32 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       return ratio * dur;
     }
 
-    function seekFromClientX(clientX: number) {
+    function ratioFromClientX(
+      clientX: number,
+      barEl?: HTMLDivElement | null,
+    ): number | null {
+      const bar = barEl ?? scrubBarRef.current ?? barRef.current;
+      if (!bar) return null;
+      const rect = bar.getBoundingClientRect();
+      if (rect.width <= 0) return null;
+      return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    }
+
+    function seekFromClientX(
+      clientX: number,
+      barEl?: HTMLDivElement | null,
+    ) {
       const v = videoRef.current;
-      const ms = msFromClientX(clientX);
+      const ms = msFromClientX(clientX, barEl);
       if (ms == null || !v) return;
       markLinuxUserSeek();
       v.currentTime = ms / 1000;
       emitTime(ms, durationMsRef.current);
+      bumpControlsVisibility();
     }
 
     function applyTrimDrag(handle: TrimHandle, clientX: number) {
-      const ms = msFromClientX(clientX);
+      const ms = msFromClientX(clientX, barRef.current);
       const v = videoRef.current;
       const dur = durationMsRef.current;
       const kr = keepRangeRef.current;
@@ -344,19 +486,196 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const keepStart = keepRange?.start ?? 0;
     const keepEnd = keepRange?.end ?? 1;
     const trimEditable = Boolean(keepRange && onTrimChange);
+    const resolvedChrome: Exclude<VideoChrome, "auto"> =
+      chrome === "auto" ? (trimEditable ? "trim" : "playback") : chrome;
+    const isTrimChrome = resolvedChrome === "trim";
+    const isPlaybackChrome = resolvedChrome === "playback";
+    const showSplitFilmstrip =
+      isPlaybackChrome &&
+      emphasizePlayhead &&
+      Boolean(filmstripFrames && filmstripFrames.length > 0);
+    /** Trim + split: filmstrip below, no in-player scrub/transport. */
+    const minimalStageChrome = isTrimChrome || emphasizePlayhead;
+    const showOverlayTransport = isPlaybackChrome && !emphasizePlayhead;
+    const showTimelineSlot = isTrimChrome || showSplitFilmstrip;
+    const timelineInteractive =
+      (isTrimChrome && trimEditable) || showSplitFilmstrip;
     const startMsForBubble = keepStart * durationMs;
     const endMsForBubble = keepEnd * durationMs;
     const rotateMediaStyle = previewRotateMediaStyle(previewRotateDeg);
+    const showChromeControls =
+      controlsVisible ||
+      !playing ||
+      stageHovered ||
+      volumeHovered ||
+      dragging;
+    const scrubBubbleRatio =
+      scrubHoverRatio ?? (dragging && dragHandle == null ? playhead : null);
+    const scrubBubbleMs =
+      scrubBubbleRatio != null && durationMs > 0
+        ? scrubBubbleRatio * durationMs
+        : null;
+
+    function renderVolumeControl() {
+      return (
+        <div
+          className="group/vol relative flex items-center"
+          onMouseEnter={() => setVolumeHovered(true)}
+          onMouseLeave={() => setVolumeHovered(false)}
+        >
+          <button
+            type="button"
+            disabled={disabled}
+            className="rounded p-0.5 text-white hover:bg-white/15 disabled:opacity-50"
+            aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+            onClick={() => {
+              if (muted || volume === 0) {
+                setMuted(false);
+                if (volume === 0) setVolume(0.7);
+              } else {
+                setMuted(true);
+              }
+            }}
+          >
+            <VolumeLevelIcon
+              volume={volume}
+              muted={muted}
+              className="h-3.5 w-3.5"
+            />
+          </button>
+          <div
+            className={cn(
+              "overflow-hidden transition-all duration-200",
+              volumeHovered ? "w-24 opacity-100" : "w-0 opacity-0",
+            )}
+          >
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={muted ? 0 : volume}
+              disabled={disabled}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setVolume(next);
+                setMuted(next === 0);
+              }}
+              className="ml-1 w-20 accent-white"
+              aria-label="Lautstärke"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    function beginTimelinePointer(
+      e: ReactPointerEvent<HTMLDivElement>,
+      opts: { trim: boolean },
+    ) {
+      if (disabled) return;
+      const bar = e.currentTarget;
+      lastPointerTypeRef.current = e.pointerType;
+      wasPlayingBeforeScrubRef.current = playing;
+      const mode = opts.trim ? hitTestHandle(e.clientX) : "seek";
+      dragModeRef.current = mode;
+      draggingRef.current = true;
+      setDragging(true);
+      setDragHandle(mode === "seek" ? null : mode);
+      markLinuxUserSeek();
+      bar.setPointerCapture?.(e.pointerId);
+      const r = ratioFromClientX(e.clientX, bar);
+      if (r != null) setScrubHoverRatio(r);
+      if (mode === "seek") {
+        videoRef.current?.pause();
+        seekFromClientX(e.clientX, bar);
+      } else {
+        applyTrimDrag(mode, e.clientX);
+      }
+      bumpControlsVisibility();
+    }
+
+    function moveTimelinePointer(e: ReactPointerEvent<HTMLDivElement>) {
+      const bar = e.currentTarget;
+      const r = ratioFromClientX(e.clientX, bar);
+      if (r != null) setScrubHoverRatio(r);
+      if (!dragging || !dragModeRef.current) return;
+      if (dragModeRef.current === "seek") seekFromClientX(e.clientX, bar);
+      else applyTrimDrag(dragModeRef.current, e.clientX);
+    }
+
+    function endTimelinePointer(e: ReactPointerEvent<HTMLDivElement>) {
+      const mode = dragModeRef.current;
+      if (mode === "start" || mode === "end") {
+        const ms = msFromClientX(e.clientX, barRef.current);
+        if (ms != null) {
+          const dur = durationMsRef.current;
+          const kr = keepRangeRef.current;
+          let committed = ms;
+          if (kr && dur > 0) {
+            if (mode === "start") {
+              committed = Math.max(
+                0,
+                Math.min(ms, kr.end * dur - MIN_RANGE_MS),
+              );
+            } else {
+              committed = Math.min(
+                dur,
+                Math.max(ms, kr.start * dur + MIN_RANGE_MS),
+              );
+            }
+          }
+          onTrimCommitRef.current?.(mode, committed);
+        }
+      }
+      dragModeRef.current = null;
+      draggingRef.current = false;
+      markLinuxUserSeek();
+      setDragging(false);
+      setDragHandle(null);
+      if (wasPlayingBeforeScrubRef.current && mode === "seek") {
+        void videoRef.current?.play();
+      }
+      wasPlayingBeforeScrubRef.current = false;
+      bumpControlsVisibility();
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
 
     return (
       <div
+        ref={rootRef}
+        tabIndex={0}
         className={cn(
-          "flex flex-col gap-2",
+          "flex flex-col gap-2 outline-none",
           fillAvailable && "h-full min-h-0",
           className,
         )}
+        onKeyDown={(e) => {
+          if (!canTogglePlayback) return;
+          const tag = (e.target as HTMLElement).tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+          if (e.key === " " || e.code === "Space") {
+            e.preventDefault();
+            togglePlay();
+            return;
+          }
+          if (e.key === "j" || e.key === "J" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            seekBy(-SEEK_STEP_MS);
+            return;
+          }
+          if (e.key === "l" || e.key === "L" || e.key === "ArrowRight") {
+            e.preventDefault();
+            seekBy(SEEK_STEP_MS);
+          }
+        }}
       >
         <div
+          ref={stageRef}
           className={cn(
             "relative overflow-hidden rounded-md bg-black transition-[aspect-ratio] duration-200",
             fillAvailable
@@ -364,16 +683,34 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               : previewRotateStageClass(previewRotateDeg),
           )}
           onMouseEnter={() => {
+            setStageHovered(true);
             if (!canTogglePlayback) return;
             clearOverlayHideTimer();
             setOverlayVisible(true);
+            bumpControlsVisibility();
           }}
           onMouseLeave={() => {
+            setStageHovered(false);
             clearOverlayHideTimer();
             setOverlayVisible(false);
+            bumpControlsVisibility();
+          }}
+          onMouseMove={() => {
+            bumpControlsVisibility();
+          }}
+          onClick={() => {
+            rootRef.current?.focus();
           }}
           onPointerDown={(e) => {
             lastPointerTypeRef.current = e.pointerType;
+          }}
+          onDoubleClick={(e) => {
+            if (!canTogglePlayback || !durationMs) return;
+            const rect = stageRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const mid = rect.left + rect.width / 2;
+            e.preventDefault();
+            seekBy(e.clientX < mid ? -DOUBLE_TAP_SKIP_MS : DOUBLE_TAP_SKIP_MS);
           }}
         >
           {src ? (
@@ -416,6 +753,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 e.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
                 const d = e.currentTarget.duration * 1000;
                 emitTime(0, d);
+                setBufferedRatio(bufferedEndRatio(e.currentTarget, d));
                 // WKWebView / Safari: metadata alone often leaves a black frame.
                 if (!autoPlayRef.current) {
                   try {
@@ -439,10 +777,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   });
                 }
               }}
+              onProgress={(e) => {
+                const v = e.currentTarget;
+                const dur = Number.isFinite(v.duration)
+                  ? v.duration * 1000
+                  : durationMsRef.current;
+                setBufferedRatio(bufferedEndRatio(v, dur));
+              }}
               onTimeUpdate={(e) => {
                 if (dragging) return;
                 const v = e.currentTarget;
                 emitTime(v.currentTime * 1000, v.duration * 1000);
+                setBufferedRatio(
+                  bufferedEndRatio(v, v.duration * 1000),
+                );
               }}
             />
           ) : (
@@ -450,6 +798,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               Kein Video
             </div>
           )}
+
           {canTogglePlayback && (
             <button
               type="button"
@@ -462,299 +811,311 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               }}
               aria-label={playing ? "Pause" : "Play"}
             >
+              {/* Idle center Play: trim/split = hover only; playback = visible while paused */}
               <span
                 className={cn(
-                  "pointer-events-none flex h-16 w-16 items-center justify-center rounded-full bg-black/50 text-white shadow-md transition-all duration-200",
-                  overlayVisible
+                  "pointer-events-none flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white shadow-md transition-all duration-200",
+                  !playing &&
+                    centerCue == null &&
+                    (minimalStageChrome
+                      ? overlayVisible
+                      : overlayVisible || showChromeControls)
                     ? "scale-100 opacity-100"
                     : "scale-95 opacity-0 group-focus-visible/play:scale-100 group-focus-visible/play:opacity-100",
                 )}
                 aria-hidden
               >
-                {playing ? (
-                  <Pause className="h-10 w-10" />
-                ) : (
-                  <Play className="ml-0.5 h-10 w-10" />
-                )}
+                <Play className="ml-0.5 h-10 w-10 fill-current" />
               </span>
             </button>
           )}
+
+          {centerCue && canTogglePlayback ? (
+            <div className="pointer-events-none absolute inset-0 z-[4] flex items-center justify-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-black/55 text-white shadow-lg">
+                {centerCue === "play" ? (
+                  <Play className="ml-0.5 h-10 w-10 fill-current" />
+                ) : (
+                  <Pause className="h-10 w-10 fill-current" />
+                )}
+              </span>
+            </div>
+          ) : null}
+
           {loadError && (
-            <div className="pointer-events-none absolute inset-0 z-[2] flex items-center justify-center bg-black/70 px-4 text-center text-xs text-white/90">
+            <div className="pointer-events-none absolute inset-0 z-[5] flex items-center justify-center bg-black/70 px-4 text-center text-xs text-white/90">
               {loadError}
             </div>
           )}
+
+          {/* Overlay scrub + transport — preview playback only (not trim/split) */}
+          {showOverlayTransport && canTogglePlayback ? (
+            <div
+              className={cn(
+                "absolute inset-x-0 bottom-0 z-10 transition-opacity duration-300",
+                showChromeControls
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0",
+              )}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+              <div className="relative space-y-2 px-3 pb-3 pt-8">
+                <div
+                  ref={scrubBarRef}
+                  className="group/scrub relative h-5 cursor-pointer touch-none py-1.5"
+                  onPointerDown={(e) => beginTimelinePointer(e, { trim: false })}
+                  onPointerMove={moveTimelinePointer}
+                  onPointerUp={endTimelinePointer}
+                  onPointerCancel={endTimelinePointer}
+                  onPointerLeave={() => {
+                    if (!dragging) setScrubHoverRatio(null);
+                  }}
+                  role="slider"
+                  aria-valuemin={0}
+                  aria-valuemax={durationMs || 0}
+                  aria-valuenow={currentMs}
+                  aria-label="Position"
+                >
+                  <div className="relative h-1 rounded-full bg-white/25 transition-[height] group-hover/scrub:h-1.5 group-active/scrub:h-1.5">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full bg-white/35"
+                      style={{ width: `${bufferedRatio * 100}%` }}
+                    />
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full bg-white"
+                      style={{ width: `${playhead * 100}%` }}
+                    />
+                    {keyframeMarks?.map((r) => (
+                      <div
+                        key={`kf-ov-${r}`}
+                        className="pointer-events-none absolute inset-y-0 w-px bg-white/40"
+                        style={{ left: `${r * 100}%` }}
+                      />
+                    ))}
+                    <div
+                      className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white opacity-0 shadow transition-opacity group-hover/scrub:opacity-100 group-active/scrub:opacity-100"
+                      style={{ left: `${playhead * 100}%` }}
+                    />
+                  </div>
+                  {scrubBubbleMs != null ? (
+                    <div
+                      className="pointer-events-none absolute -top-7 -translate-x-1/2 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-white opacity-0 transition-opacity group-hover/scrub:opacity-100 group-active/scrub:opacity-100"
+                      style={{
+                        left: `${(scrubBubbleRatio ?? playhead) * 100}%`,
+                      }}
+                    >
+                      {formatMs(scrubBubbleMs)}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-3 text-white">
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-9 w-9 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white"
+                    disabled={disabled || !src}
+                    onClick={togglePlay}
+                    aria-label={playing ? "Pause" : "Play"}
+                  >
+                    {playing ? (
+                      <Pause className="h-5 w-5 fill-current" />
+                    ) : (
+                      <Play className="h-5 w-5 translate-x-px fill-current" />
+                    )}
+                  </Button>
+                  <span className="min-w-[5.5rem] text-xs tabular-nums text-white/90">
+                    {formatClockMs(currentMs)}
+                    <span className="text-white/50"> / </span>
+                    {formatClockMs(durationMs)}
+                  </span>
+                  <div className="ml-auto">{renderVolumeControl()}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        <div
-          ref={barRef}
-          className={cn(
-            "relative shrink-0 touch-none select-none",
-            trimEditable
-              ? fillAvailable
-                ? "mt-5 h-12 cursor-default overflow-visible"
-                : "mt-7 h-14 cursor-default overflow-visible"
-              : "h-8 cursor-pointer overflow-hidden rounded bg-[#555]",
-            disabled && "pointer-events-none opacity-50",
-          )}
-          onPointerDown={(e) => {
-            if (disabled) return;
-            const mode = hitTestHandle(e.clientX);
-            dragModeRef.current = mode;
-            draggingRef.current = true;
-            setDragging(true);
-            setDragHandle(mode === "seek" ? null : mode);
-            markLinuxUserSeek();
-            (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-            if (mode === "seek") seekFromClientX(e.clientX);
-            else applyTrimDrag(mode, e.clientX);
-          }}
-          onPointerMove={(e) => {
-            if (!dragging || !dragModeRef.current) return;
-            if (dragModeRef.current === "seek") seekFromClientX(e.clientX);
-            else applyTrimDrag(dragModeRef.current, e.clientX);
-          }}
-          onPointerUp={(e) => {
-            const mode = dragModeRef.current;
-            if (mode === "start" || mode === "end") {
-              const ms = msFromClientX(e.clientX);
-              if (ms != null) {
-                const dur = durationMsRef.current;
-                const kr = keepRangeRef.current;
-                let committed = ms;
-                if (kr && dur > 0) {
-                  if (mode === "start") {
-                    committed = Math.max(
-                      0,
-                      Math.min(ms, kr.end * dur - MIN_RANGE_MS),
-                    );
-                  } else {
-                    committed = Math.min(
-                      dur,
-                      Math.max(ms, kr.start * dur + MIN_RANGE_MS),
-                    );
-                  }
-                }
-                onTrimCommitRef.current?.(mode, committed);
-              }
+        {/* Trim / split filmstrip — fillAvailable always reserves the same height */}
+        {showTimelineSlot ? (
+          <div
+            ref={timelineInteractive ? barRef : undefined}
+            className={cn(
+              "relative shrink-0 touch-none select-none",
+              fillAvailable
+                ? "mt-5 h-12"
+                : isTrimChrome && trimEditable
+                  ? "mt-7 h-14 cursor-default overflow-visible"
+                  : "h-10 cursor-pointer overflow-hidden rounded-md",
+              fillAvailable && "overflow-visible",
+              timelineInteractive
+                ? isTrimChrome && trimEditable
+                  ? "cursor-default"
+                  : "cursor-pointer"
+                : "pointer-events-none",
+              disabled && "pointer-events-none opacity-50",
+            )}
+            onPointerDown={
+              timelineInteractive
+                ? (e) =>
+                    beginTimelinePointer(e, {
+                      trim: isTrimChrome && trimEditable,
+                    })
+                : undefined
             }
-            dragModeRef.current = null;
-            draggingRef.current = false;
-            markLinuxUserSeek();
-            setDragging(false);
-            setDragHandle(null);
-          }}
-          onPointerCancel={() => {
-            dragModeRef.current = null;
-            draggingRef.current = false;
-            markLinuxUserSeek();
-            setDragging(false);
-            setDragHandle(null);
-          }}
-        >
-          {trimEditable ? (
-            <>
-              {/* Filmstrip + dim + rails (clipped) */}
-              <div className="absolute inset-0 overflow-hidden rounded-md">
-                <div className="absolute inset-0 flex bg-neutral-800">
-                  {filmstripFrames && filmstripFrames.length > 0 ? (
-                    filmstripFrames.map((url, i) => (
+            onPointerMove={timelineInteractive ? moveTimelinePointer : undefined}
+            onPointerUp={timelineInteractive ? endTimelinePointer : undefined}
+            onPointerCancel={
+              timelineInteractive ? endTimelinePointer : undefined
+            }
+          >
+            {isTrimChrome && trimEditable ? (
+              <>
+                <div className="absolute inset-0 overflow-hidden rounded-md">
+                  <div className="absolute inset-0 flex bg-neutral-800">
+                    {filmstripFrames && filmstripFrames.length > 0 ? (
+                      filmstripFrames.map((url, i) => (
+                        <div
+                          key={`fs-${i}`}
+                          className="h-full min-w-0 flex-1 bg-cover bg-center"
+                          style={{ backgroundImage: `url(${url})` }}
+                        />
+                      ))
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-b from-neutral-700 to-neutral-900" />
+                    )}
+                  </div>
+
+                  <div
+                    className="pointer-events-none absolute inset-y-0 left-0 z-[1] bg-black/55"
+                    style={{ width: `${keepStart * 100}%` }}
+                  />
+                  <div
+                    className="pointer-events-none absolute inset-y-0 right-0 z-[1] bg-black/55"
+                    style={{ left: `${keepEnd * 100}%` }}
+                  />
+
+                  <div
+                    className="pointer-events-none absolute z-[2] border-y-[3px]"
+                    style={{
+                      left: `${keepStart * 100}%`,
+                      width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
+                      top: 0,
+                      bottom: 0,
+                      borderColor: TRIM_BORDER,
+                    }}
+                  />
+
+                  {keyframeMarks?.map((r) => (
+                    <div
+                      key={`kf-${r}`}
+                      className="pointer-events-none absolute inset-y-[22%] z-[2] w-px bg-white/25"
+                      style={{ left: `${r * 100}%` }}
+                    />
+                  ))}
+                </div>
+
+                <div
+                  className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
+                  style={{ left: `${keepStart * 100}%`, width: 18 }}
+                  aria-hidden
+                >
+                  <div
+                    className={cn(
+                      "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-l-[6px] shadow-md transition-transform",
+                      dragHandle === "start" && "scale-105",
+                    )}
+                    style={{
+                      backgroundColor:
+                        dragHandle === "start" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                    }}
+                  >
+                    <span className="flex gap-[3px]">
+                      <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                      <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                    </span>
+                  </div>
+                  {dragHandle === "start" && (
+                    <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
+                      {formatMs(startMsForBubble)}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
+                  style={{ left: `${keepEnd * 100}%`, width: 18 }}
+                  aria-hidden
+                >
+                  <div
+                    className={cn(
+                      "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-r-[6px] shadow-md transition-transform",
+                      dragHandle === "end" && "scale-105",
+                    )}
+                    style={{
+                      backgroundColor:
+                        dragHandle === "end" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                    }}
+                  >
+                    <span className="flex gap-[3px]">
+                      <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                      <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
+                    </span>
+                  </div>
+                  {dragHandle === "end" && (
+                    <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
+                      {formatMs(endMsForBubble)}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  className="pointer-events-none absolute z-20"
+                  style={{
+                    left: `${playhead * 100}%`,
+                    top: -3,
+                    bottom: -3,
+                    transform: "translateX(-50%)",
+                  }}
+                >
+                  <div className="mx-auto h-2.5 w-2.5 rounded-full bg-white shadow" />
+                  <div className="mx-auto h-[calc(100%-10px)] w-[2px] bg-white shadow" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="absolute inset-0 overflow-hidden rounded-md">
+                  <div className="absolute inset-0 flex bg-neutral-800">
+                    {filmstripFrames?.map((url, i) => (
                       <div
-                        key={`fs-${i}`}
+                        key={`fs-split-${i}`}
                         className="h-full min-w-0 flex-1 bg-cover bg-center"
                         style={{ backgroundImage: `url(${url})` }}
                       />
-                    ))
-                  ) : (
-                    <div className="h-full w-full bg-gradient-to-b from-neutral-700 to-neutral-900" />
-                  )}
-                </div>
-
-                <div
-                  className="pointer-events-none absolute inset-y-0 left-0 z-[1] bg-black/55"
-                  style={{ width: `${keepStart * 100}%` }}
-                />
-                <div
-                  className="pointer-events-none absolute inset-y-0 right-0 z-[1] bg-black/55"
-                  style={{ left: `${keepEnd * 100}%` }}
-                />
-
-                <div
-                  className="pointer-events-none absolute z-[2] border-y-[3px]"
-                  style={{
-                    left: `${keepStart * 100}%`,
-                    width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
-                    top: 0,
-                    bottom: 0,
-                    borderColor: TRIM_BORDER,
-                  }}
-                />
-
-                {keyframeMarks?.map((r) => (
+                    ))}
+                  </div>
+                  {keyframeMarks?.map((r) => (
+                    <div
+                      key={`kf-split-${r}`}
+                      className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
+                      style={{ left: `${r * 100}%` }}
+                    />
+                  ))}
                   <div
-                    key={`kf-${r}`}
-                    className="pointer-events-none absolute inset-y-[22%] z-[2] w-px bg-white/25"
-                    style={{ left: `${r * 100}%` }}
+                    className={cn(
+                      "pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-white",
+                      emphasizePlayhead && "w-1 bg-sky-300",
+                    )}
+                    style={{ left: `${playhead * 100}%` }}
                   />
-                ))}
-              </div>
-
-              {/* Start cap */}
-              <div
-                className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
-                style={{ left: `${keepStart * 100}%`, width: 18 }}
-                aria-hidden
-              >
-                <div
-                  className={cn(
-                    "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-l-[6px] shadow-md transition-transform",
-                    dragHandle === "start" && "scale-105",
-                  )}
-                  style={{
-                    backgroundColor:
-                      dragHandle === "start" ? TRIM_CAP_ACTIVE : TRIM_CAP,
-                  }}
-                >
-                  <span className="flex gap-[3px]">
-                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
-                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
-                  </span>
                 </div>
-                {dragHandle === "start" && (
-                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
-                    {formatMs(startMsForBubble)}
-                  </div>
-                )}
-              </div>
-
-              {/* End cap */}
-              <div
-                className="absolute top-0 z-10 h-full -translate-x-1/2 cursor-ew-resize"
-                style={{ left: `${keepEnd * 100}%`, width: 18 }}
-                aria-hidden
-              >
-                <div
-                  className={cn(
-                    "absolute inset-y-0 left-1/2 flex w-[14px] -translate-x-1/2 flex-col items-center justify-center rounded-r-[6px] shadow-md transition-transform",
-                    dragHandle === "end" && "scale-105",
-                  )}
-                  style={{
-                    backgroundColor:
-                      dragHandle === "end" ? TRIM_CAP_ACTIVE : TRIM_CAP,
-                  }}
-                >
-                  <span className="flex gap-[3px]">
-                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
-                    <span className="h-3.5 w-[2px] rounded-full bg-black/40" />
-                  </span>
-                </div>
-                {dragHandle === "end" && (
-                  <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
-                    {formatMs(endMsForBubble)}
-                  </div>
-                )}
-              </div>
-
-              {/* White playhead needle */}
-              <div
-                className="pointer-events-none absolute z-20"
-                style={{
-                  left: `${playhead * 100}%`,
-                  top: -3,
-                  bottom: -3,
-                  transform: "translateX(-50%)",
-                }}
-              >
-                <div className="mx-auto h-2.5 w-2.5 rounded-full bg-white shadow" />
-                <div className="mx-auto h-[calc(100%-10px)] w-[2px] bg-white shadow" />
-              </div>
-            </>
-          ) : (
-            <>
-              <div
-                className="absolute inset-y-[28%] left-0 bg-[#888]"
-                style={{ width: `${keepStart * 100}%` }}
-              />
-              <div
-                className="absolute inset-y-[28%] bg-[#0078d4]"
-                style={{
-                  left: `${keepStart * 100}%`,
-                  width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
-                }}
-              />
-              <div
-                className="absolute inset-y-[28%] right-0 bg-[#888]"
-                style={{ left: `${keepEnd * 100}%`, right: 0 }}
-              />
-
-              {keyframeMarks?.map((r) => (
-                <div
-                  key={`kf-${r}`}
-                  className="pointer-events-none absolute inset-y-[18%] w-px bg-white/35"
-                  style={{ left: `${r * 100}%` }}
-                />
-              ))}
-
-              <div
-                className="pointer-events-none absolute inset-y-0 z-20 w-0.5 bg-[#E74C3C]"
-                style={{ left: `${playhead * 100}%` }}
-              />
-            </>
-          )}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={disabled || !src}
-            onClick={togglePlay}
-            aria-label={playing ? "Pause" : "Play"}
-          >
-            {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          </Button>
-          <span className="min-w-[9rem] font-mono text-xs text-muted">
-            {formatMs(currentMs)} / {formatMs(durationMs)}
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              type="button"
-              disabled={disabled}
-              className="rounded p-0.5 text-muted hover:text-foreground disabled:opacity-50"
-              aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
-              onClick={() => {
-                if (muted || volume === 0) {
-                  setMuted(false);
-                  if (volume === 0) setVolume(0.7);
-                } else {
-                  setMuted(true);
-                }
-              }}
-            >
-              <VolumeLevelIcon
-                volume={volume}
-                muted={muted}
-                className="h-3.5 w-3.5"
-              />
-            </button>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={muted ? 0 : volume}
-              disabled={disabled}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setVolume(next);
-                setMuted(next === 0);
-              }}
-              className="w-20"
-              aria-label="Lautstärke"
-            />
+              </>
+            )}
           </div>
-        </div>
+        ) : null}
       </div>
     );
   },
