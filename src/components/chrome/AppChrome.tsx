@@ -38,7 +38,7 @@ export function AppChrome({ children, actions, className }: Props) {
         className,
       )}
     >
-      {/* py-[5px]: logo top must match macOS trafficLightPosition.y — see macTrafficLights.ts */}
+      {/* py-[5px] + logo tile 34px → trafficLightPosition.y centers lights — see macTrafficLights.ts */}
       <div
         className="flex min-w-0 flex-1 cursor-default items-center gap-3 px-4 py-[5px]"
         data-tauri-drag-region

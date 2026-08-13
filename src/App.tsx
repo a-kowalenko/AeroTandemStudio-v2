@@ -1470,6 +1470,7 @@ function App() {
         }
       >
         <div className="pointer-events-none flex min-w-0 items-center gap-2.5">
+          {/* h-[34px] = MAC_LOGO_TILE_PX — macOS traffic-light center in macTrafficLights.ts */}
           <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
             <img
               src="/logo.png"

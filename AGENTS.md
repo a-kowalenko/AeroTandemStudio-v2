@@ -103,7 +103,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 20: Medien-Bearbeitung Drehen (Video/Foto, Bearbeiten-Dialog, Undo, Batch-Fotos)
 - ✅ Phase 21: Foto-Zuschnitt (Crop-Overlay, Working-Copy, Undo)
 - ✅ Phase 21.1: Crop-Settle UX (1.4s Idle, Overlay am Settled-Rand, Shadow-Reveal)
-- ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo) & Dialog-Zentrierung (Update-Dialog)
+- ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo center) & Dialog-Zentrierung (Update-Dialog)
 
 **Nächster Schritt:** optional Phase 14 — ML Foto-Klassifikation (Backlog) aus `@docs/IMPLEMENTATION_PLAN.md`  
 *(oder manuelle Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*

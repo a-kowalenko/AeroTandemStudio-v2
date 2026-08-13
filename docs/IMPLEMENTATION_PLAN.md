@@ -1108,20 +1108,20 @@ src/components/PhotoCropOverlay.tsx
 
 **Status:** ✅ Erledigt  
 **Abhängigkeiten:** Phase 11 / AppChrome  
-**Ziel:** (1) Auf macOS (Overlay-Titlebar) schließt der **obere Rand der Traffic Lights** mit dem **oberen Rand des Logos** ab. (2) Dialoge (inkl. Update-Dialog) sind wieder stabil zentriert — Regression durch `inset-0`+`m-auto`+`h-fit` auf WKWebView behoben.
+**Ziel:** (1) Auf macOS (Overlay-Titlebar) sind die Traffic Lights **vertikal mittig** zum Logo-Tile (34px) ausgerichtet. (2) Dialoge (inkl. Update-Dialog) sind wieder stabil zentriert — Regression durch `inset-0`+`m-auto`+`h-fit` auf WKWebView behoben.
 
 #### Entscheidungen
 
 | Thema | Entscheidung |
 |-------|----------------|
-| Traffic Lights | `trafficLightPosition: { x: 14, y: 10 }` in `tauri.conf.json` (y = Header `py-2.5` = Logo-Oberkante) |
-| Sync | Konstante/Kommentar in `macTrafficLights.ts` + `AppChrome` — Conf-Werte und Padding gekoppelt halten |
+| Traffic Lights | `trafficLightPosition: { x: 14, y: 16 }` — Center-Formel `padY + (logoTile − lightH) / 2` = `5 + (34 − 12) / 2` |
+| Sync | Konstanten in `macTrafficLights.ts` + Kommentar in `AppChrome` — Conf-`y` und Header/Logo-Maße gekoppelt halten |
 | Dialog-Zentrierung | Flex-Wrapper um `DialogContent` (kein `transform`, kein `inset-0`+`m-auto`+`h-fit`) — Select/Combobox-Koordinaten bleiben korrekt, macOS-Layout stabil |
 
 #### Aufgaben
 
 - [x] `trafficLightPosition` in `tauri.conf.json` setzen (Overlay + decorations)
-- [x] `macTrafficLights.ts` + Header-Inset/`py-2.5`-Kommentar in `AppChrome`
+- [x] `macTrafficLights.ts` + Header-Inset/Center-Kommentar in `AppChrome`
 - [x] `DialogContent`: Flex-Center ohne Transform; z-Index-Layer für gestapelte Dialoge
 - [x] Win/Linux unverändert (Custom-Controls / kein Overlay)
 
