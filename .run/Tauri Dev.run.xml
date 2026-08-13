@@ -7,7 +7,9 @@
     </scripts>
     <arguments value="dev" />
     <node-interpreter value="project" />
-    <envs />
+    <envs>
+      <env name="PATH" value="$USER_HOME$/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>
