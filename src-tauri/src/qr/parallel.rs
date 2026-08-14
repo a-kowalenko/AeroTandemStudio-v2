@@ -4,8 +4,8 @@
 //! Strategy:
 //! 1. Videos — hot path: scan index 0 and n−1 with at most 2 workers, then remainder
 //!    outside-in with limited workers (2, or up to config when n ≥ 6).
-//! 2. Photos — skip the hot-path barrier; all workers start immediately on the
-//!    outside-in queue (cheap per-file decode, large lists).
+//! 2. Photos — skip the hot-path barrier; scan at most 20 files from each
+//!    list end (max 40). All workers start immediately on that queue.
 //!
 //! List order is preserved; only the scan order changes. Cleanup direction is
 //! Forward near the start and Backward near the end.
@@ -26,6 +26,8 @@ use super::analyser::{
 pub const HOT_PATH_WORKERS: usize = 2;
 /// From this list length, phase-B may use more than 2 workers (up to config / 4).
 pub const PHASE_B_WIDE_MIN_N: usize = 6;
+/// Photo batch: scan at most this many files from each list end (max 40).
+pub const PHOTO_EDGE_SCAN_PER_SIDE: usize = 20;
 
 /// One scan job: list index + cleanup hint when that clip hits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +76,35 @@ pub fn ends_first_jobs(n: usize) -> Vec<EndsFirstJob> {
         }
         hi -= 1;
     }
+    out
+}
+
+/// Ends-first jobs limited to `per_side` from each list end (no middle).
+pub fn ends_first_edge_jobs(n: usize, per_side: usize) -> Vec<EndsFirstJob> {
+    if n == 0 || per_side == 0 {
+        return Vec::new();
+    }
+    if n <= per_side.saturating_mul(2) {
+        return ends_first_jobs(n);
+    }
+    let lo_end = per_side;
+    let hi_start = n - per_side;
+    ends_first_jobs(n)
+        .into_iter()
+        .filter(|j| j.index < lo_end || j.index >= hi_start)
+        .collect()
+}
+
+/// List-order indices for UI stripes: head, then tail (middle omitted).
+pub fn photo_edge_scan_indices(n: usize, per_side: usize) -> Vec<usize> {
+    if n == 0 || per_side == 0 {
+        return Vec::new();
+    }
+    if n <= per_side.saturating_mul(2) {
+        return (0..n).collect();
+    }
+    let mut out: Vec<usize> = (0..per_side).collect();
+    out.extend(n - per_side..n);
     out
 }
 
@@ -137,6 +168,7 @@ pub fn scan_videos_hybrid_with_progress(
         cancel,
         on_file,
         false,
+        None,
     )?;
 
     if result.found || result.cancelled {
@@ -177,6 +209,7 @@ pub fn scan_photos_hybrid_with_progress(
         return Ok(QrScanResult::cancelled());
     }
 
+    let n = paths.len();
     let result = run_ends_first(
         paths,
         |path, stop| scan_photo(ffmpeg_bin, path, options, Some(stop)),
@@ -184,16 +217,24 @@ pub fn scan_photos_hybrid_with_progress(
         cancel,
         on_file,
         true,
+        Some(PHOTO_EDGE_SCAN_PER_SIDE),
     )?;
 
     if result.found || result.cancelled {
         return Ok(result);
     }
 
-    Ok(QrScanResult::miss(format!(
-        "Kein gültiger QR-Code in {} Foto(s) gefunden.",
-        paths.len()
-    )))
+    let cap = PHOTO_EDGE_SCAN_PER_SIDE.saturating_mul(2);
+    if n > cap {
+        Ok(QrScanResult::miss(format!(
+            "Kein gültiger QR-Code an den Listenenden gefunden (je {PHOTO_EDGE_SCAN_PER_SIDE} Fotos geprüft)."
+        )))
+    } else {
+        Ok(QrScanResult::miss(format!(
+            "Kein gültiger QR-Code in {} Foto(s) gefunden.",
+            n
+        )))
+    }
 }
 
 fn run_ends_first<F>(
@@ -203,6 +244,7 @@ fn run_ends_first<F>(
     cancel: Option<&AtomicBool>,
     on_file: Option<&QrFileProgressCb<'_>>,
     skip_hot_path: bool,
+    edge_per_side: Option<usize>,
 ) -> Result<QrScanResult, QrScanError>
 where
     F: Fn(&str, &AtomicBool) -> Result<QrScanResult, QrScanError> + Sync,
@@ -212,7 +254,10 @@ where
     }
 
     let n = items.len();
-    let jobs = ends_first_jobs(n);
+    let jobs = match edge_per_side {
+        Some(per_side) => ends_first_edge_jobs(n, per_side),
+        None => ends_first_jobs(n),
+    };
     if jobs.is_empty() {
         return Ok(QrScanResult::miss("empty"));
     }
@@ -429,6 +474,39 @@ mod tests {
         assert_eq!(jobs[1].index, 1);
         assert_eq!(jobs[0].cleanup, Forward);
         assert_eq!(jobs[1].cleanup, Backward);
+    }
+
+    #[test]
+    fn photo_edge_jobs_caps_at_forty() {
+        let jobs = ends_first_edge_jobs(220, PHOTO_EDGE_SCAN_PER_SIDE);
+        assert_eq!(jobs.len(), 40);
+        assert_eq!(jobs[0].index, 0);
+        assert_eq!(jobs[1].index, 219);
+        let mut idxs: Vec<_> = jobs.iter().map(|j| j.index).collect();
+        idxs.sort_unstable();
+        let mut expected: Vec<usize> = (0..20).collect();
+        expected.extend(200..220);
+        assert_eq!(idxs, expected);
+    }
+
+    #[test]
+    fn photo_edge_jobs_small_list_unchanged() {
+        assert_eq!(ends_first_edge_jobs(12, 20).len(), 12);
+        assert_eq!(ends_first_edge_jobs(40, 20).len(), 40);
+        assert_eq!(ends_first_edge_jobs(41, 20).len(), 40);
+    }
+
+    #[test]
+    fn photo_edge_scan_indices_list_order() {
+        assert_eq!(photo_edge_scan_indices(12, 20), (0..12).collect::<Vec<_>>());
+        assert_eq!(
+            photo_edge_scan_indices(46, 20),
+            {
+                let mut v: Vec<usize> = (0..20).collect();
+                v.extend(26..46);
+                v
+            }
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import {
   useQrScanStore,
+  photoEdgeScanPaths,
   type QrScanJobStage,
 } from "@/store/qrScanStore";
 import {
@@ -61,10 +62,14 @@ function emptyOutcome(): AutoQrScanOutcome {
 }
 
 /** Progress via qrScanStore only (row bars / SD dialog) — no global LoadingOverlay. */
-function setQrStage(stage: QrScanJobStage, paths?: string[]) {
+function setQrStage(
+  stage: QrScanJobStage,
+  paths?: string[],
+  options?: { photoEdgeLimited?: boolean },
+) {
   const store = useQrScanStore.getState();
   if (paths) {
-    store.begin(paths, stage);
+    store.begin(paths, stage, options);
   } else {
     store.setStage(stage);
   }
@@ -165,7 +170,10 @@ export async function runAutoQrAfterImport(
   }
 
   if (scanPhotos) {
-    setQrStage("scanning_photos", photoPaths);
+    const edge = photoEdgeScanPaths(photoPaths);
+    setQrStage("scanning_photos", edge.paths, {
+      photoEdgeLimited: edge.limited,
+    });
     const result = await scanQrPhotos(photoPaths);
     if (result.cancelled) {
       return {

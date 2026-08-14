@@ -212,6 +212,7 @@ function App() {
   const qrFollowup = useQrScanStore((s) => s.followup);
   const qrClipProgress = useQrScanStore((s) => s.clipProgress);
   const qrScanOrder = useQrScanStore((s) => s.scanOrder);
+  const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1541,6 +1542,7 @@ function App() {
     qrFollowup,
     qrClipProgress,
     qrScanOrder,
+    qrPhotoEdgeLimited,
     videoImporting,
     photoImporting,
     encodeBusy: busy,

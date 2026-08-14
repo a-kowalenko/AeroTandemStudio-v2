@@ -50,7 +50,13 @@ type QrScanState = {
   /** Normalized path → frame progress for active video clips. */
   clipProgress: Record<string, QrClipFrameProgress>;
   followup: QrFollowupStatus | null;
-  begin: (paths: string[], stage?: QrScanJobStage) => void;
+  /** True when photo stripes are only list-end candidates (N=20 per side). */
+  photoEdgeLimited: boolean;
+  begin: (
+    paths: string[],
+    stage?: QrScanJobStage,
+    options?: QrScanBeginOptions,
+  ) => void;
   /** Re-open stripe UI for photo neighbor follow-up (full list + original hit). */
   beginFollowup: (paths: string[], hitPath: string) => void;
   setStage: (stage: QrScanJobStage) => void;
@@ -89,6 +95,30 @@ function isFinishedPhase(phase: QrScanPhase): boolean {
 export function normalizeMediaPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
 }
+
+/** Photo batch: scan at most this many files from each list end (max 40). */
+export const PHOTO_QR_EDGE_SCAN_PER_SIDE = 20;
+
+/** Head + tail paths for photo QR stripes (list order, middle omitted). */
+export function photoEdgeScanPaths(paths: string[]): {
+  paths: string[];
+  limited: boolean;
+} {
+  const cleaned = paths.map((p) => p.trim()).filter(Boolean);
+  const n = cleaned.length;
+  const per = PHOTO_QR_EDGE_SCAN_PER_SIDE;
+  if (n <= per * 2) {
+    return { paths: cleaned, limited: false };
+  }
+  return {
+    paths: [...cleaned.slice(0, per), ...cleaned.slice(n - per)],
+    limited: true,
+  };
+}
+
+export type QrScanBeginOptions = {
+  photoEdgeLimited?: boolean;
+};
 
 export type QrFileSegment = {
   key: string;
@@ -209,6 +239,7 @@ export function summarizeQrScanProgress(
   followup: QrFollowupStatus | null = null,
   clipProgress: Record<string, QrClipFrameProgress> = {},
   scanOrder: string[] = [],
+  photoEdgeLimited = false,
 ): QrScanProgressSummary {
   const entries = Object.entries(byPath);
   // Stripes follow the media list order; ends-first only affects which paths go active.
@@ -314,6 +345,9 @@ export function summarizeQrScanProgress(
           : "Dateien";
     parts.push(`${finished} von ${total} ${unit} erledigt`);
   }
+  if (stage === "scanning_photos" && photoEdgeLimited) {
+    parts.push(`Ränder (je ${PHOTO_QR_EDGE_SCAN_PER_SIDE})`);
+  }
   if (hit) {
     parts.push("Treffer gefunden");
   } else if (frames?.mode === "prepare") {
@@ -354,8 +388,9 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   scanOrder: [],
   clipProgress: {},
   followup: null,
+  photoEdgeLimited: false,
 
-  begin: (paths, stage = "scanning") => {
+  begin: (paths, stage = "scanning", options) => {
     const unique = dedupeNormalizedPaths(paths);
     const byPath: Record<string, QrScanPhase> = {};
     for (const key of unique) {
@@ -368,6 +403,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: unique,
       clipProgress: {},
       followup: stage === "followup" ? emptyFollowup() : null,
+      photoEdgeLimited: Boolean(options?.photoEdgeLimited),
     });
   },
 
@@ -388,6 +424,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: unique,
       clipProgress: {},
       followup: emptyFollowup(),
+      photoEdgeLimited: false,
     });
   },
 
@@ -486,6 +523,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: [],
       clipProgress: {},
       followup: null,
+      photoEdgeLimited: false,
     }),
 
   phaseFor: (path) => get().byPath[normalizeMediaPath(path)] ?? null,
@@ -496,9 +534,10 @@ export async function withQrScanProgress<T>(
   paths: string[],
   run: () => Promise<T>,
   stage: QrScanJobStage = "scanning",
+  options?: QrScanBeginOptions,
 ): Promise<T> {
   const store = useQrScanStore.getState();
-  store.begin(paths, stage);
+  store.begin(paths, stage, options);
   try {
     return await run();
   } finally {

@@ -12,7 +12,8 @@ use crate::qr::analyser::{
 };
 use crate::qr::followup::scan_series_followup_hits;
 use crate::qr::parallel::{
-    scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
+    ends_first_edge_jobs, scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
+    PHOTO_EDGE_SCAN_PER_SIDE,
 };
 use crate::storage::config::AppConfig;
 use crate::storage::logging::{self, file_name};
@@ -321,11 +322,21 @@ pub async fn scan_qr_photos(
     let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
     logging::info(
         "qr",
-        format!(
-            "Foto-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast",
-            paths.len(),
-            opts.max_photo_width
-        ),
+        {
+            let n = paths.len();
+            let scan_n = ends_first_edge_jobs(n, PHOTO_EDGE_SCAN_PER_SIDE).len();
+            if n > scan_n {
+                format!(
+                    "Foto-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {PHOTO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, decode={}px fast",
+                    opts.max_photo_width
+                )
+            } else {
+                format!(
+                    "Foto-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast",
+                    opts.max_photo_width
+                )
+            }
+        },
     );
     let on_progress = make_progress_cb(app.clone());
 
