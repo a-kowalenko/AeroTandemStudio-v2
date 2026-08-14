@@ -2,7 +2,7 @@
 //!
 //! Behaviour port of legacy `qr_analyser.py` (without OpenCV / pyzbar).
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -20,7 +20,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::model::Kunde;
-use crate::video::ffmpeg::{self, run_ffmpeg_checked, FfmpegError};
+use crate::storage::logging;
+use crate::video::ffmpeg::{self, run_ffmpeg_checked, run_ffmpeg_raw_stdout_frames, FfmpegError};
 use crate::video::probe;
 
 pub const DEFAULT_QR_VIDEO_SCAN_SECONDS: f64 = 5.0;
@@ -29,6 +30,10 @@ pub const MAX_QR_DECODE_WIDTH: u32 = 1920;
 pub const MAX_QR_VIDEO_DECODE_WIDTH: u32 = 1280;
 /// Downscale for follow-up neighbor scans (detect-only, no preview).
 pub const MAX_QR_FOLLOWUP_DECODE_WIDTH: u32 = 960;
+/// Lower width for the quick first-pass detect (faster FFmpeg + rxing).
+pub const QR_FAST_DETECT_WIDTH: u32 = 960;
+/// Midpoint anchors tried via cheap PNG before the full pipe (0, last, mid…).
+pub const QR_QUICK_ANCHOR_COUNT: usize = 3;
 /// Temp dirs for hit-frame previews shown in SuccessDialog.
 pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
 /// Extra padding around the QR AABB before forming a square (fraction of side).
@@ -239,7 +244,7 @@ pub fn build_extract_frame_args(
     max_width: u32,
 ) -> Vec<String> {
     let seek = format!("{:.3}", seek_secs.max(0.0));
-    let vf = format!("scale='min({max_width},iw)':-1");
+    let vf = format!("scale='min({max_width},iw)':-2:flags=fast_bilinear");
     vec![
         "-hide_banner".into(),
         "-loglevel".into(),
@@ -250,10 +255,85 @@ pub fn build_extract_frame_args(
         input.to_string(),
         "-frames:v".into(),
         "1".into(),
+        "-an".into(),
+        "-sn".into(),
         "-vf".into(),
         vf,
         "-y".into(),
         output_png.to_string(),
+    ]
+}
+
+/// Effective sampling rate for batch QR extract (`fps / frame_step`).
+pub fn sample_fps_for_qr(fps: f64, frame_step: u32) -> f64 {
+    let fps = if fps > 0.0 { fps } else { 30.0 };
+    let step = f64::from(frame_step.max(1));
+    (fps / step).max(0.5)
+}
+
+/// Expected frame count for a select-step window (same as [`target_frame_indices`]).
+pub fn expected_qr_frame_count(scan_seconds: f64, sample_fps: f64) -> u32 {
+    let n = (sample_fps.max(0.5) * scan_seconds.max(0.5)).ceil() as u32;
+    n.max(1)
+}
+
+/// Output size for `scale=W:H` (even dimensions, aspect-preserving).
+pub fn scaled_gray_frame_size(src_w: u32, src_h: u32, max_width: u32) -> Option<(u32, u32)> {
+    if src_w == 0 || src_h == 0 {
+        return None;
+    }
+    let mut out_w = max_width.min(src_w);
+    out_w = (out_w / 2) * 2;
+    if out_w < 2 {
+        out_w = 2;
+    }
+    let mut out_h = ((u64::from(src_h) * u64::from(out_w)) / u64::from(src_w)) as u32;
+    out_h = (out_h / 2) * 2;
+    if out_h < 2 {
+        out_h = 2;
+    }
+    Some((out_w, out_h))
+}
+
+/// One-shot FFmpeg args: same frame indices as seek fallback (`0, step, 2*step, …`).
+///
+/// Uses `select=not(mod(n\,step))` + `fps_mode=vfr` so timestamps match
+/// [`target_frame_indices`] — the old `fps=` filter picked different frames and
+/// missed QRs that seek/PNG still found (e.g. src_frame 130 @ ~4.3s).
+pub fn build_extract_frames_pipe_args(
+    input: &str,
+    scan_seconds: f64,
+    frame_step: u32,
+    out_w: u32,
+    out_h: u32,
+) -> Vec<String> {
+    let t = format!("{:.3}", scan_seconds.max(0.5));
+    let step = frame_step.max(1);
+    // Escape comma for FFmpeg filtergraph (same style as keyframe select elsewhere).
+    let vf = format!(
+        "select='not(mod(n\\,{step}))',scale={out_w}:{out_h}:flags=fast_bilinear,format=rgb24"
+    );
+    vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-ss".into(),
+        "0".into(),
+        "-t".into(),
+        t,
+        "-i".into(),
+        input.to_string(),
+        "-an".into(),
+        "-sn".into(),
+        "-vf".into(),
+        vf,
+        "-fps_mode".into(),
+        "vfr".into(),
+        "-f".into(),
+        "rawvideo".into(),
+        "-pix_fmt".into(),
+        "rgb24".into(),
+        "-".into(),
     ]
 }
 
@@ -273,6 +353,83 @@ pub fn target_frame_indices(fps: f64, scan_seconds: f64, frame_step: u32) -> Vec
         }
     }
     indices
+}
+
+/// Decode order over candidate **slots** (indices into [`target_frame_indices`]).
+///
+/// Strategy (no left-half bias — symmetric midpoint subdivision):
+/// 1. slot 0 first (clip start)
+/// 2. last, then mid of the full range
+/// 3. further midpoints of open gaps (larger gap first; ties alternate)
+pub fn midpoint_decode_order(n: usize) -> Vec<usize> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut order = Vec::with_capacity(n);
+    let mut visited = vec![false; n];
+
+    order.push(0);
+    visited[0] = true;
+    if n == 1 {
+        return order;
+    }
+
+    let last = n - 1;
+    if !visited[last] {
+        order.push(last);
+        visited[last] = true;
+    }
+    if order.len() == n {
+        return order;
+    }
+
+    let mut queue = VecDeque::new();
+    queue.push_back((0usize, last));
+
+    while let Some((lo, hi)) = queue.pop_front() {
+        if hi <= lo + 1 {
+            continue;
+        }
+        let mid = lo + (hi - lo) / 2;
+        if !visited[mid] {
+            order.push(mid);
+            visited[mid] = true;
+        }
+        let left_span = mid - lo;
+        let right_span = hi - mid;
+        if right_span > left_span {
+            queue.push_back((mid, hi));
+            queue.push_back((lo, mid));
+        } else if left_span > right_span {
+            queue.push_back((lo, mid));
+            queue.push_back((mid, hi));
+        } else if mid % 2 == 0 {
+            // Equal spans: alternate to avoid a systematic left bias.
+            queue.push_back((mid, hi));
+            queue.push_back((lo, mid));
+        } else {
+            queue.push_back((lo, mid));
+            queue.push_back((mid, hi));
+        }
+        if order.len() == n {
+            break;
+        }
+    }
+
+    for i in 0..n {
+        if !visited[i] {
+            order.push(i);
+        }
+    }
+    order
+}
+
+/// Source-frame indices in [`midpoint_decode_order`] sequence.
+pub fn midpoint_ordered_frames(indices: &[u32]) -> Vec<u32> {
+    midpoint_decode_order(indices.len())
+        .into_iter()
+        .filter_map(|slot| indices.get(slot).copied())
+        .collect()
 }
 
 /// Parse QR payload into `Kunde` (URL fragment after `#` or raw JSON).
@@ -383,6 +540,13 @@ fn value_as_string(v: &serde_json::Value) -> Option<String> {
 
 fn is_stop(cancel: Option<&AtomicBool>) -> bool {
     ffmpeg::is_cancelled() || cancel.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
+}
+
+fn clip_file_name(path: &str) -> &str {
+    Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
 }
 
 /// Decode QR text + corner points from a greyscale luma8 buffer.
@@ -589,12 +753,56 @@ pub fn scan_photo(
     }
 }
 
+/// RGB24 frame → same Luma path as legacy PNG extract (`to_luma8`).
+fn decode_kunde_from_rgb_frame(
+    rgb: &[u8],
+    width: u32,
+    height: u32,
+    persist_preview: bool,
+) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+    let needed = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(3);
+    if rgb.len() < needed {
+        return Err(QrScanError::Image(format!(
+            "rgb buffer too small: got {} need {needed}",
+            rgb.len()
+        )));
+    }
+    let pixels = rgb[..needed].to_vec();
+    let buf = ImageBuffer::<image::Rgb<u8>, _>::from_raw(width, height, pixels)
+        .ok_or_else(|| QrScanError::Image("rgb buffer size mismatch".into()))?;
+    let img = DynamicImage::ImageRgb8(buf);
+    decode_kunde_from_dynamic_image(img, width, persist_preview)
+}
+
+/// Optional progress: `(path, phase, frame, frames_total)`.
+/// Phases: `start` | `done` | `hit` | `extract` | `fast` | `thorough`.
+/// - `extract`: one-shot pipe is buffering samples (no Prüfpunkt counter)
+/// - `fast`: midpoint decode on buffered pipe frames (Schnellprüfung)
+/// - `thorough`: per-frame seek/PNG fallback (gründliche Prüfung)
+pub type QrScanProgressCb<'a> = dyn Fn(&str, &str, u32, u32) + Sync + 'a;
+
 /// Scan the first `scan_seconds` of a video clip for a customer QR code.
 pub fn scan_video_clip(
     ffmpeg: &Path,
     path: &str,
     options: &QrScanOptions,
     cancel: Option<&AtomicBool>,
+) -> Result<QrScanResult, QrScanError> {
+    scan_video_clip_with_progress(ffmpeg, path, options, cancel, None)
+}
+
+/// Like [`scan_video_clip`], with optional progress (`extract` / `fast` / `thorough`).
+///
+/// Fast path: cheap PNG midpoint anchors (0 / last / mid), then one FFmpeg pipe
+/// with `fast_bilinear` extract + midpoint decode. Seek/PNG fallback last.
+pub fn scan_video_clip_with_progress(
+    ffmpeg: &Path,
+    path: &str,
+    options: &QrScanOptions,
+    cancel: Option<&AtomicBool>,
+    on_progress: Option<&QrScanProgressCb<'_>>,
 ) -> Result<QrScanResult, QrScanError> {
     if is_stop(cancel) {
         return Ok(QrScanResult::cancelled());
@@ -603,21 +811,350 @@ pub fn scan_video_clip(
         return Err(QrScanError::NotFound(path.to_string()));
     }
 
+    // Early UI signal before probe/FFmpeg spawn so the stripe leaves "idle" sooner.
+    if let Some(cb) = on_progress {
+        cb(path, "extract", 0, 1);
+    }
+
     let meta = probe::probe_video(ffmpeg, path)?;
     let fps = if meta.fps > 0.0 { meta.fps } else { 30.0 };
+    let full_secs = options.scan_seconds.max(0.5);
+    let full_step = options.frame_step.max(1);
+    let indices = target_frame_indices(fps, full_secs, full_step);
+    let frames_total = (indices.len() as u32).max(1);
+
+    // 1) Quick PNG anchors (typically frame 0, last, mid) — fastest path to first hit.
+    let (quick_hit, tried_slots) = try_quick_anchor_pass(
+        ffmpeg,
+        path,
+        &indices,
+        fps,
+        frames_total,
+        QR_FAST_DETECT_WIDTH.min(options.max_video_width.max(2)),
+        cancel,
+        on_progress,
+    )?;
+    if let Some(res) = quick_hit {
+        return Ok(res);
+    }
+    if is_stop(cancel) {
+        return Ok(QrScanResult::cancelled());
+    }
+
+    let out_size = scaled_gray_frame_size(meta.width, meta.height, options.max_video_width);
+
+    if let Some((out_w, out_h)) = out_size {
+        match scan_video_pipe_pass(
+            ffmpeg,
+            path,
+            full_secs,
+            full_step,
+            fps,
+            out_w,
+            out_h,
+            &tried_slots,
+            cancel,
+            on_progress,
+        )? {
+            PipePassOutcome::Hit(res) | PipePassOutcome::Cancelled(res) => return Ok(res),
+            PipePassOutcome::Miss { frames_read } => {
+                logging::info(
+                    "qr",
+                    format!(
+                        "Pipe midpoint miss frames={frames_read} → Seek/PNG-Fallback file={}",
+                        clip_file_name(path)
+                    ),
+                );
+            }
+            PipePassOutcome::PipeFailed => {
+                logging::info(
+                    "qr",
+                    format!(
+                        "Pipe failed → Seek/PNG-Fallback file={}",
+                        clip_file_name(path)
+                    ),
+                );
+            }
+        }
+
+        if is_stop(cancel) {
+            return Ok(QrScanResult::cancelled());
+        }
+    } else {
+        logging::debug(
+            "qr",
+            format!(
+                "Keine Pipe-Größe (Probe {}x{}) → Seek/PNG file={}",
+                meta.width,
+                meta.height,
+                clip_file_name(path)
+            ),
+        );
+    }
+
+    // Legacy fallback: per-frame seek extract (PNG on disk) — also after a clean pipe miss.
+    scan_video_clip_seek_fallback(ffmpeg, path, options, cancel, fps, on_progress)
+}
+
+/// Cheap PNG extracts for the first midpoint anchors (usually 0, last, mid).
+/// Returns `(hit, slots_already_tried)`.
+fn try_quick_anchor_pass(
+    ffmpeg: &Path,
+    path: &str,
+    indices: &[u32],
+    fps: f64,
+    frames_total: u32,
+    max_width: u32,
+    cancel: Option<&AtomicBool>,
+    on_progress: Option<&QrScanProgressCb<'_>>,
+) -> Result<(Option<QrScanResult>, HashSet<usize>), QrScanError> {
+    let mut tried = HashSet::new();
+    if indices.is_empty() {
+        return Ok((None, tried));
+    }
+    let order = midpoint_decode_order(indices.len());
+    let quick_n = order.len().min(QR_QUICK_ANCHOR_COUNT);
+    if quick_n == 0 {
+        return Ok((None, tried));
+    }
+
+    let notify = |phase: &str, frame: u32, total: u32| {
+        if let Some(cb) = on_progress {
+            cb(path, phase, frame, total);
+        }
+    };
+
+    let tmp_dir = tempfile::tempdir().map_err(|e| QrScanError::Message(e.to_string()))?;
+    let frame_path: PathBuf = tmp_dir.path().join("qr_quick.png");
+    let frame_str = frame_path.to_string_lossy().to_string();
+
+    for (i, &slot) in order.iter().take(quick_n).enumerate() {
+        if is_stop(cancel) {
+            return Ok((Some(QrScanResult::cancelled()), tried));
+        }
+        tried.insert(slot);
+        let frame_index = indices[slot];
+        let seek_secs = frame_index as f64 / fps;
+        let attempt = (i as u32).saturating_add(1);
+        notify("fast", attempt, frames_total);
+
+        let args = build_extract_frame_args(path, seek_secs, &frame_str, max_width);
+        match run_ffmpeg_checked(ffmpeg, &args) {
+            Ok(()) => {}
+            Err(FfmpegError::Cancelled) => {
+                return Ok((Some(QrScanResult::cancelled()), tried));
+            }
+            Err(_) => continue,
+        }
+        if !frame_path.is_file() {
+            continue;
+        }
+
+        if let Some((kunde, preview)) = decode_kunde_from_image_path(&frame_path, max_width)? {
+            logging::info(
+                "qr",
+                format!(
+                    "Clip-Treffer via=quick_anchor frame={attempt}/{frames_total} seek={seek_secs:.3}s src_frame={frame_index} file={}",
+                    clip_file_name(path)
+                ),
+            );
+            return Ok((
+                Some(QrScanResult::hit(kunde, path, Some(preview))),
+                tried,
+            ));
+        }
+    }
+
+    Ok((None, tried))
+}
+
+enum PipePassOutcome {
+    Hit(QrScanResult),
+    Cancelled(QrScanResult),
+    Miss { frames_read: usize },
+    PipeFailed,
+}
+
+fn scan_video_pipe_pass(
+    ffmpeg: &Path,
+    path: &str,
+    scan_seconds: f64,
+    frame_step: u32,
+    fps: f64,
+    out_w: u32,
+    out_h: u32,
+    skip_slots: &HashSet<usize>,
+    cancel: Option<&AtomicBool>,
+    on_progress: Option<&QrScanProgressCb<'_>>,
+) -> Result<PipePassOutcome, QrScanError> {
+    let indices = target_frame_indices(fps, scan_seconds, frame_step);
+    if indices.is_empty() {
+        return Ok(PipePassOutcome::Miss { frames_read: 0 });
+    }
+    let order = midpoint_decode_order(indices.len());
+    let frames_total = (indices.len() as u32).max(1);
+    let args = build_extract_frames_pipe_args(path, scan_seconds, frame_step, out_w, out_h);
+    let frame_nbytes = (out_w as usize)
+        .saturating_mul(out_h as usize)
+        .saturating_mul(3);
+
+    let notify = |phase: &str, frame: u32, total: u32| {
+        if let Some(cb) = on_progress {
+            cb(path, phase, frame, total);
+        }
+    };
+
+    let mut frames: Vec<Option<Vec<u8>>> = vec![None; indices.len()];
+    let mut write_i = 0usize;
+    let mut early: Option<QrScanResult> = None;
+    let mut slot0_tried = false;
+
+    let pipe_result = run_ffmpeg_raw_stdout_frames(ffmpeg, &args, frame_nbytes, |frame| {
+        if is_stop(cancel) {
+            early = Some(QrScanResult::cancelled());
+            return false;
+        }
+        if write_i >= frames.len() {
+            return true;
+        }
+        frames[write_i] = Some(frame.to_vec());
+        // Preparing: do not drive the Prüfpunkt counter (avoids 15→1 jumps).
+        if write_i == 0 {
+            notify("extract", 0, frames_total);
+        } else if write_i + 1 == frames.len() || (write_i + 1) % 4 == 0 {
+            notify("extract", 0, frames_total);
+        }
+
+        // Fast path: first pipe frame is slot 0 — decode immediately unless quick pass already did.
+        if write_i == 0 {
+            slot0_tried = true;
+            if !skip_slots.contains(&0) {
+                notify("fast", 1, frames_total);
+                match decode_kunde_from_rgb_frame(frame, out_w, out_h, true) {
+                    Ok(Some((kunde, preview))) => {
+                        let src_frame = indices[0];
+                        logging::info(
+                            "qr",
+                            format!(
+                                "Clip-Treffer via=pipe_midpoint frame=1/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
+                                clip_file_name(path)
+                            ),
+                        );
+                        early = Some(QrScanResult::hit(kunde, path, Some(preview)));
+                        return false;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        eprintln!("QR frame decode error ({path}): {e}");
+                    }
+                }
+            }
+        }
+
+        write_i = write_i.saturating_add(1);
+        true
+    });
+
+    match pipe_result {
+        Ok(frames_read) => {
+            if let Some(res) = early {
+                if res.cancelled {
+                    return Ok(PipePassOutcome::Cancelled(res));
+                }
+                return Ok(PipePassOutcome::Hit(res));
+            }
+            if is_stop(cancel) {
+                return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
+            }
+
+            // Midpoint decode over buffered frames (skip slots already covered by quick pass).
+            let mut attempt = skip_slots.len() as u32;
+            if slot0_tried && !skip_slots.contains(&0) {
+                attempt = attempt.saturating_add(1);
+            }
+            for &slot in &order {
+                if skip_slots.contains(&slot) {
+                    continue;
+                }
+                if slot == 0 && slot0_tried {
+                    continue;
+                }
+                if is_stop(cancel) {
+                    return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
+                }
+                let Some(rgb) = frames.get(slot).and_then(|f| f.as_deref()) else {
+                    continue;
+                };
+                attempt = attempt.saturating_add(1);
+                notify("fast", attempt, frames_total);
+                let src_frame = indices.get(slot).copied().unwrap_or(0);
+                match decode_kunde_from_rgb_frame(rgb, out_w, out_h, true) {
+                    Ok(Some((kunde, preview))) => {
+                        logging::info(
+                            "qr",
+                            format!(
+                                "Clip-Treffer via=pipe_midpoint frame={attempt}/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
+                                clip_file_name(path)
+                            ),
+                        );
+                        return Ok(PipePassOutcome::Hit(QrScanResult::hit(
+                            kunde,
+                            path,
+                            Some(preview),
+                        )));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        eprintln!("QR frame decode error ({path}): {e}");
+                    }
+                }
+            }
+
+            Ok(PipePassOutcome::Miss {
+                frames_read: frames_read.max(write_i),
+            })
+        }
+        Err(FfmpegError::Cancelled) => Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled())),
+        Err(e) => {
+            eprintln!("QR batch pipe failed ({path}): {e}");
+            Ok(PipePassOutcome::PipeFailed)
+        }
+    }
+}
+
+/// Per-frame FFmpeg seek extract (PNG). Used when the batch pipe path yields 0 frames.
+fn scan_video_clip_seek_fallback(
+    ffmpeg: &Path,
+    path: &str,
+    options: &QrScanOptions,
+    cancel: Option<&AtomicBool>,
+    fps: f64,
+    on_progress: Option<&QrScanProgressCb<'_>>,
+) -> Result<QrScanResult, QrScanError> {
     let indices = target_frame_indices(fps, options.scan_seconds, options.frame_step);
+    let ordered = midpoint_ordered_frames(&indices);
+    let frames_total = (ordered.len() as u32).max(1);
+
+    let notify = |phase: &str, frame: u32, frames_total: u32| {
+        if let Some(cb) = on_progress {
+            cb(path, phase, frame, frames_total);
+        }
+    };
 
     let tmp_dir = tempfile::tempdir().map_err(|e| QrScanError::Message(e.to_string()))?;
     let frame_path: PathBuf = tmp_dir.path().join("qr_frame.png");
     let frame_str = frame_path.to_string_lossy().to_string();
 
+    // Signal pass change before the first thorough attempt (UI resets counter with new mode).
+    notify("thorough", 0, frames_total);
+
     let mut frames_read = 0u32;
-    for frame_index in indices {
+    for (i, frame_index) in ordered.iter().enumerate() {
         if is_stop(cancel) {
             return Ok(QrScanResult::cancelled());
         }
 
-        let seek_secs = frame_index as f64 / fps;
+        let seek_secs = *frame_index as f64 / fps;
         let args =
             build_extract_frame_args(path, seek_secs, &frame_str, options.max_video_width);
         match run_ffmpeg_checked(ffmpeg, &args) {
@@ -630,25 +1167,36 @@ pub fn scan_video_clip(
             continue;
         }
         frames_read += 1;
+        notify("thorough", (i as u32).saturating_add(1), frames_total);
 
         if let Some((kunde, preview)) =
             decode_kunde_from_image_path(&frame_path, options.max_video_width)?
         {
+            logging::info(
+                "qr",
+                format!(
+                    "Clip-Treffer via=seek_png frame={}/{} seek={seek_secs:.3}s src_frame={frame_index} file={}",
+                    (i as u32).saturating_add(1),
+                    frames_total,
+                    clip_file_name(path)
+                ),
+            );
             return Ok(QrScanResult::hit(kunde, path, Some(preview)));
         }
     }
 
-    // Sequential fallback: extract frames at 1/fps cadence without relying on seek accuracy.
+    // Accurate-seek fallback: same midpoint order when fast seek produced nothing.
     if frames_read == 0 {
-        let frames_limit =
-            ((fps * options.scan_seconds.max(0.5)) as u32).max(1);
+        let frames_limit = ((fps * options.scan_seconds.max(0.5)) as u32).max(1);
         let step = options.frame_step.max(1);
-        for frame_index in (0..frames_limit).step_by(step as usize) {
+        let seq: Vec<u32> = (0..frames_limit).step_by(step as usize).collect();
+        let ordered_seq = midpoint_ordered_frames(&seq);
+        let seq_total = (ordered_seq.len() as u32).max(1);
+        for (i, frame_index) in ordered_seq.iter().enumerate() {
             if is_stop(cancel) {
                 return Ok(QrScanResult::cancelled());
             }
-            let seek_secs = frame_index as f64 / fps;
-            // Place -ss after -i for more accurate sequential-style sampling.
+            let seek_secs = *frame_index as f64 / fps;
             let args = build_extract_frame_args_accurate(
                 path,
                 seek_secs,
@@ -661,9 +1209,19 @@ pub fn scan_video_clip(
             if !frame_path.is_file() {
                 continue;
             }
+            notify("thorough", (i as u32).saturating_add(1), seq_total);
             if let Some((kunde, preview)) =
                 decode_kunde_from_image_path(&frame_path, options.max_video_width)?
             {
+                logging::info(
+                    "qr",
+                    format!(
+                        "Clip-Treffer via=seek_png_accurate frame={}/{} seek={seek_secs:.3}s file={}",
+                        (i as u32).saturating_add(1),
+                        seq_total,
+                        clip_file_name(path)
+                    ),
+                );
                 return Ok(QrScanResult::hit(kunde, path, Some(preview)));
             }
         }
@@ -732,6 +1290,101 @@ mod tests {
         assert!(args.contains(&"1.500".to_string()));
         assert!(args.iter().any(|a| a.contains("1280")));
         assert_eq!(args.last().map(String::as_str), Some("out.png"));
+    }
+
+    #[test]
+    fn build_extract_frames_pipe_args_select_step_rgb() {
+        let args = build_extract_frames_pipe_args("in.mp4", 5.0, 10, 1280, 720);
+        assert_eq!(args[0], "-hide_banner");
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        let t = args.iter().position(|a| a == "-t").unwrap();
+        assert!(t < i, "-t should be before -i for decode window");
+        assert!(args.contains(&"5.000".to_string()));
+        assert!(args.iter().any(|a| a.contains("not(mod(n")));
+        assert!(args.iter().any(|a| a.contains("scale=1280:720")));
+        assert!(args.iter().any(|a| a.contains("flags=fast_bilinear")));
+        assert!(args.iter().any(|a| a.contains("format=rgb24")));
+        assert!(args.contains(&"rawvideo".to_string()));
+        assert!(args.contains(&"rgb24".to_string()));
+        assert!(args.contains(&"-fps_mode".to_string()));
+        assert!(args.contains(&"vfr".to_string()));
+        assert_eq!(args.last().map(String::as_str), Some("-"));
+    }
+
+    #[test]
+    fn midpoint_decode_order_zero_last_mid_first() {
+        assert_eq!(midpoint_decode_order(0), Vec::<usize>::new());
+        assert_eq!(midpoint_decode_order(1), vec![0]);
+        assert_eq!(midpoint_decode_order(2), vec![0, 1]);
+        let o5 = midpoint_decode_order(5);
+        assert_eq!(o5[0], 0);
+        assert_eq!(o5[1], 4);
+        assert_eq!(o5[2], 2);
+        let mut sorted = o5.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn midpoint_decode_order_covers_all_no_dupes() {
+        for n in 0..40 {
+            let order = midpoint_decode_order(n);
+            assert_eq!(order.len(), n, "n={n}");
+            let mut seen = vec![false; n];
+            for slot in order {
+                assert!(slot < n);
+                assert!(!seen[slot], "dup slot {slot} for n={n}");
+                seen[slot] = true;
+            }
+        }
+    }
+
+    #[test]
+    fn midpoint_ordered_frames_preserves_values() {
+        let idx = target_frame_indices(30.0, 5.0, 10);
+        let ordered = midpoint_ordered_frames(&idx);
+        assert_eq!(ordered.len(), idx.len());
+        assert_eq!(ordered[0], 0);
+        assert_eq!(ordered[1], *idx.last().unwrap());
+        let mut a = idx.clone();
+        let mut b = ordered.clone();
+        a.sort();
+        b.sort();
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn scaled_gray_frame_size_even_and_aspect() {
+        assert_eq!(scaled_gray_frame_size(1920, 1080, 1280), Some((1280, 720)));
+        assert_eq!(scaled_gray_frame_size(1000, 1000, 1280), Some((1000, 1000)));
+        assert_eq!(scaled_gray_frame_size(0, 1080, 1280), None);
+        // Odd source width below max → even output width
+        assert_eq!(scaled_gray_frame_size(641, 480, 1280), Some((640, 478)));
+    }
+
+    #[test]
+    fn sample_fps_for_qr_matches_step() {
+        assert!((sample_fps_for_qr(30.0, 10) - 3.0).abs() < 1e-9);
+        assert!((sample_fps_for_qr(0.0, 10) - 3.0).abs() < 1e-9); // 30/10 fallback
+        assert!((sample_fps_for_qr(25.0, 0) - 25.0).abs() < 1e-9); // step max(1)
+    }
+
+    #[test]
+    fn expected_qr_frame_count_ceil() {
+        assert_eq!(expected_qr_frame_count(5.0, 3.0), 15);
+        assert_eq!(expected_qr_frame_count(5.0, 2.5), 13);
+        assert_eq!(expected_qr_frame_count(0.0, 3.0), 2); // max(0.5)*3 ceil
+    }
+
+    #[test]
+    fn midpoint_prefers_ends_and_center_over_linear() {
+        let order = midpoint_decode_order(15);
+        // After 0 and last, center (~7) should appear before deep linear neighbors like 1.
+        let pos = |s: usize| order.iter().position(|&x| x == s).unwrap();
+        assert!(pos(0) < pos(7));
+        assert!(pos(14) < pos(7));
+        assert!(pos(7) < pos(1));
+        assert!(pos(7) < pos(13));
     }
 
     #[test]

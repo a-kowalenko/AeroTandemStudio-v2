@@ -1,6 +1,8 @@
 import type { BackupProgress, WorkflowProgress } from "./sdCard";
 import {
   summarizeQrScanProgress,
+  type QrClipFrameProgress,
+  type QrFileProgress,
   type QrFollowupStatus,
   type QrScanJobStage,
   type QrScanPhase,
@@ -11,6 +13,16 @@ export type WorkflowProgressSnapshot = {
   label?: string;
   detail?: string;
   indeterminate?: boolean;
+  /** QR-style: no percent; show metric + activity instead. */
+  hidePercent?: boolean;
+  /** Primary counter, e.g. `3/15` (Momente / Prüfpunkte). */
+  metric?: string;
+  /** Short unit under/beside metric, e.g. `Momente`. */
+  metricLabel?: string;
+  /** Show Schnell/Gründlich color legend under the stripes. */
+  paceLegend?: boolean;
+  /** Optional file-level segments for QR batch progress. */
+  fileProgress?: QrFileProgress;
 };
 
 export type WorkflowTaskProgress = {
@@ -72,6 +84,8 @@ export function resolveSdWorkflowProgress(opts: {
   qrStage: QrScanJobStage;
   qrByPath: Record<string, QrScanPhase>;
   qrFollowup: QrFollowupStatus | null;
+  qrClipProgress?: Record<string, QrClipFrameProgress>;
+  qrScanOrder?: string[];
 }): WorkflowProgressSnapshot | null {
   if (!opts.active) return null;
 
@@ -132,15 +146,29 @@ export function resolveSdWorkflowProgress(opts: {
 
   const qrActive = opts.qrBusy || opts.qrStage !== "idle" || /qr/i.test(msg);
   if (qrActive) {
-    const summary = summarizeQrScanProgress(opts.qrByPath, opts.qrStage, opts.qrFollowup);
+    const summary = summarizeQrScanProgress(
+      opts.qrByPath,
+      opts.qrStage,
+      opts.qrFollowup,
+      opts.qrClipProgress,
+      opts.qrScanOrder,
+    );
     return {
       percent: summary.percent,
       label:
-        msg && !/^QR-Scan…?$/i.test(msg) && opts.qrStage !== "followup"
+        msg &&
+        !/^QR-Scan…?$/i.test(msg) &&
+        !/^QR-Code/i.test(msg) &&
+        opts.qrStage !== "followup"
           ? msg
           : summary.label,
       detail: summary.detail || undefined,
       indeterminate: summary.indeterminate,
+      hidePercent: summary.hidePercent,
+      metric: summary.metric,
+      metricLabel: summary.metricLabel,
+      paceLegend: summary.paceLegend,
+      fileProgress: summary.fileProgress,
     };
   }
 
@@ -211,14 +239,14 @@ export function workflowStageSubtitle(
       return "SD wird bereinigt — Abbrechen nicht möglich";
     }
     return opts.qrScanBusy
-      ? "SD — QR-Scan (Abbrechen stoppt nur den Scan)"
+      ? "SD — QR-Code-Suche (Abbrechen stoppt nur die Suche)"
       : "SD — Backup, Import und weitere Aktionen (Abbrechen stoppt den Lauf)";
   }
   if (opts.manualImport && !opts.encodeBusy) {
     return "Medien werden in den Arbeitsordner kopiert — Abbrechen verwirft den Import";
   }
   if (opts.manualQr && !opts.encodeBusy) {
-    return "QR-Scan — Abbrechen stoppt den Scan";
+    return "QR-Code-Suche — Abbrechen stoppt die Suche";
   }
   if (opts.encodeBusy) return "Aktueller Vorgang — Abbrechen stoppt FFmpeg.";
   return "Zuletzt abgeschlossener Lauf";

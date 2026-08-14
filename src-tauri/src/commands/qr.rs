@@ -7,8 +7,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::model::Kunde;
 use crate::qr::analyser::{
-    discard_qr_preview, scan_photo, scan_video_clip, CleanupDirection, QrPreview, QrScanOptions,
-    QrScanResult as CoreResult, QrSpotlight,
+    discard_qr_preview, scan_photo, scan_video_clip_with_progress, CleanupDirection, QrPreview,
+    QrScanOptions, QrScanResult as CoreResult, QrSpotlight,
 };
 use crate::qr::followup::scan_series_followup_hits;
 use crate::qr::parallel::{
@@ -71,8 +71,14 @@ pub struct QrScanResultDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct QrScanProgressEvent {
     pub path: String,
-    /// `start` | `done` | `hit`
+    /// `start` | `done` | `hit` | `extract` | `fast` | `thorough`
     pub phase: String,
+    /// 1-based attempt when `phase` is `fast`/`thorough`; 0 for `extract` start.
+    #[serde(default)]
+    pub frame: u32,
+    /// Candidate count for the current pass when phase is extract/fast/thorough.
+    #[serde(default)]
+    pub frames_total: u32,
 }
 
 /// Live status while removing neighboring QR carrier photos after a hit.
@@ -122,13 +128,15 @@ fn read_config(state: &ConfigState) -> AppConfig {
         .unwrap_or_default()
 }
 
-fn make_progress_cb(app: AppHandle) -> Arc<dyn Fn(&str, &str) + Send + Sync> {
-    Arc::new(move |path: &str, phase: &str| {
+fn make_progress_cb(app: AppHandle) -> Arc<dyn Fn(&str, &str, u32, u32) + Send + Sync> {
+    Arc::new(move |path: &str, phase: &str, frame: u32, frames_total: u32| {
         let _ = app.emit(
             "qr-scan-progress",
             QrScanProgressEvent {
                 path: path.to_string(),
                 phase: phase.to_string(),
+                frame,
+                frames_total,
             },
         );
     })
@@ -174,9 +182,13 @@ pub async fn scan_qr_video(
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        on_progress(&path, "start");
-        let res = scan_video_clip(&ffmpeg, &path, &opts, None).map_err(|e| e.to_string())?;
-        on_progress(&path, if res.found { "hit" } else { "done" });
+        on_progress(&path, "start", 0, 0);
+        let progress = |p: &str, phase: &str, frame: u32, total: u32| {
+            on_progress(p, phase, frame, total);
+        };
+        let res = scan_video_clip_with_progress(&ffmpeg, &path, &opts, None, Some(&progress))
+            .map_err(|e| e.to_string())?;
+        on_progress(&path, if res.found { "hit" } else { "done" }, 0, 0);
         Ok::<_, String>((path, res))
     })
     .await
@@ -205,9 +217,9 @@ pub async fn scan_qr_photo(
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        on_progress(&path, "start");
+        on_progress(&path, "start", 0, 0);
         let res = scan_photo(&ffmpeg, &path, &opts, None).map_err(|e| e.to_string())?;
-        on_progress(&path, if res.found { "hit" } else { "done" });
+        on_progress(&path, if res.found { "hit" } else { "done" }, 0, 0);
         Ok::<_, String>((path, res))
     })
     .await
@@ -243,7 +255,7 @@ pub async fn scan_qr_videos(
     logging::info(
         "qr",
         format!(
-            "Video-Batch-Scan start: {} Datei(en), workers={workers}, window={:.0}s",
+            "Video-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first, window={:.0}s",
             paths.len(),
             opts.scan_seconds
         ),
@@ -251,13 +263,13 @@ pub async fn scan_qr_videos(
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let cb = |path: &str, phase: &str| {
+        let cb = |path: &str, phase: &str, frame: u32, frames_total: u32| {
             if phase == "start" {
                 logging::debug("qr", format!("Scan start: {}", file_name(path)));
             } else if phase == "hit" {
                 logging::info("qr", format!("Scan Treffer: {}", file_name(path)));
             }
-            on_progress(path, phase);
+            on_progress(path, phase, frame, frames_total);
         };
         scan_videos_hybrid_with_progress(&ffmpeg, &paths, &opts, workers, None, Some(&cb))
             .map_err(|e| e.to_string())
@@ -308,18 +320,21 @@ pub async fn scan_qr_photos(
     let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
     logging::info(
         "qr",
-        format!("Foto-Batch-Scan start: {} Datei(en), workers={workers}", paths.len()),
+        format!(
+            "Foto-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first",
+            paths.len()
+        ),
     );
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let cb = |path: &str, phase: &str| {
+        let cb = |path: &str, phase: &str, frame: u32, frames_total: u32| {
             if phase == "start" {
                 logging::debug("qr", format!("Scan start: {}", file_name(path)));
             } else if phase == "hit" {
                 logging::info("qr", format!("Scan Treffer: {}", file_name(path)));
             }
-            on_progress(path, phase);
+            on_progress(path, phase, frame, frames_total);
         };
         scan_photos_hybrid_with_progress(&ffmpeg, &paths, &opts, workers, None, Some(&cb))
             .map_err(|e| e.to_string())

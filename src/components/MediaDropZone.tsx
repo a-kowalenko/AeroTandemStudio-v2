@@ -780,7 +780,7 @@ export function MediaDropZone({
               {expanding
                 ? "Ordner werden durchsucht…"
                 : qrBusy
-                  ? "QR-Scan läuft…"
+                  ? "QR-Code wird gesucht…"
                   : "Importiere…"}
             </p>
           )}

@@ -210,6 +210,8 @@ function App() {
   const qrScanStage = useQrScanStore((s) => s.stage);
   const qrScanByPath = useQrScanStore((s) => s.byPath);
   const qrFollowup = useQrScanStore((s) => s.followup);
+  const qrClipProgress = useQrScanStore((s) => s.clipProgress);
+  const qrScanOrder = useQrScanStore((s) => s.scanOrder);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -586,7 +588,7 @@ function App() {
 
     useSdStore.getState().setWorkflowProgress(null);
     // Overlay stays suppressed while sdWorkflowUiActive; message feeds SD progress.
-    setLoading(true, "QR-Scan…");
+    setLoading(true, "QR-Code suchen…");
     try {
       const qr = await withQrScanProgress(
         [...newVideoPaths, ...newPhotoPaths],
@@ -1537,6 +1539,8 @@ function App() {
     qrScanStage,
     qrScanByPath,
     qrFollowup,
+    qrClipProgress,
+    qrScanOrder,
     videoImporting,
     photoImporting,
     encodeBusy: busy,

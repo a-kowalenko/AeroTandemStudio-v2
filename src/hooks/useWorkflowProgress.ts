@@ -16,6 +16,7 @@ import {
 } from "../lib/workflowProgress";
 import {
   summarizeQrScanProgress,
+  type QrClipFrameProgress,
   type QrFollowupStatus,
   type QrScanJobStage,
   type QrScanPhase,
@@ -52,6 +53,8 @@ type Input = {
   qrScanStage: QrScanJobStage;
   qrScanByPath: Record<string, QrScanPhase>;
   qrFollowup: QrFollowupStatus | null;
+  qrClipProgress: Record<string, QrClipFrameProgress>;
+  qrScanOrder: string[];
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
@@ -77,6 +80,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
         qrStage: input.qrScanStage,
         qrByPath: input.qrScanByPath,
         qrFollowup: input.qrFollowup,
+        qrClipProgress: input.qrClipProgress,
+        qrScanOrder: input.qrScanOrder,
       }),
     [
       input.sdWorkflowActive,
@@ -88,6 +93,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       input.qrScanStage,
       input.qrScanByPath,
       input.qrFollowup,
+      input.qrClipProgress,
+      input.qrScanOrder,
     ],
   );
 
@@ -117,6 +124,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       input.qrScanByPath,
       input.qrScanStage,
       input.qrFollowup,
+      input.qrClipProgress,
+      input.qrScanOrder,
     );
   }, [
     input.qrScanBusy,
@@ -124,6 +133,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     input.qrScanByPath,
     input.qrScanStage,
     input.qrFollowup,
+    input.qrClipProgress,
+    input.qrScanOrder,
   ]);
 
   const showSdProgress = Boolean(input.sdWorkflowActive && sdProgress);

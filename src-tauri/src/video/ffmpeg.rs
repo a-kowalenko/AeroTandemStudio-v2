@@ -3,7 +3,7 @@
 //! Supports multiple concurrent FFmpeg children (Phase 4). Cancel kills all.
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -299,10 +299,172 @@ fn kill_all_children() -> bool {
     any
 }
 
+fn kill_child(job_id: u64) {
+    let mut guard = match ACTIVE_CHILDREN.lock() {
+        Ok(g) => g,
+        Err(_) => return,
+    };
+    if let Some(mut child) = guard.remove(&job_id) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
 /// GUI-/background-safe FFmpeg spawn defaults (null stdin, no console window on Windows).
 fn apply_noninteractive(cmd: &mut Command) {
     cmd.stdin(Stdio::null());
     crate::util::process::apply_no_window(cmd);
+}
+
+/// Stream fixed-size frames from FFmpeg stdout (e.g. `rawvideo` gray).
+///
+/// `on_frame` receives each complete frame buffer and returns `true` to continue
+/// or `false` to stop early (kills this child). Returns the number of frames
+/// delivered to the callback.
+pub fn run_ffmpeg_raw_stdout_frames<F>(
+    ffmpeg: &Path,
+    args: &[String],
+    frame_nbytes: usize,
+    mut on_frame: F,
+) -> Result<usize, FfmpegError>
+where
+    F: FnMut(&[u8]) -> bool,
+{
+    if frame_nbytes == 0 {
+        return Err(FfmpegError::Message("frame size is 0".into()));
+    }
+    if is_cancelled() {
+        return Err(FfmpegError::Cancelled);
+    }
+
+    let mut cmd = Command::new(ffmpeg);
+    cmd.arg("-nostdin")
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    apply_noninteractive(&mut cmd);
+
+    let mut child = cmd.spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| FfmpegError::Message("missing stdout pipe".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| FfmpegError::Message("missing stderr pipe".into()))?;
+
+    let job_id = register_child(child)?;
+
+    let stderr_thread = thread::spawn(move || {
+        let reader = BufReader::new(stderr);
+        let mut buf = String::new();
+        for line in reader.lines().flatten() {
+            if is_cancelled() {
+                break;
+            }
+            buf.push_str(&line);
+            buf.push('\n');
+        }
+        buf
+    });
+
+    let mut frame_buf = vec![0u8; frame_nbytes];
+    let mut frames = 0usize;
+    let mut stopped_early = false;
+    let mut stdout = Some(stdout);
+
+    loop {
+        if is_cancelled() {
+            kill_child(job_id);
+            let _ = stderr_thread.join();
+            return Err(FfmpegError::Cancelled);
+        }
+
+        let Some(out) = stdout.as_mut() else {
+            break;
+        };
+
+        match out.read_exact(&mut frame_buf) {
+            Ok(()) => {
+                frames += 1;
+                if !on_frame(&frame_buf) {
+                    stopped_early = true;
+                    drop(stdout.take());
+                    kill_child(job_id);
+                    break;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                kill_child(job_id);
+                let _ = stderr_thread.join();
+                unregister_child(job_id);
+                if is_cancelled() {
+                    return Err(FfmpegError::Cancelled);
+                }
+                return Err(FfmpegError::Message(format!(
+                    "FFmpeg stdout read failed: {e}"
+                )));
+            }
+        }
+    }
+
+    if !stopped_early {
+        if let Some(mut out) = stdout.take() {
+            // Drain any trailing bytes so the process can exit cleanly.
+            let mut discard = [0u8; 8192];
+            while matches!(out.read(&mut discard), Ok(n) if n > 0) {}
+        }
+    } else {
+        drop(stdout.take());
+    }
+
+    let exit_code = loop {
+        if is_cancelled() {
+            kill_child(job_id);
+            let _ = stderr_thread.join();
+            return Err(FfmpegError::Cancelled);
+        }
+        match try_wait_child(job_id)? {
+            None => thread::sleep(Duration::from_millis(20)),
+            Some(code) => break code,
+        }
+    };
+
+    let stderr_text = stderr_thread.join().unwrap_or_default();
+    unregister_child(job_id);
+
+    if is_cancelled() {
+        return Err(FfmpegError::Cancelled);
+    }
+
+    if stopped_early || frames > 0 {
+        return Ok(frames);
+    }
+
+    if exit_code == 0 {
+        Ok(0)
+    } else {
+        let hint = stderr_text
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(FfmpegError::Message(format!(
+            "FFmpeg exited with status {exit_code}{}",
+            if hint.is_empty() {
+                String::new()
+            } else {
+                format!(": {hint}")
+            }
+        )))
+    }
 }
 
 /// Run FFmpeg without progress parsing (stream-copy remux, probes, validation).

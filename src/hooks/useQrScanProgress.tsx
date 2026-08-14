@@ -9,6 +9,8 @@ import {
 export type QrScanProgressPayload = {
   path: string;
   phase: string;
+  frame?: number;
+  frames_total?: number;
 };
 
 export type QrFollowupProgressPayload = {
@@ -21,6 +23,7 @@ export type QrFollowupProgressPayload = {
 /** Keep grid QR progress in sync with Rust `qr-scan-progress` events. */
 export function useQrScanProgressListener() {
   const setPhase = useQrScanStore((s) => s.setPhase);
+  const setClipProgress = useQrScanStore((s) => s.setClipProgress);
   const setFollowup = useQrScanStore((s) => s.setFollowup);
 
   useEffect(() => {
@@ -28,8 +31,31 @@ export function useQrScanProgressListener() {
     let unlistenFollowup: (() => void) | undefined;
 
     void listen<QrScanProgressPayload>("qr-scan-progress", (event) => {
-      const { path, phase } = event.payload;
+      const { path, phase, frame, frames_total } = event.payload;
       if (!path) return;
+      if (
+        phase === "extract" ||
+        phase === "fast" ||
+        phase === "thorough" ||
+        phase === "frame"
+      ) {
+        const f = Number(frame) || 0;
+        const t = Number(frames_total) || 0;
+        if (t <= 0) return;
+        setPhase(path, "active");
+        if (phase === "extract") {
+          const prev =
+            useQrScanStore.getState().clipProgress[normalizeMediaPath(path)];
+          // After the first Schnellprüfung tick, ignore further extract noise
+          // so the counter does not flip back to "lesen" / 0.
+          if (prev?.mode === "fast" || prev?.mode === "thorough") return;
+          setClipProgress(path, 0, t, "prepare");
+          return;
+        }
+        const mode = phase === "thorough" ? "thorough" : "fast";
+        setClipProgress(path, f, t, mode);
+        return;
+      }
       if (phase === "start") setPhase(path, "active");
       else if (phase === "hit") setPhase(path, "hit");
       else if (phase === "done") setPhase(path, "done");
@@ -64,7 +90,7 @@ export function useQrScanProgressListener() {
       unlistenScan?.();
       unlistenFollowup?.();
     };
-  }, [setPhase, setFollowup]);
+  }, [setPhase, setClipProgress, setFollowup]);
 }
 
 export function QrScanRowBar({ path }: { path: string }) {
@@ -76,12 +102,12 @@ export function QrScanRowBar({ path }: { path: string }) {
 export function QrScanBar({ phase }: { phase: QrScanPhase }) {
   const label =
     phase === "active"
-      ? "QR-Scan läuft…"
+      ? "QR-Code wird gesucht…"
       : phase === "pending"
-        ? "QR-Scan wartet…"
+        ? "QR-Code-Suche wartet…"
         : phase === "hit"
-          ? "QR gefunden"
-          : "QR geprüft";
+          ? "QR-Code gefunden"
+          : "QR-Code geprüft";
 
   return (
     <div
