@@ -213,7 +213,8 @@ pub async fn scan_qr_photo(
     logging::info("qr", format!("Foto-Scan start: {}", file_name(&path)));
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
-    let opts = options_from_config(&read_config(&config));
+    let mut opts = options_from_config(&read_config(&config));
+    opts.photo_try_harder = true;
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -321,8 +322,9 @@ pub async fn scan_qr_photos(
     logging::info(
         "qr",
         format!(
-            "Foto-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first",
-            paths.len()
+            "Foto-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast",
+            paths.len(),
+            opts.max_photo_width
         ),
     );
     let on_progress = make_progress_cb(app.clone());

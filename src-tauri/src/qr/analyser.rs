@@ -223,6 +223,8 @@ pub struct QrScanOptions {
     pub frame_step: u32,
     pub max_video_width: u32,
     pub max_photo_width: u32,
+    /// Second rxing pass (`TryHarder`) after a cheap miss. Off for photo batches.
+    pub photo_try_harder: bool,
 }
 
 impl Default for QrScanOptions {
@@ -231,7 +233,9 @@ impl Default for QrScanOptions {
             scan_seconds: DEFAULT_QR_VIDEO_SCAN_SECONDS,
             frame_step: DEFAULT_QR_FRAME_STEP,
             max_video_width: MAX_QR_VIDEO_DECODE_WIDTH,
-            max_photo_width: MAX_QR_DECODE_WIDTH,
+            // 960 so JPEG IDCT can often pick 1/4 instead of 1/2, and rxing stays cheap.
+            max_photo_width: QR_FAST_DETECT_WIDTH,
+            photo_try_harder: false,
         }
     }
 }
@@ -550,10 +554,35 @@ fn clip_file_name(path: &str) -> &str {
 }
 
 /// Decode QR text + corner points from a greyscale luma8 buffer.
+/// Cheap pass first; `TryHarder` only when `allow_try_harder` (misses are otherwise cheap).
 pub fn decode_qr_from_luma(
     luma: Vec<u8>,
     width: u32,
     height: u32,
+) -> Option<(String, Vec<(f32, f32)>)> {
+    decode_qr_from_luma_strategy(luma, width, height, true)
+}
+
+fn decode_qr_from_luma_strategy(
+    luma: Vec<u8>,
+    width: u32,
+    height: u32,
+    allow_try_harder: bool,
+) -> Option<(String, Vec<(f32, f32)>)> {
+    if !allow_try_harder {
+        return decode_qr_from_luma_hints(luma, width, height, false);
+    }
+    if let Some(hit) = decode_qr_from_luma_hints(luma.clone(), width, height, false) {
+        return Some(hit);
+    }
+    decode_qr_from_luma_hints(luma, width, height, true)
+}
+
+fn decode_qr_from_luma_hints(
+    luma: Vec<u8>,
+    width: u32,
+    height: u32,
+    try_harder: bool,
 ) -> Option<(String, Vec<(f32, f32)>)> {
     if width == 0 || height == 0 || luma.len() < (width as usize) * (height as usize) {
         return None;
@@ -563,7 +592,7 @@ pub fn decode_qr_from_luma(
     let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
     let mut hints = DecodeHints::default();
     hints.PossibleFormats = Some(HashSet::from([BarcodeFormat::QR_CODE]));
-    hints.TryHarder = Some(true);
+    hints.TryHarder = Some(try_harder);
 
     let mut reader = MultiFormatReader::default();
     match reader.decode_with_hints(&mut bitmap, &hints) {
@@ -616,7 +645,10 @@ fn open_jpeg_scaled(path: &Path, max_width: u32) -> Result<DynamicImage, QrScanE
         .info()
         .ok_or_else(|| QrScanError::Image("JPEG missing info after header".into()))?;
 
-    let max_w = max_width.max(1).min(u32::from(u16::MAX));
+    let max_w = max_width
+        .max(1)
+        .min(MAX_QR_DECODE_WIDTH)
+        .min(u32::from(u16::MAX));
     let req_w = max_w as u16;
     let req_h = if info.width > 0 {
         let h = (u64::from(max_w) * u64::from(info.height) / u64::from(info.width)).max(1);
@@ -665,20 +697,29 @@ pub fn decode_kunde_from_image_path(
     path: &Path,
     max_width: u32,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+    decode_kunde_from_image_path_ex(path, max_width, true, true)
+}
+
+fn decode_kunde_from_image_path_ex(
+    path: &Path,
+    max_width: u32,
+    persist_preview: bool,
+    allow_try_harder: bool,
+) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let img = open_image_for_qr(path, max_width)?;
-    decode_kunde_from_dynamic_image(img, max_width, true)
+    decode_kunde_from_dynamic_image(img, max_width, persist_preview, allow_try_harder)
 }
 
 /// Detect a valid customer QR without persisting a preview image (follow-up cleanup).
 pub fn photo_has_customer_qr(path: &Path, max_width: u32) -> Result<bool, QrScanError> {
-    let img = open_image_for_qr(path, max_width)?;
-    Ok(decode_kunde_from_dynamic_image(img, max_width, false)?.is_some())
+    Ok(decode_kunde_from_image_path_ex(path, max_width, false, true)?.is_some())
 }
 
 fn decode_kunde_from_dynamic_image(
     img: image::DynamicImage,
     max_width: u32,
     persist_preview: bool,
+    allow_try_harder: bool,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
     let (w, _h) = img.dimensions();
     let img = if w > max_width {
@@ -692,7 +733,9 @@ fn decode_kunde_from_dynamic_image(
     let height = gray.height();
     let luma = gray.into_raw();
 
-    let Some((text, points)) = decode_qr_from_luma(luma, width, height) else {
+    let Some((text, points)) =
+        decode_qr_from_luma_strategy(luma, width, height, allow_try_harder)
+    else {
         return Ok(None);
     };
 
@@ -745,7 +788,12 @@ pub fn scan_photo(
         return Err(QrScanError::NotFound(path.to_string()));
     }
 
-    match decode_kunde_from_image_path(Path::new(path), options.max_photo_width)? {
+    match decode_kunde_from_image_path_ex(
+        Path::new(path),
+        options.max_photo_width,
+        true,
+        options.photo_try_harder,
+    )? {
         Some((kunde, preview)) => Ok(QrScanResult::hit(kunde, path, Some(preview))),
         None => Ok(QrScanResult::miss(format!(
             "Kein gültiger QR-Code im Foto: {path}"
@@ -773,7 +821,7 @@ fn decode_kunde_from_rgb_frame(
     let buf = ImageBuffer::<image::Rgb<u8>, _>::from_raw(width, height, pixels)
         .ok_or_else(|| QrScanError::Image("rgb buffer size mismatch".into()))?;
     let img = DynamicImage::ImageRgb8(buf);
-    decode_kunde_from_dynamic_image(img, width, persist_preview)
+    decode_kunde_from_dynamic_image(img, width, persist_preview, true)
 }
 
 /// Optional progress: `(path, phase, frame, frames_total)`.
@@ -1451,6 +1499,21 @@ mod tests {
     #[test]
     fn spotlight_from_points_empty_is_none() {
         assert!(spotlight_from_points(&[], 100, 100).is_none());
+    }
+
+    #[test]
+    fn photo_scan_defaults_are_fast() {
+        let opts = QrScanOptions::default();
+        assert_eq!(opts.max_photo_width, QR_FAST_DETECT_WIDTH);
+        assert!(!opts.photo_try_harder);
+        assert_eq!(QR_FAST_DETECT_WIDTH, 960);
+        assert!(QR_FAST_DETECT_WIDTH < MAX_QR_DECODE_WIDTH);
+    }
+
+    #[test]
+    fn decode_qr_from_luma_rejects_empty() {
+        assert!(decode_qr_from_luma(vec![], 0, 0).is_none());
+        assert!(decode_qr_from_luma(vec![0; 4], 2, 2).is_none());
     }
 
     #[test]

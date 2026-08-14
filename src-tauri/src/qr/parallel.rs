@@ -2,8 +2,10 @@
 //!
 //! Typical QR placement: first clip (often), last clip (sometimes), middle (rare).
 //! Strategy:
-//! 1. Hot path — scan index 0 and n−1 with at most 2 workers (no middle contention)
-//! 2. Remainder — outside-in queue with limited workers (2, or up to config when n ≥ 6)
+//! 1. Videos — hot path: scan index 0 and n−1 with at most 2 workers, then remainder
+//!    outside-in with limited workers (2, or up to config when n ≥ 6).
+//! 2. Photos — skip the hot-path barrier; all workers start immediately on the
+//!    outside-in queue (cheap per-file decode, large lists).
 //!
 //! List order is preserved; only the scan order changes. Cleanup direction is
 //! Forward near the start and Backward near the end.
@@ -134,6 +136,7 @@ pub fn scan_videos_hybrid_with_progress(
         parallel_workers,
         cancel,
         on_file,
+        false,
     )?;
 
     if result.found || result.cancelled {
@@ -180,6 +183,7 @@ pub fn scan_photos_hybrid_with_progress(
         parallel_workers,
         cancel,
         on_file,
+        true,
     )?;
 
     if result.found || result.cancelled {
@@ -198,6 +202,7 @@ fn run_ends_first<F>(
     parallel_workers: usize,
     cancel: Option<&AtomicBool>,
     on_file: Option<&QrFileProgressCb<'_>>,
+    skip_hot_path: bool,
 ) -> Result<QrScanResult, QrScanError>
 where
     F: Fn(&str, &AtomicBool) -> Result<QrScanResult, QrScanError> + Sync,
@@ -210,6 +215,14 @@ where
     let jobs = ends_first_jobs(n);
     if jobs.is_empty() {
         return Ok(QrScanResult::miss("empty"));
+    }
+
+    // Photos: skip the 2-worker end probe so all workers start immediately.
+    if skip_hot_path {
+        let workers = phase_b_worker_count(n, parallel_workers)
+            .min(jobs.len())
+            .max(1);
+        return run_job_pool(items, &jobs, &scan_one, workers, cancel, on_file);
     }
 
     let hot_len = HOT_PATH_WORKERS.min(n).max(1).min(jobs.len());
@@ -423,6 +436,7 @@ mod tests {
         assert_eq!(phase_b_worker_count(5, 4), 2);
         assert_eq!(phase_b_worker_count(6, 4), 4);
         assert_eq!(phase_b_worker_count(10, 1), 1);
+        assert_eq!(phase_b_worker_count(220, 4), 4);
     }
 
     #[test]
