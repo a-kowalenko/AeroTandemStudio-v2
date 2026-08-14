@@ -1167,7 +1167,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("sd_eject_after_workflow", v === true)
                     }
                   />
-                  SD früh auswerfen
+                  SD automatisch auswerfen
                 </label>
               </div>
 
@@ -1422,7 +1422,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   }
                 />
                 <SummaryRow
-                  label="SD früh auswerfen"
+                  label="SD automatisch auswerfen"
                   value={draft.sd_eject_after_workflow ? "An" : "Aus"}
                 />
                 <SummaryRow

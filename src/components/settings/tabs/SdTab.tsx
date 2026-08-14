@@ -186,7 +186,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             checked={draft.sd_eject_after_workflow}
             onCheckedChange={(v) => patch("sd_eject_after_workflow", v === true)}
           />
-          SD früh auswerfen
+          SD automatisch auswerfen
         </label>
         <p className="text-[11px] leading-snug text-muted">
           Mit Backup direkt danach; ohne Backup erst nach dem Import.
