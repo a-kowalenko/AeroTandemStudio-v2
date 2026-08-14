@@ -1,4 +1,8 @@
-import type { QrClipScanPace, QrFileProgress } from "../store/qrScanStore";
+import type {
+  QrClipScanPace,
+  QrFileProgress,
+  QrScanLegend,
+} from "../store/qrScanStore";
 
 type TaskProgress = {
   taskId: number;
@@ -19,8 +23,8 @@ type ProgressIndicatorProps = {
   metric?: string;
   /** Unit next to metric, e.g. `Videos`. */
   metricLabel?: string;
-  /** Show Schnell/Gründlich color legend under QR stripes. */
-  paceLegend?: boolean;
+  /** Color legend under QR stripes. */
+  legend?: QrScanLegend;
   /** Discrete file segments for batch QR progress (media list order). */
   fileProgress?: QrFileProgress;
   /** Per-task bars when parallel encoding is active */
@@ -32,6 +36,7 @@ const FAST_FILL =
 const THOROUGH_FILL = "linear-gradient(90deg, #d97706, #f59e0b)";
 const FAST_SOLID = "var(--ats-progress-from)";
 const THOROUGH_SOLID = "#d97706";
+const REMOVED_SOLID = "var(--ats-destructive)";
 const PREPARE_FILL =
   "color-mix(in srgb, var(--ats-progress-from) 40%, transparent)";
 
@@ -113,54 +118,72 @@ function PaceLegend() {
   );
 }
 
+function FollowupLegend() {
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted"
+      aria-label="Farblegende"
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className="h-1.5 w-3 rounded-full"
+          style={{ background: FAST_SOLID }}
+          aria-hidden
+        />
+        Geprüft
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span
+          className="h-1.5 w-3 rounded-full"
+          style={{ background: REMOVED_SOLID }}
+          aria-hidden
+        />
+        Entfernt
+      </span>
+    </div>
+  );
+}
+
 /** One column per file in list order; Prüfpunkte label under each active stripe. */
 function FileSegments({
   progress,
-  showLegend,
+  legend,
 }: {
   progress: QrFileProgress;
-  showLegend?: boolean;
+  legend?: QrScanLegend;
 }) {
   const { segments, finished, total } = progress;
   if (total <= 0 || segments.length === 0) return null;
 
-  const maxSegments = 24;
+  const legendEl =
+    legend === "pace" ? (
+      <PaceLegend />
+    ) : legend === "followup" ? (
+      <FollowupLegend />
+    ) : null;
 
-  if (segments.length > maxSegments) {
-    const pctDone = Math.round((finished / total) * 100);
-    return (
-      <div className="space-y-1.5">
-        <div
-          className="flex items-center gap-2"
-          role="group"
-          aria-label={`${finished} von ${total} Dateien erledigt`}
-        >
-          <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-border/60">
-            <div
-              className="h-full rounded-full transition-[width] duration-300 ease-out"
-              style={{
-                width: `${pctDone}%`,
-                background: FAST_FILL,
-              }}
-            />
-          </div>
-          <span className="shrink-0 text-[11px] tabular-nums text-muted">
-            {finished}/{total}
-          </span>
-        </div>
-        {showLegend ? <PaceLegend /> : null}
-      </div>
+  // Always keep one stripe per file (removed/hit must stay visible).
+  // Dense batches: tighter gaps and hide under-stripe Prüfpunkte labels.
+  const dense = segments.length > 24;
+  const showPointLabels =
+    !dense &&
+    segments.some(
+      (s) =>
+        s.phase === "active" &&
+        s.framesTotal != null &&
+        s.framesTotal > 0 &&
+        s.pace !== "prepare",
     );
-  }
 
   return (
     <div className="space-y-1.5">
       <div
-        className="flex gap-1"
+        className={dense ? "flex gap-px" : "flex gap-1"}
         role="group"
         aria-label={`${finished} von ${total} Dateien (Listenreihenfolge)`}
       >
         {segments.map((seg) => {
+          const removed = seg.phase === "removed";
           const done = seg.phase === "done" || seg.phase === "hit";
           const isActive = seg.phase === "active";
           const hit = seg.phase === "hit";
@@ -180,25 +203,28 @@ function FileSegments({
                 ? 40
                 : 0;
           const pointLabel =
+            showPointLabels &&
             isActive &&
             seg.framesTotal != null &&
             seg.framesTotal > 0 &&
             pace !== "prepare"
               ? `${seg.frame ?? 0}/${seg.framesTotal}`
-              : isActive && pace === "prepare"
+              : showPointLabels && isActive && pace === "prepare"
                 ? "…"
                 : "\u00a0";
-          const title = hit
-            ? "Treffer"
-            : done
-              ? "erledigt"
-              : isActive && seg.framesTotal
-                ? `${pace === "thorough" ? "Gründlich" : "Schnell"} · ${seg.frame ?? 0}/${seg.framesTotal}`
-                : isActive
-                  ? pace === "thorough"
-                    ? "Gründliche Prüfung"
-                    : "Schnellprüfung"
-                  : "ausstehend";
+          const title = removed
+            ? "entfernt"
+            : hit
+              ? "Treffer"
+              : done
+                ? "erledigt"
+                : isActive && seg.framesTotal
+                  ? `${pace === "thorough" ? "Gründlich" : "Schnell"} · ${seg.frame ?? 0}/${seg.framesTotal}`
+                  : isActive
+                    ? pace === "thorough"
+                      ? "Gründliche Prüfung"
+                      : "Schnellprüfung"
+                    : "ausstehend";
 
           return (
             <div
@@ -206,10 +232,21 @@ function FileSegments({
               className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5"
               title={title}
             >
-              <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-border/60">
-                {done ? (
+              <div
+                className={
+                  dense
+                    ? "relative h-1 w-full overflow-hidden rounded-sm bg-border/60"
+                    : "relative h-1.5 w-full overflow-hidden rounded-full bg-border/60"
+                }
+              >
+                {removed ? (
                   <div
-                    className="absolute inset-0 rounded-full"
+                    className="absolute inset-0 rounded-[inherit]"
+                    style={{ background: REMOVED_SOLID }}
+                  />
+                ) : done ? (
+                  <div
+                    className="absolute inset-0 rounded-[inherit]"
                     style={{
                       background: hit
                         ? paceFill("fast", false)
@@ -220,8 +257,8 @@ function FileSegments({
                   <div
                     className={
                       seg.framesTotal && pace !== "prepare"
-                        ? "absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ease-out"
-                        : "absolute inset-0 animate-pulse rounded-full"
+                        ? "absolute inset-y-0 left-0 rounded-[inherit] transition-[width] duration-300 ease-out"
+                        : "absolute inset-0 animate-pulse rounded-[inherit]"
                     }
                     style={{
                       width:
@@ -233,21 +270,23 @@ function FileSegments({
                   />
                 ) : null}
               </div>
-              <p
-                className={
-                  isActive && pointLabel !== "\u00a0"
-                    ? "text-center text-[10px] leading-tight tabular-nums text-foreground"
-                    : "text-center text-[10px] leading-tight tabular-nums text-transparent"
-                }
-                aria-hidden={pointLabel === "\u00a0"}
-              >
-                {pointLabel}
-              </p>
+              {showPointLabels ? (
+                <p
+                  className={
+                    isActive && pointLabel !== "\u00a0"
+                      ? "text-center text-[10px] leading-tight tabular-nums text-foreground"
+                      : "text-center text-[10px] leading-tight tabular-nums text-transparent"
+                  }
+                  aria-hidden={pointLabel === "\u00a0"}
+                >
+                  {pointLabel}
+                </p>
+              ) : null}
             </div>
           );
         })}
       </div>
-      {showLegend ? <PaceLegend /> : null}
+      {legendEl}
     </div>
   );
 }
@@ -259,7 +298,7 @@ export function ProgressIndicator({
   hidePercent = false,
   metric,
   metricLabel,
-  paceLegend = false,
+  legend,
   fileProgress,
   tasks,
 }: ProgressIndicatorProps) {
@@ -325,7 +364,7 @@ export function ProgressIndicator({
           )}
         </div>
         {fileProgress && fileProgress.total > 0 ? (
-          <FileSegments progress={fileProgress} showLegend={paceLegend} />
+          <FileSegments progress={fileProgress} legend={legend} />
         ) : (
           <Bar percent={clamped} indeterminate={useActivity} />
         )}

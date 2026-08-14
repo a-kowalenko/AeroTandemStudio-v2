@@ -108,7 +108,7 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
             hidePercent={Boolean(snapshot.hidePercent)}
             metric={snapshot.metric}
             metricLabel={snapshot.metricLabel}
-            paceLegend={Boolean(snapshot.paceLegend)}
+            legend={snapshot.legend}
             fileProgress={snapshot.fileProgress}
             tasks={showTasks ? view.tasks : undefined}
           />

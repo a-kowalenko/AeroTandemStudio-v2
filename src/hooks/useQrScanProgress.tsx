@@ -107,7 +107,9 @@ export function QrScanBar({ phase }: { phase: QrScanPhase }) {
         ? "QR-Code-Suche wartet…"
         : phase === "hit"
           ? "QR-Code gefunden"
-          : "QR-Code geprüft";
+          : phase === "removed"
+            ? "Aus Liste entfernt"
+            : "QR-Code geprüft";
 
   return (
     <div
@@ -118,7 +120,9 @@ export function QrScanBar({ phase }: { phase: QrScanPhase }) {
             ? "ats-qr-scan-bar ats-qr-scan-bar-pending mt-1"
             : phase === "hit"
               ? "ats-qr-scan-bar ats-qr-scan-bar-hit mt-1"
-              : "ats-qr-scan-bar ats-qr-scan-bar-done mt-1"
+              : phase === "removed"
+                ? "ats-qr-scan-bar ats-qr-scan-bar-removed mt-1"
+                : "ats-qr-scan-bar ats-qr-scan-bar-done mt-1"
       }
       role="progressbar"
       aria-label={label}

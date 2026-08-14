@@ -1,6 +1,12 @@
 import { create } from "zustand";
 
-export type QrScanPhase = "pending" | "active" | "done" | "hit";
+export type QrScanPhase =
+  | "pending"
+  | "active"
+  | "done"
+  | "hit"
+  /** Marked for removal after QR follow-up (stripe stays until list drop). */
+  | "removed";
 
 /** High-level job stage for status text (confirm dialog / overlay). */
 export type QrScanJobStage =
@@ -31,6 +37,9 @@ export type QrClipFrameProgress = {
   mode?: QrClipScanPace;
 };
 
+/** Color legend under QR stripes. */
+export type QrScanLegend = "pace" | "followup";
+
 type QrScanState = {
   busy: boolean;
   stage: QrScanJobStage;
@@ -42,6 +51,8 @@ type QrScanState = {
   clipProgress: Record<string, QrClipFrameProgress>;
   followup: QrFollowupStatus | null;
   begin: (paths: string[], stage?: QrScanJobStage) => void;
+  /** Re-open stripe UI for photo neighbor follow-up (full list + original hit). */
+  beginFollowup: (paths: string[], hitPath: string) => void;
   setStage: (stage: QrScanJobStage) => void;
   setPhase: (path: string, phase: QrScanPhase) => void;
   setClipProgress: (
@@ -52,9 +63,28 @@ type QrScanState = {
   ) => void;
   clearClipProgress: (path: string) => void;
   setFollowup: (status: QrFollowupStatus) => void;
+  /** Paint stripes red before photos leave the media list. */
+  markRemoved: (paths: string[]) => void;
   end: () => void;
   phaseFor: (path: string) => QrScanPhase | null;
 };
+
+function dedupeNormalizedPaths(paths: string[]): string[] {
+  const cleaned = paths.map((p) => p.trim()).filter(Boolean);
+  const listOrder = cleaned.map((p) => normalizeMediaPath(p));
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const key of listOrder) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(key);
+  }
+  return unique;
+}
+
+function isFinishedPhase(phase: QrScanPhase): boolean {
+  return phase === "done" || phase === "hit" || phase === "removed";
+}
 
 export function normalizeMediaPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
@@ -105,9 +135,7 @@ function buildFileProgress(
       framesTotal: showFrames ? cp.framesTotal : undefined,
     };
   });
-  const finished = segments.filter(
-    (s) => s.phase === "done" || s.phase === "hit",
-  ).length;
+  const finished = segments.filter((s) => isFinishedPhase(s.phase)).length;
   const active = segments.filter((s) => s.phase === "active").length;
   return { segments, finished, total: segments.length, active };
 }
@@ -169,8 +197,8 @@ export type QrScanProgressSummary = {
   hidePercent: true;
   metric?: string;
   metricLabel?: string;
-  /** Show Schnell/Gründlich color legend under the stripes. */
-  paceLegend?: boolean;
+  /** Color legend under the stripes (video pace vs follow-up removal). */
+  legend?: QrScanLegend;
   fileProgress?: QrFileProgress;
 };
 
@@ -182,6 +210,11 @@ export function summarizeQrScanProgress(
   clipProgress: Record<string, QrClipFrameProgress> = {},
   scanOrder: string[] = [],
 ): QrScanProgressSummary {
+  const entries = Object.entries(byPath);
+  // Stripes follow the media list order; ends-first only affects which paths go active.
+  const order = scanOrder.length > 0 ? scanOrder : entries.map(([path]) => path);
+  const fileProgress = buildFileProgress(order, byPath, clipProgress);
+
   if (stage === "followup") {
     const fu = followup ?? emptyFollowup();
     const parts: string[] = [];
@@ -197,7 +230,15 @@ export function summarizeQrScanProgress(
         ? "1 weiterer Treffer"
         : `${fu.extraHits} weitere Treffer`,
     );
-    if (fu.currentPath) {
+    const removedCount = entries.filter(([, p]) => p === "removed").length;
+    if (removedCount > 0) {
+      parts.push(
+        removedCount === 1
+          ? "1 Foto entfernt"
+          : `${removedCount} Fotos entfernt`,
+      );
+    }
+    if (fu.currentPath && removedCount === 0) {
       const name = fileBaseName(fu.currentPath);
       if (fu.phase === "start") {
         parts.push(`gerade: ${name}`);
@@ -208,27 +249,29 @@ export function summarizeQrScanProgress(
       } else {
         parts.push(name);
       }
-    } else {
+    } else if (removedCount === 0) {
       parts.push("Nachbarfotos der Serie…");
     }
+    const total = fileProgress?.total ?? order.length;
+    const finished = fileProgress?.finished ?? 0;
     return {
-      label: "QR gefunden — benachbarte Fotos prüfen…",
+      label:
+        removedCount > 0
+          ? "QR-Fotos werden aus der Liste entfernt…"
+          : "QR gefunden — benachbarte Fotos prüfen…",
       detail: parts.join(" · "),
       percent: 0,
       indeterminate: true,
       hidePercent: true,
-      metric: fu.scanned > 0 ? String(fu.scanned) : undefined,
-      metricLabel: fu.scanned > 0 ? "Fotos" : undefined,
+      metric: total > 0 ? `${finished}/${total}` : undefined,
+      metricLabel: total > 0 ? "Fotos" : undefined,
+      legend: fileProgress && fileProgress.total > 0 ? "followup" : undefined,
+      fileProgress,
     };
   }
 
-  const entries = Object.entries(byPath);
-  // Stripes follow the media list order; ends-first only affects which paths go active.
-  const order = scanOrder.length > 0 ? scanOrder : entries.map(([path]) => path);
   const total = order.length > 0 ? order.length : entries.length;
-  const finished = entries.filter(
-    ([, p]) => p === "done" || p === "hit",
-  ).length;
+  const finished = entries.filter(([, p]) => isFinishedPhase(p)).length;
   const activeEntries = entries.filter(([, p]) => p === "active");
   const activeCount = activeEntries.length;
   const hit = entries.find(([, p]) => p === "hit");
@@ -236,7 +279,6 @@ export function summarizeQrScanProgress(
     activeEntries.map(([path]) => path),
     clipProgress,
   );
-  const fileProgress = buildFileProgress(order, byPath, clipProgress);
 
   const label =
     frames?.mode === "prepare"
@@ -296,7 +338,11 @@ export function summarizeQrScanProgress(
     hidePercent: true,
     metric,
     metricLabel,
-    paceLegend: Boolean(fileProgress && fileProgress.total > 0),
+    // Pace legend only for video scan (photos have no Schnell/Gründlich).
+    legend:
+      stage === "scanning_videos" && fileProgress && fileProgress.total > 0
+        ? "pace"
+        : undefined,
     fileProgress,
   };
 }
@@ -310,16 +356,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   followup: null,
 
   begin: (paths, stage = "scanning") => {
-    const cleaned = paths.map((p) => p.trim()).filter(Boolean);
-    const listOrder = cleaned.map((p) => normalizeMediaPath(p));
-    // Dedupe while preserving first occurrence (list order).
-    const seen = new Set<string>();
-    const unique: string[] = [];
-    for (const key of listOrder) {
-      if (seen.has(key)) continue;
-      seen.add(key);
-      unique.push(key);
-    }
+    const unique = dedupeNormalizedPaths(paths);
     const byPath: Record<string, QrScanPhase> = {};
     for (const key of unique) {
       byPath[key] = "pending";
@@ -331,6 +368,26 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: unique,
       clipProgress: {},
       followup: stage === "followup" ? emptyFollowup() : null,
+    });
+  },
+
+  beginFollowup: (paths, hitPath) => {
+    const unique = dedupeNormalizedPaths(paths);
+    const byPath: Record<string, QrScanPhase> = {};
+    for (const key of unique) {
+      byPath[key] = "pending";
+    }
+    const hitKey = normalizeMediaPath(hitPath);
+    if (hitKey in byPath) {
+      byPath[hitKey] = "hit";
+    }
+    set({
+      busy: true,
+      stage: "followup",
+      byPath,
+      scanOrder: unique,
+      clipProgress: {},
+      followup: emptyFollowup(),
     });
   },
 
@@ -350,7 +407,12 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     const key = normalizeMediaPath(path);
     if (!get().byPath[key] && !get().busy) return;
     const clipProgress = { ...get().clipProgress };
-    if (phase === "done" || phase === "hit" || phase === "pending") {
+    if (
+      phase === "done" ||
+      phase === "hit" ||
+      phase === "pending" ||
+      phase === "removed"
+    ) {
       delete clipProgress[key];
     }
     set({
@@ -402,6 +464,18 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       busy: true,
       followup: status,
     });
+  },
+
+  markRemoved: (paths) => {
+    if (paths.length === 0) return;
+    const byPath = { ...get().byPath };
+    const clipProgress = { ...get().clipProgress };
+    for (const path of paths) {
+      const key = normalizeMediaPath(path);
+      byPath[key] = "removed";
+      delete clipProgress[key];
+    }
+    set({ byPath, clipProgress });
   },
 
   end: () =>

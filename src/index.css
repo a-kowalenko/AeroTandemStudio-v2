@@ -213,6 +213,16 @@
     width: 100%;
     background: var(--ats-primary);
   }
+
+  .ats-qr-scan-bar-removed {
+    background: color-mix(in srgb, var(--ats-destructive) 25%, transparent);
+  }
+
+  .ats-qr-scan-bar-removed::after {
+    animation: none;
+    width: 100%;
+    background: var(--ats-destructive);
+  }
 }
 
 @keyframes ats-qr-scan-slide {

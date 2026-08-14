@@ -5,6 +5,7 @@ import {
   type QrFileProgress,
   type QrFollowupStatus,
   type QrScanJobStage,
+  type QrScanLegend,
   type QrScanPhase,
 } from "../store/qrScanStore";
 
@@ -19,8 +20,8 @@ export type WorkflowProgressSnapshot = {
   metric?: string;
   /** Short unit under/beside metric, e.g. `Momente`. */
   metricLabel?: string;
-  /** Show Schnell/Gründlich color legend under the stripes. */
-  paceLegend?: boolean;
+  /** Color legend under QR stripes. */
+  legend?: QrScanLegend;
   /** Optional file-level segments for QR batch progress. */
   fileProgress?: QrFileProgress;
 };
@@ -167,7 +168,7 @@ export function resolveSdWorkflowProgress(opts: {
       hidePercent: summary.hidePercent,
       metric: summary.metric,
       metricLabel: summary.metricLabel,
-      paceLegend: summary.paceLegend,
+      legend: summary.legend,
       fileProgress: summary.fileProgress,
     };
   }

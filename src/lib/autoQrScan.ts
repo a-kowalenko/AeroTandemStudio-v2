@@ -182,7 +182,6 @@ export async function runAutoQrAfterImport(
         preview: result.preview,
         showDialog: false,
         runCleanup: async () => {
-          setQrStage("followup");
           return maybeRemoveQrPhoto(result.source_path);
         },
       });

@@ -3,6 +3,7 @@
 import { useConfigStore } from "@/store/configStore";
 import { usePhotoStore } from "@/store/photoStore";
 import { useVideoStore } from "@/store/videoStore";
+import { useQrScanStore } from "@/store/qrScanStore";
 import { scanQrPhotoFollowups } from "@/lib/tauri";
 
 export type QrCleanupResult = {
@@ -16,6 +17,12 @@ export function emptyCleanup(): QrCleanupResult {
 
 function pathKey(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function removePhotosByPaths(paths: string[]): string[] {
@@ -83,6 +90,7 @@ export function maybeRemoveQrVideo(
  * 1. Remove the QR photo if `qr_remove_photo_after_scan` is on.
  * 2. Bidirectionally scan same-series neighbors (gap ≤ 10s); remove QR carriers.
  *    Stops per direction after 3 consecutive non-QR photos (scan cap 40).
+ * Progress stripes stay visible during follow-up; carriers turn red before drop.
  */
 export async function maybeRemoveQrPhoto(
   sourcePath: string | null | undefined,
@@ -97,19 +105,32 @@ export async function maybeRemoveQrPhoto(
   const idx = list.findIndex((p) => pathKey(p.path) === pathKey(sourcePath));
   if (idx < 0) return result;
 
-  const toRemove = new Set<string>([list[idx].path]);
+  const hitPath = list[idx].path;
   const orderedPaths = list.map((p) => p.path);
+  const store = useQrScanStore.getState();
+  store.beginFollowup(orderedPaths, hitPath);
+
+  const toRemove = new Set<string>([hitPath]);
 
   try {
-    const followHits = await scanQrPhotoFollowups(orderedPaths, list[idx].path);
-    for (const path of followHits) {
-      toRemove.add(path);
+    try {
+      const followHits = await scanQrPhotoFollowups(orderedPaths, hitPath);
+      for (const path of followHits) {
+        toRemove.add(path);
+      }
+    } catch (e) {
+      console.warn(`QR-Follow-up Scan fehlgeschlagen:`, e);
     }
-  } catch (e) {
-    console.warn(`QR-Follow-up Scan fehlgeschlagen:`, e);
+
+    const removeList = [...toRemove];
+    store.markRemoved(removeList);
+    // Brief pause so red stripes are readable before list rows disappear.
+    await sleep(900);
+    result.removedPhotos = removePhotosByPaths(removeList);
+  } finally {
+    store.end();
   }
 
-  result.removedPhotos = removePhotosByPaths([...toRemove]);
   return result;
 }
 
