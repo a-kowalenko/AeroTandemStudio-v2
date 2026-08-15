@@ -1457,13 +1457,14 @@ function App() {
 
   const uploadActive = Boolean(config?.upload_to_server && serverConnected);
   const uploadBlocked = Boolean(config?.upload_to_server) && !serverConnected;
+  const uploadNudge = serverConnected && !config?.upload_to_server;
   const uploadTitle = !serverConnected
     ? uploadBlocked
       ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
       : "Server nicht verbunden — Upload nicht möglich"
     : uploadActive
       ? "Aktiv — Vorgang wird nach Erstellen hochgeladen"
-      : "Nach dem Erstellen auf den Server laden";
+      : "Upload aus — einschalten, wenn der Vorgang auf den Server soll";
 
   const uiLocked =
     busy ||
@@ -1688,9 +1689,11 @@ function App() {
                   "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
                   uploadActive
                     ? "border-primary/40 bg-primary/10 text-primary"
-                    : uploadBlocked
-                      ? "border-warning/40 bg-warning/10 text-warning"
-                      : "border-border bg-card-elevated/80 text-muted",
+                    : uploadNudge
+                      ? "border-destructive bg-destructive/20 text-destructive"
+                      : uploadBlocked
+                        ? "border-warning/40 bg-warning/10 text-warning"
+                        : "border-border bg-card-elevated/80 text-muted",
                   (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
                 )}
                 title={uploadTitle}
