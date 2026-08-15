@@ -5,7 +5,6 @@ use serde_json::{json, Map, Value};
 use crate::model::Kunde;
 use crate::storage::config::AppConfig;
 
-use super::export_paths::marker_path;
 use super::export_paths::OutputLayout;
 
 /// Build JSON payload for `_fertig.txt` matching legacy rules.
@@ -100,10 +99,8 @@ pub fn write_marker_file(
 ) -> Result<std::path::PathBuf, String> {
     let outside_mode = kunde.is_outside_video() || kunde.video_mode == "outside";
     let json = build_marker_json(kunde, outside_mode, config.oldschool_mode);
-    let path = marker_path(layout);
     let text = serde_json::to_string(&json).map_err(|e| e.to_string())?;
-    std::fs::write(&path, text).map_err(|e| format!("_fertig.txt schreiben: {e}"))?;
-    Ok(path)
+    crate::video::handoff_manifest::write_marker_file_atomic(layout, &text)
 }
 
 #[cfg(test)]

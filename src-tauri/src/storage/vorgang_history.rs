@@ -67,6 +67,8 @@ pub struct VorgangEntry {
     /// QR hit-frame persisted for QR-mode Vorgänge (app-owned; deleted with history entry).
     pub qr_preview: Option<QrPreview>,
     pub file_count: i64,
+    /// AMS handoff correlation id (empty for Lokal / legacy rows).
+    pub correlation_id: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -242,6 +244,12 @@ impl VorgangHistoryStore {
             "booking_id_hash",
             "ALTER TABLE vorgaenge ADD COLUMN booking_id_hash TEXT",
         )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "correlation_id",
+            "ALTER TABLE vorgaenge ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
+        )?;
         Ok(())
     }
 
@@ -361,11 +369,12 @@ impl VorgangHistoryStore {
                 ist_bezahlt_handcam_foto, ist_bezahlt_handcam_video,
                 ist_bezahlt_outside_foto, ist_bezahlt_outside_video,
                 base_output_dir, base_filename, encoder, intro_created,
-                body_clips, photos_copied, watermark_photos, marker_path, reused_preview
+                body_clips, photos_copied, watermark_photos, marker_path, reused_preview,
+                correlation_id
             ) VALUES (
                 ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
                 ?16,?17,?18,?19,?20,?21,?22,?23,
-                ?24,?25,?26,?27,?28,?29,?30,?31,?32
+                ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33
             )",
             params![
                 created_at,
@@ -400,6 +409,7 @@ impl VorgangHistoryStore {
                 result.watermark_photos as i64,
                 result.marker_path,
                 result.reused_preview as i64,
+                result.correlation_id.trim(),
             ],
         )?;
         let vorgang_id = tx.last_insert_rowid();
@@ -437,12 +447,28 @@ impl VorgangHistoryStore {
         }
 
         tx.commit()?;
+
+        if !result.correlation_id.trim().is_empty() {
+            let job_dir = Path::new(result.base_output_dir.trim());
+            if let Err(e) =
+                crate::video::handoff_manifest::patch_manifest_producer_ref(job_dir, vorgang_id)
+            {
+                logging::error(
+                    "vorgang_history",
+                    format!(
+                        "Manifest producer_ref konnte nicht gesetzt werden (id={vorgang_id}): {e}"
+                    ),
+                );
+            }
+        }
+
         logging::info(
             "vorgang_history",
             format!(
-                "Vorgang gespeichert: id={vorgang_id}, gast={}, files={}",
+                "Vorgang gespeichert: id={vorgang_id}, gast={}, files={}, correlation_id={}",
                 kunde.resolve_gast(),
-                files.len()
+                files.len(),
+                result.correlation_id.trim()
             ),
         );
         Ok(vorgang_id)
@@ -467,6 +493,7 @@ impl VorgangHistoryStore {
                         v.reused_preview,
                         v.qr_preview_path, v.qr_preview_width, v.qr_preview_height,
                         v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
+                        v.correlation_id,
                         (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count
                  FROM vorgaenge v";
         let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
@@ -665,7 +692,8 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
             row.get(37)?,
             row.get(38)?,
         ),
-        file_count: row.get(39)?,
+        correlation_id: row.get::<_, String>(39).unwrap_or_default(),
+        file_count: row.get(40)?,
     })
 }
 
@@ -721,6 +749,7 @@ mod tests {
             intro_created: true,
             body_clips: 1,
             reused_preview: false,
+            correlation_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
         }
     }
 

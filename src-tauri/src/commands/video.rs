@@ -1032,10 +1032,17 @@ pub async fn create_job(
     };
     let opts = options.unwrap_or_default();
 
+    // Optional AMS Bridge customer preflight (P2). Soft when bridge unreachable.
+    if let Err(e) = crate::bridge::preflight_customer_lookup(&config, &kunde).await {
+        logging::warn("create", format!("AMS Preflight abgebrochen: {e}"));
+        return Err(e);
+    }
+
     let kunde_for_history = kunde.clone();
     let videos_for_history = video_paths.clone();
     let photos_for_history = photo_paths.clone();
     let manual_entry_mode_for_history = config.manual_entry_mode.clone();
+    let config_for_ready = config.clone();
     let qr_preview_for_history = qr_preview.filter(|p| !p.path.trim().is_empty());
 
     let app_for_cb = app.clone();
@@ -1095,6 +1102,28 @@ pub async fn create_job(
                     "vorgang_history",
                     format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
                 );
+            }
+            // Optional AMS Bridge wake after Manifest + _fertig.txt (P3). Soft when down.
+            if !res.correlation_id.trim().is_empty() {
+                match crate::bridge::maybe_notify_handoff_ready(
+                    &config_for_ready,
+                    &res.correlation_id,
+                    Some(&res.base_filename),
+                )
+                .await
+                {
+                    Ok(Some(_)) => {
+                        logging::info(
+                            "bridge",
+                            format!(
+                                "AMS handoff/ready gesendet (correlation_id={})",
+                                res.correlation_id
+                            ),
+                        );
+                    }
+                    Ok(None) => {}
+                    Err(e) => logging::warn("bridge", format!("handoff/ready: {e}")),
+                }
             }
             Ok(res)
         }

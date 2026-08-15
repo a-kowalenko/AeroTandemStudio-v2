@@ -21,6 +21,7 @@ use crate::video::export_paths::{
     watermark_video_path, OutputLayout,
 };
 use crate::video::ffmpeg::{is_cancelled, probe_duration_secs, FfmpegError, ProgressCallback};
+use crate::video::handoff_manifest::write_handoff_manifest;
 use crate::video::marker::write_marker_file;
 use crate::video::processor::{
     create_video, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn, ProcessorError,
@@ -61,6 +62,8 @@ pub struct CreateJobResult {
     pub body_clips: usize,
     /// True when the final product video was copied from a matching preview.
     pub reused_preview: bool,
+    /// AMS handoff correlation id (empty when Lokal / skip_marker_file).
+    pub correlation_id: String,
 }
 
 fn emit(on_progress: &ProgressCallback, percent: f64, status: &str) {
@@ -569,15 +572,24 @@ pub fn create_job(
     }
 
     ensure_not_cancelled()?;
-    let marker_path = if config.skip_marker_file() {
+    let (marker_path, correlation_id) = if config.skip_marker_file() {
         emit(&on_progress, 96.0, "Überspringe _fertig.txt (Lokal)…");
         logging::info("create", "Lokal-Modus: keine Marker-Datei _fertig.txt");
-        String::new()
+        (String::new(), String::new())
     } else {
+        emit(&on_progress, 94.0, "Schreibe AMS-Manifest…");
+        logging::info("create", "Schreibe _ams_manifest.v1.json…");
+        let (correlation_id, _) =
+            write_handoff_manifest(&layout, kunde, config).map_err(ProcessorError::Message)?;
+        logging::info(
+            "create",
+            format!("AMS-Manifest geschrieben (correlation_id={correlation_id})"),
+        );
+
         emit(&on_progress, 96.0, "Schreibe _fertig.txt…");
         logging::info("create", "Schreibe Marker _fertig.txt…");
         let marker = write_marker_file(&layout, kunde, config).map_err(ProcessorError::Message)?;
-        marker.to_string_lossy().to_string()
+        (marker.to_string_lossy().to_string(), correlation_id)
     };
 
     emit(&on_progress, 100.0, "Vorgang fertig");
@@ -606,6 +618,7 @@ pub fn create_job(
         intro_created,
         body_clips,
         reused_preview,
+        correlation_id,
     })
 }
 

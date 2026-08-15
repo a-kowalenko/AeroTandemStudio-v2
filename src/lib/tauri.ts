@@ -121,6 +121,12 @@ export type AppConfig = {
   auto_clear_files_after_creation: boolean;
   /** First-run setup wizard finished or skipped. */
   setup_completed: boolean;
+  /** Optional AMS LAN Bridge base URL (`http://host:8787`). */
+  ams_bridge_url: string;
+  /** Shared bearer token for AMS Bridge. */
+  ams_bridge_token: string;
+  /** Last Bridge URL that answered health OK. */
+  ams_bridge_last_ok_url: string;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox. */
@@ -471,6 +477,7 @@ export type CreateJobResult = {
   intro_created: boolean;
   body_clips: number;
   reused_preview: boolean;
+  correlation_id: string;
 };
 
 export type PreviewResult = {
@@ -990,6 +997,103 @@ export async function testServerConnection(
 ): Promise<ConnectionTestResult> {
   return invoke<ConnectionTestResult>("test_server_connection", {
     overrides: overrides ?? null,
+  });
+}
+
+export type AmsBridgeHealth = {
+  online: boolean;
+  version: string;
+  monitor_path: string;
+  capabilities: string[];
+};
+
+export type AmsBridgeHealthResult = {
+  ok: boolean;
+  message: string;
+  health: AmsBridgeHealth | null;
+  base_url: string;
+};
+
+export type AmsBridgeLookupResponse = {
+  ok: boolean;
+  customer?: {
+    customer_number?: string | null;
+    booking_number?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    type?: string | null;
+  } | null;
+  error?: { code: string; message: string } | null;
+};
+
+export async function amsBridgeHealth(): Promise<AmsBridgeHealthResult> {
+  return invoke<AmsBridgeHealthResult>("ams_bridge_health");
+}
+
+export async function amsBridgeCustomerLookup(args: {
+  customerId: string;
+  bookingId: string;
+  markerType: string;
+  mode?: string;
+}): Promise<AmsBridgeLookupResponse> {
+  return invoke<AmsBridgeLookupResponse>("ams_bridge_customer_lookup", {
+    customerId: args.customerId,
+    bookingId: args.bookingId,
+    markerType: args.markerType,
+    mode: args.mode ?? null,
+  });
+}
+
+export type AmsBridgeJobStatus = {
+  schema: number;
+  correlation_id: string;
+  updated_at: string;
+  state: string;
+  error?: { code: string; message: string } | null;
+  ams?: { history_id?: string | null; archive?: string | null };
+};
+
+export type AmsBridgeHandoffReadyResult = {
+  ok: boolean;
+  woken: boolean;
+  error?: { code: string; message: string } | null;
+};
+
+export async function amsBridgeJobStatus(
+  correlationId: string,
+): Promise<AmsBridgeJobStatus | null> {
+  return invoke<AmsBridgeJobStatus | null>("ams_bridge_job_status", {
+    correlationId,
+  });
+}
+
+export async function amsBridgeHandoffReady(
+  correlationId: string,
+  folderName?: string,
+): Promise<AmsBridgeHandoffReadyResult> {
+  return invoke<AmsBridgeHandoffReadyResult>("ams_bridge_handoff_ready", {
+    correlationId,
+    folderName: folderName ?? null,
+  });
+}
+
+export type AmsBridgeDiscovered = {
+  instance: string;
+  host: string;
+  port: number;
+  base_url: string;
+  version: string;
+  capabilities: string[];
+  monitor_path: string;
+};
+
+export async function amsBridgeDiscover(
+  timeoutSecs?: number,
+): Promise<AmsBridgeDiscovered[]> {
+  return invoke<AmsBridgeDiscovered[]>("ams_bridge_discover", {
+    timeoutSecs: timeoutSecs ?? null,
   });
 }
 

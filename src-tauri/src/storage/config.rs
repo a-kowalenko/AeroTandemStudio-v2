@@ -210,6 +210,15 @@ pub struct AppConfig {
     /// First-run setup wizard finished (or skipped). Reset clears this.
     #[serde(default)]
     pub setup_completed: bool,
+    /// Optional AMS LAN Bridge base URL (`http://host:8787`).
+    #[serde(default)]
+    pub ams_bridge_url: String,
+    /// Shared bearer token for AMS Bridge (Token-Auth Pflicht).
+    #[serde(default)]
+    pub ams_bridge_token: String,
+    /// Last base URL that answered health successfully (fallback / Netzwechsel).
+    #[serde(default)]
+    pub ams_bridge_last_ok_url: String,
 }
 
 fn default_ort() -> String {
@@ -481,6 +490,9 @@ impl Default for AppConfig {
             keep_videospringer_on_session_reset: false,
             auto_clear_files_after_creation: false,
             setup_completed: false,
+            ams_bridge_url: String::new(),
+            ams_bridge_token: String::new(),
+            ams_bridge_last_ok_url: String::new(),
         }
     }
 }

@@ -39,9 +39,11 @@ sha1 = "0.10"
 base64 = "0.22"
 kamadak-exif = "0.6"
 chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
 smb2 = "0.18"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tokio = { version = "1", features = ["macros", "time", "rt"] }
+mdns-sd = "0.15"
 
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-updater = "2"

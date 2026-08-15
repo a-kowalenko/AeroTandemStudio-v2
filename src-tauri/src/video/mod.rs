@@ -5,6 +5,7 @@ pub mod encoding_quality;
 pub mod export_job;
 pub mod export_paths;
 pub mod ffmpeg;
+pub mod handoff_manifest;
 pub mod hw_accel;
 pub mod intro_mux_fallback;
 pub mod keyframe_cache;

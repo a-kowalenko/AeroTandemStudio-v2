@@ -9,9 +9,14 @@ mod storage;
 mod updater;
 mod util;
 mod video;
+mod bridge;
 
 use commands::app::{
     cleanup_cache, clear_log_buffer, get_app_info, get_recent_logs, run_startup_checks,
+};
+use commands::bridge::{
+    ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_ready, ams_bridge_health,
+    ams_bridge_job_status, ams_bridge_preflight,
 };
 use commands::config::{
     ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
@@ -42,7 +47,9 @@ use commands::video::{
     trim_video, undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path,
     validate_create_job,
 };
-use commands::vorgang_history::{delete_vorgaenge, list_vorgang_dateien, list_vorgaenge};
+use commands::vorgang_history::{
+    delete_vorgaenge, get_handoff_status, list_vorgang_dateien, list_vorgaenge,
+};
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
 use updater::{
@@ -171,6 +178,12 @@ pub fn run() {
             propose_default_media_dirs_cmd,
             ensure_default_media_dirs_cmd,
             validate_kunde_cmd,
+            ams_bridge_health,
+            ams_bridge_customer_lookup,
+            ams_bridge_preflight,
+            ams_bridge_job_status,
+            ams_bridge_handoff_ready,
+            ams_bridge_discover,
             scan_qr_video,
             scan_qr_photo,
             scan_qr_videos,
@@ -209,6 +222,7 @@ pub fn run() {
             purge_processed_files,
             list_vorgaenge,
             list_vorgang_dateien,
+            get_handoff_status,
             delete_vorgaenge,
             test_server_connection,
             upload_to_server,

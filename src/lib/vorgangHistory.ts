@@ -38,6 +38,8 @@ export type VorgangEntry = {
   /** Persisted QR hit-frame (QR-mode Vorgänge); deleted with the history entry. */
   qr_preview: QrPreview | null;
   file_count: number;
+  /** AMS handoff correlation id (empty for Lokal / older rows). */
+  correlation_id: string;
 };
 
 export type VorgangFileEntry = {
@@ -48,6 +50,16 @@ export type VorgangFileEntry = {
   role: string;
   size_bytes: number | null;
   path: string | null;
+};
+
+export type HandoffStatus = {
+  correlation_id: string;
+  state: string;
+  updated_at: string;
+  error: { code: string; message: string } | null;
+  ams: { history_id: string | null; archive: string | null };
+  /** `bridge` | `outbox` */
+  source?: string;
 };
 
 export async function listVorgaenge(
@@ -65,6 +77,16 @@ export async function listVorgangDateien(
 ): Promise<VorgangFileEntry[]> {
   return invoke<VorgangFileEntry[]>("list_vorgang_dateien", {
     vorgangId,
+  });
+}
+
+export async function getHandoffStatus(
+  correlationId: string,
+  baseOutputDir: string,
+): Promise<HandoffStatus | null> {
+  return invoke<HandoffStatus | null>("get_handoff_status", {
+    correlationId,
+    baseOutputDir,
   });
 }
 

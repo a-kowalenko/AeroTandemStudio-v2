@@ -28,8 +28,10 @@ import {
 } from "../lib/sdCard";
 import {
   deleteVorgaenge,
+  getHandoffStatus,
   listVorgangDateien,
   listVorgaenge,
+  type HandoffStatus,
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
@@ -96,6 +98,25 @@ function productBadges(v: VorgangEntry): string[] {
   if (v.outside_video) badges.push(v.ist_bezahlt_outside_video ? "OV✓" : "OV");
   if (v.outside_foto) badges.push(v.ist_bezahlt_outside_foto ? "OF✓" : "OF");
   return badges;
+}
+
+function handoffStateLabel(state: string): string {
+  switch (state) {
+    case "accepted":
+      return "Übernommen";
+    case "rejected":
+      return "Abgelehnt";
+    case "queued":
+      return "Warteschlange";
+    case "uploading":
+      return "Upload";
+    case "completed":
+      return "Fertig";
+    case "failed":
+      return "Fehler";
+    default:
+      return state || "—";
+  }
 }
 
 function roleLabel(role: string): string {
@@ -313,6 +334,8 @@ function VorgaengePanel({
   const [filesReady, setFilesReady] = useState(false);
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [showShadow, setShowShadow] = useState(true);
+  const [handoffStatus, setHandoffStatus] = useState<HandoffStatus | null>(null);
+  const [handoffReady, setHandoffReady] = useState(false);
   const searchRef = useRef(search);
   searchRef.current = search;
 
@@ -376,6 +399,41 @@ function VorgaengePanel({
     () => entries.find((e) => e.id === selectedId) ?? null,
     [entries, selectedId],
   );
+
+  useEffect(() => {
+    if (!dialogOpen || !selected) {
+      setHandoffStatus(null);
+      setHandoffReady(true);
+      return;
+    }
+    const cid = selected.correlation_id?.trim() ?? "";
+    if (!cid) {
+      setHandoffStatus(null);
+      setHandoffReady(true);
+      return;
+    }
+    let cancelled = false;
+    setHandoffReady(false);
+    const load = () => {
+      void getHandoffStatus(cid, selected.base_output_dir)
+        .then((status) => {
+          if (!cancelled) setHandoffStatus(status);
+        })
+        .catch(() => {
+          if (!cancelled) setHandoffStatus(null);
+        })
+        .finally(() => {
+          if (!cancelled) setHandoffReady(true);
+        });
+    };
+    load();
+    const interval = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [dialogOpen, selected]);
+
   const selectedMode = selected
     ? entryModeLabel(selected.form_mode, selected.manual_entry_mode)
     : null;
@@ -594,6 +652,27 @@ function VorgaengePanel({
                       .join(" · ")}
                   </div>
                 )}
+                {selected.correlation_id?.trim() ? (
+                  <div className="text-muted">
+                    AMS:{" "}
+                    {!handoffReady
+                      ? "Status…"
+                      : handoffStatus
+                        ? `${handoffStateLabel(handoffStatus.state)}${
+                            handoffStatus.error?.code
+                              ? ` (${handoffStatus.error.code})`
+                              : ""
+                          }${
+                            handoffStatus.ams.archive
+                              ? ` · Archiv ${handoffStatus.ams.archive}`
+                              : ""
+                          }`
+                        : "wartet auf AMS"}
+                    <span className="ml-1 opacity-70" title={selected.correlation_id}>
+                      · {selected.correlation_id.slice(0, 8)}…
+                    </span>
+                  </div>
+                ) : null}
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
                 <table className="w-full text-left text-xs">
