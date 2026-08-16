@@ -40,6 +40,14 @@ export type VorgangEntry = {
   file_count: number;
   /** AMS handoff correlation id (empty for Lokal / older rows). */
   correlation_id: string;
+  /** Last-known AMS outbox state (`pending` until AMS writes). */
+  ams_state: string;
+  ams_updated_at: string;
+  ams_error_code: string;
+  ams_error_message: string;
+  ams_archive: string;
+  /** `bridge` | `outbox` | `local` | `cached` */
+  ams_source: string;
 };
 
 export type VorgangFileEntry = {
@@ -58,8 +66,10 @@ export type HandoffStatus = {
   updated_at: string;
   error: { code: string; message: string } | null;
   ams: { history_id: string | null; archive: string | null };
-  /** `bridge` | `outbox` */
+  /** `bridge` | `outbox` | `cached` | `local` */
   source?: string;
+  /** Live Bridge/Outbox unavailable; payload may be cached. */
+  offline?: boolean;
 };
 
 export async function listVorgaenge(
@@ -83,10 +93,12 @@ export async function listVorgangDateien(
 export async function getHandoffStatus(
   correlationId: string,
   baseOutputDir: string,
+  vorgangId?: number | null,
 ): Promise<HandoffStatus | null> {
   return invoke<HandoffStatus | null>("get_handoff_status", {
     correlationId,
     baseOutputDir,
+    vorgangId: vorgangId ?? null,
   });
 }
 

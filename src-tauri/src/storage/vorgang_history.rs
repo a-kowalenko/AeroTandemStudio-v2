@@ -69,6 +69,25 @@ pub struct VorgangEntry {
     pub file_count: i64,
     /// AMS handoff correlation id (empty for Lokal / legacy rows).
     pub correlation_id: String,
+    /// Last-known AMS outbox state (`pending` locally until AMS writes).
+    pub ams_state: String,
+    pub ams_updated_at: String,
+    pub ams_error_code: String,
+    pub ams_error_message: String,
+    pub ams_archive: String,
+    /// `bridge` | `outbox` | `local` | empty
+    pub ams_source: String,
+}
+
+/// Snapshot written when Bridge/Outbox status is resolved.
+#[derive(Debug, Clone)]
+pub struct AmsHandoffStatusUpdate {
+    pub state: String,
+    pub updated_at: String,
+    pub error_code: String,
+    pub error_message: String,
+    pub archive: String,
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -250,6 +269,42 @@ impl VorgangHistoryStore {
             "correlation_id",
             "ALTER TABLE vorgaenge ADD COLUMN correlation_id TEXT NOT NULL DEFAULT ''",
         )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_state",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_state TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_updated_at",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_updated_at TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_error_code",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_error_code TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_error_message",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_error_message TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_archive",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_archive TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_source",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_source TEXT NOT NULL DEFAULT ''",
+        )?;
         Ok(())
     }
 
@@ -359,6 +414,16 @@ impl VorgangHistoryStore {
         } else {
             manual_entry_mode.trim().to_ascii_lowercase()
         };
+        let correlation_id = result.correlation_id.trim().to_string();
+        let (ams_state, ams_updated_at, ams_source) = if correlation_id.is_empty() {
+            (String::new(), String::new(), String::new())
+        } else {
+            (
+                "pending".to_string(),
+                created_at.clone(),
+                "local".to_string(),
+            )
+        };
 
         tx.execute(
             "INSERT INTO vorgaenge (
@@ -370,11 +435,11 @@ impl VorgangHistoryStore {
                 ist_bezahlt_outside_foto, ist_bezahlt_outside_video,
                 base_output_dir, base_filename, encoder, intro_created,
                 body_clips, photos_copied, watermark_photos, marker_path, reused_preview,
-                correlation_id
+                correlation_id, ams_state, ams_updated_at, ams_source
             ) VALUES (
                 ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
                 ?16,?17,?18,?19,?20,?21,?22,?23,
-                ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33
+                ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36
             )",
             params![
                 created_at,
@@ -409,7 +474,10 @@ impl VorgangHistoryStore {
                 result.watermark_photos as i64,
                 result.marker_path,
                 result.reused_preview as i64,
-                result.correlation_id.trim(),
+                correlation_id,
+                ams_state,
+                ams_updated_at,
+                ams_source,
             ],
         )?;
         let vorgang_id = tx.last_insert_rowid();
@@ -474,6 +542,140 @@ impl VorgangHistoryStore {
         Ok(vorgang_id)
     }
 
+    /// Persist last-known AMS handoff status for a Vorgang (by id, or correlation_id fallback).
+    pub fn update_ams_handoff_status(
+        &self,
+        vorgang_id: Option<i64>,
+        correlation_id: &str,
+        update: &AmsHandoffStatusUpdate,
+    ) -> Result<(), VorgangHistoryError> {
+        let cid = correlation_id.trim();
+        if cid.is_empty() && vorgang_id.is_none() {
+            return Ok(());
+        }
+        let conn = self.connect()?;
+        let n = if let Some(id) = vorgang_id {
+            conn.execute(
+                "UPDATE vorgaenge SET
+                    ams_state = ?1,
+                    ams_updated_at = ?2,
+                    ams_error_code = ?3,
+                    ams_error_message = ?4,
+                    ams_archive = ?5,
+                    ams_source = ?6
+                 WHERE id = ?7",
+                params![
+                    update.state.trim(),
+                    update.updated_at.trim(),
+                    update.error_code.trim(),
+                    update.error_message.trim(),
+                    update.archive.trim(),
+                    update.source.trim(),
+                    id
+                ],
+            )?
+        } else {
+            conn.execute(
+                "UPDATE vorgaenge SET
+                    ams_state = ?1,
+                    ams_updated_at = ?2,
+                    ams_error_code = ?3,
+                    ams_error_message = ?4,
+                    ams_archive = ?5,
+                    ams_source = ?6
+                 WHERE correlation_id = ?7",
+                params![
+                    update.state.trim(),
+                    update.updated_at.trim(),
+                    update.error_code.trim(),
+                    update.error_message.trim(),
+                    update.archive.trim(),
+                    update.source.trim(),
+                    cid
+                ],
+            )?
+        };
+        if n == 0 {
+            logging::debug(
+                "vorgang_history",
+                format!("AMS-Status Update: kein Vorgang für correlation_id={cid}"),
+            );
+        }
+        Ok(())
+    }
+
+    /// Load cached AMS status fields for a Vorgang.
+    pub fn get_cached_ams_status(
+        &self,
+        vorgang_id: Option<i64>,
+        correlation_id: &str,
+    ) -> Result<Option<AmsHandoffStatusUpdate>, VorgangHistoryError> {
+        let cid = correlation_id.trim();
+        let conn = self.connect()?;
+        let row = if let Some(id) = vorgang_id {
+            conn.query_row(
+                "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message,
+                        ams_archive, ams_source, correlation_id
+                 FROM vorgaenge WHERE id = ?1",
+                params![id],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get::<_, String>(5)?,
+                        r.get::<_, String>(6)?,
+                    ))
+                },
+            )
+        } else if !cid.is_empty() {
+            conn.query_row(
+                "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message,
+                        ams_archive, ams_source, correlation_id
+                 FROM vorgaenge WHERE correlation_id = ?1
+                 ORDER BY id DESC LIMIT 1",
+                params![cid],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get::<_, String>(5)?,
+                        r.get::<_, String>(6)?,
+                    ))
+                },
+            )
+        } else {
+            return Ok(None);
+        };
+        match row {
+            Ok((state, updated_at, error_code, error_message, archive, source, _)) => {
+                if state.trim().is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(AmsHandoffStatusUpdate {
+                        state,
+                        updated_at,
+                        error_code,
+                        error_message,
+                        archive,
+                        source: if source.trim().is_empty() {
+                            "cached".into()
+                        } else {
+                            source
+                        },
+                    }))
+                }
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     pub fn list_vorgaenge(
         &self,
         limit: usize,
@@ -494,6 +696,9 @@ impl VorgangHistoryStore {
                         v.qr_preview_path, v.qr_preview_width, v.qr_preview_height,
                         v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
                         v.correlation_id,
+                        IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
+                        IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
+                        IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
                         (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count
                  FROM vorgaenge v";
         let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
@@ -693,7 +898,13 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
             row.get(38)?,
         ),
         correlation_id: row.get::<_, String>(39).unwrap_or_default(),
-        file_count: row.get(40)?,
+        ams_state: row.get::<_, String>(40).unwrap_or_default(),
+        ams_updated_at: row.get::<_, String>(41).unwrap_or_default(),
+        ams_error_code: row.get::<_, String>(42).unwrap_or_default(),
+        ams_error_message: row.get::<_, String>(43).unwrap_or_default(),
+        ams_archive: row.get::<_, String>(44).unwrap_or_default(),
+        ams_source: row.get::<_, String>(45).unwrap_or_default(),
+        file_count: row.get(46)?,
     })
 }
 
@@ -800,7 +1011,33 @@ mod tests {
         assert_eq!(list[0].manual_entry_mode, "oldschool");
         assert!(list[0].handcam_video);
         assert!(list[0].ist_bezahlt_handcam_video);
+        assert_eq!(list[0].correlation_id, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert_eq!(list[0].ams_state, "pending");
+        assert_eq!(list[0].ams_source, "local");
         assert!(list[0].qr_preview.is_none());
+
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                &AmsHandoffStatusUpdate {
+                    state: "uploading".into(),
+                    updated_at: "2026-08-16T10:00:00Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: String::new(),
+                    source: "bridge".into(),
+                },
+            )
+            .unwrap();
+        let after = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(after.ams_state, "uploading");
+        assert_eq!(after.ams_source, "bridge");
+        let cached = store
+            .get_cached_ams_status(Some(id), "")
+            .unwrap()
+            .expect("cached");
+        assert_eq!(cached.state, "uploading");
 
         let found = store.list_vorgaenge(10, Some("Mustermann")).unwrap();
         assert_eq!(found.len(), 1);

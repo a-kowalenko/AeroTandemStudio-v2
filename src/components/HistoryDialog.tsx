@@ -35,6 +35,12 @@ import {
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
+import {
+  isAmsHandoffTerminal,
+  viewFromHandoffStatus,
+  viewFromVorgangEntry,
+} from "../lib/amsHandoffStatus";
+import { AmsHandoffStatusChip, AmsHandoffStepper } from "@/components/AmsHandoffStatus";
 import { QrHitMeta } from "@/components/QrHitMeta";
 import {
   QR_PREVIEW_FRAME_AR,
@@ -100,23 +106,16 @@ function productBadges(v: VorgangEntry): string[] {
   return badges;
 }
 
-function handoffStateLabel(state: string): string {
-  switch (state) {
-    case "accepted":
-      return "Übernommen";
-    case "rejected":
-      return "Abgelehnt";
-    case "queued":
-      return "Warteschlange";
-    case "uploading":
-      return "Upload";
-    case "completed":
-      return "Fertig";
-    case "failed":
-      return "Fehler";
-    default:
-      return state || "—";
-  }
+function applyHandoffToEntry(entry: VorgangEntry, status: HandoffStatus): VorgangEntry {
+  return {
+    ...entry,
+    ams_state: status.state,
+    ams_updated_at: status.updated_at || entry.ams_updated_at,
+    ams_error_code: status.error?.code ?? "",
+    ams_error_message: status.error?.message ?? "",
+    ams_archive: status.ams.archive ?? "",
+    ams_source: status.source ?? entry.ams_source,
+  };
 }
 
 function roleLabel(role: string): string {
@@ -338,6 +337,10 @@ function VorgaengePanel({
   const [handoffReady, setHandoffReady] = useState(false);
   const searchRef = useRef(search);
   searchRef.current = search;
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
 
   async function reload(q?: string) {
     setLoading(true);
@@ -407,32 +410,141 @@ function VorgaengePanel({
       return;
     }
     const cid = selected.correlation_id?.trim() ?? "";
+    const vorgangId = selected.id;
+    const baseDir = selected.base_output_dir;
+    const cachedState = selected.ams_state;
     if (!cid) {
       setHandoffStatus(null);
       setHandoffReady(true);
       return;
     }
     let cancelled = false;
-    setHandoffReady(false);
-    const load = () => {
-      void getHandoffStatus(cid, selected.base_output_dir)
-        .then((status) => {
-          if (!cancelled) setHandoffStatus(status);
-        })
+
+    const mergeStatus = (status: HandoffStatus | null) => {
+      if (cancelled) return;
+      setHandoffStatus(status);
+      if (status) {
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === vorgangId ? applyHandoffToEntry(e, status) : e,
+          ),
+        );
+      }
+    };
+
+    const load = (markReady: boolean) => {
+      void getHandoffStatus(cid, baseDir, vorgangId)
+        .then(mergeStatus)
         .catch(() => {
-          if (!cancelled) setHandoffStatus(null);
+          if (!cancelled) {
+            const row = entriesRef.current.find((e) => e.id === vorgangId);
+            const cached = row ? viewFromVorgangEntry(row) : null;
+            if (cached) {
+              setHandoffStatus({
+                correlation_id: cid,
+                state: cached.state,
+                updated_at: row?.ams_updated_at ?? "",
+                error: cached.errorCode
+                  ? {
+                      code: cached.errorCode,
+                      message: cached.errorMessage ?? "",
+                    }
+                  : null,
+                ams: {
+                  history_id: null,
+                  archive: cached.archive ?? null,
+                },
+                source: cached.source ?? "cached",
+                offline: true,
+              });
+            }
+          }
         })
         .finally(() => {
-          if (!cancelled) setHandoffReady(true);
+          if (!cancelled && markReady) setHandoffReady(true);
         });
     };
-    load();
-    const interval = window.setInterval(load, 5000);
+
+    // Show cached immediately; avoid blank flicker.
+    const seed = viewFromVorgangEntry(selected);
+    if (seed) {
+      setHandoffStatus({
+        correlation_id: cid,
+        state: seed.state,
+        updated_at: selected.ams_updated_at,
+        error: seed.errorCode
+          ? { code: seed.errorCode, message: seed.errorMessage ?? "" }
+          : null,
+        ams: { history_id: null, archive: seed.archive ?? null },
+        source: seed.source ?? "local",
+        offline: false,
+      });
+      setHandoffReady(true);
+    } else {
+      setHandoffReady(false);
+    }
+
+    load(true);
+    if (isAmsHandoffTerminal(cachedState)) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const interval = window.setInterval(() => load(false), 5000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [dialogOpen, selected]);
+    // selected object identity changes on every AMS merge — key by stable fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    dialogOpen,
+    selected?.id,
+    selected?.correlation_id,
+    selected?.base_output_dir,
+    selected?.ams_state,
+  ]);
+
+  // Background refresh for visible non-terminal AMS handoffs (list chips).
+  useEffect(() => {
+    if (!dialogOpen || !ready) return;
+    let cancelled = false;
+    const refresh = () => {
+      const pending = entriesRef.current.filter(
+        (e) =>
+          e.correlation_id?.trim() &&
+          !isAmsHandoffTerminal(e.ams_state) &&
+          e.id !== selectedIdRef.current,
+      );
+      if (pending.length === 0) return;
+      void Promise.all(
+        pending.slice(0, 15).map(async (e) => {
+          try {
+            const status = await getHandoffStatus(
+              e.correlation_id,
+              e.base_output_dir,
+              e.id,
+            );
+            if (!cancelled && status) {
+              setEntries((prev) =>
+                prev.map((row) =>
+                  row.id === e.id ? applyHandoffToEntry(row, status) : row,
+                ),
+              );
+            }
+          } catch {
+            /* keep cached list fields */
+          }
+        }),
+      );
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 20000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [dialogOpen, ready]);
 
   const selectedMode = selected
     ? entryModeLabel(selected.form_mode, selected.manual_entry_mode)
@@ -525,10 +637,11 @@ function VorgaengePanel({
           <table className="w-full table-fixed text-left text-xs">
             <colgroup>
               <col className="w-8" />
-              <col className="w-[28%]" />
+              <col className="w-[24%]" />
+              <col className="w-[14%]" />
               <col className="w-[18%]" />
-              <col className="w-[22%]" />
-              <col className="w-[28%]" />
+              <col className="w-[18%]" />
+              <col className="w-[18%]" />
             </colgroup>
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border/60">
@@ -536,12 +649,14 @@ function VorgaengePanel({
                 <th className="p-2">Gast</th>
                 <th className="p-2">Datum</th>
                 <th className="p-2">Produkte</th>
+                <th className="p-2">AMS</th>
                 <th className="p-2">Erstellt</th>
               </tr>
             </thead>
             <tbody>
               {entries.map((e) => {
                 const badges = productBadges(e);
+                const amsView = viewFromVorgangEntry(e);
                 return (
                   <tr
                     key={e.id}
@@ -580,6 +695,13 @@ function VorgaengePanel({
                         </span>
                       )}
                     </td>
+                    <td className="p-2">
+                      {amsView ? (
+                        <AmsHandoffStatusChip view={amsView} />
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
                     <td
                       className="truncate p-2 text-muted"
                       title={formatCreatedAt(e.created_at)}
@@ -591,7 +713,7 @@ function VorgaengePanel({
               })}
               {showEmptyList && (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted">
+                  <td colSpan={6} className="p-4 text-center text-muted">
                     Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier.
                   </td>
                 </tr>
@@ -653,24 +775,26 @@ function VorgaengePanel({
                   </div>
                 )}
                 {selected.correlation_id?.trim() ? (
-                  <div className="text-muted">
-                    AMS:{" "}
-                    {!handoffReady
-                      ? "Status…"
-                      : handoffStatus
-                        ? `${handoffStateLabel(handoffStatus.state)}${
-                            handoffStatus.error?.code
-                              ? ` (${handoffStatus.error.code})`
-                              : ""
-                          }${
-                            handoffStatus.ams.archive
-                              ? ` · Archiv ${handoffStatus.ams.archive}`
-                              : ""
-                          }`
-                        : "wartet auf AMS"}
-                    <span className="ml-1 opacity-70" title={selected.correlation_id}>
-                      · {selected.correlation_id.slice(0, 8)}…
-                    </span>
+                  <div className="pt-1">
+                    {!handoffReady && !handoffStatus ? (
+                      <div className="text-muted">AMS-Status…</div>
+                    ) : (
+                      <AmsHandoffStepper
+                        view={
+                          handoffStatus
+                            ? viewFromHandoffStatus(handoffStatus)
+                            : (viewFromVorgangEntry(selected) ?? {
+                                state: "pending",
+                              })
+                        }
+                      />
+                    )}
+                    <div
+                      className="mt-0.5 truncate text-[10px] text-muted-foreground/80"
+                      title={selected.correlation_id}
+                    >
+                      {selected.correlation_id.slice(0, 8)}…
+                    </div>
                   </div>
                 ) : null}
               </div>
