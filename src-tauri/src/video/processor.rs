@@ -20,6 +20,7 @@ use crate::constants::{
     HINTERGRUND_ORIGINAL_WIDTH,
 };
 use crate::model::Kunde;
+use super::body_concat_fallback::BodyConcatAskFn;
 use super::concat::{self, ConcatError, VideoCodec};
 use super::encoding_quality::{
     build_encode_output_params, resolve_output_codec, VideoCodecPreference,
@@ -74,6 +75,9 @@ pub struct CreateVideoOptions {
     /// Intro+Body mux: `"reencode"` (default) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
+    /// Multi-clip body concat: `"legacy"` (default) | `"fast"`.
+    #[serde(default = "default_body_concat_mode")]
+    pub body_concat_mode: String,
     /// Use NVENC/VideoToolbox when available (from config `hardware_acceleration_enabled`).
     #[serde(default)]
     pub hw_accel_enabled: bool,
@@ -90,6 +94,9 @@ fn default_crf() -> u8 {
 }
 fn default_intro_mux_mode() -> String {
     "reencode".into()
+}
+fn default_body_concat_mode() -> String {
+    "legacy".into()
 }
 
 fn is_stream_copy_mode(mode: &str) -> bool {
@@ -108,6 +115,7 @@ impl Default for CreateVideoOptions {
             crf: 18,
             parallel_enabled: true,
             intro_mux_mode: default_intro_mux_mode(),
+            body_concat_mode: default_body_concat_mode(),
             hw_accel_enabled: false,
         }
     }
@@ -1092,6 +1100,7 @@ pub fn create_video(
     resource_dir: Option<&Path>,
     on_progress: ProgressCallback,
     on_intro_mux_fallback: Option<IntroMuxAskFn>,
+    on_body_concat_fallback: Option<BodyConcatAskFn>,
 ) -> Result<CreateVideoResult, ProcessorError> {
     if video_paths.is_empty() {
         return Err(ProcessorError::Message(
@@ -1115,6 +1124,13 @@ pub fn create_video(
 
     // Stage 1: body (single path, parallel per-clip encode, or concat)
     emit_stage(&on_progress, 0.0, stages, "Bereite Videoclips vor…");
+    // Without intro, write the body concat straight to the final output to skip
+    // an extra remux pass in `export_body_to_output`.
+    let body_target = if options.intro_enabled {
+        work.join("body_concat.mp4").to_string_lossy().to_string()
+    } else {
+        output.to_string()
+    };
     let body_path = if video_paths.len() == 1 {
         video_paths[0].clone()
     } else if options.parallel_enabled && !body_codecs_compatible(ffmpeg, video_paths) {
@@ -1161,20 +1177,20 @@ pub fn create_video(
             Arc::clone(&on_progress),
         )?;
 
-        let body_out = work.join("body_concat.mp4");
-        let body_out_s = body_out.to_string_lossy().to_string();
         let cb = Arc::clone(&on_progress);
         on_progress(progress_from_times(5.0, 100.0, "Füge kodierte Clips zusammen…"));
         concat::concat_videos_with_opts(
             ffmpeg,
             &clip_outs,
-            &body_out_s,
+            &body_target,
             cb,
             hw_accel_enabled,
             options.crf,
+            &options.body_concat_mode,
+            on_body_concat_fallback.as_ref(),
         )?;
         encoder_used = v_params.vcodec.clone();
-        body_out_s
+        body_target
     } else {
         if options.parallel_enabled {
             let pool = ParallelVideoProcessor::new(hw_accel_enabled && hw.available);
@@ -1189,18 +1205,18 @@ pub fn create_video(
                 None,
             ));
         }
-        let body_out = work.join("body_concat.mp4");
-        let body_out_s = body_out.to_string_lossy().to_string();
         let cb = Arc::clone(&on_progress);
         concat::concat_videos_with_opts(
             ffmpeg,
             video_paths,
-            &body_out_s,
+            &body_target,
             cb,
             hw_accel_enabled,
             options.crf,
+            &options.body_concat_mode,
+            on_body_concat_fallback.as_ref(),
         )?;
-        body_out_s
+        body_target
     };
     emit_stage(&on_progress, 1.0, stages, "Videoclips vorbereitet");
 

@@ -13,6 +13,7 @@ use once_cell::sync::Lazy;
 use serde::Serialize;
 use thiserror::Error;
 
+use super::body_concat_fallback::{BodyConcatAskFn, BodyConcatChoice};
 use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, indicates_disk_full, is_cancelled, is_disk_full_error,
     probe_duration_secs, run_ffmpeg, run_ffmpeg_capture_stderr, run_ffmpeg_checked, FfmpegError,
@@ -442,7 +443,6 @@ pub fn build_mpegts_concat_to_mp4_args(
 }
 
 /// Concat demuxer stream-copy (simple same-codec MP4 list).
-#[allow(dead_code)] // public builder for Phase 3 / alternate concat path
 pub fn build_concat_demuxer_copy_args(
     concat_list_path: &str,
     output: &str,
@@ -947,11 +947,34 @@ pub struct ConcatOutcome {
 ///
 /// Returns [`ConcatError::NeedsReencode`] when codecs differ or stream-copy fails
 /// (disk-full / cancel remain fatal errors).
+///
+/// When `body_concat_mode` is `fast`, uses a single concat-demuxer remux. On failure
+/// with an ask callback, the user may abort or switch to the legacy MPEG-TS path.
+/// Without a callback (e.g. preview), fast failure falls back to legacy silently.
 pub fn concat_videos_stream_copy_only(
     ffmpeg: &Path,
     paths: &[String],
     output: &str,
     on_progress: ProgressCallback,
+) -> Result<ConcatOutcome, ConcatError> {
+    concat_videos_stream_copy_only_with_mode(
+        ffmpeg,
+        paths,
+        output,
+        on_progress,
+        "legacy",
+        None,
+    )
+}
+
+/// Like [`concat_videos_stream_copy_only`], with explicit body-concat mode + optional ask.
+pub fn concat_videos_stream_copy_only_with_mode(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    on_progress: ProgressCallback,
+    body_concat_mode: &str,
+    on_fast_fail: Option<&BodyConcatAskFn>,
 ) -> Result<ConcatOutcome, ConcatError> {
     if paths.len() < 2 {
         return Err(ConcatError::Message(
@@ -982,6 +1005,67 @@ pub fn concat_videos_stream_copy_only(
         all_same && matches!(vcodec, VideoCodec::H264 | VideoCodec::Hevc);
 
     if stream_copy_ok {
+        let use_fast = is_fast_body_concat_mode(body_concat_mode);
+        if use_fast {
+            match concat_stream_copy_fast(
+                ffmpeg,
+                paths,
+                output,
+                has_audio,
+                total_secs,
+                &on_progress,
+            ) {
+                Ok(()) => {
+                    emit(&on_progress, 100.0, "end");
+                    return Ok(ConcatOutcome {
+                        method: "stream-copy-fast".into(),
+                        codec: vcodec.as_str().into(),
+                        reencode_reason: None,
+                    });
+                }
+                Err(e) => {
+                    if concat_error_is_disk_full(&e) {
+                        return Err(ConcatError::Ffmpeg(disk_full_error()));
+                    }
+                    if matches!(&e, ConcatError::Ffmpeg(FfmpegError::Cancelled)) {
+                        return Err(e);
+                    }
+                    let _ = fs::remove_file(output);
+                    let reason = format!("Fast Path fehlgeschlagen: {e}");
+                    match on_fast_fail {
+                        Some(ask) => {
+                            emit(
+                                &on_progress,
+                                40.0,
+                                "Fast Path fehlgeschlagen — warte auf Entscheidung…",
+                            );
+                            match ask(&reason) {
+                                Ok(BodyConcatChoice::UseLegacy) => {
+                                    emit(
+                                        &on_progress,
+                                        45.0,
+                                        "Legacy-Zusammenfügen (MPEG-TS)…",
+                                    );
+                                }
+                                Ok(BodyConcatChoice::Abort) | Err(()) => {
+                                    return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+                                }
+                            }
+                        }
+                        // Preview / silent path: keep going with legacy.
+                        None => {
+                            emit(
+                                &on_progress,
+                                45.0,
+                                "Legacy-Zusammenfügen (MPEG-TS)…",
+                            );
+                            let _ = reason;
+                        }
+                    }
+                }
+            }
+        }
+
         match concat_stream_copy(ffmpeg, paths, output, vcodec, has_audio, total_secs, &on_progress)
         {
             Ok(()) => {
@@ -1019,6 +1103,46 @@ pub fn concat_videos_stream_copy_only(
         )
     };
     Err(ConcatError::NeedsReencode { reason })
+}
+
+/// True when settings request the fast concat-demuxer path.
+pub fn is_fast_body_concat_mode(mode: &str) -> bool {
+    matches!(
+        mode.trim().to_ascii_lowercase().as_str(),
+        "fast" | "fast_path" | "fast-path" | "avidemux"
+    )
+}
+
+/// Single-pass concat demuxer + stream-copy (Avidemux-style).
+fn concat_stream_copy_fast(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    has_audio: bool,
+    total_secs: f64,
+    on_progress: &ProgressCallback,
+) -> Result<(), ConcatError> {
+    if is_cancelled() {
+        return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+    }
+    let work = make_work_dir("concat_fast")?;
+    let list_path = work.join("concat_list.txt");
+    let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    write_concat_file_list(&refs, &list_path)?;
+
+    emit(on_progress, 20.0, "fast-concat");
+    let args = build_concat_demuxer_copy_args(&path_str(&list_path), output, has_audio);
+    let result = run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone());
+    let _ = fs::remove_dir_all(&work);
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(e) if is_disk_full_error(&e) => Err(ConcatError::Ffmpeg(disk_full_error())),
+        Err(e) => {
+            let _ = fs::remove_file(output);
+            Err(ConcatError::Ffmpeg(e))
+        }
+    }
 }
 
 /// Re-encode concat via demuxer (public for intro-mux fallback after user consent).
@@ -1077,7 +1201,7 @@ pub fn concat_videos(
     output: &str,
     on_progress: ProgressCallback,
 ) -> Result<ConcatOutcome, ConcatError> {
-    concat_videos_with_opts(ffmpeg, paths, output, on_progress, false, 18)
+    concat_videos_with_opts(ffmpeg, paths, output, on_progress, false, 18, "legacy", None)
 }
 
 /// Like [`concat_videos`], with explicit encode options for the re-encode fallback.
@@ -1088,8 +1212,17 @@ pub fn concat_videos_with_opts(
     on_progress: ProgressCallback,
     hw_accel_enabled: bool,
     crf: u8,
+    body_concat_mode: &str,
+    on_fast_fail: Option<&BodyConcatAskFn>,
 ) -> Result<ConcatOutcome, ConcatError> {
-    match concat_videos_stream_copy_only(ffmpeg, paths, output, Arc::clone(&on_progress)) {
+    match concat_videos_stream_copy_only_with_mode(
+        ffmpeg,
+        paths,
+        output,
+        Arc::clone(&on_progress),
+        body_concat_mode,
+        on_fast_fail,
+    ) {
         Ok(outcome) => Ok(outcome),
         Err(ConcatError::NeedsReencode { reason }) => {
             emit(
@@ -1534,6 +1667,15 @@ pts_time:4.000000 type:I
         let re_copy = build_concat_demuxer_reencode_args("list.txt", "out.mp4", &params, true);
         assert!(re_copy.contains(&"copy".into()));
         assert!(!re_copy.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
+    }
+
+    #[test]
+    fn fast_body_concat_mode_aliases() {
+        assert!(is_fast_body_concat_mode("fast"));
+        assert!(is_fast_body_concat_mode("fast_path"));
+        assert!(is_fast_body_concat_mode("FAST"));
+        assert!(!is_fast_body_concat_mode("legacy"));
+        assert!(!is_fast_body_concat_mode(""));
     }
 
     #[test]

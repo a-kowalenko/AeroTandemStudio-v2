@@ -88,6 +88,8 @@ export type AppConfig = {
   reencode_matching_clips: boolean;
   /** Intro+Body mux: "reencode" (default) | "stream_copy". */
   intro_mux_mode: "stream_copy" | "reencode" | string;
+  /** Multi-clip body concat: "legacy" (default) | "fast". */
+  body_concat_mode: "legacy" | "fast" | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;
   photo_qr_check_enabled: boolean;
@@ -437,6 +439,8 @@ export type CreateVideoOptions = {
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
   intro_mux_mode?: "stream_copy" | "reencode" | string;
+  /** Multi-clip body concat: "legacy" | "fast". */
+  body_concat_mode?: "legacy" | "fast" | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
 };
@@ -458,6 +462,8 @@ export type CreateJobOptions = {
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
   intro_mux_mode?: "stream_copy" | "reencode" | string;
+  /** Multi-clip body concat: "legacy" | "fast". */
+  body_concat_mode?: "legacy" | "fast" | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
   /** Path from last matching `generate_preview` (backend verifies fingerprint). */
@@ -648,6 +654,16 @@ export async function resolveIntroMuxFallback(
 export type IntroMuxFallbackPayload = {
   reason: string;
   timeout_secs: number;
+};
+
+export async function resolveBodyConcatFallback(
+  choice: "abort" | "use_legacy" | string,
+): Promise<void> {
+  return invoke("resolve_body_concat_fallback", { choice });
+}
+
+export type BodyConcatFallbackPayload = {
+  reason: string;
 };
 
 export async function generatePreview(

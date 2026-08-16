@@ -78,6 +78,29 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           />
           Paralleles Video-Processing
         </label>
+
+        <div className="space-y-1.5">
+          <Label>Clips zusammenfügen</Label>
+          <Select
+            value={
+              draft.body_concat_mode === "fast" ? "fast" : "legacy"
+            }
+            onValueChange={(v) => patch("body_concat_mode", v)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="legacy">Legacy (robust)</SelectItem>
+              <SelectItem value="fast">Fast Path (schnell)</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux
+            Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy.
+            Legacy nutzt die bewährte MPEG-TS-Pipeline.
+          </p>
+        </div>
       </SettingsSection>
 
       <div className="rounded-lg border border-border bg-background/60">

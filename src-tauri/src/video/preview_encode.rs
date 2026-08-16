@@ -754,6 +754,7 @@ pub fn generate_preview(
             crf,
             parallel_enabled: config.parallel_processing_enabled,
             intro_mux_mode: config.intro_mux_mode.clone(),
+            body_concat_mode: config.body_concat_mode.clone(),
             hw_accel_enabled: config.hardware_acceleration_enabled,
         };
         let result = processor::create_video(
@@ -764,6 +765,7 @@ pub fn generate_preview(
             &opts,
             resource_dir,
             Arc::clone(&on_progress),
+            None,
             None,
         )?;
         on_progress(progress_from_times(100.0, 100.0, "end"));
@@ -950,8 +952,16 @@ pub fn generate_preview(
             }
         }
     } else {
-        let outcome =
-            concat::concat_videos(ffmpeg, &prepared, &combined_s, Arc::clone(&on_progress))?;
+        let outcome = concat::concat_videos_with_opts(
+            ffmpeg,
+            &prepared,
+            &combined_s,
+            Arc::clone(&on_progress),
+            hw_accel_enabled,
+            crf,
+            &config.body_concat_mode,
+            None, // preview: silent legacy fallback if fast fails
+        )?;
         encoder_used = outcome.codec;
         if outcome.method == "re-encode" {
             let concat_reason = outcome

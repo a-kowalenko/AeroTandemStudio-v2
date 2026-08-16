@@ -141,6 +141,9 @@ pub struct AppConfig {
     /// Intro+Body mux: `"reencode"` (default, compatible) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
+    /// Multi-clip body concat: `"legacy"` (MPEG-TS, robust) | `"fast"` (concat demuxer).
+    #[serde(default = "default_body_concat_mode")]
+    pub body_concat_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
     pub preview_encode_crf: u8,
     /// Auto-scan newly imported videos for QR codes.
@@ -386,6 +389,9 @@ fn default_encoding_strategy() -> String {
 fn default_intro_mux_mode() -> String {
     "reencode".into()
 }
+fn default_body_concat_mode() -> String {
+    "legacy".into()
+}
 fn default_preview_crf() -> u8 {
     18
 }
@@ -397,6 +403,14 @@ pub fn normalize_intro_mux_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "stream_copy" | "stream-copy" | "streamcopy" => "stream_copy".into(),
         _ => "reencode".into(),
+    }
+}
+
+/// Normalize body concat mode to `fast` | `legacy`.
+pub fn normalize_body_concat_mode(mode: &str) -> String {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "fast" | "fast_path" | "fast-path" | "avidemux" => "fast".into(),
+        _ => "legacy".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -435,6 +449,11 @@ impl AppConfig {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
 
+    /// Canonicalize `body_concat_mode` to `fast` | `legacy`.
+    pub fn sync_body_concat_mode(&mut self) {
+        self.body_concat_mode = normalize_body_concat_mode(&self.body_concat_mode);
+    }
+
     /// Lokal mode skips `_fertig.txt` on create.
     pub fn skip_marker_file(&self) -> bool {
         self.manual_entry_mode == "lokal"
@@ -464,6 +483,7 @@ impl Default for AppConfig {
             encoding_strategy: default_encoding_strategy(),
             reencode_matching_clips: false,
             intro_mux_mode: default_intro_mux_mode(),
+            body_concat_mode: default_body_concat_mode(),
             preview_encode_crf: default_preview_crf(),
             qr_check_enabled: true,
             photo_qr_check_enabled: true,
@@ -546,6 +566,7 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
+    cfg.sync_body_concat_mode();
     Ok(cfg)
 }
 
@@ -630,6 +651,7 @@ impl ConfigStore {
         let mut normalized = cfg.clone();
         normalized.sync_manual_entry_mode();
         normalized.sync_intro_mux_mode();
+        normalized.sync_body_concat_mode();
         let conn = self.connect()?;
         self.save_with_conn(&conn, &normalized)
     }
@@ -693,6 +715,7 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
+        assert_eq!(cfg.body_concat_mode, "legacy");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);
@@ -722,6 +745,16 @@ mod tests {
         assert_eq!(normalize_intro_mux_mode("reencode"), "reencode");
         assert_eq!(normalize_intro_mux_mode("soft_splice"), "reencode");
         assert_eq!(normalize_intro_mux_mode(""), "reencode");
+    }
+
+    #[test]
+    fn normalize_body_concat_mode_aliases() {
+        assert_eq!(normalize_body_concat_mode("fast"), "fast");
+        assert_eq!(normalize_body_concat_mode("fast_path"), "fast");
+        assert_eq!(normalize_body_concat_mode("fast-path"), "fast");
+        assert_eq!(normalize_body_concat_mode("legacy"), "legacy");
+        assert_eq!(normalize_body_concat_mode(""), "legacy");
+        assert_eq!(normalize_body_concat_mode("bogus"), "legacy");
     }
 
     #[test]
