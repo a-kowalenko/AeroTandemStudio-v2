@@ -83,7 +83,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Label>Clips zusammenfügen</Label>
           <Select
             value={
-              draft.body_concat_mode === "fast" ? "fast" : "legacy"
+              draft.body_concat_mode === "legacy" ? "legacy" : "fast"
             }
             onValueChange={(v) => patch("body_concat_mode", v)}
           >
@@ -91,8 +91,8 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="legacy">Legacy (robust)</SelectItem>
               <SelectItem value="fast">Fast Path (schnell)</SelectItem>
+              <SelectItem value="legacy">Legacy (robust)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">

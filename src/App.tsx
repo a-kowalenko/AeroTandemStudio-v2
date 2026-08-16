@@ -1357,7 +1357,7 @@ function App() {
           crf: config?.preview_encode_crf ?? 18,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "reencode",
-          body_concat_mode: config?.body_concat_mode ?? "legacy",
+          body_concat_mode: config?.body_concat_mode ?? "fast",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
           reuse_preview_fingerprint: canReusePreview
