@@ -16,7 +16,8 @@ use thiserror::Error;
 
 use crate::media::datetime::resolve_video_display_epoch;
 use crate::media::dji_paths::{
-    collect_media_paths_from_tree, expand_files_for_sd_clear, filter_media_paths_for_backup,
+    collect_media_paths_from_tree, expand_files_for_sd_clear, filter_listable_media_paths,
+    filter_media_paths_for_backup,
     is_photo_ext, is_video_ext, media_type_from_filename, resolve_drive_dcim_path,
     unique_dest_name, write_backup_manifest, ManifestEntry,
 };
@@ -57,6 +58,14 @@ pub struct SdDriveInfo {
 }
 
 fn make_sd_drive_info(drive: String) -> SdDriveInfo {
+    if is_mtp_source(&drive) {
+        return SdDriveInfo {
+            drive: drive.clone(),
+            dcim_path: String::new(),
+            ready: true,
+            volume_name: usb_camera_label_for(&drive).unwrap_or_default(),
+        };
+    }
     let dcim_path = resolve_drive_dcim_path(&drive);
     let raw = volume_name_for_drive(&drive);
     let volume_name = if is_generic_volume_name(&raw) {
@@ -70,6 +79,25 @@ fn make_sd_drive_info(drive: String) -> SdDriveInfo {
         ready: true,
         volume_name,
     }
+}
+
+/// Opaque USB/MTP camera source id (`mtp:gopro:…`).
+pub fn is_mtp_source(drive: &str) -> bool {
+    drive.starts_with("mtp:")
+}
+
+fn usb_camera_label_for(source_id: &str) -> Option<String> {
+    crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras()
+        .into_iter()
+        .find(|c| c.source_id == source_id)
+        .map(|c| c.label)
+}
+
+fn usb_action_cam_source_ids() -> HashSet<String> {
+    crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras()
+        .into_iter()
+        .map(|c| c.source_id)
+        .collect()
 }
 
 /// Volume label for UI (empty when unavailable).
@@ -477,7 +505,9 @@ impl SdCardMonitor {
             .into_iter()
             .filter(|d| is_drive_ready(d))
             .collect();
-        *self.known_drives.lock().unwrap() = ready.clone();
+        let mut known = ready.clone();
+        known.extend(usb_action_cam_source_ids());
+        *self.known_drives.lock().unwrap() = known;
 
         // Scan already-inserted action cams (no auto-backup on start).
         for drive in ready_action_cam_drives(&ready) {
@@ -508,12 +538,18 @@ impl SdCardMonitor {
     fn poll_once(&self) -> Result<(), SdError> {
         let current = available_drives();
         let ready: HashSet<String> = current.into_iter().filter(|d| is_drive_ready(d)).collect();
-        let current_action = ready_action_cam_drives(&ready);
+        let mut current_action = ready_action_cam_drives(&ready);
+        // USB cameras are not volume mounts — keep them in `known` so removal is detected.
+        let usb_now = usb_action_cam_source_ids();
+        current_action.extend(usb_now.iter().cloned());
 
         let known = self.known_drives.lock().unwrap().clone();
         let previous_action = self.action_cam_drives.lock().unwrap().clone();
 
-        let new_drives: HashSet<_> = ready.difference(&known).cloned().collect();
+        let mut ready_with_usb = ready.clone();
+        ready_with_usb.extend(usb_now.iter().cloned());
+
+        let new_drives: HashSet<_> = ready_with_usb.difference(&known).cloned().collect();
         let newly_action: HashSet<_> = current_action.difference(&previous_action).cloned().collect();
 
         let mut candidates = HashSet::new();
@@ -547,13 +583,14 @@ impl SdCardMonitor {
         }
 
         *self.action_cam_drives.lock().unwrap() = current_action;
-        self.cleanup_removed(&ready);
-        *self.known_drives.lock().unwrap() = ready;
+        self.cleanup_removed(&ready_with_usb);
+        *self.known_drives.lock().unwrap() = ready_with_usb;
         Ok(())
     }
 
     fn handle_sd_detection(&self, drive: &str, is_new_insertion: bool) {
         self.pending_drives.lock().unwrap().insert(drive.to_string());
+
         let mode = self.config().sd_backup_mode;
 
         // Frontend orchestrates backup/import/clear for both auto and confirm.
@@ -677,7 +714,13 @@ impl SdCardMonitor {
     /// Fast listing for the confirm dialog: walk + metadata only.
     /// EXIF dates and `already_processed` are filled later via [`Self::enrich_files`].
     pub fn list_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
-        let (filtered, total) = self.scan_drive_media(drive)?;
+        let (filtered, _total) = self.scan_drive_media(drive)?;
+        // Defense: drop proxies even if an older list/ICA cache still held them.
+        let filtered = filter_listable_media_paths(filtered);
+        let total: u64 = filtered
+            .iter()
+            .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
+            .sum();
         let mut files = Vec::with_capacity(filtered.len());
         for path in filtered {
             if let Some(info) = sd_file_info_light(&path) {
@@ -755,6 +798,11 @@ impl SdCardMonitor {
     }
 
     fn gather_drive_info(&self, drive: &str) -> (String, usize, f64) {
+        // USB/MTP: never stage via Image Capture here — that blocks for minutes and
+        // can freeze the app. Counts are filled later by list_sd_files / backup.
+        if is_mtp_source(drive) {
+            return (drive.to_string(), 0, 0.0);
+        }
         match self.scan_drive_media(drive) {
             Ok((paths, total)) => (
                 drive.to_string(),
@@ -767,6 +815,17 @@ impl SdCardMonitor {
 
     /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes.
     fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+        if is_mtp_source(drive) {
+            // Reuse staging cache when still warm (avoids a second ICA download).
+            if let Ok(cache) = self.list_cache.lock() {
+                if let Some(c) = cache.as_ref() {
+                    if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
+                        return Ok((c.filtered_paths.clone(), c.total_bytes));
+                    }
+                }
+            }
+            return self.scan_mtp_media(drive);
+        }
         if let Ok(cache) = self.list_cache.lock() {
             if let Some(c) = cache.as_ref() {
                 if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
@@ -798,6 +857,83 @@ impl SdCardMonitor {
         }
 
         Ok((filtered, total))
+    }
+
+    /// USB/MTP camera (no filesystem mount): Image Capture staging on macOS.
+    /// Call only from list/backup (spawn_blocking) — never from detect/hotplug.
+    fn scan_mtp_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+        let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::sd_card::mtp::macos_ica::{ica_cache_dir_for, stage_camera_media_to};
+            self.emit_status(
+                "usb_camera_staging",
+                serde_json::json!({
+                    "drive": drive,
+                    "label": label,
+                    "state": "started",
+                }),
+            );
+            let dest = ica_cache_dir_for(drive);
+            let result = stage_camera_media_to(drive, &label, &dest);
+            match result {
+                Ok(paths) => {
+                    let strings = filter_listable_media_paths(
+                        paths
+                            .into_iter()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .collect(),
+                    );
+                    let total: u64 = strings
+                        .iter()
+                        .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
+                        .sum();
+                    self.emit_status(
+                        "usb_camera_staging",
+                        serde_json::json!({
+                            "drive": drive,
+                            "label": label,
+                            "state": "done",
+                            "file_count": strings.len(),
+                            "total_size_mb": total as f64 / (1024.0 * 1024.0),
+                        }),
+                    );
+                    // Populate list cache so a follow-up list_files is cheap.
+                    if let Ok(mut cache) = self.list_cache.lock() {
+                        *cache = Some(DcimListCache {
+                            drive: drive.to_string(),
+                            filtered_paths: strings.clone(),
+                            total_bytes: total,
+                            at: Instant::now(),
+                        });
+                    }
+                    Ok((strings, total))
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    self.emit_status(
+                        "usb_camera_staging",
+                        serde_json::json!({
+                            "drive": drive,
+                            "label": label,
+                            "state": "failed",
+                            "message": msg,
+                        }),
+                    );
+                    Err(SdError::Message(msg))
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = label;
+            Err(SdError::Message(format!(
+                "{drive}: USB-Kamera-Import ist auf dieser Plattform noch nicht implementiert. \
+                 Bitte SD-Karte / Kartenleser nutzen."
+            )))
+        }
     }
 
     /// Backup SD card media to configured folder (flat structure + manifest).
@@ -852,29 +988,57 @@ impl SdCardMonitor {
 
         self.emit_status("backup_started", serde_json::json!(drive));
 
-        let dcim = resolve_drive_dcim_path(drive);
-        let dcim_path = PathBuf::from(&dcim);
-        if !dcim_path.is_dir() {
-            return Ok(BackupResult::fail(
-                format!("DCIM Ordner nicht gefunden: {dcim}"),
-                0,
-            ));
-        }
-
-        let media_files: Vec<String> = if let Some(selected) = selected_files {
-            selected
-                .into_iter()
-                .filter(|p| Path::new(p).is_file())
-                .collect()
+        // USB/MTP: stage via Image Capture (macOS) then copy local paths.
+        // Never clear media on the camera in this path (ICA delete is opt-in later).
+        let (media_files, filter_root) = if is_mtp_source(drive) {
+            let staged = if let Some(selected) = selected_files.clone() {
+                let existing: Vec<String> = selected
+                    .into_iter()
+                    .filter(|p| Path::new(p).is_file())
+                    .collect();
+                if existing.is_empty() {
+                    self.scan_mtp_media(drive)?.0
+                } else {
+                    existing
+                }
+            } else {
+                self.scan_mtp_media(drive)?.0
+            };
+            let root = staged
+                .first()
+                .and_then(|p| Path::new(p).parent())
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            (staged, root)
         } else {
-            collect_media_paths_from_tree(&dcim_path)
+            let dcim = resolve_drive_dcim_path(drive);
+            let dcim_path = PathBuf::from(&dcim);
+            if !dcim_path.is_dir() {
+                return Ok(BackupResult::fail(
+                    format!("DCIM Ordner nicht gefunden: {dcim}"),
+                    0,
+                ));
+            }
+            let media_files: Vec<String> = if let Some(selected) = selected_files {
+                selected
+                    .into_iter()
+                    .filter(|p| Path::new(p).is_file())
+                    .collect()
+            } else {
+                collect_media_paths_from_tree(&dcim_path)
+            };
+            (media_files, dcim)
         };
 
         let (media_files, _tl_skipped) =
-            filter_media_paths_for_backup(&media_files, &dcim, true);
+            filter_media_paths_for_backup(&media_files, &filter_root, true);
         if media_files.is_empty() {
             return Ok(BackupResult::fail(
-                "Keine Mediendateien auf der SD-Karte gefunden",
+                if is_mtp_source(drive) {
+                    "Keine Mediendateien auf der USB-Kamera gefunden".to_string()
+                } else {
+                    "Keine Mediendateien auf der SD-Karte gefunden".to_string()
+                },
                 0,
             ));
         }
@@ -1166,13 +1330,13 @@ impl SdCardMonitor {
         }
 
         let session_active = crate::media::dji_paths::resolve_timelapse_session_active_for_paths(
-            &dcim,
+            &filter_root,
             &copied_sources,
             None,
         );
         let _ = write_backup_manifest(
             &backup_path,
-            &dcim,
+            &filter_root,
             &manifest_entries,
             session_active,
         );
@@ -1188,7 +1352,7 @@ impl SdCardMonitor {
                 secondary_root: PathBuf::from(&dual_root),
                 backup_dir_name: backup_dir_name.clone(),
                 filenames,
-                dcim_source: dcim.clone(),
+                dcim_source: filter_root.clone(),
                 manifest_entries: manifest_entries.clone(),
                 timelapse_session_active: session_active,
             });
@@ -1209,14 +1373,16 @@ impl SdCardMonitor {
             && !copied_sources.is_empty();
         if secondary_ok {
             if let Some(ref sp) = secondary_path {
-                let _ = write_backup_manifest(sp, &dcim, &manifest_entries, session_active);
+                let _ = write_backup_manifest(sp, &filter_root, &manifest_entries, session_active);
             }
         }
 
         // Only ever clear files that were successfully copied in THIS backup run.
         // Never clear from config alone when the caller did not opt in via `clear_after`.
-        let should_clear = matches!(clear_after, Some(true))
-            || (clear_after.is_none() && cfg.sd_clear_after_backup);
+        // USB/MTP (Image Capture): never delete from camera in 23.2b.
+        let should_clear = !is_mtp_source(drive)
+            && (matches!(clear_after, Some(true))
+                || (clear_after.is_none() && cfg.sd_clear_after_backup));
         if should_clear && !copied_sources.is_empty() {
             if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
                 let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
@@ -1665,20 +1831,35 @@ pub fn is_action_cam_sd_card(drive: &str) -> bool {
 }
 
 fn ready_action_cam_drives(ready: &HashSet<String>) -> HashSet<String> {
-    ready
+    let mut set: HashSet<String> = ready
         .iter()
         .filter(|d| is_removable_drive(d) && is_action_cam_sd_card(d))
         .cloned()
-        .collect()
+        .collect();
+    set.extend(usb_action_cam_source_ids());
+    set
 }
 
 /// Also accept non-removable drives that have DCIM (card readers sometimes report FIXED).
+/// Plus allowlisted USB cameras (MTP / Image Capture — no `/Volumes` mount on macOS).
 pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
-    available_drives()
+    let mut drives: Vec<_> = available_drives()
         .into_iter()
         .filter(|d| is_drive_ready(d) && is_action_cam_sd_card(d))
         .map(make_sd_drive_info)
-        .collect()
+        .collect();
+    for cam in crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras() {
+        if drives.iter().any(|d| d.drive == cam.source_id) {
+            continue;
+        }
+        drives.push(SdDriveInfo {
+            drive: cam.source_id,
+            dcim_path: String::new(),
+            ready: true,
+            volume_name: cam.label,
+        });
+    }
+    drives
 }
 
 #[cfg(test)]

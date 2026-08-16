@@ -1,6 +1,7 @@
 /** SD-card related Tauri invoke wrappers and types. */
 
 import { invoke } from "@tauri-apps/api/core";
+import { isSidecarPath } from "./media";
 
 export type SdDriveInfo = {
   drive: string;
@@ -153,7 +154,20 @@ export async function scanSdDrives(): Promise<SdDriveInfo[]> {
 }
 
 export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
-  return invoke<ListSdFilesResult>("list_sd_files", { drive });
+  const result = await invoke<ListSdFilesResult>("list_sd_files", { drive });
+  const files = result.files.filter(
+    (f) => !isSidecarPath(f.filename) && !isSidecarPath(f.path),
+  );
+  if (files.length === result.files.length) {
+    return result;
+  }
+  const total_size_bytes = files.reduce((sum, f) => sum + f.size_bytes, 0);
+  return {
+    ...result,
+    files,
+    total_size_bytes,
+    total_size_mb: total_size_bytes / (1024 * 1024),
+  };
 }
 
 /** Fill EXIF dates + history flags after a fast `listSdFiles` (non-blocking for the dialog). */

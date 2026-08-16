@@ -39,6 +39,7 @@ name = "aero-tandem-studio"
 version = "0.2.17"
 dependencies = [
  "base64 0.22.1",
+ "cc",
  "chrono",
  "directories",
  "http",

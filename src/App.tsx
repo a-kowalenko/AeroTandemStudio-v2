@@ -463,7 +463,12 @@ function App() {
     setActiveDrive(drive);
     setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
     setIntakeBusy(true);
-    setLoading(true, "SD-Dateien werden gelesen…");
+    setLoading(
+      true,
+      drive.startsWith("mtp:")
+        ? "USB-Kamera: Medien werden geladen…"
+        : "SD-Dateien werden gelesen…",
+    );
     try {
       const listed = await listSdFiles(drive);
       openSelector({
@@ -916,7 +921,12 @@ function App() {
     setActiveDrive(drive);
     setSdWorkflowUiActive(false);
     setIntakeBusy(true);
-    setLoading(true, "SD-Dateien werden gelesen…");
+    setLoading(
+      true,
+      drive.startsWith("mtp:")
+        ? "USB-Kamera: Medien werden geladen…"
+        : "SD-Dateien werden gelesen…",
+    );
     try {
       await listSdFiles(drive);
       setIntakeBusy(false);

@@ -30,6 +30,10 @@ pub fn eject_drive(drive: &str) -> Result<(), EjectError> {
     if drive.is_empty() {
         return Err(EjectError::Message("Kein Laufwerk angegeben".into()));
     }
+    // USB/MTP cameras are not block volumes — nothing to eject via diskutil.
+    if drive.starts_with("mtp:") {
+        return Ok(());
+    }
 
     #[cfg(windows)]
     {

@@ -24,6 +24,9 @@ pub const MEDIA_EXTENSIONS: &[&str] = &[
     ".flv", ".webm",
 ];
 
+/// Camera proxies / companions: never import or list as media; delete with the master on SD clear.
+pub const SIDECAR_EXTENSIONS: &[&str] = &[".lrv", ".thm", ".wav"];
+
 fn ext_of(path: &Path) -> String {
     // Prefer last path segment after `/` or `\` so Windows-style strings work on Unix.
     let raw = path.to_string_lossy();
@@ -33,6 +36,26 @@ fn ext_of(path: &Path) -> String {
         .and_then(|e| e.to_str())
         .map(|e| format!(".{}", e.to_ascii_lowercase()))
         .unwrap_or_default()
+}
+
+pub fn is_sidecar_ext(ext: &str) -> bool {
+    let e = if ext.starts_with('.') {
+        ext.to_ascii_lowercase()
+    } else {
+        format!(".{}", ext.to_ascii_lowercase())
+    };
+    SIDECAR_EXTENSIONS.contains(&e.as_str())
+}
+
+/// GoPro full-res stems `GX…` / `GH…` map to low-res proxy stem `GL…`.
+fn gopro_proxy_stem(stem: &str) -> Option<String> {
+    let s = stem.to_ascii_lowercase();
+    let b = s.as_bytes();
+    if b.len() >= 3 && b[0] == b'g' && (b[1] == b'x' || b[1] == b'h') {
+        Some(format!("gl{}", &s[2..]))
+    } else {
+        None
+    }
 }
 
 pub fn is_photo_ext(ext: &str) -> bool {
@@ -75,7 +98,24 @@ fn should_include_media_path(path: &Path) -> bool {
     if is_ignored_media_filename(name) {
         return false;
     }
-    is_media_ext(&ext_of(path))
+    // Proxies / companions must never appear in list / backup / import.
+    let ext = ext_of(path);
+    if is_sidecar_ext(&ext) {
+        return false;
+    }
+    is_media_ext(&ext)
+}
+
+/// Public filter for staged MTP/ICA paths and any external file lists.
+pub fn is_listable_media_path(path: &Path) -> bool {
+    should_include_media_path(path)
+}
+
+pub fn filter_listable_media_paths(paths: Vec<String>) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter(|p| is_listable_media_path(Path::new(p)))
+        .collect()
 }
 
 pub fn media_type_from_filename(filename: &str) -> &'static str {
@@ -330,10 +370,14 @@ fn walkdir_simple(root: &Path) -> Vec<PathBuf> {
 }
 
 /// Expand delete list with sidecar files (same stem, non-media extension).
+/// Also pairs GoPro `GX…`/`GH…` masters with `GL….LRV` proxies in the same folder.
 pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
     let media: HashSet<String> = MEDIA_EXTENSIONS.iter().map(|e| e.to_string()).collect();
     let mut to_delete: HashMap<String, String> = HashMap::new();
-    let mut stems_by_dir: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    // Exact stems: any non-media companion (`.lrv`, `.thm`, `.wav`, …).
+    let mut exact_stems_by_dir: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    // GoPro proxy stems: only sidecar extensions (never another master video).
+    let mut proxy_stems_by_dir: HashMap<PathBuf, HashSet<String>> = HashMap::new();
 
     for path in backed_up_paths {
         if path.is_empty() {
@@ -346,7 +390,13 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
             pb.parent().map(|p| p.to_path_buf()),
             pb.file_stem().and_then(|s| s.to_str()).map(|s| s.to_ascii_lowercase()),
         ) {
-            stems_by_dir.entry(dir.clone()).or_default().insert(stem);
+            exact_stems_by_dir
+                .entry(dir.clone())
+                .or_default()
+                .insert(stem.clone());
+            if let Some(proxy) = gopro_proxy_stem(&stem) {
+                proxy_stems_by_dir.entry(dir.clone()).or_default().insert(proxy);
+            }
             // macOS AppleDouble companion next to the media file (`._` + filename).
             if let Some(name) = pb.file_name().and_then(|n| n.to_str()) {
                 if !name.starts_with("._") {
@@ -360,8 +410,16 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
         }
     }
 
-    for (directory, stems) in &stems_by_dir {
-        let names = match fs::read_dir(directory) {
+    let dirs: HashSet<PathBuf> = exact_stems_by_dir
+        .keys()
+        .chain(proxy_stems_by_dir.keys())
+        .cloned()
+        .collect();
+
+    for directory in dirs {
+        let exact = exact_stems_by_dir.get(&directory);
+        let proxy = proxy_stems_by_dir.get(&directory);
+        let names = match fs::read_dir(&directory) {
             Ok(e) => e,
             Err(_) => continue,
         };
@@ -380,14 +438,13 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_ascii_lowercase())
                 .unwrap_or_default();
-            if !stems.contains(&stem) {
-                continue;
-            }
             let ext = ext_of(&full);
-            if media.contains(&ext) {
-                continue;
+            let via_exact = exact.is_some_and(|s| s.contains(&stem)) && !media.contains(&ext);
+            let via_proxy =
+                proxy.is_some_and(|s| s.contains(&stem)) && is_sidecar_ext(&ext);
+            if via_exact || via_proxy {
+                to_delete.insert(key, full_s);
             }
-            to_delete.insert(key, full_s);
         }
     }
 
@@ -600,6 +657,90 @@ mod tests {
         let expanded = expand_files_for_sd_clear(&[media.to_string_lossy().into_owned()]);
         assert!(expanded.iter().any(|p| p.ends_with("clip.mp4")));
         assert!(expanded.iter().any(|p| p.ends_with("._clip.mp4")));
+    }
+
+    #[test]
+    fn filter_listable_drops_sidecars() {
+        let kept = filter_listable_media_paths(vec![
+            "/tmp/GX010001.MP4".into(),
+            "/tmp/GL010001.LRV".into(),
+            "/tmp/GX010001.THM".into(),
+            "/tmp/shot.JPG".into(),
+        ]);
+        assert_eq!(kept.len(), 2);
+        assert!(kept.iter().any(|p| p.ends_with("GX010001.MP4")));
+        assert!(kept.iter().any(|p| p.ends_with("shot.JPG")));
+    }
+
+    #[test]
+    fn sidecars_not_collected_as_media() {
+        assert!(is_sidecar_ext(".lrv"));
+        assert!(is_sidecar_ext("THM"));
+        assert!(!is_video_ext(".lrv"));
+        assert!(!is_media_ext(".lrv"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let dcim = dir.path().join("DCIM").join("100");
+        fs::create_dir_all(&dcim).unwrap();
+        fs::write(dcim.join("GX010001.MP4"), b"v").unwrap();
+        fs::write(dcim.join("GL010001.LRV"), b"proxy").unwrap();
+        fs::write(dcim.join("GX010001.THM"), b"thumb").unwrap();
+
+        let paths = collect_media_paths_from_tree(&dir.path().join("DCIM"));
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("GX010001.MP4"));
+    }
+
+    #[test]
+    fn sd_clear_deletes_same_stem_sidecars() {
+        let dir = tempfile::tempdir().unwrap();
+        let mp4 = dir.path().join("clip.MP4");
+        fs::write(&mp4, b"v").unwrap();
+        fs::write(dir.path().join("clip.LRV"), b"proxy").unwrap();
+        fs::write(dir.path().join("clip.THM"), b"thumb").unwrap();
+        fs::write(dir.path().join("other.LRV"), b"keep").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("clip.MP4")));
+        assert!(expanded.iter().any(|p| p.ends_with("clip.LRV")));
+        assert!(expanded.iter().any(|p| p.ends_with("clip.THM")));
+        assert!(!expanded.iter().any(|p| p.ends_with("other.LRV")));
+    }
+
+    #[test]
+    fn sd_clear_gopro_gx_pairs_gl_lrv() {
+        let dir = tempfile::tempdir().unwrap();
+        let mp4 = dir.path().join("GX010001.MP4");
+        fs::write(&mp4, b"v").unwrap();
+        fs::write(dir.path().join("GL010001.LRV"), b"proxy").unwrap();
+        fs::write(dir.path().join("GX010001.THM"), b"thumb").unwrap();
+        fs::write(dir.path().join("GL999999.LRV"), b"keep").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("GX010001.MP4")));
+        assert!(expanded.iter().any(|p| p.ends_with("GL010001.LRV")));
+        assert!(expanded.iter().any(|p| p.ends_with("GX010001.THM")));
+        assert!(!expanded.iter().any(|p| p.ends_with("GL999999.LRV")));
+    }
+
+    #[test]
+    fn sd_clear_gopro_gh_pairs_gl_lrv() {
+        let dir = tempfile::tempdir().unwrap();
+        let mp4 = dir.path().join("GH010042.MP4");
+        fs::write(&mp4, b"v").unwrap();
+        fs::write(dir.path().join("GL010042.lrv"), b"proxy").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("GH010042.MP4")));
+        assert!(expanded.iter().any(|p| p.ends_with("GL010042.lrv")));
+    }
+
+    #[test]
+    fn gopro_proxy_stem_mapping() {
+        assert_eq!(gopro_proxy_stem("GX010001").as_deref(), Some("gl010001"));
+        assert_eq!(gopro_proxy_stem("gh010042").as_deref(), Some("gl010042"));
+        assert_eq!(gopro_proxy_stem("GOPR1234"), None);
+        assert_eq!(gopro_proxy_stem("GL010001"), None);
     }
 
     #[test]

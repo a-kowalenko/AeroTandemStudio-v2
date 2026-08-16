@@ -23,6 +23,7 @@ import {
   createSdThumbnailLoader,
   type ThumbState,
 } from "../lib/sdThumbnailLoader";
+import { isSidecarPath } from "../lib/media";
 import { cn } from "../lib/utils";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
@@ -266,7 +267,9 @@ export function SdFileSelector({
   }, []);
 
   const filtered = useMemo(() => {
-    let list = [...files];
+    let list = files.filter(
+      (f) => !isSidecarPath(f.filename) && !isSidecarPath(f.path),
+    );
     if (filterType === "video") list = list.filter((f) => f.is_video);
     else if (filterType === "photo") list = list.filter((f) => !f.is_video);
     else if (filterType === "new") list = list.filter((f) => !f.already_processed);
