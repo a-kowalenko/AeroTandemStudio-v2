@@ -19,6 +19,9 @@ export type AmsHandoffView = {
   offline?: boolean;
 };
 
+/** Filter buckets for Historie Vorgänge AMS column. */
+export type AmsStatusFilter = "all" | "open" | "done" | "error";
+
 /** Pipeline steps shown in the detail stepper (terminal reject/fail handled separately). */
 export const AMS_HANDOFF_STEPS = [
   { id: "pending", label: "Übertragen" },
@@ -41,22 +44,38 @@ export function isAmsCancelled(view: AmsHandoffView): boolean {
   );
 }
 
-export function handoffStateLabel(view: AmsHandoffView): string {
+export function isAmsHandoffActive(view: AmsHandoffView): boolean {
+  if (isAmsCancelled(view) || isAmsHandoffTerminal(view.state)) return false;
+  const s = view.state.trim().toLowerCase();
+  return (
+    s === "" ||
+    s === "pending" ||
+    s === "accepted" ||
+    s === "queued" ||
+    s === "uploading"
+  );
+}
+
+export function handoffStateLabel(
+  view: AmsHandoffView,
+  opts?: { compact?: boolean },
+): string {
+  const compact = Boolean(opts?.compact);
   if (isAmsCancelled(view)) return "Abgebrochen";
   switch (view.state.trim().toLowerCase()) {
     case "pending":
     case "":
-      return "Übertragen";
+      return compact ? "Wartend" : "Übertragen";
     case "accepted":
       return "Übernommen";
     case "rejected":
       return "Abgelehnt";
     case "queued":
-      return "Warteschlange";
+      return compact ? "Queue" : "Warteschlange";
     case "uploading":
       return "Upload";
     case "completed":
-      return "Fertig";
+      return compact ? "Fertig" : "In AMS fertig";
     case "failed":
       return "Fehler";
     default:
@@ -128,6 +147,37 @@ export function handoffStepIndex(state: string): number {
     default:
       return -1;
   }
+}
+
+/** Categorize a Vorgang row for AMS filter chips. */
+export function amsFilterBucket(
+  entry: {
+    correlation_id?: string;
+    ams_state?: string;
+    ams_error_code?: string;
+  },
+): AmsStatusFilter | "none" {
+  const cid = entry.correlation_id?.trim() ?? "";
+  if (!cid) return "none";
+  const view = viewFromVorgangEntry(entry);
+  if (!view) return "none";
+  if (isAmsCancelled(view)) return "error";
+  const s = view.state.trim().toLowerCase();
+  if (s === "completed") return "done";
+  if (s === "rejected" || s === "failed") return "error";
+  return "open";
+}
+
+export function matchesAmsStatusFilter(
+  entry: {
+    correlation_id?: string;
+    ams_state?: string;
+    ams_error_code?: string;
+  },
+  filter: AmsStatusFilter,
+): boolean {
+  if (filter === "all") return true;
+  return amsFilterBucket(entry) === filter;
 }
 
 export function viewFromHandoffStatus(status: {

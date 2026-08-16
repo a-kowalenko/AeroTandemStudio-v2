@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye } from "lucide-react";
+import { Check, Eye } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -36,9 +36,12 @@ import {
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
 import {
+  isAmsCancelled,
   isAmsHandoffTerminal,
+  matchesAmsStatusFilter,
   viewFromHandoffStatus,
   viewFromVorgangEntry,
+  type AmsStatusFilter,
 } from "../lib/amsHandoffStatus";
 import { AmsHandoffStatusChip, AmsHandoffStepper } from "@/components/AmsHandoffStatus";
 import { QrHitMeta } from "@/components/QrHitMeta";
@@ -55,6 +58,13 @@ type Props = {
 
 type TypeFilter = "all" | "video" | "photo";
 type PeriodFilter = "all" | "today" | "7d" | "30d" | "365d";
+
+const AMS_STATUS_FILTERS: { id: AmsStatusFilter; label: string }[] = [
+  { id: "all", label: "Alle" },
+  { id: "open", label: "Offen" },
+  { id: "done", label: "Fertig" },
+  { id: "error", label: "Fehler" },
+];
 
 type PendingConfirm = {
   title: string;
@@ -97,13 +107,58 @@ function withinPeriod(iso: string | null, period: PeriodFilter): boolean {
   return true;
 }
 
-function productBadges(v: VorgangEntry): string[] {
-  const badges: string[] = [];
-  if (v.handcam_video) badges.push(v.ist_bezahlt_handcam_video ? "HV✓" : "HV");
-  if (v.handcam_foto) badges.push(v.ist_bezahlt_handcam_foto ? "HF✓" : "HF");
-  if (v.outside_video) badges.push(v.ist_bezahlt_outside_video ? "OV✓" : "OV");
-  if (v.outside_foto) badges.push(v.ist_bezahlt_outside_foto ? "OF✓" : "OF");
+type ProductBadge = { key: string; label: string; paid: boolean };
+
+function productBadges(v: VorgangEntry): ProductBadge[] {
+  const badges: ProductBadge[] = [];
+  if (v.handcam_video) {
+    badges.push({
+      key: "hv",
+      label: "HV",
+      paid: Boolean(v.ist_bezahlt_handcam_video),
+    });
+  }
+  if (v.handcam_foto) {
+    badges.push({
+      key: "hf",
+      label: "HF",
+      paid: Boolean(v.ist_bezahlt_handcam_foto),
+    });
+  }
+  if (v.outside_video) {
+    badges.push({
+      key: "ov",
+      label: "OV",
+      paid: Boolean(v.ist_bezahlt_outside_video),
+    });
+  }
+  if (v.outside_foto) {
+    badges.push({
+      key: "of",
+      label: "OF",
+      paid: Boolean(v.ist_bezahlt_outside_foto),
+    });
+  }
   return badges;
+}
+
+function ProductStatusChip({ badge }: { badge: ProductBadge }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        badge.paid
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+          : "border-border/60 bg-muted/30 text-muted-foreground",
+      )}
+      title={badge.paid ? `${badge.label} bezahlt` : badge.label}
+    >
+      {badge.label}
+      {badge.paid ? (
+        <Check className="size-2.5 shrink-0" strokeWidth={2.5} aria-hidden />
+      ) : null}
+    </span>
+  );
 }
 
 function applyHandoffToEntry(entry: VorgangEntry, status: HandoffStatus): VorgangEntry {
@@ -326,6 +381,7 @@ function VorgaengePanel({
 }) {
   const [entries, setEntries] = useState<VorgangEntry[]>([]);
   const [search, setSearch] = useState("");
+  const [amsFilter, setAmsFilter] = useState<AmsStatusFilter>("all");
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [files, setFiles] = useState<VorgangFileEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -402,6 +458,19 @@ function VorgaengePanel({
     () => entries.find((e) => e.id === selectedId) ?? null,
     [entries, selectedId],
   );
+
+  const filteredEntries = useMemo(
+    () => entries.filter((e) => matchesAmsStatusFilter(e, amsFilter)),
+    [entries, amsFilter],
+  );
+
+  // Keep selection inside the visible AMS filter set.
+  useEffect(() => {
+    if (amsFilter === "all") return;
+    if (selectedId == null) return;
+    if (filteredEntries.some((e) => e.id === selectedId)) return;
+    setSelectedId(filteredEntries[0]?.id ?? null);
+  }, [amsFilter, filteredEntries, selectedId]);
 
   useEffect(() => {
     if (!dialogOpen || !selected) {
@@ -607,19 +676,45 @@ function VorgaengePanel({
     });
   }
 
-  const showEmptyList = ready && !loading && entries.length === 0;
+  const showEmptyList = ready && !loading && filteredEntries.length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
+      <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
         <Input
           className="h-8 max-w-xs text-xs"
           placeholder="Gast, ID, Dateiname…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <div
+          className="flex items-center gap-1"
+          role="group"
+          aria-label="AMS-Status filtern"
+        >
+          {AMS_STATUS_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              className={cn(
+                "inline-flex h-7 items-center rounded border px-2 text-[10px] font-medium transition-colors",
+                amsFilter === f.id
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40",
+              )}
+              aria-pressed={amsFilter === f.id}
+              onClick={() => setAmsFilter(f.id)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
         <span className="ml-auto min-w-[7rem] text-right text-xs text-muted tabular-nums">
-          {!ready || loading ? "Laden…" : `${entries.length} Vorgänge`}
+          {!ready || loading
+            ? "Laden…"
+            : amsFilter === "all"
+              ? `${entries.length} Vorgänge`
+              : `${filteredEntries.length} / ${entries.length}`}
         </span>
         <Button
           type="button"
@@ -654,9 +749,20 @@ function VorgaengePanel({
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => {
+              {filteredEntries.map((e) => {
                 const badges = productBadges(e);
-                const amsView = viewFromVorgangEntry(e);
+                const baseView = viewFromVorgangEntry(e);
+                const amsView =
+                  baseView &&
+                  handoffStatus?.correlation_id === e.correlation_id &&
+                  handoffStatus.offline
+                    ? { ...baseView, offline: true }
+                    : baseView;
+                const amsProblem =
+                  amsView != null &&
+                  (isAmsCancelled(amsView) ||
+                    amsView.state === "rejected" ||
+                    amsView.state === "failed");
                 return (
                   <tr
                     key={e.id}
@@ -685,19 +791,25 @@ function VorgaengePanel({
                       ) : (
                         <span className="flex flex-wrap gap-1">
                           {badges.map((b) => (
-                            <span
-                              key={b}
-                              className="rounded border border-border/60 px-1 py-0.5 text-[10px]"
-                            >
-                              {b}
-                            </span>
+                            <ProductStatusChip key={b.key} badge={b} />
                           ))}
                         </span>
                       )}
                     </td>
                     <td className="p-2">
                       {amsView ? (
-                        <AmsHandoffStatusChip view={amsView} />
+                        <AmsHandoffStatusChip
+                          view={amsView}
+                          compact
+                          onClick={
+                            amsProblem
+                              ? (ev) => {
+                                  ev.stopPropagation();
+                                  setSelectedId(e.id);
+                                }
+                              : undefined
+                          }
+                        />
                       ) : (
                         <span className="text-muted">—</span>
                       )}
@@ -714,7 +826,9 @@ function VorgaengePanel({
               {showEmptyList && (
                 <tr>
                   <td colSpan={6} className="p-4 text-center text-muted">
-                    Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier.
+                    {amsFilter !== "all" && entries.length > 0
+                      ? "Keine Vorgänge für diesen AMS-Filter."
+                      : "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier."}
                   </td>
                 </tr>
               )}

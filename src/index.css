@@ -310,6 +310,39 @@
   will-change: background-color, box-shadow;
 }
 
+/* AMS Historie status chips — soft pulse while in flight, flash on completed */
+@keyframes ats-ams-chip-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent);
+  }
+}
+
+@keyframes ats-ams-chip-success {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ats-success) 28%, transparent);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.ams-chip-active {
+  animation: ats-ams-chip-pulse 1.8s ease-in-out infinite;
+}
+
+.ams-chip-success-flash {
+  animation: ats-ams-chip-success 0.52s cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+
 /* Soft Apple-like attention: single ripple + gentle lift/glow */
 @keyframes ats-create-ready-ripple {
   0% {
