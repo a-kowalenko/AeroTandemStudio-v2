@@ -33,6 +33,10 @@ import {
   IntroMuxFallbackDialog,
   type IntroMuxFallbackChoice,
 } from "./components/IntroMuxFallbackDialog";
+import {
+  BodyConcatFallbackDialog,
+  type BodyConcatFallbackChoice,
+} from "./components/BodyConcatFallbackDialog";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { ToastHost } from "./components/ToastHost";
 import { SplashScreen } from "./components/SplashScreen";
@@ -73,11 +77,13 @@ import {
   cancelUpdateInstall,
   installSpecificVersion,
   installUpdate,
+  resolveBodyConcatFallback,
   resolveIntroMuxFallback,
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
   type AvailableRelease,
+  type BodyConcatFallbackPayload,
   type CreateJobResult,
   type HwAccelInfo,
   type IntroMuxFallbackPayload,
@@ -260,6 +266,9 @@ function App() {
   const [introMuxFallback, setIntroMuxFallback] = useState<{
     reason: string;
     timeoutSecs: number;
+  } | null>(null);
+  const [bodyConcatFallback, setBodyConcatFallback] = useState<{
+    reason: string;
   } | null>(null);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
@@ -1117,6 +1126,22 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    listen<BodyConcatFallbackPayload>("body-concat-fallback-required", (event) => {
+      const p = event.payload;
+      setBodyConcatFallback({
+        reason: p.reason ?? "",
+      });
+      setStatus("Fast Path fehlgeschlagen — bitte Entscheidung…");
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
     listen<UpdateInstallProgress>("update-install-progress", (event) => {
       setUpdateInstallProgress(event.payload);
     }).then((fn) => {
@@ -1138,6 +1163,20 @@ function App() {
       await resolveIntroMuxFallback(choice);
     } catch (e) {
       showError(String(e), "Intro-Entscheidung");
+    }
+  }
+
+  async function onBodyConcatChoice(choice: BodyConcatFallbackChoice) {
+    setBodyConcatFallback(null);
+    setStatus(
+      choice === "use_legacy"
+        ? "Legacy-Zusammenfügen…"
+        : "Vorgang abgebrochen…",
+    );
+    try {
+      await resolveBodyConcatFallback(choice);
+    } catch (e) {
+      showError(String(e), "Clip-Zusammenfügen");
     }
   }
 
@@ -1308,6 +1347,7 @@ function App() {
           crf: config?.preview_encode_crf ?? 18,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "reencode",
+          body_concat_mode: config?.body_concat_mode ?? "legacy",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
           reuse_preview_fingerprint: canReusePreview
@@ -2175,6 +2215,13 @@ function App() {
         timeoutSecs={introMuxFallback?.timeoutSecs ?? 15}
         onChoose={(choice) => {
           void onIntroMuxChoice(choice);
+        }}
+      />
+      <BodyConcatFallbackDialog
+        open={bodyConcatFallback !== null}
+        reason={bodyConcatFallback?.reason ?? ""}
+        onChoose={(choice) => {
+          void onBodyConcatChoice(choice);
         }}
       />
       <LoadingOverlay

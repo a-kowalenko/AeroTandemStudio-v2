@@ -18,6 +18,7 @@ use crate::video::hw_accel::{build_encode_command, detect_hardware, HwAccelInfo,
 use crate::video::preview_encode::{self, PreviewResult};
 use crate::video::probe::{self, VideoMetadata};
 use crate::model::Kunde;
+use crate::video::body_concat_fallback::{self, BodyConcatAskFn, BodyConcatChoice};
 use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
 use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
 use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn};
@@ -669,6 +670,11 @@ pub async fn create_video(
         intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
     });
 
+    let app_for_body = app.clone();
+    let on_body_concat_fallback: BodyConcatAskFn = Arc::new(move |reason: &str| {
+        body_concat_fallback::wait_for_choice(&app_for_body, reason)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         processor::create_video(
             &ffmpeg,
@@ -679,6 +685,7 @@ pub async fn create_video(
             resource_dir.as_deref(),
             on_progress,
             Some(on_intro_mux_fallback),
+            Some(on_body_concat_fallback),
         )
         .map_err(|e| e.to_string())
     })
@@ -709,6 +716,14 @@ pub fn resolve_intro_mux_fallback(choice: String) -> Result<(), String> {
     let parsed = IntroMuxChoice::parse(&choice)
         .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
     intro_mux_fallback::resolve_choice(parsed)
+}
+
+/// Resolve a pending Fast-Path body-concat fallback decision from the UI.
+#[tauri::command]
+pub fn resolve_body_concat_fallback(choice: String) -> Result<(), String> {
+    let parsed = BodyConcatChoice::parse(&choice)
+        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    body_concat_fallback::resolve_choice(parsed)
 }
 
 /// Generate a combined preview MP4 in a temp work dir (CRF from config).
@@ -1048,6 +1063,11 @@ pub async fn create_job(
         intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
     });
 
+    let app_for_body = app.clone();
+    let on_body_concat_fallback: BodyConcatAskFn = Arc::new(move |reason: &str| {
+        body_concat_fallback::wait_for_choice(&app_for_body, reason)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         export_job::create_job(
             &ffmpeg,
@@ -1059,6 +1079,7 @@ pub async fn create_job(
             resource_dir.as_deref(),
             on_progress,
             Some(on_intro_mux_fallback),
+            Some(on_body_concat_fallback),
         )
         .map_err(|e| e.to_string())
     })

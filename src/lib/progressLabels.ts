@@ -16,6 +16,10 @@ const STATUS_LABELS: Record<string, string> = {
   "Ersetze Original…": "Ersetze Datei…",
   "re-encode cut": "Schnitt (präzise)…",
   "stream-copy cut": "Schnitt…",
+  "fast-concat": "Füge Clips zusammen (Fast Path)…",
+  "Legacy-Zusammenfügen (MPEG-TS)…": "Legacy-Zusammenfügen…",
+  "Fast Path fehlgeschlagen — warte auf Entscheidung…":
+    "Fast Path fehlgeschlagen — bitte Entscheidung…",
   "replacing original": "Ersetze Original…",
   "split part 1": "Teile Clip (Teil 1)…",
   "split part 2": "Teile Clip (Teil 2)…",
@@ -64,7 +68,7 @@ const CREATE_JOB_MAJOR_STAGE =
  * (so standalone cut/preview/create_video keep their own labels).
  */
 const CREATE_VIDEO_DETAIL =
-  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|probing|prepare/i;
+  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|legacy-zusammenfügen|probing|prepare/i;
 
 const MAX_DETAIL_LEN = 42;
 

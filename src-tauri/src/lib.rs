@@ -38,9 +38,9 @@ use commands::video::{
     cancel_encode, clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
     discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
     get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
-    list_video_keyframes, probe_video, resolve_intro_mux_fallback, rotate_video, split_video,
-    trim_video, undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path,
-    validate_create_job,
+    list_video_keyframes, probe_video, resolve_body_concat_fallback, resolve_intro_mux_fallback,
+    rotate_video, split_video, trim_video, undo_all_video_cuts, undo_last_video_cut,
+    undo_video_cut_for_path, validate_create_job,
 };
 use commands::vorgang_history::{delete_vorgaenge, list_vorgang_dateien, list_vorgaenge};
 use storage::logging::{init_logging, log_info, set_log_emitter};
@@ -161,6 +161,7 @@ pub fn run() {
             create_video,
             create_job,
             resolve_intro_mux_fallback,
+            resolve_body_concat_fallback,
             validate_create_job,
             generate_preview,
             get_config,
