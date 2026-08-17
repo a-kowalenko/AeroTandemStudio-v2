@@ -1208,13 +1208,23 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 **23.2 — macOS**
 - [x] USB-Detect via `system_profiler` + Allowlist (Hero 8/13, Label-Fix PID `0x0059`)
 - [x] Image Capture Core Staging (`native/macos/AtsImageCapture.m` → Cache → SD-Pipeline)
-- [x] Clear auf Kamera deaktiviert für MTP; Volume-Heuristik unverändert
+- [x] Clear auf Kamera via Image Capture (gleiche Config wie SD); Volume-Heuristik unverändert
+- [x] ICA-Session nach Staging halten (GoPro: Clear in derselben PTP-Session)
+- [x] Liste = ICA-Katalog (kein Full-Download); Backup lädt Auswahl mit SD-Progress; Disconnect überschreibt Timeout nicht
+- [x] ICA-Session sauber schließen + Browse-Retries (GoPro „Gefunden: (keine)“ nach Reconnect)
+- [x] USB-Auswerfen: ICA freigeben + Gerät aus Liste bis Kabel-Replug
+- [x] Kein PTPCamera-kill vor Browse (zerstört ICA-Erkennung; kürzerer Browse-Timeout)
+- [x] Erkennung Webcam/USB-Connect-Modus (bDeviceClass 2) → klare MTP-Anweisung statt ICA-Timeout
+- [x] ICA nur Local-USB (kein Bonjour/Shared) — Netzwerkdrucker störten PTP („Gefunden: (keine)“ trotz MTP)
+- [x] CFBundleIdentifier + Photos-Library-Entitlement; Fehlermeldung bei PTP-ready ohne ICA
 - [ ] Fallback-Dialog nur noch wenn ICA fehlschlägt
 
 **23.2b — macOS Image Capture Staging-Import**
 - [x] `ats_ica_stage_all` (ObjC) + `macos_ica.rs` Cache/TTL
 - [x] `scan_mtp_media` / Backup-Pfad für `mtp:` Sources
 - [x] UI: USB-Detect startet Confirm/Auto-Flow
+- [x] Confirm-Dialog streamt ICA-Katalog (kein 60s Overlay); Grid virtualisiert; ICA-Thumbs ohne Full-Lock
+- [x] ICA-UI-Perf: Katalog-Ticks nicht über `App.tsx`; Browser nach Liste pausieren; JSON off-main; Thumbs erst nach Listing
 
 **23.3 — Linux**
 - [ ] `libmtp` (AppImage klären in `docs/LINUX_BUILD.md`); gleiche Allowlist
@@ -1416,6 +1426,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 23.1 | Windows WPD/MTP + Staging | ⬜ |
 | 23.2 | macOS USB-Detect (system_profiler) + Hinweis | ✅ |
 | 23.2b | macOS Image Capture Staging-Import | ✅ |
+| 23.2c | ICA UI-Perf (Main-Thread / Katalog-Ticks) | ✅ |
 | 23.3 | Linux libmtp | ⬜ |
 | 23.4 | UX & Docs | ⬜ |
 
@@ -1436,4 +1447,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-16 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) geplant / 23.0 Allowlist*
+*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) / 23.2c ICA UI-Perf*

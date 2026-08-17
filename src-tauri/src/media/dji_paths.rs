@@ -369,6 +369,64 @@ fn walkdir_simple(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Candidate basenames to delete on a camera (MTP / Image Capture).
+///
+/// Unlike [`expand_files_for_sd_clear`], this does not scan a directory — it emits
+/// the master names plus likely sidecar names (same stem + GoPro `GL…` proxies).
+/// The camera layer deletes whatever exists (case-insensitive match).
+pub fn expand_basenames_for_camera_clear(backed_up_paths: &[String]) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+
+    let mut push = |name: String| {
+        if name.is_empty() {
+            return;
+        }
+        let key = name.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(name);
+        }
+    };
+
+    for path in backed_up_paths {
+        let pb = Path::new(path);
+        let Some(fname) = pb.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        push(fname.to_string());
+
+        let stem = pb
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        if stem.is_empty() {
+            continue;
+        }
+
+        for &ext in SIDECAR_EXTENSIONS {
+            push(format!("{stem}{ext}"));
+            // Cameras often use uppercase extensions (`.LRV` / `.THM`).
+            push(format!("{stem}{}", ext.to_ascii_uppercase()));
+        }
+
+        if let Some(proxy_lower) = gopro_proxy_stem(&stem) {
+            // Prefer GoPro-style `GL` + original digit suffix casing.
+            let proxy = if stem.len() >= 2 {
+                format!("GL{}", &stem[2..])
+            } else {
+                proxy_lower.to_ascii_uppercase()
+            };
+            for &ext in SIDECAR_EXTENSIONS {
+                push(format!("{proxy}{ext}"));
+                push(format!("{proxy}{}", ext.to_ascii_uppercase()));
+            }
+        }
+    }
+
+    out
+}
+
 /// Expand delete list with sidecar files (same stem, non-media extension).
 /// Also pairs GoPro `GX…`/`GH…` masters with `GL….LRV` proxies in the same folder.
 pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
@@ -733,6 +791,16 @@ mod tests {
         let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
         assert!(expanded.iter().any(|p| p.ends_with("GH010042.MP4")));
         assert!(expanded.iter().any(|p| p.ends_with("GL010042.lrv")));
+    }
+
+    #[test]
+    fn camera_clear_basenames_include_gopro_lrv() {
+        let names = expand_basenames_for_camera_clear(&["/tmp/GX010001.MP4".into()]);
+        let lower: Vec<_> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+        assert!(lower.iter().any(|n| n == "gx010001.mp4"));
+        assert!(lower.iter().any(|n| n == "gx010001.thm"));
+        assert!(lower.iter().any(|n| n == "gl010001.lrv"));
+        assert!(!lower.iter().any(|n| n == "gl999999.lrv"));
     }
 
     #[test]

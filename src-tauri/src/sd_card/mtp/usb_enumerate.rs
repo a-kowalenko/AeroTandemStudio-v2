@@ -17,6 +17,45 @@ pub struct DetectedUsbCamera {
     pub label: String,
     pub hint: UsbDeviceHint,
     pub matched: UsbMatch,
+    /// USB `bDeviceClass` when known (2 = Communications/ECM webcam mode on GoPro).
+    pub device_class: Option<u8>,
+}
+
+/// Why Image Capture / MTP file access will fail for an attached allowlisted cam.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UsbMediaAccessBlock {
+    /// GoPro (and similar) in CDC-ECM / webcam / "GoPro Connect" USB mode.
+    WebcamOrConnectMode,
+}
+
+impl UsbMediaAccessBlock {
+    pub fn user_message(&self, label: &str) -> String {
+        match self {
+            Self::WebcamOrConnectMode => format!(
+                "{label} ist im Webcam-/USB-Connect-Modus — darüber gibt es keinen Dateizugriff. \
+                 An der Kamera: Einstellungen → Verbindungen → USB → „MTP“ wählen, danach \
+                 Kabel kurz ab/an stecken (oder MicroSD im Kartenleser nutzen)."
+            ),
+        }
+    }
+}
+
+/// If this USB camera cannot expose media to Image Capture / MTP, return why.
+pub fn media_access_block_for(source_id: &str) -> Option<UsbMediaAccessBlock> {
+    // Fresh ioreg — user may have switched USB mode without unplugging.
+    list_allowlisted_usb_cameras_uncached()
+        .into_iter()
+        .find(|c| c.source_id == source_id)
+        .and_then(|c| classify_device_class(c.device_class))
+}
+
+fn classify_device_class(device_class: Option<u8>) -> Option<UsbMediaAccessBlock> {
+    // USB class 2 = Communications (GoPro ECM / webcam / GoPro Connect).
+    // Image Capture only sees PTP/Still-Image (or MTP via Apple helpers) — not ECM.
+    match device_class {
+        Some(2) => Some(UsbMediaAccessBlock::WebcamOrConnectMode),
+        _ => None,
+    }
 }
 
 struct UsbCache {
@@ -86,12 +125,14 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
     let mut pid: Option<u16> = None;
     let mut product = String::new();
     let mut serial = String::new();
+    let mut device_class: Option<u8> = None;
 
     let flush = |block_name: &mut String,
                  vid: &mut Option<u16>,
                  pid: &mut Option<u16>,
                  product: &mut String,
                  serial: &mut String,
+                 device_class: &mut Option<u8>,
                  out: &mut Vec<DetectedUsbCamera>,
                  seen: &mut std::collections::HashSet<String>| {
         let friendly = if !product.is_empty() {
@@ -132,6 +173,7 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
                     label,
                     hint,
                     matched,
+                    device_class: *device_class,
                 });
             }
         }
@@ -140,6 +182,7 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
         *pid = None;
         product.clear();
         serial.clear();
+        *device_class = None;
     };
 
     for line in text.lines() {
@@ -153,6 +196,7 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
                     &mut pid,
                     &mut product,
                     &mut serial,
+                    &mut device_class,
                     &mut out,
                     &mut seen,
                 );
@@ -169,6 +213,8 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
             vid = Some(v);
         } else if let Some(v) = parse_ioreg_u16_prop(trimmed, "\"idProduct\"") {
             pid = Some(v);
+        } else if let Some(v) = parse_ioreg_u16_prop(trimmed, "\"bDeviceClass\"") {
+            device_class = u8::try_from(v).ok();
         } else if let Some(s) = parse_ioreg_string_prop(trimmed, "\"USB Product Name\"") {
             product = s;
         } else if let Some(s) = parse_ioreg_string_prop(trimmed, "\"USB Serial Number\"") {
@@ -189,6 +235,7 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
         &mut pid,
         &mut product,
         &mut serial,
+        &mut device_class,
         &mut out,
         &mut seen,
     );
@@ -291,5 +338,30 @@ mod tests {
         assert!(cams[0].label.contains("HERO8"));
         assert_eq!(cams[0].hint.vid, Some(GOPRO_VID));
         assert_eq!(cams[0].hint.pid, Some(0x0049)); // 73 decimal
+        assert_eq!(cams[0].device_class, None);
+    }
+
+    #[test]
+    fn parse_ioreg_gopro_webcam_ecm_mode_blocked() {
+        let sample = r#"
++-o HERO9@14100000  <class AppleUSBDevice>
+    {
+      "idVendor" = 9842
+      "idProduct" = 82
+      "bDeviceClass" = 2
+      "USB Product Name" = "HERO9"
+      "USB Serial Number" = "C3441327799705"
+    }
+"#;
+        let cams = parse_ioreg_usb_cameras(sample);
+        assert_eq!(cams.len(), 1);
+        assert_eq!(cams[0].device_class, Some(2));
+        assert_eq!(
+            classify_device_class(cams[0].device_class),
+            Some(UsbMediaAccessBlock::WebcamOrConnectMode)
+        );
+        let msg = UsbMediaAccessBlock::WebcamOrConnectMode.user_message(&cams[0].label);
+        assert!(msg.contains("MTP"));
+        assert!(msg.contains("Webcam"));
     }
 }

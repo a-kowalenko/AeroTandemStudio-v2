@@ -96,6 +96,7 @@ import {
   ejectSdCard,
   enrichSdFiles,
   importSdFiles,
+  isMtpDrive,
   listSdFiles,
   scanSdDrives,
   type SdWorkflowActions,
@@ -188,13 +189,9 @@ function App() {
   const setUploadProgress = useServerStore((s) => s.setUploadProgress);
   const serverConnected = useServerStore((s) => s.connected);
 
-  const selectorOpen = useSdStore((s) => s.selectorOpen);
-  const selectorDrive = useSdStore((s) => s.selectorDrive);
-  const selectorFiles = useSdStore((s) => s.selectorFiles);
-  const selectorTotalMb = useSdStore((s) => s.selectorTotalMb);
-  const selectorMode = useSdStore((s) => s.selectorMode);
   const closeSelector = useSdStore((s) => s.closeSelector);
   const openSelector = useSdStore((s) => s.openSelector);
+  const replaceSelectorCatalog = useSdStore((s) => s.replaceSelectorCatalog);
   const patchSelectorFiles = useSdStore((s) => s.patchSelectorFiles);
   const setIntakeBusy = useSdStore((s) => s.setIntakeBusy);
   const shiftSdJob = useSdStore((s) => s.shiftSdJob);
@@ -205,7 +202,6 @@ function App() {
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
   const sdPhase = useSdStore((s) => s.phase);
-  useSdStore((s) => s.activeDrive);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
   const backupProgress = useSdStore((s) => s.backupProgress);
   const workflowProgress = useSdStore((s) => s.workflowProgress);
@@ -463,33 +459,48 @@ function App() {
     setActiveDrive(drive);
     setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
     setIntakeBusy(true);
-    setLoading(
-      true,
-      drive.startsWith("mtp:")
-        ? "USB-Kamera: Medien werden geladen…"
-        : "SD-Dateien werden gelesen…",
-    );
-    try {
-      const listed = await listSdFiles(drive);
+    const streaming = isMtpDrive(drive);
+    if (streaming) {
+      // Open immediately — GoPro PTP catalog can take ~1 min for hundreds of files.
       openSelector({
         drive,
-        files: listed.files,
-        totalMb: listed.total_size_mb,
+        files: [],
+        totalMb: 0,
         mode,
+        listing: true,
       });
+    } else {
+      setLoading(true, "SD-Dateien werden gelesen…");
+    }
+    try {
+      const listed = await listSdFiles(drive);
+      const st = useSdStore.getState();
+      if (st.selectorOpen && st.selectorDrive === drive) {
+        replaceSelectorCatalog(drive, listed.files, listed.total_size_mb, false);
+      } else if (!streaming) {
+        openSelector({
+          drive,
+          files: listed.files,
+          totalMb: listed.total_size_mb,
+          mode,
+        });
+      } else {
+        return;
+      }
       // EXIF / "bekannt" in background — dialog already open with mtime dates.
       const gen = ++sdEnrichGenRef.current;
       const paths = listed.files.map((f) => f.path);
       void enrichSdFiles(drive, paths)
         .then((updates) => {
           if (gen !== sdEnrichGenRef.current) return;
-          const st = useSdStore.getState();
-          if (!st.selectorOpen || st.selectorDrive !== drive) return;
+          const cur = useSdStore.getState();
+          if (!cur.selectorOpen || cur.selectorDrive !== drive) return;
           patchSelectorFiles(updates);
         })
         .catch(() => undefined);
     } catch (e) {
       showError(String(e));
+      if (streaming) closeSelector();
       scheduleSdQueueDrain();
     } finally {
       setIntakeBusy(false);
@@ -786,27 +797,33 @@ function App() {
         ]
           .map((s) => s.trim())
           .filter(Boolean);
+        const backupWarn = Boolean(res.secondary_warning?.trim());
         statusActions.push({
           kind: "backup",
           label: "Backup",
-          tone: res.secondary_warning?.trim() ? "warning" : "success",
+          tone: backupWarn ? "warning" : "success",
           summary: `${res.copied_count} Dateien kopiert`,
           detail: backupDetails.length ? backupDetails.join("\n") : undefined,
         });
         if (doClear) {
-          if (res.copied_count > 0) {
+          const clearWarn = Boolean(res.clear_warning?.trim());
+          const deleted = res.clear_deleted_count ?? 0;
+          if (clearWarn || deleted <= 0) {
             statusActions.push({
               kind: "clear",
-              label: "SD bereinigen",
-              tone: "success",
-              summary: "SD nach Backup bereinigt",
+              label: "Bereinigen",
+              tone: "warning",
+              summary: clearWarn
+                ? "Bereinigung fehlgeschlagen"
+                : "Nicht bereinigt",
+              detail: res.clear_warning?.trim() || undefined,
             });
           } else {
             statusActions.push({
               kind: "clear",
-              label: "SD bereinigen",
-              tone: "skipped",
-              summary: "Nicht bereinigt (keine Dateien im Backup)",
+              label: "Bereinigen",
+              tone: "success",
+              summary: `${deleted} Datei(en) bereinigt`,
             });
           }
         }
@@ -921,12 +938,7 @@ function App() {
     setActiveDrive(drive);
     setSdWorkflowUiActive(false);
     setIntakeBusy(true);
-    setLoading(
-      true,
-      drive.startsWith("mtp:")
-        ? "USB-Kamera: Medien werden geladen…"
-        : "SD-Dateien werden gelesen…",
-    );
+    setLoading(true, "SD-Dateien werden gelesen…");
     try {
       await listSdFiles(drive);
       setIntakeBusy(false);
@@ -1441,7 +1453,7 @@ function App() {
   }
 
   async function handleSelectorConfirm(paths: string[], actions: SdWorkflowActions) {
-    const drive = selectorDrive;
+    const drive = useSdStore.getState().selectorDrive;
     if (!drive) return;
     try {
       await runSdWorkflow(drive, paths, actions, {
@@ -1456,7 +1468,7 @@ function App() {
   }
 
   async function handleSelectorProceedAll(actions: SdWorkflowActions) {
-    const drive = selectorDrive;
+    const drive = useSdStore.getState().selectorDrive;
     if (!drive) return;
     try {
       await runSdWorkflow(drive, null, actions, {
@@ -2105,11 +2117,6 @@ function App() {
         }}
       />
       <SdFileSelector
-        open={selectorOpen}
-        drive={selectorDrive}
-        files={selectorFiles}
-        totalSizeMb={selectorTotalMb}
-        mode={selectorMode}
         defaultActions={settingsSdActions()}
         onClose={() => {
           sdEnrichGenRef.current += 1;

@@ -5,23 +5,33 @@ export type SdEjectToastCardProps = {
   visible: boolean;
   ok: boolean;
   detail?: string;
+  /** Extra line for USB cameras (logical eject). */
+  hint?: string;
   error?: string;
   durationMs: number;
   onDismiss: () => void;
+  /** When true, copy refers to USB camera rather than SD card. */
+  usbCamera?: boolean;
 };
 
 export function SdEjectToastCard({
   visible,
   ok,
   detail,
+  hint,
   error,
   durationMs,
   onDismiss,
+  usbCamera = false,
 }: SdEjectToastCardProps) {
   const subtitle = ok
-    ? "Kann sicher entfernt werden"
-    : "Karte manuell sicher entfernen";
-  const meta = [detail?.trim(), !ok ? error?.trim() : undefined]
+    ? usbCamera
+      ? "Session beendet — Gerät aus der Liste entfernt"
+      : "Kann sicher entfernt werden"
+    : usbCamera
+      ? "USB-Kamera manuell trennen"
+      : "Karte manuell sicher entfernen";
+  const meta = [detail?.trim(), hint?.trim(), !ok ? error?.trim() : undefined]
     .filter(Boolean)
     .join(" · ");
 
@@ -67,7 +77,11 @@ export function SdEjectToastCard({
 
         <div className="min-w-0 flex-1 pt-0.5">
           <p className="text-[13px] leading-tight font-semibold tracking-tight text-foreground">
-            {ok ? "SD-Karte ausgeworfen" : "Auswerfen fehlgeschlagen"}
+            {ok
+              ? usbCamera
+                ? "USB-Kamera freigegeben"
+                : "SD-Karte ausgeworfen"
+              : "Auswerfen fehlgeschlagen"}
           </p>
           <p className="mt-1 text-[12.5px] leading-snug text-muted">{subtitle}</p>
           {meta ? (

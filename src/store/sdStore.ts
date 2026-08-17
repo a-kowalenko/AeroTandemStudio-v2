@@ -55,6 +55,8 @@ type SdState = {
   selectorFiles: import("../lib/sdCard").SdFileInfo[];
   selectorTotalMb: number;
   selectorMode: "backup" | "import" | "size_limit";
+  /** True while an MTP catalog is still streaming into the confirm dialog. */
+  selectorListing: boolean;
   processedOpen: boolean;
   setMonitoring: (v: boolean) => void;
   setDrives: (drives: SdDriveInfo[]) => void;
@@ -80,7 +82,14 @@ type SdState = {
     files: import("../lib/sdCard").SdFileInfo[];
     totalMb: number;
     mode: "backup" | "import" | "size_limit";
+    listing?: boolean;
   }) => void;
+  replaceSelectorCatalog: (
+    drive: string,
+    files: import("../lib/sdCard").SdFileInfo[],
+    totalMb: number,
+    listing: boolean,
+  ) => void;
   patchSelectorFiles: (
     updates: Array<{
       path: string;
@@ -121,6 +130,7 @@ export const useSdStore = create<SdState>((set, get) => ({
   selectorFiles: [],
   selectorTotalMb: 0,
   selectorMode: "import",
+  selectorListing: false,
   processedOpen: false,
 
   setMonitoring: (monitoring) =>
@@ -169,13 +179,50 @@ export const useSdStore = create<SdState>((set, get) => ({
   setBackupProgress: (backupProgress) => set({ backupProgress }),
   setWorkflowProgress: (workflowProgress) => set({ workflowProgress }),
   setSecondaryBackup: (secondaryBackup) => set({ secondaryBackup }),
-  openSelector: ({ drive, files, totalMb, mode }) =>
+  openSelector: ({ drive, files, totalMb, mode, listing = false }) =>
     set({
       selectorOpen: true,
       selectorDrive: drive,
       selectorFiles: files,
       selectorTotalMb: totalMb,
       selectorMode: mode,
+      selectorListing: listing,
+    }),
+  replaceSelectorCatalog: (drive, files, totalMb, listing) =>
+    set((state) => {
+      if (!state.selectorOpen || state.selectorDrive !== drive) return state;
+      // Catalog finished — ignore a late in-flight tick.
+      if (!state.selectorListing && listing) return state;
+      const prev = new Map(state.selectorFiles.map((f) => [f.path, f]));
+      const selectorFiles = files.map((f) => {
+        const p = prev.get(f.path);
+        if (!p) return f;
+        if (
+          p.size_bytes === f.size_bytes &&
+          p.mtime === f.mtime &&
+          p.display_epoch === f.display_epoch &&
+          p.already_processed === f.already_processed
+        ) {
+          return p;
+        }
+        return {
+          ...f,
+          display_epoch: p.display_epoch || f.display_epoch,
+          already_processed: p.already_processed,
+        };
+      });
+      if (
+        listing === state.selectorListing &&
+        selectorFiles.length === state.selectorFiles.length &&
+        selectorFiles.every((f, i) => f === state.selectorFiles[i])
+      ) {
+        return state;
+      }
+      return {
+        selectorFiles,
+        selectorTotalMb: totalMb,
+        selectorListing: listing,
+      };
     }),
   patchSelectorFiles: (updates) =>
     set((state) => {
@@ -206,6 +253,7 @@ export const useSdStore = create<SdState>((set, get) => ({
       selectorDrive: null,
       selectorFiles: [],
       selectorTotalMb: 0,
+      selectorListing: false,
     }),
   setProcessedOpen: (processedOpen) => set({ processedOpen }),
 }));

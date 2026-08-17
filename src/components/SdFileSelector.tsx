@@ -18,7 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
-import type { SdFileInfo, SdWorkflowActions } from "../lib/sdCard";
+import type { SdWorkflowActions } from "../lib/sdCard";
+import { isMtpDrive } from "../lib/sdCard";
 import {
   createSdThumbnailLoader,
   type ThumbState,
@@ -27,15 +28,11 @@ import { isSidecarPath } from "../lib/media";
 import { cn } from "../lib/utils";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
+import { useSdStore } from "../store/sdStore";
 import { SdVideoTile } from "./SdVideoTile";
-import { Check, Film, HardDrive, ImageIcon, X } from "lucide-react";
+import { Check, Film, HardDrive, ImageIcon, Loader2, X } from "lucide-react";
 
 type Props = {
-  open: boolean;
-  drive: string | null;
-  files: SdFileInfo[];
-  totalSizeMb: number;
-  mode: "backup" | "import" | "size_limit";
   /** Defaults for action checkboxes (from settings). */
   defaultActions?: SdWorkflowActions;
   onClose: () => void;
@@ -50,6 +47,17 @@ type SelectMode = "toggle" | "range";
 type MarqueeMod = "replace" | "add" | "remove";
 
 const MARQUEE_THRESHOLD_PX = 7;
+const GRID_GAP = 8;
+const GRID_PAD = 8;
+const TILE_META_H = 42;
+const DETAILS_ROW_H = 44;
+const OVERSCAN_ROWS = 3;
+
+function gridColumnCount(width: number): number {
+  if (width >= 768) return 4;
+  if (width >= 512) return 3;
+  return 2;
+}
 
 const statusBadgeBase =
   "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-md shadow-black/35";
@@ -138,16 +146,18 @@ function confirmLabel(actions: SdWorkflowActions, count: number): string {
 }
 
 export function SdFileSelector({
-  open,
-  drive,
-  files,
-  totalSizeMb,
-  mode,
   defaultActions,
   onClose,
   onConfirm,
   onProceedAll,
 }: Props) {
+  // Catalog lives in sdStore so App.tsx does not re-render on every MTP tick.
+  const open = useSdStore((s) => s.selectorOpen);
+  const drive = useSdStore((s) => s.selectorDrive);
+  const files = useSdStore((s) => s.selectorFiles);
+  const totalSizeMb = useSdStore((s) => s.selectorTotalMb);
+  const mode = useSdStore((s) => s.selectorMode);
+  const listing = useSdStore((s) => s.selectorListing);
   const [viewMode, setViewMode] = useState<ViewMode>("thumbnail");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -176,6 +186,15 @@ export function SdFileSelector({
   /** Grid element state — Radix Presence mounts dialog content one frame late; ref-only misses IO setup. */
   const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
   const [detailsEl, setDetailsEl] = useState<HTMLDivElement | null>(null);
+  const [gridMetrics, setGridMetrics] = useState({
+    scrollTop: 0,
+    height: 0,
+    width: 0,
+  });
+  const [detailsMetrics, setDetailsMetrics] = useState({
+    scrollTop: 0,
+    height: 0,
+  });
   const gridRef = useRef<HTMLDivElement | null>(null);
   const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
   const loaderRef = useRef(createSdThumbnailLoader());
@@ -205,6 +224,61 @@ export function SdFileSelector({
     setDetailsEl((prev) => (prev === el ? prev : el));
   }, []);
 
+  useEffect(() => {
+    if (!gridEl) return;
+    let raf = 0;
+    const measure = () => {
+      setGridMetrics({
+        scrollTop: gridEl.scrollTop,
+        height: gridEl.clientHeight,
+        width: gridEl.clientWidth,
+      });
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(onScroll);
+    ro.observe(gridEl);
+    gridEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      ro.disconnect();
+      gridEl.removeEventListener("scroll", onScroll);
+    };
+  }, [gridEl]);
+
+  useEffect(() => {
+    if (!detailsEl) return;
+    let raf = 0;
+    const measure = () => {
+      setDetailsMetrics({
+        scrollTop: detailsEl.scrollTop,
+        height: detailsEl.clientHeight,
+      });
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(onScroll);
+    ro.observe(detailsEl);
+    detailsEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      ro.disconnect();
+      detailsEl.removeEventListener("scroll", onScroll);
+    };
+  }, [detailsEl]);
+
   // Path set only — enrich must not reset selection / thumbs.
   const filePathsKey = files.map((f) => f.path).join("\0");
 
@@ -230,9 +304,17 @@ export function SdFileSelector({
       // QR mode already on → skip auto-scan by default; else follow settings.
       scanQr: isQrMode ? false : settingsQrOn,
     });
-    setThumbs(loaderRef.current.snapshotFor(files.map((f) => f.path)));
-    // Reset only when dialog opens or the path set changes — not on EXIF enrich patches.
+    // Reset only when the dialog opens or the drive changes — streaming MTP
+    // catalogs must not wipe an in-progress selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, drive]);
+
+  useEffect(() => {
+    if (!open) return;
+    setThumbs((prev) => {
+      const snap = loaderRef.current.snapshotFor(files.map((f) => f.path));
+      return { ...snap, ...prev };
+    });
   }, [open, filePathsKey]);
 
   // Loader lifetime must follow `open` only — stopping on unrelated re-renders
@@ -275,13 +357,60 @@ export function SdFileSelector({
     else if (filterType === "new") list = list.filter((f) => !f.already_processed);
     list.sort((a, b) => {
       let cmp = 0;
-      if (sortKey === "date") cmp = a.display_epoch - b.display_epoch;
-      else if (sortKey === "name") cmp = a.filename.localeCompare(b.filename, undefined, { numeric: true });
-      else cmp = a.size_bytes - b.size_bytes;
+      if (sortKey === "date") {
+        cmp = a.display_epoch - b.display_epoch;
+        if (cmp === 0) {
+          cmp = a.filename.localeCompare(b.filename, undefined, { numeric: true });
+        }
+      } else if (sortKey === "name") {
+        cmp = a.filename.localeCompare(b.filename, undefined, { numeric: true });
+      } else {
+        cmp = a.size_bytes - b.size_bytes;
+      }
       return sortAsc ? cmp : -cmp;
     });
     return list;
   }, [files, filterType, sortKey, sortAsc]);
+
+  const icaVirtual = isMtpDrive(drive);
+  const gridCols = gridColumnCount(gridMetrics.width);
+  const gridInnerW = Math.max(0, gridMetrics.width - GRID_PAD * 2);
+  const tileW =
+    gridCols > 0
+      ? (gridInnerW - GRID_GAP * (gridCols - 1)) / gridCols
+      : 160;
+  const gridRowH = Math.max(120, tileW * (9 / 16) + TILE_META_H);
+  const gridRowCount = Math.ceil(filtered.length / Math.max(1, gridCols));
+  const gridStartRow = Math.max(
+    0,
+    Math.floor(gridMetrics.scrollTop / gridRowH) - OVERSCAN_ROWS,
+  );
+  const gridEndRow = Math.min(
+    gridRowCount,
+    Math.ceil((gridMetrics.scrollTop + gridMetrics.height) / gridRowH) +
+      OVERSCAN_ROWS,
+  );
+  const gridStart = gridStartRow * gridCols;
+  const gridEnd = Math.min(filtered.length, gridEndRow * gridCols);
+  const visibleTiles = filtered.slice(gridStart, gridEnd);
+  const gridPadTop = gridStartRow * gridRowH;
+  const gridTotalH = gridRowCount * gridRowH;
+
+  const detailsStart = Math.max(
+    0,
+    Math.floor(detailsMetrics.scrollTop / DETAILS_ROW_H) - 8,
+  );
+  const detailsEnd = Math.min(
+    filtered.length,
+    Math.ceil((detailsMetrics.scrollTop + detailsMetrics.height) / DETAILS_ROW_H) +
+      8,
+  );
+  const visibleDetails = filtered.slice(detailsStart, detailsEnd);
+  const detailsPadTop = detailsStart * DETAILS_ROW_H;
+  const detailsPadBottom = Math.max(
+    0,
+    (filtered.length - detailsEnd) * DETAILS_ROW_H,
+  );
 
   const selectedSizeMb = useMemo(() => {
     let sum = 0;
@@ -339,12 +468,19 @@ export function SdFileSelector({
   // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
   useEffect(() => {
     if (!open) return;
+    // MTP listing shares the ICA main-thread session — wait until the catalog is done.
+    if (listing && isMtpDrive(drive)) return;
     const root = viewMode === "thumbnail" ? gridEl : detailsEl;
     if (!root) return;
 
     const loader = loaderRef.current;
-    const upgradeToHq = viewMode === "thumbnail";
-    const eagerCount = viewMode === "thumbnail" ? 32 : 28;
+    const icaVirtual = isMtpDrive(drive);
+    const upgradeToHq = viewMode === "thumbnail" && !icaVirtual;
+    const eagerCount = icaVirtual
+      ? 12
+      : viewMode === "thumbnail"
+        ? 32
+        : 28;
     for (const file of filtered.slice(0, eagerCount)) {
       loader.setVisible(file.path, true, { upgradeToHq });
     }
@@ -383,7 +519,7 @@ export function SdFileSelector({
       io.disconnect();
       loader.releaseAllVisible();
     };
-  }, [open, viewMode, filtered, gridEl, detailsEl]);
+  }, [open, viewMode, gridEl, detailsEl, drive, listing]);
 
   function selectPath(path: string, mode: SelectMode) {
     if (suppressClickRef.current) return;
@@ -516,18 +652,17 @@ export function SdFileSelector({
     const bottom = Math.max(box.y0, box.y1);
     if (right - left <= 4 || bottom - top <= 4) return [];
 
-    const gridRect = gridRef.current?.getBoundingClientRect();
-    if (!gridRect) return [];
-    const scrollLeft = gridRef.current?.scrollLeft ?? 0;
-    const scrollTop = gridRef.current?.scrollTop ?? 0;
+    const colW = tileW + GRID_GAP;
+    const rowH = gridRowH;
     const hits: string[] = [];
-    for (const [path, el] of tileRefs.current) {
-      const r = el.getBoundingClientRect();
-      const tx = r.left - gridRect.left + scrollLeft;
-      const ty = r.top - gridRect.top + scrollTop;
+    for (let i = 0; i < filtered.length; i++) {
+      const col = i % gridCols;
+      const row = Math.floor(i / gridCols);
+      const tx = GRID_PAD + col * colW;
+      const ty = GRID_PAD + row * rowH;
       const overlaps =
-        tx < right && tx + r.width > left && ty < bottom && ty + r.height > top;
-      if (overlaps) hits.push(path);
+        tx < right && tx + tileW > left && ty < bottom && ty + rowH > top;
+      if (overlaps) hits.push(filtered[i].path);
     }
     return hits;
   }
@@ -673,7 +808,19 @@ export function SdFileSelector({
                   {drive ? `Laufwerk ${drive}` : "SD-Karte"}
                 </p>
                 <p className="text-xs tabular-nums text-muted">
-                  {files.length} Dateien · {totalSizeMb.toFixed(1)} MB
+                  {listing ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Loader2
+                        className="h-3 w-3 animate-spin"
+                        aria-hidden
+                      />
+                      SD-Dateien werden gelesen… {files.length}
+                    </span>
+                  ) : (
+                    <>
+                      {files.length} Dateien · {totalSizeMb.toFixed(1)} MB
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -910,8 +1057,21 @@ export function SdFileSelector({
             onPointerUp={onGridPointerUp}
             onPointerCancel={onGridPointerCancel}
           >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-              {filtered.map((file) => {
+            <div
+              className="relative"
+              style={{ height: Math.max(gridTotalH, 1) }}
+            >
+              <div
+                className="grid gap-2"
+                style={{
+                  position: "absolute",
+                  top: gridPadTop,
+                  left: 0,
+                  right: 0,
+                  gridTemplateColumns: `repeat(${Math.max(gridCols, 1)}, minmax(0, 1fr))`,
+                }}
+              >
+              {visibleTiles.map((file) => {
                 const isSel = selected.has(file.path);
                 const captureLabel = formatCaptureTime(file.display_epoch);
                 const setTileEl = (el: HTMLElement | null) => {
@@ -919,7 +1079,7 @@ export function SdFileSelector({
                   else tileRefs.current.delete(file.path);
                 };
 
-                if (file.is_video) {
+                if (file.is_video && !icaVirtual) {
                   return (
                     <SdVideoTile
                       key={file.path}
@@ -934,6 +1094,7 @@ export function SdFileSelector({
                       showNewBadge={showNewBadges}
                       isActive={activeVideoPath === file.path}
                       selectionLocked={selectionDragging}
+                      previewEnabled={!icaVirtual}
                       onActivate={() => setActiveVideoPath(file.path)}
                       onDeactivate={() =>
                         setActiveVideoPath((prev) => (prev === file.path ? null : prev))
@@ -1001,6 +1162,12 @@ export function SdFileSelector({
                       ) : (
                         <div className="h-full w-full animate-pulse bg-gradient-to-br from-muted/60 to-muted/20" />
                       )}
+                      {file.is_video ? (
+                        <Film
+                          className="pointer-events-none absolute bottom-1.5 left-1.5 h-3.5 w-3.5 text-white/90 drop-shadow"
+                          aria-hidden
+                        />
+                      ) : null}
                     </div>
                     <div className="truncate px-2 py-1 text-[11px]">{file.filename}</div>
                     <div className="flex items-baseline justify-between gap-2 px-2 pb-1 text-[10px] text-muted">
@@ -1014,7 +1181,16 @@ export function SdFileSelector({
                   </button>
                 );
               })}
+              </div>
             </div>
+            {listing && files.length === 0 ? (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  SD-Dateien werden gelesen…
+                </span>
+              </div>
+            ) : null}
             {dragBox && (
               <div
                 className="pointer-events-none absolute border border-primary bg-primary-soft"
@@ -1044,7 +1220,12 @@ export function SdFileSelector({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((file) => {
+                {detailsPadTop > 0 ? (
+                  <tr aria-hidden>
+                    <td colSpan={6} style={{ height: detailsPadTop, padding: 0 }} />
+                  </tr>
+                ) : null}
+                {visibleDetails.map((file) => {
                   const thumb = thumbs[file.path];
                   return (
                     <tr
@@ -1106,6 +1287,14 @@ export function SdFileSelector({
                     </tr>
                   );
                 })}
+                {detailsPadBottom > 0 ? (
+                  <tr aria-hidden>
+                    <td
+                      colSpan={6}
+                      style={{ height: detailsPadBottom, padding: 0 }}
+                    />
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
@@ -1119,7 +1308,7 @@ export function SdFileSelector({
             <Button
               type="button"
               variant="secondary"
-              disabled={!anyAction}
+              disabled={!anyAction || listing}
               onClick={() => onProceedAll(actions)}
             >
               Alle trotzdem
@@ -1127,7 +1316,7 @@ export function SdFileSelector({
           )}
           <Button
             type="button"
-            disabled={selected.size === 0 || !anyAction}
+            disabled={selected.size === 0 || !anyAction || listing}
             onClick={() => onConfirm([...selected], actions)}
           >
             {confirmLabel(actions, selected.size)}

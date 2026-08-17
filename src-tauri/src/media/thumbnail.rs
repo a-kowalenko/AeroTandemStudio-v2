@@ -55,7 +55,7 @@ impl ThumbQuality {
         }
     }
 
-    fn max_size(self) -> u32 {
+    pub(crate) fn max_size(self) -> u32 {
         match self {
             Self::Lq => THUMB_LQ_SIZE,
             Self::Hq => THUMB_HQ_SIZE,
@@ -144,6 +144,10 @@ fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, ThumbnailErro
 
 fn to_data_url(jpeg: &[u8]) -> String {
     format!("data:image/jpeg;base64,{}", B64.encode(jpeg))
+}
+
+pub fn jpeg_bytes_to_data_url(jpeg: &[u8]) -> String {
+    to_data_url(jpeg)
 }
 
 /// Generate (or load from disk cache) a JPEG thumbnail as `(jpeg_bytes, data_url)`.

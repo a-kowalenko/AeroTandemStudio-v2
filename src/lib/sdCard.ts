@@ -21,6 +21,11 @@ export type SdFileInfo = {
   already_processed: boolean;
 };
 
+/** USB/MTP camera source (`mtp:gopro:…`). */
+export function isMtpDrive(drive: string | null | undefined): boolean {
+  return Boolean(drive?.startsWith("mtp:"));
+}
+
 export type SdFileEnrichment = {
   path: string;
   display_epoch: number;
@@ -46,6 +51,10 @@ export type BackupResult = {
   secondary_warning: string | null;
   /** True when second-path mirror was queued in the background. */
   secondary_async_started: boolean;
+  /** Null when clear was not requested; otherwise files removed / deleted. */
+  clear_deleted_count: number | null;
+  /** Soft-fail for clear-after-backup (backup may still succeed). */
+  clear_warning: string | null;
 };
 
 export type SecondaryBackupEvent = {
