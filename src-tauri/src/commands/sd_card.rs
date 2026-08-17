@@ -139,9 +139,13 @@ pub fn scan_sd_drives() -> Result<Vec<SdDriveInfo>, String> {
 }
 
 #[tauri::command]
-pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
+pub async fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
     logging::info("sd", format!("Liste SD-Dateien: {drive}"));
-    match SD_MONITOR.list_files(&drive) {
+    let drive_log = drive.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || SD_MONITOR.list_files(&drive))
+        .await
+        .map_err(|e| e.to_string())?;
+    match result {
         Ok(res) => {
             logging::info(
                 "sd",
@@ -155,7 +159,10 @@ pub fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
         }
         Err(e) => {
             let msg = e.to_string();
-            logging::error("sd", format!("SD-Liste fehlgeschlagen ({drive}): {msg}"));
+            logging::error(
+                "sd",
+                format!("SD-Liste fehlgeschlagen ({drive_log}): {msg}"),
+            );
             Err(msg)
         }
     }

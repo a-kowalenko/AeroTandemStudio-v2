@@ -88,7 +88,7 @@ export type AppConfig = {
   reencode_matching_clips: boolean;
   /** Intro+Body mux: "reencode" (default) | "stream_copy". */
   intro_mux_mode: "stream_copy" | "reencode" | string;
-  /** Multi-clip body concat: "legacy" (default) | "fast". */
+  /** Multi-clip body concat: "fast" (default) | "legacy". */
   body_concat_mode: "legacy" | "fast" | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;

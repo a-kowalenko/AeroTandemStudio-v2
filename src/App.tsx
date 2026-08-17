@@ -463,7 +463,12 @@ function App() {
     setActiveDrive(drive);
     setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
     setIntakeBusy(true);
-    setLoading(true, "SD-Dateien werden gelesen…");
+    setLoading(
+      true,
+      drive.startsWith("mtp:")
+        ? "USB-Kamera: Medien werden geladen…"
+        : "SD-Dateien werden gelesen…",
+    );
     try {
       const listed = await listSdFiles(drive);
       openSelector({
@@ -916,7 +921,12 @@ function App() {
     setActiveDrive(drive);
     setSdWorkflowUiActive(false);
     setIntakeBusy(true);
-    setLoading(true, "SD-Dateien werden gelesen…");
+    setLoading(
+      true,
+      drive.startsWith("mtp:")
+        ? "USB-Kamera: Medien werden geladen…"
+        : "SD-Dateien werden gelesen…",
+    );
     try {
       await listSdFiles(drive);
       setIntakeBusy(false);
@@ -1347,7 +1357,7 @@ function App() {
           crf: config?.preview_encode_crf ?? 18,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "reencode",
-          body_concat_mode: config?.body_concat_mode ?? "legacy",
+          body_concat_mode: config?.body_concat_mode ?? "fast",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
           reuse_preview_fingerprint: canReusePreview

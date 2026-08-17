@@ -115,6 +115,7 @@ export function useSdCardMonitor(opts?: {
             return;
           }
 
+          // USB/MTP: same confirm/auto flow; listing stages via Image Capture on macOS.
           const kind = jobKindFromInsert(payload);
           const actionsSafe: SdWorkflowActions = {
             backup: true,

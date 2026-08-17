@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>NSRemovableVolumesUsageDescription</key>
-    <string>Aero Tandem Studio liest Videos und Fotos von SD-Karten und Kameras unter /Volumes.</string>
+    <string>Aero Tandem Studio liest Videos und Fotos von SD-Karten, Kameras unter /Volumes und USB-Kameras über Bildübernahme.</string>
     <key>NSDownloadsFolderUsageDescription</key>
     <string>Aero Tandem Studio speichert und öffnet exportierte Videos im Downloads-Ordner, wenn ausgewählt.</string>
     <key>NSDocumentsFolderUsageDescription</key>

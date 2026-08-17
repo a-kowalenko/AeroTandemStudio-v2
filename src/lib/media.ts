@@ -23,6 +23,9 @@ export const PHOTO_EXTENSIONS = [
   "dng",
 ] as const;
 
+/** Camera proxies / companions — never show in SD confirm / import pickers. */
+export const SIDECAR_EXTENSIONS = ["lrv", "thm", "wav"] as const;
+
 export type MediaKind = "video" | "photo";
 
 function extensionOf(path: string): string {
@@ -30,6 +33,11 @@ function extensionOf(path: string): string {
   const dot = base.lastIndexOf(".");
   if (dot < 0) return "";
   return base.slice(dot + 1).toLowerCase();
+}
+
+export function isSidecarPath(path: string): boolean {
+  const ext = extensionOf(path);
+  return (SIDECAR_EXTENSIONS as readonly string[]).includes(ext);
 }
 
 export function mediaKind(path: string): MediaKind | null {

@@ -141,7 +141,7 @@ pub struct AppConfig {
     /// Intro+Body mux: `"reencode"` (default, compatible) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
-    /// Multi-clip body concat: `"legacy"` (MPEG-TS, robust) | `"fast"` (concat demuxer).
+    /// Multi-clip body concat: `"fast"` (default, concat demuxer) | `"legacy"` (MPEG-TS).
     #[serde(default = "default_body_concat_mode")]
     pub body_concat_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
@@ -390,7 +390,7 @@ fn default_intro_mux_mode() -> String {
     "reencode".into()
 }
 fn default_body_concat_mode() -> String {
-    "legacy".into()
+    "fast".into()
 }
 fn default_preview_crf() -> u8 {
     18
@@ -406,11 +406,11 @@ pub fn normalize_intro_mux_mode(mode: &str) -> String {
     }
 }
 
-/// Normalize body concat mode to `fast` | `legacy`.
+/// Normalize body concat mode to `fast` | `legacy` (default `fast`).
 pub fn normalize_body_concat_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
-        "fast" | "fast_path" | "fast-path" | "avidemux" => "fast".into(),
-        _ => "legacy".into(),
+        "legacy" | "mpegts" | "robust" => "legacy".into(),
+        _ => "fast".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -715,7 +715,7 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
-        assert_eq!(cfg.body_concat_mode, "legacy");
+        assert_eq!(cfg.body_concat_mode, "fast");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);
@@ -753,8 +753,9 @@ mod tests {
         assert_eq!(normalize_body_concat_mode("fast_path"), "fast");
         assert_eq!(normalize_body_concat_mode("fast-path"), "fast");
         assert_eq!(normalize_body_concat_mode("legacy"), "legacy");
-        assert_eq!(normalize_body_concat_mode(""), "legacy");
-        assert_eq!(normalize_body_concat_mode("bogus"), "legacy");
+        assert_eq!(normalize_body_concat_mode("mpegts"), "legacy");
+        assert_eq!(normalize_body_concat_mode(""), "fast");
+        assert_eq!(normalize_body_concat_mode("bogus"), "fast");
     }
 
     #[test]

@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** optional [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später) (Backlog)  
+**Nächste Phase:** [Phase 23 — USB-Action-Cams (MTP)](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(optional danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*  
 *(Phase 22: macOS Titlebar-Align + Dialog-Zentrierung erledigt.)*
 *(Phase 20–21.1: Medien-Drehen + Foto-Crop + Crop-Settle UX erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
@@ -1137,6 +1138,111 @@ src/components/UpdateDialog.tsx
 
 ---
 
+### Phase 23 — USB-Action-Cams (MTP) erkennen & importieren
+
+**Status:** 🔄 In Arbeit (23.0 ✅ · 23.2 Detect ✅ · 23.2b ICA Staging ✅)  
+**Abhängigkeiten:** Phase 7 (SD-Pipeline), Phase 5 (Config)  
+**Ziel:** GoPro-, DJI- und Insta360-Kameras per USB (MTP/WPD) erkennen und in denselben Backup-/Import-Workflow bringen wie SD-Karten — **ohne** zusätzliche False Positives bei normalen Datenträgern oder Handys.
+
+#### Problem
+
+Neuere Action-Cams erscheinen per USB oft als **MTP/WPD-Gerät**, nicht als Mass-Storage-Volume. Der bestehende Monitor sieht nur Laufwerke/`/Volumes` + `DCIM` → Kamera bleibt unsichtbar. (Insta360 im U-Disk-Modus bleibt über den Volume-Monitor abgedeckt.)
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|-------|----------------|
+| Volume-Monitor | **unverändert** (`is_removable_drive`, macOS/Linux-Kandidaten, `DCIM`) |
+| Neuer Pfad | Parallel: **Allowlist-MTP-Monitor** — nie „alle Portable Devices“ |
+| Identifikation | Primär USB **VID** (+ bekannte PIDs für Label); sekundär Friendly Name; **immer** Inhalts-Signatur |
+| Hersteller | GoPro (`0x2672`), DJI (`0x2CA3`), Insta360/Arashi (`0x2E1A`) |
+| DJI-Vorsicht | Gleiche VID auch für Controller/Goggles → **ohne** Action-Cam-Signatur kein Match |
+| Dateizugriff | Immer **Staging-Kopie** nach `sd_backup_folder` → danach normale Pfade |
+| Plattform | **23a Windows**, **23b macOS**, **23c Linux** (je eigene Abnahme) |
+| Eject / Clear | MTP: Soft-Disconnect; Clear nur wenn Delete zuverlässig + Config |
+| Config | `usb_camera_import_enabled` (default nach Windows-Abnahme) |
+| Nicht-Ziele | Keine Handys; Volume-Heuristik nicht lockern; kein FFmpeg auf MTP; kein FUSE/mtpfs |
+
+#### Architektur
+
+```text
+VolumeMonitor (Phase 7)          MtpCameraMonitor (Allowlist)
+        │                                    │
+        └────────────┬───────────────────────┘
+                     ▼
+              MediaSourceId
+           volume:E:  |  mtp:gopro|dji|insta360:<serial>
+                     ▼
+         list / backup / progress (bestehende Events)
+                     ▼
+         Staging → lokaler Backup-Pfad → Import/FFmpeg
+```
+
+#### MTP-Allowlist (Vendor + Signatur)
+
+Modul: `src-tauri/src/sd_card/mtp/allowlist.rs`
+
+| Vendor-Slug | USB VID | Bekannte PIDs (Label, nicht exklusiv) | Inhalts-Signatur (DCIM) |
+|-------------|---------|--------------------------------------|-------------------------|
+| `gopro` | `0x2672` | HERO3+ … HERO11 / MAX aus libmtp; neuere Hero-PIDs per VID+Signatur | `100GOPRO` / `GX*.MP4` / `GH*.MP4` / `GP*.MP4` |
+| `dji` | `0x2CA3` | Action/Osmo soweit bekannt; **Controller/Goggles ohne Signatur ablehnen** | `DJI_*.MP4/JPG`, typ. `100MEDIA` / DJI-DCIM |
+| `insta360` | `0x2E1A` | Action-/360-Kameras (Arashi Vision) | `Camera01` / `.insv` / `.lrv` / Insta-Dateimuster |
+
+Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` — nie nur „irgendein MTP mit DCIM“.
+
+#### Aufgaben
+
+**23.0 — Vertrags- & Allowlist-Schicht (plattformneutral)**
+- [x] `sd_card/mtp/allowlist.rs` — VID-Tabelle GoPro/DJI/Insta360 + Signatur-Matcher + Unit-Tests
+- [ ] `MediaSourceKind`: `Volume` \| `MtpCamera`; stabile IDs `mtp:<slug>:<serial_or_hash>`
+- [ ] Trait/Adapter-Skizze: `list_media`, `copy_to_backup`, `disconnect`
+
+**23.1 — Windows (WPD/MTP) — MVP**
+- [ ] WPD-Enumeration + Hotplug/Polling; nur Allowlist + Signatur
+- [ ] Events `sd-card-inserted` / `sd-card-removed` mit `source_id` (rückwärtskompatibel)
+- [ ] List + Staging-Backup mit Progress; Import ab lokalem FS
+- [ ] Config `usb_camera_import_enabled` + Settings-Toggle
+- [ ] UI-Label z. B. „GoPro (USB)“ / „DJI (USB)“ / „Insta360 (USB)“
+- [ ] Abnahme: SD unverändert; GoPro/DJI/Insta USB ok; Handy/Stick-ohne-Allowlist **nicht**
+
+**23.2 — macOS**
+- [x] USB-Detect via `system_profiler` + Allowlist (Hero 8/13, Label-Fix PID `0x0059`)
+- [x] Image Capture Core Staging (`native/macos/AtsImageCapture.m` → Cache → SD-Pipeline)
+- [x] Clear auf Kamera deaktiviert für MTP; Volume-Heuristik unverändert
+- [ ] Fallback-Dialog nur noch wenn ICA fehlschlägt
+
+**23.2b — macOS Image Capture Staging-Import**
+- [x] `ats_ica_stage_all` (ObjC) + `macos_ica.rs` Cache/TTL
+- [x] `scan_mtp_media` / Backup-Pfad für `mtp:` Sources
+- [x] UI: USB-Detect startet Confirm/Auto-Flow
+
+**23.3 — Linux**
+- [ ] `libmtp` (AppImage klären in `docs/LINUX_BUILD.md`); gleiche Allowlist
+
+**23.4 — Docs / UX**
+- [ ] Settings-Kurztext; `ARCHITECTURE.md` MediaSource; Phase-Status in AGENTS
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 23.1 aus @docs/IMPLEMENTATION_PLAN.md
+(Windows WPD/MTP Allowlist GoPro/DJI/Insta360 + Staging).
+Regeln: @AGENTS.md
+Volume-Heuristik NICHT aufweichen. Kein Handy-MTP.
+Danach cargo test.
+```
+
+#### Referenzen
+
+```
+src-tauri/src/sd_card/monitor.rs
+src-tauri/src/sd_card/mtp/allowlist.rs
+src-tauri/src/commands/sd_card.rs
+src/hooks/useSdCardMonitor.ts
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1169,9 +1275,12 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "sd_skip_processed": false,
   "sd_size_limit_enabled": false,
   "sd_size_limit_mb": 2000,
+  "usb_camera_import_enabled": false,
   "setup_completed": false
 }
 ```
+
+`usb_camera_import_enabled` (Phase 23): MTP/WPD-Import für allowlistete Action-Cams (GoPro/DJI/Insta360); default `false` bis Windows-Abnahme, danach ggf. `true`.
 
 Config-Pfad:
 - Windows: `%LOCALAPPDATA%\AeroTandemStudio\`
@@ -1302,6 +1411,13 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 21 | Foto-Zuschnitt (Crop) | ✅ |
 | 21.1 | Crop-Settle UX | ✅ |
 | 22 | macOS Titlebar-Align & Dialog-Zentrierung | ✅ |
+| 23 | USB-Action-Cams (MTP) GoPro/DJI/Insta360 | 🔄 |
+| 23.0 | MTP-Allowlist (plattformneutral) | ✅ |
+| 23.1 | Windows WPD/MTP + Staging | ⬜ |
+| 23.2 | macOS USB-Detect (system_profiler) + Hinweis | ✅ |
+| 23.2b | macOS Image Capture Staging-Import | ✅ |
+| 23.3 | Linux libmtp | ⬜ |
+| 23.4 | UX & Docs | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1320,4 +1436,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-13 · Projekt: Aero Tandem Studio v2 · Phase 22 macOS Titlebar-Align & Dialog-Zentrierung*
+*Letzte Aktualisierung: 2026-08-16 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) geplant / 23.0 Allowlist*

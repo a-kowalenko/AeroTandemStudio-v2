@@ -48,18 +48,34 @@ export function usefulVolumeName(
 
 /** Compact closed-trigger label (letter or Unix basename). */
 export function compactDriveLabel(drive: string): string {
+  if (drive.startsWith("mtp:")) {
+    // mtp:gopro:serial → show vendor slug until volume_name is applied by callers
+    const parts = drive.split(":");
+    const slug = parts[1] || "usb";
+    if (slug === "gopro") return "GoPro (USB)";
+    if (slug === "dji") return "DJI (USB)";
+    if (slug === "insta360") return "Insta360 (USB)";
+    return `${slug} (USB)`;
+  }
   if (isWindowsDriveLetter(drive)) return drive.replace(/\\+$/, "");
   return driveBasename(drive);
 }
 
 /** Plain-text list label for aria / titles. */
 export function listDriveLabel(info: Pick<SdDriveInfo, "drive" | "volume_name">): string {
+  if (info.drive.startsWith("mtp:") && info.volume_name?.trim()) {
+    return info.volume_name.trim();
+  }
   const primary = compactDriveLabel(info.drive);
   const vol = usefulVolumeName(info.drive, info.volume_name);
   return vol ? `${primary} ${vol}` : primary;
 }
 
 export function driveTooltip(info: Pick<SdDriveInfo, "drive" | "volume_name">): string {
+  if (info.drive.startsWith("mtp:")) {
+    const label = info.volume_name?.trim() || compactDriveLabel(info.drive);
+    return `${label} — ${info.drive}`;
+  }
   const vol = usefulVolumeName(info.drive, info.volume_name);
   if (vol) return `${compactDriveLabel(info.drive)} — ${vol}`;
   return info.drive;
