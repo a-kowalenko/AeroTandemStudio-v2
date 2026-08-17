@@ -10,6 +10,12 @@ export function resolveSdEjectDetail(drive: string): string {
   return compactDriveLabel(drive);
 }
 
+/** Extra toast line for USB cameras (logical eject ≠ diskutil). */
+export function resolveSdEjectHint(drive: string): string | undefined {
+  if (!drive.startsWith("mtp:")) return undefined;
+  return "USB freigegeben — Kabel trennen, erst danach wieder anstecken zum Import.";
+}
+
 /** Lightweight mid-workflow / manual eject feedback (non-blocking). */
 export function showSdEjectToast(opts: {
   drive: string;
@@ -19,7 +25,9 @@ export function showSdEjectToast(opts: {
   error?: string;
 }): void {
   const detail = (opts.detail ?? resolveSdEjectDetail(opts.drive)).trim();
-  const durationMs = opts.ok ? 4500 : 6000;
+  const usbCamera = opts.drive.startsWith("mtp:");
+  const hint = resolveSdEjectHint(opts.drive);
+  const durationMs = opts.ok ? (usbCamera ? 6500 : 4500) : 6000;
 
   toast.custom(
     (t) => (
@@ -27,8 +35,10 @@ export function showSdEjectToast(opts: {
         visible={t.visible}
         ok={opts.ok}
         detail={detail || undefined}
+        hint={opts.ok ? hint : undefined}
         error={opts.error}
         durationMs={durationMs}
+        usbCamera={usbCamera}
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),

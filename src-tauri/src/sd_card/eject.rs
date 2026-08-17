@@ -30,9 +30,11 @@ pub fn eject_drive(drive: &str) -> Result<(), EjectError> {
     if drive.is_empty() {
         return Err(EjectError::Message("Kein Laufwerk angegeben".into()));
     }
-    // USB/MTP cameras are not block volumes — nothing to eject via diskutil.
+    // USB/MTP cameras are not block volumes — use SdCardMonitor::eject_source instead.
     if drive.starts_with("mtp:") {
-        return Ok(());
+        return Err(EjectError::Message(
+            "USB-Kameras bitte über den Monitor freigeben (eject_source)".into(),
+        ));
     }
 
     #[cfg(windows)]

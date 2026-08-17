@@ -2,8 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <!-- Required so ptpcamerad/TCC see a stable app identity under `tauri dev` (bare binary). -->
+    <key>CFBundleIdentifier</key>
+    <string>com.kowalenko.aero-tandem-studio</string>
     <key>NSRemovableVolumesUsageDescription</key>
     <string>Aero Tandem Studio liest Videos und Fotos von SD-Karten, Kameras unter /Volumes und USB-Kameras über Bildübernahme.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Aero Tandem Studio importiert Fotos und Videos von angeschlossenen USB-Action-Cams über Bildübernahme.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Aero Tandem Studio kann Medien von USB-Kameras über die Bildübernahme-Schnittstelle lesen.</string>
     <key>NSDownloadsFolderUsageDescription</key>
     <string>Aero Tandem Studio speichert und öffnet exportierte Videos im Downloads-Ordner, wenn ausgewählt.</string>
     <key>NSDocumentsFolderUsageDescription</key>

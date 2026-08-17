@@ -16,19 +16,17 @@ use thiserror::Error;
 
 use crate::media::datetime::resolve_video_display_epoch;
 use crate::media::dji_paths::{
-    collect_media_paths_from_tree, expand_files_for_sd_clear, filter_listable_media_paths,
-    filter_media_paths_for_backup,
-    is_photo_ext, is_video_ext, media_type_from_filename, resolve_drive_dcim_path,
-    unique_dest_name, write_backup_manifest, ManifestEntry,
+    camera_clear_basenames, collect_media_paths_from_tree, expand_files_for_sd_clear,
+    filter_listable_media_paths, filter_media_paths_for_backup, is_photo_ext, is_video_ext,
+    media_type_from_filename, resolve_drive_dcim_path, unique_dest_name, write_backup_manifest,
+    ManifestEntry,
 };
 use crate::sd_card::copy_progress::copy_file_with_progress;
-use crate::sd_card::secondary_backup::{
-    new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
-};
-use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
-use crate::storage::media_history::MediaHistoryStore;
+use crate::sd_card::secondary_backup::{new_job_id, SecondaryBackupJob, SECONDARY_BACKUP};
+use crate::storage::media_history::{spawn_identity_hasher, MediaHistoryStore};
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
+use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
 
 pub const EVENT_SD_INSERTED: &str = "sd-card-inserted";
 pub const EVENT_SD_REMOVED: &str = "sd-card-removed";
@@ -93,11 +91,16 @@ fn usb_camera_label_for(source_id: &str) -> Option<String> {
         .map(|c| c.label)
 }
 
-fn usb_action_cam_source_ids() -> HashSet<String> {
+fn usb_action_cam_source_ids_attached() -> HashSet<String> {
     crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras()
         .into_iter()
         .map(|c| c.source_id)
         .collect()
+}
+
+/// Attached USB action cams visible in the UI (excludes software-ejected).
+fn usb_action_cam_source_ids() -> HashSet<String> {
+    SD_MONITOR.visible_usb_action_cam_ids()
 }
 
 /// Volume label for UI (empty when unavailable).
@@ -167,8 +170,13 @@ fn windows_volume_name(drive: &str) -> String {
     if ok == 0 {
         return String::new();
     }
-    let end = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
-    String::from_utf16_lossy(&name_buf[..end]).trim().to_string()
+    let end = name_buf
+        .iter()
+        .position(|&c| c == 0)
+        .unwrap_or(name_buf.len());
+    String::from_utf16_lossy(&name_buf[..end])
+        .trim()
+        .to_string()
 }
 
 #[cfg(not(windows))]
@@ -199,12 +207,50 @@ pub struct SdFileEnrichment {
     pub already_processed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListEmptyReason {
+    NoMedia,
+    FilteredOnly,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ListSdFilesResult {
     pub drive: String,
     pub files: Vec<SdFileInfo>,
     pub total_size_mb: f64,
     pub total_size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_reason: Option<ListEmptyReason>,
+}
+
+pub fn empty_media_message(mtp: bool) -> &'static str {
+    if mtp {
+        "Keine Medien auf der Kamera gefunden."
+    } else {
+        "Keine Mediendateien auf der SD-Karte gefunden."
+    }
+}
+
+pub fn filtered_only_message() -> &'static str {
+    "Keine importierbaren Medien (nur Timelapse/Proxies)."
+}
+
+pub fn list_empty_reason(kept: usize, seen: usize) -> Option<ListEmptyReason> {
+    if kept > 0 {
+        None
+    } else if seen > 0 {
+        Some(ListEmptyReason::FilteredOnly)
+    } else {
+        Some(ListEmptyReason::NoMedia)
+    }
+}
+
+pub fn is_empty_catalog_message(msg: &str) -> bool {
+    let m = msg.trim();
+    m.contains("Keine Medien auf der Kamera gefunden")
+        || m.contains("Keine Mediendateien auf der")
+        || m.contains("Keine importierbaren Medien")
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -344,6 +390,10 @@ pub struct BackupResult {
     pub secondary_warning: Option<String>,
     /// True when a background mirror to the second path was queued (async mode).
     pub secondary_async_started: bool,
+    /// `None` = clear not requested; `Some(n)` = files removed (SD) / deleted on camera (MTP).
+    pub clear_deleted_count: Option<usize>,
+    /// Soft-fail for clear-after-backup (backup may still succeed).
+    pub clear_warning: Option<String>,
 }
 
 impl BackupResult {
@@ -359,6 +409,8 @@ impl BackupResult {
             secondary_backup_path: None,
             secondary_warning: None,
             secondary_async_started: false,
+            clear_deleted_count: None,
+            clear_warning: None,
         }
     }
 }
@@ -393,6 +445,8 @@ struct DcimListCache {
     drive: String,
     filtered_paths: Vec<String>,
     total_bytes: u64,
+    /// Count before backup/listable filters (for empty_reason).
+    seen_count: usize,
     at: Instant,
 }
 
@@ -406,6 +460,8 @@ pub struct SdCardMonitor {
     declined_drives: Mutex<HashSet<String>>,
     processed_drives: Mutex<HashSet<String>>,
     processing_drives: Mutex<HashSet<String>>,
+    /// USB cameras hidden after logical eject until the cable is unplugged.
+    ejected_mtp_sources: Mutex<HashSet<String>>,
     backup_in_progress: AtomicBool,
     history: Mutex<MediaHistoryStore>,
     list_cache: Mutex<Option<DcimListCache>>,
@@ -426,8 +482,8 @@ impl SdCardMonitor {
     where
         F: Fn() -> AppConfig + Send + 'static,
     {
-        let history = MediaHistoryStore::open_default()
-            .map_err(|e| SdError::Message(e.to_string()))?;
+        let history =
+            MediaHistoryStore::open_default().map_err(|e| SdError::Message(e.to_string()))?;
         Ok(Self {
             monitoring: AtomicBool::new(false),
             known_drives: Mutex::new(HashSet::new()),
@@ -436,6 +492,7 @@ impl SdCardMonitor {
             declined_drives: Mutex::new(HashSet::new()),
             processed_drives: Mutex::new(HashSet::new()),
             processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(history),
             list_cache: Mutex::new(None),
@@ -446,6 +503,67 @@ impl SdCardMonitor {
             on_inserted: Mutex::new(None),
             on_removed: Mutex::new(None),
         })
+    }
+
+    /// USB cameras still on the bus minus ones logically ejected (cable still in).
+    pub fn visible_usb_action_cam_ids(&self) -> HashSet<String> {
+        let attached = usb_action_cam_source_ids_attached();
+        self.prune_ejected_mtp(&attached);
+        let ejected = self.ejected_mtp_sources.lock().unwrap().clone();
+        attached
+            .into_iter()
+            .filter(|id| !ejected.contains(id))
+            .collect()
+    }
+
+    /// Drop software-eject marks once the device is gone from USB (allows replug).
+    fn prune_ejected_mtp(&self, attached: &HashSet<String>) {
+        let mut ejected = self.ejected_mtp_sources.lock().unwrap();
+        ejected.retain(|id| attached.contains(id));
+    }
+
+    fn release_mtp_session_resources(&self, source_id: &str) {
+        self.invalidate_list_cache_for(&[source_id.to_string()]);
+        #[cfg(target_os = "macos")]
+        {
+            crate::sd_card::mtp::macos_ica::invalidate_stage_cache(source_id);
+        }
+    }
+
+    /// Eject SD volume or logically release a USB/MTP camera (ICA session + hide until unplug).
+    pub fn eject_source(&self, drive: &str) -> Result<(), SdError> {
+        let drive = drive.trim();
+        if drive.is_empty() {
+            return Err(SdError::Message("Kein Laufwerk angegeben".into()));
+        }
+        if is_mtp_source(drive) {
+            self.software_eject_mtp(drive);
+            return Ok(());
+        }
+        crate::sd_card::eject::eject_drive(drive).map_err(|e| SdError::Message(e.to_string()))
+    }
+
+    fn software_eject_mtp(&self, source_id: &str) {
+        self.release_mtp_session_resources(source_id);
+        self.ejected_mtp_sources
+            .lock()
+            .unwrap()
+            .insert(source_id.to_string());
+        self.pending_drives.lock().unwrap().remove(source_id);
+        self.processing_drives.lock().unwrap().remove(source_id);
+        self.declined_drives.lock().unwrap().remove(source_id);
+        // Allow a fresh insert event after the user unplugs and replugs.
+        self.processed_drives.lock().unwrap().remove(source_id);
+        self.action_cam_drives.lock().unwrap().remove(source_id);
+        self.known_drives.lock().unwrap().remove(source_id);
+        self.emit_status(
+            "usb_camera_ejected",
+            serde_json::json!({
+                "drive": source_id,
+                "message": "USB-Kamera freigegeben. Bitte Kabel trennen; erst nach erneutem Anstecken wieder importieren.",
+            }),
+        );
+        self.notify_removed(&[source_id.to_string()]);
     }
 
     pub fn set_config_provider<F>(&self, provider: F)
@@ -550,7 +668,10 @@ impl SdCardMonitor {
         ready_with_usb.extend(usb_now.iter().cloned());
 
         let new_drives: HashSet<_> = ready_with_usb.difference(&known).cloned().collect();
-        let newly_action: HashSet<_> = current_action.difference(&previous_action).cloned().collect();
+        let newly_action: HashSet<_> = current_action
+            .difference(&previous_action)
+            .cloned()
+            .collect();
 
         let mut candidates = HashSet::new();
         for d in &new_drives {
@@ -589,7 +710,10 @@ impl SdCardMonitor {
     }
 
     fn handle_sd_detection(&self, drive: &str, is_new_insertion: bool) {
-        self.pending_drives.lock().unwrap().insert(drive.to_string());
+        self.pending_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
 
         let mode = self.config().sd_backup_mode;
 
@@ -650,6 +774,9 @@ impl SdCardMonitor {
             self.declined_drives.lock().unwrap().remove(d);
             self.processed_drives.lock().unwrap().remove(d);
             self.processing_drives.lock().unwrap().remove(d);
+            if is_mtp_source(d) {
+                self.release_mtp_session_resources(d);
+            }
         }
         self.invalidate_list_cache_for(drives);
         if let Some(cb) = self.on_removed.lock().unwrap().as_ref() {
@@ -699,13 +826,19 @@ impl SdCardMonitor {
     }
 
     pub fn decline_drive(&self, drive: &str) {
-        self.declined_drives.lock().unwrap().insert(drive.to_string());
+        self.declined_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
         self.pending_drives.lock().unwrap().remove(drive);
         self.processing_drives.lock().unwrap().remove(drive);
     }
 
     pub fn mark_processed(&self, drive: &str) {
-        self.processed_drives.lock().unwrap().insert(drive.to_string());
+        self.processed_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
         self.pending_drives.lock().unwrap().remove(drive);
         self.processing_drives.lock().unwrap().remove(drive);
     }
@@ -714,7 +847,10 @@ impl SdCardMonitor {
     /// Fast listing for the confirm dialog: walk + metadata only.
     /// EXIF dates and `already_processed` are filled later via [`Self::enrich_files`].
     pub fn list_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
-        let (filtered, _total) = self.scan_drive_media(drive)?;
+        if is_mtp_source(drive) {
+            return self.list_mtp_files(drive);
+        }
+        let (filtered, _total, seen) = self.scan_drive_media(drive)?;
         // Defense: drop proxies even if an older list/ICA cache still held them.
         let filtered = filter_listable_media_paths(filtered);
         let total: u64 = filtered
@@ -738,6 +874,7 @@ impl SdCardMonitor {
             drive: drive.to_string(),
             total_size_mb: total as f64 / (1024.0 * 1024.0),
             total_size_bytes: total,
+            empty_reason: list_empty_reason(files.len(), seen),
             files,
         })
     }
@@ -758,11 +895,12 @@ impl SdCardMonitor {
 
         for path in &paths {
             let pb = Path::new(path);
+            if !pb.is_file() {
+                continue;
+            }
             let mtime = get_mtime_timestamp(pb).unwrap_or(0.0);
             let display_epoch = resolve_video_display_epoch(pb, Some(mtime), None);
-            let hash = MediaHistoryStore::compute_identity(pb)
-                .ok()
-                .map(|(h, _)| h);
+            let hash = MediaHistoryStore::compute_identity(pb).ok().map(|(h, _)| h);
             identities.push((path.clone(), hash));
             enrichments.push(SdFileEnrichment {
                 path: path.clone(),
@@ -771,10 +909,7 @@ impl SdCardMonitor {
             });
         }
 
-        let hashes: Vec<String> = identities
-            .iter()
-            .filter_map(|(_, h)| h.clone())
-            .collect();
+        let hashes: Vec<String> = identities.iter().filter_map(|(_, h)| h.clone()).collect();
         let known = {
             let history = self.history.lock().unwrap();
             history.known_hashes(&hashes).unwrap_or_default()
@@ -804,7 +939,7 @@ impl SdCardMonitor {
             return (drive.to_string(), 0, 0.0);
         }
         match self.scan_drive_media(drive) {
-            Ok((paths, total)) => (
+            Ok((paths, total, _)) => (
                 drive.to_string(),
                 paths.len(),
                 total as f64 / (1024.0 * 1024.0),
@@ -813,14 +948,14 @@ impl SdCardMonitor {
         }
     }
 
-    /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes.
-    fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+    /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes + pre-filter count.
+    fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64, usize), SdError> {
         if is_mtp_source(drive) {
             // Reuse staging cache when still warm (avoids a second ICA download).
             if let Ok(cache) = self.list_cache.lock() {
                 if let Some(c) = cache.as_ref() {
                     if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
-                        return Ok((c.filtered_paths.clone(), c.total_bytes));
+                        return Ok((c.filtered_paths.clone(), c.total_bytes, c.seen_count));
                     }
                 }
             }
@@ -829,7 +964,7 @@ impl SdCardMonitor {
         if let Ok(cache) = self.list_cache.lock() {
             if let Some(c) = cache.as_ref() {
                 if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
-                    return Ok((c.filtered_paths.clone(), c.total_bytes));
+                    return Ok((c.filtered_paths.clone(), c.total_bytes, c.seen_count));
                 }
             }
         }
@@ -841,6 +976,7 @@ impl SdCardMonitor {
         }
 
         let all = collect_media_paths_from_tree(&dcim_path);
+        let seen = all.len();
         let (filtered, _) = filter_media_paths_for_backup(&all, &dcim, true);
         let total: u64 = filtered
             .iter()
@@ -852,21 +988,33 @@ impl SdCardMonitor {
                 drive: drive.to_string(),
                 filtered_paths: filtered.clone(),
                 total_bytes: total,
+                seen_count: seen,
                 at: Instant::now(),
             });
         }
 
-        Ok((filtered, total))
+        Ok((filtered, total, seen))
     }
 
-    /// USB/MTP camera (no filesystem mount): Image Capture staging on macOS.
-    /// Call only from list/backup (spawn_blocking) — never from detect/hotplug.
-    fn scan_mtp_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+    /// USB/MTP: catalog only (no download). Call from list/backup, never detect/hotplug.
+    fn scan_mtp_media(&self, drive: &str) -> Result<(Vec<String>, u64, usize), SdError> {
+        let listed = self.list_mtp_files(drive)?;
+        let paths: Vec<String> = listed.files.iter().map(|f| f.path.clone()).collect();
+        let seen = match listed.empty_reason {
+            Some(ListEmptyReason::FilteredOnly) => listed.files.len().saturating_add(1),
+            _ => listed.files.len(),
+        };
+        Ok((paths, listed.total_size_bytes, seen))
+    }
+
+    fn list_mtp_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
         let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
 
         #[cfg(target_os = "macos")]
         {
-            use crate::sd_card::mtp::macos_ica::{ica_cache_dir_for, stage_camera_media_to};
+            use crate::sd_card::mtp::macos_ica::{
+                ica_cache_dir_for, list_camera_catalog, CameraCatalogFile,
+            };
             self.emit_status(
                 "usb_camera_staging",
                 serde_json::json!({
@@ -876,39 +1024,63 @@ impl SdCardMonitor {
                 }),
             );
             let dest = ica_cache_dir_for(drive);
-            let result = stage_camera_media_to(drive, &label, &dest);
-            match result {
-                Ok(paths) => {
-                    let strings = filter_listable_media_paths(
-                        paths
-                            .into_iter()
-                            .map(|p| p.to_string_lossy().into_owned())
-                            .collect(),
+            let drive_owned = drive.to_string();
+            let status_cb = self.on_status.lock().unwrap().clone();
+            let on_tick = status_cb.map(|cb| {
+                let drive_tick = drive_owned.clone();
+                let last_n = std::sync::atomic::AtomicUsize::new(0);
+                Box::new(move |catalog: Vec<CameraCatalogFile>| {
+                    let n = catalog.len();
+                    if n <= last_n.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+                    last_n.store(n, std::sync::atomic::Ordering::Relaxed);
+                    let listed = list_result_from_mtp_catalog(&drive_tick, &catalog);
+                    cb(
+                        "mtp_catalog",
+                        serde_json::json!({
+                            "drive": drive_tick,
+                            "files": listed.files,
+                            "total_size_mb": listed.total_size_mb,
+                            "file_count": listed.files.len(),
+                            "done": false,
+                        }),
                     );
-                    let total: u64 = strings
-                        .iter()
-                        .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
-                        .sum();
+                }) as Box<dyn FnMut(Vec<CameraCatalogFile>) + Send>
+            });
+            match list_camera_catalog(drive, &label, &dest, on_tick) {
+                Ok(catalog) => {
+                    let listed = list_result_from_mtp_catalog(drive, &catalog);
                     self.emit_status(
                         "usb_camera_staging",
                         serde_json::json!({
                             "drive": drive,
                             "label": label,
                             "state": "done",
-                            "file_count": strings.len(),
-                            "total_size_mb": total as f64 / (1024.0 * 1024.0),
+                            "file_count": listed.files.len(),
+                            "total_size_mb": listed.total_size_mb,
                         }),
                     );
-                    // Populate list cache so a follow-up list_files is cheap.
+                    self.emit_status(
+                        "mtp_catalog",
+                        serde_json::json!({
+                            "drive": drive,
+                            "files": listed.files,
+                            "total_size_mb": listed.total_size_mb,
+                            "file_count": listed.files.len(),
+                            "done": true,
+                        }),
+                    );
                     if let Ok(mut cache) = self.list_cache.lock() {
                         *cache = Some(DcimListCache {
                             drive: drive.to_string(),
-                            filtered_paths: strings.clone(),
-                            total_bytes: total,
+                            filtered_paths: listed.files.iter().map(|f| f.path.clone()).collect(),
+                            total_bytes: listed.total_size_bytes,
+                            seen_count: listed.files.len(),
                             at: Instant::now(),
                         });
                     }
-                    Ok((strings, total))
+                    Ok(listed)
                 }
                 Err(e) => {
                     let msg = e.to_string();
@@ -988,57 +1160,33 @@ impl SdCardMonitor {
 
         self.emit_status("backup_started", serde_json::json!(drive));
 
-        // USB/MTP: stage via Image Capture (macOS) then copy local paths.
-        // Never clear media on the camera in this path (ICA delete is opt-in later).
-        let (media_files, filter_root) = if is_mtp_source(drive) {
-            let staged = if let Some(selected) = selected_files.clone() {
-                let existing: Vec<String> = selected
-                    .into_iter()
-                    .filter(|p| Path::new(p).is_file())
-                    .collect();
-                if existing.is_empty() {
-                    self.scan_mtp_media(drive)?.0
-                } else {
-                    existing
-                }
-            } else {
-                self.scan_mtp_media(drive)?.0
-            };
-            let root = staged
-                .first()
-                .and_then(|p| Path::new(p).parent())
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            (staged, root)
+        if is_mtp_source(drive) {
+            return self.backup_mtp_drive(drive, selected_files, clear_after);
+        }
+
+        let dcim = resolve_drive_dcim_path(drive);
+        let dcim_path = PathBuf::from(&dcim);
+        if !dcim_path.is_dir() {
+            return Ok(BackupResult::fail(
+                format!("DCIM Ordner nicht gefunden: {dcim}"),
+                0,
+            ));
+        }
+        let media_files: Vec<String> = if let Some(selected) = selected_files {
+            selected
+                .into_iter()
+                .filter(|p| Path::new(p).is_file())
+                .collect()
         } else {
-            let dcim = resolve_drive_dcim_path(drive);
-            let dcim_path = PathBuf::from(&dcim);
-            if !dcim_path.is_dir() {
-                return Ok(BackupResult::fail(
-                    format!("DCIM Ordner nicht gefunden: {dcim}"),
-                    0,
-                ));
-            }
-            let media_files: Vec<String> = if let Some(selected) = selected_files {
-                selected
-                    .into_iter()
-                    .filter(|p| Path::new(p).is_file())
-                    .collect()
-            } else {
-                collect_media_paths_from_tree(&dcim_path)
-            };
-            (media_files, dcim)
+            collect_media_paths_from_tree(&dcim_path)
         };
+        let filter_root = dcim;
 
         let (media_files, _tl_skipped) =
             filter_media_paths_for_backup(&media_files, &filter_root, true);
         if media_files.is_empty() {
             return Ok(BackupResult::fail(
-                if is_mtp_source(drive) {
-                    "Keine Mediendateien auf der USB-Kamera gefunden".to_string()
-                } else {
-                    "Keine Mediendateien auf der SD-Karte gefunden".to_string()
-                },
+                empty_media_message(is_mtp_source(drive)).to_string(),
                 0,
             ));
         }
@@ -1135,6 +1283,7 @@ impl SdCardMonitor {
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
         let file_total = filtered.len() as u64;
+        let (hash_tx, hash_join) = spawn_identity_hasher();
 
         let emit_progress = |copied_size: u64,
                              total_mb: f64,
@@ -1199,6 +1348,8 @@ impl SdCardMonitor {
                     secondary_backup_path: None,
                     secondary_warning: None,
                     secondary_async_started: false,
+                    clear_deleted_count: None,
+                    clear_warning: None,
                 });
             }
             let file_index = (i as u64) + 1;
@@ -1270,9 +1421,7 @@ impl SdCardMonitor {
                         local_to_secondary.push((dst.clone(), dst_filename.clone()));
                     }
 
-                    if let Ok(hist) = self.history.lock() {
-                        let _ = hist.mark_backed_up(src_path);
-                    }
+                    let _ = hash_tx.send(dst.clone());
                     // Always emit once per completed file (smooth bar + accurate end-of-file %).
                     emit_progress(
                         copied_size,
@@ -1305,9 +1454,31 @@ impl SdCardMonitor {
                         secondary_backup_path: None,
                         secondary_warning: None,
                         secondary_async_started: false,
+                        clear_deleted_count: None,
+                        clear_warning: None,
                     });
                 }
             }
+        }
+
+        drop(hash_tx);
+        let hashed = hash_join.join().unwrap_or_default();
+        if let Ok(hist) = self.history.lock() {
+            let entries: Vec<(String, String, u64)> = copied_dests
+                .iter()
+                .filter_map(|p| {
+                    let pb = Path::new(p);
+                    let name = pb.file_name()?.to_str()?.to_string();
+                    if let Some((h, s)) = hashed.get(&name) {
+                        Some((name, h.clone(), *s))
+                    } else {
+                        MediaHistoryStore::compute_identity(pb)
+                            .ok()
+                            .map(|(h, s)| (name, h, s))
+                    }
+                })
+                .collect();
+            let _ = hist.mark_backed_up_identities(&entries);
         }
 
         if secondary_active && dual_mode == "local_then_server" {
@@ -1379,11 +1550,12 @@ impl SdCardMonitor {
 
         // Only ever clear files that were successfully copied in THIS backup run.
         // Never clear from config alone when the caller did not opt in via `clear_after`.
-        // USB/MTP (Image Capture): never delete from camera in 23.2b.
-        let should_clear = !is_mtp_source(drive)
-            && (matches!(clear_after, Some(true))
-                || (clear_after.is_none() && cfg.sd_clear_after_backup));
-        if should_clear && !copied_sources.is_empty() {
+        // USB/MTP: delete on camera via Image Capture (same config gate as SD volumes).
+        let want_clear = matches!(clear_after, Some(true))
+            || (clear_after.is_none() && cfg.sd_clear_after_backup);
+        let mut clear_warning: Option<String> = None;
+        let mut clear_deleted_count: Option<usize> = None;
+        if want_clear && !copied_sources.is_empty() {
             if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
                 let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
                 let current_mb = copied_size as f64 / (1024.0 * 1024.0);
@@ -1406,17 +1578,36 @@ impl SdCardMonitor {
                 });
             }
             self.emit_status("clearing_started", serde_json::json!(drive));
-            clear_sd_files(&copied_sources, Some(|current, total| {
-                self.emit_workflow(workflow_progress(
-                    "clear",
-                    current,
-                    total,
-                    "SD wird bereinigt…",
-                ));
-            }));
-            self.emit_status("clearing_finished", serde_json::json!(drive));
-        } else if should_clear && copied_sources.is_empty() {
-            // Safety: requested clear but nothing was backed up → do not touch SD.
+            if is_mtp_source(drive) {
+                let (deleted, warn) = self.clear_mtp_after_backup(drive, &copied_sources);
+                clear_deleted_count = deleted;
+                clear_warning = warn;
+            } else {
+                let before = copied_sources.len();
+                clear_sd_files(
+                    &copied_sources,
+                    Some(|current, total| {
+                        self.emit_workflow(workflow_progress(
+                            "clear",
+                            current,
+                            total,
+                            "SD wird bereinigt…",
+                        ));
+                    }),
+                );
+                // Volume clear expands sidecars; report at least the backed-up masters.
+                clear_deleted_count = Some(before);
+            }
+            self.emit_status(
+                "clearing_finished",
+                serde_json::json!({
+                    "drive": drive,
+                    "deleted": clear_deleted_count,
+                    "warning": clear_warning,
+                }),
+            );
+        } else if want_clear && copied_sources.is_empty() {
+            // Safety: requested clear but nothing was backed up → do not touch SD/camera.
             self.emit_status(
                 "clearing_skipped",
                 serde_json::json!({
@@ -1424,6 +1615,8 @@ impl SdCardMonitor {
                     "reason": "no_files_backed_up",
                 }),
             );
+            clear_deleted_count = Some(0);
+            clear_warning = Some("Nicht bereinigt (keine Dateien im Backup).".into());
         }
 
         Ok(BackupResult {
@@ -1441,7 +1634,510 @@ impl SdCardMonitor {
             },
             secondary_warning,
             secondary_async_started,
+            clear_deleted_count,
+            clear_warning,
         })
+    }
+
+    /// Backup USB/MTP camera media: catalog already listed; download selection into the
+    /// normal SD backup folder with the same progress events as a volume copy.
+    fn backup_mtp_drive(
+        &self,
+        drive: &str,
+        selected_files: Option<Vec<String>>,
+        clear_after: Option<bool>,
+    ) -> Result<BackupResult, SdError> {
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (drive, selected_files, clear_after);
+            return Ok(BackupResult::fail(
+                format!(
+                    "{drive}: USB-Kamera-Import ist auf dieser Plattform noch nicht implementiert. \
+                     Bitte SD-Karte / Kartenleser nutzen."
+                ),
+                0,
+            ));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::sd_card::mtp::macos_ica::{
+                download_camera_files, ica_cache_dir_for, virtual_media_path,
+            };
+
+            let cfg = self.config();
+            let listed = self.list_mtp_files(drive)?;
+            if listed.files.is_empty() {
+                return Ok(BackupResult::fail(
+                    empty_media_message(true).to_string(),
+                    0,
+                ));
+            }
+
+            let wanted: Option<HashSet<String>> = selected_files.as_ref().map(|sel| {
+                sel.iter()
+                    .filter_map(|p| {
+                        Path::new(p)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map(|s| s.to_ascii_lowercase())
+                    })
+                    .collect()
+            });
+
+            let mut chosen: Vec<&SdFileInfo> = listed
+                .files
+                .iter()
+                .filter(|f| match &wanted {
+                    Some(set) => set.contains(&f.filename.to_ascii_lowercase()),
+                    None => true,
+                })
+                .collect();
+
+            let virtual_paths: Vec<String> = chosen.iter().map(|f| f.path.clone()).collect();
+            let cache_root = ica_cache_dir_for(drive).to_string_lossy().into_owned();
+            let (filtered_paths, _tl) =
+                filter_media_paths_for_backup(&virtual_paths, &cache_root, true);
+            let keep: HashSet<String> = filtered_paths.iter().cloned().collect();
+            chosen.retain(|f| keep.contains(&f.path));
+            if chosen.is_empty() {
+                return Ok(BackupResult::fail(
+                    empty_media_message(true).to_string(),
+                    0,
+                ));
+            }
+
+            let names: Vec<String> = chosen.iter().map(|f| f.filename.clone()).collect();
+            let total_size: u64 = chosen.iter().map(|f| f.size_bytes).sum();
+            let total_mb = total_size as f64 / (1024.0 * 1024.0);
+            let file_total = names.len() as u64;
+
+            let backup_folder = cfg.sd_backup_folder.trim().to_string();
+            let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+            let short_hash = format!(
+                "{:04x}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_nanos() as u16)
+                    .unwrap_or(0)
+            );
+            let backup_dir_name =
+                build_backup_dir_name(&timestamp.to_string(), &cfg.sd_pc_name, &short_hash);
+            let backup_path = PathBuf::from(&backup_folder).join(&backup_dir_name);
+            fs::create_dir_all(&backup_path)?;
+
+            let dual_mode = {
+                let m = cfg.sd_server_backup_mode.trim();
+                match m {
+                    "local_then_server" => "local_then_server",
+                    "local_then_server_async" => "local_then_server_async",
+                    _ => "direct_dual_write",
+                }
+            };
+            let async_secondary = dual_mode == "local_then_server_async";
+            let mut secondary_active = cfg.sd_server_backup_enabled;
+            let dual_root = cfg.sd_server_backup_path.trim().to_string();
+            let mut secondary_path: Option<PathBuf> = None;
+            let mut secondary_warning: Option<String> = None;
+            let mut secondary_async_started = false;
+
+            if secondary_active {
+                if dual_root.is_empty() || !Path::new(&dual_root).is_dir() {
+                    secondary_warning = Some(format!(
+                        "Zweiter Backup-Pfad ungültig (Primär bleibt erfolgreich): {dual_root}"
+                    ));
+                    secondary_active = false;
+                } else if async_secondary {
+                    secondary_path = None;
+                } else {
+                    let sp = PathBuf::from(&dual_root).join(&backup_dir_name);
+                    match fs::create_dir_all(&sp) {
+                        Ok(()) => secondary_path = Some(sp),
+                        Err(e) => {
+                            secondary_warning = Some(format!(
+                                "Zweiter Backup-Pfad nicht erstellbar (Primär bleibt erfolgreich): {e}"
+                            ));
+                            secondary_active = false;
+                        }
+                    }
+                }
+            }
+
+            let start = SystemTime::now();
+            let (hash_tx, hash_join) = spawn_identity_hasher();
+
+            if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
+                cb(BackupProgress {
+                    current_mb: 0.0,
+                    total_mb,
+                    speed_mbps: 0.0,
+                    percent: 0.0,
+                    file_index: None,
+                    file_total: Some(file_total),
+                    file_name: None,
+                });
+            }
+
+            let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
+            let progress_cb = {
+                let on_progress = self.on_progress.lock().unwrap().clone();
+                let hash_tx_progress = hash_tx.clone();
+                let dest_for_hash = backup_path.clone();
+                move |file_index: u32,
+                      file_total_cb: u32,
+                      name: String,
+                      bytes_done: u64,
+                      bytes_total: u64| {
+                    if !name.is_empty() {
+                        let p = dest_for_hash.join(&name);
+                        if p.is_file() {
+                            let _ = hash_tx_progress.send(p);
+                        }
+                    }
+                    let Some(cb) = on_progress.as_ref() else {
+                        return;
+                    };
+                    let done_mb = bytes_done as f64 / (1024.0 * 1024.0);
+                    let tot = if bytes_total > 0 {
+                        bytes_total as f64 / (1024.0 * 1024.0)
+                    } else {
+                        total_mb
+                    };
+                    let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
+                    let speed = if elapsed > 0.0 {
+                        done_mb / elapsed
+                    } else {
+                        0.0
+                    };
+                    let percent = if tot > 0.0 {
+                        ((done_mb / tot) * 100.0).min(100.0)
+                    } else {
+                        0.0
+                    };
+                    cb(BackupProgress {
+                        current_mb: done_mb,
+                        total_mb: tot,
+                        speed_mbps: speed,
+                        percent,
+                        file_index: if file_index > 0 {
+                            Some(u64::from(file_index))
+                        } else {
+                            None
+                        },
+                        file_total: Some(u64::from(file_total_cb).max(file_total)),
+                        file_name: if name.is_empty() { None } else { Some(name) },
+                    });
+                }
+            };
+
+            if is_cancelled() {
+                let _ = fs::remove_dir_all(&backup_path);
+                return Ok(BackupResult {
+                    success: false,
+                    backup_path: None,
+                    error_message: Some(WORKFLOW_CANCELLED.into()),
+                    copied_count: 0,
+                    skipped_count: 0,
+                    copied_dest_paths: Vec::new(),
+                    copied_source_paths: Vec::new(),
+                    secondary_backup_path: None,
+                    secondary_warning: None,
+                    secondary_async_started: false,
+                    clear_deleted_count: None,
+                    clear_warning: None,
+                });
+            }
+
+            let downloaded = match download_camera_files(
+                drive,
+                &label,
+                &backup_path,
+                &names,
+                Some(Box::new(progress_cb)),
+            ) {
+                Ok(paths) => paths,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&backup_path);
+                    if let Some(ref sp) = secondary_path {
+                        let _ = fs::remove_dir_all(sp);
+                    }
+                    let msg = e.to_string();
+                    let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
+                        WORKFLOW_CANCELLED.to_string()
+                    } else {
+                        format!("SD-Karte wurde während des Backups entfernt: {msg}")
+                    };
+                    return Ok(BackupResult::fail(msg, 0));
+                }
+            };
+
+            self.emit_workflow(workflow_progress(
+                "backup",
+                file_total,
+                file_total,
+                "Backup wird abgeschlossen…",
+            ));
+            drop(hash_tx);
+            let hashed = hash_join.join().unwrap_or_default();
+
+            let mut copied_dests: Vec<String> = Vec::new();
+            let mut copied_sources: Vec<String> = Vec::new();
+            let mut manifest_entries = Vec::new();
+            let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
+            let mut used_names = HashSet::new();
+            let mut hist_entries: Vec<(String, String, u64)> = Vec::new();
+
+            for dest in downloaded {
+                let original_name = dest
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("file")
+                    .to_string();
+                let dst_filename = unique_dest_name(&original_name, &mut used_names);
+                let final_dest = if dst_filename == original_name {
+                    dest.clone()
+                } else {
+                    let renamed = backup_path.join(&dst_filename);
+                    if fs::rename(&dest, &renamed).is_ok() {
+                        renamed
+                    } else {
+                        dest.clone()
+                    }
+                };
+                let src_virtual = virtual_media_path(drive, &original_name)
+                    .to_string_lossy()
+                    .into_owned();
+                copied_sources.push(src_virtual.clone());
+                copied_dests.push(final_dest.to_string_lossy().into_owned());
+                manifest_entries.push(ManifestEntry {
+                    dest: dst_filename.clone(),
+                    src: Some(src_virtual),
+                    media_type: media_type_from_filename(&original_name).to_string(),
+                });
+                let ident = hashed
+                    .get(&original_name)
+                    .cloned()
+                    .or_else(|| MediaHistoryStore::compute_identity(&final_dest).ok());
+                if let Some((hash, size)) = ident {
+                    hist_entries.push((dst_filename.clone(), hash, size));
+                }
+                if secondary_active && !async_secondary {
+                    if let Some(ref sp) = secondary_path {
+                        if dual_mode == "direct_dual_write" {
+                            let secondary_dst = sp.join(&dst_filename);
+                            if let Err(e) = fs::copy(&final_dest, &secondary_dst) {
+                                secondary_warning =
+                                    Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
+                                secondary_active = false;
+                            }
+                        } else {
+                            local_to_secondary.push((final_dest.clone(), dst_filename.clone()));
+                        }
+                    }
+                } else if secondary_active && async_secondary {
+                    local_to_secondary.push((final_dest.clone(), dst_filename.clone()));
+                }
+            }
+
+            if let Ok(hist) = self.history.lock() {
+                let _ = hist.mark_backed_up_identities(&hist_entries);
+            }
+
+            if secondary_active && dual_mode == "local_then_server" {
+                if let Some(ref sp) = secondary_path {
+                    for (local_file, dst_filename) in &local_to_secondary {
+                        let secondary_dst = sp.join(dst_filename);
+                        if let Err(e) = fs::copy(local_file, &secondary_dst) {
+                            secondary_warning =
+                                Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
+                            secondary_active = false;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let session_active =
+                crate::media::dji_paths::resolve_timelapse_session_active_for_paths(
+                    &cache_root,
+                    &copied_sources,
+                    None,
+                );
+            let _ =
+                write_backup_manifest(&backup_path, &cache_root, &manifest_entries, session_active);
+
+            if secondary_active && async_secondary && !local_to_secondary.is_empty() {
+                let filenames: Vec<String> = local_to_secondary
+                    .iter()
+                    .map(|(_, name)| name.clone())
+                    .collect();
+                SECONDARY_BACKUP.enqueue(SecondaryBackupJob {
+                    id: new_job_id(),
+                    primary_path: backup_path.clone(),
+                    secondary_root: PathBuf::from(&dual_root),
+                    backup_dir_name: backup_dir_name.clone(),
+                    filenames,
+                    dcim_source: cache_root.clone(),
+                    manifest_entries: manifest_entries.clone(),
+                    timelapse_session_active: session_active,
+                });
+                secondary_async_started = true;
+                self.emit_status(
+                    "secondary_backup_queued",
+                    serde_json::json!({
+                        "primary_path": backup_path.to_string_lossy(),
+                        "secondary_root": dual_root,
+                    }),
+                );
+            }
+
+            let secondary_ok = secondary_active
+                && !async_secondary
+                && secondary_path.is_some()
+                && secondary_warning.is_none()
+                && !copied_sources.is_empty();
+            if secondary_ok {
+                if let Some(ref sp) = secondary_path {
+                    let _ =
+                        write_backup_manifest(sp, &cache_root, &manifest_entries, session_active);
+                }
+            }
+
+            let want_clear = matches!(clear_after, Some(true))
+                || (clear_after.is_none() && cfg.sd_clear_after_backup);
+            let mut clear_warning: Option<String> = None;
+            let mut clear_deleted_count: Option<usize> = None;
+            if want_clear && !copied_sources.is_empty() {
+                self.emit_status("clearing_started", serde_json::json!(drive));
+                let (deleted, warn) = self.clear_mtp_after_backup(drive, &copied_sources);
+                clear_deleted_count = deleted;
+                clear_warning = warn;
+                self.emit_status(
+                    "clearing_finished",
+                    serde_json::json!({
+                        "drive": drive,
+                        "deleted": clear_deleted_count,
+                        "warning": clear_warning,
+                    }),
+                );
+            }
+
+            return Ok(BackupResult {
+                success: true,
+                backup_path: Some(backup_path.to_string_lossy().into_owned()),
+                error_message: None,
+                copied_count: copied_sources.len(),
+                skipped_count: 0,
+                copied_dest_paths: copied_dests,
+                copied_source_paths: copied_sources,
+                secondary_backup_path: if secondary_ok {
+                    secondary_path.map(|p| p.to_string_lossy().into_owned())
+                } else {
+                    None
+                },
+                secondary_warning,
+                secondary_async_started,
+                clear_deleted_count,
+                clear_warning,
+            });
+        }
+    }
+
+    /// Delete backed-up masters (+ sidecar candidates) on an MTP/USB camera.
+    /// Returns `(Some(deleted), None)` on success, or `(None/Some(0), Some(warning))` on failure.
+    fn clear_mtp_after_backup(
+        &self,
+        drive: &str,
+        copied_sources: &[String],
+    ) -> (Option<usize>, Option<String>) {
+        let names = camera_clear_basenames(copied_sources);
+        // Do not use expanded sidecar candidate count as progress total (looks like 0/7).
+        let masters = copied_sources.len().max(1) as u64;
+        self.emit_workflow(workflow_progress(
+            "clear",
+            0,
+            masters,
+            "USB-Kamera wird bereinigt…",
+        ));
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::sd_card::mtp::macos_ica::delete_camera_files_named;
+            let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
+            let on_workflow = self.on_workflow.lock().unwrap().clone();
+            match delete_camera_files_named(
+                drive,
+                &label,
+                &names,
+                Some(Box::new(move |current, total| {
+                    if let Some(cb) = on_workflow.as_ref() {
+                        cb(workflow_progress(
+                            "clear",
+                            u64::from(current),
+                            u64::from(total).max(1),
+                            "USB-Kamera wird bereinigt…",
+                        ));
+                    }
+                })),
+            ) {
+                Ok(deleted) if deleted > 0 => {
+                    self.invalidate_list_cache_for(&[drive.to_string()]);
+                    self.emit_workflow(workflow_progress(
+                        "clear",
+                        deleted as u64,
+                        deleted as u64,
+                        &format!("USB-Kamera bereinigt ({deleted} Datei(en))."),
+                    ));
+                    (Some(deleted), None)
+                }
+                Ok(_) => {
+                    let msg = "Kamera-Bereinigung meldete Erfolg, aber es wurde nichts gelöscht."
+                        .to_string();
+                    self.emit_status(
+                        "clearing_failed",
+                        serde_json::json!({
+                            "drive": drive,
+                            "message": msg,
+                        }),
+                    );
+                    (Some(0), Some(msg))
+                }
+                Err(e) => {
+                    let msg = e.to_string();
+                    let soft = if msg.contains("Gefunden: (keine)") || msg.contains("Bildübernahme")
+                    {
+                        format!(
+                            "Backup ist gespeichert. Kamera-Bereinigung über USB nicht möglich \
+                             ({msg}). GoPro kurz ab/an stecken und erneut importieren, oder \
+                             MicroSD im Kartenleser / an der Kamera löschen."
+                        )
+                    } else {
+                        format!("Kamera-Bereinigung fehlgeschlagen: {msg}")
+                    };
+                    self.emit_status(
+                        "clearing_failed",
+                        serde_json::json!({
+                            "drive": drive,
+                            "message": soft,
+                        }),
+                    );
+                    (Some(0), Some(soft))
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (drive, names, masters);
+            (
+                Some(0),
+                Some(
+                    "Kamera-Bereinigung über USB ist auf dieser Plattform noch nicht verfügbar. \
+                     Bitte MicroSD im Kartenleser nutzen."
+                        .into(),
+                ),
+            )
+        }
     }
 
     /// Standalone SD wipe is intentionally disabled — clear only after a successful backup.
@@ -1531,8 +2227,7 @@ impl SdCardMonitor {
 pub fn sanitize_pc_name_for_backup(raw: &str) -> String {
     let mut out = String::new();
     for ch in raw.trim().chars() {
-        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control()
-        {
+        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control() {
             out.push('_');
         } else {
             out.push(ch);
@@ -1594,6 +2289,62 @@ fn sd_file_info_light(path: &str) -> Option<SdFileInfo> {
     })
 }
 
+fn sd_file_info_from_catalog(path: String, filename: &str, size: u64, mtime: f64) -> SdFileInfo {
+    let ext = Path::new(filename)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{}", e.to_ascii_lowercase()))
+        .unwrap_or_default();
+    SdFileInfo {
+        path,
+        filename: filename.to_string(),
+        size_bytes: size,
+        is_video: is_video_ext(&ext),
+        mtime,
+        display_epoch: mtime,
+        already_processed: false,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn list_result_from_mtp_catalog(
+    drive: &str,
+    catalog: &[crate::sd_card::mtp::macos_ica::CameraCatalogFile],
+) -> ListSdFilesResult {
+    use crate::sd_card::mtp::macos_ica::virtual_media_path;
+    let mut files: Vec<SdFileInfo> = catalog
+        .iter()
+        .map(|e| {
+            sd_file_info_from_catalog(
+                virtual_media_path(drive, &e.name)
+                    .to_string_lossy()
+                    .into_owned(),
+                &e.name,
+                e.size,
+                e.mtime,
+            )
+        })
+        .collect();
+    files.sort_by(|a, b| {
+        let by_date = a
+            .display_epoch
+            .partial_cmp(&b.display_epoch)
+            .unwrap_or(std::cmp::Ordering::Equal);
+        if by_date != std::cmp::Ordering::Equal {
+            return by_date;
+        }
+        a.filename.cmp(&b.filename)
+    });
+    let total: u64 = files.iter().map(|f| f.size_bytes).sum();
+    ListSdFilesResult {
+        drive: drive.to_string(),
+        total_size_mb: total as f64 / (1024.0 * 1024.0),
+        total_size_bytes: total,
+        empty_reason: list_empty_reason(files.len(), catalog.len()),
+        files,
+    }
+}
+
 fn clear_sd_files<F>(files: &[String], mut on_progress: Option<F>)
 where
     F: FnMut(u64, u64),
@@ -1619,7 +2370,10 @@ where
     let mut sorted: Vec<_> = dirs.into_iter().collect();
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
     for dir in sorted {
-        if fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if fs::read_dir(&dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
             let _ = fs::remove_dir(&dir);
         }
     }
@@ -1753,9 +2507,7 @@ pub fn is_linux_mount_candidate(path: &str) -> bool {
     if let Some(rest) = trimmed.strip_prefix("/run/media/") {
         let parts: Vec<_> = rest.split('/').filter(|p| !p.is_empty()).collect();
         // /run/media/<user>/<label>
-        return parts.len() == 2
-            && !parts[0].starts_with('.')
-            && !parts[1].starts_with('.');
+        return parts.len() == 2 && !parts[0].starts_with('.') && !parts[1].starts_with('.');
     }
 
     if let Some(rest) = trimmed.strip_prefix("/media/") {
@@ -1848,7 +2600,11 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
         .filter(|d| is_drive_ready(d) && is_action_cam_sd_card(d))
         .map(make_sd_drive_info)
         .collect();
+    let visible_usb = SD_MONITOR.visible_usb_action_cam_ids();
     for cam in crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras() {
+        if !visible_usb.contains(&cam.source_id) {
+            continue;
+        }
         if drives.iter().any(|d| d.drive == cam.source_id) {
             continue;
         }
@@ -1898,7 +2654,9 @@ mod tests {
     fn sanitize_pc_name_replaces_invalid_and_caps_length() {
         assert_eq!(sanitize_pc_name_for_backup("  Desk:Top  "), "Desk_Top");
         assert_eq!(
-            sanitize_pc_name_for_backup("a".repeat(40).as_str()).chars().count(),
+            sanitize_pc_name_for_backup("a".repeat(40).as_str())
+                .chars()
+                .count(),
             32
         );
         assert!(sanitize_pc_name_for_backup("   ").is_empty());
@@ -1921,8 +2679,7 @@ mod tests {
         let p = resolve_drive_dcim_path("/Volumes/NO NAME");
         let normalized = p.replace('\\', "/");
         assert!(
-            normalized.ends_with("/Volumes/NO NAME/DCIM")
-                || normalized == "/Volumes/NO NAME/DCIM",
+            normalized.ends_with("/Volumes/NO NAME/DCIM") || normalized == "/Volumes/NO NAME/DCIM",
             "unexpected DCIM path: {normalized}"
         );
     }
@@ -1934,7 +2691,9 @@ mod tests {
         assert!(is_macos_volume_candidate("/Volumes/NO NAME"));
         assert!(!is_macos_volume_candidate("/Volumes/Macintosh HD"));
         assert!(!is_macos_volume_candidate("/Volumes/Macintosh HD - Data"));
-        assert!(!is_macos_volume_candidate("/Volumes/com.apple.TimeMachine.localsnapshots"));
+        assert!(!is_macos_volume_candidate(
+            "/Volumes/com.apple.TimeMachine.localsnapshots"
+        ));
         assert!(!is_macos_volume_candidate("/Volumes/"));
         assert!(!is_macos_volume_candidate("/media/usb"));
         assert!(!is_macos_volume_candidate("/Volumes/nested/path"));
@@ -1973,11 +2732,8 @@ mod tests {
         let paths = collect_media_paths_from_tree(&dir.path().join("DCIM"));
         assert_eq!(paths.len(), 2);
 
-        let (kept, _) = filter_media_paths_for_backup(
-            &paths,
-            &dir.path().join("DCIM").to_string_lossy(),
-            true,
-        );
+        let (kept, _) =
+            filter_media_paths_for_backup(&paths, &dir.path().join("DCIM").to_string_lossy(), true);
         assert_eq!(kept.len(), 2);
     }
 
@@ -2007,6 +2763,7 @@ mod tests {
             declined_drives: Mutex::new(HashSet::new()),
             processed_drives: Mutex::new(HashSet::new()),
             processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
@@ -2041,7 +2798,9 @@ mod tests {
         assert!(primary.join("b.jpg").is_file());
         assert_eq!(result.copied_dest_paths.len(), 2);
         assert_eq!(result.copied_source_paths.len(), 2);
-        assert!(primary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+        assert!(primary
+            .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
+            .is_file());
     }
 
     #[test]
@@ -2063,6 +2822,7 @@ mod tests {
             declined_drives: Mutex::new(HashSet::new()),
             processed_drives: Mutex::new(HashSet::new()),
             processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
@@ -2088,7 +2848,11 @@ mod tests {
         let drive = src.path().to_string_lossy().into_owned();
         let result = monitor.backup_drive(&drive, None).unwrap();
         assert!(result.success, "{:?}", result.error_message);
-        assert!(result.secondary_warning.is_none(), "{:?}", result.secondary_warning);
+        assert!(
+            result.secondary_warning.is_none(),
+            "{:?}",
+            result.secondary_warning
+        );
         let primary = PathBuf::from(result.backup_path.as_ref().unwrap());
         let secondary = PathBuf::from(result.secondary_backup_path.as_ref().unwrap());
         assert!(primary.join("clip.mp4").is_file());
@@ -2097,7 +2861,9 @@ mod tests {
             fs::read(primary.join("clip.mp4")).unwrap(),
             fs::read(secondary.join("clip.mp4")).unwrap()
         );
-        assert!(secondary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+        assert!(secondary
+            .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
+            .is_file());
     }
 
     #[test]
@@ -2118,6 +2884,7 @@ mod tests {
             declined_drives: Mutex::new(HashSet::new()),
             processed_drives: Mutex::new(HashSet::new()),
             processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
@@ -2171,10 +2938,9 @@ mod tests {
                 declined_drives: Mutex::new(HashSet::new()),
                 processed_drives: Mutex::new(HashSet::new()),
                 processing_drives: Mutex::new(HashSet::new()),
+                ejected_mtp_sources: Mutex::new(HashSet::new()),
                 backup_in_progress: AtomicBool::new(false),
-                history: Mutex::new(
-                    MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap(),
-                ),
+                history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
                 list_cache: Mutex::new(None),
                 config_provider: Mutex::new(Box::new({
                     let p = primary_root.path().to_path_buf();
@@ -2270,6 +3036,7 @@ mod tests {
             declined_drives: Mutex::new(HashSet::new()),
             processed_drives: Mutex::new(HashSet::new()),
             processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
@@ -2284,6 +3051,7 @@ mod tests {
         let drive = src.path().to_string_lossy().into_owned();
         let listed = monitor.list_files(&drive).unwrap();
         assert_eq!(listed.files.len(), 2);
+        assert!(listed.empty_reason.is_none());
         for f in &listed.files {
             assert!(!f.already_processed);
             assert_eq!(f.display_epoch, f.mtime);
@@ -2300,5 +3068,100 @@ mod tests {
             assert!(!e.already_processed);
             assert!(e.display_epoch > 0.0 || e.display_epoch == 0.0);
         }
+    }
+
+    #[test]
+    fn catalog_entry_builds_sd_file_info_without_local_file() {
+        let info = sd_file_info_from_catalog(
+            "/tmp/aero_tandem_ica/mtp_gopro_x/GX010123.MP4".into(),
+            "GX010123.MP4",
+            1_048_576,
+            1_690_000_000.0,
+        );
+        assert_eq!(info.filename, "GX010123.MP4");
+        assert!(info.is_video);
+        assert_eq!(info.size_bytes, 1_048_576);
+        assert_eq!(info.display_epoch, info.mtime);
+        assert!(!info.already_processed);
+        let photo = sd_file_info_from_catalog(
+            "/tmp/aero_tandem_ica/mtp_gopro_x/GOPR0001.JPG".into(),
+            "GOPR0001.JPG",
+            2048,
+            1.0,
+        );
+        assert!(!photo.is_video);
+    }
+
+    fn test_monitor(hist: &tempfile::TempDir) -> SdCardMonitor {
+        SdCardMonitor {
+            monitoring: AtomicBool::new(false),
+            known_drives: Mutex::new(HashSet::new()),
+            action_cam_drives: Mutex::new(HashSet::new()),
+            pending_drives: Mutex::new(HashSet::new()),
+            declined_drives: Mutex::new(HashSet::new()),
+            processed_drives: Mutex::new(HashSet::new()),
+            processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
+            backup_in_progress: AtomicBool::new(false),
+            history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
+            config_provider: Mutex::new(Box::new(AppConfig::default)),
+            on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
+            on_status: Mutex::new(None),
+            on_inserted: Mutex::new(None),
+            on_removed: Mutex::new(None),
+        }
+    }
+
+    #[test]
+    fn empty_catalog_messages_are_warnings_not_errors() {
+        assert_eq!(
+            empty_media_message(true),
+            "Keine Medien auf der Kamera gefunden."
+        );
+        assert_eq!(
+            empty_media_message(false),
+            "Keine Mediendateien auf der SD-Karte gefunden."
+        );
+        assert!(is_empty_catalog_message(empty_media_message(true)));
+        assert!(is_empty_catalog_message(empty_media_message(false)));
+        assert!(is_empty_catalog_message(filtered_only_message()));
+        assert!(!is_empty_catalog_message("DCIM nicht gefunden: /Volumes/X/DCIM"));
+        assert!(!is_empty_catalog_message("Kamera wurde getrennt."));
+        assert_eq!(list_empty_reason(2, 2), None);
+        assert_eq!(list_empty_reason(0, 0), Some(ListEmptyReason::NoMedia));
+        assert_eq!(
+            list_empty_reason(0, 3),
+            Some(ListEmptyReason::FilteredOnly)
+        );
+    }
+
+    #[test]
+    fn list_files_empty_dcim_is_ok_no_media() {
+        let src = tempdir().unwrap();
+        fs::create_dir_all(src.path().join("DCIM").join("100")).unwrap();
+        let hist = tempdir().unwrap();
+        let monitor = test_monitor(&hist);
+        let listed = monitor
+            .list_files(&src.path().to_string_lossy())
+            .unwrap();
+        assert!(listed.files.is_empty());
+        assert_eq!(listed.empty_reason, Some(ListEmptyReason::NoMedia));
+    }
+
+    #[test]
+    fn list_files_timelapse_only_videos_are_filtered() {
+        let src = tempdir().unwrap();
+        let tl = src.path().join("DCIM").join("100MEDIA").join("timelapse");
+        fs::create_dir_all(&tl).unwrap();
+        fs::write(tl.join("DJI_0001.MP4"), vec![0u8; 1024]).unwrap();
+        let hist = tempdir().unwrap();
+        let monitor = test_monitor(&hist);
+        let listed = monitor
+            .list_files(&src.path().to_string_lossy())
+            .unwrap();
+        assert!(listed.files.is_empty());
+        assert_eq!(listed.empty_reason, Some(ListEmptyReason::FilteredOnly));
     }
 }

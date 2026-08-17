@@ -9,7 +9,6 @@ use crate::commands::config::ConfigState;
 use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
 use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
 use crate::sd_card::autoplay;
-use crate::sd_card::eject::eject_drive;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
     SdFileEnrichment, SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS,
@@ -147,22 +146,38 @@ pub async fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
         .map_err(|e| e.to_string())?;
     match result {
         Ok(res) => {
-            logging::info(
-                "sd",
-                format!(
-                    "SD-Dateien: {} Datei(en), {:.1} MB",
-                    res.files.len(),
-                    res.total_size_mb
-                ),
-            );
+            if res.files.is_empty() {
+                let hint = match res.empty_reason {
+                    Some(crate::sd_card::monitor::ListEmptyReason::FilteredOnly) => {
+                        crate::sd_card::monitor::filtered_only_message()
+                    }
+                    _ => crate::sd_card::monitor::empty_media_message(
+                        crate::sd_card::monitor::is_mtp_source(&drive_log),
+                    ),
+                };
+                logging::warn("sd", format!("SD-Liste leer ({drive_log}): {hint}"));
+            } else {
+                logging::info(
+                    "sd",
+                    format!(
+                        "SD-Dateien: {} Datei(en), {:.1} MB",
+                        res.files.len(),
+                        res.total_size_mb
+                    ),
+                );
+            }
             Ok(res)
         }
         Err(e) => {
             let msg = e.to_string();
-            logging::error(
-                "sd",
-                format!("SD-Liste fehlgeschlagen ({drive_log}): {msg}"),
-            );
+            if crate::sd_card::monitor::is_empty_catalog_message(&msg) {
+                logging::warn("sd", format!("SD-Liste leer ({drive_log}): {msg}"));
+            } else {
+                logging::error(
+                    "sd",
+                    format!("SD-Liste fehlgeschlagen ({drive_log}): {msg}"),
+                );
+            }
             Err(msg)
         }
     }
@@ -222,16 +237,28 @@ pub async fn backup_sd_card(
 
     match result {
         Ok(res) => {
-            logging::info(
-                "sd",
-                format!(
-                    "Backup fertig: copied={}, skipped={}, path={}, secondary={}",
-                    res.copied_count,
-                    res.skipped_count,
-                    res.backup_path.as_deref().unwrap_or("-"),
-                    res.secondary_backup_path.as_deref().unwrap_or("-")
-                ),
-            );
+            if !res.success {
+                let msg = res
+                    .error_message
+                    .as_deref()
+                    .unwrap_or("Backup fehlgeschlagen");
+                if crate::sd_card::monitor::is_empty_catalog_message(msg) {
+                    logging::warn("sd", format!("Backup übersprungen: {msg}"));
+                } else {
+                    logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+                }
+            } else {
+                logging::info(
+                    "sd",
+                    format!(
+                        "Backup fertig: copied={}, skipped={}, path={}, secondary={}",
+                        res.copied_count,
+                        res.skipped_count,
+                        res.backup_path.as_deref().unwrap_or("-"),
+                        res.secondary_backup_path.as_deref().unwrap_or("-")
+                    ),
+                );
+            }
             if let Some(ref w) = res.secondary_warning {
                 logging::warn("sd", format!("Zweiter Backup-Pfad: {w}"));
             }
@@ -305,7 +332,7 @@ pub fn decline_sd_backup(drive: String) -> Result<(), String> {
 #[tauri::command]
 pub fn eject_sd_card(drive: String) -> Result<(), String> {
     logging::info("sd", format!("SD auswerfen: {drive}"));
-    match eject_drive(&drive) {
+    match SD_MONITOR.eject_source(&drive) {
         Ok(()) => {
             logging::info("sd", format!("SD ausgeworfen: {drive}"));
             Ok(())
@@ -328,18 +355,43 @@ pub async fn get_media_thumbnail(
     let resource_dir = app.path().resource_dir().ok();
     let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok();
     tauri::async_runtime::spawn_blocking(move || {
-        let result = generate_thumbnail_cached_with_ffmpeg(
-            std::path::Path::new(&path),
-            q,
-            ffmpeg.as_deref(),
-        );
-        match result {
-            Ok((_bytes, data_url)) => Ok(ThumbnailResult { path, data_url }),
-            Err(e) => {
-                let msg = e.to_string();
-                logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
-                Err(msg)
+        let p = std::path::Path::new(&path);
+        if p.is_file() {
+            match generate_thumbnail_cached_with_ffmpeg(p, q, ffmpeg.as_deref()) {
+                Ok((_bytes, data_url)) => Ok(ThumbnailResult { path, data_url }),
+                Err(e) => {
+                    let msg = e.to_string();
+                    logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
+                    Err(msg)
+                }
             }
+        } else {
+            #[cfg(target_os = "macos")]
+            {
+                use crate::media::thumbnail::jpeg_bytes_to_data_url;
+                use crate::sd_card::mtp::macos_ica::{
+                    camera_thumbnail_jpeg, is_ica_cache_media_path,
+                };
+                if is_ica_cache_media_path(p) {
+                    if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+                        let cache = p
+                            .parent()
+                            .unwrap_or(p)
+                            .join(".thumbs")
+                            .join(format!("{name}.jpg"));
+                        match camera_thumbnail_jpeg(name, &cache, q.max_size()) {
+                            Ok(bytes) => {
+                                return Ok(ThumbnailResult {
+                                    path,
+                                    data_url: jpeg_bytes_to_data_url(&bytes),
+                                });
+                            }
+                            Err(_) => return Err("no camera thumbnail".into()),
+                        }
+                    }
+                }
+            }
+            Err("not found".into())
         }
     })
     .await

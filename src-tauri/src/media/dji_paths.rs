@@ -281,8 +281,7 @@ pub fn filter_media_paths_for_backup(
     let effective = resolve_dcim_root(dcim_root)
         .map(|p| normalize_media_path(&p))
         .unwrap_or_else(|| normalize_media_path(dcim_root));
-    let session_active =
-        resolve_timelapse_session_active_for_paths(&effective, media_paths, None);
+    let session_active = resolve_timelapse_session_active_for_paths(&effective, media_paths, None);
     let mut kept = Vec::new();
     let mut skipped = 0;
     for path in media_paths {
@@ -369,6 +368,82 @@ fn walkdir_simple(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Unique camera basenames for MTP clear (masters only). Sidecars/proxies are
+/// matched on the camera by stem (`GX…` → `GL…`) so we do not send thousands of
+/// candidate names over the Image Capture FFI.
+pub fn camera_clear_basenames(backed_up_paths: &[String]) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+    for path in backed_up_paths {
+        let Some(fname) = Path::new(path).file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let key = fname.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(fname.to_string());
+        }
+    }
+    out
+}
+
+/// Candidate basenames to delete on a camera (MTP / Image Capture).
+///
+/// Unlike [`expand_files_for_sd_clear`], this does not scan a directory — it emits
+/// the master names plus likely sidecar names (same stem + GoPro `GL…` proxies).
+/// The camera layer deletes whatever exists (case-insensitive match).
+pub fn expand_basenames_for_camera_clear(backed_up_paths: &[String]) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut out = Vec::new();
+
+    let mut push = |name: String| {
+        if name.is_empty() {
+            return;
+        }
+        let key = name.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(name);
+        }
+    };
+
+    for path in backed_up_paths {
+        let pb = Path::new(path);
+        let Some(fname) = pb.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        push(fname.to_string());
+
+        let stem = pb
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        if stem.is_empty() {
+            continue;
+        }
+
+        for &ext in SIDECAR_EXTENSIONS {
+            push(format!("{stem}{ext}"));
+            // Cameras often use uppercase extensions (`.LRV` / `.THM`).
+            push(format!("{stem}{}", ext.to_ascii_uppercase()));
+        }
+
+        if let Some(proxy_lower) = gopro_proxy_stem(&stem) {
+            // Prefer GoPro-style `GL` + original digit suffix casing.
+            let proxy = if stem.len() >= 2 {
+                format!("GL{}", &stem[2..])
+            } else {
+                proxy_lower.to_ascii_uppercase()
+            };
+            for &ext in SIDECAR_EXTENSIONS {
+                push(format!("{proxy}{ext}"));
+                push(format!("{proxy}{}", ext.to_ascii_uppercase()));
+            }
+        }
+    }
+
+    out
+}
+
 /// Expand delete list with sidecar files (same stem, non-media extension).
 /// Also pairs GoPro `GX…`/`GH…` masters with `GL….LRV` proxies in the same folder.
 pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
@@ -388,14 +463,19 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
         to_delete.insert(key, path.clone());
         if let (Some(dir), Some(stem)) = (
             pb.parent().map(|p| p.to_path_buf()),
-            pb.file_stem().and_then(|s| s.to_str()).map(|s| s.to_ascii_lowercase()),
+            pb.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase()),
         ) {
             exact_stems_by_dir
                 .entry(dir.clone())
                 .or_default()
                 .insert(stem.clone());
             if let Some(proxy) = gopro_proxy_stem(&stem) {
-                proxy_stems_by_dir.entry(dir.clone()).or_default().insert(proxy);
+                proxy_stems_by_dir
+                    .entry(dir.clone())
+                    .or_default()
+                    .insert(proxy);
             }
             // macOS AppleDouble companion next to the media file (`._` + filename).
             if let Some(name) = pb.file_name().and_then(|n| n.to_str()) {
@@ -440,8 +520,7 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
                 .unwrap_or_default();
             let ext = ext_of(&full);
             let via_exact = exact.is_some_and(|s| s.contains(&stem)) && !media.contains(&ext);
-            let via_proxy =
-                proxy.is_some_and(|s| s.contains(&stem)) && is_sidecar_ext(&ext);
+            let via_proxy = proxy.is_some_and(|s| s.contains(&stem)) && is_sidecar_ext(&ext);
             if via_exact || via_proxy {
                 to_delete.insert(key, full_s);
             }
@@ -589,11 +668,12 @@ mod tests {
             "E:\\DCIM\\DJI_001\\movie.MP4".into(),
             "E:\\DCIM\\DJI_001\\photo.JPG".into(),
         ];
-        let (kept, skipped) =
-            filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
+        let (kept, skipped) = filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
         assert_eq!(skipped, 1);
         assert_eq!(kept.len(), 2);
-        assert!(kept.iter().all(|p| !p.to_ascii_lowercase().ends_with(".mp4")));
+        assert!(kept
+            .iter()
+            .all(|p| !p.to_ascii_lowercase().ends_with(".mp4")));
     }
 
     #[test]
@@ -736,6 +816,28 @@ mod tests {
     }
 
     #[test]
+    fn camera_clear_basenames_are_unique_masters() {
+        let names = camera_clear_basenames(&[
+            "/tmp/GX010001.MP4".into(),
+            "/tmp/G0010001.JPG".into(),
+            "/virtual/GX010001.MP4".into(),
+        ]);
+        assert_eq!(names.len(), 2);
+        assert!(names.iter().any(|n| n == "GX010001.MP4"));
+        assert!(names.iter().any(|n| n == "G0010001.JPG"));
+    }
+
+    #[test]
+    fn expand_basenames_for_camera_clear_include_gopro_lrv() {
+        let names = expand_basenames_for_camera_clear(&["/tmp/GX010001.MP4".into()]);
+        let lower: Vec<_> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+        assert!(lower.iter().any(|n| n == "gx010001.mp4"));
+        assert!(lower.iter().any(|n| n == "gx010001.thm"));
+        assert!(lower.iter().any(|n| n == "gl010001.lrv"));
+        assert!(!lower.iter().any(|n| n == "gl999999.lrv"));
+    }
+
+    #[test]
     fn gopro_proxy_stem_mapping() {
         assert_eq!(gopro_proxy_stem("GX010001").as_deref(), Some("gl010001"));
         assert_eq!(gopro_proxy_stem("gh010042").as_deref(), Some("gl010042"));
@@ -746,8 +848,12 @@ mod tests {
     #[test]
     fn timelapse_filename_regex() {
         assert!(is_timelapse_photo_filename("Foto_20240101120000000.JPG"));
-        assert!(is_timelapse_photo_filename("Foto_20240101120000000_001.jpg"));
-        assert!(is_timelapse_photo_filename("Foto_20240101120000000_0001.JPG"));
+        assert!(is_timelapse_photo_filename(
+            "Foto_20240101120000000_001.jpg"
+        ));
+        assert!(is_timelapse_photo_filename(
+            "Foto_20240101120000000_0001.JPG"
+        ));
         assert!(is_timelapse_photo_filename("Foto_20240101120000000.PNG"));
         assert!(!is_timelapse_photo_filename("DJI_0001.JPG"));
     }

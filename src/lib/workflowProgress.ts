@@ -96,12 +96,16 @@ export function resolveSdWorkflowProgress(opts: {
 
   if (
     workflowProgress &&
-    (workflowProgress.stage === "clear" || workflowProgress.stage === "import")
+    (workflowProgress.stage === "clear" ||
+      workflowProgress.stage === "import" ||
+      workflowProgress.stage === "backup")
   ) {
     const fallback =
       workflowProgress.stage === "clear"
         ? "SD wird bereinigt…"
-        : msg || "Importiere…";
+        : workflowProgress.stage === "backup"
+          ? "Backup wird abgeschlossen…"
+          : msg || "Importiere…";
     return {
       percent: workflowProgress.percent,
       label: formatWorkflowLabel(workflowProgress, fallback),

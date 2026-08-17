@@ -1,12 +1,14 @@
 //! Hash-based media history store (port of legacy `media_history.py`).
 
-use std::collections::HashSet;
-use std::fs::{self, File};
-use std::io::Read;
-use std::path::{Path, PathBuf};
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension};
 use serde::Serialize;
 use sha1::{Digest, Sha1};
+use std::collections::{HashMap, HashSet};
+use std::fs::{self, File};
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
 use thiserror::Error;
 
 use crate::media::dji_paths::media_type_from_filename;
@@ -148,8 +150,8 @@ impl MediaHistoryStore {
         Ok(matches!(imported, Some(Some(_))))
     }
 
-    pub fn upsert(
-        &self,
+    fn upsert_on(
+        conn: &Connection,
         identity_hash: &str,
         filename: &str,
         size_bytes: u64,
@@ -158,7 +160,6 @@ impl MediaHistoryStore {
         imported_at: Option<&str>,
         created_at: Option<&str>,
     ) -> Result<(), MediaHistoryError> {
-        let conn = self.connect()?;
         let now = utc_now_iso();
         let existing: Option<(Option<String>, Option<String>)> = conn
             .query_row(
@@ -202,6 +203,61 @@ impl MediaHistoryStore {
             )?;
         }
         Ok(())
+    }
+
+    pub fn upsert(
+        &self,
+        identity_hash: &str,
+        filename: &str,
+        size_bytes: u64,
+        media_type: &str,
+        backed_up_at: Option<&str>,
+        imported_at: Option<&str>,
+        created_at: Option<&str>,
+    ) -> Result<(), MediaHistoryError> {
+        let conn = self.connect()?;
+        Self::upsert_on(
+            &conn,
+            identity_hash,
+            filename,
+            size_bytes,
+            media_type,
+            backed_up_at,
+            imported_at,
+            created_at,
+        )
+    }
+
+    /// One SQLite connection + transaction. `entries` is `(filename, identity_hash, size)`.
+    pub fn mark_backed_up_identities(
+        &self,
+        entries: &[(String, String, u64)],
+    ) -> Result<usize, MediaHistoryError> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.connect()?;
+        let now = utc_now_iso();
+        let tx = conn.unchecked_transaction()?;
+        for (filename, hash, size) in entries {
+            let media_type = media_type_from_filename(filename);
+            Self::upsert_on(
+                &tx,
+                hash,
+                filename,
+                *size,
+                media_type,
+                Some(&now),
+                None,
+                None,
+            )?;
+        }
+        tx.commit()?;
+        logging::info(
+            "history",
+            format!("Verlauf: Backup vermerkt für {} Datei(en)", entries.len()),
+        );
+        Ok(entries.len())
     }
 
     pub fn list_entries(
@@ -251,8 +307,10 @@ impl MediaHistoryStore {
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!("DELETE FROM processed_files WHERE id IN ({placeholders})");
         let mut stmt = conn.prepare(&sql)?;
-        let params_dyn: Vec<&dyn rusqlite::types::ToSql> =
-            ids.iter().map(|i| i as &dyn rusqlite::types::ToSql).collect();
+        let params_dyn: Vec<&dyn rusqlite::types::ToSql> = ids
+            .iter()
+            .map(|i| i as &dyn rusqlite::types::ToSql)
+            .collect();
         stmt.execute(params_dyn.as_slice())?;
         Ok(())
     }
@@ -267,7 +325,10 @@ impl MediaHistoryStore {
         let now = utc_now_iso();
         logging::info(
             "history",
-            format!("Verlauf: markiere {} Datei(en) als importiert", file_paths.len()),
+            format!(
+                "Verlauf: markiere {} Datei(en) als importiert",
+                file_paths.len()
+            ),
         );
         for path in file_paths {
             let Ok((hash, size)) = Self::compute_identity(path) else {
@@ -279,15 +340,7 @@ impl MediaHistoryStore {
                 .unwrap_or("unknown")
                 .to_string();
             let media_type = media_type_from_filename(&filename);
-            self.upsert(
-                &hash,
-                &filename,
-                size,
-                media_type,
-                None,
-                Some(&now),
-                None,
-            )?;
+            self.upsert(&hash, &filename, size, media_type, None, Some(&now), None)?;
         }
         Ok(())
     }
@@ -299,11 +352,41 @@ impl MediaHistoryStore {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
-        let media_type = media_type_from_filename(&filename);
-        let now = utc_now_iso();
-        logging::debug("history", format!("Verlauf: Backup vermerkt für {filename}"));
-        self.upsert(&hash, &filename, size, media_type, Some(&now), None, None)
+        self.mark_backed_up_identities(&[(filename, hash, size)])?;
+        Ok(())
     }
+}
+
+/// Hash files on a background thread while the next copy/download continues (cache-hot).
+/// Drop the sender, then `join` the handle to collect `(filename → (hash, size))`.
+pub fn spawn_identity_hasher() -> (
+    mpsc::Sender<PathBuf>,
+    thread::JoinHandle<HashMap<String, (String, u64)>>,
+) {
+    let (tx, rx) = mpsc::channel::<PathBuf>();
+    let handle = thread::Builder::new()
+        .name("media-hist-hash".into())
+        .spawn(move || {
+            let mut map = HashMap::new();
+            while let Ok(path) = rx.recv() {
+                let Some(name) = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
+                if map.contains_key(&name) {
+                    continue;
+                }
+                if let Ok((hash, size)) = MediaHistoryStore::compute_identity(&path) {
+                    map.insert(name, (hash, size));
+                }
+            }
+            map
+        })
+        .expect("spawn media-hist-hash");
+    (tx, handle)
 }
 
 fn map_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProcessedFileEntry> {
@@ -356,16 +439,70 @@ mod tests {
         write!(f, "abc123").unwrap();
         let (hash, size) = MediaHistoryStore::compute_identity(f.path()).unwrap();
         store
-            .upsert(&hash, "abc.mp4", size, "video", Some("2024-01-01T00:00:00"), None, None)
+            .upsert(
+                &hash,
+                "abc.mp4",
+                size,
+                "video",
+                Some("2024-01-01T00:00:00"),
+                None,
+                None,
+            )
             .unwrap();
         assert!(store.contains(&hash).unwrap());
         assert!(!store.was_imported(&hash).unwrap());
         store
-            .upsert(&hash, "abc.mp4", size, "video", None, Some("2024-01-02T00:00:00"), None)
+            .upsert(
+                &hash,
+                "abc.mp4",
+                size,
+                "video",
+                None,
+                Some("2024-01-02T00:00:00"),
+                None,
+            )
             .unwrap();
         assert!(store.was_imported(&hash).unwrap());
         let entries = store.list_entries(10, Some("abc")).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].filename, "abc.mp4");
+    }
+
+    #[test]
+    fn mark_backed_up_identities_one_transaction() {
+        let dir = tempdir().unwrap();
+        let store = MediaHistoryStore::open_at(dir.path().join("h.db")).unwrap();
+        store
+            .mark_backed_up_identities(&[
+                ("a.jpg".into(), "aa".repeat(20), 10),
+                ("b.jpg".into(), "bb".repeat(20), 20),
+            ])
+            .unwrap();
+        assert!(store.contains(&"aa".repeat(20)).unwrap());
+        assert!(store.contains(&"bb".repeat(20)).unwrap());
+        let list = store.list_entries(10, None).unwrap();
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn mark_backed_up_single_and_hasher() {
+        let dir = tempdir().unwrap();
+        let store = MediaHistoryStore::open_at(dir.path().join("h.db")).unwrap();
+        let mut f = NamedTempFile::new_in(dir.path()).unwrap();
+        write!(f, "xyz-backup").unwrap();
+        store.mark_backed_up(f.path()).unwrap();
+        let expected = MediaHistoryStore::compute_identity(f.path()).unwrap();
+        assert!(store.contains(&expected.0).unwrap());
+
+        let p = dir.path().join("hashed.bin");
+        std::fs::write(&p, b"hello-hash").unwrap();
+        let (tx, join) = spawn_identity_hasher();
+        tx.send(p.clone()).unwrap();
+        drop(tx);
+        let map = join.join().unwrap();
+        assert_eq!(
+            map.get("hashed.bin"),
+            Some(&MediaHistoryStore::compute_identity(&p).unwrap())
+        );
     }
 }

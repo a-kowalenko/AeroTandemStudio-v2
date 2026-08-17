@@ -14,11 +14,19 @@ type QueueItem = {
   quality: ThumbQualityLevel;
   /** Higher = sooner (visible tiles). */
   priority: number;
+  retries: number;
 };
 
 const CONCURRENCY = 3;
+const ICA_CONCURRENCY = 1;
 const HQ_DELAY_MS = 450;
 const FLUSH_MS = 80;
+const ICA_RETRY_MS = 250;
+const ICA_MAX_RETRIES = 2;
+
+function isIcaVirtualPath(path: string): boolean {
+  return path.includes("aero_tandem_ica");
+}
 
 /** Process-wide memory cache (survives dialog close). */
 const memoryCache = new Map<string, ThumbState>();
@@ -151,11 +159,11 @@ export class SdThumbnailLoader {
       prev.priority = Math.max(prev.priority, priority);
       return;
     }
-    this.pending.set(key, { path, quality, priority });
+    this.pending.set(key, { path, quality, priority, retries: 0 });
   }
 
   private pump() {
-    while (this.active < CONCURRENCY && this.pending.size > 0 && !this.stopped) {
+    while (this.pending.size > 0 && !this.stopped) {
       let bestKey: string | null = null;
       let best: QueueItem | null = null;
       for (const [k, item] of this.pending) {
@@ -165,6 +173,9 @@ export class SdThumbnailLoader {
         }
       }
       if (!best || !bestKey) break;
+      const ica = isIcaVirtualPath(best.path);
+      const limit = ica ? ICA_CONCURRENCY : CONCURRENCY;
+      if (this.active >= limit) break;
       this.pending.delete(bestKey);
       // Skip HQ if tile left viewport
       if (best.quality === "hq" && !this.visible.has(best.path)) continue;
@@ -189,8 +200,28 @@ export class SdThumbnailLoader {
       } else {
         this.publish(item.path, state);
       }
-    } catch (e) {
-      console.warn("[thumb]", item.quality, item.path, e);
+    } catch {
+      // Missing SD/MTP thumbs are expected (icons stay); retry ICA while the
+      // catalog session is still coming up.
+      if (
+        isIcaVirtualPath(item.path) &&
+        item.retries < ICA_MAX_RETRIES &&
+        !this.stopped &&
+        gen === this.generation
+      ) {
+        window.setTimeout(() => {
+          if (this.stopped || gen !== this.generation) return;
+          if (!this.visible.has(item.path)) return;
+          const key = flightKey(item.path, item.quality);
+          if (this.inFlight.has(key) || this.pending.has(key)) return;
+          this.pending.set(key, {
+            ...item,
+            retries: item.retries + 1,
+            priority: Math.max(1, item.priority - 1),
+          });
+          this.pump();
+        }, ICA_RETRY_MS);
+      }
     } finally {
       this.inFlight.delete(key);
       this.active -= 1;

@@ -12,6 +12,9 @@
     <!-- FFmpeg sidecar + dynamic libs may not be Apple-signed -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
+    <!-- Image Capture Core / PTP USB cameras (Hardened Runtime) -->
+    <key>com.apple.security.personal-information.photos-library</key>
+    <true/>
     <!-- No App Sandbox: full FS (SD volumes, project folders) + outbound SMB -->
 </dict>
 </plist>

@@ -21,18 +21,44 @@ export type SdFileInfo = {
   already_processed: boolean;
 };
 
+/** USB/MTP camera source (`mtp:gopro:…`). */
+export function isMtpDrive(drive: string | null | undefined): boolean {
+  return Boolean(drive?.startsWith("mtp:"));
+}
+
 export type SdFileEnrichment = {
   path: string;
   display_epoch: number;
   already_processed: boolean;
 };
 
+export type ListEmptyReason = "no_media" | "filtered_only";
+
 export type ListSdFilesResult = {
   drive: string;
   files: SdFileInfo[];
   total_size_mb: number;
   total_size_bytes: number;
+  empty_reason?: ListEmptyReason | null;
 };
+
+export function emptyCatalogLabel(
+  drive: string | null | undefined,
+  reason?: ListEmptyReason | null,
+): string {
+  if (reason === "filtered_only") {
+    return "Keine importierbaren Medien (nur Timelapse/Proxies).";
+  }
+  return isMtpDrive(drive)
+    ? "Keine Medien auf der Kamera gefunden."
+    : "Keine Mediendateien auf der SD-Karte gefunden.";
+}
+
+export function isEmptyCatalogMessage(msg: string): boolean {
+  return /Keine Medien auf der Kamera gefunden|Keine Mediendateien auf der|Keine importierbaren Medien/.test(
+    msg,
+  );
+}
 
 export type BackupResult = {
   success: boolean;
@@ -46,6 +72,10 @@ export type BackupResult = {
   secondary_warning: string | null;
   /** True when second-path mirror was queued in the background. */
   secondary_async_started: boolean;
+  /** Null when clear was not requested; otherwise files removed / deleted. */
+  clear_deleted_count: number | null;
+  /** Soft-fail for clear-after-backup (backup may still succeed). */
+  clear_warning: string | null;
 };
 
 export type SecondaryBackupEvent = {
@@ -167,6 +197,12 @@ export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
     files,
     total_size_bytes,
     total_size_mb: total_size_bytes / (1024 * 1024),
+    empty_reason:
+      files.length === 0
+        ? result.files.length > 0
+          ? "filtered_only"
+          : (result.empty_reason ?? "no_media")
+        : null,
   };
 }
 

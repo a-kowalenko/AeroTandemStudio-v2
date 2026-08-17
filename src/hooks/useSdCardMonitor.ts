@@ -5,6 +5,7 @@ import {
   scanSdDrives,
   startSdMonitor,
   type BackupProgress,
+  type SdFileInfo,
   type SdInsertedPayload,
   type SdWorkflowActions,
   type SecondaryBackupEvent,
@@ -89,6 +90,53 @@ export function useSdCardMonitor(opts?: {
   useEffect(() => {
     let cancelled = false;
     const unlisteners: Array<() => void> = [];
+    let catalogTimer: number | null = null;
+    let pendingCatalog: {
+      drive: string;
+      files: SdFileInfo[];
+      total_size_mb: number;
+      done: boolean;
+    } | null = null;
+
+    const flushCatalog = () => {
+      catalogTimer = null;
+      const next = pendingCatalog;
+      pendingCatalog = null;
+      if (!next) return;
+      useSdStore
+        .getState()
+        .replaceSelectorCatalog(
+          next.drive,
+          next.files,
+          next.total_size_mb,
+          next.done === false,
+        );
+    };
+
+    const queueCatalog = (data: {
+      drive?: string;
+      files?: SdFileInfo[];
+      total_size_mb?: number;
+      done?: boolean;
+    } | null) => {
+      if (!data?.drive || !Array.isArray(data.files)) return;
+      pendingCatalog = {
+        drive: data.drive,
+        files: data.files,
+        total_size_mb: Number(data.total_size_mb) || 0,
+        done: data.done !== false,
+      };
+      const immediate =
+        pendingCatalog.done || pendingCatalog.files.length <= 24;
+      if (immediate) {
+        if (catalogTimer != null) window.clearTimeout(catalogTimer);
+        flushCatalog();
+        return;
+      }
+      if (catalogTimer == null) {
+        catalogTimer = window.setTimeout(flushCatalog, 280);
+      }
+    };
 
     // Heal "Import…" stuck from media import emitting the shared SD progress event.
     const { workflowActive, phase } = useSdStore.getState();
@@ -246,6 +294,7 @@ export function useSdCardMonitor(opts?: {
           }
           if (p.stage === "clear") setPhase("clearing");
           else if (p.stage === "import") setPhase("importing");
+          else if (p.stage === "backup") setPhase("backing_up");
           setBackupProgress(null);
           setWorkflowProgress(p);
         }),
@@ -262,6 +311,16 @@ export function useSdCardMonitor(opts?: {
           }
           if (kind === "backup_confirmation_required") {
             setPhase("confirming");
+          }
+          if (kind === "mtp_catalog") {
+            queueCatalog(
+              event.payload.data as {
+                drive?: string;
+                files?: SdFileInfo[];
+                total_size_mb?: number;
+                done?: boolean;
+              } | null,
+            );
           }
         }),
       );
@@ -294,6 +353,7 @@ export function useSdCardMonitor(opts?: {
 
     return () => {
       cancelled = true;
+      if (catalogTimer != null) window.clearTimeout(catalogTimer);
       for (const u of unlisteners) u();
     };
   }, [

@@ -104,7 +104,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 21: Foto-Zuschnitt (Crop-Overlay, Working-Copy, Undo)
 - ✅ Phase 21.1: Crop-Settle UX (1.4s Idle, Overlay am Settled-Rand, Shadow-Reveal)
 - ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo center) & Dialog-Zentrierung (Update-Dialog)
-- 🔄 Phase 23: USB-Action-Cams — macOS Detect + Image Capture Staging ✅; als Nächstes 23.1 Windows WPD
+- 🔄 Phase 23: USB-Action-Cams — macOS Detect + Image Capture Staging ✅; ICA UI-Perf ✅; leere Kataloge ✅; ICA-Browser Replug ✅; als Nächstes 23.1 Windows WPD
 
 **Nächster Schritt:** Phase 23.1 (Windows WPD/MTP + Staging) oder Abnahme macOS USB-Import  
 *(optional: Phase 14 ML Backlog; Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*

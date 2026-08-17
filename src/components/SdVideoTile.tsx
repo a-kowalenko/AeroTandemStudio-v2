@@ -66,6 +66,8 @@ type Props = {
   onSelect: (e: { shiftKey: boolean }) => void;
   /** True while marquee drag is active — blocks hover preview. */
   selectionLocked?: boolean;
+  /** Hover/play preview needs a real file on disk (not ICA catalog virtual paths). */
+  previewEnabled?: boolean;
   tileRef?: (el: HTMLElement | null) => void;
 };
 
@@ -102,6 +104,7 @@ export function SdVideoTile({
   onDeactivate,
   onSelect,
   selectionLocked = false,
+  previewEnabled = true,
   tileRef,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -145,7 +148,7 @@ export function SdVideoTile({
 
   // Resolve media URL when preview is wanted.
   useEffect(() => {
-    if (!showVideo) {
+    if (!previewEnabled || !showVideo) {
       setSrc(null);
       setLoadError(false);
       return;
@@ -165,7 +168,7 @@ export function SdVideoTile({
     return () => {
       cancelled = true;
     };
-  }, [showVideo, path]);
+  }, [showVideo, path, previewEnabled]);
 
   // Another tile took over → unpin and stop (but never kill immersive overlay).
   useEffect(() => {
@@ -371,7 +374,7 @@ export function SdVideoTile({
   }, [immersive]);
 
   function onMediaEnter() {
-    if (selectionLocked || isImmersiveBlocked(path) || immersive) return;
+    if (!previewEnabled || selectionLocked || isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
     clearHoverTimers();
     const playDelay = linuxMediaGuards
