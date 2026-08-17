@@ -1224,7 +1224,8 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 - [x] `scan_mtp_media` / Backup-Pfad für `mtp:` Sources
 - [x] UI: USB-Detect startet Confirm/Auto-Flow
 - [x] Confirm-Dialog streamt ICA-Katalog (kein 60s Overlay); Grid virtualisiert; ICA-Thumbs ohne Full-Lock
-- [x] ICA-UI-Perf: Katalog-Ticks nicht über `App.tsx`; Browser nach Liste pausieren; JSON off-main; Thumbs erst nach Listing
+- [x] ICA-UI-Perf: Katalog-Ticks nicht über `App.tsx`; JSON off-main; Thumbs erst nach Listing (Browser bleibt für gehaltene PTP-Session)
+- [x] Backup-Nachlauf: Hash on-complete + Batch-SQLite; Clear fail-fast / chunked + Progress
 
 **23.3 — Linux**
 - [ ] `libmtp` (AppImage klären in `docs/LINUX_BUILD.md`); gleiche Allowlist

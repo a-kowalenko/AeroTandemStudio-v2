@@ -16,19 +16,17 @@ use thiserror::Error;
 
 use crate::media::datetime::resolve_video_display_epoch;
 use crate::media::dji_paths::{
-    collect_media_paths_from_tree, expand_basenames_for_camera_clear, expand_files_for_sd_clear,
-    filter_listable_media_paths, filter_media_paths_for_backup,
-    is_photo_ext, is_video_ext, media_type_from_filename, resolve_drive_dcim_path,
-    unique_dest_name, write_backup_manifest, ManifestEntry,
+    camera_clear_basenames, collect_media_paths_from_tree, expand_files_for_sd_clear,
+    filter_listable_media_paths, filter_media_paths_for_backup, is_photo_ext, is_video_ext,
+    media_type_from_filename, resolve_drive_dcim_path, unique_dest_name, write_backup_manifest,
+    ManifestEntry,
 };
 use crate::sd_card::copy_progress::copy_file_with_progress;
-use crate::sd_card::secondary_backup::{
-    new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
-};
-use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
-use crate::storage::media_history::MediaHistoryStore;
+use crate::sd_card::secondary_backup::{new_job_id, SecondaryBackupJob, SECONDARY_BACKUP};
+use crate::storage::media_history::{spawn_identity_hasher, MediaHistoryStore};
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
+use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
 
 pub const EVENT_SD_INSERTED: &str = "sd-card-inserted";
 pub const EVENT_SD_REMOVED: &str = "sd-card-removed";
@@ -172,8 +170,13 @@ fn windows_volume_name(drive: &str) -> String {
     if ok == 0 {
         return String::new();
     }
-    let end = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
-    String::from_utf16_lossy(&name_buf[..end]).trim().to_string()
+    let end = name_buf
+        .iter()
+        .position(|&c| c == 0)
+        .unwrap_or(name_buf.len());
+    String::from_utf16_lossy(&name_buf[..end])
+        .trim()
+        .to_string()
 }
 
 #[cfg(not(windows))]
@@ -439,8 +442,8 @@ impl SdCardMonitor {
     where
         F: Fn() -> AppConfig + Send + 'static,
     {
-        let history = MediaHistoryStore::open_default()
-            .map_err(|e| SdError::Message(e.to_string()))?;
+        let history =
+            MediaHistoryStore::open_default().map_err(|e| SdError::Message(e.to_string()))?;
         Ok(Self {
             monitoring: AtomicBool::new(false),
             known_drives: Mutex::new(HashSet::new()),
@@ -625,7 +628,10 @@ impl SdCardMonitor {
         ready_with_usb.extend(usb_now.iter().cloned());
 
         let new_drives: HashSet<_> = ready_with_usb.difference(&known).cloned().collect();
-        let newly_action: HashSet<_> = current_action.difference(&previous_action).cloned().collect();
+        let newly_action: HashSet<_> = current_action
+            .difference(&previous_action)
+            .cloned()
+            .collect();
 
         let mut candidates = HashSet::new();
         for d in &new_drives {
@@ -664,7 +670,10 @@ impl SdCardMonitor {
     }
 
     fn handle_sd_detection(&self, drive: &str, is_new_insertion: bool) {
-        self.pending_drives.lock().unwrap().insert(drive.to_string());
+        self.pending_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
 
         let mode = self.config().sd_backup_mode;
 
@@ -777,13 +786,19 @@ impl SdCardMonitor {
     }
 
     pub fn decline_drive(&self, drive: &str) {
-        self.declined_drives.lock().unwrap().insert(drive.to_string());
+        self.declined_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
         self.pending_drives.lock().unwrap().remove(drive);
         self.processing_drives.lock().unwrap().remove(drive);
     }
 
     pub fn mark_processed(&self, drive: &str) {
-        self.processed_drives.lock().unwrap().insert(drive.to_string());
+        self.processed_drives
+            .lock()
+            .unwrap()
+            .insert(drive.to_string());
         self.pending_drives.lock().unwrap().remove(drive);
         self.processing_drives.lock().unwrap().remove(drive);
     }
@@ -844,9 +859,7 @@ impl SdCardMonitor {
             }
             let mtime = get_mtime_timestamp(pb).unwrap_or(0.0);
             let display_epoch = resolve_video_display_epoch(pb, Some(mtime), None);
-            let hash = MediaHistoryStore::compute_identity(pb)
-                .ok()
-                .map(|(h, _)| h);
+            let hash = MediaHistoryStore::compute_identity(pb).ok().map(|(h, _)| h);
             identities.push((path.clone(), hash));
             enrichments.push(SdFileEnrichment {
                 path: path.clone(),
@@ -855,10 +868,7 @@ impl SdCardMonitor {
             });
         }
 
-        let hashes: Vec<String> = identities
-            .iter()
-            .filter_map(|(_, h)| h.clone())
-            .collect();
+        let hashes: Vec<String> = identities.iter().filter_map(|(_, h)| h.clone()).collect();
         let known = {
             let history = self.history.lock().unwrap();
             history.known_hashes(&hashes).unwrap_or_default()
@@ -1229,6 +1239,7 @@ impl SdCardMonitor {
             .checked_sub(Duration::from_secs(1))
             .unwrap_or_else(Instant::now);
         let file_total = filtered.len() as u64;
+        let (hash_tx, hash_join) = spawn_identity_hasher();
 
         let emit_progress = |copied_size: u64,
                              total_mb: f64,
@@ -1366,9 +1377,7 @@ impl SdCardMonitor {
                         local_to_secondary.push((dst.clone(), dst_filename.clone()));
                     }
 
-                    if let Ok(hist) = self.history.lock() {
-                        let _ = hist.mark_backed_up(src_path);
-                    }
+                    let _ = hash_tx.send(dst.clone());
                     // Always emit once per completed file (smooth bar + accurate end-of-file %).
                     emit_progress(
                         copied_size,
@@ -1406,6 +1415,26 @@ impl SdCardMonitor {
                     });
                 }
             }
+        }
+
+        drop(hash_tx);
+        let hashed = hash_join.join().unwrap_or_default();
+        if let Ok(hist) = self.history.lock() {
+            let entries: Vec<(String, String, u64)> = copied_dests
+                .iter()
+                .filter_map(|p| {
+                    let pb = Path::new(p);
+                    let name = pb.file_name()?.to_str()?.to_string();
+                    if let Some((h, s)) = hashed.get(&name) {
+                        Some((name, h.clone(), *s))
+                    } else {
+                        MediaHistoryStore::compute_identity(pb)
+                            .ok()
+                            .map(|(h, s)| (name, h, s))
+                    }
+                })
+                .collect();
+            let _ = hist.mark_backed_up_identities(&entries);
         }
 
         if secondary_active && dual_mode == "local_then_server" {
@@ -1511,14 +1540,17 @@ impl SdCardMonitor {
                 clear_warning = warn;
             } else {
                 let before = copied_sources.len();
-                clear_sd_files(&copied_sources, Some(|current, total| {
-                    self.emit_workflow(workflow_progress(
-                        "clear",
-                        current,
-                        total,
-                        "SD wird bereinigt…",
-                    ));
-                }));
+                clear_sd_files(
+                    &copied_sources,
+                    Some(|current, total| {
+                        self.emit_workflow(workflow_progress(
+                            "clear",
+                            current,
+                            total,
+                            "SD wird bereinigt…",
+                        ));
+                    }),
+                );
                 // Volume clear expands sidecars; report at least the backed-up masters.
                 clear_deleted_count = Some(before);
             }
@@ -1688,6 +1720,7 @@ impl SdCardMonitor {
             }
 
             let start = SystemTime::now();
+            let (hash_tx, hash_join) = spawn_identity_hasher();
 
             if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
                 cb(BackupProgress {
@@ -1704,7 +1737,19 @@ impl SdCardMonitor {
             let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
             let progress_cb = {
                 let on_progress = self.on_progress.lock().unwrap().clone();
-                move |file_index: u32, file_total_cb: u32, name: String, bytes_done: u64, bytes_total: u64| {
+                let hash_tx_progress = hash_tx.clone();
+                let dest_for_hash = backup_path.clone();
+                move |file_index: u32,
+                      file_total_cb: u32,
+                      name: String,
+                      bytes_done: u64,
+                      bytes_total: u64| {
+                    if !name.is_empty() {
+                        let p = dest_for_hash.join(&name);
+                        if p.is_file() {
+                            let _ = hash_tx_progress.send(p);
+                        }
+                    }
                     let Some(cb) = on_progress.as_ref() else {
                         return;
                     };
@@ -1715,7 +1760,11 @@ impl SdCardMonitor {
                         total_mb
                     };
                     let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
-                    let speed = if elapsed > 0.0 { done_mb / elapsed } else { 0.0 };
+                    let speed = if elapsed > 0.0 {
+                        done_mb / elapsed
+                    } else {
+                        0.0
+                    };
                     let percent = if tot > 0.0 {
                         ((done_mb / tot) * 100.0).min(100.0)
                     } else {
@@ -1778,11 +1827,21 @@ impl SdCardMonitor {
                 }
             };
 
+            self.emit_workflow(workflow_progress(
+                "backup",
+                file_total,
+                file_total,
+                "Backup wird abgeschlossen…",
+            ));
+            drop(hash_tx);
+            let hashed = hash_join.join().unwrap_or_default();
+
             let mut copied_dests: Vec<String> = Vec::new();
             let mut copied_sources: Vec<String> = Vec::new();
             let mut manifest_entries = Vec::new();
             let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
             let mut used_names = HashSet::new();
+            let mut hist_entries: Vec<(String, String, u64)> = Vec::new();
 
             for dest in downloaded {
                 let original_name = dest
@@ -1811,8 +1870,12 @@ impl SdCardMonitor {
                     src: Some(src_virtual),
                     media_type: media_type_from_filename(&original_name).to_string(),
                 });
-                if let Ok(hist) = self.history.lock() {
-                    let _ = hist.mark_backed_up(&final_dest);
+                let ident = hashed
+                    .get(&original_name)
+                    .cloned()
+                    .or_else(|| MediaHistoryStore::compute_identity(&final_dest).ok());
+                if let Some((hash, size)) = ident {
+                    hist_entries.push((dst_filename.clone(), hash, size));
                 }
                 if secondary_active && !async_secondary {
                     if let Some(ref sp) = secondary_path {
@@ -1832,6 +1895,10 @@ impl SdCardMonitor {
                 }
             }
 
+            if let Ok(hist) = self.history.lock() {
+                let _ = hist.mark_backed_up_identities(&hist_entries);
+            }
+
             if secondary_active && dual_mode == "local_then_server" {
                 if let Some(ref sp) = secondary_path {
                     for (local_file, dst_filename) in &local_to_secondary {
@@ -1846,17 +1913,14 @@ impl SdCardMonitor {
                 }
             }
 
-            let session_active = crate::media::dji_paths::resolve_timelapse_session_active_for_paths(
-                &cache_root,
-                &copied_sources,
-                None,
-            );
-            let _ = write_backup_manifest(
-                &backup_path,
-                &cache_root,
-                &manifest_entries,
-                session_active,
-            );
+            let session_active =
+                crate::media::dji_paths::resolve_timelapse_session_active_for_paths(
+                    &cache_root,
+                    &copied_sources,
+                    None,
+                );
+            let _ =
+                write_backup_manifest(&backup_path, &cache_root, &manifest_entries, session_active);
 
             if secondary_active && async_secondary && !local_to_secondary.is_empty() {
                 let filenames: Vec<String> = local_to_secondary
@@ -1890,7 +1954,8 @@ impl SdCardMonitor {
                 && !copied_sources.is_empty();
             if secondary_ok {
                 if let Some(ref sp) = secondary_path {
-                    let _ = write_backup_manifest(sp, &cache_root, &manifest_entries, session_active);
+                    let _ =
+                        write_backup_manifest(sp, &cache_root, &manifest_entries, session_active);
                 }
             }
 
@@ -1930,7 +1995,7 @@ impl SdCardMonitor {
                 secondary_async_started,
                 clear_deleted_count,
                 clear_warning,
-            })
+            });
         }
     }
 
@@ -1941,7 +2006,7 @@ impl SdCardMonitor {
         drive: &str,
         copied_sources: &[String],
     ) -> (Option<usize>, Option<String>) {
-        let names = expand_basenames_for_camera_clear(copied_sources);
+        let names = camera_clear_basenames(copied_sources);
         // Do not use expanded sidecar candidate count as progress total (looks like 0/7).
         let masters = copied_sources.len().max(1) as u64;
         self.emit_workflow(workflow_progress(
@@ -1955,7 +2020,22 @@ impl SdCardMonitor {
         {
             use crate::sd_card::mtp::macos_ica::delete_camera_files_named;
             let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
-            match delete_camera_files_named(drive, &label, &names) {
+            let on_workflow = self.on_workflow.lock().unwrap().clone();
+            match delete_camera_files_named(
+                drive,
+                &label,
+                &names,
+                Some(Box::new(move |current, total| {
+                    if let Some(cb) = on_workflow.as_ref() {
+                        cb(workflow_progress(
+                            "clear",
+                            u64::from(current),
+                            u64::from(total).max(1),
+                            "USB-Kamera wird bereinigt…",
+                        ));
+                    }
+                })),
+            ) {
                 Ok(deleted) if deleted > 0 => {
                     self.invalidate_list_cache_for(&[drive.to_string()]);
                     self.emit_workflow(workflow_progress(
@@ -1980,7 +2060,8 @@ impl SdCardMonitor {
                 }
                 Err(e) => {
                     let msg = e.to_string();
-                    let soft = if msg.contains("Gefunden: (keine)") || msg.contains("Bildübernahme") {
+                    let soft = if msg.contains("Gefunden: (keine)") || msg.contains("Bildübernahme")
+                    {
                         format!(
                             "Backup ist gespeichert. Kamera-Bereinigung über USB nicht möglich \
                              ({msg}). GoPro kurz ab/an stecken und erneut importieren, oder \
@@ -2102,8 +2183,7 @@ impl SdCardMonitor {
 pub fn sanitize_pc_name_for_backup(raw: &str) -> String {
     let mut out = String::new();
     for ch in raw.trim().chars() {
-        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control()
-        {
+        if matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control() {
             out.push('_');
         } else {
             out.push(ch);
@@ -2245,7 +2325,10 @@ where
     let mut sorted: Vec<_> = dirs.into_iter().collect();
     sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
     for dir in sorted {
-        if fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if fs::read_dir(&dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
             let _ = fs::remove_dir(&dir);
         }
     }
@@ -2379,9 +2462,7 @@ pub fn is_linux_mount_candidate(path: &str) -> bool {
     if let Some(rest) = trimmed.strip_prefix("/run/media/") {
         let parts: Vec<_> = rest.split('/').filter(|p| !p.is_empty()).collect();
         // /run/media/<user>/<label>
-        return parts.len() == 2
-            && !parts[0].starts_with('.')
-            && !parts[1].starts_with('.');
+        return parts.len() == 2 && !parts[0].starts_with('.') && !parts[1].starts_with('.');
     }
 
     if let Some(rest) = trimmed.strip_prefix("/media/") {
@@ -2528,7 +2609,9 @@ mod tests {
     fn sanitize_pc_name_replaces_invalid_and_caps_length() {
         assert_eq!(sanitize_pc_name_for_backup("  Desk:Top  "), "Desk_Top");
         assert_eq!(
-            sanitize_pc_name_for_backup("a".repeat(40).as_str()).chars().count(),
+            sanitize_pc_name_for_backup("a".repeat(40).as_str())
+                .chars()
+                .count(),
             32
         );
         assert!(sanitize_pc_name_for_backup("   ").is_empty());
@@ -2551,8 +2634,7 @@ mod tests {
         let p = resolve_drive_dcim_path("/Volumes/NO NAME");
         let normalized = p.replace('\\', "/");
         assert!(
-            normalized.ends_with("/Volumes/NO NAME/DCIM")
-                || normalized == "/Volumes/NO NAME/DCIM",
+            normalized.ends_with("/Volumes/NO NAME/DCIM") || normalized == "/Volumes/NO NAME/DCIM",
             "unexpected DCIM path: {normalized}"
         );
     }
@@ -2564,7 +2646,9 @@ mod tests {
         assert!(is_macos_volume_candidate("/Volumes/NO NAME"));
         assert!(!is_macos_volume_candidate("/Volumes/Macintosh HD"));
         assert!(!is_macos_volume_candidate("/Volumes/Macintosh HD - Data"));
-        assert!(!is_macos_volume_candidate("/Volumes/com.apple.TimeMachine.localsnapshots"));
+        assert!(!is_macos_volume_candidate(
+            "/Volumes/com.apple.TimeMachine.localsnapshots"
+        ));
         assert!(!is_macos_volume_candidate("/Volumes/"));
         assert!(!is_macos_volume_candidate("/media/usb"));
         assert!(!is_macos_volume_candidate("/Volumes/nested/path"));
@@ -2603,11 +2687,8 @@ mod tests {
         let paths = collect_media_paths_from_tree(&dir.path().join("DCIM"));
         assert_eq!(paths.len(), 2);
 
-        let (kept, _) = filter_media_paths_for_backup(
-            &paths,
-            &dir.path().join("DCIM").to_string_lossy(),
-            true,
-        );
+        let (kept, _) =
+            filter_media_paths_for_backup(&paths, &dir.path().join("DCIM").to_string_lossy(), true);
         assert_eq!(kept.len(), 2);
     }
 
@@ -2672,7 +2753,9 @@ mod tests {
         assert!(primary.join("b.jpg").is_file());
         assert_eq!(result.copied_dest_paths.len(), 2);
         assert_eq!(result.copied_source_paths.len(), 2);
-        assert!(primary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+        assert!(primary
+            .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
+            .is_file());
     }
 
     #[test]
@@ -2720,7 +2803,11 @@ mod tests {
         let drive = src.path().to_string_lossy().into_owned();
         let result = monitor.backup_drive(&drive, None).unwrap();
         assert!(result.success, "{:?}", result.error_message);
-        assert!(result.secondary_warning.is_none(), "{:?}", result.secondary_warning);
+        assert!(
+            result.secondary_warning.is_none(),
+            "{:?}",
+            result.secondary_warning
+        );
         let primary = PathBuf::from(result.backup_path.as_ref().unwrap());
         let secondary = PathBuf::from(result.secondary_backup_path.as_ref().unwrap());
         assert!(primary.join("clip.mp4").is_file());
@@ -2729,7 +2816,9 @@ mod tests {
             fs::read(primary.join("clip.mp4")).unwrap(),
             fs::read(secondary.join("clip.mp4")).unwrap()
         );
-        assert!(secondary.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME).is_file());
+        assert!(secondary
+            .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
+            .is_file());
     }
 
     #[test]
@@ -2806,9 +2895,7 @@ mod tests {
                 processing_drives: Mutex::new(HashSet::new()),
                 ejected_mtp_sources: Mutex::new(HashSet::new()),
                 backup_in_progress: AtomicBool::new(false),
-                history: Mutex::new(
-                    MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap(),
-                ),
+                history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
                 list_cache: Mutex::new(None),
                 config_provider: Mutex::new(Box::new({
                     let p = primary_root.path().to_path_buf();

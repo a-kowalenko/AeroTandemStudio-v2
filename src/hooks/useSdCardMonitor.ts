@@ -294,6 +294,7 @@ export function useSdCardMonitor(opts?: {
           }
           if (p.stage === "clear") setPhase("clearing");
           else if (p.stage === "import") setPhase("importing");
+          else if (p.stage === "backup") setPhase("backing_up");
           setBackupProgress(null);
           setWorkflowProgress(p);
         }),

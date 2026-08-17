@@ -18,6 +18,7 @@ typedef void (*ats_ica_progress_cb)(unsigned int file_index, unsigned int file_t
                                     const char *filename_utf8, unsigned long long bytes_done,
                                     unsigned long long bytes_total, void *ctx);
 typedef void (*ats_ica_catalog_tick_cb)(void *ctx);
+typedef void (*ats_ica_count_progress_cb)(unsigned int current, unsigned int total, void *ctx);
 
 typedef NS_ENUM(NSInteger, AtsIcaPhase) {
   AtsIcaPhaseBrowsing = 0,
@@ -43,6 +44,7 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 @property(nonatomic, strong) NSString *nameHint;
 @property(nonatomic, assign) AtsIcaMode mode;
 @property(nonatomic, strong) NSMutableSet<NSString *> *namesToDelete;
+@property(nonatomic, strong) NSMutableSet<NSString *> *stemsToDelete;
 @property(nonatomic, strong) NSMutableSet<NSString *> *namesToDownload;
 @property(nonatomic, strong) NSMutableArray<ICCameraFile *> *files;
 @property(nonatomic, strong) NSMutableArray<ICCameraFile *> *filesToDelete;
@@ -50,6 +52,10 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 @property(nonatomic, assign) NSUInteger downloadIndex;
 @property(nonatomic, assign) NSUInteger deletedCount;
 @property(nonatomic, assign) NSUInteger matchedCount;
+@property(nonatomic, assign) NSUInteger deleteOffset;
+@property(nonatomic, assign) NSUInteger deleteChunkSize;
+@property(nonatomic, assign) NSUInteger deletedOkCount;
+@property(nonatomic, assign) NSUInteger deleteChunkGen;
 @property(nonatomic, assign) AtsIcaPhase phase;
 @property(nonatomic, strong) NSString *errorMessage;
 @property(nonatomic, strong) NSCondition *condition;
@@ -66,6 +72,8 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 @property(nonatomic, assign) NSUInteger catalogSettleGen;
 @property(nonatomic, assign) ats_ica_progress_cb progressCb;
 @property(nonatomic, assign) void *progressCtx;
+@property(nonatomic, assign) ats_ica_count_progress_cb deleteProgressCb;
+@property(nonatomic, assign) void *deleteProgressCtx;
 @property(nonatomic, assign) ats_ica_catalog_tick_cb catalogTickCb;
 @property(nonatomic, assign) void *catalogTickCtx;
 @property(nonatomic, assign) NSTimeInterval lastCatalogTick;
@@ -153,12 +161,23 @@ void ats_ica_release_held(void) {
 }
 
 int ats_ica_has_held(void) {
-  // Cheap flag check — do not hop to the UI thread. Stale sessions are
-  // dropped by ats_ica_held_usable / unplug / the 15-minute park timer.
   [AtsIcaOpLock() lock];
   AtsIcaRunner *runner = g_heldRunner;
-  int held = (runner != nil && runner.sessionHeld) ? 1 : 0;
   [AtsIcaOpLock() unlock];
+  if (!runner) {
+    return 0;
+  }
+  __block int held = 0;
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    held = (runner.camera != nil && runner.camera.hasOpenSession) ? 1 : 0;
+    if (!held) {
+      [AtsIcaOpLock() lock];
+      if (g_heldRunner == runner) {
+        AtsIcaReleaseHeldOnMain();
+      }
+      [AtsIcaOpLock() unlock];
+    }
+  });
   return held;
 }
 
@@ -173,6 +192,7 @@ int ats_ica_has_held(void) {
     _files = [NSMutableArray array];
     _filesToDelete = [NSMutableArray array];
     _namesToDelete = [NSMutableSet set];
+    _stemsToDelete = [NSMutableSet set];
     _namesToDownload = [NSMutableSet set];
     _catalogNames = [NSMutableSet set];
     _localPaths = [NSMutableArray array];
@@ -192,6 +212,7 @@ int ats_ica_has_held(void) {
     _files = [NSMutableArray array];
     _filesToDelete = [NSMutableArray array];
     _namesToDelete = [NSMutableSet set];
+    _stemsToDelete = [NSMutableSet set];
     for (NSString *n in names) {
       NSString *trim = [n stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
       if (trim.length > 0) {
@@ -730,12 +751,9 @@ int ats_ica_has_held(void) {
     [prev stopBrowser];
   }
   g_heldRunner = self;
-  // Stop scanning for more devices so ICDeviceBrowser stops waking the UI
-  // thread. Keep the browser object — releasing it can drop the open PTP session.
-  if (self.browser) {
-    self.browser.delegate = nil;
-    [self.browser stop];
-  }
+  // Keep ICDeviceBrowser running while the PTP session is held. Stopping it
+  // drops the camera from Image Capture; GoPro then cannot re-open until the
+  // cable is cycled ("Gefunden: (keine)" on backup).
   __weak AtsIcaRunner *weakSelf = self;
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15 * 60 * NSEC_PER_SEC)),
                  dispatch_get_main_queue(), ^{
@@ -802,22 +820,123 @@ int ats_ica_has_held(void) {
     if ([self.namesToDelete containsObject:key]) {
       return YES;
     }
+    NSString *stem = [key stringByDeletingPathExtension];
+    if (stem.length > 0 && [self.stemsToDelete containsObject:stem]) {
+      return YES;
+    }
   }
   return NO;
 }
 
+- (void)rebuildDeleteStems {
+  if (!self.stemsToDelete) {
+    self.stemsToDelete = [NSMutableSet set];
+  }
+  [self.stemsToDelete removeAllObjects];
+  for (NSString *n in self.namesToDelete) {
+    NSString *base = n.lastPathComponent.lowercaseString;
+    if (base.length == 0) {
+      continue;
+    }
+    NSString *stem = [base stringByDeletingPathExtension];
+    if (stem.length == 0) {
+      continue;
+    }
+    [self.stemsToDelete addObject:stem];
+    if (stem.length >= 2) {
+      unichar c0 = [stem characterAtIndex:0];
+      unichar c1 = [stem characterAtIndex:1];
+      if (c0 == 'g' && (c1 == 'x' || c1 == 'h')) {
+        [self.stemsToDelete addObject:[@"gl" stringByAppendingString:[stem substringFromIndex:2]]];
+      }
+    }
+  }
+}
+
+- (void)emitDeleteProgress {
+  if (!self.deleteProgressCb) {
+    return;
+  }
+  unsigned int total = (unsigned int)self.filesToDelete.count;
+  unsigned int current = (unsigned int)self.deletedOkCount;
+  self.deleteProgressCb(current, total, self.deleteProgressCtx);
+}
+
+- (void)deleteNextChunk {
+  if (self.finished || self.phase == AtsIcaPhaseFailed) {
+    return;
+  }
+  if (self.deleteOffset >= self.filesToDelete.count) {
+    self.deletedCount = self.deletedOkCount;
+    if (self.deletedCount == 0) {
+      [self failWithMessage:@"Kamera-Bereinigung: keine Dateien gelöscht."];
+      return;
+    }
+    [self finishSessionSuccess];
+    return;
+  }
+
+  NSUInteger remaining = self.filesToDelete.count - self.deleteOffset;
+  NSUInteger n = MIN(self.deleteChunkSize, remaining);
+  NSArray<ICCameraFile *> *chunk =
+      [self.filesToDelete subarrayWithRange:NSMakeRange(self.deleteOffset, n)];
+  self.deleteOffset += n;
+  self.deleteChunkGen += 1;
+  NSUInteger gen = self.deleteChunkGen;
+
+  if (@available(macOS 10.15, *)) {
+    __weak AtsIcaRunner *weakSelf = self;
+    [self.camera
+        requestDeleteFiles:chunk
+              deleteFailed:^(NSDictionary<ICDeleteError, ICCameraItem *> *_Nonnull failed) {
+                (void)failed;
+              }
+                completion:^(
+                    NSDictionary<ICDeleteResult, NSArray<ICCameraItem *> *> *_Nonnull result,
+                    NSError *_Nullable error) {
+                  dispatch_async(dispatch_get_main_queue(), ^{
+                    AtsIcaRunner *strong = weakSelf;
+                    if (!strong || strong.finished || strong.deleteChunkGen != gen) {
+                      return;
+                    }
+                    NSArray *ok = result[ICDeleteSuccessful] ?: @[];
+                    strong.deletedOkCount += ok.count;
+                    [strong emitDeleteProgress];
+                    if (error && ok.count == 0) {
+                      [strong failWithMessage:[NSString stringWithFormat:
+                          @"Löschen auf der Kamera fehlgeschlagen: %@",
+                          error.localizedDescription]];
+                      return;
+                    }
+                    [strong deleteNextChunk];
+                  });
+                }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(20.0 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+                     AtsIcaRunner *strong = weakSelf;
+                     if (!strong || strong.finished || strong.deleteChunkGen != gen) {
+                       return;
+                     }
+                     strong.deleteChunkGen += 1;
+                     [strong failWithMessage:
+                         @"Timeout beim Löschen auf der USB-Kamera (Bildübernahme)."];
+                   });
+  } else {
+    [self.camera requestDeleteFiles:chunk];
+  }
+}
+
 - (void)beginDelete {
   NSArray *caps = self.camera.capabilities ?: @[];
-  BOOL canDelete = [caps containsObject:ICCameraDeviceCanDeleteOneFile] ||
-                   [caps containsObject:ICCameraDeviceCanDeleteAllFiles];
-  // Some PTP cameras omit the capability flag but still accept delete — try anyway.
-  // If matching finds files and delete fails, we surface a real error below.
-  (void)canDelete;
+  BOOL canDeleteOne = [caps containsObject:ICCameraDeviceCanDeleteOneFile];
+  BOOL canDeleteAll = [caps containsObject:ICCameraDeviceCanDeleteAllFiles];
+  BOOL canDelete = canDeleteOne || canDeleteAll;
 
   if (self.namesToDelete.count == 0) {
     [self failWithMessage:@"Keine Dateinamen für die Kamera-Bereinigung übergeben."];
     return;
   }
+  [self rebuildDeleteStems];
 
   NSMutableArray<ICCameraFile *> *all = [NSMutableArray array];
   if (self.camera.mediaFiles.count > 0) {
@@ -888,50 +1007,13 @@ int ats_ica_has_held(void) {
     return;
   }
 
+  self.deleteChunkSize = canDeleteAll ? 8 : 1;
+  self.deleteOffset = 0;
+  self.deletedOkCount = 0;
+  self.deletedCount = 0;
   self.phase = AtsIcaPhaseDeleting;
-  if (@available(macOS 10.15, *)) {
-    __weak AtsIcaRunner *weakSelf = self;
-    [self.camera
-        requestDeleteFiles:self.filesToDelete
-              deleteFailed:^(NSDictionary<ICDeleteError, ICCameraItem *> *_Nonnull failed) {
-                (void)failed;
-              }
-                completion:^(
-                    NSDictionary<ICDeleteResult, NSArray<ICCameraItem *> *> *_Nonnull result,
-                    NSError *_Nullable error) {
-                  dispatch_async(dispatch_get_main_queue(), ^{
-                    AtsIcaRunner *strong = weakSelf;
-                    if (!strong || strong.finished) {
-                      return;
-                    }
-                    NSArray *ok = result[ICDeleteSuccessful] ?: @[];
-                    NSArray *failed = result[ICDeleteFailed] ?: @[];
-                    if (error) {
-                      [strong failWithMessage:[NSString stringWithFormat:
-                          @"Löschen auf der Kamera fehlgeschlagen: %@",
-                          error.localizedDescription]];
-                      return;
-                    }
-                    if (ok.count == 0) {
-                      [strong failWithMessage:[NSString stringWithFormat:
-                          @"Kamera hat keine Dateien gelöscht (%lu angefragt, %lu fehlgeschlagen).",
-                          (unsigned long)strong.filesToDelete.count,
-                          (unsigned long)failed.count]];
-                      return;
-                    }
-                    if (failed.count > 0 && ok.count < strong.filesToDelete.count) {
-                      [strong failWithMessage:[NSString stringWithFormat:
-                          @"Kamera-Bereinigung unvollständig: %lu gelöscht, %lu fehlgeschlagen.",
-                          (unsigned long)ok.count, (unsigned long)failed.count]];
-                      return;
-                    }
-                    strong.deletedCount = ok.count;
-                    [strong finishSessionSuccess];
-                  });
-                }];
-  } else {
-    [self.camera requestDeleteFiles:self.filesToDelete];
-  }
+  [self emitDeleteProgress];
+  [self deleteNextChunk];
 }
 
 - (void)beginList {
@@ -1112,9 +1194,11 @@ int ats_ica_has_held(void) {
                        [strong.localPaths addObject:outPath];
                      } else if ([[NSFileManager defaultManager] fileExistsAtPath:destPath]) {
                        [strong.localPaths addObject:destPath];
+                       outPath = destPath;
                      }
                      strong.downloadIndex += 1;
-                     [strong emitDownloadProgressNamed:name];
+                     NSString *progressName = outPath.lastPathComponent ?: name;
+                     [strong emitDownloadProgressNamed:progressName];
                      [strong downloadNext];
                    });
                  }];
@@ -1731,10 +1815,12 @@ int ats_ica_stage_all(const char *dest_dir_utf8, const char *name_hint_utf8, cha
  * Prefers the held staging session (same PTP connection). Falls back to a new browse.
  *
  * @param out_deleted optional; number of files reported deleted by Image Capture.
+ * @param progress optional; called with (deleted_so_far, matched_total) after each chunk.
  * @return 0 on success (at least one file deleted), non-zero on failure (err_buf set).
  */
 int ats_ica_delete_named(const char *name_hint_utf8, const char *names_utf8, int *out_deleted,
-                         char *err_buf, size_t err_len) {
+                         ats_ica_count_progress_cb progress, void *progress_ctx, char *err_buf,
+                         size_t err_len) {
   if (out_deleted) {
     *out_deleted = 0;
   }
@@ -1764,6 +1850,8 @@ int ats_ica_delete_named(const char *name_hint_utf8, const char *names_utf8, int
       return 1;
     }
 
+    NSTimeInterval deleteOverall = MIN(3600.0, MAX(90.0, 8.0 * (double)MAX((NSInteger)names.count, 1)));
+
     // --- Prefer held staging session (GoPro still connected to Image Capture) ---
     __block BOOL heldUsable = NO;
     if (g_heldRunner) {
@@ -1789,6 +1877,11 @@ int ats_ica_delete_named(const char *name_hint_utf8, const char *names_utf8, int
       runner.holdSessionAfterStage = NO;
       runner.deletedCount = 0;
       runner.matchedCount = 0;
+      runner.deletedOkCount = 0;
+      runner.deleteOffset = 0;
+      runner.deleteChunkGen = 0;
+      runner.deleteProgressCb = progress;
+      runner.deleteProgressCtx = progress_ctx;
       runner.errorMessage = nil;
       runner.pendingFinishAfterClose = NO;
       [runner.filesToDelete removeAllObjects];
@@ -1801,12 +1894,14 @@ int ats_ica_delete_named(const char *name_hint_utf8, const char *names_utf8, int
         [runner beginDelete];
       });
 
-      BOOL ok = ats_ica_wait_runner(runner, 120.0, 120.0);
+      BOOL ok = ats_ica_wait_runner(runner, deleteOverall, 30.0);
+      runner.deleteProgressCb = NULL;
+      runner.deleteProgressCtx = NULL;
       if (g_heldRunner == runner) {
         g_heldRunner = nil;
       }
       runner.sessionHeld = NO;
-      [NSThread sleepForTimeInterval:0.5];
+      [NSThread sleepForTimeInterval:0.15];
       [AtsIcaOpLock() unlock];
 
       if (!ok) {
@@ -1830,13 +1925,17 @@ int ats_ica_delete_named(const char *name_hint_utf8, const char *names_utf8, int
     AtsIcaReleaseHeld();
     [NSThread sleepForTimeInterval:0.8];
     AtsIcaRunner *runner = [[AtsIcaRunner alloc] initForDeleteWithHint:hint names:names];
+    runner.deleteProgressCb = progress;
+    runner.deleteProgressCtx = progress_ctx;
 
     dispatch_async(dispatch_get_main_queue(), ^{
       [runner startBrowsingOnMain];
     });
 
-    BOOL ok = ats_ica_wait_runner(runner, 90.0, 28.0);
-    [NSThread sleepForTimeInterval:0.5];
+    BOOL ok = ats_ica_wait_runner(runner, deleteOverall, 28.0);
+    runner.deleteProgressCb = NULL;
+    runner.deleteProgressCtx = NULL;
+    [NSThread sleepForTimeInterval:0.15];
     [AtsIcaOpLock() unlock];
 
     if (!ok) {

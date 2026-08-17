@@ -61,6 +61,8 @@ unsafe extern "C" {
         name_hint_utf8: *const c_char,
         names_utf8: *const c_char,
         out_deleted: *mut i32,
+        progress: Option<unsafe extern "C" fn(current: u32, total: u32, ctx: *mut c_void)>,
+        progress_ctx: *mut c_void,
         err_buf: *mut c_char,
         err_len: usize,
     ) -> i32;
@@ -433,6 +435,20 @@ pub fn stage_camera_media_to(
     Ok(paths)
 }
 
+struct CountProgressBridge {
+    inner: Mutex<Box<dyn FnMut(u32, u32) + Send>>,
+}
+
+unsafe extern "C" fn ica_count_progress_trampoline(current: u32, total: u32, ctx: *mut c_void) {
+    if ctx.is_null() {
+        return;
+    }
+    let bridge = unsafe { &*(ctx as *const CountProgressBridge) };
+    if let Ok(mut cb) = bridge.inner.lock() {
+        cb(current, total);
+    }
+}
+
 /// Delete files on the USB camera by basename (masters + sidecar candidates).
 ///
 /// Returns how many camera files Image Capture reported as deleted.
@@ -440,16 +456,28 @@ pub fn delete_camera_files_named(
     source_id: &str,
     label: &str,
     basenames: &[String],
+    mut on_progress: Option<Box<dyn FnMut(u32, u32) + Send>>,
 ) -> Result<usize, IcaError> {
     if basenames.is_empty() {
         return Ok(0);
     }
     let joined = basenames.join("\n");
-    let names = CString::new(joined.as_bytes()).map_err(|_| {
-        IcaError::Message("Ungültige Dateinamen für Kamera-Löschen (NUL)".into())
-    })?;
+    let names = CString::new(joined.as_bytes())
+        .map_err(|_| IcaError::Message("Ungültige Dateinamen für Kamera-Löschen (NUL)".into()))?;
     let hint_raw = format!("{label}|{source_id}");
     let hint = CString::new(hint_raw.as_bytes()).unwrap_or_else(|_| CString::new("gopro").unwrap());
+
+    let bridge = on_progress.take().map(|cb| CountProgressBridge {
+        inner: Mutex::new(cb),
+    });
+    let (progress_fn, progress_ctx) = if let Some(ref b) = bridge {
+        (
+            Some(ica_count_progress_trampoline as unsafe extern "C" fn(_, _, _)),
+            b as *const CountProgressBridge as *mut c_void,
+        )
+    } else {
+        (None, std::ptr::null_mut())
+    };
 
     let mut err = vec![0i8; 1024];
     let mut deleted: i32 = 0;
@@ -458,10 +486,13 @@ pub fn delete_camera_files_named(
             hint.as_ptr(),
             names.as_ptr(),
             &mut deleted,
+            progress_fn,
+            progress_ctx,
             err.as_mut_ptr() as *mut c_char,
             err.len(),
         )
     };
+    drop(bridge);
     if rc != 0 {
         let msg = unsafe { CStr::from_ptr(err.as_ptr() as *const c_char) }
             .to_string_lossy()
@@ -489,7 +520,11 @@ pub fn is_ica_cache_media_path(path: &Path) -> bool {
 }
 
 /// JPEG thumbnail from the held Image Capture session (no media download).
-pub fn camera_thumbnail_jpeg(filename: &str, dest_jpeg: &Path, max_edge: u32) -> Result<Vec<u8>, IcaError> {
+pub fn camera_thumbnail_jpeg(
+    filename: &str,
+    dest_jpeg: &Path,
+    max_edge: u32,
+) -> Result<Vec<u8>, IcaError> {
     if dest_jpeg.is_file() {
         if let Ok(bytes) = std::fs::read(dest_jpeg) {
             if bytes.len() > 32 {
@@ -569,6 +604,8 @@ mod tests {
     fn ica_cache_path_detects_virtual_media() {
         let p = virtual_media_path("mtp:gopro:ABC", "GX010123.MP4");
         assert!(is_ica_cache_media_path(&p));
-        assert!(!is_ica_cache_media_path(Path::new("/Volumes/GOPRO/DCIM/GX010123.MP4")));
+        assert!(!is_ica_cache_media_path(Path::new(
+            "/Volumes/GOPRO/DCIM/GX010123.MP4"
+        )));
     }
 }
