@@ -454,9 +454,11 @@ impl AppConfig {
         self.body_concat_mode = normalize_body_concat_mode(&self.body_concat_mode);
     }
 
-    /// Lokal mode skips `_fertig.txt` on create.
-    pub fn skip_marker_file(&self) -> bool {
-        self.manual_entry_mode == "lokal"
+    /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
+    /// QR (`form_mode == "kunde"`) always writes marker + manifest even if the
+    /// persisted manual toggle is still `lokal`.
+    pub fn skip_marker_file(&self, form_mode: &str) -> bool {
+        self.manual_entry_mode == "lokal" && form_mode.trim() != "kunde"
     }
 }
 
@@ -861,7 +863,22 @@ mod tests {
         let cfg = merge_with_defaults(serde_json::json!({ "manual_entry_mode": "lokal" })).unwrap();
         assert_eq!(cfg.manual_entry_mode, "lokal");
         assert!(!cfg.oldschool_mode);
-        assert!(cfg.skip_marker_file());
+        assert!(cfg.skip_marker_file("manual"));
+        assert!(cfg.skip_marker_file(""));
+    }
+
+    #[test]
+    fn lokal_entry_mode_writes_marker_in_qr_form() {
+        let cfg = merge_with_defaults(serde_json::json!({ "manual_entry_mode": "lokal" })).unwrap();
+        assert!(!cfg.skip_marker_file("kunde"));
+        assert!(!cfg.skip_marker_file("  kunde  "));
+    }
+
+    #[test]
+    fn id_entry_mode_never_skips_marker() {
+        let cfg = merge_with_defaults(serde_json::json!({ "manual_entry_mode": "id" })).unwrap();
+        assert!(!cfg.skip_marker_file("manual"));
+        assert!(!cfg.skip_marker_file("kunde"));
     }
 
     #[test]

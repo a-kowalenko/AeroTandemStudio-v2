@@ -63,7 +63,7 @@ pub struct CreateJobResult {
     pub body_clips: usize,
     /// True when the final product video was copied from a matching preview.
     pub reused_preview: bool,
-    /// AMS handoff correlation id (empty when Lokal / skip_marker_file).
+    /// AMS handoff correlation id (empty when manual Lokal / skip_marker_file).
     pub correlation_id: String,
 }
 
@@ -575,7 +575,7 @@ pub fn create_job(
     }
 
     ensure_not_cancelled()?;
-    let (marker_path, correlation_id) = if config.skip_marker_file() {
+    let (marker_path, correlation_id) = if config.skip_marker_file(&kunde.form_mode) {
         emit(&on_progress, 96.0, "Überspringe _fertig.txt (Lokal)…");
         logging::info("create", "Lokal-Modus: keine Marker-Datei _fertig.txt");
         (String::new(), String::new())

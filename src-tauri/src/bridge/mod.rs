@@ -289,7 +289,7 @@ pub async fn preflight_customer_lookup(
     config: &AppConfig,
     kunde: &Kunde,
 ) -> Result<Option<LookupResponse>, String> {
-    if config.skip_marker_file() {
+    if config.skip_marker_file(&kunde.form_mode) {
         return Ok(None);
     }
     if !bridge_configured(config) {
@@ -444,13 +444,14 @@ pub async fn notify_handoff_ready(
 }
 
 /// Soft: only when bridge configured; unreachable → Ok(None).
+/// Empty `correlation_id` already covers manual Lokal (no marker/manifest).
 pub async fn maybe_notify_handoff_ready(
     config: &AppConfig,
     correlation_id: &str,
     folder_name: Option<&str>,
 ) -> Result<Option<HandoffReadyResponse>, String> {
     let cid = correlation_id.trim();
-    if cid.is_empty() || config.skip_marker_file() || !bridge_configured(config) {
+    if cid.is_empty() || !bridge_configured(config) {
         return Ok(None);
     }
     let base = match resolve_bridge_base_url(config) {
