@@ -1140,7 +1140,7 @@ src/components/UpdateDialog.tsx
 
 ### Phase 23 — USB-Action-Cams (MTP) erkennen & importieren
 
-**Status:** 🔄 In Arbeit (23.0 ✅ · 23.2 Detect ✅ · 23.2b ICA Staging ✅)  
+**Status:** 🔄 In Arbeit (23.0 ✅ · 23.2 Detect ✅ · 23.2b ICA Staging ✅ · 23.2c ICA UI-Perf ✅ · 23.2d Leere Kataloge ✅ · 23.2e ICA-Browser Replug ✅)  
 **Abhängigkeiten:** Phase 7 (SD-Pipeline), Phase 5 (Config)  
 **Ziel:** GoPro-, DJI- und Insta360-Kameras per USB (MTP/WPD) erkennen und in denselben Backup-/Import-Workflow bringen wie SD-Karten — **ohne** zusätzliche False Positives bei normalen Datenträgern oder Handys.
 
@@ -1226,6 +1226,34 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 - [x] Confirm-Dialog streamt ICA-Katalog (kein 60s Overlay); Grid virtualisiert; ICA-Thumbs ohne Full-Lock
 - [x] ICA-UI-Perf: Katalog-Ticks nicht über `App.tsx`; JSON off-main; Thumbs erst nach Listing (Browser bleibt für gehaltene PTP-Session)
 - [x] Backup-Nachlauf: Hash on-complete + Batch-SQLite; Clear fail-fast / chunked + Progress
+
+**23.2d — Leere Kataloge (SD + MTP)**
+
+Leere Kamera/SD ist ein **gültiger Zustand**, kein Fehler. Nicht mit ICA-/DCIM-Ausfällen vermischen.
+
+| Zustand | Log | Confirm (`sd_backup_mode=confirm`) | Auto |
+|---------|-----|--------------------------------------|------|
+| 0 Medien nach erfolgreichem Scan | **WARN** | Dialog offen; Label in der Medienliste | Warn-Dialog, Workflow überspringen; Auswerfen wenn gesetzt |
+| Nur Timelapse/Proxies (nichts importierbar) | **WARN** | Label „Keine importierbaren Medien (nur Timelapse/Proxies).“ | wie leer |
+| Kamera nicht sichtbar / ICA-Session tot / DCIM fehlt | **ERROR** | Error-Dialog, Selector schließen | Error-Dialog |
+| Download/Backup: Auswahl nicht auf der Kamera | **ERROR** | bleibt Fehler | bleibt Fehler |
+
+- [x] ICA `beginList`: leeren Katalog als Erfolg schreiben (`[]`), nicht `failWithMessage`
+- [x] `list_sd_files`: 0 Dateien → WARN (`SD-Liste leer`), nicht `SD-Liste fehlgeschlagen` / ERROR
+- [x] Texte vereinheitlichen: MTP „Keine Medien auf der Kamera gefunden.“ · SD „Keine Mediendateien auf der SD-Karte gefunden.“
+- [x] Confirm: Overlay in der Liste (gleicher Platz wie „SD-Dateien werden gelesen…“); Backup/Import/Bereinigen aus; **Auswerfen** und **Erneut lesen** bleiben
+- [x] Auto: kein Error-Dialog bei leerem Katalog; Backup-Fail „keine Medien“ ebenfalls WARN
+- [x] `beginDownloads` mit 0 Dateien bleibt Operationsfehler (nicht die Liste)
+
+**23.2e — ICA-Browser überlebt Auswerfen / Replug**
+
+`ICDeviceBrowser` einmal pro Prozess starten und **nicht** bei Eject/Unplug stoppen. Neuer Browser im selben Prozess → GoPro bleibt `Gefunden: (keine)` bis App-Neustart.
+
+- [x] Prozessweiter `AtsIcaHub` als einziger Browser-Delegate
+- [x] Auswerfen/Unplug: Session schließen, Kamera-Ref verwerfen; Browser läuft weiter
+- [x] Replug: `didAddDevice` auf demselben Browser, dann Liste
+- [x] Kein Browser-Restart nach 7 s (würde denselben ICA-Tod auslösen)
+- [x] Confirm-Overlay: `min-h-[16rem]`, Label nicht in 1px-Grid abschneiden
 
 **23.3 — Linux**
 - [ ] `libmtp` (AppImage klären in `docs/LINUX_BUILD.md`); gleiche Allowlist
@@ -1428,6 +1456,8 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 23.2 | macOS USB-Detect (system_profiler) + Hinweis | ✅ |
 | 23.2b | macOS Image Capture Staging-Import | ✅ |
 | 23.2c | ICA UI-Perf (Main-Thread / Katalog-Ticks) | ✅ |
+| 23.2d | Leere Kataloge (WARN + Confirm-Label) | ✅ |
+| 23.2e | ICA-Browser überlebt Auswerfen / Replug | ✅ |
 | 23.3 | Linux libmtp | ⬜ |
 | 23.4 | UX & Docs | ⬜ |
 
@@ -1448,4 +1478,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) / 23.2c ICA UI-Perf*
+*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) / 23.2e ICA-Browser Replug*

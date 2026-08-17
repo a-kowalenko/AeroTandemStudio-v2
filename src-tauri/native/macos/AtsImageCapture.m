@@ -82,6 +82,7 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 @property(nonatomic, strong) NSMutableSet<NSString *> *catalogNames;
 @property(nonatomic, assign) NSUInteger catalogPollGen;
 - (void)stopBrowser;
+- (void)detachFromHub;
 - (void)parkHeldAfterStage;
 - (void)refreshFilesFromCamera;
 - (NSArray *)catalogRowDictionaries;
@@ -90,6 +91,22 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 - (void)beginList;
 - (void)beginDownloads;
 - (ICCameraFile *)fileNamed:(NSString *)name;
+- (void)rememberCamera:(ICDevice *)device;
+- (void)tryOpenBestCamera;
+- (void)handleHubRemovedDevice:(ICDevice *)device;
+@end
+
+@class AtsIcaRunner;
+
+/// Process-wide Image Capture browser. Start once; never stop on eject/unplug.
+/// Recreating ICDeviceBrowser in the same process leaves GoPro as "Gefunden: (keine)".
+@interface AtsIcaHub : NSObject <ICDeviceBrowserDelegate>
+@property(nonatomic, strong) ICDeviceBrowser *browser;
+@property(nonatomic, strong) NSMutableArray<ICCameraDevice *> *cameras;
+@property(nonatomic, weak) AtsIcaRunner *job;
+- (void)ensureStartedOnMain;
+- (void)rememberCamera:(ICDevice *)device;
+- (void)forgetCamera:(ICDevice *)device;
 @end
 
 // Serialize ICA browsers: overlapping stage/delete leaves the PTP session claimed
@@ -115,7 +132,116 @@ static dispatch_queue_t AtsIcaTickQueue(void) {
 // GoPro often cannot re-open PTP after closeSession until the cable is cycled.
 // Keep the staging session open so backup clear can delete without re-browsing.
 // Never kill PTPCamera — Image Capture Core depends on that helper to list cameras.
+// Never stop the process-wide ICDeviceBrowser on eject/unplug — a new browser in
+// the same process typically lists "Gefunden: (keine)" until the app restarts.
+static AtsIcaHub *g_hub = nil;
 static AtsIcaRunner *g_heldRunner = nil;
+
+static AtsIcaHub *AtsIcaHubShared(void) {
+  NSCAssert([NSThread isMainThread], @"ICA hub on main");
+  if (!g_hub) {
+    g_hub = [[AtsIcaHub alloc] init];
+    g_hub.cameras = [NSMutableArray array];
+  }
+  return g_hub;
+}
+
+@implementation AtsIcaHub
+
+- (void)ensureStartedOnMain {
+  NSCAssert([NSThread isMainThread], @"ICDeviceBrowser must start on main thread");
+  if (self.browser) {
+    return;
+  }
+  self.browser = [[ICDeviceBrowser alloc] init];
+  self.browser.delegate = self;
+  self.browser.browsedDeviceTypeMask =
+      (ICDeviceTypeMask)(ICDeviceTypeMaskCamera | ICDeviceLocationTypeMaskLocal);
+  [self.browser start];
+}
+
+- (BOOL)isLocalCamera:(ICDevice *)device {
+  if ((device.type & ICDeviceTypeCamera) == 0) {
+    return NO;
+  }
+  if (![device isKindOfClass:[ICCameraDevice class]]) {
+    return NO;
+  }
+  NSString *transport = device.transportType;
+  if (transport.length > 0 &&
+      ![transport isEqualToString:(NSString *)ICTransportTypeUSB] &&
+      ![transport isEqualToString:(NSString *)ICTransportTypeFireWire]) {
+    return NO;
+  }
+  return YES;
+}
+
+- (void)rememberCamera:(ICDevice *)device {
+  if (![self isLocalCamera:device]) {
+    return;
+  }
+  ICCameraDevice *cam = (ICCameraDevice *)device;
+  for (ICCameraDevice *existing in self.cameras) {
+    if (existing == cam) {
+      return;
+    }
+  }
+  [self.cameras addObject:cam];
+}
+
+- (void)forgetCamera:(ICDevice *)device {
+  if ([device isKindOfClass:[ICCameraDevice class]]) {
+    [self.cameras removeObject:(ICCameraDevice *)device];
+  }
+}
+
+- (void)deviceBrowser:(ICDeviceBrowser *)browser
+         didAddDevice:(ICDevice *)device
+           moreComing:(BOOL)moreComing {
+  (void)browser;
+  (void)moreComing;
+  [self rememberCamera:device];
+  AtsIcaRunner *job = self.job;
+  if (job && !job.finished) {
+    [job rememberCamera:device];
+    [job tryOpenBestCamera];
+  }
+}
+
+- (void)deviceBrowser:(ICDeviceBrowser *)browser
+      didRemoveDevice:(ICDevice *)device
+            moreGoing:(BOOL)moreGoing {
+  (void)browser;
+  (void)moreGoing;
+  [self forgetCamera:device];
+  if (g_heldRunner && g_heldRunner.camera && device == (ICDevice *)g_heldRunner.camera) {
+    g_heldRunner.sessionHeld = NO;
+    g_heldRunner.camera.delegate = nil;
+    g_heldRunner.camera = nil;
+    if (g_heldRunner.finished) {
+      g_heldRunner = nil;
+    }
+  }
+  AtsIcaRunner *job = self.job;
+  if (job) {
+    [job handleHubRemovedDevice:device];
+  }
+}
+
+- (void)deviceBrowserDidEnumerateLocalDevices:(ICDeviceBrowser *)browser {
+  for (ICDevice *dev in (browser.devices ?: @[])) {
+    [self rememberCamera:dev];
+  }
+  AtsIcaRunner *job = self.job;
+  if (job && !job.finished) {
+    for (ICCameraDevice *cam in self.cameras) {
+      [job rememberCamera:cam];
+    }
+    [job tryOpenBestCamera];
+  }
+}
+
+@end
 
 static void AtsIcaReleaseHeldOnMain(void) {
   NSCAssert([NSThread isMainThread], @"held release on main");
@@ -133,7 +259,7 @@ static void AtsIcaReleaseHeldOnMain(void) {
       [cam requestCloseSession];
     }
   }
-  [held stopBrowser];
+  [held detachFromHub];
   held.camera = nil;
 }
 
@@ -149,8 +275,8 @@ static void AtsIcaReleaseHeld(void) {
     });
   }
   if (hadSession) {
-    // requestCloseSession is async — brief settle before the next browser starts.
-    [NSThread sleepForTimeInterval:0.8];
+    // requestCloseSession is async — brief settle before the next openSession.
+    [NSThread sleepForTimeInterval:0.35];
   }
 }
 
@@ -229,12 +355,23 @@ int ats_ica_has_held(void) {
   return self;
 }
 
-- (void)stopBrowser {
-  if (self.browser) {
-    self.browser.delegate = nil;
-    [self.browser stop];
+- (void)detachFromHub {
+  void (^detach)(void) = ^{
+    if (g_hub && g_hub.job == self) {
+      g_hub.job = nil;
+    }
     self.browser = nil;
+  };
+  if ([NSThread isMainThread]) {
+    detach();
+  } else {
+    dispatch_sync(dispatch_get_main_queue(), detach);
   }
+}
+
+- (void)stopBrowser {
+  // Never stop the process-wide ICDeviceBrowser. Only detach this job.
+  [self detachFromHub];
 }
 
 - (BOOL)shouldIgnoreDisconnect {
@@ -568,14 +705,20 @@ int ats_ica_has_held(void) {
 
 - (void)startBrowsingOnMain {
   NSAssert([NSThread isMainThread], @"ICDeviceBrowser must start on main thread");
-  self.browser = [[ICDeviceBrowser alloc] init];
-  self.browser.delegate = self;
-  // Local USB/FireWire only. Shared/Bonjour pulls in network printers (HP etc.)
-  // whose flaky XPC links interrupt PTP and leave GoPro stuck in "starting"
-  // so didAddDevice never fires → "Gefunden: (keine)".
-  self.browser.browsedDeviceTypeMask =
-      (ICDeviceTypeMask)(ICDeviceTypeMaskCamera | ICDeviceLocationTypeMaskLocal);
-  [self.browser start];
+  AtsIcaHub *hub = AtsIcaHubShared();
+  [hub ensureStartedOnMain];
+  hub.job = self;
+  self.browser = hub.browser;
+  for (ICCameraDevice *cam in hub.cameras) {
+    [self rememberCamera:cam];
+  }
+  for (ICDevice *dev in (hub.browser.devices ?: @[])) {
+    [self rememberCamera:dev];
+  }
+  [self tryOpenBestCamera];
+  if (self.phase == AtsIcaPhaseBrowsing && self.seenCameras.count == 0) {
+    [self scheduleBrowseRetries];
+  }
 }
 
 - (void)rememberCamera:(ICDevice *)device {
@@ -619,32 +762,6 @@ int ats_ica_has_held(void) {
                      [strong tryOpenBestCamera];
                    });
   }
-  // One clean browser restart if ICA authorized the cam but never delivered didAddDevice.
-  if (!self.browseRestartScheduled) {
-    self.browseRestartScheduled = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(7.0 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{
-                     AtsIcaRunner *strong = weakSelf;
-                     if (!strong || strong.finished || strong.openAttempted) {
-                       return;
-                     }
-                     if (strong.seenCameras.count > 0) {
-                       return;
-                     }
-                     [strong stopBrowser];
-                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)),
-                                    dispatch_get_main_queue(), ^{
-                                      AtsIcaRunner *inner = weakSelf;
-                                      if (!inner || inner.finished || inner.openAttempted) {
-                                        return;
-                                      }
-                                      if (inner.seenCameras.count > 0) {
-                                        return;
-                                      }
-                                      [inner startBrowsingOnMain];
-                                    });
-                   });
-  }
 }
 
 - (void)tryOpenBestCamera {
@@ -655,7 +772,12 @@ int ats_ica_has_held(void) {
     return;
   }
 
-  // Merge browser.devices with anything we collected via didAddDevice.
+  // Merge hub + browser.devices — persistent browser keeps cameras across eject.
+  if (g_hub) {
+    for (ICCameraDevice *cam in g_hub.cameras) {
+      [self rememberCamera:cam];
+    }
+  }
   for (ICDevice *dev in (self.browser.devices ?: @[])) {
     [self rememberCamera:dev];
   }
@@ -702,6 +824,11 @@ int ats_ica_has_held(void) {
     return;
   }
   NSMutableArray *names = [NSMutableArray array];
+  if (g_hub) {
+    for (ICCameraDevice *cam in g_hub.cameras) {
+      [names addObject:(cam.name ?: @"(unnamed)")];
+    }
+  }
   for (ICCameraDevice *cam in self.seenCameras) {
     [names addObject:(cam.name ?: @"(unnamed)")];
   }
@@ -1018,10 +1145,6 @@ int ats_ica_has_held(void) {
 
 - (void)beginList {
   [self refreshFilesFromCamera];
-  if (self.files.count == 0) {
-    [self failWithMessage:@"Keine Medien auf der Kamera gefunden."];
-    return;
-  }
   NSString *err = nil;
   if (![self writeCatalogJson:&err]) {
     [self failWithMessage:err ?: @"Katalog schreiben fehlgeschlagen."];
@@ -1218,30 +1341,35 @@ int ats_ica_has_held(void) {
   }
 }
 
+- (void)handleHubRemovedDevice:(ICDevice *)device {
+  if ([device isKindOfClass:[ICCameraDevice class]]) {
+    [self.seenCameras removeObject:(ICCameraDevice *)device];
+  }
+  BOOL isOurCamera = self.camera && device == (ICDevice *)self.camera;
+  if (!isOurCamera) {
+    return;
+  }
+  if (self.finished || [self shouldIgnoreDisconnect]) {
+    if (self.sessionHeld && g_heldRunner == self) {
+      g_heldRunner = nil;
+      self.sessionHeld = NO;
+    }
+    if (self.camera) {
+      self.camera.delegate = nil;
+      self.camera = nil;
+    }
+    [self detachFromHub];
+    return;
+  }
+  [self failWithMessage:@"Kamera wurde getrennt."];
+}
+
 - (void)deviceBrowser:(ICDeviceBrowser *)browser
       didRemoveDevice:(ICDevice *)device
             moreGoing:(BOOL)moreGoing {
   (void)browser;
   (void)moreGoing;
-  if (self.sessionHeld && g_heldRunner == self &&
-      self.camera && device == (ICDevice *)self.camera) {
-    g_heldRunner = nil;
-    self.sessionHeld = NO;
-    [self stopBrowser];
-    return;
-  }
-  if ([self shouldIgnoreDisconnect]) {
-    if ([device isKindOfClass:[ICCameraDevice class]]) {
-      [self.seenCameras removeObject:(ICCameraDevice *)device];
-    }
-    return;
-  }
-  if (self.camera && device == (ICDevice *)self.camera) {
-    [self failWithMessage:@"Kamera wurde getrennt."];
-  }
-  if ([device isKindOfClass:[ICCameraDevice class]]) {
-    [self.seenCameras removeObject:(ICCameraDevice *)device];
-  }
+  [self handleHubRemovedDevice:device];
 }
 
 - (void)deviceBrowserDidEnumerateLocalDevices:(ICDeviceBrowser *)browser {
@@ -1261,7 +1389,11 @@ int ats_ica_has_held(void) {
   if (self.sessionHeld && g_heldRunner == self) {
     g_heldRunner = nil;
     self.sessionHeld = NO;
-    [self stopBrowser];
+    if (self.camera) {
+      self.camera.delegate = nil;
+      self.camera = nil;
+    }
+    [self detachFromHub];
     return;
   }
   if ([self shouldIgnoreDisconnect]) {
@@ -1289,7 +1421,7 @@ int ats_ica_has_held(void) {
         prev.camera.delegate = nil;
         [prev.camera requestCloseSession];
       }
-      [prev stopBrowser];
+      [prev detachFromHub];
     }
     g_heldRunner = self;
     [self scheduleCatalogPoll];

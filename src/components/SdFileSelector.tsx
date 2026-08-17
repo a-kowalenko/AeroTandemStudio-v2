@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { SdWorkflowActions } from "../lib/sdCard";
-import { isMtpDrive } from "../lib/sdCard";
+import { emptyCatalogLabel, isMtpDrive } from "../lib/sdCard";
 import {
   createSdThumbnailLoader,
   type ThumbState,
@@ -30,7 +30,7 @@ import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useSdStore } from "../store/sdStore";
 import { SdVideoTile } from "./SdVideoTile";
-import { Check, Film, HardDrive, ImageIcon, Loader2, X } from "lucide-react";
+import { Check, Film, HardDrive, ImageIcon, Loader2, RefreshCw, X } from "lucide-react";
 
 type Props = {
   /** Defaults for action checkboxes (from settings). */
@@ -38,6 +38,7 @@ type Props = {
   onClose: () => void;
   onConfirm: (selectedPaths: string[], actions: SdWorkflowActions) => void;
   onProceedAll?: (actions: SdWorkflowActions) => void;
+  onRefresh?: () => void;
 };
 
 type FilterType = "all" | "video" | "photo" | "new";
@@ -145,11 +146,59 @@ function confirmLabel(actions: SdWorkflowActions, count: number): string {
   return `${parts.join(" · ")} (${count})`;
 }
 
+function CatalogStatusOverlay({
+  listing,
+  empty,
+  drive,
+  reason,
+  onRefresh,
+}: {
+  listing: boolean;
+  empty: boolean;
+  drive: string | null;
+  reason: import("../lib/sdCard").ListEmptyReason | null;
+  onRefresh?: () => void;
+}) {
+  if (!empty) return null;
+  if (listing) {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-10 flex min-h-[16rem] items-center justify-center px-6 py-8">
+        <span className="inline-flex max-w-md items-center gap-2 text-center text-sm text-muted">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+          SD-Dateien werden gelesen…
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="absolute inset-0 z-10 flex min-h-[16rem] items-center justify-center px-6 py-8">
+      <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
+        <p className="text-sm leading-relaxed text-muted">
+          {emptyCatalogLabel(drive, reason)}
+        </p>
+        {onRefresh ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="gap-1.5"
+            onClick={onRefresh}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            Erneut lesen
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function SdFileSelector({
   defaultActions,
   onClose,
   onConfirm,
   onProceedAll,
+  onRefresh,
 }: Props) {
   // Catalog lives in sdStore so App.tsx does not re-render on every MTP tick.
   const open = useSdStore((s) => s.selectorOpen);
@@ -158,6 +207,7 @@ export function SdFileSelector({
   const totalSizeMb = useSdStore((s) => s.selectorTotalMb);
   const mode = useSdStore((s) => s.selectorMode);
   const listing = useSdStore((s) => s.selectorListing);
+  const emptyReason = useSdStore((s) => s.selectorEmptyReason);
   const [viewMode, setViewMode] = useState<ViewMode>("thumbnail");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -214,6 +264,7 @@ export function SdFileSelector({
   const dragBoxRef = useRef<typeof dragBox>(null);
   /** Skip the following checkbox onCheckedChange after Shift-range via pointer. */
   const shiftCheckboxRef = useRef(false);
+  const wasEmptyCatalogRef = useRef(false);
 
   const attachGridRef = useCallback((el: HTMLDivElement | null) => {
     gridRef.current = el;
@@ -284,6 +335,7 @@ export function SdFileSelector({
 
   useEffect(() => {
     if (!open) return;
+    wasEmptyCatalogRef.current = false;
     setSelected(new Set());
     setActiveVideoPath(null);
     anchorPathRef.current = null;
@@ -308,6 +360,43 @@ export function SdFileSelector({
     // catalogs must not wipe an in-progress selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, drive]);
+
+  useEffect(() => {
+    if (!open || listing) return;
+    const empty = files.length === 0;
+    if (empty) {
+      wasEmptyCatalogRef.current = true;
+      setActions((prev) => ({
+        ...prev,
+        backup: false,
+        import: false,
+        clear: false,
+        scanQr: false,
+      }));
+      return;
+    }
+    if (!wasEmptyCatalogRef.current) return;
+    wasEmptyCatalogRef.current = false;
+    const isQrMode = formMode === "kunde";
+    const settingsQrOn =
+      Boolean(config?.qr_check_enabled) ||
+      Boolean(config?.photo_qr_check_enabled);
+    setActions({
+      backup: defaultActions?.backup ?? true,
+      import: defaultActions?.import ?? true,
+      clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
+      eject: Boolean(defaultActions?.eject),
+      scanQr: isQrMode ? false : settingsQrOn,
+    });
+  }, [
+    open,
+    listing,
+    files.length,
+    formMode,
+    config?.qr_check_enabled,
+    config?.photo_qr_check_enabled,
+    defaultActions,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -776,6 +865,12 @@ export function SdFileSelector({
       : "SD-Karte — Dateien wählen";
 
   const anyAction = actions.backup || actions.import || actions.clear;
+  const catalogEmpty = !listing && files.length === 0;
+  const confirmDisabled = listing
+    ? true
+    : catalogEmpty
+      ? !actions.eject
+      : selected.size === 0 || !anyAction;
 
   return (
     <Dialog
@@ -969,16 +1064,18 @@ export function SdFileSelector({
 
         <div className="flex flex-wrap items-center gap-4 rounded-md border border-border/60 bg-card-elevated px-3 py-2 text-sm">
           <span className="text-xs font-medium text-muted">Aktionen:</span>
-          <label className="flex items-center gap-2">
+          <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
             <Checkbox
               checked={actions.backup}
+              disabled={catalogEmpty}
               onCheckedChange={(v) => patchAction("backup", v === true)}
             />
             Backup
           </label>
-          <label className="flex items-center gap-2">
+          <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
             <Checkbox
               checked={actions.import}
+              disabled={catalogEmpty}
               onCheckedChange={(v) => patchAction("import", v === true)}
             />
             Import
@@ -986,17 +1083,19 @@ export function SdFileSelector({
           <label
             className={cn(
               "flex items-center gap-2",
-              !actions.backup && "opacity-50",
+              (!actions.backup || catalogEmpty) && "opacity-50",
             )}
             title={
-              actions.backup
-                ? "SD-Karte nach erfolgreichem Backup leeren"
-                : "Nur möglich, wenn Backup aktiviert ist"
+              catalogEmpty
+                ? "Keine Dateien zum Bereinigen"
+                : actions.backup
+                  ? "SD-Karte nach erfolgreichem Backup leeren"
+                  : "Nur möglich, wenn Backup aktiviert ist"
             }
           >
             <Checkbox
               checked={actions.clear}
-              disabled={!actions.backup}
+              disabled={!actions.backup || catalogEmpty}
               onCheckedChange={(v) => patchAction("clear", v === true)}
             />
             SD bereinigen
@@ -1030,7 +1129,7 @@ export function SdFileSelector({
             <Switch
               id="sd-scan-qr"
               checked={Boolean(actions.scanQr)}
-              disabled={!actions.import}
+              disabled={!actions.import || catalogEmpty}
               onCheckedChange={(v) => patchAction("scanQr", v === true)}
             />
             <Label
@@ -1049,7 +1148,7 @@ export function SdFileSelector({
           <div
             ref={attachGridRef}
             className={cn(
-              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2 pr-3 [scrollbar-gutter:stable]",
+              "relative min-h-[16rem] flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2 pr-3 [scrollbar-gutter:stable]",
               selectionDragging && "select-none",
             )}
             onPointerDown={onGridPointerDown}
@@ -1183,14 +1282,13 @@ export function SdFileSelector({
               })}
               </div>
             </div>
-            {listing && files.length === 0 ? (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-muted">
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  SD-Dateien werden gelesen…
-                </span>
-              </div>
-            ) : null}
+            <CatalogStatusOverlay
+              listing={listing}
+              empty={files.length === 0}
+              drive={drive}
+              reason={emptyReason}
+              onRefresh={onRefresh}
+            />
             {dragBox && (
               <div
                 className="pointer-events-none absolute border border-primary bg-primary-soft"
@@ -1206,7 +1304,7 @@ export function SdFileSelector({
         ) : (
           <div
             ref={attachDetailsRef}
-            className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60"
+            className="relative min-h-[16rem] flex-1 overflow-auto rounded-md border border-border/60"
           >
             <table className="w-full text-left text-xs">
               <thead className="sticky top-0 z-[1] bg-card">
@@ -1297,6 +1395,13 @@ export function SdFileSelector({
                 ) : null}
               </tbody>
             </table>
+            <CatalogStatusOverlay
+              listing={listing}
+              empty={files.length === 0}
+              drive={drive}
+              reason={emptyReason}
+              onRefresh={onRefresh}
+            />
           </div>
         )}
 
@@ -1316,10 +1421,24 @@ export function SdFileSelector({
           )}
           <Button
             type="button"
-            disabled={selected.size === 0 || !anyAction || listing}
-            onClick={() => onConfirm([...selected], actions)}
+            disabled={confirmDisabled}
+            onClick={() => {
+              if (catalogEmpty) {
+                onConfirm([], {
+                  backup: false,
+                  import: false,
+                  clear: false,
+                  eject: true,
+                  scanQr: false,
+                });
+                return;
+              }
+              onConfirm([...selected], actions);
+            }}
           >
-            {confirmLabel(actions, selected.size)}
+            {catalogEmpty && actions.eject
+              ? "Auswerfen"
+              : confirmLabel(actions, selected.size)}
           </Button>
         </DialogFooter>
       </DialogContent>

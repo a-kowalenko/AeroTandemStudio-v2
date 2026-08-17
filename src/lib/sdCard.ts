@@ -32,12 +32,33 @@ export type SdFileEnrichment = {
   already_processed: boolean;
 };
 
+export type ListEmptyReason = "no_media" | "filtered_only";
+
 export type ListSdFilesResult = {
   drive: string;
   files: SdFileInfo[];
   total_size_mb: number;
   total_size_bytes: number;
+  empty_reason?: ListEmptyReason | null;
 };
+
+export function emptyCatalogLabel(
+  drive: string | null | undefined,
+  reason?: ListEmptyReason | null,
+): string {
+  if (reason === "filtered_only") {
+    return "Keine importierbaren Medien (nur Timelapse/Proxies).";
+  }
+  return isMtpDrive(drive)
+    ? "Keine Medien auf der Kamera gefunden."
+    : "Keine Mediendateien auf der SD-Karte gefunden.";
+}
+
+export function isEmptyCatalogMessage(msg: string): boolean {
+  return /Keine Medien auf der Kamera gefunden|Keine Mediendateien auf der|Keine importierbaren Medien/.test(
+    msg,
+  );
+}
 
 export type BackupResult = {
   success: boolean;
@@ -176,6 +197,12 @@ export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
     files,
     total_size_bytes,
     total_size_mb: total_size_bytes / (1024 * 1024),
+    empty_reason:
+      files.length === 0
+        ? result.files.length > 0
+          ? "filtered_only"
+          : (result.empty_reason ?? "no_media")
+        : null,
   };
 }
 

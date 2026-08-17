@@ -94,8 +94,10 @@ import { compareVersionParts } from "./lib/versionCompare";
 import {
   backupSdCard,
   ejectSdCard,
+  emptyCatalogLabel,
   enrichSdFiles,
   importSdFiles,
+  isEmptyCatalogMessage,
   isMtpDrive,
   listSdFiles,
   scanSdDrives,
@@ -460,7 +462,10 @@ function App() {
     setPhase(mode === "backup" || mode === "size_limit" ? "confirming" : "importing");
     setIntakeBusy(true);
     const streaming = isMtpDrive(drive);
-    if (streaming) {
+    const alreadyOpen =
+      useSdStore.getState().selectorOpen &&
+      useSdStore.getState().selectorDrive === drive;
+    if (streaming || alreadyOpen) {
       // Open immediately — GoPro PTP catalog can take ~1 min for hundreds of files.
       openSelector({
         drive,
@@ -476,7 +481,13 @@ function App() {
       const listed = await listSdFiles(drive);
       const st = useSdStore.getState();
       if (st.selectorOpen && st.selectorDrive === drive) {
-        replaceSelectorCatalog(drive, listed.files, listed.total_size_mb, false);
+        replaceSelectorCatalog(
+          drive,
+          listed.files,
+          listed.total_size_mb,
+          false,
+          listed.empty_reason ?? (listed.files.length === 0 ? "no_media" : null),
+        );
       } else if (!streaming) {
         openSelector({
           drive,
@@ -484,6 +495,15 @@ function App() {
           totalMb: listed.total_size_mb,
           mode,
         });
+        if (listed.files.length === 0) {
+          replaceSelectorCatalog(
+            drive,
+            listed.files,
+            listed.total_size_mb,
+            false,
+            listed.empty_reason ?? "no_media",
+          );
+        }
       } else {
         return;
       }
@@ -499,8 +519,18 @@ function App() {
         })
         .catch(() => undefined);
     } catch (e) {
-      showError(String(e));
-      if (streaming) closeSelector();
+      const msg = String(e);
+      if (isEmptyCatalogMessage(msg)) {
+        const st = useSdStore.getState();
+        if (st.selectorOpen && st.selectorDrive === drive) {
+          replaceSelectorCatalog(drive, [], 0, false, "no_media");
+          return;
+        }
+        showWarning(msg, "SD");
+      } else {
+        showError(msg);
+        if (streaming) closeSelector();
+      }
       scheduleSdQueueDrain();
     } finally {
       setIntakeBusy(false);
@@ -706,12 +736,16 @@ function App() {
     const doClear = actions.clear && doBackup;
     const doEject = actions.eject;
 
-    if (!doBackup && !doImport) {
+    if (!doBackup && !doImport && !doEject) {
       showWarning(
         actions.clear
           ? "Bereinigen ist nur nach einem Backup möglich."
           : "Keine Aktion ausgewählt.",
       );
+      return false;
+    }
+    if (!doBackup && actions.clear) {
+      showWarning("Bereinigen ist nur nach einem Backup möglich.");
       return false;
     }
 
@@ -777,12 +811,16 @@ function App() {
             showWarning("SD-Backup abgebrochen.", "Backup");
             return true;
           }
-          showError(
+          const failMsg =
             (res.error_message || "Backup fehlgeschlagen") +
-              (actions.clear
-                ? "\n\nSD wurde nicht bereinigt (kein erfolgreiches Backup)."
-                : ""),
-          );
+            (actions.clear
+              ? "\n\nSD wurde nicht bereinigt (kein erfolgreiches Backup)."
+              : "");
+          if (isEmptyCatalogMessage(res.error_message || "")) {
+            showWarning(failMsg, "SD");
+          } else {
+            showError(failMsg);
+          }
           return true;
         }
         const backupDetails = [
@@ -940,13 +978,42 @@ function App() {
     setIntakeBusy(true);
     setLoading(true, "SD-Dateien werden gelesen…");
     try {
-      await listSdFiles(drive);
+      const listed = await listSdFiles(drive);
+      if (listed.files.length === 0) {
+        setIntakeBusy(false);
+        setLoading(false);
+        if (actions.eject) {
+          await runSdWorkflow(
+            drive,
+            [],
+            {
+              backup: false,
+              import: false,
+              clear: false,
+              eject: true,
+              scanQr: false,
+            },
+            {
+              onStart: () => setSdWorkflowUiActive(true),
+            },
+          );
+        } else {
+          showWarning(emptyCatalogLabel(drive, listed.empty_reason), "SD");
+          scheduleSdQueueDrain();
+        }
+        return;
+      }
       setIntakeBusy(false);
       await runSdWorkflow(drive, null, actions, {
         onStart: () => setSdWorkflowUiActive(true),
       });
     } catch (e) {
-      showError(String(e));
+      const msg = String(e);
+      if (isEmptyCatalogMessage(msg)) {
+        showWarning(msg, "SD");
+      } else {
+        showError(msg);
+      }
       scheduleSdQueueDrain();
     } finally {
       setIntakeBusy(false);
@@ -2125,6 +2192,15 @@ function App() {
         }}
         onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
         onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
+        onRefresh={() => {
+          const drive = useSdStore.getState().selectorDrive;
+          const mode = useSdStore.getState().selectorMode;
+          if (!drive) return;
+          void openSdSelector(
+            drive,
+            mode === "size_limit" ? "size_limit" : "backup",
+          );
+        }}
       />
       <HistoryDialog open={processedOpen} onOpenChange={setProcessedOpen} />
       <VideoCutter

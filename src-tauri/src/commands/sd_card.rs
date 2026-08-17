@@ -146,22 +146,38 @@ pub async fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
         .map_err(|e| e.to_string())?;
     match result {
         Ok(res) => {
-            logging::info(
-                "sd",
-                format!(
-                    "SD-Dateien: {} Datei(en), {:.1} MB",
-                    res.files.len(),
-                    res.total_size_mb
-                ),
-            );
+            if res.files.is_empty() {
+                let hint = match res.empty_reason {
+                    Some(crate::sd_card::monitor::ListEmptyReason::FilteredOnly) => {
+                        crate::sd_card::monitor::filtered_only_message()
+                    }
+                    _ => crate::sd_card::monitor::empty_media_message(
+                        crate::sd_card::monitor::is_mtp_source(&drive_log),
+                    ),
+                };
+                logging::warn("sd", format!("SD-Liste leer ({drive_log}): {hint}"));
+            } else {
+                logging::info(
+                    "sd",
+                    format!(
+                        "SD-Dateien: {} Datei(en), {:.1} MB",
+                        res.files.len(),
+                        res.total_size_mb
+                    ),
+                );
+            }
             Ok(res)
         }
         Err(e) => {
             let msg = e.to_string();
-            logging::error(
-                "sd",
-                format!("SD-Liste fehlgeschlagen ({drive_log}): {msg}"),
-            );
+            if crate::sd_card::monitor::is_empty_catalog_message(&msg) {
+                logging::warn("sd", format!("SD-Liste leer ({drive_log}): {msg}"));
+            } else {
+                logging::error(
+                    "sd",
+                    format!("SD-Liste fehlgeschlagen ({drive_log}): {msg}"),
+                );
+            }
             Err(msg)
         }
     }
@@ -221,16 +237,28 @@ pub async fn backup_sd_card(
 
     match result {
         Ok(res) => {
-            logging::info(
-                "sd",
-                format!(
-                    "Backup fertig: copied={}, skipped={}, path={}, secondary={}",
-                    res.copied_count,
-                    res.skipped_count,
-                    res.backup_path.as_deref().unwrap_or("-"),
-                    res.secondary_backup_path.as_deref().unwrap_or("-")
-                ),
-            );
+            if !res.success {
+                let msg = res
+                    .error_message
+                    .as_deref()
+                    .unwrap_or("Backup fehlgeschlagen");
+                if crate::sd_card::monitor::is_empty_catalog_message(msg) {
+                    logging::warn("sd", format!("Backup übersprungen: {msg}"));
+                } else {
+                    logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+                }
+            } else {
+                logging::info(
+                    "sd",
+                    format!(
+                        "Backup fertig: copied={}, skipped={}, path={}, secondary={}",
+                        res.copied_count,
+                        res.skipped_count,
+                        res.backup_path.as_deref().unwrap_or("-"),
+                        res.secondary_backup_path.as_deref().unwrap_or("-")
+                    ),
+                );
+            }
             if let Some(ref w) = res.secondary_warning {
                 logging::warn("sd", format!("Zweiter Backup-Pfad: {w}"));
             }

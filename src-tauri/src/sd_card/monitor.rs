@@ -207,12 +207,50 @@ pub struct SdFileEnrichment {
     pub already_processed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListEmptyReason {
+    NoMedia,
+    FilteredOnly,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ListSdFilesResult {
     pub drive: String,
     pub files: Vec<SdFileInfo>,
     pub total_size_mb: f64,
     pub total_size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_reason: Option<ListEmptyReason>,
+}
+
+pub fn empty_media_message(mtp: bool) -> &'static str {
+    if mtp {
+        "Keine Medien auf der Kamera gefunden."
+    } else {
+        "Keine Mediendateien auf der SD-Karte gefunden."
+    }
+}
+
+pub fn filtered_only_message() -> &'static str {
+    "Keine importierbaren Medien (nur Timelapse/Proxies)."
+}
+
+pub fn list_empty_reason(kept: usize, seen: usize) -> Option<ListEmptyReason> {
+    if kept > 0 {
+        None
+    } else if seen > 0 {
+        Some(ListEmptyReason::FilteredOnly)
+    } else {
+        Some(ListEmptyReason::NoMedia)
+    }
+}
+
+pub fn is_empty_catalog_message(msg: &str) -> bool {
+    let m = msg.trim();
+    m.contains("Keine Medien auf der Kamera gefunden")
+        || m.contains("Keine Mediendateien auf der")
+        || m.contains("Keine importierbaren Medien")
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -407,6 +445,8 @@ struct DcimListCache {
     drive: String,
     filtered_paths: Vec<String>,
     total_bytes: u64,
+    /// Count before backup/listable filters (for empty_reason).
+    seen_count: usize,
     at: Instant,
 }
 
@@ -810,7 +850,7 @@ impl SdCardMonitor {
         if is_mtp_source(drive) {
             return self.list_mtp_files(drive);
         }
-        let (filtered, _total) = self.scan_drive_media(drive)?;
+        let (filtered, _total, seen) = self.scan_drive_media(drive)?;
         // Defense: drop proxies even if an older list/ICA cache still held them.
         let filtered = filter_listable_media_paths(filtered);
         let total: u64 = filtered
@@ -834,6 +874,7 @@ impl SdCardMonitor {
             drive: drive.to_string(),
             total_size_mb: total as f64 / (1024.0 * 1024.0),
             total_size_bytes: total,
+            empty_reason: list_empty_reason(files.len(), seen),
             files,
         })
     }
@@ -898,7 +939,7 @@ impl SdCardMonitor {
             return (drive.to_string(), 0, 0.0);
         }
         match self.scan_drive_media(drive) {
-            Ok((paths, total)) => (
+            Ok((paths, total, _)) => (
                 drive.to_string(),
                 paths.len(),
                 total as f64 / (1024.0 * 1024.0),
@@ -907,14 +948,14 @@ impl SdCardMonitor {
         }
     }
 
-    /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes.
-    fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+    /// Walk DCIM once (cached briefly) and return filtered media paths + total bytes + pre-filter count.
+    fn scan_drive_media(&self, drive: &str) -> Result<(Vec<String>, u64, usize), SdError> {
         if is_mtp_source(drive) {
             // Reuse staging cache when still warm (avoids a second ICA download).
             if let Ok(cache) = self.list_cache.lock() {
                 if let Some(c) = cache.as_ref() {
                     if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
-                        return Ok((c.filtered_paths.clone(), c.total_bytes));
+                        return Ok((c.filtered_paths.clone(), c.total_bytes, c.seen_count));
                     }
                 }
             }
@@ -923,7 +964,7 @@ impl SdCardMonitor {
         if let Ok(cache) = self.list_cache.lock() {
             if let Some(c) = cache.as_ref() {
                 if drive_keys_equal(&c.drive, drive) && c.at.elapsed() < DCIM_LIST_CACHE_TTL {
-                    return Ok((c.filtered_paths.clone(), c.total_bytes));
+                    return Ok((c.filtered_paths.clone(), c.total_bytes, c.seen_count));
                 }
             }
         }
@@ -935,6 +976,7 @@ impl SdCardMonitor {
         }
 
         let all = collect_media_paths_from_tree(&dcim_path);
+        let seen = all.len();
         let (filtered, _) = filter_media_paths_for_backup(&all, &dcim, true);
         let total: u64 = filtered
             .iter()
@@ -946,18 +988,23 @@ impl SdCardMonitor {
                 drive: drive.to_string(),
                 filtered_paths: filtered.clone(),
                 total_bytes: total,
+                seen_count: seen,
                 at: Instant::now(),
             });
         }
 
-        Ok((filtered, total))
+        Ok((filtered, total, seen))
     }
 
     /// USB/MTP: catalog only (no download). Call from list/backup, never detect/hotplug.
-    fn scan_mtp_media(&self, drive: &str) -> Result<(Vec<String>, u64), SdError> {
+    fn scan_mtp_media(&self, drive: &str) -> Result<(Vec<String>, u64, usize), SdError> {
         let listed = self.list_mtp_files(drive)?;
         let paths: Vec<String> = listed.files.iter().map(|f| f.path.clone()).collect();
-        Ok((paths, listed.total_size_bytes))
+        let seen = match listed.empty_reason {
+            Some(ListEmptyReason::FilteredOnly) => listed.files.len().saturating_add(1),
+            _ => listed.files.len(),
+        };
+        Ok((paths, listed.total_size_bytes, seen))
     }
 
     fn list_mtp_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
@@ -1029,6 +1076,7 @@ impl SdCardMonitor {
                             drive: drive.to_string(),
                             filtered_paths: listed.files.iter().map(|f| f.path.clone()).collect(),
                             total_bytes: listed.total_size_bytes,
+                            seen_count: listed.files.len(),
                             at: Instant::now(),
                         });
                     }
@@ -1138,11 +1186,7 @@ impl SdCardMonitor {
             filter_media_paths_for_backup(&media_files, &filter_root, true);
         if media_files.is_empty() {
             return Ok(BackupResult::fail(
-                if is_mtp_source(drive) {
-                    "Keine Mediendateien auf der USB-Kamera gefunden".to_string()
-                } else {
-                    "Keine Mediendateien auf der SD-Karte gefunden".to_string()
-                },
+                empty_media_message(is_mtp_source(drive)).to_string(),
                 0,
             ));
         }
@@ -1625,7 +1669,7 @@ impl SdCardMonitor {
             let listed = self.list_mtp_files(drive)?;
             if listed.files.is_empty() {
                 return Ok(BackupResult::fail(
-                    "Keine Mediendateien auf der USB-Kamera gefunden".to_string(),
+                    empty_media_message(true).to_string(),
                     0,
                 ));
             }
@@ -1658,7 +1702,7 @@ impl SdCardMonitor {
             chosen.retain(|f| keep.contains(&f.path));
             if chosen.is_empty() {
                 return Ok(BackupResult::fail(
-                    "Keine Mediendateien auf der USB-Kamera gefunden".to_string(),
+                    empty_media_message(true).to_string(),
                     0,
                 ));
             }
@@ -2296,6 +2340,7 @@ fn list_result_from_mtp_catalog(
         drive: drive.to_string(),
         total_size_mb: total as f64 / (1024.0 * 1024.0),
         total_size_bytes: total,
+        empty_reason: list_empty_reason(files.len(), catalog.len()),
         files,
     }
 }
@@ -3006,6 +3051,7 @@ mod tests {
         let drive = src.path().to_string_lossy().into_owned();
         let listed = monitor.list_files(&drive).unwrap();
         assert_eq!(listed.files.len(), 2);
+        assert!(listed.empty_reason.is_none());
         for f in &listed.files {
             assert!(!f.already_processed);
             assert_eq!(f.display_epoch, f.mtime);
@@ -3044,5 +3090,78 @@ mod tests {
             1.0,
         );
         assert!(!photo.is_video);
+    }
+
+    fn test_monitor(hist: &tempfile::TempDir) -> SdCardMonitor {
+        SdCardMonitor {
+            monitoring: AtomicBool::new(false),
+            known_drives: Mutex::new(HashSet::new()),
+            action_cam_drives: Mutex::new(HashSet::new()),
+            pending_drives: Mutex::new(HashSet::new()),
+            declined_drives: Mutex::new(HashSet::new()),
+            processed_drives: Mutex::new(HashSet::new()),
+            processing_drives: Mutex::new(HashSet::new()),
+            ejected_mtp_sources: Mutex::new(HashSet::new()),
+            backup_in_progress: AtomicBool::new(false),
+            history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
+            list_cache: Mutex::new(None),
+            config_provider: Mutex::new(Box::new(AppConfig::default)),
+            on_progress: Mutex::new(None),
+            on_workflow: Mutex::new(None),
+            on_status: Mutex::new(None),
+            on_inserted: Mutex::new(None),
+            on_removed: Mutex::new(None),
+        }
+    }
+
+    #[test]
+    fn empty_catalog_messages_are_warnings_not_errors() {
+        assert_eq!(
+            empty_media_message(true),
+            "Keine Medien auf der Kamera gefunden."
+        );
+        assert_eq!(
+            empty_media_message(false),
+            "Keine Mediendateien auf der SD-Karte gefunden."
+        );
+        assert!(is_empty_catalog_message(empty_media_message(true)));
+        assert!(is_empty_catalog_message(empty_media_message(false)));
+        assert!(is_empty_catalog_message(filtered_only_message()));
+        assert!(!is_empty_catalog_message("DCIM nicht gefunden: /Volumes/X/DCIM"));
+        assert!(!is_empty_catalog_message("Kamera wurde getrennt."));
+        assert_eq!(list_empty_reason(2, 2), None);
+        assert_eq!(list_empty_reason(0, 0), Some(ListEmptyReason::NoMedia));
+        assert_eq!(
+            list_empty_reason(0, 3),
+            Some(ListEmptyReason::FilteredOnly)
+        );
+    }
+
+    #[test]
+    fn list_files_empty_dcim_is_ok_no_media() {
+        let src = tempdir().unwrap();
+        fs::create_dir_all(src.path().join("DCIM").join("100")).unwrap();
+        let hist = tempdir().unwrap();
+        let monitor = test_monitor(&hist);
+        let listed = monitor
+            .list_files(&src.path().to_string_lossy())
+            .unwrap();
+        assert!(listed.files.is_empty());
+        assert_eq!(listed.empty_reason, Some(ListEmptyReason::NoMedia));
+    }
+
+    #[test]
+    fn list_files_timelapse_only_videos_are_filtered() {
+        let src = tempdir().unwrap();
+        let tl = src.path().join("DCIM").join("100MEDIA").join("timelapse");
+        fs::create_dir_all(&tl).unwrap();
+        fs::write(tl.join("DJI_0001.MP4"), vec![0u8; 1024]).unwrap();
+        let hist = tempdir().unwrap();
+        let monitor = test_monitor(&hist);
+        let listed = monitor
+            .list_files(&src.path().to_string_lossy())
+            .unwrap();
+        assert!(listed.files.is_empty());
+        assert_eq!(listed.empty_reason, Some(ListEmptyReason::FilteredOnly));
     }
 }

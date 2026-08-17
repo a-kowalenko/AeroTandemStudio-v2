@@ -57,6 +57,8 @@ type SdState = {
   selectorMode: "backup" | "import" | "size_limit";
   /** True while an MTP catalog is still streaming into the confirm dialog. */
   selectorListing: boolean;
+  /** Why the confirm list is empty after listing finished. */
+  selectorEmptyReason: import("../lib/sdCard").ListEmptyReason | null;
   processedOpen: boolean;
   setMonitoring: (v: boolean) => void;
   setDrives: (drives: SdDriveInfo[]) => void;
@@ -89,6 +91,7 @@ type SdState = {
     files: import("../lib/sdCard").SdFileInfo[],
     totalMb: number,
     listing: boolean,
+    emptyReason?: import("../lib/sdCard").ListEmptyReason | null,
   ) => void;
   patchSelectorFiles: (
     updates: Array<{
@@ -131,6 +134,7 @@ export const useSdStore = create<SdState>((set, get) => ({
   selectorTotalMb: 0,
   selectorMode: "import",
   selectorListing: false,
+  selectorEmptyReason: null,
   processedOpen: false,
 
   setMonitoring: (monitoring) =>
@@ -187,8 +191,9 @@ export const useSdStore = create<SdState>((set, get) => ({
       selectorTotalMb: totalMb,
       selectorMode: mode,
       selectorListing: listing,
+      selectorEmptyReason: null,
     }),
-  replaceSelectorCatalog: (drive, files, totalMb, listing) =>
+  replaceSelectorCatalog: (drive, files, totalMb, listing, emptyReason) =>
     set((state) => {
       if (!state.selectorOpen || state.selectorDrive !== drive) return state;
       // Catalog finished — ignore a late in-flight tick.
@@ -211,8 +216,13 @@ export const useSdStore = create<SdState>((set, get) => ({
           already_processed: p.already_processed,
         };
       });
+      const selectorEmptyReason =
+        listing || selectorFiles.length > 0
+          ? null
+          : (emptyReason ?? "no_media");
       if (
         listing === state.selectorListing &&
+        selectorEmptyReason === state.selectorEmptyReason &&
         selectorFiles.length === state.selectorFiles.length &&
         selectorFiles.every((f, i) => f === state.selectorFiles[i])
       ) {
@@ -222,6 +232,7 @@ export const useSdStore = create<SdState>((set, get) => ({
         selectorFiles,
         selectorTotalMb: totalMb,
         selectorListing: listing,
+        selectorEmptyReason,
       };
     }),
   patchSelectorFiles: (updates) =>
@@ -254,6 +265,7 @@ export const useSdStore = create<SdState>((set, get) => ({
       selectorFiles: [],
       selectorTotalMb: 0,
       selectorListing: false,
+      selectorEmptyReason: null,
     }),
   setProcessedOpen: (processedOpen) => set({ processedOpen }),
 }));

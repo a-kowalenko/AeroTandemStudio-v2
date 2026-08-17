@@ -591,6 +591,7 @@ mod tests {
         assert_eq!(names, ["GX010123.MP4", "GOPR0123.JPG"]);
         assert_eq!(files[0].size, 1024);
         assert!((files[1].mtime - 1690000001.5).abs() < f64::EPSILON);
+        assert!(parse_catalog_json("[]").unwrap().is_empty());
     }
 
     #[test]
