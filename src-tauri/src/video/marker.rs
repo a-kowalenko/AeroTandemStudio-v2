@@ -30,26 +30,7 @@ pub fn build_marker_json(
             json!(kunde.email.as_deref().unwrap_or("").trim()),
         );
         map.insert("type".into(), json!(marker_type));
-        map.insert("handcam_foto".into(), json!(kunde.handcam_foto));
-        map.insert("handcam_video".into(), json!(kunde.handcam_video));
-        map.insert("outside_foto".into(), json!(kunde.outside_foto));
-        map.insert("outside_video".into(), json!(kunde.outside_video));
-        map.insert(
-            "ist_bezahlt_handcam_foto".into(),
-            json!(kunde.ist_bezahlt_handcam_foto),
-        );
-        map.insert(
-            "ist_bezahlt_handcam_video".into(),
-            json!(kunde.ist_bezahlt_handcam_video),
-        );
-        map.insert(
-            "ist_bezahlt_outside_foto".into(),
-            json!(kunde.ist_bezahlt_outside_foto),
-        );
-        map.insert(
-            "ist_bezahlt_outside_video".into(),
-            json!(kunde.ist_bezahlt_outside_video),
-        );
+        insert_media_flags(&mut map, kunde);
         let telefon = kunde.telefon.as_deref().unwrap_or("").trim();
         if !telefon.is_empty() {
             map.insert("telefon".into(), json!(telefon));
@@ -57,7 +38,7 @@ pub fn build_marker_json(
         return Value::Object(map);
     }
 
-    // Normal / QR mode: IDs only + type (legacy strips PII + product flags)
+    // QR / API mode: IDs + type + product flags (no PII). Flags are required for AMS Nachladen.
     let mut map = Map::new();
     map.insert("type".into(), json!(marker_type));
 
@@ -89,7 +70,31 @@ pub fn build_marker_json(
         map.insert("booking_id".into(), json!(bid));
     }
 
+    insert_media_flags(&mut map, kunde);
     Value::Object(map)
+}
+
+fn insert_media_flags(map: &mut Map<String, Value>, kunde: &Kunde) {
+    map.insert("handcam_foto".into(), json!(kunde.handcam_foto));
+    map.insert("handcam_video".into(), json!(kunde.handcam_video));
+    map.insert("outside_foto".into(), json!(kunde.outside_foto));
+    map.insert("outside_video".into(), json!(kunde.outside_video));
+    map.insert(
+        "ist_bezahlt_handcam_foto".into(),
+        json!(kunde.ist_bezahlt_handcam_foto),
+    );
+    map.insert(
+        "ist_bezahlt_handcam_video".into(),
+        json!(kunde.ist_bezahlt_handcam_video),
+    );
+    map.insert(
+        "ist_bezahlt_outside_foto".into(),
+        json!(kunde.ist_bezahlt_outside_foto),
+    );
+    map.insert(
+        "ist_bezahlt_outside_video".into(),
+        json!(kunde.ist_bezahlt_outside_video),
+    );
 }
 
 pub fn write_marker_file(
@@ -134,7 +139,8 @@ mod tests {
         assert_eq!(v["type"], "Outside");
         assert_eq!(v["kunden_id_hash"], "abc");
         assert!(v.get("vorname").is_none());
-        assert!(v.get("handcam_foto").is_none());
+        assert_eq!(v["handcam_foto"], true);
+        assert_eq!(v["ist_bezahlt_handcam_foto"], false);
     }
 
     #[test]
@@ -143,9 +149,13 @@ mod tests {
         k.form_mode = "manual".into();
         k.kunden_id = Some("K1".into());
         k.booking_id = Some("B1".into());
+        k.outside_video = true;
+        k.ist_bezahlt_outside_video = true;
         let v = build_marker_json(&k, false, false);
         assert_eq!(v["kunden_id"], "K1");
         assert_eq!(v["booking_id"], "B1");
         assert!(v.get("kunden_id_hash").is_none());
+        assert_eq!(v["outside_video"], true);
+        assert_eq!(v["ist_bezahlt_outside_video"], true);
     }
 }
