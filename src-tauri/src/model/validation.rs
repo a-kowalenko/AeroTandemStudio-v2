@@ -34,6 +34,21 @@ pub fn validate_kunde(
         errors.push("Vorname und Nachname sind erforderlich".into());
     }
 
+    if kunde.form_mode == "manual" {
+        const MIN_DIGITS: usize = 4;
+        for (label, raw) in [
+            ("Kunden-ID", kunde.kunden_id.as_deref()),
+            ("Booking-ID", kunde.booking_id.as_deref()),
+        ] {
+            let id = raw.unwrap_or("").trim();
+            if !id.is_empty() && id.chars().count() < MIN_DIGITS {
+                errors.push(format!(
+                    "{label} muss mindestens {MIN_DIGITS} Ziffern haben"
+                ));
+            }
+        }
+    }
+
     if oldschool_mode && kunde.form_mode == "manual" {
         let email = kunde.email.as_deref().unwrap_or("").trim();
         if email.is_empty() {
@@ -146,6 +161,28 @@ mod tests {
         let r = validate_kunde(&k, &[], true);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Email")));
+    }
+
+    #[test]
+    fn manual_ids_must_be_at_least_four_digits() {
+        let mut k = base_kunde();
+        k.form_mode = "manual".into();
+        k.kunden_id = Some("123".into());
+        k.booking_id = Some("99".into());
+        let r = validate_kunde(&k, &[], false);
+        assert!(!r.valid);
+        assert!(r.errors.iter().any(|e| e.contains("Kunden-ID")));
+        assert!(r.errors.iter().any(|e| e.contains("Booking-ID")));
+    }
+
+    #[test]
+    fn manual_ids_of_four_digits_ok() {
+        let mut k = base_kunde();
+        k.form_mode = "manual".into();
+        k.kunden_id = Some("1234".into());
+        k.booking_id = Some("5678".into());
+        let r = validate_kunde(&k, &[], false);
+        assert!(r.valid);
     }
 
     #[test]

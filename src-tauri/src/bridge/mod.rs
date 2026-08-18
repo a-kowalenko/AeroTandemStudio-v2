@@ -2,6 +2,7 @@
 //! Spec: AMS `docs/HANDOFF.md` §9 — health, lookup, jobs, ready + mDNS discovery.
 //! File handoff works without this module.
 
+mod lookup_map;
 mod mdns;
 
 pub use mdns::{discover_bridges, DiscoveredBridge};
@@ -58,6 +59,14 @@ pub struct BridgeCustomer {
     pub outside_foto: bool,
     #[serde(default)]
     pub outside_video: bool,
+    #[serde(default)]
+    pub ist_bezahlt_handcam_foto: bool,
+    #[serde(default)]
+    pub ist_bezahlt_handcam_video: bool,
+    #[serde(default)]
+    pub ist_bezahlt_outside_foto: bool,
+    #[serde(default)]
+    pub ist_bezahlt_outside_video: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

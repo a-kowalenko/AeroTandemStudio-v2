@@ -127,5 +127,6 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::Interrupted);
         assert!(err.to_string().contains("Abgebrochen"));
         assert!(!dst.exists());
+        crate::video::ffmpeg::reset_cancel_flag();
     }
 }

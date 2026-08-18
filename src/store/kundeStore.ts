@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import type { Kunde, QrPreview } from "../lib/tauri";
+import type { AmsBridgeCustomer, Kunde, QrPreview } from "../lib/tauri";
+import {
+  applyBridgeCustomerToKunde,
+  clearAmsLookupDerived,
+} from "../lib/amsLookup";
 import {
   discardQrPreviewBestEffort,
   takeQrPreview,
@@ -62,6 +66,14 @@ type KundeState = {
    * Scroll/focus runs when the QR success dialog closes.
    */
   crewAttentionAfterQr: boolean;
+  /**
+   * AMS ID-lookup lock (Phase 25). Independent of QR snapshot/revision.
+   * Name, IDs and media are locked while true; crew stays editable.
+   */
+  amsLookupLocked: boolean;
+  amsLookupRevision: number;
+  /** IDs that produced the current AMS fill (skip re-lookup until they change). */
+  amsLookupIds: { kunden_id: string; booking_id: string } | null;
   clearCrewAttentionAfterQr: () => void;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
   patch: (partial: Partial<Kunde>) => void;
@@ -79,6 +91,11 @@ type KundeState = {
     outside_video?: boolean;
   }) => void;
   applyFromQr: (scanned: Kunde, opts?: ApplyFromQrOpts) => void;
+  applyFromAmsLookup: (hit: AmsBridgeCustomer, opts?: { videoMode?: "handcam" | "outside" }) => void;
+  unlockAmsLookup: () => void;
+  relockAmsLookup: () => void;
+  /** Drop AMS lock without touching QR state. */
+  clearAmsLookup: () => void;
   /** Toggle QR ↔ manual; restoring QR re-applies qrSnapshot (manual identity edits discarded). */
   switchFormMode: (mode: "kunde" | "manual") => void;
   resetSession: (keep?: {
@@ -97,11 +114,28 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   qrPreviewSource: null,
   qrRevision: 0,
   crewAttentionAfterQr: false,
+  amsLookupLocked: false,
+  amsLookupRevision: 0,
+  amsLookupIds: null,
 
   clearCrewAttentionAfterQr: () => set({ crewAttentionAfterQr: false }),
 
   setField: (key, value) => {
-    set({ kunde: { ...get().kunde, [key]: value } });
+    const prev = get().kunde;
+    if (
+      (key === "kunden_id" || key === "booking_id") &&
+      get().amsLookupRevision > 0 &&
+      (prev[key] ?? "") !== (value ?? "")
+    ) {
+      set({
+        kunde: clearAmsLookupDerived({ ...prev, [key]: value }),
+        amsLookupLocked: false,
+        amsLookupRevision: 0,
+        amsLookupIds: null,
+      });
+      return;
+    }
+    set({ kunde: { ...prev, [key]: value } });
   },
 
   patch: (partial) => {
@@ -109,6 +143,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   },
 
   setVideoMode: (mode) => {
+    if (get().amsLookupLocked) return;
     const k = get().kunde;
     if (mode === "handcam") {
       set({
@@ -152,6 +187,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   },
 
   autoCheckProducts: (hasVideos, hasPhotos) => {
+    if (get().amsLookupLocked) return;
     const k = get().kunde;
     const mode = k.video_mode;
     if (mode !== "handcam" && mode !== "outside") return;
@@ -255,11 +291,45 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       qrSnapshot: { ...next },
       qrPreview: preview,
       qrPreviewSource: sourcePath,
+      amsLookupLocked: false,
+      amsLookupRevision: 0,
+      amsLookupIds: null,
       kunde: next,
     });
     // Lazy: vermeidet zirkulären Import mit video/photo stores.
     void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
       syncProductsFromMedia();
+    });
+  },
+
+  applyFromAmsLookup: (hit, opts) => {
+    const next = applyBridgeCustomerToKunde(get().kunde, hit, opts);
+    set({
+      amsLookupLocked: true,
+      amsLookupRevision: get().amsLookupRevision + 1,
+      amsLookupIds: {
+        kunden_id: (next.kunden_id ?? "").trim(),
+        booking_id: (next.booking_id ?? "").trim(),
+      },
+      kunde: next,
+    });
+  },
+
+  unlockAmsLookup: () => {
+    if (!get().amsLookupLocked) return;
+    set({ amsLookupLocked: false });
+  },
+
+  relockAmsLookup: () => {
+    if (get().amsLookupRevision <= 0) return;
+    set({ amsLookupLocked: true });
+  },
+
+  clearAmsLookup: () => {
+    set({
+      amsLookupLocked: false,
+      amsLookupRevision: 0,
+      amsLookupIds: null,
     });
   },
 
@@ -271,6 +341,9 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       const snapshot = { ...kunde, form_mode: "kunde" as const };
       set({
         qrSnapshot: snapshot,
+        amsLookupLocked: false,
+        amsLookupRevision: 0,
+        amsLookupIds: null,
         kunde: {
           ...kunde,
           form_mode: "manual",
@@ -283,7 +356,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       return;
     }
 
-    // Restore QR from snapshot — manual identity edits are discarded.
+    // Restore QR from snapshot — manual identity edits and AMS lock are discarded.
     if (!qrSnapshot || kunde.form_mode === "kunde") return;
     const restored: Kunde = {
       ...qrSnapshot,
@@ -295,6 +368,9 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     };
     set({
       qrRevision: get().qrRevision + 1,
+      amsLookupLocked: false,
+      amsLookupRevision: 0,
+      amsLookupIds: null,
       kunde: restored,
       qrSnapshot: { ...restored },
     });
@@ -313,6 +389,9 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       qrSnapshot: null,
       qrPreview: null,
       qrPreviewSource: null,
+      amsLookupLocked: false,
+      amsLookupRevision: 0,
+      amsLookupIds: null,
       kunde: emptyKunde({
         ort: prev.ort,
         tandemmaster: keep?.tandemmaster

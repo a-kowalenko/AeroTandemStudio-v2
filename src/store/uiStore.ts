@@ -20,6 +20,19 @@ export type DialogActionStatus = {
   detail?: string;
 };
 
+export type DialogChoiceOption = {
+  id: string;
+  label: string;
+  detail?: string;
+};
+
+export type DialogChoicesOptions = {
+  options: DialogChoiceOption[];
+  cancelLabel?: string;
+  onPick: (id: string) => void;
+  onCancel: () => void;
+};
+
 export type DialogOptions = {
   autoCloseSecs?: number;
   /** Visual emphasis for QR customer recognition. */
@@ -35,6 +48,8 @@ export type DialogOptions = {
    * Escape / overlay dismiss calls `onSecondary` (safe default).
    */
   confirm?: DialogConfirmOptions | null;
+  /** Equal-weight choices (e.g. Handcam vs Outside). Escape = onCancel. */
+  choices?: DialogChoicesOptions | null;
 };
 
 export type DialogConfirmOptions = {
@@ -79,6 +94,7 @@ type UiState = {
   dialogQrPreview: QrPreview | null;
   dialogPrimaryAction: DialogPrimaryAction | null;
   dialogConfirm: DialogConfirmOptions | null;
+  dialogChoices: DialogChoicesOptions | null;
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
@@ -124,6 +140,7 @@ const emptyDialogFields = {
   dialogQrPreview: null as QrPreview | null,
   dialogPrimaryAction: null as DialogPrimaryAction | null,
   dialogConfirm: null as DialogConfirmOptions | null,
+  dialogChoices: null as DialogChoicesOptions | null,
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -160,6 +177,7 @@ export const useUiStore = create<UiState>((set) => ({
       dialogQrPreview: options?.qrPreview ?? null,
       dialogPrimaryAction: null,
       dialogConfirm: options?.confirm ?? null,
+      dialogChoices: options?.choices ?? null,
     }),
   showWarning: (message, title = "Hinweis", options) =>
     set({

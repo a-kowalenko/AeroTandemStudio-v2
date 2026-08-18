@@ -1033,16 +1033,26 @@ export type AmsBridgeHealthResult = {
 
 export type AmsBridgeLookupResponse = {
   ok: boolean;
-  customer?: {
-    customer_number?: string | null;
-    booking_number?: string | null;
-    first_name?: string | null;
-    last_name?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    type?: string | null;
-  } | null;
+  customer?: AmsBridgeCustomer | null;
   error?: { code: string; message: string } | null;
+};
+
+export type AmsBridgeCustomer = {
+  customer_number?: string | null;
+  booking_number?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  type?: string | null;
+  handcam_foto?: boolean;
+  handcam_video?: boolean;
+  outside_foto?: boolean;
+  outside_video?: boolean;
+  ist_bezahlt_handcam_foto?: boolean;
+  ist_bezahlt_handcam_video?: boolean;
+  ist_bezahlt_outside_foto?: boolean;
+  ist_bezahlt_outside_video?: boolean;
 };
 
 export async function amsBridgeHealth(): Promise<AmsBridgeHealthResult> {

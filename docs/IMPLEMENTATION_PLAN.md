@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 23.1 — Windows WPD](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(Phase 25 AMS-Lookup Autofill erledigt.)*  
 *(Phase 24 AMS-Nachreichen erledigt.)*  
 *(optional danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*  
 *(Phase 22: macOS Titlebar-Align + Dialog-Zentrierung erledigt.)*
@@ -1322,6 +1323,106 @@ Danach cargo test.
 
 ---
 
+### Phase 25 — AMS-Lookup Autofill (Manuell / ID)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 13 P2 (Bridge Lookup), Phase 5 (Kundenform), Phase 12 (Marker `api_id`)  
+**Spec:** AeroMediaService-v2 `docs/HANDOFF.md` §9 (`POST /v1/customer/lookup`, `mode=id`)  
+**Ziel:** Im manuellen **ID**-Modus, sobald Kunden-ID und Booking-ID stehen und die AMS-Bridge erreichbar ist, Kundendaten per Lookup holen, die Form automatisch füllen und wie im QR-Modus sperren. **Keine Hashes** — IDs bleiben die Identität, Marker bleibt `api_id`.
+
+Lookup existiert bereits (`ams_bridge_customer_lookup` / `preflight_customer_lookup`), füllt die Form aber nicht (nur Gate beim Erstellen).
+
+#### Out of Scope
+
+- Keine `kunden_id_hash` / `booking_id_hash` in Form, Store oder Marker
+- Kein Umschalten auf `form_mode: "kunde"` (kein QR-Snapshot, kein `api_hash`-Marker)
+- Keine AMS-API-Änderung (kein optionales `type`, keine Hash-Felder in der Response)
+- Kein Lookup in Kontakt- oder Lokal-Modus
+- Kein Health-Polling in der Form
+- Phase 23.1 (WPD) und Phase 24 nicht anfassen
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Identität | `kunden_id` + `booking_id` bleiben; Hashes weder anzeigen noch schreiben |
+| `form_mode` | bleibt `"manual"`; `manual_entry_mode` bleibt `"id"` |
+| Marker / Manifest | unverändert `api_id` (Preflight weiter `mode=id`) |
+| Sperre | wie QR: Name, IDs, Medien (inkl. Bezahlt) gesperrt; Crew frei; Button **Bearbeiten / Sperren** |
+| Provenienz | eigenes Flag (z. B. `amsLookupLocked` / Revision), **nicht** `qrSnapshot` / `qrRevision` |
+| Trigger | nur Manuell + ID; beide IDs nicht leer; Bridge konfiguriert; Debounce (~500 ms) nach letzter ID-Änderung; In-flight abbrechen |
+| AMS down / kein Capability `lookup` | soft: nichts füllen, nichts sperren, manuell weiter |
+| Kunde unbekannt / Lookup-Fehler (nicht unreachable) | Fehlerzeile unter den IDs; Felder bleiben editierbar; kein Lock |
+| Treffer | Vorname, Nachname, `gast`, `video_mode`, Produktflags **und** `ist_bezahlt_*` setzen, dann sperren |
+| E-Mail / Telefon | in ID-Modus **nicht** aus AMS übernehmen (wie QR) |
+| Lookup-`type` | AMS verlangt `type`. Wenn `video_mode` schon `handcam`/`outside` → diesen Typ senden. Wenn leer → zwei Lookups (`Handcam`, `Outside`); ersten `ok` mit mindestens einem Medienflag nehmen; bei zwei Treffern Flags vereinigen, `video_mode` aus der Familie mit Flags. **Antwort** ist Quelle für Medien, nicht die leere Form. |
+| Konflikt | wenn schon eine andere manuelle Identität da ist (Name oder andere IDs) → Confirm wie QR-Override, nicht still ersetzen |
+| IDs nach Unlock ändern | abgeleitete Name/Medien leeren, Lock lösen, Lookup neu |
+| Moduswechsel | QR / Kontakt / Lokal nach Lock → AMS-Lock lösen; QR-Scan bleibt eigener Override (`presentQrHit`) |
+| Medien-Autosync | solange AMS-Lock: `syncProductsFromMedia` darf AMS-Flags **nicht** überschreiben |
+| Preflight beim Erstellen | behalten (Recheck); unreachable weiter soft; „nicht gefunden“ weiter hart |
+| Connectivity | kein extra Health-Ping; der Lookup selbst ist der Test (401 vs. unreachable unterscheiden) |
+
+#### Mapping (Bridge-Customer → Form)
+
+| AMS (`BridgeCustomer`) | ATS (`Kunde`) |
+|------------------------|----------------|
+| `first_name` | `vorname` (+ `gast` ableiten) |
+| `last_name` | `nachname` |
+| `handcam_*` / `outside_*` | dieselben Produktflags |
+| `ist_bezahlt_*` (Rust-DTO; TS-Typen nachziehen) | dieselben Bezahlt-Flags |
+| `customer_type` / gesetzte Flags | `video_mode` `handcam` \| `outside` |
+| `customer_number` / `booking_number` | **nicht** über IDs stülpen — eingegebene IDs bleiben |
+| `email` / `phone` | ignorieren |
+
+Frontend-Typ `AmsBridgeLookupResponse.customer` um Medien-/Bezahlt-Flags und `type` ergänzen (Rust `BridgeCustomer` ist Quelle).
+
+#### UX
+
+- IDs bleiben sichtbar (Hash-Präfix wie bisher), nach Lock disabled.
+- Status unter den ID-Feldern, z. B. `Gefunden: Max Mustermann · Outside Video` / `Suche…` / `Kunde nicht gefunden` / (still, wenn AMS offline).
+- Button **Bearbeiten / Sperren** nur wenn AMS-Lock aktiv (analog QR, nicht den QR-Button wiederverwenden).
+- Crew-Attention wie nach QR ist optional; nicht Pflicht, wenn TM/VS schon aus Config kommen.
+
+#### Aufgaben
+
+- [x] `kundeStore`: `applyFromAmsLookup`, Lock-/Revision-State, Unlock setzt Lock zurück ohne QR anzufassen
+- [x] `CustomerForm`: Trigger (Debounce, nur ID-Modus), Statuszeile, Sperre Name/IDs/Medien, Bearbeiten-Button
+- [x] Lookup-Aufruf `mode: "id"`; Stale-Response verwerfen; `type` laut Entscheidungstabelle
+- [x] Confirm bei Konflikt mit bestehender manueller Identität
+- [x] `AmsBridgeLookupResponse` an Rust-DTO angleichen
+- [x] `syncProductsFromMedia` / `autoCheckProducts`: Lock respektieren
+- [x] Tests: Mapping ohne Hashes; Lock unabhängig von QR; `type`-Fallback (leer → dual lookup); Marker bleibt `api_id`
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 25 aus @docs/IMPLEMENTATION_PLAN.md
+Spec: AMS docs/HANDOFF.md §9 Lookup mode=id
+Regeln: @AGENTS.md
+Keine Hashes, form_mode bleibt manual, Marker bleibt api_id.
+AMS-API nicht ändern. Phase 23/24 nicht anfassen.
+Danach cargo test && npm run check.
+```
+
+#### Referenzen
+
+```
+src/components/CustomerForm.tsx
+src/store/kundeStore.ts
+src/hooks/useAmsIdLookup.ts
+src/lib/amsLookup.ts
+src/lib/tauri.ts                    # amsBridgeCustomerLookup, AmsBridgeLookupResponse
+src/lib/qrPresent.ts                # Konflikt-Confirm-Vorbild
+src/lib/syncProductsFromMedia.ts
+src-tauri/src/bridge/mod.rs         # customer_lookup, lookup_request_from_kunde, BridgeCustomer
+src-tauri/src/bridge/lookup_map.rs  # Mapping, dual type, api_id tests
+src-tauri/src/commands/bridge.rs
+src-tauri/src/video/marker.rs       # api_id unverändert
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1424,6 +1525,7 @@ cargo test
 | 10 | SMB-Upload, Update-Check |
 | 13 | macOS: VT encode, SD `/Volumes`, DMG |
 | 15 | Linux: AppImage, FFmpeg sidecar, SD mounts, SMB, Updater |
+| 25 | Manuell/ID + AMS online: IDs eingeben → Name/Medien füllen, Form sperren; offline: manuell weiter |
 
 ### End-to-End (Phase 11)
 
@@ -1501,6 +1603,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 23.3 | Linux libmtp | ⬜ |
 | 23.4 | UX & Docs | ⬜ |
 | 24 | AMS-Nachreichen (Append-Handoff) | ✅ |
+| 25 | AMS-Lookup Autofill (Manuell / ID) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1519,4 +1622,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 24 AMS-Nachreichen*
+*Letzte Aktualisierung: 2026-08-18 · Projekt: Aero Tandem Studio v2 · Phase 25 AMS-Lookup Autofill*

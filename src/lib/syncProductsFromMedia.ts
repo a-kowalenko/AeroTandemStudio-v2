@@ -4,7 +4,8 @@ import { usePhotoStore } from "../store/photoStore";
 
 /**
  * Aktiviert Foto-/Video-Optionen zum aktuellen Medien-Modus anhand vorhandener Medien.
- * Neu aktivierte Optionen bleiben unbezahlt; bestehende Haken (z. B. aus QR) bleiben.
+ * Neu aktivierte Optionen bleiben unbezahlt; bestehende Haken (z. B. aus QR/AMS) bleiben.
+ * Bei aktivem AMS-Lock werden Flags nicht überschrieben (`autoCheckProducts`).
  */
 export function syncProductsFromMedia(flags?: {
   hasVideos?: boolean;

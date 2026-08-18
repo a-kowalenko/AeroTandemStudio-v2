@@ -23,6 +23,8 @@ import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
+import { useAmsIdLookup } from "@/hooks/useAmsIdLookup";
+import { lookupIdLengthHint } from "@/lib/amsLookup";
 import {
   ORT_OPTIONS,
   crewNamesEqual,
@@ -415,6 +417,7 @@ export function CustomerFormToolbar({
 
 function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   const patch = useKundeStore((s) => s.patch);
+  const clearAmsLookup = useKundeStore((s) => s.clearAmsLookup);
   const config = useConfigStore((s) => s.config);
   const persistConfig = useConfigStore((s) => s.persist);
   const entryMode = normalizeManualEntryMode(
@@ -426,6 +429,7 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   async function setManualEntryMode(next: ManualEntryMode) {
     if (!config || entryMode === next) return;
     await persistConfig(withManualEntryMode(config, next));
+    clearAmsLookup();
     if (next === "id") {
       patch({ email: null, telefon: null });
     } else if (next === "lokal") {
@@ -478,6 +482,10 @@ export function CustomerForm({
   const patch = useKundeStore((s) => s.patch);
   const setVideoMode = useKundeStore((s) => s.setVideoMode);
   const qrRevision = useKundeStore((s) => s.qrRevision);
+  const amsLookupLocked = useKundeStore((s) => s.amsLookupLocked);
+  const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
+  const unlockAmsLookup = useKundeStore((s) => s.unlockAmsLookup);
+  const relockAmsLookup = useKundeStore((s) => s.relockAmsLookup);
   const crewAttentionAfterQr = useKundeStore((s) => s.crewAttentionAfterQr);
   const dialogKind = useUiStore((s) => s.dialogKind);
   const dialogVariant = useUiStore((s) => s.dialogVariant);
@@ -551,6 +559,10 @@ export function CustomerForm({
 
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
+  const lookupStatus = useAmsIdLookup({
+    enabled: !busy && !isQrMode && entryMode === "id",
+    config,
+  });
   // Crew is independent of import/QR locks; only freeze during Vorgang create unless overridden.
   const crewBusy = Boolean(crewDisabled ?? disabled);
   const modeToggleBusy = Boolean(modeToggleDisabled ?? disabled);
@@ -560,7 +572,10 @@ export function CustomerForm({
       kunde.handcam_video ||
       kunde.outside_foto ||
       kunde.outside_video);
-  const productsLocked = productsFromQr && nameLocked;
+  const productsLocked =
+    (productsFromQr && nameLocked) || amsLookupLocked;
+  const identityLocked = isQrMode ? nameLocked : amsLookupLocked;
+  const showAmsLockButton = !isQrMode && amsLookupRevision > 0;
 
   const warnTandemmaster =
     crewAttentionAfterQr && !kunde.tandemmaster.trim();
@@ -705,6 +720,20 @@ export function CustomerForm({
                 <PencilLine className="h-3 w-3" />
                 {nameLocked ? "Bearbeiten" : "Sperren"}
               </Button>
+            ) : showAmsLockButton ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[11px]"
+                disabled={busy}
+                onClick={() =>
+                  amsLookupLocked ? unlockAmsLookup() : relockAmsLookup()
+                }
+              >
+                <PencilLine className="h-3 w-3" />
+                {amsLookupLocked ? "Bearbeiten" : "Sperren"}
+              </Button>
             ) : null}
             <CustomerFormToolbar
               disabled={busy}
@@ -751,13 +780,13 @@ export function CustomerForm({
                 label="Vorname"
                 value={kunde.vorname ?? ""}
                 onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
-                disabled={busy}
+                disabled={busy || identityLocked}
               />
               <Field
                 label="Nachname"
                 value={kunde.nachname ?? ""}
                 onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
-                disabled={busy}
+                disabled={busy || identityLocked}
               />
               {oldschool ? (
                 <>
@@ -784,10 +813,11 @@ export function CustomerForm({
                     onChange={(v) =>
                       setField("kunden_id", sanitizeNumericIdInput(v) || null)
                     }
-                    disabled={busy}
+                    disabled={busy || identityLocked}
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
+                    hint={lookupIdLengthHint(kunde.kunden_id) ?? undefined}
                   />
                   <Field
                     label="Booking-ID"
@@ -795,11 +825,28 @@ export function CustomerForm({
                     onChange={(v) =>
                       setField("booking_id", sanitizeNumericIdInput(v) || null)
                     }
-                    disabled={busy}
+                    disabled={busy || identityLocked}
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
+                    hint={lookupIdLengthHint(kunde.booking_id) ?? undefined}
                   />
+                  {lookupStatus.text ? (
+                    <p
+                      className={cn(
+                        "sm:col-span-2 text-[11px] leading-snug",
+                        lookupStatus.kind === "error" ||
+                          lookupStatus.kind === "not_found"
+                          ? "text-destructive"
+                          : lookupStatus.kind === "found"
+                            ? "text-foreground/80"
+                            : "text-muted",
+                      )}
+                      role="status"
+                    >
+                      {lookupStatus.text}
+                    </p>
+                  ) : null}
                 </>
               ) : null}
             </>
@@ -948,7 +995,9 @@ export function CustomerForm({
 
         {productsLocked ? (
           <p className="text-[11px] text-muted">
-            Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben.
+            {amsLookupLocked
+              ? "Produkte aus AMS sind gesperrt — „Bearbeiten“ zum Freigeben."
+              : "Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben."}
           </p>
         ) : null}
       </Section>

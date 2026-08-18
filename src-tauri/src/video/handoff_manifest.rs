@@ -570,4 +570,18 @@ mod tests {
         let hint = marker_hint_for(&k, &cfg);
         assert_eq!(hint.format, "api_hash");
     }
+
+    #[test]
+    fn marker_hint_stays_api_id_for_manual_ids_even_with_name() {
+        let mut k = Kunde::default();
+        k.form_mode = "manual".into();
+        k.kunden_id = Some("42".into());
+        k.booking_id = Some("99".into());
+        k.vorname = Some("Max".into());
+        k.nachname = Some("Mustermann".into());
+        k.video_mode = "outside".into();
+        let hint = marker_hint_for(&k, &AppConfig::default());
+        assert_eq!(hint.format, "api_id");
+        assert_ne!(hint.format, "api_hash");
+    }
 }

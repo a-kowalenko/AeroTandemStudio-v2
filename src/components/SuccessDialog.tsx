@@ -25,6 +25,7 @@ import type {
   DialogActionKind,
   DialogActionStatus,
   DialogActionTone,
+  DialogChoicesOptions,
   DialogConfirmOptions,
   DialogVariant,
 } from "@/store/uiStore";
@@ -60,6 +61,8 @@ type Props = {
   qrPreview?: QrPreview | null;
   /** Dual-button confirm (e.g. QR customer switch). Dismiss = secondary. */
   confirm?: DialogConfirmOptions | null;
+  /** Equal-weight choices (e.g. Handcam vs Outside). Dismiss = onCancel. */
+  choices?: DialogChoicesOptions | null;
   onClose: () => void;
 };
 
@@ -165,10 +168,13 @@ export function SuccessDialog({
   actions = [],
   qrPreview = null,
   confirm = null,
+  choices = null,
   onClose,
 }: Props) {
   const timeoutSecs =
-    !confirm && autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
+    !confirm && !choices && autoCloseSecs && autoCloseSecs > 0
+      ? autoCloseSecs
+      : null;
   const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
   const [barActive, setBarActive] = useState(false);
   const closedRef = useRef(false);
@@ -176,12 +182,16 @@ export function SuccessDialog({
   onCloseRef.current = onClose;
   const confirmRef = useRef(confirm);
   confirmRef.current = confirm;
+  const choicesRef = useRef(choices);
+  choicesRef.current = choices;
   const isQr = variant === "qr";
   const highlightText = highlight.trim();
   const hasActions = actions.length > 0;
   const hasError = actions.some((a) => a.tone === "error");
   const hasWarning =
-    Boolean(confirm) || actions.some((a) => a.tone === "warning");
+    Boolean(confirm) ||
+    Boolean(choices) ||
+    actions.some((a) => a.tone === "warning");
   const accent = hasError ? "warning" : hasWarning ? "warning" : "success";
   const messageText = message.trim();
   const hasPreview = Boolean(qrPreview?.path?.trim());
@@ -224,6 +234,11 @@ export function SuccessDialog({
       c.onSecondary();
       return;
     }
+    const ch = choicesRef.current;
+    if (ch) {
+      ch.onCancel();
+      return;
+    }
     onCloseRef.current();
   }
 
@@ -237,6 +252,18 @@ export function SuccessDialog({
     if (closedRef.current) return;
     closedRef.current = true;
     confirmRef.current?.onSecondary();
+  }
+
+  function onChoicePick(id: string) {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    choicesRef.current?.onPick(id);
+  }
+
+  function onChoiceCancel() {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    choicesRef.current?.onCancel();
   }
 
   function close() {
@@ -348,8 +375,36 @@ export function SuccessDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
-          {confirm ? (
+        <DialogFooter
+          className={cn(choices && "flex-col sm:flex-col sm:items-stretch")}
+        >
+          {choices ? (
+            <>
+              {choices.options.map((opt) => (
+                <Button
+                  key={opt.id}
+                  type="button"
+                  className="h-auto min-h-9 w-full flex-col items-start gap-0.5 whitespace-normal py-2 text-left"
+                  onClick={() => onChoicePick(opt.id)}
+                >
+                  <span>{opt.label}</span>
+                  {opt.detail ? (
+                    <span className="text-[11px] font-normal text-primary-foreground/80">
+                      {opt.detail}
+                    </span>
+                  ) : null}
+                </Button>
+              ))}
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full"
+                onClick={onChoiceCancel}
+              >
+                {choices.cancelLabel ?? "Abbrechen"}
+              </Button>
+            </>
+          ) : confirm ? (
             <>
               <Button
                 type="button"

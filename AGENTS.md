@@ -106,6 +106,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo center) & Dialog-Zentrierung (Update-Dialog)
 - 🔄 Phase 23: USB-Action-Cams — macOS Detect + Image Capture Staging ✅; ICA UI-Perf ✅; leere Kataloge ✅; ICA-Browser Replug ✅; als Nächstes 23.1 Windows WPD
 - ✅ Phase 24: AMS-Nachreichen (Historie → Dateien + Kategorie + Preview/Voll)
+- ✅ Phase 25: AMS-Lookup Autofill (Manuell/ID → Name/Medien, sperren wie QR; keine Hashes)
 
 **Nächster Schritt:** Phase 23.1 (Windows WPD/MTP + Staging)  
 *(optional: Phase 14 ML Backlog; Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*

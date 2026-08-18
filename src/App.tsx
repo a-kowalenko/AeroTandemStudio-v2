@@ -173,6 +173,7 @@ function App() {
   const dialogQrPreview = useUiStore((s) => s.dialogQrPreview);
   const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
   const dialogConfirm = useUiStore((s) => s.dialogConfirm);
+  const dialogChoices = useUiStore((s) => s.dialogChoices);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -2309,6 +2310,7 @@ function App() {
         actions={dialogActions}
         qrPreview={dialogQrPreview}
         confirm={dialogConfirm}
+        choices={dialogChoices}
         onClose={() => {
           closeDialog();
           scheduleSdQueueDrain();
