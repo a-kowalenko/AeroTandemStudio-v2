@@ -54,7 +54,7 @@ export const CREATE_VIDEO_STAGE = "Erstelle Video…";
  * Stages where per-clip task bars are not meaningful — clear them on overall events.
  */
 const CLEAR_TASK_BARS =
-  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video/i;
+  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video|schreibe ams-manifest|nachreichung bereit/i;
 
 /**
  * create_job overall stages that must not be wrapped under „Erstelle Video…“.

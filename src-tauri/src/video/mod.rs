@@ -1,3 +1,4 @@
+pub mod append_job;
 pub mod body_concat_fallback;
 pub mod concat;
 pub mod cut_undo;

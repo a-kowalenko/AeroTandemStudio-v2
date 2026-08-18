@@ -24,6 +24,7 @@ import { useKundeStore } from "../store/kundeStore";
 import { useConfigStore } from "../store/configStore";
 import { useUiStore } from "../store/uiStore";
 import { useSdStore } from "../store/sdStore";
+import { useAppendStore } from "../store/appendStore";
 import { photoEdgeScanPaths, withQrScanProgress } from "../store/qrScanStore";
 import {
   isImportCancellation,
@@ -97,6 +98,7 @@ export function MediaDropZone({
   const showWarning = useUiStore((s) => s.showWarning);
 
   const dropLockedRef = useRef(false);
+  const appendCapturesDrop = useAppendStore((s) => s.captureFileDrop);
 
   const [dragOver, setDragOver] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
@@ -533,7 +535,7 @@ export function MediaDropZone({
 
   const totalCount = videoList.length + photoList.length;
   const busy = disabled || importing || photoImporting || expanding || qrBusy;
-  dropLockedRef.current = busy;
+  dropLockedRef.current = busy || appendCapturesDrop;
 
   return (
     <section

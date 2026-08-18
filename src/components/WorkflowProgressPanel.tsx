@@ -4,6 +4,7 @@ import {
   Download,
   Eraser,
   Eye,
+  FilePlus2,
   HardDrive,
   QrCode,
   Scissors,
@@ -37,6 +38,8 @@ function stageIcon(stage: WorkflowProgressStage): LucideIcon {
       return Eye;
     case "cut":
       return Scissors;
+    case "append":
+      return FilePlus2;
     case "done":
       return CheckCircle2;
     default:
@@ -51,7 +54,10 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
   const snapshot = view.snapshot;
   const showTasks =
     view.tasks.length > 0 &&
-    (view.stage === "create" || view.stage === "preview" || view.stage === "cut");
+    (view.stage === "create" ||
+      view.stage === "append" ||
+      view.stage === "preview" ||
+      view.stage === "cut");
 
   if (view.collapsed) {
     const label = snapshot?.label ?? view.encodeLabel;

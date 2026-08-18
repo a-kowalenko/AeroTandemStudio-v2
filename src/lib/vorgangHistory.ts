@@ -48,6 +48,12 @@ export type VorgangEntry = {
   ams_archive: string;
   /** `bridge` | `outbox` | `local` | `cached` */
   ams_source: string;
+  append_count: number;
+  last_append_correlation_id: string;
+  last_append_ams_state: string;
+  last_append_ams_error_code: string;
+  last_append_ams_error_message: string;
+  last_append_folder_path: string;
 };
 
 export type VorgangFileEntry = {
@@ -58,6 +64,8 @@ export type VorgangFileEntry = {
   role: string;
   size_bytes: number | null;
   path: string | null;
+  append_id: number | null;
+  append_folder_name: string | null;
 };
 
 export type HandoffStatus = {
@@ -104,4 +112,54 @@ export async function getHandoffStatus(
 
 export async function deleteVorgaenge(ids: number[]): Promise<void> {
   return invoke("delete_vorgaenge", { ids });
+}
+
+export type AppendCategoryId =
+  | "handcam_video"
+  | "handcam_foto"
+  | "outside_video"
+  | "outside_foto";
+
+export type AppendMediaItem = {
+  path: string;
+  category: AppendCategoryId;
+  preview: boolean;
+};
+
+export type AppendJobResult = {
+  correlation_id: string;
+  folder_name: string;
+  folder_path: string;
+  file_count: number;
+  preview_count: number;
+  categories: string[];
+};
+
+export type VorgangAppendEntry = {
+  id: number;
+  vorgang_id: number;
+  correlation_id: string;
+  folder_name: string;
+  folder_path: string;
+  created_at: string;
+  file_count: number;
+  preview_count: number;
+  categories: string[];
+  ams_state: string;
+  ams_updated_at: string;
+  ams_error_code: string;
+  ams_error_message: string;
+};
+
+export async function listVorgangAppends(
+  vorgangId: number,
+): Promise<VorgangAppendEntry[]> {
+  return invoke<VorgangAppendEntry[]>("list_vorgang_appends", { vorgangId });
+}
+
+export async function createAppendJob(
+  vorgangId: number,
+  items: AppendMediaItem[],
+): Promise<AppendJobResult> {
+  return invoke<AppendJobResult>("create_append_job", { vorgangId, items });
 }

@@ -3,8 +3,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
+use serde_json;
 use thiserror::Error;
 
 use crate::model::Kunde;
@@ -77,6 +78,12 @@ pub struct VorgangEntry {
     pub ams_archive: String,
     /// `bridge` | `outbox` | `local` | empty
     pub ams_source: String,
+    pub append_count: i64,
+    pub last_append_correlation_id: String,
+    pub last_append_ams_state: String,
+    pub last_append_ams_error_code: String,
+    pub last_append_ams_error_message: String,
+    pub last_append_folder_path: String,
 }
 
 /// Snapshot written when Bridge/Outbox status is resolved.
@@ -99,6 +106,9 @@ pub struct VorgangFileEntry {
     pub role: String,
     pub size_bytes: Option<i64>,
     pub path: Option<String>,
+    /// Set when the file belongs to an AMS append batch (`vorgang_appends`).
+    pub append_id: Option<i64>,
+    pub append_folder_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +118,23 @@ pub struct VorgangFileInput {
     pub role: String,
     pub size_bytes: Option<i64>,
     pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VorgangAppendEntry {
+    pub id: i64,
+    pub vorgang_id: i64,
+    pub correlation_id: String,
+    pub folder_name: String,
+    pub folder_path: String,
+    pub created_at: String,
+    pub file_count: i64,
+    pub preview_count: i64,
+    pub categories: Vec<String>,
+    pub ams_state: String,
+    pub ams_updated_at: String,
+    pub ams_error_code: String,
+    pub ams_error_message: String,
 }
 
 pub struct VorgangHistoryStore {
@@ -304,6 +331,34 @@ impl VorgangHistoryStore {
             "vorgaenge",
             "ams_source",
             "ALTER TABLE vorgaenge ADD COLUMN ams_source TEXT NOT NULL DEFAULT ''",
+        )?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS vorgang_appends (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vorgang_id INTEGER NOT NULL REFERENCES vorgaenge(id) ON DELETE CASCADE,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                folder_name TEXT NOT NULL DEFAULT '',
+                folder_path TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                file_count INTEGER NOT NULL DEFAULT 0,
+                preview_count INTEGER NOT NULL DEFAULT 0,
+                categories TEXT NOT NULL DEFAULT '[]',
+                ams_state TEXT NOT NULL DEFAULT 'pending',
+                ams_updated_at TEXT NOT NULL DEFAULT '',
+                ams_error_code TEXT NOT NULL DEFAULT '',
+                ams_error_message TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_vorgang_appends_vorgang ON vorgang_appends(vorgang_id);
+            CREATE INDEX IF NOT EXISTS idx_vorgang_appends_cid ON vorgang_appends(correlation_id);",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgang_dateien",
+            "append_id",
+            "ALTER TABLE vorgang_dateien ADD COLUMN append_id INTEGER",
+        )?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_vorgang_dateien_append ON vorgang_dateien(append_id);",
         )?;
         Ok(())
     }
@@ -555,25 +610,48 @@ impl VorgangHistoryStore {
         }
         let conn = self.connect()?;
         let n = if let Some(id) = vorgang_id {
-            conn.execute(
-                "UPDATE vorgaenge SET
-                    ams_state = ?1,
-                    ams_updated_at = ?2,
-                    ams_error_code = ?3,
-                    ams_error_message = ?4,
-                    ams_archive = ?5,
-                    ams_source = ?6
-                 WHERE id = ?7",
-                params![
-                    update.state.trim(),
-                    update.updated_at.trim(),
-                    update.error_code.trim(),
-                    update.error_message.trim(),
-                    update.archive.trim(),
-                    update.source.trim(),
-                    id
-                ],
-            )?
+            if cid.is_empty() {
+                conn.execute(
+                    "UPDATE vorgaenge SET
+                        ams_state = ?1,
+                        ams_updated_at = ?2,
+                        ams_error_code = ?3,
+                        ams_error_message = ?4,
+                        ams_archive = ?5,
+                        ams_source = ?6
+                     WHERE id = ?7",
+                    params![
+                        update.state.trim(),
+                        update.updated_at.trim(),
+                        update.error_code.trim(),
+                        update.error_message.trim(),
+                        update.archive.trim(),
+                        update.source.trim(),
+                        id
+                    ],
+                )?
+            } else {
+                conn.execute(
+                    "UPDATE vorgaenge SET
+                        ams_state = ?1,
+                        ams_updated_at = ?2,
+                        ams_error_code = ?3,
+                        ams_error_message = ?4,
+                        ams_archive = ?5,
+                        ams_source = ?6
+                     WHERE id = ?7 AND correlation_id = ?8",
+                    params![
+                        update.state.trim(),
+                        update.updated_at.trim(),
+                        update.error_code.trim(),
+                        update.error_message.trim(),
+                        update.archive.trim(),
+                        update.source.trim(),
+                        id,
+                        cid
+                    ],
+                )?
+            }
         } else {
             conn.execute(
                 "UPDATE vorgaenge SET
@@ -601,10 +679,27 @@ impl VorgangHistoryStore {
                 format!("AMS-Status Update: kein Vorgang für correlation_id={cid}"),
             );
         }
+        if !cid.is_empty() {
+            let _ = conn.execute(
+                "UPDATE vorgang_appends SET
+                    ams_state = ?1,
+                    ams_updated_at = ?2,
+                    ams_error_code = ?3,
+                    ams_error_message = ?4
+                 WHERE correlation_id = ?5",
+                params![
+                    update.state.trim(),
+                    update.updated_at.trim(),
+                    update.error_code.trim(),
+                    update.error_message.trim(),
+                    cid
+                ],
+            );
+        }
         Ok(())
     }
 
-    /// Load cached AMS status fields for a Vorgang.
+    /// Load cached AMS status fields for a Vorgang or Nachreichung (by correlation_id).
     pub fn get_cached_ams_status(
         &self,
         vorgang_id: Option<i64>,
@@ -612,6 +707,58 @@ impl VorgangHistoryStore {
     ) -> Result<Option<AmsHandoffStatusUpdate>, VorgangHistoryError> {
         let cid = correlation_id.trim();
         let conn = self.connect()?;
+
+        let parent_cid: Option<String> = if let Some(id) = vorgang_id {
+            conn.query_row(
+                "SELECT correlation_id FROM vorgaenge WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .optional()?
+        } else {
+            None
+        };
+        let is_append_lookup = !cid.is_empty()
+            && parent_cid
+                .as_deref()
+                .map(|p| p.trim() != cid)
+                .unwrap_or(true);
+
+        if !cid.is_empty() {
+            let append_row = conn.query_row(
+                "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message
+                 FROM vorgang_appends WHERE correlation_id = ?1
+                 ORDER BY id DESC LIMIT 1",
+                params![cid],
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                },
+            );
+            match append_row {
+                Ok((state, updated_at, error_code, error_message)) => {
+                    if !state.trim().is_empty() {
+                        return Ok(Some(AmsHandoffStatusUpdate {
+                            state,
+                            updated_at,
+                            error_code,
+                            error_message,
+                            archive: String::new(),
+                            source: "cached".into(),
+                        }));
+                    }
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => {}
+                Err(e) => return Err(e.into()),
+            }
+            if is_append_lookup {
+                return Ok(None);
+            }
+        }
         let row = if let Some(id) = vorgang_id {
             conn.query_row(
                 "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message,
@@ -676,6 +823,74 @@ impl VorgangHistoryStore {
         }
     }
 
+    pub fn get_by_id(&self, id: i64) -> Result<Option<VorgangEntry>, VorgangHistoryError> {
+        let list = self.list_vorgaenge(10_000, None)?;
+        Ok(list.into_iter().find(|e| e.id == id))
+    }
+
+    pub fn record_append(
+        &self,
+        vorgang_id: i64,
+        correlation_id: &str,
+        folder_name: &str,
+        folder_path: &str,
+        file_count: i64,
+        preview_count: i64,
+        categories: &[String],
+    ) -> Result<i64, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let created_at = utc_now_iso();
+        let cats = serde_json::to_string(categories).unwrap_or_else(|_| "[]".into());
+        conn.execute(
+            "INSERT INTO vorgang_appends (
+                vorgang_id, correlation_id, folder_name, folder_path, created_at,
+                file_count, preview_count, categories, ams_state, ams_updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', ?5)",
+            params![
+                vorgang_id,
+                correlation_id.trim(),
+                folder_name,
+                folder_path,
+                created_at,
+                file_count,
+                preview_count,
+                cats,
+            ],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn list_appends(&self, vorgang_id: i64) -> Result<Vec<VorgangAppendEntry>, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, vorgang_id, correlation_id, folder_name, folder_path, created_at,
+                    file_count, preview_count, categories, ams_state, ams_updated_at,
+                    ams_error_code, ams_error_message
+             FROM vorgang_appends WHERE vorgang_id = ?1 ORDER BY id DESC",
+        )?;
+        let rows = stmt.query_map(params![vorgang_id], |row| {
+            let cats_raw: String = row.get(8)?;
+            let categories: Vec<String> =
+                serde_json::from_str(&cats_raw).unwrap_or_default();
+            Ok(VorgangAppendEntry {
+                id: row.get(0)?,
+                vorgang_id: row.get(1)?,
+                correlation_id: row.get(2)?,
+                folder_name: row.get(3)?,
+                folder_path: row.get(4)?,
+                created_at: row.get(5)?,
+                file_count: row.get(6)?,
+                preview_count: row.get(7)?,
+                categories,
+                ams_state: row.get(9)?,
+                ams_updated_at: row.get(10)?,
+                ams_error_code: row.get(11)?,
+                ams_error_message: row.get(12)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn list_vorgaenge(
         &self,
         limit: usize,
@@ -699,7 +914,13 @@ impl VorgangHistoryStore {
                         IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
                         IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
                         IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
-                        (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count
+                        (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count,
+                        (SELECT COUNT(*) FROM vorgang_appends a WHERE a.vorgang_id = v.id) AS append_count,
+                        IFNULL((SELECT a.correlation_id FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
+                        IFNULL((SELECT a.ams_state FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
+                        IFNULL((SELECT a.ams_error_code FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
+                        IFNULL((SELECT a.ams_error_message FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
+                        IFNULL((SELECT a.folder_path FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), '')
                  FROM vorgaenge v";
         let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
             let pattern = format!("%{q}%");
@@ -738,15 +959,84 @@ impl VorgangHistoryStore {
     }
 
     pub fn list_files(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
+        let mut files = self.list_files_from_db(vorgang_id)?;
+        let appends = self.list_appends(vorgang_id)?;
+        for append in appends {
+            if files.iter().any(|f| f.append_id == Some(append.id)) {
+                continue;
+            }
+            let folder = Path::new(append.folder_path.trim());
+            if !folder.is_dir() {
+                continue;
+            }
+            let scanned = scan_append_folder(folder)?;
+            for (idx, f) in scanned.into_iter().enumerate() {
+                files.push(VorgangFileEntry {
+                    id: -(append.id * 10_000 + idx as i64),
+                    vorgang_id,
+                    filename: f.filename,
+                    media_type: f.media_type,
+                    role: f.role,
+                    size_bytes: f.size_bytes,
+                    path: f.path,
+                    append_id: Some(append.id),
+                    append_folder_name: Some(append.folder_name.clone()),
+                });
+            }
+        }
+        files.sort_by(|a, b| {
+            match (a.append_id, b.append_id) {
+                (None, None) => a.id.cmp(&b.id),
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (Some(aa), Some(bb)) => aa.cmp(&bb).then(a.id.cmp(&b.id)),
+            }
+        });
+        Ok(files)
+    }
+
+    fn list_files_from_db(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
-            "SELECT id, vorgang_id, filename, media_type, role, size_bytes, path
-             FROM vorgang_dateien
-             WHERE vorgang_id = ?1
-             ORDER BY id ASC",
+            "SELECT d.id, d.vorgang_id, d.filename, d.media_type, d.role, d.size_bytes, d.path,
+                    d.append_id, a.folder_name
+             FROM vorgang_dateien d
+             LEFT JOIN vorgang_appends a ON a.id = d.append_id
+             WHERE d.vorgang_id = ?1
+             ORDER BY (d.append_id IS NULL) ASC, d.append_id ASC, d.id ASC",
         )?;
         let mapped = stmt.query_map(params![vorgang_id], map_file_row)?;
         Ok(mapped.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub fn record_append_files(
+        &self,
+        append_id: i64,
+        vorgang_id: i64,
+        folder_path: &Path,
+    ) -> Result<usize, VorgangHistoryError> {
+        let files = scan_append_folder(folder_path)?;
+        if files.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.connect()?;
+        for f in &files {
+            conn.execute(
+                "INSERT INTO vorgang_dateien
+                 (vorgang_id, filename, media_type, role, size_bytes, path, append_id)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![
+                    vorgang_id,
+                    f.filename,
+                    f.media_type,
+                    f.role,
+                    f.size_bytes,
+                    f.path,
+                    append_id,
+                ],
+            )?;
+        }
+        Ok(files.len())
     }
 
     pub fn delete_by_ids(&self, ids: &[i64]) -> Result<(), VorgangHistoryError> {
@@ -905,10 +1195,18 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
         ams_archive: row.get::<_, String>(44).unwrap_or_default(),
         ams_source: row.get::<_, String>(45).unwrap_or_default(),
         file_count: row.get(46)?,
+        append_count: row.get::<_, i64>(47).unwrap_or(0),
+        last_append_correlation_id: row.get::<_, String>(48).unwrap_or_default(),
+        last_append_ams_state: row.get::<_, String>(49).unwrap_or_default(),
+        last_append_ams_error_code: row.get::<_, String>(50).unwrap_or_default(),
+        last_append_ams_error_message: row.get::<_, String>(51).unwrap_or_default(),
+        last_append_folder_path: row.get::<_, String>(52).unwrap_or_default(),
     })
 }
 
 fn map_file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangFileEntry> {
+    let append_id: Option<i64> = row.get(7)?;
+    let append_folder_name: Option<String> = row.get(8)?;
     Ok(VorgangFileEntry {
         id: row.get(0)?,
         vorgang_id: row.get(1)?,
@@ -917,7 +1215,58 @@ fn map_file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangFileEntry> {
         role: row.get(4)?,
         size_bytes: row.get(5)?,
         path: row.get(6)?,
+        append_id,
+        append_folder_name,
     })
+}
+
+fn scan_append_folder(folder_path: &Path) -> Result<Vec<VorgangFileInput>, VorgangHistoryError> {
+    use crate::video::export_paths::{
+        SUBDIR_HANDCAM_FOTO, SUBDIR_HANDCAM_VIDEO, SUBDIR_OUTSIDE_FOTO, SUBDIR_OUTSIDE_VIDEO,
+        SUBDIR_PREVIEW_FOTO, SUBDIR_PREVIEW_VIDEO,
+    };
+
+    if !folder_path.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    const SUBDIRS: &[(&str, &str, &str)] = &[
+        (SUBDIR_HANDCAM_VIDEO, "video", "append_handcam_video"),
+        (SUBDIR_OUTSIDE_VIDEO, "video", "append_outside_video"),
+        (SUBDIR_HANDCAM_FOTO, "photo", "append_handcam_foto"),
+        (SUBDIR_OUTSIDE_FOTO, "photo", "append_outside_foto"),
+        (SUBDIR_PREVIEW_VIDEO, "video", "append_preview_video"),
+        (SUBDIR_PREVIEW_FOTO, "photo", "append_preview_foto"),
+    ];
+
+    let mut out = Vec::new();
+    for (subdir, media_type, role) in SUBDIRS {
+        let dir = folder_path.join(subdir);
+        if !dir.is_dir() {
+            continue;
+        }
+        for entry in fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let fname = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            if fname.starts_with('.') {
+                continue;
+            }
+            out.push(file_input_from_path(
+                &path.to_string_lossy(),
+                media_type,
+                role,
+            ));
+        }
+    }
+    out.sort_by(|a, b| a.filename.cmp(&b.filename));
+    Ok(out)
 }
 
 fn utc_now_iso() -> String {
@@ -1140,5 +1489,141 @@ mod tests {
         assert!(roles.contains(&"output_video"));
         assert!(roles.contains(&"marker"));
         assert!(files.iter().all(|f| f.size_bytes.is_some()));
+    }
+
+    #[test]
+    fn record_append_does_not_overwrite_parent_ams_state() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .unwrap();
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                &AmsHandoffStatusUpdate {
+                    state: "completed".into(),
+                    updated_at: "2026-08-17T10:00:00Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: "erfolg".into(),
+                    source: "outbox".into(),
+                },
+            )
+            .unwrap();
+
+        let append_cid = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+        store
+            .record_append(
+                id,
+                append_cid,
+                "Max_nachreichung_01",
+                "/tmp/Max_nachreichung_01",
+                2,
+                1,
+                &["Preview_Foto".into()],
+            )
+            .unwrap();
+
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                append_cid,
+                &AmsHandoffStatusUpdate {
+                    state: "uploading".into(),
+                    updated_at: "2026-08-17T11:00:00Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: String::new(),
+                    source: "bridge".into(),
+                },
+            )
+            .unwrap();
+
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.ams_state, "completed");
+        assert_eq!(entry.append_count, 1);
+        assert_eq!(entry.last_append_correlation_id, append_cid);
+        assert_eq!(entry.last_append_ams_state, "uploading");
+
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                append_cid,
+                &AmsHandoffStatusUpdate {
+                    state: "failed".into(),
+                    updated_at: "2026-08-17T12:00:00Z".into(),
+                    error_code: "upload_error".into(),
+                    error_message: "Dropbox timeout".into(),
+                    archive: String::new(),
+                    source: "outbox".into(),
+                },
+            )
+            .unwrap();
+
+        let cached = store
+            .get_cached_ams_status(Some(id), append_cid)
+            .unwrap()
+            .expect("append cache");
+        assert_eq!(cached.state, "failed");
+        assert_eq!(cached.error_code, "upload_error");
+
+        let parent_cid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let parent_cached = store
+            .get_cached_ams_status(Some(id), parent_cid)
+            .unwrap()
+            .expect("parent cache");
+        assert_eq!(parent_cached.state, "completed");
+
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.last_append_ams_state, "failed");
+        assert_eq!(entry.last_append_ams_error_code, "upload_error");
+        assert_eq!(entry.ams_state, "completed");
+
+        let parent = store
+            .get_cached_ams_status(Some(id), "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+            .unwrap()
+            .expect("parent cache");
+        assert_eq!(parent.state, "completed");
+    }
+
+    #[test]
+    fn record_append_files_lists_as_nachgereicht() {
+        use crate::video::export_paths::SUBDIR_PREVIEW_FOTO;
+
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .unwrap();
+
+        let append_dir = dir.path().join("Max_nachreichung_01");
+        let foto_dir = append_dir.join(SUBDIR_PREVIEW_FOTO);
+        fs::create_dir_all(&foto_dir).unwrap();
+        let foto = foto_dir.join("20260818_120000.jpg");
+        fs::write(&foto, b"jpeg").unwrap();
+
+        let append_id = store
+            .record_append(
+                id,
+                "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                "Max_nachreichung_01",
+                &append_dir.to_string_lossy(),
+                1,
+                1,
+                &["Preview_Foto".into()],
+            )
+            .unwrap();
+        let n = store
+            .record_append_files(append_id, id, &append_dir)
+            .unwrap();
+        assert_eq!(n, 1);
+
+        let files = store.list_files(id).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].append_id, Some(append_id));
+        assert_eq!(files[0].role, "append_preview_foto");
+        assert_eq!(files[0].append_folder_name.as_deref(), Some("Max_nachreichung_01"));
     }
 }

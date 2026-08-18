@@ -350,8 +350,11 @@ pub async fn fetch_job_status(
         .json::<JobStatusResponse>()
         .await
         .map_err(|e| format!("AMS-Bridge Job-Status JSON (HTTP {status}): {e}"))?;
+    if let Some(job) = body.job {
+        return Ok(Some(job));
+    }
     if body.ok {
-        return Ok(body.job);
+        return Ok(None);
     }
     if body
         .error

@@ -59,6 +59,9 @@ type Input = {
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
+  appendActive: boolean;
+  appendGuest: string | null;
+  appendUploading: boolean;
   percent: number;
   status: string;
   taskProgress: TaskState[];
@@ -146,13 +149,17 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const showManualImport = Boolean(manualImportProgress);
   const showManualQr = Boolean(manualQrProgress);
   const showEncodeProgress =
-    input.encodeBusy || input.percent > 0 || input.taskProgress.length > 0;
+    input.encodeBusy ||
+    input.appendActive ||
+    input.percent > 0 ||
+    input.taskProgress.length > 0;
 
   const isActive =
     showSdProgress ||
     showManualImport ||
     showManualQr ||
     input.encodeBusy ||
+    input.appendActive ||
     input.qrScanBusy;
 
   const hasCompletionState =
@@ -198,6 +205,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     manualImport: showManualImport,
     manualQr: showManualQr,
     encodeBusy: input.encodeBusy,
+    appendActive: input.appendActive,
+    appendUploading: input.appendUploading,
     status: input.status,
     sdProgress,
   });
@@ -207,17 +216,20 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     sdPhase: input.sdPhase,
     qrScanBusy: input.qrScanBusy,
     encodeBusy: input.encodeBusy,
+    appendActive: input.appendActive,
+    appendGuest: input.appendGuest,
+    appendUploading: input.appendUploading,
     manualImport: showManualImport,
     manualQr: showManualQr,
   });
 
   let snapshot: WorkflowProgressSnapshot | null = null;
-  if (input.encodeBusy) {
+  if (input.encodeBusy || input.appendActive) {
     snapshot = {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
-        input.encodeBusy ? "In Arbeit…" : "Fertig",
+        input.encodeBusy || input.appendActive ? "In Arbeit…" : "Fertig",
       ),
     };
   } else if (showSdProgress && sdProgress) {
@@ -237,7 +249,9 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   }
 
   const tasks: WorkflowTaskProgress[] =
-    input.encodeBusy || (!showSdProgress && !showManualImport && !showManualQr && showEncodeProgress)
+    input.encodeBusy ||
+    input.appendActive ||
+    (!showSdProgress && !showManualImport && !showManualQr && showEncodeProgress)
       ? input.taskProgress.map((t) => ({
           taskId: t.taskId,
           percent: t.percent,
@@ -255,6 +269,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const canCancel =
     !sdClearing &&
     (input.encodeBusy ||
+      input.appendActive ||
       input.qrScanBusy ||
       input.sdWorkflowActive ||
       input.videoImporting ||

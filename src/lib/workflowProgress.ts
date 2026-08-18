@@ -43,6 +43,7 @@ export type WorkflowProgressStage =
   | "preview"
   | "cut"
   | "create"
+  | "append"
   | "done";
 
 export function formatWorkflowDetail(p: WorkflowProgress): string | undefined {
@@ -201,12 +202,15 @@ export function inferWorkflowStage(opts: {
   manualImport: boolean;
   manualQr: boolean;
   encodeBusy: boolean;
+  appendActive: boolean;
+  appendUploading: boolean;
   status: string;
   sdProgress: WorkflowProgressSnapshot | null;
 }): WorkflowProgressStage {
   const status = opts.status.trim();
   if (/preview/i.test(status)) return "preview";
   if (/schnitt|teilen|rückgängig/i.test(status)) return "cut";
+  if (opts.appendActive) return "append";
   if (opts.encodeBusy) return "create";
 
   if (opts.sdWorkflowActive && opts.sdProgress) {
@@ -233,12 +237,22 @@ export function workflowStageSubtitle(
     sdPhase: string;
     qrScanBusy: boolean;
     encodeBusy: boolean;
+    appendActive: boolean;
+    appendGuest: string | null;
+    appendUploading: boolean;
     manualImport: boolean;
     manualQr: boolean;
   },
 ): string {
   if (stage === "preview") return "Vorschau wird erzeugt";
   if (stage === "cut") return "Schnitt wird angewendet";
+  if (stage === "append") {
+    const who = opts.appendGuest?.trim();
+    const base = who ? `Nachreichen für ${who}` : "Medien nachreichen";
+    return opts.appendUploading
+      ? `${base} — Upload auf Server`
+      : `${base} — Abbrechen stoppt die Verarbeitung`;
+  }
   if (stage === "done") return "Zuletzt abgeschlossener Lauf";
 
   if (opts.sdWorkflowActive && !opts.encodeBusy) {

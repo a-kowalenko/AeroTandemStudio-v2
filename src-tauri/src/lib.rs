@@ -48,7 +48,8 @@ use commands::video::{
     undo_video_cut_for_path, validate_create_job,
 };
 use commands::vorgang_history::{
-    delete_vorgaenge, get_handoff_status, list_vorgang_dateien, list_vorgaenge,
+    delete_vorgaenge, get_handoff_status, list_vorgang_appends, list_vorgang_dateien, list_vorgaenge,
+    create_append_job,
 };
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
@@ -223,6 +224,8 @@ pub fn run() {
             purge_processed_files,
             list_vorgaenge,
             list_vorgang_dateien,
+            list_vorgang_appends,
+            create_append_job,
             get_handoff_status,
             delete_vorgaenge,
             test_server_connection,

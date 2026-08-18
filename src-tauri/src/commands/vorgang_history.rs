@@ -1,17 +1,21 @@
 //! Vorgang (created customer) history commands.
 
 use std::path::Path;
+use std::sync::Arc;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::config::ConfigState;
 use crate::storage::logging;
 use crate::storage::vorgang_history::{
-    AmsHandoffStatusUpdate, VorgangEntry, VorgangFileEntry, VorgangHistoryStore,
+    AmsHandoffStatusUpdate, VorgangAppendEntry, VorgangEntry, VorgangFileEntry, VorgangHistoryStore,
 };
+use crate::video::append_job::{self, AppendJobResult, AppendMediaItem};
+use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 use crate::video::handoff_manifest::{
-    share_root_from_job_dir, OutboxAmsMeta, OutboxError, StatusOutboxV1,
+    handoff_share_roots, read_status_outbox_any, OutboxAmsMeta, OutboxError, StatusOutboxV1,
 };
+use crate::video::progress::EncodeProgress;
 
 fn open_store() -> Result<VorgangHistoryStore, String> {
     VorgangHistoryStore::open_default().map_err(|e| e.to_string())
@@ -201,21 +205,57 @@ pub async fn get_handoff_status(
         return Ok(None);
     }
     let store = open_store()?;
-    let job_dir = Path::new(base_output_dir.trim());
-    let Some(share_root) = share_root_from_job_dir(job_dir) else {
-        return Ok(cached_or_pending(&store, vorgang_id, &cid, true));
-    };
     let config = read_config(&state)?;
-    match crate::bridge::resolve_handoff_status(&config, &cid, &share_root).await {
-        Ok(Some((job, source))) => {
-            persist_live_status(&store, vorgang_id, &job, source);
-            Ok(Some(HandoffStatusDto::from_outbox(job, source, false)))
+    let job_dir = Path::new(base_output_dir.trim());
+    let mut share_roots = handoff_share_roots(job_dir, &config.speicherort);
+    if let Some(id) = vorgang_id {
+        if let Ok(Some(vorgang)) = store.get_by_id(id) {
+            let main_dir = vorgang.base_output_dir.trim();
+            if !main_dir.is_empty() {
+                for root in handoff_share_roots(Path::new(main_dir), &config.speicherort) {
+                    if !share_roots.iter().any(|r| r == &root) {
+                        share_roots.push(root);
+                    }
+                }
+            }
         }
-        Ok(None) => Ok(cached_or_pending(&store, vorgang_id, &cid, false)),
+    }
+    let offline_hint = share_roots.is_empty() && !crate::bridge::bridge_configured(&config);
+
+    if crate::bridge::bridge_configured(&config) {
+        if let Ok(base) = crate::bridge::resolve_bridge_base_url(&config) {
+            match crate::bridge::fetch_job_status(&base, &config.ams_bridge_token, &cid).await {
+                Ok(Some(job)) => {
+                    persist_live_status(&store, vorgang_id, &job, "bridge");
+                    return Ok(Some(HandoffStatusDto::from_outbox(job, "bridge", false)));
+                }
+                Ok(None) => {}
+                Err(e) if e.contains("nicht erreichbar") => {}
+                Err(e) => {
+                    logging::warn(
+                        "vorgang_history",
+                        format!("AMS-Bridge Job-Status fehlgeschlagen, Outbox-Fallback: {e}"),
+                    );
+                }
+            }
+        }
+    }
+
+    match read_status_outbox_any(&share_roots, &cid) {
+        Ok(Some(job)) => {
+            persist_live_status(&store, vorgang_id, &job, "outbox");
+            Ok(Some(HandoffStatusDto::from_outbox(job, "outbox", false)))
+        }
+        Ok(None) => Ok(cached_or_pending(
+            &store,
+            vorgang_id,
+            &cid,
+            offline_hint,
+        )),
         Err(e) => {
             logging::warn(
                 "vorgang_history",
-                format!("AMS-Status live fehlgeschlagen, Cache: {e}"),
+                format!("AMS-Outbox lesen fehlgeschlagen, Cache: {e}"),
             );
             Ok(cached_or_pending(&store, vorgang_id, &cid, true))
         }
@@ -238,4 +278,165 @@ pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
         msg
     })?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_vorgang_appends(vorgang_id: i64) -> Result<Vec<VorgangAppendEntry>, String> {
+    let store = open_store()?;
+    store.list_appends(vorgang_id).map_err(|e| e.to_string())
+}
+
+/// Copy extra media into a new `aktuell` staging folder and signal AMS (append handoff).
+#[tauri::command]
+pub async fn create_append_job(
+    app: AppHandle,
+    state: State<'_, ConfigState>,
+    vorgang_id: i64,
+    items: Vec<AppendMediaItem>,
+) -> Result<AppendJobResult, String> {
+    logging::info(
+        "append",
+        format!(
+            "Nachreichung starten: vorgang_id={vorgang_id}, dateien={}",
+            items.len()
+        ),
+    );
+    reset_cancel_flag();
+    let store = open_store()?;
+    let vorgang = store
+        .get_by_id(vorgang_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Vorgang nicht gefunden.".to_string())?;
+    if vorgang.correlation_id.trim().is_empty() {
+        return Err("Dieser Vorgang hat keinen AMS-Handoff.".into());
+    }
+    let state_ok = vorgang.ams_state.trim().to_ascii_lowercase();
+    if state_ok != "completed" {
+        return Err(format!(
+            "Nachreichen erst nach erfolgreichem AMS-Upload (Status: {}).",
+            if vorgang.ams_state.trim().is_empty() {
+                "wartend"
+            } else {
+                vorgang.ams_state.trim()
+            }
+        ));
+    }
+
+    let resource_dir = app.path().resource_dir().ok();
+    let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())?;
+    let config = read_config(&state)?;
+    let config_for_ready = config.clone();
+    let app_for_cb = app.clone();
+    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
+        let _ = app_for_cb.emit("encode-progress", &p);
+    });
+
+    let mut result = tauri::async_runtime::spawn_blocking(move || {
+        append_job::create_append_job(
+            &ffmpeg,
+            &vorgang,
+            &items,
+            &config,
+            resource_dir.as_deref(),
+            on_progress,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    let local_folder_path = result.folder_path.clone();
+
+    if config_for_ready.upload_to_server {
+        logging::info(
+            "append",
+            format!("Nachreichung auf Server kopieren: {}", result.folder_name),
+        );
+        let local_folder = result.folder_path.clone();
+        let app_for_progress = app.clone();
+        let uploaded = crate::smb::upload_path(
+            Path::new(&local_folder),
+            &config_for_ready.server_url,
+            &config_for_ready.server_login,
+            &config_for_ready.server_password,
+            |progress| {
+                let event =
+                    crate::commands::smb::UploadProgressEvent::from(progress);
+                let _ = app_for_progress.emit(crate::commands::smb::UPLOAD_PROGRESS_EVENT, &event);
+            },
+        )
+        .await;
+        if !uploaded.success {
+            logging::error(
+                "append",
+                format!(
+                    "Nachreichung-Upload fehlgeschlagen ({}): {}",
+                    result.folder_name, uploaded.message
+                ),
+            );
+            return Err(uploaded.message);
+        }
+        logging::info(
+            "append",
+            format!(
+                "Nachreichung auf Server kopiert: {}",
+                uploaded.remote_path
+            ),
+        );
+        result.folder_path = uploaded.remote_path;
+    }
+
+    let append_id = match store.record_append(
+        vorgang_id,
+        &result.correlation_id,
+        &result.folder_name,
+        &result.folder_path,
+        result.file_count as i64,
+        result.preview_count as i64,
+        &result.categories,
+    ) {
+        Ok(id) => Some(id),
+        Err(e) => {
+            logging::warn(
+                "append",
+                format!("Nachreichung-Historie nicht gespeichert: {e}"),
+            );
+            None
+        }
+    };
+
+    if let Some(append_id) = append_id {
+        if let Err(e) = store.record_append_files(
+            append_id,
+            vorgang_id,
+            Path::new(&local_folder_path),
+        ) {
+            logging::warn(
+                "append",
+                format!("Nachreichung-Dateien nicht in Historie gespeichert: {e}"),
+            );
+        }
+    }
+
+    if !result.correlation_id.trim().is_empty() {
+        match crate::bridge::maybe_notify_handoff_ready(
+            &config_for_ready,
+            &result.correlation_id,
+            Some(&result.folder_name),
+        )
+        .await
+        {
+            Ok(Some(_)) => logging::info(
+                "bridge",
+                format!(
+                    "AMS handoff/ready (append) correlation_id={}",
+                    result.correlation_id
+                ),
+            ),
+            Ok(None) => {}
+            Err(e) => logging::warn("bridge", format!("handoff/ready append: {e}")),
+        }
+    }
+
+    Ok(result)
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Eye } from "lucide-react";
 import {
   Dialog,
@@ -31,7 +31,10 @@ import {
   getHandoffStatus,
   listVorgangDateien,
   listVorgaenge,
+  listVorgangAppends,
+  type AppendMediaItem,
   type HandoffStatus,
+  type VorgangAppendEntry,
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
@@ -39,11 +42,20 @@ import {
   isAmsCancelled,
   isAmsHandoffTerminal,
   matchesAmsStatusFilter,
+  viewFromAppendEntry,
+  viewFromAppendRecord,
   viewFromHandoffStatus,
   viewFromVorgangEntry,
   type AmsStatusFilter,
 } from "../lib/amsHandoffStatus";
-import { AmsHandoffStatusChip, AmsHandoffStepper } from "@/components/AmsHandoffStatus";
+import { AppendMediaDialog } from "@/components/AppendMediaDialog";
+import { useAppendStore } from "@/store/appendStore";
+import { useUiStore } from "@/store/uiStore";
+import { isCancellationError } from "@/lib/utils";
+import {
+  AmsHandoffStatusChip,
+  AmsHandoffStepper,
+} from "@/components/AmsHandoffStatus";
 import { QrHitMeta } from "@/components/QrHitMeta";
 import {
   QR_PREVIEW_FRAME_AR,
@@ -173,6 +185,72 @@ function applyHandoffToEntry(entry: VorgangEntry, status: HandoffStatus): Vorgan
   };
 }
 
+function applyAppendStatusToEntry(
+  entry: VorgangEntry,
+  status: HandoffStatus,
+): VorgangEntry {
+  if (entry.last_append_correlation_id.trim() !== status.correlation_id.trim()) {
+    return entry;
+  }
+  return {
+    ...entry,
+    last_append_ams_state: status.state,
+    last_append_ams_error_code: status.error?.code ?? "",
+    last_append_ams_error_message: status.error?.message ?? "",
+  };
+}
+
+function appendHandoffStatusFromRecord(
+  record: VorgangAppendEntry,
+): HandoffStatus | null {
+  const view = viewFromAppendRecord(record);
+  if (!view) return null;
+  return {
+    correlation_id: record.correlation_id,
+    state: view.state,
+    updated_at: record.ams_updated_at,
+    error: view.errorCode
+      ? { code: view.errorCode, message: view.errorMessage ?? "" }
+      : null,
+    ams: { history_id: null, archive: null },
+    source: "cached",
+    offline: false,
+  };
+}
+
+function applyAppendStatusToRecord(
+  record: VorgangAppendEntry,
+  status: HandoffStatus,
+): VorgangAppendEntry {
+  if (record.correlation_id.trim() !== status.correlation_id.trim()) {
+    return record;
+  }
+  return {
+    ...record,
+    ams_state: status.state,
+    ams_updated_at: status.updated_at || record.ams_updated_at,
+    ams_error_code: status.error?.code ?? "",
+    ams_error_message: status.error?.message ?? "",
+  };
+}
+
+function appendHandoffStatusFromEntry(entry: VorgangEntry): HandoffStatus | null {
+  const cid = entry.last_append_correlation_id?.trim() ?? "";
+  const view = viewFromAppendEntry(entry);
+  if (!cid || !view) return null;
+  return {
+    correlation_id: cid,
+    state: view.state,
+    updated_at: "",
+    error: view.errorCode
+      ? { code: view.errorCode, message: view.errorMessage ?? "" }
+      : null,
+    ams: { history_id: null, archive: null },
+    source: "cached",
+    offline: false,
+  };
+}
+
 function roleLabel(role: string): string {
   switch (role) {
     case "source_video":
@@ -185,6 +263,18 @@ function roleLabel(role: string): string {
       return "WM Video";
     case "marker":
       return "Marker";
+    case "append_handcam_video":
+      return "Handcam Video";
+    case "append_outside_video":
+      return "Outside Video";
+    case "append_handcam_foto":
+      return "Handcam Foto";
+    case "append_outside_foto":
+      return "Outside Foto";
+    case "append_preview_video":
+      return "Preview Video";
+    case "append_preview_foto":
+      return "Preview Foto";
     default:
       return role;
   }
@@ -230,8 +320,21 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
+  const [appendVorgang, setAppendVorgang] = useState<VorgangEntry | null>(null);
+  const [appendPickingFiles, setAppendPickingFiles] = useState(false);
+  const [appendRefreshKey, setAppendRefreshKey] = useState(0);
+  const runAppendJob = useAppendStore((s) => s.runJob);
+  const showError = useUiStore((s) => s.showError);
+  const showSuccess = useUiStore((s) => s.showSuccess);
+  const appendOpen = appendVorgang != null;
   const confirmOpen = pendingConfirm != null;
-  const nestedOpen = confirmOpen || qrScanOpen;
+  const nestedOpen =
+    confirmOpen || qrScanOpen || appendOpen || appendPickingFiles;
+
+  const closeAppendDialog = useCallback(() => {
+    setAppendVorgang(null);
+    setAppendPickingFiles(false);
+  }, []);
 
   async function runConfirm() {
     if (!pendingConfirm || confirmBusy) return;
@@ -244,6 +347,32 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
     }
   }
 
+  async function handleAppendSubmit(items: AppendMediaItem[]) {
+    if (!appendVorgang) return;
+    const vorgang = appendVorgang;
+    closeAppendDialog();
+    onOpenChange(false);
+    try {
+      const res = await runAppendJob(vorgang.id, items, {
+        vorgangId: vorgang.id,
+        guest: vorgang.gast,
+        fileCount: items.length,
+      });
+      showSuccess(
+        `${res.file_count} Datei(en) an AMS übergeben (${res.folder_name}).\nAMS-Status unter „Nachreichung“ in der Historie.`,
+        "Nachreichen",
+        { autoCloseSecs: 8 },
+      );
+      setAppendRefreshKey((k) => k + 1);
+    } catch (e) {
+      if (isCancellationError(e)) {
+        showError("Nachreichen abgebrochen.", "Nachreichen");
+      } else {
+        showError(String(e), "Nachreichen");
+      }
+    }
+  }
+
   return (
     <>
       <Dialog
@@ -252,6 +381,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
           if (!v) {
             setPendingConfirm(null);
             setQrScanOpen(false);
+            closeAppendDialog();
           }
           onOpenChange(v);
         }}
@@ -302,6 +432,9 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
                   dialogOpen={open}
                   qrScanOpen={qrScanOpen}
                   onQrScanOpenChange={setQrScanOpen}
+                  appendRefreshKey={appendRefreshKey}
+                  onOpenAppend={setAppendVorgang}
+                  onCloseAppend={closeAppendDialog}
                   onRequestConfirm={setPendingConfirm}
                 />
               </TabsContent>
@@ -325,6 +458,16 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AppendMediaDialog
+        open={appendOpen}
+        vorgang={appendVorgang}
+        onOpenChange={(v) => {
+          if (!v) closeAppendDialog();
+        }}
+        onPickingFilesChange={setAppendPickingFiles}
+        onSubmit={(items) => void handleAppendSubmit(items)}
+      />
 
       <Dialog
         open={confirmOpen}
@@ -372,11 +515,17 @@ function VorgaengePanel({
   dialogOpen,
   qrScanOpen,
   onQrScanOpenChange,
+  appendRefreshKey,
+  onOpenAppend,
+  onCloseAppend,
   onRequestConfirm,
 }: {
   dialogOpen: boolean;
   qrScanOpen: boolean;
   onQrScanOpenChange: (open: boolean) => void;
+  appendRefreshKey: number;
+  onOpenAppend: (vorgang: VorgangEntry) => void;
+  onCloseAppend: () => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
   const [entries, setEntries] = useState<VorgangEntry[]>([]);
@@ -391,6 +540,9 @@ function VorgaengePanel({
   const [showShadow, setShowShadow] = useState(true);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus | null>(null);
   const [handoffReady, setHandoffReady] = useState(false);
+  const [appendStatus, setAppendStatus] = useState<HandoffStatus | null>(null);
+  const [appends, setAppends] = useState<VorgangAppendEntry[]>([]);
+  const [appendsReady, setAppendsReady] = useState(false);
   const searchRef = useRef(search);
   searchRef.current = search;
   const entriesRef = useRef(entries);
@@ -424,6 +576,12 @@ function VorgaengePanel({
   }, [dialogOpen]);
 
   useEffect(() => {
+    if (appendRefreshKey === 0) return;
+    void reload(searchRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendRefreshKey]);
+
+  useEffect(() => {
     if (!dialogOpen || !ready) return;
     const t = setTimeout(() => void reload(search), 250);
     return () => clearTimeout(t);
@@ -452,12 +610,13 @@ function VorgaengePanel({
     return () => {
       cancelled = true;
     };
-  }, [dialogOpen, selectedId]);
+  }, [dialogOpen, selectedId, appendRefreshKey]);
 
   const selected = useMemo(
     () => entries.find((e) => e.id === selectedId) ?? null,
     [entries, selectedId],
   );
+  const latestAppend = appends[0] ?? null;
 
   const filteredEntries = useMemo(
     () => entries.filter((e) => matchesAmsStatusFilter(e, amsFilter)),
@@ -574,36 +733,188 @@ function VorgaengePanel({
     selected?.ams_state,
   ]);
 
+  useEffect(() => {
+    if (!dialogOpen) return;
+    if (selectedId == null) {
+      setAppends([]);
+      setAppendsReady(true);
+      return;
+    }
+    let cancelled = false;
+    setAppendsReady(false);
+    void listVorgangAppends(selectedId)
+      .then((rows) => {
+        if (!cancelled) setAppends(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAppends([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAppendsReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dialogOpen, selectedId, appendRefreshKey]);
+
+  useEffect(() => {
+    if (!dialogOpen || !selected) {
+      setAppendStatus(null);
+      return;
+    }
+    const latestAppend = appends[0];
+    const cid =
+      latestAppend?.correlation_id?.trim() ||
+      selected.last_append_correlation_id?.trim() ||
+      "";
+    const vorgangId = selected.id;
+    const baseDir =
+      latestAppend?.folder_path?.trim() ||
+      selected.last_append_folder_path?.trim() ||
+      selected.base_output_dir;
+    const cachedState =
+      latestAppend?.ams_state || selected.last_append_ams_state;
+    if (!cid) {
+      setAppendStatus(null);
+      return;
+    }
+    let cancelled = false;
+
+    const mergeStatus = (status: HandoffStatus | null) => {
+      if (cancelled) return;
+      setAppendStatus(status);
+      if (status) {
+        setEntries((prev) =>
+          prev.map((e) =>
+            e.id === vorgangId ? applyAppendStatusToEntry(e, status) : e,
+          ),
+        );
+        setAppends((prev) =>
+          prev.map((row) => applyAppendStatusToRecord(row, status)),
+        );
+      }
+    };
+
+    const load = () => {
+      void getHandoffStatus(cid, baseDir, vorgangId)
+        .then(mergeStatus)
+        .catch(() => {
+          if (!cancelled) {
+            const cached = latestAppend
+              ? appendHandoffStatusFromRecord(latestAppend)
+              : appendHandoffStatusFromEntry(
+                  entriesRef.current.find((e) => e.id === vorgangId) ??
+                    selected,
+                );
+            if (cached) {
+              setAppendStatus({ ...cached, offline: true, source: "cached" });
+            }
+          }
+        });
+    };
+
+    const seed = latestAppend
+      ? appendHandoffStatusFromRecord(latestAppend)
+      : appendHandoffStatusFromEntry(selected);
+    if (seed) setAppendStatus(seed);
+
+    load();
+    if (isAmsHandoffTerminal(cachedState)) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const interval = window.setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    dialogOpen,
+    appendsReady,
+    selected?.id,
+    appends[0]?.correlation_id,
+    appends[0]?.folder_path,
+    appends[0]?.ams_state,
+    appends[0]?.ams_error_code,
+    appends[0]?.ams_error_message,
+    selected?.last_append_correlation_id,
+    selected?.last_append_folder_path,
+    selected?.last_append_ams_state,
+    selected?.last_append_ams_error_code,
+    selected?.last_append_ams_error_message,
+  ]);
+
   // Background refresh for visible non-terminal AMS handoffs (list chips).
   useEffect(() => {
     if (!dialogOpen || !ready) return;
     let cancelled = false;
     const refresh = () => {
-      const pending = entriesRef.current.filter(
-        (e) =>
+      const pending = entriesRef.current.filter((e) => {
+        if (e.id === selectedIdRef.current) return false;
+        const mainOpen =
           e.correlation_id?.trim() &&
-          !isAmsHandoffTerminal(e.ams_state) &&
-          e.id !== selectedIdRef.current,
-      );
+          !isAmsHandoffTerminal(e.ams_state);
+        const appendOpen =
+          e.last_append_correlation_id?.trim() &&
+          !isAmsHandoffTerminal(e.last_append_ams_state);
+        return mainOpen || appendOpen;
+      });
       if (pending.length === 0) return;
       void Promise.all(
-        pending.slice(0, 15).map(async (e) => {
-          try {
-            const status = await getHandoffStatus(
-              e.correlation_id,
-              e.base_output_dir,
-              e.id,
+        pending.slice(0, 15).flatMap((e) => {
+          const jobs: Promise<void>[] = [];
+          if (
+            e.correlation_id?.trim() &&
+            !isAmsHandoffTerminal(e.ams_state) &&
+            e.id !== selectedIdRef.current
+          ) {
+            jobs.push(
+              getHandoffStatus(e.correlation_id, e.base_output_dir, e.id)
+                .then((status) => {
+                  if (!cancelled && status) {
+                    setEntries((prev) =>
+                      prev.map((row) =>
+                        row.id === e.id ? applyHandoffToEntry(row, status) : row,
+                      ),
+                    );
+                  }
+                })
+                .catch(() => {
+                  /* keep cached list fields */
+                }),
             );
-            if (!cancelled && status) {
-              setEntries((prev) =>
-                prev.map((row) =>
-                  row.id === e.id ? applyHandoffToEntry(row, status) : row,
-                ),
-              );
-            }
-          } catch {
-            /* keep cached list fields */
           }
+          const appendCid = e.last_append_correlation_id?.trim() ?? "";
+          if (
+            appendCid &&
+            !isAmsHandoffTerminal(e.last_append_ams_state) &&
+            e.id !== selectedIdRef.current
+          ) {
+            jobs.push(
+              getHandoffStatus(
+                appendCid,
+                e.last_append_folder_path?.trim() || e.base_output_dir,
+                e.id,
+              )
+                .then((status) => {
+                  if (!cancelled && status) {
+                    setEntries((prev) =>
+                      prev.map((row) =>
+                        row.id === e.id
+                          ? applyAppendStatusToEntry(row, status)
+                          : row,
+                      ),
+                    );
+                  }
+                })
+                .catch(() => {
+                  /* keep cached list fields */
+                }),
+            );
+          }
+          return jobs;
         }),
       );
     };
@@ -618,6 +929,19 @@ function VorgaengePanel({
   const selectedMode = selected
     ? entryModeLabel(selected.form_mode, selected.manual_entry_mode)
     : null;
+  const lastAppendBusy = Boolean(
+    (latestAppend?.correlation_id?.trim() ||
+      selected?.last_append_correlation_id?.trim()) &&
+      !isAmsHandoffTerminal(
+        appendStatus?.state ||
+          latestAppend?.ams_state ||
+          selected?.last_append_ams_state,
+      ),
+  );
+  const canAppend =
+    Boolean(selected?.correlation_id?.trim()) &&
+    (selected?.ams_state ?? "").trim().toLowerCase() === "completed" &&
+    !lastAppendBusy;
   const qrPreview = selected?.qr_preview?.path?.trim()
     ? selected.qr_preview
     : null;
@@ -629,7 +953,8 @@ function VorgaengePanel({
   useEffect(() => {
     onQrScanOpenChange(false);
     setShowShadow(true);
-  }, [selectedId, onQrScanOpenChange]);
+    onCloseAppend();
+  }, [selectedId, onQrScanOpenChange, onCloseAppend]);
 
   const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${QR_PREVIEW_FRAME_AR} + 3rem)), calc(100vw - 2rem))`;
 
@@ -836,10 +1161,10 @@ function VorgaengePanel({
           </table>
         </div>
 
-        <div className="flex min-h-0 flex-col gap-2 overflow-hidden rounded-md border border-border/60 p-2">
+        <div className="min-h-0 overflow-y-auto overflow-x-hidden rounded-md border border-border/60">
           {selected ? (
-            <>
-              <div className="shrink-0 space-y-1 border-b border-border/40 pb-2 text-xs">
+            <div className="space-y-2 p-2">
+              <div className="space-y-1 border-b border-border/40 pb-2 text-xs">
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
                     <span className="font-medium">{selected.gast}</span>
@@ -909,16 +1234,77 @@ function VorgaengePanel({
                     >
                       {selected.correlation_id.slice(0, 8)}…
                     </div>
+                    {(latestAppend?.correlation_id?.trim() ||
+                      selected.last_append_correlation_id?.trim()) ? (
+                      <div className="pt-2">
+                        <div className="mb-0.5 text-[10px] font-medium text-muted-foreground">
+                          Nachreichung
+                          {(appends.length || selected.append_count) > 1
+                            ? ` ${appends.length || selected.append_count}`
+                            : ""}
+                        </div>
+                        <AmsHandoffStepper
+                          view={
+                            appendStatus
+                              ? viewFromHandoffStatus(appendStatus)
+                              : (latestAppend
+                                  ? viewFromAppendRecord(latestAppend)
+                                  : viewFromAppendEntry(selected)) ?? {
+                                  state: "pending",
+                                }
+                          }
+                        />
+                        <div
+                          className="mt-0.5 truncate text-[10px] text-muted-foreground/80"
+                          title={
+                            latestAppend?.correlation_id ||
+                            selected.last_append_correlation_id
+                          }
+                        >
+                          {(latestAppend?.correlation_id ||
+                            selected.last_append_correlation_id).slice(0, 8)}
+                          …
+                        </div>
+                      </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="mt-2 h-7"
+                      disabled={!canAppend}
+                      title={
+                        !selected.correlation_id?.trim()
+                          ? "Nur bei AMS-Handoff (nicht Lokal)"
+                          : (selected.ams_state ?? "").trim().toLowerCase() !==
+                              "completed"
+                            ? "Erst wenn AMS den Upload abgeschlossen hat"
+                            : lastAppendBusy
+                              ? "Eine Nachreichung läuft bereits"
+                              : "Weitere Medien in denselben Kundenordner legen"
+                      }
+                      onClick={() => onOpenAppend(selected)}
+                    >
+                      Nachreichen…
+                    </Button>
                   </div>
                 ) : null}
               </div>
-              <div className="min-h-0 flex-1 overflow-auto">
+
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-muted-foreground">
+                  <span>Dateien</span>
+                  {filesReady ? (
+                    <span className="tabular-nums">{files.length}</span>
+                  ) : null}
+                </div>
                 <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 bg-card">
+                  <thead className="sticky top-0 z-[1] bg-card">
                     <tr className="border-b border-border/60">
                       <th className="p-2">Name</th>
                       <th className="p-2">Typ</th>
                       <th className="p-2">Rolle</th>
+                      <th className="p-2">Quelle</th>
                       <th className="p-2">Größe</th>
                     </tr>
                   </thead>
@@ -933,12 +1319,28 @@ function VorgaengePanel({
                         </td>
                         <td className="p-2">{f.media_type}</td>
                         <td className="p-2">{roleLabel(f.role)}</td>
+                        <td className="p-2">
+                          {f.append_id != null ? (
+                            <span
+                              className="inline-flex rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-violet-900 dark:text-violet-100"
+                              title={
+                                f.append_folder_name
+                                  ? `Nachreichung ${f.append_folder_name}`
+                                  : "Nachgereicht"
+                              }
+                            >
+                              Nachgereicht
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">Original</span>
+                          )}
+                        </td>
                         <td className="p-2">{formatBytes(f.size_bytes)}</td>
                       </tr>
                     ))}
                     {filesReady && files.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="p-4 text-center text-muted">
+                        <td colSpan={5} className="p-4 text-center text-muted">
                           Keine Dateien
                         </td>
                       </tr>
@@ -1008,7 +1410,7 @@ function VorgaengePanel({
                   </DialogContent>
                 </Dialog>
               ) : null}
-            </>
+            </div>
           ) : ready ? (
             <div className="flex flex-1 items-center justify-center text-xs text-muted">
               Vorgang auswählen

@@ -197,6 +197,40 @@ export function viewFromHandoffStatus(status: {
   };
 }
 
+export function viewFromAppendEntry(entry: {
+  last_append_correlation_id?: string;
+  last_append_ams_state?: string;
+  last_append_ams_error_code?: string;
+  last_append_ams_error_message?: string;
+}): AmsHandoffView | null {
+  const cid = entry.last_append_correlation_id?.trim() ?? "";
+  if (!cid) return null;
+  const state = (entry.last_append_ams_state ?? "").trim() || "pending";
+  return {
+    state,
+    errorCode: entry.last_append_ams_error_code || null,
+    errorMessage: entry.last_append_ams_error_message || null,
+    offline: false,
+  };
+}
+
+export function viewFromAppendRecord(entry: {
+  correlation_id?: string;
+  ams_state?: string;
+  ams_error_code?: string;
+  ams_error_message?: string;
+}): AmsHandoffView | null {
+  const cid = entry.correlation_id?.trim() ?? "";
+  if (!cid) return null;
+  const state = (entry.ams_state ?? "").trim() || "pending";
+  return {
+    state,
+    errorCode: entry.ams_error_code || null,
+    errorMessage: entry.ams_error_message || null,
+    offline: false,
+  };
+}
+
 export function viewFromVorgangEntry(entry: {
   correlation_id?: string;
   ams_state?: string;

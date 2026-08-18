@@ -200,6 +200,31 @@ pub fn write_handoff_manifest(
     Ok((correlation_id, path))
 }
 
+/// Append/Nachreichen manifest: same schema, `extensions.kind = append`.
+pub fn write_append_handoff_manifest(
+    layout: &OutputLayout,
+    kunde: &Kunde,
+    config: &AppConfig,
+    parent_correlation_id: &str,
+    vorgang_id: Option<i64>,
+) -> Result<(String, PathBuf), String> {
+    let parent = parent_correlation_id.trim();
+    if parent.is_empty() {
+        return Err("parent_correlation_id fehlt.".into());
+    }
+    let correlation_id = Uuid::new_v4().to_string();
+    let mut manifest = build_manifest(layout, kunde, config, &correlation_id, vorgang_id)?;
+    manifest.extensions = json!({
+        "kind": "append",
+        "parent_correlation_id": parent,
+    });
+    let path = manifest_path(layout);
+    let text = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    atomic_write(&path, text.as_bytes())
+        .map_err(|e| format!("{MANIFEST_FILENAME} schreiben: {e}"))?;
+    Ok((correlation_id, path))
+}
+
 /// After Vorgang history insert: set `producer_ref.vorgang_id` in the on-disk manifest (best-effort).
 pub fn patch_manifest_producer_ref(job_dir: &Path, vorgang_id: i64) -> Result<(), String> {
     let path = job_dir.join(MANIFEST_FILENAME);
@@ -284,6 +309,47 @@ pub fn read_status_outbox(
 /// Resolve share root (`aktuell`) from a job output directory.
 pub fn share_root_from_job_dir(job_dir: &Path) -> Option<PathBuf> {
     job_dir.parent().map(|p| p.to_path_buf())
+}
+
+/// Candidate share roots for `.ams-handoff/<correlation_id>.json` (job parent, job dir, config speicherort).
+pub fn handoff_share_roots(job_dir: &Path, speicherort: &str) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    let job_raw = job_dir.to_string_lossy();
+    if !job_raw.trim().is_empty() {
+        if let Some(parent) = job_dir.parent() {
+            push_unique_share_root(&mut roots, parent);
+        }
+        if job_dir.is_dir() {
+            push_unique_share_root(&mut roots, job_dir);
+        }
+    }
+    let sp = speicherort.trim();
+    if !sp.is_empty() {
+        push_unique_share_root(&mut roots, Path::new(sp));
+    }
+    roots
+}
+
+fn push_unique_share_root(roots: &mut Vec<PathBuf>, path: &Path) {
+    let p = path.to_path_buf();
+    if roots.iter().any(|r| r == &p) {
+        return;
+    }
+    roots.push(p);
+}
+
+/// Read status outbox from the first share root that contains the file.
+pub fn read_status_outbox_any(
+    share_roots: &[PathBuf],
+    correlation_id: &str,
+) -> Result<Option<StatusOutboxV1>, String> {
+    for root in share_roots {
+        match read_status_outbox(root, correlation_id)? {
+            Some(doc) => return Ok(Some(doc)),
+            None => {}
+        }
+    }
+    Ok(None)
 }
 
 /// Atomically write `_fertig.txt` (temp → rename).
@@ -397,6 +463,75 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(patched.producer_ref.vorgang_id, Some(99));
         assert_eq!(patched.correlation_id, cid);
+    }
+
+    #[test]
+    fn write_append_manifest_sets_kind_and_parent() {
+        let dir = tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "20260815_Test_TA_TM_nachreichung_01".into(),
+        };
+        fs::create_dir_all(dir.path().join("Outside_Foto")).unwrap();
+        fs::write(dir.path().join("Outside_Foto/p.jpg"), b"jpeg").unwrap();
+        let mut kunde = Kunde::default();
+        kunde.form_mode = "manual".into();
+        kunde.handcam_video = true;
+        let config = AppConfig::default();
+        let parent = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        let (cid, path) =
+            write_append_handoff_manifest(&layout, &kunde, &config, parent, Some(7)).unwrap();
+        assert!(path.is_file());
+        assert_ne!(cid, parent);
+        let parsed: HandoffManifestV1 =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed.extensions["kind"], "append");
+        assert_eq!(parsed.extensions["parent_correlation_id"], parent);
+        assert_eq!(parsed.producer_ref.vorgang_id, Some(7));
+        assert_eq!(parsed.integrity.files.len(), 1);
+    }
+
+    #[test]
+    fn handoff_share_roots_includes_speicherort_and_job_parent() {
+        let root = tempdir().unwrap();
+        let aktuell = root.path().join("aktuell");
+        let job = aktuell.join("JobA_nachreichung_01");
+        fs::create_dir_all(&job).unwrap();
+        let roots = handoff_share_roots(&job, aktuell.to_str().unwrap());
+        assert!(roots.contains(&aktuell));
+        assert!(roots.contains(&job));
+    }
+
+    #[test]
+    fn read_status_outbox_any_finds_second_root() {
+        let root = tempdir().unwrap();
+        let aktuell = root.path().join("share");
+        fs::create_dir_all(&aktuell.join(HANDOFF_DIRNAME)).unwrap();
+        let cid = "11111111-2222-3333-4444-555555555555";
+        let doc = StatusOutboxV1 {
+            schema: 1,
+            correlation_id: cid.into(),
+            updated_at: "2026-08-15T01:00:00+02:00".into(),
+            state: "failed".into(),
+            error: Some(OutboxError {
+                code: "upload_error".into(),
+                message: "boom".into(),
+            }),
+            ams: OutboxAmsMeta::default(),
+            extensions: json!({}),
+        };
+        fs::write(
+            outbox_path(&aktuell, cid),
+            serde_json::to_string_pretty(&doc).unwrap(),
+        )
+        .unwrap();
+        let wrong = root.path().join("other");
+        fs::create_dir_all(&wrong).unwrap();
+        let read = read_status_outbox_any(&[wrong, aktuell.clone()], cid)
+            .unwrap()
+            .expect("doc");
+        assert_eq!(read.state, "failed");
+        assert_eq!(read.error.as_ref().unwrap().code, "upload_error");
     }
 
     #[test]

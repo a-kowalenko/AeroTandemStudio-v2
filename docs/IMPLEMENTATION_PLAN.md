@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23 — USB-Action-Cams (MTP)](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+**Nächste Phase:** [Phase 23.1 — Windows WPD](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(Phase 24 AMS-Nachreichen erledigt.)*  
 *(optional danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*  
 *(Phase 22: macOS Titlebar-Align + Dialog-Zentrierung erledigt.)*
 *(Phase 20–21.1: Medien-Drehen + Foto-Crop + Crop-Settle UX erledigt.)*
@@ -1282,6 +1283,45 @@ src/hooks/useSdCardMonitor.ts
 
 ---
 
+### Phase 24 — AMS-Nachreichen (Append-Handoff)
+
+**Status:** ✅ Erledigt (manuelle Abnahme offen)  
+**Abhängigkeiten:** Phase 12 (Vorgang/Historie), Phase 13 L4 (AMS-Status), AMS Phase 15  
+**Spec:** AeroMediaService-v2 `docs/HANDOFF.md` §6.1  
+**Ziel:** Aus der ATS-Historie weitere Medien in **denselben Cloud-Ordner / denselben Share-Link** nachreichen — ohne neuen Kundenordner und ohne Kunden-Mail.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Staging | `{base}_nachreichung_01` auf `aktuell` — **nicht** ins AMS-Archiv schreiben |
+| Manifest | Schema v1; `extensions.kind=append` + `parent_correlation_id` |
+| Ungebucht | Default **Preview** (Wasserzeichen); Voll nur mit Bestätigung |
+| Cloud-Ordner | nicht umbenennen, wenn Outside später dazukommt |
+| Button | nur wenn Erst-Handoff `completed` (nicht Lokal, nicht noch uploading) |
+| Altes AMS | Bridge ohne `append-v1` → Senden blockieren (sonst neuer Dropbox-Ordner) |
+| Fallback | Datei-Handoff wenn Bridge down |
+
+#### Aufgaben
+
+- [x] `video/append_job.rs` — Kategorien HV/HF/OV/OF, Copy oder Preview-WM, Marker + Append-Manifest
+- [x] Historie `vorgang_appends` + Status-Poll ohne Überschreiben des Erst-Handoffs
+- [x] Command `create_append_job` + `handoff/ready`
+- [x] Historie-Dialog „Nachreichen…“ + Kategorie/Preview-UI
+- [x] Unit-Tests (Ordnername, Manifest-Append, Historie isoliert vom Erst-Handoff)
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 24 aus @docs/IMPLEMENTATION_PLAN.md
+Spec: AMS docs/HANDOFF.md §6.1
+Regeln: @AGENTS.md
+Upload-Pipeline in AMS nicht umbauen.
+Danach cargo test.
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1460,6 +1500,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 23.2e | ICA-Browser überlebt Auswerfen / Replug | ✅ |
 | 23.3 | Linux libmtp | ⬜ |
 | 23.4 | UX & Docs | ⬜ |
+| 24 | AMS-Nachreichen (Append-Handoff) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1478,4 +1519,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 23 USB-Action-Cams (MTP) / 23.2e ICA-Browser Replug*
+*Letzte Aktualisierung: 2026-08-17 · Projekt: Aero Tandem Studio v2 · Phase 24 AMS-Nachreichen*

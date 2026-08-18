@@ -60,6 +60,7 @@ import { useKundeStore } from "./store/kundeStore";
 import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
+import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
@@ -285,9 +286,14 @@ function App() {
 
   const serverPhase = useServerStore((s) => s.phase);
 
+  const appendActive = useAppendStore((s) => s.active);
+  const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
+  const appendWasActiveRef = useRef(false);
+
   const installBlockedReason = (() => {
     if (updateInstalling) return "Installation läuft bereits…";
     if (busy) return "Während der Verarbeitung nicht möglich.";
+    if (appendActive) return "Während Nachreichen nicht möglich.";
     if (sdWorkflowUiActive) return "Während der SD-Aktion nicht möglich.";
     if (qrScanBusy) return "Während der QR-Erkennung nicht möglich.";
     if (serverPhase === "uploading") return "Während dem Upload nicht möglich.";
@@ -1296,6 +1302,15 @@ function App() {
   }
 
   useEffect(() => {
+    if (appendActive && !appendWasActiveRef.current) {
+      resetProgress();
+      setStatus("Starte Nachreichung…");
+      setPercent(1);
+    }
+    appendWasActiveRef.current = appendActive;
+  }, [appendActive]);
+
+  useEffect(() => {
     if (!ready) return;
     let cancelled = false;
     const t = window.setTimeout(() => {
@@ -1382,7 +1397,7 @@ function App() {
   }
 
   async function startCreate() {
-    if (busy || sdWorkflowUiActive || loading || qrScanBusy)
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
       return;
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
@@ -1506,12 +1521,15 @@ function App() {
   }
 
   async function cancel() {
-    const cancellingQr = qrScanBusy && !busy;
+    const cancellingQr = qrScanBusy && !busy && !appendActive;
     try {
       await invoke("cancel_encode");
       if (!cancellingQr && busy) {
         setStatus("cancelled");
         showWarning("Vorgang abgebrochen.");
+      } else if (!cancellingQr && appendActive) {
+        setStatus("cancelled");
+        showWarning("Nachreichen abgebrochen.");
       }
       // SD backup/import and QR: dedicated message when the job returns.
     } catch (e) {
@@ -1550,7 +1568,7 @@ function App() {
   }
 
   function handleSessionReset() {
-    if (busy || loading || sdWorkflowUiActive || qrScanBusy) {
+    if (busy || appendActive || loading || sdWorkflowUiActive || qrScanBusy) {
       showWarning(
         "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
         "Zurücksetzen",
@@ -1597,6 +1615,7 @@ function App() {
 
   const uiLocked =
     busy ||
+    appendActive ||
     sdWorkflowUiActive ||
     loading ||
     qrScanBusy ||
@@ -1660,6 +1679,8 @@ function App() {
     return () => window.clearTimeout(t);
   }, [createReadyPulsePending, createReady, clearCreateReadyPulse]);
 
+  const appendUploading = appendActive && /^upload/i.test(status.trim());
+
   const workflowView = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
     sdPhase,
@@ -1676,17 +1697,20 @@ function App() {
     videoImporting,
     photoImporting,
     encodeBusy: busy,
+    appendActive,
+    appendGuest,
+    appendUploading,
     percent,
     status,
     taskProgress,
   });
 
   useEffect(() => {
-    if (busy) return;
+    if (busy || appendActive) return;
     if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
     if (workflowView.visible) return;
     resetProgress();
-  }, [busy, percent, taskProgress.length, status, workflowView.visible]);
+  }, [busy, appendActive, percent, taskProgress.length, status, workflowView.visible]);
 
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
