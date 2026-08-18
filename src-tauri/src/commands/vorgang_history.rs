@@ -21,6 +21,16 @@ fn open_store() -> Result<VorgangHistoryStore, String> {
     VorgangHistoryStore::open_default().map_err(|e| e.to_string())
 }
 
+async fn blocking_hist<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn read_config(state: &ConfigState) -> Result<crate::storage::config::AppConfig, String> {
     state
         .cache
@@ -160,35 +170,39 @@ fn cached_or_pending(
 }
 
 #[tauri::command]
-pub fn list_vorgaenge(
+pub async fn list_vorgaenge(
     limit: Option<u32>,
     search: Option<String>,
 ) -> Result<Vec<VorgangEntry>, String> {
-    let store = open_store()?;
-    let entries = store
-        .list_vorgaenge(limit.unwrap_or(500) as usize, search.as_deref())
-        .map_err(|e| e.to_string())?;
-    logging::debug(
-        "vorgang_history",
-        format!(
-            "Vorgänge geladen: {}{}",
-            entries.len(),
-            search
-                .as_ref()
-                .filter(|s| !s.is_empty())
-                .map(|s| format!(" (Suche: {s})"))
-                .unwrap_or_default()
-        ),
-    );
-    Ok(entries)
+    blocking_hist(move || {
+        let store = open_store()?;
+        let entries = store
+            .list_vorgaenge(limit.unwrap_or(500) as usize, search.as_deref())
+            .map_err(|e| e.to_string())?;
+        logging::debug(
+            "vorgang_history",
+            format!(
+                "Vorgänge geladen: {}{}",
+                entries.len(),
+                search
+                    .as_ref()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| format!(" (Suche: {s})"))
+                    .unwrap_or_default()
+            ),
+        );
+        Ok(entries)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn list_vorgang_dateien(vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, String> {
-    let store = open_store()?;
-    store
-        .list_files(vorgang_id)
-        .map_err(|e| e.to_string())
+pub async fn list_vorgang_dateien(vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        store.list_files(vorgang_id).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Read AMS status: Bridge `GET /v1/jobs/{id}` first, else Outbox file (P1b).
@@ -281,9 +295,12 @@ pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn list_vorgang_appends(vorgang_id: i64) -> Result<Vec<VorgangAppendEntry>, String> {
-    let store = open_store()?;
-    store.list_appends(vorgang_id).map_err(|e| e.to_string())
+pub async fn list_vorgang_appends(vorgang_id: i64) -> Result<Vec<VorgangAppendEntry>, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        store.list_appends(vorgang_id).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Copy extra media into a new `aktuell` staging folder and signal AMS (append handoff).

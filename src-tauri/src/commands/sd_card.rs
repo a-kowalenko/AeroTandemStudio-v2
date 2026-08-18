@@ -399,28 +399,33 @@ pub async fn get_media_thumbnail(
 }
 
 #[tauri::command]
-pub fn list_processed_files(
+pub async fn list_processed_files(
     limit: Option<u32>,
     search: Option<String>,
 ) -> Result<Vec<ProcessedFileEntry>, String> {
-    let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
-    let entries = hist
-        .list_entries(limit.unwrap_or(1000) as usize, search.as_deref())
-        .map_err(|e| e.to_string())?;
-    logging::debug(
-        "history",
-        format!(
-            "Verlauf geladen: {} Einträge{}",
-            entries.len(),
-            search
-                .as_ref()
-                .filter(|s| !s.is_empty())
-                .map(|s| format!(" (Suche: {s})"))
-                .unwrap_or_default()
-        ),
-    );
-    Ok(entries)
+    tauri::async_runtime::spawn_blocking(move || {
+        let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
+        let entries = hist
+            .list_entries(limit.unwrap_or(1000) as usize, search.as_deref())
+            .map_err(|e| e.to_string())?;
+        logging::debug(
+            "history",
+            format!(
+                "Verlauf geladen: {} Einträge{}",
+                entries.len(),
+                search
+                    .as_ref()
+                    .filter(|s| !s.is_empty())
+                    .map(|s| format!(" (Suche: {s})"))
+                    .unwrap_or_default()
+            ),
+        );
+        Ok(entries)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
+
 
 #[tauri::command]
 pub fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {

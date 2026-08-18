@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
@@ -17,6 +18,54 @@ use crate::video::export_job::CreateJobResult;
 const DB_FILE_NAME: &str = "vorgang_history.db";
 /// Durable QR hit-frames next to `vorgang_history.db` (not temp).
 const QR_PREVIEW_DIR_NAME: &str = "vorgang_qr_previews";
+/// Skip repeated CREATE/ALTER on the default DB after the first successful open.
+static DEFAULT_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
+
+/// List/detail SELECT: aggregations computed once (not per-row correlated subqueries).
+const VORGAENGE_SELECT: &str = "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
+                        v.kunden_id_hash, v.booking_id_hash,
+                        v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
+                        v.manual_entry_mode,
+                        v.handcam_foto, v.handcam_video, v.outside_foto, v.outside_video,
+                        v.ist_bezahlt_handcam_foto, v.ist_bezahlt_handcam_video,
+                        v.ist_bezahlt_outside_foto, v.ist_bezahlt_outside_video,
+                        v.base_output_dir, v.base_filename, v.encoder, v.intro_created,
+                        v.body_clips, v.photos_copied, v.watermark_photos, v.marker_path,
+                        v.reused_preview,
+                        v.qr_preview_path, v.qr_preview_width, v.qr_preview_height,
+                        v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
+                        v.correlation_id,
+                        IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
+                        IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
+                        IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
+                        IFNULL(fc.file_count, 0) AS file_count,
+                        IFNULL(ac.append_count, 0) AS append_count,
+                        IFNULL(la.correlation_id, ''),
+                        IFNULL(la.ams_state, ''),
+                        IFNULL(la.ams_error_code, ''),
+                        IFNULL(la.ams_error_message, ''),
+                        IFNULL(la.folder_path, '')
+                 FROM vorgaenge v
+                 LEFT JOIN (
+                    SELECT vorgang_id, COUNT(*) AS file_count
+                    FROM vorgang_dateien
+                    GROUP BY vorgang_id
+                 ) fc ON fc.vorgang_id = v.id
+                 LEFT JOIN (
+                    SELECT vorgang_id, COUNT(*) AS append_count
+                    FROM vorgang_appends
+                    GROUP BY vorgang_id
+                 ) ac ON ac.vorgang_id = v.id
+                 LEFT JOIN (
+                    SELECT a.vorgang_id, a.correlation_id, a.ams_state, a.ams_error_code,
+                           a.ams_error_message, a.folder_path
+                    FROM vorgang_appends a
+                    INNER JOIN (
+                        SELECT vorgang_id, MAX(id) AS max_id
+                        FROM vorgang_appends
+                        GROUP BY vorgang_id
+                    ) latest ON latest.max_id = a.id
+                 ) la ON la.vorgang_id = v.id";
 
 #[derive(Debug, Error)]
 pub enum VorgangHistoryError {
@@ -148,7 +197,10 @@ impl VorgangHistoryStore {
         let store = Self {
             db_path: dir.join(DB_FILE_NAME),
         };
-        store.ensure_schema()?;
+        if !DEFAULT_SCHEMA_READY.load(Ordering::Acquire) {
+            store.ensure_schema()?;
+            DEFAULT_SCHEMA_READY.store(true, Ordering::Release);
+        }
         Ok(store)
     }
 
@@ -824,8 +876,14 @@ impl VorgangHistoryStore {
     }
 
     pub fn get_by_id(&self, id: i64) -> Result<Option<VorgangEntry>, VorgangHistoryError> {
-        let list = self.list_vorgaenge(10_000, None)?;
-        Ok(list.into_iter().find(|e| e.id == id))
+        let conn = self.connect()?;
+        let sql = format!("{VORGAENGE_SELECT} WHERE v.id = ?1 LIMIT 1");
+        let mut stmt = conn.prepare(&sql)?;
+        let mut mapped = stmt.query_map(params![id], map_vorgang_row)?;
+        match mapped.next() {
+            Some(row) => Ok(Some(row?)),
+            None => Ok(None),
+        }
     }
 
     pub fn record_append(
@@ -898,34 +956,10 @@ impl VorgangHistoryStore {
     ) -> Result<Vec<VorgangEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let limit = limit.max(1) as i64;
-        let select = "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
-                        v.kunden_id_hash, v.booking_id_hash,
-                        v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
-                        v.manual_entry_mode,
-                        v.handcam_foto, v.handcam_video, v.outside_foto, v.outside_video,
-                        v.ist_bezahlt_handcam_foto, v.ist_bezahlt_handcam_video,
-                        v.ist_bezahlt_outside_foto, v.ist_bezahlt_outside_video,
-                        v.base_output_dir, v.base_filename, v.encoder, v.intro_created,
-                        v.body_clips, v.photos_copied, v.watermark_photos, v.marker_path,
-                        v.reused_preview,
-                        v.qr_preview_path, v.qr_preview_width, v.qr_preview_height,
-                        v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
-                        v.correlation_id,
-                        IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
-                        IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
-                        IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
-                        (SELECT COUNT(*) FROM vorgang_dateien d WHERE d.vorgang_id = v.id) AS file_count,
-                        (SELECT COUNT(*) FROM vorgang_appends a WHERE a.vorgang_id = v.id) AS append_count,
-                        IFNULL((SELECT a.correlation_id FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
-                        IFNULL((SELECT a.ams_state FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
-                        IFNULL((SELECT a.ams_error_code FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
-                        IFNULL((SELECT a.ams_error_message FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), ''),
-                        IFNULL((SELECT a.folder_path FROM vorgang_appends a WHERE a.vorgang_id = v.id ORDER BY a.id DESC LIMIT 1), '')
-                 FROM vorgaenge v";
         let rows = if let Some(q) = search.filter(|s| !s.is_empty()) {
             let pattern = format!("%{q}%");
             let sql = format!(
-                "{select}
+                "{VORGAENGE_SELECT}
                  WHERE v.gast LIKE ?1
                     OR IFNULL(v.vorname,'') LIKE ?1
                     OR IFNULL(v.nachname,'') LIKE ?1
@@ -947,7 +981,7 @@ impl VorgangHistoryStore {
             mapped.collect::<Result<Vec<_>, _>>()?
         } else {
             let sql = format!(
-                "{select}
+                "{VORGAENGE_SELECT}
                  ORDER BY v.created_at DESC, v.id DESC
                  LIMIT ?1"
             );
@@ -958,41 +992,10 @@ impl VorgangHistoryStore {
         Ok(rows)
     }
 
+    /// List files from SQLite only — no SMB/`read_dir` scan on dialog open.
+    /// Append rows are written by `record_append_files` when the job finishes.
     pub fn list_files(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
-        let mut files = self.list_files_from_db(vorgang_id)?;
-        let appends = self.list_appends(vorgang_id)?;
-        for append in appends {
-            if files.iter().any(|f| f.append_id == Some(append.id)) {
-                continue;
-            }
-            let folder = Path::new(append.folder_path.trim());
-            if !folder.is_dir() {
-                continue;
-            }
-            let scanned = scan_append_folder(folder)?;
-            for (idx, f) in scanned.into_iter().enumerate() {
-                files.push(VorgangFileEntry {
-                    id: -(append.id * 10_000 + idx as i64),
-                    vorgang_id,
-                    filename: f.filename,
-                    media_type: f.media_type,
-                    role: f.role,
-                    size_bytes: f.size_bytes,
-                    path: f.path,
-                    append_id: Some(append.id),
-                    append_folder_name: Some(append.folder_name.clone()),
-                });
-            }
-        }
-        files.sort_by(|a, b| {
-            match (a.append_id, b.append_id) {
-                (None, None) => a.id.cmp(&b.id),
-                (None, Some(_)) => std::cmp::Ordering::Less,
-                (Some(_), None) => std::cmp::Ordering::Greater,
-                (Some(aa), Some(bb)) => aa.cmp(&bb).then(a.id.cmp(&b.id)),
-            }
-        });
-        Ok(files)
+        self.list_files_from_db(vorgang_id)
     }
 
     fn list_files_from_db(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
@@ -1397,6 +1400,11 @@ mod tests {
         assert_eq!(files_out.len(), 2);
         assert_eq!(files_out[0].role, "source_video");
 
+        let by_id = store.get_by_id(id).unwrap().expect("get_by_id");
+        assert_eq!(by_id.gast, "Max Mustermann");
+        assert_eq!(by_id.file_count, 2);
+        assert!(store.get_by_id(id + 99).unwrap().is_none());
+
         store.delete_by_ids(&[id]).unwrap();
         assert!(store.list_vorgaenge(10, None).unwrap().is_empty());
         assert!(store.list_files(id).unwrap().is_empty());
@@ -1625,5 +1633,92 @@ mod tests {
         assert_eq!(files[0].append_id, Some(append_id));
         assert_eq!(files[0].role, "append_preview_foto");
         assert_eq!(files[0].append_folder_name.as_deref(), Some("Max_nachreichung_01"));
+    }
+
+    #[test]
+    fn list_files_ignores_unrecorded_append_folder() {
+        use crate::video::export_paths::SUBDIR_PREVIEW_FOTO;
+
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .unwrap();
+
+        let append_dir = dir.path().join("Max_nachreichung_01");
+        let foto_dir = append_dir.join(SUBDIR_PREVIEW_FOTO);
+        fs::create_dir_all(&foto_dir).unwrap();
+        fs::write(foto_dir.join("loose.jpg"), b"jpeg").unwrap();
+        store
+            .record_append(
+                id,
+                "bbbbbbbb-cccc-dddd-eeee-ffffffffffff",
+                "Max_nachreichung_01",
+                &append_dir.to_string_lossy(),
+                1,
+                1,
+                &["Preview_Foto".into()],
+            )
+            .unwrap();
+
+        assert!(
+            store.list_files(id).unwrap().is_empty(),
+            "list_files must not scan the append folder"
+        );
+    }
+
+    #[test]
+    fn list_vorgaenge_uses_latest_append_row() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .unwrap();
+        store
+            .record_append(
+                id,
+                "append-one",
+                "Max_nachreichung_01",
+                "/tmp/one",
+                1,
+                0,
+                &["Handcam_Video".into()],
+            )
+            .unwrap();
+        store
+            .record_append(
+                id,
+                "append-two",
+                "Max_nachreichung_02",
+                "/tmp/two",
+                2,
+                1,
+                &["Preview_Foto".into()],
+            )
+            .unwrap();
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                "append-two",
+                &AmsHandoffStatusUpdate {
+                    state: "uploading".into(),
+                    updated_at: "2026-08-18T12:00:00Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: String::new(),
+                    source: "bridge".into(),
+                },
+            )
+            .unwrap();
+
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.append_count, 2);
+        assert_eq!(entry.last_append_correlation_id, "append-two");
+        assert_eq!(entry.last_append_ams_state, "uploading");
+        assert_eq!(entry.last_append_folder_path, "/tmp/two");
+
+        let fetched = store.get_by_id(id).unwrap().expect("row");
+        assert_eq!(fetched.last_append_correlation_id, "append-two");
+        assert_eq!(fetched.append_count, 2);
     }
 }

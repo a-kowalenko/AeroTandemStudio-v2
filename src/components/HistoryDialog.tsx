@@ -50,6 +50,7 @@ import {
 } from "../lib/amsHandoffStatus";
 import { AppendMediaDialog } from "@/components/AppendMediaDialog";
 import { useAppendStore } from "@/store/appendStore";
+import { useHistoryStore } from "@/store/historyStore";
 import { useUiStore } from "@/store/uiStore";
 import { isCancellationError } from "@/lib/utils";
 import {
@@ -440,7 +441,6 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               </TabsContent>
               <TabsContent
                 value="medien"
-                forceMount
                 className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
               >
                 <MedienPanel
@@ -511,6 +511,34 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   );
 }
 
+function seedVorgaengePanel(): {
+  entries: VorgangEntry[];
+  selectedId: number | null;
+  ready: boolean;
+  files: VorgangFileEntry[];
+  filesReady: boolean;
+  appends: VorgangAppendEntry[];
+  appendsReady: boolean;
+} {
+  const s = useHistoryStore.getState();
+  const entries = s.vorgaengeLoaded ? s.vorgaenge : [];
+  const selectedId =
+    s.selectedId != null && entries.some((r) => r.id === s.selectedId)
+      ? s.selectedId
+      : (entries[0]?.id ?? null);
+  const filesHit = selectedId != null && s.filesVorgangId === selectedId;
+  const appendsHit = selectedId != null && s.appendsVorgangId === selectedId;
+  return {
+    entries,
+    selectedId,
+    ready: s.vorgaengeLoaded,
+    files: filesHit ? s.files : [],
+    filesReady: selectedId == null || filesHit,
+    appends: appendsHit ? s.appends : [],
+    appendsReady: selectedId == null || appendsHit,
+  };
+}
+
 function VorgaengePanel({
   dialogOpen,
   qrScanOpen,
@@ -528,41 +556,71 @@ function VorgaengePanel({
   onCloseAppend: () => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
-  const [entries, setEntries] = useState<VorgangEntry[]>([]);
+  const [entries, setEntries] = useState<VorgangEntry[]>(
+    () => seedVorgaengePanel().entries,
+  );
   const [search, setSearch] = useState("");
   const [amsFilter, setAmsFilter] = useState<AmsStatusFilter>("all");
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [files, setFiles] = useState<VorgangFileEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [filesReady, setFilesReady] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(
+    () => seedVorgaengePanel().selectedId,
+  );
+  const [files, setFiles] = useState<VorgangFileEntry[]>(
+    () => seedVorgaengePanel().files,
+  );
+  const [loading, setLoading] = useState(() => !seedVorgaengePanel().ready);
+  const [ready, setReady] = useState(() => seedVorgaengePanel().ready);
+  const [filesReady, setFilesReady] = useState(
+    () => seedVorgaengePanel().filesReady,
+  );
   const [checked, setChecked] = useState<Set<number>>(new Set());
   const [showShadow, setShowShadow] = useState(true);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus | null>(null);
   const [handoffReady, setHandoffReady] = useState(false);
   const [appendStatus, setAppendStatus] = useState<HandoffStatus | null>(null);
-  const [appends, setAppends] = useState<VorgangAppendEntry[]>([]);
-  const [appendsReady, setAppendsReady] = useState(false);
+  const [appends, setAppends] = useState<VorgangAppendEntry[]>(
+    () => seedVorgaengePanel().appends,
+  );
+  const [appendsReady, setAppendsReady] = useState(
+    () => seedVorgaengePanel().appendsReady,
+  );
   const searchRef = useRef(search);
   searchRef.current = search;
   const entriesRef = useRef(entries);
   entriesRef.current = entries;
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
+  const searchSkipRef = useRef(true);
 
-  async function reload(q?: string) {
-    setLoading(true);
+  function patchEntry(id: number, fn: (row: VorgangEntry) => VorgangEntry) {
+    setEntries((prev) => prev.map((e) => (e.id === id ? fn(e) : e)));
+    useHistoryStore.getState().patchVorgang(id, fn);
+  }
+
+  async function reload(q?: string, opts?: { silent?: boolean }) {
+    const query = q?.trim() || "";
+    const silent =
+      Boolean(opts?.silent) && entriesRef.current.length > 0 && !query;
+    if (!silent) setLoading(true);
     try {
-      const rows = await listVorgaenge(500, q?.trim() || undefined);
+      const rows = await listVorgaenge(500, query || undefined);
       setEntries(rows);
-      setChecked(new Set());
+      if (!query) {
+        useHistoryStore.getState().setVorgaenge(rows);
+      }
+      if (!silent) setChecked(new Set());
       setSelectedId((prev) => {
-        if (prev != null && rows.some((r) => r.id === prev)) return prev;
-        return rows[0]?.id ?? null;
+        const next =
+          prev != null && rows.some((r) => r.id === prev)
+            ? prev
+            : (rows[0]?.id ?? null);
+        useHistoryStore.getState().setSelectedId(next);
+        return next;
       });
     } catch {
-      setEntries([]);
-      setSelectedId(null);
+      if (!silent) {
+        setEntries([]);
+        setSelectedId(null);
+      }
     } finally {
       setLoading(false);
       setReady(true);
@@ -571,22 +629,38 @@ function VorgaengePanel({
 
   useEffect(() => {
     if (!dialogOpen) return;
-    void reload(searchRef.current);
+    const cached = useHistoryStore.getState().vorgaengeLoaded;
+    void reload(searchRef.current, {
+      silent: cached && !searchRef.current.trim(),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
 
   useEffect(() => {
     if (appendRefreshKey === 0) return;
-    void reload(searchRef.current);
+    void reload(searchRef.current, {
+      silent: entriesRef.current.length > 0,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendRefreshKey]);
 
   useEffect(() => {
-    if (!dialogOpen || !ready) return;
+    if (!dialogOpen) {
+      searchSkipRef.current = true;
+      return;
+    }
+    if (searchSkipRef.current) {
+      searchSkipRef.current = false;
+      return;
+    }
     const t = setTimeout(() => void reload(search), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, dialogOpen]);
+
+  useEffect(() => {
+    useHistoryStore.getState().setSelectedId(selectedId);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!dialogOpen) return;
@@ -595,11 +669,20 @@ function VorgaengePanel({
       setFilesReady(true);
       return;
     }
+    const cached = useHistoryStore.getState();
+    if (cached.filesVorgangId === selectedId) {
+      setFiles(cached.files);
+      setFilesReady(true);
+    } else {
+      setFilesReady(false);
+    }
     let cancelled = false;
-    setFilesReady(false);
     void listVorgangDateien(selectedId)
       .then((rows) => {
-        if (!cancelled) setFiles(rows);
+        if (!cancelled) {
+          setFiles(rows);
+          useHistoryStore.getState().setFiles(selectedId, rows);
+        }
       })
       .catch(() => {
         if (!cancelled) setFiles([]);
@@ -652,11 +735,7 @@ function VorgaengePanel({
       if (cancelled) return;
       setHandoffStatus(status);
       if (status) {
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.id === vorgangId ? applyHandoffToEntry(e, status) : e,
-          ),
-        );
+        patchEntry(vorgangId, (e) => applyHandoffToEntry(e, status));
       }
     };
 
@@ -740,11 +819,20 @@ function VorgaengePanel({
       setAppendsReady(true);
       return;
     }
+    const cached = useHistoryStore.getState();
+    if (cached.appendsVorgangId === selectedId) {
+      setAppends(cached.appends);
+      setAppendsReady(true);
+    } else {
+      setAppendsReady(false);
+    }
     let cancelled = false;
-    setAppendsReady(false);
     void listVorgangAppends(selectedId)
       .then((rows) => {
-        if (!cancelled) setAppends(rows);
+        if (!cancelled) {
+          setAppends(rows);
+          useHistoryStore.getState().setAppends(selectedId, rows);
+        }
       })
       .catch(() => {
         if (!cancelled) setAppends([]);
@@ -784,14 +872,12 @@ function VorgaengePanel({
       if (cancelled) return;
       setAppendStatus(status);
       if (status) {
-        setEntries((prev) =>
-          prev.map((e) =>
-            e.id === vorgangId ? applyAppendStatusToEntry(e, status) : e,
-          ),
-        );
-        setAppends((prev) =>
-          prev.map((row) => applyAppendStatusToRecord(row, status)),
-        );
+        patchEntry(vorgangId, (e) => applyAppendStatusToEntry(e, status));
+        setAppends((prev) => {
+          const next = prev.map((row) => applyAppendStatusToRecord(row, status));
+          useHistoryStore.getState().setAppends(vorgangId, next);
+          return next;
+        });
       }
     };
 
@@ -874,11 +960,7 @@ function VorgaengePanel({
               getHandoffStatus(e.correlation_id, e.base_output_dir, e.id)
                 .then((status) => {
                   if (!cancelled && status) {
-                    setEntries((prev) =>
-                      prev.map((row) =>
-                        row.id === e.id ? applyHandoffToEntry(row, status) : row,
-                      ),
-                    );
+                    patchEntry(e.id, (row) => applyHandoffToEntry(row, status));
                   }
                 })
                 .catch(() => {
@@ -900,12 +982,8 @@ function VorgaengePanel({
               )
                 .then((status) => {
                   if (!cancelled && status) {
-                    setEntries((prev) =>
-                      prev.map((row) =>
-                        row.id === e.id
-                          ? applyAppendStatusToEntry(row, status)
-                          : row,
-                      ),
+                    patchEntry(e.id, (row) =>
+                      applyAppendStatusToEntry(row, status),
                     );
                   }
                 })
@@ -918,10 +996,11 @@ function VorgaengePanel({
         }),
       );
     };
-    refresh();
+    const start = window.setTimeout(refresh, 1500);
     const interval = window.setInterval(refresh, 20000);
     return () => {
       cancelled = true;
+      window.clearTimeout(start);
       window.clearInterval(interval);
     };
   }, [dialogOpen, ready]);
@@ -996,7 +1075,9 @@ function VorgaengePanel({
       actionLabel: "Entfernen",
       run: async () => {
         await deleteVorgaenge(ids);
-        await reload(search);
+        useHistoryStore.getState().removeVorgaenge(ids);
+        setEntries((prev) => prev.filter((e) => !ids.includes(e.id)));
+        await reload(search, { silent: true });
       },
     });
   }
@@ -1035,7 +1116,7 @@ function VorgaengePanel({
           ))}
         </div>
         <span className="ml-auto min-w-[7rem] text-right text-xs text-muted tabular-nums">
-          {!ready || loading
+          {!ready && filteredEntries.length === 0
             ? "Laden…"
             : amsFilter === "all"
               ? `${entries.length} Vorgänge`
@@ -1157,6 +1238,14 @@ function VorgaengePanel({
                   </td>
                 </tr>
               )}
+              {!ready && filteredEntries.length === 0 &&
+                Array.from({ length: 8 }, (_, i) => (
+                  <tr key={`sk-${i}`}>
+                    <td colSpan={6} className="p-2">
+                      <div className="h-4 animate-pulse rounded bg-muted/50" />
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -1415,7 +1504,13 @@ function VorgaengePanel({
             <div className="flex flex-1 items-center justify-center text-xs text-muted">
               Vorgang auswählen
             </div>
-          ) : null}
+          ) : (
+            <div className="space-y-2 p-3">
+              <div className="h-4 w-2/3 animate-pulse rounded bg-muted/50" />
+              <div className="h-3 w-1/2 animate-pulse rounded bg-muted/40" />
+              <div className="h-3 w-5/6 animate-pulse rounded bg-muted/40" />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1429,24 +1524,35 @@ function MedienPanel({
   dialogOpen: boolean;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
-  const [entries, setEntries] = useState<ProcessedFileEntry[]>([]);
+  const [entries, setEntries] = useState<ProcessedFileEntry[]>(() => {
+    const s = useHistoryStore.getState();
+    return s.medienLoaded && s.medienQuery === "" ? s.medien : [];
+  });
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState(
+    () => !useHistoryStore.getState().medienLoaded,
+  );
+  const [ready, setReady] = useState(
+    () => useHistoryStore.getState().medienLoaded,
+  );
   const searchRef = useRef(search);
   searchRef.current = search;
+  const searchSkipRef = useRef(true);
 
-  async function reload(q?: string) {
-    setLoading(true);
+  async function reload(q?: string, opts?: { silent?: boolean }) {
+    const query = q?.trim() || "";
+    const silent = Boolean(opts?.silent) && entries.length > 0 && !query;
+    if (!silent) setLoading(true);
     try {
-      const rows = await listProcessedFiles(1000, q?.trim() || undefined);
+      const rows = await listProcessedFiles(1000, query || undefined);
       setEntries(rows);
-      setSelected(new Set());
+      useHistoryStore.getState().setMedien(rows, query);
+      if (!silent) setSelected(new Set());
     } catch {
-      setEntries([]);
+      if (!silent) setEntries([]);
     } finally {
       setLoading(false);
       setReady(true);
@@ -1455,16 +1561,26 @@ function MedienPanel({
 
   useEffect(() => {
     if (!dialogOpen) return;
-    void reload(searchRef.current);
+    const cached = useHistoryStore.getState();
+    void reload(searchRef.current, {
+      silent: cached.medienLoaded && cached.medienQuery === "" && !searchRef.current.trim(),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
 
   useEffect(() => {
-    if (!dialogOpen || !ready) return;
+    if (!dialogOpen) {
+      searchSkipRef.current = true;
+      return;
+    }
+    if (searchSkipRef.current) {
+      searchSkipRef.current = false;
+      return;
+    }
     const t = setTimeout(() => void reload(search), 250);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, dialogOpen]);
 
   const filtered = useMemo(() => {
     return entries.filter((e) => {
@@ -1506,6 +1622,7 @@ function MedienPanel({
       actionLabel: "Entfernen",
       run: async () => {
         await deleteProcessedFiles(ids);
+        useHistoryStore.getState().removeMedien(ids);
         await reload(search);
       },
     });
@@ -1519,6 +1636,7 @@ function MedienPanel({
       actionLabel: "Alles löschen",
       run: async () => {
         await purgeProcessedFiles();
+        useHistoryStore.getState().clearMedien();
         await reload(search);
       },
     });
@@ -1558,7 +1676,7 @@ function MedienPanel({
           </SelectContent>
         </Select>
         <span className="ml-auto min-w-[12rem] text-right text-xs text-muted tabular-nums">
-          {!ready || loading ? "Laden…" : stats}
+          {!ready && filtered.length === 0 ? "Laden…" : stats}
         </span>
         <Button type="button" variant="destructive" size="sm" onClick={requestPurgeAll}>
           Alles löschen
@@ -1625,6 +1743,14 @@ function MedienPanel({
                 </td>
               </tr>
             )}
+            {!ready && filtered.length === 0 &&
+              Array.from({ length: 8 }, (_, i) => (
+                <tr key={`sk-m-${i}`}>
+                  <td colSpan={6} className="p-2">
+                    <div className="h-4 animate-pulse rounded bg-muted/50" />
+                  </td>
+                </tr>
+              ))}
           </tbody>
         </table>
       </div>
