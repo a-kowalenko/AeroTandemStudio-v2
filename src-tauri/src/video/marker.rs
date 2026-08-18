@@ -38,7 +38,7 @@ pub fn build_marker_json(
         return Value::Object(map);
     }
 
-    // QR / API mode: IDs + type + product flags (no PII). Flags are required for AMS Nachladen.
+    // QR / API mode: IDs + type + product flags (no PII). Flags are required for AMS Nachreichen.
     let mut map = Map::new();
     map.insert("type".into(), json!(marker_type));
 

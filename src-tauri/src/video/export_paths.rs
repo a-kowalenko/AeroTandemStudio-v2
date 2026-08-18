@@ -3,6 +3,7 @@
 //! Port of `VideoProcessor._generate_base_output_dir` / `_generate_video_output_path`
 //! and `file_utils.sanitize_filename` / `normalize_whitespace_to_underscore`.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,6 +18,13 @@ pub const SUBDIR_OUTSIDE_FOTO: &str = "Outside_Foto";
 pub const SUBDIR_PREVIEW_VIDEO: &str = "Preview_Video";
 pub const SUBDIR_PREVIEW_FOTO: &str = "Preview_Foto";
 pub const MARKER_FILENAME: &str = "_fertig.txt";
+
+/// Canonical dropzone → unique folder suffix (no leading underscore).
+/// Lookup is case-insensitive; codes must stay unique.
+pub const DROPZONE_SUFFIXES: &[(&str, &str)] = &[("Calden", "C"), ("Gera", "G")];
+
+/// Minimum length for suffixes derived from a free-text dropzone.
+const CUSTOM_DROPZONE_SUFFIX_MIN_LEN: usize = 3;
 
 /// Replace each whitespace run with a single underscore.
 pub fn normalize_whitespace_to_underscore(text: &str) -> String {
@@ -68,20 +76,97 @@ pub fn format_datum_yyyyymmdd(datum: &str) -> String {
     Local::now().format("%Y%m%d").to_string()
 }
 
-/// Unsanitized base name: `{date}_{gast}_TA_{tm}[_V_{vs}]`.
+/// Unique folder suffix for a dropzone, including the leading underscore (`_C`, `_G`).
+/// Empty / unknown-without-letters → no suffix.
+pub fn dropzone_folder_suffix(ort: &str) -> String {
+    let code = dropzone_suffix_code(ort);
+    if code.is_empty() {
+        String::new()
+    } else {
+        format!("_{code}")
+    }
+}
+
+fn dropzone_suffix_code(ort: &str) -> String {
+    let trimmed = ort.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Some((_, code)) = DROPZONE_SUFFIXES
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(trimmed))
+    {
+        return (*code).to_string();
+    }
+    custom_dropzone_suffix_code(trimmed)
+}
+
+fn reserved_dropzone_codes() -> HashSet<String> {
+    DROPZONE_SUFFIXES
+        .iter()
+        .map(|(_, code)| (*code).to_string())
+        .collect()
+}
+
+fn custom_dropzone_suffix_code(ort: &str) -> String {
+    let reserved = reserved_dropzone_codes();
+    let letters = dropzone_letters(ort);
+    if letters.is_empty() {
+        return unused_numbered_code("X", &reserved);
+    }
+    let start = CUSTOM_DROPZONE_SUFFIX_MIN_LEN.min(letters.chars().count());
+    let max = letters.chars().count();
+    for len in start..=max {
+        let cand: String = letters.chars().take(len).collect();
+        if !reserved.contains(&cand) {
+            return cand;
+        }
+    }
+    unused_numbered_code(&letters, &reserved)
+}
+
+fn unused_numbered_code(base: &str, reserved: &HashSet<String>) -> String {
+    for n in 2..=99 {
+        let cand = format!("{base}{n}");
+        if !reserved.contains(&cand) {
+            return cand;
+        }
+    }
+    format!("{base}X")
+}
+
+fn dropzone_letters(ort: &str) -> String {
+    ort.chars().filter_map(fold_dropzone_char).collect()
+}
+
+fn fold_dropzone_char(c: char) -> Option<char> {
+    match c {
+        'ä' | 'Ä' => Some('A'),
+        'ö' | 'Ö' => Some('O'),
+        'ü' | 'Ü' => Some('U'),
+        'ß' => Some('S'),
+        c if c.is_ascii_alphanumeric() => Some(c.to_ascii_uppercase()),
+        _ => None,
+    }
+}
+
+/// Base name: `{date}_{gast}_TA_{tm}[_V_{vs}][_<dropzone>]`.
 pub fn build_base_filename(
     gast: &str,
     tandemmaster: &str,
     videospringer: &str,
     datum: &str,
     outside_video: bool,
+    ort: &str,
 ) -> String {
     let datum_fmt = format_datum_yyyyymmdd(datum);
     let mut base = format!("{datum_fmt}_{gast}_TA_{tandemmaster}");
     if outside_video {
         base.push_str(&format!("_V_{videospringer}"));
     }
-    sanitize_filename(&normalize_whitespace_to_underscore(&base))
+    let mut name = sanitize_filename(&normalize_whitespace_to_underscore(&base));
+    name.push_str(&dropzone_folder_suffix(ort));
+    name
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,6 +183,7 @@ pub fn create_base_output_dir(
     videospringer: &str,
     datum: &str,
     outside_video: bool,
+    ort: &str,
 ) -> Result<OutputLayout, String> {
     if speicherort.as_os_str().is_empty() {
         return Err("Speicherort ist leer".into());
@@ -109,7 +195,8 @@ pub fn create_base_output_dir(
         ));
     }
 
-    let base_filename = build_base_filename(gast, tandemmaster, videospringer, datum, outside_video);
+    let base_filename =
+        build_base_filename(gast, tandemmaster, videospringer, datum, outside_video, ort);
     let base_dir = speicherort.join(&base_filename);
     fs::create_dir_all(&base_dir).map_err(|e| {
         format!(
@@ -196,6 +283,7 @@ pub fn foto_unpaid(kunde: &Kunde) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use tempfile::tempdir;
 
     #[test]
@@ -218,15 +306,64 @@ mod tests {
     }
 
     #[test]
+    fn dropzone_suffixes_are_unique() {
+        let mut names = HashSet::new();
+        let mut codes = HashSet::new();
+        for (name, code) in DROPZONE_SUFFIXES {
+            assert!(!name.is_empty(), "empty dropzone name");
+            assert!(!code.is_empty(), "empty suffix for {name}");
+            assert!(
+                names.insert(name.to_lowercase()),
+                "duplicate dropzone name {name}"
+            );
+            assert!(
+                codes.insert((*code).to_string()),
+                "duplicate dropzone suffix {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn dropzone_suffix_known_and_custom() {
+        assert_eq!(dropzone_folder_suffix("Calden"), "_C");
+        assert_eq!(dropzone_folder_suffix("calden"), "_C");
+        assert_eq!(dropzone_folder_suffix(" Gera "), "_G");
+        assert_eq!(dropzone_folder_suffix(""), "");
+        assert_eq!(dropzone_folder_suffix("Kassel"), "_KAS");
+        assert_eq!(dropzone_folder_suffix("Celle"), "_CEL");
+        assert_eq!(dropzone_folder_suffix("Hamburg"), "_HAM");
+        assert_eq!(dropzone_folder_suffix("Hannover"), "_HAN");
+        assert_eq!(dropzone_folder_suffix("C"), "_C2");
+        assert_ne!(dropzone_folder_suffix("Celle"), dropzone_folder_suffix("Calden"));
+
+        let samples = ["Calden", "Gera", "Kassel", "Celle", "Hamburg", "Hannover", "C"];
+        let mut seen = HashSet::new();
+        for ort in samples {
+            let suffix = dropzone_folder_suffix(ort);
+            assert!(!suffix.is_empty(), "missing suffix for {ort}");
+            assert!(
+                seen.insert(suffix.clone()),
+                "duplicate suffix {suffix} for {ort}"
+            );
+        }
+    }
+
+    #[test]
     fn base_filename_handcam() {
-        let name = build_base_filename("Max", "Anna", "Bob", "06.08.2026", false);
-        assert_eq!(name, "20260806_Max_TA_Anna");
+        let name = build_base_filename("Max", "Anna", "Bob", "06.08.2026", false, "Calden");
+        assert_eq!(name, "20260806_Max_TA_Anna_C");
     }
 
     #[test]
     fn base_filename_outside_includes_videospringer() {
-        let name = build_base_filename("Max", "Anna", "Bob", "06.08.2026", true);
-        assert_eq!(name, "20260806_Max_TA_Anna_V_Bob");
+        let name = build_base_filename("Max", "Anna", "Bob", "06.08.2026", true, "Gera");
+        assert_eq!(name, "20260806_Max_TA_Anna_V_Bob_G");
+    }
+
+    #[test]
+    fn base_filename_omits_suffix_when_ort_empty() {
+        let name = build_base_filename("Max", "Anna", "Bob", "06.08.2026", false, "");
+        assert_eq!(name, "20260806_Max_TA_Anna");
     }
 
     #[test]
@@ -239,9 +376,12 @@ mod tests {
             "Bob",
             "06.08.2026",
             false,
+            "Calden",
         )
         .unwrap();
         assert!(layout.base_dir.is_dir());
+        assert!(layout.base_filename.ends_with("_C"));
+        assert!(layout.base_dir.ends_with(&layout.base_filename));
 
         let mut k = Kunde::default();
         k.handcam_video = true;

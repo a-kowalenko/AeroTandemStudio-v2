@@ -131,7 +131,8 @@ export type AppConfig = {
   ams_bridge_last_ok_url: string;
 };
 
-/** Fixed Ort presets; free text remains allowed in the combobox. */
+/** Fixed Ort presets; free text remains allowed in the combobox.
+ *  Folder suffixes are assigned in Rust (`DROPZONE_SUFFIXES`): Calden=`_C`, Gera=`_G`. */
 export const ORT_OPTIONS = ["Calden", "Gera"] as const;
 
 /** Manual customer form mode (non-QR). */

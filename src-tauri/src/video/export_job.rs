@@ -348,6 +348,7 @@ pub fn create_job(
         kunde.videospringer.trim(),
         kunde.datum.trim(),
         outside_mode,
+        kunde.ort.trim(),
     )
     .map_err(ProcessorError::Message)?;
     logging::info(
