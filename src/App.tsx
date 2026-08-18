@@ -129,6 +129,7 @@ import {
   shouldClearTaskProgress,
 } from "./lib/progressLabels";
 import { summarizeCreateHints } from "./lib/createReadyHints";
+import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { cn, isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
 import "./App.css";
@@ -1518,7 +1519,7 @@ function App() {
         setStatus("Abgebrochen");
         showWarning("Vorgang abgebrochen.");
       } else {
-        showError(String(e));
+        showError(presentAmsUserMessage(String(e)));
       }
     } finally {
       setBusy(false);

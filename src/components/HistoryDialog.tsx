@@ -55,7 +55,8 @@ import {
 import { useAppendStore } from "@/store/appendStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { useUiStore } from "@/store/uiStore";
-import { isCancellationError } from "@/lib/utils";
+import { presentAmsUserMessage } from "@/lib/amsBridgeStatus";
+import { cn, isCancellationError } from "@/lib/utils";
 import {
   AmsHandoffStatusChip,
   AmsHandoffStepper,
@@ -65,7 +66,6 @@ import {
   QR_PREVIEW_FRAME_AR,
   QrSpotlightPreview,
 } from "@/components/QrSpotlightPreview";
-import { cn } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -364,7 +364,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
         fileCount: items.length,
       });
       showSuccess(
-        `${res.file_count} Datei(en) an AMS übergeben (${res.folder_name}).\nAMS-Status unter „Nachreichung“ in der Historie.`,
+        `${res.file_count} Datei(en) übergeben (${res.folder_name}).\nStatus unter „Nachreichung“ in der Historie.`,
         "Nachreichen",
         { autoCloseSecs: 8 },
       );
@@ -373,7 +373,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
       if (isCancellationError(e)) {
         showError("Nachreichen abgebrochen.", "Nachreichen");
       } else {
-        showError(String(e), "Nachreichen");
+        showError(presentAmsUserMessage(String(e)), "Nachreichen");
       }
     }
   }
@@ -1145,7 +1145,7 @@ function VorgaengePanel({
         <div
           className="flex items-center gap-1"
           role="group"
-          aria-label="AMS-Status filtern"
+          aria-label="Status filtern"
         >
           {AMS_STATUS_FILTERS.map((f) => (
             <button
@@ -1199,7 +1199,7 @@ function VorgaengePanel({
                 <th className="p-2">Gast</th>
                 <th className="p-2">Datum</th>
                 <th className="p-2">Produkte</th>
-                <th className="p-2">AMS</th>
+                <th className="p-2">Status</th>
                 <th className="p-2">Erstellt</th>
               </tr>
             </thead>
@@ -1282,7 +1282,7 @@ function VorgaengePanel({
                 <tr>
                   <td colSpan={6} className="p-4 text-center text-muted">
                     {amsFilter !== "all" && entries.length > 0
-                      ? "Keine Vorgänge für diesen AMS-Filter."
+                      ? "Keine Vorgänge für diesen Status."
                       : "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier."}
                   </td>
                 </tr>
@@ -1354,7 +1354,7 @@ function VorgaengePanel({
                 {selected.correlation_id?.trim() ? (
                   <div className="pt-1">
                     {!handoffReady && !handoffStatus ? (
-                      <div className="text-muted">AMS-Status…</div>
+                      <div className="text-muted">Status…</div>
                     ) : (
                       <AmsHandoffStepper
                         view={
@@ -1413,10 +1413,10 @@ function VorgaengePanel({
                       disabled={!canAppend}
                       title={
                         !selected.correlation_id?.trim()
-                          ? "Nur bei AMS-Handoff (nicht Lokal)"
+                          ? "Nur bei Online-Vorgängen, nicht bei Lokal"
                           : (selected.ams_state ?? "").trim().toLowerCase() !==
                               "completed"
-                            ? "Erst wenn AMS den Upload abgeschlossen hat"
+                            ? "Erst wenn der Upload abgeschlossen ist"
                             : lastAppendBusy || appendJobActive
                               ? "Eine Nachreichung läuft bereits"
                               : "Weitere Medien in denselben Kundenordner legen"

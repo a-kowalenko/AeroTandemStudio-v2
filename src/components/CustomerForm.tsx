@@ -1013,7 +1013,7 @@ export function CustomerForm({
         {productsLocked ? (
           <p className="text-[11px] text-muted">
             {amsLookupLocked
-              ? "Produkte aus AMS sind gesperrt — „Bearbeiten“ zum Freigeben."
+              ? "Produkte aus der Buchung sind gesperrt — „Bearbeiten“ zum Freigeben."
               : "Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben."}
           </p>
         ) : null}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   AMS_ID_LOOKUP_TYPES,
   AMS_LOOKUP_DEBOUNCE_MS,
+  AMS_LOOKUP_FOUND_TITLE,
   AMS_LOOKUP_STATUS_NOT_FOUND,
   AMS_LOOKUP_STATUS_SEARCHING,
   classifyTypedHits,
@@ -18,6 +19,7 @@ import {
   type AmsLookupStatus,
   type AmsMarkerType,
 } from "@/lib/amsLookup";
+import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
 import { amsBridgeCustomerLookup, type AppConfig } from "@/lib/tauri";
 import { showAmsLookupFoundToast } from "@/lib/amsLookupToast";
 import { kundeDisplayName } from "@/lib/qrSuccess";
@@ -57,7 +59,7 @@ async function lookupOne(
     return {
       kind: "error",
       markerType,
-      message: message.trim() || "AMS-Lookup fehlgeschlagen",
+      message: presentAmsLookupError(message),
     };
   } catch (e) {
     const message = String(e);
@@ -67,7 +69,7 @@ async function lookupOne(
     return {
       kind: "error",
       markerType,
-      message: message.trim() || "AMS-Lookup fehlgeschlagen",
+      message: presentAmsLookupError(message),
     };
   }
 }
@@ -128,14 +130,14 @@ function askAmsOverride(opts: {
     const previous = opts.previousLabel.trim() || "Manuelle Eingabe";
     const next = opts.nextName.trim() || "Neuer Kunde";
     useUiStore.getState().showSuccess(
-      `Manuell: ${previous}\nAMS: ${next}\n\nManuelle Kundendaten verwerfen und AMS übernehmen?\nOrt, Datum und Crew bleiben erhalten.`,
-      "AMS-Kunde gefunden",
+      `Bisher: ${previous}\nBuchung: ${next}\n\nDiese Daten übernehmen?\nOrt, Datum und Crew bleiben erhalten.`,
+      AMS_LOOKUP_FOUND_TITLE,
       {
         highlight: next,
         autoCloseSecs: 0,
         confirm: {
           secondaryLabel: "Behalten",
-          primaryLabel: "AMS übernehmen",
+          primaryLabel: "Übernehmen",
           onSecondary: () => finish("keep"),
           onPrimary: () => finish("apply"),
         },

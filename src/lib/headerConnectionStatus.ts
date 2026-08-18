@@ -6,9 +6,10 @@ import type {
 } from "@/store/uiStore";
 import type { AmsBridgeHealthResult, ConnectionTestResult } from "@/lib/tauri";
 import {
+  AMS_OPERATOR_TITLE,
   amsBridgeStatusErrorTooltip,
   formatAmsConnectedTooltip,
-  mapAmsBridgeErrorLabel,
+  formatAmsHealthSuccessMessage,
   presentAmsBridgeError,
 } from "./amsBridgeStatus";
 import {
@@ -68,18 +69,15 @@ function amsTooltipLine(
   phase: AmsBridgePhase,
   connected: boolean,
   message: string,
-  version: string,
-  capabilities: string[],
 ): string {
-  if (phase === "checking") return "AMS: Prüfung…";
+  if (phase === "checking") return `${AMS_OPERATOR_TITLE}: Prüfung…`;
   if (phase === "error") {
-    const detail = amsBridgeStatusErrorTooltip(message);
-    return detail.includes("\n") ? `AMS:\n${detail}` : `AMS: ${detail}`;
+    return amsBridgeStatusErrorTooltip(message);
   }
   if (phase === "connected" || connected) {
-    return formatAmsConnectedTooltip(version, capabilities);
+    return formatAmsConnectedTooltip();
   }
-  return "AMS: nicht geprüft";
+  return `${AMS_OPERATOR_TITLE}: nicht geprüft`;
 }
 
 export function presentHeaderConnection(input: {
@@ -92,8 +90,6 @@ export function presentHeaderConnection(input: {
   amsPhase: AmsBridgePhase;
   amsConnected: boolean;
   amsMessage: string;
-  amsVersion: string;
-  amsCapabilities: string[];
   serverUrl: string;
   login: string;
   password: string;
@@ -122,17 +118,10 @@ export function presentHeaderConnection(input: {
   } else if (smbError) {
     label = mapServerErrorLabel(input.smbMessage);
     toneClass = "text-destructive";
-  } else if (amsError) {
-    label = mapAmsBridgeErrorLabel(input.amsMessage);
-    toneClass = "text-warning";
-  } else if (
-    amsChecking &&
-    !smbOk &&
-    input.smbPhase === "idle"
-  ) {
-    label = "Prüfe…";
-    toneClass = "text-warning";
-  } else if (smbOk || amsOk) {
+  } else if (smbOk) {
+    label = "Verbunden";
+    toneClass = "text-success";
+  } else if (amsOk && !amsError) {
     label = "Verbunden";
     toneClass = "text-success";
   }
@@ -177,8 +166,6 @@ export function presentHeaderConnection(input: {
         input.amsPhase,
         input.amsConnected,
         input.amsMessage,
-        input.amsVersion,
-        input.amsCapabilities,
       ),
     );
   }
@@ -240,11 +227,17 @@ export function presentHeaderRetryOutcome(opts: {
 
   const parts: string[] = [];
   if (smb) parts.push(smb.ok ? smb.message : smbPresented?.message ?? smb.message);
-  if (ams) parts.push(ams.ok ? ams.message : amsPresented?.message ?? ams.message);
+  if (ams) {
+    parts.push(
+      ams.ok
+        ? formatAmsHealthSuccessMessage(ams.message)
+        : amsPresented?.message ?? ams.message,
+    );
+  }
   const message = parts.join("\n\n");
 
   if (smbOk && amsOk) {
-    const title = smb && ams ? "Verbindung" : smb ? "Server" : "AMS-Bridge";
+    const title = smb && ams ? "Verbindung" : smb ? "Server" : AMS_OPERATOR_TITLE;
     return { kind: "success", title, message, primaryAction: null };
   }
   if (!smbOk && !amsOk) {
@@ -265,7 +258,7 @@ export function presentHeaderRetryOutcome(opts: {
   }
   return {
     kind: "error",
-    title: "AMS-Bridge",
+    title: AMS_OPERATOR_TITLE,
     message: amsPresented?.message ?? ams?.message ?? message,
     primaryAction: amsPresented?.primaryAction ?? null,
   };

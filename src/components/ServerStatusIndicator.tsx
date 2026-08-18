@@ -40,8 +40,6 @@ export function ServerStatusIndicator({ className }: Props) {
   const amsPhase = useAmsBridgeStore((s) => s.phase);
   const amsConnected = useAmsBridgeStore((s) => s.connected);
   const amsMessage = useAmsBridgeStore((s) => s.message);
-  const amsVersion = useAmsBridgeStore((s) => s.version);
-  const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
 
   const config = useConfigStore((s) => s.config);
@@ -65,8 +63,6 @@ export function ServerStatusIndicator({ className }: Props) {
     amsPhase,
     amsConnected,
     amsMessage,
-    amsVersion,
-    amsCapabilities,
     serverUrl,
     login,
     password,

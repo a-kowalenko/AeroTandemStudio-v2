@@ -14,7 +14,11 @@ import {
   SERVER_GUEST_HINT,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
-import { presentAmsBridgeError } from "@/lib/amsBridgeStatus";
+import {
+  AMS_OPERATOR_TITLE,
+  formatAmsHealthSuccessMessage,
+  presentAmsBridgeError,
+} from "@/lib/amsBridgeStatus";
 import { amsBridgeDiscover } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { SettingsSection } from "../SettingsSection";
@@ -106,14 +110,15 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         ams_bridge_token: draft.ams_bridge_token,
       });
       if (!saved) {
-        showError("Einstellungen konnten nicht gespeichert werden.", "AMS-Bridge");
+        showError("Einstellungen konnten nicht gespeichert werden.", AMS_OPERATOR_TITLE);
         return;
       }
       setDraft(saved);
       const result = await checkAmsHealth();
-      setBridgeLabel(result.message);
       if (result.ok) {
-        showSuccess(result.message, "AMS-Bridge");
+        const okMsg = formatAmsHealthSuccessMessage(result.message);
+        setBridgeLabel(okMsg);
+        showSuccess(okMsg, AMS_OPERATOR_TITLE);
         if (result.base_url) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
@@ -122,12 +127,16 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           rawMessage: result.message,
           omitSettingsAction: true,
         });
-        showError(presented.message, "AMS-Bridge");
+        setBridgeLabel(presented.message);
+        showError(presented.message, AMS_OPERATOR_TITLE);
       }
     } catch (err) {
-      const msg = String(err);
-      setBridgeLabel(msg);
-      showError(msg, "AMS-Bridge");
+      const presented = presentAmsBridgeError({
+        rawMessage: String(err),
+        omitSettingsAction: true,
+      });
+      setBridgeLabel(presented.message);
+      showError(presented.message, AMS_OPERATOR_TITLE);
     } finally {
       setTestingBridge(false);
     }
@@ -141,25 +150,28 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       const list = await amsBridgeDiscover(3);
       setDiscovered(list);
       if (list.length === 0) {
-        setBridgeLabel("Keine AMS-Bridge per mDNS gefunden.");
+        setBridgeLabel("Keine Buchungssuche im Netzwerk gefunden.");
         showError(
-          "Keine Bridge gefunden. URL ggf. manuell eintragen (Firewall/mDNS).",
-          "AMS-Bridge",
+          "Nichts gefunden. Adresse ggf. manuell eintragen.",
+          AMS_OPERATOR_TITLE,
         );
       } else if (list.length === 1) {
         patch("ams_bridge_url", list[0].base_url);
         setBridgeLabel(`Gefunden: ${list[0].instance} → ${list[0].base_url}`);
         showSuccess(
-          `Bridge übernommen: ${list[0].base_url} (Token weiter manuell).`,
-          "AMS-Bridge",
+          `Adresse übernommen: ${list[0].base_url}. Zugangscode weiter manuell eintragen.`,
+          AMS_OPERATOR_TITLE,
         );
       } else {
-        setBridgeLabel(`${list.length} Bridges gefunden — bitte auswählen.`);
+        setBridgeLabel(`${list.length} Adressen gefunden — bitte auswählen.`);
       }
     } catch (err) {
-      const msg = String(err);
-      setBridgeLabel(msg);
-      showError(msg, "AMS-Bridge");
+      const presented = presentAmsBridgeError({
+        rawMessage: String(err),
+        omitSettingsAction: true,
+      });
+      setBridgeLabel(presented.message);
+      showError(presented.message, AMS_OPERATOR_TITLE);
     } finally {
       setDiscovering(false);
     }
@@ -258,8 +270,8 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       </SettingsSection>
 
       <SettingsSection
-        title="AMS-Bridge (optional)"
-        description="LAN Control Plane (Health, Lookup, Status, Ready). mDNS kann die URL finden; Token bleibt manuell. Datei-Handoff funktioniert auch ohne Bridge."
+        title="Buchungssuche (optional)"
+        description="Füllt Name und Medien, wenn Kunden-ID und Buchungs-ID passen. Ohne Verbindung geht alles weiter per Hand. Dateien werden trotzdem übergeben."
       >
         <div ref={amsUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
           {flashFocus === "ams-bridge-url" ? (
@@ -268,7 +280,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
             />
           ) : null}
-          <Label className="relative">Bridge-URL</Label>
+          <Label className="relative">Adresse</Label>
           <Input
             ref={amsUrlInputRef}
             className="relative"
@@ -284,7 +296,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
             />
           ) : null}
-          <Label className="relative">Bridge-Token</Label>
+          <Label className="relative">Zugangscode</Label>
           <PasswordInput
             ref={amsTokenInputRef}
             className="relative"
@@ -306,7 +318,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             disabled={discovering}
             onClick={() => void onDiscoverBridge()}
           >
-            {discovering ? "Suche…" : "Im LAN suchen"}
+            {discovering ? "Suche…" : "Im Netzwerk suchen"}
           </Button>
           <Button
             type="button"
@@ -315,7 +327,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             disabled={testingBridge}
             onClick={() => void onTestBridge()}
           >
-            {testingBridge ? "Prüfe…" : "Bridge prüfen"}
+            {testingBridge ? "Prüfe…" : "Verbindung prüfen"}
           </Button>
           <span className="text-xs text-muted">{bridgeLabel}</span>
         </div>

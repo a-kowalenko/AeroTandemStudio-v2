@@ -249,7 +249,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
         .then((h) => {
           if (h.ok && h.health && !h.health.capabilities.includes("append-v1")) {
             setCapWarning(
-              "AMS kennt Nachreichen noch nicht (append-v1 fehlt). Bitte AMS aktualisieren, sonst entsteht ein neuer Cloud-Ordner.",
+              "Nachreichen ist auf diesem Rechner noch nicht möglich. Bitte Support bitten, die Software zu aktualisieren — sonst entsteht ein neuer Kundenordner.",
             );
           }
         })

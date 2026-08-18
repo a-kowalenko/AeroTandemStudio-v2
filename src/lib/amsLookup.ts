@@ -254,7 +254,7 @@ function mediaToastLabel(kunde: Pick<
   return `${family} · ${kinds.join("/")}`;
 }
 
-export const AMS_LOOKUP_FOUND_TITLE = "AMS-Kunde gefunden";
+export const AMS_LOOKUP_FOUND_TITLE = "Kunde gefunden";
 
 export function formatAmsLookupFoundLine(kunde: Kunde): string {
   const name = kundeDisplayName(kunde) || "Kunde";

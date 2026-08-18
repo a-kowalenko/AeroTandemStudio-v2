@@ -75,7 +75,7 @@ export function handoffStateLabel(
     case "uploading":
       return "Upload";
     case "completed":
-      return compact ? "Fertig" : "In AMS fertig";
+      return "Fertig";
     case "failed":
       return "Fehler";
     default:
@@ -91,7 +91,7 @@ export function handoffStateHint(view: AmsHandoffView): string | null {
     return view.errorMessage?.trim() || "Upload abgebrochen";
   }
   if (view.state === "pending" || view.state === "") {
-    return "Wartet auf AMS";
+    return "Wartet auf Übernahme";
   }
   if (view.state === "rejected" || view.state === "failed") {
     const code = view.errorCode?.trim();

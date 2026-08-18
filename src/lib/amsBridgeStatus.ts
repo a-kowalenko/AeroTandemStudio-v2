@@ -5,19 +5,51 @@ import type {
 
 export const AMS_HEALTH_POLL_MS = 45_000;
 
+/** Operator-facing name for the AMS bridge. Keep “AMS” out of everyday UI. */
+export const AMS_OPERATOR_TITLE = "Buchungssuche";
+
+export const AMS_UNREACHABLE_LABEL = "Buchungssuche nicht erreichbar";
+export const AMS_URL_MISSING_LABEL = "Adresse fehlt";
+export const AMS_URL_INVALID_LABEL = "Ungültige Adresse";
+export const AMS_TOKEN_MISSING_LABEL = "Zugangscode fehlt";
+export const AMS_TOKEN_INVALID_LABEL = "Zugangscode ungültig";
+
 export const AMS_URL_MISSING_HINT =
-  "Es ist keine AMS-Bridge-URL hinterlegt.";
+  "Es ist keine Adresse für die Buchungssuche hinterlegt.";
 
 export const AMS_TOKEN_MISSING_HINT =
-  "Bitte das Bridge-Token in den Einstellungen eintragen.";
+  "Bitte den Zugangscode in den Einstellungen eintragen.";
 
-export const AMS_TOKEN_AUTH_HINT =
-  "Bitte das Bridge-Token prüfen.";
+export const AMS_TOKEN_AUTH_HINT = "Bitte den Zugangscode prüfen.";
+
+export const AMS_UNREACHABLE_HINT =
+  "Kundendaten bitte von Hand eintragen.";
+
+export const AMS_LOOKUP_ERROR_FALLBACK = "Kunde konnte nicht geladen werden";
+
+export const AMS_HEALTH_OK_MESSAGE = "Buchungssuche verbunden";
+
+export type AmsBridgeErrorKind =
+  | "unreachable"
+  | "url_missing"
+  | "url_invalid"
+  | "token_missing"
+  | "token_invalid"
+  | "error";
 
 export type AmsBridgeErrorDetail = {
-  kind: "unreachable" | "error";
+  kind: AmsBridgeErrorKind;
   text: string;
   focus: SettingsFocusTarget | null;
+};
+
+const LABEL_BY_KIND: Record<AmsBridgeErrorKind, string> = {
+  unreachable: AMS_UNREACHABLE_LABEL,
+  url_missing: AMS_URL_MISSING_LABEL,
+  url_invalid: AMS_URL_INVALID_LABEL,
+  token_missing: AMS_TOKEN_MISSING_LABEL,
+  token_invalid: AMS_TOKEN_INVALID_LABEL,
+  error: AMS_UNREACHABLE_LABEL,
 };
 
 export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
@@ -25,7 +57,7 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   if (!raw) {
     return {
       kind: "unreachable",
-      text: "AMS nicht verbunden",
+      text: AMS_UNREACHABLE_LABEL,
       focus: "ams-bridge-url",
     };
   }
@@ -36,8 +68,8 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
     /keine\s+ams-bridge-url|url\s+ist\s+leer|url\s+fehlt/.test(lower)
   ) {
     return {
-      kind: "error",
-      text: "AMS-URL fehlt",
+      kind: "url_missing",
+      text: AMS_URL_MISSING_LABEL,
       focus: "ams-bridge-url",
     };
   }
@@ -45,29 +77,43 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
     /muss\s+mit\s+http|ungültige\s+ams|invalid\s+ams|url\s+muss/.test(lower)
   ) {
     return {
-      kind: "error",
-      text: "Ungültige AMS-URL",
+      kind: "url_invalid",
+      text: AMS_URL_INVALID_LABEL,
       focus: "ams-bridge-url",
     };
   }
   if (/token\s+fehlt|token\s+missing/.test(lower)) {
     return {
-      kind: "error",
-      text: "AMS-Token fehlt",
+      kind: "token_missing",
+      text: AMS_TOKEN_MISSING_LABEL,
       focus: "ams-bridge-token",
     };
   }
   if (/token\s+ungültig|401/.test(lower)) {
     return {
-      kind: "error",
-      text: "AMS-Token ungültig",
+      kind: "token_invalid",
+      text: AMS_TOKEN_INVALID_LABEL,
       focus: "ams-bridge-token",
+    };
+  }
+  if (/keinen\s+ams-handoff/.test(lower)) {
+    return {
+      kind: "error",
+      text: "Nur bei Online-Vorgängen, nicht bei Lokal",
+      focus: null,
+    };
+  }
+  if (/preflight|customer-lookup/.test(lower) && /not[_ ]?found|nicht gefunden/.test(lower)) {
+    return {
+      kind: "error",
+      text: "Kunde in der Buchung nicht gefunden",
+      focus: null,
     };
   }
   if (/meldet\s+online\s*=\s*false|online=false/.test(lower)) {
     return {
       kind: "unreachable",
-      text: "AMS nicht verbunden",
+      text: AMS_UNREACHABLE_LABEL,
       focus: "ams-bridge-url",
     };
   }
@@ -78,19 +124,14 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   ) {
     return {
       kind: "unreachable",
-      text: "AMS nicht verbunden",
+      text: AMS_UNREACHABLE_LABEL,
       focus: "ams-bridge-url",
     };
   }
 
-  let short = raw
-    .replace(/^AMS-Bridge\s+/i, "")
-    .replace(/^health\s+/i, "")
-    .trim();
-  if (short.length > 52) short = `${short.slice(0, 49)}…`;
   return {
     kind: "error",
-    text: short || "AMS nicht verbunden",
+    text: LABEL_BY_KIND.error,
     focus: "ams-bridge-url",
   };
 }
@@ -121,35 +162,39 @@ export function presentAmsBridgeError(opts: {
           openSettings: { tab: "server", focus },
         };
 
-  if (detail.text === "AMS-URL fehlt" || detail.text === "Ungültige AMS-URL") {
-    const hint =
-      detail.text === "AMS-URL fehlt" ? AMS_URL_MISSING_HINT : null;
+  if (detail.kind === "url_missing" || detail.kind === "url_invalid") {
+    const hint = detail.kind === "url_missing" ? AMS_URL_MISSING_HINT : null;
     return {
       message: hint ? `${detail.text}\n\n${hint}` : detail.text,
       focus: "ams-bridge-url",
-      primaryAction: withAction("AMS-URL öffnen", "ams-bridge-url"),
+      primaryAction: withAction("Einstellungen öffnen", "ams-bridge-url"),
     };
   }
-  if (detail.text === "AMS-Token fehlt") {
+  if (detail.kind === "token_missing") {
     return {
       message: `${detail.text}\n\n${AMS_TOKEN_MISSING_HINT}`,
       focus: "ams-bridge-token",
-      primaryAction: withAction("Token öffnen", "ams-bridge-token"),
+      primaryAction: withAction("Zugangscode prüfen", "ams-bridge-token"),
     };
   }
-  if (detail.text === "AMS-Token ungültig") {
+  if (detail.kind === "token_invalid") {
     return {
       message: `${detail.text}\n\n${AMS_TOKEN_AUTH_HINT}`,
       focus: "ams-bridge-token",
-      primaryAction: withAction("Token prüfen", "ams-bridge-token"),
+      primaryAction: withAction("Zugangscode prüfen", "ams-bridge-token"),
     };
   }
 
+  const message =
+    detail.kind === "unreachable"
+      ? `${detail.text}\n\n${AMS_UNREACHABLE_HINT}`
+      : detail.text;
+
   return {
-    message: detail.text,
+    message,
     focus: detail.focus,
     primaryAction: detail.focus
-      ? withAction("AMS-Bridge öffnen", detail.focus)
+      ? withAction("Einstellungen öffnen", detail.focus)
       : null,
   };
 }
@@ -161,14 +206,36 @@ export function amsBridgeStatusErrorTooltip(message: string): string {
   }).message;
 }
 
-export function formatAmsConnectedTooltip(
-  version: string,
-  capabilities: string[],
-): string {
-  const caps = capabilities.filter(Boolean).join(", ");
-  const ver = version.trim();
-  if (ver && caps) return `AMS: online v${ver} · ${caps}`;
-  if (ver) return `AMS: online v${ver}`;
-  if (caps) return `AMS: verbunden · ${caps}`;
-  return "AMS: verbunden";
+export function formatAmsConnectedTooltip(): string {
+  return `${AMS_OPERATOR_TITLE}: verbunden`;
+}
+
+export function formatAmsHealthSuccessMessage(_raw?: string): string {
+  return AMS_HEALTH_OK_MESSAGE;
+}
+
+export function presentAmsLookupError(raw: string): string {
+  const detail = mapAmsBridgeErrorDetail(raw);
+  if (
+    detail.kind === "token_missing" ||
+    detail.kind === "token_invalid" ||
+    detail.kind === "url_missing" ||
+    detail.kind === "url_invalid"
+  ) {
+    return detail.text;
+  }
+  return AMS_LOOKUP_ERROR_FALLBACK;
+}
+
+/** Rewrite AMS jargon in errors that reach operators (create, append, …). */
+export function presentAmsUserMessage(raw: string): string {
+  const t = raw.trim();
+  if (!t) return t;
+  if (!/\bams\b|ams-bridge|ams[_ -]?preflight|ams[_ -]?lookup|ams[_ -]?manifest/i.test(t)) {
+    return t;
+  }
+  return presentAmsBridgeError({
+    rawMessage: t,
+    omitSettingsAction: true,
+  }).message;
 }

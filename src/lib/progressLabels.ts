@@ -42,6 +42,8 @@ const STATUS_LABELS: Record<string, string> = {
   "preview-reencode": "Kodiere Vorschau-Clips…",
   "preview-copy": "Kopiere Clips für Vorschau…",
   "preview-concat": "Füge Vorschau zusammen…",
+  "Schreibe AMS-Manifest…": "Schreibe Übergabe…",
+  "Nachreichung bereit für AMS": "Nachreichung bereit",
 };
 
 /** FFmpeg pipe status — keep previous human label instead of showing these. */
