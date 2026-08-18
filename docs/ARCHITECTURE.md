@@ -20,8 +20,8 @@
 
 Custom titlebar (Phase 11 polish):
 
-- **Windows / Linux:** window created decorated for macOS Overlay compatibility; `set_decorations(false)` at startup + Min/Max/Close in `AppChrome` (`src/components/chrome/`)
-- **macOS:** `decorations` + `titleBarStyle: Overlay` + `hiddenTitle` at create time (no false→true toggle) + left inset; no custom close buttons
+- **Windows / Linux:** `decorations: false` at create time (`tauri.conf.json`) + Min/Max/Close in `AppChrome` (`src/components/chrome/`). Startup clamps the window to the monitor work area (`src-tauri/src/util/window_fit.rs`) so the bottom edge cannot sit below the taskbar.
+- **macOS:** `tauri.macos.conf.json` sets `decorations` + `titleBarStyle: Overlay` + `hiddenTitle` at create time (no false→true toggle) + left inset; no custom close buttons
 - Rollback: `localStorage.setItem('ats-custom-titlebar', '0')` then reload
 
 ## Projektstruktur

@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
+  AlertTriangle,
   CloudUpload,
   ExternalLink,
   Film,
@@ -50,7 +51,6 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { LogConsole } from "./components/LogConsole";
 import { SettingsCluster } from "./components/SettingsCluster";
 import { Button } from "./components/ui/button";
-import { Checkbox } from "./components/ui/checkbox";
 import { Switch } from "./components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { useVideoStore } from "./store/videoStore";
@@ -127,6 +127,7 @@ import {
   resolveProgressLabel,
   shouldClearTaskProgress,
 } from "./lib/progressLabels";
+import { summarizeCreateHints } from "./lib/createReadyHints";
 import { cn, isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
 import "./App.css";
@@ -1606,6 +1607,7 @@ function App() {
   const uploadActive = Boolean(config?.upload_to_server && serverConnected);
   const uploadBlocked = Boolean(config?.upload_to_server) && !serverConnected;
   const uploadNudge = serverConnected && !config?.upload_to_server;
+  const autoClearAfterCreate = Boolean(config?.auto_clear_files_after_creation);
   const uploadTitle = !serverConnected
     ? uploadBlocked
       ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
@@ -1644,6 +1646,8 @@ function App() {
 
   /** Kein QR↔Manuell-Wechsel mitten in Backup/Import/Scan. */
   const formModeToggleLocked = busy || pipelineActive;
+
+  const createBanner = summarizeCreateHints(createHints);
 
   // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
   useEffect(() => {
@@ -1823,77 +1827,95 @@ function App() {
           </div>
 
           <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                  Vorgang
-                </p>
-                <p
-                  className="truncate text-xs text-foreground/80"
-                  title={config?.speicherort || undefined}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+                Vorgang
+              </p>
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+                <label
+                  htmlFor="vorgang-upload"
+                  className={cn(
+                    "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                    uploadActive
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : uploadNudge
+                        ? "border-destructive bg-destructive/20 text-destructive"
+                        : uploadBlocked
+                          ? "border-warning/40 bg-warning/10 text-warning"
+                          : "border-border bg-card-elevated/80 text-muted",
+                    (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
+                  )}
+                  title={uploadTitle}
                 >
-                  {config?.speicherort?.trim()
-                    ? config.speicherort
-                    : "Speicherort beim Erstellen wählen…"}
-                </p>
+                  <CloudUpload className="h-3.5 w-3.5" aria-hidden />
+                  Upload
+                  <Switch
+                    id="vorgang-upload"
+                    className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
+                    checked={uploadActive}
+                    disabled={uiLocked || !config || !serverConnected}
+                    onCheckedChange={(v) => {
+                      if (!config || !serverConnected) return;
+                      void persistConfig({
+                        ...config,
+                        upload_to_server: v === true,
+                      });
+                    }}
+                    aria-label="Server-Upload"
+                  />
+                </label>
+                <label
+                  htmlFor="vorgang-clear"
+                  className={cn(
+                    "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
+                    autoClearAfterCreate
+                      ? "border-primary/30 bg-primary/5 text-foreground/80"
+                      : "border-border bg-card-elevated/80 text-muted",
+                    (uiLocked || !config) && "cursor-not-allowed",
+                  )}
+                  title="Nach Erstellen Formular und Medien zurücksetzen"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                  Leeren
+                  <Switch
+                    id="vorgang-clear"
+                    className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
+                    checked={autoClearAfterCreate}
+                    disabled={uiLocked || !config}
+                    onCheckedChange={(v) => {
+                      if (!config) return;
+                      void persistConfig({
+                        ...config,
+                        auto_clear_files_after_creation: v === true,
+                      });
+                    }}
+                    aria-label="Nach Erstellen Formular und Medien zurücksetzen"
+                  />
+                </label>
               </div>
-              <label
-                htmlFor="vorgang-upload"
-                className={cn(
-                  "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
-                  uploadActive
-                    ? "border-primary/40 bg-primary/10 text-primary"
-                    : uploadNudge
-                      ? "border-destructive bg-destructive/20 text-destructive"
-                      : uploadBlocked
-                        ? "border-warning/40 bg-warning/10 text-warning"
-                        : "border-border bg-card-elevated/80 text-muted",
-                  (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
-                )}
-                title={uploadTitle}
+            </div>
+            {createBanner ? (
+              <div
+                className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
+                role="status"
+                aria-live="polite"
               >
-                <CloudUpload className="h-3.5 w-3.5" aria-hidden />
-                Upload
-                <Switch
-                  id="vorgang-upload"
-                  className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
-                  checked={uploadActive}
-                  disabled={uiLocked || !config || !serverConnected}
-                  onCheckedChange={(v) => {
-                    if (!config || !serverConnected) return;
-                    void persistConfig({
-                      ...config,
-                      upload_to_server: v === true,
-                    });
-                  }}
-                  aria-label="Server-Upload"
-                />
-              </label>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <Checkbox
-                  checked={Boolean(config?.auto_clear_files_after_creation)}
-                  disabled={uiLocked || !config}
-                  onCheckedChange={(v) => {
-                    if (!config) return;
-                    void persistConfig({
-                      ...config,
-                      auto_clear_files_after_creation: v === true,
-                    });
-                  }}
-                />
-                Nach Erstellen zurücksetzen
-              </label>
-            </div>
-            {createHints.length > 0 && (
-              <ul className="space-y-0.5 text-[11px] leading-snug text-muted">
-                {createHints.slice(0, 4).map((h) => (
-                  <li key={h}>• {h}</li>
-                ))}
-              </ul>
-            )}
+                <div className="flex items-start gap-2">
+                  <AlertTriangle
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                    aria-hidden
+                  />
+                  <div className="min-w-0 space-y-0.5">
+                    <p className="text-xs font-medium leading-snug">
+                      {createBanner.headline}
+                    </p>
+                    <p className="text-[11px] leading-snug text-warning/90">
+                      {createBanner.labels.join(" · ")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
             <div className="flex gap-2">
               <Button
                 type="button"

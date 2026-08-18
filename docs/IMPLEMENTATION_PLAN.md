@@ -1123,7 +1123,7 @@ src/components/PhotoCropOverlay.tsx
 
 #### Aufgaben
 
-- [x] `trafficLightPosition` in `tauri.conf.json` setzen (Overlay + decorations)
+- [x] `trafficLightPosition` in `tauri.conf.json` / `tauri.macos.conf.json` setzen (Overlay + decorations)
 - [x] `macTrafficLights.ts` + Header-Inset/Center-Kommentar in `AppChrome`
 - [x] `DialogContent`: Flex-Center ohne Transform; z-Index-Layer für gestapelte Dialoge
 - [x] Win/Linux unverändert (Custom-Controls / kein Overlay)
@@ -1132,6 +1132,7 @@ src/components/PhotoCropOverlay.tsx
 
 ```
 src-tauri/tauri.conf.json
+src-tauri/tauri.macos.conf.json
 src/components/chrome/macTrafficLights.ts
 src/components/chrome/AppChrome.tsx
 src/components/ui/dialog.tsx

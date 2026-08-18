@@ -131,16 +131,19 @@ pub fn run() {
             log_info("SD monitor initialized");
             log_info(&format!("Media HTTP server at {media_base_url}"));
 
-            // macOS: conf creates the window with decorations + Overlay + hiddenTitle
+            // macOS: tauri.macos.conf.json creates decorations + Overlay + hiddenTitle
             // (do not toggle decorations false→true — that restores a normal title bar).
-            // Win/Linux: strip native chrome; React AppChrome draws Min/Max/Close.
-            #[cfg(any(target_os = "windows", target_os = "linux"))]
+            // Win/Linux: conf starts frameless; React AppChrome draws Min/Max/Close.
+            // Then clamp to the monitor work area so the bottom edge stays on-screen.
+            #[cfg(desktop)]
             {
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
+                    #[cfg(any(target_os = "windows", target_os = "linux"))]
                     if let Err(e) = window.set_decorations(false) {
                         eprintln!("set_decorations(false) failed: {e}");
                     }
+                    crate::util::window_fit::fit_main_window(&window);
                 }
             }
 
