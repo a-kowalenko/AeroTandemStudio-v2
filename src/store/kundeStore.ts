@@ -75,6 +75,13 @@ type KundeState = {
   amsLookupRevision: number;
   /** IDs that produced the current AMS fill (skip re-lookup until they change). */
   amsLookupIds: { kunden_id: string; booking_id: string } | null;
+  /**
+   * After import without QR or QR miss: focus Kunden-ID once dialogs close.
+   * Not set on session start / reset / mode switch.
+   */
+  kundenIdFocusPending: boolean;
+  requestKundenIdFocus: () => void;
+  clearKundenIdFocus: () => void;
   clearCrewAttentionAfterQr: () => void;
   setField: <K extends keyof Kunde>(key: K, value: Kunde[K]) => void;
   patch: (partial: Partial<Kunde>) => void;
@@ -118,7 +125,10 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   amsLookupLocked: false,
   amsLookupRevision: 0,
   amsLookupIds: null,
+  kundenIdFocusPending: false,
 
+  requestKundenIdFocus: () => set({ kundenIdFocusPending: true }),
+  clearKundenIdFocus: () => set({ kundenIdFocusPending: false }),
   clearCrewAttentionAfterQr: () => set({ crewAttentionAfterQr: false }),
 
   setField: (key, value) => {
@@ -295,6 +305,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      kundenIdFocusPending: false,
       kunde: next,
     });
     // Lazy: vermeidet zirkulären Import mit video/photo stores.
@@ -313,6 +324,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         booking_id: (next.booking_id ?? "").trim(),
       },
       crewAttentionAfterQr: true,
+      kundenIdFocusPending: false,
       kunde: next,
     });
   },
@@ -373,6 +385,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      kundenIdFocusPending: false,
       kunde: restored,
       qrSnapshot: { ...restored },
     });
@@ -394,6 +407,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      kundenIdFocusPending: false,
       kunde: emptyKunde({
         ort: prev.ort,
         tandemmaster: keep?.tandemmaster

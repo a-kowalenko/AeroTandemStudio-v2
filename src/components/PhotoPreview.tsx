@@ -19,6 +19,7 @@ import { withQrScanProgress } from "../store/qrScanStore";
 import { scanQrPhoto } from "../lib/tauri";
 import { maybeRemoveQrPhoto } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
+import { requestKundenIdFocus } from "../lib/kundenIdFocus";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import {
   MediaFileContextMenu,
@@ -158,9 +159,11 @@ export function PhotoPreview({
         });
       } else {
         showError(result.message || "Kein QR-Code gefunden.");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e));
+      requestKundenIdFocus();
     } finally {
       setScanning(false);
     }

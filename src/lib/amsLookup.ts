@@ -174,6 +174,18 @@ export function isAmsBridgeConfigured(config: {
   );
 }
 
+/** ID-lookup only when AMS is actually up (header already knows). Offline → silent. */
+export function canRunAmsIdLookup(opts: {
+  configured: boolean;
+  connected: boolean;
+  capabilities?: readonly string[] | null;
+}): boolean {
+  if (!opts.configured || !opts.connected) return false;
+  const caps = opts.capabilities ?? [];
+  if (caps.length === 0) return true;
+  return caps.includes("lookup");
+}
+
 export function isLookupUnreachable(message: string): boolean {
   return message.includes("nicht erreichbar");
 }

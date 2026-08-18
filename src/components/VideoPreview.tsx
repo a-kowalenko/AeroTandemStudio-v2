@@ -40,6 +40,7 @@ import { useConfigStore } from "../store/configStore";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import { maybeRemoveQrVideo } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
+import { requestKundenIdFocus } from "../lib/kundenIdFocus";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
@@ -523,9 +524,11 @@ export function VideoPreview({
         });
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }

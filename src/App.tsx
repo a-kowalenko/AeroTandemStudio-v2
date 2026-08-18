@@ -118,6 +118,10 @@ import {
 } from "./lib/autoQrScan";
 import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
 import {
+  requestKundenIdFocus,
+  requestKundenIdFocusAfterImport,
+} from "./lib/kundenIdFocus";
+import {
   useQrScanStore,
   withQrScanProgress,
 } from "./store/qrScanStore";
@@ -648,7 +652,11 @@ function App() {
             photoQrCheckEnabled: config?.photo_qr_check_enabled,
           });
 
+    const hasNewMedia = newVideoPaths.length > 0 || newPhotoPaths.length > 0;
     if (!willAutoScan) {
+      if (hasNewMedia) {
+        requestKundenIdFocusAfterImport({ scanned: false });
+      }
       return { importAction, qrAction: null, qrHit: null };
     }
 
@@ -703,6 +711,12 @@ function App() {
         };
       }
 
+      requestKundenIdFocusAfterImport({
+        scanned: true,
+        attempted: true,
+        found: false,
+        cancelled: false,
+      });
       return {
         importAction,
         qrAction: {
@@ -714,6 +728,7 @@ function App() {
         qrHit: null,
       };
     } catch (qrErr) {
+      requestKundenIdFocus();
       return {
         importAction,
         qrAction: {

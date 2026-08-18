@@ -7,6 +7,7 @@ import {
   AMS_LOOKUP_FOUND_TITLE,
   AMS_LOOKUP_STATUS_NOT_FOUND,
   AMS_LOOKUP_STATUS_SEARCHING,
+  canRunAmsIdLookup,
   classifyTypedHits,
   formatAmsLookupFoundLine,
   formatTypeChoiceDetail,
@@ -23,6 +24,7 @@ import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
 import { amsBridgeCustomerLookup, type AppConfig } from "@/lib/tauri";
 import { showAmsLookupFoundToast } from "@/lib/amsLookupToast";
 import { kundeDisplayName } from "@/lib/qrSuccess";
+import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
 
@@ -217,6 +219,8 @@ export function useAmsIdLookup(opts: {
   const kunde = useKundeStore((s) => s.kunde);
   const amsLookupIds = useKundeStore((s) => s.amsLookupIds);
   const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
+  const amsConnected = useAmsBridgeStore((s) => s.connected);
+  const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
   const [status, setStatus] = useState<AmsLookupStatus>({
     kind: "idle",
     text: "",
@@ -228,6 +232,11 @@ export function useAmsIdLookup(opts: {
   const bookingId = (kunde.booking_id ?? "").trim();
   const idsReady = isLookupIdPairReady(customerId, bookingId);
   const bridgeConfigured = isAmsBridgeConfigured(config);
+  const lookupLive = canRunAmsIdLookup({
+    configured: bridgeConfigured,
+    connected: amsConnected,
+    capabilities: amsCapabilities,
+  });
   const bridgeKey = `${config?.ams_bridge_url ?? ""}\0${config?.ams_bridge_token ?? ""}\0${config?.ams_bridge_last_ok_url ?? ""}`;
   const idsMatchApplied =
     amsLookupIds != null &&
@@ -235,7 +244,7 @@ export function useAmsIdLookup(opts: {
     amsLookupIds.booking_id === bookingId;
 
   useEffect(() => {
-    if (!enabled || !bridgeConfigured || !idsReady) {
+    if (!enabled || !lookupLive || !idsReady) {
       requestIdRef.current += 1;
       attemptedKeyRef.current = "";
       setStatus({ kind: "idle", text: "" });
@@ -342,7 +351,7 @@ export function useAmsIdLookup(opts: {
     };
   }, [
     enabled,
-    bridgeConfigured,
+    lookupLive,
     idsReady,
     customerId,
     bookingId,

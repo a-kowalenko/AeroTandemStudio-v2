@@ -33,6 +33,7 @@ import {
   maybeRemoveQrVideo,
 } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
+import { requestKundenIdFocus } from "../lib/kundenIdFocus";
 import { QrScanRowBar } from "../hooks/useQrScanProgress";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -277,9 +278,11 @@ export function MediaListPanel({
         });
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }
@@ -300,9 +303,11 @@ export function MediaListPanel({
         });
       } else {
         showWarning(result.message || "Kein QR-Code in diesem Foto.", "QR-Scan");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }

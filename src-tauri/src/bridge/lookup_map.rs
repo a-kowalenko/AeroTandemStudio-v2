@@ -65,6 +65,17 @@ pub fn is_lookup_id_ready(id: &str) -> bool {
     t.len() >= MIN_LOOKUP_ID_DIGITS && t.chars().all(|c| c.is_ascii_digit())
 }
 
+/// Frontend gate: URL configured is not enough — AMS must be up (and advertise lookup).
+pub fn can_run_ams_id_lookup(configured: bool, connected: bool, capabilities: &[&str]) -> bool {
+    if !configured || !connected {
+        return false;
+    }
+    if capabilities.is_empty() {
+        return true;
+    }
+    capabilities.iter().any(|c| *c == "lookup")
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassifiedLookupHits {
     None,
@@ -176,6 +187,15 @@ mod tests {
         assert!(is_lookup_id_ready("1234"));
         assert!(is_lookup_id_ready("012345"));
         assert!(!is_lookup_id_ready("12ab"));
+    }
+
+    #[test]
+    fn id_lookup_stays_silent_when_ams_is_down() {
+        assert!(!can_run_ams_id_lookup(true, false, &["lookup"]));
+        assert!(!can_run_ams_id_lookup(false, true, &["lookup"]));
+        assert!(can_run_ams_id_lookup(true, true, &[]));
+        assert!(can_run_ams_id_lookup(true, true, &["lookup", "ready"]));
+        assert!(!can_run_ams_id_lookup(true, true, &["ready", "append-v1"]));
     }
 
     #[test]

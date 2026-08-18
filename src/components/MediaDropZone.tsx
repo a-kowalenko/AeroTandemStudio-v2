@@ -46,6 +46,10 @@ import {
   shouldAutoQrAfterImport,
 } from "../lib/autoQrScan";
 import {
+  requestKundenIdFocus,
+  requestKundenIdFocusAfterImport,
+} from "../lib/kundenIdFocus";
+import {
   PHOTO_EXTENSIONS,
   VIDEO_EXTENSIONS,
   mediaKind,
@@ -314,14 +318,25 @@ export function MediaDropZone({
                 { autoCloseSecs: 5 },
               );
               setStatusMsg(`${parts.join(", ")} · QR abgebrochen`);
-            } else if (outcome.attempted && outcome.message) {
-              setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
+            } else {
+              if (outcome.attempted && outcome.message) {
+                setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
+              }
+              requestKundenIdFocusAfterImport({
+                scanned: true,
+                attempted: outcome.attempted,
+                found: outcome.found,
+                cancelled: outcome.cancelled,
+              });
             }
           } catch (e) {
             showError(String(e), "Auto-QR");
+            requestKundenIdFocus();
           } finally {
             setQrBusy(false);
           }
+        } else {
+          requestKundenIdFocusAfterImport({ scanned: false });
         }
       } catch (e) {
         setStatusMsg(null);
@@ -438,9 +453,11 @@ export function MediaDropZone({
         });
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }
@@ -472,9 +489,11 @@ export function MediaDropZone({
         });
       } else {
         showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }
@@ -525,9 +544,11 @@ export function MediaDropZone({
               : "Kein gültiger QR-Code im Foto."),
           "QR-Scan",
         );
+        requestKundenIdFocus();
       }
     } catch (e) {
       showError(String(e), "QR-Scan");
+      requestKundenIdFocus();
     } finally {
       setQrBusy(false);
     }

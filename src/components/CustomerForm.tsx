@@ -39,9 +39,35 @@ import { kundeDisplayName, fileBaseName } from "@/lib/qrSuccess";
 
 const CREW_TM_INPUT_ID = "crew-tandemmaster";
 const CREW_VS_INPUT_ID = "crew-videospringer";
+const KUNDE_ID_INPUT_ID = "kunde-kunden-id";
 const CREW_ROLE_CONFLICT =
   "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein.";
 
+function isBlockingDialogOpen(): boolean {
+  return Boolean(document.querySelector('[role="dialog"]'));
+}
+
+function isUserEditingElsewhere(except: HTMLElement): boolean {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || active === except) return false;
+  if (active.closest('[role="dialog"]')) return false;
+  return (
+    active.tagName === "INPUT" ||
+    active.tagName === "TEXTAREA" ||
+    active.tagName === "SELECT" ||
+    active.isContentEditable
+  );
+}
+
+/** Focus Kunden-ID when idle. `false` = retry (dialog/disabled); `true` = done. */
+function tryFocusKundenId(): boolean {
+  if (isBlockingDialogOpen()) return false;
+  const el = document.getElementById(KUNDE_ID_INPUT_ID);
+  if (!(el instanceof HTMLInputElement) || el.disabled) return false;
+  if (isUserEditingElsewhere(el)) return true;
+  el.focus();
+  return true;
+}
 
 function focusCrewField(id: string) {
   window.setTimeout(() => {
@@ -84,6 +110,7 @@ function sanitizeNumericIdInput(raw: string): string {
 }
 
 type FieldProps = {
+  id?: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -96,6 +123,7 @@ type FieldProps = {
 };
 
 function Field({
+  id,
   label,
   value,
   onChange,
@@ -108,7 +136,9 @@ function Field({
 }: FieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-xs text-muted">{label}</Label>
+      <Label htmlFor={id} className="text-xs text-muted">
+        {label}
+      </Label>
       <div className="relative">
         {prefix ? (
           <span
@@ -119,6 +149,7 @@ function Field({
           </span>
         ) : null}
         <Input
+          id={id}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -507,9 +538,13 @@ export function CustomerForm({
   const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
   const unlockAmsLookup = useKundeStore((s) => s.unlockAmsLookup);
   const relockAmsLookup = useKundeStore((s) => s.relockAmsLookup);
+  const kundenIdFocusPending = useKundeStore((s) => s.kundenIdFocusPending);
+  const clearKundenIdFocus = useKundeStore((s) => s.clearKundenIdFocus);
   const crewAttentionAfterQr = useKundeStore((s) => s.crewAttentionAfterQr);
   const dialogKind = useUiStore((s) => s.dialogKind);
   const dialogVariant = useUiStore((s) => s.dialogVariant);
+  const settingsOpen = useUiStore((s) => s.settingsOpen);
+  const loading = useUiStore((s) => s.loading);
   const config = useConfigStore((s) => s.config);
   const entryMode = normalizeManualEntryMode(
     config?.manual_entry_mode,
@@ -638,6 +673,64 @@ export function CustomerForm({
       if (focusTimer !== undefined) window.clearTimeout(focusTimer);
     };
   }, [amsLookupRevision, dialogKind]);
+
+  // After import without QR / QR miss: focus Kunden-ID once overlays close.
+  useEffect(() => {
+    if (!kundenIdFocusPending) return;
+
+    const emptyId = !(kunde.kunden_id ?? "").trim();
+    const nameStarted = Boolean(
+      (kunde.vorname ?? "").trim() || (kunde.nachname ?? "").trim(),
+    );
+    const modeOk = !isQrMode && entryMode === "id";
+    if (!modeOk || !emptyId || nameStarted || identityLocked) {
+      clearKundenIdFocus();
+      return;
+    }
+
+    const blocked =
+      busy ||
+      dialogKind != null ||
+      settingsOpen ||
+      loading ||
+      crewAttentionAfterQr;
+    if (blocked) return;
+
+    let observer: MutationObserver | null = null;
+    const finish = () => {
+      clearKundenIdFocus();
+      observer?.disconnect();
+      observer = null;
+    };
+    const timer = window.setTimeout(() => {
+      if (tryFocusKundenId()) {
+        finish();
+        return;
+      }
+      observer = new MutationObserver(() => {
+        if (tryFocusKundenId()) finish();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }, 50);
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+    };
+  }, [
+    busy,
+    clearKundenIdFocus,
+    crewAttentionAfterQr,
+    dialogKind,
+    entryMode,
+    identityLocked,
+    isQrMode,
+    kunde.kunden_id,
+    kunde.nachname,
+    kunde.vorname,
+    kundenIdFocusPending,
+    loading,
+    settingsOpen,
+  ]);
 
   function focusVideospringerIfEmpty() {
     const state = useKundeStore.getState();
@@ -793,38 +886,10 @@ export function CustomerForm({
             </>
           ) : (
             <>
-              <Field
-                label="Vorname"
-                value={kunde.vorname ?? ""}
-                onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
-                disabled={busy || identityLocked}
-              />
-              <Field
-                label="Nachname"
-                value={kunde.nachname ?? ""}
-                onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
-                disabled={busy || identityLocked}
-              />
-              {oldschool ? (
-                <>
-                  <Field
-                    label="E-Mail"
-                    value={kunde.email ?? ""}
-                    onChange={(v) => setField("email", v || null)}
-                    disabled={busy}
-                    type="email"
-                  />
-                  <Field
-                    label="Telefon"
-                    value={kunde.telefon ?? ""}
-                    onChange={(v) => setField("telefon", v || null)}
-                    disabled={busy}
-                  />
-                </>
-              ) : null}
               {!nameEntry ? (
                 <>
                   <Field
+                    id={KUNDE_ID_INPUT_ID}
                     label="Kunden-ID"
                     value={kunde.kunden_id ?? ""}
                     onChange={(v) =>
@@ -864,6 +929,35 @@ export function CustomerForm({
                       {lookupStatus.text}
                     </p>
                   ) : null}
+                </>
+              ) : null}
+              <Field
+                label="Vorname"
+                value={kunde.vorname ?? ""}
+                onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
+                disabled={busy || identityLocked}
+              />
+              <Field
+                label="Nachname"
+                value={kunde.nachname ?? ""}
+                onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
+                disabled={busy || identityLocked}
+              />
+              {oldschool ? (
+                <>
+                  <Field
+                    label="E-Mail"
+                    value={kunde.email ?? ""}
+                    onChange={(v) => setField("email", v || null)}
+                    disabled={busy}
+                    type="email"
+                  />
+                  <Field
+                    label="Telefon"
+                    value={kunde.telefon ?? ""}
+                    onChange={(v) => setField("telefon", v || null)}
+                    disabled={busy}
+                  />
                 </>
               ) : null}
             </>
