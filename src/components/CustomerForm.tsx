@@ -56,6 +56,27 @@ function blurCrewField(id: string) {
   }, 0);
 }
 
+/** Scroll to crew and focus the first empty required field (QR/AMS). */
+function scheduleCrewAttentionFocus(
+  sectionRef: { current: HTMLElement | null },
+): number | undefined {
+  const state = useKundeStore.getState();
+  if (!state.crewAttentionAfterQr) return undefined;
+  const videoMode = (state.kunde.video_mode || "") as "" | "handcam" | "outside";
+  const needsTm = !state.kunde.tandemmaster.trim();
+  const needsVs =
+    videoMode === "outside" && !state.kunde.videospringer.trim();
+  if (!needsTm && !needsVs) return undefined;
+  const focusId = needsTm ? CREW_TM_INPUT_ID : CREW_VS_INPUT_ID;
+  return window.setTimeout(() => {
+    sectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+    document.getElementById(focusId)?.focus();
+  }, 80);
+}
+
 /** Allow digits and optional leading `#`; store only digits. */
 function sanitizeNumericIdInput(raw: string): string {
   const withoutLeadingHash = raw.replace(/^#+/, "");
@@ -556,6 +577,7 @@ export function CustomerForm({
   const [nameLocked, setNameLocked] = useState(true);
   const crewSectionRef = useRef<HTMLDivElement>(null);
   const qrSuccessDialogWasOpen = useRef(false);
+  const focusedAmsLookupRevision = useRef(0);
 
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
@@ -594,33 +616,28 @@ export function CustomerForm({
     const open = dialogKind === "success" && dialogVariant === "qr";
     let focusTimer: number | undefined;
     if (qrSuccessDialogWasOpen.current && !open) {
-      const state = useKundeStore.getState();
-      if (state.crewAttentionAfterQr) {
-        const videoMode = (state.kunde.video_mode || "") as
-          | ""
-          | "handcam"
-          | "outside";
-        const needsTm = !state.kunde.tandemmaster.trim();
-        const needsVs =
-          videoMode === "outside" && !state.kunde.videospringer.trim();
-        if (needsTm || needsVs) {
-          const focusId = needsTm ? CREW_TM_INPUT_ID : CREW_VS_INPUT_ID;
-          // Wait for SuccessDialog unmount so focus is not stolen back.
-          focusTimer = window.setTimeout(() => {
-            crewSectionRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-            });
-            document.getElementById(focusId)?.focus();
-          }, 80);
-        }
-      }
+      focusTimer = scheduleCrewAttentionFocus(crewSectionRef);
     }
     qrSuccessDialogWasOpen.current = open;
     return () => {
       if (focusTimer !== undefined) window.clearTimeout(focusTimer);
     };
   }, [dialogKind, dialogVariant]);
+
+  // After AMS apply (dialogs already closed): same crew scroll/focus.
+  useEffect(() => {
+    if (amsLookupRevision <= 0) {
+      focusedAmsLookupRevision.current = 0;
+      return;
+    }
+    if (focusedAmsLookupRevision.current >= amsLookupRevision) return;
+    if (dialogKind != null) return;
+    focusedAmsLookupRevision.current = amsLookupRevision;
+    const focusTimer = scheduleCrewAttentionFocus(crewSectionRef);
+    return () => {
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
+    };
+  }, [amsLookupRevision, dialogKind]);
 
   function focusVideospringerIfEmpty() {
     const state = useKundeStore.getState();
@@ -635,7 +652,7 @@ export function CustomerForm({
     return true;
   }
 
-  /** End QR crew dropdown workflow: blur so the list cannot reopen. */
+  /** End crew dropdown workflow: blur so the list cannot reopen. */
   function finishCrewAttentionWorkflow(inputId: string) {
     blurCrewField(inputId);
     const state = useKundeStore.getState();

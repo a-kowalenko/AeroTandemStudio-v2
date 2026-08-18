@@ -209,6 +209,22 @@ export function needsAmsLookupOverrideConfirm(
   return curName.toLowerCase() !== nextName.toLowerCase();
 }
 
+function mediaParts(kunde: Pick<
+  Kunde,
+  | "video_mode"
+  | "handcam_foto"
+  | "handcam_video"
+  | "outside_foto"
+  | "outside_video"
+>): { family: string; kinds: string[] } {
+  const mode = kunde.video_mode;
+  const foto = mode === "handcam" ? kunde.handcam_foto : kunde.outside_foto;
+  const video = mode === "handcam" ? kunde.handcam_video : kunde.outside_video;
+  const family = mode === "handcam" ? "Handcam" : mode === "outside" ? "Outside" : "";
+  const kinds = [foto ? "Foto" : "", video ? "Video" : ""].filter(Boolean);
+  return { family, kinds };
+}
+
 function mediaStatusLabel(kunde: Pick<
   Kunde,
   | "video_mode"
@@ -217,14 +233,25 @@ function mediaStatusLabel(kunde: Pick<
   | "outside_foto"
   | "outside_video"
 >): string {
-  const mode = kunde.video_mode;
-  const foto = mode === "handcam" ? kunde.handcam_foto : kunde.outside_foto;
-  const video = mode === "handcam" ? kunde.handcam_video : kunde.outside_video;
-  const family = mode === "handcam" ? "Handcam" : mode === "outside" ? "Outside" : "";
+  const { family, kinds } = mediaParts(kunde);
   if (!family) return "";
-  const kinds = [foto ? "Foto" : "", video ? "Video" : ""].filter(Boolean);
   if (!kinds.length) return family;
   return `${family} ${kinds.join(" · ")}`;
+}
+
+/** Toast badge: `Outside · Foto/Video`. */
+function mediaToastLabel(kunde: Pick<
+  Kunde,
+  | "video_mode"
+  | "handcam_foto"
+  | "handcam_video"
+  | "outside_foto"
+  | "outside_video"
+>): string {
+  const { family, kinds } = mediaParts(kunde);
+  if (!family) return "";
+  if (!kinds.length) return family;
+  return `${family} · ${kinds.join("/")}`;
 }
 
 export const AMS_LOOKUP_FOUND_TITLE = "AMS-Kunde gefunden";
@@ -243,7 +270,7 @@ export function formatAmsLookupFoundToast(kunde: Kunde): {
   return {
     title: AMS_LOOKUP_FOUND_TITLE,
     name: kundeDisplayName(kunde) || "Kunde",
-    media: mediaStatusLabel(kunde),
+    media: mediaToastLabel(kunde),
   };
 }
 

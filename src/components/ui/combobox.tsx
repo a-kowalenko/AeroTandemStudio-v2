@@ -49,7 +49,7 @@ type ComboboxProps = {
   /** Inline validation message; also styles the input as invalid. */
   error?: string;
   /**
-   * Soft attention (e.g. missing crew after QR); ignored when `error` is set.
+   * Soft attention (e.g. missing crew after QR/AMS); ignored when `error` is set.
    * Pass `true` for border-only, or a string for border + message.
    */
   warning?: boolean | string;

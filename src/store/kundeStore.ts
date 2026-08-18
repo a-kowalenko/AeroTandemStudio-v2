@@ -62,8 +62,9 @@ type KundeState = {
   /** Bumps on each successful QR apply (for UI lock sync). */
   qrRevision: number;
   /**
-   * After QR apply: soft-highlight empty crew fields until filled or session reset.
-   * Scroll/focus runs when the QR success dialog closes.
+   * After QR or AMS identity apply: soft-highlight empty crew fields until
+   * filled or session reset. Scroll/focus runs when blocking dialogs close
+   * (QR success) or immediately after AMS apply.
    */
   crewAttentionAfterQr: boolean;
   /**
@@ -311,6 +312,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         kunden_id: (next.kunden_id ?? "").trim(),
         booking_id: (next.booking_id ?? "").trim(),
       },
+      crewAttentionAfterQr: true,
       kunde: next,
     });
   },
