@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { useServerStore } from "@/store/serverStore";
+import { useAmsBridgeStore } from "@/store/amsBridgeStore";
+import { useConfigStore } from "@/store/configStore";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
@@ -12,7 +14,8 @@ import {
   SERVER_GUEST_HINT,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
-import { amsBridgeDiscover, amsBridgeHealth, saveConfig } from "@/lib/tauri";
+import { presentAmsBridgeError } from "@/lib/amsBridgeStatus";
+import { amsBridgeDiscover } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
@@ -25,6 +28,8 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const checkConnection = useServerStore((s) => s.checkConnection);
+  const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
+  const persistConfig = useConfigStore((s) => s.persist);
   const serverPhase = useServerStore((s) => s.phase);
   const serverMessage = useServerStore((s) => s.message);
   const [testingServer, setTestingServer] = useState(false);
@@ -36,20 +41,32 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   const serverCredentialsRef = useRef<HTMLDivElement | null>(null);
   const serverUrlInputRef = useRef<HTMLInputElement | null>(null);
   const serverLoginInputRef = useRef<HTMLInputElement | null>(null);
+  const amsUrlRef = useRef<HTMLDivElement | null>(null);
+  const amsTokenRef = useRef<HTMLDivElement | null>(null);
+  const amsUrlInputRef = useRef<HTMLInputElement | null>(null);
+  const amsTokenInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!flashFocus) return;
-    const container =
-      flashFocus === "server-url"
-        ? serverUrlRef.current
-        : serverCredentialsRef.current;
-    const input =
-      flashFocus === "server-url"
-        ? serverUrlInputRef.current
-        : serverLoginInputRef.current;
-    container?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const targets: Record<
+      SettingsFocusTarget,
+      {
+        container: RefObject<HTMLDivElement | null>;
+        input: RefObject<HTMLInputElement | null>;
+      }
+    > = {
+      "server-url": { container: serverUrlRef, input: serverUrlInputRef },
+      "server-credentials": {
+        container: serverCredentialsRef,
+        input: serverLoginInputRef,
+      },
+      "ams-bridge-url": { container: amsUrlRef, input: amsUrlInputRef },
+      "ams-bridge-token": { container: amsTokenRef, input: amsTokenInputRef },
+    };
+    const target = targets[flashFocus];
+    target.container.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     window.setTimeout(() => {
-      input?.focus({ preventScroll: true });
+      target.input.current?.focus({ preventScroll: true });
     }, 120);
   }, [flashFocus]);
 
@@ -83,13 +100,17 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
     setTestingBridge(true);
     try {
       // Persist draft bridge fields so the Rust command reads current values.
-      const saved = await saveConfig({
+      const saved = await persistConfig({
         ...draft,
         ams_bridge_url: draft.ams_bridge_url,
         ams_bridge_token: draft.ams_bridge_token,
       });
+      if (!saved) {
+        showError("Einstellungen konnten nicht gespeichert werden.", "AMS-Bridge");
+        return;
+      }
       setDraft(saved);
-      const result = await amsBridgeHealth();
+      const result = await checkAmsHealth();
       setBridgeLabel(result.message);
       if (result.ok) {
         showSuccess(result.message, "AMS-Bridge");
@@ -97,7 +118,11 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
       } else {
-        showError(result.message, "AMS-Bridge");
+        const presented = presentAmsBridgeError({
+          rawMessage: result.message,
+          omitSettingsAction: true,
+        });
+        showError(presented.message, "AMS-Bridge");
       }
     } catch (err) {
       const msg = String(err);
@@ -236,17 +261,33 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         title="AMS-Bridge (optional)"
         description="LAN Control Plane (Health, Lookup, Status, Ready). mDNS kann die URL finden; Token bleibt manuell. Datei-Handoff funktioniert auch ohne Bridge."
       >
-        <div className="space-y-1.5">
-          <Label>Bridge-URL</Label>
+        <div ref={amsUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
+          {flashFocus === "ams-bridge-url" ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
+            />
+          ) : null}
+          <Label className="relative">Bridge-URL</Label>
           <Input
+            ref={amsUrlInputRef}
+            className="relative"
             value={draft.ams_bridge_url}
             onChange={(e) => patch("ams_bridge_url", e.target.value)}
             placeholder="http://169.254.x.x:8787"
           />
         </div>
-        <div className="space-y-1.5">
-          <Label>Bridge-Token</Label>
+        <div ref={amsTokenRef} className="relative space-y-1.5 rounded-xl p-2.5">
+          {flashFocus === "ams-bridge-token" ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
+            />
+          ) : null}
+          <Label className="relative">Bridge-Token</Label>
           <PasswordInput
+            ref={amsTokenInputRef}
+            className="relative"
             value={draft.ams_bridge_token}
             onChange={(e) => patch("ams_bridge_token", e.target.value)}
             autoComplete="off"

@@ -1,118 +1,134 @@
 import { Server } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useConfigStore } from "../store/configStore";
+import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { useServerStore } from "../store/serverStore";
 import { useUiStore } from "../store/uiStore";
+import { isAmsBridgeConfigured } from "../lib/amsLookup";
 import {
-  mapServerErrorLabel,
-  presentServerConnectionError,
-  serverCredentialsMissing,
-  serverStatusErrorTooltip,
-} from "../lib/serverStatus";
+  presentHeaderConnection,
+  presentHeaderRetryOutcome,
+  type ConnectionDot,
+} from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
 
 type Props = {
   className?: string;
 };
 
+function StatusDot({ tone }: { tone: ConnectionDot }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 rounded-full",
+        tone === "ok" && "bg-success",
+        tone === "error" && "bg-destructive",
+        tone === "checking" && "animate-pulse bg-warning",
+        tone === "idle" && "bg-muted/80",
+      )}
+    />
+  );
+}
+
 export function ServerStatusIndicator({ className }: Props) {
-  const phase = useServerStore((s) => s.phase);
-  const connected = useServerStore((s) => s.connected);
-  const message = useServerStore((s) => s.message);
+  const smbPhase = useServerStore((s) => s.phase);
+  const smbConnected = useServerStore((s) => s.connected);
+  const smbMessage = useServerStore((s) => s.message);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const checkConnection = useServerStore((s) => s.checkConnection);
+
+  const amsPhase = useAmsBridgeStore((s) => s.phase);
+  const amsConnected = useAmsBridgeStore((s) => s.connected);
+  const amsMessage = useAmsBridgeStore((s) => s.message);
+  const amsVersion = useAmsBridgeStore((s) => s.version);
+  const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
+  const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
+
   const config = useConfigStore((s) => s.config);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const openSettings = useUiStore((s) => s.openSettings);
 
-  if (phase === "idle" && !connected) {
-    return null;
-  }
-
   const login = config?.server_login ?? "";
   const password = config?.server_password ?? "";
   const serverUrl = config?.server_url ?? "";
-  const credsMissing = serverCredentialsMissing(login, password);
+  const amsConfigured = isAmsBridgeConfigured(config);
 
-  let label = "Server";
-  let tone = "text-muted";
-  if (phase === "checking") {
-    label = "Prüfe…";
-    tone = "text-warning";
-  } else if (phase === "uploading") {
-    const pct = uploadProgress?.percent ?? 0;
-    label = `Upload ${pct.toFixed(0)}%`;
-    tone = "text-primary";
-  } else if (connected || phase === "connected") {
-    label = "Verbunden";
-    tone = "text-success";
-  } else if (phase === "error") {
-    label = mapServerErrorLabel(message);
-    tone = "text-destructive";
+  const view = presentHeaderConnection({
+    smbPhase,
+    smbConnected,
+    smbMessage,
+    uploadPercent:
+      smbPhase === "uploading" ? (uploadProgress?.percent ?? 0) : null,
+    uploadFilename: uploadProgress?.filename ?? null,
+    amsConfigured,
+    amsPhase,
+    amsConnected,
+    amsMessage,
+    amsVersion,
+    amsCapabilities,
+    serverUrl,
+    login,
+    password,
+  });
+
+  if (!view.visible) {
+    return null;
   }
-
-  const canRetry = phase === "error" || phase === "connected";
-  const errorTooltip =
-    phase === "error" && message
-      ? serverStatusErrorTooltip(message, login, password, serverUrl)
-      : "";
-  const title = canRetry
-    ? [
-        errorTooltip || message || "Server-Status",
-        credsMissing && phase === "error"
-          ? "Klicken: erneut prüfen · Rechtsklick: Einstellungen"
-          : "Klicken zum erneuten Prüfen",
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : message || "Server-Status";
 
   async function onRetry() {
-    if (!canRetry) return;
-    const result = await checkConnection();
-    if (result.ok) showSuccess(result.message, "Server");
-    else {
-      const presented = presentServerConnectionError({
-        rawMessage: result.message,
-        serverUrl: config?.server_url ?? "",
-        login: config?.server_login ?? "",
-        password: config?.server_password ?? "",
-      });
-      showError(presented.message, "Server", {
-        primaryAction: presented.primaryAction ?? undefined,
-      });
-    }
-  }
-
-  function onContextMenu(e: MouseEvent) {
-    if (phase !== "error") return;
-    e.preventDefault();
-    const presented = presentServerConnectionError({
-      rawMessage: message,
+    if (!view.canRetry) return;
+    const [smbResult, amsResult] = await Promise.all([
+      serverUrl.trim() ? checkConnection() : Promise.resolve(null),
+      amsConfigured ? checkAmsHealth() : Promise.resolve(null),
+    ]);
+    const outcome = presentHeaderRetryOutcome({
+      smb: smbResult,
+      ams: amsResult,
       serverUrl,
       login,
       password,
     });
+    if (!outcome) return;
+    if (outcome.kind === "success") {
+      showSuccess(outcome.message, outcome.title);
+      return;
+    }
+    showError(outcome.message, outcome.title, {
+      primaryAction: outcome.primaryAction ?? undefined,
+    });
+  }
+
+  function onContextMenu(e: MouseEvent) {
+    if (!view.contextMenuFocus) return;
+    e.preventDefault();
     openSettings({
       tab: "server",
-      focus: presented.focus ?? "server-credentials",
+      focus: view.contextMenuFocus,
     });
   }
 
   const classNames = cn(
     "flex items-center gap-2 rounded-lg border border-border bg-card/80 px-2.5 py-1.5 text-xs shadow-sm",
-    tone,
-    canRetry &&
+    view.toneClass,
+    view.canRetry &&
       "cursor-pointer transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     className,
   );
 
   const body = (
     <>
-      <Server className="h-3.5 w-3.5" />
-      <span>{label}</span>
-      {phase === "uploading" && uploadProgress?.filename ? (
+      <span className="flex items-center gap-1.5">
+        <Server className="h-3.5 w-3.5" />
+        {view.amsDot ? (
+          <span className="flex flex-col gap-0.5" aria-hidden>
+            <StatusDot tone={view.smbDot} />
+            <StatusDot tone={view.amsDot} />
+          </span>
+        ) : null}
+      </span>
+      <span>{view.label}</span>
+      {smbPhase === "uploading" && uploadProgress?.filename ? (
         <span className="max-w-[10rem] truncate text-muted">
           {uploadProgress.filename}
         </span>
@@ -120,12 +136,12 @@ export function ServerStatusIndicator({ className }: Props) {
     </>
   );
 
-  if (canRetry) {
+  if (view.canRetry) {
     return (
       <button
         type="button"
         className={classNames}
-        title={title}
+        title={view.title}
         onClick={() => void onRetry()}
         onContextMenu={onContextMenu}
       >
@@ -135,7 +151,7 @@ export function ServerStatusIndicator({ className }: Props) {
   }
 
   return (
-    <div className={classNames} title={title}>
+    <div className={classNames} title={view.title}>
       {body}
     </div>
   );

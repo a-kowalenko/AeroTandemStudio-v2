@@ -8,8 +8,10 @@ import {
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
+import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsPatch } from "../types";
+import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 
 function sortCrewList(config: AppConfig): AppConfig {
   const crew_list = [...(config.crew_list ?? [])].sort((a, b) =>
@@ -29,6 +31,8 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const checkConnection = useServerStore((s) => s.checkConnection);
+  const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
+  const resetAmsHealth = useAmsBridgeStore((s) => s.reset);
   const [draft, setDraft] = useState<AppConfig | null>(null);
 
   useEffect(() => {
@@ -107,6 +111,10 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       prev.server_url !== toSave.server_url ||
       prev.server_login !== toSave.server_login ||
       prev.server_password !== toSave.server_password;
+    const amsChanged =
+      !prev ||
+      prev.ams_bridge_url !== toSave.ams_bridge_url ||
+      prev.ams_bridge_token !== toSave.ams_bridge_token;
 
     const saved = await persist(toSave);
     if (!saved) {
@@ -122,8 +130,21 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
         server_password: toSave.server_password,
       });
     }
+    if (amsChanged) {
+      if (isAmsBridgeConfigured(toSave)) void checkAmsHealth();
+      else resetAmsHealth();
+    }
     return true;
-  }, [checkConnection, config, draft, persist, showError, showSuccess]);
+  }, [
+    checkAmsHealth,
+    checkConnection,
+    config,
+    draft,
+    persist,
+    resetAmsHealth,
+    showError,
+    showSuccess,
+  ]);
 
   const resetToFactory = useCallback(async (): Promise<AppConfig | null> => {
     const restored = await resetToDefaults();

@@ -67,6 +67,7 @@ import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
+import { useAmsBridgeHealthPoll } from "./hooks/useAmsBridgeHealthPoll";
 import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
@@ -1143,6 +1144,8 @@ function App() {
     ready,
     setupWizardOpen,
   ]);
+
+  useAmsBridgeHealthPoll(ready && !splashOpen && !setupWizardOpen);
 
   useEffect(() => {
     if (!config || defaultsApplied.current) return;

@@ -68,7 +68,11 @@ export type SettingsTab =
   | "server"
   | "system";
 
-export type SettingsFocusTarget = "server-url" | "server-credentials";
+export type SettingsFocusTarget =
+  | "server-url"
+  | "server-credentials"
+  | "ams-bridge-url"
+  | "ams-bridge-token";
 
 /** Primary CTA on error dialogs (e.g. deep-link into Settings). */
 export type DialogPrimaryAction = {
