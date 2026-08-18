@@ -9,7 +9,7 @@ export type AppendJobContext = {
 
 type AppendState = {
   active: boolean;
-  /** Nachreichen-Dialog offen: OS-Drops nicht in die Haupt-Dropzone. */
+  /** Nachreichen-View offen: OS-Drops nicht in die Haupt-Dropzone. */
   captureFileDrop: boolean;
   context: AppendJobContext | null;
   begin: (ctx: AppendJobContext) => void;

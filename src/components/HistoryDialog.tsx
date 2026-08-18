@@ -48,7 +48,10 @@ import {
   viewFromVorgangEntry,
   type AmsStatusFilter,
 } from "../lib/amsHandoffStatus";
-import { AppendMediaDialog } from "@/components/AppendMediaDialog";
+import {
+  AppendMediaPanel,
+  type AppendMediaPanelHandle,
+} from "@/components/AppendMediaDialog";
 import { useAppendStore } from "@/store/appendStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { useUiStore } from "@/store/uiStore";
@@ -324,6 +327,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const [appendVorgang, setAppendVorgang] = useState<VorgangEntry | null>(null);
   const [appendPickingFiles, setAppendPickingFiles] = useState(false);
   const [appendRefreshKey, setAppendRefreshKey] = useState(0);
+  const appendPanelRef = useRef<AppendMediaPanelHandle>(null);
   const runAppendJob = useAppendStore((s) => s.runJob);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -332,7 +336,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const nestedOpen =
     confirmOpen || qrScanOpen || appendOpen || appendPickingFiles;
 
-  const closeAppendDialog = useCallback(() => {
+  const closeAppendView = useCallback(() => {
     setAppendVorgang(null);
     setAppendPickingFiles(false);
   }, []);
@@ -351,7 +355,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   async function handleAppendSubmit(items: AppendMediaItem[]) {
     if (!appendVorgang) return;
     const vorgang = appendVorgang;
-    closeAppendDialog();
+    closeAppendView();
     onOpenChange(false);
     try {
       const res = await runAppendJob(vorgang.id, items, {
@@ -380,15 +384,20 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
         open={open}
         onOpenChange={(v) => {
           if (!v) {
+            if (appendOpen) {
+              appendPanelRef.current?.requestBack();
+              return;
+            }
             setPendingConfirm(null);
             setQrScanOpen(false);
-            closeAppendDialog();
+            closeAppendView();
           }
           onOpenChange(v);
         }}
       >
         <DialogContent
-          className="!flex h-[min(85vh,640px)] w-[min(1100px,96vw)] max-w-none flex-col gap-3 overflow-hidden"
+          hideCloseButton={appendOpen}
+          className="relative !flex h-[min(88vh,720px)] w-[min(1100px,96vw)] max-w-none flex-col gap-0 overflow-hidden p-0"
           onPointerDownOutside={(e) => {
             if (nestedOpen) e.preventDefault();
           }}
@@ -399,75 +408,116 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
             if (nestedOpen) e.preventDefault();
           }}
           onEscapeKeyDown={(e) => {
-            if (nestedOpen) e.preventDefault();
+            if (appendPickingFiles) {
+              e.preventDefault();
+              return;
+            }
+            if (confirmOpen || qrScanOpen) {
+              e.preventDefault();
+              return;
+            }
+            if (appendOpen) {
+              e.preventDefault();
+              appendPanelRef.current?.requestBack();
+            }
           }}
         >
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Historie</DialogTitle>
-            <DialogDescription>
-              Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).
-            </DialogDescription>
-          </DialogHeader>
+          <DialogTitle className="sr-only">
+            {appendOpen && appendVorgang
+              ? `Nachreichen · ${appendVorgang.gast}`
+              : "Historie"}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            {appendOpen
+              ? "Zusätzliche Dateien in den bestehenden Kundenordner."
+              : "Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung)."}
+          </DialogDescription>
 
-          <Tabs
-            value={tab}
-            onValueChange={(v) => setTab(v as "vorgaenge" | "medien")}
-            className="flex min-h-0 flex-1 flex-col gap-3"
+          <div
+            className={cn(
+              "flex min-h-0 flex-1 flex-col gap-3 p-6 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+              appendOpen && "pointer-events-none -translate-x-6 opacity-0",
+            )}
+            aria-hidden={appendOpen}
           >
-            <TabsList className="h-9 w-fit shrink-0">
-              <TabsTrigger value="vorgaenge" className="text-xs">
-                Vorgänge
-              </TabsTrigger>
-              <TabsTrigger value="medien" className="text-xs">
-                Medien
-              </TabsTrigger>
-            </TabsList>
+            <DialogHeader className="shrink-0 pr-8">
+              <div className="text-lg font-semibold leading-none tracking-tight">
+                Historie
+              </div>
+              <p className="text-sm text-muted">
+                Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).
+              </p>
+            </DialogHeader>
 
-            <div className="relative min-h-0 flex-1">
-              <TabsContent
-                value="vorgaenge"
-                forceMount
-                className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
-              >
-                <VorgaengePanel
-                  dialogOpen={open}
-                  qrScanOpen={qrScanOpen}
-                  onQrScanOpenChange={setQrScanOpen}
-                  appendRefreshKey={appendRefreshKey}
-                  onOpenAppend={setAppendVorgang}
-                  onCloseAppend={closeAppendDialog}
-                  onRequestConfirm={setPendingConfirm}
-                />
-              </TabsContent>
-              <TabsContent
-                value="medien"
-                className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
-              >
-                <MedienPanel
-                  dialogOpen={open}
-                  onRequestConfirm={setPendingConfirm}
-                />
-              </TabsContent>
-            </div>
-          </Tabs>
+            <Tabs
+              value={tab}
+              onValueChange={(v) => setTab(v as "vorgaenge" | "medien")}
+              className="flex min-h-0 flex-1 flex-col gap-3"
+            >
+              <TabsList className="h-9 w-fit shrink-0">
+                <TabsTrigger value="vorgaenge" className="text-xs">
+                  Vorgänge
+                </TabsTrigger>
+                <TabsTrigger value="medien" className="text-xs">
+                  Medien
+                </TabsTrigger>
+              </TabsList>
 
-          <DialogFooter className="shrink-0">
-            <Button type="button" onClick={() => onOpenChange(false)}>
-              Schließen
-            </Button>
-          </DialogFooter>
+              <div className="relative min-h-0 flex-1">
+                <TabsContent
+                  value="vorgaenge"
+                  forceMount
+                  className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
+                >
+                  <VorgaengePanel
+                    dialogOpen={open}
+                    qrScanOpen={qrScanOpen}
+                    onQrScanOpenChange={setQrScanOpen}
+                    appendRefreshKey={appendRefreshKey}
+                    onOpenAppend={setAppendVorgang}
+                    onRequestConfirm={setPendingConfirm}
+                  />
+                </TabsContent>
+                <TabsContent
+                  value="medien"
+                  className="absolute inset-0 mt-0 flex flex-col data-[state=inactive]:pointer-events-none data-[state=inactive]:invisible data-[state=inactive]:opacity-0"
+                >
+                  <MedienPanel
+                    dialogOpen={open}
+                    onRequestConfirm={setPendingConfirm}
+                  />
+                </TabsContent>
+              </div>
+            </Tabs>
+
+            <DialogFooter className="shrink-0">
+              <Button type="button" onClick={() => onOpenChange(false)}>
+                Schließen
+              </Button>
+            </DialogFooter>
+          </div>
+
+          <div
+            className={cn(
+              "absolute inset-0 z-20 flex flex-col overflow-hidden bg-card transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
+              appendOpen
+                ? "translate-x-0"
+                : "pointer-events-none translate-x-full",
+            )}
+            aria-hidden={!appendOpen}
+          >
+            {appendVorgang ? (
+              <AppendMediaPanel
+                ref={appendPanelRef}
+                vorgang={appendVorgang}
+                onBack={closeAppendView}
+                onPickingFilesChange={setAppendPickingFiles}
+                onSubmit={(items) => void handleAppendSubmit(items)}
+              />
+            ) : null}
+          </div>
         </DialogContent>
       </Dialog>
-
-      <AppendMediaDialog
-        open={appendOpen}
-        vorgang={appendVorgang}
-        onOpenChange={(v) => {
-          if (!v) closeAppendDialog();
-        }}
-        onPickingFilesChange={setAppendPickingFiles}
-        onSubmit={(items) => void handleAppendSubmit(items)}
-      />
 
       <Dialog
         open={confirmOpen}
@@ -545,7 +595,6 @@ function VorgaengePanel({
   onQrScanOpenChange,
   appendRefreshKey,
   onOpenAppend,
-  onCloseAppend,
   onRequestConfirm,
 }: {
   dialogOpen: boolean;
@@ -553,7 +602,6 @@ function VorgaengePanel({
   onQrScanOpenChange: (open: boolean) => void;
   appendRefreshKey: number;
   onOpenAppend: (vorgang: VorgangEntry) => void;
-  onCloseAppend: () => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
   const [entries, setEntries] = useState<VorgangEntry[]>(
@@ -590,6 +638,7 @@ function VorgaengePanel({
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   const searchSkipRef = useRef(true);
+  const appendJobActive = useAppendStore((s) => s.active);
 
   function patchEntry(id: number, fn: (row: VorgangEntry) => VorgangEntry) {
     setEntries((prev) => prev.map((e) => (e.id === id ? fn(e) : e)));
@@ -1020,7 +1069,8 @@ function VorgaengePanel({
   const canAppend =
     Boolean(selected?.correlation_id?.trim()) &&
     (selected?.ams_state ?? "").trim().toLowerCase() === "completed" &&
-    !lastAppendBusy;
+    !lastAppendBusy &&
+    !appendJobActive;
   const qrPreview = selected?.qr_preview?.path?.trim()
     ? selected.qr_preview
     : null;
@@ -1032,8 +1082,7 @@ function VorgaengePanel({
   useEffect(() => {
     onQrScanOpenChange(false);
     setShowShadow(true);
-    onCloseAppend();
-  }, [selectedId, onQrScanOpenChange, onCloseAppend]);
+  }, [selectedId, onQrScanOpenChange]);
 
   const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${QR_PREVIEW_FRAME_AR} + 3rem)), calc(100vw - 2rem))`;
 
@@ -1368,7 +1417,7 @@ function VorgaengePanel({
                           : (selected.ams_state ?? "").trim().toLowerCase() !==
                               "completed"
                             ? "Erst wenn AMS den Upload abgeschlossen hat"
-                            : lastAppendBusy
+                            : lastAppendBusy || appendJobActive
                               ? "Eine Nachreichung läuft bereits"
                               : "Weitere Medien in denselben Kundenordner legen"
                       }
