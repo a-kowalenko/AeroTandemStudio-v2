@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
 import type { CrewMember } from "@/lib/tauri";
 import {
   crewAllNames,
@@ -123,26 +123,33 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
           listZIndex={200}
         />
         {opName ? (
-          <div className="flex flex-wrap gap-4 pt-1">
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <Checkbox
-                checked={Boolean(operatorMember?.tandemmaster)}
-                onCheckedChange={(v) =>
-                  setOperatorRole("tandemmaster", v === true)
-                }
-              />
-              {t("create.ready.chips.tandemmaster")}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <Checkbox
-                checked={Boolean(operatorMember?.videospringer)}
-                onCheckedChange={(v) =>
-                  setOperatorRole("videospringer", v === true)
-                }
-              />
-              {t("create.ready.chips.videospringer")}
-            </label>
-          </div>
+          <>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+                <span>{t("create.ready.chips.tandemmaster")}</span>
+                <Switch
+                  checked={Boolean(operatorMember?.tandemmaster)}
+                  onCheckedChange={(v) => setOperatorRole("tandemmaster", v)}
+                  aria-label={t("create.ready.chips.tandemmaster")}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+                <span>{t("create.ready.chips.videospringer")}</span>
+                <Switch
+                  checked={Boolean(operatorMember?.videospringer)}
+                  onCheckedChange={(v) => setOperatorRole("videospringer", v)}
+                  aria-label={t("create.ready.chips.videospringer")}
+                />
+              </label>
+            </div>
+            <p className="text-[11px] leading-snug text-muted">
+              {operatorMember?.tandemmaster && !operatorMember?.videospringer
+                ? t("setupWizard.operatorSingleRoleTm")
+                : operatorMember?.videospringer && !operatorMember?.tandemmaster
+                  ? t("setupWizard.operatorSingleRoleVs")
+                  : t("setupWizard.operatorMultiRole")}
+            </p>
+          </>
         ) : null}
       </SettingsSection>
 
@@ -285,10 +292,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                       ) : null}
                     </p>
                     <div className="flex w-28 justify-center">
-                      <Checkbox
+                      <Switch
                         checked={member.tandemmaster}
                         onCheckedChange={(v) =>
-                          patchCrewRole(index, "tandemmaster", v === true)
+                          patchCrewRole(index, "tandemmaster", v)
                         }
                         aria-label={t("settings.crew.list.ariaRole", {
                           name: member.name,
@@ -297,10 +304,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                       />
                     </div>
                     <div className="flex w-28 justify-center">
-                      <Checkbox
+                      <Switch
                         checked={member.videospringer}
                         onCheckedChange={(v) =>
-                          patchCrewRole(index, "videospringer", v === true)
+                          patchCrewRole(index, "videospringer", v)
                         }
                         aria-label={t("settings.crew.list.ariaRole", {
                           name: member.name,
