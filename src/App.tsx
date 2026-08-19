@@ -87,6 +87,7 @@ import {
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
+  normalizeManualEntryMode,
   type AvailableRelease,
   type BodyConcatFallbackPayload,
   type CreateJobResult,
@@ -137,9 +138,17 @@ import {
 } from "./lib/progressLabels";
 import {
   focusCreateReadyTarget,
+  filterGraceCreateHints,
+  isBlockingCreateHint,
+  isIdEntryGracePeriod,
   summarizeCreateHints,
   translateValidationHint,
 } from "./lib/createReadyHints";
+import {
+  canRunAmsIdLookup,
+  isAmsBridgeConfigured,
+} from "./lib/amsLookup";
+import { useAmsBridgeStore } from "./store/amsBridgeStore";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { runAmsAutoConnect } from "./lib/amsAutoConnect";
 import { cn, isCancellationError } from "./lib/utils";
@@ -174,6 +183,7 @@ function App() {
   const qrPreview = useKundeStore((s) => s.qrPreview);
   const qrRevision = useKundeStore((s) => s.qrRevision);
   const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
+  const amsLookupSettled = useKundeStore((s) => s.amsLookupSettled);
   const sessionTouched = useKundeStore((s) => s.sessionTouched);
   const applyDefaultsFromConfig = useKundeStore((s) => s.applyDefaultsFromConfig);
   const resetSession = useKundeStore((s) => s.resetSession);
@@ -308,6 +318,8 @@ function App() {
   const serverPhase = useServerStore((s) => s.phase);
 
   const appendActive = useAppendStore((s) => s.active);
+  const amsConnected = useAmsBridgeStore((s) => s.connected);
+  const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const appendWasActiveRef = useRef(false);
 
@@ -1409,7 +1421,26 @@ function App() {
             hints.push("Speicherort wird beim Erstellen abgefragt und gespeichert.");
           }
           setCreateHints(hints);
-          setCreateReady(validation.valid);
+          const manualMode = normalizeManualEntryMode(
+            config?.manual_entry_mode,
+            config?.oldschool_mode ?? false,
+          );
+          const grace = isIdEntryGracePeriod({
+            active: kunde.form_mode === "manual" && manualMode === "id",
+            kundenId: kunde.kunden_id,
+            bookingId: kunde.booking_id,
+            amsLookupSettled,
+            lookupLive: canRunAmsIdLookup({
+              configured: isAmsBridgeConfigured(config),
+              connected: amsConnected,
+              capabilities: amsCapabilities,
+            }),
+          });
+          const blocking = filterGraceCreateHints(
+            hints.filter(isBlockingCreateHint),
+            grace,
+          );
+          setCreateReady(blocking.length === 0);
         } catch {
           if (!cancelled) {
             setCreateReady(false);
@@ -1431,6 +1462,9 @@ function App() {
     config?.oldschool_mode,
     config?.manual_entry_mode,
     config?.speicherort,
+    amsLookupSettled,
+    amsConnected,
+    amsCapabilities,
   ]);
 
   async function ensureSpeicherort(forcePick = false): Promise<string | null> {
@@ -1731,11 +1765,27 @@ function App() {
     photoList.length > 0 ||
     qrRevision > 0 ||
     amsLookupRevision > 0;
+  const manualEntryMode = normalizeManualEntryMode(
+    config?.manual_entry_mode,
+    config?.oldschool_mode ?? false,
+  );
+  const idEntryGrace = isIdEntryGracePeriod({
+    active: kunde.form_mode === "manual" && manualEntryMode === "id",
+    kundenId: kunde.kunden_id,
+    bookingId: kunde.booking_id,
+    amsLookupSettled,
+    lookupLive: canRunAmsIdLookup({
+      configured: isAmsBridgeConfigured(config),
+      connected: amsConnected,
+      capabilities: amsCapabilities,
+    }),
+  });
   const createBanner = busy
     ? null
     : summarizeCreateHints(createHints, {
         workStarted,
         suppressEmptyMedia: pipelineActive,
+        idEntryGrace,
       });
 
   // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.

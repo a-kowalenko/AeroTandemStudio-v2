@@ -1,4 +1,5 @@
 import { tr } from "@/i18n";
+import { isLookupIdPairReady } from "@/lib/amsLookup";
 
 /** Compact labels for create-job validation errors shown above Erstellen. */
 
@@ -48,7 +49,54 @@ export type CreateReadyBanner = {
 export type SummarizeCreateHintsOpts = {
   workStarted: boolean;
   suppressEmptyMedia: boolean;
+  /** Manual ID mode: defer Vorgang hints until IDs are complete and AMS lookup settled. */
+  idEntryGrace?: boolean;
 };
+
+export type IdEntryGraceOpts = {
+  active: boolean;
+  kundenId: string | null | undefined;
+  bookingId: string | null | undefined;
+  amsLookupSettled: boolean;
+  lookupLive: boolean;
+};
+
+/** True while the operator is still typing IDs or AMS lookup has not finished. */
+export function isIdEntryGracePeriod(opts: IdEntryGraceOpts): boolean {
+  if (!opts.active) return false;
+  if (!isLookupIdPairReady(opts.kundenId, opts.bookingId)) return true;
+  if (opts.lookupLive && !opts.amsLookupSettled) return true;
+  return false;
+}
+
+function shouldSuppressGraceHint(meta: CreateReadyItem, grace: boolean): boolean {
+  if (!grace) return false;
+  if (
+    (meta.target === "kunden-id" || meta.target === "booking-id") &&
+    meta.kind === "invalid"
+  ) {
+    return true;
+  }
+  if (
+    meta.kind === "missing" &&
+    (meta.target === "name" ||
+      meta.target === "email" ||
+      meta.target === "produkt")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Drop ID/name/product hints during the ID-entry grace window (live UI only). */
+export function filterGraceCreateHints(hints: string[], grace: boolean): string[] {
+  if (!grace) return hints;
+  return hints.filter((hint) => {
+    const meta = classifyHint(hint);
+    if (!meta) return true;
+    return !shouldSuppressGraceHint(meta, true);
+  });
+}
 
 type HintMeta = CreateReadyItem & {
   emptyMedia?: boolean;
@@ -214,10 +262,11 @@ export function summarizeCreateHints(
   opts: SummarizeCreateHintsOpts = {
     workStarted: true,
     suppressEmptyMedia: false,
+    idEntryGrace: false,
   },
 ): CreateReadyBanner | null {
   const items = uniqueItems(
-    hints.flatMap((hint) => {
+    filterGraceCreateHints(hints, opts.idEntryGrace ?? false).flatMap((hint) => {
       const meta = classifyHint(hint);
       if (!meta) return [];
       if (meta.kind === "missing" && !opts.workStarted) return [];

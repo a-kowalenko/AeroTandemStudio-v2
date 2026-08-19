@@ -76,6 +76,11 @@ type KundeState = {
   /** IDs that produced the current AMS fill (skip re-lookup until they change). */
   amsLookupIds: { kunden_id: string; booking_id: string } | null;
   /**
+   * AMS ID lookup finished for the current ID pair (hit, miss, error, or offline).
+   * While false in ID mode, Vorgang live-validation defers ID/name/product hints.
+   */
+  amsLookupSettled: boolean;
+  /**
    * After import without QR or QR miss: focus Kunden-ID once dialogs close.
    * Not set on session start / reset / mode switch.
    */
@@ -109,6 +114,8 @@ type KundeState = {
   relockAmsLookup: () => void;
   /** Drop AMS lock without touching QR state. */
   clearAmsLookup: () => void;
+  markAmsLookupSettled: () => void;
+  resetAmsLookupSettled: () => void;
   /** Toggle QR ↔ manual; restoring QR re-applies qrSnapshot (manual identity edits discarded). */
   switchFormMode: (mode: "kunde" | "manual") => void;
   resetSession: (keep?: {
@@ -132,6 +139,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   amsLookupIds: null,
   kundenIdFocusPending: false,
   sessionTouched: false,
+  amsLookupSettled: false,
 
   requestKundenIdFocus: () => set({ kundenIdFocusPending: true }),
   clearKundenIdFocus: () => set({ kundenIdFocusPending: false }),
@@ -140,17 +148,17 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   setField: (key, value) => {
     const prev = get().kunde;
     if (Object.is(prev[key], value)) return;
-    const touch = key !== "gast";
-    if (
-      (key === "kunden_id" || key === "booking_id") &&
-      get().amsLookupRevision > 0
-    ) {
+    const touch = key !== "gast" && key !== "kunden_id" && key !== "booking_id";
+    if (key === "kunden_id" || key === "booking_id") {
+      const hadLookup = get().amsLookupRevision > 0;
       set({
-        kunde: clearAmsLookupDerived({ ...prev, [key]: value }),
-        amsLookupLocked: false,
-        amsLookupRevision: 0,
-        amsLookupIds: null,
-        ...(touch ? { sessionTouched: true } : {}),
+        kunde: hadLookup
+          ? clearAmsLookupDerived({ ...prev, [key]: value })
+          : { ...prev, [key]: value },
+        amsLookupLocked: hadLookup ? false : get().amsLookupLocked,
+        amsLookupRevision: hadLookup ? 0 : get().amsLookupRevision,
+        amsLookupIds: hadLookup ? null : get().amsLookupIds,
+        amsLookupSettled: false,
       });
       return;
     }
@@ -327,6 +335,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      amsLookupSettled: false,
       kundenIdFocusPending: false,
       kunde: next,
     });
@@ -345,6 +354,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         kunden_id: (next.kunden_id ?? "").trim(),
         booking_id: (next.booking_id ?? "").trim(),
       },
+      amsLookupSettled: true,
       crewAttentionAfterQr: true,
       kundenIdFocusPending: false,
       kunde: next,
@@ -366,7 +376,18 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      amsLookupSettled: false,
     });
+  },
+
+  markAmsLookupSettled: () => {
+    if (get().amsLookupSettled) return;
+    set({ amsLookupSettled: true });
+  },
+
+  resetAmsLookupSettled: () => {
+    if (!get().amsLookupSettled) return;
+    set({ amsLookupSettled: false });
   },
 
   switchFormMode: (mode) => {
@@ -380,6 +401,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         amsLookupLocked: false,
         amsLookupRevision: 0,
         amsLookupIds: null,
+        amsLookupSettled: false,
         sessionTouched: true,
         kunde: {
           ...kunde,
@@ -408,6 +430,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      amsLookupSettled: false,
       kundenIdFocusPending: false,
       sessionTouched: true,
       kunde: restored,
@@ -431,6 +454,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
+      amsLookupSettled: false,
       kundenIdFocusPending: false,
       sessionTouched: false,
       kunde: emptyKunde({

@@ -244,15 +244,21 @@ export function useAmsIdLookup(opts: {
     amsLookupIds.booking_id === bookingId;
 
   useEffect(() => {
+    const markSettled = () => useKundeStore.getState().markAmsLookupSettled();
+
     if (!enabled || !lookupLive || !idsReady) {
       requestIdRef.current += 1;
       attemptedKeyRef.current = "";
       setStatus({ kind: "idle", text: "" });
+      if (idsReady && (!enabled || !lookupLive)) {
+        markSettled();
+      }
       return;
     }
 
     if (idsMatchApplied) {
       requestIdRef.current += 1;
+      markSettled();
       setStatus({
         kind: "found",
         text: formatAmsLookupFoundLine(useKundeStore.getState().kunde),
@@ -282,16 +288,19 @@ export function useAmsIdLookup(opts: {
         const attemptKey = `${bridgeKey}\0${key}`;
         if (combined.kind === "unreachable") {
           attemptedKeyRef.current = attemptKey;
+          markSettled();
           setStatus({ kind: "idle", text: "" });
           return;
         }
         if (combined.kind === "error") {
           attemptedKeyRef.current = attemptKey;
+          markSettled();
           setStatus({ kind: "error", text: combined.message });
           return;
         }
         if (combined.kind === "not_found") {
           attemptedKeyRef.current = attemptKey;
+          markSettled();
           setStatus(AMS_LOOKUP_STATUS_NOT_FOUND);
           return;
         }
@@ -308,6 +317,7 @@ export function useAmsIdLookup(opts: {
           if (requestIdRef.current !== requestId) return;
           if (typeChoice === "cancel") {
             attemptedKeyRef.current = attemptKey;
+            markSettled();
             setStatus({ kind: "idle", text: "" });
             return;
           }
@@ -330,6 +340,7 @@ export function useAmsIdLookup(opts: {
         );
         if (applied === "stale") return;
         attemptedKeyRef.current = attemptKey;
+        markSettled();
         if (applied === "kept") {
           setStatus({ kind: "idle", text: "" });
           return;
