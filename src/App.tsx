@@ -1116,7 +1116,7 @@ function App() {
 
     async function boot() {
       try {
-        setSplashStatus("Lade App-Info…");
+        setSplashStatus(t("app.splash.loadAppInfo"));
         const info = await getAppInfo();
         if (!cancelled) setAppVersion(info.version);
         void getUpdaterInstallHint()
@@ -1125,7 +1125,7 @@ function App() {
           })
           .catch(() => undefined);
 
-        setSplashStatus("Lade Einstellungen…");
+        setSplashStatus(t("app.splash.loadSettings"));
         await loadConfig();
         const loaded = useConfigStore.getState().config;
         if (loaded?.ui_language) {
@@ -1134,7 +1134,7 @@ function App() {
           );
         }
 
-        setSplashStatus("Prüfe FFmpeg & Hardware…");
+        setSplashStatus(t("app.splash.checkFfmpeg"));
         const checks = await runStartupChecks(true);
         if (cancelled) return;
 
@@ -1145,15 +1145,14 @@ function App() {
         if (!checks.ok) {
           setSplashError(checks.ffmpeg_error || checks.message);
           showError(
-            checks.ffmpeg_error ||
-              "FFmpeg wurde nicht gefunden. Encoding ist nicht verfügbar.",
-            "FFmpeg",
+            checks.ffmpeg_error || t("app.splash.ffmpegMissing"),
+            t("app.ffmpeg.title"),
           );
         } else if (checks.media_warning) {
-          showWarning(checks.media_warning, "Video-Wiedergabe");
+          showWarning(checks.media_warning, t("app.mediaPlayback.title"));
         }
 
-        setSplashStatus("Bereit!");
+        setSplashStatus(t("app.splash.ready"));
         await new Promise((r) => setTimeout(r, 350));
         if (!cancelled) {
           setReady(true);
@@ -1165,8 +1164,8 @@ function App() {
         if (cancelled) return;
         const msg = String(e);
         setSplashError(msg);
-        setSplashStatus("Start mit Fehlern");
-        showError(msg, "Start");
+        setSplashStatus(t("app.splash.startWithErrors"));
+        showError(msg, t("app.start.title"));
         setReady(true);
         setSplashOpen(false);
       }

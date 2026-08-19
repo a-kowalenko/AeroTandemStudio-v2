@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   AMS_ID_LOOKUP_TYPES,
   AMS_LOOKUP_DEBOUNCE_MS,
-  AMS_LOOKUP_FOUND_TITLE,
-  AMS_LOOKUP_STATUS_NOT_FOUND,
-  AMS_LOOKUP_STATUS_SEARCHING,
+  amsLookupFoundTitle,
+  amsLookupStatusNotFound,
+  amsLookupStatusSearching,
   canRunAmsIdLookup,
   classifyTypedHits,
   formatAmsLookupFoundLine,
@@ -20,6 +20,7 @@ import {
   type AmsLookupStatus,
   type AmsMarkerType,
 } from "@/lib/amsLookup";
+import { tr } from "@/i18n";
 import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
 import { amsBridgeCustomerLookup, type AppConfig } from "@/lib/tauri";
 import { showAmsLookupFoundToast } from "@/lib/amsLookupToast";
@@ -129,17 +130,17 @@ function askAmsOverride(opts: {
       useUiStore.getState().closeDialog();
       resolve(choice);
     };
-    const previous = opts.previousLabel.trim() || "Manuelle Eingabe";
-    const next = opts.nextName.trim() || "Neuer Kunde";
+    const previous = opts.previousLabel.trim() || tr("qr.confirm.manualEntry");
+    const next = opts.nextName.trim() || tr("qr.confirm.newCustomer");
     useUiStore.getState().showSuccess(
-      `Bisher: ${previous}\nBuchung: ${next}\n\nDiese Daten übernehmen?\nOrt, Datum und Crew bleiben erhalten.`,
-      AMS_LOOKUP_FOUND_TITLE,
+      tr("ams.lookup.overrideBody", { previous, next }),
+      amsLookupFoundTitle(),
       {
         highlight: next,
         autoCloseSecs: 0,
         confirm: {
-          secondaryLabel: "Behalten",
-          primaryLabel: "Übernehmen",
+          secondaryLabel: tr("ams.lookup.keep"),
+          primaryLabel: tr("ams.lookup.apply"),
           onSecondary: () => finish("keep"),
           onPrimary: () => finish("apply"),
         },
@@ -161,24 +162,24 @@ function askAmsTypeChoice(opts: {
       resolve(choice);
     };
     useUiStore.getState().showSuccess(
-      "Für diese IDs gibt es Handcam- und Outside-Daten.\nBitte den Medien-Typ wählen.",
-      "Medien-Typ wählen",
+      tr("ams.lookup.typeChoiceBody"),
+      tr("ams.lookup.typeChoiceTitle"),
       {
         autoCloseSecs: 0,
         choices: {
           options: [
             {
               id: "handcam",
-              label: "Handcam",
+              label: tr("history.appendPanel.groupHandcam"),
               detail: formatTypeChoiceDetail(opts.handcam, "handcam"),
             },
             {
               id: "outside",
-              label: "Outside",
+              label: tr("history.appendPanel.groupOutside"),
               detail: formatTypeChoiceDetail(opts.outside, "outside"),
             },
           ],
-          cancelLabel: "Abbrechen",
+          cancelLabel: tr("common.actions.cancel"),
           onPick: (id) =>
             finish(id === "outside" ? "outside" : "handcam"),
           onCancel: () => finish("cancel"),
@@ -276,7 +277,7 @@ export function useAmsIdLookup(opts: {
     const timer = window.setTimeout(() => {
       void (async () => {
         if (requestIdRef.current !== requestId) return;
-        setStatus(AMS_LOOKUP_STATUS_SEARCHING);
+        setStatus(amsLookupStatusSearching());
         const attempts = await Promise.all(
           AMS_ID_LOOKUP_TYPES.map((markerType) =>
             lookupOne(customerId, bookingId, markerType),
@@ -301,7 +302,7 @@ export function useAmsIdLookup(opts: {
         if (combined.kind === "not_found") {
           attemptedKeyRef.current = attemptKey;
           markSettled();
-          setStatus(AMS_LOOKUP_STATUS_NOT_FOUND);
+          setStatus(amsLookupStatusNotFound());
           return;
         }
 

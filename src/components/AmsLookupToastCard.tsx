@@ -1,4 +1,5 @@
 import { SearchCheck, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export type AmsLookupToastCardProps = {
@@ -18,6 +19,7 @@ export function AmsLookupToastCard({
   durationMs,
   onDismiss,
 }: AmsLookupToastCardProps) {
+  const { t } = useTranslation();
   return (
     <div
       role="status"
@@ -60,7 +62,7 @@ export function AmsLookupToastCard({
         <button
           type="button"
           className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
-          aria-label="Hinweis schließen"
+          aria-label={t("sd.toast.dismiss")}
           onClick={onDismiss}
         >
           <X className="h-3.5 w-3.5" aria-hidden />

@@ -1,6 +1,7 @@
 /** SD-card related Tauri invoke wrappers and types. */
 
 import { invoke } from "@tauri-apps/api/core";
+import { tr } from "@/i18n";
 import { isSidecarPath } from "./media";
 
 export type SdDriveInfo = {
@@ -47,11 +48,11 @@ export function emptyCatalogLabel(
   reason?: ListEmptyReason | null,
 ): string {
   if (reason === "filtered_only") {
-    return "Keine importierbaren Medien (nur Timelapse/Proxies).";
+    return tr("sd.catalog.filteredOnly");
   }
   return isMtpDrive(drive)
-    ? "Keine Medien auf der Kamera gefunden."
-    : "Keine Mediendateien auf der SD-Karte gefunden.";
+    ? tr("sd.catalog.mtpEmpty")
+    : tr("sd.catalog.sdEmpty");
 }
 
 export function isEmptyCatalogMessage(msg: string): boolean {

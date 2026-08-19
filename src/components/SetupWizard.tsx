@@ -560,7 +560,7 @@ export function SetupWizard({ open, onComplete }: Props) {
     } catch (e) {
       showError(
         e instanceof Error ? e.message : String(e),
-        "Standardordner",
+        t("setupWizard.standardFolderTitle"),
       );
     } finally {
       setCreatingDefaultDir(null);
@@ -658,11 +658,11 @@ export function SetupWizard({ open, onComplete }: Props) {
       if (!toSave) return;
       const saved = await persist(toSave);
       if (!saved) {
-        showError("Einstellungen konnten nicht gespeichert werden.", "Einrichtung");
+        showError(t("setupWizard.saveFailed"), t("setupWizard.steps.finish"));
         return;
       }
       if (markCompleted) {
-        showSuccess("Einrichtung abgeschlossen.", "Erfolg", {
+        showSuccess(t("setupWizard.complete"), t("setupWizard.completeTitle"), {
           autoCloseSecs: 5,
         });
       }
@@ -705,7 +705,7 @@ export function SetupWizard({ open, onComplete }: Props) {
         server_login: draft.server_login,
         server_password: draft.server_password,
       });
-      if (result.ok) showSuccess(result.message, "Server");
+      if (result.ok) showSuccess(result.message, t("app.server.title"));
       else {
         const presented = presentServerConnectionError({
           rawMessage: result.message,
@@ -714,7 +714,7 @@ export function SetupWizard({ open, onComplete }: Props) {
           password: draft.server_password,
           omitSettingsAction: true,
         });
-        showError(presented.message, "Server");
+        showError(presented.message, t("app.server.title"));
       }
     } finally {
       setTestingServer(false);

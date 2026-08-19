@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -59,8 +60,8 @@ type CatStatus = "paid" | "open" | "new";
 
 type CatDef = {
   id: AppendCategoryId;
-  label: string;
-  kindLabel: string;
+  labelKey: string;
+  kindLabelKey: string;
   group: CatGroupId;
   video: boolean;
   booked: (v: VorgangEntry) => boolean;
@@ -70,8 +71,8 @@ type CatDef = {
 const CATS: CatDef[] = [
   {
     id: "handcam_foto",
-    label: "Handcam Foto",
-    kindLabel: "Foto",
+    labelKey: "history.appendPanel.catHandcamFoto",
+    kindLabelKey: "common.labels.photo",
     group: "handcam",
     video: false,
     booked: (v) => v.handcam_foto,
@@ -79,8 +80,8 @@ const CATS: CatDef[] = [
   },
   {
     id: "handcam_video",
-    label: "Handcam Video",
-    kindLabel: "Video",
+    labelKey: "history.appendPanel.catHandcamVideo",
+    kindLabelKey: "common.labels.video",
     group: "handcam",
     video: true,
     booked: (v) => v.handcam_video,
@@ -88,8 +89,8 @@ const CATS: CatDef[] = [
   },
   {
     id: "outside_foto",
-    label: "Outside Foto",
-    kindLabel: "Foto",
+    labelKey: "history.appendPanel.catOutsideFoto",
+    kindLabelKey: "common.labels.photo",
     group: "outside",
     video: false,
     booked: (v) => v.outside_foto,
@@ -97,8 +98,8 @@ const CATS: CatDef[] = [
   },
   {
     id: "outside_video",
-    label: "Outside Video",
-    kindLabel: "Video",
+    labelKey: "history.appendPanel.catOutsideVideo",
+    kindLabelKey: "common.labels.video",
     group: "outside",
     video: true,
     booked: (v) => v.outside_video,
@@ -106,9 +107,9 @@ const CATS: CatDef[] = [
   },
 ];
 
-const CAT_GROUPS: { id: CatGroupId; label: string }[] = [
-  { id: "handcam", label: "Handcam" },
-  { id: "outside", label: "Outside" },
+const CAT_GROUPS: { id: CatGroupId; labelKey: string }[] = [
+  { id: "handcam", labelKey: "history.appendPanel.groupHandcam" },
+  { id: "outside", labelKey: "history.appendPanel.groupOutside" },
 ];
 
 function basename(path: string): string {
@@ -130,12 +131,20 @@ function defaultPreviewForCategory(v: VorgangEntry, id: AppendCategoryId): boole
   return categoryNotPaid(v, id);
 }
 
-function itemModeLabel(v: VorgangEntry, item: DraftItem): string {
+function itemModeLabel(
+  v: VorgangEntry,
+  item: DraftItem,
+  t: (key: string) => string,
+): string {
   const c = catDef(item.category);
-  if (!c) return item.preview ? "Original + Preview" : "Original";
-  if (c.booked(v) && c.paid(v)) return "Original";
-  if (item.preview) return "Original + Preview";
-  return "Original";
+  if (!c) {
+    return item.preview
+      ? t("history.appendPanel.modeOriginalPreview")
+      : t("history.appendPanel.modeOriginal");
+  }
+  if (c.booked(v) && c.paid(v)) return t("history.appendPanel.modeOriginal");
+  if (item.preview) return t("history.appendPanel.modeOriginalPreview");
+  return t("history.appendPanel.modeOriginal");
 }
 
 function categoryStatus(v: VorgangEntry | null, c: CatDef): CatStatus {
@@ -144,51 +153,65 @@ function categoryStatus(v: VorgangEntry | null, c: CatDef): CatStatus {
   return "paid";
 }
 
-function CatStatusChip({ status }: { status: CatStatus }) {
+function CatStatusChip({
+  status,
+  t,
+}: {
+  status: CatStatus;
+  t: (key: string) => string;
+}) {
   if (status === "paid") {
     return (
       <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-emerald-900 dark:text-emerald-100">
         <Check className="size-2.5 shrink-0" strokeWidth={2.5} aria-hidden />
-        Bezahlt
+        {t("history.appendPanel.statusPaid")}
       </span>
     );
   }
   if (status === "open") {
     return (
       <span className="inline-flex items-center rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-950 dark:text-amber-100">
-        Offen
+        {t("history.appendPanel.statusOpen")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-      Nicht gebucht
+      {t("history.appendPanel.statusNew")}
     </span>
   );
 }
 
-const STATUS_HINT: Record<CatStatus, { text: string; className: string }> = {
-  paid: {
-    text: "Bezahlt — Dateien werden als Original nachgereicht.",
-    className:
-      "border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
-  },
-  open: {
-    text: "Nicht bezahlt — Originale plus optionale Preview mit Wasserzeichen.",
-    className:
-      "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100",
-  },
-  new: {
-    text: "Nicht gebucht — Originale plus optionale Preview mit Wasserzeichen.",
-    className: "border-border/60 bg-muted/20 text-muted-foreground",
-  },
-};
+function statusHintFor(
+  status: CatStatus,
+  t: (key: string) => string,
+): { text: string; className: string } {
+  const hints: Record<CatStatus, { textKey: string; className: string }> = {
+    paid: {
+      textKey: "history.appendPanel.hintPaid",
+      className:
+        "border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+    },
+    open: {
+      textKey: "history.appendPanel.hintOpen",
+      className:
+        "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100",
+    },
+    new: {
+      textKey: "history.appendPanel.hintNew",
+      className: "border-border/60 bg-muted/20 text-muted-foreground",
+    },
+  };
+  const h = hints[status];
+  return { text: t(h.textKey), className: h.className };
+}
 
 export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
   function AppendMediaPanel(
     { vorgang, onBack, onSubmit, onPickingFilesChange },
     ref,
   ) {
+    const { t } = useTranslation();
     const [category, setCategory] = useState<AppendCategoryId>("handcam_foto");
     const [items, setItems] = useState<DraftItem[]>([]);
     const [busy, setBusy] = useState(false);
@@ -203,7 +226,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
     const selectedStatus = activeCat
       ? categoryStatus(vorgang, activeCat)
       : "new";
-    const statusHint = STATUS_HINT[selectedStatus];
+    const statusHint = statusHintFor(selectedStatus, t);
 
     const groupedItems = useMemo(
       () =>
@@ -248,9 +271,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
       void amsBridgeHealth()
         .then((h) => {
           if (h.ok && h.health && !h.health.capabilities.includes("append-v1")) {
-            setCapWarning(
-              "Nachreichen ist auf diesem Rechner noch nicht möglich. Bitte Support bitten, die Software zu aktualisieren — sonst entsteht ein neuer Kundenordner.",
-            );
+            setCapWarning(t("history.appendPanel.capWarning"));
           }
         })
         .catch(() => {
@@ -307,14 +328,14 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
           if (expanded.length === 0) {
             setError(
               cat.video
-                ? "Keine unterstützten Videos gefunden."
-                : "Keine unterstützten Fotos gefunden.",
+                ? t("history.appendPanel.noVideos")
+                : t("history.appendPanel.noPhotos"),
             );
           } else if (skippedKind > 0) {
             setError(
               cat.video
-                ? "Bitte Videos ablegen (aktuelle Kategorie ist Video)."
-                : "Bitte Fotos ablegen (aktuelle Kategorie ist Foto).",
+                ? t("history.appendPanel.wrongKindVideo")
+                : t("history.appendPanel.wrongKindPhoto"),
             );
           }
           return;
@@ -385,11 +406,15 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
       onPickingFilesChange?.(true);
       try {
         selected = await openDialog({
-          title: cat.video ? "Videos wählen" : "Fotos wählen",
+          title: cat.video
+            ? t("history.appendPanel.pickVideos")
+            : t("history.appendPanel.pickPhotos"),
           multiple: true,
           filters: [
             {
-              name: cat.video ? "Video" : "Fotos",
+              name: cat.video
+                ? t("common.labels.videos")
+                : t("common.labels.photos"),
               extensions: [
                 ...(cat.video ? VIDEO_EXTENSIONS : PHOTO_EXTENSIONS),
               ],
@@ -415,7 +440,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
       onPickingFilesChange?.(true);
       try {
         selected = await openDialog({
-          title: "Ordner wählen",
+          title: t("history.appendPanel.pickFolder"),
           directory: true,
           multiple: false,
         });
@@ -453,9 +478,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
         (i) => categoryNotPaid(vorgang, i.category) && !catDef(i.category)?.video,
       );
       if (notPaidPhotos.length > 0 && !notPaidPhotos.some((i) => i.preview)) {
-        setError(
-          "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.",
-        );
+        setError(t("history.appendPanel.previewPhotoRequired"));
         return;
       }
 
@@ -463,9 +486,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
         (i) => categoryNotPaid(vorgang, i.category) && catDef(i.category)?.video,
       );
       if (notPaidVideos.length > 0 && !notPaidVideos.some((i) => i.preview)) {
-        setError(
-          "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.",
-        );
+        setError(t("history.appendPanel.previewVideoRequired"));
         return;
       }
 
@@ -496,11 +517,11 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
             className="inline-flex items-center justify-self-start rounded-md py-1 pr-2 text-[15px] font-normal text-primary transition hover:brightness-110 disabled:opacity-40"
           >
             <ChevronLeft className="size-5 shrink-0" strokeWidth={2.25} />
-            Historie
+            {t("history.title")}
           </button>
           <div className="min-w-0 text-center">
             <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-              Nachreichen
+              {t("history.appendDialogTitle")}
             </h2>
             <p className="truncate text-[11px] leading-tight text-muted">
               {vorgang.gast}
@@ -517,7 +538,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                 : "cursor-not-allowed text-muted/40",
             )}
           >
-            Senden
+            {t("history.appendPanel.send")}
           </button>
         </header>
 
@@ -531,17 +552,17 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
           <section className="flex min-h-0 flex-col gap-3 overflow-y-auto border-b border-border/60 p-3 lg:border-b-0 lg:border-r">
             <div>
               <h3 className="px-1 pb-1.5 text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                Produkt
+                {t("history.appendPanel.productTitle")}
               </h3>
               <div
                 className="space-y-3"
                 role="radiogroup"
-                aria-label="Produkt für Nachreichen"
+                aria-label={t("history.appendPanel.productAria")}
               >
                 {CAT_GROUPS.map((group) => (
                   <div key={group.id}>
                     <p className="px-1 pb-1 text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                      {group.label}
+                      {t(group.labelKey)}
                     </p>
                     <div className="overflow-hidden rounded-xl bg-card-elevated ring-1 ring-border/60">
                       {CATS.filter((c) => c.group === group.id).map((c, idx, arr) => {
@@ -582,10 +603,10 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                             </span>
                             <span className="min-w-0 flex-1">
                               <span className="block text-[15px] font-medium leading-tight">
-                                {c.kindLabel}
+                                {t(c.labelKey)}
                               </span>
                               <span className="mt-1 block">
-                                <CatStatusChip status={status} />
+                                <CatStatusChip status={status} t={t} />
                               </span>
                             </span>
                             {active ? (
@@ -634,8 +655,8 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
               role="region"
               aria-label={
                 activeCat?.video
-                  ? "Videos oder Ordner hierher ziehen"
-                  : "Fotos oder Ordner hierher ziehen"
+                  ? t("history.appendPanel.dropVideos")
+                  : t("history.appendPanel.dropPhotos")
               }
             >
               <div
@@ -659,15 +680,15 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                 </div>
                 <p className="mb-0.5 text-[13px] font-medium leading-5 text-foreground">
                   {dragOver
-                    ? "Loslassen zum Hinzufügen"
+                    ? t("history.appendPanel.dropRelease")
                     : activeCat?.video
-                      ? "Videos oder Ordner hierher ziehen"
-                      : "Fotos oder Ordner hierher ziehen"}
+                      ? t("history.appendPanel.dropVideos")
+                      : t("history.appendPanel.dropPhotos")}
                 </p>
                 <p className="mb-3 text-[11px] leading-4 text-muted">
                   {activeCat?.video
-                    ? "Ordner rekursiv · .mp4, .mov …"
-                    : "Ordner rekursiv · .jpg, .png, .webp …"}
+                    ? t("history.appendPanel.dropHintVideo")
+                    : t("history.appendPanel.dropHintPhoto")}
                 </p>
                 <div className="flex flex-wrap items-center justify-center gap-1.5">
                   <Button
@@ -677,7 +698,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                     disabled={busy}
                     onClick={() => void addFiles()}
                   >
-                    Dateien wählen…
+                    {t("history.appendPanel.pickFilesBtn")}
                   </Button>
                   <Button
                     type="button"
@@ -688,7 +709,7 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                     onClick={() => void addFolder()}
                   >
                     <FolderOpen className="h-3.5 w-3.5" />
-                    Ordner wählen…
+                    {t("history.appendPanel.pickFolderBtn")}
                   </Button>
                 </div>
               </div>
@@ -702,12 +723,14 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
           <section className="flex min-h-0 flex-col bg-card-elevated/40">
             <div className="flex shrink-0 items-baseline justify-between gap-2 px-4 py-2.5">
               <h3 className="text-[13px] font-semibold tracking-tight text-foreground">
-                Dateien
+                {t("history.files")}
               </h3>
               <span className="text-[13px] tabular-nums text-muted">
                 {items.length === 0
-                  ? "Keine"
-                  : `${items.length} ${items.length === 1 ? "Datei" : "Dateien"}`}
+                  ? t("history.appendPanel.noneCount")
+                  : items.length === 1
+                    ? t("history.appendPanel.fileCountOne", { count: items.length })
+                    : t("history.appendPanel.fileCountMany", { count: items.length })}
               </span>
             </div>
 
@@ -722,11 +745,10 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                     )}
                   </div>
                   <p className="text-[15px] font-medium text-foreground">
-                    Noch keine Dateien
+                    {t("history.appendPanel.emptyFiles")}
                   </p>
                   <p className="mt-1 max-w-[16rem] text-[13px] leading-5 text-muted">
-                    Dateien dem gewählten Produkt zuordnen. Bei offenen oder neuen
-                    Optionen pro Datei Preview markieren.
+                    {t("history.appendPanel.emptyFilesHint")}
                   </p>
                 </div>
               ) : (
@@ -739,14 +761,14 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                       <div key={cat.id}>
                         <div className="flex items-center justify-between gap-2 px-1 pb-1">
                           <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                            {cat.label}
+                            {t(cat.labelKey)}
                             <span className="ml-1.5 tabular-nums font-medium tracking-normal text-muted/80">
                               {groupItems.length}
                             </span>
                           </p>
                           {showPreview ? (
                             <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-muted">
-                              Preview
+                              {t("history.appendPanel.previewLabel")}
                               <Switch
                                 checked={allPreview}
                                 disabled={busy}
@@ -790,14 +812,16 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                                   {item.name}
                                 </div>
                                 <div className="truncate text-[11px] text-muted">
-                                  {itemModeLabel(vorgang, item)}
+                                  {itemModeLabel(vorgang, item, t)}
                                 </div>
                               </div>
                               {showPreview ? (
                                 <Switch
                                   checked={item.preview}
                                   disabled={busy}
-                                  aria-label={`Preview für ${item.name}`}
+                                  aria-label={t("history.appendPanel.previewAria", {
+                                    name: item.name,
+                                  })}
                                   onCheckedChange={(v) =>
                                     toggleItemPreview(item.path, v)
                                   }
@@ -807,7 +831,9 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                                 type="button"
                                 disabled={busy}
                                 className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-black/6 hover:text-foreground disabled:opacity-40 dark:hover:bg-white/8"
-                                aria-label={`${item.name} entfernen`}
+                                aria-label={t("history.appendPanel.removeItemAria", {
+                                  name: item.name,
+                                })}
                                 onClick={() => removeItem(item.path)}
                               >
                                 <X className="size-3.5" strokeWidth={2.25} />
@@ -837,15 +863,15 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                   id="append-discard-title"
                   className="text-[17px] font-semibold tracking-tight"
                 >
-                  Änderungen verwerfen?
+                  {t("history.appendPanel.discardTitle")}
                 </p>
                 <p
                   id="append-discard-desc"
                   className="mt-1.5 text-[13px] leading-5 text-muted"
                 >
                   {items.length === 1
-                    ? "Die ausgewählte Datei wird nicht gesendet."
-                    : `Die ${items.length} ausgewählten Dateien werden nicht gesendet.`}
+                    ? t("history.appendPanel.discardOne")
+                    : t("history.appendPanel.discardMany", { count: items.length })}
                 </p>
               </div>
               <div className="flex flex-col border-t border-border/60">
@@ -854,14 +880,14 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
                   className="px-4 py-3 text-[17px] font-semibold text-destructive transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                   onClick={onBack}
                 >
-                  Verwerfen
+                  {t("history.appendPanel.discard")}
                 </button>
                 <button
                   type="button"
                   className="border-t border-border/60 px-4 py-3 text-[17px] font-normal text-primary transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                   onClick={() => setDiscardOpen(false)}
                 >
-                  Weiter bearbeiten
+                  {t("history.appendPanel.continueEditing")}
                 </button>
               </div>
             </div>

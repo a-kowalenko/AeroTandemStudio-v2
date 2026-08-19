@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { QrPreview } from "@/lib/tauri";
+import { tr } from "@/i18n";
 
 export type DialogKind = "error" | "success" | "warning" | null;
 
@@ -158,18 +159,18 @@ export const useUiStore = create<UiState>((set) => ({
   settingsFocusNonce: 0,
   createReadyPulsePending: false,
 
-  showError: (message, title = "Fehler", options) =>
+  showError: (message, title, options) =>
     set({
       dialogKind: "error",
       ...emptyDialogFields,
-      dialogTitle: title,
+      dialogTitle: title ?? tr("dialogs.error.defaultTitle"),
       dialogMessage: message,
       dialogPrimaryAction: options?.primaryAction ?? null,
     }),
-  showSuccess: (message, title = "Erfolg", options) =>
+  showSuccess: (message, title, options) =>
     set({
       dialogKind: "success",
-      dialogTitle: title,
+      dialogTitle: title ?? tr("dialogs.success.defaultTitle"),
       dialogMessage: message,
       dialogAutoCloseSecs:
         options?.autoCloseSecs && options.autoCloseSecs > 0
@@ -183,11 +184,11 @@ export const useUiStore = create<UiState>((set) => ({
       dialogConfirm: options?.confirm ?? null,
       dialogChoices: options?.choices ?? null,
     }),
-  showWarning: (message, title = "Hinweis", options) =>
+  showWarning: (message, title, options) =>
     set({
       dialogKind: "warning",
       ...emptyDialogFields,
-      dialogTitle: title,
+      dialogTitle: title ?? tr("dialogs.warning.defaultTitle"),
       dialogMessage: message,
       dialogAutoCloseSecs:
         options?.autoCloseSecs && options.autoCloseSecs > 0
@@ -199,8 +200,8 @@ export const useUiStore = create<UiState>((set) => ({
       dialogKind: null,
       ...emptyDialogFields,
     }),
-  setLoading: (loading, message = "Bitte warten…") =>
-    set({ loading, loadingMessage: message }),
+  setLoading: (loading, message) =>
+    set({ loading, loadingMessage: message ?? tr("common.actions.pleaseWait") }),
   setSettingsOpen: (open) =>
     set((state) =>
       open

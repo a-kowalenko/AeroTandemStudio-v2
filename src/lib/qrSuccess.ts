@@ -8,6 +8,11 @@ import {
 } from "@/lib/qrCleanup";
 import type { DialogActionStatus, DialogOptions } from "@/store/uiStore";
 
+export function qrSuccessTitle(): string {
+  return tr("app.qr.recognized");
+}
+
+/** @deprecated Use qrSuccessTitle() for i18n. */
 export const QR_SUCCESS_TITLE = "QR-Code erkannt";
 
 export function kundeDisplayName(
@@ -67,7 +72,7 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
   const action = buildQrSuccessAction(input);
 
   return {
-    title: QR_SUCCESS_TITLE,
+    title: qrSuccessTitle(),
     // Body lives in action tiles; keep message empty to avoid duplicate text.
     message: "",
     options: {

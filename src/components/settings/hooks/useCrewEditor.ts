@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AppConfig, CrewMember } from "@/lib/tauri";
 import { syncOperatorName } from "@/lib/tauri";
 import { useUiStore } from "@/store/uiStore";
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function useCrewEditor({ draft, patch, setDraft }: Props) {
+  const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const [crewDraft, setCrewDraft] = useState<CrewMember>({
@@ -45,7 +47,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
     if (!draft) return;
     const name = crewDraft.name.trim();
     if (!name) {
-      showError("Bitte einen Namen eingeben.", "Crew");
+      showError(t("settings.crew.errors.nameRequired"), t("settings.tabs.crew"));
       return;
     }
     const duplicate = crewList.some(
@@ -54,7 +56,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
         i !== crewEditIndex,
     );
     if (duplicate) {
-      showError("Dieser Name ist bereits in der Liste.", "Crew");
+      showError(t("settings.crew.errors.duplicate"), t("settings.tabs.crew"));
       return;
     }
     const list = [...crewList];
@@ -103,7 +105,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
     );
     const updated = list[index];
     if (updated && !updated.tandemmaster && !updated.videospringer) {
-      showError("Mindestens eine Rolle muss aktiv sein.", "Crew");
+      showError(t("settings.crew.errors.roleRequired"), t("settings.tabs.crew"));
       return;
     }
     patch("crew_list", list);
@@ -113,7 +115,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
     if (!draft) return;
     const member = crewList[index];
     if (!member) return;
-    if (!window.confirm(`„${member.name}“ aus der Crew-Liste entfernen?`)) return;
+    if (!window.confirm(t("settings.crew.errors.removeConfirm", { name: member.name }))) return;
     const nextOperator = syncOperatorName(
       draft.operator_name,
       member.name,
@@ -132,8 +134,8 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
     );
     if (clearedOperator) {
       showSuccess(
-        `„${member.name}“ entfernt — Favorit („Ich“) zurückgesetzt.`,
-        "Crew",
+        t("settings.crew.errors.removedFavorite", { name: member.name }),
+        t("settings.tabs.crew"),
       );
     }
     if (crewEditIndex === index) resetCrewForm();

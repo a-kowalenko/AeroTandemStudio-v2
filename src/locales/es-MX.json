@@ -127,6 +127,14 @@
       "noneSet": "No hay carpeta definida.",
       "toastTitle": "Carpeta"
     },
+    "save": {
+      "pickBackup": "Elige una carpeta de respaldo.",
+      "pickSecondBackup": "Elige una segunda carpeta de respaldo o desactiva la opción.",
+      "operatorRole": "«Soy»: asigna al menos un rol o elige un nombre del equipo existente.",
+      "failed": "No se pudieron guardar los ajustes.",
+      "success": "Ajustes guardados.",
+      "resetFailed": "No se pudieron restaurar los ajustes predeterminados."
+    },
     "crew": {
       "who": {
         "title": "¿Quién eres?",
@@ -152,6 +160,13 @@
         "action": "Acción",
         "me": "(Yo)",
         "ariaRole": "{{name}}: {{role}}"
+      },
+      "errors": {
+        "nameRequired": "Ingresa un nombre.",
+        "duplicate": "Este nombre ya está en la lista.",
+        "roleRequired": "Al menos un rol debe estar activo.",
+        "removeConfirm": "¿Quitar «{{name}}» de la lista del equipo?",
+        "removedFavorite": "«{{name}}» quitado — favorito («Soy») restablecido."
       },
       "keep": {
         "off": "No conservar",
@@ -682,6 +697,9 @@
     },
     "server": {
       "title": "Servidor"
+    },
+    "ffmpeg": {
+      "title": "FFmpeg"
     }
   },
   "form": {
@@ -825,6 +843,11 @@
       "fileTitle": "Archivo",
       "pathCopied": "Ruta copiada al portapapeles.",
       "pathTitle": "Ruta"
+    },
+    "import": {
+      "noValidVideos": "No se encontraron archivos de video válidos",
+      "noValidPhotos": "No se encontraron archivos de foto válidos",
+      "allAlreadyListed": "Todos los archivos ya están en la lista"
     }
   },
   "workflow": {
@@ -857,6 +880,55 @@
     "appendSuccess": "{{count}} archivo(s) entregados ({{folder}}).\nEstado en “Reenvío” del historial.",
     "appendDialogTitle": "Reenviar",
     "appendCancelled": "Reenvío cancelado.",
+    "appendPanel": {
+      "capWarning": "El reenvío aún no está disponible en esta computadora. Pide a soporte actualizar el software; de lo contrario se creará una carpeta nueva.",
+      "noVideos": "No se encontraron videos compatibles.",
+      "noPhotos": "No se encontraron fotos compatibles.",
+      "wrongKindVideo": "Suelta videos (la categoría actual es video).",
+      "wrongKindPhoto": "Suelta fotos (la categoría actual es foto).",
+      "pickVideos": "Elegir videos",
+      "pickPhotos": "Elegir fotos",
+      "pickFolder": "Elegir carpeta",
+      "previewPhotoRequired": "El producto foto no está pagado — elige al menos una foto para la marca de agua.",
+      "previewVideoRequired": "El producto video no está pagado — elige al menos un video para la vista previa.",
+      "dropVideos": "Arrastra videos o carpetas aquí",
+      "dropPhotos": "Arrastra fotos o carpetas aquí",
+      "dropRelease": "Suelta para agregar",
+      "dropHintVideo": "Carpetas recursivas · .mp4, .mov …",
+      "dropHintPhoto": "Carpetas recursivas · .jpg, .png, .webp …",
+      "discardOne": "El archivo seleccionado no se enviará.",
+      "discardMany": "Los {{count}} archivos seleccionados no se enviarán.",
+      "productAria": "Producto para reenvío",
+      "previewAria": "Vista previa de {{name}}",
+      "modeOriginalPreview": "Original + vista previa",
+      "modeOriginal": "Original",
+      "statusPaid": "Pagado",
+      "statusOpen": "Abierto",
+      "statusNew": "Sin reservar",
+      "hintPaid": "Pagado — los archivos se reenvían como originales.",
+      "hintOpen": "No pagado — originales más vista previa opcional con marca de agua.",
+      "hintNew": "Sin reservar — originales más vista previa opcional con marca de agua.",
+      "catHandcamFoto": "Foto Handcam",
+      "catHandcamVideo": "Video Handcam",
+      "catOutsideFoto": "Foto Outside",
+      "catOutsideVideo": "Video Outside",
+      "groupHandcam": "Handcam",
+      "groupOutside": "Outside",
+      "productTitle": "Producto",
+      "discardTitle": "¿Descartar cambios?",
+      "discard": "Descartar",
+      "continueEditing": "Seguir editando",
+      "removeItemAria": "Quitar {{name}}",
+      "send": "Enviar",
+      "pickFilesBtn": "Elegir archivos…",
+      "pickFolderBtn": "Elegir carpeta…",
+      "emptyFiles": "Aún no hay archivos",
+      "emptyFilesHint": "Asigna archivos al producto seleccionado. Para productos abiertos o nuevos, opcionalmente se puede enviar una vista previa con marca de agua.",
+      "fileCountOne": "{{count}} archivo",
+      "fileCountMany": "{{count}} archivos",
+      "noneCount": "Ninguno",
+      "previewLabel": "Vista previa"
+    },
     "filters": {
       "all": "Todos",
       "open": "Abiertos",
@@ -968,6 +1040,23 @@
       "onlineOnly": "Solo para trabajos en línea, no locales",
       "customerNotFound": "Cliente no encontrado en la reserva"
     },
+    "lookup": {
+      "foundTitle": "Cliente encontrado",
+      "searching": "Buscando…",
+      "notFound": "Cliente no encontrado",
+      "minDigits": "Al menos {{count}} dígitos",
+      "customerFallback": "Cliente",
+      "foundLine": "Encontrado: {{name}}",
+      "foundLineMedia": "Encontrado: {{name}} · {{media}}",
+      "overrideBody": "Anterior: {{previous}}\nReserva: {{next}}\n\n¿Aplicar estos datos?\nLugar, fecha y equipo se conservan.",
+      "typeChoiceBody": "Estos IDs tienen datos Handcam y Outside.\nElige el tipo de medio.",
+      "typeChoiceTitle": "Elegir tipo de medio",
+      "keep": "Conservar",
+      "apply": "Aplicar",
+      "videoPaid": "Video (pagado)",
+      "photoPaid": "Foto (pagada)",
+      "lanMultipleBody": "Se encontraron varias búsquedas de reserva (AMS) en la LAN.\nElige qué instancia usar."
+    },
     "handoff": {
       "steps": {
         "pending": "Transferido",
@@ -1012,11 +1101,59 @@
     }
   },
   "qr": {
+    "confirm": {
+      "manualEntry": "Entrada manual",
+      "newCustomer": "Cliente nuevo",
+      "currentCustomer": "Cliente actual",
+      "switchBody": "Actual: {{previous}}\nNuevo: {{next}}\n\n¿Cambiar datos del cliente? Los medios se conservan.",
+      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\n¿Descartar datos manuales y aplicar QR?\nLugar, fecha y equipo se conservan.",
+      "switchPrimary": "Cambiar",
+      "overridePrimary": "Aplicar QR",
+      "keep": "Conservar",
+      "switchSummary": "Otro cliente reconocido",
+      "overrideSummary": "Sobrescribir entrada manual",
+      "keepExistingSummary": "Conservar cliente existente",
+      "ignoredScan": "Escaneo nuevo ignorado",
+      "ignoredScanNamed": "Escaneo nuevo ignorado: {{name}}",
+      "ignoredQr": "QR ignorado",
+      "ignoredQrNamed": "QR ignorado: {{name}}",
+      "keepManualSummary": "Conservar entrada manual",
+      "label": "Código QR"
+    },
     "progress": {
       "pending": "Esperando búsqueda QR…",
       "found": "Código QR encontrado",
       "removed": "Quitado de la lista",
-      "checked": "Código QR revisado"
+      "checked": "Código QR revisado",
+      "photosCheckedOne": "1 foto revisada",
+      "photosCheckedMany": "{{count}} fotos revisadas",
+      "extraHitsOne": "1 coincidencia adicional",
+      "extraHitsMany": "{{count}} coincidencias adicionales",
+      "photosRemovedOne": "1 foto quitada",
+      "photosRemovedMany": "{{count}} fotos quitadas",
+      "currentFile": "ahora: {{name}}",
+      "foundFile": "encontrado: {{name}}",
+      "missFile": "sin código: {{name}}",
+      "neighborSeries": "Fotos vecinas de la serie…",
+      "removingQrPhotos": "Quitando fotos QR de la lista…",
+      "checkingNeighbors": "QR encontrado — revisando fotos vecinas…",
+      "readingVideo": "Leyendo video para búsqueda QR…",
+      "thorough": "Revisando código QR a fondo…",
+      "scanVideos": "Buscando código QR en videos…",
+      "scanPhotos": "Buscando código QR en fotos…",
+      "scanGeneric": "Buscando código QR…",
+      "filesDone": "{{finished}} de {{total}} {{unit}} listos",
+      "unitPhotos": "Fotos",
+      "unitVideos": "Videos",
+      "unitFiles": "Archivos",
+      "edgesLimited": "Bordes ({{count}} c/u)",
+      "hitFound": "Coincidencia encontrada",
+      "preparingClip": "Preparando clip…",
+      "thoroughSpots": "Revisando puntos con más detalle…",
+      "fastSpots": "Revisando puntos del clip…",
+      "parallelCount": "{{count}} en paralelo",
+      "checking": "revisando…",
+      "preparing": "Preparando…"
     }
   },
   "video": {
@@ -1145,7 +1282,28 @@
       "subtitleUsbOk": "Sesión terminada — dispositivo quitado de la lista",
       "subtitleOk": "Se puede retirar con seguridad",
       "subtitleUsbError": "Desconecta la cámara USB manualmente",
-      "subtitleError": "Retira la tarjeta manualmente y con seguridad"
+      "subtitleError": "Retira la tarjeta manualmente y con seguridad",
+      "usbHint": "USB liberado — desconecta el cable y vuelve a conectar para importar."
+    },
+    "monitor": {
+      "title": "Monitor SD",
+      "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
+      "secondaryBackupTitle": "Respaldo en servidor"
+    },
+    "catalog": {
+      "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
+      "mtpEmpty": "No se encontraron medios en la cámara.",
+      "sdEmpty": "No se encontraron archivos de medios en la tarjeta SD."
+    },
+    "fileSelectorUi": {
+      "drive": "Unidad {{drive}}",
+      "sdCard": "Tarjeta SD",
+      "videoCount": "{{count}} videos",
+      "photoCount": "{{count}} fotos",
+      "clearAfterBackup": "Vaciar tarjeta SD tras respaldo exitoso",
+      "scanQrAfterImport": "Revisar medios importados en busca de código QR",
+      "typeVideo": "Video",
+      "typePhoto": "Foto"
     },
     "mode": {
       "autoTip": "Tras detectar: respaldar, importar, limpiar y expulsar según la configuración, sin preguntar.",
@@ -1235,7 +1393,11 @@
       "storageMissingHint": "Sin una ubicacion de almacenamiento, los trabajos no se pueden guardar. Puedes definirla despues en la configuracion."
     },
     "finish": "Finalizar configuración",
-    "skipAll": "Omitir toda la configuración"
+    "skipAll": "Omitir toda la configuración",
+    "saveFailed": "No se pudieron guardar los ajustes.",
+    "complete": "Configuración completada.",
+    "completeTitle": "Éxito",
+    "standardFolderTitle": "Carpeta predeterminada"
   },
   "dateField": {
     "chooseDateAria": "Elegir fecha",

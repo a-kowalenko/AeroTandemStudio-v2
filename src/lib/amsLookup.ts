@@ -1,6 +1,7 @@
 /** AMS ID-lookup mapping (Phase 25). No hashes; `form_mode` stays `manual`. */
 
 import type { AmsBridgeCustomer, Kunde } from "@/lib/tauri";
+import { tr } from "@/i18n";
 import { kundeDisplayName } from "@/lib/qrSuccess";
 
 export type { AmsBridgeCustomer };
@@ -29,7 +30,7 @@ export function isLookupIdPairReady(
 export function lookupIdLengthHint(id: string | null | undefined): string | null {
   const t = (id ?? "").trim();
   if (t.length === 0 || isLookupIdReady(t)) return null;
-  return `Mindestens ${AMS_LOOKUP_MIN_ID_DIGITS} Ziffern`;
+  return tr("ams.lookup.minDigits", { count: AMS_LOOKUP_MIN_ID_DIGITS });
 }
 
 function trimToNull(value: string | null | undefined): string | null {
@@ -107,10 +108,10 @@ export function formatTypeChoiceDetail(
       ? customer.ist_bezahlt_handcam_video
       : customer.ist_bezahlt_outside_video;
   const kinds = [
-    video ? (videoPaid ? "Video (bezahlt)" : "Video") : "",
-    foto ? (fotoPaid ? "Foto (bezahlt)" : "Foto") : "",
+    video ? (videoPaid ? tr("ams.lookup.videoPaid") : tr("common.labels.video")) : "",
+    foto ? (fotoPaid ? tr("ams.lookup.photoPaid") : tr("common.labels.photo")) : "",
   ].filter(Boolean);
-  const media = kinds.length ? kinds.join(" · ") : family === "handcam" ? "Handcam" : "Outside";
+  const media = kinds.length ? kinds.join(" · ") : family === "handcam" ? tr("history.appendPanel.groupHandcam") : tr("history.appendPanel.groupOutside");
   return name ? `${name} · ${media}` : media;
 }
 
@@ -232,8 +233,8 @@ function mediaParts(kunde: Pick<
   const mode = kunde.video_mode;
   const foto = mode === "handcam" ? kunde.handcam_foto : kunde.outside_foto;
   const video = mode === "handcam" ? kunde.handcam_video : kunde.outside_video;
-  const family = mode === "handcam" ? "Handcam" : mode === "outside" ? "Outside" : "";
-  const kinds = [foto ? "Foto" : "", video ? "Video" : ""].filter(Boolean);
+  const family = mode === "handcam" ? tr("history.appendPanel.groupHandcam") : mode === "outside" ? tr("history.appendPanel.groupOutside") : "";
+  const kinds = [foto ? tr("common.labels.photo") : "", video ? tr("common.labels.video") : ""].filter(Boolean);
   return { family, kinds };
 }
 
@@ -266,12 +267,16 @@ function mediaToastLabel(kunde: Pick<
   return `${family} · ${kinds.join("/")}`;
 }
 
-export const AMS_LOOKUP_FOUND_TITLE = "Kunde gefunden";
+export function amsLookupFoundTitle(): string {
+  return tr("ams.lookup.foundTitle");
+}
 
 export function formatAmsLookupFoundLine(kunde: Kunde): string {
-  const name = kundeDisplayName(kunde) || "Kunde";
+  const name = kundeDisplayName(kunde) || tr("ams.lookup.customerFallback");
   const media = mediaStatusLabel(kunde);
-  return media ? `Gefunden: ${name} · ${media}` : `Gefunden: ${name}`;
+  return media
+    ? tr("ams.lookup.foundLineMedia", { name, media })
+    : tr("ams.lookup.foundLine", { name });
 }
 
 export function formatAmsLookupFoundToast(kunde: Kunde): {
@@ -280,8 +285,8 @@ export function formatAmsLookupFoundToast(kunde: Kunde): {
   media: string;
 } {
   return {
-    title: AMS_LOOKUP_FOUND_TITLE,
-    name: kundeDisplayName(kunde) || "Kunde",
+    title: amsLookupFoundTitle(),
+    name: kundeDisplayName(kunde) || tr("ams.lookup.customerFallback"),
     media: mediaToastLabel(kunde),
   };
 }
@@ -293,11 +298,21 @@ export type AmsLookupStatus = {
   text: string;
 };
 
+export function amsLookupStatusSearching(): AmsLookupStatus {
+  return { kind: "searching", text: tr("ams.lookup.searching") };
+}
+
+export function amsLookupStatusNotFound(): AmsLookupStatus {
+  return { kind: "not_found", text: tr("ams.lookup.notFound") };
+}
+
+/** @deprecated Use amsLookupStatusSearching() for i18n. */
 export const AMS_LOOKUP_STATUS_SEARCHING: AmsLookupStatus = {
   kind: "searching",
   text: "Suche…",
 };
 
+/** @deprecated Use amsLookupStatusNotFound() for i18n. */
 export const AMS_LOOKUP_STATUS_NOT_FOUND: AmsLookupStatus = {
   kind: "not_found",
   text: "Kunde nicht gefunden",

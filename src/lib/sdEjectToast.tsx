@@ -1,4 +1,5 @@
 import toast from "react-hot-toast";
+import { tr } from "@/i18n";
 import { SdEjectToastCard } from "../components/SdEjectToastCard";
 import { listDriveLabel, compactDriveLabel } from "./sdDriveLabel";
 import { useSdStore } from "../store/sdStore";
@@ -13,7 +14,7 @@ export function resolveSdEjectDetail(drive: string): string {
 /** Extra toast line for USB cameras (logical eject ≠ diskutil). */
 export function resolveSdEjectHint(drive: string): string | undefined {
   if (!drive.startsWith("mtp:")) return undefined;
-  return "USB freigegeben — Kabel trennen, erst danach wieder anstecken zum Import.";
+  return tr("sd.eject.usbHint");
 }
 
 /** Lightweight mid-workflow / manual eject feedback (non-blocking). */

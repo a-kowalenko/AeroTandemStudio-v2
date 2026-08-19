@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { VideoMetadata } from "../lib/tauri";
+import { tr } from "@/i18n";
 import { deleteWorkingCopy, importVideos, probeVideo } from "../lib/tauri";
 import { getMediaThumbnail } from "../lib/sdCard";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
@@ -84,9 +85,9 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
         importing: false,
         importError:
           imported.length === 0
-            ? "Keine gültigen Video-Dateien gefunden"
+            ? tr("media.import.noValidVideos")
             : fresh.length === 0 && imported.length > 0
-              ? "Alle Dateien sind bereits in der Liste"
+              ? tr("media.import.allAlreadyListed")
               : null,
       });
       get().ensureDefaultWatermarkClip();

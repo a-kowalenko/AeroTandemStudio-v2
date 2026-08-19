@@ -127,6 +127,14 @@
       "noneSet": "No folder set.",
       "toastTitle": "Folder"
     },
+    "save": {
+      "pickBackup": "Please choose a backup folder.",
+      "pickSecondBackup": "Please choose a second backup folder or disable the option.",
+      "operatorRole": "“Who am I”: Please set at least one role or choose an existing crew name.",
+      "failed": "Settings could not be saved.",
+      "success": "Settings saved.",
+      "resetFailed": "Default settings could not be restored."
+    },
     "crew": {
       "who": {
         "title": "Who are you?",
@@ -152,6 +160,13 @@
         "action": "Action",
         "me": "(Me)",
         "ariaRole": "{{name}}: {{role}}"
+      },
+      "errors": {
+        "nameRequired": "Please enter a name.",
+        "duplicate": "This name is already in the list.",
+        "roleRequired": "At least one role must be active.",
+        "removeConfirm": "Remove “{{name}}” from the crew list?",
+        "removedFavorite": "“{{name}}” removed — favorite (“Me”) reset."
       },
       "keep": {
         "off": "Don't keep",
@@ -682,6 +697,9 @@
     },
     "server": {
       "title": "Server"
+    },
+    "ffmpeg": {
+      "title": "FFmpeg"
     }
   },
   "form": {
@@ -825,6 +843,11 @@
       "fileTitle": "File",
       "pathCopied": "Path copied to clipboard.",
       "pathTitle": "Path"
+    },
+    "import": {
+      "noValidVideos": "No valid video files found",
+      "noValidPhotos": "No valid photo files found",
+      "allAlreadyListed": "All files are already in the list"
     }
   },
   "workflow": {
@@ -857,6 +880,55 @@
     "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in history.",
     "appendDialogTitle": "Append",
     "appendCancelled": "Append cancelled.",
+    "appendPanel": {
+      "capWarning": "Append is not yet available on this computer. Please ask support to update the software — otherwise a new customer folder will be created.",
+      "noVideos": "No supported videos found.",
+      "noPhotos": "No supported photos found.",
+      "wrongKindVideo": "Please drop videos (current category is video).",
+      "wrongKindPhoto": "Please drop photos (current category is photo).",
+      "pickVideos": "Choose videos",
+      "pickPhotos": "Choose photos",
+      "pickFolder": "Choose folder",
+      "previewPhotoRequired": "Photo product is not paid — please select at least one photo for the watermark.",
+      "previewVideoRequired": "Video product is not paid — please select at least one video for the preview.",
+      "dropVideos": "Drop videos or folders here",
+      "dropPhotos": "Drop photos or folders here",
+      "dropRelease": "Release to add",
+      "dropHintVideo": "Folders recursive · .mp4, .mov …",
+      "dropHintPhoto": "Folders recursive · .jpg, .png, .webp …",
+      "discardOne": "The selected file will not be sent.",
+      "discardMany": "The {{count}} selected files will not be sent.",
+      "productAria": "Product for append",
+      "previewAria": "Preview for {{name}}",
+      "modeOriginalPreview": "Original + preview",
+      "modeOriginal": "Original",
+      "statusPaid": "Paid",
+      "statusOpen": "Open",
+      "statusNew": "Not booked",
+      "hintPaid": "Paid — files are appended as originals.",
+      "hintOpen": "Not paid — originals plus optional watermarked preview.",
+      "hintNew": "Not booked — originals plus optional watermarked preview.",
+      "catHandcamFoto": "Handcam photo",
+      "catHandcamVideo": "Handcam video",
+      "catOutsideFoto": "Outside photo",
+      "catOutsideVideo": "Outside video",
+      "groupHandcam": "Handcam",
+      "groupOutside": "Outside",
+      "productTitle": "Product",
+      "discardTitle": "Discard changes?",
+      "discard": "Discard",
+      "continueEditing": "Keep editing",
+      "removeItemAria": "Remove {{name}}",
+      "send": "Send",
+      "pickFilesBtn": "Choose files…",
+      "pickFolderBtn": "Choose folder…",
+      "emptyFiles": "No files yet",
+      "emptyFilesHint": "Assign files to the selected product. For open or new products, an optional watermarked preview can be sent along.",
+      "fileCountOne": "{{count}} file",
+      "fileCountMany": "{{count}} files",
+      "noneCount": "None",
+      "previewLabel": "Preview"
+    },
     "filters": {
       "all": "All",
       "open": "Open",
@@ -968,6 +1040,23 @@
       "onlineOnly": "Only for online jobs, not local",
       "customerNotFound": "Customer not found in booking"
     },
+    "lookup": {
+      "foundTitle": "Customer found",
+      "searching": "Searching…",
+      "notFound": "Customer not found",
+      "minDigits": "At least {{count}} digits",
+      "customerFallback": "Customer",
+      "foundLine": "Found: {{name}}",
+      "foundLineMedia": "Found: {{name}} · {{media}}",
+      "overrideBody": "Previous: {{previous}}\nBooking: {{next}}\n\nApply this data?\nLocation, date and crew are kept.",
+      "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
+      "typeChoiceTitle": "Choose media type",
+      "keep": "Keep",
+      "apply": "Apply",
+      "videoPaid": "Video (paid)",
+      "photoPaid": "Photo (paid)",
+      "lanMultipleBody": "Multiple booking lookups (AMS) found on the LAN.\nPlease choose which instance to use."
+    },
     "handoff": {
       "steps": {
         "pending": "Transferred",
@@ -1012,11 +1101,59 @@
     }
   },
   "qr": {
+    "confirm": {
+      "manualEntry": "Manual entry",
+      "newCustomer": "New customer",
+      "currentCustomer": "Current customer",
+      "switchBody": "Current: {{previous}}\nNew: {{next}}\n\nReally switch customer data? Media is kept.",
+      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\nDiscard manual customer data and apply QR?\nLocation, date and crew are kept.",
+      "switchPrimary": "Switch",
+      "overridePrimary": "Apply QR",
+      "keep": "Keep",
+      "switchSummary": "Different customer recognized",
+      "overrideSummary": "Overwrite manual entry",
+      "keepExistingSummary": "Keep existing customer",
+      "ignoredScan": "New scan ignored",
+      "ignoredScanNamed": "New scan ignored: {{name}}",
+      "ignoredQr": "QR ignored",
+      "ignoredQrNamed": "QR ignored: {{name}}",
+      "keepManualSummary": "Keep manual entry",
+      "label": "QR code"
+    },
     "progress": {
       "pending": "QR search waiting…",
       "found": "QR code found",
       "removed": "Removed from list",
-      "checked": "QR code checked"
+      "checked": "QR code checked",
+      "photosCheckedOne": "1 photo checked",
+      "photosCheckedMany": "{{count}} photos checked",
+      "extraHitsOne": "1 additional hit",
+      "extraHitsMany": "{{count}} additional hits",
+      "photosRemovedOne": "1 photo removed",
+      "photosRemovedMany": "{{count}} photos removed",
+      "currentFile": "now: {{name}}",
+      "foundFile": "found: {{name}}",
+      "missFile": "no code: {{name}}",
+      "neighborSeries": "Neighbor photos in series…",
+      "removingQrPhotos": "Removing QR photos from list…",
+      "checkingNeighbors": "QR found — checking neighboring photos…",
+      "readingVideo": "Reading video for QR search…",
+      "thorough": "Checking QR code thoroughly…",
+      "scanVideos": "Searching for QR code in videos…",
+      "scanPhotos": "Searching for QR code in photos…",
+      "scanGeneric": "Searching for QR code…",
+      "filesDone": "{{finished}} of {{total}} {{unit}} done",
+      "unitPhotos": "Photos",
+      "unitVideos": "Videos",
+      "unitFiles": "Files",
+      "edgesLimited": "Edges ({{count}} each)",
+      "hitFound": "Hit found",
+      "preparingClip": "Preparing clip…",
+      "thoroughSpots": "Checking spots more closely…",
+      "fastSpots": "Checking spots in clip…",
+      "parallelCount": "{{count}} in parallel",
+      "checking": "checking…",
+      "preparing": "Preparing…"
     }
   },
   "video": {
@@ -1145,7 +1282,28 @@
       "subtitleUsbOk": "Session ended — device removed from the list",
       "subtitleOk": "Safe to remove",
       "subtitleUsbError": "Disconnect USB camera manually",
-      "subtitleError": "Remove card manually and safely"
+      "subtitleError": "Remove card manually and safely",
+      "usbHint": "USB released — disconnect the cable, then reconnect to import."
+    },
+    "monitor": {
+      "title": "SD monitor",
+      "secondaryBackupFailed": "Server backup (second path) failed.",
+      "secondaryBackupTitle": "Server backup"
+    },
+    "catalog": {
+      "filteredOnly": "No importable media (timelapse/proxies only).",
+      "mtpEmpty": "No media found on camera.",
+      "sdEmpty": "No media files found on SD card."
+    },
+    "fileSelectorUi": {
+      "drive": "Drive {{drive}}",
+      "sdCard": "SD card",
+      "videoCount": "{{count}} videos",
+      "photoCount": "{{count}} photos",
+      "clearAfterBackup": "Clear SD card after successful backup",
+      "scanQrAfterImport": "Check imported media for QR code",
+      "typeVideo": "Video",
+      "typePhoto": "Photo"
     },
     "mode": {
       "autoTip": "After detection: backup, import, clear, and eject per settings — without asking.",
@@ -1235,7 +1393,11 @@
       "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
     "finish": "Finish setup",
-    "skipAll": "Skip entire setup"
+    "skipAll": "Skip entire setup",
+    "saveFailed": "Settings could not be saved.",
+    "complete": "Setup completed.",
+    "completeTitle": "Success",
+    "standardFolderTitle": "Default folder"
   },
   "dateField": {
     "chooseDateAria": "Choose date",

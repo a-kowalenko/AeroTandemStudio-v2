@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { tr } from "@/i18n";
 import {
   deleteWorkingCopy,
   discardPhotoEditUndoForPath,
@@ -115,8 +116,8 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
           importing: false,
           importError:
             imported.length === 0
-              ? "Keine gültigen Foto-Dateien gefunden"
-              : "Alle Dateien sind bereits in der Liste",
+              ? tr("media.import.noValidPhotos")
+              : tr("media.import.allAlreadyListed"),
         });
         return;
       }

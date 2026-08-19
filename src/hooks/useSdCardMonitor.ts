@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { tr } from "@/i18n";
 import { listen } from "@tauri-apps/api/event";
 import {
   getSdStatus,
@@ -79,7 +80,7 @@ export function useSdCardMonitor(opts?: {
         const ok = await startSdMonitor();
         if (!cancelled) setMonitoring(ok);
       } catch (e) {
-        if (!cancelled) showError(String(e), "SD-Monitor");
+        if (!cancelled) showError(String(e), tr("sd.monitor.title"));
       }
     })();
     return () => {
@@ -331,8 +332,8 @@ export function useSdCardMonitor(opts?: {
           setSecondaryBackup(p);
           if (p.state === "failed") {
             showWarning(
-              p.message?.trim() || "Server-Backup (zweiter Pfad) fehlgeschlagen.",
-              "Server-Backup",
+              p.message?.trim() || tr("sd.monitor.secondaryBackupFailed"),
+              tr("sd.monitor.secondaryBackupTitle"),
             );
           }
           if (p.state === "done") {

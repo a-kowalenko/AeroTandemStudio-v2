@@ -9,8 +9,9 @@ import { discardQrPreviewBestEffort } from "@/lib/qrPreviewSession";
 import {
   formatQrSuccess,
   kundeDisplayName,
-  QR_SUCCESS_TITLE,
+  qrSuccessTitle,
 } from "@/lib/qrSuccess";
+import { tr } from "@/i18n";
 import { useKundeStore } from "@/store/kundeStore";
 import {
   useUiStore,
@@ -73,7 +74,7 @@ export function manualKundeLabel(kunde: Kunde): string {
   const telefon = trimField(kunde.telefon);
   if (telefon) return telefon;
 
-  return "Manuelle Eingabe";
+  return tr("qr.confirm.manualEntry");
 }
 
 /**
@@ -171,15 +172,15 @@ function buildKeptResult(opts: {
     switchConfirmShown: true,
     kundeName: opts.previousLabel,
     cleanup: emptyCleanup(),
-    successTitle: QR_SUCCESS_TITLE,
+    successTitle: qrSuccessTitle(),
     successOptions: {
       variant: "qr",
-      highlight: opts.previousLabel || "Kunde behalten",
+      highlight: opts.previousLabel || tr("qr.confirm.keepExistingSummary"),
       autoCloseSecs: 5,
       actions: [
         {
           kind: "qr",
-          label: "QR-Code",
+          label: tr("qr.confirm.label"),
           tone: "skipped",
           summary: opts.summary,
           detail: opts.detail,
@@ -208,9 +209,9 @@ function askQrConfirm(opts: {
       resolve(choice);
     };
 
-    const next = opts.nextName.trim() || "Neuer Kunde";
+    const next = opts.nextName.trim() || tr("qr.confirm.newCustomer");
 
-    useUiStore.getState().showSuccess(opts.body, QR_SUCCESS_TITLE, {
+    useUiStore.getState().showSuccess(opts.body, qrSuccessTitle(), {
       variant: "qr",
       highlight: next,
       autoCloseSecs: 0,
@@ -218,7 +219,7 @@ function askQrConfirm(opts: {
       actions: [
         {
           kind: "qr",
-          label: "QR-Code",
+          label: tr("qr.confirm.label"),
           tone: "warning",
           summary: opts.actionSummary,
           detail: opts.actionDetail,
@@ -239,15 +240,16 @@ function askQrSwitch(opts: {
   nextName: string;
   preview?: QrPreview | null;
 }): Promise<"apply" | "keep"> {
-  const previous = opts.previousName.trim() || "Aktueller Kunde";
-  const next = opts.nextName.trim() || "Neuer Kunde";
+  const previous =
+    opts.previousName.trim() || tr("qr.confirm.currentCustomer");
+  const next = opts.nextName.trim() || tr("qr.confirm.newCustomer");
   return askQrConfirm({
-    body: `Aktuell: ${previous}\nNeu: ${next}\n\nKundendaten wirklich wechseln? Medien bleiben erhalten.`,
+    body: tr("qr.confirm.switchBody", { previous, next }),
     nextName: next,
-    actionSummary: "Anderer Kunde erkannt",
+    actionSummary: tr("qr.confirm.switchSummary"),
     actionDetail: `${previous} → ${next}`,
-    primaryLabel: "Wechseln",
-    secondaryLabel: "Behalten",
+    primaryLabel: tr("qr.confirm.switchPrimary"),
+    secondaryLabel: tr("qr.confirm.keep"),
     preview: opts.preview,
   });
 }
@@ -257,15 +259,15 @@ function askManualOverride(opts: {
   nextName: string;
   preview?: QrPreview | null;
 }): Promise<"apply" | "keep"> {
-  const previous = opts.previousLabel.trim() || "Manuelle Eingabe";
-  const next = opts.nextName.trim() || "Neuer Kunde";
+  const previous = opts.previousLabel.trim() || tr("qr.confirm.manualEntry");
+  const next = opts.nextName.trim() || tr("qr.confirm.newCustomer");
   return askQrConfirm({
-    body: `Manuell: ${previous}\nQR: ${next}\n\nManuelle Kundendaten verwerfen und QR übernehmen?\nOrt, Datum und Crew bleiben erhalten.`,
+    body: tr("qr.confirm.overrideBody", { previous, next }),
     nextName: next,
-    actionSummary: "Manuelle Eingabe überschreiben",
+    actionSummary: tr("qr.confirm.overrideSummary"),
     actionDetail: `${previous} → ${next}`,
-    primaryLabel: "QR übernehmen",
-    secondaryLabel: "Behalten",
+    primaryLabel: tr("qr.confirm.overridePrimary"),
+    secondaryLabel: tr("qr.confirm.keep"),
     preview: opts.preview,
   });
 }
@@ -298,10 +300,10 @@ export async function presentQrHit(
       return buildKeptResult({
         previousLabel: previousName,
         nextName,
-        summary: "Bestehenden Kunden behalten",
+        summary: tr("qr.confirm.keepExistingSummary"),
         detail: nextName
-          ? `Neuer Scan ignoriert: ${nextName}`
-          : "Neuer Scan ignoriert",
+          ? tr("qr.confirm.ignoredScanNamed", { name: nextName })
+          : tr("qr.confirm.ignoredScan"),
       });
     }
   } else if (needsManualOverrideConfirm(current)) {
@@ -318,10 +320,10 @@ export async function presentQrHit(
       return buildKeptResult({
         previousLabel,
         nextName,
-        summary: "Manuelle Eingabe behalten",
+        summary: tr("qr.confirm.keepManualSummary"),
         detail: nextName
-          ? `QR ignoriert: ${nextName}`
-          : "QR ignoriert",
+          ? tr("qr.confirm.ignoredQrNamed", { name: nextName })
+          : tr("qr.confirm.ignoredQr"),
       });
     }
   }

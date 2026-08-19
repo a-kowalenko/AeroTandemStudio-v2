@@ -127,6 +127,14 @@
       "noneSet": "Kein Ordner gesetzt.",
       "toastTitle": "Ordner"
     },
+    "save": {
+      "pickBackup": "Bitte einen Backup-Ordner wählen.",
+      "pickSecondBackup": "Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.",
+      "operatorRole": "„Ich bin“: Bitte mindestens eine Rolle setzen oder einen bestehenden Crew-Namen wählen.",
+      "failed": "Einstellungen konnten nicht gespeichert werden.",
+      "success": "Einstellungen wurden gespeichert.",
+      "resetFailed": "Standardeinstellungen konnten nicht wiederhergestellt werden."
+    },
     "crew": {
       "who": {
         "title": "Wer bist du?",
@@ -152,6 +160,13 @@
         "action": "Aktion",
         "me": "(Ich)",
         "ariaRole": "{{name}}: {{role}}"
+      },
+      "errors": {
+        "nameRequired": "Bitte einen Namen eingeben.",
+        "duplicate": "Dieser Name ist bereits in der Liste.",
+        "roleRequired": "Mindestens eine Rolle muss aktiv sein.",
+        "removeConfirm": "„{{name}}“ aus der Crew-Liste entfernen?",
+        "removedFavorite": "„{{name}}“ entfernt — Favorit („Ich“) zurückgesetzt."
       },
       "keep": {
         "off": "Nicht beibehalten",
@@ -682,6 +697,9 @@
     },
     "server": {
       "title": "Server"
+    },
+    "ffmpeg": {
+      "title": "FFmpeg"
     }
   },
   "form": {
@@ -825,6 +843,11 @@
       "fileTitle": "Datei",
       "pathCopied": "Pfad in die Zwischenablage kopiert.",
       "pathTitle": "Pfad"
+    },
+    "import": {
+      "noValidVideos": "Keine gültigen Video-Dateien gefunden",
+      "noValidPhotos": "Keine gültigen Foto-Dateien gefunden",
+      "allAlreadyListed": "Alle Dateien sind bereits in der Liste"
     }
   },
   "workflow": {
@@ -857,6 +880,55 @@
     "appendSuccess": "{{count}} Datei(en) übergeben ({{folder}}).\nStatus unter „Nachreichung“ in der Historie.",
     "appendDialogTitle": "Nachreichen",
     "appendCancelled": "Nachreichen abgebrochen.",
+    "appendPanel": {
+      "capWarning": "Nachreichen ist auf diesem Rechner noch nicht möglich. Bitte Support bitten, die Software zu aktualisieren — sonst entsteht ein neuer Kundenordner.",
+      "noVideos": "Keine unterstützten Videos gefunden.",
+      "noPhotos": "Keine unterstützten Fotos gefunden.",
+      "wrongKindVideo": "Bitte Videos ablegen (aktuelle Kategorie ist Video).",
+      "wrongKindPhoto": "Bitte Fotos ablegen (aktuelle Kategorie ist Foto).",
+      "pickVideos": "Videos wählen",
+      "pickPhotos": "Fotos wählen",
+      "pickFolder": "Ordner wählen",
+      "previewPhotoRequired": "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.",
+      "previewVideoRequired": "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.",
+      "dropVideos": "Videos oder Ordner hierher ziehen",
+      "dropPhotos": "Fotos oder Ordner hierher ziehen",
+      "dropRelease": "Loslassen zum Hinzufügen",
+      "dropHintVideo": "Ordner rekursiv · .mp4, .mov …",
+      "dropHintPhoto": "Ordner rekursiv · .jpg, .png, .webp …",
+      "discardOne": "Die ausgewählte Datei wird nicht gesendet.",
+      "discardMany": "Die {{count}} ausgewählten Dateien werden nicht gesendet.",
+      "productAria": "Produkt für Nachreichen",
+      "previewAria": "Preview für {{name}}",
+      "modeOriginalPreview": "Original + Preview",
+      "modeOriginal": "Original",
+      "statusPaid": "Bezahlt",
+      "statusOpen": "Offen",
+      "statusNew": "Nicht gebucht",
+      "hintPaid": "Bezahlt — Dateien werden als Original nachgereicht.",
+      "hintOpen": "Nicht bezahlt — Originale plus optionale Preview mit Wasserzeichen.",
+      "hintNew": "Nicht gebucht — Originale plus optionale Preview mit Wasserzeichen.",
+      "catHandcamFoto": "Handcam Foto",
+      "catHandcamVideo": "Handcam Video",
+      "catOutsideFoto": "Outside Foto",
+      "catOutsideVideo": "Outside Video",
+      "groupHandcam": "Handcam",
+      "groupOutside": "Outside",
+      "productTitle": "Produkt",
+      "discardTitle": "Änderungen verwerfen?",
+      "discard": "Verwerfen",
+      "continueEditing": "Weiter bearbeiten",
+      "removeItemAria": "{{name}} entfernen",
+      "send": "Senden",
+      "pickFilesBtn": "Dateien wählen…",
+      "pickFolderBtn": "Ordner wählen…",
+      "emptyFiles": "Noch keine Dateien",
+      "emptyFilesHint": "Dateien dem gewählten Produkt zuordnen. Bei offenen oder neuen Produkten kann optional eine Preview mit Wasserzeichen mitgesendet werden.",
+      "fileCountOne": "{{count}} Datei",
+      "fileCountMany": "{{count}} Dateien",
+      "noneCount": "Keine",
+      "previewLabel": "Preview"
+    },
     "filters": {
       "all": "Alle",
       "open": "Offen",
@@ -968,6 +1040,23 @@
       "onlineOnly": "Nur bei Online-Vorgängen, nicht bei Lokal",
       "customerNotFound": "Kunde in der Buchung nicht gefunden"
     },
+    "lookup": {
+      "foundTitle": "Kunde gefunden",
+      "searching": "Suche…",
+      "notFound": "Kunde nicht gefunden",
+      "minDigits": "Mindestens {{count}} Ziffern",
+      "customerFallback": "Kunde",
+      "foundLine": "Gefunden: {{name}}",
+      "foundLineMedia": "Gefunden: {{name}} · {{media}}",
+      "overrideBody": "Bisher: {{previous}}\nBuchung: {{next}}\n\nDiese Daten übernehmen?\nOrt, Datum und Crew bleiben erhalten.",
+      "typeChoiceBody": "Für diese IDs gibt es Handcam- und Outside-Daten.\nBitte den Medien-Typ wählen.",
+      "typeChoiceTitle": "Medien-Typ wählen",
+      "keep": "Behalten",
+      "apply": "Übernehmen",
+      "videoPaid": "Video (bezahlt)",
+      "photoPaid": "Foto (bezahlt)",
+      "lanMultipleBody": "Mehrere Buchungssuchen (AMS) im LAN gefunden.\nBitte wählen, welche Instanz verwendet werden soll."
+    },
     "handoff": {
       "steps": {
         "pending": "Übertragen",
@@ -1012,11 +1101,59 @@
     }
   },
   "qr": {
+    "confirm": {
+      "manualEntry": "Manuelle Eingabe",
+      "newCustomer": "Neuer Kunde",
+      "currentCustomer": "Aktueller Kunde",
+      "switchBody": "Aktuell: {{previous}}\nNeu: {{next}}\n\nKundendaten wirklich wechseln? Medien bleiben erhalten.",
+      "overrideBody": "Manuell: {{previous}}\nQR: {{next}}\n\nManuelle Kundendaten verwerfen und QR übernehmen?\nOrt, Datum und Crew bleiben erhalten.",
+      "switchPrimary": "Wechseln",
+      "overridePrimary": "QR übernehmen",
+      "keep": "Behalten",
+      "switchSummary": "Anderer Kunde erkannt",
+      "overrideSummary": "Manuelle Eingabe überschreiben",
+      "keepExistingSummary": "Bestehenden Kunden behalten",
+      "ignoredScan": "Neuer Scan ignoriert",
+      "ignoredScanNamed": "Neuer Scan ignoriert: {{name}}",
+      "ignoredQr": "QR ignoriert",
+      "ignoredQrNamed": "QR ignoriert: {{name}}",
+      "keepManualSummary": "Manuelle Eingabe behalten",
+      "label": "QR-Code"
+    },
     "progress": {
       "pending": "QR-Code-Suche wartet…",
       "found": "QR-Code gefunden",
       "removed": "Aus Liste entfernt",
-      "checked": "QR-Code geprüft"
+      "checked": "QR-Code geprüft",
+      "photosCheckedOne": "1 Foto geprüft",
+      "photosCheckedMany": "{{count}} Fotos geprüft",
+      "extraHitsOne": "1 weiterer Treffer",
+      "extraHitsMany": "{{count}} weitere Treffer",
+      "photosRemovedOne": "1 Foto entfernt",
+      "photosRemovedMany": "{{count}} Fotos entfernt",
+      "currentFile": "gerade: {{name}}",
+      "foundFile": "gefunden: {{name}}",
+      "missFile": "ohne Code: {{name}}",
+      "neighborSeries": "Nachbarfotos der Serie…",
+      "removingQrPhotos": "QR-Fotos werden aus der Liste entfernt…",
+      "checkingNeighbors": "QR gefunden — benachbarte Fotos prüfen…",
+      "readingVideo": "Video wird für die QR-Suche gelesen…",
+      "thorough": "QR-Code gründlich prüfen…",
+      "scanVideos": "QR-Code in Videos suchen…",
+      "scanPhotos": "QR-Code in Fotos suchen…",
+      "scanGeneric": "QR-Code suchen…",
+      "filesDone": "{{finished}} von {{total}} {{unit}} erledigt",
+      "unitPhotos": "Fotos",
+      "unitVideos": "Videos",
+      "unitFiles": "Dateien",
+      "edgesLimited": "Ränder (je {{count}})",
+      "hitFound": "Treffer gefunden",
+      "preparingClip": "Clip wird vorbereitet…",
+      "thoroughSpots": "Genauere Prüfung der Stellen…",
+      "fastSpots": "Stellen im Clip werden geprüft…",
+      "parallelCount": "{{count}} gleichzeitig",
+      "checking": "wird geprüft…",
+      "preparing": "Vorbereitung…"
     }
   },
   "video": {
@@ -1145,7 +1282,28 @@
       "subtitleUsbOk": "Session beendet — Gerät aus der Liste entfernt",
       "subtitleOk": "Kann sicher entfernt werden",
       "subtitleUsbError": "USB-Kamera manuell trennen",
-      "subtitleError": "Karte manuell sicher entfernen"
+      "subtitleError": "Karte manuell sicher entfernen",
+      "usbHint": "USB freigegeben — Kabel trennen, erst danach wieder anstecken zum Import."
+    },
+    "monitor": {
+      "title": "SD-Monitor",
+      "secondaryBackupFailed": "Server-Backup (zweiter Pfad) fehlgeschlagen.",
+      "secondaryBackupTitle": "Server-Backup"
+    },
+    "catalog": {
+      "filteredOnly": "Keine importierbaren Medien (nur Timelapse/Proxies).",
+      "mtpEmpty": "Keine Medien auf der Kamera gefunden.",
+      "sdEmpty": "Keine Mediendateien auf der SD-Karte gefunden."
+    },
+    "fileSelectorUi": {
+      "drive": "Laufwerk {{drive}}",
+      "sdCard": "SD-Karte",
+      "videoCount": "{{count}} Videos",
+      "photoCount": "{{count}} Fotos",
+      "clearAfterBackup": "SD-Karte nach erfolgreichem Backup leeren",
+      "scanQrAfterImport": "Importierte Medien auf QR-Code prüfen",
+      "typeVideo": "Video",
+      "typePhoto": "Foto"
     },
     "mode": {
       "autoTip": "Nach Erkennung: Backup, Import, Bereinigen und Auswerfen laut Einstellungen — ohne Nachfrage.",
@@ -1235,7 +1393,11 @@
       "storageMissingHint": "Ohne Speicherort koennen Vorgaenge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen."
     },
     "finish": "Einrichtung abschließen",
-    "skipAll": "Gesamte Einrichtung überspringen"
+    "skipAll": "Gesamte Einrichtung überspringen",
+    "saveFailed": "Einstellungen konnten nicht gespeichert werden.",
+    "complete": "Einrichtung abgeschlossen.",
+    "completeTitle": "Erfolg",
+    "standardFolderTitle": "Standardordner"
   },
   "dateField": {
     "chooseDateAria": "Datum wählen",

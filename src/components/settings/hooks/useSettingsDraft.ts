@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { AppConfig } from "@/lib/tauri";
 import {
   canonicalCrewName,
@@ -27,6 +28,7 @@ export function configsEqual(a: AppConfig, b: AppConfig): boolean {
 }
 
 export function useSettingsDraft(open: boolean, config: AppConfig | null) {
+  const { t } = useTranslation();
   const persist = useConfigStore((s) => s.persist);
   const resetToDefaults = useConfigStore((s) => s.resetToDefaults);
   const saving = useConfigStore((s) => s.saving);
@@ -71,13 +73,11 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
   const save = useCallback(async (): Promise<boolean> => {
     if (!draft) return false;
     if (draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
-      showError("Bitte einen Backup-Ordner wählen.");
+      showError(t("settings.save.pickBackup"));
       return false;
     }
     if (draft.sd_server_backup_enabled && !draft.sd_server_backup_path.trim()) {
-      showError(
-        "Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.",
-      );
+      showError(t("settings.save.pickSecondBackup"));
       return false;
     }
 
@@ -92,10 +92,7 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     }
     const op = draft.operator_name.trim();
     if (op && !findCrewMember(crew_list, op)) {
-      showError(
-        "„Ich bin“: Bitte mindestens eine Rolle setzen oder einen bestehenden Crew-Namen wählen.",
-        "Crew",
-      );
+      showError(t("settings.save.operatorRole"), t("settings.tabs.crew"));
       return false;
     }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
@@ -122,11 +119,11 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
 
     const saved = await persist(toSave);
     if (!saved) {
-      showError("Einstellungen konnten nicht gespeichert werden.");
+      showError(t("settings.save.failed"));
       return false;
     }
 
-    showSuccess("Einstellungen wurden gespeichert.");
+    showSuccess(t("settings.save.success"));
     if (serverChanged && toSave.server_url.trim()) {
       void checkConnection({
         server_url: toSave.server_url,
@@ -152,18 +149,19 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     resetAmsHealth,
     showError,
     showSuccess,
+    t,
   ]);
 
   const resetToFactory = useCallback(async (): Promise<AppConfig | null> => {
     const restored = await resetToDefaults();
     if (!restored) {
-      showError("Standardeinstellungen konnten nicht wiederhergestellt werden.");
+      showError(t("settings.save.resetFailed"));
       return null;
     }
     const sorted = sortCrewList(restored);
     setDraft(sorted);
     return sorted;
-  }, [resetToDefaults, showError]);
+  }, [resetToDefaults, showError, t]);
 
   const hasUnsavedChanges =
     draft && config ? !configsEqual(draft, config) : false;

@@ -79,7 +79,7 @@ async function askPickLanBridge(opts: {
     };
 
     useUiStore.getState().showSuccess(
-      "Mehrere Buchungssuchen (AMS) im LAN gefunden.\nBitte wählen, welche Instanz verwendet werden soll.",
+      tr("ams.lookup.lanMultipleBody"),
       tr("settings.server.ams.operatorTitle"),
       {
         autoCloseSecs: 0,
@@ -94,7 +94,7 @@ async function askPickLanBridge(opts: {
               detail: `${c.base_url}${meta}`,
             };
           }),
-          cancelLabel: "Abbrechen",
+          cancelLabel: tr("common.actions.cancel"),
           onPick: (id) => {
             const baseUrl = id.split("\0")[0];
             finish(baseUrl || null);

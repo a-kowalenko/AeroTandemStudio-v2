@@ -513,7 +513,7 @@ export function VideoPreview({
     try {
       const result = await withQrScanProgress([clip.path], () => scanQrVideo(clip.path));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("app.qr.label"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,

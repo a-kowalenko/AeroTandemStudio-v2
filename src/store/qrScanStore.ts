@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { tr } from "@/i18n";
 
 export type QrScanPhase =
   | "pending"
@@ -252,50 +253,50 @@ export function summarizeQrScanProgress(
     if (fu.scanned > 0) {
       parts.push(
         fu.scanned === 1
-          ? "1 Foto geprüft"
-          : `${fu.scanned} Fotos geprüft`,
+          ? tr("qr.progress.photosCheckedOne")
+          : tr("qr.progress.photosCheckedMany", { count: fu.scanned }),
       );
     }
     parts.push(
       fu.extraHits === 1
-        ? "1 weiterer Treffer"
-        : `${fu.extraHits} weitere Treffer`,
+        ? tr("qr.progress.extraHitsOne")
+        : tr("qr.progress.extraHitsMany", { count: fu.extraHits }),
     );
     const removedCount = entries.filter(([, p]) => p === "removed").length;
     if (removedCount > 0) {
       parts.push(
         removedCount === 1
-          ? "1 Foto entfernt"
-          : `${removedCount} Fotos entfernt`,
+          ? tr("qr.progress.photosRemovedOne")
+          : tr("qr.progress.photosRemovedMany", { count: removedCount }),
       );
     }
     if (fu.currentPath && removedCount === 0) {
       const name = fileBaseName(fu.currentPath);
       if (fu.phase === "start") {
-        parts.push(`gerade: ${name}`);
+        parts.push(tr("qr.progress.currentFile", { name }));
       } else if (fu.phase === "hit") {
-        parts.push(`gefunden: ${name}`);
+        parts.push(tr("qr.progress.foundFile", { name }));
       } else if (fu.phase === "miss") {
-        parts.push(`ohne Code: ${name}`);
+        parts.push(tr("qr.progress.missFile", { name }));
       } else {
         parts.push(name);
       }
     } else if (removedCount === 0) {
-      parts.push("Nachbarfotos der Serie…");
+      parts.push(tr("qr.progress.neighborSeries"));
     }
     const total = fileProgress?.total ?? order.length;
     const finished = fileProgress?.finished ?? 0;
     return {
       label:
         removedCount > 0
-          ? "QR-Fotos werden aus der Liste entfernt…"
-          : "QR gefunden — benachbarte Fotos prüfen…",
+          ? tr("qr.progress.removingQrPhotos")
+          : tr("qr.progress.checkingNeighbors"),
       detail: parts.join(" · "),
       percent: 0,
       indeterminate: true,
       hidePercent: true,
       metric: total > 0 ? `${finished}/${total}` : undefined,
-      metricLabel: total > 0 ? "Fotos" : undefined,
+      metricLabel: total > 0 ? tr("qr.progress.unitPhotos") : undefined,
       legend: fileProgress && fileProgress.total > 0 ? "followup" : undefined,
       fileProgress,
     };
@@ -313,14 +314,14 @@ export function summarizeQrScanProgress(
 
   const label =
     frames?.mode === "prepare"
-      ? "Video wird für die QR-Suche gelesen…"
+      ? tr("qr.progress.readingVideo")
       : frames?.mode === "thorough"
-        ? "QR-Code gründlich prüfen…"
+        ? tr("qr.progress.thorough")
         : stage === "scanning_videos"
-          ? "QR-Code in Videos suchen…"
+          ? tr("qr.progress.scanVideos")
           : stage === "scanning_photos"
-            ? "QR-Code in Fotos suchen…"
-            : "QR-Code suchen…";
+            ? tr("qr.progress.scanPhotos")
+            : tr("qr.progress.scanGeneric");
 
   let metric: string | undefined;
   let metricLabel: string | undefined;
@@ -329,39 +330,39 @@ export function summarizeQrScanProgress(
     metric = `${finished}/${total}`;
     metricLabel =
       stage === "scanning_photos"
-        ? "Fotos"
+        ? tr("qr.progress.unitPhotos")
         : stage === "scanning_videos"
-          ? "Videos"
-          : "Dateien";
+          ? tr("qr.progress.unitVideos")
+          : tr("qr.progress.unitFiles");
   }
 
   const parts: string[] = [];
   if (total > 0) {
     const unit =
       stage === "scanning_photos"
-        ? "Fotos"
+        ? tr("qr.progress.unitPhotos")
         : stage === "scanning_videos"
-          ? "Videos"
-          : "Dateien";
-    parts.push(`${finished} von ${total} ${unit} erledigt`);
+          ? tr("qr.progress.unitVideos")
+          : tr("qr.progress.unitFiles");
+    parts.push(tr("qr.progress.filesDone", { finished, total, unit }));
   }
   if (stage === "scanning_photos" && photoEdgeLimited) {
-    parts.push(`Ränder (je ${PHOTO_QR_EDGE_SCAN_PER_SIDE})`);
+    parts.push(tr("qr.progress.edgesLimited", { count: PHOTO_QR_EDGE_SCAN_PER_SIDE }));
   }
   if (hit) {
-    parts.push("Treffer gefunden");
+    parts.push(tr("qr.progress.hitFound"));
   } else if (frames?.mode === "prepare") {
-    parts.push("Clip wird vorbereitet…");
+    parts.push(tr("qr.progress.preparingClip"));
   } else if (frames?.mode === "thorough") {
-    parts.push("Genauere Prüfung der Stellen…");
+    parts.push(tr("qr.progress.thoroughSpots"));
   } else if (frames?.mode === "fast") {
-    parts.push("Stellen im Clip werden geprüft…");
+    parts.push(tr("qr.progress.fastSpots"));
   } else if (activeCount > 1) {
-    parts.push(`${activeCount} gleichzeitig`);
+    parts.push(tr("qr.progress.parallelCount", { count: activeCount }));
   } else if (activeCount === 1 && !frames) {
-    parts.push("wird geprüft…");
+    parts.push(tr("qr.progress.checking"));
   } else if (total > 0 && finished === 0 && activeCount === 0) {
-    parts.push("Vorbereitung…");
+    parts.push(tr("qr.progress.preparing"));
   }
 
   return {
