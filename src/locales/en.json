@@ -1177,6 +1177,30 @@
     }
   },
   "setupWizard": {
+    "steps": {
+      "appearance": "Language & appearance",
+      "storage": "Storage",
+      "import": "Import",
+      "upload": "Upload",
+      "finish": "Finish"
+    },
+    "intro": {
+      "appearance": "Welcome to Aero Tandem Studio. In just a few steps you can set language, appearance, storage, and import behavior. Everything else can be adjusted later in settings.",
+      "storage": "Completed jobs are saved to the storage location. You can also set the default drop zone here.",
+      "import": "Only the most important import defaults are set here. Advanced options like clearing, ejecting, or QR cleanup can be adjusted later in settings.",
+      "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later."
+    },
+    "import": {
+      "backupHint": "Imports the card through the recommended workflow using a local copy.",
+      "qrHint": "QR files stay in place by default. Cleanup behavior can be fine-tuned later."
+    },
+    "upload": {
+      "disabledHint": "Upload stays off. You can set up the server later in settings at any time."
+    },
+    "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
+    "operatorSingleRoleTm": "Only tandem master was found — that role will be kept on session reset.",
+    "operatorSingleRoleVs": "Only video jumper was found — that role will be kept on session reset.",
+    "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
     "standardDir": {
       "active": "Default folder active",
       "exists": "Default folder already exists",
@@ -1187,35 +1211,28 @@
     },
     "stepHint": {
       "appearance": "You can change the appearance later at any time.",
-      "crew": "Crew defaults and I am can be set later in settings.",
       "storage": "Without a storage location, jobs cannot be saved — you can set it later in settings.",
-      "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
-      "qr": "QR scan options can be configured later in settings.",
+      "import": "Backup, auto-import, and QR scan can be configured in more detail later.",
       "server": "Server access can be configured later."
-    },
-    "crew": {
-      "operatorHintMissingRole": "Choose at least one role — then the name will be added to the crew.",
-      "namePlaceholder": "Choose or enter a name…",
-      "rolePlaceholder": "Choose a mode or name…",
-      "autoAddHint": "A new name is added to the crew list automatically.",
-      "roleRequiredActive": "At least one role must stay active.",
-      "roleRequired": "Choose at least one role."
     },
     "storage": {
       "pickFolderError": "Please choose a folder.",
       "folderPlaceholder": "Choose folder…"
     },
     "sd": {
-      "pickFolderOrDisableAutoBackup": "Choose a folder or disable auto backup.",
-      "onlyWithAutoBackup": "Only possible when auto backup is enabled",
-      "validLimitError": "Enter a valid limit in MB."
+      "pickFolderOrDisableAutoBackup": "Choose a folder or disable auto backup."
     },
     "skipAllConfirm": "Skip the entire setup?\n\nStorage, backup, and server can be configured later in settings. Some features will otherwise be limited.",
     "summary": {
       "skipped": "— skipped —",
-      "noneReset": "None (will be reset)",
       "description": "Please review the entries and finish.",
-      "sizeLimit": "Size limit"
+      "disabled": "Disabled",
+      "on": "On",
+      "off": "Off",
+      "notSet": "— not set —",
+      "missingFolder": "— folder missing —",
+      "serverMissing": "— server missing —",
+      "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
     "finish": "Finish setup",
     "skipAll": "Skip entire setup"

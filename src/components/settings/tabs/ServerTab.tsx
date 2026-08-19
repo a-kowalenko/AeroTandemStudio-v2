@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { FolderOpen } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -74,6 +76,39 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       target.input.current?.focus({ preventScroll: true });
     }, 120);
   }, [flashFocus]);
+
+  function serverUrlToDialogDefaultPath(serverUrl: string) {
+    const raw = serverUrl.trim();
+    if (!raw) return undefined;
+    if (raw.toLowerCase().startsWith("smb://")) {
+      let rest = raw.slice(6); // strip smb://
+      if (rest.includes("@")) {
+        // smb://user@host/share → \\host\share
+        rest = rest.split("@").slice(1).join("@");
+      }
+      rest = rest.replace(/\//g, "\\");
+      return `\\\\${rest.replace(/^\\+/, "")}`;
+    }
+    if (raw.startsWith("//")) return `\\${raw}`;
+    return raw;
+  }
+
+  async function pickServerPath() {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        defaultPath: serverUrlToDialogDefaultPath(draft?.server_url ?? ""),
+      });
+      if (typeof selected === "string") {
+        const next = selected.trim();
+        if (!next) return;
+        patch("server_url", next);
+      }
+    } catch (err) {
+      showError(String(err), t("settings.tabs.server"));
+    }
+  }
 
   async function onTestServer() {
     if (testingServer) return;
@@ -197,13 +232,25 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             />
           ) : null}
           <Label className="relative">{t("settings.server.smb.url")}</Label>
-          <Input
-            ref={serverUrlInputRef}
-            className="relative"
-            value={draft.server_url}
-            onChange={(e) => patch("server_url", e.target.value)}
-            placeholder={t("settings.server.smb.urlPlaceholder")}
-          />
+          <div className="relative">
+            <Input
+              ref={serverUrlInputRef}
+              className="relative pr-10"
+              value={draft.server_url}
+              onChange={(e) => patch("server_url", e.target.value)}
+              placeholder={t("settings.server.smb.urlPlaceholder")}
+            />
+            <button
+              type="button"
+              disabled={false}
+              onClick={() => void pickServerPath()}
+              title={t("common.actions.pickFolder")}
+              aria-label={t("common.actions.pickFolder")}
+              className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+            >
+              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          </div>
         </div>
 
         <div

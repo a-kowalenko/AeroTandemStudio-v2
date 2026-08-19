@@ -1177,6 +1177,30 @@
     }
   },
   "setupWizard": {
+    "steps": {
+      "appearance": "Idioma y apariencia",
+      "storage": "Almacenamiento",
+      "import": "Importacion",
+      "upload": "Subida",
+      "finish": "Listo"
+    },
+    "intro": {
+      "appearance": "Bienvenido a Aero Tandem Studio. En pocos pasos puedes definir idioma, apariencia, almacenamiento y comportamiento de importacion. Todo lo demas se puede ajustar despues en la configuracion.",
+      "storage": "Los trabajos terminados se guardan en la ubicacion de almacenamiento. Aqui tambien puedes definir la zona de entrega predeterminada.",
+      "import": "Aqui solo se configuran los valores de importacion mas importantes. Opciones avanzadas como limpiar, expulsar o borrar QR se pueden ajustar despues.",
+      "upload": "La subida es opcional. Si no la necesitas ahora, dejala apagada y configura el servidor despues."
+    },
+    "import": {
+      "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
+      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar despues."
+    },
+    "upload": {
+      "disabledHint": "La subida permanece apagada. Puedes configurar el servidor despues en cualquier momento."
+    },
+    "operatorHint": "Tu nombre se usara como favorito Yo en los menus del equipo.",
+    "operatorSingleRoleTm": "Solo se encontro el rol de tandem master; se conservara al restablecer la sesion.",
+    "operatorSingleRoleVs": "Solo se encontro el rol de video jumper; se conservara al restablecer la sesion.",
+    "operatorMultiRole": "Si hay varios roles o ninguno, no se conservara nada automaticamente al restablecer la sesion.",
     "standardDir": {
       "active": "Carpeta predeterminada activa",
       "exists": "La carpeta predeterminada ya existe",
@@ -1187,35 +1211,28 @@
     },
     "stepHint": {
       "appearance": "Puedes cambiar la apariencia después en cualquier momento.",
-      "crew": "Los valores predeterminados del equipo y Yo soy se pueden configurar después.",
       "storage": "Sin ubicación de almacenamiento, los trabajos no se pueden guardar; puedes configurarla después.",
-      "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
-      "qr": "Las opciones de escaneo QR se pueden configurar después.",
+      "import": "Respaldo, importacion automatica y escaneo QR se pueden ajustar con mas detalle despues.",
       "server": "El acceso al servidor se puede configurar después."
-    },
-    "crew": {
-      "operatorHintMissingRole": "Elige al menos un rol — entonces el nombre se agregará al equipo.",
-      "namePlaceholder": "Elige o escribe un nombre…",
-      "rolePlaceholder": "Elige un modo o nombre…",
-      "autoAddHint": "Un nombre nuevo se agrega automáticamente a la lista del equipo.",
-      "roleRequiredActive": "Al menos un rol debe seguir activo.",
-      "roleRequired": "Elige al menos un rol."
     },
     "storage": {
       "pickFolderError": "Elige una carpeta.",
       "folderPlaceholder": "Elegir carpeta…"
     },
     "sd": {
-      "pickFolderOrDisableAutoBackup": "Elige una carpeta o desactiva el respaldo automático.",
-      "onlyWithAutoBackup": "Solo es posible si el respaldo automático está activado",
-      "validLimitError": "Ingresa un límite válido en MB."
+      "pickFolderOrDisableAutoBackup": "Elige una carpeta o desactiva el respaldo automatico."
     },
     "skipAllConfirm": "¿Omitir toda la configuración?\n\nEl almacenamiento, respaldo y servidor se pueden configurar después. Algunas funciones quedarán limitadas.",
     "summary": {
       "skipped": "— omitido —",
-      "noneReset": "Ninguno (se restablecerán)",
       "description": "Revisa los datos y termina.",
-      "sizeLimit": "Límite de tamaño"
+      "disabled": "Desactivado",
+      "on": "Activado",
+      "off": "Desactivado",
+      "notSet": "— sin definir —",
+      "missingFolder": "— falta carpeta —",
+      "serverMissing": "— falta servidor —",
+      "storageMissingHint": "Sin una ubicacion de almacenamiento, los trabajos no se pueden guardar. Puedes definirla despues en la configuracion."
     },
     "finish": "Finalizar configuración",
     "skipAll": "Omitir toda la configuración"

@@ -1177,6 +1177,30 @@
     }
   },
   "setupWizard": {
+    "steps": {
+      "appearance": "Sprache & Darstellung",
+      "storage": "Speicherort",
+      "import": "Import",
+      "upload": "Upload",
+      "finish": "Fertig"
+    },
+    "intro": {
+      "appearance": "Willkommen bei Aero Tandem Studio. In wenigen Schritten legst du Sprache, Darstellung, Speicherort und das Import-Verhalten fest. Alles Weitere kannst du spaeter in den Einstellungen anpassen.",
+      "storage": "Fertige Vorgaenge werden im Speicherort abgelegt. Die Standard-Dropzone kannst du gleich mit festlegen.",
+      "import": "Lege hier nur die wichtigsten Import-Standards fest. Erweiterte Optionen wie Leeren, Auswerfen oder QR-Loeschregeln findest du spaeter in den Einstellungen.",
+      "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server spaeter ein."
+    },
+    "import": {
+      "backupHint": "Importiert die Karte im empfohlenen Workflow ueber eine lokale Kopie.",
+      "qrHint": "QR-Dateien bleiben standardmaessig erhalten. Aufraeumen kannst du spaeter feinjustieren."
+    },
+    "upload": {
+      "disabledHint": "Upload bleibt aus. Du kannst den Server jederzeit spaeter in den Einstellungen einrichten."
+    },
+    "operatorHint": "Dein Name wird als Ich-Favorit in der Crew verwendet.",
+    "operatorSingleRoleTm": "Nur Tandemmaster gefunden — diese Rolle wird fuer den Session-Reset beibehalten.",
+    "operatorSingleRoleVs": "Nur Videospringer gefunden — diese Rolle wird fuer den Session-Reset beibehalten.",
+    "operatorMultiRole": "Bei mehreren oder keinen Rollen wird fuer den Session-Reset nichts automatisch beibehalten.",
     "standardDir": {
       "active": "Standardordner aktiv",
       "exists": "Standardordner bereits vorhanden",
@@ -1187,35 +1211,28 @@
     },
     "stepHint": {
       "appearance": "Darstellung kannst du später jederzeit umschalten.",
-      "crew": "Crew-Defaults und Ich bin können später in den Einstellungen gesetzt werden.",
       "storage": "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
-      "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
-      "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
+      "import": "Backup, Auto-Import und QR-Scan koennen spaeter detailliert angepasst werden.",
       "server": "Server-Zugang kann später eingerichtet werden."
-    },
-    "crew": {
-      "operatorHintMissingRole": "Mindestens eine Rolle wählen — dann wird der Name zur Crew hinzugefügt.",
-      "namePlaceholder": "Namen wählen oder eingeben…",
-      "rolePlaceholder": "Modus oder Name wählen…",
-      "autoAddHint": "Neuer Name wird automatisch zur Crew-Liste hinzugefügt.",
-      "roleRequiredActive": "Mindestens eine Rolle muss aktiv sein.",
-      "roleRequired": "Mindestens eine Rolle wählen."
     },
     "storage": {
       "pickFolderError": "Bitte einen Ordner wählen.",
       "folderPlaceholder": "Ordner wählen…"
     },
     "sd": {
-      "pickFolderOrDisableAutoBackup": "Ordner wählen oder Auto-Backup deaktivieren.",
-      "onlyWithAutoBackup": "Nur möglich, wenn Auto-Backup aktiviert ist",
-      "validLimitError": "Gültiges Limit in MB angeben."
+      "pickFolderOrDisableAutoBackup": "Ordner wählen oder Auto-Backup deaktivieren."
     },
     "skipAllConfirm": "Gesamte Einrichtung überspringen?\n\nSpeicherort, Backup und Server können später in den Einstellungen gesetzt werden. Einige Funktionen sind sonst eingeschränkt.",
     "summary": {
       "skipped": "— übersprungen —",
-      "noneReset": "Keine (werden zurückgesetzt)",
       "description": "Bitte Angaben prüfen und abschließen.",
-      "sizeLimit": "Größenlimit"
+      "disabled": "Deaktiviert",
+      "on": "An",
+      "off": "Aus",
+      "notSet": "— nicht gesetzt —",
+      "missingFolder": "— Ordner fehlt —",
+      "serverMissing": "— Server fehlt —",
+      "storageMissingHint": "Ohne Speicherort koennen Vorgaenge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen."
     },
     "finish": "Einrichtung abschließen",
     "skipAll": "Gesamte Einrichtung überspringen"

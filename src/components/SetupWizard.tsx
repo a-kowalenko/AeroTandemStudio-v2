@@ -1,31 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Info, Loader2, Moon, Sun } from "lucide-react";
+import { Check, FolderOpen, Info, Languages, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
+import { Switch } from "@/components/ui/switch";
 import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
-  canonicalCrewName,
   crewAllNames,
-  crewKeepComboboxValue,
-  crewKeepPinnedOptions,
-  crewNamesEqual,
-  crewNamesForRole,
-  ensureCrewRole,
   findCrewMember,
-  getAppInfo,
   ORT_OPTIONS,
-  parseCrewKeepComboboxValue,
   proposeDefaultMediaDirs,
   upsertCrewMember,
 } from "@/lib/tauri";
+import type { UiLanguage } from "@/i18n/types";
 import { useConfigStore } from "@/store/configStore";
+import { useLocaleStore } from "@/store/localeStore";
 import { useServerStore } from "@/store/serverStore";
 import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
@@ -249,25 +244,21 @@ function FolderDirField({
 }
 
 const STEPS = [
-  "Darstellung",
-  "Crew",
-  "Speicherort",
-  "SD-Backup",
-  "QR-Scan",
-  "Server",
-  "Fertig",
+  "setupWizard.steps.appearance",
+  "setupWizard.steps.storage",
+  "setupWizard.steps.import",
+  "setupWizard.steps.upload",
+  "setupWizard.steps.finish",
 ] as const;
 
 /** Steps that can be skipped individually (not Fertig). */
-const SKIPPABLE_STEPS = new Set([0, 1, 2, 3, 4, 5]);
+const SKIPPABLE_STEPS = new Set([0, 1, 2, 3]);
 
 const STEP_SKIP_HINT: Record<number, string> = {
   0: "setupWizard.stepHint.appearance",
-  1: "setupWizard.stepHint.crew",
-  2: "setupWizard.stepHint.storage",
-  3: "setupWizard.stepHint.sd",
-  4: "setupWizard.stepHint.qr",
-  5: "setupWizard.stepHint.server",
+  1: "setupWizard.stepHint.storage",
+  2: "setupWizard.stepHint.import",
+  3: "setupWizard.stepHint.server",
 };
 
 type Props = {
@@ -276,16 +267,11 @@ type Props = {
 };
 
 type FieldErrors = {
-  operator_roles?: string;
-  tandemmaster?: string;
-  videospringer?: string;
   speicherort?: string;
   sd_backup_folder?: string;
-  sd_size_limit_mb?: string;
 };
 
 type OperatorRoleDraft = {
-  /** Lowercase trimmed name this draft belongs to. */
   key: string;
   tandemmaster: boolean;
   videospringer: boolean;
@@ -294,11 +280,18 @@ type OperatorRoleDraft = {
 const SKIP_BTN_CLASS =
   "border-orange-300/90 bg-orange-100 text-orange-950 hover:bg-orange-200/90 dark:border-orange-400/35 dark:bg-orange-400/15 dark:text-orange-50 dark:hover:bg-orange-400/25";
 
+const LANGUAGE_OPTIONS: { value: UiLanguage; label: string }[] = [
+  { value: "de", label: "Deutsch" },
+  { value: "en", label: "English" },
+  { value: "es-MX", label: "Español (México)" },
+];
+
 export function SetupWizard({ open, onComplete }: Props) {
   const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const persist = useConfigStore((s) => s.persist);
   const saving = useConfigStore((s) => s.saving);
+  const setLanguage = useLocaleStore((s) => s.setLanguage);
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -318,9 +311,8 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [creatingDefaultDir, setCreatingDefaultDir] =
     useState<DefaultMediaDirKind | null>(null);
   const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
-  const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(
-    null,
-  );
+  const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(null);
+  const crewNames = crewAllNames(draft?.crew_list);
 
   useEffect(() => {
     if (!open || !config) return;
@@ -330,7 +322,37 @@ export function SetupWizard({ open, onComplete }: Props) {
       ...config,
       qr_check_enabled: true,
       photo_qr_check_enabled: true,
+      sd_eject_after_workflow: true,
+      upload_to_server: true,
     };
+    const member = next.operator_name.trim()
+      ? findCrewMember(next.crew_list, next.operator_name)
+      : null;
+    if (member?.tandemmaster && !member?.videospringer) {
+      next.keep_tandemmaster_on_session_reset = true;
+      next.tandemmaster = member.name;
+      next.keep_videospringer_on_session_reset = false;
+      next.videospringer = "";
+    } else if (member?.videospringer && !member?.tandemmaster) {
+      next.keep_tandemmaster_on_session_reset = false;
+      next.tandemmaster = "";
+      next.keep_videospringer_on_session_reset = true;
+      next.videospringer = member.name;
+    } else if (member?.tandemmaster && member?.videospringer) {
+      next.keep_tandemmaster_on_session_reset = false;
+      next.tandemmaster = "";
+      next.keep_videospringer_on_session_reset = false;
+      next.videospringer = "";
+    }
+    setOperatorRoles(
+      next.operator_name.trim()
+        ? {
+            key: next.operator_name.trim().toLowerCase(),
+            tandemmaster: Boolean(member?.tandemmaster),
+            videospringer: Boolean(member?.videospringer),
+          }
+        : null,
+    );
     setDraft(next);
     setStep(0);
     setSkippedSteps(new Set());
@@ -338,19 +360,6 @@ export function SetupWizard({ open, onComplete }: Props) {
     setMediaDirsProposal(null);
     setCreatingDefaultDir(null);
     setDefaultDirDone({});
-    {
-      const op = next.operator_name.trim();
-      if (!op) {
-        setOperatorRoles(null);
-      } else {
-        const member = findCrewMember(next.crew_list, op);
-        setOperatorRoles({
-          key: op.toLowerCase(),
-          tandemmaster: member?.tandemmaster ?? false,
-          videospringer: member?.videospringer ?? false,
-        });
-      }
-    }
     void proposeDefaultMediaDirs()
       .then((p) => {
         if (!cancelled) setMediaDirsProposal(p);
@@ -359,50 +368,10 @@ export function SetupWizard({ open, onComplete }: Props) {
         if (!cancelled) setMediaDirsProposal(null);
       });
 
-    if (!next.sd_pc_name?.trim()) {
-      void getAppInfo()
-        .then((info) => {
-          if (cancelled) return;
-          setDraft((d) =>
-            d && !d.sd_pc_name.trim()
-              ? { ...d, sd_pc_name: info.computer_name || "" }
-              : d,
-          );
-        })
-        .catch(() => {
-          /* keep empty */
-        });
-    }
-
     return () => {
       cancelled = true;
     };
   }, [open, config]);
-
-  const tandemmasterOptions = useMemo(
-    () => crewNamesForRole(draft?.crew_list, "tandemmaster"),
-    [draft?.crew_list],
-  );
-  const videospringerOptions = useMemo(
-    () => crewNamesForRole(draft?.crew_list, "videospringer"),
-    [draft?.crew_list],
-  );
-  const allCrewNames = useMemo(
-    () => crewAllNames(draft?.crew_list),
-    [draft?.crew_list],
-  );
-  const operatorHint = useMemo(() => {
-    if (!draft) return undefined;
-    const name = draft.operator_name.trim();
-    if (!name) {
-      return "Erscheint oben in den Formular-Dropdowns bei passender Rolle.";
-    }
-    const member = findCrewMember(draft.crew_list, name);
-    if (!member) {
-      return t("setupWizard.crew.operatorHintMissingRole");
-    }
-    return undefined;
-  }, [draft]);
 
   if (!open || !draft) return null;
 
@@ -413,86 +382,6 @@ export function SetupWizard({ open, onComplete }: Props) {
     }
   }
 
-  function setOperatorName(raw: string) {
-    if (!draft) return;
-    patch("operator_name", raw);
-    const key = raw.trim().toLowerCase();
-    if (!key) {
-      setOperatorRoles(null);
-      clearFieldError("operator_roles");
-      return;
-    }
-    const crewList = draft.crew_list;
-    setOperatorRoles((prev) => {
-      if (prev?.key === key) return prev;
-      const member = findCrewMember(crewList, raw);
-      return {
-        key,
-        tandemmaster: member?.tandemmaster ?? false,
-        videospringer: member?.videospringer ?? false,
-      };
-    });
-    clearFieldError("operator_roles");
-  }
-
-  function setOperatorRole(
-    role: "tandemmaster" | "videospringer",
-    value: boolean,
-  ) {
-    if (!draft) return;
-    const name = draft.operator_name.trim();
-    if (!name || !operatorRoles) return;
-
-    const nextRoles = {
-      key: operatorRoles.key,
-      tandemmaster:
-        role === "tandemmaster" ? value : operatorRoles.tandemmaster,
-      videospringer:
-        role === "videospringer" ? value : operatorRoles.videospringer,
-    };
-
-    if (!nextRoles.tandemmaster && !nextRoles.videospringer) {
-      const existing = findCrewMember(draft.crew_list, name);
-      if (existing) {
-        setFieldErrors((prev) => ({
-          ...prev,
-          operator_roles: t("setupWizard.crew.roleRequiredActive"),
-        }));
-        return;
-      }
-      setOperatorRoles(nextRoles);
-      setDraft((prev) =>
-        prev
-          ? {
-              ...prev,
-              crew_list: prev.crew_list.filter(
-                (c) => !crewNamesEqual(c.name, name),
-              ),
-            }
-          : prev,
-      );
-      setFieldErrors((prev) => ({
-        ...prev,
-        operator_roles: t("setupWizard.crew.roleRequired"),
-      }));
-      return;
-    }
-
-    setOperatorRoles(nextRoles);
-    clearFieldError("operator_roles");
-    setDraft((prev) =>
-      prev
-        ? {
-            ...prev,
-            crew_list: upsertCrewMember(prev.crew_list, name, {
-              tandemmaster: nextRoles.tandemmaster,
-              videospringer: nextRoles.videospringer,
-            }),
-          }
-        : prev,
-    );
-  }
-
   function clearFieldError(key: keyof FieldErrors) {
     setFieldErrors((prev) => {
       if (!prev[key]) return prev;
@@ -500,6 +389,135 @@ export function SetupWizard({ open, onComplete }: Props) {
       delete next[key];
       return next;
     });
+  }
+
+  function applyOperatorDefaults(raw: string) {
+    const name = raw.trim();
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const next: AppConfig = { ...prev, operator_name: raw };
+      if (!name) {
+        next.keep_tandemmaster_on_session_reset = false;
+        next.tandemmaster = "";
+        next.keep_videospringer_on_session_reset = false;
+        next.videospringer = "";
+        setOperatorRoles(null);
+        return next;
+      }
+      const member = findCrewMember(prev.crew_list, name);
+      const roles = {
+        tandemmaster: Boolean(member?.tandemmaster),
+        videospringer: Boolean(member?.videospringer),
+      };
+      setOperatorRoles({
+        key: name.toLowerCase(),
+        tandemmaster: roles.tandemmaster,
+        videospringer: roles.videospringer,
+      });
+      if (roles.tandemmaster && !roles.videospringer) {
+        next.keep_tandemmaster_on_session_reset = true;
+        next.tandemmaster = member?.name ?? name;
+        next.keep_videospringer_on_session_reset = false;
+        next.videospringer = "";
+      } else if (roles.videospringer && !roles.tandemmaster) {
+        next.keep_tandemmaster_on_session_reset = false;
+        next.tandemmaster = "";
+        next.keep_videospringer_on_session_reset = true;
+        next.videospringer = member?.name ?? name;
+      } else {
+        next.keep_tandemmaster_on_session_reset = false;
+        next.tandemmaster = "";
+        next.keep_videospringer_on_session_reset = false;
+        next.videospringer = "";
+      }
+      return next;
+    });
+  }
+
+  function setOperatorRole(role: "tandemmaster" | "videospringer", value: boolean) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const name = prev.operator_name.trim();
+      if (!name) return prev;
+      const current = operatorRoles?.key === name.toLowerCase()
+        ? operatorRoles
+        : {
+            key: name.toLowerCase(),
+            tandemmaster: Boolean(findCrewMember(prev.crew_list, name)?.tandemmaster),
+            videospringer: Boolean(findCrewMember(prev.crew_list, name)?.videospringer),
+          };
+      const nextRoles = {
+        key: current.key,
+        tandemmaster: role === "tandemmaster" ? value : current.tandemmaster,
+        videospringer: role === "videospringer" ? value : current.videospringer,
+      };
+      setOperatorRoles(nextRoles);
+
+      let crew_list = prev.crew_list;
+      const trimmed = name.trim();
+      const idx = crew_list.findIndex(
+        (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (nextRoles.tandemmaster || nextRoles.videospringer) {
+        crew_list = upsertCrewMember(crew_list, trimmed, {
+          tandemmaster: nextRoles.tandemmaster,
+          videospringer: nextRoles.videospringer,
+        });
+      } else if (idx >= 0) {
+        crew_list = crew_list.map((entry, entryIdx) =>
+          entryIdx === idx
+            ? {
+                ...entry,
+                tandemmaster: false,
+                videospringer: false,
+              }
+            : entry,
+        );
+      }
+
+      return {
+        ...prev,
+        crew_list,
+        keep_tandemmaster_on_session_reset:
+          nextRoles.tandemmaster && !nextRoles.videospringer,
+        tandemmaster:
+          nextRoles.tandemmaster && !nextRoles.videospringer ? trimmed : "",
+        keep_videospringer_on_session_reset:
+          nextRoles.videospringer && !nextRoles.tandemmaster,
+        videospringer:
+          nextRoles.videospringer && !nextRoles.tandemmaster ? trimmed : "",
+      };
+    });
+  }
+
+  function serverUrlToDialogDefaultPath(serverUrl: string) {
+    const raw = serverUrl.trim();
+    if (!raw) return undefined;
+    // Allow reusing existing value (best-effort) for the OS explorer initial focus.
+    if (raw.toLowerCase().startsWith("smb://")) {
+      let rest = raw.slice(6); // strip smb://
+      if (rest.includes("@")) {
+        // smb://user@host/share → \\host\share
+        rest = rest.split("@").slice(1).join("@");
+      }
+      rest = rest.replace(/\//g, "\\");
+      return `\\\\${rest.replace(/^\\+/, "")}`;
+    }
+    if (raw.startsWith("//")) return `\\${raw}`;
+    return raw;
+  }
+
+  async function pickServerPath() {
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      defaultPath: serverUrlToDialogDefaultPath(draft?.server_url ?? "") ?? undefined,
+    });
+    if (typeof selected === "string") {
+      const next = selected.trim();
+      if (!next) return;
+      patch("server_url", next);
+    }
   }
 
   async function pickFolder(key: "speicherort" | "sd_backup_folder") {
@@ -565,61 +583,15 @@ export function SetupWizard({ open, onComplete }: Props) {
     setDefaultDirDone((prev) => ({ ...prev, [kind]: true }));
   }
 
-  function setCrewKeep(
-    role: "tandemmaster" | "videospringer",
-    raw: string,
-  ) {
-    const { keep, name } = parseCrewKeepComboboxValue(raw);
-    setDraft((prev) => {
-      if (!prev) return prev;
-      if (role === "tandemmaster") {
-        return {
-          ...prev,
-          keep_tandemmaster_on_session_reset: keep,
-          tandemmaster: name,
-        };
-      }
-      return {
-        ...prev,
-        keep_videospringer_on_session_reset: keep,
-        videospringer: name,
-      };
-    });
-    clearFieldError(role);
-  }
-
   function collectFieldErrors(index: number): FieldErrors {
     const errors: FieldErrors = {};
     if (!draft) return errors;
-    if (index === 1) {
-      const op = draft.operator_name.trim();
-      if (op) {
-        const roles =
-          operatorRoles && operatorRoles.key === op.toLowerCase()
-            ? operatorRoles
-            : null;
-        const member = findCrewMember(draft.crew_list, op);
-        const hasRole = Boolean(
-          (roles?.tandemmaster ?? member?.tandemmaster) ||
-            (roles?.videospringer ?? member?.videospringer),
-        );
-        if (!hasRole) {
-          errors.operator_roles = t("setupWizard.crew.roleRequired");
-        }
-      }
-    }
-    if (index === 2 && !draft.speicherort.trim()) {
+    if (index === 1 && !draft.speicherort.trim()) {
       errors.speicherort = t("setupWizard.storage.pickFolderError");
     }
-    if (index === 3 && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
+    if (index === 2 && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
       errors.sd_backup_folder =
         t("setupWizard.sd.pickFolderOrDisableAutoBackup");
-    }
-    if (index === 3 && draft.sd_size_limit_enabled) {
-      const mb = Number(draft.sd_size_limit_mb);
-      if (!Number.isFinite(mb) || mb < 1) {
-        errors.sd_size_limit_mb = t("setupWizard.sd.validLimitError");
-      }
     }
     return errors;
   }
@@ -653,21 +625,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   function skipCurrentStep() {
     if (!SKIPPABLE_STEPS.has(step) || saving || finishing) return;
 
-    if (step === 1) {
-      setOperatorRoles(null);
-      setDraft((prev) =>
-        prev
-          ? {
-              ...prev,
-              operator_name: "",
-              keep_tandemmaster_on_session_reset: false,
-              keep_videospringer_on_session_reset: false,
-              tandemmaster: "",
-              videospringer: "",
-            }
-          : prev,
-      );
-    } else if (step === 3) {
+    if (step === 2) {
       setDraft((prev) => {
         if (!prev) return prev;
         if (!prev.sd_auto_backup || prev.sd_backup_folder.trim()) return prev;
@@ -686,34 +644,8 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   function prepareForSave(markCompleted: boolean): AppConfig | null {
     if (!draft) return null;
-    let crew_list = draft.crew_list;
-    const tm = draft.tandemmaster.trim();
-    const vs = draft.videospringer.trim();
-    if (draft.keep_tandemmaster_on_session_reset && tm) {
-      crew_list = ensureCrewRole(crew_list, tm, "tandemmaster");
-    }
-    if (draft.keep_videospringer_on_session_reset && vs) {
-      crew_list = ensureCrewRole(crew_list, vs, "videospringer");
-    }
-    const op = draft.operator_name.trim();
-    if (
-      op &&
-      operatorRoles &&
-      operatorRoles.key === op.toLowerCase() &&
-      (operatorRoles.tandemmaster || operatorRoles.videospringer)
-    ) {
-      crew_list = upsertCrewMember(crew_list, op, {
-        tandemmaster: operatorRoles.tandemmaster,
-        videospringer: operatorRoles.videospringer,
-      });
-    }
     return {
       ...draft,
-      tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
-      videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
-      operator_name: op ? canonicalCrewName(crew_list, op) : "",
-      crew_list,
-      sd_pc_name: draft.sd_pc_name.trim(),
       setup_completed: markCompleted,
     };
   }
@@ -752,7 +684,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   function finishFromSummary() {
-    const checks = [1, 2, 3].filter((i) => !skippedSteps.has(i));
+    const checks = [1, 2].filter((i) => !skippedSteps.has(i));
     for (const i of checks) {
       const errors = collectFieldErrors(i);
       if (hasFieldErrors(errors)) {
@@ -791,23 +723,6 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   const busy = saving || finishing;
 
-  function keepSummary(): string {
-    if (!draft) return "—";
-    if (skippedSteps.has(1)) return t("setupWizard.summary.skipped");
-    const parts: string[] = [];
-    const op = draft.operator_name.trim();
-    if (op) parts.push(`Ich: ${op}`);
-    if (draft.keep_tandemmaster_on_session_reset) {
-      const tm = draft.tandemmaster.trim();
-      parts.push(tm ? `TM: ${tm}` : "TM: zuletzt verwendet");
-    }
-    if (draft.keep_videospringer_on_session_reset) {
-      const vs = draft.videospringer.trim();
-      parts.push(vs ? `VS: ${vs}` : "VS: zuletzt verwendet");
-    }
-    return parts.length > 0 ? parts.join(", ") : t("setupWizard.summary.noneReset");
-  }
-
   const canSkipStep = SKIPPABLE_STEPS.has(step);
   const skipHint = STEP_SKIP_HINT[step];
 
@@ -831,7 +746,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             id="setup-wizard-title"
             className="mt-1 font-display text-xl font-bold tracking-tight text-primary"
           >
-            {STEPS[step]}
+            {t(STEPS[step])}
           </h2>
           <div
             className="mt-3 flex h-2 items-center gap-1.5"
@@ -844,7 +759,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             {STEPS.map((name, i) => (
               <span
                 key={name}
-                title={name}
+                title={t(name)}
                 aria-current={i === step ? "step" : undefined}
                 className={cn(
                   "flex-1 self-center rounded-full transition-[height,background-color,box-shadow] duration-300 ease-out",
@@ -865,17 +780,47 @@ export function SetupWizard({ open, onComplete }: Props) {
           {step === 0 ? (
             <>
               <p className="text-sm text-foreground">
-                Willkommen bei Aero Tandem Studio. In wenigen Schritten legst du
-                Darstellung, Crew, Speicherort, SD-Backup, QR-Scan und Server
-                fest — alles später in den Einstellungen änderbar.
+                {t("setupWizard.intro.appearance")}
               </p>
               <div className="space-y-2">
-                <Label>Darstellung</Label>
+                <Label>{t("common.labels.language")}</Label>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {LANGUAGE_OPTIONS.map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        patch("ui_language", value);
+                        void setLanguage(value);
+                      }}
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors",
+                        draft.ui_language === value
+                          ? "border-primary bg-primary-soft text-primary"
+                          : "border-border bg-background text-foreground hover:bg-muted/30",
+                      )}
+                    >
+                      <Languages className="h-4 w-4 opacity-70" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("settings.general.appearance.title")}</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {(
                     [
-                      { mode: "light" as ThemeMode, label: "Hell", Icon: Sun },
-                      { mode: "dark" as ThemeMode, label: "Dunkel", Icon: Moon },
+                      {
+                        mode: "light" as ThemeMode,
+                        label: t("common.labels.themeLight"),
+                        Icon: Sun,
+                      },
+                      {
+                        mode: "dark" as ThemeMode,
+                        label: t("common.labels.themeDark"),
+                        Icon: Moon,
+                      },
                     ] as const
                   ).map(({ mode, label, Icon }) => (
                     <button
@@ -895,123 +840,61 @@ export function SetupWizard({ open, onComplete }: Props) {
                   ))}
                 </div>
               </div>
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <Combobox
+                  label={t("settings.crew.who.label")}
+                  value={draft.operator_name}
+                  onChange={applyOperatorDefaults}
+                  options={crewNames}
+                  placeholder={t("settings.crew.who.placeholder")}
+                  hint={t("setupWizard.operatorHint")}
+                  listZIndex={200}
+                />
+                {draft.operator_name.trim() && operatorRoles ? (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+                      <span>{t("create.ready.chips.tandemmaster")}</span>
+                      <Switch
+                        checked={operatorRoles.tandemmaster}
+                        onCheckedChange={(v) => setOperatorRole("tandemmaster", v)}
+                        aria-label={t("create.ready.chips.tandemmaster")}
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+                      <span>{t("create.ready.chips.videospringer")}</span>
+                      <Switch
+                        checked={operatorRoles.videospringer}
+                        onCheckedChange={(v) => setOperatorRole("videospringer", v)}
+                        aria-label={t("create.ready.chips.videospringer")}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+                {draft.operator_name.trim() ? (
+                  <p className="text-[11px] leading-snug text-muted">
+                    {draft.keep_tandemmaster_on_session_reset && !draft.keep_videospringer_on_session_reset
+                      ? t("setupWizard.operatorSingleRoleTm")
+                      : draft.keep_videospringer_on_session_reset &&
+                          !draft.keep_tandemmaster_on_session_reset
+                        ? t("setupWizard.operatorSingleRoleVs")
+                        : t("setupWizard.operatorMultiRole")}
+                  </p>
+                ) : null}
+              </div>
             </>
           ) : null}
 
           {step === 1 ? (
             <>
               <p className="text-sm text-muted">
-                Wer bist du auf diesem PC? Dein Name erscheint als Favorit in den
-                Crew-Dropdowns. Darunter: Session-Reset nach dem Erstellen.
-              </p>
-
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <Combobox
-                  label="Ich bin"
-                  value={draft.operator_name}
-                  onChange={setOperatorName}
-                  options={allCrewNames}
-                  placeholder={t("setupWizard.crew.namePlaceholder")}
-                  hint={operatorHint}
-                  error={fieldErrors.operator_roles}
-                  listZIndex={200}
-                />
-                {draft.operator_name.trim() && operatorRoles ? (
-                  <div className="space-y-2 border-t border-border pt-3">
-                    <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                      Rollen
-                    </p>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="flex items-center gap-2 text-sm text-foreground">
-                        <Checkbox
-                          checked={operatorRoles.tandemmaster}
-                          onCheckedChange={(v) =>
-                            setOperatorRole("tandemmaster", v === true)
-                          }
-                        />
-                        Tandemmaster
-                      </label>
-                      <label className="flex items-center gap-2 text-sm text-foreground">
-                        <Checkbox
-                          checked={operatorRoles.videospringer}
-                          onCheckedChange={(v) =>
-                            setOperatorRole("videospringer", v === true)
-                          }
-                        />
-                        Videospringer
-                      </label>
-                    </div>
-                    {!findCrewMember(draft.crew_list, draft.operator_name) &&
-                    !operatorRoles.tandemmaster &&
-                    !operatorRoles.videospringer ? (
-                      <p className="text-[10px] leading-snug text-muted">
-                        Neu in der Crew — bitte mindestens eine Rolle setzen.
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-
-              <p className="text-sm text-muted">
-                Nach dem Erstellen eines Vorgangs: Modus wählen oder einen
-                festen Namen setzen.
-              </p>
-
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <Combobox
-                  label="Tandemmaster"
-                  value={crewKeepComboboxValue(
-                    draft.keep_tandemmaster_on_session_reset,
-                    draft.tandemmaster,
-                  )}
-                  onChange={(v) => setCrewKeep("tandemmaster", v)}
-                  options={tandemmasterOptions}
-                  pinnedOptions={crewKeepPinnedOptions(
-                    draft.crew_list,
-                    "tandemmaster",
-                    draft.operator_name,
-                  )}
-                  placeholder={t("setupWizard.crew.rolePlaceholder")}
-                  hint={t("setupWizard.crew.autoAddHint")}
-                  error={fieldErrors.tandemmaster}
-                  listZIndex={200}
-                />
-              </div>
-
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <Combobox
-                  label="Videospringer"
-                  value={crewKeepComboboxValue(
-                    draft.keep_videospringer_on_session_reset,
-                    draft.videospringer,
-                  )}
-                  onChange={(v) => setCrewKeep("videospringer", v)}
-                  options={videospringerOptions}
-                  pinnedOptions={crewKeepPinnedOptions(
-                    draft.crew_list,
-                    "videospringer",
-                    draft.operator_name,
-                  )}
-                  placeholder={t("setupWizard.crew.rolePlaceholder")}
-                  hint={t("setupWizard.crew.autoAddHint")}
-                  error={fieldErrors.videospringer}
-                  listZIndex={200}
-                />
-              </div>
-            </>
-          ) : null}
-
-          {step === 2 ? (
-            <>
-              <p className="text-sm text-muted">
-                Fertige Vorgänge werden im Speicherort abgelegt.
+                {t("setupWizard.intro.storage")}
               </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
                   Ablage
                 </p>
                 <FolderDirField
-                  label="Speicherort"
+                  label={t("common.labels.storageLocation")}
                   value={draft.speicherort}
                   placeholder={t("setupWizard.storage.folderPlaceholder")}
                   standardPath={mediaDirsProposal?.speicherort}
@@ -1028,30 +911,26 @@ export function SetupWizard({ open, onComplete }: Props) {
                   onUseStandard={() => onUseExistingStandardDir("speicherort")}
                   error={fieldErrors.speicherort}
                 />
-              </div>
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <Combobox
-                  label="Dropzone (Standard)"
+                  label={t("settings.general.storage.defaultDropzone")}
                   value={draft.ort}
                   onChange={(v) => patch("ort", v)}
                   options={ORT_OPTIONS}
-                  placeholder="Dropzone…"
+                  placeholder={t("common.labels.dropzonePlaceholder")}
                   listZIndex={200}
                 />
               </div>
             </>
           ) : null}
 
-          {step === 3 ? (
+          {step === 2 ? (
             <>
               <p className="text-sm text-muted">
-                SD-Karten-Backups, Aufräumen nach dem Workflow und optionales
-                Größenlimit.
+                {t("setupWizard.intro.import")}
               </p>
-
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Backup
+                  SD-Karten
                 </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1072,16 +951,19 @@ export function SetupWizard({ open, onComplete }: Props) {
                       if (!on) clearFieldError("sd_backup_folder");
                     }}
                   />
-                  Auto-Backup
+                  {t("settings.sd.backup.auto")}
                 </label>
+                <p className="text-[11px] leading-snug text-muted">
+                  {t("setupWizard.import.backupHint")}
+                </p>
                 <div
                   className={cn(
-                    "space-y-3",
+                    "space-y-3 pt-1",
                     !draft.sd_auto_backup && "opacity-50",
                   )}
                 >
                   <FolderDirField
-                    label="Backup-Ordner"
+                    label={t("settings.sd.backup.folder")}
                     value={draft.sd_backup_folder}
                     placeholder={t("setupWizard.storage.folderPlaceholder")}
                     standardPath={mediaDirsProposal?.sd_backup_folder}
@@ -1105,148 +987,33 @@ export function SetupWizard({ open, onComplete }: Props) {
                     }
                     error={fieldErrors.sd_backup_folder}
                   />
-                  <div className="space-y-1.5">
-                    <Label>PC Name</Label>
-                    <Input
-                      value={draft.sd_pc_name}
-                      placeholder="Computername"
-                      disabled={!draft.sd_auto_backup}
-                      onChange={(e) => patch("sd_pc_name", e.target.value)}
-                    />
-                    <p className="text-xs text-muted">
-                      Wird im Backup-Ordnernamen verwendet, z.B.
-                      SD_Backup_…[
-                      {draft.sd_pc_name.trim() || "PC"}
-                      ]_…
-                    </p>
-                  </div>
-                  <label
-                    className={cn(
-                      "flex items-center gap-2 text-sm",
-                      !draft.sd_auto_backup && "pointer-events-none",
-                    )}
-                    title={
-                      draft.sd_auto_backup
-                        ? "SD-Karte nach erfolgreichem Backup leeren"
-                        : t("setupWizard.sd.onlyWithAutoBackup")
-                    }
-                  >
-                    <Checkbox
-                      checked={
-                        draft.sd_clear_after_backup && draft.sd_auto_backup
-                      }
-                      disabled={!draft.sd_auto_backup}
-                      onCheckedChange={(v) =>
-                        patch("sd_clear_after_backup", v === true)
-                      }
-                    />
-                    SD nach Backup leeren
-                  </label>
                 </div>
-              </div>
-
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Import & Auswerfen
-                </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={draft.sd_auto_import}
                     onCheckedChange={(v) => patch("sd_auto_import", v === true)}
                   />
-                  Auto-Import
+                  {t("settings.sd.import.auto")}
                 </label>
                 <p className="text-[11px] leading-snug text-muted">
-                  Nach dem Backup passende Medien automatisch in die Session
-                  laden.
+                  {t("settings.sd.import.autoHint")}
                 </p>
-                <label
-                  className="flex items-center gap-2 text-sm"
-                  title="Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import."
-                >
+                <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={draft.sd_eject_after_workflow}
                     onCheckedChange={(v) =>
                       patch("sd_eject_after_workflow", v === true)
                     }
                   />
-                  SD automatisch auswerfen
+                  {t("settings.sd.import.eject")}
                 </label>
-              </div>
-
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Warnschwelle
+                <p className="text-[11px] leading-snug text-muted">
+                  {t("settings.sd.import.ejectHint")}
                 </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.sd_size_limit_enabled}
-                    onCheckedChange={(v) => {
-                      const on = v === true;
-                      patch("sd_size_limit_enabled", on);
-                      if (!on) clearFieldError("sd_size_limit_mb");
-                    }}
-                  />
-                  Größen-Limit aktivieren
-                </label>
-                <div
-                  className={cn(
-                    "space-y-1.5 pl-1",
-                    !draft.sd_size_limit_enabled &&
-                      "pointer-events-none opacity-50",
-                  )}
-                >
-                  <Label>Größen-Limit (MB)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={draft.sd_size_limit_mb}
-                    disabled={!draft.sd_size_limit_enabled}
-                    aria-invalid={
-                      fieldErrors.sd_size_limit_mb ? true : undefined
-                    }
-                    className={cn(
-                      fieldErrors.sd_size_limit_mb &&
-                        "border-destructive focus-visible:ring-destructive/40",
-                    )}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      patch(
-                        "sd_size_limit_mb",
-                        Number.isFinite(n) && n > 0 ? Math.round(n) : 0,
-                      );
-                      if (Number.isFinite(n) && n >= 1) {
-                        clearFieldError("sd_size_limit_mb");
-                      }
-                    }}
-                  />
-                  {fieldErrors.sd_size_limit_mb ? (
-                    <p
-                      className="text-[11px] leading-snug text-destructive"
-                      role="alert"
-                    >
-                      {fieldErrors.sd_size_limit_mb}
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-muted">
-                      Warnung / Bestätigung, wenn die SD-Karte dieses Limit
-                      überschreitet (Standard: 3000 MB).
-                    </p>
-                  )}
-                </div>
               </div>
-            </>
-          ) : null}
-
-          {step === 4 ? (
-            <>
-              <p className="text-sm text-muted">
-                Automatische QR-Erkennung beim Import und Aufräumen nach dem
-                Scan.
-              </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Auto-Scan beim Import
+                  QR-Erkennung
                 </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1255,7 +1022,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("qr_check_enabled", v === true)
                     }
                   />
-                  Videos beim Import scannen
+                  {t("settings.qr.autoScan.videos")}
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1264,90 +1031,83 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("photo_qr_check_enabled", v === true)
                     }
                   />
-                  Fotos beim Import scannen
+                  {t("settings.qr.autoScan.photos")}
                 </label>
-              </div>
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Nach QR-Analyse
+                <p className="text-[11px] leading-snug text-muted">
+                  {t("setupWizard.import.qrHint")}
                 </p>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.qr_remove_photo_after_scan}
-                    onCheckedChange={(v) =>
-                      patch("qr_remove_photo_after_scan", v === true)
-                    }
-                  />
-                  QR-Foto nach Scan entfernen
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.qr_remove_video_after_scan}
-                    onCheckedChange={(v) =>
-                      patch("qr_remove_video_after_scan", v === true)
-                    }
-                  />
-                  QR-Videoclip nach Scan entfernen
-                </label>
-                <div
-                  className={cn(
-                    "space-y-1.5 pl-1",
-                    !draft.qr_remove_video_after_scan &&
-                      "pointer-events-none opacity-50",
-                  )}
-                >
-                  <Label>Max. QR-Videolänge für Löschung (Sek.)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={300}
-                    value={draft.qr_remove_video_max_duration_sec}
-                    disabled={!draft.qr_remove_video_after_scan}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      patch(
-                        "qr_remove_video_max_duration_sec",
-                        Number.isFinite(n)
-                          ? Math.min(300, Math.max(1, Math.round(n)))
-                          : 10,
-                      );
-                    }}
-                  />
-                  <p className="text-[11px] text-muted">
-                    Nur Clips mit dieser Länge oder kürzer werden entfernt
-                    (Standard: 10s).
-                  </p>
-                </div>
               </div>
             </>
           ) : null}
 
-          {step === 5 ? (
+          {step === 3 ? (
             <>
               <p className="text-sm text-muted">
-                SMB-Server für Upload. Kann auch später eingerichtet werden.
+                {t("setupWizard.intro.upload")}
               </p>
+              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.upload_to_server}
+                    onCheckedChange={(v) =>
+                      patch("upload_to_server", v === true)
+                    }
+                  />
+                  {t("settings.server.upload.afterCreate")}
+                </label>
+              </div>
+              {!draft.upload_to_server ? (
+                <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
+                  {t("setupWizard.upload.disabledHint")}
+                </div>
+              ) : null}
+              <div
+                className={cn(
+                  "space-y-4",
+                  !draft.upload_to_server && "pointer-events-none opacity-50",
+                )}
+              >
               <div className="space-y-1.5">
-                <Label>Server-URL</Label>
-                <Input
-                  value={draft.server_url}
-                  onChange={(e) => patch("server_url", e.target.value)}
-                  placeholder="smb://…"
-                />
+                <Label>{t("settings.server.smb.url")}</Label>
+                <div className="relative">
+                  <Input
+                    disabled={!draft.upload_to_server}
+                    className="pr-10"
+                    value={draft.server_url}
+                    onChange={(e) => patch("server_url", e.target.value)}
+                    placeholder="smb://…"
+                  />
+                  <button
+                    type="button"
+                    disabled={!draft.upload_to_server}
+                    onClick={() => void pickServerPath()}
+                    title={t("common.actions.pickFolder")}
+                    aria-label={t("common.actions.pickFolder")}
+                    className={cn(
+                      "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
+                      "hover:bg-primary-soft hover:text-foreground",
+                      "disabled:pointer-events-none disabled:opacity-40",
+                    )}
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1.5">
-                    <Label>Login</Label>
+                    <Label>{t("settings.server.smb.login")}</Label>
                     <Input
+                      disabled={!draft.upload_to_server}
                       value={draft.server_login}
                       onChange={(e) => patch("server_login", e.target.value)}
                       autoComplete="username"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Passwort</Label>
+                    <Label>{t("settings.server.smb.password")}</Label>
                     <PasswordInput
+                      disabled={!draft.upload_to_server}
                       value={draft.server_password}
                       onChange={(e) =>
                         patch("server_password", e.target.value)
@@ -1363,7 +1123,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   type="button"
                   variant="secondary"
                   size="sm"
-                  disabled={testingServer}
+                  disabled={testingServer || !draft.upload_to_server}
                   onClick={() => void onTestServer()}
                 >
                   {testingServer ? t("common.actions.checking") : t("common.actions.testConnection")}
@@ -1385,105 +1145,97 @@ export function SetupWizard({ open, onComplete }: Props) {
                   </button>
                 ) : null}
               </div>
+              </div>
             </>
           ) : null}
 
-          {step === 6 ? (
+          {step === 4 ? (
             <>
               <p className="text-sm text-muted">{t("setupWizard.summary.description")}</p>
               <dl className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3 text-sm">
                 <SummaryRow
-                  label="Theme"
-                  value={themeMode === "dark" ? "Dunkel" : "Hell"}
-                />
-                <SummaryRow label="Crew" value={keepSummary()} />
-                <SummaryRow
-                  label="Speicherort"
+                  label={t("common.labels.language")}
                   value={
-                    skippedSteps.has(2) && !draft.speicherort.trim()
-                      ? t("setupWizard.summary.skipped")
-                      : draft.speicherort || "— nicht gesetzt —"
+                    draft.ui_language === "en"
+                      ? "English"
+                      : draft.ui_language === "es-MX"
+                        ? "Espanol (Mexico)"
+                        : "Deutsch"
                   }
                 />
-                <SummaryRow label="Dropzone" value={draft.ort || "—"} />
                 <SummaryRow
-                  label="Backup"
+                  label={t("settings.general.appearance.title")}
                   value={
-                    skippedSteps.has(3) && !draft.sd_auto_backup
+                    themeMode === "dark"
+                      ? t("common.labels.themeDark")
+                      : t("common.labels.themeLight")
+                  }
+                />
+                <SummaryRow
+                  label={t("settings.crew.who.label")}
+                  value={draft.operator_name.trim() || "—"}
+                />
+                <SummaryRow
+                  label={t("common.labels.storageLocation")}
+                  value={
+                    skippedSteps.has(1) && !draft.speicherort.trim()
+                      ? t("setupWizard.summary.skipped")
+                        : draft.speicherort || t("setupWizard.summary.notSet")
+                  }
+                />
+                <SummaryRow
+                  label={t("settings.general.storage.defaultDropzone")}
+                  value={draft.ort || "—"}
+                />
+                <SummaryRow
+                  label={t("settings.sd.backup.title")}
+                  value={
+                    skippedSteps.has(2) && !draft.sd_auto_backup
                       ? t("setupWizard.summary.skipped")
                       : draft.sd_auto_backup
-                        ? draft.sd_backup_folder || "— Ordner fehlt —"
-                        : "Deaktiviert"
+                        ? draft.sd_backup_folder || t("setupWizard.summary.missingFolder")
+                        : t("setupWizard.summary.disabled")
                   }
                 />
                 <SummaryRow
-                  label="SD leeren"
-                  value={
-                    draft.sd_clear_after_backup && draft.sd_auto_backup
-                      ? "An"
-                      : "Aus"
-                  }
+                  label={t("settings.sd.import.auto")}
+                  value={draft.sd_auto_import ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
                 />
                 <SummaryRow
-                  label="SD automatisch auswerfen"
-                  value={draft.sd_eject_after_workflow ? "An" : "Aus"}
+                  label={t("settings.sd.import.eject")}
+                  value={draft.sd_eject_after_workflow ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
                 />
-                <SummaryRow
-                  label="Auto-Import"
-                  value={draft.sd_auto_import ? "An" : "Aus"}
-                />
-                <SummaryRow
-                  label={t("setupWizard.summary.sizeLimit")}
-                  value={
-                    draft.sd_size_limit_enabled
-                      ? `${draft.sd_size_limit_mb} MB`
-                      : "Aus"
-                  }
-                />
-                <SummaryRow label="PC Name" value={draft.sd_pc_name || "—"} />
                 <SummaryRow
                   label="QR-Scan"
                   value={
-                    skippedSteps.has(4)
+                    skippedSteps.has(2)
                       ? t("setupWizard.summary.skipped")
                       : [
-                          draft.qr_check_enabled ? "Video" : null,
-                          draft.photo_qr_check_enabled ? "Foto" : null,
+                          draft.qr_check_enabled ? t("common.labels.video") : null,
+                          draft.photo_qr_check_enabled ? t("common.labels.photo") : null,
                         ]
                           .filter(Boolean)
-                          .join(", ") || "Aus"
+                          .join(", ") || t("setupWizard.summary.off")
                   }
                 />
                 <SummaryRow
-                  label="QR entfernen"
+                  label={t("settings.server.upload.title")}
                   value={
-                    [
-                      draft.qr_remove_photo_after_scan ? "Foto" : null,
-                      draft.qr_remove_video_after_scan
-                        ? `Video ≤${draft.qr_remove_video_max_duration_sec}s`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "Aus"
-                  }
-                />
-                <SummaryRow
-                  label="Server"
-                  value={
-                    skippedSteps.has(5)
+                    skippedSteps.has(3)
                       ? t("setupWizard.summary.skipped")
-                      : draft.server_url || "—"
+                      : draft.upload_to_server
+                        ? draft.server_url || t("setupWizard.summary.serverMissing")
+                        : t("setupWizard.summary.disabled")
                   }
                 />
                 <SummaryRow
-                  label="Login"
+                  label={t("settings.server.smb.login")}
                   value={draft.server_login ? draft.server_login : "—"}
                 />
               </dl>
               {!draft.speicherort.trim() ? (
                 <p className="text-xs text-muted">
-                  Ohne Speicherort können Vorgänge nicht abgelegt werden. Du
-                  kannst ihn jederzeit in den Einstellungen setzen.
+                  {t("setupWizard.summary.storageMissingHint")}
                 </p>
               ) : null}
             </>
@@ -1501,7 +1253,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               disabled={step === 0 || busy}
               onClick={goBack}
             >
-              Zurück
+              {t("common.actions.back")}
             </Button>
             {canSkipStep ? (
               <Button
@@ -1511,14 +1263,14 @@ export function SetupWizard({ open, onComplete }: Props) {
                 onClick={skipCurrentStep}
                 className={SKIP_BTN_CLASS}
               >
-                Überspringen
+                {t("common.actions.skip")}
               </Button>
             ) : (
               <span className="w-0 flex-1" aria-hidden />
             )}
             {step < STEPS.length - 1 ? (
               <Button type="button" disabled={busy} onClick={goNext}>
-                Weiter
+                {t("common.actions.next")}
               </Button>
             ) : (
               <Button
