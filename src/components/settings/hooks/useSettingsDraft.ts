@@ -13,6 +13,7 @@ import { useUiStore } from "@/store/uiStore";
 import { useLocaleStore } from "@/store/localeStore";
 import type { SettingsPatch } from "../types";
 import { isAmsBridgeConfigured } from "@/lib/amsLookup";
+import { runAmsAutoConnect } from "@/lib/amsAutoConnect";
 
 function sortCrewList(config: AppConfig): AppConfig {
   const crew_list = [...(config.crew_list ?? [])].sort((a, b) =>
@@ -131,6 +132,10 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
         server_url: toSave.server_url,
         server_login: toSave.server_login,
         server_password: toSave.server_password,
+      }).then((result) => {
+        if (result.ok) {
+          void runAmsAutoConnect({ config: saved, interactive: true });
+        }
       });
     }
     if (amsChanged) {

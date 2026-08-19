@@ -31,13 +31,27 @@ fn persist_last_ok(state: &ConfigState, base_url: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+pub struct BridgeHealthOverrides {
+    #[serde(alias = "baseUrl")]
+    pub base_url: Option<String>,
+    pub token: Option<String>,
+}
+
 #[tauri::command]
 pub async fn ams_bridge_health(
     state: State<'_, ConfigState>,
+    overrides: Option<BridgeHealthOverrides>,
 ) -> Result<BridgeHealthResult, String> {
     let config = read_config(&state)?;
-    let result = bridge::check_health(&config).await;
-    if result.ok && !result.base_url.is_empty() {
+    let overrides = overrides.unwrap_or_default();
+    let result = bridge::check_health_with(
+        &config,
+        overrides.base_url.as_deref(),
+        overrides.token.as_deref(),
+    )
+    .await;
+    if overrides.base_url.is_none() && overrides.token.is_none() && result.ok && !result.base_url.is_empty() {
         let _ = persist_last_ok(&state, &result.base_url);
     }
     Ok(result)

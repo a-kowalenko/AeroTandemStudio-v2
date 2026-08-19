@@ -184,18 +184,40 @@ pub async fn fetch_health(base_url: &str, token: &str) -> Result<BridgeHealth, S
 }
 
 pub async fn check_health(config: &AppConfig) -> BridgeHealthResult {
-    let base = match resolve_bridge_base_url(config) {
-        Ok(u) => u,
-        Err(message) => {
-            return BridgeHealthResult {
-                ok: false,
-                message,
-                health: None,
-                base_url: String::new(),
-            };
-        }
+    check_health_with(config, None, None).await
+}
+
+pub async fn check_health_with(
+    config: &AppConfig,
+    base_url_override: Option<&str>,
+    token_override: Option<&str>,
+) -> BridgeHealthResult {
+    let base = match base_url_override {
+        Some(raw) => match normalize_base_url(raw) {
+            Ok(u) => u,
+            Err(message) => {
+                return BridgeHealthResult {
+                    ok: false,
+                    message,
+                    health: None,
+                    base_url: String::new(),
+                };
+            }
+        },
+        None => match resolve_bridge_base_url(config) {
+            Ok(u) => u,
+            Err(message) => {
+                return BridgeHealthResult {
+                    ok: false,
+                    message,
+                    health: None,
+                    base_url: String::new(),
+                };
+            }
+        },
     };
-    match fetch_health(&base, &config.ams_bridge_token).await {
+    let token = token_override.unwrap_or(&config.ams_bridge_token);
+    match fetch_health(&base, token).await {
         Ok(health) => BridgeHealthResult {
             ok: health.online,
             message: if health.online {

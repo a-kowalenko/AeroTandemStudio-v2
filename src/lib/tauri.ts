@@ -1039,6 +1039,11 @@ export type AmsBridgeHealthResult = {
   base_url: string;
 };
 
+export type AmsBridgeHealthOverrides = {
+  baseUrl?: string;
+  token?: string;
+};
+
 export type AmsBridgeLookupResponse = {
   ok: boolean;
   customer?: AmsBridgeCustomer | null;
@@ -1063,8 +1068,17 @@ export type AmsBridgeCustomer = {
   ist_bezahlt_outside_video?: boolean;
 };
 
-export async function amsBridgeHealth(): Promise<AmsBridgeHealthResult> {
-  return invoke<AmsBridgeHealthResult>("ams_bridge_health");
+export async function amsBridgeHealth(
+  overrides?: AmsBridgeHealthOverrides,
+): Promise<AmsBridgeHealthResult> {
+  return invoke<AmsBridgeHealthResult>("ams_bridge_health", {
+    overrides: overrides
+      ? {
+          baseUrl: overrides.baseUrl ?? null,
+          token: overrides.token ?? null,
+        }
+      : null,
+  });
 }
 
 export async function amsBridgeCustomerLookup(args: {

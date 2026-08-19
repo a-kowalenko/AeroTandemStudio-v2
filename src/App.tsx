@@ -141,6 +141,7 @@ import {
   translateValidationHint,
 } from "./lib/createReadyHints";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
+import { runAmsAutoConnect } from "./lib/amsAutoConnect";
 import { cn, isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
 import "./App.css";
@@ -292,6 +293,7 @@ function App() {
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
   const sdDrainTimerRef = useRef<number | null>(null);
+  const amsAutoConnectKeyRef = useRef("");
 
   const videoCuts = useVideoCutApply();
   const photoEdits = usePhotoEditApply();
@@ -1187,6 +1189,27 @@ function App() {
     checkServerConnection,
     ready,
     setupWizardOpen,
+  ]);
+
+  useEffect(() => {
+    if (!ready || splashOpen || setupWizardOpen || !config || !serverConnected) return;
+    if (config.ams_bridge_url.trim() && config.ams_bridge_token.trim()) return;
+    const key = [
+      config.server_url,
+      config.server_password,
+      config.ams_bridge_url,
+      config.ams_bridge_token,
+      config.ams_bridge_last_ok_url,
+    ].join("\0");
+    if (amsAutoConnectKeyRef.current === key) return;
+    amsAutoConnectKeyRef.current = key;
+    void runAmsAutoConnect({ config, interactive: false });
+  }, [
+    config,
+    ready,
+    serverConnected,
+    setupWizardOpen,
+    splashOpen,
   ]);
 
   useAmsBridgeHealthPoll(ready && !splashOpen && !setupWizardOpen);
