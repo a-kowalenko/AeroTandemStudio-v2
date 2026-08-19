@@ -3,12 +3,14 @@
 ## Hauptdokument
 
 **Implementierungsplan:** `@docs/IMPLEMENTATION_PLAN.md`  
+**Performance-Backlog:** `@docs/optimization_plan.md`  
 **Architektur:** `@docs/ARCHITECTURE.md`  
 **Migration-Mapping:** `@docs/MIGRATION.md`  
 **macOS Build:** `@docs/MACOS_BUILD.md`  
 **Linux Build:** `@docs/LINUX_BUILD.md`
 
-In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren.
+In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren.  
+Performance-Optimierungen separat: `@docs/optimization_plan.md` — **nur ein OPT-Paket** pro Session.
 
 ---
 
@@ -112,6 +114,24 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 **Nächster Schritt:** Phase 23.1 (Windows WPD/MTP + Staging)  
 *(optional: Phase 14 ML Backlog; Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*
 
+### Performance-Backlog
+
+| ID | Titel | Status |
+|----|-------|--------|
+| OPT-0 | Performance-Baseline | ⬜ |
+| OPT-1 | Foto-Preview Thumbnails | ⬜ |
+| OPT-2 | Import paralleles ffprobe | ⬜ |
+| OPT-3 | Copy-Buffer / Hardlink | ⬜ |
+| OPT-4 | Thumbnails HTTP statt Base64 | ⬜ |
+| OPT-5 | App.tsx Split + lazy | ⬜ |
+| OPT-6 | Log-Konsole virtualisieren | ⬜ |
+| OPT-7 | Filmstrip-Prefetch | ⬜ |
+| OPT-8 | Startup Cache-Sweep defer | ⬜ |
+| OPT-9 | Stream-Copy / Preview-Reuse UX | ⬜ |
+| OPT-10 | Thumbnail-Warming staffeln | ⬜ |
+
+Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
+
 ---
 
 ## Schnell-Prompt für Agent
@@ -124,3 +144,11 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 ```
 
 **Phase 15 (Linux):** Prompt in `@docs/LINUX_BUILD.md` (Abschnitt „Agent prompt“) verwenden.
+
+**Performance (OPT-X):**
+
+```
+Implementiere OPT-X aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-X. Danach cargo test && npm run tauri dev.
+```
