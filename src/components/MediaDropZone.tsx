@@ -59,6 +59,7 @@ import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { cn } from "@/lib/utils";
+import { CREATE_READY_IDS } from "@/lib/createReadyHints";
 
 export type MediaImportSummary = {
   videosAdded: number;
@@ -560,7 +561,9 @@ export function MediaDropZone({
 
   return (
     <section
-      className="ats-surface space-y-3 rounded-xl p-4 shadow-sm backdrop-blur-sm"
+      id={CREATE_READY_IDS.media}
+      tabIndex={-1}
+      className="ats-surface space-y-3 rounded-xl p-4 shadow-sm backdrop-blur-sm outline-none"
       aria-labelledby={dropZoneId}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">

@@ -80,6 +80,11 @@ type KundeState = {
    * Not set on session start / reset / mode switch.
    */
   kundenIdFocusPending: boolean;
+  /**
+   * Operator started editing this session (typed a field, switched mode, …).
+   * Config defaults and derived `gast` sync do not set this.
+   */
+  sessionTouched: boolean;
   requestKundenIdFocus: () => void;
   clearKundenIdFocus: () => void;
   clearCrewAttentionAfterQr: () => void;
@@ -126,6 +131,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   amsLookupRevision: 0,
   amsLookupIds: null,
   kundenIdFocusPending: false,
+  sessionTouched: false,
 
   requestKundenIdFocus: () => set({ kundenIdFocusPending: true }),
   clearKundenIdFocus: () => set({ kundenIdFocusPending: false }),
@@ -133,31 +139,45 @@ export const useKundeStore = create<KundeState>((set, get) => ({
 
   setField: (key, value) => {
     const prev = get().kunde;
+    if (Object.is(prev[key], value)) return;
+    const touch = key !== "gast";
     if (
       (key === "kunden_id" || key === "booking_id") &&
-      get().amsLookupRevision > 0 &&
-      (prev[key] ?? "") !== (value ?? "")
+      get().amsLookupRevision > 0
     ) {
       set({
         kunde: clearAmsLookupDerived({ ...prev, [key]: value }),
         amsLookupLocked: false,
         amsLookupRevision: 0,
         amsLookupIds: null,
+        ...(touch ? { sessionTouched: true } : {}),
       });
       return;
     }
-    set({ kunde: { ...prev, [key]: value } });
+    set({
+      kunde: { ...prev, [key]: value },
+      ...(touch ? { sessionTouched: true } : {}),
+    });
   },
 
   patch: (partial) => {
-    set({ kunde: { ...get().kunde, ...partial } });
+    const prev = get().kunde;
+    const touches = (Object.keys(partial) as (keyof Kunde)[]).some(
+      (key) => key !== "gast" && !Object.is(prev[key], partial[key]),
+    );
+    set({
+      kunde: { ...prev, ...partial },
+      ...(touches ? { sessionTouched: true } : {}),
+    });
   },
 
   setVideoMode: (mode) => {
     if (get().amsLookupLocked) return;
     const k = get().kunde;
+    if (k.video_mode === mode) return;
     if (mode === "handcam") {
       set({
+        sessionTouched: true,
         kunde: {
           ...k,
           video_mode: "handcam",
@@ -169,6 +189,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       });
     } else if (mode === "outside") {
       set({
+        sessionTouched: true,
         kunde: {
           ...k,
           video_mode: "outside",
@@ -181,6 +202,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       });
     } else {
       set({
+        sessionTouched: true,
         kunde: {
           ...k,
           video_mode: "",
@@ -331,7 +353,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
 
   unlockAmsLookup: () => {
     if (!get().amsLookupLocked) return;
-    set({ amsLookupLocked: false });
+    set({ amsLookupLocked: false, sessionTouched: true });
   },
 
   relockAmsLookup: () => {
@@ -358,6 +380,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         amsLookupLocked: false,
         amsLookupRevision: 0,
         amsLookupIds: null,
+        sessionTouched: true,
         kunde: {
           ...kunde,
           form_mode: "manual",
@@ -386,6 +409,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupRevision: 0,
       amsLookupIds: null,
       kundenIdFocusPending: false,
+      sessionTouched: true,
       kunde: restored,
       qrSnapshot: { ...restored },
     });
@@ -408,6 +432,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       amsLookupRevision: 0,
       amsLookupIds: null,
       kundenIdFocusPending: false,
+      sessionTouched: false,
       kunde: emptyKunde({
         ort: prev.ort,
         tandemmaster: keep?.tandemmaster

@@ -36,10 +36,11 @@ import {
 } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { kundeDisplayName, fileBaseName } from "@/lib/qrSuccess";
+import { CREATE_READY_IDS } from "@/lib/createReadyHints";
 
-const CREW_TM_INPUT_ID = "crew-tandemmaster";
-const CREW_VS_INPUT_ID = "crew-videospringer";
-const KUNDE_ID_INPUT_ID = "kunde-kunden-id";
+const CREW_TM_INPUT_ID = CREATE_READY_IDS.tandemmaster;
+const CREW_VS_INPUT_ID = CREATE_READY_IDS.videospringer;
+const KUNDE_ID_INPUT_ID = CREATE_READY_IDS.kundenId;
 const CREW_ROLE_CONFLICT =
   "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein.";
 
@@ -299,6 +300,7 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
           aria-hidden
         />
         <DateField
+          id={CREATE_READY_IDS.datum}
           label="Datum"
           hideLabel
           value={kunde.datum}
@@ -858,6 +860,7 @@ export function CustomerForm({
           {isQrMode ? (
             <>
               <Field
+                id={CREATE_READY_IDS.vorname}
                 label="Vorname"
                 value={kunde.vorname ?? ""}
                 onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
@@ -902,6 +905,7 @@ export function CustomerForm({
                     hint={lookupIdLengthHint(kunde.kunden_id) ?? undefined}
                   />
                   <Field
+                    id={CREATE_READY_IDS.bookingId}
                     label="Booking-ID"
                     value={kunde.booking_id ?? ""}
                     onChange={(v) =>
@@ -932,6 +936,7 @@ export function CustomerForm({
                 </>
               ) : null}
               <Field
+                id={CREATE_READY_IDS.vorname}
                 label="Vorname"
                 value={kunde.vorname ?? ""}
                 onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
@@ -946,6 +951,7 @@ export function CustomerForm({
               {oldschool ? (
                 <>
                   <Field
+                    id={CREATE_READY_IDS.email}
                     label="E-Mail"
                     value={kunde.email ?? ""}
                     onChange={(v) => setField("email", v || null)}
@@ -1007,8 +1013,10 @@ export function CustomerForm({
 
       <Section title="Medien">
         <div
+          id={CREATE_READY_IDS.produkt}
+          tabIndex={-1}
           className={cn(
-            "inline-flex w-full max-w-sm rounded-lg border border-border bg-card-elevated/80 p-1",
+            "inline-flex w-full max-w-sm rounded-lg border border-border bg-card-elevated/80 p-1 outline-none",
             (busy || productsLocked) && "opacity-60",
           )}
           role="group"

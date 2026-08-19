@@ -132,7 +132,10 @@ import {
   resolveProgressLabel,
   shouldClearTaskProgress,
 } from "./lib/progressLabels";
-import { summarizeCreateHints } from "./lib/createReadyHints";
+import {
+  focusCreateReadyTarget,
+  summarizeCreateHints,
+} from "./lib/createReadyHints";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { cn, isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
@@ -163,6 +166,9 @@ function App() {
   const persistConfig = useConfigStore((s) => s.persist);
   const kunde = useKundeStore((s) => s.kunde);
   const qrPreview = useKundeStore((s) => s.qrPreview);
+  const qrRevision = useKundeStore((s) => s.qrRevision);
+  const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
+  const sessionTouched = useKundeStore((s) => s.sessionTouched);
   const applyDefaultsFromConfig = useKundeStore((s) => s.applyDefaultsFromConfig);
   const resetSession = useKundeStore((s) => s.resetSession);
   const previewCacheMatches = usePreviewCacheStore((s) => s.matches);
@@ -1666,7 +1672,18 @@ function App() {
   /** Kein QR↔Manuell-Wechsel mitten in Backup/Import/Scan. */
   const formModeToggleLocked = busy || pipelineActive;
 
-  const createBanner = summarizeCreateHints(createHints);
+  const workStarted =
+    sessionTouched ||
+    videoList.length > 0 ||
+    photoList.length > 0 ||
+    qrRevision > 0 ||
+    amsLookupRevision > 0;
+  const createBanner = busy
+    ? null
+    : summarizeCreateHints(createHints, {
+        workStarted,
+        suppressEmptyMedia: pipelineActive,
+      });
 
   // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
   useEffect(() => {
@@ -1845,7 +1862,7 @@ function App() {
             </div>
           </div>
 
-          <div className="space-y-2.5 border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
+          <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
                 Vorgang
@@ -1913,29 +1930,85 @@ function App() {
                 </label>
               </div>
             </div>
-            {createBanner ? (
-              <div
-                className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
-                role="status"
-                aria-live="polite"
-              >
-                <div className="flex items-start gap-2">
-                  <AlertTriangle
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                    aria-hidden
-                  />
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="text-xs font-medium leading-snug">
-                      {createBanner.headline}
-                    </p>
-                    <p className="text-[11px] leading-snug text-warning/90">
-                      {createBanner.labels.join(" · ")}
-                    </p>
+            <div
+              className={cn(
+                "grid transition-[grid-template-rows] duration-200 ease-out",
+                createBanner ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+              )}
+            >
+              <div className="min-h-0 overflow-hidden">
+                {createBanner ? (
+                  <div
+                    className="mt-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <div
+                      className={cn(
+                        "flex gap-2",
+                        createBanner.items.length === 1
+                          ? "items-center"
+                          : "items-start",
+                      )}
+                    >
+                      <AlertTriangle
+                        className={cn(
+                          "h-3.5 w-3.5 shrink-0",
+                          createBanner.items.length > 1 && "mt-0.5",
+                        )}
+                        aria-hidden
+                      />
+                      <div
+                        className={cn(
+                          "min-w-0",
+                          createBanner.showChips && "space-y-1",
+                        )}
+                      >
+                        {createBanner.items.length === 1 &&
+                        createBanner.items[0].target !== "none" ? (
+                          <button
+                            type="button"
+                            className="text-left text-xs font-medium leading-snug hover:underline"
+                            onClick={() =>
+                              focusCreateReadyTarget(
+                                createBanner.items[0].target,
+                                { setMediaTab },
+                              )
+                            }
+                          >
+                            {createBanner.headline}
+                          </button>
+                        ) : (
+                          <p className="text-xs font-medium leading-snug">
+                            {createBanner.headline}
+                          </p>
+                        )}
+                        {createBanner.showChips ? (
+                          <div className="flex flex-wrap gap-1">
+                            {createBanner.items.map((item) => (
+                              <button
+                                key={item.label}
+                                type="button"
+                                className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium leading-snug text-warning hover:bg-warning/20"
+                                aria-label={`${item.label} anzeigen`}
+                                onClick={() =>
+                                  focusCreateReadyTarget(item.target, {
+                                    setMediaTab,
+                                  })
+                                }
+                              >
+                                {item.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </div>
-            ) : null}
-            <div className="flex gap-2">
+            </div>
+            <div className="mt-2.5 flex gap-2">
               <Button
                 type="button"
                 variant="secondary"

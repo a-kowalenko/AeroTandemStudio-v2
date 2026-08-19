@@ -103,6 +103,8 @@ type DateFieldProps = {
   hideLabel?: boolean;
   /** Extra classes for the text input. */
   inputClassName?: string;
+  /** Stable input id (defaults to React useId). */
+  id?: string;
 };
 
 /**
@@ -110,6 +112,7 @@ type DateFieldProps = {
  * Avoids native `<input type="date">` (broken/invisible picker chrome on macOS WKWebView).
  */
 export function DateField({
+  id,
   label,
   value,
   onChange,
@@ -118,7 +121,8 @@ export function DateField({
   hideLabel = false,
   inputClassName,
 }: DateFieldProps) {
-  const autoId = useId();
+  const generatedId = useId();
+  const autoId = id ?? generatedId;
   const panelId = `${autoId}-panel`;
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);

@@ -27,6 +27,7 @@ import {
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
 import { cn } from "../lib/utils";
+import { CREATE_READY_IDS } from "../lib/createReadyHints";
 
 type PhotoPreviewProps = {
   disabled?: boolean;
@@ -421,7 +422,11 @@ export function PhotoPreview({
             <div>Anzahl: {photoList.length}</div>
             <div>Größe: {totalSizeHint}</div>
             {fotoWmNeeded && (
-              <div>
+              <div
+                id={CREATE_READY_IDS.watermark}
+                tabIndex={-1}
+                className="outline-none"
+              >
                 Wasserzeichen: {watermarkIndices.size} / {photoList.length}
               </div>
             )}
