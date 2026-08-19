@@ -85,6 +85,45 @@
 3. S1–S3: Stopwatch ab Drop/Click bis UI-Zustand „fertig“ (Liste / Player spielt / Create-Erfolg).
 4. Ergebnisse in neue Zeile unten eintragen — **Plattform und Clip-Größe nie weglassen**.
 
+---
+
+## Nach OPT-0 … OPT-10
+
+> **Gemessen:** 2026-08-20 · **App-Version:** 0.2.17 · **Git:** `b7a0e9f` (Branch `performance`)  
+> **Fixtures:** `%TEMP%\ats-opt0-baseline` (unverändert) · **Mess-Skript:** `%TEMP%\ats-opt-final-run` (PowerShell, nur Temp)
+
+| Feld | Wert |
+|------|------|
+| Plattform | Windows 11 Pro (Build 26200), x64 — **gleiche Maschine wie OPT-0** |
+| CPU / RAM | Intel Core i5-9400 @ 2.90 GHz · 32 GB |
+| Encoder (detect) | libx264 (Software) |
+| Copy-Buffer | **2 MiB** (`DEFAULT_COPY_BUFFER`, OPT-3) |
+| Import same-volume | **Hardlink** statt Copy (OPT-3) |
+| Probe | **Parallel 4 Worker** (`probe_videos_parallel`, OPT-2) |
+| Thumbnails Import | **Staffel-Queue** 500 ms + max 2 concurrent (OPT-10) — blockiert Liste nicht |
+| Messmethode | PowerShell-Stopwatch; Probe wie Backend (`-nostdin -hide_banner -i`); parallele Probe via Prozess-Pool (4×), kein `Start-Job`-Overhead |
+
+### Vorher/Nachher S1–S3
+
+| ID | Szenario | Metrik | OPT-0 (Vorher) | Nach OPT-0…10 | Δ Backend | Anmerkung |
+|----|----------|--------|----------------|---------------|-----------|-----------|
+| **S1** | Import 10 Videos | Copy + Probe (Backend) | **4,45 s** | **0,25 s** | **−94 %** | Copy 0,02 s (Hardlink) + Probe 0,23 s (par. 4×); Fallback Copy 2 MiB: 0,08 + 0,16 s = 0,24 s |
+| **S1** | Import 10 Videos | UI (Liste vollständig) | ~**5,3 s** | ~**0,3 s** | **−94 %** | OPT-10: Liste nach `importVideos`; Poster asynchron (nicht mehr ~0,9 s Thumb-Block) |
+| **S2a** | Preview (Intro aus) | Encode bis Datei fertig | **10,13 s** | **10,07 s** | ≈0 % | 1×30 s Clip, libx264 medium CRF 23 — gleiche Proxy-Methode wie OPT-0-Artefakt `preview_body.mp4` |
+| **S2b** | Preview (Intro an) | Encode bis Datei fertig | **9,37 s** | **10,08 s** | +8 % | drawtext auf 1 Clip; Varianz im Rahmen (Fontconfig-Warnung, gleiche Hardware) |
+| **S3a** | Create ohne Preview-Reuse | Voll-Encode | **9,76 s** | **10,10 s** | +3 % | 1×30 s Clip Re-Encode — Encode-Pfad unverändert (kein OPT-Ziel) |
+| **S3b** | Create mit Preview-Reuse | Datei übernehmen | **0,02 s** | **0,01 s** | ≈0 % | Copy Preview-Output; OPT-9 verbessert UX/Fingerprint, nicht Copy-Zeit |
+
+**Interpretation:** Der größte Gewinn liegt bei **S1 Import** (OPT-2 paralleles Probe, OPT-3 Hardlink/2 MiB Buffer, OPT-10 entkoppelte Thumbs). **S2/S3 Encode** war nicht Ziel der OPTs — Werte liegen innerhalb Mess-Toleranz. Bei **3 kompatiblen 1080p-Clips** kann die App stream-copy concat (~1 s) statt Voll-Re-Encode nutzen; die Tabelle oben nutzt bewusst dieselbe 1-Clip-FFmpeg-Methode wie die OPT-0-Artefakte (30 s Output).
+
+### Aufteilung S1 (Nachher)
+
+| Phase | Dauer (s) | Anteil |
+|-------|-----------|--------|
+| Hardlink → Working-Session (10×, same volume) | 0,02 | 8 % |
+| `probe_video` parallel (10×, 4 Worker) | 0,23 | 92 % |
+| **Summe Backend** | **0,25** | 100 % |
+
 ### Messprotokoll-Vorlage
 
 ```text

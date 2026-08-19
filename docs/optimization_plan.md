@@ -71,6 +71,15 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-9 | ✅ |
 | OPT-10 | ✅ |
 
+**Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
+
+| Szenario | OPT-0 Backend | Nach OPT-0…10 | Kurz |
+|----------|---------------|---------------|------|
+| S1 Import 10×6 MB | 4,45 s | **0,25 s** | −94 % (par. Probe, Hardlink, async Thumbs) |
+| S2 Preview (1×30 s Proxy) | 10,13 s | 10,07 s | Encode unverändert (erwartet) |
+| S3 Create mit Preview-Reuse | 0,02 s | 0,01 s | Reuse weiterhin instant |
+| S3 Create ohne Reuse | 9,76 s | 10,10 s | Encode unverändert (erwartet) |
+
 ---
 
 ## 4. OPT-Pakete
@@ -121,14 +130,17 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 
 #### Baseline (Kurzfassung)
 
-Vollständige Tabellen, Fixtures und Wiederholungsanleitung: **`docs/PERF_BASELINE.md`** (2026-08-19, v0.2.17, Windows 11, libx264).
+Vollständige Tabellen, Fixtures und Wiederholungsanleitung: **`docs/PERF_BASELINE.md`**
 
-| Szenario | Backend (s) | UI-Schätzung (s) |
-|----------|---------------|------------------|
-| S1 Import 10×6 MB | 4,45 | ~5,3 |
-| S2 Preview (3 Clips, Intro aus) | 10,13 | ~10,5–11 |
-| S3 Create mit Preview-Reuse | 0,02 | ~0,5–2 |
-| S3 Create ohne Reuse (3 Clips) | 9,76 | ~10–15 |
+| | OPT-0 (2026-08-19) | Nach OPT-0…10 (2026-08-20) |
+|--|-------------------|---------------------------|
+| **Git** | `7f1de1d` | `b7a0e9f` |
+| **S1 Import Backend** | 4,45 s | **0,25 s** |
+| **S1 Import UI** | ~5,3 s | **~0,3 s** |
+| **S2 Preview** | 10,13 s | 10,07 s |
+| **S3 Reuse / Full** | 0,02 / 9,76 s | 0,01 / 10,10 s |
+
+Details und Vorher/Nachher-Tabelle: **`docs/PERF_BASELINE.md`** → Abschnitt „Nach OPT-0 … OPT-10“.
 
 #### Agent-Prompt
 
