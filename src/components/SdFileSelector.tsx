@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -20,11 +21,13 @@ import {
 } from "./ui/select";
 import type { SdWorkflowActions } from "../lib/sdCard";
 import { emptyCatalogLabel, isMtpDrive } from "../lib/sdCard";
+import { tr } from "@/i18n";
 import {
   createSdThumbnailLoader,
   type ThumbState,
 } from "../lib/sdThumbnailLoader";
 import { isSidecarPath } from "../lib/media";
+import { formatLocaleDateTime } from "@/lib/locale";
 import { cn } from "../lib/utils";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
@@ -65,6 +68,7 @@ const statusBadgeBase =
 
 /** Overlay / row badge for files already known from prior SD runs. */
 function KnownBadge({ className }: { className?: string }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -73,13 +77,14 @@ function KnownBadge({ className }: { className?: string }) {
         className,
       )}
     >
-      Bekannt
+      {t("sd.selector.known")}
     </span>
   );
 }
 
 /** Shown on new files only when the dialog also contains known files. */
 function NewBadge({ className }: { className?: string }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -88,7 +93,7 @@ function NewBadge({ className }: { className?: string }) {
         className,
       )}
     >
-      Neu
+      {t("sd.selector.new")}
     </span>
   );
 }
@@ -120,29 +125,23 @@ function formatBytes(n: number): string {
 function formatEpoch(epoch: number): string {
   if (!epoch) return "—";
   const d = new Date(epoch * 1000);
-  return d.toLocaleString("de-DE");
+  return formatLocaleDateTime(d);
 }
 
 /** Compact capture time for the tile meta row (next to file size). */
 function formatCaptureTime(epoch: number): string {
   if (!epoch) return "";
   const d = new Date(epoch * 1000);
-  return d.toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatLocaleDateTime(d);
 }
 
 function confirmLabel(actions: SdWorkflowActions, count: number): string {
   const parts: string[] = [];
-  if (actions.backup) parts.push("Backup");
-  if (actions.import) parts.push("Import");
-  if (actions.clear) parts.push("Bereinigen");
-  if (actions.eject) parts.push("Auswerfen");
-  if (parts.length === 0) return `Ausführen (${count})`;
+  if (actions.backup) parts.push(tr("app.sd.backupLabel"));
+  if (actions.import) parts.push(tr("app.import.label"));
+  if (actions.clear) parts.push(tr("app.sd.clearLabel"));
+  if (actions.eject) parts.push(tr("app.sd.ejectLabel"));
+  if (parts.length === 0) return tr("sd.selector.executeCount", { count });
   return `${parts.join(" · ")} (${count})`;
 }
 
@@ -159,13 +158,14 @@ function CatalogStatusOverlay({
   reason: import("../lib/sdCard").ListEmptyReason | null;
   onRefresh?: () => void;
 }) {
+  const { t } = useTranslation();
   if (!empty) return null;
   if (listing) {
     return (
       <div className="pointer-events-none absolute inset-0 z-10 flex min-h-[16rem] items-center justify-center px-6 py-8">
         <span className="inline-flex max-w-md items-center gap-2 text-center text-sm text-muted">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-          SD-Dateien werden gelesen…
+          {t("app.sd.readingFiles")}
         </span>
       </div>
     );
@@ -185,7 +185,7 @@ function CatalogStatusOverlay({
             onClick={onRefresh}
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            Erneut lesen
+            {t("sd.selector.refresh")}
           </Button>
         ) : null}
       </div>
@@ -200,6 +200,7 @@ export function SdFileSelector({
   onProceedAll,
   onRefresh,
 }: Props) {
+  const { t } = useTranslation();
   // Catalog lives in sdStore so App.tsx does not re-render on every MTP tick.
   const open = useSdStore((s) => s.selectorOpen);
   const drive = useSdStore((s) => s.selectorDrive);
@@ -861,8 +862,8 @@ export function SdFileSelector({
 
   const title =
     mode === "size_limit"
-      ? "Größen-Limit überschritten — Dateien wählen"
-      : "SD-Karte — Dateien wählen";
+      ? t("sd.selector.titleSizeLimit")
+      : t("sd.selector.title");
 
   const anyAction = actions.backup || actions.import || actions.clear;
   const catalogEmpty = !listing && files.length === 0;

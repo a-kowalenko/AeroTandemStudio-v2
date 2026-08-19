@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -275,6 +276,7 @@ export function VideoPreview({
   formHints = [],
   playbackSuspended = false,
 }: VideoPreviewProps) {
+  const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
   const removeVideo = useVideoStore((s) => s.removeVideo);
   const reorderVideos = useVideoStore((s) => s.reorderVideos);
@@ -439,37 +441,37 @@ export function VideoPreview({
 
   async function handleGenerate() {
     if (videoList.length === 0) {
-      showError("Keine Videos in der Liste.");
+      showError(t("media.drop.noVideos"));
       return;
     }
     const paths = videoList.map((v) => v.path);
     try {
       const form = await validateKunde(kunde, paths, oldschoolMode);
       if (!form.valid) {
-        showWarning(form.errors.join("\n"), "Validierung");
+        showWarning(form.errors.join("\n"), t("create.validation.validation"));
         return;
       }
     } catch (e) {
-      showError(String(e), "Validierung");
+      showError(String(e), t("create.validation.validation"));
       return;
     }
     if (!formReady) {
       const hint =
         formHints.filter((h) => !h.includes("Speicherort")).join("\n") ||
-        "Formular oder Produkte sind noch nicht vollständig.";
-      showWarning(hint, "Validierung");
+        t("video.preview.formIncomplete");
+      showWarning(hint, t("create.validation.validation"));
       return;
     }
 
     setBusy(true);
     resetLocalProgress();
-    onStatus?.("Vorschau wird erzeugt…");
+    onStatus?.(t("video.preview.generating"));
     try {
       const result = await generatePreview(paths, kunde);
       setPreview(result);
       setPreviewCache(result, videoList, kunde, encodingSig);
       setPlayerMode("combined");
-      onProgressComplete?.("Vorschau fertig");
+      onProgressComplete?.(t("video.preview.ready"));
       const strategy =
         result.strategy === "stream_copy_only"
           ? "Stream-Copy"
@@ -490,8 +492,8 @@ export function VideoPreview({
       );
     } catch (e) {
       if (isCancellationError(e)) {
-        onStatus?.("Abgebrochen");
-        showWarning("Vorschau abgebrochen.");
+        onStatus?.(t("progress.default.cancelled"));
+        showWarning(t("video.preview.cancelled"));
       } else {
         showError(String(e));
       }
@@ -523,11 +525,11 @@ export function VideoPreview({
             }),
         });
       } else {
-        showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
+        showWarning(result.message || t("media.list.noQrClip"), t("app.qr.label"));
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("app.qr.label"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -587,7 +589,7 @@ export function VideoPreview({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
           <Film className="h-4 w-4 text-primary" />
-          Video-Vorschau
+          {t("video.preview.title")}
         </h3>
         <div className="flex flex-wrap gap-2">
           {canUndoCuts && onUndoAllCuts && (
@@ -597,7 +599,7 @@ export function VideoPreview({
               variant="outline"
               onClick={() => onUndoAllCuts()}
               disabled={busy}
-              title="Alle Trim-/Teilen-Aktionen rückgängig machen"
+              title={t("video.preview.undoAllEditsTitle")}
             >
               <RotateCcw className="h-4 w-4" />
               Alle Bearbeitungen rückgängig
@@ -614,7 +616,7 @@ export function VideoPreview({
                   canGeneratePreview
                     ? undefined
                     : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                      "Formular unvollständig"
+                      t("video.preview.formIncompleteShort")
                 }
               >
                 <Play className="h-4 w-4" />
@@ -628,7 +630,7 @@ export function VideoPreview({
                   variant={showingCombined ? "default" : "secondary"}
                   onClick={showCombinedPreview}
                   disabled={busy}
-                  title="Gespeicherte kombinierte Vorschau anzeigen (ohne neu zu generieren)"
+                  title={t("video.preview.showExistingTitle")}
                 >
                   <Play className="h-4 w-4" />
                   Vorschau anzeigen
@@ -642,10 +644,10 @@ export function VideoPreview({
                   title={
                     canGeneratePreview
                       ? previewStale
-                        ? "Formular oder Clips haben sich geändert — Vorschau neu generieren"
-                        : "Kombinierte Vorschau neu erzeugen und überschreiben"
+                        ? t("video.preview.staleRegenerateTitle")
+                        : t("video.preview.regenerateTitle")
                       : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                        "Formular unvollständig"
+                        t("video.preview.formIncompleteShort")
                   }
                 >
                   <RefreshCw className="h-4 w-4" />
@@ -661,7 +663,7 @@ export function VideoPreview({
           className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100"
           role="status"
         >
-          Vorschau veraltet — Formular oder Clips wurden geändert.
+          {t("video.preview.stale")}
         </div>
       )}
 
@@ -675,7 +677,7 @@ export function VideoPreview({
           />
           {previewStale && (
             <span className="pointer-events-none absolute top-2 right-2 rounded bg-amber-600/90 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase">
-              Veraltet
+              {t("video.preview.staleBadge")}
             </span>
           )}
         </div>
@@ -692,7 +694,7 @@ export function VideoPreview({
       ) : (
         <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--ats-preview-stage)] text-sm text-white/75 ring-1 ring-border">
           <Film className="h-8 w-8 opacity-50" aria-hidden />
-          <p>Keine Videos — per Drag & Drop im Medien-Bereich hinzufügen</p>
+          <p>{t("video.preview.empty")}</p>
         </div>
       )}
 
@@ -700,8 +702,8 @@ export function VideoPreview({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted">
             {hasPreviewFile
-              ? "Einzelclip-Wiedergabe — „Vorschau anzeigen“ für die kombinierte Datei."
-              : "Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte Datei."}
+              ? t("video.preview.singleClipWithPreview")
+              : t("video.preview.singleClipWithoutPreview")}
           </p>
           <div className="flex items-center gap-2">
             <Switch
@@ -902,7 +904,7 @@ export function VideoPreview({
                   variant="outline"
                   disabled={busy}
                   onClick={() => onUndoClipCut(current.path)}
-                  title="Diese Bearbeitung rückgängig machen"
+                  title={t("video.preview.undoThisEditTitle")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Bearbeitung rückgängig
@@ -959,8 +961,8 @@ export function VideoPreview({
       <MediaFileContextMenu
         state={ctxMenu}
         onClose={() => setCtxMenu(null)}
-        onError={(msg) => showError(msg, "Datei")}
-        onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        onError={(msg) => showError(msg, t("media.list.fileTitle"))}
+        onCopied={() => showSuccess(t("media.list.pathCopied"), t("media.list.pathTitle"))}
         actionsDisabled={busy || qrBusy}
         onScanQr={(path) => void handleQrScan(path)}
         onCut={

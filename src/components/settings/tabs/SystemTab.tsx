@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +41,7 @@ export function SystemTab({
   installBlockedReason = null,
   platformHint = null,
 }: Props) {
+  const { t } = useTranslation();
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const videoList = useVideoStore((s) => s.videoList);
@@ -75,18 +77,18 @@ export function SystemTab({
 
   const applyLabel =
     !silentAvailable && hasInstaller
-      ? "Installer öffnen…"
+      ? t("settings.system.update.openInstaller")
       : selectedRelation === "older"
-        ? "Ältere Version installieren"
+        ? t("settings.system.update.installOlder")
         : selectedRelation === "newer"
-          ? "Aktualisieren"
-          : "Version übernehmen";
+          ? t("settings.system.update.update")
+          : t("settings.system.update.applyVersion");
 
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Cache & Temp"
-        description="Entfernt Preview-/Concat-/Work-Ordner in Temp, Schnitt-Reste, bekannte Temp-Dateien und Arbeitsordner neben dem Speicherort. Leert außerdem die aktuelle Medien-Session (Working-Folder)."
+        title={t("settings.system.cache.title")}
+        description={t("settings.system.cache.description")}
       >
         <Button
           type="button"
@@ -107,24 +109,28 @@ export function SystemTab({
                 include_hw_cache: false,
                 orphans_only: false,
               });
-              showSuccess(result.summary, "Cache");
+              showSuccess(result.summary, t("settings.system.cache.toastTitle"));
             } catch (e) {
-              showError(String(e), "Cache");
+              showError(String(e), t("settings.system.cache.toastTitle"));
             } finally {
               setCleaningCache(false);
             }
           }}
         >
-          {cleaningCache ? "Räume auf…" : "Cache leeren"}
+          {cleaningCache
+            ? t("settings.system.cache.cleaning")
+            : t("settings.system.cache.clear")}
         </Button>
       </SettingsSection>
 
       <SettingsSection
-        title="Update"
-        description="Beim Start wird automatisch nach neueren Versionen gesucht. Hier können Sie auch eine ältere oder neuere Version manuell auswählen — Installation wie beim Auto-Update (still, mit Fortschritt)."
+        title={t("settings.system.update.title")}
+        description={t("settings.system.update.description")}
       >
         {appVersion ? (
-          <p className="text-xs text-muted">Installierte Version: {appVersion}</p>
+          <p className="text-xs text-muted">
+            {t("settings.system.update.installedVersion", { version: appVersion })}
+          </p>
         ) : null}
         {platformHint ? (
           <p className="text-xs text-muted">{platformHint}</p>
@@ -137,19 +143,19 @@ export function SystemTab({
             disabled={Boolean(installBlockedReason)}
             onClick={() => onRequestUpdateCheck?.()}
           >
-            Nach Updates suchen
+            {t("settings.system.update.check")}
           </Button>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
               checked={showPrereleases}
               onCheckedChange={(v) => setShowPrereleases(v === true)}
             />
-            Prereleases anzeigen
+            {t("settings.system.update.showPrereleases")}
           </label>
         </div>
 
         <div className="space-y-1.5">
-          <Label>Verfügbare Versionen</Label>
+          <Label>{t("settings.system.update.availableVersions")}</Label>
           <div className="flex flex-wrap gap-2">
             <Select
               value={selectedVersion || undefined}
@@ -160,21 +166,22 @@ export function SystemTab({
                 <SelectValue
                   placeholder={
                     releasesLoading
-                      ? "Lade Versionen…"
+                      ? t("settings.system.update.loadingVersions")
                       : releasesError
-                        ? "Nicht verfügbar"
-                        : "Version wählen…"
+                        ? t("settings.system.update.unavailable")
+                        : t("settings.system.update.chooseVersion")
                   }
                 />
               </SelectTrigger>
               <SelectContent>
                 {filteredReleases.map((r, index) => {
                   const labels: string[] = [];
-                  if (index === 0) labels.push("Neueste");
+                  if (index === 0) labels.push(t("settings.system.update.latest"));
                   const installed = releaseRelationLabel(r.tag_name);
-                  if (installed) labels.push(installed);
-                  if (r.prerelease) labels.push("Prerelease");
-                  if (!r.updater_json_url) labels.push("nicht auto-installierbar");
+                  if (installed) labels.push(t("settings.system.update.installed"));
+                  if (r.prerelease) labels.push(t("settings.system.update.prerelease"));
+                  if (!r.updater_json_url)
+                    labels.push(t("settings.system.update.notAutoInstallable"));
                   const suffix =
                     labels.length > 0 ? ` (${labels.join(", ")})` : "";
                   return (
@@ -208,7 +215,7 @@ export function SystemTab({
           selectedRelation !== "same" &&
           !selectedRelease.updater_json_url ? (
             <p className="text-xs text-muted">
-              Für diese Version ist die automatische Installation nicht verfügbar.
+              {t("settings.system.update.noAutoInstall")}
             </p>
           ) : null}
         </div>
@@ -216,7 +223,9 @@ export function SystemTab({
         {selectedRelease && selectedRelation !== "same" ? (
           <div className="space-y-1 rounded-md border border-border/50 bg-card/40 p-3">
             <p className="text-sm font-medium">
-              Version {selectedRelease.tag_name}
+              {t("settings.system.update.versionHeading", {
+                version: selectedRelease.tag_name,
+              })}
             </p>
             {selectedRelease.published_at ? (
               <p className="text-xs text-muted">
@@ -224,15 +233,15 @@ export function SystemTab({
               </p>
             ) : null}
             <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs text-muted">
-              {selectedRelease.body || "Keine Release Notes."}
+              {selectedRelease.body || t("settings.system.update.noNotes")}
             </pre>
           </div>
         ) : null}
       </SettingsSection>
 
       <SettingsSection
-        title="Zurücksetzen"
-        description="Stellt alle Einstellungen auf die Werkseinstellungen zurück (inkl. Crew-Liste, Encoding, QR und SD). Wird sofort gespeichert."
+        title={t("settings.system.reset.title")}
+        description={t("settings.system.reset.description")}
       >
         <Button
           type="button"
@@ -241,7 +250,7 @@ export function SystemTab({
           disabled={saving}
           onClick={onRequestReset}
         >
-          Auf Standardeinstellungen zurücksetzen
+          {t("settings.system.reset.button")}
         </Button>
       </SettingsSection>
     </div>

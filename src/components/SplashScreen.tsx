@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Spinner } from "./Spinner";
 import { cn } from "@/lib/utils";
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export function SplashScreen({ open, status, version, error, className }: Props) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(open);
   const [fading, setFading] = useState(false);
 
@@ -22,11 +24,11 @@ export function SplashScreen({ open, status, version, error, className }: Props)
     }
     if (!visible) return;
     setFading(true);
-    const t = window.setTimeout(() => {
+    const hideTimer = window.setTimeout(() => {
       setVisible(false);
       setFading(false);
     }, 280);
-    return () => window.clearTimeout(t);
+    return () => window.clearTimeout(hideTimer);
   }, [open, visible]);
 
   if (!visible) return null;
@@ -60,22 +62,24 @@ export function SplashScreen({ open, status, version, error, className }: Props)
           />
         </div>
         <h1 className="font-display text-2xl font-bold tracking-tight text-primary">
-          Aero Tandem Studio
+          {t("splash.appName")}
         </h1>
-        <p className="mt-1 text-xs tracking-wide text-muted uppercase">Jump. Cut. Done.</p>
+        <p className="mt-1 text-xs tracking-wide text-muted uppercase">{t("splash.tagline")}</p>
         <div className="mt-7">
           <Spinner size={44} />
         </div>
-        <p className="mt-4 text-sm text-muted">{status || "Wird geladen…"}</p>
+        <p className="mt-4 text-sm text-muted">{status || t("splash.loading")}</p>
         {error ? (
           <p className="mt-2 text-sm text-destructive" role="alert">
             {error}
           </p>
         ) : null}
         {version ? (
-          <p className="mt-3 text-xs text-muted/80">Version {version}</p>
+          <p className="mt-3 text-xs text-muted/80">
+            {t("splash.version", { version })}
+          </p>
         ) : null}
-        <p className="mt-2 text-[11px] text-muted/70">© Andreas Kowalenko</p>
+        <p className="mt-2 text-[11px] text-muted/70">{t("splash.copyright")}</p>
       </div>
     </div>
   );

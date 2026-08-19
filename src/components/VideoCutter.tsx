@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Crop,
   RotateCw,
@@ -71,6 +72,7 @@ export function VideoCutter({
   onClose,
   onComplete,
 }: VideoCutterProps) {
+  const { t } = useTranslation();
   const playerRef = useRef<VideoPlayerHandle>(null);
   const committedRef = useRef(false);
   const showWarning = useUiStore((s) => s.showWarning);
@@ -271,9 +273,9 @@ export function VideoCutter({
     if (nearFull || e - s < 100) {
       showWarning(
         nearFull
-          ? "Ziehen Sie die Handles, um den Clip zuzuschneiden."
-          : "Der behaltene Bereich ist zu kurz.",
-        "Keine Änderung",
+          ? t("video.cutter.warning.adjustHandles")
+          : t("video.cutter.warning.rangeTooShort"),
+        t("video.cutter.warning.noChangeTitle"),
       );
       return;
     }
@@ -289,8 +291,8 @@ export function VideoCutter({
     }
     if (splitMs < MIN_SPLIT_PART_MS || splitMs > total - MIN_SPLIT_PART_MS) {
       showWarning(
-        "Beide Teile müssen mindestens 10 Sekunden lang sein — Playhead weiter von Anfang und Ende wegsetzen.",
-        "Ungültiger Split-Punkt",
+        t("video.cutter.warning.invalidSplitBody"),
+        t("video.cutter.warning.invalidSplitTitle"),
       );
       return;
     }
@@ -300,7 +302,7 @@ export function VideoCutter({
   function applyRotate() {
     const deg = ((pendingRotateDeg % 360) + 360) % 360;
     if (deg === 0) {
-      showWarning("Keine Drehung ausgewählt.", "Keine Änderung");
+      showWarning(t("video.cutter.warning.noRotation"), t("video.cutter.warning.noChangeTitle"));
       return;
     }
     finish({ action: "apply_rotate", degrees: deg });
@@ -342,7 +344,7 @@ export function VideoCutter({
           onClick={resetRange}
           className="text-[13px] font-medium text-accent transition hover:text-foreground"
         >
-          Zurücksetzen
+          {t("common.actions.reset")}
         </button>
       </div>
     ) : mode === "rotate" ? (
@@ -355,10 +357,10 @@ export function VideoCutter({
     ) : (
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="font-mono text-[12px] tabular-nums text-muted">
-          Playhead {formatPlayerTimeMs(playheadMs)}
+          {t("video.cutter.playhead", { time: formatPlayerTimeMs(playheadMs) })}
         </p>
         <p className="text-[11px] text-muted/80">
-          Beide Teile ≥ 10 s — dann Fertig
+          {t("video.cutter.splitHint")}
         </p>
       </div>
     );
@@ -366,7 +368,7 @@ export function VideoCutter({
   return (
     <MediaEditShell
       open={open}
-      title="Bearbeiten"
+      title={t("common.actions.edit")}
       description={videoPath}
       mode={mode}
       modes={VIDEO_MODES}

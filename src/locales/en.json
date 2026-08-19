@@ -1,0 +1,1248 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Cancel",
+      "save": "Save",
+      "saving": "Saving…",
+      "ok": "OK",
+      "close": "Close",
+      "delete": "Delete",
+      "deleteAll": "Delete all",
+      "back": "Back",
+      "next": "Next",
+      "skip": "Skip",
+      "apply": "Apply",
+      "create": "Create",
+      "createAndUpload": "Create & upload",
+      "history": "History",
+      "settings": "Settings",
+      "pickFolder": "Choose folder",
+      "pickFiles": "Choose files",
+      "testConnection": "Test connection",
+      "checking": "Checking…",
+      "loading": "Loading…",
+      "undo": "Undo",
+      "edit": "Edit",
+      "remove": "Remove",
+      "reset": "Reset",
+      "add": "Add",
+      "rename": "Rename",
+      "pleaseWait": "Please wait…"
+    },
+    "status": {
+      "error": "Error",
+      "success": "Success",
+      "warning": "Notice",
+      "inProgress": "In progress…",
+      "done": "Done"
+    },
+    "labels": {
+      "video": "Video",
+      "videos": "Videos",
+      "photo": "Photo",
+      "photos": "Photos",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "language": "Language",
+      "storageLocation": "Storage location",
+      "dropzonePlaceholder": "Drop zone…"
+    },
+    "language": {
+      "de": "German",
+      "en": "English",
+      "esMX": "Spanish (Mexico)"
+    },
+    "unsavedChangesDiscard": "Discard unsaved changes?"
+  },
+  "settings": {
+    "dialog": {
+      "title": "Settings",
+      "description": "Edit app settings",
+      "footer": "Aero Tandem Studio{{version}} · © Andreas Kowalenko"
+    },
+    "tabs": {
+      "general": "General",
+      "crew": "Crew",
+      "qr": "QR code",
+      "encoding": "Video",
+      "sd": "SD / backup",
+      "server": "Server",
+      "system": "System"
+    },
+    "general": {
+      "appearance": {
+        "title": "Appearance",
+        "description": "Light or dark mode for the interface."
+      },
+      "language": {
+        "description": "App interface language."
+      },
+      "storage": {
+        "title": "Storage",
+        "description": "Completed jobs are saved to the storage location.",
+        "defaultDropzone": "Drop zone (default)"
+      }
+    },
+    "system": {
+      "reset": {
+        "confirmTitle": "Restore default settings?",
+        "confirmBody": "All settings will be reset to factory defaults.\n\nStorage location, server credentials, and customizations will be lost.",
+        "title": "Reset",
+        "description": "Restores all settings to factory defaults (including crew list, encoding, QR, and SD). Saved immediately.",
+        "button": "Reset to default settings"
+      },
+      "cache": {
+        "title": "Cache & temp",
+        "description": "Removes preview/concat/work folders in temp, leftover cuts, known temp files, and work folders next to the storage location. Also clears the current media session (working folder).",
+        "toastTitle": "Cache",
+        "cleaning": "Cleaning…",
+        "clear": "Clear cache"
+      },
+      "update": {
+        "title": "Update",
+        "description": "Newer versions are checked automatically at startup. You can also pick an older or newer version here — install like auto-update (silent, with progress).",
+        "installedVersion": "Installed version: {{version}}",
+        "check": "Check for updates",
+        "showPrereleases": "Show prereleases",
+        "availableVersions": "Available versions",
+        "loadingVersions": "Loading versions…",
+        "unavailable": "Unavailable",
+        "chooseVersion": "Choose version…",
+        "latest": "Latest",
+        "installed": "Installed",
+        "prerelease": "Prerelease",
+        "notAutoInstallable": "not auto-installable",
+        "openInstaller": "Open installer…",
+        "installOlder": "Install older version",
+        "update": "Update",
+        "applyVersion": "Apply version",
+        "noAutoInstall": "Automatic installation is not available for this version.",
+        "versionHeading": "Version {{version}}",
+        "noNotes": "No release notes."
+      }
+    },
+    "folder": {
+      "placeholder": "Choose folder…",
+      "openInExplorer": "Open folder in Explorer",
+      "noneSet": "No folder set.",
+      "toastTitle": "Folder"
+    },
+    "crew": {
+      "who": {
+        "title": "Who are you?",
+        "description": "Your name appears as a favorite at the top of the tandem master / video jumper dropdowns (only with a matching role).",
+        "label": "I am",
+        "placeholder": "Choose or type a name…",
+        "hintNew": "New — please set at least one role.",
+        "hintExisting": "Appears at the top of form dropdowns when the role matches."
+      },
+      "session": {
+        "title": "Reset session",
+        "description": "After creating a job: mode or fixed name for tandem master and video jumper.",
+        "tandemmasterLabel": "Tandem master on reset",
+        "videospringerLabel": "Video jumper on reset",
+        "placeholder": "Choose mode or name…",
+        "hint": "Choose a mode above, or a fixed name from the crew."
+      },
+      "list": {
+        "title": "Crew list",
+        "description": "Names appear in comboboxes by role. Free text in the form remains possible.",
+        "namePlaceholder": "e.g. Andy",
+        "empty": "No entries yet — add one above.",
+        "action": "Action",
+        "me": "(Me)",
+        "ariaRole": "{{name}}: {{role}}"
+      },
+      "keep": {
+        "off": "Don't keep",
+        "last": "Keep last used",
+        "selfSuffix": "Me"
+      }
+    },
+    "encoding": {
+      "standard": {
+        "title": "Defaults",
+        "description": "Recommended settings for most users."
+      },
+      "codec": "Video codec",
+      "codecAuto": "Auto (recommended)",
+      "strategy": "Encoding strategy",
+      "strategyPerClip": "Per clip",
+      "strategyCombined": "Combined",
+      "hwAccel": "Hardware acceleration",
+      "parallel": "Parallel video processing",
+      "concat": "Join clips",
+      "concatFast": "Fast path (quick)",
+      "concatLegacy": "Legacy (robust)",
+      "concatHint": "Fast path joins clips in one pass (similar to Avidemux Copy). On errors you can cancel or use Legacy. Legacy uses the proven MPEG-TS pipeline.",
+      "advanced": "Advanced",
+      "introEnabled": "Use intro when creating (experimental)",
+      "introDuration": "Intro duration (sec.)",
+      "introMux": "Join intro",
+      "introMuxReencode": "Re-encode (compatible)",
+      "introMuxCopy": "Stream copy (fast)",
+      "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
+      "reencodeMatching": "Re-encode matching clips",
+      "previewCrf": "Preview CRF"
+    },
+    "qr": {
+      "autoScan": {
+        "title": "Auto-scan on import",
+        "description": "After drag & drop, file pick, or SD import, new files are scanned for QR automatically. The switches are also under the media drop zone.",
+        "videos": "Scan videos automatically on import",
+        "photos": "Scan photos automatically on import"
+      },
+      "params": {
+        "title": "Scan parameters",
+        "videoSeconds": "QR video scan (seconds)",
+        "videoSecondsHint": "How many seconds from the start of the clip (and parallel offsets) are read."
+      },
+      "after": {
+        "title": "After QR analysis",
+        "removePhoto": "Remove QR photo after successful analysis",
+        "removePhotoHint": "Neighbor photos of the same series (≤10s apart) are checked in both directions; stop after 3 photos without QR per direction.",
+        "removeVideo": "Remove QR video clip after successful analysis",
+        "maxDuration": "Max. clip length for deletion (sec.)",
+        "maxDurationHint": "Only clips of this length or shorter are removed (default: 10s)."
+      }
+    },
+    "sd": {
+      "backup": {
+        "title": "Backup",
+        "description": "SD card backups and optional second destination.",
+        "mode": "Backup mode",
+        "modeConfirm": "Confirm first",
+        "modeAuto": "Automatic",
+        "modeDisabled": "Disabled",
+        "auto": "Auto backup",
+        "folder": "Backup folder",
+        "pcName": "PC name",
+        "pcNamePlaceholder": "Computer name",
+        "pcNameHint": "Used in the backup folder name, e.g. SD_Backup_…[{{name}}]_…",
+        "pcNameFallback": "PC",
+        "clearAfter": "Clear SD after backup",
+        "clearAfterTitleOn": "Clear SD card after successful backup",
+        "clearAfterTitleOff": "Only available when auto backup is enabled",
+        "secondPath": "Also back up to a second path",
+        "secondFolder": "Second backup folder",
+        "copyStrategy": "Copy strategy (second path)",
+        "copyAsync": "Background: local done → server in parallel",
+        "copyMirror": "Mirror: local first, then wait → second path",
+        "copyDirect": "Direct: per file SD → both",
+        "copyHint": "Recommended for network targets: background — the workflow does not wait for the second path."
+      },
+      "import": {
+        "title": "Import & eject",
+        "description": "Automatic import after backup; eject once the SD is no longer needed.",
+        "auto": "Auto import",
+        "autoHint": "After backup, automatically load matching media into the session.",
+        "eject": "Eject SD automatically",
+        "ejectTitle": "Eject immediately after backup (import/QR then from copies). Without backup: after import.",
+        "ejectHint": "With backup, right after; without backup, after import.",
+        "skipProcessed": "Skip already processed files"
+      },
+      "size": {
+        "title": "Warning threshold",
+        "description": "Confirmation when the SD card exceeds a size limit.",
+        "enable": "Enable size limit",
+        "limitMb": "Size limit (MB)"
+      },
+      "footer": "Auto and “Confirm first” modes: backup / import / clean / eject per switches. Clean only after a successful backup."
+    },
+    "server": {
+      "smb": {
+        "title": "SMB server",
+        "description": "Credentials for upload after creating a job.",
+        "url": "Server URL",
+        "urlPlaceholder": "smb://…",
+        "login": "Login",
+        "password": "Password",
+        "recheckTitle": "Click to check again",
+        "recheckTitleWithMessage": "{{message}}\nClick to check again"
+      },
+      "upload": {
+        "title": "Upload",
+        "afterCreate": "Upload to server after creation"
+      },
+      "ams": {
+        "title": "Booking lookup (optional)",
+        "operatorTitle": "Booking lookup",
+        "description": "Fills name and media when customer ID and booking ID match. Without a connection, everything continues manually. Files are still handed over.",
+        "address": "Address",
+        "token": "Access code",
+        "lastOk": "Last successful: {{url}}",
+        "searching": "Searching…",
+        "searchNetwork": "Search network",
+        "checkConnection": "Check connection",
+        "saveFailed": "Settings could not be saved.",
+        "noneFoundStatus": "No booking lookup found on the network.",
+        "noneFoundError": "Nothing found. Enter the address manually if needed.",
+        "foundStatus": "Found: {{instance}} → {{url}}",
+        "foundSuccess": "Address applied: {{url}}. Still enter the access code manually.",
+        "foundMany": "{{count}} addresses found — please choose one.",
+        "applied": "Applied: {{instance}} → {{url}}",
+        "discoveredItem": "{{instance}} — {{url}}{{version}}"
+      }
+    }
+  },
+  "errors": {
+    "server": {
+      "connected": "✓ Connected",
+      "notChecked": "Not checked",
+      "notConnected": "Not connected",
+      "checking": "Checking…",
+      "uploading": "Upload…",
+      "invalidUrl": "Invalid server URL",
+      "pathNotFound": "Path not found",
+      "loginFailed": "Login failed",
+      "noShareAccess": "No access to share",
+      "listingFailed": "Share reachable, listing failed",
+      "shareNotFound": "Server/share not found",
+      "credentialsSoftHint": "Credentials are not stored. That may (but need not) be the reason.",
+      "authHint": "Please check username and password.",
+      "urlMissingHint": "No server URL is configured.",
+      "guestHint": "Without login, connects as Guest.",
+      "openUrl": "Open server URL",
+      "checkCredentials": "Check credentials",
+      "openCredentials": "Open credentials"
+    }
+  },
+  "create": {
+    "validation": {
+      "tandemmasterRequired": "Tandem master is required",
+      "dateRequired": "Date is required",
+      "nameRequired": "First and last name are required",
+      "emailRequired": "Email is required",
+      "videospringerRequired": "Video jumper is required for Outside video",
+      "crewConflict": "Same person cannot be tandem master and video jumper",
+      "crewConflictShort": "The same person cannot be tandem master and video jumper.",
+      "productRequired": "Please select at least one product (Handcam/Outside photo or video).",
+      "videosMissing": "You selected a video product but added no videos.",
+      "photosMissing": "You selected a photo product but added no photos.",
+      "watermarkRequired": "Photo product unpaid — select at least one photo for watermark.",
+      "previewVideoRequired": "Video product unpaid — select at least one video for preview.",
+      "storageNotSet": "Storage location not set. Please choose folder.",
+      "failed": "Validation failed",
+      "notMp4": "Not .mp4",
+      "fileMissing": "File missing",
+      "customerId": "Customer ID",
+      "bookingId": "Booking ID",
+      "validation": "Validation"
+    },
+    "ready": {
+      "headline": {
+        "check": "Check entries",
+        "incomplete": "Incomplete entries",
+        "missingOne": "Still need {{label}}",
+        "missingMany": "{{count}} entries still missing"
+      },
+      "chips": {
+        "tandemmaster": "Tandem master",
+        "videospringer": "Video jumper",
+        "date": "Date",
+        "name": "Name",
+        "email": "Email",
+        "product": "Product",
+        "videos": "Videos",
+        "photos": "Photos",
+        "watermark": "Watermark",
+        "crewConflict": "Crew conflict"
+      }
+    },
+    "job": {
+      "creating": "Creating job…",
+      "done": "Job complete",
+      "cancelled": "Job cancelled."
+    },
+    "append": {
+      "pickFile": "Choose at least one file to append.",
+      "tooMany": "Too many appends for this job (99)."
+    },
+    "success": {
+      "title": "Created successfully",
+      "description": "Summary of created files and folders.",
+      "folder": "Folder",
+      "videoFromPreview": "Video taken from preview",
+      "videoCreated": "Video created",
+      "previewVideo": "Preview video created",
+      "photosCopied": "{{count}} photo copied",
+      "photosCopiedMany": "{{count}} photos copied",
+      "previewPhotos": "{{count}} preview photo created",
+      "previewPhotosMany": "{{count}} preview photos created",
+      "uploaded": "Uploaded to server",
+      "encoder": "Encoder",
+      "dirCreated": "Directory was created",
+      "openLocation": "Go to location",
+      "play": "Play"
+    }
+  },
+  "progress": {
+    "default": {
+      "inProgress": "In progress…",
+      "starting": "Starting…",
+      "cancelled": "Cancelled",
+      "done": "Done"
+    },
+    "createVideoStage": "Creating video…",
+    "clip": {
+      "inProgress": "Clip {{id}}: In progress…",
+      "withStatus": "Clip {{id}}: {{status}}"
+    },
+    "status": {
+      "probing": "Analyzing videos…",
+      "prepare": "Preparing clip segment…",
+      "prepareDone": "Clip segment ready",
+      "mpegtsConcat": "Joining clips…",
+      "hevcFallback": "HEVC fallback…",
+      "reencode": "Re-encoding…",
+      "reencodeTrim": "Trimming (precise)…",
+      "streamCopyTrim": "Trimming…",
+      "rotateReencode": "Rotating…",
+      "replaceFile": "Replacing file…",
+      "reencodeCut": "Cut (precise)…",
+      "streamCopyCut": "Cut…",
+      "fastConcat": "Joining clips (fast path)…",
+      "legacyConcat": "Legacy join…",
+      "fastPathWaiting": "Fast path failed — please choose…",
+      "replaceOriginal": "Replacing original…",
+      "splitPart1": "Splitting clip (part 1)…",
+      "splitPart2": "Splitting clip (part 2)…",
+      "renameSplit": "Renaming split clips…",
+      "bodyPrepare": "Preparing video clips…",
+      "bodyDone": "Video clips prepared",
+      "intro": "Creating intro…",
+      "introDone": "Intro done",
+      "mux": "Joining intro and video…",
+      "muxDone": "Join complete",
+      "attachAudio": "Attaching audio…",
+      "introVideoCompatible": "Encoding intro+video (compatible)…",
+      "introVideoAudioCopy": "Encoding intro+video (audio copy)…",
+      "export": "Exporting video…",
+      "exportDone": "Export complete",
+      "previewAnalyse": "Analyzing for preview…",
+      "previewIntro": "Preview intro…",
+      "previewReencode": "Encoding preview clips…",
+      "previewCopy": "Copying clips for preview…",
+      "previewConcat": "Joining preview…",
+      "writeHandoff": "Writing handoff…",
+      "appendReady": "Append ready",
+      "parallelEncode": "Encoding clips in parallel ({{clips}} clips, {{workers}} workers)…",
+      "parallelConcat": "Joining clips in parallel ({{clips}} clips, {{workers}} workers)…"
+    },
+    "rust": {
+      "generateOutputDir": "Generating output directory…",
+      "reusePreview": "Using preview as final video…",
+      "previewReused": "Preview reused",
+      "createWatermarkVideo": "Creating watermark video…",
+      "copyPhotos": "Copying photos…",
+      "createPhotoWatermark": "Creating photo watermark…",
+      "skipDoneTxtLocal": "Skipping _fertig.txt (local)…",
+      "writeAmsManifest": "Writing AMS manifest…",
+      "writeDoneTxt": "Writing _fertig.txt…",
+      "appendReadyForAms": "Append ready for AMS",
+      "joinEncodedClips": "Joining encoded clips…",
+      "analyseIntroVideo": "Analyzing intro/video…",
+      "streamCopyFailedWaiting": "Stream copy failed — please choose…",
+      "exportWithoutIntro": "Exporting video without intro…",
+      "legacyMpegTs": "Legacy join (MPEG-TS)…",
+      "sdClearing": "Clearing SD…",
+      "backupFinishing": "Finishing backup…"
+    },
+    "legend": {
+      "aria": "Color legend",
+      "fast": "Quick check",
+      "thorough": "Thorough check",
+      "checked": "Checked",
+      "removed": "Removed"
+    },
+    "filesAria": "{{finished}} of {{total}} files (list order)",
+    "seg": {
+      "removed": "removed",
+      "hit": "Hit",
+      "done": "done",
+      "pending": "pending",
+      "paceFrames": "{{pace}} · {{frame}}/{{total}}",
+      "thoroughShort": "Thorough",
+      "fastShort": "Quick"
+    },
+    "overallAria": "Overall progress",
+    "clipStatus": "Clip {{id}} — {{status}}",
+    "clipOnly": "Clip {{id}}"
+  },
+  "dialogs": {
+    "error": {
+      "defaultTitle": "Error"
+    },
+    "success": {
+      "defaultTitle": "Success",
+      "actionsSummary": "Summary of actions.",
+      "tone": {
+        "success": "Successful",
+        "error": "Failed",
+        "skipped": "Skipped"
+      }
+    },
+    "warning": {
+      "defaultTitle": "Notice"
+    },
+    "countdownSuffix": " ({{seconds}}s)",
+    "autoCloseAria": "Automatic close",
+    "bodyConcat": {
+      "title": "Fast path failed",
+      "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
+      "useLegacy": "Use legacy"
+    },
+    "introMux": {
+      "title": "Intro cannot be attached via stream copy",
+      "body": "Joining intro and video without re-encoding failed (common with modern camera files).",
+      "hint": "Choose: export video without intro (fast) or re-encode with intro (takes longer).",
+      "withIntroEncode": "With intro (encoding)",
+      "withoutIntro": "Without intro"
+    },
+    "update": {
+      "checkTitle": "Update check",
+      "downgradeTitle": "Install older version",
+      "availableTitle": "Update available",
+      "statusLoading": "Loading update status…",
+      "installing": "Installing…",
+      "switchNow": "Switch now",
+      "updateNow": "Update now",
+      "later": "Later",
+      "downloadInstaller": "Download installer",
+      "patchNotes": "Release notes",
+      "noNotes": "No details available.",
+      "installingUpdate": "Installing update…",
+      "installingVersion": "Installing version…",
+      "downloadingUpdate": "Downloading update…",
+      "downloadingVersion": "Downloading version…",
+      "preparing": "Preparing installation…",
+      "replaceVersion": "Version {{to}} will replace the current {{from}}.",
+      "canInstall": "Version {{to}} can be installed.",
+      "current": "Current: {{version}}",
+      "downgradeHint": "The app will be replaced and restarted. Settings are usually kept."
+    }
+  },
+  "splash": {
+    "appName": "Aero Tandem Studio",
+    "tagline": "Jump. Cut. Done.",
+    "loading": "Loading…",
+    "version": "Version {{version}}",
+    "copyright": "© Andreas Kowalenko"
+  },
+  "chrome": {
+    "settings": {
+      "moreTitle": "Settings & more",
+      "quickActions": "Quick actions"
+    },
+    "window": {
+      "minimize": "Minimize",
+      "maximize": "Maximize",
+      "restore": "Restore"
+    },
+    "server": {
+      "connected": "Connected",
+      "uploadPercent": "Upload {{percent}}%"
+    }
+  },
+  "app": {
+    "splash": {
+      "loadAppInfo": "Loading app info…",
+      "loadSettings": "Loading settings…",
+      "checkFfmpeg": "Checking FFmpeg & hardware…",
+      "ready": "Ready!",
+      "startWithErrors": "Started with errors",
+      "ffmpegMissing": "FFmpeg was not found. Encoding is unavailable."
+    },
+    "chrome": {
+      "historyTitle": "Processed files",
+      "resetTitle": "Reset form and media",
+      "encoder": "Encoder: {{label}}",
+      "softwareSuffix": " (Software)",
+      "ready": "Ready",
+      "starting": "Starting…",
+      "serverBackupPercent": "Server backup {{percent}}%",
+      "serverBackupDone": "Server backup done"
+    },
+    "update": {
+      "alreadyInstalling": "Installation already running…",
+      "blockedBusy": "Not possible during processing.",
+      "blockedAppend": "Not possible while appending.",
+      "blockedSd": "Not possible during the SD action.",
+      "blockedQr": "Not possible during QR detection.",
+      "blockedUpload": "Not possible during upload.",
+      "switchTo": "Switch to version {{version}}?",
+      "availableOn": "Update to {{version}} available.",
+      "restartManual": "Version installed — please restart the app manually.",
+      "title": "Update"
+    },
+    "sd": {
+      "readingFiles": "Reading SD files…",
+      "processing": "SD processing…",
+      "ejecting": "Ejecting SD card…",
+      "backingUp": "SD backup in progress…",
+      "importing": "Importing SD files…",
+      "searchingQr": "Searching for QR code…",
+      "noFiles": "No files.",
+      "clearOnlyAfterBackup": "Clearing is only possible after a backup.",
+      "noActionSelected": "No action selected.",
+      "pickBackupFolder": "Please choose a backup folder in settings.",
+      "ejectSuccess": "SD card ejected — safe to remove",
+      "ejectFailed": "Eject failed",
+      "ejectFailedDetail": "{{error}}\nPlease remove the card safely by hand.",
+      "backupCancelled": "SD backup cancelled.",
+      "backupFailed": "Backup failed",
+      "notClearedNoBackup": "SD was not cleared (no successful backup).",
+      "secondPath": "Second path: {{path}}",
+      "secondPathBackground": "Second path: running in the background…",
+      "skippedCount": "Skipped: {{count}}",
+      "copiedFiles": "{{count}} files copied",
+      "clearFailed": "Clearing failed",
+      "notCleared": "Not cleared",
+      "clearedFiles": "{{count}} file(s) cleared",
+      "partialSuccess": "Partially successful",
+      "workflowCancelled": "SD workflow cancelled.",
+      "customerRecognized": "Customer recognized",
+      "ejectLabel": "Eject",
+      "backupLabel": "Backup",
+      "clearLabel": "Clear",
+      "title": "SD"
+    },
+    "import": {
+      "label": "Import",
+      "summary": "{{videos}} videos, {{photos}} photos",
+      "skipped": " · {{count}} skipped"
+    },
+    "qr": {
+      "label": "QR code",
+      "cancelled": "QR scan cancelled.",
+      "applied": "Customer data applied",
+      "source": "Source: {{name}}",
+      "notFound": "No QR code found.",
+      "scanFailed": "Scan failed",
+      "recognized": "QR code recognized"
+    },
+    "storage": {
+      "pickTitle": "Choose storage location for completed jobs",
+      "noneChosen": "No storage location chosen.",
+      "title": "Storage location",
+      "notLoaded": "Settings not loaded yet.",
+      "saveFailed": "Storage location could not be saved.",
+      "saved": "Storage location saved:\n{{path}}",
+      "notSet": "No storage location set.",
+      "change": "Change storage location"
+    },
+    "upload": {
+      "serverUnreachable": "Upload is on, but the server is unreachable.\nCheck settings or turn upload off.",
+      "toServer": "Uploading to server…",
+      "failedNote": "Upload failed (see error dialog).",
+      "percent": "Upload {{percent}}%",
+      "fileProgress": "File {{current}}/{{total}}",
+      "title": "Upload",
+      "titleBlockedOn": "Upload is on in settings, server not connected",
+      "titleBlockedOff": "Server not connected — upload not possible",
+      "titleActive": "On — job will be uploaded after create",
+      "titleOff": "Upload off — turn on to send the job to the server"
+    },
+    "job": {
+      "section": "Job",
+      "clear": "Clear",
+      "clearTitle": "Reset form and media after creating",
+      "createUploadTitle": "Create job and upload to the server",
+      "uploadAria": "Server upload"
+    },
+    "ready": {
+      "showTarget": "Show {{label}}"
+    },
+    "media": {
+      "kindAria": "Media type",
+      "clearVideos": "Clear videos",
+      "clearPhotos": "Clear photos"
+    },
+    "intro": {
+      "decisionTitle": "Intro decision",
+      "encodeAgain": "Re-encoding intro+video…"
+    },
+    "concat": {
+      "decisionTitle": "Clip join",
+      "cancelled": "Job cancelled…"
+    },
+    "mediaPlayback": {
+      "title": "Video playback"
+    },
+    "start": {
+      "title": "Start"
+    },
+    "append": {
+      "starting": "Starting append…"
+    },
+    "session": {
+      "resetBlocked": "Reset is not possible while processing is running.",
+      "resetConfirm": "Reset everything?\n\nThe form and all imported videos and photos will be discarded.\nTandem master / video jumper are kept according to settings.",
+      "resetDone": "Session reset."
+    },
+    "server": {
+      "title": "Server"
+    }
+  },
+  "form": {
+    "session": {
+      "dropzone": "Drop zone"
+    },
+    "toolbar": {
+      "scanFrame": "Show QR scan frame",
+      "scanTitle": "QR scan",
+      "scanDescription": "Hit frame of this session",
+      "shadow": "Shadow",
+      "modeAria": "Input mode",
+      "noQrSession": "No QR in this session — scan first",
+      "restoreQr": "Restore QR data",
+      "manualEntry": "Switch to manual entry",
+      "qr": "QR",
+      "manual": "Manual"
+    },
+    "manual": {
+      "modeAria": "Manual entry mode",
+      "id": "ID",
+      "contact": "Contact",
+      "local": "Local"
+    },
+    "customer": {
+      "section": "Customer",
+      "lock": "Lock",
+      "firstName": "First name",
+      "lastName": "Last name",
+      "customerIdHash": "Customer ID hash",
+      "bookingIdHash": "Booking ID hash",
+      "customerId": "Customer ID",
+      "bookingId": "Booking ID",
+      "email": "Email",
+      "phone": "Phone",
+      "idMinDigits": "At least {{count}} digits"
+    },
+    "crew": {
+      "section": "Crew",
+      "namePlaceholder": "Name…"
+    },
+    "media": {
+      "section": "Media",
+      "modeAria": "Media mode",
+      "handcam": "Handcam",
+      "outside": "Outside",
+      "chooseMode": "Choose Handcam or Outside to unlock products.",
+      "handcamPhoto": "Handcam photo",
+      "handcamVideo": "Handcam video",
+      "outsidePhoto": "Outside photo",
+      "outsideVideo": "Outside video",
+      "paid": "Paid",
+      "paidAria": "{{label}} paid",
+      "lockedAms": "Products from the booking are locked — use “Edit” to unlock.",
+      "lockedQr": "Products from the QR are locked — use “Edit” to unlock."
+    }
+  },
+  "media": {
+    "drop": {
+      "subtitle": "Import via drag & drop, file or folder pick · preview & list below",
+      "autoQr": "Auto-QR on import",
+      "scanVideos": "Scan videos ({{count}})",
+      "scanVideosCompact": "Videos ({{count}})",
+      "scanPhotos": "Scan photos ({{count}})",
+      "scanPhotosCompact": "Photos ({{count}})",
+      "scanFile": "Scan file…",
+      "scanFileCompact": "File…",
+      "noVideos": "No videos in the list",
+      "noPhotos": "No photos in the list",
+      "scanClipsTitle": "Scan {{count}} clip(s) in parallel",
+      "scanPhotosTitle": "Scan {{count}} photo(s) in parallel",
+      "scanExternalTitle": "Choose a photo or video — QR scan only, no import",
+      "aria": "Drop videos, photos, and folders here",
+      "release": "Release to add",
+      "drag": "Drop files or folders here",
+      "formats": "Folders are searched recursively · .mp4, .mov · .jpg, .png, .webp …",
+      "searchingFolder": "Searching folders…",
+      "searchingQr": "Searching for QR code…",
+      "importing": "Importing…",
+      "noneFound": "No supported video or photo files found",
+      "alreadyInList": "All files are already in the list",
+      "added": "Added {{parts}}",
+      "qrApplied": "{{parts}} · QR applied",
+      "keptCustomer": "{{parts}} · customer kept",
+      "qrSuffix": "{{parts}} · QR",
+      "qrCancelled": "{{parts}} · QR cancelled",
+      "withMessage": "{{parts}} · {{message}}",
+      "importCancelled": "Import cancelled — no files added.",
+      "saveFailed": "Setting could not be saved.",
+      "pleaseAddVideos": "Please add videos to the list first.",
+      "pleaseAddPhotos": "Please add photos to the list first.",
+      "noQr": "No valid QR code found.",
+      "pickMedia": "Please choose a photo or video file.",
+      "externalNote": "External {{type}} — file not imported.",
+      "noQrVideo": "No valid QR code in the video.",
+      "noQrPhoto": "No valid QR code in the photo.",
+      "filterMedia": "Media",
+      "filterPhotoOrVideo": "Photo or video",
+      "countVideo": "{{count}} video",
+      "countVideos": "{{count}} videos",
+      "countPhoto": "{{count}} photo",
+      "countPhotos": "{{count}} photos",
+      "pickFiles": "Choose files…",
+      "pickFolder": "Choose folder…",
+      "clearAll": "Clear all",
+      "qrScanTitle": "QR scan",
+      "autoQrTitle": "Auto-QR",
+      "importTitle": "Import"
+    },
+    "list": {
+      "emptyVideos": "No videos yet — drop or choose above",
+      "emptyPhotos": "No photos yet — drop or choose above",
+      "title": "List",
+      "hintVideos": "Order, meta & actions · drag to sort",
+      "hintPhotos": "Meta & actions · click selects in the preview",
+      "sortAria": "Sort",
+      "filename": "Filename",
+      "format": "Format",
+      "duration": "Duration",
+      "size": "Size",
+      "codec": "Codec",
+      "wm": "WM",
+      "watermark": "Watermark",
+      "actions": "Actions",
+      "sortByName": "Sort by filename",
+      "sortByDuration": "Sort by duration",
+      "sortBySize": "Sort by size",
+      "dragSort": "Drag to sort",
+      "trimmed": "Trimmed",
+      "rotated": "Rotated",
+      "split": "Split",
+      "wmClipAria": "Watermark clip",
+      "wmClipTitle": "Clip for Preview_Video (watermark)",
+      "wmPhotoAria": "Watermark photo",
+      "wmPhotoTitle": "Photo for Preview_Foto (watermark)",
+      "scanQr": "Scan QR",
+      "scanQrClip": "Scan QR in this clip",
+      "scanQrPhoto": "Scan QR in this photo",
+      "noQrClip": "No QR code in this clip.",
+      "noQrPhoto": "No QR code in this photo.",
+      "fileTitle": "File",
+      "pathCopied": "Path copied to clipboard.",
+      "pathTitle": "Path"
+    }
+  },
+  "workflow": {
+    "progress": "Progress",
+    "stage": {
+      "preview": "Preview is being generated",
+      "cut": "Edit is being applied",
+      "append": "Append media",
+      "appendFor": "Append for {{guest}}",
+      "appendUploading": "{{base}} — uploading to server",
+      "appendCancellable": "{{base}} — cancel stops processing",
+      "done": "Most recently completed run",
+      "sdClearingLocked": "SD is being cleared — cannot cancel",
+      "sdQr": "SD — QR search (cancel only stops the search)",
+      "sdWorkflow": "SD — backup, import, and more actions (cancel stops the run)",
+      "manualImport": "Media is being copied to the working folder — cancel discards the import",
+      "manualQr": "QR search — cancel stops the search",
+      "encodeBusy": "Current job — cancel stops FFmpeg."
+    }
+  },
+  "history": {
+    "title": "History",
+    "description": "Created jobs and media history (duplicate detection).",
+    "appendTitle": "Append · {{guest}}",
+    "appendDescription": "Additional files into the existing customer folder.",
+    "tabs": {
+      "jobs": "Jobs",
+      "media": "Media"
+    },
+    "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in history.",
+    "appendDialogTitle": "Append",
+    "appendCancelled": "Append cancelled.",
+    "filters": {
+      "all": "All",
+      "open": "Open",
+      "done": "Done",
+      "error": "Error"
+    },
+    "searchJobs": "Guest, ID, filename…",
+    "searchMedia": "Search…",
+    "filterStatusAria": "Filter by status",
+    "jobCount": "{{count}} jobs",
+    "jobCountFiltered": "{{filtered}} / {{total}}",
+    "removeSelected": "Remove selection",
+    "col": {
+      "guest": "Guest",
+      "date": "Date",
+      "products": "Products",
+      "status": "Status",
+      "created": "Created",
+      "name": "Name",
+      "type": "Type",
+      "role": "Role",
+      "source": "Source",
+      "size": "Size"
+    },
+    "emptyFilter": "No jobs for this status.",
+    "emptyJobs": "No jobs yet. They appear here after creating.",
+    "selectJob": "Select a job",
+    "previewReuse": "Preview reuse",
+    "customer": "Customer: {{id}}",
+    "booking": "Booking: {{id}}",
+    "statusLoading": "Status…",
+    "append": "Append",
+    "appendBtn": "Append…",
+    "appendTitleLokal": "Only for online jobs, not local",
+    "appendTitleWait": "Only after upload has finished",
+    "appendTitleBusy": "An append is already running",
+    "appendTitleOk": "Add more media to the same customer folder",
+    "files": "Files",
+    "appended": "Appended",
+    "appendedFolder": "Append {{folder}}",
+    "original": "Original",
+    "noFiles": "No files",
+    "scanDescriptionJob": "Hit frame of this job",
+    "confirm": {
+      "removeJobOne": "Remove job from history?",
+      "removeJobMany": "Remove {{count}} jobs from history?",
+      "removeJobOneBody": "The selected job will be deleted from history. Files on disk are kept; a related app QR scan frame is removed.",
+      "removeJobManyBody": "Selected jobs will be deleted from history. Files on disk are kept; related app QR scan frames are removed.",
+      "removeMediaOne": "Remove media entry from history?",
+      "removeMediaMany": "Remove {{count}} media entries from history?",
+      "removeMediaOneBody": "The entry will be deleted from media history. The file itself is kept.",
+      "removeMediaManyBody": "The entries will be deleted from media history. The files themselves are kept.",
+      "purgeMedia": "Delete entire media history?",
+      "purgeMediaBody": "All media history entries (duplicate detection) will be removed. The files themselves are kept."
+    },
+    "media": {
+      "stats": "{{total}} entries ({{videos}} videos, {{photos}} photos)",
+      "empty": "No entries",
+      "imported": "Imported",
+      "backedUp": "Backed up",
+      "allTime": "All time",
+      "today": "Today",
+      "last7": "Last 7 days",
+      "lastMonth": "Last month",
+      "lastYear": "Last year"
+    },
+    "role": {
+      "sourceVideo": "Source video",
+      "sourcePhoto": "Source photo",
+      "outputVideo": "Output video",
+      "wmVideo": "WM video",
+      "marker": "Marker",
+      "appendHandcamVideo": "Handcam video",
+      "appendOutsideVideo": "Outside video",
+      "appendHandcamFoto": "Handcam photo",
+      "appendOutsideFoto": "Outside photo",
+      "appendPreviewVideo": "Preview video",
+      "appendPreviewFoto": "Preview photo"
+    },
+    "mode": {
+      "qr": "QR",
+      "manualId": "Manual · ID",
+      "manualContact": "Manual · Contact",
+      "manualLocal": "Manual · Local",
+      "manual": "Manual"
+    },
+    "paidTitle": "{{label}} paid",
+    "ta": "TM: {{name}}",
+    "vs": "V: {{name}}"
+  },
+  "ams": {
+    "actions": {
+      "openSettings": "Open settings",
+      "checkToken": "Check access code"
+    },
+    "status": {
+      "unreachableLabel": "Booking lookup unreachable",
+      "urlMissingLabel": "Address missing",
+      "urlInvalidLabel": "Invalid address",
+      "tokenMissingLabel": "Access code missing",
+      "tokenInvalidLabel": "Access code invalid",
+      "urlMissingHint": "No address is configured for booking lookup.",
+      "tokenMissingHint": "Enter the access code in settings.",
+      "tokenAuthHint": "Please check the access code.",
+      "unreachableHint": "Please enter customer data manually.",
+      "lookupErrorFallback": "Customer could not be loaded",
+      "healthOk": "Booking lookup connected",
+      "connectedTooltip": "{{title}}: connected",
+      "onlineOnly": "Only for online jobs, not local",
+      "customerNotFound": "Customer not found in booking"
+    },
+    "handoff": {
+      "steps": {
+        "pending": "Transferred",
+        "accepted": "Accepted",
+        "queued": "Queue",
+        "uploading": "Upload",
+        "completed": "Done"
+      },
+      "state": {
+        "cancelled": "Cancelled",
+        "pending": "Transferred",
+        "pendingCompact": "Waiting",
+        "accepted": "Accepted",
+        "rejected": "Rejected",
+        "queued": "Queue",
+        "queuedCompact": "Queue",
+        "uploading": "Upload",
+        "completed": "Done"
+      },
+      "hint": {
+        "offline": "Status offline (last known state)",
+        "uploadCancelled": "Upload cancelled",
+        "waitingForAccept": "Waiting to be accepted",
+        "archive": "Archive {{archive}}"
+      }
+    }
+  },
+  "header": {
+    "connection": {
+      "serverChecking": "Server: checking…",
+      "serverUploading": "Server: upload in progress",
+      "serverWithDetail": "Server: {{detail}}",
+      "serverWithDetailMultiline": "Server:\n{{detail}}",
+      "serverConnected": "Server: connected",
+      "serverNotConfigured": "Server: not configured",
+      "serverNotChecked": "Server: not checked",
+      "amsChecking": "{{title}}: checking…",
+      "amsNotChecked": "{{title}}: not checked",
+      "retryOrSettings": "Click: retry · right click: settings",
+      "retry": "Click to check again",
+      "connectionTitle": "Connection"
+    }
+  },
+  "qr": {
+    "progress": {
+      "pending": "QR search waiting…",
+      "found": "QR code found",
+      "removed": "Removed from list",
+      "checked": "QR code checked"
+    }
+  },
+  "video": {
+    "edit": {
+      "progress": {
+        "trim": "Applying trim…",
+        "trimDone": "Trim complete",
+        "split": "Splitting video…",
+        "splitDone": "Split complete",
+        "rotate": "Rotating video (re-encoding)…",
+        "rotateDone": "Rotation complete",
+        "undoOne": "Undoing edit…",
+        "undoAll": "Undoing all edits…",
+        "undoDone": "Undo complete"
+      },
+      "success": {
+        "trim": "Trim applied. Undo from the clip or Undo all edits.",
+        "split": "Video split. Undo from a part clip or Undo all edits.",
+        "rotate": "Rotation applied. Undo from the clip or Undo all edits.",
+        "undoOne": "Edit for this clip undone.",
+        "undoAll": "Undid {{count}} edit(s)."
+      },
+      "error": {
+        "trim": "Trim failed",
+        "split": "Split failed",
+        "rotate": "Rotate failed",
+        "undo": "Undo failed"
+      }
+    },
+    "preview": {
+      "title": "Video preview",
+      "formIncomplete": "Form or products are not complete yet.",
+      "formIncompleteShort": "Form incomplete",
+      "generating": "Generating preview…",
+      "ready": "Preview ready",
+      "cancelled": "Preview cancelled.",
+      "undoAllEditsTitle": "Undo all trim/split edits",
+      "showExistingTitle": "Show saved combined preview (without regenerating)",
+      "staleRegenerateTitle": "Form or clips changed — regenerate preview",
+      "regenerateTitle": "Regenerate and overwrite combined preview",
+      "stale": "Preview is stale — form or clips changed.",
+      "staleBadge": "Stale",
+      "empty": "No videos — add them via drag and drop in the media area",
+      "singleClipWithPreview": "Single-clip playback — use “Show preview” for the combined file.",
+      "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
+      "undoThisEditTitle": "Undo this edit"
+    },
+    "cutter": {
+      "warning": {
+        "adjustHandles": "Drag the handles to trim the clip.",
+        "rangeTooShort": "The kept range is too short.",
+        "noChangeTitle": "No change",
+        "invalidSplitBody": "Both parts must be at least 10 seconds long — move the playhead farther from the start and end.",
+        "invalidSplitTitle": "Invalid split point",
+        "noRotation": "No rotation selected."
+      },
+      "playhead": "Playhead {{time}}",
+      "splitHint": "Both parts >= 10s — then Done"
+    },
+    "player": {
+      "volumeAria": "Volume",
+      "loadErrorLinux": "Video not playable (codec/WebView). On Linux, install GStreamer plugins (gstreamer1.0-libav, plugins-good/bad).",
+      "loadError": "Video could not be loaded.",
+      "noVideo": "No video",
+      "positionAria": "Position"
+    }
+  },
+  "photo": {
+    "edit": {
+      "and": "and",
+      "progress": {
+        "rotate": "Rotating photo…",
+        "rotateDone": "Rotation complete",
+        "crop": "Cropping photo…",
+        "cropDone": "Crop complete",
+        "apply": "Applying photo edits…",
+        "applyDone": "Edit complete",
+        "rotateMany": "Rotating {{count}} photo(s)…",
+        "rotateOneOfMany": "Rotating photo {{current}}/{{total}}…",
+        "undo": "Undoing photo edit…",
+        "undoDone": "Undo complete"
+      },
+      "success": {
+        "rotate": "Rotation applied. Undo via Undo edit.",
+        "crop": "Crop applied. Undo via Undo edit.",
+        "apply": "{{parts}} applied. Undo via Undo edit.",
+        "rotateMany": "Rotated {{count}} photo(s).",
+        "undo": "Photo edit undone."
+      },
+      "error": {
+        "rotate": "Rotate failed",
+        "crop": "Crop failed",
+        "apply": "Edit failed",
+        "rotateManyPartial": "Rotated {{count}} photo(s), then error: {{error}}",
+        "undo": "Undo failed"
+      }
+    },
+    "preview": {
+      "title": "Photo preview",
+      "prevPhotoAria": "Previous photo",
+      "nextPhotoAria": "Next photo",
+      "empty": "No photos — add them via drag and drop in the media area",
+      "currentPhoto": "Current photo",
+      "undoThisEditTitle": "Undo this edit",
+      "total": "Total"
+    },
+    "editor": {
+      "warning": {
+        "noEdit": "No edit selected."
+      },
+      "noPhoto": "No photo"
+    }
+  },
+  "sd": {
+    "toast": {
+      "dismiss": "Dismiss notice"
+    },
+    "queue": {
+      "titleQueued": "SD queued",
+      "titleDropped": "Queued SD removed",
+      "subtitleQueued": "Starts after the current job",
+      "subtitleDropped": "No longer available — removed from queue"
+    },
+    "eject": {
+      "titleUsbOk": "USB camera released",
+      "subtitleUsbOk": "Session ended — device removed from the list",
+      "subtitleOk": "Safe to remove",
+      "subtitleUsbError": "Disconnect USB camera manually",
+      "subtitleError": "Remove card manually and safely"
+    },
+    "mode": {
+      "autoTip": "After detection: backup, import, clear, and eject per settings — without asking.",
+      "confirmTip": "File selection with options for backup, import, clear, and eject.",
+      "disabledTip": "SD is detected, but not processed automatically."
+    },
+    "drive": {
+      "primaryAutoTitle": "Start backup, import, clear, and eject per settings",
+      "primaryConfirmTitle": "File picker with backup, import, clear, and eject options",
+      "busyTitle": "SD operation in progress",
+      "watchingNoCard": "SD monitoring active — no action-cam SD card (DCIM) found",
+      "noCard": "No action-cam SD card (DCIM) found",
+      "chooseTitle": "Choose SD card — opens file picker",
+      "aria": "SD card",
+      "watching": "SD monitoring active",
+      "monitoring": "Monitoring",
+      "none": "No SD",
+      "ejectTitle": "Eject “{{label}}”",
+      "ejectAria": "Eject SD card {{label}}",
+      "open": "Open"
+    },
+    "selector": {
+      "known": "Known",
+      "new": "New",
+      "executeCount": "Run ({{count}})",
+      "refresh": "Read again",
+      "title": "SD card — choose files",
+      "titleSizeLimit": "Size limit exceeded — choose files"
+    }
+  },
+  "setupWizard": {
+    "standardDir": {
+      "active": "Default folder active",
+      "exists": "Default folder already exists",
+      "activeShort": "Active",
+      "adopt": "Use",
+      "standardPrefix": "Default:",
+      "create": "Create default"
+    },
+    "stepHint": {
+      "appearance": "You can change the appearance later at any time.",
+      "crew": "Crew defaults and I am can be set later in settings.",
+      "storage": "Without a storage location, jobs cannot be saved — you can set it later in settings.",
+      "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
+      "qr": "QR scan options can be configured later in settings.",
+      "server": "Server access can be configured later."
+    },
+    "crew": {
+      "operatorHintMissingRole": "Choose at least one role — then the name will be added to the crew.",
+      "namePlaceholder": "Choose or enter a name…",
+      "rolePlaceholder": "Choose a mode or name…",
+      "autoAddHint": "A new name is added to the crew list automatically.",
+      "roleRequiredActive": "At least one role must stay active.",
+      "roleRequired": "Choose at least one role."
+    },
+    "storage": {
+      "pickFolderError": "Please choose a folder.",
+      "folderPlaceholder": "Choose folder…"
+    },
+    "sd": {
+      "pickFolderOrDisableAutoBackup": "Choose a folder or disable auto backup.",
+      "onlyWithAutoBackup": "Only possible when auto backup is enabled",
+      "validLimitError": "Enter a valid limit in MB."
+    },
+    "skipAllConfirm": "Skip the entire setup?\n\nStorage, backup, and server can be configured later in settings. Some features will otherwise be limited.",
+    "summary": {
+      "skipped": "— skipped —",
+      "noneReset": "None (will be reset)",
+      "description": "Please review the entries and finish.",
+      "sizeLimit": "Size limit"
+    },
+    "finish": "Finish setup",
+    "skipAll": "Skip entire setup"
+  },
+  "dateField": {
+    "chooseDateAria": "Choose date",
+    "prevMonthAria": "Previous month",
+    "nextMonthAria": "Next month",
+    "placeholder": "DD.MM.YYYY",
+    "openCalendarAria": "Open calendar"
+  },
+  "logConsole": {
+    "title": "Console",
+    "resizeAria": "Console height",
+    "searchAria": "Search console",
+    "levelFilterAria": "Level filter",
+    "autoScrollTitle": "Auto-scroll to bottom",
+    "copyVisibleTitle": "Copy visible lines",
+    "copy": "Copy",
+    "copied": "Copied",
+    "clearTitle": "Clear view (file remains)",
+    "logFile": "Log file",
+    "logFileWithPath": "Log file: {{path}}",
+    "noLogPath": "No log path",
+    "closeAria": "Close console",
+    "closeTitle": "Close (Esc)",
+    "empty": "No log entries.",
+    "toggleTitle": "Console (Ctrl+Shift+J)"
+  }
+}

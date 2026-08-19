@@ -1,5 +1,6 @@
 import { Server } from "lucide-react";
 import type { MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../store/configStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { useServerStore } from "../store/serverStore";
@@ -31,6 +32,7 @@ function StatusDot({ tone }: { tone: ConnectionDot }) {
 }
 
 export function ServerStatusIndicator({ className }: Props) {
+  const { t } = useTranslation();
   const smbPhase = useServerStore((s) => s.phase);
   const smbConnected = useServerStore((s) => s.connected);
   const smbMessage = useServerStore((s) => s.message);
@@ -71,6 +73,19 @@ export function ServerStatusIndicator({ className }: Props) {
   if (!view.visible) {
     return null;
   }
+
+  const displayLabel =
+    smbPhase === "uploading"
+      ? t("chrome.server.uploadPercent", {
+          percent: Math.round(uploadProgress?.percent ?? 0),
+        })
+      : smbPhase === "checking"
+        ? t("errors.server.checking")
+        : smbPhase === "error"
+          ? view.label
+          : smbPhase === "connected" || smbConnected || (amsConnected && amsPhase !== "error")
+            ? t("chrome.server.connected")
+            : view.label;
 
   async function onRetry() {
     if (!view.canRetry) return;
@@ -123,7 +138,7 @@ export function ServerStatusIndicator({ className }: Props) {
           </span>
         ) : null}
       </span>
-      <span>{view.label}</span>
+      <span>{displayLabel}</span>
       {smbPhase === "uploading" && uploadProgress?.filename ? (
         <span className="max-w-[10rem] truncate text-muted">
           {uploadProgress.filename}

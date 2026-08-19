@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type {
   QrClipScanPace,
   QrFileProgress,
@@ -93,10 +94,11 @@ function Bar({
 }
 
 function PaceLegend() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted"
-      aria-label="Farblegende"
+      aria-label={t("progress.legend.aria")}
     >
       <span className="inline-flex items-center gap-1.5">
         <span
@@ -104,7 +106,7 @@ function PaceLegend() {
           style={{ background: FAST_SOLID }}
           aria-hidden
         />
-        Schnellprüfung
+        {t("progress.legend.fast")}
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span
@@ -112,17 +114,18 @@ function PaceLegend() {
           style={{ background: THOROUGH_SOLID }}
           aria-hidden
         />
-        Gründliche Prüfung
+        {t("progress.legend.thorough")}
       </span>
     </div>
   );
 }
 
 function FollowupLegend() {
+  const { t } = useTranslation();
   return (
     <div
       className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted"
-      aria-label="Farblegende"
+      aria-label={t("progress.legend.aria")}
     >
       <span className="inline-flex items-center gap-1.5">
         <span
@@ -130,7 +133,7 @@ function FollowupLegend() {
           style={{ background: FAST_SOLID }}
           aria-hidden
         />
-        Geprüft
+        {t("progress.legend.checked")}
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span
@@ -138,7 +141,7 @@ function FollowupLegend() {
           style={{ background: REMOVED_SOLID }}
           aria-hidden
         />
-        Entfernt
+        {t("progress.legend.removed")}
       </span>
     </div>
   );
@@ -152,6 +155,7 @@ function FileSegments({
   progress: QrFileProgress;
   legend?: QrScanLegend;
 }) {
+  const { t } = useTranslation();
   const { segments, finished, total } = progress;
   if (total <= 0 || segments.length === 0) return null;
 
@@ -180,7 +184,7 @@ function FileSegments({
       <div
         className={dense ? "flex gap-px" : "flex gap-1"}
         role="group"
-        aria-label={`${finished} von ${total} Dateien (Listenreihenfolge)`}
+        aria-label={t("progress.filesAria", { finished, total })}
       >
         {segments.map((seg) => {
           const removed = seg.phase === "removed";
@@ -213,18 +217,25 @@ function FileSegments({
                 ? "…"
                 : "\u00a0";
           const title = removed
-            ? "entfernt"
+            ? t("progress.seg.removed")
             : hit
-              ? "Treffer"
+              ? t("progress.seg.hit")
               : done
-                ? "erledigt"
+                ? t("progress.seg.done")
                 : isActive && seg.framesTotal
-                  ? `${pace === "thorough" ? "Gründlich" : "Schnell"} · ${seg.frame ?? 0}/${seg.framesTotal}`
+                  ? t("progress.seg.paceFrames", {
+                      pace:
+                        pace === "thorough"
+                          ? t("progress.seg.thoroughShort")
+                          : t("progress.seg.fastShort"),
+                      frame: seg.frame ?? 0,
+                      total: seg.framesTotal,
+                    })
                   : isActive
                     ? pace === "thorough"
-                      ? "Gründliche Prüfung"
-                      : "Schnellprüfung"
-                    : "ausstehend";
+                      ? t("progress.legend.thorough")
+                      : t("progress.legend.fast")
+                    : t("progress.seg.pending");
 
           return (
             <div
@@ -302,6 +313,7 @@ export function ProgressIndicator({
   fileProgress,
   tasks,
 }: ProgressIndicatorProps) {
+  const { t } = useTranslation();
   const clamped = Math.max(0, Math.min(100, percent));
   const showTasks = tasks && tasks.length > 0;
   const useActivity = indeterminate || hidePercent;
@@ -328,7 +340,7 @@ export function ProgressIndicator({
               : metric
             : undefined
         }
-        aria-label={label ?? "Gesamtfortschritt"}
+        aria-label={label ?? t("progress.overallAria")}
         className="space-y-1.5"
       >
         <div className="flex items-baseline justify-between gap-3">
@@ -372,14 +384,16 @@ export function ProgressIndicator({
 
       {showTasks ? (
         <div className="space-y-2.5 border-l-2 border-primary/30 pl-3">
-          {tasks.map((t) => {
-            const pct = Math.max(0, Math.min(100, t.percent));
+          {tasks.map((task) => {
+            const pct = Math.max(0, Math.min(100, task.percent));
             const taskLabel =
-              t.label?.trim() ||
-              (t.status ? `Clip ${t.taskId} — ${t.status}` : `Clip ${t.taskId}`);
+              task.label?.trim() ||
+              (task.status
+                ? t("progress.clipStatus", { id: task.taskId, status: task.status })
+                : t("progress.clipOnly", { id: task.taskId }));
             return (
               <div
-                key={t.taskId}
+                key={task.taskId}
                 role="progressbar"
                 aria-valuenow={pct}
                 aria-valuemin={0}

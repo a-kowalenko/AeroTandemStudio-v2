@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +42,7 @@ type Props = SettingsTabBaseProps & {
 };
 
 export function CrewTab({ draft, setDraft, crewEditor }: Props) {
+  const { t } = useTranslation();
   const tandemmasterOptions = crewNamesForRole(draft.crew_list, "tandemmaster");
   const videospringerOptions = crewNamesForRole(draft.crew_list, "videospringer");
   const allCrewNames = crewAllNames(draft.crew_list);
@@ -104,19 +106,19 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Wer bist du?"
-        description="Dein Name erscheint als Favorit oben in den Tandemmaster-/Videospringer-Dropdowns (nur bei passender Rolle)."
+        title={t("settings.crew.who.title")}
+        description={t("settings.crew.who.description")}
       >
         <Combobox
-          label="Ich bin"
+          label={t("settings.crew.who.label")}
           value={draft.operator_name}
           onChange={setOperatorName}
           options={allCrewNames}
-          placeholder="Namen wählen oder eingeben…"
+          placeholder={t("settings.crew.who.placeholder")}
           hint={
             opName && !operatorMember
-              ? "Neu — bitte mindestens eine Rolle setzen."
-              : "Erscheint oben in den Formular-Dropdowns bei passender Rolle."
+              ? t("settings.crew.who.hintNew")
+              : t("settings.crew.who.hintExisting")
           }
           listZIndex={200}
         />
@@ -129,7 +131,7 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                   setOperatorRole("tandemmaster", v === true)
                 }
               />
-              Tandemmaster
+              {t("create.ready.chips.tandemmaster")}
             </label>
             <label className="flex items-center gap-2 text-sm text-foreground">
               <Checkbox
@@ -138,18 +140,18 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                   setOperatorRole("videospringer", v === true)
                 }
               />
-              Videospringer
+              {t("create.ready.chips.videospringer")}
             </label>
           </div>
         ) : null}
       </SettingsSection>
 
       <SettingsSection
-        title="Session zurücksetzen"
-        description="Nach dem Erstellen eines Vorgangs: Modus oder festen Namen für Tandemmaster und Videospringer."
+        title={t("settings.crew.session.title")}
+        description={t("settings.crew.session.description")}
       >
         <Combobox
-          label="Tandemmaster beim Zurücksetzen"
+          label={t("settings.crew.session.tandemmasterLabel")}
           value={crewKeepComboboxValue(
             draft.keep_tandemmaster_on_session_reset,
             draft.tandemmaster,
@@ -172,12 +174,12 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
             "tandemmaster",
             draft.operator_name,
           )}
-          placeholder="Modus oder Name wählen…"
-          hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
+          placeholder={t("settings.crew.session.placeholder")}
+          hint={t("settings.crew.session.hint")}
           listZIndex={200}
         />
         <Combobox
-          label="Videospringer beim Zurücksetzen"
+          label={t("settings.crew.session.videospringerLabel")}
           value={crewKeepComboboxValue(
             draft.keep_videospringer_on_session_reset,
             draft.videospringer,
@@ -200,25 +202,25 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
             "videospringer",
             draft.operator_name,
           )}
-          placeholder="Modus oder Name wählen…"
-          hint="Oben Modus wählen, oder einen festen Namen aus der Crew."
+          placeholder={t("settings.crew.session.placeholder")}
+          hint={t("settings.crew.session.hint")}
           listZIndex={200}
         />
       </SettingsSection>
 
       <SettingsSection
-        title="Crew-Liste"
-        description="Namen erscheinen je nach Rolle in den Comboboxen. Freitext im Formular bleibt weiterhin möglich."
+        title={t("settings.crew.list.title")}
+        description={t("settings.crew.list.description")}
       >
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div className="space-y-1.5">
-            <Label>Name</Label>
+            <Label>{t("create.ready.chips.name")}</Label>
             <Input
               value={crewDraft.name}
               onChange={(e) =>
                 setCrewDraft((prev) => ({ ...prev, name: e.target.value }))
               }
-              placeholder="z. B. Andy"
+              placeholder={t("settings.crew.list.namePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -232,15 +234,15 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
               {crewEditIndex == null ? (
                 <>
                   <Plus className="h-4 w-4" />
-                  Hinzufügen
+                  {t("common.actions.add")}
                 </>
               ) : (
-                "Umbenennen"
+                t("common.actions.rename")
               )}
             </Button>
             {crewEditIndex != null ? (
               <Button type="button" variant="secondary" onClick={resetCrewForm}>
-                Abbrechen
+                {t("common.actions.cancel")}
               </Button>
             ) : null}
           </div>
@@ -249,15 +251,21 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
         <div className="max-h-72 overflow-auto rounded-md border border-border">
           {sortedCrew.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted">
-              Noch keine Einträge — oben hinzufügen.
+              {t("settings.crew.list.empty")}
             </p>
           ) : (
             <>
               <div className="sticky top-0 z-10 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 border-b border-border bg-card-elevated/95 px-3 py-1.5 text-[10px] font-semibold tracking-wide text-muted uppercase">
-                <span>Name</span>
-                <span className="w-28 text-center">Tandemmaster</span>
-                <span className="w-28 text-center">Videospringer</span>
-                <span className="w-20 text-right">Aktion</span>
+                <span>{t("create.ready.chips.name")}</span>
+                <span className="w-28 text-center">
+                  {t("create.ready.chips.tandemmaster")}
+                </span>
+                <span className="w-28 text-center">
+                  {t("create.ready.chips.videospringer")}
+                </span>
+                <span className="w-20 text-right">
+                  {t("settings.crew.list.action")}
+                </span>
               </div>
               <ul className="divide-y divide-border">
                 {sortedCrew.map(({ member, index }) => (
@@ -272,7 +280,7 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                       {member.name}
                       {crewNamesEqual(member.name, draft.operator_name) ? (
                         <span className="ml-2 text-[10px] font-normal text-muted">
-                          (Ich)
+                          {t("settings.crew.list.me")}
                         </span>
                       ) : null}
                     </p>
@@ -282,7 +290,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                         onCheckedChange={(v) =>
                           patchCrewRole(index, "tandemmaster", v === true)
                         }
-                        aria-label={`${member.name}: Tandemmaster`}
+                        aria-label={t("settings.crew.list.ariaRole", {
+                          name: member.name,
+                          role: t("create.ready.chips.tandemmaster"),
+                        })}
                       />
                     </div>
                     <div className="flex w-28 justify-center">
@@ -291,7 +302,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                         onCheckedChange={(v) =>
                           patchCrewRole(index, "videospringer", v === true)
                         }
-                        aria-label={`${member.name}: Videospringer`}
+                        aria-label={t("settings.crew.list.ariaRole", {
+                          name: member.name,
+                          role: t("create.ready.chips.videospringer"),
+                        })}
                       />
                     </div>
                     <div className="flex w-20 justify-end gap-0.5">
@@ -299,7 +313,7 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                         type="button"
                         size="icon"
                         variant="ghost"
-                        title="Umbenennen"
+                        title={t("common.actions.rename")}
                         onClick={() => startEditCrew(index)}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -308,7 +322,7 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
                         type="button"
                         size="icon"
                         variant="ghost"
-                        title="Löschen"
+                        title={t("common.actions.delete")}
                         onClick={() => deleteCrewMember(index)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />

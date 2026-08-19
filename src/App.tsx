@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -56,6 +57,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
+import { useLocaleStore } from "./store/localeStore";
+import { normalizeUiLanguage } from "./i18n/types";
 import { useKundeStore } from "./store/kundeStore";
 import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
@@ -116,7 +119,7 @@ import {
   shouldAutoQrAfterImport,
   type AutoQrScanOutcome,
 } from "./lib/autoQrScan";
-import { fileBaseName, QR_SUCCESS_TITLE } from "./lib/qrSuccess";
+import { fileBaseName } from "./lib/qrSuccess";
 import {
   requestKundenIdFocus,
   requestKundenIdFocusAfterImport,
@@ -135,6 +138,7 @@ import {
 import {
   focusCreateReadyTarget,
   summarizeCreateHints,
+  translateValidationHint,
 } from "./lib/createReadyHints";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { cn, isCancellationError } from "./lib/utils";
@@ -156,6 +160,7 @@ type TaskProgressState = {
 };
 
 function App() {
+  const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
   const addVideos = useVideoStore((s) => s.addVideos);
   const clearVideos = useVideoStore((s) => s.clearVideos);
@@ -267,7 +272,7 @@ function App() {
     null,
   );
   const [splashOpen, setSplashOpen] = useState(true);
-  const [splashStatus, setSplashStatus] = useState("Wird geladen…");
+  const [splashStatus, setSplashStatus] = useState("");
   const [splashError, setSplashError] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [ready, setReady] = useState(false);
@@ -305,12 +310,12 @@ function App() {
   const appendWasActiveRef = useRef(false);
 
   const installBlockedReason = (() => {
-    if (updateInstalling) return "Installation läuft bereits…";
-    if (busy) return "Während der Verarbeitung nicht möglich.";
-    if (appendActive) return "Während Nachreichen nicht möglich.";
-    if (sdWorkflowUiActive) return "Während der SD-Aktion nicht möglich.";
-    if (qrScanBusy) return "Während der QR-Erkennung nicht möglich.";
-    if (serverPhase === "uploading") return "Während dem Upload nicht möglich.";
+    if (updateInstalling) return t("app.update.alreadyInstalling");
+    if (busy) return t("app.update.blockedBusy");
+    if (appendActive) return t("app.update.blockedAppend");
+    if (sdWorkflowUiActive) return t("app.update.blockedSd");
+    if (qrScanBusy) return t("app.update.blockedQr");
+    if (serverPhase === "uploading") return t("app.update.blockedUpload");
     return null;
   })();
 
@@ -331,13 +336,13 @@ function App() {
         setUpdateDialogOpen(true);
       }
     } catch (e) {
-      if (forceDialog) showError(String(e), "Update");
+      if (forceDialog) showError(String(e), t("app.update.title"));
     }
   }
 
   function openVersionSwitchDialog(release: AvailableRelease) {
     if (installBlockedReason) {
-      showError(installBlockedReason, "Update");
+      showError(installBlockedReason, t("app.update.title"));
       return;
     }
     const from = appVersion || "—";
@@ -349,10 +354,10 @@ function App() {
       notes: release.body,
       available: true,
       message: !release.updater_json_url
-        ? "Für diese Version ist die automatische Installation nicht verfügbar."
+        ? t("settings.system.update.noAutoInstall")
         : isDowngrade
-          ? `Zu Version ${release.tag_name} wechseln?`
-          : `Update auf ${release.tag_name} verfügbar.`,
+          ? t("app.update.switchTo", { version: release.tag_name })
+          : t("app.update.availableOn", { version: release.tag_name }),
       updaterJsonUrl: release.updater_json_url,
       silentAvailable: Boolean(release.updater_json_url),
       installerUrl: release.installer_url,
@@ -369,19 +374,19 @@ function App() {
       const msg = versionInstall.updaterJsonUrl
         ? await installSpecificVersion(versionInstall.updaterJsonUrl)
         : await installUpdate();
-      showSuccess(msg, "Update");
+      showSuccess(msg, t("app.update.title"));
       try {
         const { relaunch } = await import("@tauri-apps/plugin-process");
         await relaunch();
       } catch {
-        showWarning("Version installiert — bitte App manuell neu starten.");
+        showWarning(t("app.update.restartManual"));
       }
     } catch (e) {
       const msg = String(e);
       if (/abgebrochen/i.test(msg)) {
         // Stay on dialog so user can retry or dismiss with Später.
       } else {
-        showError(msg, "Update");
+        showError(msg, t("app.update.title"));
       }
     } finally {
       setUpdateInstalling(false);
@@ -495,7 +500,7 @@ function App() {
         listing: true,
       });
     } else {
-      setLoading(true, "SD-Dateien werden gelesen…");
+      setLoading(true, t("app.sd.readingFiles"));
     }
     try {
       const listed = await listSdFiles(drive);
@@ -546,7 +551,7 @@ function App() {
           replaceSelectorCatalog(drive, [], 0, false, "no_media");
           return;
         }
-        showWarning(msg, "SD");
+        showWarning(msg, t("app.sd.title"));
       } else {
         showError(msg);
         if (streaming) closeSelector();
@@ -589,9 +594,9 @@ function App() {
     } => ({
       importAction: {
         kind: "import",
-        label: "Import",
+        label: t("app.import.label"),
         tone: "skipped",
-        summary: "Keine Dateien.",
+        summary: t("app.sd.noFiles"),
       },
       qrAction: null,
       qrHit: null,
@@ -633,8 +638,11 @@ function App() {
     }
 
     const importSummary =
-      `${result.imported_videos.length} Videos, ${result.imported_photos.length} Fotos` +
-      (result.skipped ? ` · ${result.skipped} übersprungen` : "");
+      t("app.import.summary", {
+        videos: result.imported_videos.length,
+        photos: result.imported_photos.length,
+      }) +
+      (result.skipped ? t("app.import.skipped", { count: result.skipped }) : "");
 
     const importAction: DialogActionStatus = {
       kind: "import",
@@ -668,7 +676,7 @@ function App() {
 
     useSdStore.getState().setWorkflowProgress(null);
     // Overlay stays suppressed while sdWorkflowUiActive; message feeds SD progress.
-    setLoading(true, "QR-Code suchen…");
+    setLoading(true, t("app.sd.searchingQr"));
     try {
       const qr = await withQrScanProgress(
         [...newVideoPaths, ...newPhotoPaths],
@@ -693,9 +701,9 @@ function App() {
           importAction,
           qrAction: {
             kind: "qr",
-            label: "QR-Code",
+            label: t("app.qr.label"),
             tone: "warning",
-            summary: qr.message || "QR-Scan abgebrochen.",
+            summary: qr.message || t("app.qr.cancelled"),
           },
           qrHit: null,
         };
@@ -708,10 +716,10 @@ function App() {
           importAction,
           qrAction: fromOptions ?? {
             kind: "qr",
-            label: "QR-Code",
+            label: t("app.qr.label"),
             tone: "success",
-            summary: "Kundendaten übernommen",
-            detail: src ? `Quelle: ${src}` : undefined,
+            summary: t("app.qr.applied"),
+            detail: src ? t("app.qr.source", { name: src }) : undefined,
           },
           qrHit: qr,
         };
@@ -727,9 +735,9 @@ function App() {
         importAction,
         qrAction: {
           kind: "qr",
-          label: "QR-Code",
+          label: t("app.qr.label"),
           tone: "warning",
-          summary: qr.message || "Kein QR-Code gefunden.",
+          summary: qr.message || t("app.qr.notFound"),
         },
         qrHit: null,
       };
@@ -739,9 +747,9 @@ function App() {
         importAction,
         qrAction: {
           kind: "qr",
-          label: "QR-Code",
+          label: t("app.qr.label"),
           tone: "error",
-          summary: "Scan fehlgeschlagen",
+          summary: t("app.qr.scanFailed"),
           detail: String(qrErr),
         },
         qrHit: null,
@@ -770,25 +778,25 @@ function App() {
     if (!doBackup && !doImport && !doEject) {
       showWarning(
         actions.clear
-          ? "Bereinigen ist nur nach einem Backup möglich."
-          : "Keine Aktion ausgewählt.",
+          ? t("app.sd.clearOnlyAfterBackup")
+          : t("app.sd.noActionSelected"),
       );
       return false;
     }
     if (!doBackup && actions.clear) {
-      showWarning("Bereinigen ist nur nach einem Backup möglich.");
+      showWarning(t("app.sd.clearOnlyAfterBackup"));
       return false;
     }
 
     if (doBackup && !config?.sd_backup_folder?.trim()) {
-      showError("Bitte in den Einstellungen einen Backup-Ordner wählen.");
+      showError(t("app.sd.pickBackupFolder"));
       return false;
     }
 
     hooks?.onStart?.();
     useSdStore.getState().setWorkflowActive(true);
     useSdStore.getState().beginWorkflowMount(drive);
-    setLoading(true, "SD-Verarbeitung…");
+    setLoading(true, t("app.sd.processing"));
     const statusActions: DialogActionStatus[] = [];
     let qrHit: AutoQrScanOutcome | null = null;
     let ejected = false;
@@ -797,15 +805,15 @@ function App() {
       if (!doEject || ejected) return;
       ejected = true;
       const ejectDetail = resolveSdEjectDetail(drive);
-      setLoading(true, "SD-Karte wird ausgeworfen…");
+      setLoading(true, t("app.sd.ejecting"));
       try {
         await ejectSdCard(drive);
         useSdStore.getState().markWorkflowMountReleased();
         statusActions.push({
           kind: "eject",
-          label: "Auswerfen",
+          label: t("app.sd.ejectLabel"),
           tone: "success",
-          summary: "SD-Karte ausgeworfen — kann sicher entfernt werden",
+          summary: t("app.sd.ejectSuccess"),
           detail: ejectDetail,
         });
         if (opts?.midWorkflowToast) {
@@ -814,10 +822,10 @@ function App() {
       } catch (e) {
         statusActions.push({
           kind: "eject",
-          label: "Auswerfen",
+          label: t("app.sd.ejectLabel"),
           tone: "error",
-          summary: "Auswerfen fehlgeschlagen",
-          detail: `${String(e)}\nBitte die Karte manuell sicher entfernen.`,
+          summary: t("app.sd.ejectFailed"),
+          detail: t("app.sd.ejectFailedDetail", { error: String(e) }),
         });
         if (opts?.midWorkflowToast) {
           showSdEjectToast({
@@ -835,20 +843,20 @@ function App() {
 
       if (doBackup) {
         setPhase("backing_up");
-        setLoading(true, "SD-Backup läuft…");
+        setLoading(true, t("app.sd.backingUp"));
         const res = await backupSdCard(drive, selectedPaths, doClear);
         if (!res.success) {
           if (isCancellationError(res.error_message)) {
-            showWarning("SD-Backup abgebrochen.", "Backup");
+            showWarning(t("app.sd.backupCancelled"), t("app.sd.backupLabel"));
             return true;
           }
           const failMsg =
-            (res.error_message || "Backup fehlgeschlagen") +
+            (res.error_message || t("app.sd.backupFailed")) +
             (actions.clear
-              ? "\n\nSD wurde nicht bereinigt (kein erfolgreiches Backup)."
+              ? `\n\n${t("app.sd.notClearedNoBackup")}`
               : "");
           if (isEmptyCatalogMessage(res.error_message || "")) {
-            showWarning(failMsg, "SD");
+            showWarning(failMsg, t("app.sd.title"));
           } else {
             showError(failMsg);
           }
@@ -857,11 +865,11 @@ function App() {
         const backupDetails = [
           res.backup_path ?? "",
           res.secondary_backup_path
-            ? `Zweiter Pfad: ${res.secondary_backup_path}`
+            ? t("app.sd.secondPath", { path: res.secondary_backup_path })
             : res.secondary_async_started
-              ? "Zweiter Pfad: läuft im Hintergrund…"
+              ? t("app.sd.secondPathBackground")
               : "",
-          res.skipped_count ? `Übersprungen: ${res.skipped_count}` : "",
+          res.skipped_count ? t("app.sd.skippedCount", { count: res.skipped_count }) : "",
           res.secondary_warning?.trim() ?? "",
         ]
           .map((s) => s.trim())
@@ -869,9 +877,9 @@ function App() {
         const backupWarn = Boolean(res.secondary_warning?.trim());
         statusActions.push({
           kind: "backup",
-          label: "Backup",
+          label: t("app.sd.backupLabel"),
           tone: backupWarn ? "warning" : "success",
-          summary: `${res.copied_count} Dateien kopiert`,
+          summary: t("app.sd.copiedFiles", { count: res.copied_count }),
           detail: backupDetails.length ? backupDetails.join("\n") : undefined,
         });
         if (doClear) {
@@ -880,19 +888,19 @@ function App() {
           if (clearWarn || deleted <= 0) {
             statusActions.push({
               kind: "clear",
-              label: "Bereinigen",
+              label: t("app.sd.clearLabel"),
               tone: "warning",
               summary: clearWarn
-                ? "Bereinigung fehlgeschlagen"
-                : "Nicht bereinigt",
+                ? t("app.sd.clearFailed")
+                : t("app.sd.notCleared"),
               detail: res.clear_warning?.trim() || undefined,
             });
           } else {
             statusActions.push({
               kind: "clear",
-              label: "Bereinigen",
+              label: t("app.sd.clearLabel"),
               tone: "success",
-              summary: `${deleted} Datei(en) bereinigt`,
+              summary: t("app.sd.clearedFiles", { count: deleted }),
             });
           }
         }
@@ -924,15 +932,15 @@ function App() {
         if (importPaths.length === 0) {
           statusActions.push({
             kind: "import",
-            label: "Import",
+            label: t("app.import.label"),
             tone: "skipped",
-            summary: "Keine Dateien.",
+            summary: t("app.sd.noFiles"),
           });
         } else {
           setPhase("importing");
           useSdStore.getState().setBackupProgress(null);
           useSdStore.getState().setWorkflowProgress(null);
-          setLoading(true, "Importiere SD-Dateien…");
+          setLoading(true, t("app.sd.importing"));
           const imported = await importPathsIntoApp(importPaths, {
             scanQr: actions.scanQr,
           });
@@ -958,21 +966,21 @@ function App() {
 
         const hasError = statusActions.some((a) => a.tone === "error");
         const title = hasError
-          ? "Teilweise erfolgreich"
+          ? t("app.sd.partialSuccess")
           : qrHit?.applied
-            ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
+            ? (qrHit.successTitle ?? t("app.qr.recognized"))
             : qrHit?.keptExisting
-              ? "Erfolg"
+              ? t("common.status.success")
               : qrHit
-                ? (qrHit.successTitle ?? QR_SUCCESS_TITLE)
-                : "Erfolg";
+                ? (qrHit.successTitle ?? t("app.qr.recognized"))
+                : t("common.status.success");
 
         const queuedNext = useSdStore.getState().jobQueue.length > 0;
         showSuccess("", title, {
           ...(qrHit?.applied || qrHit?.keptExisting
             ? (qrHit.successOptions ?? {
                 variant: "qr" as const,
-                highlight: qrHit.kundeName || "Kunde erkannt",
+                highlight: qrHit.kundeName || t("app.sd.customerRecognized"),
               })
             : {}),
           // Free the pipeline sooner when another SD is waiting.
@@ -983,7 +991,7 @@ function App() {
       return true;
     } catch (e) {
       if (isCancellationError(e)) {
-        showWarning("SD-Workflow abgebrochen.", "SD");
+        showWarning(t("app.sd.workflowCancelled"), t("app.sd.title"));
         return true;
       }
       showError(String(e));
@@ -1007,7 +1015,7 @@ function App() {
     setActiveDrive(drive);
     setSdWorkflowUiActive(false);
     setIntakeBusy(true);
-    setLoading(true, "SD-Dateien werden gelesen…");
+    setLoading(true, t("app.sd.readingFiles"));
     try {
       const listed = await listSdFiles(drive);
       if (listed.files.length === 0) {
@@ -1041,7 +1049,7 @@ function App() {
     } catch (e) {
       const msg = String(e);
       if (isEmptyCatalogMessage(msg)) {
-        showWarning(msg, "SD");
+        showWarning(msg, t("app.sd.title"));
       } else {
         showError(msg);
       }
@@ -1105,6 +1113,12 @@ function App() {
 
         setSplashStatus("Lade Einstellungen…");
         await loadConfig();
+        const loaded = useConfigStore.getState().config;
+        if (loaded?.ui_language) {
+          await useLocaleStore.getState().setLanguage(
+            normalizeUiLanguage(loaded.ui_language),
+          );
+        }
 
         setSplashStatus("Prüfe FFmpeg & Hardware…");
         const checks = await runStartupChecks(true);
@@ -1148,12 +1162,20 @@ function App() {
     return () => {
       cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadConfig, showError, showWarning]);
 
   useEffect(() => {
     if (!ready || !config || splashOpen) return;
     if (!config.setup_completed) setSetupWizardOpen(true);
   }, [ready, config, splashOpen]);
+
+  useEffect(() => {
+    if (!config?.ui_language) return;
+    void useLocaleStore
+      .getState()
+      .setLanguage(normalizeUiLanguage(config.ui_language));
+  }, [config?.ui_language]);
 
   useEffect(() => {
     if (!config?.server_url || !ready || setupWizardOpen) return;
@@ -1237,7 +1259,7 @@ function App() {
         reason: p.reason ?? "",
         timeoutSecs: p.timeout_secs > 0 ? p.timeout_secs : 15,
       });
-      setStatus("Stream-Copy fehlgeschlagen — bitte Entscheidung…");
+      setStatus(t("progress.rust.streamCopyFailedWaiting"));
     }).then((fn) => {
       unlisten = fn;
     });
@@ -1253,7 +1275,7 @@ function App() {
       setBodyConcatFallback({
         reason: p.reason ?? "",
       });
-      setStatus("Fast Path fehlgeschlagen — bitte Entscheidung…");
+      setStatus(t("progress.status.fastPathWaiting"));
     }).then((fn) => {
       unlisten = fn;
     });
@@ -1278,13 +1300,13 @@ function App() {
     setIntroMuxFallback(null);
     setStatus(
       choice === "without_intro"
-        ? "Exportiere Video ohne Intro…"
-        : "Kodiere Intro+Video neu…",
+        ? t("progress.rust.exportWithoutIntro")
+        : t("app.intro.encodeAgain"),
     );
     try {
       await resolveIntroMuxFallback(choice);
     } catch (e) {
-      showError(String(e), "Intro-Entscheidung");
+      showError(String(e), t("app.intro.decisionTitle"));
     }
   }
 
@@ -1292,13 +1314,13 @@ function App() {
     setBodyConcatFallback(null);
     setStatus(
       choice === "use_legacy"
-        ? "Legacy-Zusammenfügen…"
-        : "Vorgang abgebrochen…",
+        ? t("progress.status.legacyConcat")
+        : t("app.concat.cancelled"),
     );
     try {
       await resolveBodyConcatFallback(choice);
     } catch (e) {
-      showError(String(e), "Clip-Zusammenfügen");
+      showError(String(e), t("app.concat.decisionTitle"));
     }
   }
 
@@ -1308,9 +1330,14 @@ function App() {
       const p = event.payload;
       setUploadProgress(p);
       setPercent(p.percent);
-      const parts = [`Upload ${p.percent.toFixed(0)}%`];
+      const parts = [t("app.upload.percent", { percent: p.percent.toFixed(0) })];
       if (p.total_files > 0 && p.current_file > 0) {
-        parts.push(`Datei ${p.current_file}/${p.total_files}`);
+        parts.push(
+          t("app.upload.fileProgress", {
+            current: p.current_file,
+            total: p.total_files,
+          }),
+        );
       }
       if (p.filename) parts.push(p.filename);
       setStatus(parts.join(" · "));
@@ -1331,7 +1358,7 @@ function App() {
   useEffect(() => {
     if (appendActive && !appendWasActiveRef.current) {
       resetProgress();
-      setStatus("Starte Nachreichung…");
+      setStatus(t("app.append.starting"));
       setPercent(1);
     }
     appendWasActiveRef.current = appendActive;
@@ -1390,36 +1417,36 @@ function App() {
     const selected = await open({
       directory: true,
       multiple: false,
-      title: "Speicherort für fertige Vorgänge wählen",
+      title: t("app.storage.pickTitle"),
       defaultPath: current || undefined,
     });
     if (typeof selected !== "string" || !selected) {
-      if (!forcePick) showWarning("Kein Speicherort gewählt.", "Speicherort");
+      if (!forcePick) showWarning(t("app.storage.noneChosen"), t("app.storage.title"));
       return forcePick ? current || null : null;
     }
     if (!config) {
-      showError("Einstellungen noch nicht geladen.");
+      showError(t("app.storage.notLoaded"));
       return null;
     }
     const saved = await persistConfig({ ...config, speicherort: selected });
     if (!saved) {
-      showError("Speicherort konnte nicht gespeichert werden.");
+      showError(t("app.storage.saveFailed"));
       return null;
     }
-    showSuccess(`Speicherort gespeichert:\n${selected}`, "Speicherort");
+    showSuccess(t("app.storage.saved", { path: selected }), t("app.storage.title"));
     return selected;
   }
 
   async function openSpeicherortFolder() {
     const path = config?.speicherort?.trim() ?? "";
     if (!path) {
-      showError("Kein Speicherort gesetzt.");
+      showError(t("app.storage.notSet"));
       return;
     }
     try {
       await revealItemInDir(path);
     } catch (e) {
-      showError(String(e), "Speicherort");
+      showError(String(e), t("app.storage.title"));
     }
   }
 
@@ -1441,21 +1468,24 @@ function App() {
       config?.oldschool_mode,
     );
     if (!validation.valid) {
-      showWarning(validation.errors.join("\n"), "Validierung");
+      showWarning(
+        validation.errors.map(translateValidationHint).join("\n"),
+        t("create.validation.validation"),
+      );
       return;
     }
 
     if (config?.upload_to_server && !serverConnected) {
       showWarning(
-        "Upload ist aktiv, aber der Server ist nicht erreichbar.\nBitte Einstellungen prüfen oder Upload deaktivieren.",
-        "Server",
+        t("app.upload.serverUnreachable"),
+        t("app.server.title"),
       );
       return;
     }
 
     setBusy(true);
     resetProgress();
-    setStatus("Vorgang wird erstellt…");
+    setStatus(t("create.job.creating"));
     setPercent(1);
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
@@ -1491,7 +1521,7 @@ function App() {
       let uploadNote: string | null = null;
       let serverUploaded = false;
       if (config?.upload_to_server) {
-        setStatus("Upload zum Server…");
+        setStatus(t("app.upload.toServer"));
         setTaskProgress([]);
         setServerPhase("uploading");
         setUploadProgress(null);
@@ -1502,8 +1532,8 @@ function App() {
           setServerPhase("connected");
         } catch (uploadErr) {
           setServerPhase("error");
-          showError(String(uploadErr), "Upload");
-          uploadNote = "Upload fehlgeschlagen (siehe Fehlerdialog).";
+          showError(String(uploadErr), t("app.upload.title"));
+          uploadNote = t("app.upload.failedNote");
         } finally {
           setUploadProgress(null);
         }
@@ -1517,7 +1547,7 @@ function App() {
         nachname: kunde.nachname,
       });
       setPercent(100);
-      setStatus("Vorgang fertig");
+      setStatus(t("create.job.done"));
       setTaskProgress([]);
 
       if (config?.auto_clear_files_after_creation) {
@@ -1537,8 +1567,8 @@ function App() {
       }
     } catch (e) {
       if (isCancellationError(e)) {
-        setStatus("Abgebrochen");
-        showWarning("Vorgang abgebrochen.");
+        setStatus(t("progress.default.cancelled"));
+        showWarning(t("create.job.cancelled"));
       } else {
         showError(presentAmsUserMessage(String(e)));
       }
@@ -1553,10 +1583,10 @@ function App() {
       await invoke("cancel_encode");
       if (!cancellingQr && busy) {
         setStatus("cancelled");
-        showWarning("Vorgang abgebrochen.");
+        showWarning(t("create.job.cancelled"));
       } else if (!cancellingQr && appendActive) {
         setStatus("cancelled");
-        showWarning("Nachreichen abgebrochen.");
+        showWarning(t("history.appendCancelled"));
       }
       // SD backup/import and QR: dedicated message when the job returns.
     } catch (e) {
@@ -1597,13 +1627,13 @@ function App() {
   function handleSessionReset() {
     if (busy || appendActive || loading || sdWorkflowUiActive || qrScanBusy) {
       showWarning(
-        "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
-        "Zurücksetzen",
+        t("app.session.resetBlocked"),
+        t("common.actions.reset"),
       );
       return;
     }
     const ok = window.confirm(
-      "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
+      t("app.session.resetConfirm"),
     );
     if (!ok) return;
     clearSdQueue();
@@ -1620,13 +1650,13 @@ function App() {
     });
     clearCreateReadyPulse();
     setCreateReadyPulse(false);
-    showSuccess("Session zurückgesetzt.", "Zurücksetzen", {
+    showSuccess(t("app.session.resetDone"), t("common.actions.reset"), {
       autoCloseSecs: 5,
     });
   }
 
   const hwLabel = hwInfo
-    ? `${hwInfo.encoder}${hwInfo.available ? "" : " (Software)"}`
+    ? `${hwInfo.encoder}${hwInfo.available ? "" : t("app.chrome.softwareSuffix")}`
     : null;
 
   const uploadActive = Boolean(config?.upload_to_server && serverConnected);
@@ -1635,11 +1665,11 @@ function App() {
   const autoClearAfterCreate = Boolean(config?.auto_clear_files_after_creation);
   const uploadTitle = !serverConnected
     ? uploadBlocked
-      ? "Upload in den Einstellungen aktiv, Server nicht verbunden"
-      : "Server nicht verbunden — Upload nicht möglich"
+      ? t("app.upload.titleBlockedOn")
+      : t("app.upload.titleBlockedOff")
     : uploadActive
-      ? "Aktiv — Vorgang wird nach Erstellen hochgeladen"
-      : "Upload aus — einschalten, wenn der Vorgang auf den Server soll";
+      ? t("app.upload.titleActive")
+      : t("app.upload.titleOff");
 
   const uiLocked =
     busy ||
@@ -1720,7 +1750,9 @@ function App() {
     return () => window.clearTimeout(t);
   }, [createReadyPulsePending, createReady, clearCreateReadyPulse]);
 
-  const appendUploading = appendActive && /^upload/i.test(status.trim());
+  const appendUploading =
+    appendActive &&
+    (serverPhase === "uploading" || /^upload/i.test(status.trim()));
 
   const workflowView = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
@@ -1781,10 +1813,10 @@ function App() {
               size="sm"
               onClick={() => setProcessedOpen(true)}
               disabled={busy || !ready}
-              title="Verarbeitete Dateien"
+              title={t("app.chrome.historyTitle")}
             >
               <FolderClock className="h-4 w-4" />
-              <span className="hidden sm:inline">Historie</span>
+              <span className="hidden sm:inline">{t("common.actions.history")}</span>
             </Button>
             <Button
               type="button"
@@ -1792,11 +1824,11 @@ function App() {
               size="sm"
               onClick={handleSessionReset}
               disabled={uiLocked || !ready}
-              title="Formular und Medien zurücksetzen"
+              title={t("app.chrome.resetTitle")}
               className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Zurücksetzen</span>
+              <span className="hidden sm:inline">{t("common.actions.reset")}</span>
             </Button>
             <SettingsCluster
               disabled={!ready}
@@ -1830,17 +1862,17 @@ function App() {
               {secondaryBackup &&
               (secondaryBackup.state === "started" ||
                 secondaryBackup.state === "progress")
-                ? `Server-Backup ${Math.round(secondaryBackup.percent)}%` +
+                ? `${t("app.chrome.serverBackupPercent", { percent: Math.round(secondaryBackup.percent) })}` +
                   (secondaryBackup.file_name
                     ? ` · ${secondaryBackup.file_name}`
                     : "")
                 : secondaryBackup?.state === "done"
-                  ? "Server-Backup fertig"
+                  ? t("app.chrome.serverBackupDone")
                   : hwLabel
-                    ? `Encoder: ${hwLabel}`
+                    ? t("app.chrome.encoder", { label: hwLabel })
                     : ready
-                      ? "Bereit"
-                      : "Start…"}
+                      ? t("app.chrome.ready")
+                      : t("app.chrome.starting")}
             </p>
           </div>
         </div>
@@ -1865,7 +1897,7 @@ function App() {
           <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                Vorgang
+                {t("app.job.section")}
               </p>
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
                 <label
@@ -1884,7 +1916,7 @@ function App() {
                   title={uploadTitle}
                 >
                   <CloudUpload className="h-3.5 w-3.5" aria-hidden />
-                  Upload
+                  {t("app.upload.title")}
                   <Switch
                     id="vorgang-upload"
                     className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
@@ -1897,7 +1929,7 @@ function App() {
                         upload_to_server: v === true,
                       });
                     }}
-                    aria-label="Server-Upload"
+                    aria-label={t("app.job.uploadAria")}
                   />
                 </label>
                 <label
@@ -1909,10 +1941,10 @@ function App() {
                       : "border-border bg-card-elevated/80 text-muted",
                     (uiLocked || !config) && "cursor-not-allowed",
                   )}
-                  title="Nach Erstellen Formular und Medien zurücksetzen"
+                  title={t("app.job.clearTitle")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                  Leeren
+                  {t("app.job.clear")}
                   <Switch
                     id="vorgang-clear"
                     className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
@@ -1925,7 +1957,7 @@ function App() {
                         auto_clear_files_after_creation: v === true,
                       });
                     }}
-                    aria-label="Nach Erstellen Formular und Medien zurücksetzen"
+                    aria-label={t("app.job.clearTitle")}
                   />
                 </label>
               </div>
@@ -1990,7 +2022,7 @@ function App() {
                                 key={item.label}
                                 type="button"
                                 className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium leading-snug text-warning hover:bg-warning/20"
-                                aria-label={`${item.label} anzeigen`}
+                                aria-label={t("app.ready.showTarget", { label: item.label })}
                                 onClick={() =>
                                   focusCreateReadyTarget(item.target, {
                                     setMediaTab,
@@ -2016,8 +2048,8 @@ function App() {
                 className="shrink-0"
                 onClick={() => void ensureSpeicherort(true)}
                 disabled={uiLocked}
-                title="Speicherort ändern"
-                aria-label="Speicherort ändern"
+                title={t("app.storage.change")}
+                aria-label={t("app.storage.change")}
               >
                 <FolderOpen className="h-3.5 w-3.5" aria-hidden />
               </Button>
@@ -2028,8 +2060,8 @@ function App() {
                 className="shrink-0"
                 onClick={() => void openSpeicherortFolder()}
                 disabled={uiLocked || !config?.speicherort?.trim()}
-                title="Ordner im Explorer öffnen"
-                aria-label="Ordner im Explorer öffnen"
+                title={t("settings.folder.openInExplorer")}
+                aria-label={t("settings.folder.openInExplorer")}
               >
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden />
               </Button>
@@ -2060,17 +2092,17 @@ function App() {
                 }}
                 title={
                   config?.upload_to_server && serverConnected
-                    ? "Vorgang erstellen und auf den Server hochladen"
+                    ? t("app.job.createUploadTitle")
                     : undefined
                 }
               >
                 {config?.upload_to_server && serverConnected ? (
                   <>
                     <CloudUpload className="h-4 w-4" aria-hidden />
-                    Erstellen & Upload
+                    {t("common.actions.createAndUpload")}
                   </>
                 ) : (
-                  "Erstellen"
+                  t("common.actions.create")
                 )}
               </Button>
             </div>
@@ -2109,14 +2141,14 @@ function App() {
               <div className="flex flex-wrap items-center gap-3 rounded-t-xl border-b border-border/70 bg-card-elevated/50 px-3 py-2.5 sm:px-4">
                 <TabsList
                   className="h-11 w-full max-w-md flex-1 p-1 sm:w-auto"
-                  aria-label="Medienart"
+                  aria-label={t("app.media.kindAria")}
                 >
                   <TabsTrigger
                     value="video"
                     className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
                   >
                     <Film className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>Video</span>
+                    <span>{t("common.labels.video")}</span>
                     {videoList.length > 0 && (
                       <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
                         {videoList.length}
@@ -2128,7 +2160,7 @@ function App() {
                     className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
                   >
                     <ImageIcon className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>Foto</span>
+                    <span>{t("common.labels.photo")}</span>
                     {photoList.length > 0 && (
                       <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
                         {photoList.length}
@@ -2156,7 +2188,7 @@ function App() {
                       }
                     }}
                   >
-                    {mediaTab === "video" ? "Videos leeren" : "Fotos leeren"}
+                    {mediaTab === "video" ? t("app.media.clearVideos") : t("app.media.clearPhotos")}
                   </Button>
                 </div>
               </div>

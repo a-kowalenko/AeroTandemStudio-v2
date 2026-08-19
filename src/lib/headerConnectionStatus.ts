@@ -5,6 +5,7 @@ import type {
   SettingsFocusTarget,
 } from "@/store/uiStore";
 import type { AmsBridgeHealthResult, ConnectionTestResult } from "@/lib/tauri";
+import { tr } from "@/i18n";
 import {
   AMS_OPERATOR_TITLE,
   amsBridgeStatusErrorTooltip,
@@ -54,15 +55,17 @@ function smbTooltipLine(
   password: string,
   serverUrl: string,
 ): string {
-  if (phase === "checking") return "Server: Prüfung…";
-  if (phase === "uploading") return "Server: Upload läuft";
+  if (phase === "checking") return tr("header.connection.serverChecking");
+  if (phase === "uploading") return tr("header.connection.serverUploading");
   if (phase === "error") {
     const detail = serverStatusErrorTooltip(message, login, password, serverUrl);
-    return detail.includes("\n") ? `Server:\n${detail}` : `Server: ${detail}`;
+    return detail.includes("\n")
+      ? tr("header.connection.serverWithDetailMultiline", { detail })
+      : tr("header.connection.serverWithDetail", { detail });
   }
-  if (phase === "connected" || connected) return "Server: verbunden";
-  if (!serverUrl.trim()) return "Server: nicht konfiguriert";
-  return "Server: nicht geprüft";
+  if (phase === "connected" || connected) return tr("header.connection.serverConnected");
+  if (!serverUrl.trim()) return tr("header.connection.serverNotConfigured");
+  return tr("header.connection.serverNotChecked");
 }
 
 function amsTooltipLine(
@@ -70,14 +73,16 @@ function amsTooltipLine(
   connected: boolean,
   message: string,
 ): string {
-  if (phase === "checking") return `${AMS_OPERATOR_TITLE}: Prüfung…`;
+  if (phase === "checking") {
+    return tr("header.connection.amsChecking", { title: AMS_OPERATOR_TITLE });
+  }
   if (phase === "error") {
     return amsBridgeStatusErrorTooltip(message);
   }
   if (phase === "connected" || connected) {
     return formatAmsConnectedTooltip();
   }
-  return `${AMS_OPERATOR_TITLE}: nicht geprüft`;
+  return tr("header.connection.amsNotChecked", { title: AMS_OPERATOR_TITLE });
 }
 
 export function presentHeaderConnection(input: {
@@ -105,24 +110,24 @@ export function presentHeaderConnection(input: {
   const smbError = input.smbPhase === "error";
   const amsError = input.amsConfigured && input.amsPhase === "error";
 
-  let label = "Server";
+  let label = tr("app.server.title");
   let toneClass = "text-muted";
 
   if (input.smbPhase === "uploading") {
     const pct = input.uploadPercent ?? 0;
-    label = `Upload ${pct.toFixed(0)}%`;
+    label = tr("app.upload.percent", { percent: pct.toFixed(0) });
     toneClass = "text-primary";
   } else if (smbChecking) {
-    label = "Prüfe…";
+    label = tr("common.actions.checking");
     toneClass = "text-warning";
   } else if (smbError) {
     label = mapServerErrorLabel(input.smbMessage);
     toneClass = "text-destructive";
   } else if (smbOk) {
-    label = "Verbunden";
+    label = tr("chrome.server.connected");
     toneClass = "text-success";
   } else if (amsOk && !amsError) {
-    label = "Verbunden";
+    label = tr("chrome.server.connected");
     toneClass = "text-success";
   }
 
@@ -175,8 +180,8 @@ export function presentHeaderConnection(input: {
   if (canRetry) {
     lines.push(
       contextMenuFocus
-        ? "Klicken: erneut prüfen · Rechtsklick: Einstellungen"
-        : "Klicken zum erneuten Prüfen",
+        ? tr("header.connection.retryOrSettings")
+        : tr("header.connection.retry"),
     );
   }
 
@@ -237,13 +242,17 @@ export function presentHeaderRetryOutcome(opts: {
   const message = parts.join("\n\n");
 
   if (smbOk && amsOk) {
-    const title = smb && ams ? "Verbindung" : smb ? "Server" : AMS_OPERATOR_TITLE;
+    const title = smb && ams
+      ? tr("header.connection.connectionTitle")
+      : smb
+        ? tr("app.server.title")
+        : AMS_OPERATOR_TITLE;
     return { kind: "success", title, message, primaryAction: null };
   }
   if (!smbOk && !amsOk) {
     return {
       kind: "error",
-      title: "Verbindung",
+      title: tr("header.connection.connectionTitle"),
       message,
       primaryAction: smbPresented?.primaryAction ?? amsPresented?.primaryAction ?? null,
     };
@@ -251,7 +260,7 @@ export function presentHeaderRetryOutcome(opts: {
   if (!smbOk) {
     return {
       kind: "error",
-      title: "Server",
+      title: tr("app.server.title"),
       message: smbPresented?.message ?? smb?.message ?? message,
       primaryAction: smbPresented?.primaryAction ?? null,
     };

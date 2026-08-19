@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -11,11 +12,10 @@ import { useUiStore } from "@/store/uiStore";
 import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
   presentServerConnectionError,
-  SERVER_GUEST_HINT,
+  serverGuestHint,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
 import {
-  AMS_OPERATOR_TITLE,
   formatAmsHealthSuccessMessage,
   presentAmsBridgeError,
 } from "@/lib/amsBridgeStatus";
@@ -29,6 +29,7 @@ type Props = SettingsTabBaseProps & {
 };
 
 export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
+  const { t } = useTranslation();
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -83,7 +84,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         server_login: draft.server_login,
         server_password: draft.server_password,
       });
-      if (result.ok) showSuccess(result.message, "Server");
+      if (result.ok) showSuccess(result.message, t("settings.tabs.server"));
       else {
         const presented = presentServerConnectionError({
           rawMessage: result.message,
@@ -92,7 +93,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           password: draft.server_password,
           omitSettingsAction: true,
         });
-        showError(presented.message, "Server");
+        showError(presented.message, t("settings.tabs.server"));
       }
     } finally {
       setTestingServer(false);
@@ -110,7 +111,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         ams_bridge_token: draft.ams_bridge_token,
       });
       if (!saved) {
-        showError("Einstellungen konnten nicht gespeichert werden.", AMS_OPERATOR_TITLE);
+        showError(t("settings.server.ams.saveFailed"), t("settings.server.ams.operatorTitle"));
         return;
       }
       setDraft(saved);
@@ -118,7 +119,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       if (result.ok) {
         const okMsg = formatAmsHealthSuccessMessage(result.message);
         setBridgeLabel(okMsg);
-        showSuccess(okMsg, AMS_OPERATOR_TITLE);
+        showSuccess(okMsg, t("settings.server.ams.operatorTitle"));
         if (result.base_url) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
@@ -128,7 +129,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           omitSettingsAction: true,
         });
         setBridgeLabel(presented.message);
-        showError(presented.message, AMS_OPERATOR_TITLE);
+        showError(presented.message, t("settings.server.ams.operatorTitle"));
       }
     } catch (err) {
       const presented = presentAmsBridgeError({
@@ -136,7 +137,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         omitSettingsAction: true,
       });
       setBridgeLabel(presented.message);
-      showError(presented.message, AMS_OPERATOR_TITLE);
+      showError(presented.message, t("settings.server.ams.operatorTitle"));
     } finally {
       setTestingBridge(false);
     }
@@ -150,20 +151,25 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       const list = await amsBridgeDiscover(3);
       setDiscovered(list);
       if (list.length === 0) {
-        setBridgeLabel("Keine Buchungssuche im Netzwerk gefunden.");
+        setBridgeLabel(t("settings.server.ams.noneFoundStatus"));
         showError(
-          "Nichts gefunden. Adresse ggf. manuell eintragen.",
-          AMS_OPERATOR_TITLE,
+          t("settings.server.ams.noneFoundError"),
+          t("settings.server.ams.operatorTitle"),
         );
       } else if (list.length === 1) {
         patch("ams_bridge_url", list[0].base_url);
-        setBridgeLabel(`Gefunden: ${list[0].instance} → ${list[0].base_url}`);
+        setBridgeLabel(
+          t("settings.server.ams.foundStatus", {
+            instance: list[0].instance,
+            url: list[0].base_url,
+          }),
+        );
         showSuccess(
-          `Adresse übernommen: ${list[0].base_url}. Zugangscode weiter manuell eintragen.`,
-          AMS_OPERATOR_TITLE,
+          t("settings.server.ams.foundSuccess", { url: list[0].base_url }),
+          t("settings.server.ams.operatorTitle"),
         );
       } else {
-        setBridgeLabel(`${list.length} Adressen gefunden — bitte auswählen.`);
+        setBridgeLabel(t("settings.server.ams.foundMany", { count: list.length }));
       }
     } catch (err) {
       const presented = presentAmsBridgeError({
@@ -171,7 +177,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         omitSettingsAction: true,
       });
       setBridgeLabel(presented.message);
-      showError(presented.message, AMS_OPERATOR_TITLE);
+      showError(presented.message, t("settings.server.ams.operatorTitle"));
     } finally {
       setDiscovering(false);
     }
@@ -180,8 +186,8 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="SMB-Server"
-        description="Zugangsdaten für Upload nach Erstellung eines Vorgangs."
+        title={t("settings.server.smb.title")}
+        description={t("settings.server.smb.description")}
       >
         <div ref={serverUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
           {flashFocus === "server-url" ? (
@@ -190,13 +196,13 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
             />
           ) : null}
-          <Label className="relative">Server-URL</Label>
+          <Label className="relative">{t("settings.server.smb.url")}</Label>
           <Input
             ref={serverUrlInputRef}
             className="relative"
             value={draft.server_url}
             onChange={(e) => patch("server_url", e.target.value)}
-            placeholder="smb://…"
+            placeholder={t("settings.server.smb.urlPlaceholder")}
           />
         </div>
 
@@ -212,7 +218,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           ) : null}
           <div className="relative grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label>Login</Label>
+              <Label>{t("settings.server.smb.login")}</Label>
               <Input
                 ref={serverLoginInputRef}
                 value={draft.server_login}
@@ -221,7 +227,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Passwort</Label>
+              <Label>{t("settings.server.smb.password")}</Label>
               <PasswordInput
                 value={draft.server_password}
                 onChange={(e) => patch("server_password", e.target.value)}
@@ -229,7 +235,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               />
             </div>
           </div>
-          <p className="relative text-[11px] text-muted">{SERVER_GUEST_HINT}</p>
+          <p className="relative text-[11px] text-muted">{serverGuestHint()}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -240,7 +246,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             disabled={testingServer}
             onClick={() => void onTestServer()}
           >
-            {testingServer ? "Prüfe…" : "Verbindung testen"}
+            {testingServer ? t("common.actions.checking") : t("common.actions.testConnection")}
           </Button>
           {!testingServer && serverPhase !== "checking" ? (
             <button
@@ -248,8 +254,10 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               title={
                 serverPhase === "error" && serverMessage
-                  ? `${serverMessage}\nKlicken zum erneuten Prüfen`
-                  : "Klicken zum erneuten Prüfen"
+                  ? t("settings.server.smb.recheckTitleWithMessage", {
+                      message: serverMessage,
+                    })
+                  : t("settings.server.smb.recheckTitle")
               }
               onClick={() => void onTestServer()}
             >
@@ -259,19 +267,19 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Upload">
+      <SettingsSection title={t("settings.server.upload.title")}>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.upload_to_server}
             onCheckedChange={(v) => patch("upload_to_server", v === true)}
           />
-          Nach Erstellung auf Server hochladen
+          {t("settings.server.upload.afterCreate")}
         </label>
       </SettingsSection>
 
       <SettingsSection
-        title="Buchungssuche (optional)"
-        description="Füllt Name und Medien, wenn Kunden-ID und Buchungs-ID passen. Ohne Verbindung geht alles weiter per Hand. Dateien werden trotzdem übergeben."
+        title={t("settings.server.ams.title")}
+        description={t("settings.server.ams.description")}
       >
         <div ref={amsUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
           {flashFocus === "ams-bridge-url" ? (
@@ -280,7 +288,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
             />
           ) : null}
-          <Label className="relative">Adresse</Label>
+          <Label className="relative">{t("settings.server.ams.address")}</Label>
           <Input
             ref={amsUrlInputRef}
             className="relative"
@@ -296,7 +304,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
               className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
             />
           ) : null}
-          <Label className="relative">Zugangscode</Label>
+          <Label className="relative">{t("settings.server.ams.token")}</Label>
           <PasswordInput
             ref={amsTokenInputRef}
             className="relative"
@@ -307,7 +315,9 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         </div>
         {draft.ams_bridge_last_ok_url.trim() ? (
           <p className="text-[11px] text-muted">
-            Zuletzt erfolgreich: {draft.ams_bridge_last_ok_url}
+            {t("settings.server.ams.lastOk", {
+              url: draft.ams_bridge_last_ok_url,
+            })}
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +328,9 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             disabled={discovering}
             onClick={() => void onDiscoverBridge()}
           >
-            {discovering ? "Suche…" : "Im Netzwerk suchen"}
+            {discovering
+              ? t("settings.server.ams.searching")
+              : t("settings.server.ams.searchNetwork")}
           </Button>
           <Button
             type="button"
@@ -327,7 +339,9 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             disabled={testingBridge}
             onClick={() => void onTestBridge()}
           >
-            {testingBridge ? "Prüfe…" : "Verbindung prüfen"}
+            {testingBridge
+              ? t("common.actions.checking")
+              : t("settings.server.ams.checkConnection")}
           </Button>
           <span className="text-xs text-muted">{bridgeLabel}</span>
         </div>
@@ -340,12 +354,20 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
                   className="w-full text-left hover:underline"
                   onClick={() => {
                     patch("ams_bridge_url", d.base_url);
-                    setBridgeLabel(`Übernommen: ${d.instance} → ${d.base_url}`);
+                    setBridgeLabel(
+                      t("settings.server.ams.applied", {
+                        instance: d.instance,
+                        url: d.base_url,
+                      }),
+                    );
                     setDiscovered([]);
                   }}
                 >
-                  {d.instance} — {d.base_url}
-                  {d.version ? ` (v${d.version})` : ""}
+                  {t("settings.server.ams.discoveredItem", {
+                    instance: d.instance,
+                    url: d.base_url,
+                    version: d.version ? ` (v${d.version})` : "",
+                  })}
                 </button>
               </li>
             ))}

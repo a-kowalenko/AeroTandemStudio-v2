@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   ChevronLeft,
@@ -49,6 +50,7 @@ export function PhotoPreview({
   onUndoPhotoEdit,
   onBatchRotate,
 }: PhotoPreviewProps) {
+  const { t } = useTranslation();
   const photoList = usePhotoStore((s) => s.photoList);
   const currentIndex = usePhotoStore((s) => s.currentIndex);
   const selected = usePhotoStore((s) => s.selected);
@@ -148,7 +150,7 @@ export function PhotoPreview({
         scanQrPhoto(photo.path),
       );
       if (result.cancelled) {
-        showWarning(result.message || "QR-Scan abgebrochen.", "QR-Scan", {
+        showWarning(result.message || t("app.qr.cancelled"), t("app.qr.label"), {
           autoCloseSecs: 5,
         });
       } else if (result.found && result.kunde) {
@@ -159,7 +161,7 @@ export function PhotoPreview({
           runCleanup: () => maybeRemoveQrPhoto(result.source_path ?? photo.path),
         });
       } else {
-        showError(result.message || "Kein QR-Code gefunden.");
+        showError(result.message || t("app.qr.notFound"));
         requestKundenIdFocus();
       }
     } catch (e) {
@@ -196,7 +198,7 @@ export function PhotoPreview({
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="flex items-center gap-2 text-sm font-medium text-foreground">
           <ImageIcon className="h-4 w-4 text-primary" />
-          Foto-Vorschau
+          {t("photo.preview.title")}
         </h3>
       </div>
 
@@ -213,7 +215,7 @@ export function PhotoPreview({
           <>
             <img
               src={previewSrc}
-              alt={current?.filename ?? "Foto"}
+              alt={current?.filename ?? t("common.labels.photo")}
               className="h-full w-full object-contain"
             />
             {photoList.length > 1 && (
@@ -223,7 +225,7 @@ export function PhotoPreview({
                   className="absolute left-2 top-1/2 -translate-y-1/2 rounded-lg bg-black/45 p-2 text-white backdrop-blur-sm transition hover:bg-black/65"
                   onClick={goPrev}
                   disabled={currentIndex <= 0}
-                  aria-label="Vorheriges Foto"
+                  aria-label={t("photo.preview.prevPhotoAria")}
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
@@ -232,7 +234,7 @@ export function PhotoPreview({
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-black/45 p-2 text-white backdrop-blur-sm transition hover:bg-black/65"
                   onClick={goNext}
                   disabled={currentIndex >= photoList.length - 1}
-                  aria-label="Nächstes Foto"
+                  aria-label={t("photo.preview.nextPhotoAria")}
                 >
                   <ChevronRight className="h-5 w-5" />
                 </button>
@@ -242,7 +244,7 @@ export function PhotoPreview({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/75">
             <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
-            <p>Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen</p>
+            <p>{t("photo.preview.empty")}</p>
           </div>
         )}
       </div>
@@ -308,7 +310,7 @@ export function PhotoPreview({
 
       <div className="grid gap-3 text-xs sm:grid-cols-2">
         <div className="flex flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
-          <p className="mb-1 font-semibold">Aktuelles Foto</p>
+          <p className="mb-1 font-semibold">{t("photo.preview.currentPhoto")}</p>
           {current ? (
             <dl className="space-y-0.5 text-muted">
               <div>
@@ -385,7 +387,7 @@ export function PhotoPreview({
                   variant="outline"
                   disabled={disabled}
                   onClick={() => onUndoPhotoEdit(current.path)}
-                  title="Diese Bearbeitung rückgängig machen"
+                  title={t("photo.preview.undoThisEditTitle")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Bearbeitung rückgängig
@@ -417,7 +419,7 @@ export function PhotoPreview({
           )}
         </div>
         <div className="flex flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
-          <p className="mb-1 font-semibold">Gesamt</p>
+          <p className="mb-1 font-semibold">{t("photo.preview.total")}</p>
           <dl className="space-y-0.5 text-muted">
             <div>Anzahl: {photoList.length}</div>
             <div>Größe: {totalSizeHint}</div>
@@ -489,8 +491,8 @@ export function PhotoPreview({
       <MediaFileContextMenu
         state={ctxMenu}
         onClose={() => setCtxMenu(null)}
-        onError={(msg) => showError(msg, "Datei")}
-        onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        onError={(msg) => showError(msg, t("media.list.fileTitle"))}
+        onCopied={() => showSuccess(t("media.list.pathCopied"), t("media.list.pathTitle"))}
         actionsDisabled={disabled || scanning}
         onScanQr={(path) => void handleQrScan(path)}
         onCut={onEditPhoto}

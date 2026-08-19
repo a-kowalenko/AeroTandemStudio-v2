@@ -1,5 +1,6 @@
 import { ExternalLink, FolderOpen } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -18,15 +19,17 @@ export function FolderPathField({
   value,
   onPick,
   onOpenError,
-  placeholder = "Ordner wählen…",
+  placeholder,
   disabled = false,
 }: Props) {
+  const { t } = useTranslation();
+  const folderPlaceholder = placeholder ?? t("settings.folder.placeholder");
   const canOpen = Boolean(value.trim()) && !disabled;
 
   async function openFolder() {
     const path = value.trim();
     if (!path) {
-      onOpenError("Kein Ordner gesetzt.");
+      onOpenError(t("settings.folder.noneSet"));
       return;
     }
     try {
@@ -44,15 +47,15 @@ export function FolderPathField({
           value={value}
           readOnly
           disabled={disabled}
-          placeholder={placeholder}
+          placeholder={folderPlaceholder}
           className="pr-[4.5rem]"
         />
         <button
           type="button"
           onClick={() => void openFolder()}
           disabled={!canOpen}
-          title="Ordner im Explorer öffnen"
-          aria-label="Ordner im Explorer öffnen"
+          title={t("settings.folder.openInExplorer")}
+          aria-label={t("settings.folder.openInExplorer")}
           className={cn(
             "absolute top-1/2 right-9 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
             "hover:bg-primary-soft hover:text-foreground",
@@ -65,8 +68,8 @@ export function FolderPathField({
           type="button"
           onClick={onPick}
           disabled={disabled}
-          title="Ordner wählen"
-          aria-label="Ordner wählen"
+          title={t("common.actions.pickFolder")}
+          aria-label={t("common.actions.pickFolder")}
           className={cn(
             "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
             "hover:bg-primary-soft hover:text-foreground",

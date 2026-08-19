@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { tr } from "@/i18n";
 import {
   discardPhotoEditUndoForPath,
   getFileSizes,
@@ -46,7 +47,7 @@ export function usePhotoEditApply() {
     async (sourcePath: string, degrees: number, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Foto wird gedreht…");
+      beginProgress(opts, tr("photo.edit.progress.rotate"));
       try {
         const res = await rotatePhoto({
           input: sourcePath,
@@ -60,14 +61,14 @@ export function usePhotoEditApply() {
           height: res.height,
           sizeBytes: sizes[0]?.size_bytes,
         });
-        opts?.onStatus?.("Drehen fertig");
+        opts?.onStatus?.(tr("photo.edit.progress.rotateDone"));
         showSuccess(
-          "Drehung übernommen. Rückgängig über „Bearbeitung rückgängig“.",
-          "Bearbeiten",
+          tr("photo.edit.success.rotate"),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Drehen fehlgeschlagen");
+        showError(String(e), tr("photo.edit.error.rotate"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -80,7 +81,7 @@ export function usePhotoEditApply() {
     async (sourcePath: string, rect: CropRect, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Foto wird zugeschnitten…");
+      beginProgress(opts, tr("photo.edit.progress.crop"));
       try {
         const res = await cropPhoto({
           input: sourcePath,
@@ -97,14 +98,14 @@ export function usePhotoEditApply() {
           height: res.height,
           sizeBytes: sizes[0]?.size_bytes,
         });
-        opts?.onStatus?.("Zuschnitt fertig");
+        opts?.onStatus?.(tr("photo.edit.progress.cropDone"));
         showSuccess(
-          "Zuschnitt übernommen. Rückgängig über „Bearbeitung rückgängig“.",
-          "Bearbeiten",
+          tr("photo.edit.success.crop"),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Zuschnitt fehlgeschlagen");
+        showError(String(e), tr("photo.edit.error.crop"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -134,12 +135,12 @@ export function usePhotoEditApply() {
       if (!hasRotate && !hasCrop) return;
 
       setApplying(true);
-      beginProgress(opts, "Foto wird bearbeitet…");
+      beginProgress(opts, tr("photo.edit.progress.apply"));
       try {
         let width = 0;
         let height = 0;
         const doRotate = async () => {
-          opts?.onStatus?.("Foto wird gedreht…");
+          opts?.onStatus?.(tr("photo.edit.progress.rotate"));
           const res = await rotatePhoto({
             input: sourcePath,
             degrees: deg,
@@ -150,7 +151,7 @@ export function usePhotoEditApply() {
         };
         const doCrop = async () => {
           const rect = args.crop!;
-          opts?.onStatus?.("Foto wird zugeschnitten…");
+          opts?.onStatus?.(tr("photo.edit.progress.crop"));
           const res = await cropPhoto({
             input: sourcePath,
             x: rect.x,
@@ -188,18 +189,18 @@ export function usePhotoEditApply() {
           height,
           sizeBytes: sizes[0]?.size_bytes,
         });
-        opts?.onStatus?.("Bearbeitung fertig");
+        opts?.onStatus?.(tr("photo.edit.progress.applyDone"));
         const parts = [
           hasCrop ? "Zuschnitt" : null,
           hasRotate ? "Drehung" : null,
         ].filter(Boolean);
         showSuccess(
-          `${parts.join(" und ")} übernommen. Rückgängig über „Bearbeitung rückgängig“.`,
-          "Bearbeiten",
+          tr("photo.edit.success.apply", { parts: parts.join(` ${tr("photo.edit.and")} `) }),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Bearbeitung fehlgeschlagen");
+        showError(String(e), tr("photo.edit.error.apply"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -220,12 +221,12 @@ export function usePhotoEditApply() {
     async (paths: string[], degrees: number, opts?: ApplyOptions) => {
       if (applying || paths.length === 0) return;
       setApplying(true);
-      beginProgress(opts, `Drehe ${paths.length} Foto(s)…`);
+      beginProgress(opts, tr("photo.edit.progress.rotateMany", { count: paths.length }));
       let ok = 0;
       try {
         for (let i = 0; i < paths.length; i++) {
           const path = paths[i]!;
-          opts?.onStatus?.(`Drehe Foto ${i + 1}/${paths.length}…`);
+          opts?.onStatus?.(tr("photo.edit.progress.rotateOneOfMany", { current: i + 1, total: paths.length }));
           const res = await rotatePhoto({
             input: path,
             degrees,
@@ -240,18 +241,18 @@ export function usePhotoEditApply() {
           });
           ok += 1;
         }
-        opts?.onStatus?.("Drehen fertig");
+        opts?.onStatus?.(tr("photo.edit.progress.rotateDone"));
         showSuccess(
-          `${ok} Foto(s) gedreht.`,
-          "Bearbeiten",
+          tr("photo.edit.success.rotateMany", { count: ok }),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
         showError(
           ok > 0
-            ? `${ok} Foto(s) gedreht, dann Fehler: ${String(e)}`
+            ? tr("photo.edit.error.rotateManyPartial", { count: ok, error: String(e) })
             : String(e),
-          "Drehen fehlgeschlagen",
+          tr("photo.edit.error.rotate"),
         );
       } finally {
         setApplying(false);
@@ -265,7 +266,7 @@ export function usePhotoEditApply() {
     async (path: string, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Foto-Bearbeitung wird rückgängig gemacht…");
+      beginProgress(opts, tr("photo.edit.progress.undo"));
       try {
         const res = await undoPhotoEditForPath(path);
         clearEditMarksFor([res.restore_path]);
@@ -275,12 +276,12 @@ export function usePhotoEditApply() {
           width: undefined,
           height: undefined,
         });
-        opts?.onStatus?.("Rückgängig fertig");
-        showSuccess("Foto-Bearbeitung rückgängig gemacht.", "Rückgängig", {
+        opts?.onStatus?.(tr("photo.edit.progress.undoDone"));
+        showSuccess(tr("photo.edit.success.undo"), tr("common.actions.undo"), {
           autoCloseSecs: 5,
         });
       } catch (e) {
-        showError(String(e), "Rückgängig fehlgeschlagen");
+        showError(String(e), tr("photo.edit.error.undo"));
       } finally {
         setApplying(false);
         endProgress(opts);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Crop, RotateCw } from "lucide-react";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
@@ -146,6 +147,7 @@ export function PhotoEditor({
   onClose,
   onComplete,
 }: PhotoEditorProps) {
+  const { t } = useTranslation();
   const committedRef = useRef(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const editOrderRef = useRef<PhotoEditOrder | null>(null);
@@ -401,7 +403,7 @@ export function PhotoEditor({
     const deg = normalizePreviewRotateDeg(pendingRotateDeg);
     const crop = cropPending ? cropRect : null;
     if (deg === 0 && !crop) {
-      showWarning("Keine Bearbeitung ausgewählt.", "Keine Änderung");
+      showWarning(t("photo.editor.warning.noEdit"), t("video.cutter.warning.noChangeTitle"));
       return;
     }
     const commitOrder: PhotoEditOrder =
@@ -468,7 +470,7 @@ export function PhotoEditor({
             !cropPending && aspectPreset === "free" && "invisible",
           )}
         >
-          Zurücksetzen
+          {t("common.actions.reset")}
         </button>
       </div>
     ) : (
@@ -515,7 +517,7 @@ export function PhotoEditor({
   return (
     <MediaEditShell
       open={open}
-      title="Bearbeiten"
+      title={t("common.actions.edit")}
       description={photoPath}
       mode={mode}
       modes={PHOTO_MODES}
@@ -551,7 +553,7 @@ export function PhotoEditor({
                     <div className="absolute" style={innerStyle}>
                       <img
                         src={src}
-                        alt="Foto"
+                        alt={t("common.labels.photo")}
                         className="block h-full w-full object-fill"
                         draggable={false}
                         onLoad={(e) => {
@@ -619,7 +621,7 @@ export function PhotoEditor({
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/50">
-              Kein Foto
+              {t("photo.editor.noPhoto")}
             </div>
           )}
         </div>

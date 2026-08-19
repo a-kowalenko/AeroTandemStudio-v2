@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, type InputHTMLAttributes, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Eye, Hash, QrCode, UserRound, PencilLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +25,7 @@ import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { useAmsIdLookup } from "@/hooks/useAmsIdLookup";
-import { lookupIdLengthHint } from "@/lib/amsLookup";
+import { lookupIdLengthHint, AMS_LOOKUP_MIN_ID_DIGITS } from "@/lib/amsLookup";
 import {
   ORT_OPTIONS,
   crewNamesEqual,
@@ -41,8 +42,6 @@ import { CREATE_READY_IDS } from "@/lib/createReadyHints";
 const CREW_TM_INPUT_ID = CREATE_READY_IDS.tandemmaster;
 const CREW_VS_INPUT_ID = CREATE_READY_IDS.videospringer;
 const KUNDE_ID_INPUT_ID = CREATE_READY_IDS.kundenId;
-const CREW_ROLE_CONFLICT =
-  "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein.";
 
 function isBlockingDialogOpen(): boolean {
   return Boolean(document.querySelector('[role="dialog"]'));
@@ -185,6 +184,7 @@ function MediaOptionCell({
   onPaid,
   disabled,
 }: MediaOptionCellProps) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -207,7 +207,7 @@ function MediaOptionCell({
         <span className="truncate">{label}</span>
       </label>
       <label className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span>Bezahlt</span>
+        <span>{t("form.media.paid")}</span>
         <Switch
           checked={paid}
           onCheckedChange={(v) => {
@@ -216,7 +216,7 @@ function MediaOptionCell({
             if (on) onChecked(true);
           }}
           disabled={disabled}
-          aria-label={`${label} bezahlt`}
+          aria-label={t("form.media.paidAria", { label })}
         />
       </label>
     </div>
@@ -256,16 +256,12 @@ type CustomerFormProps = {
   modeToggleDisabled?: boolean;
 };
 
-const FORM_MODES: { id: "kunde" | "manual"; label: string; icon: typeof QrCode }[] = [
-  { id: "kunde", label: "QR", icon: QrCode },
-  { id: "manual", label: "Manuell", icon: UserRound },
+const FORM_MODES: { id: "kunde" | "manual"; icon: typeof QrCode }[] = [
+  { id: "kunde", icon: QrCode },
+  { id: "manual", icon: UserRound },
 ];
 
-const MANUAL_ENTRY_MODES: { id: ManualEntryMode; label: string }[] = [
-  { id: "id", label: "ID" },
-  { id: "oldschool", label: "Kontakt" },
-  { id: "lokal", label: "Lokal" },
-];
+const MANUAL_ENTRY_MODES: ManualEntryMode[] = ["id", "oldschool", "lokal"];
 
 /** Quiet chrome for session strip — reads as sidebar chrome, not form cards. */
 const SESSION_STRIP_INPUT =
@@ -276,6 +272,7 @@ const SESSION_STRIP_INPUT =
  * Rendered outside the padded form body so it sits flush under the app header.
  */
 export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
+  const { t } = useTranslation();
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
   const busy = Boolean(disabled);
@@ -284,13 +281,13 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
     <div className="grid grid-cols-2 items-center gap-1">
       <div className="min-w-0">
         <Combobox
-          label="Dropzone"
+          label={t("form.session.dropzone")}
           hideLabel
           value={kunde.ort}
           onChange={(v) => setField("ort", v)}
           options={ORT_OPTIONS}
           disabled={busy}
-          placeholder="Dropzone…"
+          placeholder={t("common.labels.dropzonePlaceholder")}
           inputClassName={SESSION_STRIP_INPUT}
         />
       </div>
@@ -301,7 +298,7 @@ export function CustomerSessionStrip({ disabled }: CustomerFormProps) {
         />
         <DateField
           id={CREATE_READY_IDS.datum}
-          label="Datum"
+          label={t("create.ready.chips.date")}
           hideLabel
           value={kunde.datum}
           onChange={(v) => setField("datum", v)}
@@ -318,6 +315,7 @@ export function CustomerFormToolbar({
   disabled,
   modeToggleDisabled,
 }: CustomerFormProps) {
+  const { t } = useTranslation();
   const formMode = useKundeStore((s) => s.kunde.form_mode);
   const kunde = useKundeStore((s) => s.kunde);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
@@ -359,8 +357,8 @@ export function CustomerFormToolbar({
             variant="ghost"
             className="h-7 w-7 px-0"
             disabled={busy}
-            title="QR-Scan-Frame anzeigen"
-            aria-label="QR-Scan-Frame anzeigen"
+            title={t("form.toolbar.scanFrame")}
+            aria-label={t("form.toolbar.scanFrame")}
             onClick={() => {
               setShowShadow(true);
               setScanOpen(true);
@@ -374,9 +372,9 @@ export function CustomerFormToolbar({
               style={{ width: scanDialogWidth }}
             >
               <DialogHeader className="shrink-0">
-                <DialogTitle>QR-Scan</DialogTitle>
+                <DialogTitle>{t("form.toolbar.scanTitle")}</DialogTitle>
                 <DialogDescription>
-                  Treffer-Frame dieser Session
+                  {t("form.toolbar.scanDescription")}
                 </DialogDescription>
               </DialogHeader>
               <QrSpotlightPreview
@@ -412,7 +410,7 @@ export function CustomerFormToolbar({
                       onCheckedChange={setShowShadow}
                     />
                     <span className="text-sm font-medium text-foreground">
-                      Schatten
+                      {t("form.toolbar.shadow")}
                     </span>
                   </label>
                   <Button
@@ -420,7 +418,7 @@ export function CustomerFormToolbar({
                     className="w-full min-[28rem]:mt-auto"
                     onClick={() => setScanOpen(false)}
                   >
-                    Schließen
+                    {t("common.actions.close")}
                   </Button>
                 </div>
               </div>
@@ -431,12 +429,14 @@ export function CustomerFormToolbar({
 
       <div
         role="group"
-        aria-label="Eingabemodus"
+        aria-label={t("form.toolbar.modeAria")}
         className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
       >
-        {FORM_MODES.map(({ id, label, icon: Icon }) => {
+        {FORM_MODES.map(({ id, icon: Icon }) => {
           const active = id === "kunde" ? isQrMode : !isQrMode;
           const qrDisabled = id === "kunde" && !isQrMode && !canSwitchToQr;
+          const label =
+            id === "kunde" ? t("form.toolbar.qr") : t("form.toolbar.manual");
           return (
             <button
               key={id}
@@ -445,10 +445,10 @@ export function CustomerFormToolbar({
               aria-pressed={active}
               title={
                 qrDisabled
-                  ? "Kein QR in dieser Session — zuerst scannen"
+                  ? t("form.toolbar.noQrSession")
                   : id === "kunde"
-                    ? "QR-Daten wiederherstellen"
-                    : "Zur manuellen Eingabe"
+                    ? t("form.toolbar.restoreQr")
+                    : t("form.toolbar.manualEntry")
               }
               onClick={() => switchFormMode(id)}
               className={cn(
@@ -470,6 +470,7 @@ export function CustomerFormToolbar({
 }
 
 function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
+  const { t } = useTranslation();
   const patch = useKundeStore((s) => s.patch);
   const clearAmsLookup = useKundeStore((s) => s.clearAmsLookup);
   const config = useConfigStore((s) => s.config);
@@ -501,10 +502,17 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   return (
     <div
       role="group"
-      aria-label="Manueller Eingabemodus"
+      aria-label={t("form.manual.modeAria")}
       className="flex w-full items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
     >
-      {MANUAL_ENTRY_MODES.map(({ id, label }) => (
+      {MANUAL_ENTRY_MODES.map((id) => {
+        const label =
+          id === "id"
+            ? t("form.manual.id")
+            : id === "oldschool"
+              ? t("form.manual.contact")
+              : t("form.manual.local");
+        return (
         <button
           key={id}
           type="button"
@@ -521,7 +529,8 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
         >
           {label}
         </button>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -531,6 +540,7 @@ export function CustomerForm({
   crewDisabled,
   modeToggleDisabled,
 }: CustomerFormProps) {
+  const { t } = useTranslation();
   const kunde = useKundeStore((s) => s.kunde);
   const setField = useKundeStore((s) => s.setField);
   const patch = useKundeStore((s) => s.patch);
@@ -817,7 +827,7 @@ export function CustomerForm({
       <section className="space-y-2.5">
         <div className="flex items-center justify-between gap-2">
           <h3 className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-            Kunde
+            {t("form.customer.section")}
           </h3>
           <div className="flex items-center gap-1.5">
             {isQrMode ? (
@@ -830,7 +840,7 @@ export function CustomerForm({
                 onClick={() => setNameLocked((v) => !v)}
               >
                 <PencilLine className="h-3 w-3" />
-                {nameLocked ? "Bearbeiten" : "Sperren"}
+                {nameLocked ? t("common.actions.edit") : t("form.customer.lock")}
               </Button>
             ) : showAmsLockButton ? (
               <Button
@@ -844,7 +854,7 @@ export function CustomerForm({
                 }
               >
                 <PencilLine className="h-3 w-3" />
-                {amsLookupLocked ? "Bearbeiten" : "Sperren"}
+                {amsLookupLocked ? t("common.actions.edit") : t("form.customer.lock")}
               </Button>
             ) : null}
             <CustomerFormToolbar
@@ -861,26 +871,26 @@ export function CustomerForm({
             <>
               <Field
                 id={CREATE_READY_IDS.vorname}
-                label="Vorname"
+                label={t("form.customer.firstName")}
                 value={kunde.vorname ?? ""}
                 onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
                 disabled={busy || nameLocked}
               />
               <Field
-                label="Nachname"
+                label={t("form.customer.lastName")}
                 value={kunde.nachname ?? ""}
                 onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
                 disabled={busy || nameLocked}
               />
               <Field
-                label="Kunden-ID Hash"
+                label={t("form.customer.customerIdHash")}
                 value={kunde.kunden_id_hash ?? ""}
                 onChange={(v) => setField("kunden_id_hash", v || null)}
                 disabled={busy || nameLocked}
                 mono
               />
               <Field
-                label="Booking-ID Hash"
+                label={t("form.customer.bookingIdHash")}
                 value={kunde.booking_id_hash ?? ""}
                 onChange={(v) => setField("booking_id_hash", v || null)}
                 disabled={busy || nameLocked}
@@ -893,7 +903,7 @@ export function CustomerForm({
                 <>
                   <Field
                     id={KUNDE_ID_INPUT_ID}
-                    label="Kunden-ID"
+                    label={t("form.customer.customerId")}
                     value={kunde.kunden_id ?? ""}
                     onChange={(v) =>
                       setField("kunden_id", sanitizeNumericIdInput(v) || null)
@@ -902,11 +912,17 @@ export function CustomerForm({
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
-                    hint={lookupIdLengthHint(kunde.kunden_id) ?? undefined}
+                    hint={
+                      lookupIdLengthHint(kunde.kunden_id)
+                        ? t("form.customer.idMinDigits", {
+                            count: AMS_LOOKUP_MIN_ID_DIGITS,
+                          })
+                        : undefined
+                    }
                   />
                   <Field
                     id={CREATE_READY_IDS.bookingId}
-                    label="Booking-ID"
+                    label={t("form.customer.bookingId")}
                     value={kunde.booking_id ?? ""}
                     onChange={(v) =>
                       setField("booking_id", sanitizeNumericIdInput(v) || null)
@@ -915,7 +931,13 @@ export function CustomerForm({
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
-                    hint={lookupIdLengthHint(kunde.booking_id) ?? undefined}
+                    hint={
+                      lookupIdLengthHint(kunde.booking_id)
+                        ? t("form.customer.idMinDigits", {
+                            count: AMS_LOOKUP_MIN_ID_DIGITS,
+                          })
+                        : undefined
+                    }
                   />
                   {lookupStatus.text ? (
                     <p
@@ -937,13 +959,13 @@ export function CustomerForm({
               ) : null}
               <Field
                 id={CREATE_READY_IDS.vorname}
-                label="Vorname"
+                label={t("form.customer.firstName")}
                 value={kunde.vorname ?? ""}
                 onChange={(v) => syncGastFromName(v, kunde.nachname ?? "")}
                 disabled={busy || identityLocked}
               />
               <Field
-                label="Nachname"
+                label={t("form.customer.lastName")}
                 value={kunde.nachname ?? ""}
                 onChange={(v) => syncGastFromName(kunde.vorname ?? "", v)}
                 disabled={busy || identityLocked}
@@ -952,14 +974,14 @@ export function CustomerForm({
                 <>
                   <Field
                     id={CREATE_READY_IDS.email}
-                    label="E-Mail"
+                    label={t("form.customer.email")}
                     value={kunde.email ?? ""}
                     onChange={(v) => setField("email", v || null)}
                     disabled={busy}
                     type="email"
                   />
                   <Field
-                    label="Telefon"
+                    label={t("form.customer.phone")}
                     value={kunde.telefon ?? ""}
                     onChange={(v) => setField("telefon", v || null)}
                     disabled={busy}
@@ -970,7 +992,7 @@ export function CustomerForm({
           )}
         </div>
       </section>
-      <Section title="Crew">
+      <Section title={t("form.crew.section")}>
         <div
           ref={crewSectionRef}
           className={cn(
@@ -980,7 +1002,7 @@ export function CustomerForm({
         >
           <Combobox
             id={CREW_TM_INPUT_ID}
-            label="Tandemmaster"
+            label={t("create.ready.chips.tandemmaster")}
             value={kunde.tandemmaster}
             onChange={onTandemmasterChange}
             onSelectOption={onTandemmasterSelect}
@@ -988,14 +1010,14 @@ export function CustomerForm({
             pinnedOptions={tandemmasterPinned}
             disabledValues={tmDisabledValues}
             disabled={crewBusy}
-            placeholder="Name…"
+            placeholder={t("form.crew.namePlaceholder")}
             warning={warnTandemmaster}
-            error={tmConflict ? CREW_ROLE_CONFLICT : undefined}
+            error={tmConflict ? t("create.validation.crewConflictShort") : undefined}
           />
           {mode === "outside" ? (
             <Combobox
               id={CREW_VS_INPUT_ID}
-              label="Videospringer"
+              label={t("create.ready.chips.videospringer")}
               value={kunde.videospringer}
               onChange={onVideospringerChange}
               onSelectOption={onVideospringerSelect}
@@ -1003,15 +1025,15 @@ export function CustomerForm({
               pinnedOptions={videospringerPinned}
               disabledValues={vsDisabledValues}
               disabled={crewBusy}
-              placeholder="Name…"
+              placeholder={t("form.crew.namePlaceholder")}
               warning={warnVideospringer}
-              error={vsConflict ? CREW_ROLE_CONFLICT : undefined}
+              error={vsConflict ? t("create.validation.crewConflictShort") : undefined}
             />
           ) : null}
         </div>
       </Section>
 
-      <Section title="Medien">
+      <Section title={t("form.media.section")}>
         <div
           id={CREATE_READY_IDS.produkt}
           tabIndex={-1}
@@ -1020,12 +1042,12 @@ export function CustomerForm({
             (busy || productsLocked) && "opacity-60",
           )}
           role="group"
-          aria-label="Medien-Modus"
+          aria-label={t("form.media.modeAria")}
         >
           {(
             [
-              ["handcam", "Handcam"],
-              ["outside", "Outside"],
+              ["handcam", t("form.media.handcam")],
+              ["outside", t("form.media.outside")],
             ] as const
           ).map(([value, label]) => {
             const selected = mode === value;
@@ -1066,14 +1088,14 @@ export function CustomerForm({
         </div>
         {!mode ? (
           <p className="text-[11px] text-muted">
-            Handcam oder Outside wählen, um Produkte freizuschalten.
+            {t("form.media.chooseMode")}
           </p>
         ) : null}
 
         {mode === "handcam" ? (
           <div className="mt-2 grid grid-cols-2 gap-2">
             <MediaOptionCell
-              label="Handcam Foto"
+              label={t("form.media.handcamPhoto")}
               checked={kunde.handcam_foto}
               paid={kunde.ist_bezahlt_handcam_foto}
               onChecked={(v) => setField("handcam_foto", v)}
@@ -1081,7 +1103,7 @@ export function CustomerForm({
               disabled={busy || productsLocked}
             />
             <MediaOptionCell
-              label="Handcam Video"
+              label={t("form.media.handcamVideo")}
               checked={kunde.handcam_video}
               paid={kunde.ist_bezahlt_handcam_video}
               onChecked={(v) => setField("handcam_video", v)}
@@ -1094,7 +1116,7 @@ export function CustomerForm({
         {mode === "outside" ? (
           <div className="mt-2 grid grid-cols-2 gap-2">
             <MediaOptionCell
-              label="Outside Foto"
+              label={t("form.media.outsidePhoto")}
               checked={kunde.outside_foto}
               paid={kunde.ist_bezahlt_outside_foto}
               onChecked={(v) => setField("outside_foto", v)}
@@ -1102,7 +1124,7 @@ export function CustomerForm({
               disabled={busy || productsLocked}
             />
             <MediaOptionCell
-              label="Outside Video"
+              label={t("form.media.outsideVideo")}
               checked={kunde.outside_video}
               paid={kunde.ist_bezahlt_outside_video}
               onChecked={(v) => setField("outside_video", v)}
@@ -1115,8 +1137,8 @@ export function CustomerForm({
         {productsLocked ? (
           <p className="text-[11px] text-muted">
             {amsLookupLocked
-              ? "Produkte aus der Buchung sind gesperrt — „Bearbeiten“ zum Freigeben."
-              : "Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben."}
+              ? t("form.media.lockedAms")
+              : t("form.media.lockedQr")}
           </p>
         ) : null}
       </Section>

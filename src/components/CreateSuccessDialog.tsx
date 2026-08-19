@@ -1,4 +1,5 @@
 import { CheckCircle2, FolderOpen, Play } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
@@ -34,61 +35,68 @@ function basename(path: string): string {
 
 type Row = { label: string; detail?: string };
 
-function buildRows(info: CreateSuccessInfo): Row[] {
-  const { result, serverUploaded, uploadNote } = info;
-  const rows: Row[] = [];
-
-  if (result.video_output) {
-    rows.push({
-      label: result.reused_preview
-        ? "Video aus Vorschau übernommen"
-        : "Video erstellt",
-      detail: basename(result.video_output),
-    });
-  }
-  if (result.watermark_video) {
-    rows.push({
-      label: "Vorschau-Video erstellt",
-      detail: basename(result.watermark_video),
-    });
-  }
-  if (result.photos_copied > 0) {
-    const n = result.photos_copied;
-    rows.push({
-      label: `${n} Foto${n === 1 ? "" : "s"} kopiert`,
-    });
-  }
-  if (result.watermark_photos > 0) {
-    const n = result.watermark_photos;
-    rows.push({
-      label: `${n} Vorschau-Foto${n === 1 ? "" : "s"} erstellt`,
-    });
-  }
-  if (serverUploaded) {
-    rows.push({
-      label: "Auf Server hochgeladen",
-      detail: uploadNote?.trim() || undefined,
-    });
-  } else if (uploadNote?.trim()) {
-    rows.push({ label: uploadNote.trim() });
-  }
-  if (result.encoder) {
-    rows.push({ label: "Encoder", detail: result.encoder });
-  }
-  if (rows.length === 0) {
-    rows.push({ label: "Verzeichnis wurde erstellt" });
-  }
-  return rows;
-}
-
 export function CreateSuccessDialog({ open, info, onClose }: Props) {
+  const { t } = useTranslation();
   const outputDir = info?.result.base_output_dir?.trim() ?? "";
   const videoPath = info?.result.video_output?.trim() ?? "";
-  const rows = info ? buildRows(info) : [];
   const customerName = [info?.vorname, info?.nachname]
     .map((s) => s?.trim())
     .filter(Boolean)
     .join(" ");
+
+  function buildRows(current: CreateSuccessInfo): Row[] {
+    const { result, serverUploaded, uploadNote } = current;
+    const rows: Row[] = [];
+
+    if (result.video_output) {
+      rows.push({
+        label: result.reused_preview
+          ? t("create.success.videoFromPreview")
+          : t("create.success.videoCreated"),
+        detail: basename(result.video_output),
+      });
+    }
+    if (result.watermark_video) {
+      rows.push({
+        label: t("create.success.previewVideo"),
+        detail: basename(result.watermark_video),
+      });
+    }
+    if (result.photos_copied > 0) {
+      const n = result.photos_copied;
+      rows.push({
+        label: t(n === 1 ? "create.success.photosCopied" : "create.success.photosCopiedMany", {
+          count: n,
+        }),
+      });
+    }
+    if (result.watermark_photos > 0) {
+      const n = result.watermark_photos;
+      rows.push({
+        label: t(
+          n === 1 ? "create.success.previewPhotos" : "create.success.previewPhotosMany",
+          { count: n },
+        ),
+      });
+    }
+    if (serverUploaded) {
+      rows.push({
+        label: t("create.success.uploaded"),
+        detail: uploadNote?.trim() || undefined,
+      });
+    } else if (uploadNote?.trim()) {
+      rows.push({ label: uploadNote.trim() });
+    }
+    if (result.encoder) {
+      rows.push({ label: t("create.success.encoder"), detail: result.encoder });
+    }
+    if (rows.length === 0) {
+      rows.push({ label: t("create.success.dirCreated") });
+    }
+    return rows;
+  }
+
+  const rows = info ? buildRows(info) : [];
 
   async function openOutputDir() {
     if (!outputDir) return;
@@ -115,11 +123,11 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
           <div className="flex min-w-0 items-center gap-3">
             <CheckCircle2 className="h-8 w-8 shrink-0 text-success" aria-hidden />
             <DialogTitle className="min-w-0 break-words text-success">
-              Erfolgreich erstellt
+              {t("create.success.title")}
             </DialogTitle>
           </div>
           <DialogDescription className="sr-only">
-            Zusammenfassung der erstellten Dateien und Ordner.
+            {t("create.success.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -132,7 +140,7 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
             )}
 
             <div className="min-w-0 rounded-md border border-border/60 bg-muted/30 px-3 py-2">
-              <p className="text-xs font-medium text-muted">Ordner</p>
+              <p className="text-xs font-medium text-muted">{t("create.success.folder")}</p>
               <p
                 className="break-all text-sm text-foreground [overflow-wrap:anywhere]"
                 title={outputDir}
@@ -182,7 +190,7 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
               onClick={() => void openOutputDir()}
             >
               <FolderOpen className="h-4 w-4 shrink-0" />
-              Zum Speicherort
+              {t("create.success.openLocation")}
             </Button>
             {videoPath && (
               <Button
@@ -193,12 +201,12 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
                 title={basename(videoPath)}
               >
                 <Play className="h-4 w-4 shrink-0" />
-                Abspielen
+                {t("create.success.play")}
               </Button>
             )}
           </div>
           <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
-            OK
+            {t("common.actions.ok")}
           </Button>
         </DialogFooter>
       </DialogContent>

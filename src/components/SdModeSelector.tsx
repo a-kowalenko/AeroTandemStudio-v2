@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Select,
   SelectContent,
@@ -11,18 +12,18 @@ import { cn } from "../lib/utils";
 const MODE_OPTIONS = [
   {
     key: "auto",
-    label: "Auto",
-    tip: "Nach Erkennung: Backup, Import, Bereinigen und Auswerfen laut Einstellungen — ohne Nachfrage.",
+    labelKey: "settings.sd.backup.modeAuto",
+    tipKey: "sd.mode.autoTip",
   },
   {
     key: "confirm",
-    label: "Vorher bestätigen",
-    tip: "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen.",
+    labelKey: "settings.sd.backup.modeConfirm",
+    tipKey: "sd.mode.confirmTip",
   },
   {
     key: "disabled",
-    label: "Deaktiviert",
-    tip: "SD wird erkannt, aber nicht automatisch verarbeitet.",
+    labelKey: "settings.sd.backup.modeDisabled",
+    tipKey: "sd.mode.disabledTip",
   },
 ] as const;
 
@@ -37,6 +38,7 @@ export function SdModeSelector({
   visible = true,
   disabled = false,
 }: Props) {
+  const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const updateLocal = useConfigStore((s) => s.updateLocal);
   const persist = useConfigStore((s) => s.persist);
@@ -46,7 +48,8 @@ export function SdModeSelector({
   const mode = MODE_OPTIONS.some((m) => m.key === config.sd_backup_mode)
     ? config.sd_backup_mode
     : "confirm";
-  const tip = MODE_OPTIONS.find((m) => m.key === mode)?.tip;
+  const selectedMode = MODE_OPTIONS.find((m) => m.key === mode);
+  const tip = selectedMode ? t(selectedMode.tipKey) : undefined;
 
   return (
     <div className={cn("flex items-center gap-2 text-xs", className)} title={tip}>
@@ -60,7 +63,7 @@ export function SdModeSelector({
       >
         <SelectTrigger
           className="h-8 w-[160px] text-xs"
-          aria-label="Backup-Modus"
+          aria-label={t("settings.sd.backup.mode")}
           title={tip}
         >
           <SelectValue />
@@ -68,7 +71,7 @@ export function SdModeSelector({
         <SelectContent>
           {MODE_OPTIONS.map((m) => (
             <SelectItem key={m.key} value={m.key}>
-              {m.label}
+              {t(m.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>

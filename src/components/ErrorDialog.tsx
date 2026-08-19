@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -20,12 +21,14 @@ type Props = {
 
 export function ErrorDialog({
   open,
-  title = "Fehler",
+  title,
   message,
   primaryAction = null,
   onPrimaryAction,
   onClose,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("dialogs.error.defaultTitle");
   const actionLabel = primaryAction?.label?.trim() ?? "";
   const hasAction = Boolean(actionLabel && onPrimaryAction);
 
@@ -36,7 +39,7 @@ export function ErrorDialog({
         overlayClassName="z-[100]"
       >
         <DialogHeader>
-          <DialogTitle className="text-destructive">{title}</DialogTitle>
+          <DialogTitle className="text-destructive">{resolvedTitle}</DialogTitle>
           <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
             {message}
           </DialogDescription>
@@ -53,7 +56,7 @@ export function ErrorDialog({
             </Button>
           ) : null}
           <Button variant="destructive" className="shrink-0" onClick={onClose}>
-            OK
+            {t("common.actions.ok")}
           </Button>
         </DialogFooter>
       </DialogContent>

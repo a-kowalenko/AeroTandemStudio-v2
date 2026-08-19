@@ -1,4 +1,5 @@
 import type { BackupProgress, WorkflowProgress } from "./sdCard";
+import { tr } from "@/i18n";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -103,10 +104,10 @@ export function resolveSdWorkflowProgress(opts: {
   ) {
     const fallback =
       workflowProgress.stage === "clear"
-        ? "SD wird bereinigt…"
+        ? tr("progress.rust.sdClearing")
         : workflowProgress.stage === "backup"
-          ? "Backup wird abgeschlossen…"
-          : msg || "Importiere…";
+          ? tr("progress.rust.backupFinishing")
+          : msg || tr("media.drop.importing");
     return {
       percent: workflowProgress.percent,
       label: formatWorkflowLabel(workflowProgress, fallback),
@@ -126,7 +127,9 @@ export function resolveSdWorkflowProgress(opts: {
     if (fileName && !isClearing) {
       detailParts.push(fileName);
     }
-    let label = isClearing ? "SD wird bereinigt…" : msg || "SD-Backup läuft…";
+    let label = isClearing
+      ? tr("progress.rust.sdClearing")
+      : msg || tr("app.sd.backingUp");
     if (
       !isClearing &&
       backupProgress.file_total != null &&
@@ -146,7 +149,7 @@ export function resolveSdWorkflowProgress(opts: {
   if (phase === "clearing") {
     return {
       percent: 100,
-      label: "SD wird bereinigt…",
+      label: tr("progress.rust.sdClearing"),
       indeterminate: true,
     };
   }
@@ -183,14 +186,14 @@ export function resolveSdWorkflowProgress(opts: {
   if (phase === "importing" || /import/i.test(msg)) {
     return {
       percent: 0,
-      label: msg || "Importiere SD-Dateien…",
+      label: msg || tr("app.sd.importing"),
       indeterminate: true,
     };
   }
 
   return {
     percent: 0,
-    label: msg || "SD-Verarbeitung…",
+    label: msg || tr("app.sd.processing"),
     indeterminate: true,
   };
 }
@@ -244,31 +247,33 @@ export function workflowStageSubtitle(
     manualQr: boolean;
   },
 ): string {
-  if (stage === "preview") return "Vorschau wird erzeugt";
-  if (stage === "cut") return "Schnitt wird angewendet";
+  if (stage === "preview") return tr("workflow.stage.preview");
+  if (stage === "cut") return tr("workflow.stage.cut");
   if (stage === "append") {
     const who = opts.appendGuest?.trim();
-    const base = who ? `Nachreichen für ${who}` : "Medien nachreichen";
+    const base = who
+      ? tr("workflow.stage.appendFor", { guest: who })
+      : tr("workflow.stage.append");
     return opts.appendUploading
-      ? `${base} — Upload auf Server`
-      : `${base} — Abbrechen stoppt die Verarbeitung`;
+      ? tr("workflow.stage.appendUploading", { base })
+      : tr("workflow.stage.appendCancellable", { base });
   }
-  if (stage === "done") return "Zuletzt abgeschlossener Lauf";
+  if (stage === "done") return tr("workflow.stage.done");
 
   if (opts.sdWorkflowActive && !opts.encodeBusy) {
     if (opts.sdPhase === "clearing") {
-      return "SD wird bereinigt — Abbrechen nicht möglich";
+      return tr("workflow.stage.sdClearingLocked");
     }
     return opts.qrScanBusy
-      ? "SD — QR-Code-Suche (Abbrechen stoppt nur die Suche)"
-      : "SD — Backup, Import und weitere Aktionen (Abbrechen stoppt den Lauf)";
+      ? tr("workflow.stage.sdQr")
+      : tr("workflow.stage.sdWorkflow");
   }
   if (opts.manualImport && !opts.encodeBusy) {
-    return "Medien werden in den Arbeitsordner kopiert — Abbrechen verwirft den Import";
+    return tr("workflow.stage.manualImport");
   }
   if (opts.manualQr && !opts.encodeBusy) {
-    return "QR-Code-Suche — Abbrechen stoppt die Suche";
+    return tr("workflow.stage.manualQr");
   }
-  if (opts.encodeBusy) return "Aktueller Vorgang — Abbrechen stoppt FFmpeg.";
-  return "Zuletzt abgeschlossener Lauf";
+  if (opts.encodeBusy) return tr("workflow.stage.encodeBusy");
+  return tr("workflow.stage.done");
 }

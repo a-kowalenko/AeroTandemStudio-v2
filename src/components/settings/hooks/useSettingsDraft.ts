@@ -10,6 +10,7 @@ import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useUiStore } from "@/store/uiStore";
+import { useLocaleStore } from "@/store/localeStore";
 import type { SettingsPatch } from "../types";
 import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 
@@ -33,12 +34,14 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
   const checkConnection = useServerStore((s) => s.checkConnection);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
   const resetAmsHealth = useAmsBridgeStore((s) => s.reset);
+  const activeLanguage = useLocaleStore((s) => s.language);
   const [draft, setDraft] = useState<AppConfig | null>(null);
 
   useEffect(() => {
     if (!open || !config) return;
     let cancelled = false;
-    setDraft(sortCrewList(config));
+    // Reflect any unsaved language change that was already applied live
+    setDraft(sortCrewList({ ...config, ui_language: activeLanguage }));
 
     if (!config.sd_pc_name?.trim()) {
       void getAppInfo()

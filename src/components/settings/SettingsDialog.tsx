@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -38,14 +39,14 @@ type Props = {
   suppressDismiss?: boolean;
 };
 
-const TAB_ITEMS: { value: SettingsTab; label: string }[] = [
-  { value: "allgemein", label: "Allgemein" },
-  { value: "crew", label: "Crew" },
-  { value: "qr", label: "QR-Code" },
-  { value: "encoding", label: "Video" },
-  { value: "sd", label: "SD / Backup" },
-  { value: "server", label: "Server" },
-  { value: "system", label: "System" },
+const TAB_ITEMS: { value: SettingsTab; labelKey: string }[] = [
+  { value: "allgemein", labelKey: "settings.tabs.general" },
+  { value: "crew", labelKey: "settings.tabs.crew" },
+  { value: "qr", labelKey: "settings.tabs.qr" },
+  { value: "encoding", labelKey: "settings.tabs.encoding" },
+  { value: "sd", labelKey: "settings.tabs.sd" },
+  { value: "server", labelKey: "settings.tabs.server" },
+  { value: "system", labelKey: "settings.tabs.system" },
 ];
 
 export function SettingsDialog({
@@ -58,6 +59,7 @@ export function SettingsDialog({
   onAfterFactoryReset,
   suppressDismiss = false,
 }: Props) {
+  const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const settingsTab = useUiStore((s) => s.settingsTab);
   const setSettingsTab = useUiStore((s) => s.setSettingsTab);
@@ -121,9 +123,7 @@ export function SettingsDialog({
   function requestClose() {
     if (
       hasUnsavedChanges &&
-      !window.confirm(
-        "Ungespeicherte Änderungen verwerfen?",
-      )
+      !window.confirm(t("common.unsavedChangesDiscard"))
     ) {
       return;
     }
@@ -157,7 +157,7 @@ export function SettingsDialog({
           if (!v) {
             if (hasUnsavedChanges) {
               if (
-                !window.confirm("Ungespeicherte Änderungen verwerfen?")
+                !window.confirm(t("common.unsavedChangesDiscard"))
               ) {
                 return;
               }
@@ -204,9 +204,9 @@ export function SettingsDialog({
           }}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle>Einstellungen</DialogTitle>
+            <DialogTitle>{t("settings.dialog.title")}</DialogTitle>
             <DialogDescription className="sr-only">
-              App-Einstellungen bearbeiten
+              {t("settings.dialog.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -216,9 +216,9 @@ export function SettingsDialog({
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             <TabsList className="flex h-auto shrink-0 flex-wrap gap-1">
-              {TAB_ITEMS.map(({ value, label }) => (
+              {TAB_ITEMS.map(({ value, labelKey }) => (
                 <TabsTrigger key={value} value={value}>
-                  {label}
+                  {t(labelKey)}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -259,9 +259,11 @@ export function SettingsDialog({
 
           <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-center text-xs text-muted sm:text-left">
-              Aero Tandem Studio
-              {releaseList.appVersion ? ` v${releaseList.appVersion}` : ""}
-              {" · © Andreas Kowalenko"}
+              {t("settings.dialog.footer", {
+                version: releaseList.appVersion
+                  ? ` v${releaseList.appVersion}`
+                  : "",
+              })}
             </p>
             <DialogFooter className="gap-2 sm:justify-end">
               <Button
@@ -269,13 +271,13 @@ export function SettingsDialog({
                 onClick={requestClose}
                 disabled={saving || suppressDismiss}
               >
-                Abbrechen
+                {t("common.actions.cancel")}
               </Button>
               <Button
                 onClick={() => void onSave()}
                 disabled={saving || suppressDismiss}
               >
-                {saving ? "Speichern…" : "Speichern"}
+                {saving ? t("common.actions.saving") : t("common.actions.save")}
               </Button>
             </DialogFooter>
           </div>
@@ -289,13 +291,10 @@ export function SettingsDialog({
         >
           <DialogHeader>
             <DialogTitle className="text-destructive">
-              Standardeinstellungen wiederherstellen?
+              {t("settings.system.reset.confirmTitle")}
             </DialogTitle>
             <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
-              Alle Einstellungen werden auf die Werkseinstellungen zurückgesetzt.
-              {"\n\n"}
-              Speicherort, Server-Zugangsdaten und individuelle Anpassungen gehen
-              verloren.
+              {t("settings.system.reset.confirmBody")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:justify-end">
@@ -305,7 +304,7 @@ export function SettingsDialog({
               disabled={saving}
               onClick={() => setResetConfirmOpen(false)}
             >
-              Abbrechen
+              {t("common.actions.cancel")}
             </Button>
             <Button
               type="button"
@@ -313,7 +312,7 @@ export function SettingsDialog({
               disabled={saving}
               onClick={() => void onResetDefaults()}
             >
-              Zurücksetzen
+              {t("common.actions.reset")}
             </Button>
           </DialogFooter>
         </DialogContent>

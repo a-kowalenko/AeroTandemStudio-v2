@@ -1,8 +1,5 @@
-import {
-  useState,
-  type CSSProperties,
-  type MouseEvent,
-} from "react";
+import { useState, type CSSProperties, type MouseEvent } from "react";
+import { useTranslation } from "react-i18next";
 import {
   DndContext,
   closestCenter,
@@ -97,6 +94,7 @@ function SortableVideoRow({
   onToggleWatermark,
   cutMark,
 }: SortableRowProps) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: video.path });
 
@@ -121,7 +119,7 @@ function SortableVideoRow({
         className="w-8 cursor-grab px-2 py-2 text-muted active:cursor-grabbing"
         {...attributes}
         {...listeners}
-        title="Ziehen zum Sortieren"
+        title={t("media.list.dragSort")}
       >
         <GripVertical className="h-4 w-4" />
       </td>
@@ -134,10 +132,10 @@ function SortableVideoRow({
               className="shrink-0 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white"
               title={
                 cutMark === "trim"
-                  ? "Getrimmt"
+                  ? t("media.list.trimmed")
                   : cutMark === "rotate"
-                    ? "Gedreht"
-                    : "Geteilt"
+                    ? t("media.list.rotated")
+                    : t("media.list.split")
               }
             >
               {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
@@ -166,8 +164,8 @@ function SortableVideoRow({
           <Checkbox
             checked={Boolean(watermarkSelected)}
             onCheckedChange={() => onToggleWatermark?.(index)}
-            aria-label="Wasserzeichen-Clip"
-            title="Clip für Preview_Video (Wasserzeichen)"
+            aria-label={t("media.list.wmClipAria")}
+            title={t("media.list.wmClipTitle")}
           />
         </td>
       ) : null}
@@ -180,8 +178,8 @@ function SortableVideoRow({
             className="h-7 w-7 text-muted hover:text-primary"
             onClick={() => onScanQr(video.path)}
             disabled={qrBusy}
-            title="QR in diesem Clip scannen"
-            aria-label="QR scannen"
+            title={t("media.list.scanQrClip")}
+            aria-label={t("media.list.scanQr")}
           >
             <QrCode className="h-3.5 w-3.5" />
           </Button>
@@ -191,8 +189,8 @@ function SortableVideoRow({
             size="icon"
             className="h-7 w-7 text-muted hover:text-destructive"
             onClick={() => onRemove(video.path)}
-            title="Entfernen"
-            aria-label="Entfernen"
+            title={t("common.actions.remove")}
+            aria-label={t("common.actions.remove")}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -218,6 +216,7 @@ export function MediaListPanel({
   onCutVideo,
   onUndoVideoCut,
 }: MediaListPanelProps) {
+  const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
   const getCutMark = useVideoStore((s) => s.getCutMark);
   const cutMarks = useVideoStore((s) => s.cutMarks);
@@ -265,7 +264,7 @@ export function MediaListPanel({
     try {
       const result = await withQrScanProgress([path], () => scanQrVideo(path));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -277,11 +276,11 @@ export function MediaListPanel({
             }),
         });
       } else {
-        showWarning(result.message || "Kein QR-Code in diesem Clip.", "QR-Scan");
+        showWarning(result.message || t("media.list.noQrClip"), t("media.drop.qrScanTitle"));
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("media.drop.qrScanTitle"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -293,7 +292,7 @@ export function MediaListPanel({
     try {
       const result = await withQrScanProgress([path], () => scanQrPhoto(path));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -302,11 +301,11 @@ export function MediaListPanel({
           runCleanup: () => maybeRemoveQrPhoto(result.source_path ?? path),
         });
       } else {
-        showWarning(result.message || "Kein QR-Code in diesem Foto.", "QR-Scan");
+        showWarning(result.message || t("media.list.noQrPhoto"), t("media.drop.qrScanTitle"));
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("media.drop.qrScanTitle"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -328,7 +327,7 @@ export function MediaListPanel({
     if (videoList.length === 0) {
       return (
         <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted">
-          Noch keine Videos — oben ablegen oder wählen
+          {t("media.list.emptyVideos")}
         </p>
       );
     }
@@ -337,10 +336,10 @@ export function MediaListPanel({
       <div className="space-y-2">
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
-            Liste
+            {t("media.list.title")}
           </h3>
           <p className="text-[11px] text-muted">
-            Reihenfolge, Meta & Aktionen · Ziehen zum Sortieren
+            {t("media.list.hintVideos")}
           </p>
         </div>
         <div className="max-h-[18rem] overflow-auto rounded-lg border border-border bg-card">
@@ -352,7 +351,7 @@ export function MediaListPanel({
             <table className="w-full border-collapse">
               <thead>
                 <tr className="sticky top-0 z-[1] border-b border-border bg-card-elevated text-left text-xs font-semibold tracking-wide text-muted uppercase">
-                  <th className="px-2 py-2" aria-label="Sortieren" />
+                  <th className="px-2 py-2" aria-label={t("media.list.sortAria")} />
                   <th className="px-1 py-2">#</th>
                   <th className="px-2 py-2">
                     <button
@@ -362,9 +361,9 @@ export function MediaListPanel({
                         listSort?.key === "name" && "text-foreground",
                       )}
                       onClick={() => toggleVideoColumnSort("name")}
-                      title="Nach Dateiname sortieren"
+                      title={t("media.list.sortByName")}
                     >
-                      Dateiname
+                      {t("media.list.filename")}
                       {listSort?.key === "name" ? (
                         listSort.asc ? (
                           <ArrowUp className="h-3 w-3" aria-hidden />
@@ -374,7 +373,7 @@ export function MediaListPanel({
                       ) : null}
                     </button>
                   </th>
-                  <th className="px-2 py-2">Format</th>
+                  <th className="px-2 py-2">{t("media.list.format")}</th>
                   <th className="px-2 py-2">
                     <button
                       type="button"
@@ -383,9 +382,9 @@ export function MediaListPanel({
                         listSort?.key === "duration" && "text-foreground",
                       )}
                       onClick={() => toggleVideoColumnSort("duration")}
-                      title="Nach Dauer sortieren"
+                      title={t("media.list.sortByDuration")}
                     >
-                      Dauer
+                      {t("media.list.duration")}
                       {listSort?.key === "duration" ? (
                         listSort.asc ? (
                           <ArrowUp className="h-3 w-3" aria-hidden />
@@ -403,9 +402,9 @@ export function MediaListPanel({
                         listSort?.key === "size" && "text-foreground",
                       )}
                       onClick={() => toggleVideoColumnSort("size")}
-                      title="Nach Größe sortieren"
+                      title={t("media.list.sortBySize")}
                     >
-                      Größe
+                      {t("media.list.size")}
                       {listSort?.key === "size" ? (
                         listSort.asc ? (
                           <ArrowUp className="h-3 w-3" aria-hidden />
@@ -415,14 +414,14 @@ export function MediaListPanel({
                       ) : null}
                     </button>
                   </th>
-                  <th className="px-2 py-2">Codec</th>
+                  <th className="px-2 py-2">{t("media.list.codec")}</th>
                   {videoWmNeeded ? (
-                    <th className="px-1 py-2 text-center" title="Wasserzeichen">
+                    <th className="px-1 py-2 text-center" title={t("media.list.watermark")}>
                       WM
                     </th>
                   ) : null}
-                  <th className="px-1 py-2 text-right" aria-label="Aktionen">
-                    <span className="sr-only">Aktionen</span>
+                  <th className="px-1 py-2 text-right" aria-label={t("media.list.actions")}>
+                    <span className="sr-only">{t("media.list.actions")}</span>
                   </th>
                 </tr>
               </thead>
@@ -460,8 +459,8 @@ export function MediaListPanel({
         <MediaFileContextMenu
           state={ctxMenu}
           onClose={() => setCtxMenu(null)}
-          onError={(msg) => showError(msg, "Datei")}
-          onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+          onError={(msg) => showError(msg, t("media.list.fileTitle"))}
+          onCopied={() => showSuccess(t("media.list.pathCopied"), t("media.list.pathTitle"))}
           actionsDisabled={busy}
           onScanQr={(path) => void scanVideoQr(path)}
           onCut={onCutVideo}
@@ -479,7 +478,7 @@ export function MediaListPanel({
   if (photoList.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted">
-        Noch keine Fotos — oben ablegen oder wählen
+        {t("media.list.emptyPhotos")}
       </p>
     );
   }
@@ -488,25 +487,25 @@ export function MediaListPanel({
     <div className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">
-          Liste
+          {t("media.list.title")}
         </h3>
-        <p className="text-[11px] text-muted">Meta & Aktionen · Klick wählt in der Vorschau</p>
+        <p className="text-[11px] text-muted">{t("media.list.hintPhotos")}</p>
       </div>
       <div className="max-h-[18rem] overflow-auto rounded-lg border border-border bg-card">
         <table className="w-full border-collapse">
           <thead>
             <tr className="sticky top-0 z-[1] border-b border-border bg-card-elevated text-left text-xs font-semibold tracking-wide text-muted uppercase">
               <th className="px-2 py-2">#</th>
-              <th className="px-2 py-2">Dateiname</th>
-              <th className="px-2 py-2">Format</th>
-              <th className="px-2 py-2">Größe</th>
+              <th className="px-2 py-2">{t("media.list.filename")}</th>
+              <th className="px-2 py-2">{t("media.list.format")}</th>
+              <th className="px-2 py-2">{t("media.list.size")}</th>
               {fotoWmNeeded ? (
-                <th className="px-1 py-2 text-center" title="Wasserzeichen">
-                  WM
+                <th className="px-1 py-2 text-center" title={t("media.list.watermark")}>
+                      WM
                 </th>
               ) : null}
-              <th className="px-1 py-2 text-right" aria-label="Aktionen">
-                <span className="sr-only">Aktionen</span>
+              <th className="px-1 py-2 text-right" aria-label={t("media.list.actions")}>
+                <span className="sr-only">{t("media.list.actions")}</span>
               </th>
             </tr>
           </thead>
@@ -546,8 +545,8 @@ export function MediaListPanel({
                       <Checkbox
                         checked={watermarkPhotoIndices.has(i)}
                         onCheckedChange={() => togglePhotoWatermark(i)}
-                        aria-label="Wasserzeichen-Foto"
-                        title="Foto für Preview_Foto (Wasserzeichen)"
+                        aria-label={t("media.list.wmPhotoAria")}
+                        title={t("media.list.wmPhotoTitle")}
                       />
                     </td>
                   ) : null}
@@ -563,8 +562,8 @@ export function MediaListPanel({
                         className="h-7 w-7 text-muted hover:text-primary"
                         onClick={() => void scanPhotoQr(p.path)}
                         disabled={busy}
-                        title="QR in diesem Foto scannen"
-                        aria-label="QR scannen"
+                        title={t("media.list.scanQrPhoto")}
+                        aria-label={t("media.list.scanQr")}
                       >
                         <QrCode className="h-3.5 w-3.5" />
                       </Button>
@@ -577,8 +576,8 @@ export function MediaListPanel({
                           const idx = photoList.findIndex((x) => x.path === p.path);
                           if (idx >= 0) removePhotos([idx]);
                         }}
-                        title="Entfernen"
-                        aria-label="Entfernen"
+                        title={t("common.actions.remove")}
+                        aria-label={t("common.actions.remove")}
                       >
                         <X className="h-3.5 w-3.5" />
                       </Button>
@@ -593,8 +592,8 @@ export function MediaListPanel({
       <MediaFileContextMenu
         state={ctxMenu}
         onClose={() => setCtxMenu(null)}
-        onError={(msg) => showError(msg, "Datei")}
-        onCopied={() => showSuccess("Pfad in die Zwischenablage kopiert.", "Pfad")}
+        onError={(msg) => showError(msg, t("media.list.fileTitle"))}
+        onCopied={() => showSuccess(t("media.list.pathCopied"), t("media.list.pathTitle"))}
         actionsDisabled={busy}
         onScanQr={(path) => void scanPhotoQr(path)}
         onRemove={(path) => {

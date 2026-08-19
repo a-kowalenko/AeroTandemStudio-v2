@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { tr } from "@/i18n";
 import {
   normalizeMediaPath,
   useQrScanStore,
@@ -102,14 +103,14 @@ export function QrScanRowBar({ path }: { path: string }) {
 export function QrScanBar({ phase }: { phase: QrScanPhase }) {
   const label =
     phase === "active"
-      ? "QR-Code wird gesucht…"
+      ? tr("media.drop.searchingQr")
       : phase === "pending"
-        ? "QR-Code-Suche wartet…"
+        ? tr("qr.progress.pending")
         : phase === "hit"
-          ? "QR-Code gefunden"
+          ? tr("qr.progress.found")
           : phase === "removed"
-            ? "Aus Liste entfernt"
-            : "QR-Code geprüft";
+            ? tr("qr.progress.removed")
+            : tr("qr.progress.checked");
 
   return (
     <div

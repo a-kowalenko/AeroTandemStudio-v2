@@ -1,0 +1,1248 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "saving": "Speichern…",
+      "ok": "OK",
+      "close": "Schließen",
+      "delete": "Löschen",
+      "deleteAll": "Alles löschen",
+      "back": "Zurück",
+      "next": "Weiter",
+      "skip": "Überspringen",
+      "apply": "Übernehmen",
+      "create": "Erstellen",
+      "createAndUpload": "Erstellen & Upload",
+      "history": "Historie",
+      "settings": "Einstellungen",
+      "pickFolder": "Ordner wählen",
+      "pickFiles": "Dateien wählen",
+      "testConnection": "Verbindung testen",
+      "checking": "Prüfe…",
+      "loading": "Lädt…",
+      "undo": "Rückgängig",
+      "edit": "Bearbeiten",
+      "remove": "Entfernen",
+      "reset": "Zurücksetzen",
+      "add": "Hinzufügen",
+      "rename": "Umbenennen",
+      "pleaseWait": "Bitte warten…"
+    },
+    "status": {
+      "error": "Fehler",
+      "success": "Erfolg",
+      "warning": "Hinweis",
+      "inProgress": "In Arbeit…",
+      "done": "Fertig"
+    },
+    "labels": {
+      "video": "Video",
+      "videos": "Videos",
+      "photo": "Foto",
+      "photos": "Fotos",
+      "themeLight": "Hell",
+      "themeDark": "Dunkel",
+      "language": "Sprache",
+      "storageLocation": "Speicherort",
+      "dropzonePlaceholder": "Dropzone…"
+    },
+    "language": {
+      "de": "Deutsch",
+      "en": "Englisch",
+      "esMX": "Spanisch (Mexiko)"
+    },
+    "unsavedChangesDiscard": "Ungespeicherte Änderungen verwerfen?"
+  },
+  "settings": {
+    "dialog": {
+      "title": "Einstellungen",
+      "description": "App-Einstellungen bearbeiten",
+      "footer": "Aero Tandem Studio{{version}} · © Andreas Kowalenko"
+    },
+    "tabs": {
+      "general": "Allgemein",
+      "crew": "Crew",
+      "qr": "QR-Code",
+      "encoding": "Video",
+      "sd": "SD / Backup",
+      "server": "Server",
+      "system": "System"
+    },
+    "general": {
+      "appearance": {
+        "title": "Darstellung",
+        "description": "Hell- oder Dunkelmodus der Oberfläche."
+      },
+      "language": {
+        "description": "Sprache der App-Oberfläche."
+      },
+      "storage": {
+        "title": "Ablage",
+        "description": "Fertige Vorgänge werden im Speicherort abgelegt.",
+        "defaultDropzone": "Dropzone (Standard)"
+      }
+    },
+    "system": {
+      "reset": {
+        "confirmTitle": "Standardeinstellungen wiederherstellen?",
+        "confirmBody": "Alle Einstellungen werden auf die Werkseinstellungen zurückgesetzt.\n\nSpeicherort, Server-Zugangsdaten und individuelle Anpassungen gehen verloren.",
+        "title": "Zurücksetzen",
+        "description": "Stellt alle Einstellungen auf die Werkseinstellungen zurück (inkl. Crew-Liste, Encoding, QR und SD). Wird sofort gespeichert.",
+        "button": "Auf Standardeinstellungen zurücksetzen"
+      },
+      "cache": {
+        "title": "Cache & Temp",
+        "description": "Entfernt Preview-/Concat-/Work-Ordner in Temp, Schnitt-Reste, bekannte Temp-Dateien und Arbeitsordner neben dem Speicherort. Leert außerdem die aktuelle Medien-Session (Working-Folder).",
+        "toastTitle": "Cache",
+        "cleaning": "Räume auf…",
+        "clear": "Cache leeren"
+      },
+      "update": {
+        "title": "Update",
+        "description": "Beim Start wird automatisch nach neueren Versionen gesucht. Hier können Sie auch eine ältere oder neuere Version manuell auswählen — Installation wie beim Auto-Update (still, mit Fortschritt).",
+        "installedVersion": "Installierte Version: {{version}}",
+        "check": "Nach Updates suchen",
+        "showPrereleases": "Prereleases anzeigen",
+        "availableVersions": "Verfügbare Versionen",
+        "loadingVersions": "Lade Versionen…",
+        "unavailable": "Nicht verfügbar",
+        "chooseVersion": "Version wählen…",
+        "latest": "Neueste",
+        "installed": "Installiert",
+        "prerelease": "Prerelease",
+        "notAutoInstallable": "nicht auto-installierbar",
+        "openInstaller": "Installer öffnen…",
+        "installOlder": "Ältere Version installieren",
+        "update": "Aktualisieren",
+        "applyVersion": "Version übernehmen",
+        "noAutoInstall": "Für diese Version ist die automatische Installation nicht verfügbar.",
+        "versionHeading": "Version {{version}}",
+        "noNotes": "Keine Release Notes."
+      }
+    },
+    "folder": {
+      "placeholder": "Ordner wählen…",
+      "openInExplorer": "Ordner im Explorer öffnen",
+      "noneSet": "Kein Ordner gesetzt.",
+      "toastTitle": "Ordner"
+    },
+    "crew": {
+      "who": {
+        "title": "Wer bist du?",
+        "description": "Dein Name erscheint als Favorit oben in den Tandemmaster-/Videospringer-Dropdowns (nur bei passender Rolle).",
+        "label": "Ich bin",
+        "placeholder": "Namen wählen oder eingeben…",
+        "hintNew": "Neu — bitte mindestens eine Rolle setzen.",
+        "hintExisting": "Erscheint oben in den Formular-Dropdowns bei passender Rolle."
+      },
+      "session": {
+        "title": "Session zurücksetzen",
+        "description": "Nach dem Erstellen eines Vorgangs: Modus oder festen Namen für Tandemmaster und Videospringer.",
+        "tandemmasterLabel": "Tandemmaster beim Zurücksetzen",
+        "videospringerLabel": "Videospringer beim Zurücksetzen",
+        "placeholder": "Modus oder Name wählen…",
+        "hint": "Oben Modus wählen, oder einen festen Namen aus der Crew."
+      },
+      "list": {
+        "title": "Crew-Liste",
+        "description": "Namen erscheinen je nach Rolle in den Comboboxen. Freitext im Formular bleibt weiterhin möglich.",
+        "namePlaceholder": "z. B. Andy",
+        "empty": "Noch keine Einträge — oben hinzufügen.",
+        "action": "Aktion",
+        "me": "(Ich)",
+        "ariaRole": "{{name}}: {{role}}"
+      },
+      "keep": {
+        "off": "Nicht beibehalten",
+        "last": "Zuletzt verwendeten beibehalten",
+        "selfSuffix": "Ich"
+      }
+    },
+    "encoding": {
+      "standard": {
+        "title": "Standard",
+        "description": "Empfohlene Einstellungen für die meisten Nutzer."
+      },
+      "codec": "Video-Codec",
+      "codecAuto": "Auto (empfohlen)",
+      "strategy": "Encoding-Strategie",
+      "strategyPerClip": "Pro Clip",
+      "strategyCombined": "Kombiniert",
+      "hwAccel": "Hardware-Beschleunigung",
+      "parallel": "Paralleles Video-Processing",
+      "concat": "Clips zusammenfügen",
+      "concatFast": "Fast Path (schnell)",
+      "concatLegacy": "Legacy (robust)",
+      "concatHint": "Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy. Legacy nutzt die bewährte MPEG-TS-Pipeline.",
+      "advanced": "Erweitert",
+      "introEnabled": "Intro beim Erstellen verwenden (experimentell)",
+      "introDuration": "Intro-Dauer (Sek.)",
+      "introMux": "Intro zusammenfügen",
+      "introMuxReencode": "Neu kodieren (kompatibel)",
+      "introMuxCopy": "Stream-Copy (schnell)",
+      "introMuxHint": "Neu kodieren erzeugt Intro und Flugvideo als einen durchgängigen Bitstream — zuverlässig auf Handys und in Playern. Stream-Copy ist schneller, kann aber auf manchen Geräten einfrieren.",
+      "reencodeMatching": "Passende Clips neu encodieren",
+      "previewCrf": "Preview CRF"
+    },
+    "qr": {
+      "autoScan": {
+        "title": "Auto-Scan beim Import",
+        "description": "Nach Drag & Drop, Dateiauswahl oder SD-Import werden neue Dateien automatisch auf QR geprüft. Die Schalter stehen auch direkt unter der Medien-Dropzone.",
+        "videos": "Videos beim Import automatisch scannen",
+        "photos": "Fotos beim Import automatisch scannen"
+      },
+      "params": {
+        "title": "Scan-Parameter",
+        "videoSeconds": "QR Video-Scan (Sekunden)",
+        "videoSecondsHint": "Wie viele Sekunden vom Clip-Anfang (und parallele Offsets) gelesen werden."
+      },
+      "after": {
+        "title": "Nach QR-Analyse",
+        "removePhoto": "QR-Foto nach erfolgreicher Analyse entfernen",
+        "removePhotoHint": "Nachbarfotos derselben Serie (≤10s Abstand) werden in beide Richtungen geprüft; nach 3 Fotos ohne QR je Richtung Stopp.",
+        "removeVideo": "QR-Videoclip nach erfolgreicher Analyse entfernen",
+        "maxDuration": "Max. Clip-Länge für Löschung (Sek.)",
+        "maxDurationHint": "Nur Clips mit dieser Länge oder kürzer werden entfernt (Standard: 10s)."
+      }
+    },
+    "sd": {
+      "backup": {
+        "title": "Backup",
+        "description": "SD-Karten-Backups und optionaler zweiter Zielpfad.",
+        "mode": "Backup-Modus",
+        "modeConfirm": "Vorher bestätigen",
+        "modeAuto": "Automatisch",
+        "modeDisabled": "Deaktiviert",
+        "auto": "Auto-Backup",
+        "folder": "Backup-Ordner",
+        "pcName": "PC Name",
+        "pcNamePlaceholder": "Computername",
+        "pcNameHint": "Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[{{name}}]_…",
+        "pcNameFallback": "PC",
+        "clearAfter": "SD nach Backup leeren",
+        "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
+        "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
+        "secondPath": "Zusätzlich auf zweiten Pfad sichern",
+        "secondFolder": "Zweiter Backup-Ordner",
+        "copyStrategy": "Kopierstrategie (zweiter Pfad)",
+        "copyAsync": "Hintergrund: lokal fertig → Server parallel",
+        "copyMirror": "Spiegeln: erst lokal, dann warten → zweiter Pfad",
+        "copyDirect": "Direkt: pro Datei SD → beide",
+        "copyHint": "Empfohlen für Netzwerkziele: Hintergrund — der Workflow wartet nicht auf den zweiten Pfad."
+      },
+      "import": {
+        "title": "Import & Auswerfen",
+        "description": "Automatischer Import nach Backup; Auswerfen sobald die SD nicht mehr benötigt wird.",
+        "auto": "Auto-Import",
+        "autoHint": "Nach dem Backup passende Medien automatisch in die Session laden.",
+        "eject": "SD automatisch auswerfen",
+        "ejectTitle": "Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import.",
+        "ejectHint": "Mit Backup direkt danach; ohne Backup erst nach dem Import.",
+        "skipProcessed": "Bereits verarbeitete Dateien überspringen"
+      },
+      "size": {
+        "title": "Warnschwelle",
+        "description": "Bestätigung, wenn die SD-Karte ein Größenlimit überschreitet.",
+        "enable": "Größen-Limit aktivieren",
+        "limitMb": "Größen-Limit (MB)"
+      },
+      "footer": "Modus Auto und „Vorher bestätigen“: Backup / Import / Bereinigen / Auswerfen laut Schaltern. Bereinigen nur nach erfolgreichem Backup."
+    },
+    "server": {
+      "smb": {
+        "title": "SMB-Server",
+        "description": "Zugangsdaten für Upload nach Erstellung eines Vorgangs.",
+        "url": "Server-URL",
+        "urlPlaceholder": "smb://…",
+        "login": "Login",
+        "password": "Passwort",
+        "recheckTitle": "Klicken zum erneuten Prüfen",
+        "recheckTitleWithMessage": "{{message}}\nKlicken zum erneuten Prüfen"
+      },
+      "upload": {
+        "title": "Upload",
+        "afterCreate": "Nach Erstellung auf Server hochladen"
+      },
+      "ams": {
+        "title": "Buchungssuche (optional)",
+        "operatorTitle": "Buchungssuche",
+        "description": "Füllt Name und Medien, wenn Kunden-ID und Buchungs-ID passen. Ohne Verbindung geht alles weiter per Hand. Dateien werden trotzdem übergeben.",
+        "address": "Adresse",
+        "token": "Zugangscode",
+        "lastOk": "Zuletzt erfolgreich: {{url}}",
+        "searching": "Suche…",
+        "searchNetwork": "Im Netzwerk suchen",
+        "checkConnection": "Verbindung prüfen",
+        "saveFailed": "Einstellungen konnten nicht gespeichert werden.",
+        "noneFoundStatus": "Keine Buchungssuche im Netzwerk gefunden.",
+        "noneFoundError": "Nichts gefunden. Adresse ggf. manuell eintragen.",
+        "foundStatus": "Gefunden: {{instance}} → {{url}}",
+        "foundSuccess": "Adresse übernommen: {{url}}. Zugangscode weiter manuell eintragen.",
+        "foundMany": "{{count}} Adressen gefunden — bitte auswählen.",
+        "applied": "Übernommen: {{instance}} → {{url}}",
+        "discoveredItem": "{{instance}} — {{url}}{{version}}"
+      }
+    }
+  },
+  "errors": {
+    "server": {
+      "connected": "✓ Verbunden",
+      "notChecked": "Nicht geprüft",
+      "notConnected": "Nicht verbunden",
+      "checking": "Prüfe…",
+      "uploading": "Upload…",
+      "invalidUrl": "Ungültige Server-URL",
+      "pathNotFound": "Pfad nicht gefunden",
+      "loginFailed": "Login fehlgeschlagen",
+      "noShareAccess": "Kein Zugriff auf Freigabe",
+      "listingFailed": "Share erreichbar, Listing fehlgeschlagen",
+      "shareNotFound": "Server/Freigabe nicht gefunden",
+      "credentialsSoftHint": "Zugangsdaten sind nicht hinterlegt. Das kann (muss aber nicht) der Grund sein.",
+      "authHint": "Bitte Benutzername und Passwort prüfen.",
+      "urlMissingHint": "Es ist keine Server-URL hinterlegt.",
+      "guestHint": "Ohne Login wird als Guest verbunden.",
+      "openUrl": "Server-URL öffnen",
+      "checkCredentials": "Zugangsdaten prüfen",
+      "openCredentials": "Zugangsdaten öffnen"
+    }
+  },
+  "create": {
+    "validation": {
+      "tandemmasterRequired": "Tandemmaster ist erforderlich",
+      "dateRequired": "Datum ist erforderlich",
+      "nameRequired": "Vorname und Nachname sind erforderlich",
+      "emailRequired": "Email ist erforderlich",
+      "videospringerRequired": "Videospringer ist erforderlich bei Outside Video",
+      "crewConflict": "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein",
+      "crewConflictShort": "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein.",
+      "productRequired": "Bitte wählen Sie mindestens ein Produkt aus (Handcam/Outside Foto oder Video).",
+      "videosMissing": "Sie haben ein Video-Produkt ausgewählt, aber keine Videos hinzugefügt.",
+      "photosMissing": "Sie haben ein Foto-Produkt ausgewählt, aber keine Fotos hinzugefügt.",
+      "watermarkRequired": "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.",
+      "previewVideoRequired": "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.",
+      "storageNotSet": "Speicherort ist nicht gesetzt. Bitte Ordner wählen.",
+      "failed": "Validierung fehlgeschlagen",
+      "notMp4": "Keine .mp4",
+      "fileMissing": "Datei fehlt",
+      "customerId": "Kunden-ID",
+      "bookingId": "Booking-ID",
+      "validation": "Validierung"
+    },
+    "ready": {
+      "headline": {
+        "check": "Angaben prüfen",
+        "incomplete": "Angaben unvollständig",
+        "missingOne": "Noch {{label}}",
+        "missingMany": "Noch {{count}} Angaben fehlen"
+      },
+      "chips": {
+        "tandemmaster": "Tandemmaster",
+        "videospringer": "Videospringer",
+        "date": "Datum",
+        "name": "Name",
+        "email": "E-Mail",
+        "product": "Produkt",
+        "videos": "Videos",
+        "photos": "Fotos",
+        "watermark": "Wasserzeichen",
+        "crewConflict": "Crew-Konflikt"
+      }
+    },
+    "job": {
+      "creating": "Vorgang wird erstellt…",
+      "done": "Vorgang fertig",
+      "cancelled": "Vorgang abgebrochen."
+    },
+    "append": {
+      "pickFile": "Bitte mindestens eine Datei zum Nachreichen wählen.",
+      "tooMany": "Zu viele Nachreichungen für diesen Vorgang (99)."
+    },
+    "success": {
+      "title": "Erfolgreich erstellt",
+      "description": "Zusammenfassung der erstellten Dateien und Ordner.",
+      "folder": "Ordner",
+      "videoFromPreview": "Video aus Vorschau übernommen",
+      "videoCreated": "Video erstellt",
+      "previewVideo": "Vorschau-Video erstellt",
+      "photosCopied": "{{count}} Foto kopiert",
+      "photosCopiedMany": "{{count}} Fotos kopiert",
+      "previewPhotos": "{{count}} Vorschau-Foto erstellt",
+      "previewPhotosMany": "{{count}} Vorschau-Fotos erstellt",
+      "uploaded": "Auf Server hochgeladen",
+      "encoder": "Encoder",
+      "dirCreated": "Verzeichnis wurde erstellt",
+      "openLocation": "Zum Speicherort",
+      "play": "Abspielen"
+    }
+  },
+  "progress": {
+    "default": {
+      "inProgress": "In Arbeit…",
+      "starting": "Startet…",
+      "cancelled": "Abgebrochen",
+      "done": "Fertig"
+    },
+    "createVideoStage": "Erstelle Video…",
+    "clip": {
+      "inProgress": "Clip {{id}}: In Arbeit…",
+      "withStatus": "Clip {{id}}: {{status}}"
+    },
+    "status": {
+      "probing": "Analysiere Videos…",
+      "prepare": "Bereite Clip-Segment vor…",
+      "prepareDone": "Clip-Segment bereit",
+      "mpegtsConcat": "Füge Clips zusammen…",
+      "hevcFallback": "HEVC-Fallback…",
+      "reencode": "Kodiere neu…",
+      "reencodeTrim": "Zuschneiden (präzise)…",
+      "streamCopyTrim": "Zuschneiden…",
+      "rotateReencode": "Drehen…",
+      "replaceFile": "Ersetze Datei…",
+      "reencodeCut": "Schnitt (präzise)…",
+      "streamCopyCut": "Schnitt…",
+      "fastConcat": "Füge Clips zusammen (Fast Path)…",
+      "legacyConcat": "Legacy-Zusammenfügen…",
+      "fastPathWaiting": "Fast Path fehlgeschlagen — bitte Entscheidung…",
+      "replaceOriginal": "Ersetze Original…",
+      "splitPart1": "Teile Clip (Teil 1)…",
+      "splitPart2": "Teile Clip (Teil 2)…",
+      "renameSplit": "Benenne geteilte Clips…",
+      "bodyPrepare": "Bereite Videoclips vor…",
+      "bodyDone": "Videoclips vorbereitet",
+      "intro": "Erstelle Intro…",
+      "introDone": "Intro fertig",
+      "mux": "Füge Intro und Video zusammen…",
+      "muxDone": "Zusammenfügen fertig",
+      "attachAudio": "Audio anhängen…",
+      "introVideoCompatible": "Kodiere Intro+Video (kompatibel)…",
+      "introVideoAudioCopy": "Kodiere Intro+Video (Audio-Copy)…",
+      "export": "Exportiere Video…",
+      "exportDone": "Export fertig",
+      "previewAnalyse": "Analysiere für Vorschau…",
+      "previewIntro": "Vorschau-Intro…",
+      "previewReencode": "Kodiere Vorschau-Clips…",
+      "previewCopy": "Kopiere Clips für Vorschau…",
+      "previewConcat": "Füge Vorschau zusammen…",
+      "writeHandoff": "Schreibe Übergabe…",
+      "appendReady": "Nachreichung bereit",
+      "parallelEncode": "Kodiere Clips parallel ({{clips}} Clips, {{workers}} Worker)…",
+      "parallelConcat": "Füge Clips parallel zusammen ({{clips}} Clips, {{workers}} Worker)…"
+    },
+    "rust": {
+      "generateOutputDir": "Generiere Ausgabe-Verzeichnis…",
+      "reusePreview": "Übernehme Vorschau als Finalvideo…",
+      "previewReused": "Vorschau übernommen",
+      "createWatermarkVideo": "Erstelle Wasserzeichen-Video…",
+      "copyPhotos": "Kopiere Fotos…",
+      "createPhotoWatermark": "Erstelle Foto-Wasserzeichen…",
+      "skipDoneTxtLocal": "Überspringe _fertig.txt (Lokal)…",
+      "writeAmsManifest": "Schreibe AMS-Manifest…",
+      "writeDoneTxt": "Schreibe _fertig.txt…",
+      "appendReadyForAms": "Nachreichung bereit für AMS",
+      "joinEncodedClips": "Füge kodierte Clips zusammen…",
+      "analyseIntroVideo": "Analysiere Intro/Video…",
+      "streamCopyFailedWaiting": "Stream-Copy fehlgeschlagen — bitte Entscheidung…",
+      "exportWithoutIntro": "Exportiere Video ohne Intro…",
+      "legacyMpegTs": "Legacy-Zusammenfügen (MPEG-TS)…",
+      "sdClearing": "SD wird bereinigt…",
+      "backupFinishing": "Backup wird abgeschlossen…"
+    },
+    "legend": {
+      "aria": "Farblegende",
+      "fast": "Schnellprüfung",
+      "thorough": "Gründliche Prüfung",
+      "checked": "Geprüft",
+      "removed": "Entfernt"
+    },
+    "filesAria": "{{finished}} von {{total}} Dateien (Listenreihenfolge)",
+    "seg": {
+      "removed": "entfernt",
+      "hit": "Treffer",
+      "done": "erledigt",
+      "pending": "ausstehend",
+      "paceFrames": "{{pace}} · {{frame}}/{{total}}",
+      "thoroughShort": "Gründlich",
+      "fastShort": "Schnell"
+    },
+    "overallAria": "Gesamtfortschritt",
+    "clipStatus": "Clip {{id}} — {{status}}",
+    "clipOnly": "Clip {{id}}"
+  },
+  "dialogs": {
+    "error": {
+      "defaultTitle": "Fehler"
+    },
+    "success": {
+      "defaultTitle": "Erfolg",
+      "actionsSummary": "Zusammenfassung der Aktionen.",
+      "tone": {
+        "success": "Erfolgreich",
+        "error": "Fehlgeschlagen",
+        "skipped": "Übersprungen"
+      }
+    },
+    "warning": {
+      "defaultTitle": "Hinweis"
+    },
+    "countdownSuffix": " ({{seconds}}s)",
+    "autoCloseAria": "Automatisches Schließen",
+    "bodyConcat": {
+      "title": "Fast Path fehlgeschlagen",
+      "body": "Die Clips konnten nicht im schnellen Single-Pass zusammengefügt werden. Du kannst abbrechen oder den robusteren Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
+      "useLegacy": "Legacy verwenden"
+    },
+    "introMux": {
+      "title": "Intro kann nicht per Stream-Copy angefügt werden",
+      "body": "Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist fehlgeschlagen (häufig bei modernen Kameradateien).",
+      "hint": "Bitte wählen: Video ohne Intro exportieren (schnell) oder mit Intro neu kodieren (dauert länger).",
+      "withIntroEncode": "Mit Intro (Encoding)",
+      "withoutIntro": "Ohne Intro"
+    },
+    "update": {
+      "checkTitle": "Update-Prüfung",
+      "downgradeTitle": "Ältere Version installieren",
+      "availableTitle": "Update verfügbar",
+      "statusLoading": "Update-Status wird geladen…",
+      "installing": "Installiere…",
+      "switchNow": "Jetzt wechseln",
+      "updateNow": "Jetzt aktualisieren",
+      "later": "Später",
+      "downloadInstaller": "Installer herunterladen",
+      "patchNotes": "Patchnotes",
+      "noNotes": "Keine Details verfügbar.",
+      "installingUpdate": "Update wird installiert…",
+      "installingVersion": "Version wird installiert…",
+      "downloadingUpdate": "Update wird heruntergeladen…",
+      "downloadingVersion": "Version wird heruntergeladen…",
+      "preparing": "Installation wird vorbereitet…",
+      "replaceVersion": "Version {{to}} ersetzt die aktuelle {{from}}.",
+      "canInstall": "Version {{to}} kann installiert werden.",
+      "current": "Aktuell: {{version}}",
+      "downgradeHint": "Die App wird ersetzt und neu gestartet. Einstellungen bleiben in der Regel erhalten."
+    }
+  },
+  "splash": {
+    "appName": "Aero Tandem Studio",
+    "tagline": "Jump. Cut. Done.",
+    "loading": "Wird geladen…",
+    "version": "Version {{version}}",
+    "copyright": "© Andreas Kowalenko"
+  },
+  "chrome": {
+    "settings": {
+      "moreTitle": "Einstellungen & mehr",
+      "quickActions": "Schnellaktionen"
+    },
+    "window": {
+      "minimize": "Minimieren",
+      "maximize": "Maximieren",
+      "restore": "Wiederherstellen"
+    },
+    "server": {
+      "connected": "Verbunden",
+      "uploadPercent": "Upload {{percent}}%"
+    }
+  },
+  "app": {
+    "splash": {
+      "loadAppInfo": "Lade App-Info…",
+      "loadSettings": "Lade Einstellungen…",
+      "checkFfmpeg": "Prüfe FFmpeg & Hardware…",
+      "ready": "Bereit!",
+      "startWithErrors": "Start mit Fehlern",
+      "ffmpegMissing": "FFmpeg wurde nicht gefunden. Encoding ist nicht verfügbar."
+    },
+    "chrome": {
+      "historyTitle": "Verarbeitete Dateien",
+      "resetTitle": "Formular und Medien zurücksetzen",
+      "encoder": "Encoder: {{label}}",
+      "softwareSuffix": " (Software)",
+      "ready": "Bereit",
+      "starting": "Start…",
+      "serverBackupPercent": "Server-Backup {{percent}}%",
+      "serverBackupDone": "Server-Backup fertig"
+    },
+    "update": {
+      "alreadyInstalling": "Installation läuft bereits…",
+      "blockedBusy": "Während der Verarbeitung nicht möglich.",
+      "blockedAppend": "Während Nachreichen nicht möglich.",
+      "blockedSd": "Während der SD-Aktion nicht möglich.",
+      "blockedQr": "Während der QR-Erkennung nicht möglich.",
+      "blockedUpload": "Während dem Upload nicht möglich.",
+      "switchTo": "Zu Version {{version}} wechseln?",
+      "availableOn": "Update auf {{version}} verfügbar.",
+      "restartManual": "Version installiert — bitte App manuell neu starten.",
+      "title": "Update"
+    },
+    "sd": {
+      "readingFiles": "SD-Dateien werden gelesen…",
+      "processing": "SD-Verarbeitung…",
+      "ejecting": "SD-Karte wird ausgeworfen…",
+      "backingUp": "SD-Backup läuft…",
+      "importing": "Importiere SD-Dateien…",
+      "searchingQr": "QR-Code suchen…",
+      "noFiles": "Keine Dateien.",
+      "clearOnlyAfterBackup": "Bereinigen ist nur nach einem Backup möglich.",
+      "noActionSelected": "Keine Aktion ausgewählt.",
+      "pickBackupFolder": "Bitte in den Einstellungen einen Backup-Ordner wählen.",
+      "ejectSuccess": "SD-Karte ausgeworfen — kann sicher entfernt werden",
+      "ejectFailed": "Auswerfen fehlgeschlagen",
+      "ejectFailedDetail": "{{error}}\nBitte die Karte manuell sicher entfernen.",
+      "backupCancelled": "SD-Backup abgebrochen.",
+      "backupFailed": "Backup fehlgeschlagen",
+      "notClearedNoBackup": "SD wurde nicht bereinigt (kein erfolgreiches Backup).",
+      "secondPath": "Zweiter Pfad: {{path}}",
+      "secondPathBackground": "Zweiter Pfad: läuft im Hintergrund…",
+      "skippedCount": "Übersprungen: {{count}}",
+      "copiedFiles": "{{count}} Dateien kopiert",
+      "clearFailed": "Bereinigung fehlgeschlagen",
+      "notCleared": "Nicht bereinigt",
+      "clearedFiles": "{{count}} Datei(en) bereinigt",
+      "partialSuccess": "Teilweise erfolgreich",
+      "workflowCancelled": "SD-Workflow abgebrochen.",
+      "customerRecognized": "Kunde erkannt",
+      "ejectLabel": "Auswerfen",
+      "backupLabel": "Backup",
+      "clearLabel": "Bereinigen",
+      "title": "SD"
+    },
+    "import": {
+      "label": "Import",
+      "summary": "{{videos}} Videos, {{photos}} Fotos",
+      "skipped": " · {{count}} übersprungen"
+    },
+    "qr": {
+      "label": "QR-Code",
+      "cancelled": "QR-Scan abgebrochen.",
+      "applied": "Kundendaten übernommen",
+      "source": "Quelle: {{name}}",
+      "notFound": "Kein QR-Code gefunden.",
+      "scanFailed": "Scan fehlgeschlagen",
+      "recognized": "QR-Code erkannt"
+    },
+    "storage": {
+      "pickTitle": "Speicherort für fertige Vorgänge wählen",
+      "noneChosen": "Kein Speicherort gewählt.",
+      "title": "Speicherort",
+      "notLoaded": "Einstellungen noch nicht geladen.",
+      "saveFailed": "Speicherort konnte nicht gespeichert werden.",
+      "saved": "Speicherort gespeichert:\n{{path}}",
+      "notSet": "Kein Speicherort gesetzt.",
+      "change": "Speicherort ändern"
+    },
+    "upload": {
+      "serverUnreachable": "Upload ist aktiv, aber der Server ist nicht erreichbar.\nBitte Einstellungen prüfen oder Upload deaktivieren.",
+      "toServer": "Upload zum Server…",
+      "failedNote": "Upload fehlgeschlagen (siehe Fehlerdialog).",
+      "percent": "Upload {{percent}}%",
+      "fileProgress": "Datei {{current}}/{{total}}",
+      "title": "Upload",
+      "titleBlockedOn": "Upload in den Einstellungen aktiv, Server nicht verbunden",
+      "titleBlockedOff": "Server nicht verbunden — Upload nicht möglich",
+      "titleActive": "Aktiv — Vorgang wird nach Erstellen hochgeladen",
+      "titleOff": "Upload aus — einschalten, wenn der Vorgang auf den Server soll"
+    },
+    "job": {
+      "section": "Vorgang",
+      "clear": "Leeren",
+      "clearTitle": "Nach Erstellen Formular und Medien zurücksetzen",
+      "createUploadTitle": "Vorgang erstellen und auf den Server hochladen",
+      "uploadAria": "Server-Upload"
+    },
+    "ready": {
+      "showTarget": "{{label}} anzeigen"
+    },
+    "media": {
+      "kindAria": "Medienart",
+      "clearVideos": "Videos leeren",
+      "clearPhotos": "Fotos leeren"
+    },
+    "intro": {
+      "decisionTitle": "Intro-Entscheidung",
+      "encodeAgain": "Kodiere Intro+Video neu…"
+    },
+    "concat": {
+      "decisionTitle": "Clip-Zusammenfügen",
+      "cancelled": "Vorgang abgebrochen…"
+    },
+    "mediaPlayback": {
+      "title": "Video-Wiedergabe"
+    },
+    "start": {
+      "title": "Start"
+    },
+    "append": {
+      "starting": "Starte Nachreichung…"
+    },
+    "session": {
+      "resetBlocked": "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
+      "resetConfirm": "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
+      "resetDone": "Session zurückgesetzt."
+    },
+    "server": {
+      "title": "Server"
+    }
+  },
+  "form": {
+    "session": {
+      "dropzone": "Dropzone"
+    },
+    "toolbar": {
+      "scanFrame": "QR-Scan-Frame anzeigen",
+      "scanTitle": "QR-Scan",
+      "scanDescription": "Treffer-Frame dieser Session",
+      "shadow": "Schatten",
+      "modeAria": "Eingabemodus",
+      "noQrSession": "Kein QR in dieser Session — zuerst scannen",
+      "restoreQr": "QR-Daten wiederherstellen",
+      "manualEntry": "Zur manuellen Eingabe",
+      "qr": "QR",
+      "manual": "Manuell"
+    },
+    "manual": {
+      "modeAria": "Manueller Eingabemodus",
+      "id": "ID",
+      "contact": "Kontakt",
+      "local": "Lokal"
+    },
+    "customer": {
+      "section": "Kunde",
+      "lock": "Sperren",
+      "firstName": "Vorname",
+      "lastName": "Nachname",
+      "customerIdHash": "Kunden-ID Hash",
+      "bookingIdHash": "Booking-ID Hash",
+      "customerId": "Kunden-ID",
+      "bookingId": "Booking-ID",
+      "email": "E-Mail",
+      "phone": "Telefon",
+      "idMinDigits": "Mindestens {{count}} Ziffern"
+    },
+    "crew": {
+      "section": "Crew",
+      "namePlaceholder": "Name…"
+    },
+    "media": {
+      "section": "Medien",
+      "modeAria": "Medien-Modus",
+      "handcam": "Handcam",
+      "outside": "Outside",
+      "chooseMode": "Handcam oder Outside wählen, um Produkte freizuschalten.",
+      "handcamPhoto": "Handcam Foto",
+      "handcamVideo": "Handcam Video",
+      "outsidePhoto": "Outside Foto",
+      "outsideVideo": "Outside Video",
+      "paid": "Bezahlt",
+      "paidAria": "{{label}} bezahlt",
+      "lockedAms": "Produkte aus der Buchung sind gesperrt — „Bearbeiten“ zum Freigeben.",
+      "lockedQr": "Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben."
+    }
+  },
+  "media": {
+    "drop": {
+      "subtitle": "Import per Drag & Drop, Datei- oder Ordnerwahl · Vorschau & Liste darunter",
+      "autoQr": "Auto-QR beim Import",
+      "scanVideos": "Videos scannen ({{count}})",
+      "scanVideosCompact": "Videos ({{count}})",
+      "scanPhotos": "Fotos scannen ({{count}})",
+      "scanPhotosCompact": "Fotos ({{count}})",
+      "scanFile": "Datei scannen…",
+      "scanFileCompact": "Datei…",
+      "noVideos": "Keine Videos in der Liste",
+      "noPhotos": "Keine Fotos in der Liste",
+      "scanClipsTitle": "{{count}} Clip(s) parallel scannen",
+      "scanPhotosTitle": "{{count}} Foto(s) parallel scannen",
+      "scanExternalTitle": "Foto oder Video wählen — nur QR-Scan, kein Import",
+      "aria": "Videos, Fotos und Ordner hierher ziehen",
+      "release": "Loslassen zum Hinzufügen",
+      "drag": "Dateien oder Ordner hierher ziehen",
+      "formats": "Ordner werden rekursiv durchsucht · .mp4, .mov · .jpg, .png, .webp …",
+      "searchingFolder": "Ordner werden durchsucht…",
+      "searchingQr": "QR-Code wird gesucht…",
+      "importing": "Importiere…",
+      "noneFound": "Keine unterstützten Video- oder Foto-Dateien gefunden",
+      "alreadyInList": "Alle Dateien sind bereits in der Liste",
+      "added": "{{parts}} hinzugefügt",
+      "qrApplied": "{{parts}} · QR übernommen",
+      "keptCustomer": "{{parts}} · Kunde behalten",
+      "qrSuffix": "{{parts}} · QR",
+      "qrCancelled": "{{parts}} · QR abgebrochen",
+      "withMessage": "{{parts}} · {{message}}",
+      "importCancelled": "Import abgebrochen — keine Dateien übernommen.",
+      "saveFailed": "Einstellung konnte nicht gespeichert werden.",
+      "pleaseAddVideos": "Bitte zuerst Videos in die Liste legen.",
+      "pleaseAddPhotos": "Bitte zuerst Fotos in die Liste legen.",
+      "noQr": "Kein gültiger QR-Code gefunden.",
+      "pickMedia": "Bitte eine Foto- oder Video-Datei wählen.",
+      "externalNote": "Externes {{type}} — Datei nicht importiert.",
+      "noQrVideo": "Kein gültiger QR-Code im Video.",
+      "noQrPhoto": "Kein gültiger QR-Code im Foto.",
+      "filterMedia": "Medien",
+      "filterPhotoOrVideo": "Foto oder Video",
+      "countVideo": "{{count}} Video",
+      "countVideos": "{{count}} Videos",
+      "countPhoto": "{{count}} Foto",
+      "countPhotos": "{{count}} Fotos",
+      "pickFiles": "Dateien wählen…",
+      "pickFolder": "Ordner wählen…",
+      "clearAll": "Alles leeren",
+      "qrScanTitle": "QR-Scan",
+      "autoQrTitle": "Auto-QR",
+      "importTitle": "Import"
+    },
+    "list": {
+      "emptyVideos": "Noch keine Videos — oben ablegen oder wählen",
+      "emptyPhotos": "Noch keine Fotos — oben ablegen oder wählen",
+      "title": "Liste",
+      "hintVideos": "Reihenfolge, Meta & Aktionen · Ziehen zum Sortieren",
+      "hintPhotos": "Meta & Aktionen · Klick wählt in der Vorschau",
+      "sortAria": "Sortieren",
+      "filename": "Dateiname",
+      "format": "Format",
+      "duration": "Dauer",
+      "size": "Größe",
+      "codec": "Codec",
+      "wm": "WM",
+      "watermark": "Wasserzeichen",
+      "actions": "Aktionen",
+      "sortByName": "Nach Dateiname sortieren",
+      "sortByDuration": "Nach Dauer sortieren",
+      "sortBySize": "Nach Größe sortieren",
+      "dragSort": "Ziehen zum Sortieren",
+      "trimmed": "Getrimmt",
+      "rotated": "Gedreht",
+      "split": "Geteilt",
+      "wmClipAria": "Wasserzeichen-Clip",
+      "wmClipTitle": "Clip für Preview_Video (Wasserzeichen)",
+      "wmPhotoAria": "Wasserzeichen-Foto",
+      "wmPhotoTitle": "Foto für Preview_Foto (Wasserzeichen)",
+      "scanQr": "QR scannen",
+      "scanQrClip": "QR in diesem Clip scannen",
+      "scanQrPhoto": "QR in diesem Foto scannen",
+      "noQrClip": "Kein QR-Code in diesem Clip.",
+      "noQrPhoto": "Kein QR-Code in diesem Foto.",
+      "fileTitle": "Datei",
+      "pathCopied": "Pfad in die Zwischenablage kopiert.",
+      "pathTitle": "Pfad"
+    }
+  },
+  "workflow": {
+    "progress": "Fortschritt",
+    "stage": {
+      "preview": "Vorschau wird erzeugt",
+      "cut": "Schnitt wird angewendet",
+      "append": "Medien nachreichen",
+      "appendFor": "Nachreichen für {{guest}}",
+      "appendUploading": "{{base}} — Upload auf Server",
+      "appendCancellable": "{{base}} — Abbrechen stoppt die Verarbeitung",
+      "done": "Zuletzt abgeschlossener Lauf",
+      "sdClearingLocked": "SD wird bereinigt — Abbrechen nicht möglich",
+      "sdQr": "SD — QR-Code-Suche (Abbrechen stoppt nur die Suche)",
+      "sdWorkflow": "SD — Backup, Import und weitere Aktionen (Abbrechen stoppt den Lauf)",
+      "manualImport": "Medien werden in den Arbeitsordner kopiert — Abbrechen verwirft den Import",
+      "manualQr": "QR-Code-Suche — Abbrechen stoppt die Suche",
+      "encodeBusy": "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
+    }
+  },
+  "history": {
+    "title": "Historie",
+    "description": "Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).",
+    "appendTitle": "Nachreichen · {{guest}}",
+    "appendDescription": "Zusätzliche Dateien in den bestehenden Kundenordner.",
+    "tabs": {
+      "jobs": "Vorgänge",
+      "media": "Medien"
+    },
+    "appendSuccess": "{{count}} Datei(en) übergeben ({{folder}}).\nStatus unter „Nachreichung“ in der Historie.",
+    "appendDialogTitle": "Nachreichen",
+    "appendCancelled": "Nachreichen abgebrochen.",
+    "filters": {
+      "all": "Alle",
+      "open": "Offen",
+      "done": "Fertig",
+      "error": "Fehler"
+    },
+    "searchJobs": "Gast, ID, Dateiname…",
+    "searchMedia": "Suchen…",
+    "filterStatusAria": "Status filtern",
+    "jobCount": "{{count}} Vorgänge",
+    "jobCountFiltered": "{{filtered}} / {{total}}",
+    "removeSelected": "Auswahl entfernen",
+    "col": {
+      "guest": "Gast",
+      "date": "Datum",
+      "products": "Produkte",
+      "status": "Status",
+      "created": "Erstellt",
+      "name": "Name",
+      "type": "Typ",
+      "role": "Rolle",
+      "source": "Quelle",
+      "size": "Größe"
+    },
+    "emptyFilter": "Keine Vorgänge für diesen Status.",
+    "emptyJobs": "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier.",
+    "selectJob": "Vorgang auswählen",
+    "previewReuse": "Preview-Reuse",
+    "customer": "Kunde: {{id}}",
+    "booking": "Booking: {{id}}",
+    "statusLoading": "Status…",
+    "append": "Nachreichung",
+    "appendBtn": "Nachreichen…",
+    "appendTitleLokal": "Nur bei Online-Vorgängen, nicht bei Lokal",
+    "appendTitleWait": "Erst wenn der Upload abgeschlossen ist",
+    "appendTitleBusy": "Eine Nachreichung läuft bereits",
+    "appendTitleOk": "Weitere Medien in denselben Kundenordner legen",
+    "files": "Dateien",
+    "appended": "Nachgereicht",
+    "appendedFolder": "Nachreichung {{folder}}",
+    "original": "Original",
+    "noFiles": "Keine Dateien",
+    "scanDescriptionJob": "Treffer-Frame dieses Vorgangs",
+    "confirm": {
+      "removeJobOne": "Vorgang aus der Historie entfernen?",
+      "removeJobMany": "{{count}} Vorgänge aus der Historie entfernen?",
+      "removeJobOneBody": "Der ausgewählte Vorgang wird aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; ein zugehöriger QR-Scan-Frame der App wird mit entfernt.",
+      "removeJobManyBody": "Die ausgewählten Vorgänge werden aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt.",
+      "removeMediaOne": "Medien-Eintrag aus der Historie entfernen?",
+      "removeMediaMany": "{{count}} Medien-Einträge aus der Historie entfernen?",
+      "removeMediaOneBody": "Der Eintrag wird aus der Medien-Historie gelöscht. Die Datei selbst bleibt erhalten.",
+      "removeMediaManyBody": "Die Einträge werden aus der Medien-Historie gelöscht. Die Dateien selbst bleiben erhalten.",
+      "purgeMedia": "Gesamte Medien-Historie löschen?",
+      "purgeMediaBody": "Alle Einträge der Medien-Historie (Duplikat-Erkennung) werden entfernt. Die Dateien selbst bleiben erhalten."
+    },
+    "media": {
+      "stats": "{{total}} Einträge ({{videos}} Videos, {{photos}} Fotos)",
+      "empty": "Keine Einträge",
+      "imported": "Importiert",
+      "backedUp": "Gesichert",
+      "allTime": "Alle Zeit",
+      "today": "Heute",
+      "last7": "Letzte 7 Tage",
+      "lastMonth": "Letzter Monat",
+      "lastYear": "Letztes Jahr"
+    },
+    "role": {
+      "sourceVideo": "Quelle Video",
+      "sourcePhoto": "Quelle Foto",
+      "outputVideo": "Ausgabe Video",
+      "wmVideo": "WM Video",
+      "marker": "Marker",
+      "appendHandcamVideo": "Handcam Video",
+      "appendOutsideVideo": "Outside Video",
+      "appendHandcamFoto": "Handcam Foto",
+      "appendOutsideFoto": "Outside Foto",
+      "appendPreviewVideo": "Preview Video",
+      "appendPreviewFoto": "Preview Foto"
+    },
+    "mode": {
+      "qr": "QR",
+      "manualId": "Manuell · ID",
+      "manualContact": "Manuell · Kontakt",
+      "manualLocal": "Manuell · Lokal",
+      "manual": "Manuell"
+    },
+    "paidTitle": "{{label}} bezahlt",
+    "ta": "TA: {{name}}",
+    "vs": "V: {{name}}"
+  },
+  "ams": {
+    "actions": {
+      "openSettings": "Einstellungen öffnen",
+      "checkToken": "Zugangscode prüfen"
+    },
+    "status": {
+      "unreachableLabel": "Buchungssuche nicht erreichbar",
+      "urlMissingLabel": "Adresse fehlt",
+      "urlInvalidLabel": "Ungültige Adresse",
+      "tokenMissingLabel": "Zugangscode fehlt",
+      "tokenInvalidLabel": "Zugangscode ungültig",
+      "urlMissingHint": "Es ist keine Adresse für die Buchungssuche hinterlegt.",
+      "tokenMissingHint": "Bitte den Zugangscode in den Einstellungen eintragen.",
+      "tokenAuthHint": "Bitte den Zugangscode prüfen.",
+      "unreachableHint": "Kundendaten bitte von Hand eintragen.",
+      "lookupErrorFallback": "Kunde konnte nicht geladen werden",
+      "healthOk": "Buchungssuche verbunden",
+      "connectedTooltip": "{{title}}: verbunden",
+      "onlineOnly": "Nur bei Online-Vorgängen, nicht bei Lokal",
+      "customerNotFound": "Kunde in der Buchung nicht gefunden"
+    },
+    "handoff": {
+      "steps": {
+        "pending": "Übertragen",
+        "accepted": "Übernommen",
+        "queued": "Warteschlange",
+        "uploading": "Upload",
+        "completed": "Fertig"
+      },
+      "state": {
+        "cancelled": "Abgebrochen",
+        "pending": "Übertragen",
+        "pendingCompact": "Wartend",
+        "accepted": "Übernommen",
+        "rejected": "Abgelehnt",
+        "queued": "Warteschlange",
+        "queuedCompact": "Queue",
+        "uploading": "Upload",
+        "completed": "Fertig"
+      },
+      "hint": {
+        "offline": "Status offline (letzter bekannter Stand)",
+        "uploadCancelled": "Upload abgebrochen",
+        "waitingForAccept": "Wartet auf Übernahme",
+        "archive": "Archiv {{archive}}"
+      }
+    }
+  },
+  "header": {
+    "connection": {
+      "serverChecking": "Server: Prüfung…",
+      "serverUploading": "Server: Upload läuft",
+      "serverWithDetail": "Server: {{detail}}",
+      "serverWithDetailMultiline": "Server:\n{{detail}}",
+      "serverConnected": "Server: verbunden",
+      "serverNotConfigured": "Server: nicht konfiguriert",
+      "serverNotChecked": "Server: nicht geprüft",
+      "amsChecking": "{{title}}: Prüfung…",
+      "amsNotChecked": "{{title}}: nicht geprüft",
+      "retryOrSettings": "Klicken: erneut prüfen · Rechtsklick: Einstellungen",
+      "retry": "Klicken zum erneuten Prüfen",
+      "connectionTitle": "Verbindung"
+    }
+  },
+  "qr": {
+    "progress": {
+      "pending": "QR-Code-Suche wartet…",
+      "found": "QR-Code gefunden",
+      "removed": "Aus Liste entfernt",
+      "checked": "QR-Code geprüft"
+    }
+  },
+  "video": {
+    "edit": {
+      "progress": {
+        "trim": "Schnitt wird angewendet…",
+        "trimDone": "Schnitt fertig",
+        "split": "Video wird geteilt…",
+        "splitDone": "Teilen fertig",
+        "rotate": "Video wird gedreht (Neu-Kodierung)…",
+        "rotateDone": "Drehen fertig",
+        "undoOne": "Bearbeitung wird rückgängig gemacht…",
+        "undoAll": "Alle Bearbeitungen werden rückgängig gemacht…",
+        "undoDone": "Rückgängig fertig"
+      },
+      "success": {
+        "trim": "Schnitt übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
+        "split": "Video geteilt. Rückgängig über einen Teil-Clip oder Alle Bearbeitungen rückgängig.",
+        "rotate": "Drehung übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
+        "undoOne": "Bearbeitung für diesen Clip rückgängig gemacht.",
+        "undoAll": "{{count}} Bearbeitung(en) rückgängig gemacht."
+      },
+      "error": {
+        "trim": "Schnitt fehlgeschlagen",
+        "split": "Teilen fehlgeschlagen",
+        "rotate": "Drehen fehlgeschlagen",
+        "undo": "Rückgängig fehlgeschlagen"
+      }
+    },
+    "preview": {
+      "title": "Video-Vorschau",
+      "formIncomplete": "Formular oder Produkte sind noch nicht vollständig.",
+      "formIncompleteShort": "Formular unvollständig",
+      "generating": "Vorschau wird erzeugt…",
+      "ready": "Vorschau fertig",
+      "cancelled": "Vorschau abgebrochen.",
+      "undoAllEditsTitle": "Alle Trim-/Teilen-Aktionen rückgängig machen",
+      "showExistingTitle": "Gespeicherte kombinierte Vorschau anzeigen (ohne neu zu generieren)",
+      "staleRegenerateTitle": "Formular oder Clips haben sich geändert — Vorschau neu generieren",
+      "regenerateTitle": "Kombinierte Vorschau neu erzeugen und überschreiben",
+      "stale": "Vorschau veraltet — Formular oder Clips wurden geändert.",
+      "staleBadge": "Veraltet",
+      "empty": "Keine Videos — per Drag & Drop im Medien-Bereich hinzufügen",
+      "singleClipWithPreview": "Einzelclip-Wiedergabe — „Vorschau anzeigen“ für die kombinierte Datei.",
+      "singleClipWithoutPreview": "Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte Datei.",
+      "undoThisEditTitle": "Diese Bearbeitung rückgängig machen"
+    },
+    "cutter": {
+      "warning": {
+        "adjustHandles": "Ziehen Sie die Handles, um den Clip zuzuschneiden.",
+        "rangeTooShort": "Der behaltene Bereich ist zu kurz.",
+        "noChangeTitle": "Keine Änderung",
+        "invalidSplitBody": "Beide Teile müssen mindestens 10 Sekunden lang sein — Playhead weiter von Anfang und Ende wegsetzen.",
+        "invalidSplitTitle": "Ungültiger Split-Punkt",
+        "noRotation": "Keine Drehung ausgewählt."
+      },
+      "playhead": "Playhead {{time}}",
+      "splitHint": "Beide Teile ≥ 10 s — dann Fertig"
+    },
+    "player": {
+      "volumeAria": "Lautstärke",
+      "loadErrorLinux": "Video nicht abspielbar (Codec/WebView). Unter Linux: GStreamer-Plugins installieren (gstreamer1.0-libav, plugins-good/bad).",
+      "loadError": "Video konnte nicht geladen werden.",
+      "noVideo": "Kein Video",
+      "positionAria": "Position"
+    }
+  },
+  "photo": {
+    "edit": {
+      "and": "und",
+      "progress": {
+        "rotate": "Foto wird gedreht…",
+        "rotateDone": "Drehen fertig",
+        "crop": "Foto wird zugeschnitten…",
+        "cropDone": "Zuschnitt fertig",
+        "apply": "Foto wird bearbeitet…",
+        "applyDone": "Bearbeitung fertig",
+        "rotateMany": "Drehe {{count}} Foto(s)…",
+        "rotateOneOfMany": "Drehe Foto {{current}}/{{total}}…",
+        "undo": "Foto-Bearbeitung wird rückgängig gemacht…",
+        "undoDone": "Rückgängig fertig"
+      },
+      "success": {
+        "rotate": "Drehung übernommen. Rückgängig über Bearbeitung rückgängig.",
+        "crop": "Zuschnitt übernommen. Rückgängig über Bearbeitung rückgängig.",
+        "apply": "{{parts}} übernommen. Rückgängig über Bearbeitung rückgängig.",
+        "rotateMany": "{{count}} Foto(s) gedreht.",
+        "undo": "Foto-Bearbeitung rückgängig gemacht."
+      },
+      "error": {
+        "rotate": "Drehen fehlgeschlagen",
+        "crop": "Zuschnitt fehlgeschlagen",
+        "apply": "Bearbeitung fehlgeschlagen",
+        "rotateManyPartial": "{{count}} Foto(s) gedreht, dann Fehler: {{error}}",
+        "undo": "Rückgängig fehlgeschlagen"
+      }
+    },
+    "preview": {
+      "title": "Foto-Vorschau",
+      "prevPhotoAria": "Vorheriges Foto",
+      "nextPhotoAria": "Nächstes Foto",
+      "empty": "Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen",
+      "currentPhoto": "Aktuelles Foto",
+      "undoThisEditTitle": "Diese Bearbeitung rückgängig machen",
+      "total": "Gesamt"
+    },
+    "editor": {
+      "warning": {
+        "noEdit": "Keine Bearbeitung ausgewählt."
+      },
+      "noPhoto": "Kein Foto"
+    }
+  },
+  "sd": {
+    "toast": {
+      "dismiss": "Hinweis schließen"
+    },
+    "queue": {
+      "titleQueued": "SD vorgemerkt",
+      "titleDropped": "Vorgemerkte SD weg",
+      "subtitleQueued": "Startet nach dem aktuellen Vorgang",
+      "subtitleDropped": "Nicht mehr verfügbar — aus der Warteschlange entfernt"
+    },
+    "eject": {
+      "titleUsbOk": "USB-Kamera freigegeben",
+      "subtitleUsbOk": "Session beendet — Gerät aus der Liste entfernt",
+      "subtitleOk": "Kann sicher entfernt werden",
+      "subtitleUsbError": "USB-Kamera manuell trennen",
+      "subtitleError": "Karte manuell sicher entfernen"
+    },
+    "mode": {
+      "autoTip": "Nach Erkennung: Backup, Import, Bereinigen und Auswerfen laut Einstellungen — ohne Nachfrage.",
+      "confirmTip": "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen.",
+      "disabledTip": "SD wird erkannt, aber nicht automatisch verarbeitet."
+    },
+    "drive": {
+      "primaryAutoTitle": "Backup, Import, Bereinigen und Auswerfen laut Einstellungen starten",
+      "primaryConfirmTitle": "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen",
+      "busyTitle": "SD-Vorgang läuft",
+      "watchingNoCard": "SD-Überwachung aktiv — keine Action-Cam SD-Karte (DCIM) gefunden",
+      "noCard": "Keine Action-Cam SD-Karte (DCIM) gefunden",
+      "chooseTitle": "SD-Karte wählen — öffnet Dateiauswahl",
+      "aria": "SD-Karte",
+      "watching": "SD-Überwachung aktiv",
+      "monitoring": "Überwachung",
+      "none": "Keine SD",
+      "ejectTitle": "„{{label}}“ auswerfen",
+      "ejectAria": "SD-Karte {{label}} auswerfen",
+      "open": "Öffnen"
+    },
+    "selector": {
+      "known": "Bekannt",
+      "new": "Neu",
+      "executeCount": "Ausführen ({{count}})",
+      "refresh": "Erneut lesen",
+      "title": "SD-Karte — Dateien wählen",
+      "titleSizeLimit": "Größen-Limit überschritten — Dateien wählen"
+    }
+  },
+  "setupWizard": {
+    "standardDir": {
+      "active": "Standardordner aktiv",
+      "exists": "Standardordner bereits vorhanden",
+      "activeShort": "Aktiv",
+      "adopt": "Übernehmen",
+      "standardPrefix": "Standard:",
+      "create": "Standard anlegen"
+    },
+    "stepHint": {
+      "appearance": "Darstellung kannst du später jederzeit umschalten.",
+      "crew": "Crew-Defaults und Ich bin können später in den Einstellungen gesetzt werden.",
+      "storage": "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
+      "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
+      "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
+      "server": "Server-Zugang kann später eingerichtet werden."
+    },
+    "crew": {
+      "operatorHintMissingRole": "Mindestens eine Rolle wählen — dann wird der Name zur Crew hinzugefügt.",
+      "namePlaceholder": "Namen wählen oder eingeben…",
+      "rolePlaceholder": "Modus oder Name wählen…",
+      "autoAddHint": "Neuer Name wird automatisch zur Crew-Liste hinzugefügt.",
+      "roleRequiredActive": "Mindestens eine Rolle muss aktiv sein.",
+      "roleRequired": "Mindestens eine Rolle wählen."
+    },
+    "storage": {
+      "pickFolderError": "Bitte einen Ordner wählen.",
+      "folderPlaceholder": "Ordner wählen…"
+    },
+    "sd": {
+      "pickFolderOrDisableAutoBackup": "Ordner wählen oder Auto-Backup deaktivieren.",
+      "onlyWithAutoBackup": "Nur möglich, wenn Auto-Backup aktiviert ist",
+      "validLimitError": "Gültiges Limit in MB angeben."
+    },
+    "skipAllConfirm": "Gesamte Einrichtung überspringen?\n\nSpeicherort, Backup und Server können später in den Einstellungen gesetzt werden. Einige Funktionen sind sonst eingeschränkt.",
+    "summary": {
+      "skipped": "— übersprungen —",
+      "noneReset": "Keine (werden zurückgesetzt)",
+      "description": "Bitte Angaben prüfen und abschließen.",
+      "sizeLimit": "Größenlimit"
+    },
+    "finish": "Einrichtung abschließen",
+    "skipAll": "Gesamte Einrichtung überspringen"
+  },
+  "dateField": {
+    "chooseDateAria": "Datum wählen",
+    "prevMonthAria": "Vorheriger Monat",
+    "nextMonthAria": "Nächster Monat",
+    "placeholder": "TT.MM.JJJJ",
+    "openCalendarAria": "Kalender öffnen"
+  },
+  "logConsole": {
+    "title": "Konsole",
+    "resizeAria": "Konsolenhöhe",
+    "searchAria": "Konsole durchsuchen",
+    "levelFilterAria": "Level-Filter",
+    "autoScrollTitle": "Automatisch nach unten scrollen",
+    "copyVisibleTitle": "Sichtbare Zeilen kopieren",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "clearTitle": "Ansicht leeren (Datei bleibt)",
+    "logFile": "Log-Datei",
+    "logFileWithPath": "Log-Datei: {{path}}",
+    "noLogPath": "Kein Log-Pfad",
+    "closeAria": "Konsole schließen",
+    "closeTitle": "Schließen (Esc)",
+    "empty": "Keine Log-Einträge.",
+    "toggleTitle": "Konsole (Ctrl+Shift+J)"
+  }
+}

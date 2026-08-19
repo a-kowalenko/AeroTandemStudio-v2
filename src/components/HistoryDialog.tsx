@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Check, Eye } from "lucide-react";
 import {
   Dialog,
@@ -56,6 +57,8 @@ import { useAppendStore } from "@/store/appendStore";
 import { useHistoryStore } from "@/store/historyStore";
 import { useUiStore } from "@/store/uiStore";
 import { presentAmsUserMessage } from "@/lib/amsBridgeStatus";
+import { tr } from "@/i18n";
+import { formatLocaleDateTime } from "@/lib/locale";
 import { cn, isCancellationError } from "@/lib/utils";
 import {
   AmsHandoffStatusChip,
@@ -75,12 +78,7 @@ type Props = {
 type TypeFilter = "all" | "video" | "photo";
 type PeriodFilter = "all" | "today" | "7d" | "30d" | "365d";
 
-const AMS_STATUS_FILTERS: { id: AmsStatusFilter; label: string }[] = [
-  { id: "all", label: "Alle" },
-  { id: "open", label: "Offen" },
-  { id: "done", label: "Fertig" },
-  { id: "error", label: "Fehler" },
-];
+const AMS_STATUS_FILTERS: AmsStatusFilter[] = ["all", "open", "done", "error"];
 
 type PendingConfirm = {
   title: string;
@@ -159,6 +157,7 @@ function productBadges(v: VorgangEntry): ProductBadge[] {
 }
 
 function ProductStatusChip({ badge }: { badge: ProductBadge }) {
+  const { t } = useTranslation();
   return (
     <span
       className={cn(
@@ -167,7 +166,7 @@ function ProductStatusChip({ badge }: { badge: ProductBadge }) {
           ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
           : "border-border/60 bg-muted/30 text-muted-foreground",
       )}
-      title={badge.paid ? `${badge.label} bezahlt` : badge.label}
+      title={badge.paid ? t("history.paidTitle", { label: badge.label }) : badge.label}
     >
       {badge.label}
       {badge.paid ? (
@@ -258,59 +257,53 @@ function appendHandoffStatusFromEntry(entry: VorgangEntry): HandoffStatus | null
 function roleLabel(role: string): string {
   switch (role) {
     case "source_video":
-      return "Quelle Video";
+      return tr("history.role.sourceVideo");
     case "source_photo":
-      return "Quelle Foto";
+      return tr("history.role.sourcePhoto");
     case "output_video":
-      return "Ausgabe Video";
+      return tr("history.role.outputVideo");
     case "wm_video":
-      return "WM Video";
+      return tr("history.role.wmVideo");
     case "marker":
-      return "Marker";
+      return tr("history.role.marker");
     case "append_handcam_video":
-      return "Handcam Video";
+      return tr("history.role.appendHandcamVideo");
     case "append_outside_video":
-      return "Outside Video";
+      return tr("history.role.appendOutsideVideo");
     case "append_handcam_foto":
-      return "Handcam Foto";
+      return tr("history.role.appendHandcamFoto");
     case "append_outside_foto":
-      return "Outside Foto";
+      return tr("history.role.appendOutsideFoto");
     case "append_preview_video":
-      return "Preview Video";
+      return tr("history.role.appendPreviewVideo");
     case "append_preview_foto":
-      return "Preview Foto";
+      return tr("history.role.appendPreviewFoto");
     default:
       return role;
   }
 }
 
 function formatCreatedAt(iso: string): string {
-  const t = parseHistoryIso(iso);
-  if (Number.isNaN(t)) return iso;
-  return new Date(t).toLocaleString("de-DE", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const parsed = parseHistoryIso(iso);
+  if (Number.isNaN(parsed)) return iso;
+  return formatLocaleDateTime(parsed);
 }
 
 function entryModeLabel(formMode: string, manualEntryMode: string): string | null {
   const form = formMode.trim().toLowerCase();
-  if (form === "kunde") return "QR";
+  if (form === "kunde") return tr("history.mode.qr");
   if (form !== "manual") {
     return form ? formMode.trim() : null;
   }
   switch (manualEntryMode.trim().toLowerCase()) {
     case "id":
-      return "Manuell · ID";
+      return tr("history.mode.manualId");
     case "oldschool":
-      return "Manuell · Kontakt";
+      return tr("history.mode.manualContact");
     case "lokal":
-      return "Manuell · Lokal";
+      return tr("history.mode.manualLocal");
     default:
-      return "Manuell";
+      return tr("history.mode.manual");
   }
 }
 
@@ -320,6 +313,7 @@ export function ProcessedFilesDialog(props: Props) {
 }
 
 export function HistoryDialog({ open, onOpenChange }: Props) {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -364,16 +358,19 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
         fileCount: items.length,
       });
       showSuccess(
-        `${res.file_count} Datei(en) übergeben (${res.folder_name}).\nStatus unter „Nachreichung“ in der Historie.`,
-        "Nachreichen",
+        t("history.appendSuccess", {
+          count: res.file_count,
+          folder: res.folder_name,
+        }),
+        t("history.appendDialogTitle"),
         { autoCloseSecs: 8 },
       );
       setAppendRefreshKey((k) => k + 1);
     } catch (e) {
       if (isCancellationError(e)) {
-        showError("Nachreichen abgebrochen.", "Nachreichen");
+        showError(t("history.appendCancelled"), t("history.appendDialogTitle"));
       } else {
-        showError(presentAmsUserMessage(String(e)), "Nachreichen");
+        showError(presentAmsUserMessage(String(e)), t("history.appendDialogTitle"));
       }
     }
   }
@@ -424,13 +421,13 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
         >
           <DialogTitle className="sr-only">
             {appendOpen && appendVorgang
-              ? `Nachreichen · ${appendVorgang.gast}`
-              : "Historie"}
+              ? t("history.appendTitle", { guest: appendVorgang.gast })
+              : t("history.title")}
           </DialogTitle>
           <DialogDescription className="sr-only">
             {appendOpen
-              ? "Zusätzliche Dateien in den bestehenden Kundenordner."
-              : "Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung)."}
+              ? t("history.appendDescription")
+              : t("history.description")}
           </DialogDescription>
 
           <div
@@ -442,10 +439,10 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
           >
             <DialogHeader className="shrink-0 pr-8">
               <div className="text-lg font-semibold leading-none tracking-tight">
-                Historie
+                {t("history.title")}
               </div>
               <p className="text-sm text-muted">
-                Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).
+                {t("history.description")}
               </p>
             </DialogHeader>
 
@@ -456,10 +453,10 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
             >
               <TabsList className="h-9 w-fit shrink-0">
                 <TabsTrigger value="vorgaenge" className="text-xs">
-                  Vorgänge
+                  {t("history.tabs.jobs")}
                 </TabsTrigger>
                 <TabsTrigger value="medien" className="text-xs">
-                  Medien
+                  {t("history.tabs.media")}
                 </TabsTrigger>
               </TabsList>
 
@@ -492,7 +489,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
 
             <DialogFooter className="shrink-0">
               <Button type="button" onClick={() => onOpenChange(false)}>
-                Schließen
+                {t("common.actions.close")}
               </Button>
             </DialogFooter>
           </div>
@@ -544,7 +541,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               disabled={confirmBusy}
               onClick={() => setPendingConfirm(null)}
             >
-              Abbrechen
+              {t("common.actions.cancel")}
             </Button>
             <Button
               type="button"
@@ -552,7 +549,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               disabled={confirmBusy}
               onClick={() => void runConfirm()}
             >
-              {pendingConfirm?.actionLabel ?? "Löschen"}
+              {pendingConfirm?.actionLabel ?? t("common.actions.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -604,6 +601,7 @@ function VorgaengePanel({
   onOpenAppend: (vorgang: VorgangEntry) => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<VorgangEntry[]>(
     () => seedVorgaengePanel().entries,
   );
@@ -1115,13 +1113,13 @@ function VorgaengePanel({
     onRequestConfirm({
       title:
         n === 1
-          ? "Vorgang aus der Historie entfernen?"
-          : `${n} Vorgänge aus der Historie entfernen?`,
+          ? t("history.confirm.removeJobOne")
+          : t("history.confirm.removeJobMany", { count: n }),
       description:
         n === 1
-          ? "Der ausgewählte Vorgang wird aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; ein zugehöriger QR-Scan-Frame der App wird mit entfernt."
-          : "Die ausgewählten Vorgänge werden aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt.",
-      actionLabel: "Entfernen",
+          ? t("history.confirm.removeJobOneBody")
+          : t("history.confirm.removeJobManyBody"),
+      actionLabel: t("common.actions.remove"),
       run: async () => {
         await deleteVorgaenge(ids);
         useHistoryStore.getState().removeVorgaenge(ids);
@@ -1138,38 +1136,41 @@ function VorgaengePanel({
       <div className="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
         <Input
           className="h-8 max-w-xs text-xs"
-          placeholder="Gast, ID, Dateiname…"
+          placeholder={t("history.searchJobs")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         <div
           className="flex items-center gap-1"
           role="group"
-          aria-label="Status filtern"
+          aria-label={t("history.filterStatusAria")}
         >
-          {AMS_STATUS_FILTERS.map((f) => (
+          {AMS_STATUS_FILTERS.map((id) => (
             <button
-              key={f.id}
+              key={id}
               type="button"
               className={cn(
                 "inline-flex h-7 items-center rounded border px-2 text-[10px] font-medium transition-colors",
-                amsFilter === f.id
+                amsFilter === id
                   ? "border-primary/40 bg-primary/10 text-foreground"
                   : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40",
               )}
-              aria-pressed={amsFilter === f.id}
-              onClick={() => setAmsFilter(f.id)}
+              aria-pressed={amsFilter === id}
+              onClick={() => setAmsFilter(id)}
             >
-              {f.label}
+              {t(`history.filters.${id}`)}
             </button>
           ))}
         </div>
         <span className="ml-auto min-w-[7rem] text-right text-xs text-muted tabular-nums">
           {!ready && filteredEntries.length === 0
-            ? "Laden…"
+            ? t("common.actions.loading")
             : amsFilter === "all"
-              ? `${entries.length} Vorgänge`
-              : `${filteredEntries.length} / ${entries.length}`}
+              ? t("history.jobCount", { count: entries.length })
+              : t("history.jobCountFiltered", {
+                  filtered: filteredEntries.length,
+                  total: entries.length,
+                })}
         </span>
         <Button
           type="button"
@@ -1178,7 +1179,7 @@ function VorgaengePanel({
           disabled={checked.size === 0}
           onClick={requestRemoveSelected}
         >
-          Auswahl entfernen
+          {t("history.removeSelected")}
         </Button>
       </div>
 
@@ -1196,11 +1197,11 @@ function VorgaengePanel({
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border/60">
                 <th className="p-2" />
-                <th className="p-2">Gast</th>
-                <th className="p-2">Datum</th>
-                <th className="p-2">Produkte</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Erstellt</th>
+                <th className="p-2">{t("history.col.guest")}</th>
+                <th className="p-2">{t("history.col.date")}</th>
+                <th className="p-2">{t("history.col.products")}</th>
+                <th className="p-2">{t("history.col.status")}</th>
+                <th className="p-2">{t("history.col.created")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1282,8 +1283,8 @@ function VorgaengePanel({
                 <tr>
                   <td colSpan={6} className="p-4 text-center text-muted">
                     {amsFilter !== "all" && entries.length > 0
-                      ? "Keine Vorgänge für diesen Status."
-                      : "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier."}
+                      ? t("history.emptyFilter")
+                      : t("history.emptyJobs")}
                   </td>
                 </tr>
               )}
@@ -1316,8 +1317,8 @@ function VorgaengePanel({
                       size="sm"
                       variant="ghost"
                       className="h-7 w-7 shrink-0 px-0"
-                      title="QR-Scan-Frame anzeigen"
-                      aria-label="QR-Scan-Frame anzeigen"
+                      title={t("form.toolbar.scanFrame")}
+                      aria-label={t("form.toolbar.scanFrame")}
                       onClick={() => {
                         setShowShadow(true);
                         onQrScanOpenChange(true);
@@ -1330,8 +1331,10 @@ function VorgaengePanel({
                 <div className="text-muted">
                   {[
                     selected.ort,
-                    selected.tandemmaster && `TA: ${selected.tandemmaster}`,
-                    selected.videospringer && `V: ${selected.videospringer}`,
+                    selected.tandemmaster &&
+                      t("history.ta", { name: selected.tandemmaster }),
+                    selected.videospringer &&
+                      t("history.vs", { name: selected.videospringer }),
                   ]
                     .filter(Boolean)
                     .join(" · ") || "—"}
@@ -1339,13 +1342,15 @@ function VorgaengePanel({
                 <div className="truncate text-muted" title={selected.base_output_dir}>
                   {selected.base_filename}
                   {selected.encoder ? ` · ${selected.encoder}` : ""}
-                  {selected.reused_preview ? " · Preview-Reuse" : ""}
+                  {selected.reused_preview ? ` · ${t("history.previewReuse")}` : ""}
                 </div>
                 {(selected.kunden_id || selected.booking_id) && (
                   <div className="text-muted">
                     {[
-                      selected.kunden_id && `Kunde: ${selected.kunden_id}`,
-                      selected.booking_id && `Booking: ${selected.booking_id}`,
+                      selected.kunden_id &&
+                        t("history.customer", { id: selected.kunden_id }),
+                      selected.booking_id &&
+                        t("history.booking", { id: selected.booking_id }),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -1354,7 +1359,7 @@ function VorgaengePanel({
                 {selected.correlation_id?.trim() ? (
                   <div className="pt-1">
                     {!handoffReady && !handoffStatus ? (
-                      <div className="text-muted">Status…</div>
+                      <div className="text-muted">{t("history.statusLoading")}</div>
                     ) : (
                       <AmsHandoffStepper
                         view={
@@ -1376,7 +1381,7 @@ function VorgaengePanel({
                       selected.last_append_correlation_id?.trim()) ? (
                       <div className="pt-2">
                         <div className="mb-0.5 text-[10px] font-medium text-muted-foreground">
-                          Nachreichung
+                          {t("history.append")}
                           {(appends.length || selected.append_count) > 1
                             ? ` ${appends.length || selected.append_count}`
                             : ""}
@@ -1413,17 +1418,17 @@ function VorgaengePanel({
                       disabled={!canAppend}
                       title={
                         !selected.correlation_id?.trim()
-                          ? "Nur bei Online-Vorgängen, nicht bei Lokal"
+                          ? t("history.appendTitleLokal")
                           : (selected.ams_state ?? "").trim().toLowerCase() !==
                               "completed"
-                            ? "Erst wenn der Upload abgeschlossen ist"
+                            ? t("history.appendTitleWait")
                             : lastAppendBusy || appendJobActive
-                              ? "Eine Nachreichung läuft bereits"
-                              : "Weitere Medien in denselben Kundenordner legen"
+                              ? t("history.appendTitleBusy")
+                              : t("history.appendTitleOk")
                       }
                       onClick={() => onOpenAppend(selected)}
                     >
-                      Nachreichen…
+                      {t("history.appendBtn")}
                     </Button>
                   </div>
                 ) : null}
@@ -1431,7 +1436,7 @@ function VorgaengePanel({
 
               <div>
                 <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium text-muted-foreground">
-                  <span>Dateien</span>
+                  <span>{t("history.files")}</span>
                   {filesReady ? (
                     <span className="tabular-nums">{files.length}</span>
                   ) : null}
@@ -1439,11 +1444,11 @@ function VorgaengePanel({
                 <table className="w-full text-left text-xs">
                   <thead className="sticky top-0 z-[1] bg-card">
                     <tr className="border-b border-border/60">
-                      <th className="p-2">Name</th>
-                      <th className="p-2">Typ</th>
-                      <th className="p-2">Rolle</th>
-                      <th className="p-2">Quelle</th>
-                      <th className="p-2">Größe</th>
+                      <th className="p-2">{t("history.col.name")}</th>
+                      <th className="p-2">{t("history.col.type")}</th>
+                      <th className="p-2">{t("history.col.role")}</th>
+                      <th className="p-2">{t("history.col.source")}</th>
+                      <th className="p-2">{t("history.col.size")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1463,14 +1468,16 @@ function VorgaengePanel({
                               className="inline-flex rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-violet-900 dark:text-violet-100"
                               title={
                                 f.append_folder_name
-                                  ? `Nachreichung ${f.append_folder_name}`
-                                  : "Nachgereicht"
+                                  ? t("history.appendedFolder", {
+                                      folder: f.append_folder_name,
+                                    })
+                                  : t("history.appended")
                               }
                             >
-                              Nachgereicht
+                              {t("history.appended")}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">Original</span>
+                            <span className="text-muted-foreground">{t("history.original")}</span>
                           )}
                         </td>
                         <td className="p-2">{formatBytes(f.size_bytes)}</td>
@@ -1479,7 +1486,7 @@ function VorgaengePanel({
                     {filesReady && files.length === 0 && (
                       <tr>
                         <td colSpan={5} className="p-4 text-center text-muted">
-                          Keine Dateien
+                          {t("history.noFiles")}
                         </td>
                       </tr>
                     )}
@@ -1495,9 +1502,9 @@ function VorgaengePanel({
                     style={{ width: scanDialogWidth }}
                   >
                     <DialogHeader className="shrink-0">
-                      <DialogTitle>QR-Scan</DialogTitle>
+                      <DialogTitle>{t("form.toolbar.scanTitle")}</DialogTitle>
                       <DialogDescription>
-                        Treffer-Frame dieses Vorgangs
+                        {t("history.scanDescriptionJob")}
                       </DialogDescription>
                     </DialogHeader>
                     <QrSpotlightPreview
@@ -1533,7 +1540,7 @@ function VorgaengePanel({
                             onCheckedChange={setShowShadow}
                           />
                           <span className="text-sm font-medium text-foreground">
-                            Schatten
+                            {t("form.toolbar.shadow")}
                           </span>
                         </label>
                         <Button
@@ -1541,7 +1548,7 @@ function VorgaengePanel({
                           className="w-full min-[28rem]:mt-auto"
                           onClick={() => onQrScanOpenChange(false)}
                         >
-                          Schließen
+                          {t("common.actions.close")}
                         </Button>
                       </div>
                     </div>
@@ -1551,7 +1558,7 @@ function VorgaengePanel({
             </div>
           ) : ready ? (
             <div className="flex flex-1 items-center justify-center text-xs text-muted">
-              Vorgang auswählen
+              {t("history.selectJob")}
             </div>
           ) : (
             <div className="space-y-2 p-3">
@@ -1573,6 +1580,7 @@ function MedienPanel({
   dialogOpen: boolean;
   onRequestConfirm: (pending: PendingConfirm) => void;
 }) {
+  const { t } = useTranslation();
   const [entries, setEntries] = useState<ProcessedFileEntry[]>(() => {
     const s = useHistoryStore.getState();
     return s.medienLoaded && s.medienQuery === "" ? s.medien : [];
@@ -1643,8 +1651,12 @@ function MedienPanel({
   const stats = useMemo(() => {
     const videos = filtered.filter((e) => e.media_type === "video").length;
     const photos = filtered.filter((e) => e.media_type === "photo").length;
-    return `${filtered.length} Einträge (${videos} Videos, ${photos} Fotos)`;
-  }, [filtered]);
+    return t("history.media.stats", {
+      total: filtered.length,
+      videos,
+      photos,
+    });
+  }, [filtered, t]);
 
   function toggle(id: number) {
     setSelected((prev) => {
@@ -1662,13 +1674,13 @@ function MedienPanel({
     onRequestConfirm({
       title:
         n === 1
-          ? "Medien-Eintrag aus der Historie entfernen?"
-          : `${n} Medien-Einträge aus der Historie entfernen?`,
+          ? t("history.confirm.removeMediaOne")
+          : t("history.confirm.removeMediaMany", { count: n }),
       description:
         n === 1
-          ? "Der Eintrag wird aus der Medien-Historie gelöscht. Die Datei selbst bleibt erhalten."
-          : "Die Einträge werden aus der Medien-Historie gelöscht. Die Dateien selbst bleiben erhalten.",
-      actionLabel: "Entfernen",
+          ? t("history.confirm.removeMediaOneBody")
+          : t("history.confirm.removeMediaManyBody"),
+      actionLabel: t("common.actions.remove"),
       run: async () => {
         await deleteProcessedFiles(ids);
         useHistoryStore.getState().removeMedien(ids);
@@ -1679,10 +1691,9 @@ function MedienPanel({
 
   function requestPurgeAll() {
     onRequestConfirm({
-      title: "Gesamte Medien-Historie löschen?",
-      description:
-        "Alle Einträge der Medien-Historie (Duplikat-Erkennung) werden entfernt. Die Dateien selbst bleiben erhalten.",
-      actionLabel: "Alles löschen",
+      title: t("history.confirm.purgeMedia"),
+      description: t("history.confirm.purgeMediaBody"),
+      actionLabel: t("common.actions.deleteAll"),
       run: async () => {
         await purgeProcessedFiles();
         useHistoryStore.getState().clearMedien();
@@ -1698,7 +1709,7 @@ function MedienPanel({
       <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
         <Input
           className="h-8 max-w-xs text-xs"
-          placeholder="Suchen…"
+          placeholder={t("history.searchMedia")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -1707,9 +1718,9 @@ function MedienPanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Alle</SelectItem>
-            <SelectItem value="video">Videos</SelectItem>
-            <SelectItem value="photo">Fotos</SelectItem>
+            <SelectItem value="all">{t("history.filters.all")}</SelectItem>
+            <SelectItem value="video">{t("common.labels.videos")}</SelectItem>
+            <SelectItem value="photo">{t("common.labels.photos")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={period} onValueChange={(v) => setPeriod(v as PeriodFilter)}>
@@ -1717,18 +1728,18 @@ function MedienPanel({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Alle Zeit</SelectItem>
-            <SelectItem value="today">Heute</SelectItem>
-            <SelectItem value="7d">Letzte 7 Tage</SelectItem>
-            <SelectItem value="30d">Letzter Monat</SelectItem>
-            <SelectItem value="365d">Letztes Jahr</SelectItem>
+            <SelectItem value="all">{t("history.media.allTime")}</SelectItem>
+            <SelectItem value="today">{t("history.media.today")}</SelectItem>
+            <SelectItem value="7d">{t("history.media.last7")}</SelectItem>
+            <SelectItem value="30d">{t("history.media.lastMonth")}</SelectItem>
+            <SelectItem value="365d">{t("history.media.lastYear")}</SelectItem>
           </SelectContent>
         </Select>
         <span className="ml-auto min-w-[12rem] text-right text-xs text-muted tabular-nums">
-          {!ready && filtered.length === 0 ? "Laden…" : stats}
+          {!ready && filtered.length === 0 ? t("common.actions.loading") : stats}
         </span>
         <Button type="button" variant="destructive" size="sm" onClick={requestPurgeAll}>
-          Alles löschen
+          {t("common.actions.deleteAll")}
         </Button>
         <Button
           type="button"
@@ -1737,7 +1748,7 @@ function MedienPanel({
           disabled={selected.size === 0}
           onClick={requestRemoveSelected}
         >
-          Auswahl entfernen
+          {t("history.removeSelected")}
         </Button>
       </div>
 
@@ -1754,11 +1765,11 @@ function MedienPanel({
           <thead className="sticky top-0 bg-card">
             <tr className="border-b border-border/60">
               <th className="p-2" />
-              <th className="p-2">Dateiname</th>
-              <th className="p-2">Typ</th>
-              <th className="p-2">Größe</th>
-              <th className="p-2">Importiert</th>
-              <th className="p-2">Gesichert</th>
+              <th className="p-2">{t("media.list.filename")}</th>
+              <th className="p-2">{t("history.col.type")}</th>
+              <th className="p-2">{t("history.col.size")}</th>
+              <th className="p-2">{t("history.media.imported")}</th>
+              <th className="p-2">{t("history.media.backedUp")}</th>
             </tr>
           </thead>
           <tbody>
@@ -1788,7 +1799,7 @@ function MedienPanel({
             {showEmpty && (
               <tr>
                 <td colSpan={6} className="p-4 text-center text-muted">
-                  Keine Einträge
+                  {t("history.media.empty")}
                 </td>
               </tr>
             )}

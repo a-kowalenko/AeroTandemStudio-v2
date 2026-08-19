@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -21,6 +22,7 @@ type Props = {
  * User must abort or switch to Legacy — no auto-timeout.
  */
 export function BodyConcatFallbackDialog({ open, reason, onChoose }: Props) {
+  const { t } = useTranslation();
   return (
     <Dialog
       open={open}
@@ -38,15 +40,11 @@ export function BodyConcatFallbackDialog({ open, reason, onChoose }: Props) {
       >
         <DialogHeader className="min-w-0">
           <DialogTitle className="text-warning">
-            Fast Path fehlgeschlagen
+            {t("dialogs.bodyConcat.title")}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="min-w-0 space-y-3 text-sm text-foreground">
-              <p className="break-words">
-                Die Clips konnten nicht im schnellen Single-Pass
-                zusammengefügt werden. Du kannst abbrechen oder den robusteren
-                Legacy-Modus (MPEG-TS) verwenden — das dauert länger.
-              </p>
+              <p className="break-words">{t("dialogs.bodyConcat.body")}</p>
               {reason ? (
                 <p className="min-w-0 overflow-x-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted [overflow-wrap:anywhere]">
                   {reason}
@@ -57,10 +55,10 @@ export function BodyConcatFallbackDialog({ open, reason, onChoose }: Props) {
         </DialogHeader>
         <DialogFooter className="min-w-0 gap-2 sm:justify-between">
           <Button variant="outline" onClick={() => onChoose("abort")}>
-            Abbrechen
+            {t("common.actions.cancel")}
           </Button>
           <Button variant="default" onClick={() => onChoose("use_legacy")}>
-            Legacy verwenden
+            {t("dialogs.bodyConcat.useLegacy")}
           </Button>
         </DialogFooter>
       </DialogContent>

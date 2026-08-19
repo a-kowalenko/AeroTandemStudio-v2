@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FolderOpen, HardDrive } from "lucide-react";
 import {
   Select,
@@ -54,6 +55,7 @@ export function SdDriveSelector({
   onOpenDrive,
   onPrimaryAction,
 }: Props) {
+  const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const drives = useSdStore((s) => s.drives);
   const activeDrive = useSdStore((s) => s.activeDrive);
@@ -80,8 +82,8 @@ export function SdDriveSelector({
 
   const ctaTitle =
     config?.sd_backup_mode === "auto"
-      ? "Backup, Import, Bereinigen und Auswerfen laut Einstellungen starten"
-      : "Dateiauswahl mit Optionen für Backup, Import, Bereinigen und Auswerfen";
+      ? t("sd.drive.primaryAutoTitle")
+      : t("sd.drive.primaryConfirmTitle");
 
   async function refreshDrives() {
     try {
@@ -123,17 +125,17 @@ export function SdDriveSelector({
   }, []);
 
   const triggerTitle = (() => {
-    if (busyPhase) return "SD-Vorgang läuft";
+    if (busyPhase) return t("sd.drive.busyTitle");
     if (selectedInfo) {
       const tip = driveTooltip(selectedInfo);
       return `${tip} — SD-Karte wählen / Dateiauswahl`;
     }
     if (drives.length === 0) {
       return watching
-        ? "SD-Überwachung aktiv — keine Action-Cam SD-Karte (DCIM) gefunden"
-        : "Keine Action-Cam SD-Karte (DCIM) gefunden";
+        ? t("sd.drive.watchingNoCard")
+        : t("sd.drive.noCard");
     }
-    return "SD-Karte wählen — öffnet Dateiauswahl";
+    return t("sd.drive.chooseTitle");
   })();
 
   return (
@@ -166,7 +168,7 @@ export function SdDriveSelector({
         <SelectTrigger
           className="h-8 min-w-[5.5rem] max-w-[11rem] text-xs"
           title={triggerTitle}
-          aria-label="SD-Karte"
+          aria-label={t("sd.drive.aria")}
         >
           <span className="flex min-w-0 items-center gap-1">
             <span className="relative shrink-0">
@@ -179,7 +181,7 @@ export function SdDriveSelector({
               {watching && (
                 <span
                   className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-success"
-                  title="SD-Überwachung aktiv"
+                  title={t("sd.drive.watching")}
                   aria-hidden
                 />
               )}
@@ -191,7 +193,7 @@ export function SdDriveSelector({
               </span>
             ) : (
               <SelectValue
-                placeholder={watching ? "Überwachung" : "Keine SD"}
+                placeholder={watching ? t("sd.drive.monitoring") : t("sd.drive.none")}
               />
             )}
           </span>
@@ -225,8 +227,8 @@ export function SdDriveSelector({
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     "disabled:pointer-events-none disabled:opacity-40",
                   )}
-                  title={`„${label}“ auswerfen`}
-                  aria-label={`SD-Karte ${label} auswerfen`}
+                  title={t("sd.drive.ejectTitle", { label })}
+                  aria-label={t("sd.drive.ejectAria", { label })}
                   disabled={busyPhase || disabled || ejecting !== null}
                   onPointerDown={(e) => {
                     // Prevent Radix Select from selecting the row / closing via item.
@@ -261,7 +263,7 @@ export function SdDriveSelector({
         }}
       >
         <FolderOpen className="h-3.5 w-3.5" />
-        Öffnen
+        {t("sd.drive.open")}
       </Button>
     </div>
   );

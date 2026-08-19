@@ -1,3 +1,5 @@
+import { tr } from "@/i18n";
+
 /** Compact labels for create-job validation errors shown above Erstellen. */
 
 const SPEICHERORT_HINT = "Speicherort";
@@ -40,86 +42,78 @@ export type CreateReadyItem = {
 export type CreateReadyBanner = {
   headline: string;
   items: CreateReadyItem[];
-  /** False when the headline already names the single remaining item. */
   showChips: boolean;
 };
 
 export type SummarizeCreateHintsOpts = {
   workStarted: boolean;
-  /** Hide “product selected but list empty” while import/SD/QR pipeline runs. */
   suppressEmptyMedia: boolean;
 };
 
 type HintMeta = CreateReadyItem & {
-  /** Video/Foto list empty while a matching product is booked. */
   emptyMedia?: boolean;
 };
 
-const EXACT_META: Record<string, HintMeta> = {
+/** Rust validation messages (German) → i18n meta keys. */
+const HINT_META: Record<string, Omit<HintMeta, "label"> & { labelKey: string }> = {
   "Tandemmaster ist erforderlich": {
-    label: "Tandemmaster",
+    labelKey: "create.ready.chips.tandemmaster",
     kind: "missing",
     target: "tandemmaster",
   },
   "Datum ist erforderlich": {
-    label: "Datum",
+    labelKey: "create.ready.chips.date",
     kind: "missing",
     target: "datum",
   },
   "Vorname und Nachname sind erforderlich": {
-    label: "Name",
+    labelKey: "create.ready.chips.name",
     kind: "missing",
     target: "name",
   },
   "Email ist erforderlich": {
-    label: "E-Mail",
+    labelKey: "create.ready.chips.email",
     kind: "missing",
     target: "email",
   },
   "Videospringer ist erforderlich bei Outside Video": {
-    label: "Videospringer",
+    labelKey: "create.ready.chips.videospringer",
     kind: "missing",
     target: "videospringer",
   },
   "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein": {
-    label: "Crew-Konflikt",
+    labelKey: "create.ready.chips.crewConflict",
     kind: "invalid",
     target: "videospringer",
   },
-  "Bitte wählen Sie mindestens ein Produkt aus (Handcam/Outside Foto oder Video).":
-    {
-      label: "Produkt",
-      kind: "missing",
-      target: "produkt",
-    },
+  "Bitte wählen Sie mindestens ein Produkt aus (Handcam/Outside Foto oder Video).": {
+    labelKey: "create.ready.chips.product",
+    kind: "missing",
+    target: "produkt",
+  },
   "Sie haben ein Video-Produkt ausgewählt, aber keine Videos hinzugefügt.": {
-    label: "Videos",
+    labelKey: "create.ready.chips.videos",
     kind: "missing",
     target: "videos",
     emptyMedia: true,
   },
   "Sie haben ein Foto-Produkt ausgewählt, aber keine Fotos hinzugefügt.": {
-    label: "Fotos",
+    labelKey: "create.ready.chips.photos",
     kind: "missing",
     target: "fotos",
     emptyMedia: true,
   },
-  "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.":
-    {
-      label: "Wasserzeichen",
-      kind: "missing",
-      target: "watermark",
-    },
+  "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.": {
+    labelKey: "create.ready.chips.watermark",
+    kind: "missing",
+    target: "watermark",
+  },
   "Validierung fehlgeschlagen": {
-    label: "Validierung",
+    labelKey: "create.validation.validation",
     kind: "invalid",
     target: "none",
   },
 };
-
-const EXACT_LABELS: Record<string, string> = Object.fromEntries(
-  Object.entries(EXACT_META).map(([hint, meta]) => [hint, meta.label]),
-);
 
 const TARGET_IDS: Record<CreateReadyTarget, string | null> = {
   tandemmaster: CREATE_READY_IDS.tandemmaster,
@@ -136,36 +130,57 @@ const TARGET_IDS: Record<CreateReadyTarget, string | null> = {
   none: null,
 };
 
+function metaFromHint(hint: string): HintMeta | null {
+  const exact = HINT_META[hint];
+  if (exact) {
+    const { labelKey, ...rest } = exact;
+    return { ...rest, label: tr(labelKey) };
+  }
+  if (hint.startsWith("Kunden-ID muss")) {
+    return {
+      label: tr("create.validation.customerId"),
+      kind: "invalid",
+      target: "kunden-id",
+    };
+  }
+  if (hint.startsWith("Booking-ID muss")) {
+    return {
+      label: tr("create.validation.bookingId"),
+      kind: "invalid",
+      target: "booking-id",
+    };
+  }
+  if (hint.includes("ist keine .mp4")) {
+    return {
+      label: tr("create.validation.notMp4"),
+      kind: "invalid",
+      target: "videos",
+    };
+  }
+  if (hint.includes("existiert nicht")) {
+    return {
+      label: tr("create.validation.fileMissing"),
+      kind: "invalid",
+      target: "videos",
+    };
+  }
+  return null;
+}
+
 export function isBlockingCreateHint(hint: string): boolean {
   return !hint.includes(SPEICHERORT_HINT);
 }
 
 export function shortCreateHintLabel(hint: string): string {
-  const exact = EXACT_LABELS[hint];
-  if (exact) return exact;
-  if (hint.startsWith("Kunden-ID muss")) return "Kunden-ID";
-  if (hint.startsWith("Booking-ID muss")) return "Booking-ID";
-  if (hint.includes("ist keine .mp4")) return "Keine .mp4";
-  if (hint.includes("existiert nicht")) return "Datei fehlt";
+  const meta = metaFromHint(hint);
+  if (meta) return meta.label;
   return hint;
 }
 
 function classifyHint(hint: string): HintMeta | null {
   if (!isBlockingCreateHint(hint)) return null;
-  const exact = EXACT_META[hint];
-  if (exact) return exact;
-  if (hint.startsWith("Kunden-ID muss")) {
-    return { label: "Kunden-ID", kind: "invalid", target: "kunden-id" };
-  }
-  if (hint.startsWith("Booking-ID muss")) {
-    return { label: "Booking-ID", kind: "invalid", target: "booking-id" };
-  }
-  if (hint.includes("ist keine .mp4")) {
-    return { label: "Keine .mp4", kind: "invalid", target: "videos" };
-  }
-  if (hint.includes("existiert nicht")) {
-    return { label: "Datei fehlt", kind: "invalid", target: "videos" };
-  }
+  const meta = metaFromHint(hint);
+  if (meta) return meta;
   return { label: hint, kind: "invalid", target: "none" };
 }
 
@@ -186,15 +201,14 @@ function headlineFor(items: CreateReadyItem[]): string {
   const hasInvalid = items.some((i) => i.kind === "invalid");
   if (n === 1) {
     return items[0].kind === "missing"
-      ? `Noch ${items[0].label}`
+      ? tr("create.ready.headline.missingOne", { label: items[0].label })
       : items[0].label;
   }
-  if (hasInvalid && !hasMissing) return "Angaben prüfen";
-  if (hasMissing && hasInvalid) return "Angaben unvollständig";
-  return `Noch ${n} Angaben fehlen`;
+  if (hasInvalid && !hasMissing) return tr("create.ready.headline.check");
+  if (hasMissing && hasInvalid) return tr("create.ready.headline.incomplete");
+  return tr("create.ready.headline.missingMany", { count: n });
 }
 
-/** Blocking create errors as a compact footer banner, or null if none. */
 export function summarizeCreateHints(
   hints: string[],
   opts: SummarizeCreateHintsOpts = {
@@ -207,7 +221,8 @@ export function summarizeCreateHints(
       const meta = classifyHint(hint);
       if (!meta) return [];
       if (meta.kind === "missing" && !opts.workStarted) return [];
-      if (meta.emptyMedia && opts.suppressEmptyMedia) return [];
+      const src = HINT_META[hint];
+      if (src?.emptyMedia && opts.suppressEmptyMedia) return [];
       return [{ label: meta.label, kind: meta.kind, target: meta.target }];
     }),
   );
@@ -244,4 +259,37 @@ export function focusCreateReadyTarget(
     },
     tab ? 80 : 0,
   );
+}
+
+/** Translate known Rust validation messages for display. */
+export function translateValidationHint(hint: string): string {
+  const keyMap: Record<string, string> = {
+    "Tandemmaster ist erforderlich": "create.validation.tandemmasterRequired",
+    "Datum ist erforderlich": "create.validation.dateRequired",
+    "Vorname und Nachname sind erforderlich": "create.validation.nameRequired",
+    "Email ist erforderlich": "create.validation.emailRequired",
+    "Videospringer ist erforderlich bei Outside Video":
+      "create.validation.videospringerRequired",
+    "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein":
+      "create.validation.crewConflict",
+    "Bitte wählen Sie mindestens ein Produkt aus (Handcam/Outside Foto oder Video).":
+      "create.validation.productRequired",
+    "Sie haben ein Video-Produkt ausgewählt, aber keine Videos hinzugefügt.":
+      "create.validation.videosMissing",
+    "Sie haben ein Foto-Produkt ausgewählt, aber keine Fotos hinzugefügt.":
+      "create.validation.photosMissing",
+    "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.":
+      "create.validation.watermarkRequired",
+    "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.":
+      "create.validation.previewVideoRequired",
+    "Speicherort ist nicht gesetzt. Bitte Ordner wählen.":
+      "create.validation.storageNotSet",
+    "Bitte mindestens eine Datei zum Nachreichen wählen.":
+      "create.append.pickFile",
+    "Zu viele Nachreichungen für diesen Vorgang (99).":
+      "create.append.tooMany",
+    "Validierung fehlgeschlagen": "create.validation.failed",
+  };
+  const key = keyMap[hint];
+  return key ? tr(key) : hint;
 }

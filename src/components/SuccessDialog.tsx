@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   Archive,
@@ -96,20 +97,22 @@ function toneStatusIcon(tone: DialogActionTone): ReactNode {
   }
 }
 
-function toneLabel(tone: DialogActionTone): string {
+function toneLabelKey(tone: DialogActionTone): string {
   switch (tone) {
     case "success":
-      return "Erfolgreich";
+      return "dialogs.success.tone.success";
     case "error":
-      return "Fehlgeschlagen";
+      return "dialogs.success.tone.error";
     case "warning":
-      return "Hinweis";
+      return "common.status.warning";
     case "skipped":
-      return "Übersprungen";
+      return "dialogs.success.tone.skipped";
   }
 }
 
 function ActionRow({ action }: { action: DialogActionStatus }) {
+  const { t } = useTranslation();
+  const toneText = t(toneLabelKey(action.tone));
   return (
     <li
       className={cn(
@@ -137,8 +140,8 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
           <p className="break-words text-sm font-medium text-foreground">
             {action.label}
           </p>
-          <span className="flex shrink-0 items-center gap-1" title={toneLabel(action.tone)}>
-            <span className="sr-only">{toneLabel(action.tone)}</span>
+          <span className="flex shrink-0 items-center gap-1" title={toneText}>
+            <span className="sr-only">{toneText}</span>
             {toneStatusIcon(action.tone)}
           </span>
         </div>
@@ -160,7 +163,7 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
 
 export function SuccessDialog({
   open,
-  title = "Erfolg",
+  title,
   message,
   autoCloseSecs = null,
   variant = "default",
@@ -171,6 +174,8 @@ export function SuccessDialog({
   choices = null,
   onClose,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("dialogs.success.defaultTitle");
   const timeoutSecs =
     !confirm && !choices && autoCloseSecs && autoCloseSecs > 0
       ? autoCloseSecs
@@ -224,7 +229,7 @@ export function SuccessDialog({
       window.cancelAnimationFrame(startRaf);
       window.clearInterval(id);
     };
-  }, [open, timeoutSecs, message, title, variant, highlightText, actions]);
+  }, [open, timeoutSecs, message, resolvedTitle, variant, highlightText, actions]);
 
   function dismissSafe() {
     if (closedRef.current) return;
@@ -306,7 +311,7 @@ export function SuccessDialog({
                   ) : (
                     <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
                   )}
-                  {title}
+                  {resolvedTitle}
                 </DialogTitle>
               </div>
             </div>
@@ -316,7 +321,7 @@ export function SuccessDialog({
                 accent === "success" ? "text-success" : "text-warning"
               }
             >
-              {title}
+              {resolvedTitle}
             </DialogTitle>
           )}
           {isQr && highlightText ? (
@@ -335,7 +340,7 @@ export function SuccessDialog({
             </DialogDescription>
           ) : (
             <DialogDescription className="sr-only">
-              {messageText || "Zusammenfassung der Aktionen."}
+              {messageText || t("dialogs.success.actionsSummary")}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -401,7 +406,7 @@ export function SuccessDialog({
                 className="w-full"
                 onClick={onChoiceCancel}
               >
-                {choices.cancelLabel ?? "Abbrechen"}
+                {choices.cancelLabel ?? t("common.actions.cancel")}
               </Button>
             </>
           ) : confirm ? (
@@ -424,7 +429,10 @@ export function SuccessDialog({
             </>
           ) : (
             <Button className="shrink-0" onClick={close}>
-              OK{timeoutSecs && remaining > 0 ? ` (${remaining}s)` : ""}
+              {t("common.actions.ok")}
+              {timeoutSecs && remaining > 0
+                ? t("dialogs.countdownSuffix", { seconds: remaining })
+                : ""}
             </Button>
           )}
         </DialogFooter>
@@ -442,7 +450,7 @@ export function SuccessDialog({
                 ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100)
                 : 0
             }
-            aria-label="Automatisches Schließen"
+            aria-label={t("dialogs.autoCloseAria")}
           >
             <div
               className={cn(

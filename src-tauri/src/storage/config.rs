@@ -213,6 +213,9 @@ pub struct AppConfig {
     /// First-run setup wizard finished (or skipped). Reset clears this.
     #[serde(default)]
     pub setup_completed: bool,
+    /// UI language: `"de"` | `"en"` | `"es-MX"`.
+    #[serde(default = "default_ui_language")]
+    pub ui_language: String,
     /// Optional AMS LAN Bridge base URL (`http://host:8787`).
     #[serde(default)]
     pub ams_bridge_url: String,
@@ -432,6 +435,10 @@ fn default_manual_entry_mode() -> String {
     "id".into()
 }
 
+fn default_ui_language() -> String {
+    "de".into()
+}
+
 impl AppConfig {
     /// Canonicalize `manual_entry_mode` and keep `oldschool_mode` in sync.
     pub fn sync_manual_entry_mode(&mut self) {
@@ -452,6 +459,15 @@ impl AppConfig {
     /// Canonicalize `body_concat_mode` to `fast` | `legacy`.
     pub fn sync_body_concat_mode(&mut self) {
         self.body_concat_mode = normalize_body_concat_mode(&self.body_concat_mode);
+    }
+
+    /// Canonicalize UI language to `de` | `en` | `es-MX`.
+    pub fn sync_ui_language(&mut self) {
+        self.ui_language = match self.ui_language.trim() {
+            "en" => "en".into(),
+            "es-MX" | "es-mx" | "es_mx" => "es-MX".into(),
+            _ => "de".into(),
+        };
     }
 
     /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
@@ -512,6 +528,7 @@ impl Default for AppConfig {
             keep_videospringer_on_session_reset: false,
             auto_clear_files_after_creation: false,
             setup_completed: false,
+            ui_language: default_ui_language(),
             ams_bridge_url: String::new(),
             ams_bridge_token: String::new(),
             ams_bridge_last_ok_url: String::new(),
@@ -569,6 +586,7 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
     cfg.sync_body_concat_mode();
+    cfg.sync_ui_language();
     Ok(cfg)
 }
 
@@ -654,6 +672,7 @@ impl ConfigStore {
         normalized.sync_manual_entry_mode();
         normalized.sync_intro_mux_mode();
         normalized.sync_body_concat_mode();
+        normalized.sync_ui_language();
         let conn = self.connect()?;
         self.save_with_conn(&conn, &normalized)
     }

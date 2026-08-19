@@ -2,32 +2,12 @@ import type {
   DialogPrimaryAction,
   SettingsFocusTarget,
 } from "@/store/uiStore";
+import { tr } from "@/i18n";
 
 export const AMS_HEALTH_POLL_MS = 45_000;
 
 /** Operator-facing name for the AMS bridge. Keep “AMS” out of everyday UI. */
 export const AMS_OPERATOR_TITLE = "Buchungssuche";
-
-export const AMS_UNREACHABLE_LABEL = "Buchungssuche nicht erreichbar";
-export const AMS_URL_MISSING_LABEL = "Adresse fehlt";
-export const AMS_URL_INVALID_LABEL = "Ungültige Adresse";
-export const AMS_TOKEN_MISSING_LABEL = "Zugangscode fehlt";
-export const AMS_TOKEN_INVALID_LABEL = "Zugangscode ungültig";
-
-export const AMS_URL_MISSING_HINT =
-  "Es ist keine Adresse für die Buchungssuche hinterlegt.";
-
-export const AMS_TOKEN_MISSING_HINT =
-  "Bitte den Zugangscode in den Einstellungen eintragen.";
-
-export const AMS_TOKEN_AUTH_HINT = "Bitte den Zugangscode prüfen.";
-
-export const AMS_UNREACHABLE_HINT =
-  "Kundendaten bitte von Hand eintragen.";
-
-export const AMS_LOOKUP_ERROR_FALLBACK = "Kunde konnte nicht geladen werden";
-
-export const AMS_HEALTH_OK_MESSAGE = "Buchungssuche verbunden";
 
 export type AmsBridgeErrorKind =
   | "unreachable"
@@ -44,20 +24,24 @@ export type AmsBridgeErrorDetail = {
 };
 
 const LABEL_BY_KIND: Record<AmsBridgeErrorKind, string> = {
-  unreachable: AMS_UNREACHABLE_LABEL,
-  url_missing: AMS_URL_MISSING_LABEL,
-  url_invalid: AMS_URL_INVALID_LABEL,
-  token_missing: AMS_TOKEN_MISSING_LABEL,
-  token_invalid: AMS_TOKEN_INVALID_LABEL,
-  error: AMS_UNREACHABLE_LABEL,
+  unreachable: "ams.status.unreachableLabel",
+  url_missing: "ams.status.urlMissingLabel",
+  url_invalid: "ams.status.urlInvalidLabel",
+  token_missing: "ams.status.tokenMissingLabel",
+  token_invalid: "ams.status.tokenInvalidLabel",
+  error: "ams.status.unreachableLabel",
 };
+
+function amsLabel(key: string): string {
+  return tr(key);
+}
 
 export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   const raw = message.trim();
   if (!raw) {
     return {
       kind: "unreachable",
-      text: AMS_UNREACHABLE_LABEL,
+      text: amsLabel(LABEL_BY_KIND.unreachable),
       focus: "ams-bridge-url",
     };
   }
@@ -69,7 +53,7 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   ) {
     return {
       kind: "url_missing",
-      text: AMS_URL_MISSING_LABEL,
+      text: amsLabel(LABEL_BY_KIND.url_missing),
       focus: "ams-bridge-url",
     };
   }
@@ -78,42 +62,42 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   ) {
     return {
       kind: "url_invalid",
-      text: AMS_URL_INVALID_LABEL,
+      text: amsLabel(LABEL_BY_KIND.url_invalid),
       focus: "ams-bridge-url",
     };
   }
   if (/token\s+fehlt|token\s+missing/.test(lower)) {
     return {
       kind: "token_missing",
-      text: AMS_TOKEN_MISSING_LABEL,
+      text: amsLabel(LABEL_BY_KIND.token_missing),
       focus: "ams-bridge-token",
     };
   }
   if (/token\s+ungültig|401/.test(lower)) {
     return {
       kind: "token_invalid",
-      text: AMS_TOKEN_INVALID_LABEL,
+      text: amsLabel(LABEL_BY_KIND.token_invalid),
       focus: "ams-bridge-token",
     };
   }
   if (/keinen\s+ams-handoff/.test(lower)) {
     return {
       kind: "error",
-      text: "Nur bei Online-Vorgängen, nicht bei Lokal",
+      text: tr("ams.status.onlineOnly"),
       focus: null,
     };
   }
   if (/preflight|customer-lookup/.test(lower) && /not[_ ]?found|nicht gefunden/.test(lower)) {
     return {
       kind: "error",
-      text: "Kunde in der Buchung nicht gefunden",
+      text: tr("ams.status.customerNotFound"),
       focus: null,
     };
   }
   if (/meldet\s+online\s*=\s*false|online=false/.test(lower)) {
     return {
       kind: "unreachable",
-      text: AMS_UNREACHABLE_LABEL,
+      text: amsLabel(LABEL_BY_KIND.unreachable),
       focus: "ams-bridge-url",
     };
   }
@@ -124,14 +108,14 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
   ) {
     return {
       kind: "unreachable",
-      text: AMS_UNREACHABLE_LABEL,
+      text: amsLabel(LABEL_BY_KIND.unreachable),
       focus: "ams-bridge-url",
     };
   }
 
   return {
     kind: "error",
-    text: LABEL_BY_KIND.error,
+    text: amsLabel(LABEL_BY_KIND.error),
     focus: "ams-bridge-url",
   };
 }
@@ -163,38 +147,38 @@ export function presentAmsBridgeError(opts: {
         };
 
   if (detail.kind === "url_missing" || detail.kind === "url_invalid") {
-    const hint = detail.kind === "url_missing" ? AMS_URL_MISSING_HINT : null;
+    const hint = detail.kind === "url_missing" ? tr("ams.status.urlMissingHint") : null;
     return {
       message: hint ? `${detail.text}\n\n${hint}` : detail.text,
       focus: "ams-bridge-url",
-      primaryAction: withAction("Einstellungen öffnen", "ams-bridge-url"),
+      primaryAction: withAction(tr("ams.actions.openSettings"), "ams-bridge-url"),
     };
   }
   if (detail.kind === "token_missing") {
     return {
-      message: `${detail.text}\n\n${AMS_TOKEN_MISSING_HINT}`,
+      message: `${detail.text}\n\n${tr("ams.status.tokenMissingHint")}`,
       focus: "ams-bridge-token",
-      primaryAction: withAction("Zugangscode prüfen", "ams-bridge-token"),
+      primaryAction: withAction(tr("ams.actions.checkToken"), "ams-bridge-token"),
     };
   }
   if (detail.kind === "token_invalid") {
     return {
-      message: `${detail.text}\n\n${AMS_TOKEN_AUTH_HINT}`,
+      message: `${detail.text}\n\n${tr("ams.status.tokenAuthHint")}`,
       focus: "ams-bridge-token",
-      primaryAction: withAction("Zugangscode prüfen", "ams-bridge-token"),
+      primaryAction: withAction(tr("ams.actions.checkToken"), "ams-bridge-token"),
     };
   }
 
   const message =
     detail.kind === "unreachable"
-      ? `${detail.text}\n\n${AMS_UNREACHABLE_HINT}`
+      ? `${detail.text}\n\n${tr("ams.status.unreachableHint")}`
       : detail.text;
 
   return {
     message,
     focus: detail.focus,
     primaryAction: detail.focus
-      ? withAction("Einstellungen öffnen", detail.focus)
+      ? withAction(tr("ams.actions.openSettings"), detail.focus)
       : null,
   };
 }
@@ -207,11 +191,11 @@ export function amsBridgeStatusErrorTooltip(message: string): string {
 }
 
 export function formatAmsConnectedTooltip(): string {
-  return `${AMS_OPERATOR_TITLE}: verbunden`;
+  return tr("ams.status.connectedTooltip", { title: AMS_OPERATOR_TITLE });
 }
 
 export function formatAmsHealthSuccessMessage(_raw?: string): string {
-  return AMS_HEALTH_OK_MESSAGE;
+  return tr("ams.status.healthOk");
 }
 
 export function presentAmsLookupError(raw: string): string {
@@ -224,7 +208,7 @@ export function presentAmsLookupError(raw: string): string {
   ) {
     return detail.text;
   }
-  return AMS_LOOKUP_ERROR_FALLBACK;
+  return tr("ams.status.lookupErrorFallback");
 }
 
 /** Rewrite AMS jargon in errors that reach operators (create, append, …). */

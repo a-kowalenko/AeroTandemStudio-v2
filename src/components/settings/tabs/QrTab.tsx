@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -5,31 +6,33 @@ import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
 export function QrTab({ draft, patch }: SettingsTabBaseProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Auto-Scan beim Import"
-        description="Nach Drag & Drop, Dateiauswahl oder SD-Import werden neue Dateien automatisch auf QR geprüft. Die Schalter stehen auch direkt unter der Medien-Dropzone."
+        title={t("settings.qr.autoScan.title")}
+        description={t("settings.qr.autoScan.description")}
       >
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.qr_check_enabled}
             onCheckedChange={(v) => patch("qr_check_enabled", v === true)}
           />
-          Videos beim Import automatisch scannen
+          {t("settings.qr.autoScan.videos")}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.photo_qr_check_enabled}
             onCheckedChange={(v) => patch("photo_qr_check_enabled", v === true)}
           />
-          Fotos beim Import automatisch scannen
+          {t("settings.qr.autoScan.photos")}
         </label>
       </SettingsSection>
 
-      <SettingsSection title="Scan-Parameter">
+      <SettingsSection title={t("settings.qr.params.title")}>
         <div className="space-y-1.5">
-          <Label>QR Video-Scan (Sekunden)</Label>
+          <Label>{t("settings.qr.params.videoSeconds")}</Label>
           <Input
             type="number"
             min={1}
@@ -43,12 +46,12 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
             }
           />
           <p className="text-[11px] text-muted">
-            Wie viele Sekunden vom Clip-Anfang (und parallele Offsets) gelesen werden.
+            {t("settings.qr.params.videoSecondsHint")}
           </p>
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Nach QR-Analyse">
+      <SettingsSection title={t("settings.qr.after.title")}>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.qr_remove_photo_after_scan}
@@ -56,11 +59,10 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
               patch("qr_remove_photo_after_scan", v === true)
             }
           />
-          QR-Foto nach erfolgreicher Analyse entfernen
+          {t("settings.qr.after.removePhoto")}
         </label>
         <p className="pl-6 text-[11px] leading-relaxed text-muted">
-          Nachbarfotos derselben Serie (≤10s Abstand) werden in beide Richtungen
-          geprüft; nach 3 Fotos ohne QR je Richtung Stopp.
+          {t("settings.qr.after.removePhotoHint")}
         </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
@@ -69,7 +71,7 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
               patch("qr_remove_video_after_scan", v === true)
             }
           />
-          QR-Videoclip nach erfolgreicher Analyse entfernen
+          {t("settings.qr.after.removeVideo")}
         </label>
         <div
           className={
@@ -78,7 +80,7 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
               : "pointer-events-none space-y-1.5 pl-6 opacity-50"
           }
         >
-          <Label>Max. Clip-Länge für Löschung (Sek.)</Label>
+          <Label>{t("settings.qr.after.maxDuration")}</Label>
           <Input
             type="number"
             min={1}
@@ -94,7 +96,7 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
             }}
           />
           <p className="text-[11px] text-muted">
-            Nur Clips mit dieser Länge oder kürzer werden entfernt (Standard: 10s).
+            {t("settings.qr.after.maxDurationHint")}
           </p>
         </div>
       </SettingsSection>

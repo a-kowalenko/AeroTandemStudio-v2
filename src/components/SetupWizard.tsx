@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Check, FolderOpen, Info, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,7 @@ import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import {
   presentServerConnectionError,
-  SERVER_GUEST_HINT,
+  serverGuestHint,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
 
@@ -128,6 +129,7 @@ function FolderDirField({
   onUseStandard: () => void;
   error?: string;
 }) {
+  const { t } = useTranslation();
   const usingStandard = Boolean(
     standardPath && pathsEqual(value, standardPath),
   );
@@ -156,8 +158,8 @@ function FolderDirField({
           type="button"
           disabled={pickDisabled || inputDisabled}
           onClick={onPick}
-          title="Ordner wählen"
-          aria-label="Ordner wählen"
+          title={t("common.actions.pickFolder")}
+          aria-label={t("common.actions.pickFolder")}
           className={cn(
             "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
             "hover:bg-primary-soft hover:text-foreground",
@@ -201,8 +203,8 @@ function FolderDirField({
               )}
             >
               {usingStandard
-                ? "Standardordner aktiv"
-                : "Standardordner bereits vorhanden"}
+                ? t("setupWizard.standardDir.active")
+                : t("setupWizard.standardDir.exists")}
             </p>
             <p
               className="truncate text-[11px] text-muted"
@@ -215,7 +217,7 @@ function FolderDirField({
             busy={busy}
             lockedDone={usingStandard}
             tone={usingStandard ? "adopted" : "adopt"}
-            label={usingStandard ? "Aktiv" : "Übernehmen"}
+            label={usingStandard ? t("setupWizard.standardDir.activeShort") : t("setupWizard.standardDir.adopt")}
             disabled={createDisabled}
             onClick={onUseStandard}
           />
@@ -226,12 +228,12 @@ function FolderDirField({
             className="min-w-0 flex-1 truncate text-xs text-muted"
             title={standardPath}
           >
-            Standard: {standardPath}
+            {t("setupWizard.standardDir.standardPrefix")} {standardPath}
           </p>
           <StandardDirButton
             busy={busy}
             lockedDone={false}
-            label="Standard anlegen"
+            label={t("setupWizard.standardDir.create")}
             disabled={createDisabled}
             onClick={onCreate}
           />
@@ -260,12 +262,12 @@ const STEPS = [
 const SKIPPABLE_STEPS = new Set([0, 1, 2, 3, 4, 5]);
 
 const STEP_SKIP_HINT: Record<number, string> = {
-  0: "Darstellung kannst du später jederzeit umschalten.",
-  1: "Crew-Defaults und „Ich bin“ können später in den Einstellungen gesetzt werden.",
-  2: "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
-  3: "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
-  4: "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
-  5: "Server-Zugang kann später eingerichtet werden.",
+  0: "setupWizard.stepHint.appearance",
+  1: "setupWizard.stepHint.crew",
+  2: "setupWizard.stepHint.storage",
+  3: "setupWizard.stepHint.sd",
+  4: "setupWizard.stepHint.qr",
+  5: "setupWizard.stepHint.server",
 };
 
 type Props = {
@@ -293,6 +295,7 @@ const SKIP_BTN_CLASS =
   "border-orange-300/90 bg-orange-100 text-orange-950 hover:bg-orange-200/90 dark:border-orange-400/35 dark:bg-orange-400/15 dark:text-orange-50 dark:hover:bg-orange-400/25";
 
 export function SetupWizard({ open, onComplete }: Props) {
+  const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const persist = useConfigStore((s) => s.persist);
   const saving = useConfigStore((s) => s.saving);
@@ -396,7 +399,7 @@ export function SetupWizard({ open, onComplete }: Props) {
     }
     const member = findCrewMember(draft.crew_list, name);
     if (!member) {
-      return "Mindestens eine Rolle wählen — dann wird der Name zur Crew hinzugefügt.";
+      return t("setupWizard.crew.operatorHintMissingRole");
     }
     return undefined;
   }, [draft]);
@@ -453,7 +456,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       if (existing) {
         setFieldErrors((prev) => ({
           ...prev,
-          operator_roles: "Mindestens eine Rolle muss aktiv sein.",
+          operator_roles: t("setupWizard.crew.roleRequiredActive"),
         }));
         return;
       }
@@ -470,7 +473,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       );
       setFieldErrors((prev) => ({
         ...prev,
-        operator_roles: "Mindestens eine Rolle wählen.",
+        operator_roles: t("setupWizard.crew.roleRequired"),
       }));
       return;
     }
@@ -601,21 +604,21 @@ export function SetupWizard({ open, onComplete }: Props) {
             (roles?.videospringer ?? member?.videospringer),
         );
         if (!hasRole) {
-          errors.operator_roles = "Mindestens eine Rolle wählen.";
+          errors.operator_roles = t("setupWizard.crew.roleRequired");
         }
       }
     }
     if (index === 2 && !draft.speicherort.trim()) {
-      errors.speicherort = "Bitte einen Ordner wählen.";
+      errors.speicherort = t("setupWizard.storage.pickFolderError");
     }
     if (index === 3 && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
       errors.sd_backup_folder =
-        "Ordner wählen oder Auto-Backup deaktivieren.";
+        t("setupWizard.sd.pickFolderOrDisableAutoBackup");
     }
     if (index === 3 && draft.sd_size_limit_enabled) {
       const mb = Number(draft.sd_size_limit_mb);
       if (!Number.isFinite(mb) || mb < 1) {
-        errors.sd_size_limit_mb = "Gültiges Limit in MB angeben.";
+        errors.sd_size_limit_mb = t("setupWizard.sd.validLimitError");
       }
     }
     return errors;
@@ -740,7 +743,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   function onSkipAll() {
     if (
       !window.confirm(
-        "Gesamte Einrichtung überspringen?\n\nSpeicherort, Backup und Server können später in den Einstellungen gesetzt werden. Einige Funktionen sind sonst eingeschränkt.",
+        t("setupWizard.skipAllConfirm"),
       )
     ) {
       return;
@@ -790,7 +793,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   function keepSummary(): string {
     if (!draft) return "—";
-    if (skippedSteps.has(1)) return "— übersprungen —";
+    if (skippedSteps.has(1)) return t("setupWizard.summary.skipped");
     const parts: string[] = [];
     const op = draft.operator_name.trim();
     if (op) parts.push(`Ich: ${op}`);
@@ -802,7 +805,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       const vs = draft.videospringer.trim();
       parts.push(vs ? `VS: ${vs}` : "VS: zuletzt verwendet");
     }
-    return parts.length > 0 ? parts.join(", ") : "Keine (werden zurückgesetzt)";
+    return parts.length > 0 ? parts.join(", ") : t("setupWizard.summary.noneReset");
   }
 
   const canSkipStep = SKIPPABLE_STEPS.has(step);
@@ -908,7 +911,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   value={draft.operator_name}
                   onChange={setOperatorName}
                   options={allCrewNames}
-                  placeholder="Namen wählen oder eingeben…"
+                  placeholder={t("setupWizard.crew.namePlaceholder")}
                   hint={operatorHint}
                   error={fieldErrors.operator_roles}
                   listZIndex={200}
@@ -968,8 +971,8 @@ export function SetupWizard({ open, onComplete }: Props) {
                     "tandemmaster",
                     draft.operator_name,
                   )}
-                  placeholder="Modus oder Name wählen…"
-                  hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
+                  placeholder={t("setupWizard.crew.rolePlaceholder")}
+                  hint={t("setupWizard.crew.autoAddHint")}
                   error={fieldErrors.tandemmaster}
                   listZIndex={200}
                 />
@@ -989,8 +992,8 @@ export function SetupWizard({ open, onComplete }: Props) {
                     "videospringer",
                     draft.operator_name,
                   )}
-                  placeholder="Modus oder Name wählen…"
-                  hint="Neuer Name wird automatisch zur Crew-Liste hinzugefügt."
+                  placeholder={t("setupWizard.crew.rolePlaceholder")}
+                  hint={t("setupWizard.crew.autoAddHint")}
                   error={fieldErrors.videospringer}
                   listZIndex={200}
                 />
@@ -1010,7 +1013,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <FolderDirField
                   label="Speicherort"
                   value={draft.speicherort}
-                  placeholder="Ordner wählen…"
+                  placeholder={t("setupWizard.storage.folderPlaceholder")}
                   standardPath={mediaDirsProposal?.speicherort}
                   standardExists={Boolean(mediaDirsProposal?.speicherort_exists)}
                   invalid={Boolean(fieldErrors.speicherort)}
@@ -1080,7 +1083,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   <FolderDirField
                     label="Backup-Ordner"
                     value={draft.sd_backup_folder}
-                    placeholder="Ordner wählen…"
+                    placeholder={t("setupWizard.storage.folderPlaceholder")}
                     standardPath={mediaDirsProposal?.sd_backup_folder}
                     standardExists={Boolean(
                       mediaDirsProposal?.sd_backup_folder_exists,
@@ -1125,7 +1128,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                     title={
                       draft.sd_auto_backup
                         ? "SD-Karte nach erfolgreichem Backup leeren"
-                        : "Nur möglich, wenn Auto-Backup aktiviert ist"
+                        : t("setupWizard.sd.onlyWithAutoBackup")
                     }
                   >
                     <Checkbox
@@ -1353,7 +1356,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                     />
                   </div>
                 </div>
-                <p className="text-[11px] text-muted">{SERVER_GUEST_HINT}</p>
+                <p className="text-[11px] text-muted">{serverGuestHint()}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -1363,7 +1366,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   disabled={testingServer}
                   onClick={() => void onTestServer()}
                 >
-                  {testingServer ? "Prüfe…" : "Verbindung testen"}
+                  {testingServer ? t("common.actions.checking") : t("common.actions.testConnection")}
                 </Button>
                 {!testingServer &&
                 serverPhase !== "checking" &&
@@ -1374,7 +1377,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                     title={
                       serverPhase === "error" && serverMessage
                         ? `${serverMessage}\nKlicken zum erneuten Prüfen`
-                        : "Klicken zum erneuten Prüfen"
+                        : t("header.connection.retry")
                     }
                     onClick={() => void onTestServer()}
                   >
@@ -1387,7 +1390,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
           {step === 6 ? (
             <>
-              <p className="text-sm text-muted">Bitte Angaben prüfen und abschließen.</p>
+              <p className="text-sm text-muted">{t("setupWizard.summary.description")}</p>
               <dl className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3 text-sm">
                 <SummaryRow
                   label="Theme"
@@ -1398,7 +1401,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   label="Speicherort"
                   value={
                     skippedSteps.has(2) && !draft.speicherort.trim()
-                      ? "— übersprungen —"
+                      ? t("setupWizard.summary.skipped")
                       : draft.speicherort || "— nicht gesetzt —"
                   }
                 />
@@ -1407,7 +1410,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   label="Backup"
                   value={
                     skippedSteps.has(3) && !draft.sd_auto_backup
-                      ? "— übersprungen —"
+                      ? t("setupWizard.summary.skipped")
                       : draft.sd_auto_backup
                         ? draft.sd_backup_folder || "— Ordner fehlt —"
                         : "Deaktiviert"
@@ -1430,7 +1433,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   value={draft.sd_auto_import ? "An" : "Aus"}
                 />
                 <SummaryRow
-                  label="Größenlimit"
+                  label={t("setupWizard.summary.sizeLimit")}
                   value={
                     draft.sd_size_limit_enabled
                       ? `${draft.sd_size_limit_mb} MB`
@@ -1442,7 +1445,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   label="QR-Scan"
                   value={
                     skippedSteps.has(4)
-                      ? "— übersprungen —"
+                      ? t("setupWizard.summary.skipped")
                       : [
                           draft.qr_check_enabled ? "Video" : null,
                           draft.photo_qr_check_enabled ? "Foto" : null,
@@ -1468,7 +1471,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   label="Server"
                   value={
                     skippedSteps.has(5)
-                      ? "— übersprungen —"
+                      ? t("setupWizard.summary.skipped")
                       : draft.server_url || "—"
                   }
                 />
@@ -1489,7 +1492,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
         <div className="shrink-0 flex flex-col gap-3 border-t border-border px-6 py-4">
           {canSkipStep && skipHint ? (
-            <p className="text-[11px] leading-snug text-muted/80">{skipHint}</p>
+            <p className="text-[11px] leading-snug text-muted/80">{t(skipHint)}</p>
           ) : null}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Button
@@ -1523,7 +1526,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                 disabled={busy}
                 onClick={finishFromSummary}
               >
-                {busy ? "Speichern…" : "Einrichtung abschließen"}
+                {busy ? t("common.actions.saving") : t("setupWizard.finish")}
               </Button>
             )}
           </div>
@@ -1533,7 +1536,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             onClick={onSkipAll}
             className="self-center text-[11px] text-muted/70 underline-offset-2 hover:text-muted hover:underline disabled:opacity-50"
           >
-            Gesamte Einrichtung überspringen
+            {t("setupWizard.skipAll")}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ArrowDownToLine,
   Copy,
@@ -47,6 +48,7 @@ type Props = {
 };
 
 export function LogConsole({ className }: Props) {
+  const { t } = useTranslation();
   const open = useLogStore((s) => s.open);
   const setOpen = useLogStore((s) => s.setOpen);
   const entries = useLogStore((s) => s.entries);
@@ -169,7 +171,7 @@ export function LogConsole({ className }: Props) {
       <div
         role="separator"
         aria-orientation="horizontal"
-        aria-label="Konsolenhöhe"
+        aria-label={t("logConsole.resizeAria")}
         className="group flex h-2 cursor-ns-resize items-center justify-center"
         onMouseDown={(e) => {
           dragRef.current = { startY: e.clientY, startH: height };
@@ -183,7 +185,7 @@ export function LogConsole({ className }: Props) {
       <div className="flex flex-wrap items-center gap-2 border-b border-border/80 px-3 pb-2">
         <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
           <Terminal className="h-3.5 w-3.5 text-primary" />
-          Konsole
+          {t("logConsole.title")}
           <span className="tabular-nums text-muted">
             ({filtered.length}/{entries.length})
           </span>
@@ -192,20 +194,20 @@ export function LogConsole({ className }: Props) {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Suchen…"
+          placeholder={t("history.searchMedia")}
           className="h-8 max-w-xs flex-1 text-xs"
-          aria-label="Konsole durchsuchen"
+          aria-label={t("logConsole.searchAria")}
         />
 
         <Select
           value={levelFilter}
           onValueChange={(v) => setLevelFilter(v as LogLevelFilter)}
         >
-          <SelectTrigger className="h-8 w-[7.5rem] text-xs" aria-label="Level-Filter">
+          <SelectTrigger className="h-8 w-[7.5rem] text-xs" aria-label={t("logConsole.levelFilterAria")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Alle</SelectItem>
+            <SelectItem value="all">{t("history.filters.all")}</SelectItem>
             <SelectItem value="debug">Debug+</SelectItem>
             <SelectItem value="info">Info+</SelectItem>
             <SelectItem value="warn">Warn+</SelectItem>
@@ -219,7 +221,7 @@ export function LogConsole({ className }: Props) {
           size="sm"
           className="h-8 gap-1.5 text-xs"
           onClick={() => setAutoScroll(!autoScroll)}
-          title="Automatisch nach unten scrollen"
+          title={t("logConsole.autoScrollTitle")}
         >
           <ArrowDownToLine className="h-3.5 w-3.5" />
           Auto
@@ -231,10 +233,10 @@ export function LogConsole({ className }: Props) {
           size="sm"
           className="h-8 gap-1.5 text-xs"
           onClick={() => void handleCopy()}
-          title="Sichtbare Zeilen kopieren"
+          title={t("logConsole.copyVisibleTitle")}
         >
           <Copy className="h-3.5 w-3.5" />
-          {copyFlash ? "Kopiert" : "Kopieren"}
+          {copyFlash ? t("logConsole.copied") : t("logConsole.copy")}
         </Button>
 
         <Button
@@ -243,10 +245,10 @@ export function LogConsole({ className }: Props) {
           size="sm"
           className="h-8 gap-1.5 text-xs"
           onClick={() => void handleClear()}
-          title="Ansicht leeren (Datei bleibt)"
+          title={t("logConsole.clearTitle")}
         >
           <Eraser className="h-3.5 w-3.5" />
-          Leeren
+          {t("app.job.clear")}
         </Button>
 
         <Button
@@ -256,10 +258,10 @@ export function LogConsole({ className }: Props) {
           className="h-8 gap-1.5 text-xs"
           onClick={() => void handleOpenLogFile()}
           disabled={!logPath}
-          title={logPath ? `Log-Datei: ${logPath}` : "Kein Log-Pfad"}
+          title={logPath ? t("logConsole.logFileWithPath", { path: logPath }) : t("logConsole.noLogPath")}
         >
           <FolderOpen className="h-3.5 w-3.5" />
-          Log-Datei
+          {t("logConsole.logFile")}
         </Button>
 
         <Button
@@ -268,8 +270,8 @@ export function LogConsole({ className }: Props) {
           size="icon"
           className="ml-auto h-8 w-8"
           onClick={() => setOpen(false)}
-          aria-label="Konsole schließen"
-          title="Schließen (Esc)"
+          aria-label={t("logConsole.closeAria")}
+          title={t("logConsole.closeTitle")}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -281,7 +283,7 @@ export function LogConsole({ className }: Props) {
         className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[11px] leading-5"
       >
         {filtered.length === 0 ? (
-          <p className="text-xs text-muted">Keine Log-Einträge.</p>
+          <p className="text-xs text-muted">{t("logConsole.empty")}</p>
         ) : (
           filtered.map((e) => (
             <div
@@ -316,6 +318,7 @@ export function LogConsoleToggleButton({
   className?: string;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const open = useLogStore((s) => s.open);
   const toggleOpen = useLogStore((s) => s.toggleOpen);
   const unreadErrors = useLogStore((s) => s.unreadErrors);
@@ -328,9 +331,9 @@ export function LogConsoleToggleButton({
       className={cn("relative", className)}
       onClick={toggleOpen}
       disabled={disabled}
-      aria-label="Konsole"
+      aria-label={t("logConsole.title")}
       aria-pressed={open}
-      title="Konsole (Ctrl+Shift+J)"
+      title={t("logConsole.toggleTitle")}
     >
       <Terminal className="h-4 w-4" />
       {unreadErrors > 0 && !open ? (

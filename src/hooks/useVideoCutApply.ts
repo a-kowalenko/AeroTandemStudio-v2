@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { tr } from "@/i18n";
 import {
   cutVideo,
   probeVideo,
@@ -76,7 +77,7 @@ export function useVideoCutApply() {
     ) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Schnitt wird angewendet…");
+      beginProgress(opts, tr("video.edit.progress.trim"));
       try {
         await cutVideo({
           input: sourcePath,
@@ -87,14 +88,14 @@ export function useVideoCutApply() {
         const meta = await probeVideo(sourcePath);
         replaceVideo(sourcePath, meta);
         markTrimmed(sourcePath);
-        opts?.onStatus?.("Schnitt fertig");
+        opts?.onStatus?.(tr("video.edit.progress.trimDone"));
         showSuccess(
-          "Schnitt übernommen. Rückgängig über den Clip oder „Alle Bearbeitungen rückgängig“.",
-          "Bearbeiten",
+          tr("video.edit.success.trim"),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Schnitt fehlgeschlagen");
+        showError(String(e), tr("video.edit.error.trim"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -107,7 +108,7 @@ export function useVideoCutApply() {
     async (sourcePath: string, splitMs: number, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Video wird geteilt…");
+      beginProgress(opts, tr("video.edit.progress.split"));
       try {
         const res = await splitVideo({
           input: sourcePath,
@@ -120,14 +121,14 @@ export function useVideoCutApply() {
         ]);
         applySplitInList(sourcePath, m1, m2);
         markSplit(res.part1_path, res.part2_path, sourcePath);
-        opts?.onStatus?.("Teilen fertig");
+        opts?.onStatus?.(tr("video.edit.progress.splitDone"));
         showSuccess(
-          "Video geteilt. Rückgängig über einen Teil-Clip oder „Alle Bearbeitungen rückgängig“.",
-          "Bearbeiten",
+          tr("video.edit.success.split"),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Teilen fehlgeschlagen");
+        showError(String(e), tr("video.edit.error.split"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -140,7 +141,7 @@ export function useVideoCutApply() {
     async (sourcePath: string, degrees: number, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Video wird gedreht (Neu-Kodierung)…");
+      beginProgress(opts, tr("video.edit.progress.rotate"));
       try {
         await rotateVideo({
           input: sourcePath,
@@ -150,14 +151,14 @@ export function useVideoCutApply() {
         const meta = await probeVideo(sourcePath);
         replaceVideo(sourcePath, meta);
         markRotated(sourcePath);
-        opts?.onStatus?.("Drehen fertig");
+        opts?.onStatus?.(tr("video.edit.progress.rotateDone"));
         showSuccess(
-          "Drehung übernommen. Rückgängig über den Clip oder „Alle Bearbeitungen rückgängig“.",
-          "Bearbeiten",
+          tr("video.edit.success.rotate"),
+          tr("common.actions.edit"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Drehen fehlgeschlagen");
+        showError(String(e), tr("video.edit.error.rotate"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -170,18 +171,18 @@ export function useVideoCutApply() {
     async (path: string, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, "Bearbeitung wird rückgängig gemacht…");
+      beginProgress(opts, tr("video.edit.progress.undoOne"));
       try {
         const res = await undoVideoCutForPath(path);
         await applyUndoResult(res);
-        opts?.onStatus?.("Rückgängig fertig");
+        opts?.onStatus?.(tr("video.edit.progress.undoDone"));
         showSuccess(
-          "Bearbeitung für diesen Clip rückgängig gemacht.",
-          "Rückgängig",
+          tr("video.edit.success.undoOne"),
+          tr("common.actions.undo"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Rückgängig fehlgeschlagen");
+        showError(String(e), tr("video.edit.error.undo"));
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -194,21 +195,21 @@ export function useVideoCutApply() {
     async (opts?: ApplyOptions) => {
       if (applying || !canUndo) return;
       setApplying(true);
-      beginProgress(opts, "Alle Bearbeitungen werden rückgängig gemacht…");
+      beginProgress(opts, tr("video.edit.progress.undoAll"));
       try {
         const results = await undoAllVideoCuts();
         for (const res of results) {
           await applyUndoResult(res);
         }
         clearAllCutMarks();
-        opts?.onStatus?.("Rückgängig fertig");
+        opts?.onStatus?.(tr("video.edit.progress.undoDone"));
         showSuccess(
-          `${results.length} Bearbeitung(en) rückgängig gemacht.`,
-          "Rückgängig",
+          tr("video.edit.success.undoAll", { count: results.length }),
+          tr("common.actions.undo"),
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), "Rückgängig fehlgeschlagen");
+        showError(String(e), tr("video.edit.error.undo"));
       } finally {
         setApplying(false);
         endProgress(opts);

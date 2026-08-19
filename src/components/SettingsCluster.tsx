@@ -7,6 +7,7 @@ import {
   type FocusEvent,
 } from "react";
 import { Settings } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogConsoleToggleButton } from "@/components/LogConsole";
@@ -31,6 +32,7 @@ export function SettingsCluster({
   onOpenSettings,
   className,
 }: Props) {
+  const { t } = useTranslation();
   const menuId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
@@ -119,10 +121,10 @@ export function SettingsCluster({
         size="icon"
         className="relative"
         onClick={handleSettingsClick}
-        aria-label="Einstellungen"
+        aria-label={t("common.actions.settings")}
         aria-expanded={open}
         aria-controls={menuId}
-        title="Einstellungen & mehr"
+        title={t("chrome.settings.moreTitle")}
         disabled={disabled}
       >
         <Settings
@@ -143,7 +145,7 @@ export function SettingsCluster({
       <div
         id={menuId}
         role="group"
-        aria-label="Schnellaktionen"
+        aria-label={t("chrome.settings.quickActions")}
         aria-hidden={!open}
         inert={!open ? true : undefined}
         className={cn(

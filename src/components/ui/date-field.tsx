@@ -8,28 +8,13 @@ import {
   type CSSProperties,
   type KeyboardEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { activeIntlLocale } from "@/lib/locale";
 import { cn } from "@/lib/utils";
-
-const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
-
-const MONTHS_DE = [
-  "Januar",
-  "Februar",
-  "März",
-  "April",
-  "Mai",
-  "Juni",
-  "Juli",
-  "August",
-  "September",
-  "Oktober",
-  "November",
-  "Dezember",
-] as const;
 
 type PanelPos = {
   mode: "fixed" | "absolute";
@@ -121,6 +106,7 @@ export function DateField({
   hideLabel = false,
   inputClassName,
 }: DateFieldProps) {
+  const { t } = useTranslation();
   const generatedId = useId();
   const autoId = id ?? generatedId;
   const panelId = `${autoId}-panel`;
@@ -132,6 +118,15 @@ export function DateField({
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null);
 
   const selected = useMemo(() => parseDatum(value), [value]);
+  const intlLocale = activeIntlLocale();
+  const weekdays = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(2024, 0, 1 + i, 12, 0, 0, 0);
+        return new Intl.DateTimeFormat(intlLocale, { weekday: "short" }).format(d);
+      }),
+    [intlLocale],
+  );
   const [viewMonth, setViewMonth] = useState(() =>
     startOfMonth(selected ?? new Date()),
   );
@@ -317,7 +312,7 @@ export function DateField({
       ? createPortal(
           <div
             id={panelId}
-            aria-label="Datum wählen"
+            aria-label={t("dateField.chooseDateAria")}
             data-ats-date-panel=""
             style={panelStyle}
             className="rounded-md border border-border bg-card p-3 shadow-md"
@@ -325,7 +320,7 @@ export function DateField({
             <div className="mb-2 flex items-center justify-between gap-1">
               <button
                 type="button"
-                aria-label="Vorheriger Monat"
+                aria-label={t("dateField.prevMonthAria")}
                 className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-primary-soft hover:text-foreground"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setViewMonth((m) => addMonths(m, -1))}
@@ -333,11 +328,14 @@ export function DateField({
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <p className="text-sm font-medium text-foreground tabular-nums">
-                {MONTHS_DE[viewMonth.getMonth()]} {viewMonth.getFullYear()}
+                {new Intl.DateTimeFormat(intlLocale, {
+                  month: "long",
+                  year: "numeric",
+                }).format(viewMonth)}
               </p>
               <button
                 type="button"
-                aria-label="Nächster Monat"
+                aria-label={t("dateField.nextMonthAria")}
                 className="flex h-7 w-7 items-center justify-center rounded text-muted hover:bg-primary-soft hover:text-foreground"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => setViewMonth((m) => addMonths(m, 1))}
@@ -346,7 +344,7 @@ export function DateField({
               </button>
             </div>
             <div className="mb-1 grid grid-cols-7 gap-0.5">
-              {WEEKDAYS.map((w) => (
+              {weekdays.map((w) => (
                 <div
                   key={w}
                   className="py-1 text-center text-[10px] font-semibold tracking-wide text-muted uppercase"
@@ -390,7 +388,7 @@ export function DateField({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pickDay(today)}
               >
-                Heute
+                {t("history.media.today")}
               </button>
               <button
                 type="button"
@@ -402,7 +400,7 @@ export function DateField({
                   setOpen(false);
                 }}
               >
-                Leeren
+                {t("app.job.clear")}
               </button>
             </div>
           </div>,
@@ -424,7 +422,7 @@ export function DateField({
           type="text"
           inputMode="numeric"
           autoComplete="off"
-          placeholder="TT.MM.JJJJ"
+          placeholder={t("dateField.placeholder")}
           value={draft}
           disabled={disabled}
           aria-expanded={open}
@@ -443,7 +441,7 @@ export function DateField({
           type="button"
           tabIndex={-1}
           disabled={disabled}
-          aria-label="Kalender öffnen"
+          aria-label={t("dateField.openCalendarAria")}
           aria-expanded={open}
           className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none"
           onClick={() => setOpen((v) => !v)}

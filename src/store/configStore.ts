@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import type { AppConfig } from "../lib/tauri";
 import { getConfig, resetConfig, saveConfig } from "../lib/tauri";
+import { normalizeUiLanguage } from "../i18n/types";
+
+function normalizeConfig(config: AppConfig): AppConfig {
+  return {
+    ...config,
+    ui_language: normalizeUiLanguage(config.ui_language),
+  };
+}
 
 type ConfigState = {
   config: AppConfig | null;
@@ -22,7 +30,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   loadConfig: async () => {
     set({ loading: true, error: null });
     try {
-      const config = await getConfig();
+      const config = normalizeConfig(await getConfig());
       set({ config, loading: false });
     } catch (e) {
       set({ loading: false, error: String(e) });
@@ -52,7 +60,7 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   resetToDefaults: async () => {
     set({ saving: true, error: null });
     try {
-      const config = await resetConfig();
+      const config = normalizeConfig(await resetConfig());
       set({ config, saving: false });
       return config;
     } catch (e) {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,16 +17,17 @@ import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
 export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
+  const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Standard"
-        description="Empfohlene Einstellungen für die meisten Nutzer."
+        title={t("settings.encoding.standard.title")}
+        description={t("settings.encoding.standard.description")}
       >
         <div className="space-y-1.5">
-          <Label>Video-Codec</Label>
+          <Label>{t("settings.encoding.codec")}</Label>
           <Select
             value={draft.video_codec}
             onValueChange={(v) => patch("video_codec", v)}
@@ -34,7 +36,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="auto">Auto (empfohlen)</SelectItem>
+              <SelectItem value="auto">{t("settings.encoding.codecAuto")}</SelectItem>
               <SelectItem value="h264">H.264</SelectItem>
               <SelectItem value="h265">H.265</SelectItem>
               <SelectItem value="vp9">VP9</SelectItem>
@@ -44,7 +46,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
         </div>
 
         <div className="space-y-1.5">
-          <Label>Encoding-Strategie</Label>
+          <Label>{t("settings.encoding.strategy")}</Label>
           <Select
             value={draft.encoding_strategy}
             onValueChange={(v) => patch("encoding_strategy", v)}
@@ -53,8 +55,12 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="per_clip">Pro Clip</SelectItem>
-              <SelectItem value="combined">Kombiniert</SelectItem>
+              <SelectItem value="per_clip">
+                {t("settings.encoding.strategyPerClip")}
+              </SelectItem>
+              <SelectItem value="combined">
+                {t("settings.encoding.strategyCombined")}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -66,7 +72,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               patch("hardware_acceleration_enabled", v === true)
             }
           />
-          Hardware-Beschleunigung
+          {t("settings.encoding.hwAccel")}
         </label>
 
         <label className="flex items-center gap-2 text-sm">
@@ -76,11 +82,11 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               patch("parallel_processing_enabled", v === true)
             }
           />
-          Paralleles Video-Processing
+          {t("settings.encoding.parallel")}
         </label>
 
         <div className="space-y-1.5">
-          <Label>Clips zusammenfügen</Label>
+          <Label>{t("settings.encoding.concat")}</Label>
           <Select
             value={
               draft.body_concat_mode === "legacy" ? "legacy" : "fast"
@@ -91,14 +97,14 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="fast">Fast Path (schnell)</SelectItem>
-              <SelectItem value="legacy">Legacy (robust)</SelectItem>
+              <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+              <SelectItem value="legacy">
+                {t("settings.encoding.concatLegacy")}
+              </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">
-            Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux
-            Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy.
-            Legacy nutzt die bewährte MPEG-TS-Pipeline.
+            {t("settings.encoding.concatHint")}
           </p>
         </div>
       </SettingsSection>
@@ -111,7 +117,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           onClick={() => setAdvancedOpen((v) => !v)}
           aria-expanded={advancedOpen}
         >
-          Erweitert
+          {t("settings.encoding.advanced")}
           <ChevronDown
             className={cn(
               "h-4 w-4 transition-transform",
@@ -127,10 +133,10 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
                 checked={draft.intro_enabled}
                 onCheckedChange={(v) => patch("intro_enabled", v === true)}
               />
-              Intro beim Erstellen verwenden (experimentell)
+              {t("settings.encoding.introEnabled")}
             </label>
             <div className="space-y-1.5">
-              <Label>Intro-Dauer (Sek.)</Label>
+              <Label>{t("settings.encoding.introDuration")}</Label>
               <Select
                 value={String(draft.dauer)}
                 onValueChange={(v) => patch("dauer", Number(v))}
@@ -149,7 +155,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Intro zusammenfügen</Label>
+              <Label>{t("settings.encoding.introMux")}</Label>
               <Select
                 value={
                   draft.intro_mux_mode === "stream_copy"
@@ -164,17 +170,15 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="reencode">
-                    Neu kodieren (kompatibel)
+                    {t("settings.encoding.introMuxReencode")}
                   </SelectItem>
                   <SelectItem value="stream_copy">
-                    Stream-Copy (schnell)
+                    {t("settings.encoding.introMuxCopy")}
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Neu kodieren erzeugt Intro und Flugvideo als einen durchgängigen
-                Bitstream — zuverlässig auf Handys und in Playern. Stream-Copy
-                ist schneller, kann aber auf manchen Geräten einfrieren.
+                {t("settings.encoding.introMuxHint")}
               </p>
             </div>
 
@@ -185,11 +189,11 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
                   patch("reencode_matching_clips", v === true)
                 }
               />
-              Passende Clips neu encodieren
+              {t("settings.encoding.reencodeMatching")}
             </label>
 
             <div className="space-y-1.5">
-              <Label>Preview CRF</Label>
+              <Label>{t("settings.encoding.previewCrf")}</Label>
               <Input
                 type="number"
                 min={0}

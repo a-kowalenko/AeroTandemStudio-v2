@@ -1,5 +1,7 @@
 /** AMS handoff status helpers for Historie UI (ATS ↔ AMS Outbox / Bridge). */
 
+import { tr } from "@/i18n";
+
 export type AmsHandoffState =
   | "pending"
   | "accepted"
@@ -24,11 +26,11 @@ export type AmsStatusFilter = "all" | "open" | "done" | "error";
 
 /** Pipeline steps shown in the detail stepper (terminal reject/fail handled separately). */
 export const AMS_HANDOFF_STEPS = [
-  { id: "pending", label: "Übertragen" },
-  { id: "accepted", label: "Übernommen" },
-  { id: "queued", label: "Warteschlange" },
-  { id: "uploading", label: "Upload" },
-  { id: "completed", label: "Fertig" },
+  { id: "pending", label: "ams.handoff.steps.pending" },
+  { id: "accepted", label: "ams.handoff.steps.accepted" },
+  { id: "queued", label: "ams.handoff.steps.queued" },
+  { id: "uploading", label: "ams.handoff.steps.uploading" },
+  { id: "completed", label: "ams.handoff.steps.completed" },
 ] as const;
 
 export function isAmsHandoffTerminal(state: string | null | undefined): boolean {
@@ -61,23 +63,27 @@ export function handoffStateLabel(
   opts?: { compact?: boolean },
 ): string {
   const compact = Boolean(opts?.compact);
-  if (isAmsCancelled(view)) return "Abgebrochen";
+  if (isAmsCancelled(view)) return tr("ams.handoff.state.cancelled");
   switch (view.state.trim().toLowerCase()) {
     case "pending":
     case "":
-      return compact ? "Wartend" : "Übertragen";
+      return compact
+        ? tr("ams.handoff.state.pendingCompact")
+        : tr("ams.handoff.state.pending");
     case "accepted":
-      return "Übernommen";
+      return tr("ams.handoff.state.accepted");
     case "rejected":
-      return "Abgelehnt";
+      return tr("ams.handoff.state.rejected");
     case "queued":
-      return compact ? "Queue" : "Warteschlange";
+      return compact
+        ? tr("ams.handoff.state.queuedCompact")
+        : tr("ams.handoff.state.queued");
     case "uploading":
-      return "Upload";
+      return tr("ams.handoff.state.uploading");
     case "completed":
-      return "Fertig";
+      return tr("ams.handoff.state.completed");
     case "failed":
-      return "Fehler";
+      return tr("common.status.error");
     default:
       return view.state.trim() || "—";
   }
@@ -85,13 +91,13 @@ export function handoffStateLabel(
 
 export function handoffStateHint(view: AmsHandoffView): string | null {
   if (view.offline) {
-    return "Status offline (letzter bekannter Stand)";
+    return tr("ams.handoff.hint.offline");
   }
   if (isAmsCancelled(view)) {
-    return view.errorMessage?.trim() || "Upload abgebrochen";
+    return view.errorMessage?.trim() || tr("ams.handoff.hint.uploadCancelled");
   }
   if (view.state === "pending" || view.state === "") {
-    return "Wartet auf Übernahme";
+    return tr("ams.handoff.hint.waitingForAccept");
   }
   if (view.state === "rejected" || view.state === "failed") {
     const code = view.errorCode?.trim();
@@ -100,7 +106,7 @@ export function handoffStateHint(view: AmsHandoffView): string | null {
     return msg || code || null;
   }
   if (view.archive) {
-    return `Archiv ${view.archive}`;
+    return tr("ams.handoff.hint.archive", { archive: view.archive });
   }
   return null;
 }

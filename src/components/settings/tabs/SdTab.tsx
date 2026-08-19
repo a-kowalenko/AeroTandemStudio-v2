@@ -1,4 +1,5 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +17,7 @@ import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
 export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
+  const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
 
   async function pickFolder(
@@ -28,11 +30,11 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
   return (
     <div className="space-y-4">
       <SettingsSection
-        title="Backup"
-        description="SD-Karten-Backups und optionaler zweiter Zielpfad."
+        title={t("settings.sd.backup.title")}
+        description={t("settings.sd.backup.description")}
       >
         <div className="space-y-1.5">
-          <Label>Backup-Modus</Label>
+          <Label>{t("settings.sd.backup.mode")}</Label>
           <Select
             value={draft.sd_backup_mode}
             onValueChange={(v) => patch("sd_backup_mode", v)}
@@ -41,9 +43,13 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="confirm">Vorher bestätigen</SelectItem>
-              <SelectItem value="auto">Automatisch</SelectItem>
-              <SelectItem value="disabled">Deaktiviert</SelectItem>
+              <SelectItem value="confirm">
+                {t("settings.sd.backup.modeConfirm")}
+              </SelectItem>
+              <SelectItem value="auto">{t("settings.sd.backup.modeAuto")}</SelectItem>
+              <SelectItem value="disabled">
+                {t("settings.sd.backup.modeDisabled")}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -66,31 +72,33 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
               );
             }}
           />
-          Auto-Backup
+          {t("settings.sd.backup.auto")}
         </label>
 
         <div
           className={cn("space-y-3", !draft.sd_auto_backup && "opacity-50")}
         >
           <FolderPathField
-            label="Backup-Ordner"
+            label={t("settings.sd.backup.folder")}
             value={draft.sd_backup_folder}
             disabled={!draft.sd_auto_backup}
             onPick={() => void pickFolder("sd_backup_folder")}
-            onOpenError={(message) => showError(message, "Ordner")}
+            onOpenError={(message) =>
+              showError(message, t("settings.folder.toastTitle"))
+            }
           />
           <div className="space-y-1.5">
-            <Label>PC Name</Label>
+            <Label>{t("settings.sd.backup.pcName")}</Label>
             <Input
               value={draft.sd_pc_name}
-              placeholder="Computername"
+              placeholder={t("settings.sd.backup.pcNamePlaceholder")}
               disabled={!draft.sd_auto_backup}
               onChange={(e) => patch("sd_pc_name", e.target.value)}
             />
             <p className="text-xs text-muted">
-              Wird im Backup-Ordnernamen verwendet, z.B. SD_Backup_…[
-              {draft.sd_pc_name.trim() || "PC"}
-              ]_…
+              {t("settings.sd.backup.pcNameHint", {
+                name: draft.sd_pc_name.trim() || t("settings.sd.backup.pcNameFallback"),
+              })}
             </p>
           </div>
           <label
@@ -100,8 +108,8 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             )}
             title={
               draft.sd_auto_backup
-                ? "SD-Karte nach erfolgreichem Backup leeren"
-                : "Nur möglich, wenn Auto-Backup aktiviert ist"
+                ? t("settings.sd.backup.clearAfterTitleOn")
+                : t("settings.sd.backup.clearAfterTitleOff")
             }
           >
             <Checkbox
@@ -109,7 +117,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
               disabled={!draft.sd_auto_backup}
               onCheckedChange={(v) => patch("sd_clear_after_backup", v === true)}
             />
-            SD nach Backup leeren
+            {t("settings.sd.backup.clearAfter")}
           </label>
         </div>
 
@@ -118,18 +126,20 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             checked={draft.sd_server_backup_enabled}
             onCheckedChange={(v) => patch("sd_server_backup_enabled", v === true)}
           />
-          Zusätzlich auf zweiten Pfad sichern
+          {t("settings.sd.backup.secondPath")}
         </label>
         {draft.sd_server_backup_enabled ? (
           <div className="space-y-3 pl-1">
             <FolderPathField
-              label="Zweiter Backup-Ordner"
+              label={t("settings.sd.backup.secondFolder")}
               value={draft.sd_server_backup_path}
               onPick={() => void pickFolder("sd_server_backup_path")}
-              onOpenError={(message) => showError(message, "Ordner")}
+              onOpenError={(message) =>
+                showError(message, t("settings.folder.toastTitle"))
+              }
             />
             <div className="space-y-1.5">
-              <Label>Kopierstrategie (zweiter Pfad)</Label>
+              <Label>{t("settings.sd.backup.copyStrategy")}</Label>
               <Select
                 value={
                   draft.sd_server_backup_mode === "local_then_server"
@@ -145,19 +155,18 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="local_then_server_async">
-                    Hintergrund: lokal fertig → Server parallel
+                    {t("settings.sd.backup.copyAsync")}
                   </SelectItem>
                   <SelectItem value="local_then_server">
-                    Spiegeln: erst lokal, dann warten → zweiter Pfad
+                    {t("settings.sd.backup.copyMirror")}
                   </SelectItem>
                   <SelectItem value="direct_dual_write">
-                    Direkt: pro Datei SD → beide
+                    {t("settings.sd.backup.copyDirect")}
                   </SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted">
-                Empfohlen für Netzwerkziele: Hintergrund — der Workflow wartet
-                nicht auf den zweiten Pfad.
+                {t("settings.sd.backup.copyHint")}
               </p>
             </div>
           </div>
@@ -165,51 +174,51 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
       </SettingsSection>
 
       <SettingsSection
-        title="Import & Auswerfen"
-        description="Automatischer Import nach Backup; Auswerfen sobald die SD nicht mehr benötigt wird."
+        title={t("settings.sd.import.title")}
+        description={t("settings.sd.import.description")}
       >
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_auto_import}
             onCheckedChange={(v) => patch("sd_auto_import", v === true)}
           />
-          Auto-Import
+          {t("settings.sd.import.auto")}
         </label>
         <p className="text-[11px] leading-snug text-muted">
-          Nach dem Backup passende Medien automatisch in die Session laden.
+          {t("settings.sd.import.autoHint")}
         </p>
         <label
           className="flex items-center gap-2 text-sm"
-          title="Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import."
+          title={t("settings.sd.import.ejectTitle")}
         >
           <Checkbox
             checked={draft.sd_eject_after_workflow}
             onCheckedChange={(v) => patch("sd_eject_after_workflow", v === true)}
           />
-          SD automatisch auswerfen
+          {t("settings.sd.import.eject")}
         </label>
         <p className="text-[11px] leading-snug text-muted">
-          Mit Backup direkt danach; ohne Backup erst nach dem Import.
+          {t("settings.sd.import.ejectHint")}
         </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_skip_processed}
             onCheckedChange={(v) => patch("sd_skip_processed", v === true)}
           />
-          Bereits verarbeitete Dateien überspringen
+          {t("settings.sd.import.skipProcessed")}
         </label>
       </SettingsSection>
 
       <SettingsSection
-        title="Warnschwelle"
-        description="Bestätigung, wenn die SD-Karte ein Größenlimit überschreitet."
+        title={t("settings.sd.size.title")}
+        description={t("settings.sd.size.description")}
       >
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_size_limit_enabled}
             onCheckedChange={(v) => patch("sd_size_limit_enabled", v === true)}
           />
-          Größen-Limit aktivieren
+          {t("settings.sd.size.enable")}
         </label>
         <div
           className={cn(
@@ -217,7 +226,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             !draft.sd_size_limit_enabled && "pointer-events-none opacity-50",
           )}
         >
-          <Label>Größen-Limit (MB)</Label>
+          <Label>{t("settings.sd.size.limitMb")}</Label>
           <Input
             type="number"
             min={1}
@@ -230,10 +239,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         </div>
       </SettingsSection>
 
-      <p className="text-xs text-muted">
-        Modus Auto und „Vorher bestätigen“: Backup / Import / Bereinigen /
-        Auswerfen laut Schaltern. Bereinigen nur nach erfolgreichem Backup.
-      </p>
+      <p className="text-xs text-muted">{t("settings.sd.footer")}</p>
     </div>
   );
 }

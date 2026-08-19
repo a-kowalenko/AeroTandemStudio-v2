@@ -1,5 +1,6 @@
 /** Shared copy + dialog options for successful QR customer recognition. */
 
+import { tr } from "@/i18n";
 import type { Kunde, QrPreview } from "@/lib/tauri";
 import {
   formatQrCleanupSummary,
@@ -37,7 +38,7 @@ export function buildQrSuccessAction(
 ): DialogActionStatus {
   const detailParts: string[] = [];
   const src = fileBaseName(input.sourcePath);
-  if (src) detailParts.push(`Quelle: ${src}`);
+  if (src) detailParts.push(tr("app.qr.source", { name: src }));
   for (const note of input.notes ?? []) {
     const trimmed = note.trim();
     if (trimmed) detailParts.push(trimmed);
@@ -49,9 +50,9 @@ export function buildQrSuccessAction(
 
   return {
     kind: "qr",
-    label: "QR-Code",
+    label: tr("app.qr.label"),
     tone: "success",
-    summary: "Kundendaten übernommen",
+    summary: tr("app.qr.applied"),
     detail: detailParts.length ? detailParts.join("\n") : undefined,
   };
 }
@@ -71,7 +72,7 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
     message: "",
     options: {
       variant: "qr",
-      highlight: name || "Kunde erkannt",
+      highlight: name || tr("app.sd.customerRecognized"),
       autoCloseSecs: 5,
       qrPreview: input.preview ?? null,
       actions: [action],

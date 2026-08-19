@@ -9,6 +9,7 @@ import {
   Upload,
   XCircle,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
   AMS_HANDOFF_STEPS,
@@ -168,6 +169,7 @@ function stepChipClass(opts: {
 
 /** Phase stepper as chip pipeline for AMS handoff (detail pane). */
 export function AmsHandoffStepper({ view, className }: StepperProps) {
+  const { t } = useTranslation();
   const cancelled = isAmsCancelled(view);
   const failed =
     !cancelled && (view.state === "rejected" || view.state === "failed");
@@ -220,7 +222,7 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
                     aria-hidden
                   />
                 ) : null}
-                {step.label}
+                {t(step.label)}
               </span>
             </li>
           );

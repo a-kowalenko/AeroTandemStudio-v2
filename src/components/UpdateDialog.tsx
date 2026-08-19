@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
@@ -81,6 +82,7 @@ export function UpdateDialog({
   onLater,
   onClose,
 }: VersionInstallDialogProps) {
+  const { t } = useTranslation();
   const [notesOpen, setNotesOpen] = useState(false);
   const direction = installDirection(fromVersion, toVersion);
   const isDowngrade = direction === "downgrade";
@@ -101,14 +103,14 @@ export function UpdateDialog({
   const progressLabel =
     phase === "install"
       ? isDowngrade
-        ? "Version wird installiert…"
-        : "Update wird installiert…"
+        ? t("dialogs.update.installingVersion")
+        : t("dialogs.update.installingUpdate")
       : phase === "download"
         ? isDowngrade
-          ? "Version wird heruntergeladen…"
-          : "Update wird heruntergeladen…"
+          ? t("dialogs.update.downloadingVersion")
+          : t("dialogs.update.downloadingUpdate")
         : installing
-          ? "Installation wird vorbereitet…"
+          ? t("dialogs.update.preparing")
           : undefined;
 
   const detailParts: string[] = [];
@@ -124,16 +126,16 @@ export function UpdateDialog({
   }
 
   const title = !available
-    ? "Update-Prüfung"
+    ? t("dialogs.update.checkTitle")
     : isDowngrade
-      ? "Ältere Version installieren"
-      : "Update verfügbar";
+      ? t("dialogs.update.downgradeTitle")
+      : t("dialogs.update.availableTitle");
 
   const primaryLabel = installing
-    ? "Installiere…"
+    ? t("dialogs.update.installing")
     : isDowngrade
-      ? "Jetzt wechseln"
-      : "Jetzt aktualisieren";
+      ? t("dialogs.update.switchNow")
+      : t("dialogs.update.updateNow");
 
   return (
     <Dialog
@@ -173,7 +175,7 @@ export function UpdateDialog({
         <DialogHeader className="min-w-0">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="min-w-0 break-words">
-            {message || "Update-Status wird geladen…"}
+            {message || t("dialogs.update.statusLoading")}
           </DialogDescription>
         </DialogHeader>
 
@@ -181,22 +183,21 @@ export function UpdateDialog({
           <div className="min-w-0 space-y-3 text-sm">
             <p className="min-w-0 break-words">
               {isDowngrade ? (
-                <>
-                  Version <strong>{toVersion}</strong> ersetzt die aktuelle{" "}
-                  <strong>{fromVersion}</strong>.
-                </>
+                t("dialogs.update.replaceVersion", {
+                  to: toVersion,
+                  from: fromVersion,
+                })
               ) : (
                 <>
-                  Version <strong>{toVersion}</strong> kann installiert werden.
+                  {t("dialogs.update.canInstall", { to: toVersion })}
                   <br />
-                  Aktuell: {fromVersion}
+                  {t("dialogs.update.current", { version: fromVersion })}
                 </>
               )}
             </p>
             {isDowngrade ? (
               <p className="text-xs text-muted">
-                Die App wird ersetzt und neu gestartet. Einstellungen bleiben in
-                der Regel erhalten.
+                {t("dialogs.update.downgradeHint")}
               </p>
             ) : null}
             <div className="min-w-0 space-y-1.5">
@@ -207,7 +208,7 @@ export function UpdateDialog({
                 disabled={installing}
                 onClick={() => setNotesOpen((v) => !v)}
               >
-                Patchnotes
+                {t("dialogs.update.patchNotes")}
                 <ChevronDown
                   className={cn(
                     "h-3.5 w-3.5 transition-transform duration-200",
@@ -218,7 +219,7 @@ export function UpdateDialog({
               {notesOpen ? (
                 <div className="min-w-0 overflow-hidden border-l border-border/70 pl-3">
                   <pre className="max-h-48 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs leading-relaxed text-muted">
-                    {notes?.trim() || "Keine Details verfügbar."}
+                    {notes?.trim() || t("dialogs.update.noNotes")}
                   </pre>
                 </div>
               ) : null}
@@ -259,7 +260,7 @@ export function UpdateDialog({
                   variant="secondary"
                   onClick={() => onCancelInstall?.()}
                 >
-                  Abbrechen
+                  {t("common.actions.cancel")}
                 </Button>
               ) : (
                 <Button
@@ -268,7 +269,7 @@ export function UpdateDialog({
                   onClick={onLater}
                   disabled={installing}
                 >
-                  Später
+                  {t("dialogs.update.later")}
                 </Button>
               )}
               {canSilentInstall ? (
@@ -290,13 +291,13 @@ export function UpdateDialog({
                     void openUrl(installerUrl).catch(() => undefined);
                   }}
                 >
-                  Installer herunterladen
+                  {t("dialogs.update.downloadInstaller")}
                 </Button>
               ) : null}
             </>
           ) : (
             <Button type="button" data-update-primary onClick={onClose}>
-              OK
+              {t("common.actions.ok")}
             </Button>
           )}
         </DialogFooter>

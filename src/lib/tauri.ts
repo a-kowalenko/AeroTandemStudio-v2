@@ -1,6 +1,7 @@
 /** Shared types and typed Tauri invoke wrappers. */
 
 import { invoke } from "@tauri-apps/api/core";
+import { tr } from "@/i18n";
 
 export type VideoMetadata = {
   path: string;
@@ -123,6 +124,8 @@ export type AppConfig = {
   auto_clear_files_after_creation: boolean;
   /** First-run setup wizard finished or skipped. */
   setup_completed: boolean;
+  /** UI language: "de" | "en" | "es-MX". */
+  ui_language: string;
   /** Optional AMS LAN Bridge base URL (`http://host:8787`). */
   ams_bridge_url: string;
   /** Shared bearer token for AMS Bridge. */
@@ -168,12 +171,16 @@ export const CREW_KEEP_LAST_VALUE = "__keep_last__";
 export type CrewKeepPinnedOption = { value: string; label: string };
 
 /** Leading options for TM/VS keep dropdown (Settings / Setup). */
+export function getCrewKeepPinnedOptions(): readonly CrewKeepPinnedOption[] {
+  return [
+    { value: CREW_KEEP_OFF_VALUE, label: tr("settings.crew.keep.off") },
+    { value: CREW_KEEP_LAST_VALUE, label: tr("settings.crew.keep.last") },
+  ];
+}
+/** @deprecated Use getCrewKeepPinnedOptions() for translated labels. */
 export const CREW_KEEP_PINNED_OPTIONS: readonly CrewKeepPinnedOption[] = [
   { value: CREW_KEEP_OFF_VALUE, label: "Nicht beibehalten" },
-  {
-    value: CREW_KEEP_LAST_VALUE,
-    label: "Zuletzt verwendeten beibehalten",
-  },
+  { value: CREW_KEEP_LAST_VALUE, label: "Zuletzt verwendeten beibehalten" },
 ];
 
 /** Map config keep flag + stored name → combobox value. */
@@ -316,7 +323,7 @@ export function crewPinnedSelfOption(
   if (!value) return null;
   return {
     value,
-    label: `${value} (Ich)`,
+    label: `${value} (${tr("settings.crew.keep.selfSuffix")})`,
     disabled: Boolean(opts?.disabled),
   };
 }
@@ -330,8 +337,9 @@ export function crewKeepPinnedOptions(
   operatorName: string | null | undefined,
 ): readonly CrewPinnedEntry[] {
   const self = crewPinnedSelfOption(list, role, operatorName);
-  if (!self) return CREW_KEEP_PINNED_OPTIONS;
-  return [...CREW_KEEP_PINNED_OPTIONS, { kind: "separator" }, self];
+  const pinned = getCrewKeepPinnedOptions();
+  if (!self) return pinned;
+  return [...pinned, { kind: "separator" }, self];
 }
 
 /**

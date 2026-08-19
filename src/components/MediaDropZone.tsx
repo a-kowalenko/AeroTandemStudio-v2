@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   useCallback,
   useEffect,
@@ -80,6 +81,7 @@ export function MediaDropZone({
   /** External lock (e.g. SD auto workflow) — disables import / scan actions. */
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
   const importing = useVideoStore((s) => s.importing);
   const photoImporting = usePhotoStore((s) => s.importing);
@@ -191,7 +193,7 @@ export function MediaDropZone({
     const next = { ...config, [key]: value };
     const saved = await persistConfig(next);
     if (!saved) {
-      showError("Einstellung konnte nicht gespeichert werden.");
+      showError(t("media.drop.saveFailed"));
     }
   }
 
@@ -246,21 +248,30 @@ export function MediaDropZone({
 
         if (videosAdded === 0 && photosAdded === 0) {
           if (expanded.length === 0 || (skipped.length > 0 && videos.length === 0 && photos.length === 0)) {
-            setStatusMsg("Keine unterstützten Video- oder Foto-Dateien gefunden");
+            setStatusMsg(t("media.drop.noneFound"));
           } else {
-            setStatusMsg("Alle Dateien sind bereits in der Liste");
+            setStatusMsg(t("media.drop.alreadyInList"));
           }
           return;
         }
 
         const parts: string[] = [];
         if (videosAdded > 0) {
-          parts.push(`${videosAdded} Video${videosAdded === 1 ? "" : "s"}`);
+          parts.push(
+            t(videosAdded === 1 ? "media.drop.countVideo" : "media.drop.countVideos", {
+              count: videosAdded,
+            }),
+          );
         }
         if (photosAdded > 0) {
-          parts.push(`${photosAdded} Foto${photosAdded === 1 ? "" : "s"}`);
+          parts.push(
+            t(photosAdded === 1 ? "media.drop.countPhoto" : "media.drop.countPhotos", {
+              count: photosAdded,
+            }),
+          );
         }
-        setStatusMsg(`${parts.join(", ")} hinzugefügt`);
+        const partsJoined = parts.join(", ");
+        setStatusMsg(t("media.drop.added", { parts: partsJoined }));
 
         onImported?.({ videosAdded, photosAdded });
 
@@ -287,41 +298,49 @@ export function MediaDropZone({
             );
             if (outcome.attempted && outcome.found) {
               const qrActions = outcome.successOptions?.actions ?? [];
-              showSuccess("", outcome.successTitle ?? "QR-Code erkannt", {
+              showSuccess("", outcome.successTitle ?? t("app.qr.recognized"), {
                 ...outcome.successOptions,
                 variant: "qr",
                 highlight:
                   outcome.successOptions?.highlight ||
                   outcome.kundeName ||
-                  "Kunde erkannt",
+                  t("app.sd.customerRecognized"),
                 autoCloseSecs: outcome.successOptions?.autoCloseSecs ?? 5,
                 actions: [
                   ...qrActions,
                   {
                     kind: "import",
-                    label: "Import",
+                    label: t("app.import.label"),
                     tone: "success",
-                    summary: `${videosAdded} Videos, ${photosAdded} Fotos`,
+                    summary: t("app.import.summary", {
+                      videos: videosAdded,
+                      photos: photosAdded,
+                    }),
                   },
                 ],
               });
               setStatusMsg(
                 outcome.applied
-                  ? `${parts.join(", ")} · QR übernommen`
+                  ? t("media.drop.qrApplied", { parts: partsJoined })
                   : outcome.keptExisting
-                    ? `${parts.join(", ")} · Kunde behalten`
-                    : `${parts.join(", ")} · QR`,
+                    ? t("media.drop.keptCustomer", { parts: partsJoined })
+                    : t("media.drop.qrSuffix", { parts: partsJoined }),
               );
             } else if (outcome.attempted && outcome.cancelled) {
               showWarning(
-                outcome.message || "QR-Scan abgebrochen.",
-                "QR-Scan",
+                outcome.message || t("app.qr.cancelled"),
+                t("media.drop.qrScanTitle"),
                 { autoCloseSecs: 5 },
               );
-              setStatusMsg(`${parts.join(", ")} · QR abgebrochen`);
+              setStatusMsg(t("media.drop.qrCancelled", { parts: partsJoined }));
             } else {
               if (outcome.attempted && outcome.message) {
-                setStatusMsg(`${parts.join(", ")} · ${outcome.message}`);
+                setStatusMsg(
+                  t("media.drop.withMessage", {
+                    parts: partsJoined,
+                    message: outcome.message,
+                  }),
+                );
               }
               requestKundenIdFocusAfterImport({
                 scanned: true,
@@ -331,7 +350,7 @@ export function MediaDropZone({
               });
             }
           } catch (e) {
-            showError(String(e), "Auto-QR");
+            showError(String(e), t("media.drop.autoQrTitle"));
             requestKundenIdFocus();
           } finally {
             setQrBusy(false);
@@ -342,9 +361,9 @@ export function MediaDropZone({
       } catch (e) {
         setStatusMsg(null);
         if (isImportCancellation(e)) {
-          showWarning("Import abgebrochen — keine Dateien übernommen.", "Import");
+          showWarning(t("media.drop.importCancelled"), t("media.drop.importTitle"));
         } else {
-          showError(String(e), "Import");
+          showError(String(e), t("media.drop.importTitle"));
         }
       } finally {
         setExpanding(false);
@@ -360,6 +379,7 @@ export function MediaDropZone({
       onRemoveVideo,
       showError,
       showSuccess,
+      t,
     ],
   );
 
@@ -405,11 +425,11 @@ export function MediaDropZone({
       multiple: true,
       filters: [
         {
-          name: "Medien",
+          name: t("media.drop.filterMedia"),
           extensions: [...VIDEO_EXTENSIONS, ...PHOTO_EXTENSIONS],
         },
-        { name: "Video", extensions: [...VIDEO_EXTENSIONS] },
-        { name: "Fotos", extensions: [...PHOTO_EXTENSIONS] },
+        { name: t("common.labels.video"), extensions: [...VIDEO_EXTENSIONS] },
+        { name: t("common.labels.photos"), extensions: [...PHOTO_EXTENSIONS] },
       ],
     });
     if (Array.isArray(selected) && selected.length > 0) {
@@ -434,14 +454,14 @@ export function MediaDropZone({
   async function scanAllVideos() {
     const paths = videoList.map((v) => v.path);
     if (paths.length === 0) {
-      showWarning("Bitte zuerst Videos in die Liste legen.", "QR-Scan");
+      showWarning(t("media.drop.pleaseAddVideos"), t("media.drop.qrScanTitle"));
       return;
     }
     setQrBusy(true);
     try {
       const result = await withQrScanProgress(paths, () => scanQrVideos(paths));
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -453,11 +473,11 @@ export function MediaDropZone({
             }),
         });
       } else {
-        showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
+        showWarning(result.message || t("media.drop.noQr"), t("media.drop.qrScanTitle"));
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("media.drop.qrScanTitle"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -467,7 +487,7 @@ export function MediaDropZone({
   async function scanAllPhotos() {
     const paths = photoList.map((p) => p.path);
     if (paths.length === 0) {
-      showWarning("Bitte zuerst Fotos in die Liste legen.", "QR-Scan");
+      showWarning(t("media.drop.pleaseAddPhotos"), t("media.drop.qrScanTitle"));
       return;
     }
     setQrBusy(true);
@@ -480,7 +500,7 @@ export function MediaDropZone({
         { photoEdgeLimited: edge.limited },
       );
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
@@ -489,11 +509,11 @@ export function MediaDropZone({
           runCleanup: () => maybeRemoveQrPhoto(result.source_path),
         });
       } else {
-        showWarning(result.message || "Kein gültiger QR-Code gefunden.", "QR-Scan");
+        showWarning(result.message || t("media.drop.noQr"), t("media.drop.qrScanTitle"));
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("media.drop.qrScanTitle"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -506,18 +526,18 @@ export function MediaDropZone({
       multiple: false,
       filters: [
         {
-          name: "Foto oder Video",
+          name: t("media.drop.filterPhotoOrVideo"),
           extensions: [...PHOTO_EXTENSIONS, ...VIDEO_EXTENSIONS],
         },
-        { name: "Fotos", extensions: [...PHOTO_EXTENSIONS] },
-        { name: "Video", extensions: [...VIDEO_EXTENSIONS] },
+        { name: t("common.labels.photos"), extensions: [...PHOTO_EXTENSIONS] },
+        { name: t("common.labels.video"), extensions: [...VIDEO_EXTENSIONS] },
       ],
     });
     if (typeof selected !== "string") return;
 
     const kind = mediaKind(selected);
     if (!kind) {
-      showWarning("Bitte eine Foto- oder Video-Datei wählen.", "QR-Scan");
+      showWarning(t("media.drop.pickMedia"), t("media.drop.qrScanTitle"));
       return;
     }
 
@@ -527,28 +547,29 @@ export function MediaDropZone({
         kind === "video" ? scanQrVideo(selected) : scanQrPhoto(selected),
       );
       if (result.cancelled) {
-        showWarning(result.message, "QR-Scan", { autoCloseSecs: 5 });
+        showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {
-        const typeLabel = kind === "video" ? "Video" : "Foto";
+        const typeLabel =
+          kind === "video" ? t("common.labels.video") : t("common.labels.photo");
         await presentQrHit({
           kunde: result.kunde,
           sourcePath: selected,
           preview: result.preview,
-          notes: [`Externes ${typeLabel} — Datei nicht importiert.`],
+          notes: [t("media.drop.externalNote", { type: typeLabel })],
           runCleanup: async () => emptyCleanup(),
         });
       } else {
         showWarning(
           result.message ||
             (kind === "video"
-              ? "Kein gültiger QR-Code im Video."
-              : "Kein gültiger QR-Code im Foto."),
-          "QR-Scan",
+              ? t("media.drop.noQrVideo")
+              : t("media.drop.noQrPhoto")),
+          t("media.drop.qrScanTitle"),
         );
         requestKundenIdFocus();
       }
     } catch (e) {
-      showError(String(e), "QR-Scan");
+      showError(String(e), t("media.drop.qrScanTitle"));
       requestKundenIdFocus();
     } finally {
       setQrBusy(false);
@@ -572,10 +593,10 @@ export function MediaDropZone({
             id={dropZoneId}
             className="text-sm font-semibold tracking-wide text-muted uppercase"
           >
-            Medien
+            {t("form.media.section")}
           </h2>
           <p className="mt-0.5 text-xs text-muted">
-            Import per Drag & Drop, Datei- oder Ordnerwahl · Vorschau & Liste darunter
+            {t("media.drop.subtitle")}
           </p>
         </div>
         {totalCount > 0 && (
@@ -583,13 +604,23 @@ export function MediaDropZone({
             {videoList.length > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
                 <Film className="h-3 w-3" aria-hidden />
-                {videoList.length} Video{videoList.length === 1 ? "" : "s"}
+                {t(
+                  videoList.length === 1
+                    ? "media.drop.countVideo"
+                    : "media.drop.countVideos",
+                  { count: videoList.length },
+                )}
               </span>
             )}
             {photoList.length > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
                 <ImageIcon className="h-3 w-3" aria-hidden />
-                {photoList.length} Foto{photoList.length === 1 ? "" : "s"}
+                {t(
+                  photoList.length === 1
+                    ? "media.drop.countPhoto"
+                    : "media.drop.countPhotos",
+                  { count: photoList.length },
+                )}
               </span>
             )}
           </div>
@@ -609,7 +640,7 @@ export function MediaDropZone({
         >
           <div className="flex shrink-0 items-center gap-2 text-xs font-semibold tracking-wide text-muted uppercase">
             <QrCode className="h-3.5 w-3.5 text-primary" aria-hidden />
-            Auto-QR beim Import
+            {t("media.drop.autoQr")}
           </div>
           <div className="flex shrink-0 items-center gap-4">
             <div className="flex items-center gap-2">
@@ -623,7 +654,7 @@ export function MediaDropZone({
                 htmlFor="auto-qr-videos"
                 className="cursor-pointer text-sm font-normal"
               >
-                Videos
+                {t("common.labels.videos")}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -639,7 +670,7 @@ export function MediaDropZone({
                 htmlFor="auto-qr-photos"
                 className="cursor-pointer text-sm font-normal"
               >
-                Fotos
+                {t("common.labels.photos")}
               </Label>
             </div>
           </div>
@@ -661,14 +692,14 @@ export function MediaDropZone({
             disabled={busy || videoList.length === 0}
             title={
               videoList.length === 0
-                ? "Keine Videos in der Liste"
-                : `${videoList.length} Clip(s) parallel scannen`
+                ? t("media.drop.noVideos")
+                : t("media.drop.scanClipsTitle", { count: videoList.length })
             }
           >
             <QrCode className="h-3.5 w-3.5" />
             {compactScanLabels
-              ? `Videos (${videoList.length})`
-              : `Videos scannen (${videoList.length})`}
+              ? t("media.drop.scanVideosCompact", { count: videoList.length })
+              : t("media.drop.scanVideos", { count: videoList.length })}
           </Button>
           <Button
             type="button"
@@ -679,14 +710,14 @@ export function MediaDropZone({
             disabled={busy || photoList.length === 0}
             title={
               photoList.length === 0
-                ? "Keine Fotos in der Liste"
-                : `${photoList.length} Foto(s) parallel scannen`
+                ? t("media.drop.noPhotos")
+                : t("media.drop.scanPhotosTitle", { count: photoList.length })
             }
           >
             <QrCode className="h-3.5 w-3.5" />
             {compactScanLabels
-              ? `Fotos (${photoList.length})`
-              : `Fotos scannen (${photoList.length})`}
+              ? t("media.drop.scanPhotosCompact", { count: photoList.length })
+              : t("media.drop.scanPhotos", { count: photoList.length })}
           </Button>
           <Button
             type="button"
@@ -695,10 +726,10 @@ export function MediaDropZone({
             className="whitespace-nowrap"
             onClick={() => void scanExternalMediaFile()}
             disabled={busy}
-            title="Foto oder Video wählen — nur QR-Scan, kein Import"
+            title={t("media.drop.scanExternalTitle")}
           >
             <ScanSearch className="h-3.5 w-3.5" />
-            {compactScanLabels ? "Datei…" : "Datei scannen…"}
+            {compactScanLabels ? t("media.drop.scanFileCompact") : t("media.drop.scanFile")}
           </Button>
         </div>
         {/* Off-layout measures — pick full / compact / wrap without flicker */}
@@ -709,15 +740,15 @@ export function MediaDropZone({
         >
           <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
             <QrCode className="h-3.5 w-3.5" />
-            Videos scannen ({videoList.length})
+            {t("media.drop.scanVideos", { count: videoList.length })}
           </Button>
           <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
             <QrCode className="h-3.5 w-3.5" />
-            Fotos scannen ({photoList.length})
+            {t("media.drop.scanPhotos", { count: photoList.length })}
           </Button>
           <Button type="button" size="sm" variant="ghost" tabIndex={-1}>
             <ScanSearch className="h-3.5 w-3.5" />
-            Datei scannen…
+            {t("media.drop.scanFile")}
           </Button>
         </div>
         <div
@@ -727,15 +758,15 @@ export function MediaDropZone({
         >
           <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
             <QrCode className="h-3.5 w-3.5" />
-            Videos ({videoList.length})
+            {t("media.drop.scanVideosCompact", { count: videoList.length })}
           </Button>
           <Button type="button" size="sm" variant="secondary" tabIndex={-1}>
             <QrCode className="h-3.5 w-3.5" />
-            Fotos ({photoList.length})
+            {t("media.drop.scanPhotosCompact", { count: photoList.length })}
           </Button>
           <Button type="button" size="sm" variant="ghost" tabIndex={-1}>
             <ScanSearch className="h-3.5 w-3.5" />
-            Datei…
+            {t("media.drop.scanFileCompact")}
           </Button>
         </div>
       </div>
@@ -748,7 +779,7 @@ export function MediaDropZone({
             : "border-border bg-card-elevated/60 hover:border-primary/40 hover:bg-card-elevated",
         )}
         role="region"
-        aria-label="Videos, Fotos und Ordner hierher ziehen"
+        aria-label={t("media.drop.aria")}
       >
         <div
           className={cn(
@@ -769,16 +800,14 @@ export function MediaDropZone({
             )}
           </div>
           <p className="mb-0.5 text-sm font-medium text-foreground">
-            {dragOver
-              ? "Loslassen zum Hinzufügen"
-              : "Dateien oder Ordner hierher ziehen"}
+            {dragOver ? t("media.drop.release") : t("media.drop.drag")}
           </p>
           <p className="mb-3 text-xs text-muted">
-            Ordner werden rekursiv durchsucht · .mp4, .mov · .jpg, .png, .webp …
+            {t("media.drop.formats")}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button type="button" size="sm" onClick={() => void pickFiles()} disabled={busy}>
-              Dateien wählen…
+              {t("media.drop.pickFiles")}
             </Button>
             <Button
               type="button"
@@ -788,7 +817,7 @@ export function MediaDropZone({
               disabled={busy}
             >
               <FolderOpen className="h-3.5 w-3.5" />
-              Ordner wählen…
+              {t("media.drop.pickFolder")}
             </Button>
             <Button
               type="button"
@@ -804,16 +833,16 @@ export function MediaDropZone({
               disabled={busy || totalCount === 0}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Alles leeren
+              {t("media.drop.clearAll")}
             </Button>
           </div>
           {busy && (
             <p className="mt-2 text-sm text-muted">
               {expanding
-                ? "Ordner werden durchsucht…"
+                ? t("media.drop.searchingFolder")
                 : qrBusy
-                  ? "QR-Code wird gesucht…"
-                  : "Importiere…"}
+                  ? t("media.drop.searchingQr")
+                  : t("media.drop.importing")}
             </p>
           )}
           {importError && (

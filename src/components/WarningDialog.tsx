@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -21,11 +22,13 @@ type Props = {
 
 export function WarningDialog({
   open,
-  title = "Hinweis",
+  title,
   message,
   autoCloseSecs = null,
   onClose,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t("dialogs.warning.defaultTitle");
   const timeoutSecs =
     autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
   const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
@@ -62,7 +65,7 @@ export function WarningDialog({
       window.cancelAnimationFrame(startRaf);
       window.clearInterval(id);
     };
-  }, [open, timeoutSecs, message, title]);
+  }, [open, timeoutSecs, message, resolvedTitle]);
 
   function close() {
     if (closedRef.current) return;
@@ -77,14 +80,17 @@ export function WarningDialog({
         overlayClassName="z-[100]"
       >
         <DialogHeader>
-          <DialogTitle className="text-warning">{title}</DialogTitle>
+          <DialogTitle className="text-warning">{resolvedTitle}</DialogTitle>
           <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
             {message}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="secondary" className="shrink-0" onClick={close}>
-            OK{timeoutSecs && remaining > 0 ? ` (${remaining}s)` : ""}
+            {t("common.actions.ok")}
+            {timeoutSecs && remaining > 0
+              ? t("dialogs.countdownSuffix", { seconds: remaining })
+              : ""}
           </Button>
         </DialogFooter>
         {timeoutSecs ? (
@@ -98,7 +104,7 @@ export function WarningDialog({
                 ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100)
                 : 0
             }
-            aria-label="Automatisches Schließen"
+            aria-label={t("dialogs.autoCloseAria")}
           >
             <div
               className={cn("h-full origin-left bg-warning")}

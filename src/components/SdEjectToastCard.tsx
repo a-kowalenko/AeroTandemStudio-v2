@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, HardDrive, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,13 +25,14 @@ export function SdEjectToastCard({
   onDismiss,
   usbCamera = false,
 }: SdEjectToastCardProps) {
+  const { t } = useTranslation();
   const subtitle = ok
     ? usbCamera
-      ? "Session beendet — Gerät aus der Liste entfernt"
-      : "Kann sicher entfernt werden"
+      ? t("sd.eject.subtitleUsbOk")
+      : t("sd.eject.subtitleOk")
     : usbCamera
-      ? "USB-Kamera manuell trennen"
-      : "Karte manuell sicher entfernen";
+      ? t("sd.eject.subtitleUsbError")
+      : t("sd.eject.subtitleError");
   const meta = [detail?.trim(), hint?.trim(), !ok ? error?.trim() : undefined]
     .filter(Boolean)
     .join(" · ");
@@ -79,9 +81,9 @@ export function SdEjectToastCard({
           <p className="text-[13px] leading-tight font-semibold tracking-tight text-foreground">
             {ok
               ? usbCamera
-                ? "USB-Kamera freigegeben"
-                : "SD-Karte ausgeworfen"
-              : "Auswerfen fehlgeschlagen"}
+                ? t("sd.eject.titleUsbOk")
+                : t("app.sd.ejectSuccess")
+              : t("app.sd.ejectFailed")}
           </p>
           <p className="mt-1 text-[12.5px] leading-snug text-muted">{subtitle}</p>
           {meta ? (
@@ -100,7 +102,7 @@ export function SdEjectToastCard({
         <button
           type="button"
           className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
-          aria-label="Hinweis schließen"
+          aria-label={t("sd.toast.dismiss")}
           onClick={onDismiss}
         >
           <X className="h-3.5 w-3.5" aria-hidden />

@@ -12,6 +12,7 @@
     "build:win": "node scripts/build-windows-dev.mjs",
     "release": "node scripts/release.mjs",
     "check": "tsc --noEmit",
+    "i18n:generate": "node scripts/generate-i18n-locales.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri:build:ci": "tauri build --config src-tauri/tauri.conf.ci.json"
   },
@@ -33,10 +34,12 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "i18next": "^26.3.6",
     "lucide-react": "^1.29.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hot-toast": "^2.6.0",
+    "react-i18next": "^17.0.11",
     "tailwind-merge": "^3.6.0",
     "zustand": "^5.0.14"
   },

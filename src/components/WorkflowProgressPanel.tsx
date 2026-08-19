@@ -10,6 +10,7 @@ import {
   Scissors,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
@@ -48,6 +49,7 @@ function stageIcon(stage: WorkflowProgressStage): LucideIcon {
 }
 
 export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
+  const { t } = useTranslation();
   if (!view.visible) return null;
 
   const Icon = stageIcon(view.stage);
@@ -84,14 +86,14 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         "ats-surface pointer-events-auto rounded-xl border border-border/80 p-4 shadow-lg backdrop-blur-md ats-progress-float-in",
         className,
       )}
-      aria-label="Fortschritt"
+      aria-label={t("workflow.progress")}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
             <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
-              Fortschritt
+              {t("workflow.progress")}
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted">{view.subtitle}</p>
@@ -99,7 +101,7 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         <div className="flex shrink-0 items-center gap-1">
           {view.canCancel && onCancel ? (
             <Button type="button" variant="destructive" size="sm" onClick={onCancel}>
-              Abbrechen
+              {t("common.actions.cancel")}
             </Button>
           ) : null}
         </div>

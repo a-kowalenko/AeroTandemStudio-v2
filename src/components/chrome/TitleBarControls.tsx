@@ -1,4 +1,5 @@
 import { Copy, Minus, Square, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -16,6 +17,7 @@ export function TitleBarControls({
   onClose,
   className,
 }: Props) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn("flex h-full shrink-0 items-stretch", className)}
@@ -23,8 +25,8 @@ export function TitleBarControls({
     >
       <button
         type="button"
-        aria-label="Minimieren"
-        title="Minimieren"
+        aria-label={t("chrome.window.minimize")}
+        title={t("chrome.window.minimize")}
         onClick={onMinimize}
         className="inline-flex w-11 items-center justify-center text-muted transition-colors hover:bg-black/8 hover:text-foreground dark:hover:bg-white/10"
       >
@@ -32,8 +34,8 @@ export function TitleBarControls({
       </button>
       <button
         type="button"
-        aria-label={isMaximized ? "Wiederherstellen" : "Maximieren"}
-        title={isMaximized ? "Wiederherstellen" : "Maximieren"}
+        aria-label={isMaximized ? t("chrome.window.restore") : t("chrome.window.maximize")}
+        title={isMaximized ? t("chrome.window.restore") : t("chrome.window.maximize")}
         onClick={onToggleMaximize}
         className="inline-flex w-11 items-center justify-center text-muted transition-colors hover:bg-black/8 hover:text-foreground dark:hover:bg-white/10"
       >
@@ -45,8 +47,8 @@ export function TitleBarControls({
       </button>
       <button
         type="button"
-        aria-label="Schließen"
-        title="Schließen"
+        aria-label={t("common.actions.close")}
+        title={t("common.actions.close")}
         onClick={onClose}
         className="inline-flex w-11 items-center justify-center text-muted transition-colors hover:bg-destructive hover:text-white"
       >

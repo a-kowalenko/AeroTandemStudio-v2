@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +29,7 @@ export function IntroMuxFallbackDialog({
   timeoutSecs = 15,
   onChoose,
 }: Props) {
+  const { t } = useTranslation();
   const [remaining, setRemaining] = useState(timeoutSecs);
   const chosenRef = useRef(false);
   const onChooseRef = useRef(onChoose);
@@ -80,23 +82,17 @@ export function IntroMuxFallbackDialog({
       >
         <DialogHeader className="min-w-0">
           <DialogTitle className="text-warning">
-            Intro kann nicht per Stream-Copy angefügt werden
+            {t("dialogs.introMux.title")}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="min-w-0 space-y-3 text-sm text-foreground">
-              <p className="break-words">
-                Das Zusammenfügen von Intro und Video ohne Neu-Kodierung ist
-                fehlgeschlagen (häufig bei modernen Kameradateien).
-              </p>
+              <p className="break-words">{t("dialogs.introMux.body")}</p>
               {reason ? (
                 <p className="min-w-0 overflow-x-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted [overflow-wrap:anywhere]">
                   {reason}
                 </p>
               ) : null}
-              <p className="text-muted">
-                Bitte wählen: Video ohne Intro exportieren (schnell) oder mit Intro
-                neu kodieren (dauert länger).
-              </p>
+              <p className="text-muted">{t("dialogs.introMux.hint")}</p>
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -105,10 +101,13 @@ export function IntroMuxFallbackDialog({
             variant="outline"
             onClick={() => choose("with_intro_encode")}
           >
-            Mit Intro (Encoding)
+            {t("dialogs.introMux.withIntroEncode")}
           </Button>
           <Button variant="default" onClick={() => choose("without_intro")}>
-            Ohne Intro{remaining > 0 ? ` (${remaining}s)` : ""}
+            {t("dialogs.introMux.withoutIntro")}
+            {remaining > 0
+              ? t("dialogs.countdownSuffix", { seconds: remaining })
+              : ""}
           </Button>
         </DialogFooter>
       </DialogContent>

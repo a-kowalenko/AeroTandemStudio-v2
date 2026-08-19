@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, ListOrdered, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,11 +17,12 @@ export function SdQueueToastCard({
   durationMs,
   onDismiss,
 }: SdQueueToastCardProps) {
+  const { t } = useTranslation();
   const ok = variant === "queued";
-  const title = ok ? "SD vorgemerkt" : "Vorgemerkte SD weg";
+  const title = ok ? t("sd.queue.titleQueued") : t("sd.queue.titleDropped");
   const subtitle = ok
-    ? "Startet nach dem aktuellen Vorgang"
-    : "Nicht mehr verfügbar — aus der Warteschlange entfernt";
+    ? t("sd.queue.subtitleQueued")
+    : t("sd.queue.subtitleDropped");
 
   return (
     <div
@@ -83,7 +85,7 @@ export function SdQueueToastCard({
         <button
           type="button"
           className="shrink-0 rounded-lg p-1 text-muted transition-colors hover:bg-foreground/10 hover:text-foreground"
-          aria-label="Hinweis schließen"
+          aria-label={t("sd.toast.dismiss")}
           onClick={onDismiss}
         >
           <X className="h-3.5 w-3.5" aria-hidden />

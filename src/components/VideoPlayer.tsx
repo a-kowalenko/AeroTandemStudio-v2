@@ -7,6 +7,7 @@
   forwardRef,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
@@ -186,6 +187,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const videoRef = useRef<HTMLVideoElement>(null);
     const barRef = useRef<HTMLDivElement>(null);
     const scrubBarRef = useRef<HTMLDivElement>(null);
@@ -599,7 +601,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 setMuted(next === 0);
               }}
               className="ml-1 w-20 accent-white"
-              aria-label="Lautstärke"
+              aria-label={t("video.player.volumeAria")}
             />
           </div>
         </div>
@@ -778,10 +780,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 // 4 = MEDIA_ERR_SRC_NOT_SUPPORTED — typical on Linux without GStreamer codecs
                 if (code === 4) {
                   setLoadError(
-                    "Video nicht abspielbar (Codec/WebView). Unter Linux: GStreamer-Plugins installieren (gstreamer1.0-libav, plugins-good/bad).",
+                    t("video.player.loadErrorLinux"),
                   );
                 } else {
-                  setLoadError("Video konnte nicht geladen werden.");
+                  setLoadError(t("video.player.loadError"));
                 }
               }}
               onLoadedMetadata={(e) => {
@@ -832,7 +834,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/70">
-              Kein Video
+              {t("video.player.noVideo")}
             </div>
           )}
 
@@ -913,7 +915,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   aria-valuemin={0}
                   aria-valuemax={durationMs || 0}
                   aria-valuenow={currentMs}
-                  aria-label="Position"
+                  aria-label={t("video.player.positionAria")}
                 >
                   <div className="relative h-1 rounded-full bg-white/25 transition-[height] group-hover/scrub:h-1.5 group-active/scrub:h-1.5">
                     <div
