@@ -11,7 +11,10 @@ import { useTranslation } from "react-i18next";
 import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
-import { getMediaThumbnail } from "../lib/sdCard";
+import {
+  previewThumbnailQueue,
+  THUMB_PRIORITY,
+} from "../lib/thumbnailQueue";
 import { cn, isLinuxHost } from "../lib/utils";
 import {
   previewRotateMediaStyle,
@@ -344,14 +347,20 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             setLoadError("Video-URL konnte nicht geladen werden.");
           }
         });
-      // FFmpeg first-frame poster (cached) — fills black WKWebView until decode paints.
-      void getMediaThumbnail(srcPath, "preview")
-        .then((r) => {
-          if (!cancelled) setPosterUrl(r.data_url);
-        })
-        .catch(() => {
-          if (!cancelled) setPosterUrl(null);
-        });
+      // FFmpeg first-frame poster — on-demand via staggered queue (OPT-10).
+      const cached = previewThumbnailQueue.getCached(srcPath, cacheKey);
+      if (cached) {
+        setPosterUrl(cached);
+      } else {
+        void previewThumbnailQueue
+          .request(srcPath, THUMB_PRIORITY.onDemand, cacheKey)
+          .then((url) => {
+            if (!cancelled) setPosterUrl(url);
+          })
+          .catch(() => {
+            if (!cancelled) setPosterUrl(null);
+          });
+      }
       return () => {
         cancelled = true;
       };

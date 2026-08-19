@@ -1,6 +1,6 @@
 /** Concurrent LQ→HQ thumbnail loader with memory cache and batched React updates. */
 
-import { getMediaThumbnail, type ThumbQuality } from "./sdCard";
+import { getMediaThumbnail, thumbnailDisplayUrl, type ThumbQuality } from "./sdCard";
 
 export type ThumbQualityLevel = ThumbQuality;
 
@@ -191,7 +191,10 @@ export class SdThumbnailLoader {
     try {
       const res = await getMediaThumbnail(item.path, item.quality);
       if (this.stopped || gen !== this.generation) return;
-      const state: ThumbState = { url: res.data_url, quality: item.quality };
+      const state: ThumbState = {
+        url: thumbnailDisplayUrl(res),
+        quality: item.quality,
+      };
       memoryCache.set(cacheKey(item.path, item.quality), state);
       // Don't downgrade displayed HQ with a late LQ response.
       const current = bestCached(item.path);

@@ -118,17 +118,17 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 
 | ID | Titel | Status |
 |----|-------|--------|
-| OPT-0 | Performance-Baseline | ⬜ |
-| OPT-1 | Foto-Preview Thumbnails | ⬜ |
-| OPT-2 | Import paralleles ffprobe | ⬜ |
-| OPT-3 | Copy-Buffer / Hardlink | ⬜ |
-| OPT-4 | Thumbnails HTTP statt Base64 | ⬜ |
+| OPT-0 | Performance-Baseline | ✅ |
+| OPT-1 | Foto-Preview Thumbnails | ✅ |
+| OPT-2 | Import paralleles ffprobe | ✅ |
+| OPT-3 | Copy-Buffer / Hardlink | ✅ |
+| OPT-4 | Thumbnails HTTP statt Base64 | ✅ |
 | OPT-5 | App.tsx Split + lazy | ⬜ |
-| OPT-6 | Log-Konsole virtualisieren | ⬜ |
-| OPT-7 | Filmstrip-Prefetch | ⬜ |
-| OPT-8 | Startup Cache-Sweep defer | ⬜ |
-| OPT-9 | Stream-Copy / Preview-Reuse UX | ⬜ |
-| OPT-10 | Thumbnail-Warming staffeln | ⬜ |
+| OPT-6 | Log-Konsole virtualisieren | ✅ |
+| OPT-7 | Filmstrip-Prefetch | ✅ |
+| OPT-8 | Startup Cache-Sweep defer | ✅ |
+| OPT-9 | Stream-Copy / Preview-Reuse UX | ✅ |
+| OPT-10 | Thumbnail-Warming staffeln | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

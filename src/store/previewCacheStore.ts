@@ -26,6 +26,62 @@ export function previewEncodingSignature(
   return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}`;
 }
 
+export type PreviewReuseBlockReason =
+  | "no_preview"
+  | "clips_changed"
+  | "form_changed"
+  | "encoding_changed";
+
+export type PreviewReusePlan =
+  | { canReuse: true }
+  | { canReuse: false; reason: PreviewReuseBlockReason };
+
+function previewCacheMismatchReason(
+  state: Pick<
+    PreviewCacheState,
+    "previewPath" | "fingerprint" | "videoSig" | "kundeSig" | "encodingSig"
+  >,
+  videos: VideoMetadata[],
+  kunde: Kunde,
+  encodingSig?: string | null,
+): PreviewReuseBlockReason | null {
+  if (
+    !state.previewPath ||
+    !state.fingerprint ||
+    !state.videoSig ||
+    !state.kundeSig
+  ) {
+    return "no_preview";
+  }
+  if (state.videoSig !== videoListSignature(videos)) {
+    return "clips_changed";
+  }
+  if (state.kundeSig !== kundeSignature(kunde)) {
+    return "form_changed";
+  }
+  if (encodingSig != null || state.encodingSig != null) {
+    if ((encodingSig ?? null) !== (state.encodingSig ?? null)) {
+      return "encoding_changed";
+    }
+  }
+  return null;
+}
+
+/** Whether create can copy the cached preview instead of a full encode. */
+export function getPreviewReusePlan(
+  videos: VideoMetadata[],
+  kunde: Kunde,
+  encodingSig?: string | null,
+): PreviewReusePlan {
+  const reason = previewCacheMismatchReason(
+    usePreviewCacheStore.getState(),
+    videos,
+    kunde,
+    encodingSig,
+  );
+  return reason ? { canReuse: false, reason } : { canReuse: true };
+}
+
 type PreviewCacheState = {
   previewPath: string | null;
   fingerprint: string | null;
@@ -86,25 +142,6 @@ export const usePreviewCacheStore = create<PreviewCacheState>((set, get) => ({
       encodingSig: null,
     }),
 
-  matches: (videos, kunde, encodingSig = null) => {
-    const state = get();
-    if (
-      !state.previewPath ||
-      !state.fingerprint ||
-      !state.videoSig ||
-      !state.kundeSig
-    ) {
-      return false;
-    }
-    if (
-      state.videoSig !== videoListSignature(videos) ||
-      state.kundeSig !== kundeSignature(kunde)
-    ) {
-      return false;
-    }
-    if (encodingSig != null || state.encodingSig != null) {
-      return (encodingSig ?? null) === (state.encodingSig ?? null);
-    }
-    return true;
-  },
+  matches: (videos, kunde, encodingSig = null) =>
+    previewCacheMismatchReason(get(), videos, kunde, encodingSig) === null,
 }));

@@ -131,6 +131,13 @@ fn cache_file_name(path: &Path, mtime: u64, size: u64, quality: ThumbQuality) ->
     )
 }
 
+/// On-disk JPEG cache entry (served over loopback HTTP instead of Base64 IPC).
+#[derive(Debug, Clone)]
+pub struct CachedThumbnail {
+    pub bytes: Vec<u8>,
+    pub cache_path: PathBuf,
+}
+
 fn encode_jpeg(img: &DynamicImage, quality: u8) -> Result<Vec<u8>, ThumbnailError> {
     let mut jpeg = Vec::new();
     {
@@ -150,11 +157,11 @@ pub fn jpeg_bytes_to_data_url(jpeg: &[u8]) -> String {
     to_data_url(jpeg)
 }
 
-/// Generate (or load from disk cache) a JPEG thumbnail as `(jpeg_bytes, data_url)`.
+/// Generate (or load from disk cache) a JPEG thumbnail.
 pub fn generate_thumbnail_jpeg(
     path: &Path,
     max_size: u32,
-) -> Result<(Vec<u8>, String), ThumbnailError> {
+) -> Result<CachedThumbnail, ThumbnailError> {
     let quality = if max_size <= THUMB_LQ_SIZE {
         ThumbQuality::Lq
     } else if max_size <= THUMB_HQ_SIZE {
@@ -169,7 +176,7 @@ pub fn generate_thumbnail_jpeg(
 pub fn generate_thumbnail_cached(
     path: &Path,
     quality: ThumbQuality,
-) -> Result<(Vec<u8>, String), ThumbnailError> {
+) -> Result<CachedThumbnail, ThumbnailError> {
     generate_thumbnail_cached_with_ffmpeg(path, quality, None)
 }
 
@@ -178,7 +185,7 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
     path: &Path,
     quality: ThumbQuality,
     ffmpeg: Option<&Path>,
-) -> Result<(Vec<u8>, String), ThumbnailError> {
+) -> Result<CachedThumbnail, ThumbnailError> {
     let (mtime, size) = file_identity(path)?;
     if let Ok(dir) = thumbnails_dir() {
         let cache_path = dir.join(cache_file_name(path, mtime, size, quality));
@@ -186,7 +193,10 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
             if let Ok(bytes) = fs::read(&cache_path) {
                 // Ignore empty leftovers from earlier failed Windows locked writes.
                 if bytes.len() > 32 {
-                    return Ok((bytes.clone(), to_data_url(&bytes)));
+                    return Ok(CachedThumbnail {
+                        bytes,
+                        cache_path,
+                    });
                 }
                 let _ = fs::remove_file(&cache_path);
             }
@@ -194,11 +204,17 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
     }
 
     let jpeg = generate_thumbnail_bytes(path, quality, ffmpeg)?;
-    if let Ok(dir) = thumbnails_dir() {
+    let cache_path = if let Ok(dir) = thumbnails_dir() {
         let cache_path = dir.join(cache_file_name(path, mtime, size, quality));
         let _ = fs::write(&cache_path, &jpeg);
-    }
-    Ok((jpeg.clone(), to_data_url(&jpeg)))
+        cache_path
+    } else {
+        PathBuf::new()
+    };
+    Ok(CachedThumbnail {
+        bytes: jpeg,
+        cache_path,
+    })
 }
 
 fn generate_thumbnail_bytes(
@@ -338,9 +354,10 @@ mod tests {
         let path = dir.path().join("test.png");
         let img = RgbImage::from_pixel(120, 80, Rgb([10, 20, 30]));
         img.save(&path).unwrap();
-        let (bytes, url) = generate_thumbnail_cached(&path, ThumbQuality::Lq).unwrap();
-        assert!(!bytes.is_empty());
-        assert!(url.starts_with("data:image/jpeg;base64,"));
+        let cached = generate_thumbnail_cached(&path, ThumbQuality::Lq).unwrap();
+        assert!(!cached.bytes.is_empty());
+        assert!(cached.cache_path.is_file());
+        assert!(to_data_url(&cached.bytes).starts_with("data:image/jpeg;base64,"));
     }
 
     #[test]
@@ -386,9 +403,9 @@ mod tests {
             .expect("spawn ffmpeg");
         assert!(status.success(), "failed to generate test mp4");
 
-        let (bytes, url) =
+        let cached =
             generate_thumbnail_cached_with_ffmpeg(&vid, ThumbQuality::Lq, Some(&ffmpeg)).unwrap();
-        assert!(bytes.len() > 32, "thumb too small: {}", bytes.len());
-        assert!(url.starts_with("data:image/jpeg;base64,"));
+        assert!(cached.bytes.len() > 32, "thumb too small: {}", cached.bytes.len());
+        assert!(cached.cache_path.is_file());
     }
 }

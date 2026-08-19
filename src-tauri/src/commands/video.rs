@@ -903,22 +903,48 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         }
         logging::info(
             "import",
-            format!("Videos kopiert: {} Datei(en), starte Probe…", working.len()),
+            format!("Videos kopiert: {} Datei(en), starte parallele Probe…", working.len()),
         );
+
+        use std::sync::{Arc, Mutex};
+
+        let probe_total = working.len() as u64;
+        let probe_last_emit = Arc::new(Mutex::new(last_emit));
+        let app_probe = app_progress.clone();
+
+        let probe_results = match probe::probe_videos_parallel(&ffmpeg, &working, {
+            let probe_last_emit = Arc::clone(&probe_last_emit);
+            move |done, total, name| {
+                let mut last = probe_last_emit.lock().unwrap_or_else(|e| e.into_inner());
+                if last.elapsed() >= Duration::from_millis(150) || done == total {
+                    let _ = app_probe.emit(
+                        EVENT_WORKFLOW_PROGRESS,
+                        workflow_progress_import_probe(done, total, name, "Analysiere Videos…"),
+                    );
+                    *last = Instant::now();
+                }
+            }
+        }) {
+            Ok(r) => r,
+            Err(crate::video::parallel::ParallelError::Cancelled) => {
+                crate::storage::working_session::rollback_working_import_paths(&working);
+                return Err(WORKFLOW_CANCELLED.into());
+            }
+            Err(crate::video::parallel::ParallelError::Message(e)) => {
+                crate::storage::working_session::rollback_working_import_paths(&working);
+                return Err(e);
+            }
+        };
+
         let mut out = Vec::with_capacity(working.len());
         let mut errors = Vec::new();
-        for (i, path) in working.iter().enumerate() {
+        for (path, result) in working.iter().zip(probe_results.iter()) {
             if is_cancelled() {
                 crate::storage::working_session::rollback_working_import_paths(&working);
                 return Err(WORKFLOW_CANCELLED.into());
             }
-            let file_index = (i as u64) + 1;
             let name = file_name(path);
-            let _ = app_progress.emit(
-                EVENT_WORKFLOW_PROGRESS,
-                workflow_progress_import_probe(file_index, n, &name, "Analysiere Videos…"),
-            );
-            match probe::probe_video(&ffmpeg, path) {
+            match result {
                 Ok(meta) => {
                     let device = probe::format_camera_label(&meta.camera_make, &meta.camera_model)
                         .map(|l| format!(", Gerät: {l}"))
@@ -935,7 +961,7 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                             device
                         ),
                     );
-                    out.push(meta);
+                    out.push(meta.clone());
                 }
                 Err(e) => {
                     logging::warn(
@@ -945,11 +971,11 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                     errors.push(format!("{path}: {e}"));
                 }
             }
-            let _ = app_progress.emit(
-                EVENT_WORKFLOW_PROGRESS,
-                workflow_progress_import_probe(file_index, n, &name, "Analysiere Videos…"),
-            );
         }
+        let _ = app_progress.emit(
+            EVENT_WORKFLOW_PROGRESS,
+            workflow_progress_import_probe(probe_total, probe_total, "", "Analysiere Videos…"),
+        );
         if out.is_empty() && !errors.is_empty() {
             return Err(errors.join("; "));
         }

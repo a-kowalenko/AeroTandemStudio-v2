@@ -143,6 +143,7 @@ pub fn prepare_overwrite_backup(input: &str) -> Result<Option<PathBuf>, CutUndoE
             "input file not found: {input}"
         )));
     }
+    crate::storage::file_link::materialize_hardlink(Path::new(input))?;
     let key = norm_key(input);
     let state = lock_state()?;
     if state.by_key.contains_key(&key) {

@@ -7,6 +7,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,11 +17,14 @@ use crate::media::datetime::{
     build_chrono_photo_filename_sequenced, collect_used_filenames_in, sort_paths_by_photo_capture_time,
 };
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
+use crate::storage::file_link;
 use crate::storage::logging::{self, file_name};
 use crate::video::ffmpeg::WORKFLOW_CANCELLED;
 
 static WORKING_SESSION: Lazy<Mutex<WorkingSession>> =
     Lazy::new(|| Mutex::new(WorkingSession::default()));
+
+static WORKING_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Default)]
 pub struct WorkingSession {
@@ -52,8 +56,9 @@ impl WorkingSession {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
+        let seq = WORKING_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = std::env::temp_dir().join(format!(
-            "{PREVIEW_DIR_PREFIX}{}_{}",
+            "{PREVIEW_DIR_PREFIX}{}_{}_{seq}",
             std::process::id(),
             stamp
         ));
@@ -122,7 +127,7 @@ impl WorkingSession {
         logging::info(
             "import",
             format!(
-                "Video kopiert: {} → {}",
+                "Video importiert: {} → {}",
                 file_name(source),
                 file_name(&dest)
             ),
@@ -172,7 +177,7 @@ impl WorkingSession {
         logging::info(
             "import",
             format!(
-                "Foto kopiert: {} → {}",
+                "Foto importiert: {} → {}",
                 file_name(source),
                 file_name(&dest)
             ),
@@ -253,7 +258,7 @@ impl WorkingSession {
             logging::info(
                 "import",
                 format!(
-                    "Foto kopiert: {} → {}",
+                    "Foto importiert: {} → {}",
                     file_name(source_path),
                     file_name(&dest)
                 ),
@@ -309,6 +314,7 @@ impl WorkingSession {
                 );
             }
         }
+        file_link::clear_hardlink_registry();
     }
 }
 
@@ -384,8 +390,8 @@ fn copy_file_reporting<F>(
 where
     F: FnMut(u64),
 {
-    crate::sd_card::copy_progress::copy_file_with_progress(src, dest, |delta| on_chunk(delta))?;
-    // Best-effort: preserve modified time like shutil.copy2
+    file_link::import_copy_or_hardlink(src, dest, on_chunk)?;
+    // Best-effort: preserve modified time like shutil.copy2 (hardlinks share inode mtime).
     if let Ok(meta) = fs::metadata(src) {
         if let Ok(mtime) = meta.modified() {
             let _ = filetime_set_mtime(dest, mtime);
@@ -494,6 +500,7 @@ mod tests {
 
     #[test]
     fn copy_video_and_photo_into_session() {
+        let _guard = crate::storage::cache::test_temp_sweep_lock();
         let mut session = WorkingSession::default();
         let src_root = tempfile::tempdir().unwrap();
         let video = write_temp_file(src_root.path(), "DJI_0001.MP4", b"video-bytes");
@@ -550,6 +557,7 @@ mod tests {
 
     #[test]
     fn import_video_reports_chunk_progress() {
+        let _guard = crate::storage::cache::test_temp_sweep_lock();
         let mut session = WorkingSession::default();
         let src_root = tempfile::tempdir().unwrap();
         let payload = vec![0xABu8; 64 * 1024];
@@ -588,6 +596,7 @@ mod tests {
 
     #[test]
     fn delete_owned_ignores_outside_paths() {
+        let _guard = crate::storage::cache::test_temp_sweep_lock();
         let mut session = WorkingSession::default();
         let outside = tempfile::NamedTempFile::new().unwrap();
         let _ = session.ensure_dir().unwrap();

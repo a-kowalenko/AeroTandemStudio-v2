@@ -6,7 +6,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
 
-use super::ffmpeg::{ffmpeg_probe_stderr, FfmpegError};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::ffmpeg::{ffmpeg_probe_stderr, is_cancelled, FfmpegError};
+use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::progress::parse_duration;
 
 static VIDEO_META_RE: Lazy<Regex> = Lazy::new(|| {
@@ -165,6 +168,71 @@ pub fn parse_video_metadata_from_probe(stderr: &str) -> Option<ParsedStreamMeta>
     })
 }
 
+/// Worker count for parallel import probe (CPU-only, 2–4 when multiple files).
+pub fn probe_worker_count(file_count: usize) -> usize {
+    if file_count <= 1 {
+        return 1;
+    }
+    let cpu = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2);
+    cpu.clamp(2, 4)
+}
+
+/// Probe multiple videos in parallel; results match `paths` order (one entry per path).
+pub fn probe_videos_parallel(
+    ffmpeg: &Path,
+    paths: &[String],
+    on_progress: impl Fn(u64, u64, &str) + Sync + Send,
+) -> Result<Vec<Result<VideoMetadata, String>>, ParallelError> {
+    let ffmpeg = ffmpeg.to_path_buf();
+    probe_videos_parallel_with(paths, move |path| probe_video(&ffmpeg, path).map_err(|e| e.to_string()), on_progress)
+}
+
+fn probe_videos_parallel_with<P, F>(
+    paths: &[String],
+    probe_one: P,
+    on_progress: F,
+) -> Result<Vec<Result<VideoMetadata, String>>, ParallelError>
+where
+    P: Fn(&str) -> Result<VideoMetadata, String> + Sync + Send,
+    F: Fn(u64, u64, &str) + Sync + Send,
+{
+    let n = paths.len();
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+
+    let workers = probe_worker_count(n);
+    let cpu_count = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(2);
+    let pool = ParallelVideoProcessor {
+        max_workers: workers,
+        hw_accel_enabled: false,
+        cpu_count,
+    };
+
+    let paths: Vec<String> = paths.to_vec();
+    let completed = AtomicUsize::new(0);
+    let total = n as u64;
+
+    pool.process_indexed(n, |i, _task_id| {
+        if is_cancelled() {
+            return Err("cancelled".into());
+        }
+        let path = paths[i].as_str();
+        let result = probe_one(path);
+        let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+        let name = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path);
+        on_progress(done as u64, total, name);
+        result
+    }, None)
+}
+
 /// Common video extensions accepted for import (case-insensitive).
 pub fn is_video_path(path: &str) -> bool {
     Path::new(path)
@@ -288,5 +356,53 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':
         assert_eq!(make, "");
         assert_eq!(model, "");
         assert_eq!(format_camera_label(&make, &model).as_deref(), None);
+    }
+
+    #[test]
+    fn probe_worker_count_clamped() {
+        assert_eq!(probe_worker_count(0), 1);
+        assert_eq!(probe_worker_count(1), 1);
+        assert!(probe_worker_count(10) >= 2);
+        assert!(probe_worker_count(10) <= 4);
+    }
+
+    #[test]
+    fn probe_videos_parallel_preserves_input_order() {
+        let paths: Vec<String> = (0..8)
+            .map(|i| format!(r"C:\clips\clip_{i:02}.mp4"))
+            .collect();
+        let results = probe_videos_parallel_with(
+            &paths,
+            |path| {
+                let idx = path
+                    .rsplit('_')
+                    .next()
+                    .and_then(|s| s.strip_suffix(".mp4"))
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .ok_or_else(|| "bad path".to_string())?;
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                Ok(VideoMetadata {
+                    path: path.to_string(),
+                    filename: format!("clip_{idx:02}.mp4"),
+                    duration_secs: idx as f64,
+                    width: 1920,
+                    height: 1080,
+                    codec: "h264".into(),
+                    fps: 30.0,
+                    size_bytes: 0,
+                    camera_make: String::new(),
+                    camera_model: String::new(),
+                })
+            },
+            |_done, _total, _name| {},
+        )
+        .unwrap();
+
+        assert_eq!(results.len(), paths.len());
+        for (i, r) in results.iter().enumerate() {
+            let meta = r.as_ref().expect("probe should succeed");
+            assert_eq!(meta.path, paths[i]);
+            assert!((meta.duration_secs - i as f64).abs() < f64::EPSILON);
+        }
     }
 }

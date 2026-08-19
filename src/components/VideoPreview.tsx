@@ -25,10 +25,13 @@ import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { VideoPlayer, type VideoPlayerHandle } from "./VideoPlayer";
+import { filmstripPrefetch } from "../lib/filmstripPrefetch";
+import { previewThumbnailQueue } from "../lib/thumbnailQueue";
 import { useVideoStore } from "../store/videoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
-import { usePreviewCacheStore, previewEncodingSignature } from "../store/previewCacheStore";
+import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "../store/previewCacheStore";
+import { formatPreviewReuseHint } from "../lib/previewReuseHint";
 import { withQrScanProgress } from "../store/qrScanStore";
 import {
   generatePreview,
@@ -278,6 +281,7 @@ export function VideoPreview({
 }: VideoPreviewProps) {
   const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
+  const videoImporting = useVideoStore((s) => s.importing);
   const removeVideo = useVideoStore((s) => s.removeVideo);
   const reorderVideos = useVideoStore((s) => s.reorderVideos);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
@@ -325,6 +329,16 @@ export function VideoPreview({
     const t = window.setTimeout(() => setPlayOnLoad(false), 700);
     return () => window.clearTimeout(t);
   }, [playOnLoad, activeClip]);
+
+  // Prioritize poster for the clip the user is viewing (OPT-10).
+  useEffect(() => {
+    const clip = videoList[activeClip];
+    if (!clip) return;
+    previewThumbnailQueue.boost(
+      clip.path,
+      `${clip.size_bytes}-${clip.duration_secs}-${getMediaRevision(clip.path)}`,
+    );
+  }, [activeClip, videoList, getMediaRevision]);
 
   // Pause clip/combined preview while the cutter (or other overlay) is open.
   useEffect(() => {
@@ -389,6 +403,35 @@ export function VideoPreview({
   const einzelclipMode = !showingCombined;
 
   const busy = busyProp ?? localBusy;
+  const workflowBusy = busy || qrBusy || videoImporting;
+
+  // Pause filmstrip prefetch during import/encode/QR (OPT-7).
+  useEffect(() => {
+    filmstripPrefetch.setPaused(workflowBusy);
+  }, [workflowBusy]);
+
+  // Warm filmstrip + keyframes for active clip (and next) while idle (OPT-7).
+  useEffect(() => {
+    if (workflowBusy) return;
+    const active = videoList[activeClip];
+    if (!active) return;
+    const next = videoList[activeClip + 1];
+    const clips = [
+      {
+        path: active.path,
+        durationSecs: active.duration_secs > 0 ? active.duration_secs : null,
+        revision: getMediaRevision(active.path),
+      },
+    ];
+    if (next) {
+      clips.push({
+        path: next.path,
+        durationSecs: next.duration_secs > 0 ? next.duration_secs : null,
+        revision: getMediaRevision(next.path),
+      });
+    }
+    filmstripPrefetch.schedule(clips);
+  }, [activeClip, videoList, workflowBusy, getMediaRevision]);
 
   const totalDuration = useMemo(
     () => videoList.reduce((sum, v) => sum + (v.duration_secs || 0), 0),
@@ -413,6 +456,16 @@ export function VideoPreview({
     preview?.preview_path &&
       !previewCacheMatches(videoList, kunde, encodingSig),
   );
+
+  const createNeedsVideoEncode =
+    videoList.length > 0 && (kunde.handcam_video || kunde.outside_video);
+  const createEncodeHint = useMemo(() => {
+    if (!createNeedsVideoEncode) return null;
+    return formatPreviewReuseHint(
+      t,
+      getPreviewReusePlan(videoList, kunde, encodingSig),
+    );
+  }, [createNeedsVideoEncode, videoList, kunde, encodingSig, t]);
 
   useEffect(() => {
     if (videoList.length === 0) {
@@ -666,6 +719,21 @@ export function VideoPreview({
           {t("video.preview.stale")}
         </div>
       )}
+
+      {createEncodeHint && !busy ? (
+        <div
+          className={cn(
+            "rounded-lg border px-3 py-2 text-xs leading-snug",
+            createEncodeHint.tone === "reuse"
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+              : "border-border/60 bg-muted/20 text-muted",
+          )}
+          role="status"
+          title={createEncodeHint.title}
+        >
+          {createEncodeHint.message}
+        </div>
+      ) : null}
 
       {showingCombined && preview?.preview_path ? (
         <div className={cn("relative", previewStale && "opacity-80")}>
@@ -948,9 +1016,13 @@ export function VideoPreview({
                 <div>Encoder: {preview.encoder}</div>
                 <div>Intro: {preview.intro_included ? "ja" : "nein"}</div>
                 {preview.reencode_reason ? (
-                  <div>Neu-Kodierung: {preview.reencode_reason}</div>
+                  <div>
+                    {t("video.preview.previewReencode", {
+                      reason: preview.reencode_reason,
+                    })}
+                  </div>
                 ) : (
-                  <div>Neu-Kodierung: nein (Stream-Copy)</div>
+                  <div>{t("video.preview.previewStreamCopy")}</div>
                 )}
               </>
             )}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ArrowDownToLine,
@@ -19,6 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { clearLogBuffer, getAppInfo } from "@/lib/tauri";
+import type { LogEntry } from "@/lib/tauri";
+import { buildOffsets, sliceVirtualRange } from "@/lib/virtualList";
 import { cn } from "@/lib/utils";
 import {
   filterLogEntries,
@@ -29,6 +31,11 @@ import {
 const MIN_HEIGHT = 160;
 const MAX_HEIGHT = 560;
 const DEFAULT_HEIGHT = 280;
+const LINE_HEIGHT = 20;
+const OVERSCAN_ROWS = 12;
+/** Fixed columns + gaps in px (timestamp, level, source, flex gaps, horizontal padding). */
+const FIXED_ROW_PX = 24 + 56 + 48 + 40 + 24;
+const MONO_CHAR_PX = 6.5;
 
 function levelClass(level: string): string {
   switch (level.toUpperCase()) {
@@ -41,6 +48,41 @@ function levelClass(level: string): string {
     default:
       return "text-foreground";
   }
+}
+
+function estimateLineCount(entry: LogEntry, listWidth: number): number {
+  const messageWidth = Math.max(64, listWidth - FIXED_ROW_PX);
+  const charsPerLine = Math.max(16, Math.floor(messageWidth / MONO_CHAR_PX));
+  let lines = 0;
+  for (const segment of entry.message.split("\n")) {
+    lines += Math.max(1, Math.ceil(segment.length / charsPerLine));
+  }
+  return Math.max(lines, 1);
+}
+
+function LogLine({ entry }: { entry: LogEntry }) {
+  return (
+    <div
+      className={cn(
+        "flex gap-2 whitespace-pre-wrap break-all",
+        levelClass(entry.level),
+      )}
+    >
+      <span className="shrink-0 text-muted tabular-nums">{entry.ts}</span>
+      <span
+        className={cn(
+          "w-12 shrink-0 font-semibold uppercase",
+          levelClass(entry.level),
+        )}
+      >
+        {entry.level}
+      </span>
+      <span className="w-10 shrink-0 truncate text-muted" title={entry.source}>
+        {entry.source}
+      </span>
+      <span className="min-w-0 flex-1">{entry.message}</span>
+    </div>
+  );
 }
 
 type Props = {
@@ -63,12 +105,50 @@ export function LogConsole({ className }: Props) {
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const [logPath, setLogPath] = useState<string | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [listEl, setListEl] = useState<HTMLDivElement | null>(null);
+  const [listMetrics, setListMetrics] = useState({
+    scrollTop: 0,
+    height: 0,
+    width: 0,
+  });
+  const listRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  const attachListRef = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+    setListEl((prev) => (prev === el ? prev : el));
+  }, []);
 
   const filtered = useMemo(
     () => filterLogEntries(entries, search, levelFilter),
     [entries, search, levelFilter],
+  );
+
+  const rowHeights = useMemo(
+    () =>
+      filtered.map(
+        (entry) => estimateLineCount(entry, listMetrics.width) * LINE_HEIGHT,
+      ),
+    [filtered, listMetrics.width],
+  );
+
+  const rowOffsets = useMemo(() => buildOffsets(rowHeights), [rowHeights]);
+
+  const virtualSlice = useMemo(
+    () =>
+      sliceVirtualRange(
+        filtered.length,
+        rowOffsets,
+        listMetrics.scrollTop,
+        listMetrics.height,
+        OVERSCAN_ROWS,
+      ),
+    [filtered.length, rowOffsets, listMetrics.scrollTop, listMetrics.height],
+  );
+
+  const visibleEntries = useMemo(
+    () => filtered.slice(virtualSlice.start, virtualSlice.end),
+    [filtered, virtualSlice.start, virtualSlice.end],
   );
 
   useEffect(() => {
@@ -79,11 +159,39 @@ export function LogConsole({ className }: Props) {
   }, [open]);
 
   useEffect(() => {
+    if (!listEl) return;
+    let raf = 0;
+    const measure = () => {
+      setListMetrics({
+        scrollTop: listEl.scrollTop,
+        height: listEl.clientHeight,
+        width: listEl.clientWidth,
+      });
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+    measure();
+    const ro = new ResizeObserver(onScroll);
+    ro.observe(listEl);
+    listEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      ro.disconnect();
+      listEl.removeEventListener("scroll", onScroll);
+    };
+  }, [listEl]);
+
+  useEffect(() => {
     if (!open || !autoScroll) return;
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [filtered, open, autoScroll]);
+  }, [filtered, open, autoScroll, virtualSlice.totalHeight]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -278,33 +386,26 @@ export function LogConsole({ className }: Props) {
       </div>
 
       <div
-        ref={listRef}
+        ref={attachListRef}
         onScroll={onListScroll}
         className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[11px] leading-5"
       >
         {filtered.length === 0 ? (
           <p className="text-xs text-muted">{t("logConsole.empty")}</p>
         ) : (
-          filtered.map((e) => (
+          <div
+            className="relative"
+            style={{ height: Math.max(virtualSlice.totalHeight, 1) }}
+          >
             <div
-              key={e.id}
-              className={cn("flex gap-2 whitespace-pre-wrap break-all", levelClass(e.level))}
+              className="absolute inset-x-0 top-0"
+              style={{ transform: `translateY(${virtualSlice.padTop}px)` }}
             >
-              <span className="shrink-0 text-muted tabular-nums">{e.ts}</span>
-              <span
-                className={cn(
-                  "w-12 shrink-0 font-semibold uppercase",
-                  levelClass(e.level),
-                )}
-              >
-                {e.level}
-              </span>
-              <span className="w-10 shrink-0 truncate text-muted" title={e.source}>
-                {e.source}
-              </span>
-              <span className="min-w-0 flex-1">{e.message}</span>
+              {visibleEntries.map((entry) => (
+                <LogLine key={entry.id} entry={entry} />
+              ))}
             </div>
-          ))
+          </div>
         )}
       </div>
     </div>

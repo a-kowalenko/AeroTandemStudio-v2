@@ -197,6 +197,7 @@
       "introMuxReencode": "Re-encode (compatible)",
       "introMuxCopy": "Stream copy (fast)",
       "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
+      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "reencodeMatching": "Re-encode matching clips",
       "previewCrf": "Preview CRF"
     },
@@ -368,6 +369,16 @@
       "creating": "Creating job…",
       "done": "Job complete",
       "cancelled": "Job cancelled."
+    },
+    "encode": {
+      "reusePreview": "Preview will be reused — no re-encode needed",
+      "reusePreviewTitle": "The saved preview is copied as the final video (very fast)",
+      "reencodeTitle": "Create will re-encode the video",
+      "reencodeBecause": "Re-encode: {{reason}}",
+      "reasonNoPreview": "no preview available",
+      "reasonClipsChanged": "clips changed (e.g. trim or order)",
+      "reasonFormChanged": "form or customer data changed",
+      "reasonEncodingChanged": "intro or encoding settings changed"
     },
     "append": {
       "pickFile": "Choose at least one file to append.",
@@ -1199,7 +1210,11 @@
       "empty": "No videos — add them via drag and drop in the media area",
       "singleClipWithPreview": "Single-clip playback — use “Show preview” for the combined file.",
       "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
-      "undoThisEditTitle": "Undo this edit"
+      "undoThisEditTitle": "Undo this edit",
+      "createReuse": "On create: preview will be reused",
+      "createReencode": "On create: re-encode — {{reason}}",
+      "previewStreamCopy": "Re-encode: no (stream copy)",
+      "previewReencode": "Re-encode: {{reason}}"
     },
     "cutter": {
       "warning": {

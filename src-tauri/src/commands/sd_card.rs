@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::config::ConfigState;
+use crate::media::http_server::MediaServerState;
 use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
 use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
 use crate::sd_card::autoplay;
@@ -21,7 +22,12 @@ use crate::storage::media_history::ProcessedFileEntry;
 #[derive(Debug, Serialize)]
 pub struct ThumbnailResult {
     pub path: String,
-    pub data_url: String,
+    /// Loopback HTTP URL for the cached JPEG (preferred over IPC Base64).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Legacy Base64 data URL — only when HTTP serving is unavailable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -350,15 +356,17 @@ pub async fn get_media_thumbnail(
     app: AppHandle,
     path: String,
     quality: Option<String>,
+    media: tauri::State<'_, MediaServerState>,
 ) -> Result<ThumbnailResult, String> {
     let q = ThumbQuality::parse(quality.as_deref().unwrap_or("lq"));
     let resource_dir = app.path().resource_dir().ok();
     let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok();
+    let media_server = media.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let p = std::path::Path::new(&path);
         if p.is_file() {
             match generate_thumbnail_cached_with_ffmpeg(p, q, ffmpeg.as_deref()) {
-                Ok((_bytes, data_url)) => Ok(ThumbnailResult { path, data_url }),
+                Ok(cached) => thumbnail_result_from_cache(&path, &media_server, cached.cache_path),
                 Err(e) => {
                     let msg = e.to_string();
                     logging::warn("thumb", format!("Thumbnail fehlgeschlagen ({path}): {msg}"));
@@ -381,9 +389,13 @@ pub async fn get_media_thumbnail(
                             .join(format!("{name}.jpg"));
                         match camera_thumbnail_jpeg(name, &cache, q.max_size()) {
                             Ok(bytes) => {
+                                if cache.is_file() {
+                                    return thumbnail_result_from_cache(&path, &media_server, cache);
+                                }
                                 return Ok(ThumbnailResult {
                                     path,
-                                    data_url: jpeg_bytes_to_data_url(&bytes),
+                                    url: None,
+                                    data_url: Some(jpeg_bytes_to_data_url(&bytes)),
                                 });
                             }
                             Err(_) => return Err("no camera thumbnail".into()),
@@ -396,6 +408,24 @@ pub async fn get_media_thumbnail(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn thumbnail_result_from_cache(
+    source_path: &str,
+    media: &MediaServerState,
+    cache_path: std::path::PathBuf,
+) -> Result<ThumbnailResult, String> {
+    let cache_str = cache_path
+        .to_str()
+        .ok_or_else(|| "invalid thumbnail cache path".to_string())?;
+    if !cache_path.is_file() {
+        return Err(format!("thumbnail cache missing: {cache_str}"));
+    }
+    Ok(ThumbnailResult {
+        path: source_path.to_string(),
+        url: Some(media.url_for_path(cache_str)),
+        data_url: None,
+    })
 }
 
 #[tauri::command]

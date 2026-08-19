@@ -29,7 +29,7 @@ import {
   type VorgangEntry,
 } from "../lib/vorgangHistory";
 import { amsBridgeHealth } from "../lib/tauri";
-import { getMediaThumbnail } from "../lib/sdCard";
+import { getMediaThumbnail, thumbnailDisplayUrl } from "../lib/sdCard";
 import {
   PHOTO_EXTENSIONS,
   VIDEO_EXTENSIONS,
@@ -346,7 +346,9 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
             .then((t) => {
               setItems((prev) =>
                 prev.map((p) =>
-                  p.path === item.path ? { ...p, thumb: t.data_url } : p,
+                  p.path === item.path
+                    ? { ...p, thumb: thumbnailDisplayUrl(t) }
+                    : p,
                 ),
               );
             })

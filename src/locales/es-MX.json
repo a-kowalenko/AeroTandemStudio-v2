@@ -197,6 +197,7 @@
       "introMuxReencode": "Recodificar (compatible)",
       "introMuxCopy": "Copia de stream (rápido)",
       "introMuxHint": "Recodificar genera intro y video de vuelo como un bitstream continuo — fiable en móviles y reproductores. La copia de stream es más rápida, pero puede congelarse en algunos dispositivos.",
+      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "reencodeMatching": "Recodificar clips coincidentes",
       "previewCrf": "CRF de vista previa"
     },
@@ -368,6 +369,16 @@
       "creating": "Creando trabajo…",
       "done": "Trabajo terminado",
       "cancelled": "Trabajo cancelado."
+    },
+    "encode": {
+      "reusePreview": "Se reutilizará la vista previa — no hace falta recodificar",
+      "reusePreviewTitle": "La vista previa guardada se copia como video final (muy rápido)",
+      "reencodeTitle": "Al crear se recodificará el video",
+      "reencodeBecause": "Recodificar: {{reason}}",
+      "reasonNoPreview": "no hay vista previa",
+      "reasonClipsChanged": "los clips cambiaron (p. ej. recorte u orden)",
+      "reasonFormChanged": "cambiaron el formulario o los datos del cliente",
+      "reasonEncodingChanged": "cambiaron ajustes de intro o codificación"
     },
     "append": {
       "pickFile": "Elige al menos un archivo para reenviar.",
@@ -1199,7 +1210,11 @@
       "empty": "No hay videos — agrégalos arrastrando al área de medios",
       "singleClipWithPreview": "Reproducción de clip único — usa “Mostrar vista previa” para el archivo combinado.",
       "singleClipWithoutPreview": "Reproducción de clip único — usa “Generar vista previa” para el archivo combinado.",
-      "undoThisEditTitle": "Deshacer esta edición"
+      "undoThisEditTitle": "Deshacer esta edición",
+      "createReuse": "Al crear: se reutilizará la vista previa",
+      "createReencode": "Al crear: recodificar — {{reason}}",
+      "previewStreamCopy": "Recodificación: no (copia de stream)",
+      "previewReencode": "Recodificación: {{reason}}"
     },
     "cutter": {
       "warning": {

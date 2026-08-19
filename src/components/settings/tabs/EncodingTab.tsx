@@ -180,6 +180,9 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <p className="text-xs text-muted-foreground">
                 {t("settings.encoding.introMuxHint")}
               </p>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.encoding.previewReuseHint")}
+              </p>
             </div>
 
             <label className="flex items-center gap-2 text-sm">

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -64,7 +64,8 @@ import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
-import { usePreviewCacheStore, previewEncodingSignature } from "./store/previewCacheStore";
+import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
+import { formatPreviewReuseHint } from "./lib/previewReuseHint";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
@@ -187,7 +188,6 @@ function App() {
   const sessionTouched = useKundeStore((s) => s.sessionTouched);
   const applyDefaultsFromConfig = useKundeStore((s) => s.applyDefaultsFromConfig);
   const resetSession = useKundeStore((s) => s.resetSession);
-  const previewCacheMatches = usePreviewCacheStore((s) => s.matches);
   const clearPreviewCache = usePreviewCacheStore((s) => s.clear);
   const cachedPreviewPath = usePreviewCacheStore((s) => s.previewPath);
   const cachedPreviewFingerprint = usePreviewCacheStore((s) => s.fingerprint);
@@ -1153,7 +1153,6 @@ function App() {
         }
 
         setSplashStatus(t("app.splash.ready"));
-        await new Promise((r) => setTimeout(r, 350));
         if (!cancelled) {
           setReady(true);
           setSplashOpen(false);
@@ -1550,7 +1549,11 @@ function App() {
         config?.dauer ?? 5,
         config?.intro_mux_mode ?? "reencode",
       );
-      const canReusePreview = previewCacheMatches(videoList, kunde, encodingSig);
+      const canReusePreview = getPreviewReusePlan(
+        videoList,
+        kunde,
+        encodingSig,
+      ).canReuse;
       const res: CreateJobResult = await createJob(
         kunde,
         paths,
@@ -1786,6 +1789,29 @@ function App() {
         suppressEmptyMedia: pipelineActive,
         idEntryGrace,
       });
+
+  const createNeedsVideoEncode =
+    videoList.length > 0 && (kunde.handcam_video || kunde.outside_video);
+  const createEncodeHint = useMemo(() => {
+    if (!createNeedsVideoEncode) return null;
+    const encodingSig = previewEncodingSignature(
+      Boolean(config?.intro_enabled ?? false),
+      config?.dauer ?? 5,
+      config?.intro_mux_mode ?? "reencode",
+    );
+    return formatPreviewReuseHint(
+      t,
+      getPreviewReusePlan(videoList, kunde, encodingSig),
+    );
+  }, [
+    createNeedsVideoEncode,
+    videoList,
+    kunde,
+    config?.intro_enabled,
+    config?.dauer,
+    config?.intro_mux_mode,
+    t,
+  ]);
 
   // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
   useEffect(() => {
@@ -2112,6 +2138,20 @@ function App() {
                 ) : null}
               </div>
             </div>
+            {createEncodeHint && !busy ? (
+              <div
+                className={cn(
+                  "mt-2.5 rounded-lg border px-3 py-2 text-xs leading-snug",
+                  createEncodeHint.tone === "reuse"
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
+                    : "border-border/60 bg-muted/20 text-muted",
+                )}
+                role="status"
+                title={createEncodeHint.title}
+              >
+                {createEncodeHint.message}
+              </div>
+            ) : null}
             <div className="mt-2.5 flex gap-2">
               <Button
                 type="button"
@@ -2163,9 +2203,10 @@ function App() {
                   }
                 }}
                 title={
-                  config?.upload_to_server && serverConnected
+                  createEncodeHint?.title ??
+                  (config?.upload_to_server && serverConnected
                     ? t("app.job.createUploadTitle")
-                    : undefined
+                    : undefined)
                 }
               >
                 {config?.upload_to_server && serverConnected ? (

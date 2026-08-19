@@ -182,6 +182,10 @@ pub fn mime_for_path(path: &Path) -> &'static str {
         Some("mkv") => "video/x-matroska",
         Some("avi") => "video/x-msvideo",
         Some("ts") | Some("m2ts") => "video/mp2t",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
         _ => "application/octet-stream",
     }
 }

@@ -13,8 +13,8 @@ import {
 } from "./VideoPlayer";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
 import { MediaEditRotateBar } from "./MediaEditRotateBar";
+import { filmstripPrefetch } from "../lib/filmstripPrefetch";
 import { useUiStore } from "../store/uiStore";
-import { listVideoKeyframes, getVideoFilmstrip } from "../lib/tauri";
 import { useVideoStore } from "../store/videoStore";
 import {
   keyframeAtOrAfter,
@@ -76,6 +76,9 @@ export function VideoCutter({
   const playerRef = useRef<VideoPlayerHandle>(null);
   const committedRef = useRef(false);
   const showWarning = useUiStore((s) => s.showWarning);
+  const mediaRevision = useVideoStore((s) =>
+    videoPath ? s.getMediaRevision(videoPath) : 0,
+  );
   const [mode, setMode] = useState<VideoEditMode>("trim");
   const [startMs, setStartMs] = useState(0);
   const [endMs, setEndMs] = useState(0);
@@ -124,8 +127,6 @@ export function VideoCutter({
   useEffect(() => {
     if (!open) {
       rangeInitializedRef.current = false;
-      setKeyframesSecs([]);
-      setFilmstripFrames([]);
       setStartMs(0);
       setEndMs(0);
       setPendingRotateDeg(0);
@@ -147,41 +148,43 @@ export function VideoCutter({
   }, [open, videoPath, durationSecsHint]);
 
   useEffect(() => {
-    if (!open || !videoPath) return;
-    let cancelled = false;
-    const durationHint =
-      durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
-    void listVideoKeyframes(videoPath, durationHint)
-      .then((times) => {
-        if (cancelled) return;
-        setKeyframesSecs(times);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setKeyframesSecs([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, videoPath, durationSecsHint]);
+    if (!open) {
+      setKeyframesSecs([]);
+      setFilmstripFrames([]);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open || !videoPath) return;
     let cancelled = false;
-    setFilmstripFrames([]);
     const durationHint =
       durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
-    void getVideoFilmstrip(videoPath, 14, 56, durationHint)
-      .then((frames) => {
-        if (!cancelled) setFilmstripFrames(frames);
+    const cached = filmstripPrefetch.getCached(videoPath, mediaRevision);
+    if (cached) {
+      setKeyframesSecs(cached.keyframesSecs);
+      setFilmstripFrames(cached.frames);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void filmstripPrefetch
+      .prefetch(videoPath, durationHint, mediaRevision, 100)
+      .then((result) => {
+        if (!cancelled) {
+          setKeyframesSecs(result.keyframesSecs);
+          setFilmstripFrames(result.frames);
+        }
       })
       .catch(() => {
-        if (!cancelled) setFilmstripFrames([]);
+        if (!cancelled) {
+          setKeyframesSecs([]);
+          setFilmstripFrames([]);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [open, videoPath, durationSecsHint]);
+  }, [open, videoPath, durationSecsHint, mediaRevision]);
 
   function finish(result: VideoCutterResult) {
     if (committedRef.current) return;

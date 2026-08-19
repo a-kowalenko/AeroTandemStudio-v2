@@ -59,17 +59,17 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 
 | ID | Status |
 |----|--------|
-| OPT-0 | ⬜ |
-| OPT-1 | ⬜ |
-| OPT-2 | ⬜ |
-| OPT-3 | ⬜ |
-| OPT-4 | ⬜ |
+| OPT-0 | ✅ |
+| OPT-1 | ✅ |
+| OPT-2 | ✅ |
+| OPT-3 | ✅ |
+| OPT-4 | ✅ |
 | OPT-5 | ⬜ |
-| OPT-6 | ⬜ |
-| OPT-7 | ⬜ |
-| OPT-8 | ⬜ |
-| OPT-9 | ⬜ |
-| OPT-10 | ⬜ |
+| OPT-6 | ✅ |
+| OPT-7 | ✅ |
+| OPT-8 | ✅ |
+| OPT-9 | ✅ |
+| OPT-10 | ✅ |
 
 ---
 
@@ -95,9 +95,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Abschnitt „Baseline“ in dieser Datei (oder `docs/PERF_BASELINE.md`) mit Tabellenwerten
-- [ ] Drei feste Szenarien definieren und einmal messen (Stopwatch + optional Rust-Log-Timestamps)
-- [ ] Plattform notieren (Windows/macOS/Linux), HW-Encoding ja/nein, Clip-Anzahl/-Größe
+- [x] Abschnitt „Baseline“ in dieser Datei (oder `docs/PERF_BASELINE.md`) mit Tabellenwerten → **`docs/PERF_BASELINE.md`**
+- [x] Drei feste Szenarien definieren und einmal messen (Stopwatch + optional Rust-Log-Timestamps) → **S1 Import, S2 Preview, S3 Create** (+ S4/S5 ergänzend)
+- [x] Plattform notieren (Windows/macOS/Linux), HW-Encoding ja/nein, Clip-Anzahl/-Größe → **Windows 11, libx264, 10×6 MB**
 
 **Out of scope:**
 
@@ -116,8 +116,19 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 
 #### Akzeptanzkriterien
 
-- [ ] Baseline-Tabelle ausgefüllt (Datum, Plattform, Version)
-- [ ] Kein Produktionscode geändert
+- [x] Baseline-Tabelle ausgefüllt (Datum, Plattform, Version) — siehe **`docs/PERF_BASELINE.md`**
+- [x] Kein Produktionscode geändert
+
+#### Baseline (Kurzfassung)
+
+Vollständige Tabellen, Fixtures und Wiederholungsanleitung: **`docs/PERF_BASELINE.md`** (2026-08-19, v0.2.17, Windows 11, libx264).
+
+| Szenario | Backend (s) | UI-Schätzung (s) |
+|----------|---------------|------------------|
+| S1 Import 10×6 MB | 4,45 | ~5,3 |
+| S2 Preview (3 Clips, Intro aus) | 10,13 | ~10,5–11 |
+| S3 Create mit Preview-Reuse | 0,02 | ~0,5–2 |
+| S3 Create ohne Reuse (3 Clips) | 9,76 | ~10–15 |
 
 #### Agent-Prompt
 
@@ -154,10 +165,10 @@ Kein Produktionscode ändern.
 
 **In scope:**
 
-- [ ] Haupt-Preview: `hq` oder `preview`-Thumbnail via `getMediaThumbnail`
-- [ ] Strip: `lq`-Thumbnails
-- [ ] Cache-Bust bei `mediaRevision` / Crop/Rotate beibehalten
-- [ ] Fallback auf `convertFileSrc`, wenn Thumbnail fehlschlägt
+- [x] Haupt-Preview: `hq` oder `preview`-Thumbnail via `getMediaThumbnail`
+- [x] Strip: `lq`-Thumbnails
+- [x] Cache-Bust bei `mediaRevision` / Crop/Rotate beibehalten
+- [x] Fallback auf `convertFileSrc`, wenn Thumbnail fehlschlägt
 
 **Out of scope:**
 
@@ -206,10 +217,10 @@ Nur OPT-1. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] ffprobe für N Dateien parallel (2–4 Worker, CPU-only, kein NVENC)
-- [ ] Progress-Events weiter throtteln (~150 ms)
-- [ ] Cancel bricht alle Worker ab und rollt Working-Copies zurück
-- [ ] Rust Unit-Test: parallele Probe-Reihenfolge = Input-Reihenfolge
+- [x] ffprobe für N Dateien parallel (2–4 Worker, CPU-only, kein NVENC)
+- [x] Progress-Events weiter throtteln (~150 ms)
+- [x] Cancel bricht alle Worker ab und rollt Working-Copies zurück
+- [x] Rust Unit-Test: parallele Probe-Reihenfolge = Input-Reihenfolge
 
 **Out of scope:**
 
@@ -257,10 +268,10 @@ Nur OPT-2. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Copy-Buffer auf SSD-tauglichen Wert erhöhen (z. B. 1–4 MiB), konstant zentral
-- [ ] **Optional Teil A:** Wenn Quelle und Working-Dir auf gleichem Volume: Hardlink statt Copy (Windows + Unix)
-- [ ] **Optional Teil B:** Beim ersten Cut/Trim Hardlink → echte Copy „materialisieren“
-- [ ] Logging wenn Hardlink nicht möglich → Fallback Copy
+- [x] Copy-Buffer auf SSD-tauglichen Wert erhöhen (z. B. 1–4 MiB), konstant zentral
+- [x] **Optional Teil A:** Wenn Quelle und Working-Dir auf gleichem Volume: Hardlink statt Copy (Windows + Unix)
+- [x] **Optional Teil B:** Beim ersten Cut/Trim Hardlink → echte Copy „materialisieren“
+- [x] Logging wenn Hardlink nicht möglich → Fallback Copy
 
 **Out of scope:**
 
@@ -310,9 +321,9 @@ Nur OPT-3. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Neues Response-Feld z. B. `url` (HTTP) neben oder statt `data_url` — Migration schrittweise
-- [ ] Frontend bevorzugt HTTP-URL; Fallback `data_url` für Übergang
-- [ ] Disk-Cache unter `{app_config}/thumbnails/` unverändert nutzen
+- [x] Neues Response-Feld z. B. `url` (HTTP) neben oder statt `data_url` — Migration schrittweise
+- [x] Frontend bevorzugt HTTP-URL; Fallback `data_url` für Übergang
+- [x] Disk-Cache unter `{app_config}/thumbnails/` unverändert nutzen
 
 **Out of scope:**
 
@@ -411,9 +422,9 @@ Kein Feature-Scope aus IMPLEMENTATION_PLAN.md.
 
 **In scope:**
 
-- [ ] Windowed rendering (nur sichtbare Zeilen + Overscan)
-- [ ] Auto-Scroll-Verhalten beibehalten
-- [ ] Copy/Clear/Filter unverändert funktional
+- [x] Windowed rendering (nur sichtbare Zeilen + Overscan)
+- [x] Auto-Scroll-Verhalten beibehalten
+- [x] Copy/Clear/Filter unverändert funktional
 
 **Out of scope:**
 
@@ -459,9 +470,9 @@ Nur OPT-6. Danach npm run check && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Prefetch bei aktiver Clip-Auswahl (idle/debounced), nicht erst bei Dialog-Open
-- [ ] Cache-Key respektiert `mediaRevision` nach Trim
-- [ ] Kein Prefetch während Import/Encode (Workflow busy)
+- [x] Prefetch bei aktiver Clip-Auswahl (idle/debounced), nicht erst bei Dialog-Open
+- [x] Cache-Key respektiert `mediaRevision` nach Trim
+- [x] Kein Prefetch während Import/Encode (Workflow busy)
 
 **Out of scope:**
 
@@ -507,9 +518,9 @@ Nur OPT-7. Danach npm run tauri dev.
 
 **In scope:**
 
-- [ ] Cache-Sweep asynchron nach UI-ready starten (spawn_blocking / Hintergrund-Thread)
-- [ ] Splash zeigt Ready sobald FFmpeg + Config OK (Sweep optional „im Hintergrund“ loggen)
-- [ ] Fehler beim Sweep nur loggen, Startup nicht blockieren
+- [x] Cache-Sweep asynchron nach UI-ready starten (spawn_blocking / Hintergrund-Thread)
+- [x] Splash zeigt Ready sobald FFmpeg + Config OK (Sweep optional „im Hintergrund“ loggen)
+- [x] Fehler beim Sweep nur loggen, Startup nicht blockieren
 
 **Out of scope:**
 
@@ -558,10 +569,10 @@ Nur OPT-8. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Create sendet `reuse_preview_path` + Fingerprint wenn `previewCacheStore.matches()`
-- [ ] UI-Hinweis: „Vorschau wird übernommen“ vs. „Neu encodieren weil …“
-- [ ] Settings: kurze Erklärung Stream-Copy vs Re-Encode (i18n de/en/es-MX)
-- [ ] Kein Default-Zwang auf stream_copy wenn inkompatibel (weiter Fallback)
+- [x] Create sendet `reuse_preview_path` + Fingerprint wenn `previewCacheStore.matches()`
+- [x] UI-Hinweis: „Vorschau wird übernommen“ vs. „Neu encodieren weil …“
+- [x] Settings: kurze Erklärung Stream-Copy vs Re-Encode (i18n de/en/es-MX)
+- [x] Kein Default-Zwang auf stream_copy wenn inkompatibel (weiter Fallback)
 
 **Out of scope:**
 
@@ -608,10 +619,10 @@ Nur OPT-9. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] Queue mit max. 1–2 concurrent Preview-Thumbs
-- [ ] Priorität: aktiver Clip / erster Clip zuerst
-- [ ] Verzögerung z. B. 500 ms nach Import-Ende
-- [ ] Player lädt Poster on-demand wenn Queue noch nicht da
+- [x] Queue mit max. 1–2 concurrent Preview-Thumbs
+- [x] Priorität: aktiver Clip / erster Clip zuerst
+- [x] Verzögerung z. B. 500 ms nach Import-Ende
+- [x] Player lädt Poster on-demand wenn Queue noch nicht da
 
 **Out of scope:**
 
@@ -650,6 +661,7 @@ Nur OPT-10. Danach npm run tauri dev.
 
 ## Referenzen
 
+- **Performance-Baseline (OPT-0):** `@docs/PERF_BASELINE.md`
 - Architektur: `@docs/ARCHITECTURE.md`
 - Feature-Phasen: `@docs/IMPLEMENTATION_PLAN.md`
 - Agent-Regeln: `@AGENTS.md`

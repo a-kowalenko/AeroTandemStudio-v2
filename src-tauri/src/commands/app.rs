@@ -7,7 +7,8 @@ use tauri::{AppHandle, Manager};
 
 use crate::commands::config::ConfigState;
 use crate::storage::cache::{
-    cleanup_all, cleanup_orphans_only, collect_work_base_paths, CacheCleanupResult,
+    cleanup_all, cleanup_orphans_only, collect_work_base_paths, spawn_orphan_cache_sweep_background,
+    CacheCleanupResult,
 };
 use crate::storage::logging::{self, log_error, log_info, log_warn, LogEntry};
 use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
@@ -104,19 +105,12 @@ pub fn run_startup_checks(
         hw.encoder, hw.available
     ));
 
-    let cache = if do_cleanup {
-        log_info("Startup checks: orphan cache sweep...");
-        // No active session yet at splash — clear all orphan preview/work dirs.
-        let result = cleanup_orphans_only(None);
-        if result.deleted_dirs.is_empty() && result.deleted_files.is_empty() {
-            log_info("Cache sweep: nothing to remove");
-        } else {
-            log_info(&format!("Cache sweep: {}", result.summary));
-        }
-        Some(result)
-    } else {
-        None
-    };
+    if do_cleanup {
+        log_info("Startup checks: scheduling orphan cache sweep (background)…");
+        // No active session yet at splash — clear orphan preview/work dirs off the critical path.
+        spawn_orphan_cache_sweep_background(None);
+    }
+    let cache = None;
 
     log_info("Startup checks: Linux media (GStreamer)…");
     let media_warning = match crate::media::linux_gst::check_linux_media_playback() {

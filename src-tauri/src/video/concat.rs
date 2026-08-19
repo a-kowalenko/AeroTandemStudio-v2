@@ -1459,6 +1459,11 @@ pub fn trim_video(
         ));
     }
 
+    if Path::new(input) == Path::new(output) {
+        crate::storage::file_link::materialize_hardlink(Path::new(input))
+            .map_err(|e| ConcatError::Message(e.to_string()))?;
+    }
+
     let duration = end_secs - start_secs;
     let has_audio = probe_has_audio(ffmpeg, input).unwrap_or(true);
 

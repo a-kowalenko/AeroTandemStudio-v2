@@ -7,8 +7,8 @@ use std::path::Path;
 
 use crate::video::ffmpeg::{is_cancelled, workflow_cancelled_io};
 
-/// Default read/write chunk size (256 KiB).
-pub const DEFAULT_COPY_BUFFER: usize = 256 * 1024;
+/// Default read/write chunk size (2 MiB — SSD-friendly; OPT-3).
+pub const DEFAULT_COPY_BUFFER: usize = 2 * 1024 * 1024;
 
 /// Copy `from` → `to`, invoking `on_chunk(bytes_just_written)` after each successful write.
 ///

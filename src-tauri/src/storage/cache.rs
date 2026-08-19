@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::storage::app_config_dir;
+use crate::storage::logging::{log_info, log_warn};
 use crate::storage::working_session;
 use crate::video::hw_accel::clear_hw_cache;
 
@@ -139,6 +140,31 @@ pub fn cleanup_orphans_only(exclude_temp_dir: Option<&Path>) -> CacheCleanupResu
     delete_orphan_temp_dirs(&mut result, exclude_temp_dir);
     delete_known_temp_files(&mut result);
     result.finish()
+}
+
+/// Fire-and-forget orphan sweep for startup (OPT-8). Logs outcome; never blocks the caller.
+pub fn spawn_orphan_cache_sweep_background(exclude_temp_dir: Option<PathBuf>) {
+    std::thread::spawn(move || {
+        log_info("Cache sweep (background): started");
+        let result = cleanup_orphans_only(exclude_temp_dir.as_deref());
+        if result.deleted_dirs.is_empty()
+            && result.deleted_files.is_empty()
+            && result.errors.is_empty()
+        {
+            log_info("Cache sweep (background): nothing to remove");
+        } else if result.errors.is_empty() {
+            log_info(&format!("Cache sweep (background): {}", result.summary));
+        } else {
+            log_warn(&format!(
+                "Cache sweep (background): {} ({} error(s))",
+                result.summary,
+                result.errors.len()
+            ));
+            for err in &result.errors {
+                log_warn(&format!("Cache sweep (background): {err}"));
+            }
+        }
+    });
 }
 
 /// Full cleanup: orphans + optional work dirs + cut leftovers + optional hw cache.
@@ -400,18 +426,23 @@ pub fn is_ats_work_dir_name(name: &str) -> bool {
     name.starts_with(ATS_WORK_DIR_PREFIX)
 }
 
+/// Serialize tests that create or sweep `aero_studio_preview_*` dirs under `%TEMP%`.
+#[cfg(test)]
+static TEMP_SWEEP_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(test)]
+pub fn test_temp_sweep_lock() -> std::sync::MutexGuard<'static, ()> {
+    TEMP_SWEEP_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    /// Serialize tests that sweep global `%TEMP%` orphan dirs (incl. via `cleanup_all`).
-    static TEMP_SWEEP_LOCK: Mutex<()> = Mutex::new(());
 
     fn temp_sweep_lock() -> std::sync::MutexGuard<'static, ()> {
-        TEMP_SWEEP_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        test_temp_sweep_lock()
     }
 
     #[test]

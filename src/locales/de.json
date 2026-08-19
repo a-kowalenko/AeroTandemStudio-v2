@@ -197,6 +197,7 @@
       "introMuxReencode": "Neu kodieren (kompatibel)",
       "introMuxCopy": "Stream-Copy (schnell)",
       "introMuxHint": "Neu kodieren erzeugt Intro und Flugvideo als einen durchgängigen Bitstream — zuverlässig auf Handys und in Playern. Stream-Copy ist schneller, kann aber auf manchen Geräten einfrieren.",
+      "previewReuseHint": "Tipp: Zuerst „Vorschau generieren“ — bei unveränderten Clips übernimmt Erstellen die Vorschau ohne Neu-Kodierung.",
       "reencodeMatching": "Passende Clips neu encodieren",
       "previewCrf": "Preview CRF"
     },
@@ -368,6 +369,16 @@
       "creating": "Vorgang wird erstellt…",
       "done": "Vorgang fertig",
       "cancelled": "Vorgang abgebrochen."
+    },
+    "encode": {
+      "reusePreview": "Vorschau wird übernommen — kein Neu-Encode nötig",
+      "reusePreviewTitle": "Die gespeicherte Vorschau wird als Finalvideo kopiert (sehr schnell)",
+      "reencodeTitle": "Beim Erstellen wird das Video neu kodiert",
+      "reencodeBecause": "Neu kodieren: {{reason}}",
+      "reasonNoPreview": "keine Vorschau vorhanden",
+      "reasonClipsChanged": "Clips wurden geändert (z. B. Schnitt oder Reihenfolge)",
+      "reasonFormChanged": "Formular oder Kundendaten wurden geändert",
+      "reasonEncodingChanged": "Intro- oder Encoding-Einstellungen wurden geändert"
     },
     "append": {
       "pickFile": "Bitte mindestens eine Datei zum Nachreichen wählen.",
@@ -1199,7 +1210,11 @@
       "empty": "Keine Videos — per Drag & Drop im Medien-Bereich hinzufügen",
       "singleClipWithPreview": "Einzelclip-Wiedergabe — „Vorschau anzeigen“ für die kombinierte Datei.",
       "singleClipWithoutPreview": "Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte Datei.",
-      "undoThisEditTitle": "Diese Bearbeitung rückgängig machen"
+      "undoThisEditTitle": "Diese Bearbeitung rückgängig machen",
+      "createReuse": "Beim Erstellen: Vorschau wird übernommen",
+      "createReencode": "Beim Erstellen: Neu kodieren — {{reason}}",
+      "previewStreamCopy": "Neu-Kodierung: nein (Stream-Copy)",
+      "previewReencode": "Neu-Kodierung: {{reason}}"
     },
     "cutter": {
       "warning": {

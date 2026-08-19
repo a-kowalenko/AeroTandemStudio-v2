@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { VideoMetadata } from "../lib/tauri";
 import { tr } from "@/i18n";
 import { deleteWorkingCopy, importVideos, probeVideo } from "../lib/tauri";
-import { getMediaThumbnail } from "../lib/sdCard";
+import { previewThumbnailQueue } from "../lib/thumbnailQueue";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
 
@@ -93,10 +93,11 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       get().ensureDefaultWatermarkClip();
       if (fresh.length > 0) {
         syncProductsFromMedia({ hasVideos: true, hasPhotos: false });
-        // Warm FFmpeg poster cache so VideoPlayer shows a frame on macOS WKWebView.
-        for (const v of fresh) {
-          void getMediaThumbnail(v.path, "preview").catch(() => undefined);
-        }
+        // Stagger FFmpeg poster warm (OPT-10) — first clip first, max 2 concurrent.
+        previewThumbnailQueue.scheduleWarmAfterImport(
+          fresh.map((v) => v.path),
+          fresh[0]?.path,
+        );
       }
     } catch (e) {
       set({ importing: false, importError: String(e) });

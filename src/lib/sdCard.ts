@@ -246,14 +246,32 @@ export async function ejectSdCard(drive: string): Promise<void> {
   return invoke("eject_sd_card", { drive });
 }
 
+export type ThumbQuality = "lq" | "hq" | "preview";
+
+export type MediaThumbnailResult = {
+  path: string;
+  /** Loopback HTTP URL (OPT-4) — preferred over Base64 IPC. */
+  url?: string | null;
+  /** Legacy Base64 data URL when HTTP is unavailable. */
+  data_url?: string | null;
+  quality?: string;
+};
+
+/** Pick display URL: HTTP first, then legacy data URL. */
+export function thumbnailDisplayUrl(res: MediaThumbnailResult): string {
+  const http = res.url?.trim();
+  if (http) return http;
+  const data = res.data_url?.trim();
+  if (data) return data;
+  return "";
+}
+
 export async function getMediaThumbnail(
   path: string,
   quality: ThumbQuality = "lq",
-): Promise<{ path: string; data_url: string; quality?: string }> {
-  return invoke("get_media_thumbnail", { path, quality });
+): Promise<MediaThumbnailResult> {
+  return invoke<MediaThumbnailResult>("get_media_thumbnail", { path, quality });
 }
-
-export type ThumbQuality = "lq" | "hq" | "preview";
 
 export async function listProcessedFiles(
   limit?: number,

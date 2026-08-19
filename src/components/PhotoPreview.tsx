@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { getMediaThumbnail, thumbnailDisplayUrl, type ThumbQuality } from "../lib/sdCard";
 import {
   ChevronLeft,
   ChevronRight,
@@ -42,6 +43,120 @@ function formatBytes(n: number | undefined): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function photoFileSrcFallback(path: string, revision: number): string {
+  const base = convertFileSrc(path);
+  return `${base}${base.includes("?") ? "&" : "?"}r=${revision}`;
+}
+
+/** Scaled thumbnail via FFmpeg/image backend; falls back to full-res file URL. */
+function usePhotoThumbnailSrc(
+  path: string | null,
+  quality: ThumbQuality,
+  revision: number,
+): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!path) {
+      setUrl(null);
+      return;
+    }
+    let cancelled = false;
+    setUrl(null);
+
+    void getMediaThumbnail(path, quality)
+      .then((res) => {
+        if (!cancelled) setUrl(thumbnailDisplayUrl(res) || photoFileSrcFallback(path, revision));
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(photoFileSrcFallback(path, revision));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [path, quality, revision]);
+
+  return url;
+}
+
+type PhotoStripThumbProps = {
+  path: string;
+  filename: string;
+  revision: number;
+  isCurrent: boolean;
+  isSelected: boolean;
+  isWm: boolean;
+  editMark: "crop" | "rotate" | null;
+  onClick: (e: MouseEvent<HTMLButtonElement>) => void;
+  onContextMenu: (e: MouseEvent<HTMLButtonElement>) => void;
+};
+
+function PhotoStripThumb({
+  path,
+  filename,
+  revision,
+  isCurrent,
+  isSelected,
+  isWm,
+  editMark,
+  onClick,
+  onContextMenu,
+}: PhotoStripThumbProps) {
+  const thumbSrc = usePhotoThumbnailSrc(path, "lq", revision);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      className={cn(
+        "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-card transition",
+        isSelected
+          ? "border-primary ring-2 ring-primary/25"
+          : isCurrent
+            ? "border-foreground/40"
+            : "border-transparent opacity-80 hover:opacity-100",
+      )}
+      title={isWm ? `${filename} (Wasserzeichen)` : filename}
+    >
+      {thumbSrc ? (
+        <img
+          src={thumbSrc}
+          alt={filename}
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      ) : (
+        <div className="h-full w-full bg-muted/40" aria-hidden />
+      )}
+      {editMark && (
+        <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
+          {editMark === "crop" ? "Crop" : "Rot"}
+        </span>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 px-0.5 pb-0.5">
+        <QrScanRowBar path={path} />
+      </div>
+      {isWm && (
+        <>
+          <img
+            src="/preview_stempel.png"
+            alt=""
+            className="pointer-events-none absolute left-1/2 top-1/2 max-h-[135%] max-w-[135%] -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-sm"
+          />
+          <span
+            className="absolute top-0.5 right-0.5 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+            aria-label="Wasserzeichen"
+          >
+            WM
+          </span>
+        </>
+      )}
+    </button>
+  );
 }
 
 export function PhotoPreview({
@@ -184,11 +299,12 @@ export function PhotoPreview({
     toggleSelect(index, "replace");
   }
 
-  const previewSrc = useMemo(() => {
-    if (!current) return null;
-    const base = convertFileSrc(current.path);
-    return `${base}${base.includes("?") ? "&" : "?"}r=${getMediaRevision(current.path)}`;
-  }, [current, getMediaRevision]);
+  const currentRevision = current ? getMediaRevision(current.path) : 0;
+  const previewSrc = usePhotoThumbnailSrc(
+    current?.path ?? null,
+    "preview",
+    currentRevision,
+  );
 
   // Subscribe so revision bumps re-render thumbs.
   void editMarks;
@@ -255,54 +371,19 @@ export function PhotoPreview({
             const isCurrent = i === currentIndex;
             const isSelected = explicitlySelected && selected.has(i);
             const isWm = fotoWmNeeded && watermarkIndices.has(i);
-            const thumbBase = convertFileSrc(p.path);
-            const thumbSrc = `${thumbBase}${thumbBase.includes("?") ? "&" : "?"}r=${getMediaRevision(p.path)}`;
             return (
-              <button
+              <PhotoStripThumb
                 key={p.path}
-                type="button"
+                path={p.path}
+                filename={p.filename}
+                revision={getMediaRevision(p.path)}
+                isCurrent={isCurrent}
+                isSelected={isSelected}
+                isWm={isWm}
+                editMark={getEditMark(p.path)}
                 onClick={(e) => onThumbClick(i, e)}
                 onContextMenu={mediaContextMenuHandler(p.path, setCtxMenu)}
-                className={cn(
-                  "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-card transition",
-                  isSelected
-                    ? "border-primary ring-2 ring-primary/25"
-                    : isCurrent
-                      ? "border-foreground/40"
-                      : "border-transparent opacity-80 hover:opacity-100",
-                )}
-                title={isWm ? `${p.filename} (Wasserzeichen)` : p.filename}
-              >
-                <img
-                  src={thumbSrc}
-                  alt={p.filename}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
-                {getEditMark(p.path) && (
-                  <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
-                    {getEditMark(p.path) === "crop" ? "Crop" : "Rot"}
-                  </span>
-                )}
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 px-0.5 pb-0.5">
-                  <QrScanRowBar path={p.path} />
-                </div>
-                {isWm && (
-                  <>
-                    <img
-                      src="/preview_stempel.png"
-                      alt=""
-                      className="pointer-events-none absolute left-1/2 top-1/2 max-h-[135%] max-w-[135%] -translate-x-1/2 -translate-y-1/2 object-contain drop-shadow-sm"
-                    />
-                    <span
-                      className="absolute top-0.5 right-0.5 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-                      aria-label="Wasserzeichen"
-                    >
-                      WM
-                    </span>
-                  </>
-                )}
-              </button>
+              />
             );
           })}
         </div>
