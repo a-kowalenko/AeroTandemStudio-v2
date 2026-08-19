@@ -1,4 +1,4 @@
-import React from "react";
+import { Suspense, StrictMode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { initTheme, useThemeStore } from "./store/themeStore";
@@ -11,9 +11,11 @@ useThemeStore.setState({ mode: initial });
 async function bootstrap() {
   await useLocaleStore.getState().init();
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>,
+    <StrictMode>
+      <Suspense fallback={null}>
+        <App />
+      </Suspense>
+    </StrictMode>,
   );
 }
 

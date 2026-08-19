@@ -64,7 +64,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-2 | ✅ |
 | OPT-3 | ✅ |
 | OPT-4 | ✅ |
-| OPT-5 | ⬜ |
+| OPT-5 | ✅ |
 | OPT-6 | ✅ |
 | OPT-7 | ✅ |
 | OPT-8 | ✅ |
@@ -371,10 +371,10 @@ Nur OPT-4. Danach cargo test && npm run tauri dev.
 
 **In scope:**
 
-- [ ] `AppShell` / `WorkflowLayout` extrahieren
-- [ ] Mindestens 3 Dialoge via `React.lazy` + `Suspense` (Loading-Fallback minimal)
-- [ ] Store-Subscriptions in Container-Komponenten verschieben (nicht alles in Root)
-- [ ] Kein Verhaltens-Change bei Create/SD/QR-Flows
+- [x] `AppShell` / `WorkflowLayout` extrahieren
+- [x] Mindestens 3 Dialoge via `React.lazy` + `Suspense` (Loading-Fallback minimal)
+- [x] Store-Subscriptions in Container-Komponenten verschieben (nicht alles in Root)
+- [x] Kein Verhaltens-Change bei Create/SD/QR-Flows
 
 **Out of scope:**
 

@@ -1,59 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import {
-  AlertTriangle,
-  CloudUpload,
-  ExternalLink,
-  Film,
-  FolderClock,
-  FolderOpen,
-  ImageIcon,
-  RotateCcw,
-} from "lucide-react";
-import { MediaDropZone } from "./components/MediaDropZone";
-import { WorkflowProgressPanel } from "./components/WorkflowProgressPanel";
-import { MediaListPanel } from "./components/MediaListPanel";
-import { VideoPreview } from "./components/VideoPreview";
-import { PhotoPreview } from "./components/PhotoPreview";
-import { PhotoEditor, type PhotoEditorResult } from "./components/PhotoEditor";
-import { VideoCutter, type VideoCutterResult } from "./components/VideoCutter";
-import { CustomerForm, CustomerSessionStrip } from "./components/CustomerForm";
-import { SettingsDialog } from "./components/settings/SettingsDialog";
-import { SetupWizard } from "./components/SetupWizard";
-import { ErrorDialog } from "./components/ErrorDialog";
-import { SuccessDialog } from "./components/SuccessDialog";
-import {
-  CreateSuccessDialog,
-  type CreateSuccessInfo,
-} from "./components/CreateSuccessDialog";
-import { WarningDialog } from "./components/WarningDialog";
-import {
-  IntroMuxFallbackDialog,
-  type IntroMuxFallbackChoice,
-} from "./components/IntroMuxFallbackDialog";
-import {
-  BodyConcatFallbackDialog,
-  type BodyConcatFallbackChoice,
-} from "./components/BodyConcatFallbackDialog";
-import { LoadingOverlay } from "./components/LoadingOverlay";
-import { ToastHost } from "./components/ToastHost";
+import type { PhotoEditorResult } from "./components/PhotoEditor";
+import type { VideoCutterResult } from "./components/VideoCutter";
+import type { CreateSuccessInfo } from "./components/CreateSuccessDialog";
+import type { IntroMuxFallbackChoice } from "./components/IntroMuxFallbackDialog";
+import type { BodyConcatFallbackChoice } from "./components/BodyConcatFallbackDialog";
 import { SplashScreen } from "./components/SplashScreen";
-import { AppChrome } from "./components/chrome/AppChrome";
-import { ServerStatusIndicator } from "./components/ServerStatusIndicator";
-import { UpdateDialog } from "./components/UpdateDialog";
-import { SdModeSelector } from "./components/SdModeSelector";
-import { SdDriveSelector } from "./components/SdDriveSelector";
-import { SdFileSelector } from "./components/SdFileSelector";
-import { HistoryDialog } from "./components/HistoryDialog";
-import { LogConsole } from "./components/LogConsole";
-import { SettingsCluster } from "./components/SettingsCluster";
-import { Button } from "./components/ui/button";
-import { Switch } from "./components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { AppShell } from "./components/app/AppShell";
+import { AppDialogs } from "./components/app/AppDialogs";
+import type { TaskProgressState } from "./components/app/types";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
@@ -65,9 +24,7 @@ import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
-import { formatPreviewReuseHint } from "./lib/previewReuseHint";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
-import { useWorkflowProgress } from "./hooks/useWorkflowProgress";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
@@ -88,7 +45,6 @@ import {
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
-  normalizeManualEntryMode,
   type AvailableRelease,
   type BodyConcatFallbackPayload,
   type CreateJobResult,
@@ -137,38 +93,13 @@ import {
   resolveProgressLabel,
   shouldClearTaskProgress,
 } from "./lib/progressLabels";
-import {
-  focusCreateReadyTarget,
-  filterGraceCreateHints,
-  isBlockingCreateHint,
-  isIdEntryGracePeriod,
-  summarizeCreateHints,
-  translateValidationHint,
-} from "./lib/createReadyHints";
-import {
-  canRunAmsIdLookup,
-  isAmsBridgeConfigured,
-} from "./lib/amsLookup";
-import { useAmsBridgeStore } from "./store/amsBridgeStore";
+import { translateValidationHint } from "./lib/createReadyHints";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { runAmsAutoConnect } from "./lib/amsAutoConnect";
-import { cn, isCancellationError } from "./lib/utils";
+import { isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
+import type { EncodeProgress } from "./components/app/types";
 import "./App.css";
-
-type EncodeProgress = {
-  percent: number;
-  current_secs: number;
-  total_secs: number;
-  status: string;
-  task_id?: number | null;
-};
-
-type TaskProgressState = {
-  taskId: number;
-  percent: number;
-  status: string;
-};
 
 function App() {
   const { t } = useTranslation();
@@ -182,10 +113,6 @@ function App() {
   const persistConfig = useConfigStore((s) => s.persist);
   const kunde = useKundeStore((s) => s.kunde);
   const qrPreview = useKundeStore((s) => s.qrPreview);
-  const qrRevision = useKundeStore((s) => s.qrRevision);
-  const amsLookupRevision = useKundeStore((s) => s.amsLookupRevision);
-  const amsLookupSettled = useKundeStore((s) => s.amsLookupSettled);
-  const sessionTouched = useKundeStore((s) => s.sessionTouched);
   const applyDefaultsFromConfig = useKundeStore((s) => s.applyDefaultsFromConfig);
   const resetSession = useKundeStore((s) => s.resetSession);
   const clearPreviewCache = usePreviewCacheStore((s) => s.clear);
@@ -213,9 +140,7 @@ function App() {
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const openSettings = useUiStore((s) => s.openSettings);
-  const createReadyPulsePending = useUiStore((s) => s.createReadyPulsePending);
   const clearCreateReadyPulse = useUiStore((s) => s.clearCreateReadyPulse);
-  const createReadyWasFalseRef = useRef(true);
 
   const checkServerConnection = useServerStore((s) => s.checkConnection);
   const setServerPhase = useServerStore((s) => s.setPhase);
@@ -234,20 +159,8 @@ function App() {
   const processedOpen = useSdStore((s) => s.processedOpen);
   const setProcessedOpen = useSdStore((s) => s.setProcessedOpen);
   const setPhase = useSdStore((s) => s.setPhase);
-  const sdPhase = useSdStore((s) => s.phase);
   const setActiveDrive = useSdStore((s) => s.setActiveDrive);
-  const backupProgress = useSdStore((s) => s.backupProgress);
-  const workflowProgress = useSdStore((s) => s.workflowProgress);
-  const secondaryBackup = useSdStore((s) => s.secondaryBackup);
-  const videoImporting = useVideoStore((s) => s.importing);
-  const photoImporting = usePhotoStore((s) => s.importing);
   const qrScanBusy = useQrScanStore((s) => s.busy);
-  const qrScanStage = useQrScanStore((s) => s.stage);
-  const qrScanByPath = useQrScanStore((s) => s.byPath);
-  const qrFollowup = useQrScanStore((s) => s.followup);
-  const qrClipProgress = useQrScanStore((s) => s.clipProgress);
-  const qrScanOrder = useQrScanStore((s) => s.scanOrder);
-  const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
@@ -288,9 +201,6 @@ function App() {
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [ready, setReady] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
-  const [createReady, setCreateReady] = useState(false);
-  const [createHints, setCreateHints] = useState<string[]>([]);
-  const [createReadyPulse, setCreateReadyPulse] = useState(false);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
   const [introMuxFallback, setIntroMuxFallback] = useState<{
     reason: string;
@@ -318,9 +228,6 @@ function App() {
   const serverPhase = useServerStore((s) => s.phase);
 
   const appendActive = useAppendStore((s) => s.active);
-  const amsConnected = useAmsBridgeStore((s) => s.connected);
-  const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
-  const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const appendWasActiveRef = useRef(false);
 
   const installBlockedReason = (() => {
@@ -1382,11 +1289,11 @@ function App() {
     };
   }, [setUploadProgress]);
 
-  function resetProgress() {
+  const resetProgress = useCallback(() => {
     setPercent(0);
     setStatus("");
     setTaskProgress([]);
-  }
+  }, []);
 
   useEffect(() => {
     if (appendActive && !appendWasActiveRef.current) {
@@ -1395,75 +1302,7 @@ function App() {
       setPercent(1);
     }
     appendWasActiveRef.current = appendActive;
-  }, [appendActive]);
-
-  useEffect(() => {
-    if (!ready) return;
-    let cancelled = false;
-    const t = window.setTimeout(() => {
-      void (async () => {
-        const paths = videoList.map((v) => v.path);
-        const photos = photoList.map((p) => p.path);
-        const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
-        try {
-          const validation = await validateCreateJob(
-            kunde,
-            paths,
-            photos,
-            wmPhotos,
-            config?.oldschool_mode,
-          );
-          if (cancelled) return;
-          const hints = [...validation.errors];
-          if (!config?.speicherort?.trim()) {
-            hints.push("Speicherort wird beim Erstellen abgefragt und gespeichert.");
-          }
-          setCreateHints(hints);
-          const manualMode = normalizeManualEntryMode(
-            config?.manual_entry_mode,
-            config?.oldschool_mode ?? false,
-          );
-          const grace = isIdEntryGracePeriod({
-            active: kunde.form_mode === "manual" && manualMode === "id",
-            kundenId: kunde.kunden_id,
-            bookingId: kunde.booking_id,
-            amsLookupSettled,
-            lookupLive: canRunAmsIdLookup({
-              configured: isAmsBridgeConfigured(config),
-              connected: amsConnected,
-              capabilities: amsCapabilities,
-            }),
-          });
-          const blocking = filterGraceCreateHints(
-            hints.filter(isBlockingCreateHint),
-            grace,
-          );
-          setCreateReady(blocking.length === 0);
-        } catch {
-          if (!cancelled) {
-            setCreateReady(false);
-            setCreateHints(["Validierung fehlgeschlagen"]);
-          }
-        }
-      })();
-    }, 200);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(t);
-    };
-  }, [
-    ready,
-    kunde,
-    videoList,
-    photoList,
-    watermarkPhotoIndices,
-    config?.oldschool_mode,
-    config?.manual_entry_mode,
-    config?.speicherort,
-    amsLookupSettled,
-    amsConnected,
-    amsCapabilities,
-  ]);
+  }, [appendActive, resetProgress, t]);
 
   async function ensureSpeicherort(forcePick = false): Promise<string | null> {
     const current = config?.speicherort?.trim() ?? "";
@@ -1622,7 +1461,6 @@ function App() {
           videospringerFixed: config.videospringer,
         });
         clearCreateReadyPulse();
-        setCreateReadyPulse(false);
       }
     } catch (e) {
       if (isCancellationError(e)) {
@@ -1708,180 +1546,10 @@ function App() {
       videospringerFixed: config?.videospringer,
     });
     clearCreateReadyPulse();
-    setCreateReadyPulse(false);
     showSuccess(t("app.session.resetDone"), t("common.actions.reset"), {
       autoCloseSecs: 5,
     });
   }
-
-  const hwLabel = hwInfo
-    ? `${hwInfo.encoder}${hwInfo.available ? "" : t("app.chrome.softwareSuffix")}`
-    : null;
-
-  const uploadActive = Boolean(config?.upload_to_server && serverConnected);
-  const uploadBlocked = Boolean(config?.upload_to_server) && !serverConnected;
-  const uploadNudge = serverConnected && !config?.upload_to_server;
-  const autoClearAfterCreate = Boolean(config?.auto_clear_files_after_creation);
-  const uploadTitle = !serverConnected
-    ? uploadBlocked
-      ? t("app.upload.titleBlockedOn")
-      : t("app.upload.titleBlockedOff")
-    : uploadActive
-      ? t("app.upload.titleActive")
-      : t("app.upload.titleOff");
-
-  const uiLocked =
-    busy ||
-    appendActive ||
-    sdWorkflowUiActive ||
-    loading ||
-    qrScanBusy ||
-    videoImporting ||
-    photoImporting;
-
-  /** SD / Import / Copy / QR pipeline — media & actions stay locked. */
-  const pipelineActive =
-    sdWorkflowUiActive ||
-    loading ||
-    qrScanBusy ||
-    videoImporting ||
-    photoImporting;
-
-  /**
-   * Manual mode: Kundensektion bleibt während Pipeline editierbar.
-   * QR mode: Formular gesperrt (Crew weiter separat über crewDisabled).
-   * Encode/Vorgang (`busy`): immer gesperrt.
-   */
-  const customerFormLocked =
-    busy || (kunde.form_mode === "kunde" && pipelineActive);
-
-  /** Ort/Datum wie Crew: parallel zur Pipeline nutzbar, nur bei Encode/Vorgang zu. */
-  const sessionStripLocked = busy;
-
-  /** Kein QR↔Manuell-Wechsel mitten in Backup/Import/Scan. */
-  const formModeToggleLocked = busy || pipelineActive;
-
-  const workStarted =
-    sessionTouched ||
-    videoList.length > 0 ||
-    photoList.length > 0 ||
-    qrRevision > 0 ||
-    amsLookupRevision > 0;
-  const manualEntryMode = normalizeManualEntryMode(
-    config?.manual_entry_mode,
-    config?.oldschool_mode ?? false,
-  );
-  const idEntryGrace = isIdEntryGracePeriod({
-    active: kunde.form_mode === "manual" && manualEntryMode === "id",
-    kundenId: kunde.kunden_id,
-    bookingId: kunde.booking_id,
-    amsLookupSettled,
-    lookupLive: canRunAmsIdLookup({
-      configured: isAmsBridgeConfigured(config),
-      connected: amsConnected,
-      capabilities: amsCapabilities,
-    }),
-  });
-  const createBanner = busy
-    ? null
-    : summarizeCreateHints(createHints, {
-        workStarted,
-        suppressEmptyMedia: pipelineActive,
-        idEntryGrace,
-      });
-
-  const createNeedsVideoEncode =
-    videoList.length > 0 && (kunde.handcam_video || kunde.outside_video);
-  const createEncodeHint = useMemo(() => {
-    if (!createNeedsVideoEncode) return null;
-    const encodingSig = previewEncodingSignature(
-      Boolean(config?.intro_enabled ?? false),
-      config?.dauer ?? 5,
-      config?.intro_mux_mode ?? "reencode",
-    );
-    return formatPreviewReuseHint(
-      t,
-      getPreviewReusePlan(videoList, kunde, encodingSig),
-    );
-  }, [
-    createNeedsVideoEncode,
-    videoList,
-    kunde,
-    config?.intro_enabled,
-    config?.dauer,
-    config?.intro_mux_mode,
-    t,
-  ]);
-
-  // After QR crew dropdown workflow: pulse Erstellen only when it newly unlocks.
-  useEffect(() => {
-    const becameReady = createReadyWasFalseRef.current && createReady;
-    createReadyWasFalseRef.current = !createReady;
-
-    if (!createReadyPulsePending) return;
-
-    if (!createReady) return;
-
-    // Already unlocked before this crew step — no pulse.
-    if (!becameReady) {
-      clearCreateReadyPulse();
-      return;
-    }
-
-    if (uiLocked) return;
-
-    clearCreateReadyPulse();
-    setCreateReadyPulse(true);
-    const t = window.setTimeout(() => setCreateReadyPulse(false), 2150);
-    return () => window.clearTimeout(t);
-  }, [
-    createReadyPulsePending,
-    createReady,
-    uiLocked,
-    clearCreateReadyPulse,
-  ]);
-
-  // Drop stale pulse requests if create stays blocked (e.g. missing media).
-  useEffect(() => {
-    if (!createReadyPulsePending || createReady) return;
-    const t = window.setTimeout(() => clearCreateReadyPulse(), 900);
-    return () => window.clearTimeout(t);
-  }, [createReadyPulsePending, createReady, clearCreateReadyPulse]);
-
-  const appendUploading =
-    appendActive &&
-    (serverPhase === "uploading" || /^upload/i.test(status.trim()));
-
-  const workflowView = useWorkflowProgress({
-    sdWorkflowActive: sdWorkflowUiActive,
-    sdPhase,
-    backupProgress,
-    workflowProgress,
-    loadingMessage,
-    qrScanBusy,
-    qrScanStage,
-    qrScanByPath,
-    qrFollowup,
-    qrClipProgress,
-    qrScanOrder,
-    qrPhotoEdgeLimited,
-    videoImporting,
-    photoImporting,
-    encodeBusy: busy,
-    appendActive,
-    appendGuest,
-    appendUploading,
-    percent,
-    status,
-    taskProgress,
-  });
-
-  useEffect(() => {
-    if (busy || appendActive) return;
-    if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
-    if (workflowView.visible) return;
-    resetProgress();
-  }, [busy, appendActive, percent, taskProgress.length, status, workflowView.visible]);
 
   return (
     <div className="flex h-full min-h-screen flex-col text-foreground">
@@ -1892,547 +1560,57 @@ function App() {
         error={splashError}
       />
 
-      <AppChrome
-        actions={
-          <>
-            <SdDriveSelector
-              disabled={uiLocked || !ready}
-              onOpenDrive={(drive) => void openSdDriveFromHeader(drive)}
-              onPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
-            />
-            <SdModeSelector
-              visible={Boolean(config?.sd_auto_backup)}
-              disabled={uiLocked}
-            />
-            <ServerStatusIndicator />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => setProcessedOpen(true)}
-              disabled={busy || !ready}
-              title={t("app.chrome.historyTitle")}
-            >
-              <FolderClock className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("common.actions.history")}</span>
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={handleSessionReset}
-              disabled={uiLocked || !ready}
-              title={t("app.chrome.resetTitle")}
-              className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("common.actions.reset")}</span>
-            </Button>
-            <SettingsCluster
-              disabled={!ready}
-              onOpenSettings={() => setSettingsOpen(true)}
-            />
-          </>
-        }
-      >
-        <div className="pointer-events-none flex min-w-0 items-center gap-2.5">
-          {/* h-[34px] = MAC_LOGO_TILE_PX — macOS traffic-light center in macTrafficLights.ts */}
-          <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
-            <img
-              src="/logo.png"
-              alt=""
-              className="h-[22px] w-[22px] object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
-          <div className="flex min-h-[34px] min-w-0 flex-col justify-center gap-0.5">
-            <div className="flex min-w-0 items-baseline gap-x-1.5">
-              <h1 className="font-display truncate text-base font-semibold leading-none tracking-tight text-primary">
-                Aero Tandem Studio
-              </h1>
-              <span className="shrink-0 text-[11px] leading-none text-muted">
-                v{appVersion}
-              </span>
-            </div>
-            <p className="truncate text-[10px] leading-none text-muted">
-              {secondaryBackup &&
-              (secondaryBackup.state === "started" ||
-                secondaryBackup.state === "progress")
-                ? `${t("app.chrome.serverBackupPercent", { percent: Math.round(secondaryBackup.percent) })}` +
-                  (secondaryBackup.file_name
-                    ? ` · ${secondaryBackup.file_name}`
-                    : "")
-                : secondaryBackup?.state === "done"
-                  ? t("app.chrome.serverBackupDone")
-                  : hwLabel
-                    ? t("app.chrome.encoder", { label: hwLabel })
-                    : ready
-                      ? t("app.chrome.ready")
-                      : t("app.chrome.starting")}
-            </p>
-          </div>
-        </div>
-      </AppChrome>
+      <AppShell
+        ready={ready}
+        appVersion={appVersion}
+        hwInfo={hwInfo}
+        busy={busy}
+        sdWorkflowUiActive={sdWorkflowUiActive}
+        mediaTab={mediaTab}
+        setMediaTab={setMediaTab}
+        percent={percent}
+        status={status}
+        taskProgress={taskProgress}
+        cutterOpen={cutterOpen}
+        onBusyChange={setBusy}
+        onStatus={setStatus}
+        onProgressReset={resetProgress}
+        onProgressComplete={(finalStatus) => {
+          setPercent(100);
+          setStatus(finalStatus);
+        }}
+        onCancel={() => void cancel()}
+        onResetProgress={resetProgress}
+        onOpenCutter={(path, durationSecs) => {
+          setCutterPath(path);
+          setCutterDuration(durationSecs);
+          setCutterOpen(true);
+        }}
+        onOpenPhotoEditor={(path) => {
+          setPhotoEditorPath(path);
+          setPhotoEditorOpen(true);
+        }}
+        onStartCreate={() => void startCreate()}
+        onEnsureSpeicherort={ensureSpeicherort}
+        onOpenSpeicherortFolder={() => void openSpeicherortFolder()}
+        onOpenSdDrive={(drive) => void openSdDriveFromHeader(drive)}
+        onSdPrimaryAction={(drive) => void handleSdPrimaryAction(drive)}
+        onOpenHistory={() => setProcessedOpen(true)}
+        onSessionReset={handleSessionReset}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onSessionCleared={() => {
+          videoCuts.clearUndoState();
+        }}
+        videoCuts={videoCuts}
+        photoEdits={photoEdits}
+      />
 
-      <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1">
-        <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
-          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-            <div className="border-b border-border/40 px-3 pt-1.5 pb-1.5">
-              <CustomerSessionStrip disabled={sessionStripLocked} />
-            </div>
-            <div className="p-4">
-              <CustomerForm
-                disabled={customerFormLocked}
-                crewDisabled={busy}
-                modeToggleDisabled={formModeToggleLocked}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-                {t("app.job.section")}
-              </p>
-              <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
-                <label
-                  htmlFor="vorgang-upload"
-                  className={cn(
-                    "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
-                    uploadActive
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : uploadNudge
-                        ? "border-destructive bg-destructive/20 text-destructive"
-                        : uploadBlocked
-                          ? "border-warning/40 bg-warning/10 text-warning"
-                          : "border-border bg-card-elevated/80 text-muted",
-                    (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
-                  )}
-                  title={uploadTitle}
-                >
-                  <CloudUpload className="h-3.5 w-3.5" aria-hidden />
-                  {t("app.upload.title")}
-                  <Switch
-                    id="vorgang-upload"
-                    className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
-                    checked={uploadActive}
-                    disabled={uiLocked || !config || !serverConnected}
-                    onCheckedChange={(v) => {
-                      if (!config || !serverConnected) return;
-                      void persistConfig({
-                        ...config,
-                        upload_to_server: v === true,
-                      });
-                    }}
-                    aria-label={t("app.job.uploadAria")}
-                  />
-                </label>
-                <label
-                  htmlFor="vorgang-clear"
-                  className={cn(
-                    "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
-                    autoClearAfterCreate
-                      ? "border-primary/30 bg-primary/5 text-foreground/80"
-                      : "border-border bg-card-elevated/80 text-muted",
-                    (uiLocked || !config) && "cursor-not-allowed",
-                  )}
-                  title={t("app.job.clearTitle")}
-                >
-                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-                  {t("app.job.clear")}
-                  <Switch
-                    id="vorgang-clear"
-                    className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
-                    checked={autoClearAfterCreate}
-                    disabled={uiLocked || !config}
-                    onCheckedChange={(v) => {
-                      if (!config) return;
-                      void persistConfig({
-                        ...config,
-                        auto_clear_files_after_creation: v === true,
-                      });
-                    }}
-                    aria-label={t("app.job.clearTitle")}
-                  />
-                </label>
-              </div>
-            </div>
-            <div
-              className={cn(
-                "grid transition-[grid-template-rows] duration-200 ease-out",
-                createBanner ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-              )}
-            >
-              <div className="min-h-0 overflow-hidden">
-                {createBanner ? (
-                  <div
-                    className="mt-2.5 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-warning"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <div
-                      className={cn(
-                        "flex gap-2",
-                        createBanner.items.length === 1
-                          ? "items-center"
-                          : "items-start",
-                      )}
-                    >
-                      <AlertTriangle
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0",
-                          createBanner.items.length > 1 && "mt-0.5",
-                        )}
-                        aria-hidden
-                      />
-                      <div
-                        className={cn(
-                          "min-w-0",
-                          createBanner.showChips && "space-y-1",
-                        )}
-                      >
-                        {createBanner.items.length === 1 &&
-                        createBanner.items[0].target !== "none" ? (
-                          <button
-                            type="button"
-                            className="text-left text-xs font-medium leading-snug hover:underline"
-                            onClick={() =>
-                              focusCreateReadyTarget(
-                                createBanner.items[0].target,
-                                { setMediaTab },
-                              )
-                            }
-                          >
-                            {createBanner.headline}
-                          </button>
-                        ) : (
-                          <p className="text-xs font-medium leading-snug">
-                            {createBanner.headline}
-                          </p>
-                        )}
-                        {createBanner.showChips ? (
-                          <div className="flex flex-wrap gap-1">
-                            {createBanner.items.map((item) => (
-                              <button
-                                key={item.label}
-                                type="button"
-                                className="rounded-md border border-warning/30 bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium leading-snug text-warning hover:bg-warning/20"
-                                aria-label={t("app.ready.showTarget", { label: item.label })}
-                                onClick={() =>
-                                  focusCreateReadyTarget(item.target, {
-                                    setMediaTab,
-                                  })
-                                }
-                              >
-                                {item.label}
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            {createEncodeHint && !busy ? (
-              <div
-                className={cn(
-                  "mt-2.5 rounded-lg border px-3 py-2 text-xs leading-snug",
-                  createEncodeHint.tone === "reuse"
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-                    : "border-border/60 bg-muted/20 text-muted",
-                )}
-                role="status"
-                title={createEncodeHint.title}
-              >
-                {createEncodeHint.message}
-              </div>
-            ) : null}
-            <div className="mt-2.5 flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className="shrink-0"
-                onClick={() => void ensureSpeicherort(true)}
-                disabled={uiLocked}
-                title={t("app.storage.change")}
-                aria-label={t("app.storage.change")}
-              >
-                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="icon"
-                className="shrink-0"
-                onClick={() => void openSpeicherortFolder()}
-                disabled={uiLocked || !config?.speicherort?.trim()}
-                title={t("settings.folder.openInExplorer")}
-                aria-label={t("settings.folder.openInExplorer")}
-              >
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-              </Button>
-            <div className="relative flex-1 overflow-visible">
-              {createReadyPulse ? (
-                <span
-                  aria-hidden
-                  className="ats-create-ready-halo pointer-events-none absolute inset-0 rounded-md"
-                />
-              ) : null}
-              <Button
-                type="button"
-                className={cn(
-                  "relative z-[1] w-full gap-1.5",
-                  createReadyPulse && "ats-create-ready-flash",
-                )}
-                onClick={() => {
-                  void startCreate();
-                }}
-                disabled={uiLocked || !createReady}
-                onAnimationEnd={(e) => {
-                  if (
-                    e.target === e.currentTarget &&
-                    e.animationName === "ats-create-ready-lift"
-                  ) {
-                    setCreateReadyPulse(false);
-                  }
-                }}
-                title={
-                  createEncodeHint?.title ??
-                  (config?.upload_to_server && serverConnected
-                    ? t("app.job.createUploadTitle")
-                    : undefined)
-                }
-              >
-                {config?.upload_to_server && serverConnected ? (
-                  <>
-                    <CloudUpload className="h-4 w-4" aria-hidden />
-                    {t("common.actions.createAndUpload")}
-                  </>
-                ) : (
-                  t("common.actions.create")
-                )}
-              </Button>
-            </div>
-            </div>
-          </div>
-        </aside>
-
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div
-            className={cn(
-              "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4",
-              workflowView.reserveSpace && "pb-36",
-            )}
-          >
-          <MediaDropZone
-            disabled={uiLocked}
-            onRemoveVideo={(path) => {
-              useVideoStore.getState().clearCutMarksFor([path]);
-              void discardVideoCutUndoForPath(path);
-            }}
-            onSessionCleared={() => {
-              videoCuts.clearUndoState();
-            }}
-            onImported={({ videosAdded, photosAdded }) => {
-              if (photosAdded > 0 && videosAdded === 0) setMediaTab("foto");
-              else if (videosAdded > 0) setMediaTab("video");
-            }}
-          />
-
-          <section className="ats-surface rounded-xl shadow-sm backdrop-blur-sm">
-            <Tabs
-              value={mediaTab}
-              onValueChange={(v) => setMediaTab(v === "foto" ? "foto" : "video")}
-              className="w-full"
-            >
-              <div className="flex flex-wrap items-center gap-3 rounded-t-xl border-b border-border/70 bg-card-elevated/50 px-3 py-2.5 sm:px-4">
-                <TabsList
-                  className="h-11 w-full max-w-md flex-1 p-1 sm:w-auto"
-                  aria-label={t("app.media.kindAria")}
-                >
-                  <TabsTrigger
-                    value="video"
-                    className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
-                  >
-                    <Film className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>{t("common.labels.video")}</span>
-                    {videoList.length > 0 && (
-                      <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
-                        {videoList.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="foto"
-                    className="h-full flex-1 gap-2 px-4 data-[state=active]:text-primary"
-                  >
-                    <ImageIcon className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>{t("common.labels.photo")}</span>
-                    {photoList.length > 0 && (
-                      <span className="rounded-md bg-background/70 px-1.5 py-0.5 text-xs tabular-nums text-muted">
-                        {photoList.length}
-                      </span>
-                    )}
-                  </TabsTrigger>
-                </TabsList>
-                <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    className={cn(
-                      "text-xs",
-                      !(uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)) &&
-                        "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
-                    )}
-                    disabled={uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)}
-                    onClick={() => {
-                      if (mediaTab === "video") {
-                        useVideoStore.getState().clearVideos();
-                        videoCuts.clearUndoState();
-                      } else {
-                        usePhotoStore.getState().clearPhotos();
-                      }
-                    }}
-                  >
-                    {mediaTab === "video" ? t("app.media.clearVideos") : t("app.media.clearPhotos")}
-                  </Button>
-                </div>
-              </div>
-              <TabsContent value="video" className="mt-0 space-y-4 p-4">
-                <VideoPreview
-                  busy={busy || sdWorkflowUiActive}
-                  onBusyChange={setBusy}
-                  onStatus={setStatus}
-                  percent={percent}
-                  status={status}
-                  taskProgress={taskProgress}
-                  onProgressReset={resetProgress}
-                  onProgressComplete={(finalStatus) => {
-                    setPercent(100);
-                    setStatus(finalStatus);
-                  }}
-                  formReady={createReady}
-                  formHints={createHints}
-                  playbackSuspended={cutterOpen || busy}
-                  canUndoCuts={videoCuts.canUndo}
-                  onUndoAllCuts={() => {
-                    void videoCuts.undoAll({
-                      onBusyChange: setBusy,
-                      onProgressReset: resetProgress,
-                      onStatus: setStatus,
-                    });
-                  }}
-                  onUndoClipCut={(path) => {
-                    void videoCuts.undoForPath(path, {
-                      onBusyChange: setBusy,
-                      onProgressReset: resetProgress,
-                      onStatus: setStatus,
-                    });
-                  }}
-                  onCutClip={(path) => {
-                    const meta = videoList.find((v) => v.path === path);
-                    setCutterPath(path);
-                    setCutterDuration(meta?.duration_secs ?? 0);
-                    setCutterOpen(true);
-                  }}
-                  onBeforeRemoveClip={(path) => {
-                    useVideoStore.getState().clearCutMarksFor([path]);
-                    void discardVideoCutUndoForPath(path);
-                  }}
-                />
-                <MediaListPanel
-                  kind="video"
-                  disabled={uiLocked}
-                  onRemoveVideo={(path) => {
-                    useVideoStore.getState().clearCutMarksFor([path]);
-                    void discardVideoCutUndoForPath(path);
-                  }}
-                  onCutVideo={(path) => {
-                    const meta = videoList.find((v) => v.path === path);
-                    setCutterPath(path);
-                    setCutterDuration(meta?.duration_secs ?? 0);
-                    setCutterOpen(true);
-                    setMediaTab("video");
-                  }}
-                  onUndoVideoCut={(path) => {
-                    void videoCuts.undoForPath(path, {
-                      onBusyChange: setBusy,
-                      onProgressReset: resetProgress,
-                      onStatus: setStatus,
-                    });
-                  }}
-                />
-              </TabsContent>
-              <TabsContent value="foto" className="mt-0 space-y-4 p-4">
-                <PhotoPreview
-                  disabled={uiLocked}
-                  onEditPhoto={(path) => {
-                    setPhotoEditorPath(path);
-                    setPhotoEditorOpen(true);
-                  }}
-                  onUndoPhotoEdit={(path) => {
-                    void photoEdits.undoForPath(path, {
-                      onBusyChange: setBusy,
-                      onProgressReset: resetProgress,
-                      onStatus: setStatus,
-                    });
-                  }}
-                  onBatchRotate={(paths, degrees) => {
-                    void photoEdits.applyRotateMany(paths, degrees, {
-                      onBusyChange: setBusy,
-                      onProgressReset: resetProgress,
-                      onStatus: setStatus,
-                    });
-                  }}
-                />
-                <MediaListPanel kind="foto" disabled={uiLocked} />
-              </TabsContent>
-            </Tabs>
-          </section>
-          </div>
-
-          <div
-            className="pointer-events-none absolute inset-x-4 bottom-4 z-20"
-          >
-            <WorkflowProgressPanel
-              view={workflowView}
-              onCancel={() => void cancel()}
-              className="mx-auto max-w-2xl"
-            />
-          </div>
-        </main>
-      </div>
-      <LogConsole />
-      </div>
-
-      {config ? (
-        <SettingsDialog
-          open={settingsOpen}
-          onOpenChange={(open) => {
-            if (!open && (updateDialogOpen || updateInstalling)) return;
-            setSettingsOpen(open);
-          }}
-          onRequestUpdateCheck={() => void runUpdateCheck(true)}
-          onRequestVersionSwitch={openVersionSwitchDialog}
-          installBlockedReason={installBlockedReason}
-          platformHint={updaterPlatformHint}
-          onAfterFactoryReset={() => {
-            setSettingsOpen(false);
-            setSetupWizardOpen(true);
-          }}
-          suppressDismiss={updateDialogOpen || updateInstalling}
-        />
-      ) : null}
-      <SetupWizard
-        open={setupWizardOpen}
-        onComplete={() => {
+      <AppDialogs
+        config={config}
+        settingsOpen={settingsOpen}
+        setSettingsOpen={setSettingsOpen}
+        setupWizardOpen={setupWizardOpen}
+        onSetupComplete={() => {
           setSetupWizardOpen(false);
           const cfg = useConfigStore.getState().config;
           if (!cfg) return;
@@ -2444,39 +1622,38 @@ function App() {
             outside_video: cfg.outside_video,
           });
         }}
-      />
-      <UpdateDialog
-        open={updateDialogOpen}
-        fromVersion={versionInstall?.fromVersion ?? appVersion}
-        toVersion={versionInstall?.toVersion ?? null}
-        notes={versionInstall?.notes ?? null}
-        available={Boolean(versionInstall?.available)}
-        message={versionInstall?.message ?? ""}
-        installing={updateInstalling}
-        installProgress={updateInstallProgress}
-        silentAvailable={versionInstall?.silentAvailable ?? true}
-        blockedReason={installBlockedReason}
-        platformHint={updaterPlatformHint}
-        installerUrl={versionInstall?.installerUrl ?? null}
-        onInstall={() => void runInstallVersion()}
-        onCancelInstall={() => void cancelInstallVersion()}
-        onLater={() => {
+        updateDialogOpen={updateDialogOpen}
+        versionInstall={versionInstall}
+        appVersion={appVersion}
+        updateInstalling={updateInstalling}
+        updateInstallProgress={updateInstallProgress}
+        installBlockedReason={installBlockedReason}
+        updaterPlatformHint={updaterPlatformHint}
+        onRequestUpdateCheck={() => void runUpdateCheck(true)}
+        onRequestVersionSwitch={openVersionSwitchDialog}
+        onAfterFactoryReset={() => {
+          setSettingsOpen(false);
+          setSetupWizardOpen(true);
+        }}
+        onInstallVersion={() => void runInstallVersion()}
+        onCancelInstallVersion={() => void cancelInstallVersion()}
+        onUpdateLater={() => {
           if (!updateInstalling) setUpdateDialogOpen(false);
         }}
-        onClose={() => {
+        onUpdateClose={() => {
           if (!updateInstalling) setUpdateDialogOpen(false);
         }}
-      />
-      <SdFileSelector
-        defaultActions={settingsSdActions()}
-        onClose={() => {
+        processedOpen={processedOpen}
+        setProcessedOpen={setProcessedOpen}
+        settingsSdActions={settingsSdActions}
+        onSdSelectorClose={() => {
           sdEnrichGenRef.current += 1;
           closeSelector();
           scheduleSdQueueDrain();
         }}
-        onConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
-        onProceedAll={(actions) => void handleSelectorProceedAll(actions)}
-        onRefresh={() => {
+        onSdSelectorConfirm={(paths, actions) => void handleSelectorConfirm(paths, actions)}
+        onSdSelectorProceedAll={(actions) => void handleSelectorProceedAll(actions)}
+        onSdSelectorRefresh={() => {
           const drive = useSdStore.getState().selectorDrive;
           const mode = useSdStore.getState().selectorMode;
           if (!drive) return;
@@ -2485,17 +1662,14 @@ function App() {
             mode === "size_limit" ? "size_limit" : "backup",
           );
         }}
-      />
-      <HistoryDialog open={processedOpen} onOpenChange={setProcessedOpen} />
-      <VideoCutter
-        open={cutterOpen}
-        videoPath={cutterPath}
-        durationSecsHint={cutterDuration}
-        onClose={() => {
+        cutterOpen={cutterOpen}
+        cutterPath={cutterPath}
+        cutterDuration={cutterDuration}
+        onCutterClose={() => {
           setCutterOpen(false);
           setCutterPath(null);
         }}
-        onComplete={(result: VideoCutterResult) => {
+        onCutterComplete={(result: VideoCutterResult) => {
           if (!cutterPath || result.action === "cancel") return;
           const path = cutterPath;
           if (result.action === "apply_trim") {
@@ -2518,15 +1692,13 @@ function App() {
             });
           }
         }}
-      />
-      <PhotoEditor
-        open={photoEditorOpen}
-        photoPath={photoEditorPath}
-        onClose={() => {
+        photoEditorOpen={photoEditorOpen}
+        photoEditorPath={photoEditorPath}
+        onPhotoEditorClose={() => {
           setPhotoEditorOpen(false);
           setPhotoEditorPath(null);
         }}
-        onComplete={(result: PhotoEditorResult) => {
+        onPhotoEditorComplete={(result: PhotoEditorResult) => {
           if (!photoEditorPath || result.action === "cancel") return;
           if (result.action === "apply_edits") {
             void photoEdits.applyEdits(
@@ -2544,69 +1716,33 @@ function App() {
             );
           }
         }}
-      />
-      <ErrorDialog
-        open={dialogKind === "error"}
-        title={dialogTitle}
-        message={dialogMessage}
-        primaryAction={dialogPrimaryAction}
-        onPrimaryAction={() => {
-          const action = dialogPrimaryAction;
-          closeDialog();
-          if (action?.openSettings) {
-            openSettings(action.openSettings);
-          }
-        }}
-        onClose={closeDialog}
-      />
-      <SuccessDialog
-        open={dialogKind === "success"}
-        title={dialogTitle}
-        message={dialogMessage}
-        autoCloseSecs={dialogAutoCloseSecs}
-        variant={dialogVariant}
-        highlight={dialogHighlight}
-        actions={dialogActions}
-        qrPreview={dialogQrPreview}
-        confirm={dialogConfirm}
-        choices={dialogChoices}
-        onClose={() => {
+        dialogKind={dialogKind}
+        dialogTitle={dialogTitle}
+        dialogMessage={dialogMessage}
+        dialogAutoCloseSecs={dialogAutoCloseSecs}
+        dialogVariant={dialogVariant}
+        dialogHighlight={dialogHighlight}
+        dialogActions={dialogActions}
+        dialogQrPreview={dialogQrPreview}
+        dialogPrimaryAction={dialogPrimaryAction}
+        dialogConfirm={dialogConfirm}
+        dialogChoices={dialogChoices}
+        closeDialog={closeDialog}
+        openSettings={openSettings}
+        onSuccessClose={() => {
           closeDialog();
           scheduleSdQueueDrain();
         }}
+        createSuccess={createSuccess}
+        onCreateSuccessClose={() => setCreateSuccess(null)}
+        introMuxFallback={introMuxFallback}
+        onIntroMuxChoice={onIntroMuxChoice}
+        bodyConcatFallback={bodyConcatFallback}
+        onBodyConcatChoice={onBodyConcatChoice}
+        loading={loading}
+        sdWorkflowUiActive={sdWorkflowUiActive}
+        loadingMessage={loadingMessage}
       />
-      <CreateSuccessDialog
-        open={createSuccess !== null}
-        info={createSuccess}
-        onClose={() => setCreateSuccess(null)}
-      />
-      <WarningDialog
-        open={dialogKind === "warning"}
-        title={dialogTitle}
-        message={dialogMessage}
-        autoCloseSecs={dialogAutoCloseSecs}
-        onClose={closeDialog}
-      />
-      <IntroMuxFallbackDialog
-        open={introMuxFallback !== null}
-        reason={introMuxFallback?.reason ?? ""}
-        timeoutSecs={introMuxFallback?.timeoutSecs ?? 15}
-        onChoose={(choice) => {
-          void onIntroMuxChoice(choice);
-        }}
-      />
-      <BodyConcatFallbackDialog
-        open={bodyConcatFallback !== null}
-        reason={bodyConcatFallback?.reason ?? ""}
-        onChoose={(choice) => {
-          void onBodyConcatChoice(choice);
-        }}
-      />
-      <LoadingOverlay
-        open={loading && !sdWorkflowUiActive}
-        message={loadingMessage}
-      />
-      <ToastHost />
     </div>
   );
 }
