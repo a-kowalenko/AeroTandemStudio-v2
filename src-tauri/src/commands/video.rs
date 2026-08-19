@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::commands::config::ConfigState;
+use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::storage::logging::{self, file_name};
 use crate::util::natural_sort::sort_paths_by_basename;
 use crate::video::concat;
@@ -740,10 +740,7 @@ pub async fn generate_preview(
         return Err("at least one video path is required".into());
     }
 
-    let config = {
-        let cache = state.cache.lock().map_err(|e| e.to_string())?;
-        cache.clone()
-    };
+    let config = ensure_ams_bridge_identity(&state)?;
 
     let form = crate::model::validate_kunde(&kunde, &video_paths, config.oldschool_mode);
     if !form.valid {

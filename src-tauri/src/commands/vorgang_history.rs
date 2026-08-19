@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::commands::config::ConfigState;
+use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::storage::logging;
 use crate::storage::vorgang_history::{
     AmsHandoffStatusUpdate, VorgangAppendEntry, VorgangEntry, VorgangFileEntry, VorgangHistoryStore,
@@ -32,11 +32,7 @@ where
 }
 
 fn read_config(state: &ConfigState) -> Result<crate::storage::config::AppConfig, String> {
-    state
-        .cache
-        .lock()
-        .map_err(|e| e.to_string())
-        .map(|c| c.clone())
+    ensure_ams_bridge_identity(state)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -238,7 +234,15 @@ pub async fn get_handoff_status(
 
     if crate::bridge::bridge_configured(&config) {
         if let Ok(base) = crate::bridge::resolve_bridge_base_url(&config) {
-            match crate::bridge::fetch_job_status(&base, &config.ams_bridge_token, &cid).await {
+            let identity = crate::bridge::build_ats_bridge_identity(&config);
+            match crate::bridge::fetch_job_status(
+                &base,
+                &config.ams_bridge_token,
+                &cid,
+                &identity,
+            )
+            .await
+            {
                 Ok(Some(job)) => {
                     persist_live_status(&store, vorgang_id, &job, "bridge");
                     return Ok(Some(HandoffStatusDto::from_outbox(job, "bridge", false)));

@@ -11,6 +11,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use thiserror::Error;
+use uuid::Uuid;
 
 const APP_DIR_NAME: &str = "AeroTandemStudio";
 const DB_FILE_NAME: &str = "config.db";
@@ -222,6 +223,9 @@ pub struct AppConfig {
     /// Shared bearer token for AMS Bridge (Token-Auth Pflicht).
     #[serde(default)]
     pub ams_bridge_token: String,
+    /// Stable ATS instance UUID for AMS Bridge presence / host attribution.
+    #[serde(default)]
+    pub ams_bridge_instance_id: String,
     /// Last base URL that answered health successfully (fallback / Netzwechsel).
     #[serde(default)]
     pub ams_bridge_last_ok_url: String,
@@ -476,6 +480,15 @@ impl AppConfig {
     pub fn skip_marker_file(&self, form_mode: &str) -> bool {
         self.manual_entry_mode == "lokal" && form_mode.trim() != "kunde"
     }
+
+    /// Ensure a stable UUID for ATS Bridge host identity. Returns true when generated.
+    pub fn ensure_ams_bridge_instance_id(&mut self) -> bool {
+        if !self.ams_bridge_instance_id.trim().is_empty() {
+            return false;
+        }
+        self.ams_bridge_instance_id = Uuid::new_v4().to_string();
+        true
+    }
 }
 
 impl Default for AppConfig {
@@ -531,6 +544,7 @@ impl Default for AppConfig {
             ui_language: default_ui_language(),
             ams_bridge_url: String::new(),
             ams_bridge_token: String::new(),
+            ams_bridge_instance_id: String::new(),
             ams_bridge_last_ok_url: String::new(),
         }
     }

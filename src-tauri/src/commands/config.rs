@@ -28,6 +28,24 @@ impl ConfigState {
     }
 }
 
+pub fn ensure_ams_bridge_identity(state: &ConfigState) -> Result<AppConfig, String> {
+    let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+    if !cache.ensure_ams_bridge_instance_id() {
+        return Ok(cache.clone());
+    }
+    let cfg = cache.clone();
+    drop(cache);
+    {
+        let store = state.store.lock().map_err(|e| e.to_string())?;
+        store.save(&cfg).map_err(|e| e.to_string())?;
+    }
+    {
+        let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+        *cache = cfg.clone();
+    }
+    Ok(cfg)
+}
+
 #[derive(Debug, Serialize)]
 pub struct ConfigPathInfo {
     pub config_dir: String,

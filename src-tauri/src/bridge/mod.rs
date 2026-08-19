@@ -10,12 +10,16 @@ pub use mdns::{discover_bridges, DiscoveredBridge};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
+use uuid::Uuid;
 
 use crate::model::Kunde;
 use crate::storage::config::AppConfig;
 use crate::video::handoff_manifest::StatusOutboxV1;
+use crate::util::host::current_computer_name;
 
 const REQUEST_TIMEOUT_SECS: u64 = 15;
+const ATS_BRIDGE_APP: &str = "AeroTandemStudio";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BridgeHealth {
@@ -130,6 +134,53 @@ fn auth_header(token: &str) -> Result<String, String> {
     Ok(format!("Bearer {t}"))
 }
 
+#[derive(Debug, Clone)]
+pub struct AtsBridgeIdentity {
+    instance_id: String,
+    hostname: String,
+    ats_version: String,
+    ats_app: String,
+}
+
+pub fn build_ats_bridge_identity(config: &AppConfig) -> AtsBridgeIdentity {
+    let raw_pc = config.sd_pc_name.trim().to_string();
+    let hostname = if raw_pc.is_empty() {
+        current_computer_name()
+    } else {
+        raw_pc
+    };
+    let instance_id = if config.ams_bridge_instance_id.trim().is_empty() {
+        stable_instance_id_from_hostname(&hostname)
+    } else {
+        config.ams_bridge_instance_id.trim().to_string()
+    };
+
+    AtsBridgeIdentity {
+        instance_id,
+        hostname,
+        ats_version: env!("CARGO_PKG_VERSION").to_string(),
+        ats_app: ATS_BRIDGE_APP.to_string(),
+    }
+}
+
+/// Stable but derived "UUID-like" identifier to group ATS hosts in AMS.
+/// We generate deterministic bytes from SHA-1(hostname) and then set version/variant bits.
+fn stable_instance_id_from_hostname(hostname: &str) -> String {
+    let h = hostname.trim();
+    let mut hasher = Sha1::new();
+    hasher.update(h.as_bytes());
+    let digest = hasher.finalize();
+
+    let mut bytes16 = [0u8; 16];
+    bytes16.copy_from_slice(&digest[..16]);
+
+    // UUID version 4 (random) layout bits, but deterministic bytes.
+    bytes16[6] = (bytes16[6] & 0x0f) | 0x40;
+    bytes16[8] = (bytes16[8] & 0x3f) | 0x80;
+
+    Uuid::from_bytes(bytes16).to_string()
+}
+
 /// Prefer configured URL; fall back to last successful URL when configured is empty.
 pub fn resolve_bridge_base_url(config: &AppConfig) -> Result<String, String> {
     let primary = config.ams_bridge_url.trim();
@@ -159,13 +210,21 @@ fn is_unreachable(err: &str) -> bool {
     err.contains("nicht erreichbar")
 }
 
-pub async fn fetch_health(base_url: &str, token: &str) -> Result<BridgeHealth, String> {
+pub async fn fetch_health(
+    base_url: &str,
+    token: &str,
+    identity: &AtsBridgeIdentity,
+) -> Result<BridgeHealth, String> {
     let base = normalize_base_url(base_url)?;
     let auth = auth_header(token)?;
     let client = http_client().await?;
     let resp = client
         .get(format!("{base}/v1/health"))
         .header("Authorization", auth)
+        .header("x-ats-instance-id", identity.instance_id.clone())
+        .header("x-ats-hostname", identity.hostname.clone())
+        .header("x-ats-version", identity.ats_version.clone())
+        .header("x-ats-app", identity.ats_app.clone())
         .send()
         .await
         .map_err(|e| format!("AMS-Bridge nicht erreichbar: {e}"))?;
@@ -192,6 +251,7 @@ pub async fn check_health_with(
     base_url_override: Option<&str>,
     token_override: Option<&str>,
 ) -> BridgeHealthResult {
+    let identity = build_ats_bridge_identity(config);
     let base = match base_url_override {
         Some(raw) => match normalize_base_url(raw) {
             Ok(u) => u,
@@ -217,7 +277,7 @@ pub async fn check_health_with(
         },
     };
     let token = token_override.unwrap_or(&config.ams_bridge_token);
-    match fetch_health(&base, token).await {
+    match fetch_health(&base, token, &identity).await {
         Ok(health) => BridgeHealthResult {
             ok: health.online,
             message: if health.online {
@@ -245,6 +305,7 @@ pub async fn customer_lookup(
     base_url: &str,
     token: &str,
     request: &LookupRequest,
+    identity: &AtsBridgeIdentity,
 ) -> Result<LookupResponse, String> {
     let base = normalize_base_url(base_url)?;
     let auth = auth_header(token)?;
@@ -252,6 +313,10 @@ pub async fn customer_lookup(
     let resp = client
         .post(format!("{base}/v1/customer/lookup"))
         .header("Authorization", auth)
+        .header("x-ats-instance-id", identity.instance_id.clone())
+        .header("x-ats-hostname", identity.hostname.clone())
+        .header("x-ats-version", identity.ats_version.clone())
+        .header("x-ats-app", identity.ats_app.clone())
         .json(request)
         .send()
         .await
@@ -333,7 +398,15 @@ pub async fn preflight_customer_lookup(
         Ok(u) => u,
         Err(_) => return Ok(None),
     };
-    match customer_lookup(&base, &config.ams_bridge_token, &req).await {
+    let identity = build_ats_bridge_identity(config);
+    match customer_lookup(
+        &base,
+        &config.ams_bridge_token,
+        &req,
+        &identity,
+    )
+    .await
+    {
         Ok(resp) if resp.ok => Ok(Some(resp)),
         Ok(resp) => {
             let msg = resp
@@ -356,6 +429,7 @@ pub async fn fetch_job_status(
     base_url: &str,
     token: &str,
     correlation_id: &str,
+    identity: &AtsBridgeIdentity,
 ) -> Result<Option<StatusOutboxV1>, String> {
     let cid = correlation_id.trim();
     if cid.is_empty() {
@@ -367,6 +441,10 @@ pub async fn fetch_job_status(
     let resp = client
         .get(format!("{base}/v1/jobs/{cid}"))
         .header("Authorization", auth)
+        .header("x-ats-instance-id", identity.instance_id.clone())
+        .header("x-ats-hostname", identity.hostname.clone())
+        .header("x-ats-version", identity.ats_version.clone())
+        .header("x-ats-app", identity.ats_app.clone())
         .send()
         .await
         .map_err(|e| format!("AMS-Bridge Job-Status nicht erreichbar: {e}"))?;
@@ -414,10 +492,11 @@ pub async fn resolve_handoff_status(
     if cid.is_empty() {
         return Ok(None);
     }
+    let identity = build_ats_bridge_identity(config);
 
     if bridge_configured(config) {
         if let Ok(base) = resolve_bridge_base_url(config) {
-            match fetch_job_status(&base, &config.ams_bridge_token, cid).await {
+            match fetch_job_status(&base, &config.ams_bridge_token, cid, &identity).await {
                 Ok(Some(job)) => return Ok(Some((job, "bridge"))),
                 Ok(None) => {}
                 Err(e) if is_unreachable(&e) => {}
@@ -443,6 +522,7 @@ pub async fn notify_handoff_ready(
     token: &str,
     correlation_id: &str,
     folder_name: Option<&str>,
+    identity: &AtsBridgeIdentity,
 ) -> Result<HandoffReadyResponse, String> {
     let base = normalize_base_url(base_url)?;
     let auth = auth_header(token)?;
@@ -454,6 +534,10 @@ pub async fn notify_handoff_ready(
     let resp = client
         .post(format!("{base}/v1/handoff/ready"))
         .header("Authorization", auth)
+        .header("x-ats-instance-id", identity.instance_id.clone())
+        .header("x-ats-hostname", identity.hostname.clone())
+        .header("x-ats-version", identity.ats_version.clone())
+        .header("x-ats-app", identity.ats_app.clone())
         .json(&req)
         .send()
         .await
@@ -488,11 +572,20 @@ pub async fn maybe_notify_handoff_ready(
     if cid.is_empty() || !bridge_configured(config) {
         return Ok(None);
     }
+    let identity = build_ats_bridge_identity(config);
     let base = match resolve_bridge_base_url(config) {
         Ok(u) => u,
         Err(_) => return Ok(None),
     };
-    match notify_handoff_ready(&base, &config.ams_bridge_token, cid, folder_name).await {
+    match notify_handoff_ready(
+        &base,
+        &config.ams_bridge_token,
+        cid,
+        folder_name,
+        &identity,
+    )
+    .await
+    {
         Ok(resp) => Ok(Some(resp)),
         Err(e) if is_unreachable(&e) => Ok(None),
         Err(e) => {

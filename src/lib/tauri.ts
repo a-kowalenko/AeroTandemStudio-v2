@@ -130,6 +130,8 @@ export type AppConfig = {
   ams_bridge_url: string;
   /** Shared bearer token for AMS Bridge. */
   ams_bridge_token: string;
+  /** Stable ATS instance UUID for AMS Bridge presence / host attribution. */
+  ams_bridge_instance_id: string;
   /** Last Bridge URL that answered health OK. */
   ams_bridge_last_ok_url: string;
 };
