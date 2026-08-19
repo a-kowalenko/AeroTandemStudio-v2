@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import toast from "react-hot-toast";
 import { Eye, Hash, QrCode, UserRound, PencilLine } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -119,7 +121,10 @@ type FieldProps = {
   mono?: boolean;
   hint?: string;
   prefix?: ReactNode;
+  suffix?: ReactNode;
   inputMode?: InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  inputClassName?: string;
+  containerClassName?: string;
 };
 
 function Field({
@@ -132,20 +137,31 @@ function Field({
   mono,
   hint,
   prefix,
+  suffix,
   inputMode,
+  inputClassName,
+  containerClassName,
 }: FieldProps) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id} className="text-xs text-muted">
         {label}
       </Label>
-      <div className="relative">
+      <div className={cn("relative", containerClassName)}>
         {prefix ? (
           <span
             className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-muted"
             aria-hidden
           >
             {prefix}
+          </span>
+        ) : null}
+        {suffix ? (
+          <span
+            className="pointer-events-none absolute right-2.5 top-1/2 z-10 -translate-y-1/2 text-muted"
+            aria-hidden
+          >
+            {suffix}
           </span>
         ) : null}
         <Input
@@ -159,6 +175,8 @@ function Field({
             mono && "font-mono text-[13px]",
             disabled && "bg-card-elevated",
             prefix && "pl-8",
+            suffix && "pr-9",
+            inputClassName,
           )}
         />
       </div>
@@ -622,6 +640,7 @@ export function CustomerForm({
     Boolean(kunde.tandemmaster.trim());
   const vsConflict = tmConflict;
   const [nameLocked, setNameLocked] = useState(true);
+  const [lookupShakeTick, setLookupShakeTick] = useState(0);
   const crewSectionRef = useRef<HTMLDivElement>(null);
   const qrSuccessDialogWasOpen = useRef(false);
   const focusedAmsLookupRevision = useRef(0);
@@ -645,6 +664,19 @@ export function CustomerForm({
     (productsFromQr && nameLocked) || amsLookupLocked;
   const identityLocked = isQrMode ? nameLocked : amsLookupLocked;
   const showAmsLockButton = !isQrMode && amsLookupRevision > 0;
+  const lookupSearching = lookupStatus.kind === "searching";
+  const lookupNotFound = lookupStatus.kind === "not_found";
+  const lookupFieldClassName = cn(
+    lookupNotFound &&
+      "border-warning/55 bg-warning/10 text-foreground focus-visible:ring-warning/35",
+  );
+  const lookupFieldContainerClassName =
+    lookupNotFound && lookupShakeTick > 0
+      ? `ats-input-shake ats-input-shake-${lookupShakeTick}`
+      : undefined;
+  const lookupSpinner = lookupSearching ? (
+    <Spinner size={14} className="border-[1.5px]" />
+  ) : null;
 
   const warnTandemmaster =
     crewAttentionAfterQr && !kunde.tandemmaster.trim();
@@ -657,6 +689,21 @@ export function CustomerForm({
   useEffect(() => {
     if (qrRevision > 0) setNameLocked(true);
   }, [qrRevision]);
+
+  const prevLookupKindRef = useRef(lookupStatus.kind);
+
+  useEffect(() => {
+    const prevKind = prevLookupKindRef.current;
+    if (lookupStatus.kind === prevKind) return;
+    prevLookupKindRef.current = lookupStatus.kind;
+    if (lookupStatus.kind === "not_found") {
+      setLookupShakeTick((n) => n + 1);
+      return;
+    }
+    if (lookupStatus.kind === "error" && lookupStatus.text.trim()) {
+      toast.error(lookupStatus.text, { id: "ams-lookup-error" });
+    }
+  }, [lookupStatus.kind, lookupStatus.text]);
 
   // After QR success dialog closes: scroll/focus first missing crew field.
   useEffect(() => {
@@ -912,6 +959,9 @@ export function CustomerForm({
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
+                    suffix={lookupSpinner}
+                    inputClassName={lookupFieldClassName}
+                    containerClassName={lookupFieldContainerClassName}
                     hint={
                       lookupIdLengthHint(kunde.kunden_id)
                         ? t("form.customer.idMinDigits", {
@@ -931,6 +981,9 @@ export function CustomerForm({
                     mono
                     inputMode="numeric"
                     prefix={<Hash className="size-3.5 shrink-0" strokeWidth={2.25} />}
+                    suffix={lookupSpinner}
+                    inputClassName={lookupFieldClassName}
+                    containerClassName={lookupFieldContainerClassName}
                     hint={
                       lookupIdLengthHint(kunde.booking_id)
                         ? t("form.customer.idMinDigits", {
@@ -939,22 +992,6 @@ export function CustomerForm({
                         : undefined
                     }
                   />
-                  {lookupStatus.text ? (
-                    <p
-                      className={cn(
-                        "sm:col-span-2 text-[11px] leading-snug",
-                        lookupStatus.kind === "error" ||
-                          lookupStatus.kind === "not_found"
-                          ? "text-destructive"
-                          : lookupStatus.kind === "found"
-                            ? "text-foreground/80"
-                            : "text-muted",
-                      )}
-                      role="status"
-                    >
-                      {lookupStatus.text}
-                    </p>
-                  ) : null}
                 </>
               ) : null}
               <Field

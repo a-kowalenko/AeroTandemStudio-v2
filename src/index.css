@@ -402,6 +402,35 @@
   will-change: transform, box-shadow;
 }
 
+@keyframes ats-input-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  12% {
+    transform: translateX(-10px);
+  }
+  24% {
+    transform: translateX(9px);
+  }
+  38% {
+    transform: translateX(-8px);
+  }
+  52% {
+    transform: translateX(7px);
+  }
+  68% {
+    transform: translateX(-5px);
+  }
+  82% {
+    transform: translateX(3px);
+  }
+}
+
+.ats-input-shake {
+  animation: ats-input-shake 460ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+}
+
 /* Header settings cluster: snappy flyout under the gear */
 .ats-settings-cluster-menu {
   --ats-cluster-ease: cubic-bezier(0.2, 0.9, 0.2, 1);
@@ -482,5 +511,11 @@ input[type="password"]::-ms-clear {
     box-shadow:
       0 0 0 2px color-mix(in srgb, var(--ats-primary) 28%, transparent),
       0 6px 18px color-mix(in srgb, var(--ats-primary) 22%, transparent);
+  }
+
+  .ats-input-shake {
+    animation: none;
+    will-change: auto;
+    transform: none;
   }
 }
