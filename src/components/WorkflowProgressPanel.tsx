@@ -6,6 +6,7 @@ import {
   Eye,
   FilePlus2,
   HardDrive,
+  Loader2,
   QrCode,
   Scissors,
 } from "lucide-react";
@@ -54,6 +55,10 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
 
   const Icon = stageIcon(view.stage);
   const snapshot = view.snapshot;
+  const cancelling = view.cancelling;
+  const subtitle = cancelling
+    ? t("workflow.stage.cancelling")
+    : view.subtitle;
   const showTasks =
     view.tasks.length > 0 &&
     (view.stage === "create" ||
@@ -87,6 +92,7 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         className,
       )}
       aria-label={t("workflow.progress")}
+      aria-busy={cancelling || undefined}
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
@@ -96,19 +102,43 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
               {t("workflow.progress")}
             </h2>
           </div>
-          <p className="mt-1 text-xs text-muted">{view.subtitle}</p>
+          <p className="mt-1 text-xs text-muted" aria-live="polite">
+            {subtitle}
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {view.canCancel && onCancel ? (
-            <Button type="button" variant="destructive" size="sm" onClick={onCancel}>
-              {t("common.actions.cancel")}
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={cancelling}
+              aria-busy={cancelling || undefined}
+              onClick={onCancel}
+            >
+              {cancelling ? (
+                <>
+                  <Loader2
+                    className="h-3.5 w-3.5 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                  {t("common.actions.cancelling")}
+                </>
+              ) : (
+                t("common.actions.cancel")
+              )}
             </Button>
           ) : null}
         </div>
       </div>
 
       {snapshot ? (
-        <div className="space-y-2">
+        <div
+          className={cn(
+            "space-y-2 transition-opacity duration-300",
+            cancelling && "opacity-55",
+          )}
+        >
           <ProgressIndicator
             percent={snapshot.percent}
             label={snapshot.label}
@@ -127,11 +157,18 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
           ) : null}
         </div>
       ) : showTasks ? (
-        <ProgressIndicator
-          percent={view.tasks[0]?.percent ?? 0}
-          label={view.encodeLabel}
-          tasks={view.tasks}
-        />
+        <div
+          className={cn(
+            "transition-opacity duration-300",
+            cancelling && "opacity-55",
+          )}
+        >
+          <ProgressIndicator
+            percent={view.tasks[0]?.percent ?? 0}
+            label={view.encodeLabel}
+            tasks={view.tasks}
+          />
+        </div>
       ) : null}
     </section>
   );

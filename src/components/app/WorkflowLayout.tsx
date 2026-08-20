@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Film, ImageIcon } from "lucide-react";
 import { MediaDropZone } from "../MediaDropZone";
@@ -75,6 +75,7 @@ export function WorkflowLayout({
   photoEdits,
 }: Props) {
   const { t } = useTranslation();
+  const [cancelRequested, setCancelRequested] = useState(false);
   const videoList = useVideoStore((s) => s.videoList);
   const photoList = usePhotoStore((s) => s.photoList);
   const videoImporting = useVideoStore((s) => s.importing);
@@ -105,6 +106,18 @@ export function WorkflowLayout({
     videoImporting ||
     photoImporting;
 
+  const cancellableJobActive =
+    busy ||
+    appendActive ||
+    sdWorkflowUiActive ||
+    qrScanBusy ||
+    videoImporting ||
+    photoImporting;
+
+  useEffect(() => {
+    if (!cancellableJobActive) setCancelRequested(false);
+  }, [cancellableJobActive]);
+
   const appendUploading =
     appendActive &&
     (serverPhase === "uploading" || /^upload/i.test(status.trim()));
@@ -131,6 +144,7 @@ export function WorkflowLayout({
     percent,
     status,
     taskProgress,
+    cancelRequested,
   });
 
   useEffect(() => {
@@ -147,6 +161,12 @@ export function WorkflowLayout({
     workflowView.visible,
     onResetProgress,
   ]);
+
+  function handleCancel() {
+    if (cancelRequested) return;
+    setCancelRequested(true);
+    onCancel();
+  }
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -312,7 +332,7 @@ export function WorkflowLayout({
       <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20">
         <WorkflowProgressPanel
           view={workflowView}
-          onCancel={onCancel}
+          onCancel={handleCancel}
           className="mx-auto max-w-2xl"
         />
       </div>

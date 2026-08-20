@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { useTranslation } from "react-i18next";
+import { QrCode } from "lucide-react";
 import { tr } from "@/i18n";
 import {
   normalizeMediaPath,
@@ -98,6 +100,44 @@ export function QrScanRowBar({ path }: { path: string }) {
   const phase = useQrScanStore((s) => s.byPath[normalizeMediaPath(path)] ?? null);
   if (!phase) return null;
   return <QrScanBar phase={phase} />;
+}
+
+/**
+ * Compact QR status chip for photo tiles (overview / strip).
+ * Only `active` + `hit` — pending/done stay as the bottom bar only.
+ */
+export function QrScanTileBadge({
+  path,
+  compact = false,
+}: {
+  path: string;
+  /** Strip-sized tiles: icon only. */
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const phase = useQrScanStore((s) => s.byPath[normalizeMediaPath(path)] ?? null);
+  if (phase !== "active" && phase !== "hit") return null;
+
+  const isHit = phase === "hit";
+  const title = isHit
+    ? t("qr.progress.chipHitTitle")
+    : t("qr.progress.chipActiveTitle");
+  const label = isHit ? t("qr.progress.chipHit") : t("qr.progress.chipActive");
+
+  return (
+    <span
+      className={
+        isHit
+          ? "inline-flex items-center gap-0.5 rounded bg-emerald-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+          : "inline-flex items-center gap-0.5 rounded bg-primary px-1 py-px text-[9px] font-bold leading-none text-primary-foreground shadow-sm animate-pulse"
+      }
+      title={title}
+      aria-label={title}
+    >
+      <QrCode className="h-2.5 w-2.5 shrink-0" aria-hidden />
+      {!compact && <span>{label}</span>}
+    </span>
+  );
 }
 
 export function QrScanBar({ phase }: { phase: QrScanPhase }) {

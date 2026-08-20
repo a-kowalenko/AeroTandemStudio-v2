@@ -5,7 +5,7 @@ import {
   PHOTO_THUMB_PRIORITY,
   photoThumbnailQueue,
 } from "../../lib/photoThumbnailQueue";
-import { QrScanRowBar } from "../../hooks/useQrScanProgress";
+import { QrScanRowBar, QrScanTileBadge } from "../../hooks/useQrScanProgress";
 import { cn } from "../../lib/utils";
 import { usePhotoThumbnailSrc } from "./usePhotoThumbnailSrc";
 
@@ -34,6 +34,8 @@ export type PhotoThumbTileProps = {
   scrollRootRef: RefObject<HTMLElement | null>;
   /** When true, skip IntersectionObserver and always request LQ (virtualized rows). */
   forceLoad?: boolean;
+  /** Strip-sized tiles: QR chip shows icon only. */
+  compactQrChip?: boolean;
   className?: string;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (e: MouseEvent<HTMLButtonElement>) => void;
@@ -49,6 +51,7 @@ export function PhotoThumbTile({
   editMark,
   scrollRootRef,
   forceLoad = false,
+  compactQrChip = false,
   className,
   onClick,
   onContextMenu,
@@ -192,11 +195,14 @@ export function PhotoThumbTile({
           )}
         </div>
       )}
-      {editMark && (
-        <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
-          {editMark === "crop" ? "Crop" : "Rot"}
-        </span>
-      )}
+      <div className="pointer-events-none absolute left-0.5 top-0.5 z-[1] flex flex-col items-start gap-0.5">
+        <QrScanTileBadge path={path} compact={compactQrChip} />
+        {editMark && (
+          <span className="rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
+            {editMark === "crop" ? "Crop" : "Rot"}
+          </span>
+        )}
+      </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-0.5 pb-0.5">
         <QrScanRowBar path={path} />
       </div>

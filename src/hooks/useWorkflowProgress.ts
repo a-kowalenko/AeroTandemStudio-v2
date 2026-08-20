@@ -34,6 +34,8 @@ export type WorkflowProgressView = {
   tasks: WorkflowTaskProgress[];
   encodeLabel: string;
   canCancel: boolean;
+  /** Cancel clicked; job still winding down cooperatively. */
+  cancelling: boolean;
   reserveSpace: boolean;
 };
 
@@ -65,6 +67,8 @@ type Input = {
   percent: number;
   status: string;
   taskProgress: TaskState[];
+  /** User requested cancel; UI acknowledges until jobs go idle. */
+  cancelRequested?: boolean;
 };
 
 export function useWorkflowProgress(input: Input): WorkflowProgressView {
@@ -211,6 +215,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     sdProgress,
   });
 
+  const cancelling = Boolean(input.cancelRequested && isActive);
   const subtitle = workflowStageSubtitle(stage, {
     sdWorkflowActive: input.sdWorkflowActive,
     sdPhase: input.sdPhase,
@@ -284,6 +289,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     tasks,
     encodeLabel,
     canCancel,
+    cancelling,
     reserveSpace: shouldShowPanel && !collapsed,
   };
 }

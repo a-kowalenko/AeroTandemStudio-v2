@@ -21,6 +21,7 @@
       "testConnection": "Verbindung testen",
       "checking": "Prüfe…",
       "loading": "Lädt…",
+      "cancelling": "Wird abgebrochen…",
       "undo": "Rückgängig",
       "edit": "Bearbeiten",
       "remove": "Entfernen",
@@ -926,7 +927,8 @@
       "sdWorkflow": "SD — Backup, Import und weitere Aktionen (Abbrechen stoppt den Lauf)",
       "manualImport": "Medien werden in den Arbeitsordner kopiert — Abbrechen verwirft den Import",
       "manualQr": "QR-Code-Suche — Abbrechen stoppt die Suche",
-      "encodeBusy": "Aktueller Vorgang — Abbrechen stoppt FFmpeg."
+      "encodeBusy": "Aktueller Vorgang — Abbrechen stoppt FFmpeg.",
+      "cancelling": "Abbruch angefordert — aktueller Schritt wird noch beendet"
     }
   },
   "history": {
@@ -1186,6 +1188,10 @@
       "found": "QR-Code gefunden",
       "removed": "Aus Liste entfernt",
       "checked": "QR-Code geprüft",
+      "chipActive": "QR",
+      "chipHit": "QR",
+      "chipActiveTitle": "QR-Prüfung läuft",
+      "chipHitTitle": "QR-Code gefunden",
       "photosCheckedOne": "1 Foto geprüft",
       "photosCheckedMany": "{{count}} Fotos geprüft",
       "extraHitsOne": "1 weiterer Treffer",

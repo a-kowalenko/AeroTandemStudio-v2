@@ -21,6 +21,7 @@
       "testConnection": "Probar conexión",
       "checking": "Verificando…",
       "loading": "Cargando…",
+      "cancelling": "Cancelando…",
       "undo": "Deshacer",
       "edit": "Editar",
       "remove": "Quitar",
@@ -926,7 +927,8 @@
       "sdWorkflow": "SD — respaldo, importación y más acciones (cancelar detiene la ejecución)",
       "manualImport": "Los medios se copian a la carpeta de trabajo — cancelar descarta la importación",
       "manualQr": "Búsqueda QR — cancelar detiene la búsqueda",
-      "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg."
+      "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg.",
+      "cancelling": "Cancelación solicitada — se termina el paso actual"
     }
   },
   "history": {
@@ -1186,6 +1188,10 @@
       "found": "Código QR encontrado",
       "removed": "Quitado de la lista",
       "checked": "Código QR revisado",
+      "chipActive": "QR",
+      "chipHit": "QR",
+      "chipActiveTitle": "Comprobación QR en curso",
+      "chipHitTitle": "Código QR encontrado",
       "photosCheckedOne": "1 foto revisada",
       "photosCheckedMany": "{{count}} fotos revisadas",
       "extraHitsOne": "1 coincidencia adicional",

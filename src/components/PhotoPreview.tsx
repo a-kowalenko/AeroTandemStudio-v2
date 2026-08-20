@@ -377,6 +377,7 @@ export function PhotoPreview({
                         isWm={isWm}
                         editMark={getEditMark(p.path)}
                         scrollRootRef={stripRootRef}
+                        compactQrChip
                         className={cn("h-16 w-16 shrink-0")}
                         onClick={(e) => onThumbClick(i, e)}
                         onContextMenu={contextMenuFor(p.path)}
