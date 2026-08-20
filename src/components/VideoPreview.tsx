@@ -30,8 +30,7 @@ import { previewThumbnailQueue } from "../lib/thumbnailQueue";
 import { useVideoStore } from "../store/videoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
-import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "../store/previewCacheStore";
-import { formatPreviewReuseHint } from "../lib/previewReuseHint";
+import { usePreviewCacheStore, previewEncodingSignature } from "../store/previewCacheStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import {
   generatePreview,
@@ -457,16 +456,6 @@ export function VideoPreview({
       !previewCacheMatches(videoList, kunde, encodingSig),
   );
 
-  const createNeedsVideoEncode =
-    videoList.length > 0 && (kunde.handcam_video || kunde.outside_video);
-  const createEncodeHint = useMemo(() => {
-    if (!createNeedsVideoEncode) return null;
-    return formatPreviewReuseHint(
-      t,
-      getPreviewReusePlan(videoList, kunde, encodingSig),
-    );
-  }, [createNeedsVideoEncode, videoList, kunde, encodingSig, t]);
-
   useEffect(() => {
     if (videoList.length === 0) {
       setPreview(null);
@@ -719,21 +708,6 @@ export function VideoPreview({
           {t("video.preview.stale")}
         </div>
       )}
-
-      {createEncodeHint && !busy ? (
-        <div
-          className={cn(
-            "rounded-lg border px-3 py-2 text-xs leading-snug",
-            createEncodeHint.tone === "reuse"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-              : "border-border/60 bg-muted/20 text-muted",
-          )}
-          role="status"
-          title={createEncodeHint.title}
-        >
-          {createEncodeHint.message}
-        </div>
-      ) : null}
 
       {showingCombined && preview?.preview_path ? (
         <div className={cn("relative", previewStale && "opacity-80")}>

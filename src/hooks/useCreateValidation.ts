@@ -1,13 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { usePhotoStore } from "../store/photoStore";
 import { useVideoStore } from "../store/videoStore";
 import { useUiStore } from "../store/uiStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
-import { previewEncodingSignature, getPreviewReusePlan } from "../store/previewCacheStore";
-import { formatPreviewReuseHint } from "../lib/previewReuseHint";
 import { validateCreateJob, normalizeManualEntryMode } from "../lib/tauri";
 import {
   filterGraceCreateHints,
@@ -30,7 +27,6 @@ export function useCreateValidation({
   pipelineActive,
   uiLocked,
 }: Options) {
-  const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
   const kunde = useKundeStore((s) => s.kunde);
   const qrRevision = useKundeStore((s) => s.qrRevision);
@@ -147,29 +143,6 @@ export function useCreateValidation({
         idEntryGrace,
       });
 
-  const createNeedsVideoEncode =
-    videoList.length > 0 && (kunde.handcam_video || kunde.outside_video);
-  const createEncodeHint = useMemo(() => {
-    if (!createNeedsVideoEncode) return null;
-    const encodingSig = previewEncodingSignature(
-      Boolean(config?.intro_enabled ?? false),
-      config?.dauer ?? 5,
-      config?.intro_mux_mode ?? "reencode",
-    );
-    return formatPreviewReuseHint(
-      t,
-      getPreviewReusePlan(videoList, kunde, encodingSig),
-    );
-  }, [
-    createNeedsVideoEncode,
-    videoList,
-    kunde,
-    config?.intro_enabled,
-    config?.dauer,
-    config?.intro_mux_mode,
-    t,
-  ]);
-
   useEffect(() => {
     const becameReady = createReadyWasFalseRef.current && createReady;
     createReadyWasFalseRef.current = !createReady;
@@ -198,7 +171,6 @@ export function useCreateValidation({
     createReady,
     createHints,
     createBanner,
-    createEncodeHint,
     createReadyPulse,
     setCreateReadyPulse,
   };

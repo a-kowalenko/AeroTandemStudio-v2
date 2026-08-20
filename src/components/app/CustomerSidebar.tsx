@@ -58,7 +58,6 @@ export function CustomerSidebar({
   const {
     createReady,
     createBanner,
-    createEncodeHint,
     createReadyPulse,
     setCreateReadyPulse,
   } = createValidation;
@@ -250,20 +249,6 @@ export function CustomerSidebar({
             ) : null}
           </div>
         </div>
-        {createEncodeHint && !busy ? (
-          <div
-            className={cn(
-              "mt-2.5 rounded-lg border px-3 py-2 text-xs leading-snug",
-              createEncodeHint.tone === "reuse"
-                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-                : "border-border/60 bg-muted/20 text-muted",
-            )}
-            role="status"
-            title={createEncodeHint.title}
-          >
-            {createEncodeHint.message}
-          </div>
-        ) : null}
         <div className="mt-2.5 flex gap-2">
           <Button
             type="button"
@@ -313,10 +298,9 @@ export function CustomerSidebar({
                 }
               }}
               title={
-                createEncodeHint?.title ??
-                (config?.upload_to_server && serverConnected
+                config?.upload_to_server && serverConnected
                   ? t("app.job.createUploadTitle")
-                  : undefined)
+                  : undefined
               }
             >
               {config?.upload_to_server && serverConnected ? (
