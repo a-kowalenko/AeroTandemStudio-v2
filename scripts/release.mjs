@@ -1,8 +1,11 @@
 /**
- * Interactive SemVer release: bump → commit → tag → push.
+ * Interactive SemVer release: bump → changelog → commit → tag → push.
  *
  * Usage: npm run release
  * Asks: patch | minor | major, then confirmation.
+ *
+ * Requires meaningful notes under ## [Unreleased] in CHANGELOG.md.
+ * CI publishes that section as the public GitHub release body (updater notes).
  */
 import { createInterface } from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
@@ -10,6 +13,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import {
+  CHANGELOG_PATH,
+  insertVersionNotes,
+  readChangelog,
+  resolveNotesForRelease,
+  writeChangelog,
+} from "./changelog.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..");
@@ -20,6 +30,7 @@ const FILES = {
   cargoToml: join(root, "src-tauri", "Cargo.toml"),
   cargoLock: join(root, "src-tauri", "Cargo.lock"),
   tauriConf: join(root, "src-tauri", "tauri.conf.json"),
+  changelog: CHANGELOG_PATH,
 };
 
 function git(args, opts = {}) {
@@ -174,6 +185,22 @@ async function main() {
     const tag = `v${next}`;
     console.log(`\n→ ${kind}: ${current} → ${next} (Tag ${tag})\n`);
 
+    const changelog = readChangelog();
+    const { body: notesBody, source, fromVersion } = resolveNotesForRelease(
+      changelog,
+      kind,
+      current,
+    );
+    if (source === "previous") {
+      console.log(
+        `Release-Notes: [Unreleased] leer — übernommen von ${fromVersion}:\n`,
+      );
+    } else {
+      console.log("Release-Notes aus [Unreleased]:\n");
+    }
+    console.log(notesBody);
+    console.log("");
+
     const confirm = (
       await ask(rl, `Release ${tag} committen, taggen und nach origin pushen? [y/N]: `)
     ).toLowerCase();
@@ -182,6 +209,7 @@ async function main() {
       return;
     }
 
+    writeChangelog(insertVersionNotes(changelog, next, notesBody));
     applyVersions(next);
 
     git(
@@ -192,6 +220,7 @@ async function main() {
         "src-tauri/Cargo.toml",
         "src-tauri/Cargo.lock",
         "src-tauri/tauri.conf.json",
+        "CHANGELOG.md",
       ],
       { stdio: "inherit" },
     );
