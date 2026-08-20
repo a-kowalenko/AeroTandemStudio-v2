@@ -110,6 +110,8 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 24: AMS-Nachreichen (Historie → Dateien + Kategorie + Preview/Voll)
 - ✅ Phase 25: AMS-Lookup Autofill (Manuell/ID → Name/Medien, sperren wie QR; keine Hashes)
 - ✅ Phase 26: Mehrsprachige UI (de / en / es-MX, `ui_language` in Config, react-i18next)
+- ✅ Phase 27: Encode-Profil & Reencode-Confirm UX
+- ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
 
 **Nächster Schritt:** Phase 23.1 (Windows WPD/MTP + Staging)  
 *(optional: Phase 14 ML Backlog; Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`)*

@@ -1325,7 +1325,33 @@
       "loadingQr": "Comprobación QR en curso — la vista previa sigue…",
       "currentPhoto": "Foto actual",
       "undoThisEditTitle": "Deshacer esta edición",
-      "total": "Total"
+      "undoEdit": "Deshacer edición",
+      "total": "Total",
+      "overview": "Resumen",
+      "review": "Revisión",
+      "viewModeAria": "Vista de fotos",
+      "overviewAria": "Resumen de fotos",
+      "detailTitle": "Detalle",
+      "detailEmpty": "Ninguna foto seleccionada",
+      "sessionTitle": "Sesión",
+      "wmToggleAria": "Foto de vista previa con sello de marca de agua",
+      "wmPreviewLabel": "Vista previa",
+      "wmPreviewHint": "Exportar con sello de marca de agua",
+      "removeCount": "Quitar {{count}}",
+      "clearSelection": "Quitar selección",
+      "batchSelected": "{{count}} seleccionadas",
+      "batchRotate90": "Selección 90°",
+      "batchRotateCcwTitle": "Rotar selección 90° en sentido antihorario",
+      "batchRotateCwTitle": "Rotar selección 90° en sentido horario",
+      "meta": {
+        "file": "Archivo",
+        "size": "Tamaño",
+        "resolution": "Resolución",
+        "position": "Posición",
+        "camera": "Cámara",
+        "count": "Cantidad",
+        "watermark": "Marca de agua"
+      }
     },
     "editor": {
       "warning": {

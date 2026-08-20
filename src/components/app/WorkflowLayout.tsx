@@ -267,7 +267,6 @@ export function WorkflowLayout({
                 }}
               />
               <MediaListPanel
-                kind="video"
                 disabled={uiLocked}
                 onRemoveVideo={(path) => {
                   useVideoStore.getState().clearCutMarksFor([path]);
@@ -285,8 +284,7 @@ export function WorkflowLayout({
                     onStatus,
                   });
                 }}
-              />
-            </TabsContent>
+              />            </TabsContent>
             <TabsContent value="foto" className="mt-0 space-y-4 p-4">
               <PhotoPreview
                 disabled={uiLocked}
@@ -306,7 +304,6 @@ export function WorkflowLayout({
                   });
                 }}
               />
-              <MediaListPanel kind="foto" disabled={uiLocked} />
             </TabsContent>
           </Tabs>
         </section>

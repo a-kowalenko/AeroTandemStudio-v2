@@ -1325,7 +1325,33 @@
       "loadingQr": "QR-Prüfung läuft — Vorschau folgt…",
       "currentPhoto": "Aktuelles Foto",
       "undoThisEditTitle": "Diese Bearbeitung rückgängig machen",
-      "total": "Gesamt"
+      "undoEdit": "Bearbeitung rückgängig",
+      "total": "Gesamt",
+      "overview": "Übersicht",
+      "review": "Review",
+      "viewModeAria": "Foto-Ansicht",
+      "overviewAria": "Foto-Übersicht",
+      "detailTitle": "Detail",
+      "detailEmpty": "Kein Foto ausgewählt",
+      "sessionTitle": "Session",
+      "wmToggleAria": "Preview-Foto mit Wasserzeichen-Stempel",
+      "wmPreviewLabel": "Preview",
+      "wmPreviewHint": "Mit Wasserzeichen-Stempel exportieren",
+      "removeCount": "{{count}} Entfernen",
+      "clearSelection": "Auswahl aufheben",
+      "batchSelected": "{{count}} ausgewählt",
+      "batchRotate90": "Auswahl 90°",
+      "batchRotateCcwTitle": "Auswahl 90° gegen den Uhrzeigersinn",
+      "batchRotateCwTitle": "Auswahl 90° im Uhrzeigersinn",
+      "meta": {
+        "file": "Datei",
+        "size": "Größe",
+        "resolution": "Auflösung",
+        "position": "Position",
+        "camera": "Kamera",
+        "count": "Anzahl",
+        "watermark": "Wasserzeichen"
+      }
     },
     "editor": {
       "warning": {

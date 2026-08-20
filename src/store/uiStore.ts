@@ -75,6 +75,9 @@ export type SettingsFocusTarget =
   | "ams-bridge-url"
   | "ams-bridge-token";
 
+/** Phase 28: Fotos-Tab browse mode (session preference; null = auto by count). */
+export type PhotoBrowseMode = "overview" | "review";
+
 /** Primary CTA on error dialogs (e.g. deep-link into Settings). */
 export type DialogPrimaryAction = {
   label: string;
@@ -111,6 +114,12 @@ type UiState = {
    * After QR crew dropdown workflow finishes: pulse Erstellen once it becomes ready.
    */
   createReadyPulsePending: boolean;
+  /**
+   * Fotos Master–Detail: last explicit Overview/Review choice this session.
+   * `null` → auto (`>8` photos → overview).
+   */
+  photoBrowseMode: PhotoBrowseMode | null;
+  setPhotoBrowseMode: (mode: PhotoBrowseMode) => void;
   showError: (
     message: string,
     title?: string,
@@ -158,6 +167,7 @@ export const useUiStore = create<UiState>((set) => ({
   settingsFocus: null,
   settingsFocusNonce: 0,
   createReadyPulsePending: false,
+  photoBrowseMode: null,
 
   showError: (message, title, options) =>
     set({
@@ -225,4 +235,5 @@ export const useUiStore = create<UiState>((set) => ({
   clearSettingsFocus: () => set({ settingsFocus: null }),
   requestCreateReadyPulse: () => set({ createReadyPulsePending: true }),
   clearCreateReadyPulse: () => set({ createReadyPulsePending: false }),
+  setPhotoBrowseMode: (mode) => set({ photoBrowseMode: mode }),
 }));

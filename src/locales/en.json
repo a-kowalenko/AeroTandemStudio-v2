@@ -1325,7 +1325,33 @@
       "loadingQr": "QR check in progress — preview follows…",
       "currentPhoto": "Current photo",
       "undoThisEditTitle": "Undo this edit",
-      "total": "Total"
+      "undoEdit": "Undo edit",
+      "total": "Total",
+      "overview": "Overview",
+      "review": "Review",
+      "viewModeAria": "Photo view",
+      "overviewAria": "Photo overview",
+      "detailTitle": "Detail",
+      "detailEmpty": "No photo selected",
+      "sessionTitle": "Session",
+      "wmToggleAria": "Preview photo with watermark stamp",
+      "wmPreviewLabel": "Preview",
+      "wmPreviewHint": "Export with watermark stamp",
+      "removeCount": "Remove {{count}}",
+      "clearSelection": "Clear selection",
+      "batchSelected": "{{count}} selected",
+      "batchRotate90": "Selection 90°",
+      "batchRotateCcwTitle": "Rotate selection 90° counter-clockwise",
+      "batchRotateCwTitle": "Rotate selection 90° clockwise",
+      "meta": {
+        "file": "File",
+        "size": "Size",
+        "resolution": "Resolution",
+        "position": "Position",
+        "camera": "Camera",
+        "count": "Count",
+        "watermark": "Watermark"
+      }
     },
     "editor": {
       "warning": {

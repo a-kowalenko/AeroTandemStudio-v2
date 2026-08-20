@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 23.1 — Windows WPD](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(Phase 28 Fotos Master–Detail erledigt.)*  
 *(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
 *(Phase 25 AMS-Lookup Autofill erledigt.)*  
 *(Phase 24 AMS-Nachreichen erledigt.)*  
@@ -1468,6 +1469,96 @@ src/lib/encodeProfile.ts
 
 ---
 
+### Phase 28 — Fotos-Tab Master–Detail (Übersicht / Review)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 8 (`PhotoPreview`), Phase 20–21 (Bearbeiten/Crop/Batch), OPT-1/OPT-10/OPT-11 (Thumbnail-Queue)  
+**Ziel:** Im Fotos-Tab ein klares **Master–Detail**-Layout: links Navigation (Kachel-Übersicht **oder** Review mit großer Stage + Strip), rechts festes Detail-Panel zum fokussierten Foto. Kein Entweder-oder als zwei Features — **ein Layout, zwei Darstellungsmodi**.
+
+#### Ausgangslage (Ist)
+
+- `PhotoPreview`: große Stage (`aspect-video`) + Prev/Next + horizontaler Filmstrip + Meta-Karten **unter** der Stage
+- darunter zusätzlich `MediaListPanel kind="foto"` → doppelte Liste, langer Scroll
+- State: `currentIndex` (Fokus), `selected` / `explicitlySelected` (Multi-Select), WM, Edit-Marks, `photoThumbnailQueue`
+- Operator-Aktionen: QR, Bearbeiten/Undo, Entfernen, Batch-90°, WM-Toggle, Tastatur ←/→/Delete/Ctrl+A
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Layout | Desktop: **Split** — links Master, rechts Detail (min. ~280 px). Schmal: Detail unter Master oder einklappbar/Drawer |
+| Modi | Toggle **Übersicht** (Kachelgrid) \| **Review** (große Stage + schmaler Strip). Nicht zwei getrennte Screens |
+| Default-Modus | `photoList.length > 8` → Übersicht, sonst Review; letzte Wahl in Session merken (`uiStore` oder transient); optional später Config |
+| Fokus vs. Auswahl | Klick = Fokus (`currentIndex` + Detail rechts). Ctrl/Cmd / Shift = Multi-Select wie heute. Optional Checkboxen auf Kacheln |
+| Detail-Inhalt | Dateiname, `n/N`, Größe, Auflösung, Kamera; WM; Bearbeiten / Undo / QR / Entfernen; bei Multi-Select Batch-Leiste; Session-Summen (Anzahl, Gesamtgröße, WM-Zähler) |
+| Doppelung | Foto-`MediaListPanel` im Fotos-Tab **entfernen oder auf eine Zeile Session-Info reduzieren**. Video-Liste unverändert |
+| Thumbs | Kacheln = LQ über `photoThumbnailQueue`; Stage/Detail-Preview = `"preview"` nur für Fokus; während Auto-QR Placeholder ok (OPT-11) |
+| Virtualisierung | Grid **virtualisieren** (Vorbild `src/lib/virtualList.ts` / LogConsole); Strip bei vielen Fotos ggf. nur sichtbare Thumbs (IntersectionObserver wie heute) |
+| Crop/Editor | bleibt Modal (`PhotoEditor`) — nicht ins Detail-Panel |
+| i18n | alle neuen Strings in `de` / `en` / `es-MX` |
+| Out of Scope | EXIF-Vollanzeige, Lightbox-Fullscreen, Drag-Reorder der Fotos, Video-Tab umbauen, neue Rust-Commands, OPT-Pakete außer Nutzung bestehender Queue |
+
+#### Layout-Skizze
+
+```
+┌────────────────────────────────┬─────────────────────┐
+│ Toolbar: [Übersicht|Review] …  │                     │
+├────────────────────────────────┤  Detail-Panel       │
+│                                │  (kleines Preview   │
+│  Übersicht: virtualisiertes    │   optional)         │
+│  Kachelgrid                    │  Meta + WM +        │
+│  — oder —                      │  Aktionen +         │
+│  Review: Stage + Strip         │  Session-Summen     │
+│                                │  (+ Batch wenn Sel.)│
+└────────────────────────────────┴─────────────────────┘
+```
+
+#### Scope
+
+- [x] Master–Detail-Split in `PhotoPreview` (oder schlanke Unterkomponenten: `PhotoBrowsePane` + `PhotoDetailPanel`)
+- [x] Ansichts-Toggle Übersicht / Review; Zustand speichern (Session)
+- [x] Übersicht: responsives Kachelgrid, Virtualisierung, bestehende Strip-Thumb-Logik/Queue wiederverwenden
+- [x] Review: bestehende Stage + Prev/Next + Strip beibehalten (ggf. kompakter), Meta nach rechts verschieben
+- [x] Detail-Panel: Meta + Aktionen aus den heutigen Karten umziehen; Batch-Leiste bei Multi-Select
+- [x] Fokus vs. Select UX beibehalten (Tastatur, Shift/Ctrl)
+- [x] `WorkflowLayout`: Foto-`MediaListPanel` entfernen/verschlanken (kein Doppel-UI)
+- [x] Nach Import: Fokus sinnvoll setzen, Grid/Strip zum Fokus scrollen
+- [x] i18n-Keys für Toggle, Panel-Titel, leere Zustände
+- [ ] Manuell: 1 Foto, ~10 Fotos, 30+ Fotos; Multi-Select Batch; WM; QR; Bearbeiten; schmales Fenster
+
+#### Nicht tun
+
+- Kein neues Thumbnail-Backend / keine Base64-Thumbs zurück
+- Kein Parallel-Render aller Full-Res-Bilder im Grid
+- Phase 23.1 / Encode / AMS nicht anfassen
+- Keine Änderungen am Legacy-Projekt
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 28 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 28 (Fotos Master–Detail: Übersicht/Review + Detail rechts).
+MediaListPanel für Fotos entdoppeln. Thumbs weiter über photoThumbnailQueue.
+i18n de/en/es-MX. Danach npm run check (und bei Bedarf cargo test).
+Manuell: npm run tauri dev — 1 / 10 / 30+ Fotos, Multi-Select, WM, QR, Edit.
+```
+
+#### Referenzen
+
+```
+src/components/PhotoPreview.tsx
+src/components/app/WorkflowLayout.tsx
+src/components/MediaListPanel.tsx
+src/store/photoStore.ts
+src/lib/photoThumbnailQueue.ts
+src/lib/virtualList.ts                 # Grid-Virtualisierung Vorbild
+src/components/LogConsole.tsx          # Virtual-List-Nutzung
+src/locales/de.json | en.json | es-MX.json
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1571,6 +1662,7 @@ cargo test
 | 13 | macOS: VT encode, SD `/Volumes`, DMG |
 | 15 | Linux: AppImage, FFmpeg sidecar, SD mounts, SMB, Updater |
 | 25 | Manuell/ID + AMS online: IDs eingeben → Name/Medien füllen, Form sperren; offline: manuell weiter |
+| 28 | Fotos-Tab: Übersicht/Review-Toggle; Klick → Detail rechts; 30+ Fotos Grid flüssig; kein doppeltes MediaListPanel |
 
 ### End-to-End (Phase 11)
 
@@ -1650,6 +1742,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 24 | AMS-Nachreichen (Append-Handoff) | ✅ |
 | 25 | AMS-Lookup Autofill (Manuell / ID) | ✅ |
 | 27 | Encode-Profil & Reencode-Confirm UX | ✅ |
+| 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1668,4 +1761,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-18 · Projekt: Aero Tandem Studio v2 · Phase 25 AMS-Lookup Autofill*
+*Letzte Aktualisierung: 2026-08-20 · Projekt: Aero Tandem Studio v2 · Phase 28 Fotos Master–Detail erledigt*
