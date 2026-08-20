@@ -894,6 +894,8 @@ const catalog = {
   "photo.preview.prevPhotoAria": { de: "Vorheriges Foto", en: "Previous photo", "es-MX": "Foto anterior" },
   "photo.preview.nextPhotoAria": { de: "Nächstes Foto", en: "Next photo", "es-MX": "Foto siguiente" },
   "photo.preview.empty": { de: "Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen", en: "No photos — add them via drag and drop in the media area", "es-MX": "No hay fotos — agrégalas arrastrando al área de medios" },
+  "photo.preview.loading": { de: "Vorschau wird geladen…", en: "Loading preview…", "es-MX": "Cargando vista previa…" },
+  "photo.preview.loadingQr": { de: "QR-Prüfung läuft — Vorschau folgt…", en: "QR check in progress — preview follows…", "es-MX": "Comprobación QR en curso — la vista previa sigue…" },
   "photo.preview.currentPhoto": { de: "Aktuelles Foto", en: "Current photo", "es-MX": "Foto actual" },
   "photo.preview.undoThisEditTitle": { de: "Diese Bearbeitung rückgängig machen", en: "Undo this edit", "es-MX": "Deshacer esta edición" },
   "photo.preview.total": { de: "Gesamt", en: "Total", "es-MX": "Total" },

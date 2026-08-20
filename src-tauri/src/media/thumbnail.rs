@@ -1,21 +1,23 @@
-//! Media thumbnails (photos via `image`, videos via FFmpeg frame extract).
+//! Media thumbnails (photos via EXIF-embedded thumb or `image`, videos via FFmpeg).
 //! Disk-cached under `{app_config}/thumbnails/` keyed by path+mtime+size+quality.
 
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::io::Cursor;
+use std::io::{BufReader, Cursor};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
+use exif::{get_exif_attr_from_jpeg, In, Reader as ExifReader, Tag};
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat};
 use thiserror::Error;
 
 use crate::media::dji_paths::{is_photo_ext, is_video_ext};
+use crate::media::rotate::{apply_exif_orientation, read_exif_orientation};
 use crate::storage::app_config_dir;
 use crate::util::process::apply_no_window;
 use crate::video::ffmpeg::find_ffmpeg;
@@ -29,6 +31,8 @@ pub const THUMB_PREVIEW_SIZE: u32 = 960;
 const THUMB_LQ_JPEG_Q: u8 = 55;
 const THUMB_HQ_JPEG_Q: u8 = 78;
 const THUMB_PREVIEW_JPEG_Q: u8 = 82;
+/// Embedded EXIF thumbs are typically ~160px; skip if absurdly tiny.
+const MIN_EMBEDDED_THUMB_EDGE: u32 = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbQuality {
@@ -229,6 +233,13 @@ fn generate_thumbnail_bytes(
         .unwrap_or_default();
 
     let img = if is_photo_ext(&ext) {
+        // Explorer/Finder-style fast path: EXIF JPEG thumb (no full decode) for strip sizes.
+        if matches!(quality, ThumbQuality::Lq | ThumbQuality::Hq) {
+            if let Some(embedded) = try_load_exif_embedded_thumb(path) {
+                let thumb = resize_squareish(&embedded, quality.max_size().max(16));
+                return encode_jpeg(&thumb, quality.jpeg_quality());
+            }
+        }
         image::open(path)?
     } else if is_video_ext(&ext) {
         let ff = match ffmpeg {
@@ -242,6 +253,38 @@ fn generate_thumbnail_bytes(
 
     let thumb = resize_squareish(&img, quality.max_size().max(16));
     encode_jpeg(&thumb, quality.jpeg_quality())
+}
+
+/// Read the EXIF-embedded JPEG thumbnail (typically ~160×120) without decoding the primary image.
+/// Same idea as Finder/Explorer: prefer the embedded preview when present.
+fn try_load_exif_embedded_thumb(path: &Path) -> Option<DynamicImage> {
+    let file = fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let tiff = get_exif_attr_from_jpeg(&mut reader).ok()?;
+    let exif = ExifReader::new().read_raw(tiff.clone()).ok()?;
+    let offset = exif
+        .get_field(Tag::JPEGInterchangeFormat, In::THUMBNAIL)?
+        .value
+        .get_uint(0)? as usize;
+    let length = exif
+        .get_field(Tag::JPEGInterchangeFormatLength, In::THUMBNAIL)?
+        .value
+        .get_uint(0)? as usize;
+    if length < 32 || offset.checked_add(length)? > tiff.len() {
+        return None;
+    }
+    let jpeg = &tiff[offset..offset + length];
+    if jpeg[0] != 0xff || jpeg[1] != 0xd8 {
+        return None;
+    }
+    let img = image::load_from_memory(jpeg).ok()?;
+    let (w, h) = (img.width(), img.height());
+    if w.max(h) < MIN_EMBEDDED_THUMB_EDGE {
+        return None;
+    }
+    // Primary Orientation usually applies to the embedded thumb as well.
+    let orientation = read_exif_orientation(path);
+    Some(apply_exif_orientation(img, orientation))
 }
 
 fn resize_squareish(img: &DynamicImage, max_size: u32) -> DynamicImage {
@@ -337,6 +380,8 @@ fn extract_video_frame_with_ffmpeg(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use exif::experimental::Writer as ExifWriter;
+    use exif::{Field, In, Tag, Value};
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
 
@@ -370,6 +415,65 @@ mod tests {
         let hq = generate_thumbnail_bytes(&path, ThumbQuality::Hq, None).unwrap();
         assert!(!lq.is_empty() && !hq.is_empty());
         assert!(hq.len() >= lq.len() || hq.len() > 100);
+    }
+
+    /// Build a JPEG whose APP1 carries an EXIF JPEG thumbnail (Explorer/Finder fast path).
+    fn write_jpeg_with_exif_thumb(path: &Path, thumb_rgb: [u8; 3], primary_rgb: [u8; 3]) {
+        let thumb_img = RgbImage::from_pixel(80, 60, Rgb(thumb_rgb));
+        let mut thumb_jpeg = Cursor::new(Vec::new());
+        DynamicImage::ImageRgb8(thumb_img)
+            .write_to(&mut thumb_jpeg, ImageFormat::Jpeg)
+            .unwrap();
+        let thumb_bytes = thumb_jpeg.into_inner();
+
+        let primary_img = RgbImage::from_pixel(320, 240, Rgb(primary_rgb));
+        let mut primary_jpeg = Cursor::new(Vec::new());
+        DynamicImage::ImageRgb8(primary_img)
+            .write_to(&mut primary_jpeg, ImageFormat::Jpeg)
+            .unwrap();
+        let primary_bytes = primary_jpeg.into_inner();
+        assert!(primary_bytes.starts_with(&[0xff, 0xd8]));
+
+        let desc = Field {
+            tag: Tag::ImageDescription,
+            ifd_num: In::PRIMARY,
+            value: Value::Ascii(vec![b"ats".to_vec()]),
+        };
+        let mut writer = ExifWriter::new();
+        writer.push_field(&desc);
+        writer.set_jpeg(&thumb_bytes, In::THUMBNAIL);
+        let mut exif_buf = Cursor::new(Vec::new());
+        writer.write(&mut exif_buf, true).unwrap();
+        let exif_tiff = exif_buf.into_inner();
+
+        let mut out = Vec::new();
+        out.extend_from_slice(&[0xff, 0xd8]);
+        let seg_body_len = 6 + exif_tiff.len();
+        let seg_len = u16::try_from(seg_body_len + 2).expect("APP1 fits u16");
+        out.extend_from_slice(&[0xff, 0xe1]);
+        out.extend_from_slice(&seg_len.to_be_bytes());
+        out.extend_from_slice(b"Exif\0\0");
+        out.extend_from_slice(&exif_tiff);
+        out.extend_from_slice(&primary_bytes[2..]);
+        fs::write(path, &out).unwrap();
+    }
+
+    #[test]
+    fn exif_embedded_thumb_fast_path() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("exif_thumb.jpg");
+        write_jpeg_with_exif_thumb(&path, [220, 30, 30], [30, 220, 30]);
+
+        let embedded = try_load_exif_embedded_thumb(&path).expect("embedded EXIF thumb");
+        assert!(
+            embedded.width() >= MIN_EMBEDDED_THUMB_EDGE
+                && embedded.height() >= MIN_EMBEDDED_THUMB_EDGE
+        );
+
+        let lq = generate_thumbnail_bytes(&path, ThumbQuality::Lq, None).unwrap();
+        assert!(lq.len() > 32);
+        // Must be a JPEG payload.
+        assert_eq!(&lq[..2], &[0xff, 0xd8]);
     }
 
     #[test]

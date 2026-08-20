@@ -129,6 +129,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 | OPT-8 | Startup Cache-Sweep defer | ✅ |
 | OPT-9 | Stream-Copy / Preview-Reuse UX | ✅ |
 | OPT-10 | Thumbnail-Warming staffeln | ✅ |
+| OPT-11 | Foto-Import: QR vor Thumbs | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

@@ -7,6 +7,7 @@ import {
   importPhotos,
   type PhotoMetadata,
 } from "../lib/tauri";
+import { photoThumbnailQueue } from "../lib/photoThumbnailQueue";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
 
@@ -156,6 +157,11 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
         fresh.filter((p) => p.sizeBytes == null).map((p) => p.path),
       );
       syncProductsFromMedia({ hasVideos: false, hasPhotos: true });
+      // LQ warm window (EXIF-fast); continues during Auto-QR.
+      photoThumbnailQueue.scheduleWarmAfterImport(
+        fresh.map((p) => p.path),
+        next[currentIndex]?.path ?? fresh[0]?.path,
+      );
     } catch (e) {
       set({ importing: false, importError: String(e) });
       if (isCancellationError(e)) throw e;

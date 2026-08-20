@@ -50,8 +50,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-9 | Encode-Pfad: Stream-Copy & Preview-Reuse UX | hoch | S | niedrig | — |
 | OPT-6 | Log-Konsole virtualisieren | niedrig | S | niedrig | — |
 | OPT-5 | App.tsx Split + lazy Dialoge | mittel | L | mittel | — |
+| OPT-11 | Foto-Import: QR vor Thumbnail-Warming | hoch | S | niedrig | OPT-10 |
 
-**Empfohlene Reihenfolge:** OPT-0 → OPT-1 → OPT-10 → OPT-8 → OPT-2 → OPT-3 → OPT-7 → OPT-4 → OPT-9 → OPT-6 → OPT-5
+**Empfohlene Reihenfolge:** OPT-0 → OPT-1 → OPT-10 → OPT-8 → OPT-2 → OPT-3 → OPT-7 → OPT-4 → OPT-9 → OPT-6 → OPT-5 → **OPT-11**
 
 ---
 
@@ -70,6 +71,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-8 | ✅ |
 | OPT-9 | ✅ |
 | OPT-10 | ✅ |
+| OPT-11 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -657,6 +659,67 @@ Nur OPT-10. Danach npm run tauri dev.
 
 ---
 
+### OPT-11: Foto-Import — QR-Scan vor Thumbnail-Warming
+
+**Ziel:** Nach Foto-Import (viele Dateien) QR-Scan und Strip-/Preview-Thumbnails nicht gleichzeitig auf Disk/CPU laufen lassen. QR zuerst; Thumbnails staffeln und begrenzen — analog OPT-10, aber für den Foto-Pfad.
+
+**Impact:** hoch (Foto-Import + Auto-QR, CPU, Disk-I/O)  
+**Aufwand:** S  
+**Risiko:** niedrig  
+**Abhängigkeiten:** baut auf OPT-10 (`thumbnailQueue`) / Muster von `sdThumbnailLoader` auf
+
+#### Kontext
+
+- Nach `addPhotos` setzt `MediaDropZone` (u. a.) sofort `runAutoQrAfterImport` → `scanQrPhotos` (paralleles Decode, ends-first / Edge-Limit).
+- Parallel rendert `PhotoPreview` den **gesamten** Strip: jedes `PhotoStripThumb` ruft ungequeuet `getMediaThumbnail(..., "lq")` auf; die Hauptansicht zusätzlich `"preview"`.
+- Video-Warming ist bereits gequeuet (OPT-10); Foto-Strip nicht → N parallele IPC/Decode-Jobs kollidieren mit QR.
+- Beide Pfade lesen dieselben Working-Copy-Dateien → gegenseitige Verlangsamung.
+
+#### Betroffene Dateien
+
+- `src/components/PhotoPreview.tsx` (`usePhotoThumbnailSrc`, Strip)
+- `src/lib/thumbnailQueue.ts` und/oder Erweiterung analog `sdThumbnailLoader.ts`
+- `src/lib/autoQrScan.ts` / `src/store/qrScanStore.ts` (Busy-Signal zum Pausieren)
+- Optional: `src/components/MediaDropZone.tsx`, `src/App.tsx` (Import→QR-Reihenfolge unverändert lassen)
+- Nicht: QR-Algorithmus (`qr/parallel.rs`), SD-Dialog-Loader (eigener Pfad)
+
+#### Scope
+
+**In scope:**
+
+- [x] Während `qrScanBusy` (Auto-QR nach Import): Strip-/Background-Thumbnail-Requests **pausieren** oder nicht starten (Placeholder ok)
+- [x] Ausnahme: **aktuelles** Foto darf `"preview"` (oder eine Priorität) laden, damit die Hauptansicht nicht leer bleibt
+- [x] Nach QR-Ende / Cancel / Skip: Thumbnail-Warming starten (kurze Verzögerung ok, wie OPT-10)
+- [x] Foto-Strip über Queue mit max. 1–2 concurrent `getMediaThumbnail`-Jobs (Reuse/Erweiterung von `thumbnailQueue` oder kleinem Foto-Loader)
+- [x] Priorität: aktuelles Foto → sichtbare Strip-Tiles (IntersectionObserver oder Viewport-Heuristik) → Rest
+- [x] Kein Verhaltens-Change am QR-Ergebnis, Cleanup, Success-Dialog oder Edge-Scan-Logik
+
+**Out of scope:**
+
+- Thumbs aus QR-Decode ableiten / gemeinsamen Disk-Cache aus Scan-Frames (späteres Follow-up)
+- Globaler Shared-Limiter über Encode+QR+Thumbs (optional später)
+- QR-Algorithmus / Worker-Tuning
+- SD-Karten-Thumbnail-Loader ändern
+- Video-OPT-10-Verhalten ändern (außer gemeinsamer Queue-API, falls sinnvoll)
+
+#### Akzeptanzkriterien
+
+- [x] Import ~30+ Fotos mit `photo_qr_check_enabled`: QR-Fortschritt spürbar flüssiger; Strip darf während Scan Placeholder zeigen
+- [x] Nach QR: Strip füllt sich gestaffelt, ohne CPU/Disk-Spitze wie vorher (subjektiv oder grobe Stopwatch)
+- [x] Aktuelles Foto sichtbar innerhalb akzeptabler Zeit während/nach Scan (<3 s nach Import oder nach QR-Start)
+- [x] Manuell: QR-Treffer, kein Treffer, Cancel, Import ohne Auto-QR — unverändert korrekt
+- [x] `npm run check` grün; bei Rust-Touch: `cargo test --manifest-path src-tauri/Cargo.toml`
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-11 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-11. Danach npm run check und manuell npm run tauri dev (30+ Fotos + Auto-QR).
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -667,7 +730,8 @@ Nur OPT-10. Danach npm run tauri dev.
 | QR-Algorithmus / rxing-Tuning | Bereits ends-first optimiert; separater Deep-Dive |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB-Upload Parallelismus | Risiko Server/Netz — eigene Analyse nötig |
-| „Fast Preview“ 720p/CRF-Modus | Optionales OPT-11 nach OPT-0-Messung |
+| „Fast Preview“ 720p/CRF-Modus | Optionales OPT-12 nach Messung |
+| Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, wenn Decode noch Bottleneck |
 
 ---
 

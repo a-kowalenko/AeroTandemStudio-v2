@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { getMediaThumbnail, thumbnailDisplayUrl, type ThumbQuality } from "../lib/sdCard";
+import type { ThumbQuality } from "../lib/sdCard";
+import {
+  PHOTO_THUMB_PRIORITY,
+  photoThumbnailQueue,
+} from "../lib/photoThumbnailQueue";
 import {
   ChevronLeft,
   ChevronRight,
   ImageIcon,
+  Loader2,
   Pencil,
   QrCode,
   RotateCcw,
@@ -17,7 +30,7 @@ import { Checkbox } from "./ui/checkbox";
 import { usePhotoStore } from "../store/photoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
-import { withQrScanProgress } from "../store/qrScanStore";
+import { useQrScanStore, withQrScanProgress } from "../store/qrScanStore";
 import { scanQrPhoto } from "../lib/tauri";
 import { maybeRemoveQrPhoto } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
@@ -50,25 +63,46 @@ function photoFileSrcFallback(path: string, revision: number): string {
   return `${base}${base.includes("?") ? "&" : "?"}r=${revision}`;
 }
 
-/** Scaled thumbnail via FFmpeg/image backend; falls back to full-res file URL. */
+/**
+ * Queued thumbnail (OPT-11): strip/warm share limited concurrent jobs;
+ * main stage uses file src + low-priority preview upgrade (strip wins).
+ */
 function usePhotoThumbnailSrc(
   path: string | null,
   quality: ThumbQuality,
   revision: number,
+  priority: number,
+  opts?: { enabled?: boolean },
 ): string | null {
-  const [url, setUrl] = useState<string | null>(null);
+  const enabled = opts?.enabled !== false;
+  const [url, setUrl] = useState<string | null>(() =>
+    path && enabled
+      ? photoThumbnailQueue.getCached(path, quality, revision)
+      : null,
+  );
 
   useEffect(() => {
     if (!path) {
       setUrl(null);
       return;
     }
+    const cached = photoThumbnailQueue.getCached(path, quality, revision);
+    if (!enabled) {
+      // Keep last paint / cache; do not start a strip fetch while offscreen.
+      if (cached) setUrl(cached);
+      return;
+    }
     let cancelled = false;
+    if (cached) {
+      setUrl(cached);
+      return;
+    }
     setUrl(null);
 
-    void getMediaThumbnail(path, quality)
-      .then((res) => {
-        if (!cancelled) setUrl(thumbnailDisplayUrl(res) || photoFileSrcFallback(path, revision));
+    void photoThumbnailQueue
+      .request(path, quality, priority, revision)
+      .then((displayUrl) => {
+        if (!cancelled) setUrl(displayUrl || photoFileSrcFallback(path, revision));
       })
       .catch(() => {
         if (!cancelled) setUrl(photoFileSrcFallback(path, revision));
@@ -77,7 +111,7 @@ function usePhotoThumbnailSrc(
     return () => {
       cancelled = true;
     };
-  }, [path, quality, revision]);
+  }, [path, quality, revision, priority, enabled]);
 
   return url;
 }
@@ -90,9 +124,24 @@ type PhotoStripThumbProps = {
   isSelected: boolean;
   isWm: boolean;
   editMark: "crop" | "rotate" | null;
+  stripRootRef: RefObject<HTMLDivElement | null>;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (e: MouseEvent<HTMLButtonElement>) => void;
 };
+
+function rectNearlyIntersects(
+  el: DOMRect,
+  root: DOMRect,
+  marginX: number,
+  marginY: number,
+): boolean {
+  return (
+    el.right >= root.left - marginX &&
+    el.left <= root.right + marginX &&
+    el.bottom >= root.top - marginY &&
+    el.top <= root.bottom + marginY
+  );
+}
 
 function PhotoStripThumb({
   path,
@@ -102,16 +151,90 @@ function PhotoStripThumb({
   isSelected,
   isWm,
   editMark,
+  stripRootRef,
   onClick,
   onContextMenu,
 }: PhotoStripThumbProps) {
-  const thumbSrc = usePhotoThumbnailSrc(path, "lq", revision);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+
+    let io: IntersectionObserver | null = null;
+    let cancelled = false;
+    const marginX = 100;
+    const marginY = 160;
+
+    const applyGeometry = (root: Element | null) => {
+      const er = el.getBoundingClientRect();
+      if (root) {
+        setInView(
+          rectNearlyIntersects(er, root.getBoundingClientRect(), marginX, marginY),
+        );
+        return;
+      }
+      const vr = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      } as DOMRect;
+      setInView(rectNearlyIntersects(er, vr, marginX, marginY));
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const root = stripRootRef.current;
+      io?.disconnect();
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            setInView(entry.isIntersecting);
+          }
+        },
+        {
+          root: root ?? null,
+          rootMargin: `${marginY}px ${marginX}px`,
+          threshold: 0.01,
+        },
+      );
+      io.observe(el);
+      const records = io.takeRecords();
+      if (records.length > 0) {
+        setInView(records.some((r) => r.isIntersecting));
+      } else {
+        applyGeometry(root);
+      }
+    };
+
+    connect();
+    // Root ref / layout may settle one frame later after import.
+    const raf = window.requestAnimationFrame(connect);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+      io?.disconnect();
+    };
+  }, [stripRootRef, path]);
+
+  const loading = isCurrent || inView;
+  const stripPriority = loading
+    ? PHOTO_THUMB_PRIORITY.visible
+    : PHOTO_THUMB_PRIORITY.warm;
+  const thumbSrc = usePhotoThumbnailSrc(path, "lq", revision, stripPriority, {
+    enabled: loading,
+  });
 
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
       onContextMenu={onContextMenu}
+      data-thumb-path={path}
+      aria-busy={loading && !thumbSrc ? true : undefined}
       className={cn(
         "relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-card transition",
         isSelected
@@ -130,7 +253,14 @@ function PhotoStripThumb({
           loading="lazy"
         />
       ) : (
-        <div className="h-full w-full bg-muted/40" aria-hidden />
+        <div
+          className="flex h-full w-full items-center justify-center bg-muted/40"
+          aria-hidden
+        >
+          {loading && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/80" />
+          )}
+        </div>
       )}
       {editMark && (
         <span className="absolute left-0.5 top-0.5 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
@@ -185,9 +315,11 @@ export function PhotoPreview({
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showWarning = useUiStore((s) => s.showWarning);
+  const qrScanBusy = useQrScanStore((s) => s.busy);
 
   const [scanning, setScanning] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
+  const stripRootRef = useRef<HTMLDivElement>(null);
 
   const current = currentIndex >= 0 ? photoList[currentIndex] : null;
 
@@ -300,11 +432,17 @@ export function PhotoPreview({
   }
 
   const currentRevision = current ? getMediaRevision(current.path) : 0;
+  // File src fills the stage; preview thumb upgrades at low priority so strip LQ wins.
   const previewSrc = usePhotoThumbnailSrc(
     current?.path ?? null,
     "preview",
     currentRevision,
+    PHOTO_THUMB_PRIORITY.stageUpgrade,
+    { enabled: Boolean(current) && !qrScanBusy },
   );
+  const stageSrc = current
+    ? (previewSrc ?? photoFileSrcFallback(current.path, currentRevision))
+    : null;
 
   // Subscribe so revision bumps re-render thumbs.
   void editMarks;
@@ -327,13 +465,22 @@ export function PhotoPreview({
             : undefined
         }
       >
-        {previewSrc ? (
+        {stageSrc ? (
           <>
             <img
-              src={previewSrc}
+              src={stageSrc}
               alt={current?.filename ?? t("common.labels.photo")}
               className="h-full w-full object-contain"
             />
+            {!previewSrc && qrScanBusy && (
+              <div
+                className="pointer-events-none absolute bottom-2 left-1/2 flex max-w-[90%] -translate-x-1/2 items-center gap-1.5 rounded-md bg-black/50 px-2.5 py-1 text-[11px] text-white/90 backdrop-blur-sm"
+                role="status"
+              >
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-80" aria-hidden />
+                <span>{t("photo.preview.loadingQr")}</span>
+              </div>
+            )}
             {photoList.length > 1 && (
               <>
                 <button
@@ -366,7 +513,7 @@ export function PhotoPreview({
       </div>
 
       {photoList.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto pb-5">
+        <div ref={stripRootRef} className="flex gap-2 overflow-x-auto pb-5">
           {photoList.map((p, i) => {
             const isCurrent = i === currentIndex;
             const isSelected = explicitlySelected && selected.has(i);
@@ -381,6 +528,7 @@ export function PhotoPreview({
                 isSelected={isSelected}
                 isWm={isWm}
                 editMark={getEditMark(p.path)}
+                stripRootRef={stripRootRef}
                 onClick={(e) => onThumbClick(i, e)}
                 onContextMenu={mediaContextMenuHandler(p.path, setCtxMenu)}
               />

@@ -16,6 +16,10 @@ import {
   maybeRemoveQrVideo,
 } from "@/lib/qrCleanup";
 import { presentQrHit } from "@/lib/qrPresent";
+import {
+  PHOTO_THUMB_PREFETCH_BEFORE_QR_MS,
+  photoThumbnailQueue,
+} from "@/lib/photoThumbnailQueue";
 import type { DialogOptions } from "@/store/uiStore";
 
 export type AutoQrScanInput = {
@@ -129,6 +133,15 @@ export async function runAutoQrAfterImport(
     (force || cfg.photo_qr_check_enabled) && photoPaths.length > 0;
 
   if (!scanVideos && !scanPhotos) return emptyOutcome();
+
+  // Brief EXIF-LQ strip prefetch before QR so the carousel can paint (best-effort).
+  if (scanPhotos) {
+    await photoThumbnailQueue.prefetchWarmWindow(
+      photoPaths,
+      photoPaths[0],
+      PHOTO_THUMB_PREFETCH_BEFORE_QR_MS,
+    );
+  }
 
   if (scanVideos) {
     setQrStage("scanning_videos", videoPaths);

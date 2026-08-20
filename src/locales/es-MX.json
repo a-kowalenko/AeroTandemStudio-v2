@@ -1321,6 +1321,8 @@
       "prevPhotoAria": "Foto anterior",
       "nextPhotoAria": "Foto siguiente",
       "empty": "No hay fotos — agrégalas arrastrando al área de medios",
+      "loading": "Cargando vista previa…",
+      "loadingQr": "Comprobación QR en curso — la vista previa sigue…",
       "currentPhoto": "Foto actual",
       "undoThisEditTitle": "Deshacer esta edición",
       "total": "Total"
