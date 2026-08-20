@@ -14,7 +14,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use once_cell::sync::Lazy;
 
 use crate::media::datetime::{
-    build_chrono_photo_filename_sequenced, collect_used_filenames_in, sort_paths_by_photo_capture_time,
+    build_chrono_photo_filename_sequenced, build_chrono_photo_filename_sequenced_with_instant,
+    collect_used_filenames_in, photos_sorted_by_capture_time,
 };
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::file_link;
@@ -207,20 +208,17 @@ impl WorkingSession {
     where
         F: FnMut(u64, &str, u64),
     {
-        let mut sorted: Vec<String> = sources
-            .iter()
-            .filter(|p| Path::new(p).is_file())
-            .cloned()
-            .collect();
-        sort_paths_by_photo_capture_time(&mut sorted);
+        // One EXIF/mtime resolve per file for sort + rename (not O(n log n) opens).
+        let sorted = photos_sorted_by_capture_time(sources);
 
         let root = self.ensure_dir()?;
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
         let mut used = collect_used_filenames_in(&photos);
         let mut dests: Vec<PathBuf> = Vec::with_capacity(sorted.len());
+        let total = sorted.len() as u64;
 
-        for (idx, source) in sorted.iter().enumerate() {
+        for (idx, (source, instant)) in sorted.iter().enumerate() {
             if crate::video::ffmpeg::is_cancelled() {
                 for d in &dests {
                     let _ = self.delete_owned_file(d);
@@ -240,7 +238,12 @@ impl WorkingSession {
                 continue;
             }
             let seq = (idx + 1) as u32;
-            let dest_name = build_chrono_photo_filename_sequenced(source_path, seq, &mut used);
+            let dest_name = build_chrono_photo_filename_sequenced_with_instant(
+                source_path,
+                instant,
+                seq,
+                &mut used,
+            );
             let dest = photos.join(&dest_name);
             if dest.exists() {
                 return Err(WorkingSessionError::Message(format!(
@@ -255,14 +258,17 @@ impl WorkingSession {
                 }
                 return Err(e.into());
             }
-            logging::info(
-                "import",
-                format!(
-                    "Foto importiert: {} → {}",
-                    file_name(source_path),
-                    file_name(&dest)
-                ),
+            let msg = format!(
+                "Foto importiert: {} → {}",
+                file_name(source_path),
+                file_name(&dest)
             );
+            // Avoid flooding the UI log bus on large batches (each INFO emits IPC).
+            if should_log_photo_import(file_index, total) {
+                logging::info("import", msg);
+            } else {
+                logging::debug("import", msg);
+            }
             dests.push(dest);
         }
 
@@ -380,6 +386,11 @@ fn unique_dest_in(dir: &Path, filename: &str) -> Result<PathBuf, WorkingSessionE
 
 fn copy_file(src: &Path, dest: &Path) -> Result<(), WorkingSessionError> {
     copy_file_reporting(src, dest, &mut |_| {})
+}
+
+/// Log first, last, and every 50th photo at INFO so large imports do not flood IPC.
+fn should_log_photo_import(file_index: u64, total: u64) -> bool {
+    file_index == 1 || file_index == total || file_index % 50 == 0
 }
 
 fn copy_file_reporting<F>(

@@ -136,7 +136,7 @@ where
                 if size > 0 {
                     on_chunk(size);
                 }
-                logging::info(
+                logging::debug(
                     "import",
                     format!(
                         "Hardlink: {} → {}",

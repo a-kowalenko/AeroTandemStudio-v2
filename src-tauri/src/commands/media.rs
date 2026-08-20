@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::Serialize;
 use tauri::State;
 
-use crate::media::datetime::{get_exif_camera, get_image_dimensions};
+use crate::media::datetime::get_photo_import_metadata;
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
@@ -102,8 +102,7 @@ fn photo_metadata_for(path: &str) -> PhotoMetadata {
         .unwrap_or(path)
         .to_string();
     let size_bytes = std::fs::metadata(pb).map(|m| m.len()).unwrap_or(0);
-    let (width, height) = get_image_dimensions(pb);
-    let (camera_make, camera_model) = get_exif_camera(pb);
+    let ((camera_make, camera_model), (width, height)) = get_photo_import_metadata(pb);
     PhotoMetadata {
         path: path.to_string(),
         filename,
@@ -125,7 +124,7 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
     let app_progress = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         use crate::sd_card::monitor::{
-            workflow_progress_import_copy, EVENT_WORKFLOW_PROGRESS,
+            workflow_progress_import_copy, workflow_progress_import_probe, EVENT_WORKFLOW_PROGRESS,
         };
         use std::time::{Duration, Instant, SystemTime};
         use tauri::Emitter;
@@ -186,7 +185,11 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             *last = Instant::now();
         };
 
-        emit_copy(0, 0, "", true, &mut last_emit);
+        // EXIF sort runs before the first copy — show that instead of a stuck "copy" bar.
+        let _ = app_progress.emit(
+            EVENT_WORKFLOW_PROGRESS,
+            workflow_progress_import_probe(0, n, "", "Sortiere Fotos…"),
+        );
         // Sort by EXIF capture time, rename with sequence, return filename order.
         // Confirm-dialog order is intentionally ignored.
         let dest = working_session::import_photos_to_session_with_progress(
@@ -207,17 +210,8 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             .iter()
             .map(|p| {
                 let meta = photo_metadata_for(p);
-                if let Some(label) = format_camera_label(&meta.camera_make, &meta.camera_model) {
+                if format_camera_label(&meta.camera_make, &meta.camera_model).is_some() {
                     with_device += 1;
-                    logging::debug(
-                        "import",
-                        format!("Foto OK: {} (Gerät: {label})", meta.filename),
-                    );
-                } else {
-                    logging::debug(
-                        "import",
-                        format!("Foto OK: {} (kein Geräte-Tag)", meta.filename),
-                    );
                 }
                 meta
             })

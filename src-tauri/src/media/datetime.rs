@@ -66,7 +66,10 @@ pub fn get_exif_camera(path: &Path) -> (String, String) {
     let Ok(exif) = ExifReader::new().read_from_container(&mut reader) else {
         return (String::new(), String::new());
     };
+    camera_from_exif(&exif)
+}
 
+fn camera_from_exif(exif: &exif::Exif) -> (String, String) {
     let make = exif
         .get_field(Tag::Make, In::PRIMARY)
         .map(ascii_camera_field)
@@ -95,7 +98,10 @@ fn get_exif_dimensions(path: &Path) -> Option<(u32, u32)> {
     let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
     let exif = ExifReader::new().read_from_container(&mut reader).ok()?;
+    pixel_size_from_exif(&exif)
+}
 
+fn pixel_size_from_exif(exif: &exif::Exif) -> Option<(u32, u32)> {
     let pair = |x: Tag, y: Tag| -> Option<(u32, u32)> {
         let w = exif.get_field(x, In::PRIMARY).and_then(exif_u32)?;
         let h = exif.get_field(y, In::PRIMARY).and_then(exif_u32)?;
@@ -121,6 +127,32 @@ pub fn get_image_dimensions(path: &Path) -> (u32, u32) {
         .and_then(|r| r.with_guessed_format().ok())
         .and_then(|r| r.into_dimensions().ok())
         .unwrap_or((0, 0))
+}
+
+/// Camera Make/Model plus pixel size from a **single** EXIF open (batch import metadata).
+///
+/// Falls back to container headers for dimensions when EXIF has no size tags.
+pub fn get_photo_import_metadata(path: &Path) -> ((String, String), (u32, u32)) {
+    if let Ok(file) = File::open(path) {
+        let mut reader = BufReader::new(file);
+        if let Ok(exif) = ExifReader::new().read_from_container(&mut reader) {
+            let camera = camera_from_exif(&exif);
+            let dims = pixel_size_from_exif(&exif).unwrap_or_else(|| {
+                image::ImageReader::open(path)
+                    .ok()
+                    .and_then(|r| r.with_guessed_format().ok())
+                    .and_then(|r| r.into_dimensions().ok())
+                    .unwrap_or((0, 0))
+            });
+            return (camera, dims);
+        }
+    }
+    let dims = image::ImageReader::open(path)
+        .ok()
+        .and_then(|r| r.with_guessed_format().ok())
+        .and_then(|r| r.into_dimensions().ok())
+        .unwrap_or((0, 0));
+    ((String::new(), String::new()), dims)
 }
 
 /// EXIF DateTimeOriginal (+ SubSec) → (local datetime epoch, ms string).
@@ -356,6 +388,22 @@ pub fn build_chrono_photo_filename_sequenced(
     used_names: &mut HashSet<String>,
 ) -> String {
     let instant = resolve_photo_capture_instant(photo_path);
+    build_chrono_photo_filename_sequenced_with_instant(
+        photo_path,
+        &instant,
+        sequence,
+        used_names,
+    )
+}
+
+/// Like [`build_chrono_photo_filename_sequenced`], reusing a precomputed capture instant
+/// (avoids a second EXIF open after sort).
+pub fn build_chrono_photo_filename_sequenced_with_instant(
+    photo_path: &Path,
+    instant: &PhotoCaptureInstant,
+    sequence: u32,
+    used_names: &mut HashSet<String>,
+) -> String {
     let ext = normalize_photo_extension(photo_path);
     let seq = sequence.max(1);
     let base = format!(
@@ -401,14 +449,44 @@ pub fn is_chrono_photo_filename(filename: &str) -> bool {
 }
 
 /// Sort paths by EXIF capture time (then path). Used by photo import.
+///
+/// Capture time is resolved **once per path** (not inside the comparator), so large
+/// batches stay O(n) EXIF opens instead of O(n log n).
 pub fn sort_paths_by_photo_capture_time(paths: &mut [String]) {
-    paths.sort_by(|a, b| {
-        let ea = photo_capture_sort_epoch(Path::new(a));
-        let eb = photo_capture_sort_epoch(Path::new(b));
-        ea.partial_cmp(&eb)
+    let mut keyed: Vec<(f64, String)> = paths
+        .iter()
+        .map(|p| (photo_capture_sort_epoch(Path::new(p)), p.clone()))
+        .collect();
+    keyed.sort_by(|a, b| {
+        a.0.partial_cmp(&b.0)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.cmp(b))
+            .then_with(|| a.1.cmp(&b.1))
     });
+    for (dst, (_, path)) in paths.iter_mut().zip(keyed) {
+        *dst = path;
+    }
+}
+
+/// Resolve capture instant once per existing file, sort by epoch (then path).
+/// Prefer this for batch import so rename can reuse the same instant.
+pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCaptureInstant)> {
+    let mut keyed: Vec<(String, PhotoCaptureInstant)> = sources
+        .iter()
+        .filter(|p| Path::new(p).is_file())
+        .map(|p| {
+            (
+                p.clone(),
+                resolve_photo_capture_instant(Path::new(p)),
+            )
+        })
+        .collect();
+    keyed.sort_by(|a, b| {
+        a.1.epoch
+            .partial_cmp(&b.1.epoch)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    keyed
 }
 
 #[cfg(test)]
@@ -509,6 +587,38 @@ mod tests {
         sort_paths_by_photo_capture_time(&mut paths);
         assert_eq!(Path::new(&paths[0]), early.as_path());
         assert_eq!(Path::new(&paths[1]), late.as_path());
+    }
+
+    #[test]
+    fn photos_sorted_reuses_instant_for_naming() {
+        let dir = tempfile::tempdir().unwrap();
+        let early = dir.path().join("a.jpg");
+        let late = dir.path().join("b.jpg");
+        fs::write(&early, b"a").unwrap();
+        fs::write(&late, b"b").unwrap();
+        let t_early = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let t_late = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_100);
+        let _ = fs::File::options().write(true).open(&early).and_then(|f| f.set_modified(t_early));
+        let _ = fs::File::options().write(true).open(&late).and_then(|f| f.set_modified(t_late));
+
+        let sources = vec![
+            late.to_string_lossy().into_owned(),
+            early.to_string_lossy().into_owned(),
+        ];
+        let sorted = photos_sorted_by_capture_time(&sources);
+        assert_eq!(sorted.len(), 2);
+        assert_eq!(Path::new(&sorted[0].0), early.as_path());
+        assert_eq!(Path::new(&sorted[1].0), late.as_path());
+
+        let mut used = HashSet::new();
+        let name = build_chrono_photo_filename_sequenced_with_instant(
+            Path::new(&sorted[0].0),
+            &sorted[0].1,
+            1,
+            &mut used,
+        );
+        assert!(name.starts_with("Foto_"), "{name}");
+        assert!(name.contains("_0001"), "{name}");
     }
 
     #[test]
