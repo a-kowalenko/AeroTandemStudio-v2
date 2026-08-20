@@ -197,6 +197,10 @@ pub struct AppConfig {
     pub sd_size_limit_enabled: bool,
     #[serde(default = "default_sd_size_limit", deserialize_with = "de_u32_flexible")]
     pub sd_size_limit_mb: u32,
+    /// Allowlisted USB action cams (GoPro/DJI/Insta360) via MTP/WPD.
+    /// Default: on for macOS (already shipped), off for Windows until WPD acceptance.
+    #[serde(default = "default_usb_camera_import_enabled")]
+    pub usb_camera_import_enabled: bool,
     /// Legacy flag — kept in sync with `manual_entry_mode == "oldschool"`.
     #[serde(default)]
     pub oldschool_mode: bool,
@@ -429,6 +433,11 @@ fn default_qr_remove_video_max_duration() -> u32 {
 fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
+
+fn default_usb_camera_import_enabled() -> bool {
+    // macOS ICA path already shipped; Windows WPD stays opt-in until acceptance.
+    cfg!(target_os = "macos")
+}
 fn default_sd_server_backup_mode() -> String {
     "local_then_server_async".into()
 }
@@ -535,6 +544,7 @@ impl Default for AppConfig {
             sd_skip_processed: false,
             sd_size_limit_enabled: true,
             sd_size_limit_mb: default_sd_size_limit(),
+            usb_camera_import_enabled: default_usb_camera_import_enabled(),
             oldschool_mode: false,
             manual_entry_mode: default_manual_entry_mode(),
             keep_tandemmaster_on_session_reset: false,

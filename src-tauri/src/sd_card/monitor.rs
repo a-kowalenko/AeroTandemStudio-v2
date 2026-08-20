@@ -92,6 +92,9 @@ fn usb_camera_label_for(source_id: &str) -> Option<String> {
 }
 
 fn usb_action_cam_source_ids_attached() -> HashSet<String> {
+    if !SD_MONITOR.config().usb_camera_import_enabled {
+        return HashSet::new();
+    }
     crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras()
         .into_iter()
         .map(|c| c.source_id)
@@ -527,6 +530,10 @@ impl SdCardMonitor {
         #[cfg(target_os = "macos")]
         {
             crate::sd_card::mtp::macos_ica::invalidate_stage_cache(source_id);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            crate::sd_card::mtp::windows_wpd::invalidate_stage_cache(source_id);
         }
     }
 
@@ -1008,13 +1015,15 @@ impl SdCardMonitor {
     }
 
     fn list_mtp_files(&self, drive: &str) -> Result<ListSdFilesResult, SdError> {
+        if !self.config().usb_camera_import_enabled {
+            return Err(SdError::Message(
+                "USB-Kamera-Import ist in den Einstellungen deaktiviert.".into(),
+            ));
+        }
         let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            use crate::sd_card::mtp::macos_ica::{
-                ica_cache_dir_for, list_camera_catalog, CameraCatalogFile,
-            };
             self.emit_status(
                 "usb_camera_staging",
                 serde_json::json!({
@@ -1023,32 +1032,48 @@ impl SdCardMonitor {
                     "state": "started",
                 }),
             );
-            let dest = ica_cache_dir_for(drive);
             let drive_owned = drive.to_string();
             let status_cb = self.on_status.lock().unwrap().clone();
             let on_tick = status_cb.map(|cb| {
                 let drive_tick = drive_owned.clone();
                 let last_n = std::sync::atomic::AtomicUsize::new(0);
-                Box::new(move |catalog: Vec<CameraCatalogFile>| {
-                    let n = catalog.len();
-                    if n <= last_n.load(std::sync::atomic::Ordering::Relaxed) {
-                        return;
-                    }
-                    last_n.store(n, std::sync::atomic::Ordering::Relaxed);
-                    let listed = list_result_from_mtp_catalog(&drive_tick, &catalog);
-                    cb(
-                        "mtp_catalog",
-                        serde_json::json!({
-                            "drive": drive_tick,
-                            "files": listed.files,
-                            "total_size_mb": listed.total_size_mb,
-                            "file_count": listed.files.len(),
-                            "done": false,
-                        }),
-                    );
-                }) as Box<dyn FnMut(Vec<CameraCatalogFile>) + Send>
+                Box::new(
+                    move |catalog: Vec<crate::sd_card::mtp::catalog::CameraCatalogFile>| {
+                        let n = catalog.len();
+                        if n <= last_n.load(std::sync::atomic::Ordering::Relaxed) {
+                            return;
+                        }
+                        last_n.store(n, std::sync::atomic::Ordering::Relaxed);
+                        let listed = list_result_from_mtp_catalog(&drive_tick, &catalog);
+                        cb(
+                            "mtp_catalog",
+                            serde_json::json!({
+                                "drive": drive_tick,
+                                "files": listed.files,
+                                "total_size_mb": listed.total_size_mb,
+                                "file_count": listed.files.len(),
+                                "done": false,
+                            }),
+                        );
+                    },
+                ) as Box<dyn FnMut(Vec<crate::sd_card::mtp::catalog::CameraCatalogFile>) + Send>
             });
-            match list_camera_catalog(drive, &label, &dest, on_tick) {
+
+            let catalog_result = {
+                #[cfg(target_os = "macos")]
+                {
+                    use crate::sd_card::mtp::macos_ica::{ica_cache_dir_for, list_camera_catalog};
+                    let dest = ica_cache_dir_for(drive);
+                    list_camera_catalog(drive, &label, &dest, on_tick).map_err(|e| e.to_string())
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    crate::sd_card::mtp::windows_wpd::list_camera_catalog(drive, &label, on_tick)
+                        .map_err(|e| e.to_string())
+                }
+            };
+
+            match catalog_result {
                 Ok(catalog) => {
                     let listed = list_result_from_mtp_catalog(drive, &catalog);
                     self.emit_status(
@@ -1082,8 +1107,7 @@ impl SdCardMonitor {
                     }
                     Ok(listed)
                 }
-                Err(e) => {
-                    let msg = e.to_string();
+                Err(msg) => {
                     self.emit_status(
                         "usb_camera_staging",
                         serde_json::json!({
@@ -1098,7 +1122,7 @@ impl SdCardMonitor {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = label;
             Err(SdError::Message(format!(
@@ -1647,7 +1671,7 @@ impl SdCardMonitor {
         selected_files: Option<Vec<String>>,
         clear_after: Option<bool>,
     ) -> Result<BackupResult, SdError> {
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = (drive, selected_files, clear_after);
             return Ok(BackupResult::fail(
@@ -1659,11 +1683,16 @@ impl SdCardMonitor {
             ));
         }
 
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
-            use crate::sd_card::mtp::macos_ica::{
-                download_camera_files, ica_cache_dir_for, virtual_media_path,
-            };
+            use crate::sd_card::mtp::catalog::{cache_dir_for, virtual_media_path};
+
+            if !self.config().usb_camera_import_enabled {
+                return Ok(BackupResult::fail(
+                    "USB-Kamera-Import ist in den Einstellungen deaktiviert.",
+                    0,
+                ));
+            }
 
             let cfg = self.config();
             let listed = self.list_mtp_files(drive)?;
@@ -1695,7 +1724,7 @@ impl SdCardMonitor {
                 .collect();
 
             let virtual_paths: Vec<String> = chosen.iter().map(|f| f.path.clone()).collect();
-            let cache_root = ica_cache_dir_for(drive).to_string_lossy().into_owned();
+            let cache_root = cache_dir_for(drive).to_string_lossy().into_owned();
             let (filtered_paths, _tl) =
                 filter_media_paths_for_backup(&virtual_paths, &cache_root, true);
             let keep: HashSet<String> = filtered_paths.iter().cloned().collect();
@@ -1848,26 +1877,56 @@ impl SdCardMonitor {
                 });
             }
 
-            let downloaded = match download_camera_files(
-                drive,
-                &label,
-                &backup_path,
-                &names,
-                Some(Box::new(progress_cb)),
-            ) {
-                Ok(paths) => paths,
-                Err(e) => {
-                    let _ = fs::remove_dir_all(&backup_path);
-                    if let Some(ref sp) = secondary_path {
-                        let _ = fs::remove_dir_all(sp);
+            let downloaded = {
+                #[cfg(target_os = "macos")]
+                {
+                    match crate::sd_card::mtp::macos_ica::download_camera_files(
+                        drive,
+                        &label,
+                        &backup_path,
+                        &names,
+                        Some(Box::new(progress_cb)),
+                    ) {
+                        Ok(paths) => paths,
+                        Err(e) => {
+                            let _ = fs::remove_dir_all(&backup_path);
+                            if let Some(ref sp) = secondary_path {
+                                let _ = fs::remove_dir_all(sp);
+                            }
+                            let msg = e.to_string();
+                            let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
+                                WORKFLOW_CANCELLED.to_string()
+                            } else {
+                                format!("SD-Karte wurde während des Backups entfernt: {msg}")
+                            };
+                            return Ok(BackupResult::fail(msg, 0));
+                        }
                     }
-                    let msg = e.to_string();
-                    let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
-                        WORKFLOW_CANCELLED.to_string()
-                    } else {
-                        format!("SD-Karte wurde während des Backups entfernt: {msg}")
-                    };
-                    return Ok(BackupResult::fail(msg, 0));
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    match crate::sd_card::mtp::windows_wpd::download_camera_files(
+                        drive,
+                        &label,
+                        &backup_path,
+                        &names,
+                        Some(Box::new(progress_cb)),
+                    ) {
+                        Ok(paths) => paths,
+                        Err(e) => {
+                            let _ = fs::remove_dir_all(&backup_path);
+                            if let Some(ref sp) = secondary_path {
+                                let _ = fs::remove_dir_all(sp);
+                            }
+                            let msg = e.to_string();
+                            let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
+                                WORKFLOW_CANCELLED.to_string()
+                            } else {
+                                format!("SD-Karte wurde während des Backups entfernt: {msg}")
+                            };
+                            return Ok(BackupResult::fail(msg, 0));
+                        }
+                    }
                 }
             };
 
@@ -2126,7 +2185,63 @@ impl SdCardMonitor {
             }
         }
 
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(target_os = "windows")]
+        {
+            use crate::sd_card::mtp::windows_wpd::delete_camera_files_named;
+            let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
+            let on_workflow = self.on_workflow.lock().unwrap().clone();
+            match delete_camera_files_named(
+                drive,
+                &label,
+                &names,
+                Some(Box::new(move |current, total| {
+                    if let Some(cb) = on_workflow.as_ref() {
+                        cb(workflow_progress(
+                            "clear",
+                            u64::from(current),
+                            u64::from(total).max(1),
+                            "USB-Kamera wird bereinigt…",
+                        ));
+                    }
+                })),
+            ) {
+                Ok(deleted) if deleted > 0 => {
+                    self.invalidate_list_cache_for(&[drive.to_string()]);
+                    self.emit_workflow(workflow_progress(
+                        "clear",
+                        deleted as u64,
+                        deleted as u64,
+                        &format!("USB-Kamera bereinigt ({deleted} Datei(en))."),
+                    ));
+                    (Some(deleted), None)
+                }
+                Ok(_) => {
+                    let msg = "Kamera-Bereinigung meldete Erfolg, aber es wurde nichts gelöscht."
+                        .to_string();
+                    self.emit_status(
+                        "clearing_failed",
+                        serde_json::json!({
+                            "drive": drive,
+                            "message": msg,
+                        }),
+                    );
+                    (Some(0), Some(msg))
+                }
+                Err(e) => {
+                    let soft = format!("Kamera-Bereinigung fehlgeschlagen: {e}");
+                    self.emit_status(
+                        "clearing_failed",
+                        serde_json::json!({
+                            "drive": drive,
+                            "message": soft,
+                        }),
+                    );
+                    (Some(0), Some(soft))
+                }
+            }
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = (drive, names, masters);
             (
@@ -2306,12 +2421,12 @@ fn sd_file_info_from_catalog(path: String, filename: &str, size: u64, mtime: f64
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn list_result_from_mtp_catalog(
     drive: &str,
-    catalog: &[crate::sd_card::mtp::macos_ica::CameraCatalogFile],
+    catalog: &[crate::sd_card::mtp::catalog::CameraCatalogFile],
 ) -> ListSdFilesResult {
-    use crate::sd_card::mtp::macos_ica::virtual_media_path;
+    use crate::sd_card::mtp::catalog::virtual_media_path;
     let mut files: Vec<SdFileInfo> = catalog
         .iter()
         .map(|e| {
@@ -2600,6 +2715,9 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
         .filter(|d| is_drive_ready(d) && is_action_cam_sd_card(d))
         .map(make_sd_drive_info)
         .collect();
+    if !SD_MONITOR.config().usb_camera_import_enabled {
+        return drives;
+    }
     let visible_usb = SD_MONITOR.visible_usb_action_cam_ids();
     for cam in crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras() {
         if !visible_usb.contains(&cam.source_id) {

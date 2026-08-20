@@ -207,6 +207,18 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
           />
           {t("settings.sd.import.skipProcessed")}
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={draft.usb_camera_import_enabled}
+            onCheckedChange={(v) =>
+              patch("usb_camera_import_enabled", v === true)
+            }
+          />
+          {t("settings.sd.import.usbCameras")}
+        </label>
+        <p className="text-[11px] leading-snug text-muted">
+          {t("settings.sd.import.usbCamerasHint")}
+        </p>
       </SettingsSection>
 
       <SettingsSection

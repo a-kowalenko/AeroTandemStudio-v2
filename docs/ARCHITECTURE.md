@@ -38,7 +38,7 @@ AeroTandemStudio-v2/
 │   ├── src/
 │   │   ├── video/              # FFmpeg, Encoding, Concat
 │   │   ├── qr/                 # QR-Scan
-│   │   ├── sd_card/            # SD-Monitor + MTP/USB (Allowlist, macOS Image Capture)
+│   │   ├── sd_card/            # SD-Monitor + MTP/USB (Allowlist, macOS ICA, Windows WPD)
 │   │   ├── storage/            # Config, History
 │   │   ├── smb/                # Upload
 │   │   ├── model/              # Kunde, Validation

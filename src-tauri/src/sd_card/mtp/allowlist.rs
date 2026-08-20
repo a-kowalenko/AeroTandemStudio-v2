@@ -229,55 +229,83 @@ pub fn content_looks_like_action_cam(dcim_root: &Path, vendor: ActionCamVendor) 
     }
 }
 
+/// True when object/folder/file names from an MTP/WPD walk match the vendor signature.
+///
+/// Used when there is no local filesystem tree (Windows WPD / future libmtp).
+pub fn content_names_look_like_action_cam<'a>(
+    names: impl IntoIterator<Item = &'a str>,
+    vendor: ActionCamVendor,
+) -> bool {
+    names
+        .into_iter()
+        .any(|name| object_name_matches_action_cam_signature(name, vendor))
+}
+
+/// Single object or folder name against the vendor DCIM signature.
+pub fn object_name_matches_action_cam_signature(name: &str, vendor: ActionCamVendor) -> bool {
+    match vendor {
+        ActionCamVendor::GoPro => name_looks_like_gopro(name),
+        ActionCamVendor::Dji => name_looks_like_dji(name),
+        ActionCamVendor::Insta360 => name_looks_like_insta360(name),
+    }
+}
+
+fn name_looks_like_gopro(name: &str) -> bool {
+    let u = name.to_ascii_uppercase();
+    if u.contains("GOPRO") {
+        return true;
+    }
+    u.starts_with("GX")
+        || u.starts_with("GH")
+        || u.starts_with("GOPR")
+        || u.starts_with("GPFR")
+        || u.starts_with("GPBK")
+        || (u.starts_with("GP") && u.len() > 2 && u.as_bytes()[2].is_ascii_digit())
+}
+
+fn name_looks_like_dji(name: &str) -> bool {
+    let u = name.to_ascii_uppercase();
+    u.starts_with("DJI_")
+        || (u.starts_with("DJI") && u.contains('.'))
+        || u.starts_with("OSMO")
+        || u.contains("100MEDIA")
+}
+
+fn name_looks_like_insta360(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".insv")
+        || lower.ends_with(".lrv")
+        || lower.ends_with(".insp")
+        || lower.starts_with("vid_")
+        || lower.starts_with("img_")
+        || lower.starts_with("pro_")
+        || lower.contains("camera01")
+}
+
 fn dcim_has_gopro_signature(dcim: &Path) -> bool {
     if !dcim.is_dir() {
         return false;
     }
     // Folder names: 100GOPRO, 101GOPRO, …
-    if dir_children_match(dcim, |name| {
-        let u = name.to_ascii_uppercase();
-        u.contains("GOPRO")
-    }) {
+    if dir_children_match(dcim, |name| name_looks_like_gopro(name)) {
         return true;
     }
     // Files anywhere under DCIM (shallow walk).
-    walk_media_names(dcim, 3, |name| {
-        let u = name.to_ascii_uppercase();
-        // GX010001.MP4, GH010001.MP4, GPFR*.MP4, GOPR*.JPG, …
-        u.starts_with("GX")
-            || u.starts_with("GH")
-            || u.starts_with("GOPR")
-            || u.starts_with("GPFR")
-            || u.starts_with("GPBK")
-            || (u.starts_with("GP") && u.len() > 2 && u.as_bytes()[2].is_ascii_digit())
-    })
+    walk_media_names(dcim, 3, name_looks_like_gopro)
 }
 
 fn dcim_has_dji_signature(dcim: &Path) -> bool {
     if !dcim.is_dir() {
         return false;
     }
-    walk_media_names(dcim, 3, |name| {
-        let u = name.to_ascii_uppercase();
-        u.starts_with("DJI_")
-            || (u.starts_with("DJI") && u.contains('.'))
-            || u.starts_with("OSMO")
-    })
+    walk_media_names(dcim, 3, name_looks_like_dji)
 }
 
 fn dcim_has_insta360_signature(dcim: &Path) -> bool {
     if !dcim.is_dir() {
         return false;
     }
-    walk_media_names(dcim, 3, |name| {
-        let lower = name.to_ascii_lowercase();
-        lower.ends_with(".insv")
-            || lower.ends_with(".lrv")
-            || lower.ends_with(".insp")
-            || lower.starts_with("vid_")
-            || lower.starts_with("img_")
-            || lower.starts_with("pro_")
-    })
+    walk_media_names(dcim, 3, name_looks_like_insta360)
 }
 
 fn dir_children_match(dir: &Path, pred: impl Fn(&str) -> bool) -> bool {
@@ -525,6 +553,38 @@ mod tests {
         };
         let m = match_usb_device(&hint, &dir.path().join("DCIM")).unwrap();
         assert_eq!(m.vendor, ActionCamVendor::Insta360);
+    }
+
+    #[test]
+    fn content_names_signature_helpers() {
+        assert!(content_names_look_like_action_cam(
+            ["100GOPRO", "other"],
+            ActionCamVendor::GoPro
+        ));
+        assert!(content_names_look_like_action_cam(
+            ["GX010001.MP4"],
+            ActionCamVendor::GoPro
+        ));
+        assert!(!content_names_look_like_action_cam(
+            ["IMG_0001.JPG", "DCIM"],
+            ActionCamVendor::GoPro
+        ));
+        assert!(content_names_look_like_action_cam(
+            ["DJI_0001.MP4"],
+            ActionCamVendor::Dji
+        ));
+        assert!(!content_names_look_like_action_cam(
+            ["IMG_0001.JPG"],
+            ActionCamVendor::Dji
+        ));
+        assert!(object_name_matches_action_cam_signature(
+            "Camera01",
+            ActionCamVendor::Insta360
+        ));
+        assert!(object_name_matches_action_cam_signature(
+            "clip.insv",
+            ActionCamVendor::Insta360
+        ));
     }
 
     #[test]

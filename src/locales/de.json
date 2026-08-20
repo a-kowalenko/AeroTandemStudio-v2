@@ -256,7 +256,9 @@
         "eject": "SD automatisch auswerfen",
         "ejectTitle": "Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import.",
         "ejectHint": "Mit Backup direkt danach; ohne Backup erst nach dem Import.",
-        "skipProcessed": "Bereits verarbeitete Dateien überspringen"
+        "skipProcessed": "Bereits verarbeitete Dateien überspringen",
+        "usbCameras": "USB-Action-Cams (GoPro / DJI / Insta360)",
+        "usbCamerasHint": "Erkennt Kameras per USB (MTP/WPD), kopiert Medien lokal und importiert wie von der SD-Karte. Handys und normale Sticks bleiben außen vor."
       },
       "size": {
         "title": "Warnschwelle",

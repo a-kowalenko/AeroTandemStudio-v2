@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.1 — Windows WPD](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(Phase 23.1 Windows WPD erledigt — manuelle Cam-Abnahme offen.)*  
 *(Phase 28 Fotos Master–Detail erledigt.)*  
 *(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
 *(Phase 25 AMS-Lookup Autofill erledigt.)*  
@@ -1145,7 +1146,7 @@ src/components/UpdateDialog.tsx
 
 ### Phase 23 — USB-Action-Cams (MTP) erkennen & importieren
 
-**Status:** 🔄 In Arbeit (23.0 ✅ · 23.2 Detect ✅ · 23.2b ICA Staging ✅ · 23.2c ICA UI-Perf ✅ · 23.2d Leere Kataloge ✅ · 23.2e ICA-Browser Replug ✅)  
+**Status:** 🔄 In Arbeit (23.0 ✅ · 23.1 Windows WPD ✅ · 23.2 Detect ✅ · 23.2b ICA Staging ✅ · 23.2c ICA UI-Perf ✅ · 23.2d Leere Kataloge ✅ · 23.2e ICA-Browser Replug ✅)  
 **Abhängigkeiten:** Phase 7 (SD-Pipeline), Phase 5 (Config)  
 **Ziel:** GoPro-, DJI- und Insta360-Kameras per USB (MTP/WPD) erkennen und in denselben Backup-/Import-Workflow bringen wie SD-Karten — **ohne** zusätzliche False Positives bei normalen Datenträgern oder Handys.
 
@@ -1203,11 +1204,11 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 - [ ] Trait/Adapter-Skizze: `list_media`, `copy_to_backup`, `disconnect`
 
 **23.1 — Windows (WPD/MTP) — MVP**
-- [ ] WPD-Enumeration + Hotplug/Polling; nur Allowlist + Signatur
-- [ ] Events `sd-card-inserted` / `sd-card-removed` mit `source_id` (rückwärtskompatibel)
-- [ ] List + Staging-Backup mit Progress; Import ab lokalem FS
-- [ ] Config `usb_camera_import_enabled` + Settings-Toggle
-- [ ] UI-Label z. B. „GoPro (USB)“ / „DJI (USB)“ / „Insta360 (USB)“
+- [x] WPD-Enumeration + Hotplug/Polling; nur Allowlist + Signatur
+- [x] Events `sd-card-inserted` / `sd-card-removed` mit `source_id` (rückwärtskompatibel)
+- [x] List + Staging-Backup mit Progress; Import ab lokalem FS
+- [x] Config `usb_camera_import_enabled` + Settings-Toggle
+- [x] UI-Label z. B. „GoPro (USB)“ / „DJI (USB)“ / „Insta360 (USB)“
 - [ ] Abnahme: SD unverändert; GoPro/DJI/Insta USB ok; Handy/Stick-ohne-Allowlist **nicht**
 
 **23.2 — macOS**
@@ -1731,7 +1732,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 22 | macOS Titlebar-Align & Dialog-Zentrierung | ✅ |
 | 23 | USB-Action-Cams (MTP) GoPro/DJI/Insta360 | 🔄 |
 | 23.0 | MTP-Allowlist (plattformneutral) | ✅ |
-| 23.1 | Windows WPD/MTP + Staging | ⬜ |
+| 23.1 | Windows WPD/MTP + Staging | ✅ |
 | 23.2 | macOS USB-Detect (system_profiler) + Hinweis | ✅ |
 | 23.2b | macOS Image Capture Staging-Import | ✅ |
 | 23.2c | ICA UI-Perf (Main-Thread / Katalog-Ticks) | ✅ |

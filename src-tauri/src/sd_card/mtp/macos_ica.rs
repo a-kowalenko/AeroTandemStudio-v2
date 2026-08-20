@@ -14,6 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::media::dji_paths::is_listable_media_path;
 use serde::{Deserialize, Serialize};
 
+pub use super::catalog::{cache_dir_for as ica_cache_dir_for, virtual_media_path, CameraCatalogFile};
+
 #[derive(Debug)]
 pub enum IcaError {
     Message(String),
@@ -82,19 +84,6 @@ unsafe extern "C" {
 
 const CATALOG_NAME: &str = ".ats_ica_catalog.json";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CameraCatalogFile {
-    pub name: String,
-    pub size: u64,
-    #[serde(default)]
-    pub mtime: f64,
-}
-
-/// Virtual path used as the SD-selector key (file may not exist until backup).
-pub fn virtual_media_path(source_id: &str, filename: &str) -> PathBuf {
-    ica_cache_dir_for(source_id).join(filename)
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 struct StageMeta {
     source_id: String,
@@ -104,21 +93,6 @@ struct StageMeta {
 
 const STAGE_META_NAME: &str = ".ats_ica_stage.json";
 const STAGE_TTL: Duration = Duration::from_secs(30 * 60);
-
-pub fn ica_cache_dir_for(source_id: &str) -> PathBuf {
-    let base = std::env::temp_dir().join("aero_tandem_ica");
-    let safe: String = source_id
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    base.join(safe)
-}
 
 fn now_unix() -> u64 {
     SystemTime::now()

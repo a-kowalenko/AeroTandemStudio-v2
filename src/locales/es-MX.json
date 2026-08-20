@@ -256,7 +256,9 @@
         "eject": "Expulsar SD automáticamente",
         "ejectTitle": "Expulsar justo tras el respaldo (importar/QR desde copias). Sin respaldo: tras importar.",
         "ejectHint": "Con respaldo, justo después; sin respaldo, tras importar.",
-        "skipProcessed": "Omitir archivos ya procesados"
+        "skipProcessed": "Omitir archivos ya procesados",
+        "usbCameras": "Cámaras de acción USB (GoPro / DJI / Insta360)",
+        "usbCamerasHint": "Detecta cámaras por USB (MTP/WPD), copia los medios localmente e importa como desde la tarjeta SD. Teléfonos y memorias normales quedan fuera."
       },
       "size": {
         "title": "Umbral de aviso",

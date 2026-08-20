@@ -115,6 +115,8 @@ export type AppConfig = {
   sd_skip_processed: boolean;
   sd_size_limit_enabled: boolean;
   sd_size_limit_mb: number;
+  /** USB action cams (GoPro/DJI/Insta360) via MTP/WPD. */
+  usb_camera_import_enabled: boolean;
   oldschool_mode: boolean;
   /** Manual entry when not QR: "id" | "oldschool" | "lokal". */
   manual_entry_mode: ManualEntryMode;

@@ -1,7 +1,8 @@
 //! Enumerate USB devices for action-cam hotplug (Phase 23).
 //!
 //! macOS: parse `ioreg` (fast) — never call `system_profiler` in the SD poll loop.
-//! Other platforms: empty until WPD/libmtp adapters land.
+//! Windows: WPD manager + allowlist + content signature (see `windows_wpd`).
+//! Other platforms: empty until libmtp adapters land.
 
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -91,7 +92,11 @@ fn list_allowlisted_usb_cameras_uncached() -> Vec<DetectedUsbCamera> {
     {
         macos_list_allowlisted_usb_cameras()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        crate::sd_card::mtp::windows_wpd::list_allowlisted_wpd_cameras()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         Vec::new()
     }
