@@ -23,7 +23,8 @@ use crate::model::Kunde;
 use super::body_concat_fallback::BodyConcatAskFn;
 use super::concat::{self, ConcatError, VideoCodec};
 use super::encoding_quality::{
-    build_encode_output_params, resolve_output_codec, VideoCodecPreference,
+    build_encode_output_params, majority_body_codec, resolve_output_codec, video_codec_to_pref_str,
+    VideoCodecPreference,
 };
 use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
@@ -34,6 +35,9 @@ use super::intro_mux_fallback::IntroMuxChoice;
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::probe;
 use super::progress::{progress_from_times, progress_from_times_with_task};
+use super::reencode_confirm::{
+    self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams,
+};
 
 static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
@@ -1059,26 +1063,45 @@ fn body_codecs_compatible(ffmpeg: &Path, paths: &[String]) -> bool {
     if paths.len() < 2 {
         return true;
     }
-    let mut first: Option<VideoCodec> = None;
+    let codecs = probe_body_codecs(ffmpeg, paths);
+    if codecs.iter().any(|c| matches!(c, VideoCodec::Other)) || codecs.len() != paths.len() {
+        return false;
+    }
+    let first = codecs[0];
+    codecs.iter().all(|c| *c == first)
+}
+
+/// Probe each path's video codec (best-effort; missing → skipped).
+fn probe_body_codecs(ffmpeg: &Path, paths: &[String]) -> Vec<VideoCodec> {
+    let mut out = Vec::with_capacity(paths.len());
     for p in paths {
         let Ok(stderr) = ffmpeg_probe_stderr(ffmpeg, p) else {
-            return false;
+            continue;
         };
         let meta = probe::parse_video_metadata_from_probe(&stderr);
         let codec = meta
             .as_ref()
             .map(|m| concat::normalize_vcodec_name(&m.codec))
             .unwrap_or(VideoCodec::Other);
-        if matches!(codec, VideoCodec::Other) {
-            return false;
-        }
-        match first {
-            None => first = Some(codec),
-            Some(prev) if prev != codec => return false,
-            _ => {}
+        out.push(codec);
+    }
+    out
+}
+
+/// Target codec for mixed-body re-encode: forced preference, else majority (tie → H.264).
+fn resolve_mixed_body_target_pref(
+    pref: VideoCodecPreference,
+    ffmpeg: &Path,
+    paths: &[String],
+) -> String {
+    match pref {
+        VideoCodecPreference::H264 => "h264".into(),
+        VideoCodecPreference::H265 => "h265".into(),
+        VideoCodecPreference::Auto => {
+            let codecs = probe_body_codecs(ffmpeg, paths);
+            video_codec_to_pref_str(majority_body_codec(&codecs)).into()
         }
     }
-    true
 }
 
 // ---------------------------------------------------------------------------
@@ -1090,7 +1113,8 @@ fn body_codecs_compatible(ffmpeg: &Path, paths: &[String]) -> bool {
 /// Default mux: continuous re-encode of intro+body (customer-compatible).
 /// Optional `stream_copy`: when it fails and `on_intro_mux_fallback` is set, the
 /// callback decides between body-only export and re-encode-with-intro.
-/// When unset (e.g. preview), stream-copy failure falls back to re-encode.
+/// When unset (e.g. preview), stream-copy failure falls back to re-encode
+/// (after `on_reencode` confirmation when provided).
 pub fn create_video(
     ffmpeg: &Path,
     kunde: &Kunde,
@@ -1101,6 +1125,7 @@ pub fn create_video(
     on_progress: ProgressCallback,
     on_intro_mux_fallback: Option<IntroMuxAskFn>,
     on_body_concat_fallback: Option<BodyConcatAskFn>,
+    on_reencode: Option<ReencodeAskFn>,
 ) -> Result<CreateVideoResult, ProcessorError> {
     if video_paths.is_empty() {
         return Err(ProcessorError::Message(
@@ -1134,8 +1159,32 @@ pub fn create_video(
     let body_path = if video_paths.len() == 1 {
         video_paths[0].clone()
     } else if options.parallel_enabled && !body_codecs_compatible(ffmpeg, video_paths) {
-        // Mixed codecs → per_clip encode in parallel, then stream-copy concat
-        let pool = ParallelVideoProcessor::new(hw_accel_enabled && hw.available);
+        // Mixed codecs → per_clip encode in parallel, then stream-copy concat.
+        // Resolve target before confirm so the dialog can show `auto (H.264|H.265)`.
+        let target_pref =
+            resolve_mixed_body_target_pref(options.video_codec, ffmpeg, video_paths);
+        let intent = ReencodeIntent::new(
+            ReencodeKind::BodyParallel,
+            "Unterschiedliche Codecs unter den Clips — parallele Neu-Kodierung",
+        )
+        .with_params(ReencodeParams {
+            crf: Some(options.crf),
+            hw_accel: Some(hw_accel_enabled),
+            clip_count: Some(video_paths.len()),
+            strategy: Some("per_clip_parallel".into()),
+            target_codec: Some(target_pref.clone()),
+            ..Default::default()
+        });
+        on_progress(progress_from_times(
+            2.0,
+            100.0,
+            "Neu-Kodierung — warte auf Bestätigung…",
+        ));
+        let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
+            .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+        let encode_crf = profile.crf;
+        let encode_hw = profile.hw_accel;
+        let pool = ParallelVideoProcessor::new(encode_hw && hw.available);
         on_progress(progress_from_times_with_task(
             0.0,
             100.0,
@@ -1148,10 +1197,18 @@ pub fn create_video(
         ));
 
         let probe0 = ffmpeg_probe_stderr(ffmpeg, &video_paths[0])?;
-        let body_codec_name = probe::parse_video_metadata_from_probe(&probe0)
-            .map(|m| m.codec)
-            .unwrap_or_else(|| "h264".into());
-        let out_codec = resolve_output_codec(options.video_codec, &body_codec_name);
+        let body_codec_name = profile
+            .resolved_codec
+            .clone()
+            .filter(|c| c == "h264" || c == "h265")
+            .or_else(|| Some(target_pref.clone()))
+            .unwrap_or_else(|| {
+                probe::parse_video_metadata_from_probe(&probe0)
+                    .map(|m| m.codec)
+                    .unwrap_or_else(|| "h264".into())
+            });
+        let codec_pref = profile.codec_preference();
+        let out_codec = resolve_output_codec(codec_pref, &body_codec_name);
         let mut v_params = intro_params_from_probe(&probe0, &body_codec_name);
         v_params.vcodec = match out_codec {
             VideoCodec::Hevc => "hevc".into(),
@@ -1172,8 +1229,8 @@ pub fn create_video(
             &clip_outs,
             &v_params,
             &hw,
-            options.crf,
-            hw_accel_enabled,
+            encode_crf,
+            encode_hw,
             Arc::clone(&on_progress),
         )?;
 
@@ -1184,10 +1241,11 @@ pub fn create_video(
             &clip_outs,
             &body_target,
             cb,
-            hw_accel_enabled,
-            options.crf,
+            encode_hw,
+            encode_crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
+            on_reencode.as_ref(),
         )?;
         encoder_used = v_params.vcodec.clone();
         body_target
@@ -1215,6 +1273,7 @@ pub fn create_video(
             options.crf,
             &options.body_concat_mode,
             on_body_concat_fallback.as_ref(),
+            on_reencode.as_ref(),
         )?;
         body_target
     };
@@ -1288,7 +1347,8 @@ pub fn create_video(
                         }
                     }
                 } else {
-                    // Preview / silent path: keep previous auto re-encode behaviour.
+                    // Preview / silent path: keep previous auto re-encode behaviour
+                    // (still gated by on_reencode below).
                     IntroMuxChoice::WithIntroEncode
                 };
 
@@ -1308,6 +1368,7 @@ pub fn create_video(
                             options.crf,
                             hw_accel_enabled,
                             Arc::clone(&on_progress),
+                            on_reencode.as_ref(),
                         )
                         .map_err(|e| match e {
                             ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
@@ -1321,6 +1382,37 @@ pub fn create_video(
                         })
                     }
                     IntroMuxChoice::WithIntroEncode => {
+                        // User already chose re-encode via IntroMux dialog when ask was set.
+                        // When ask was None (preview), require explicit re-encode confirm.
+                        let (encode_crf, encode_hw) = if on_intro_mux_fallback.is_none() {
+                            let intent = ReencodeIntent::new(
+                                ReencodeKind::IntroMux,
+                                reason.clone(),
+                            )
+                            .with_params(ReencodeParams {
+                                crf: Some(options.crf),
+                                hw_accel: Some(hw_accel_enabled),
+                                clip_count: Some(video_paths.len()),
+                                intro_duration_secs: Some(options.dauer),
+                                intro_mux_mode: Some(options.intro_mux_mode.clone()),
+                                strategy: Some("single_pass_intro_body".into()),
+                                target_codec: Some(v_params.vcodec.clone()),
+                                ..Default::default()
+                            });
+                            on_progress(progress_from_times(
+                                58.0,
+                                100.0,
+                                "Neu-Kodierung — warte auf Bestätigung…",
+                            ));
+                            let profile = reencode_confirm::require_confirm(
+                                on_reencode.as_ref(),
+                                &intent,
+                            )
+                            .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
+                            (profile.crf, profile.hw_accel)
+                        } else {
+                            (options.crf, hw_accel_enabled)
+                        };
                         on_progress(progress_from_times(
                             60.0,
                             100.0,
@@ -1335,8 +1427,8 @@ pub fn create_video(
                             &v_params,
                             &drawtext,
                             &hw,
-                            options.crf,
-                            hw_accel_enabled,
+                            encode_crf,
+                            encode_hw,
                             &work,
                             Arc::clone(&mux_cb),
                         )
@@ -1387,6 +1479,28 @@ pub fn create_video(
             }
         } else {
             // Default: one continuous encode (intro overlay + body) — customer-compatible.
+            let intent = ReencodeIntent::new(
+                ReencodeKind::IntroMux,
+                "Intro+Body durchgängig kodieren (kundenkompatibel)",
+            )
+            .with_params(ReencodeParams {
+                crf: Some(options.crf),
+                hw_accel: Some(hw_accel_enabled),
+                clip_count: Some(video_paths.len()),
+                intro_duration_secs: Some(options.dauer),
+                intro_mux_mode: Some(options.intro_mux_mode.clone()),
+                strategy: Some("single_pass_intro_body".into()),
+                target_codec: Some(v_params.vcodec.clone()),
+                ..Default::default()
+            });
+            emit_stage(
+                &on_progress,
+                1.0,
+                stages,
+                "Neu-Kodierung — warte auf Bestätigung…",
+            );
+            let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
+                .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
             emit_stage(
                 &on_progress,
                 1.0,
@@ -1402,8 +1516,8 @@ pub fn create_video(
                 &v_params,
                 &drawtext,
                 &hw,
-                options.crf,
-                hw_accel_enabled,
+                profile.crf,
+                profile.hw_accel,
                 &work,
                 Arc::clone(&mux_cb),
             )
@@ -1433,6 +1547,7 @@ pub fn create_video(
                 options.crf,
                 hw_accel_enabled,
                 Arc::clone(&on_progress),
+                on_reencode.as_ref(),
             )?;
         }
         emit_stage(&on_progress, 2.0, stages, "Export fertig");
@@ -1461,10 +1576,11 @@ fn export_body_to_output(
     crf: u8,
     hw_accel_enabled: bool,
     on_progress: ProgressCallback,
+    on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<String, ProcessorError> {
-    let (enc, out_params) =
+    let (enc, _out_params) =
         build_encode_output_params(hw, out_codec, crf, !hw_accel_enabled);
-    let mut encoder_used = enc;
+    let encoder_used;
     let mut args = vec![
         "-y".into(),
         "-hide_banner".into(),
@@ -1497,6 +1613,27 @@ fn export_body_to_output(
         let reason = format!(
             "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})"
         );
+        let intent = ReencodeIntent::new(ReencodeKind::RemuxFallback, reason.clone()).with_params(
+            ReencodeParams {
+                encoder: Some(enc.clone()),
+                crf: Some(crf),
+                hw_accel: Some(hw_accel_enabled),
+                target_codec: Some(match out_codec {
+                    VideoCodec::Hevc => "h265".into(),
+                    VideoCodec::H264 => "h264".into(),
+                    VideoCodec::Other => "other".into(),
+                }),
+                strategy: Some("remux_fallback_reencode".into()),
+                ..Default::default()
+            },
+        );
+        on_progress(progress_from_times(
+            48.0,
+            100.0,
+            "Neu-Kodierung — warte auf Bestätigung…",
+        ));
+        let profile = reencode_confirm::require_confirm(on_reencode, &intent)
+            .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
         on_progress(progress_from_times(50.0, 100.0, &format!("Kodiere neu: {reason}")));
         let reenc_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
@@ -1509,13 +1646,15 @@ fn export_body_to_output(
                 outer(q);
             })
         };
+        let (enc2, out_params2) =
+            profile.to_encode_output_params(hw, out_codec);
         args = vec![
             "-y".into(),
             "-hide_banner".into(),
             "-i".into(),
             body_path.to_string(),
         ];
-        args.extend(out_params);
+        args.extend(out_params2);
         args.extend([
             "-c:a".into(),
             "aac".into(),
@@ -1529,6 +1668,7 @@ fn export_body_to_output(
             output.to_string(),
         ]);
         run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
+        encoder_used = enc2;
     } else {
         encoder_used = "copy".into();
     }

@@ -677,6 +677,55 @@ export type BodyConcatFallbackPayload = {
   reason: string;
 };
 
+/** Resolve re-encode confirmation (`proceed` | `abort`) with optional encode profile. */
+export async function resolveReencodeConfirm(
+  choice: "proceed" | "abort" | string,
+  profile?: EncodeProfile | null,
+): Promise<void> {
+  return invoke("resolve_reencode_confirm", { choice, profile: profile ?? null });
+}
+
+export type EncodePresetId =
+  | "recommended"
+  | "max_quality"
+  | "balanced"
+  | "fast"
+  | "compat"
+  | "custom";
+
+export type EncodeProfile = {
+  preset_id: EncodePresetId;
+  codec: string;
+  /** Concrete codec when `codec` is `auto` (`h264` | `h265`). */
+  resolved_codec?: string | null;
+  crf: number;
+  sw_preset: string;
+  nvenc_preset: string;
+  hw_accel: boolean;
+  scale_mode: "source" | "fit_1080p";
+  fps_mode: "source" | "force_30";
+  recommend_reason?: string | null;
+};
+
+export type ReencodeConfirmPayload = {
+  kind: string;
+  reason: string;
+  params: {
+    encoder?: string | null;
+    target_codec?: string | null;
+    crf?: number | null;
+    hw_accel?: boolean | null;
+    clip_count?: number | null;
+    intro_duration_secs?: number | null;
+    intro_mux_mode?: string | null;
+    strategy?: string | null;
+    degrees?: number | null;
+    details?: string[] | null;
+  };
+  recommended: EncodeProfile;
+  presets: string[];
+};
+
 export async function generatePreview(
   videoPaths: string[],
   kunde: Kunde,

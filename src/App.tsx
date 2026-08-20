@@ -9,6 +9,8 @@ import type { VideoCutterResult } from "./components/VideoCutter";
 import type { CreateSuccessInfo } from "./components/CreateSuccessDialog";
 import type { IntroMuxFallbackChoice } from "./components/IntroMuxFallbackDialog";
 import type { BodyConcatFallbackChoice } from "./components/BodyConcatFallbackDialog";
+import type { ReencodeConfirmResult, ReencodeConfirmState } from "./components/ReencodeConfirmDialog";
+import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
 import { AppDialogs } from "./components/app/AppDialogs";
@@ -42,6 +44,7 @@ import {
   installUpdate,
   resolveBodyConcatFallback,
   resolveIntroMuxFallback,
+  resolveReencodeConfirm,
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
@@ -50,6 +53,7 @@ import {
   type CreateJobResult,
   type HwAccelInfo,
   type IntroMuxFallbackPayload,
+  type ReencodeConfirmPayload,
   type UpdateInstallProgress,
   type UploadProgressEvent,
 } from "./lib/tauri";
@@ -209,6 +213,8 @@ function App() {
   const [bodyConcatFallback, setBodyConcatFallback] = useState<{
     reason: string;
   } | null>(null);
+  const [reencodeConfirm, setReencodeConfirm] =
+    useState<ReencodeConfirmState | null>(null);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
@@ -1226,6 +1232,26 @@ function App() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    listen<ReencodeConfirmPayload>("reencode-confirm-required", (event) => {
+      const p = event.payload;
+      setReencodeConfirm({
+        kind: p.kind ?? "",
+        reason: p.reason ?? "",
+        params: p.params ?? {},
+        recommended: p.recommended ?? defaultEncodeProfile(),
+        presets: p.presets ?? [],
+      });
+      setStatus(t("progress.rust.reencodeWaiting"));
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
     listen<UpdateInstallProgress>("update-install-progress", (event) => {
       setUpdateInstallProgress(event.payload);
     }).then((fn) => {
@@ -1261,6 +1287,23 @@ function App() {
       await resolveBodyConcatFallback(choice);
     } catch (e) {
       showError(String(e), t("app.concat.decisionTitle"));
+    }
+  }
+
+  async function onReencodeChoice(result: ReencodeConfirmResult) {
+    setReencodeConfirm(null);
+    setStatus(
+      result.choice === "proceed"
+        ? t("progress.status.reencode")
+        : t("progress.default.cancelled"),
+    );
+    try {
+      await resolveReencodeConfirm(
+        result.choice,
+        result.choice === "proceed" ? result.profile : null,
+      );
+    } catch (e) {
+      showError(String(e), t("dialogs.reencode.title"));
     }
   }
 
@@ -1739,6 +1782,8 @@ function App() {
         onIntroMuxChoice={onIntroMuxChoice}
         bodyConcatFallback={bodyConcatFallback}
         onBodyConcatChoice={onBodyConcatChoice}
+        reencodeConfirm={reencodeConfirm}
+        onReencodeChoice={onReencodeChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}

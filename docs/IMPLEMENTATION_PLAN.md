@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 23.1 — Windows WPD](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
+*(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
 *(Phase 25 AMS-Lookup Autofill erledigt.)*  
 *(Phase 24 AMS-Nachreichen erledigt.)*  
 *(optional danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*  
@@ -1422,6 +1423,49 @@ src-tauri/src/commands/bridge.rs
 src-tauri/src/video/marker.rs       # api_id unverändert
 ```
 
+### Phase 27 — Encode-Profil, Preview=Export & Reencode-Confirm UX
+
+**Ziel:** Ein gemeinsames Encode-Profil für Preview und Export; Reencode-Confirm mit Presets; klare Codec-Auflösung bei gemischten Clips; kompakter Confirm-Dialog.
+
+**Abhängigkeiten:** Phase 12 (Create), Phase 8 (Preview), OPT-9 (Reuse)
+
+#### Regeln / Empfehlungen (Codec bei `auto`)
+
+1. **Anzeige = Encode-Entscheidung** — `resolved_codec` vor dem Confirm setzen (nie nur Literal `"auto"` ohne Auflösung).
+2. **Mehrheits-Codec** — bei gemischten Clips Ziel = Mehrheit H.264 vs. HEVC; **Gleichstand → H.264** (AMS/Browser-Kompatibilität). Nicht „erster Clip“ als alleinige Heuristik.
+3. **Forced Preference** — Settings `h264` / `h265` überschreiben die Mehrheit.
+4. **Dialog** — Preset zuerst; Kurz-Zusammenfassung (`auto (H.264) · CRF 18 · HW …`); Details eingeklappt.
+5. **Backlog (später):** nur abweichende Clips reencoden, passende per Stream-Copy behalten.
+
+#### Scope
+
+- [x] `EncodeProfile` + Presets (Empfohlen / Max / Ausgewogen / Schnell / Kompatibel)
+- [x] Confirm gibt Profil an Rust zurück (`resolve_reencode_confirm`)
+- [x] Preview-Scale default = Source (Preview ≈ Export); Compat = 1080p@30
+- [x] Rotate nutzt `encoding_quality` / Profil (nicht CRF-23-`from_hw`)
+- [x] Body-Parallel: Mehrheit vor Confirm → `auto (H.264|H.265)`
+- [x] Confirm-Dialog UI verschlankt
+- [ ] Optional: nur mismatched Clips reencoden (Backlog)
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 27 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 27. Danach cargo test && npm run check.
+```
+
+#### Referenzen
+
+```
+src-tauri/src/video/encode_profile.rs
+src-tauri/src/video/reencode_confirm.rs
+src-tauri/src/video/encoding_quality.rs   # majority_body_codec
+src-tauri/src/video/processor.rs          # BodyParallel + resolve_mixed_body_target_pref
+src/components/ReencodeConfirmDialog.tsx
+src/lib/encodeProfile.ts
+```
+
 ---
 
 ## 9. Config-Schema
@@ -1605,6 +1649,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 23.4 | UX & Docs | ⬜ |
 | 24 | AMS-Nachreichen (Append-Handoff) | ✅ |
 | 25 | AMS-Lookup Autofill (Manuell / ID) | ✅ |
+| 27 | Encode-Profil & Reencode-Confirm UX | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

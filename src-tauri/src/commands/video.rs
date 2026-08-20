@@ -23,6 +23,8 @@ use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
 use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
 use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn};
 use crate::video::progress::EncodeProgress;
+use crate::video::encode_profile::EncodeProfile;
+use crate::video::reencode_confirm::{self, ReencodeAskFn, ReencodeChoice};
 use crate::model::ValidationResult;
 
 #[derive(Debug, Serialize)]
@@ -383,6 +385,11 @@ pub async fn rotate_video(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
+    let app_for_reenc = app.clone();
+    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
+        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::video::rotate::rotate_video(
             &ffmpeg,
@@ -391,6 +398,7 @@ pub async fn rotate_video(
             output.as_deref(),
             overwrite,
             on_progress,
+            Some(&on_reencode),
         )
         .map_err(|e| e.to_string())
     })
@@ -675,6 +683,11 @@ pub async fn create_video(
         body_concat_fallback::wait_for_choice(&app_for_body, reason)
     });
 
+    let app_for_reenc = app.clone();
+    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
+        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         processor::create_video(
             &ffmpeg,
@@ -686,6 +699,7 @@ pub async fn create_video(
             on_progress,
             Some(on_intro_mux_fallback),
             Some(on_body_concat_fallback),
+            Some(on_reencode),
         )
         .map_err(|e| e.to_string())
     })
@@ -724,6 +738,18 @@ pub fn resolve_body_concat_fallback(choice: String) -> Result<(), String> {
     let parsed = BodyConcatChoice::parse(&choice)
         .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
     body_concat_fallback::resolve_choice(parsed)
+}
+
+/// Resolve a pending re-encode confirmation from the UI (`proceed` | `abort`).
+/// On proceed, `profile` is required (encode settings from the confirm dialog).
+#[tauri::command]
+pub fn resolve_reencode_confirm(
+    choice: String,
+    profile: Option<EncodeProfile>,
+) -> Result<(), String> {
+    let parsed = ReencodeChoice::parse(&choice)
+        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    reencode_confirm::resolve_choice(parsed, profile)
 }
 
 /// Generate a combined preview MP4 in a temp work dir (CRF from config).
@@ -768,6 +794,11 @@ pub async fn generate_preview(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
+    let app_for_reenc = app.clone();
+    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
+        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         preview_encode::generate_preview(
             &ffmpeg,
@@ -776,6 +807,7 @@ pub async fn generate_preview(
             &config,
             resource_dir.as_deref(),
             on_progress,
+            Some(on_reencode),
         )
         .map_err(|e| e.to_string())
     })
@@ -1098,6 +1130,11 @@ pub async fn create_job(
         body_concat_fallback::wait_for_choice(&app_for_body, reason)
     });
 
+    let app_for_reenc = app.clone();
+    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
+        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
+    });
+
     let result = tauri::async_runtime::spawn_blocking(move || {
         export_job::create_job(
             &ffmpeg,
@@ -1110,6 +1147,7 @@ pub async fn create_job(
             on_progress,
             Some(on_intro_mux_fallback),
             Some(on_body_concat_fallback),
+            Some(on_reencode),
         )
         .map_err(|e| e.to_string())
     })

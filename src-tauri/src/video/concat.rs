@@ -22,6 +22,7 @@ use super::ffmpeg::{
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::progress::{progress_from_times_with_task, EncodeProgress};
+use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 
 static VIDEO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Video:\s+(\w+)").unwrap()
@@ -1201,7 +1202,17 @@ pub fn concat_videos(
     output: &str,
     on_progress: ProgressCallback,
 ) -> Result<ConcatOutcome, ConcatError> {
-    concat_videos_with_opts(ffmpeg, paths, output, on_progress, false, 18, "legacy", None)
+    concat_videos_with_opts(
+        ffmpeg,
+        paths,
+        output,
+        on_progress,
+        false,
+        18,
+        "legacy",
+        None,
+        None,
+    )
 }
 
 /// Like [`concat_videos`], with explicit encode options for the re-encode fallback.
@@ -1214,6 +1225,7 @@ pub fn concat_videos_with_opts(
     crf: u8,
     body_concat_mode: &str,
     on_fast_fail: Option<&BodyConcatAskFn>,
+    on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<ConcatOutcome, ConcatError> {
     match concat_videos_stream_copy_only_with_mode(
         ffmpeg,
@@ -1225,9 +1237,24 @@ pub fn concat_videos_with_opts(
     ) {
         Ok(outcome) => Ok(outcome),
         Err(ConcatError::NeedsReencode { reason }) => {
+            let intent = ReencodeIntent::new(ReencodeKind::ConcatFallback, reason.clone())
+                .with_params(ReencodeParams {
+                    crf: Some(crf),
+                    hw_accel: Some(hw_accel_enabled),
+                    clip_count: Some(paths.len()),
+                    strategy: Some("concat_reencode".into()),
+                    ..Default::default()
+                });
             emit(
                 &on_progress,
                 40.0,
+                "Neu-Kodierung — warte auf Bestätigung…",
+            );
+            let profile = reencode_confirm::require_confirm(on_reencode, &intent)
+                .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
+            emit(
+                &on_progress,
+                42.0,
                 &format!("Kodiere neu: {reason}"),
             );
             concat_videos_reencode(
@@ -1236,8 +1263,8 @@ pub fn concat_videos_with_opts(
                 output,
                 &reason,
                 on_progress,
-                hw_accel_enabled,
-                crf,
+                profile.hw_accel,
+                profile.crf,
             )
         }
         Err(e) => Err(e),

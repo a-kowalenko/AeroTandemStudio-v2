@@ -63,6 +63,32 @@ pub fn resolve_output_codec(pref: VideoCodecPreference, body_codec: &str) -> Vid
     }
 }
 
+/// Pick a shared target when clips disagree: majority wins; ties prefer H.264 (compat).
+pub fn majority_body_codec(codecs: &[VideoCodec]) -> VideoCodec {
+    let mut h264 = 0usize;
+    let mut hevc = 0usize;
+    for c in codecs {
+        match c {
+            VideoCodec::H264 => h264 += 1,
+            VideoCodec::Hevc => hevc += 1,
+            VideoCodec::Other => {}
+        }
+    }
+    if hevc > h264 {
+        VideoCodec::Hevc
+    } else {
+        VideoCodec::H264
+    }
+}
+
+/// Canonical preference string for dialogs / profiles (`h264` | `h265`).
+pub fn video_codec_to_pref_str(codec: VideoCodec) -> &'static str {
+    match codec {
+        VideoCodec::Hevc => "h265",
+        _ => "h264",
+    }
+}
+
 /// Pick FFmpeg `-c:v` encoder name for the resolved codec + detected HW.
 pub fn select_encoder(hw: &HwAccelInfo, codec: VideoCodec) -> String {
     match (&hw.hw_type, codec) {
@@ -269,6 +295,23 @@ mod tests {
             resolve_output_codec(VideoCodecPreference::H265, "h264"),
             VideoCodec::Hevc
         );
+    }
+
+    #[test]
+    fn majority_prefers_hevc_when_more() {
+        assert_eq!(
+            majority_body_codec(&[VideoCodec::H264, VideoCodec::Hevc, VideoCodec::Hevc]),
+            VideoCodec::Hevc
+        );
+    }
+
+    #[test]
+    fn majority_tie_prefers_h264() {
+        assert_eq!(
+            majority_body_codec(&[VideoCodec::H264, VideoCodec::Hevc]),
+            VideoCodec::H264
+        );
+        assert_eq!(majority_body_codec(&[]), VideoCodec::H264);
     }
 
     #[test]

@@ -3,6 +3,8 @@ import type { AvailableRelease, UpdateInstallProgress } from "../../lib/tauri";
 import type { SdWorkflowActions } from "../../lib/sdCard";
 import type { IntroMuxFallbackChoice } from "../IntroMuxFallbackDialog";
 import type { BodyConcatFallbackChoice } from "../BodyConcatFallbackDialog";
+import type { ReencodeConfirmResult, ReencodeConfirmState } from "../ReencodeConfirmDialog";
+import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
 import type { VideoCutterResult } from "../VideoCutter";
@@ -12,6 +14,7 @@ import { CreateSuccessDialog } from "../CreateSuccessDialog";
 import { WarningDialog } from "../WarningDialog";
 import { IntroMuxFallbackDialog } from "../IntroMuxFallbackDialog";
 import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
+import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
 import { UpdateDialog } from "../UpdateDialog";
@@ -104,6 +107,8 @@ export type AppDialogsProps = {
   onIntroMuxChoice: (choice: IntroMuxFallbackChoice) => void;
   bodyConcatFallback: { reason: string } | null;
   onBodyConcatChoice: (choice: BodyConcatFallbackChoice) => void;
+  reencodeConfirm: ReencodeConfirmState | null;
+  onReencodeChoice: (result: ReencodeConfirmResult) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -170,6 +175,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onIntroMuxChoice,
     bodyConcatFallback,
     onBodyConcatChoice,
+    reencodeConfirm,
+    onReencodeChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -311,6 +318,19 @@ export function AppDialogs(props: AppDialogsProps) {
         reason={bodyConcatFallback?.reason ?? ""}
         onChoose={(choice) => {
           void onBodyConcatChoice(choice);
+        }}
+      />
+      <ReencodeConfirmDialog
+        open={reencodeConfirm !== null}
+        kind={reencodeConfirm?.kind ?? ""}
+        reason={reencodeConfirm?.reason ?? ""}
+        params={reencodeConfirm?.params ?? {}}
+        recommended={
+          reencodeConfirm?.recommended ?? defaultEncodeProfile()
+        }
+        presets={reencodeConfirm?.presets}
+        onChoose={(result) => {
+          void onReencodeChoice(result);
         }}
       />
       <LoadingOverlay

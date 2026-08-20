@@ -52,6 +52,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "Generiere Ausgabe-Verzeichnis…": "progress.rust.generateOutputDir",
   "Übernehme Vorschau als Finalvideo…": "progress.rust.reusePreview",
   "Vorschau übernommen": "progress.rust.previewReused",
+  "Neu-Kodierung — warte auf Bestätigung…": "progress.rust.reencodeWaiting",
   "Erstelle Video…": "progress.createVideoStage",
   "Erstelle Wasserzeichen-Video…": "progress.rust.createWatermarkVideo",
   "Kopiere Fotos…": "progress.rust.copyPhotos",

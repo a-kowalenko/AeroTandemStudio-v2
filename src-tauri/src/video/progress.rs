@@ -33,8 +33,12 @@ pub fn parse_duration(text: &str) -> Option<f64> {
 }
 
 /// Parse a single key=value line from `-progress` output.
-/// Returns updated current time in seconds when `out_time_ms` or `out_time_us` is seen,
+/// Returns updated current time in seconds when `out_time_us` / `out_time_ms` / `out_time` is seen,
 /// or status string when `progress=` is seen.
+///
+/// Note: FFmpeg's `out_time_ms` is a misnomer — the value is **microseconds** (same as
+/// `out_time_us`). Dividing by 1000 treated it as milliseconds and briefly spiked clip
+/// bars to 100% on every progress tick.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProgressLine {
     OutTimeSecs(f64),
@@ -44,12 +48,14 @@ pub enum ProgressLine {
 
 pub fn parse_progress_line(line: &str) -> ProgressLine {
     let line = line.trim();
-    if let Some(rest) = line.strip_prefix("out_time_ms=") {
-        if let Ok(ms) = rest.parse::<f64>() {
-            return ProgressLine::OutTimeSecs(ms / 1_000.0);
+    // Prefer the correctly named field when both appear in a progress block.
+    if let Some(rest) = line.strip_prefix("out_time_us=") {
+        if let Ok(us) = rest.parse::<f64>() {
+            return ProgressLine::OutTimeSecs(us / 1_000_000.0);
         }
     }
-    if let Some(rest) = line.strip_prefix("out_time_us=") {
+    // Legacy alias: same microsecond value as out_time_us (not milliseconds).
+    if let Some(rest) = line.strip_prefix("out_time_ms=") {
         if let Ok(us) = rest.parse::<f64>() {
             return ProgressLine::OutTimeSecs(us / 1_000_000.0);
         }
@@ -151,9 +157,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_progress_out_time_ms() {
-        match parse_progress_line("out_time_ms=45000") {
-            ProgressLine::OutTimeSecs(s) => assert!((s - 45.0).abs() < 0.001),
+    fn parse_progress_out_time_ms_is_microseconds() {
+        // FFmpeg emits out_time_ms with microsecond units (misnamed field).
+        match parse_progress_line("out_time_ms=4500000") {
+            ProgressLine::OutTimeSecs(s) => assert!((s - 4.5).abs() < 0.001),
             other => panic!("unexpected: {other:?}"),
         }
     }
@@ -164,6 +171,13 @@ mod tests {
             ProgressLine::OutTimeSecs(s) => assert!((s - 1.5).abs() < 0.001),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn parse_progress_out_time_ms_matches_out_time_us() {
+        let ms = parse_progress_line("out_time_ms=1234567");
+        let us = parse_progress_line("out_time_us=1234567");
+        assert_eq!(ms, us);
     }
 
     #[test]

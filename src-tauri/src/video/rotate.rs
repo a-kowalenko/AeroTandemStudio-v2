@@ -11,9 +11,15 @@ use thiserror::Error;
 
 use super::concat;
 use super::cutter::{temp_cut_path, CutResult};
-use super::ffmpeg::{probe_duration_secs, run_ffmpeg, ProgressCallback};
+use super::encode_profile::EncodeProfile;
+use super::encoding_quality::resolve_output_codec;
+use super::ffmpeg::{ffmpeg_probe_stderr, probe_duration_secs, run_ffmpeg, FfmpegError, ProgressCallback};
 use super::hw_accel::{detect_hardware, EncodingParams};
+use super::probe;
 use super::progress::EncodeProgress;
+use super::reencode_confirm::{
+    self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams,
+};
 
 #[derive(Debug, Error)]
 pub enum RotateError {
@@ -110,6 +116,7 @@ pub fn rotate_video(
     output: Option<&str>,
     overwrite: bool,
     on_progress: ProgressCallback,
+    on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<CutResult, RotateError> {
     if !Path::new(input).is_file() {
         return Err(RotateError::Message(format!("input file not found: {input}")));
@@ -142,16 +149,56 @@ pub fn rotate_video(
     };
 
     let rotate_result = (|| -> Result<CutResult, RotateError> {
+        let hw = detect_hardware();
+        let probe_txt = ffmpeg_probe_stderr(ffmpeg, input).unwrap_or_default();
+        let body_codec = probe::parse_video_metadata_from_probe(&probe_txt)
+            .map(|m| m.codec)
+            .unwrap_or_else(|| "h264".into());
+        let recommended = EncodeProfile::recommend(
+            ReencodeKind::Rotate,
+            15,
+            hw.available,
+            Some(&body_codec),
+        );
+        let intent = ReencodeIntent::new(
+            ReencodeKind::Rotate,
+            "Drehen erfordert Neu-Kodierung (Pixel-Rotation)",
+        )
+        .with_params(ReencodeParams {
+            degrees: Some(deg as i32),
+            strategy: Some(format!("rotate-{deg}")),
+            details: vec![format!("transpose filter: {vf}")],
+            crf: Some(recommended.crf),
+            hw_accel: Some(recommended.hw_accel),
+            target_codec: Some(recommended.codec.clone()),
+            encoder: None,
+            ..Default::default()
+        })
+        .with_recommended(recommended);
+        emit(
+            &on_progress,
+            3.0,
+            "Neu-Kodierung — warte auf Bestätigung…",
+        );
+        let profile = match reencode_confirm::require_confirm(on_reencode, &intent) {
+            Ok(p) => p,
+            Err(()) => return Err(RotateError::Ffmpeg(FfmpegError::Cancelled)),
+        };
         emit(
             &on_progress,
             5.0,
             "Drehen erfordert Neu-Kodierung…",
         );
+        let out_codec = resolve_output_codec(profile.codec_preference(), &body_codec);
+        // Software decode: transpose filter needs CPU frames.
+        let (encoder, output_params) = profile.to_encode_output_params(&hw, out_codec);
+        let params = EncodingParams {
+            input_params: Vec::new(),
+            output_params,
+            encoder,
+        };
         let duration = probe_duration_secs(ffmpeg, input).unwrap_or(1.0);
         let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
-        let hw = detect_hardware();
-        // Software decode: transpose filter needs CPU frames.
-        let params = EncodingParams::from_hw(&hw, false);
         let args = build_rotate_video_args(input, &target_str, &vf, &params, has_audio);
         run_ffmpeg(ffmpeg, &args, duration.max(0.1), Arc::clone(&on_progress))?;
 

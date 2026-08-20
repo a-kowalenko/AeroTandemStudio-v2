@@ -29,6 +29,7 @@ use crate::video::processor::{
 use crate::video::body_concat_fallback::BodyConcatAskFn;
 use crate::video::progress::EncodeProgress;
 use crate::video::preview_reuse;
+use crate::video::reencode_confirm::ReencodeAskFn;
 use crate::video::watermark::{
     create_photo_with_watermark, create_video_with_watermark, resolve_stamp,
 };
@@ -311,6 +312,7 @@ pub fn create_job(
     on_progress: ProgressCallback,
     on_intro_mux_fallback: Option<IntroMuxAskFn>,
     on_body_concat_fallback: Option<BodyConcatAskFn>,
+    on_reencode: Option<ReencodeAskFn>,
 ) -> Result<CreateJobResult, ProcessorError> {
     let validation = validate_create_job(
         kunde,
@@ -442,6 +444,7 @@ pub fn create_job(
                 stage_cb,
                 on_intro_mux_fallback.clone(),
                 on_body_concat_fallback.clone(),
+                on_reencode.clone(),
             )?;
             encoder = res.encoder;
             intro_created = res.intro_created;
