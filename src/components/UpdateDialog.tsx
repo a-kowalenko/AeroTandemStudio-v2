@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
+import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { cn } from "@/lib/utils";
 import type { UpdateInstallProgress } from "@/lib/tauri";
 import { compareVersionParts } from "@/lib/versionCompare";
@@ -218,9 +219,11 @@ export function UpdateDialog({
               </button>
               {notesOpen ? (
                 <div className="min-w-0 overflow-hidden border-l border-border/70 pl-3">
-                  <pre className="max-h-48 max-w-full overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-xs leading-relaxed text-muted">
-                    {notes?.trim() || t("dialogs.update.noNotes")}
-                  </pre>
+                  <ReleaseNotes
+                    markdown={notes?.trim() ?? ""}
+                    emptyLabel={t("dialogs.update.noNotes")}
+                    className="max-h-52 max-w-full"
+                  />
                 </div>
               ) : null}
             </div>

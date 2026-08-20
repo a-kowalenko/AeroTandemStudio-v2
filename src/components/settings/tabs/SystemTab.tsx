@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { cleanupCache, clearWorkingSession } from "@/lib/tauri";
 import type { AvailableRelease } from "@/lib/tauri";
 import { useUiStore } from "@/store/uiStore";
@@ -220,7 +221,7 @@ export function SystemTab({
           ) : null}
         </div>
 
-        {selectedRelease && selectedRelation !== "same" ? (
+        {selectedRelease ? (
           <div className="space-y-1 rounded-md border border-border/50 bg-card/40 p-3">
             <p className="text-sm font-medium">
               {t("settings.system.update.versionHeading", {
@@ -232,9 +233,11 @@ export function SystemTab({
                 {formatReleaseDate(selectedRelease.published_at)}
               </p>
             ) : null}
-            <pre className="max-h-28 overflow-y-auto whitespace-pre-wrap text-xs text-muted">
-              {selectedRelease.body || t("settings.system.update.noNotes")}
-            </pre>
+            <ReleaseNotes
+              markdown={selectedRelease.body}
+              emptyLabel={t("settings.system.update.noNotes")}
+              className="max-h-40"
+            />
           </div>
         ) : null}
       </SettingsSection>
