@@ -1,7 +1,7 @@
 /**
  * Staggered photo-thumbnail queue (OPT-11 + EXIF-fast):
- * - LQ strip/warm may run during Auto-QR (cheap EXIF thumbs).
- * - Heavy qualities (preview / stageUpgrade) stay paused while `qrScanBusy`.
+ * - LQ/HQ strip/grid may run during Auto-QR (cheap EXIF thumbs; HQ = larger EXIF resize).
+ * - Heavy qualities (`preview`) stay paused while `qrScanBusy`.
  * - Optional short prefetch of the visible window before QR starts.
  */
 
@@ -11,8 +11,10 @@ import { useQrScanStore } from "../store/qrScanStore";
 export const PHOTO_THUMB_PRIORITY = {
   /** Emergency / explicit boost — runs even while QR is busy */
   active: 100,
-  /** Strip tile in (or near) viewport */
+  /** Strip/grid tile in (or near) viewport — LQ first paint */
   visible: 60,
+  /** Visible-tile HQ upgrade after LQ (still EXIF-fast, below LQ) */
+  hqUpgrade: 45,
   /** Main-stage preview upgrade (after strip visible; file src already shown) */
   stageUpgrade: 35,
   /** Background warm after import / after QR */
@@ -23,7 +25,7 @@ export type PhotoThumbPriority =
   (typeof PHOTO_THUMB_PRIORITY)[keyof typeof PHOTO_THUMB_PRIORITY];
 
 const CONCURRENCY = 4;
-/** Leave headroom for QR JPEG decode while strip LQ runs in parallel. */
+/** Leave headroom for QR JPEG decode while strip LQ/HQ runs in parallel. */
 const CONCURRENCY_DURING_QR = 2;
 const POST_IMPORT_DELAY_MS = 100;
 const POST_QR_DELAY_MS = 0;
@@ -31,6 +33,8 @@ const POST_QR_DELAY_MS = 0;
 export const PHOTO_THUMB_WARM_WINDOW = 12;
 /** Brief wait before Auto-QR so the strip can paint EXIF thumbs first. */
 export const PHOTO_THUMB_PREFETCH_BEFORE_QR_MS = 250;
+/** Delay before LQ→HQ upgrade on a settled visible tile (matches SD loader idea). */
+export const PHOTO_THUMB_HQ_DELAY_MS = 350;
 
 type Waiter = {
   resolve: (url: string) => void;
@@ -86,7 +90,7 @@ class PhotoThumbnailQueue {
   }
 
   /**
-   * During QR: keep LQ flowing; block heavy non-LQ work.
+   * During QR: keep EXIF-fast LQ/HQ flowing; block heavy preview work.
    * On unpause: flush any deferred warm and pump preview upgrades.
    */
   setQrBusy(busy: boolean) {
@@ -262,8 +266,8 @@ class PhotoThumbnailQueue {
 
   private canStart(item: QueueItem): boolean {
     if (!this.pausedForQr) return true;
-    // EXIF-fast strip thumbs may run alongside QR.
-    if (item.quality === "lq") return true;
+    // EXIF-fast strip/grid thumbs may run alongside QR (LQ + HQ resize of embedded).
+    if (item.quality === "lq" || item.quality === "hq") return true;
     return item.priority >= PHOTO_THUMB_PRIORITY.active;
   }
 
@@ -312,7 +316,7 @@ class PhotoThumbnailQueue {
 
 export const photoThumbnailQueue = new PhotoThumbnailQueue();
 
-/** Heavy thumbs pause during QR; LQ strip continues (EXIF-fast). */
+/** Heavy `preview` thumbs pause during QR; LQ/HQ EXIF strip continues. */
 if (typeof window !== "undefined") {
   let wasBusy = useQrScanStore.getState().busy;
   photoThumbnailQueue.setQrBusy(wasBusy);

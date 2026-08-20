@@ -12,7 +12,6 @@ import {
   ChevronRight,
   ImageIcon,
   LayoutGrid,
-  Loader2,
   Rows3,
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -327,18 +326,6 @@ export function PhotoPreview({
                       alt={current?.filename ?? t("common.labels.photo")}
                       className="h-full w-full object-contain"
                     />
-                    {!previewSrc && qrScanBusy && (
-                      <div
-                        className="pointer-events-none absolute bottom-2 left-1/2 flex max-w-[90%] -translate-x-1/2 items-center gap-1.5 rounded-md bg-black/50 px-2.5 py-1 text-[11px] text-white/90 backdrop-blur-sm"
-                        role="status"
-                      >
-                        <Loader2
-                          className="h-3 w-3 shrink-0 animate-spin opacity-80"
-                          aria-hidden
-                        />
-                        <span>{t("photo.preview.loadingQr")}</span>
-                      </div>
-                    )}
                     {photoList.length > 1 && (
                       <>
                         <button

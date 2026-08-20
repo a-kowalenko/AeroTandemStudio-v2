@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Loader2 } from "lucide-react";
-import { PHOTO_THUMB_PRIORITY } from "../../lib/photoThumbnailQueue";
+import {
+  PHOTO_THUMB_HQ_DELAY_MS,
+  PHOTO_THUMB_PRIORITY,
+  photoThumbnailQueue,
+} from "../../lib/photoThumbnailQueue";
 import { QrScanRowBar } from "../../hooks/useQrScanProgress";
 import { cn } from "../../lib/utils";
 import { usePhotoThumbnailSrc } from "./usePhotoThumbnailSrc";
@@ -51,6 +55,7 @@ export function PhotoThumbTile({
 }: PhotoThumbTileProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [inView, setInView] = useState(forceLoad);
+  const [hqReady, setHqReady] = useState(false);
 
   useEffect(() => {
     if (forceLoad) {
@@ -117,12 +122,39 @@ export function PhotoThumbTile({
   }, [scrollRootRef, path, forceLoad]);
 
   const loading = forceLoad || isCurrent || inView;
-  const stripPriority = loading
+
+  // Progressive LQ → HQ (EXIF resize only; no full-res / preview for tiles).
+  useEffect(() => {
+    if (!loading) {
+      setHqReady(false);
+      return;
+    }
+    if (photoThumbnailQueue.getCached(path, "hq", revision)) {
+      setHqReady(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setHqReady(true), PHOTO_THUMB_HQ_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [loading, path, revision]);
+
+  const lqPriority = loading
     ? PHOTO_THUMB_PRIORITY.visible
     : PHOTO_THUMB_PRIORITY.warm;
-  const thumbSrc = usePhotoThumbnailSrc(path, "lq", revision, stripPriority, {
+  const lqSrc = usePhotoThumbnailSrc(path, "lq", revision, lqPriority, {
     enabled: loading,
+    fallbackToFile: false,
   });
+  const hqSrc = usePhotoThumbnailSrc(
+    path,
+    "hq",
+    revision,
+    PHOTO_THUMB_PRIORITY.hqUpgrade,
+    {
+      enabled: loading && hqReady,
+      fallbackToFile: false,
+    },
+  );
+  const thumbSrc = hqSrc ?? lqSrc;
 
   return (
     <button

@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import {
-  Loader2,
   Pencil,
   QrCode,
   RotateCcw,
@@ -110,18 +109,8 @@ export function PhotoDetailPanel({
               alt={current.filename}
               className="h-full w-full object-contain"
             />
-            {!previewSrc && qrScanBusy && (
-              <div
-                className="pointer-events-none absolute bottom-1.5 left-1/2 flex max-w-[90%] -translate-x-1/2 items-center gap-1 rounded bg-black/50 px-2 py-0.5 text-[10px] text-white/90"
-                role="status"
-              >
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin opacity-80" aria-hidden />
-                <span>{t("photo.preview.loadingQr")}</span>
-              </div>
-            )}
           </div>
         )}
-
         {current ? (
           <dl className="space-y-1 text-xs text-muted">
             <div>

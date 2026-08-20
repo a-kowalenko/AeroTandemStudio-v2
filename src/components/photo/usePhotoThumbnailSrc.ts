@@ -17,9 +17,14 @@ export function usePhotoThumbnailSrc(
   quality: ThumbQuality,
   revision: number,
   priority: number,
-  opts?: { enabled?: boolean },
+  opts?: {
+    enabled?: boolean;
+    /** When false, failed/missing thumbs stay null (tiles). Default true for stage. */
+    fallbackToFile?: boolean;
+  },
 ): string | null {
   const enabled = opts?.enabled !== false;
+  const fallbackToFile = opts?.fallbackToFile !== false;
   const [url, setUrl] = useState<string | null>(() =>
     path && enabled
       ? photoThumbnailQueue.getCached(path, quality, revision)
@@ -46,16 +51,19 @@ export function usePhotoThumbnailSrc(
     void photoThumbnailQueue
       .request(path, quality, priority, revision)
       .then((displayUrl) => {
-        if (!cancelled) setUrl(displayUrl || photoFileSrcFallback(path, revision));
+        if (cancelled) return;
+        if (displayUrl) setUrl(displayUrl);
+        else if (fallbackToFile) setUrl(photoFileSrcFallback(path, revision));
       })
       .catch(() => {
-        if (!cancelled) setUrl(photoFileSrcFallback(path, revision));
+        if (cancelled) return;
+        if (fallbackToFile) setUrl(photoFileSrcFallback(path, revision));
       });
 
     return () => {
       cancelled = true;
     };
-  }, [path, quality, revision, priority, enabled]);
+  }, [path, quality, revision, priority, enabled, fallbackToFile]);
 
   return url;
 }
