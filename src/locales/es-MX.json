@@ -629,6 +629,7 @@
       "loadAppInfo": "Cargando info de la app…",
       "loadSettings": "Cargando configuración…",
       "checkFfmpeg": "Comprobando FFmpeg y hardware…",
+      "clearCache": "Limpiando caché…",
       "ready": "¡Listo!",
       "startWithErrors": "Inicio con errores",
       "ffmpegMissing": "No se encontró FFmpeg. La codificación no está disponible."

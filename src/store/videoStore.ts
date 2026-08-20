@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { VideoMetadata } from "../lib/tauri";
 import { tr } from "@/i18n";
-import { deleteWorkingCopy, importVideos, probeVideo } from "../lib/tauri";
+import { deleteWorkingCopy, deleteWorkingCopies, importVideos, probeVideo } from "../lib/tauri";
 import { previewThumbnailQueue } from "../lib/thumbnailQueue";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
@@ -39,7 +39,7 @@ type VideoListState = {
     restored: VideoMetadata,
   ) => void;
   refreshVideo: (path: string) => Promise<void>;
-  clearVideos: () => void;
+  clearVideos: (opts?: { deleteFiles?: boolean }) => void;
   clearError: () => void;
   setWatermarkClipIndex: (index: number | null) => void;
   toggleWatermarkClip: (index: number) => void;
@@ -245,7 +245,8 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     }
   },
 
-  clearVideos: () => {
+  clearVideos: (opts) => {
+    const deleteFiles = opts?.deleteFiles !== false;
     const paths = get().videoList.map((v) => v.path);
     set({
       videoList: [],
@@ -255,8 +256,8 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       cutMarks: {},
       mediaRevision: {},
     });
-    for (const p of paths) {
-      void deleteWorkingCopy(p);
+    if (deleteFiles && paths.length > 0) {
+      void deleteWorkingCopies(paths);
     }
   },
 

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { tr } from "@/i18n";
 import {
   deleteWorkingCopy,
+  deleteWorkingCopies,
   discardPhotoEditUndoForPath,
   getFileSizes,
   importPhotos,
@@ -53,7 +54,7 @@ type PhotoListState = {
   setCurrentIndex: (index: number) => void;
   toggleSelect: (index: number, mode: "replace" | "toggle" | "range") => void;
   clearSelection: () => void;
-  clearPhotos: () => void;
+  clearPhotos: (opts?: { deleteFiles?: boolean }) => void;
   toggleWatermark: (index: number) => void;
   setWatermarkIndices: (indices: number[]) => void;
   clearWatermarkSelection: () => void;
@@ -241,7 +242,8 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
 
   clearSelection: () => set({ selected: new Set(), explicitlySelected: false }),
 
-  clearPhotos: () => {
+  clearPhotos: (opts) => {
+    const deleteFiles = opts?.deleteFiles !== false;
     const paths = get().photoList.map((p) => p.path);
     set({
       photoList: [],
@@ -253,8 +255,8 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       mediaRevision: {},
       importError: null,
     });
-    for (const p of paths) {
-      void deleteWorkingCopy(p);
+    if (deleteFiles && paths.length > 0) {
+      void deleteWorkingCopies(paths);
     }
   },
 

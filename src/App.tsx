@@ -37,6 +37,7 @@ import {
   discardVideoCutUndoForPath,
   clearWorkingSession,
   createJob,
+  cleanupCache,
   getAppInfo,
   getUpdaterInstallHint,
   cancelUpdateInstall,
@@ -1048,7 +1049,7 @@ function App() {
         }
 
         setSplashStatus(t("app.splash.checkFfmpeg"));
-        const checks = await runStartupChecks(true);
+        const checks = await runStartupChecks(false);
         if (cancelled) return;
 
         if (checks.hw) setHwInfo(checks.hw);
@@ -1064,6 +1065,15 @@ function App() {
         } else if (checks.media_warning) {
           showWarning(checks.media_warning, t("app.mediaPlayback.title"));
         }
+
+        setSplashStatus(t("app.splash.clearCache"));
+        try {
+          await cleanupCache({ orphans_only: true });
+        } catch (e) {
+          // Non-fatal — orphans can linger until next start / manual cleanup.
+          console.warn("startup cache sweep failed", e);
+        }
+        if (cancelled) return;
 
         setSplashStatus(t("app.splash.ready"));
         if (!cancelled) {
@@ -1493,8 +1503,8 @@ function App() {
 
       if (config?.auto_clear_files_after_creation) {
         videoCuts.clearUndoState();
-        clearVideos();
-        clearPhotos();
+        clearVideos({ deleteFiles: false });
+        clearPhotos({ deleteFiles: false });
         clearPreviewCache();
         void clearWorkingSession();
         resetSession({
@@ -1578,8 +1588,8 @@ function App() {
     if (!ok) return;
     clearSdQueue();
     videoCuts.clearUndoState();
-    clearVideos();
-    clearPhotos();
+    clearVideos({ deleteFiles: false });
+    clearPhotos({ deleteFiles: false });
     clearPreviewCache();
     void clearWorkingSession();
     resetSession({

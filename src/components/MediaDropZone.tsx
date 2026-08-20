@@ -824,8 +824,8 @@ export function MediaDropZone({
               size="sm"
               variant="secondary"
               onClick={() => {
-                clearVideos();
-                clearPhotos();
+                clearVideos({ deleteFiles: false });
+                clearPhotos({ deleteFiles: false });
                 void clearWorkingSession();
                 onSessionCleared?.();
                 setStatusMsg(null);

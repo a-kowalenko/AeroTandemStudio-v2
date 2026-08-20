@@ -575,6 +575,12 @@ export async function deleteWorkingCopy(path: string): Promise<boolean> {
   return invoke<boolean>("delete_working_copy", { path });
 }
 
+/** Batch-delete working copies (blocking pool; keeps UI responsive). */
+export async function deleteWorkingCopies(paths: string[]): Promise<number> {
+  if (paths.length === 0) return 0;
+  return invoke<number>("delete_working_copies", { paths });
+}
+
 /** Loopback HTTP URL for HTML5 video playback (Range-capable). */
 export async function mediaFileUrl(path: string): Promise<string> {
   return invoke<string>("media_file_url", { path });

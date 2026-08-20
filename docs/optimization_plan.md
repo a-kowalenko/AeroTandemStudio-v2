@@ -42,7 +42,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-0 | Performance-Baseline | — | S | — | — |
 | OPT-1 | Foto-Preview: Thumbnails statt Full-Res | hoch | S | niedrig | — |
 | OPT-10 | Thumbnail-Warming nach Import staffeln | mittel | S | niedrig | — |
-| OPT-8 | Startup: Cache-Sweep defer | mittel | S | niedrig | — |
+| OPT-8 | Startup: Cache-Sweep im Splash | mittel | S | niedrig | — |
 | OPT-2 | Import: paralleles ffprobe + Copy/Probe-Pipeline | hoch | M | mittel | — |
 | OPT-3 | Copy-Buffer & optional Hardlink/CoW-Import | hoch | M | mittel | — |
 | OPT-7 | Filmstrip/Keyframe-Prefetch | mittel | S | niedrig | — |
@@ -508,33 +508,37 @@ Nur OPT-7. Danach npm run tauri dev.
 
 ---
 
-### OPT-8: Startup — Cache-Sweep defer
+### OPT-8: Startup — Cache-Sweep im Splash (sichtbar)
 
-**Ziel:** Splash/Time-to-Interactive verkürzen; Cache-Bereinigung nicht im kritischen Pfad blockieren.
+**Ziel:** Kein UI-Freeze nach Ready; Orphan-Sweep mit Splash-Status „Bereinige Cache…“, erst danach Ready.
 
-**Impact:** mittel (v. a. viele orphan `aero_studio_preview_*`)  
+**Impact:** mittel (v. a. viele/große orphan `aero_studio_preview_*`)  
 **Aufwand:** S  
 **Risiko:** niedrig  
 **Abhängigkeiten:** keine
 
 #### Kontext
 
-- `run_startup_checks` → `cleanup_orphans_only` synchron im Splash (`commands/app.rs`, `App.tsx` boot)
-- 350 ms künstliche Pause nach Ready
+- Früher: Sync-Sweep im Splash (gut) → OPT-8 Background nach Ready (UI freezte durch Disk-I/O)
+- Aktuell: `run_startup_checks(false)` + explizites `cleanup_cache(orphans_only)` im Splash mit Status-Text
+- Reset/Clear: UI sofort leeren; ein `clear_working_session` / Batch-`delete_working_copies` (spawn_blocking)
 
 #### Betroffene Dateien
 
 - `src-tauri/src/commands/app.rs`
+- `src-tauri/src/commands/media.rs`
 - `src/App.tsx` (Splash-Flow)
+- `src/store/videoStore.ts` / `photoStore.ts`
 - `src-tauri/src/storage/cache.rs`
 
 #### Scope
 
 **In scope:**
 
-- [x] Cache-Sweep asynchron nach UI-ready starten (spawn_blocking / Hintergrund-Thread)
-- [x] Splash zeigt Ready sobald FFmpeg + Config OK (Sweep optional „im Hintergrund“ loggen)
-- [x] Fehler beim Sweep nur loggen, Startup nicht blockieren
+- [x] Splash zeigt „Bereinige Cache…“ und wartet auf Orphan-Sweep vor Ready
+- [x] Reset / Alle leeren: kein N× sync `delete_working_copy` + doppeltes Folder-Delete
+- [x] Tab-Leeren: ein Batch-Delete auf Blocking-Pool
+- [x] Fehler beim Sweep nur loggen, Startup nicht abbrechen
 
 **Out of scope:**
 
@@ -543,16 +547,17 @@ Nur OPT-7. Danach npm run tauri dev.
 
 #### Akzeptanzkriterien
 
-- [ ] Time-to-Interactive messbar kürzer vs. OPT-0-Baseline
-- [ ] Orphans werden weiterhin bereinigt (Log-Eintrag)
+- [ ] Nach Splash ist UI sofort bedienbar (Hover/Klicks)
+- [ ] Orphans werden weiterhin bereinigt (Log / Splash-Status)
+- [ ] Reset / Videos·Fotos leeren ohne spürbaren Main-Thread-Freeze
 - [ ] `cargo test` grün
 
 #### Agent-Prompt
 
 ```
-Implementiere OPT-8 aus @docs/optimization_plan.md
+Implementiere OPT-8 UX-Fix (Splash sync + Reset batch delete) aus @docs/optimization_plan.md
 Regeln: @AGENTS.md
-Nur OPT-8. Danach cargo test && npm run tauri dev.
+Danach cargo test && npm run tauri dev.
 ```
 
 ---

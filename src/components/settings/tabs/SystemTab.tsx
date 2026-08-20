@@ -100,8 +100,8 @@ export function SystemTab({
             setCleaningCache(true);
             try {
               const importSnapshot = [...videoPaths, ...photoPaths];
-              clearVideos();
-              clearPhotos();
+              clearVideos({ deleteFiles: false });
+              clearPhotos({ deleteFiles: false });
               await clearWorkingSession();
               const result = await cleanupCache({
                 speicherort: draft.speicherort || null,

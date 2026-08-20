@@ -128,7 +128,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 | OPT-5 | App.tsx Split + lazy | ✅ |
 | OPT-6 | Log-Konsole virtualisieren | ✅ |
 | OPT-7 | Filmstrip-Prefetch | ✅ |
-| OPT-8 | Startup Cache-Sweep defer | ✅ |
+| OPT-8 | Startup Cache-Sweep im Splash | ✅ |
 | OPT-9 | Stream-Copy / Preview-Reuse UX | ✅ |
 | OPT-10 | Thumbnail-Warming staffeln | ✅ |
 | OPT-11 | Foto-Import: QR vor Thumbs | ✅ |

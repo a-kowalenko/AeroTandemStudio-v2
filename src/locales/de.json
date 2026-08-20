@@ -629,6 +629,7 @@
       "loadAppInfo": "Lade App-Info…",
       "loadSettings": "Lade Einstellungen…",
       "checkFfmpeg": "Prüfe FFmpeg & Hardware…",
+      "clearCache": "Bereinige Cache…",
       "ready": "Bereit!",
       "startWithErrors": "Start mit Fehlern",
       "ffmpegMissing": "FFmpeg wurde nicht gefunden. Encoding ist nicht verfügbar."

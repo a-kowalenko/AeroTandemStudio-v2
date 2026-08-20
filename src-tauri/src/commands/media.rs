@@ -237,17 +237,22 @@ pub fn get_working_dir() -> Option<String> {
 }
 
 /// Delete the session working folder (imported copies). Safe no-op if none.
+/// Runs on a blocking pool so heavy `remove_dir_all` does not stall the UI thread.
 #[tauri::command]
-pub fn clear_working_session() {
-    if let Some(dir) = working_session::get_working_dir() {
-        logging::info(
-            "import",
-            format!("Lösche Arbeitsordner: {}", dir.display()),
-        );
-    } else {
-        logging::info("import", "Kein Arbeitsordner zum Löschen");
-    }
-    working_session::clear_working_session();
+pub async fn clear_working_session() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        if let Some(dir) = working_session::get_working_dir() {
+            logging::info(
+                "import",
+                format!("Lösche Arbeitsordner: {}", dir.display()),
+            );
+        } else {
+            logging::info("import", "Kein Arbeitsordner zum Löschen");
+        }
+        working_session::clear_working_session();
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Delete a single file if it belongs to the session working folder.
@@ -268,6 +273,29 @@ pub fn delete_working_copy(path: String) -> bool {
         );
     }
     ok
+}
+
+/// Batch-delete working copies on a blocking pool (clear list / clear tab).
+#[tauri::command]
+pub async fn delete_working_copies(paths: Vec<String>) -> Result<usize, String> {
+    if paths.is_empty() {
+        return Ok(0);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut deleted = 0usize;
+        for path in paths {
+            let trimmed = path.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if working_session::delete_working_copy(trimmed) {
+                deleted += 1;
+            }
+        }
+        deleted
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Base URL of the loopback media HTTP server (`http://127.0.0.1:<port>`).
