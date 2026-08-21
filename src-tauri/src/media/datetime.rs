@@ -470,16 +470,37 @@ pub fn sort_paths_by_photo_capture_time(paths: &mut [String]) {
 /// Resolve capture instant once per existing file, sort by epoch (then path).
 /// Prefer this for batch import so rename can reuse the same instant.
 pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCaptureInstant)> {
-    let mut keyed: Vec<(String, PhotoCaptureInstant)> = sources
+    photos_sorted_by_capture_time_with_progress(sources, |_, _, _| {})
+}
+
+/// Like [`photos_sorted_by_capture_time`], reporting resolve progress.
+///
+/// `on_progress(done_1based, total, file_name)` is called after each EXIF/mtime resolve
+/// (before the final sort). Callers should throttle UI emits.
+pub fn photos_sorted_by_capture_time_with_progress<F>(
+    sources: &[String],
+    mut on_progress: F,
+) -> Vec<(String, PhotoCaptureInstant)>
+where
+    F: FnMut(u64, u64, &str),
+{
+    let files: Vec<String> = sources
         .iter()
         .filter(|p| Path::new(p).is_file())
-        .map(|p| {
-            (
-                p.clone(),
-                resolve_photo_capture_instant(Path::new(p)),
-            )
-        })
+        .cloned()
         .collect();
+    let total = files.len() as u64;
+    let mut keyed: Vec<(String, PhotoCaptureInstant)> = Vec::with_capacity(files.len());
+    for (i, path) in files.into_iter().enumerate() {
+        let done = (i as u64) + 1;
+        let name = path
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(path.as_str());
+        on_progress(done, total, name);
+        let instant = resolve_photo_capture_instant(Path::new(&path));
+        keyed.push((path, instant));
+    }
     keyed.sort_by(|a, b| {
         a.1.epoch
             .partial_cmp(&b.1.epoch)

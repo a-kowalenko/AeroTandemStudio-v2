@@ -15,7 +15,7 @@ use once_cell::sync::Lazy;
 
 use crate::media::datetime::{
     build_chrono_photo_filename_sequenced, build_chrono_photo_filename_sequenced_with_instant,
-    collect_used_filenames_in, photos_sorted_by_capture_time,
+    collect_used_filenames_in, photos_sorted_by_capture_time_with_progress,
 };
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::file_link;
@@ -192,24 +192,29 @@ impl WorkingSession {
         &mut self,
         sources: &[String],
     ) -> Result<Vec<PathBuf>, WorkingSessionError> {
-        self.import_photos_by_capture_time_with_progress(sources, |_, _, _| {})
+        self.import_photos_by_capture_time_with_progress(sources, |_, _, _| {}, |_, _, _| {})
     }
 
-    /// Like [`Self::import_photos_by_capture_time`], reporting copy progress.
+    /// Like [`Self::import_photos_by_capture_time`], reporting sort + copy progress.
     ///
-    /// `on_progress(file_index_1based, file_name, delta_bytes)` — `delta_bytes` is 0 at
+    /// `on_sort(done_1based, total, file_name)` during EXIF resolve.
+    /// `on_copy(file_index_1based, file_name, delta_bytes)` — `delta_bytes` is 0 at
     /// file start; when a source is already under the working folder, one call reports
     /// the full file size so overall byte progress stays consistent.
-    pub fn import_photos_by_capture_time_with_progress<F>(
+    pub fn import_photos_by_capture_time_with_progress<S, F>(
         &mut self,
         sources: &[String],
+        mut on_sort: S,
         mut on_progress: F,
     ) -> Result<Vec<PathBuf>, WorkingSessionError>
     where
+        S: FnMut(u64, u64, &str),
         F: FnMut(u64, &str, u64),
     {
         // One EXIF/mtime resolve per file for sort + rename (not O(n log n) opens).
-        let sorted = photos_sorted_by_capture_time(sources);
+        let sorted = photos_sorted_by_capture_time_with_progress(sources, |done, total, name| {
+            on_sort(done, total, name);
+        });
 
         let root = self.ensure_dir()?;
         let photos = root.join("photos");
@@ -491,21 +496,24 @@ pub fn import_videos_to_session(paths: &[String]) -> Result<Vec<String>, Working
 
 /// Import photos sorted by EXIF capture time; returns paths sorted by new filename.
 pub fn import_photos_to_session(paths: &[String]) -> Result<Vec<String>, WorkingSessionError> {
-    import_photos_to_session_with_progress(paths, |_, _, _| {})
+    import_photos_to_session_with_progress(paths, |_, _, _| {}, |_, _, _| {})
 }
 
-/// Like [`import_photos_to_session`], reporting copy progress.
+/// Like [`import_photos_to_session`], reporting sort + copy progress.
 ///
-/// Callback: `(file_index_1based, file_name, delta_bytes)`.
-pub fn import_photos_to_session_with_progress<F>(
+/// `on_sort(done_1based, total, file_name)` during EXIF resolve.
+/// `on_copy(file_index_1based, file_name, delta_bytes)` during hardlink/copy.
+pub fn import_photos_to_session_with_progress<S, F>(
     paths: &[String],
+    on_sort: S,
     on_progress: F,
 ) -> Result<Vec<String>, WorkingSessionError>
 where
+    S: FnMut(u64, u64, &str),
     F: FnMut(u64, &str, u64),
 {
     with_session(|s| {
-        let dests = s.import_photos_by_capture_time_with_progress(paths, on_progress)?;
+        let dests = s.import_photos_by_capture_time_with_progress(paths, on_sort, on_progress)?;
         Ok(dests
             .into_iter()
             .map(|p| p.to_string_lossy().into_owned())
