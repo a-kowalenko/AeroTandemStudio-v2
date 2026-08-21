@@ -738,7 +738,11 @@
     "media": {
       "kindAria": "Medienart",
       "clearVideos": "Videos leeren",
-      "clearPhotos": "Fotos leeren"
+      "clearPhotos": "Fotos leeren",
+      "clearingVideos": "Leeren…",
+      "clearingPhotos": "Leeren…",
+      "clearedVideos": "Videos geleert",
+      "clearedPhotos": "Fotos geleert"
     },
     "intro": {
       "decisionTitle": "Intro-Entscheidung",
@@ -760,7 +764,9 @@
     "session": {
       "resetBlocked": "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
       "resetConfirm": "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
-      "resetDone": "Session zurückgesetzt."
+      "resetDone": "Session zurückgesetzt.",
+      "resetting": "Zurücksetzen…",
+      "resetFlash": "Zurückgesetzt"
     },
     "server": {
       "title": "Server"
@@ -872,6 +878,8 @@
       "pickFiles": "Dateien wählen…",
       "pickFolder": "Ordner wählen…",
       "clearAll": "Alles leeren",
+      "clearingAll": "Leeren…",
+      "clearedAll": "Geleert",
       "qrScanTitle": "QR-Scan",
       "autoQrTitle": "Auto-QR",
       "importTitle": "Import"

@@ -8,10 +8,12 @@ import {
   useState,
 } from "react";
 import {
+  Check,
   Film,
   FolderOpen,
   ImageIcon,
   Images,
+  Loader2,
   QrCode,
   ScanSearch,
   Trash2,
@@ -61,6 +63,7 @@ import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { cn } from "@/lib/utils";
 import { CREATE_READY_IDS } from "@/lib/createReadyHints";
+import { useButtonActionPhase } from "@/hooks/useTimedFlash";
 
 export type MediaImportSummary = {
   videosAdded: number;
@@ -82,6 +85,7 @@ export function MediaDropZone({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
+  const { phase: clearPhase, run: runClearAll } = useButtonActionPhase();
   const videoList = useVideoStore((s) => s.videoList);
   const importing = useVideoStore((s) => s.importing);
   const photoImporting = usePhotoStore((s) => s.importing);
@@ -823,17 +827,36 @@ export function MediaDropZone({
               type="button"
               size="sm"
               variant="secondary"
+              className={cn(
+                clearPhase === "done" &&
+                  "border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success",
+                clearPhase === "loading" && "border-border text-muted",
+              )}
               onClick={() => {
-                clearVideos({ deleteFiles: false });
-                clearPhotos({ deleteFiles: false });
-                void clearWorkingSession();
-                onSessionCleared?.();
-                setStatusMsg(null);
+                void runClearAll(async () => {
+                  clearVideos({ deleteFiles: false });
+                  clearPhotos({ deleteFiles: false });
+                  await clearWorkingSession();
+                  onSessionCleared?.();
+                  setStatusMsg(null);
+                  return true;
+                });
               }}
-              disabled={busy || totalCount === 0}
+              disabled={busy || clearPhase !== "idle" || totalCount === 0}
+              aria-busy={clearPhase === "loading"}
             >
-              <Trash2 className="h-3.5 w-3.5" />
-              {t("media.drop.clearAll")}
+              {clearPhase === "loading" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : clearPhase === "done" ? (
+                <Check className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {clearPhase === "loading"
+                ? t("media.drop.clearingAll")
+                : clearPhase === "done"
+                  ? t("media.drop.clearedAll")
+                  : t("media.drop.clearAll")}
             </Button>
           </div>
           {busy && (

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { FolderClock, RotateCcw } from "lucide-react";
+import { Check, FolderClock, Loader2, RotateCcw } from "lucide-react";
 import { AppChrome } from "../chrome/AppChrome";
 import { ServerStatusIndicator } from "../ServerStatusIndicator";
 import { SdModeSelector } from "../SdModeSelector";
@@ -15,12 +15,14 @@ import { useVideoStore } from "../../store/videoStore";
 import { useUiStore } from "../../store/uiStore";
 import { useQrScanStore } from "../../store/qrScanStore";
 import { useCreateValidation } from "../../hooks/useCreateValidation";
+import { useButtonActionPhase } from "../../hooks/useTimedFlash";
 import type { HwAccelInfo } from "../../lib/tauri";
 import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import { CustomerSidebar } from "./CustomerSidebar";
 import { WorkflowLayout } from "./WorkflowLayout";
 import type { TaskProgressState } from "./types";
+import { cn } from "../../lib/utils";
 
 type VideoCuts = ReturnType<typeof useVideoCutApply>;
 type PhotoEdits = ReturnType<typeof usePhotoEditApply>;
@@ -51,7 +53,7 @@ export type AppShellProps = {
   onOpenSdDrive: (drive: string) => void;
   onSdPrimaryAction: (drive: string) => void;
   onOpenHistory: () => void;
-  onSessionReset: () => void;
+  onSessionReset: () => boolean | Promise<boolean>;
   onOpenSettings: () => void;
   onSessionCleared: () => void;
   videoCuts: VideoCuts;
@@ -122,6 +124,8 @@ export function AppShell({
     uiLocked,
   });
 
+  const { phase: resetPhase, run: runReset } = useButtonActionPhase();
+
   const hwLabel = hwInfo
     ? `${hwInfo.encoder}${hwInfo.available ? "" : t("app.chrome.softwareSuffix")}`
     : null;
@@ -156,13 +160,34 @@ export function AppShell({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={onSessionReset}
-              disabled={uiLocked || !ready}
+              onClick={() => {
+                void runReset(() => onSessionReset());
+              }}
+              disabled={uiLocked || !ready || resetPhase !== "idle"}
               title={t("app.chrome.resetTitle")}
-              className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive"
+              aria-busy={resetPhase === "loading"}
+              className={cn(
+                resetPhase === "done"
+                  ? "border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success"
+                  : resetPhase === "loading"
+                    ? "border-border bg-card text-muted"
+                    : "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+              )}
             >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t("common.actions.reset")}</span>
+              {resetPhase === "loading" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : resetPhase === "done" ? (
+                <Check className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+              )}
+              <span className="hidden sm:inline">
+                {resetPhase === "loading"
+                  ? t("app.session.resetting")
+                  : resetPhase === "done"
+                    ? t("app.session.resetFlash")
+                    : t("common.actions.reset")}
+              </span>
             </Button>
             <SettingsCluster
               disabled={!ready}

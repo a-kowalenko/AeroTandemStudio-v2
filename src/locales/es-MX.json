@@ -738,7 +738,11 @@
     "media": {
       "kindAria": "Tipo de medio",
       "clearVideos": "Vaciar videos",
-      "clearPhotos": "Vaciar fotos"
+      "clearPhotos": "Vaciar fotos",
+      "clearingVideos": "Vaciando…",
+      "clearingPhotos": "Vaciando…",
+      "clearedVideos": "Videos vaciados",
+      "clearedPhotos": "Fotos vaciadas"
     },
     "intro": {
       "decisionTitle": "Decisión de intro",
@@ -760,7 +764,9 @@
     "session": {
       "resetBlocked": "No se puede restablecer mientras hay un proceso en curso.",
       "resetConfirm": "¿Restablecer todo?\n\nSe descartarán el formulario y todos los videos y fotos importados.\nTandem master / video jumper se conservan según la configuración.",
-      "resetDone": "Sesión restablecida."
+      "resetDone": "Sesión restablecida.",
+      "resetting": "Restableciendo…",
+      "resetFlash": "Restablecido"
     },
     "server": {
       "title": "Servidor"
@@ -872,6 +878,8 @@
       "pickFiles": "Elegir archivos…",
       "pickFolder": "Elegir carpeta…",
       "clearAll": "Vaciar todo",
+      "clearingAll": "Vaciando…",
+      "clearedAll": "Vaciado",
       "qrScanTitle": "Escaneo QR",
       "autoQrTitle": "QR automático",
       "importTitle": "Importar"

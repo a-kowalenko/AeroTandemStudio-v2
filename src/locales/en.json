@@ -738,7 +738,11 @@
     "media": {
       "kindAria": "Media type",
       "clearVideos": "Clear videos",
-      "clearPhotos": "Clear photos"
+      "clearPhotos": "Clear photos",
+      "clearingVideos": "Clearing…",
+      "clearingPhotos": "Clearing…",
+      "clearedVideos": "Videos cleared",
+      "clearedPhotos": "Photos cleared"
     },
     "intro": {
       "decisionTitle": "Intro decision",
@@ -760,7 +764,9 @@
     "session": {
       "resetBlocked": "Reset is not possible while processing is running.",
       "resetConfirm": "Reset everything?\n\nThe form and all imported videos and photos will be discarded.\nTandem master / video jumper are kept according to settings.",
-      "resetDone": "Session reset."
+      "resetDone": "Session reset.",
+      "resetting": "Resetting…",
+      "resetFlash": "Reset done"
     },
     "server": {
       "title": "Server"
@@ -872,6 +878,8 @@
       "pickFiles": "Choose files…",
       "pickFolder": "Choose folder…",
       "clearAll": "Clear all",
+      "clearingAll": "Clearing…",
+      "clearedAll": "Cleared",
       "qrScanTitle": "QR scan",
       "autoQrTitle": "Auto-QR",
       "importTitle": "Import"

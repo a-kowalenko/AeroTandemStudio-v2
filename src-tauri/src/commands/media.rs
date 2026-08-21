@@ -185,6 +185,30 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             ),
         );
         let n = photo_paths.len() as u64;
+
+        let mut last_probe = Instant::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap_or_else(Instant::now);
+        let emit_probe = |done: u64,
+                          total: u64,
+                          file_name: &str,
+                          label: &str,
+                          force: bool,
+                          last: &mut Instant| {
+            if !force && last.elapsed() < Duration::from_millis(150) {
+                return;
+            }
+            let _ = app_progress.emit(
+                EVENT_WORKFLOW_PROGRESS,
+                workflow_progress_import_probe(done, total, file_name, label),
+            );
+            *last = Instant::now();
+        };
+
+        // Reset bar immediately (before total_bytes scan) so a finished video import
+        // at ~100% is not shown under the "Sortiere Fotos…" label.
+        emit_probe(0, n, "", "Sortiere Fotos…", true, &mut last_probe);
+
         let total_bytes: u64 = photo_paths
             .iter()
             .map(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
@@ -225,26 +249,6 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             *last = Instant::now();
         };
 
-        let mut last_probe = Instant::now()
-            .checked_sub(Duration::from_secs(1))
-            .unwrap_or_else(Instant::now);
-        let emit_probe = |done: u64,
-                          total: u64,
-                          file_name: &str,
-                          label: &str,
-                          force: bool,
-                          last: &mut Instant| {
-            if !force && last.elapsed() < Duration::from_millis(150) {
-                return;
-            }
-            let _ = app_progress.emit(
-                EVENT_WORKFLOW_PROGRESS,
-                workflow_progress_import_probe(done, total, file_name, label),
-            );
-            *last = Instant::now();
-        };
-
-        emit_probe(0, n, "", "Sortiere Fotos…", true, &mut last_probe);
         // Sort by EXIF capture time, rename with sequence, return filename order.
         // Confirm-dialog order is intentionally ignored.
         // Progress: throttle sort/copy emits (~150ms) so large batches do not freeze the UI.
@@ -263,8 +267,8 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
             },
         )
         .map_err(|e| e.to_string())?;
-        emit_probe(n, n, "", "Sortiere Fotos…", true, &mut last_probe);
-        emit_copy(copied_bytes, n, "", true, &mut last_emit);
+        // Start copy at 0% — do not flash sort as 100% (n/n) before the copy phase.
+        emit_copy(copied_bytes, 0, "", true, &mut last_emit);
 
         emit_probe(0, n, "", "Lese Foto-Metadaten…", true, &mut last_probe);
         let out = photo_metadata_batch(&dest, |done, total, name| {

@@ -76,6 +76,7 @@ import {
   showSdEjectToast,
 } from "./lib/sdEjectToast";
 import { showSdQueueDroppedToast } from "./lib/sdQueueToast";
+import { showSessionResetToast } from "./lib/sessionResetToast";
 import {
   pathsAddedSince,
   runAutoQrAfterImport,
@@ -1574,24 +1575,20 @@ function App() {
     }
   }
 
-  function handleSessionReset() {
+  async function handleSessionReset(): Promise<boolean> {
     if (busy || appendActive || loading || sdWorkflowUiActive || qrScanBusy) {
       showWarning(
         t("app.session.resetBlocked"),
         t("common.actions.reset"),
       );
-      return;
+      return false;
     }
-    const ok = window.confirm(
-      t("app.session.resetConfirm"),
-    );
-    if (!ok) return;
     clearSdQueue();
     videoCuts.clearUndoState();
     clearVideos({ deleteFiles: false });
     clearPhotos({ deleteFiles: false });
     clearPreviewCache();
-    void clearWorkingSession();
+    await clearWorkingSession();
     resetSession({
       tandemmaster: config?.keep_tandemmaster_on_session_reset,
       videospringer: config?.keep_videospringer_on_session_reset,
@@ -1599,9 +1596,11 @@ function App() {
       videospringerFixed: config?.videospringer,
     });
     clearCreateReadyPulse();
-    showSuccess(t("app.session.resetDone"), t("common.actions.reset"), {
-      autoCloseSecs: 5,
-    });
+    showSessionResetToast(
+      t("common.actions.reset"),
+      t("app.session.resetDone"),
+    );
+    return true;
   }
 
   return (

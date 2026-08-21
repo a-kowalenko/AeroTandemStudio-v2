@@ -475,8 +475,8 @@ pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCa
 
 /// Like [`photos_sorted_by_capture_time`], reporting resolve progress.
 ///
-/// `on_progress(done_1based, total, file_name)` is called after each EXIF/mtime resolve
-/// (before the final sort). Callers should throttle UI emits.
+/// `on_progress(done_1based, total, file_name)` is called **after** each EXIF/mtime
+/// resolve (before the final sort). Callers should throttle UI emits.
 pub fn photos_sorted_by_capture_time_with_progress<F>(
     sources: &[String],
     mut on_progress: F,
@@ -496,9 +496,10 @@ where
         let name = path
             .rsplit(['/', '\\'])
             .next()
-            .unwrap_or(path.as_str());
-        on_progress(done, total, name);
+            .unwrap_or(path.as_str())
+            .to_string();
         let instant = resolve_photo_capture_instant(Path::new(&path));
+        on_progress(done, total, &name);
         keyed.push((path, instant));
     }
     keyed.sort_by(|a, b| {

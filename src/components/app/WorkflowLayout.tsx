@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Film, ImageIcon } from "lucide-react";
+import { Check, Film, ImageIcon, Loader2 } from "lucide-react";
 import { MediaDropZone } from "../MediaDropZone";
 import { MediaListPanel } from "../MediaListPanel";
 import { VideoPreview } from "../VideoPreview";
@@ -15,8 +15,9 @@ import { useSdStore } from "../../store/sdStore";
 import { useQrScanStore } from "../../store/qrScanStore";
 import { useAppendStore } from "../../store/appendStore";
 import { useServerStore } from "../../store/serverStore";
-import { discardVideoCutUndoForPath } from "../../lib/tauri";
+import { deleteWorkingCopies, discardVideoCutUndoForPath } from "../../lib/tauri";
 import { useWorkflowProgress } from "../../hooks/useWorkflowProgress";
+import { useButtonActionPhaseKind } from "../../hooks/useTimedFlash";
 import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import type { useCreateValidation } from "../../hooks/useCreateValidation";
@@ -96,6 +97,13 @@ export function WorkflowLayout({
   const serverPhase = useServerStore((s) => s.phase);
 
   const { createReady, createHints } = createValidation;
+
+  const { phase: clearPhase, run: runClear } = useButtonActionPhaseKind<
+    "video" | "foto"
+  >();
+  const clearBusy = clearPhase?.kind === mediaTab;
+  const clearLoading = clearPhase?.kind === mediaTab && clearPhase.state === "loading";
+  const clearDone = clearPhase?.kind === mediaTab && clearPhase.state === "done";
 
   const uiLocked =
     busy ||
@@ -232,20 +240,68 @@ export function WorkflowLayout({
                   variant="secondary"
                   className={cn(
                     "text-xs",
-                    !(uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)) &&
-                      "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+                    clearDone
+                      ? "border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success"
+                      : clearLoading
+                        ? "border-border text-muted"
+                        : !(
+                            uiLocked ||
+                            (mediaTab === "video"
+                              ? videoList.length === 0
+                              : photoList.length === 0)
+                          ) &&
+                          "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
                   )}
-                  disabled={uiLocked || (mediaTab === "video" ? videoList.length === 0 : photoList.length === 0)}
+                  disabled={
+                    uiLocked ||
+                    clearBusy ||
+                    (mediaTab === "video"
+                      ? videoList.length === 0
+                      : photoList.length === 0)
+                  }
+                  aria-busy={clearLoading}
                   onClick={() => {
                     if (mediaTab === "video") {
-                      useVideoStore.getState().clearVideos();
-                      videoCuts.clearUndoState();
+                      void runClear("video", async () => {
+                        const paths = useVideoStore
+                          .getState()
+                          .videoList.map((v) => v.path);
+                        useVideoStore.getState().clearVideos({ deleteFiles: false });
+                        videoCuts.clearUndoState();
+                        if (paths.length > 0) await deleteWorkingCopies(paths);
+                        return true;
+                      });
                     } else {
-                      usePhotoStore.getState().clearPhotos();
+                      void runClear("foto", async () => {
+                        const paths = usePhotoStore
+                          .getState()
+                          .photoList.map((p) => p.path);
+                        usePhotoStore.getState().clearPhotos({ deleteFiles: false });
+                        if (paths.length > 0) await deleteWorkingCopies(paths);
+                        return true;
+                      });
                     }
                   }}
                 >
-                  {mediaTab === "video" ? t("app.media.clearVideos") : t("app.media.clearPhotos")}
+                  {clearLoading ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      {mediaTab === "video"
+                        ? t("app.media.clearingVideos")
+                        : t("app.media.clearingPhotos")}
+                    </span>
+                  ) : clearDone ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5" aria-hidden />
+                      {mediaTab === "video"
+                        ? t("app.media.clearedVideos")
+                        : t("app.media.clearedPhotos")}
+                    </span>
+                  ) : mediaTab === "video" ? (
+                    t("app.media.clearVideos")
+                  ) : (
+                    t("app.media.clearPhotos")
+                  )}
                 </Button>
               </div>
             </div>

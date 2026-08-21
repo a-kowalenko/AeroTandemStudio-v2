@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   QrClipScanPace,
@@ -57,6 +58,11 @@ function Bar({
   indeterminate?: boolean;
 }) {
   const clamped = Math.max(0, Math.min(100, percent));
+  const prevRef = useRef(clamped);
+  const drop = prevRef.current - clamped;
+  prevRef.current = clamped;
+  // Large drops (e.g. video 100% → sort 0%) must not ease from the old width.
+  const animateWidth = drop < 20;
   const gradient =
     tone === "primary"
       ? FAST_FILL
@@ -81,8 +87,12 @@ function Bar({
       <div
         className={
           tone === "primary"
-            ? "h-full rounded-full transition-[width] duration-300 ease-out"
-            : "h-full rounded-full opacity-90 transition-[width] duration-300 ease-out"
+            ? animateWidth
+              ? "h-full rounded-full transition-[width] duration-300 ease-out"
+              : "h-full rounded-full"
+            : animateWidth
+              ? "h-full rounded-full opacity-90 transition-[width] duration-300 ease-out"
+              : "h-full rounded-full opacity-90"
         }
         style={{
           width: `${clamped}%`,
