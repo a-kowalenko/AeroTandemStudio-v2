@@ -57,6 +57,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "Erstelle Wasserzeichen-Video…": "progress.rust.createWatermarkVideo",
   "Kopiere Fotos…": "progress.rust.copyPhotos",
   "Sortiere Fotos…": "progress.rust.sortPhotos",
+  "Lese Foto-Metadaten…": "progress.rust.readPhotoMeta",
   "Erstelle Foto-Wasserzeichen…": "progress.rust.createPhotoWatermark",
   "Überspringe _fertig.txt (Lokal)…": "progress.rust.skipDoneTxtLocal",
   "Schreibe _fertig.txt…": "progress.rust.writeDoneTxt",

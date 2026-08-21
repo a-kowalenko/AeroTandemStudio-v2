@@ -114,6 +114,50 @@ fn photo_metadata_for(path: &str) -> PhotoMetadata {
     }
 }
 
+/// Parallel EXIF/dimension pass after copy (keeps import IPC off the critical path).
+fn photo_metadata_batch(paths: &[String]) -> Vec<PhotoMetadata> {
+    let n = paths.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    if n == 1 {
+        return vec![photo_metadata_for(&paths[0])];
+    }
+    let workers = std::thread::available_parallelism()
+        .map(|p| p.get())
+        .unwrap_or(4)
+        .clamp(2, 8)
+        .min(n);
+    let chunk_size = n.div_ceil(workers);
+    let mut out: Vec<Option<PhotoMetadata>> = (0..n).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(workers);
+        for (chunk_idx, chunk) in paths.chunks(chunk_size).enumerate() {
+            let base = chunk_idx * chunk_size;
+            handles.push(scope.spawn(move || {
+                chunk
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| (base + i, photo_metadata_for(p)))
+                    .collect::<Vec<_>>()
+            }));
+        }
+        for handle in handles {
+            if let Ok(pairs) = handle.join() {
+                for (i, meta) in pairs {
+                    if i < out.len() {
+                        out[i] = Some(meta);
+                    }
+                }
+            }
+        }
+    });
+    out.into_iter()
+        .enumerate()
+        .map(|(i, m)| m.unwrap_or_else(|| photo_metadata_for(&paths[i])))
+        .collect()
+}
+
 /// Copy photos into the session working folder (`…/photos/`) and return metadata.
 #[tauri::command]
 pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<PhotoMetadata>, String> {
@@ -192,11 +236,12 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
         );
         // Sort by EXIF capture time, rename with sequence, return filename order.
         // Confirm-dialog order is intentionally ignored.
+        // Progress: never force on every file-start (753 IPC events freeze the UI).
         let dest = working_session::import_photos_to_session_with_progress(
             &photo_paths,
             |file_index, name, delta| {
                 if delta == 0 {
-                    emit_copy(copied_bytes, file_index, name, true, &mut last_emit);
+                    emit_copy(copied_bytes, file_index, name, false, &mut last_emit);
                     return;
                 }
                 copied_bytes += delta;
@@ -205,17 +250,16 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
         )
         .map_err(|e| e.to_string())?;
         emit_copy(copied_bytes, n, "", true, &mut last_emit);
-        let mut with_device = 0usize;
-        let out: Vec<PhotoMetadata> = dest
+
+        let _ = app_progress.emit(
+            EVENT_WORKFLOW_PROGRESS,
+            workflow_progress_import_probe(0, n, "", "Lese Foto-Metadaten…"),
+        );
+        let out = photo_metadata_batch(&dest);
+        let with_device = out
             .iter()
-            .map(|p| {
-                let meta = photo_metadata_for(p);
-                if format_camera_label(&meta.camera_make, &meta.camera_model).is_some() {
-                    with_device += 1;
-                }
-                meta
-            })
-            .collect();
+            .filter(|m| format_camera_label(&m.camera_make, &m.camera_model).is_some())
+            .count();
         logging::info(
             "import",
             format!(

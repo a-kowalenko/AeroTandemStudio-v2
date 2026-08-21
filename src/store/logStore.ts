@@ -3,12 +3,13 @@ import type { LogEntry } from "../lib/tauri";
 
 const MAX_ENTRIES = 3000;
 
-export type LogLevelFilter = "all" | "debug" | "info" | "warn" | "error";
+export type LogLevelFilter = "debug" | "info" | "warn" | "error";
 
 type LogState = {
   open: boolean;
   entries: LogEntry[];
   search: string;
+  /** Minimum recorded level (also used as console display filter). */
   levelFilter: LogLevelFilter;
   autoScroll: boolean;
   unreadErrors: number;
@@ -36,7 +37,7 @@ export const useLogStore = create<LogState>((set, get) => ({
   open: false,
   entries: [],
   search: "",
-  levelFilter: "all",
+  levelFilter: "info",
   autoScroll: true,
   unreadErrors: 0,
   lastSeenId: 0,
@@ -102,9 +103,15 @@ function filterMinRank(filter: LogLevelFilter): number {
       return 30;
     case "error":
       return 40;
-    default:
-      return 0;
   }
+}
+
+export function parseLogLevelFilter(raw: string): LogLevelFilter {
+  const t = raw.trim().toLowerCase();
+  if (t === "debug" || t === "all") return "debug";
+  if (t === "warn" || t === "warning") return "warn";
+  if (t === "error") return "error";
+  return "info";
 }
 
 export function filterLogEntries(

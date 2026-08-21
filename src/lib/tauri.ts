@@ -128,6 +128,8 @@ export type AppConfig = {
   setup_completed: boolean;
   /** UI language: "de" | "en" | "es-MX". */
   ui_language: string;
+  /** Min log level for file + console IPC: "debug" | "info" | "warn" | "error". */
+  log_min_level: string;
   /** Optional AMS LAN Bridge base URL (`http://host:8787`). */
   ams_bridge_url: string;
   /** Shared bearer token for AMS Bridge. */
@@ -1303,6 +1305,14 @@ export async function getAppInfo(): Promise<AppInfo> {
 
 export async function getRecentLogs(limit?: number): Promise<LogEntry[]> {
   return invoke<LogEntry[]>("get_recent_logs", { limit: limit ?? null });
+}
+
+export async function getLogMinLevel(): Promise<string> {
+  return invoke<string>("get_log_min_level");
+}
+
+export async function setLogMinLevel(level: string): Promise<string> {
+  return invoke<string>("set_log_min_level", { level });
 }
 
 export async function clearLogBuffer(): Promise<void> {

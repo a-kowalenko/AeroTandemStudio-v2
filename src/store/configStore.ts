@@ -2,11 +2,13 @@ import { create } from "zustand";
 import type { AppConfig } from "../lib/tauri";
 import { getConfig, resetConfig, saveConfig } from "../lib/tauri";
 import { normalizeUiLanguage } from "../i18n/types";
+import { parseLogLevelFilter } from "./logStore";
 
 function normalizeConfig(config: AppConfig): AppConfig {
   return {
     ...config,
     ui_language: normalizeUiLanguage(config.ui_language),
+    log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
   };
 }
 

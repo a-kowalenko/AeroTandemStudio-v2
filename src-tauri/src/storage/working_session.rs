@@ -217,6 +217,8 @@ impl WorkingSession {
         let mut used = collect_used_filenames_in(&photos);
         let mut dests: Vec<PathBuf> = Vec::with_capacity(sorted.len());
         let total = sorted.len() as u64;
+        let mut hardlink_count = 0u64;
+        let mut copy_count = 0u64;
 
         for (idx, (source, instant)) in sorted.iter().enumerate() {
             if crate::video::ffmpeg::is_cancelled() {
@@ -250,26 +252,37 @@ impl WorkingSession {
                     "Zielname bereits vorhanden: {dest_name}"
                 )));
             }
-            if let Err(e) = copy_file_reporting(source_path, &dest, &mut |delta| {
+            match copy_file_reporting(source_path, &dest, &mut |delta| {
                 on_progress(file_index, &name, delta);
             }) {
-                for d in &dests {
-                    let _ = self.delete_owned_file(d);
+                Ok(file_link::ImportLinkMethod::HardLink) => hardlink_count += 1,
+                Ok(file_link::ImportLinkMethod::Copy) => copy_count += 1,
+                Err(e) => {
+                    for d in &dests {
+                        let _ = self.delete_owned_file(d);
+                    }
+                    return Err(e);
                 }
-                return Err(e.into());
             }
             let msg = format!(
                 "Foto importiert: {} → {}",
                 file_name(source_path),
                 file_name(&dest)
             );
-            // Avoid flooding the UI log bus on large batches (each INFO emits IPC).
+            // Throttle: start / every 50th / last only (no per-file DEBUG flood).
             if should_log_photo_import(file_index, total) {
                 logging::info("import", msg);
-            } else {
-                logging::debug("import", msg);
             }
             dests.push(dest);
+        }
+
+        if hardlink_count > 0 || copy_count > 0 {
+            logging::info(
+                "import",
+                format!(
+                    "Foto-Kopien: {hardlink_count} Hardlink(s), {copy_count} Kopie(n)"
+                ),
+            );
         }
 
         dests.sort_by(|a, b| {
@@ -385,7 +398,8 @@ fn unique_dest_in(dir: &Path, filename: &str) -> Result<PathBuf, WorkingSessionE
 }
 
 fn copy_file(src: &Path, dest: &Path) -> Result<(), WorkingSessionError> {
-    copy_file_reporting(src, dest, &mut |_| {})
+    let _ = copy_file_reporting(src, dest, &mut |_| {})?;
+    Ok(())
 }
 
 /// Log first, last, and every 50th photo at INFO so large imports do not flood IPC.
@@ -397,18 +411,20 @@ fn copy_file_reporting<F>(
     src: &Path,
     dest: &Path,
     on_chunk: &mut F,
-) -> Result<(), WorkingSessionError>
+) -> Result<file_link::ImportLinkMethod, WorkingSessionError>
 where
     F: FnMut(u64),
 {
-    file_link::import_copy_or_hardlink(src, dest, on_chunk)?;
-    // Best-effort: preserve modified time like shutil.copy2 (hardlinks share inode mtime).
-    if let Ok(meta) = fs::metadata(src) {
-        if let Ok(mtime) = meta.modified() {
-            let _ = filetime_set_mtime(dest, mtime);
+    let method = file_link::import_copy_or_hardlink(src, dest, on_chunk)?;
+    // Hardlinks share the inode mtime; only touch mtime after a real byte copy.
+    if method == file_link::ImportLinkMethod::Copy {
+        if let Ok(meta) = fs::metadata(src) {
+            if let Ok(mtime) = meta.modified() {
+                let _ = filetime_set_mtime(dest, mtime);
+            }
         }
     }
-    Ok(())
+    Ok(method)
 }
 
 fn filetime_set_mtime(path: &Path, mtime: SystemTime) -> io::Result<()> {

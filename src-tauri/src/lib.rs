@@ -12,7 +12,8 @@ mod video;
 mod bridge;
 
 use commands::app::{
-    cleanup_cache, clear_log_buffer, get_app_info, get_recent_logs, run_startup_checks,
+    cleanup_cache, clear_log_buffer, get_app_info, get_log_min_level, get_recent_logs,
+    run_startup_checks, set_log_min_level,
 };
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_ready, ams_bridge_health,
@@ -245,6 +246,8 @@ pub fn run() {
             install_specific_version,
             get_app_info,
             get_recent_logs,
+            get_log_min_level,
+            set_log_min_level,
             clear_log_buffer,
             run_startup_checks,
             cleanup_cache,

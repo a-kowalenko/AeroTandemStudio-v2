@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, State};
 
 use crate::commands::config::ConfigState;
 use crate::storage::cache::{
@@ -70,6 +70,37 @@ pub fn get_recent_logs(limit: Option<usize>) -> Vec<LogEntry> {
 #[tauri::command]
 pub fn clear_log_buffer() {
     logging::clear_ring_buffer();
+}
+
+/// Current minimum log level (`debug` | `info` | `warn` | `error`).
+#[tauri::command]
+pub fn get_log_min_level() -> String {
+    logging::min_level_name()
+}
+
+/// Set minimum log level (persists into config when available).
+#[tauri::command]
+pub fn set_log_min_level(
+    state: State<'_, ConfigState>,
+    level: String,
+) -> Result<String, String> {
+    let name = logging::set_min_level_name(&level);
+    let mut cfg = {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        cache.clone()
+    };
+    if cfg.log_min_level != name {
+        cfg.log_min_level = name.clone();
+        {
+            let store = state.store.lock().map_err(|e| e.to_string())?;
+            store.save(&cfg).map_err(|e| e.to_string())?;
+        }
+        {
+            let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+            *cache = cfg;
+        }
+    }
+    Ok(name)
 }
 
 /// FFmpeg find + HW detect + optional orphan cache sweep (used by SplashScreen).

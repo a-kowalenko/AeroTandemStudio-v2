@@ -221,6 +221,9 @@ pub struct AppConfig {
     /// UI language: `"de"` | `"en"` | `"es-MX"`.
     #[serde(default = "default_ui_language")]
     pub ui_language: String,
+    /// Minimum log level written to `app.log` / console IPC: `debug` | `info` | `warn` | `error`.
+    #[serde(default = "default_log_min_level")]
+    pub log_min_level: String,
     /// Optional AMS LAN Bridge base URL (`http://host:8787`).
     #[serde(default)]
     pub ams_bridge_url: String,
@@ -452,6 +455,10 @@ fn default_ui_language() -> String {
     "de".into()
 }
 
+fn default_log_min_level() -> String {
+    crate::storage::logging::default_min_level_name()
+}
+
 impl AppConfig {
     /// Canonicalize `manual_entry_mode` and keep `oldschool_mode` in sync.
     pub fn sync_manual_entry_mode(&mut self) {
@@ -481,6 +488,12 @@ impl AppConfig {
             "es-MX" | "es-mx" | "es_mx" => "es-MX".into(),
             _ => "de".into(),
         };
+    }
+
+    /// Canonicalize `log_min_level` to `debug` | `info` | `warn` | `error`.
+    pub fn sync_log_min_level(&mut self) {
+        self.log_min_level =
+            crate::storage::logging::normalize_min_level_name(&self.log_min_level);
     }
 
     /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
@@ -552,6 +565,7 @@ impl Default for AppConfig {
             auto_clear_files_after_creation: false,
             setup_completed: false,
             ui_language: default_ui_language(),
+            log_min_level: default_log_min_level(),
             ams_bridge_url: String::new(),
             ams_bridge_token: String::new(),
             ams_bridge_instance_id: String::new(),
@@ -611,6 +625,8 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_intro_mux_mode();
     cfg.sync_body_concat_mode();
     cfg.sync_ui_language();
+    cfg.sync_log_min_level();
+    crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
 }
 
@@ -697,6 +713,8 @@ impl ConfigStore {
         normalized.sync_intro_mux_mode();
         normalized.sync_body_concat_mode();
         normalized.sync_ui_language();
+        normalized.sync_log_min_level();
+        crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
         let conn = self.connect()?;
         self.save_with_conn(&conn, &normalized)
     }

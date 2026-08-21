@@ -465,6 +465,7 @@
       "createWatermarkVideo": "Creating watermark video…",
       "copyPhotos": "Copying photos…",
       "sortPhotos": "Sorting photos…",
+      "readPhotoMeta": "Reading photo metadata…",
       "createPhotoWatermark": "Creating photo watermark…",
       "skipDoneTxtLocal": "Skipping _fertig.txt (local)…",
       "writeAmsManifest": "Writing AMS manifest…",
@@ -1512,7 +1513,13 @@
     "title": "Console",
     "resizeAria": "Console height",
     "searchAria": "Search console",
-    "levelFilterAria": "Level filter",
+    "levelFilterAria": "Minimum log level (recording)",
+    "level": {
+      "debug": "Debug+",
+      "info": "Info+",
+      "warn": "Warn+",
+      "error": "Error"
+    },
     "autoScrollTitle": "Auto-scroll to bottom",
     "copyVisibleTitle": "Copy visible lines",
     "copy": "Copy",

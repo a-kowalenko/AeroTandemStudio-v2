@@ -465,6 +465,7 @@
       "createWatermarkVideo": "Creando video con marca de agua…",
       "copyPhotos": "Copiando fotos…",
       "sortPhotos": "Ordenando fotos…",
+      "readPhotoMeta": "Leyendo metadatos de fotos…",
       "createPhotoWatermark": "Creando marca de agua en foto…",
       "skipDoneTxtLocal": "Omitiendo _fertig.txt (local)…",
       "writeAmsManifest": "Escribiendo manifiesto AMS…",
@@ -1512,7 +1513,13 @@
     "title": "Consola",
     "resizeAria": "Altura de la consola",
     "searchAria": "Buscar en la consola",
-    "levelFilterAria": "Filtro de nivel",
+    "levelFilterAria": "Nivel mínimo de registro (grabación)",
+    "level": {
+      "debug": "Debug+",
+      "info": "Info+",
+      "warn": "Warn+",
+      "error": "Error"
+    },
     "autoScrollTitle": "Desplazar automáticamente al final",
     "copyVisibleTitle": "Copiar líneas visibles",
     "copy": "Copiar",

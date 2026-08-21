@@ -18,15 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clearLogBuffer, getAppInfo } from "@/lib/tauri";
+import { clearLogBuffer, getAppInfo, getLogMinLevel, setLogMinLevel } from "@/lib/tauri";
 import type { LogEntry } from "@/lib/tauri";
 import { buildOffsets, sliceVirtualRange } from "@/lib/virtualList";
 import { cn } from "@/lib/utils";
 import {
   filterLogEntries,
+  parseLogLevelFilter,
   useLogStore,
-  type LogLevelFilter,
 } from "@/store/logStore";
+import { useConfigStore } from "@/store/configStore";
 
 const MIN_HEIGHT = 160;
 const MAX_HEIGHT = 560;
@@ -122,6 +123,39 @@ export function LogConsole({ className }: Props) {
   const filtered = useMemo(
     () => filterLogEntries(entries, search, levelFilter),
     [entries, search, levelFilter],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const level = parseLogLevelFilter(await getLogMinLevel());
+        if (!cancelled) setLevelFilter(level);
+      } catch {
+        // Browser preview / backend not ready
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setLevelFilter]);
+
+  const handleLevelChange = useCallback(
+    async (value: string) => {
+      const next = parseLogLevelFilter(value);
+      setLevelFilter(next);
+      try {
+        const saved = parseLogLevelFilter(await setLogMinLevel(next));
+        setLevelFilter(saved);
+        const cfg = useConfigStore.getState().config;
+        if (cfg) {
+          useConfigStore.getState().updateLocal({ log_min_level: saved });
+        }
+      } catch {
+        // keep UI selection; backend may be unavailable in preview
+      }
+    },
+    [setLevelFilter],
   );
 
   const rowHeights = useMemo(
@@ -309,17 +343,16 @@ export function LogConsole({ className }: Props) {
 
         <Select
           value={levelFilter}
-          onValueChange={(v) => setLevelFilter(v as LogLevelFilter)}
+          onValueChange={(v) => void handleLevelChange(v)}
         >
           <SelectTrigger className="h-8 w-[7.5rem] text-xs" aria-label={t("logConsole.levelFilterAria")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("history.filters.all")}</SelectItem>
-            <SelectItem value="debug">Debug+</SelectItem>
-            <SelectItem value="info">Info+</SelectItem>
-            <SelectItem value="warn">Warn+</SelectItem>
-            <SelectItem value="error">Error</SelectItem>
+            <SelectItem value="debug">{t("logConsole.level.debug")}</SelectItem>
+            <SelectItem value="info">{t("logConsole.level.info")}</SelectItem>
+            <SelectItem value="warn">{t("logConsole.level.warn")}</SelectItem>
+            <SelectItem value="error">{t("logConsole.level.error")}</SelectItem>
           </SelectContent>
         </Select>
 

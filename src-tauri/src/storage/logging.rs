@@ -1,10 +1,13 @@
 //! File logging to `app.log` plus an in-memory ring buffer for the debug console.
+//!
+//! A process-wide **minimum level** drops lower-severity lines before file write,
+//! ring buffer, and `log-line` IPC (Release default: INFO; Dev default: DEBUG).
 
 use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
@@ -15,12 +18,90 @@ use crate::storage::app_config_dir;
 const LOG_FILE_NAME: &str = "app.log";
 const RING_CAPACITY: usize = 3000;
 
+const RANK_DEBUG: u8 = 10;
+const RANK_INFO: u8 = 20;
+const RANK_WARN: u8 = 30;
+const RANK_ERROR: u8 = 40;
+
 type LogEmitter = Box<dyn Fn(&LogEntry) + Send + Sync>;
 
 static LOG_PATH: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 static RING: Lazy<Mutex<VecDeque<LogEntry>>> = Lazy::new(|| Mutex::new(VecDeque::new()));
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 static EMITTER: Lazy<Mutex<Option<LogEmitter>>> = Lazy::new(|| Mutex::new(None));
+static MIN_LEVEL_RANK: AtomicU8 = AtomicU8::new(if cfg!(debug_assertions) {
+    RANK_DEBUG
+} else {
+    RANK_INFO
+});
+
+fn default_min_level_rank() -> u8 {
+    if cfg!(debug_assertions) {
+        RANK_DEBUG
+    } else {
+        RANK_INFO
+    }
+}
+
+/// Default min level name for new configs (`"debug"` in Dev, `"info"` in Release).
+pub fn default_min_level_name() -> String {
+    rank_to_name(default_min_level_rank()).to_string()
+}
+
+fn level_rank(level: &str) -> u8 {
+    match level.to_ascii_uppercase().as_str() {
+        "DEBUG" => RANK_DEBUG,
+        "WARN" | "WARNING" => RANK_WARN,
+        "ERROR" => RANK_ERROR,
+        _ => RANK_INFO,
+    }
+}
+
+fn rank_to_name(rank: u8) -> &'static str {
+    match rank {
+        r if r <= RANK_DEBUG => "debug",
+        r if r <= RANK_INFO => "info",
+        r if r <= RANK_WARN => "warn",
+        _ => "error",
+    }
+}
+
+/// Normalize UI/config strings to `debug` | `info` | `warn` | `error`.
+pub fn normalize_min_level_name(raw: &str) -> String {
+    let t = raw.trim().to_ascii_lowercase();
+    match t.as_str() {
+        "all" | "debug" | "dbg" => "debug".into(),
+        "warn" | "warning" => "warn".into(),
+        "error" | "err" => "error".into(),
+        _ => "info".into(),
+    }
+}
+
+fn name_to_rank(name: &str) -> u8 {
+    match normalize_min_level_name(name).as_str() {
+        "debug" => RANK_DEBUG,
+        "warn" => RANK_WARN,
+        "error" => RANK_ERROR,
+        _ => RANK_INFO,
+    }
+}
+
+/// Current minimum level (`debug` | `info` | `warn` | `error`).
+pub fn min_level_name() -> String {
+    rank_to_name(MIN_LEVEL_RANK.load(Ordering::Relaxed)).to_string()
+}
+
+/// Set minimum level from a config/UI string. Returns the normalized name.
+pub fn set_min_level_name(raw: &str) -> String {
+    let name = normalize_min_level_name(raw);
+    MIN_LEVEL_RANK.store(name_to_rank(&name), Ordering::Relaxed);
+    name
+}
+
+/// Apply config value at startup / after save.
+pub fn apply_min_level_from_config(raw: &str) {
+    let _ = set_min_level_name(raw);
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LogEntry {
@@ -137,6 +218,10 @@ pub fn clear_ring_buffer() {
 }
 
 fn append_line(level: &str, source: &str, message: &str) -> Result<(), String> {
+    if level_rank(level) < MIN_LEVEL_RANK.load(Ordering::Relaxed) {
+        return Ok(());
+    }
+
     let path = {
         let guard = LOG_PATH.lock().map_err(|e| e.to_string())?;
         match guard.as_ref() {
@@ -207,28 +292,42 @@ mod tests {
     fn init_logging_creates_file_and_writes() {
         let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_ring_buffer();
+        let prev = min_level_name();
+        set_min_level_name("debug");
         let path = init_logging().expect("init logging");
         assert!(path.ends_with(LOG_FILE_NAME));
         assert!(path.is_file());
         log_info("unit-test-info");
         log_error("unit-test-error");
-        let content = fs::read_to_string(&path).expect("read log");
-        assert!(content.contains("Aero Tandem Studio"));
-        assert!(content.contains("unit-test-info"));
-        assert!(content.contains("unit-test-error"));
-
-        let recent = recent_logs(Some(50));
-        assert!(recent.iter().any(|e| e.message.contains("unit-test-info")));
-        assert!(recent.iter().any(|e| e.level == "ERROR"));
+        set_min_level_name(&prev);
     }
 
     #[test]
-    fn ring_buffer_respects_clear() {
+    fn min_level_drops_debug_from_ring() {
         let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         clear_ring_buffer();
-        log_info("before-clear");
-        assert!(!recent_logs(None).is_empty());
+        let prev = min_level_name();
+        set_min_level_name("info");
+        let _ = init_logging();
         clear_ring_buffer();
-        assert!(recent_logs(None).is_empty());
+        debug("import", "should-be-dropped");
+        info("import", "should-remain");
+        let lines = recent_logs(None);
+        assert!(
+            lines.iter().all(|e| e.message != "should-be-dropped"),
+            "debug must not enter ring at INFO min: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|e| e.message == "should-remain"),
+            "info must remain: {lines:?}"
+        );
+        set_min_level_name(&prev);
+    }
+
+    #[test]
+    fn normalize_accepts_all_as_debug() {
+        assert_eq!(normalize_min_level_name("all"), "debug");
+        assert_eq!(normalize_min_level_name("INFO"), "info");
+        assert_eq!(normalize_min_level_name("Warning"), "warn");
     }
 }

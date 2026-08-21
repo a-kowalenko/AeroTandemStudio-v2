@@ -37,18 +37,36 @@ fn norm_path_key(path: &Path) -> String {
 }
 
 /// True when `a` and `b` reside on the same filesystem / volume.
+///
+/// Either path may not exist yet (typical for import destinations): the nearest
+/// existing ancestor is used for the volume check.
 pub fn paths_on_same_volume(a: &Path, b: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        match (a.metadata(), b.metadata()) {
-            (Ok(ma), Ok(mb)) => ma.dev() == mb.dev(),
+        match (volume_metadata(a), volume_metadata(b)) {
+            (Some(ma), Some(mb)) => ma.dev() == mb.dev(),
             _ => false,
         }
     }
     #[cfg(windows)]
     {
         windows_volume_prefix(a) == windows_volume_prefix(b)
+    }
+}
+
+/// Metadata of `path` or the nearest existing ancestor (for volume / device id).
+#[cfg(unix)]
+fn volume_metadata(path: &Path) -> Option<fs::Metadata> {
+    let mut cur = path;
+    loop {
+        if let Ok(meta) = cur.metadata() {
+            return Some(meta);
+        }
+        cur = cur.parent()?;
+        if cur.as_os_str().is_empty() {
+            return None;
+        }
     }
 }
 
@@ -136,18 +154,10 @@ where
                 if size > 0 {
                     on_chunk(size);
                 }
-                logging::debug(
-                    "import",
-                    format!(
-                        "Hardlink: {} → {}",
-                        file_name(src),
-                        file_name(dest)
-                    ),
-                );
                 return Ok(ImportLinkMethod::HardLink);
             }
             Err(e) => {
-                logging::info(
+                logging::debug(
                     "import",
                     format!(
                         "Hardlink nicht möglich ({} → {}): {e}; Kopie…",
@@ -205,6 +215,21 @@ mod tests {
         assert!(paths_on_same_volume(&a, &b));
     }
 
+    #[test]
+    fn same_volume_when_dest_file_does_not_exist_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let photos = dir.path().join("photos");
+        fs::create_dir_all(&photos).unwrap();
+        let src = dir.path().join("G001.JPG");
+        let dest = photos.join("Foto_0001.JPG");
+        fs::write(&src, b"jpeg").unwrap();
+        assert!(!dest.exists());
+        assert!(
+            paths_on_same_volume(&src, &dest),
+            "dest parent exists → same volume must succeed for hardlink imports"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn hardlink_import_then_materialize_isolates_original() {
@@ -240,11 +265,18 @@ mod tests {
         fs::write(&a, b"a").unwrap();
 
         #[cfg(windows)]
-        let other = PathBuf::from("Z:\\other");
-        #[cfg(not(windows))]
-        let other = PathBuf::from("/other");
+        {
+            let other = PathBuf::from("Z:\\other");
+            assert!(!paths_on_same_volume(&a, &other));
+        }
 
-        assert!(!paths_on_same_volume(&a, &other));
+        #[cfg(unix)]
+        {
+            // Non-existent sibling still shares the parent volume (ancestor walk).
+            let missing = dir.path().join("missing.bin");
+            assert!(!missing.exists());
+            assert!(paths_on_same_volume(&a, &missing));
+        }
     }
 
     #[test]

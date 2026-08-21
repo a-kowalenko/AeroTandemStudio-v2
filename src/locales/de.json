@@ -465,6 +465,7 @@
       "createWatermarkVideo": "Erstelle Wasserzeichen-Video…",
       "copyPhotos": "Kopiere Fotos…",
       "sortPhotos": "Sortiere Fotos…",
+      "readPhotoMeta": "Lese Foto-Metadaten…",
       "createPhotoWatermark": "Erstelle Foto-Wasserzeichen…",
       "skipDoneTxtLocal": "Überspringe _fertig.txt (Lokal)…",
       "writeAmsManifest": "Schreibe AMS-Manifest…",
@@ -1512,7 +1513,13 @@
     "title": "Konsole",
     "resizeAria": "Konsolenhöhe",
     "searchAria": "Konsole durchsuchen",
-    "levelFilterAria": "Level-Filter",
+    "levelFilterAria": "Mindest-Loglevel (Aufzeichnung)",
+    "level": {
+      "debug": "Debug+",
+      "info": "Info+",
+      "warn": "Warn+",
+      "error": "Error"
+    },
     "autoScrollTitle": "Automatisch nach unten scrollen",
     "copyVisibleTitle": "Sichtbare Zeilen kopieren",
     "copy": "Kopieren",
