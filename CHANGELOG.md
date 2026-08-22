@@ -8,6 +8,16 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+### Verbessert
+
+- Beim manuellen Eintrag per Kunden- und Booking-ID: klarere Hinweise, wann noch etwas fehlt
+- Der „Vorgang erstellen“-Button und die Hinweise erscheinen erst, wenn die IDs vollständig sind
+
+### Behoben
+
+- Kunden-ID und Booking-ID müssen im ID-Modus ausgefüllt sein (mindestens 4 Ziffern)
+- Weniger verwirrende Meldungen während der automatischen Kundendaten-Ladung
+
 ## [0.3.1] - 2026-08-21
 
 ### Verbessert
