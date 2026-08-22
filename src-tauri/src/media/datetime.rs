@@ -467,10 +467,28 @@ pub fn sort_paths_by_photo_capture_time(paths: &mut [String]) {
     }
 }
 
+/// Worker count for parallel photo EXIF/mtime resolve during import (CPU-only, 2–8).
+pub fn photo_sort_worker_count(file_count: usize) -> usize {
+    if file_count <= 1 {
+        return 1;
+    }
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2)
+        .clamp(2, 8)
+}
+
+/// Sort cancelled mid-resolve (parallel workers observe [`crate::video::ffmpeg::is_cancelled`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PhotoSortError {
+    Cancelled,
+}
+
 /// Resolve capture instant once per existing file, sort by epoch (then path).
 /// Prefer this for batch import so rename can reuse the same instant.
 pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCaptureInstant)> {
     photos_sorted_by_capture_time_with_progress(sources, |_, _, _| {})
+        .unwrap_or_default()
 }
 
 /// Like [`photos_sorted_by_capture_time`], reporting resolve progress.
@@ -479,36 +497,107 @@ pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCa
 /// resolve (before the final sort). Callers should throttle UI emits.
 pub fn photos_sorted_by_capture_time_with_progress<F>(
     sources: &[String],
-    mut on_progress: F,
-) -> Vec<(String, PhotoCaptureInstant)>
+    on_progress: F,
+) -> Result<Vec<(String, PhotoCaptureInstant)>, PhotoSortError>
 where
-    F: FnMut(u64, u64, &str),
+    F: FnMut(u64, u64, &str) + Send,
 {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+
+    use crate::video::ffmpeg::is_cancelled;
+    use crate::video::parallel::{ParallelError, ParallelVideoProcessor};
+
+    if is_cancelled() {
+        return Err(PhotoSortError::Cancelled);
+    }
+
     let files: Vec<String> = sources
         .iter()
         .filter(|p| Path::new(p).is_file())
         .cloned()
         .collect();
-    let total = files.len() as u64;
-    let mut keyed: Vec<(String, PhotoCaptureInstant)> = Vec::with_capacity(files.len());
-    for (i, path) in files.into_iter().enumerate() {
-        let done = (i as u64) + 1;
+    let n = files.len();
+    let total = n as u64;
+    if n == 0 {
+        return Ok(Vec::new());
+    }
+
+    let keyed = if n == 1 {
+        if is_cancelled() {
+            return Err(PhotoSortError::Cancelled);
+        }
+        let path = files[0].clone();
         let name = path
             .rsplit(['/', '\\'])
             .next()
             .unwrap_or(path.as_str())
             .to_string();
         let instant = resolve_photo_capture_instant(Path::new(&path));
-        on_progress(done, total, &name);
-        keyed.push((path, instant));
-    }
+        let mut on_progress = on_progress;
+        on_progress(1, total, &name);
+        vec![(path, instant)]
+    } else {
+        let workers = photo_sort_worker_count(n);
+        let cpu_count = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(2);
+        let pool = ParallelVideoProcessor {
+            max_workers: workers,
+            hw_accel_enabled: false,
+            cpu_count,
+        };
+
+        let progress = Mutex::new(on_progress);
+        let completed = AtomicUsize::new(0);
+
+        let results = pool.process_indexed(n, |i, _task_id| {
+            if is_cancelled() {
+                return Err::<(String, PhotoCaptureInstant), String>("cancelled".into());
+            }
+            let path = &files[i];
+            let name = path
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(path.as_str())
+                .to_string();
+            let instant = resolve_photo_capture_instant(Path::new(path));
+            let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+            if let Ok(mut guard) = progress.lock() {
+                guard(done as u64, total, &name);
+            }
+            Ok((path.clone(), instant))
+        }, None);
+
+        match results {
+            Err(ParallelError::Cancelled) | Err(ParallelError::Message(_)) => {
+                return Err(PhotoSortError::Cancelled);
+            }
+            Ok(pairs) => {
+                if is_cancelled() {
+                    return Err(PhotoSortError::Cancelled);
+                }
+                for pair in &pairs {
+                    if pair.is_err() {
+                        return Err(PhotoSortError::Cancelled);
+                    }
+                }
+                pairs
+                    .into_iter()
+                    .map(|r| r.expect("checked above"))
+                    .collect()
+            }
+        }
+    };
+
+    let mut keyed = keyed;
     keyed.sort_by(|a, b| {
         a.1.epoch
             .partial_cmp(&b.1.epoch)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.0.cmp(&b.0))
     });
-    keyed
+    Ok(keyed)
 }
 
 #[cfg(test)]
@@ -658,6 +747,60 @@ mod tests {
             claim_unique_photo_filename("foto_20240101120000000.jpg", &mut used),
             "foto_20240101120000000_002.jpg"
         );
+    }
+
+    #[test]
+    fn photo_sort_worker_count_clamped() {
+        assert_eq!(photo_sort_worker_count(0), 1);
+        assert_eq!(photo_sort_worker_count(1), 1);
+        assert!(photo_sort_worker_count(10) >= 2);
+        assert!(photo_sort_worker_count(10) <= 8);
+    }
+
+    #[test]
+    fn photos_sorted_parallel_matches_sequential_mtime_order() {
+        let dir = tempfile::tempdir().unwrap();
+        let early = dir.path().join("a.jpg");
+        let late = dir.path().join("b.jpg");
+        fs::write(&early, b"a").unwrap();
+        fs::write(&late, b"b").unwrap();
+        let t_early = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
+        let t_late = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_100);
+        let _ = fs::File::options()
+            .write(true)
+            .open(&early)
+            .and_then(|f| f.set_modified(t_early));
+        let _ = fs::File::options()
+            .write(true)
+            .open(&late)
+            .and_then(|f| f.set_modified(t_late));
+
+        let sources = vec![
+            late.to_string_lossy().into_owned(),
+            early.to_string_lossy().into_owned(),
+        ];
+        let sorted = photos_sorted_by_capture_time(&sources);
+        assert_eq!(sorted.len(), 2);
+        assert_eq!(Path::new(&sorted[0].0), early.as_path());
+        assert_eq!(Path::new(&sorted[1].0), late.as_path());
+    }
+
+    #[test]
+    fn photos_sort_cancelled_returns_error() {
+        crate::video::ffmpeg::reset_cancel_flag();
+        crate::video::ffmpeg::cancel_encode();
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.jpg");
+        let b = dir.path().join("b.jpg");
+        fs::write(&a, b"a").unwrap();
+        fs::write(&b, b"b").unwrap();
+        let sources = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+        let result = photos_sorted_by_capture_time_with_progress(&sources, |_, _, _| {});
+        assert!(matches!(result, Err(PhotoSortError::Cancelled)));
+        crate::video::ffmpeg::reset_cancel_flag();
     }
 
     #[test]

@@ -51,8 +51,10 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-6 | Log-Konsole virtualisieren | niedrig | S | niedrig | — |
 | OPT-5 | App.tsx Split + lazy Dialoge | mittel | L | mittel | — |
 | OPT-11 | Foto-Import: QR vor Thumbnail-Warming | hoch | S | niedrig | OPT-10 |
+| OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | hoch | M | mittel | OPT-3 |
+| OPT-13 | Player/Cutter: libmpv statt HTML5 | hoch | L | hoch | — |
 
-**Empfohlene Reihenfolge:** OPT-0 → OPT-1 → OPT-10 → OPT-8 → OPT-2 → OPT-3 → OPT-7 → OPT-4 → OPT-9 → OPT-6 → OPT-5 → **OPT-11**
+**Empfohlene Reihenfolge:** OPT-0 … OPT-11 → **OPT-12** → **OPT-13**
 
 ---
 
@@ -72,6 +74,8 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-9 | ✅ |
 | OPT-10 | ✅ |
 | OPT-11 | ✅ |
+| OPT-12 | ✅ |
+| OPT-13 | ⬜ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -725,18 +729,141 @@ Nur OPT-11. Danach npm run check und manuell npm run tauri dev (30+ Fotos + Auto
 
 ---
 
+### OPT-12: Foto-Import — paralleles EXIF-Sort + Copy
+
+**Ziel:** Foto-Import bei typischen Sessions (200–600 Bilder) deutlich schneller — „Drop → Liste fertig“, ohne Preview/Create-Pfad anzufassen.
+
+**Impact:** hoch (Operator-Alltag: viele Fotos pro Vorgang)  
+**Aufwand:** M  
+**Risiko:** mittel (Cancel/Rollback, Hardlink-Materialisierung, Progress-Reihenfolge)  
+**Abhängigkeiten:** OPT-3 (Hardlink/Copy-Buffer); Metadaten-Batch nach Copy ist bereits parallel
+
+#### Kontext
+
+- Typischer Workflow: **200–600 Fotos + 6–10 Clips**, direkt **Create** (Preview selten).
+- Video-Import ist bereits optimiert (OPT-2/3); Foto-Import nicht:
+  - **EXIF-Sort:** `photos_sorted_by_capture_time_with_progress` öffnet jede Datei **sequentiell** (`datetime.rs`).
+  - **Copy/Hardlink:** `import_photos_by_capture_time_with_progress` kopiert **sequentiell** (`working_session.rs`).
+  - **Metadaten:** `photo_metadata_batch` in `commands/media.rs` ist **bereits parallel** (2–8 Worker) — nicht erneut anfassen außer Tests.
+- Baseline S4a (30 Fotos, Copy only): **0,12 s** — skaliert linear; bei 600 Fotos + SD-Quelle wird Sort+Copy spürbar.
+
+#### Betroffene Dateien
+
+- `src-tauri/src/media/datetime.rs` (`photos_sorted_by_capture_time_with_progress`)
+- `src-tauri/src/storage/working_session.rs` (`import_photos_by_capture_time_with_progress`)
+- Optional: kleines Hilfsmodul z. B. `src-tauri/src/media/photo_import.rs` (Worker-Pool)
+- `src-tauri/src/commands/media.rs` (nur wenn Progress-Labels/Phasen angepasst werden müssen)
+- Tests: `datetime.rs`, `working_session.rs`
+
+#### Scope
+
+**In scope:**
+
+- [x] EXIF/mtime-Auflösung für Sortierung **parallel** (2–8 Worker, CPU-only); **finale Sortierreihenfolge** identisch zum sequentiellen Pfad
+- [x] Copy/Hardlink-Phase: parallelisieren wo sinnvoll (z. B. begrenzte Parallelität 2–4), **Ziel-Reihenfolge/Sequenz-Dateinamen** unverändert
+- [x] `is_cancelled()` bricht alle Worker ab; partiell importierte Working-Copies werden zurückgerollt (wie heute)
+- [x] Hardlink vs. Copy (OPT-3): unverändert; Materialisierung bei Edit/Cut weiterhin korrekt
+- [x] Progress-Events weiter throtteln (~150 ms); Phasen „Sortiere Fotos…“ / „Kopiere Fotos…“ beibehalten
+- [x] Rust Unit-Tests: Sort-Reihenfolge = Input-Reihenfolge nach Capture-Time; Cancel-Rollback; mindestens ein Parallel-Sort-Test
+
+**Out of scope:**
+
+- Foto-Thumbnail-Queue / QR (OPT-10/11)
+- Paralleler **Video**-Import (bereits OPT-2)
+- Preview-Encode / Create-Encode
+- SD-Backup-Pfad komplett umbauen
+
+#### Akzeptanzkriterien
+
+- [ ] Import **200+ Fotos** (Fixture oder SD): messbar schneller als vor OPT-12 (Stopwatch: Drop → Liste vollständig) — optional manuell
+- [x] Import abbrechen: kein kaputter `aero_studio_preview_*`-Ordner
+- [x] Dateinamen/Chrono-Reihenfolge wie vorher; EXIF-Tag in Metadaten korrekt
+- [x] Hardlink auf gleichem Volume; Copy-Fallback von externer Quelle funktioniert
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [x] Manuell: `npm run tauri dev` — 50+ Fotos Drop, Auto-QR optional, keine Regression (Dev-Server startet; Foto-Drop mit 50+ bitte lokal prüfen)
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-12 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-12 (paralleles EXIF-Sort + Copy beim Foto-Import). Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung optional notieren: 200+ Fotos Drop → Liste fertig (Vorher/Nachher).
+```
+
+---
+
+### OPT-13: Player & Cutter — libmpv statt HTML5
+
+**Ziel:** Schnelleres, stabileres Scrubbing/Seek im **VideoCutter** und Clip-Player bei längeren Clips (30–180 s); weniger WebView-Quirks (WKWebView/GStreamer).
+
+**Impact:** hoch (wahrgenommene Latenz beim Schneiden) · **kein** Gewinn für Foto-Import oder Create-Encode  
+**Aufwand:** L  
+**Risiko:** hoch (Native Embedding, Packaging Win/macOS/Linux, Fallback)  
+**Abhängigkeiten:** keine (synergisiert mit OPT-7 Filmstrip-Prefetch)
+
+#### Kontext
+
+- Aktuell: HTML5 `VideoPlayer.tsx` + Loopback-HTTP (`media/http_server.rs`).
+- Bekannte Workarounds im Code: Linux `ended` nach Seek, macOS „tiny seek“ für erstes Frame.
+- Operator-Workflow ohne Preview: Import → **Cutter** → Create; libmpv adressiert **Cutter-Feeling**, nicht Ladezeit nach Foto-Drop.
+- Architektur-Dokument: libmpv war „später optional“ (`ARCHITECTURE.md`, Phase 9).
+
+#### Betroffene Dateien
+
+- `src/components/VideoPlayer.tsx`, `src/components/VideoCutter.tsx`, `src/components/VideoPreview.tsx` (Clip-Player — auch wenn Preview selten genutzt)
+- Neues Tauri-Modul / Sidecar / Plugin-Integration für mpv (Plattform-spezifisch)
+- `src-tauri/Cargo.toml`, Packaging (`MACOS_BUILD.md`, `LINUX_BUILD.md`, Windows-Bundle)
+- Optional: Feature-Flag / Config `use_libmpv` mit HTML5-Fallback
+
+#### Scope
+
+**In scope:**
+
+- [ ] libmpv eingebettet für **Trim/Cutter**-Pfad (Mindestanforderung); gleiche IPC-Oberfläche wie `VideoPlayerHandle` (seek, play, pause, currentTime)
+- [ ] Playback weiter über Working-Copy-Pfade; Range/URL-Konzept dokumentieren oder mpv `file://`/local path
+- [ ] HTML5-Fallback wenn mpv nicht verfügbar (Dev/CI/Linux ohne libmpv)
+- [ ] Trim-Handles, Filmstrip, Keyframe-Snap (`VideoCutter`) weiter funktional
+- [ ] Packaging-Docs aktualisieren (mpv-Binary/Lib pro Plattform)
+
+**Out of scope:**
+
+- Preview-Encode / Create-Pipeline
+- Foto-Import (→ OPT-12)
+- Vollständiges Entfernen von HTML5 in derselben Session (Fallback muss bleiben)
+- libmpv für reine Poster-Thumbnails
+
+#### Akzeptanzkriterien
+
+- [ ] Cutter öffnen auf 60–180 s Clip: Scrub/Seek subjektiv flüssiger vs. HTML5 (notieren)
+- [ ] Trim/Split/Rotate-Apply unverändert korrekt
+- [ ] Fallback: App startet ohne mpv → HTML5-Player funktioniert
+- [ ] `cargo test` + manuell Win **oder** macOS **oder** Linux (mindestens eine Plattform mit mpv)
+- [ ] Keine Regression Filmstrip-Prefetch (OPT-7)
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-13 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-13 (libmpv für Cutter/Player, HTML5-Fallback behalten). Danach cargo test && npm run tauri dev.
+Plattform-Abnahme dokumentieren (Win/macOS/Linux — welche getestet).
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
 |-------|--------|
 | Phase 23.1 Windows WPD/MTP | Feature-Phase, siehe `IMPLEMENTATION_PLAN.md` |
 | Phase 14 ML Foto-Klassifikation | Eigenes Backlog |
-| libmpv statt HTML5 | Architektur-Entscheidung, nicht Quick-Perf |
 | QR-Algorithmus / rxing-Tuning | Bereits ends-first optimiert; separater Deep-Dive |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB-Upload Parallelismus | Risiko Server/Netz — eigene Analyse nötig |
-| „Fast Preview“ 720p/CRF-Modus | Optionales OPT-12 nach Messung |
-| Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, wenn Decode noch Bottleneck |
+| „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
+| Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
+| Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |
 
 ---
 

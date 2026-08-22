@@ -15,12 +15,13 @@ use once_cell::sync::Lazy;
 
 use crate::media::datetime::{
     build_chrono_photo_filename_sequenced, build_chrono_photo_filename_sequenced_with_instant,
-    collect_used_filenames_in, photos_sorted_by_capture_time_with_progress,
+    collect_used_filenames_in, photos_sorted_by_capture_time_with_progress, PhotoSortError,
 };
 use crate::storage::cache::PREVIEW_DIR_PREFIX;
 use crate::storage::file_link;
 use crate::storage::logging::{self, file_name};
-use crate::video::ffmpeg::WORKFLOW_CANCELLED;
+use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
+use crate::video::parallel::ParallelVideoProcessor;
 
 static WORKING_SESSION: Lazy<Mutex<WorkingSession>> =
     Lazy::new(|| Mutex::new(WorkingSession::default()));
@@ -205,43 +206,56 @@ impl WorkingSession {
         &mut self,
         sources: &[String],
         mut on_sort: S,
-        mut on_progress: F,
+        on_progress: F,
     ) -> Result<Vec<PathBuf>, WorkingSessionError>
     where
-        S: FnMut(u64, u64, &str),
-        F: FnMut(u64, &str, u64),
+        S: FnMut(u64, u64, &str) + Send,
+        F: FnMut(u64, &str, u64) + Send,
     {
         // One EXIF/mtime resolve per file for sort + rename (not O(n log n) opens).
         let sorted = photos_sorted_by_capture_time_with_progress(sources, |done, total, name| {
             on_sort(done, total, name);
-        });
+        })
+        .map_err(|e| match e {
+            PhotoSortError::Cancelled => {
+                WorkingSessionError::Message(WORKFLOW_CANCELLED.into())
+            }
+        })?;
+
+        if is_cancelled() {
+            return Err(WorkingSessionError::Message(WORKFLOW_CANCELLED.into()));
+        }
 
         let root = self.ensure_dir()?;
         let photos = root.join("photos");
         fs::create_dir_all(&photos)?;
         let mut used = collect_used_filenames_in(&photos);
-        let mut dests: Vec<PathBuf> = Vec::with_capacity(sorted.len());
-        let total = sorted.len() as u64;
-        let mut hardlink_count = 0u64;
-        let mut copy_count = 0u64;
 
+        struct PhotoCopyJob {
+            file_index: u64,
+            source_name: String,
+            source: PathBuf,
+            dest: Option<PathBuf>,
+            skip_size: u64,
+        }
+
+        let mut jobs: Vec<PhotoCopyJob> = Vec::with_capacity(sorted.len());
         for (idx, (source, instant)) in sorted.iter().enumerate() {
-            if crate::video::ffmpeg::is_cancelled() {
-                for d in &dests {
-                    let _ = self.delete_owned_file(d);
-                }
+            if is_cancelled() {
                 return Err(WorkingSessionError::Message(WORKFLOW_CANCELLED.into()));
             }
             let source_path = Path::new(source);
             let file_index = (idx as u64) + 1;
             let name = file_name(source_path);
-            on_progress(file_index, &name, 0);
             if self.is_under_working_dir(source_path) {
                 let size = fs::metadata(source_path).map(|m| m.len()).unwrap_or(0);
-                if size > 0 {
-                    on_progress(file_index, &name, size);
-                }
-                dests.push(source_path.to_path_buf());
+                jobs.push(PhotoCopyJob {
+                    file_index,
+                    source_name: name,
+                    source: source_path.to_path_buf(),
+                    dest: None,
+                    skip_size: size,
+                });
                 continue;
             }
             let seq = (idx + 1) as u32;
@@ -257,45 +271,157 @@ impl WorkingSession {
                     "Zielname bereits vorhanden: {dest_name}"
                 )));
             }
-            match copy_file_reporting(source_path, &dest, &mut |delta| {
-                on_progress(file_index, &name, delta);
-            }) {
-                Ok(file_link::ImportLinkMethod::HardLink) => hardlink_count += 1,
-                Ok(file_link::ImportLinkMethod::Copy) => copy_count += 1,
-                Err(e) => {
-                    for d in &dests {
-                        let _ = self.delete_owned_file(d);
+            jobs.push(PhotoCopyJob {
+                file_index,
+                source_name: name,
+                source: source_path.to_path_buf(),
+                dest: Some(dest),
+                skip_size: 0,
+            });
+        }
+
+        let total = jobs.len() as u64;
+        let n_jobs = jobs.len();
+        if n_jobs == 0 {
+            return Ok(Vec::new());
+        }
+
+        let rollback_imported = |session: &Self, paths: &[PathBuf]| {
+            for d in paths {
+                let _ = session.delete_owned_file(d);
+            }
+        };
+
+        let progress = Mutex::new(on_progress);
+        let dests: Mutex<Vec<PathBuf>> = Mutex::new(Vec::with_capacity(n_jobs));
+        let hardlink_count = Mutex::new(0u64);
+        let copy_count = Mutex::new(0u64);
+        let first_error: Mutex<Option<WorkingSessionError>> = Mutex::new(None);
+
+        let workers = photo_copy_worker_count(n_jobs);
+        let cpu_count = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(2);
+        let pool = ParallelVideoProcessor {
+            max_workers: workers,
+            hw_accel_enabled: false,
+            cpu_count,
+        };
+
+        let copy_result = pool.process_indexed(n_jobs, |i, _task_id| {
+            if is_cancelled() {
+                return Err::<(), String>("cancelled".into());
+            }
+            if first_error.lock().map(|g| g.is_some()).unwrap_or(true) {
+                return Err::<(), String>("cancelled".into());
+            }
+
+            let job = &jobs[i];
+            let file_index = job.file_index;
+            let name = job.source_name.as_str();
+
+            if let Ok(mut g) = progress.lock() {
+                g(file_index, name, 0);
+            }
+
+            if job.dest.is_none() {
+                if job.skip_size > 0 {
+                    if let Ok(mut g) = progress.lock() {
+                        g(file_index, name, job.skip_size);
                     }
-                    return Err(e);
+                }
+                if let Ok(mut d) = dests.lock() {
+                    d.push(job.source.clone());
+                }
+                return Ok(());
+            }
+
+            let dest = job.dest.as_ref().expect("dest set for copy jobs");
+            let progress_ref = &progress;
+            let fi = file_index;
+            let name_owned = job.source_name.clone();
+            let mut report = |delta: u64| {
+                if let Ok(mut g) = progress_ref.lock() {
+                    g(fi, &name_owned, delta);
+                }
+            };
+
+            match copy_file_reporting(&job.source, dest, &mut report) {
+                Ok(file_link::ImportLinkMethod::HardLink) => {
+                    if let Ok(mut c) = hardlink_count.lock() {
+                        *c += 1;
+                    }
+                }
+                Ok(file_link::ImportLinkMethod::Copy) => {
+                    if let Ok(mut c) = copy_count.lock() {
+                        *c += 1;
+                    }
+                }
+                Err(e) => {
+                    if let Ok(mut err) = first_error.lock() {
+                        *err = Some(e);
+                    }
+                    return Err::<(), String>("copy failed".into());
                 }
             }
-            let msg = format!(
-                "Foto importiert: {} → {}",
-                file_name(source_path),
-                file_name(&dest)
-            );
-            // Throttle: start / every 50th / last only (no per-file DEBUG flood).
+
             if should_log_photo_import(file_index, total) {
-                logging::info("import", msg);
+                logging::info(
+                    "import",
+                    format!(
+                        "Foto importiert: {} → {}",
+                        file_name(&job.source),
+                        file_name(dest)
+                    ),
+                );
             }
-            dests.push(dest);
+            if let Ok(mut d) = dests.lock() {
+                d.push(dest.clone());
+            }
+            Ok(())
+        }, None);
+
+        let dests_vec = dests
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default();
+
+        if copy_result.is_err() || is_cancelled() {
+            rollback_imported(self, &dests_vec);
+            return Err(WorkingSessionError::Message(WORKFLOW_CANCELLED.into()));
         }
 
-        if hardlink_count > 0 || copy_count > 0 {
+        if let Ok(mut err_guard) = first_error.lock() {
+            if let Some(e) = err_guard.take() {
+                rollback_imported(self, &dests_vec);
+                return Err(e);
+            }
+        }
+
+        let results = copy_result.unwrap();
+        for r in &results {
+            if let Err(msg) = r {
+                rollback_imported(self, &dests_vec);
+                return Err(WorkingSessionError::Message(msg.clone()));
+            }
+        }
+
+        let hl = hardlink_count.lock().map(|c| *c).unwrap_or(0);
+        let cc = copy_count.lock().map(|c| *c).unwrap_or(0);
+        if hl > 0 || cc > 0 {
             logging::info(
                 "import",
-                format!(
-                    "Foto-Kopien: {hardlink_count} Hardlink(s), {copy_count} Kopie(n)"
-                ),
+                format!("Foto-Kopien: {hl} Hardlink(s), {cc} Kopie(n)"),
             );
         }
 
-        dests.sort_by(|a, b| {
+        let mut dests_final = dests_vec;
+        dests_final.sort_by(|a, b| {
             a.file_name()
                 .unwrap_or_default()
                 .cmp(b.file_name().unwrap_or_default())
         });
-        Ok(dests)
+        Ok(dests_final)
     }
 
     /// Delete a file if it lives under the session working folder.
@@ -412,6 +538,17 @@ fn should_log_photo_import(file_index: u64, total: u64) -> bool {
     file_index == 1 || file_index == total || file_index % 50 == 0
 }
 
+/// Worker count for parallel photo copy/hardlink during import (2–4 when multiple files).
+fn photo_copy_worker_count(file_count: usize) -> usize {
+    if file_count <= 1 {
+        return 1;
+    }
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2)
+        .clamp(2, 4)
+}
+
 fn copy_file_reporting<F>(
     src: &Path,
     dest: &Path,
@@ -509,8 +646,8 @@ pub fn import_photos_to_session_with_progress<S, F>(
     on_progress: F,
 ) -> Result<Vec<String>, WorkingSessionError>
 where
-    S: FnMut(u64, u64, &str),
-    F: FnMut(u64, &str, u64),
+    S: FnMut(u64, u64, &str) + Send,
+    F: FnMut(u64, &str, u64) + Send,
 {
     with_session(|s| {
         let dests = s.import_photos_by_capture_time_with_progress(paths, on_sort, on_progress)?;
@@ -627,6 +764,41 @@ mod tests {
         assert_eq!(safe_filename(p), "bad_name_.mp4");
         let nested = PathBuf::from("folder").join("bad:name?.mp4");
         assert_eq!(safe_filename(&nested), "bad_name_.mp4");
+    }
+
+    #[test]
+    fn import_photos_cancelled_leaves_no_working_copies() {
+        let _guard = crate::storage::cache::test_temp_sweep_lock();
+        crate::video::ffmpeg::reset_cancel_flag();
+        crate::video::ffmpeg::cancel_encode();
+
+        let mut session = WorkingSession::default();
+        let src_root = tempfile::tempdir().unwrap();
+        let a = write_temp_file(src_root.path(), "a.jpg", b"photo-a");
+        let b = write_temp_file(src_root.path(), "b.jpg", b"photo-b");
+        let paths = vec![
+            a.to_string_lossy().into_owned(),
+            b.to_string_lossy().into_owned(),
+        ];
+
+        let result = session.import_photos_by_capture_time(&paths);
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            crate::video::ffmpeg::WORKFLOW_CANCELLED
+        );
+
+        let root = session.ensure_dir().unwrap();
+        let photos = root.join("photos");
+        if photos.is_dir() {
+            let count = fs::read_dir(&photos)
+                .map(|rd| rd.count())
+                .unwrap_or(0);
+            assert_eq!(count, 0, "cancelled import must not leave photo copies");
+        }
+
+        session.clear();
+        crate::video::ffmpeg::reset_cancel_flag();
     }
 
     #[test]
