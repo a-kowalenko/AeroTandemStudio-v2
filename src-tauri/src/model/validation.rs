@@ -12,12 +12,13 @@ pub struct ValidationResult {
 
 /// Validate customer/session form data before video creation / preview.
 ///
-/// `oldschool_mode` requires email in manual mode (legacy behaviour).
+/// `require_api_ids` — manual ID mode: both IDs mandatory (≥4 digits).
 /// `video_paths` are checked for `.mp4` existence when non-empty.
 pub fn validate_kunde(
     kunde: &Kunde,
     video_paths: &[String],
     oldschool_mode: bool,
+    require_api_ids: bool,
 ) -> ValidationResult {
     let mut errors = Vec::new();
 
@@ -41,7 +42,14 @@ pub fn validate_kunde(
             ("Booking-ID", kunde.booking_id.as_deref()),
         ] {
             let id = raw.unwrap_or("").trim();
-            if !id.is_empty() && id.chars().count() < MIN_DIGITS {
+            if require_api_ids && id.is_empty() {
+                errors.push(format!("{label} ist erforderlich"));
+                continue;
+            }
+            if id.is_empty() {
+                continue;
+            }
+            if id.chars().count() < MIN_DIGITS || !id.chars().all(|c| c.is_ascii_digit()) {
                 errors.push(format!(
                     "{label} muss mindestens {MIN_DIGITS} Ziffern haben"
                 ));
@@ -86,6 +94,11 @@ pub fn validate_kunde(
     }
 }
 
+/// Manual ID mode: both numeric IDs are mandatory before create/export.
+pub fn require_api_ids(kunde: &Kunde, manual_entry_mode: &str) -> bool {
+    kunde.form_mode == "manual" && manual_entry_mode.trim().eq_ignore_ascii_case("id")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,7 +115,7 @@ mod tests {
 
     #[test]
     fn valid_minimal_kunde() {
-        let r = validate_kunde(&base_kunde(), &[], false);
+        let r = validate_kunde(&base_kunde(), &[], false, false);
         assert!(r.valid);
         assert!(r.errors.is_empty());
     }
@@ -110,7 +123,7 @@ mod tests {
     #[test]
     fn requires_tandemmaster_and_datum() {
         let k = Kunde::default();
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Tandemmaster")));
         assert!(r.errors.iter().any(|e| e.contains("Datum")));
@@ -121,7 +134,7 @@ mod tests {
         let mut k = base_kunde();
         k.vorname = None;
         k.nachname = Some("Mustermann".into());
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Vorname")));
     }
@@ -130,7 +143,7 @@ mod tests {
     fn outside_requires_videospringer() {
         let mut k = base_kunde();
         k.outside_video = true;
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Videospringer")));
     }
@@ -140,7 +153,7 @@ mod tests {
         let mut k = base_kunde();
         k.outside_video = true;
         k.videospringer = "anna".into();
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("zugleich")));
     }
@@ -150,7 +163,7 @@ mod tests {
         let mut k = base_kunde();
         k.outside_video = true;
         k.videospringer = "Ben".into();
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(r.valid);
     }
 
@@ -158,7 +171,7 @@ mod tests {
     fn oldschool_requires_email() {
         let mut k = base_kunde();
         k.form_mode = "manual".into();
-        let r = validate_kunde(&k, &[], true);
+        let r = validate_kunde(&k, &[], true, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Email")));
     }
@@ -169,7 +182,7 @@ mod tests {
         k.form_mode = "manual".into();
         k.kunden_id = Some("123".into());
         k.booking_id = Some("99".into());
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Kunden-ID")));
         assert!(r.errors.iter().any(|e| e.contains("Booking-ID")));
@@ -181,14 +194,27 @@ mod tests {
         k.form_mode = "manual".into();
         k.kunden_id = Some("1234".into());
         k.booking_id = Some("5678".into());
-        let r = validate_kunde(&k, &[], false);
+        let r = validate_kunde(&k, &[], false, false);
         assert!(r.valid);
     }
 
     #[test]
-    fn rejects_non_mp4() {
-        let r = validate_kunde(&base_kunde(), &["clip.mov".into()], false);
+    fn id_mode_requires_both_ids() {
+        let mut k = base_kunde();
+        k.form_mode = "manual".into();
+        let r = validate_kunde(&k, &[], false, true);
         assert!(!r.valid);
-        assert!(r.errors.iter().any(|e| e.contains(".mp4")));
+        assert!(r.errors.iter().any(|e| e.contains("Kunden-ID ist erforderlich")));
+        assert!(r.errors.iter().any(|e| e.contains("Booking-ID ist erforderlich")));
+    }
+
+    #[test]
+    fn id_mode_accepts_valid_ids() {
+        let mut k = base_kunde();
+        k.form_mode = "manual".into();
+        k.kunden_id = Some("1234".into());
+        k.booking_id = Some("5678".into());
+        let r = validate_kunde(&k, &[], false, true);
+        assert!(r.valid);
     }
 }

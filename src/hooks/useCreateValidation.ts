@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { usePhotoStore } from "../store/photoStore";
@@ -6,12 +6,7 @@ import { useVideoStore } from "../store/videoStore";
 import { useUiStore } from "../store/uiStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { validateCreateJob, normalizeManualEntryMode } from "../lib/tauri";
-import {
-  filterGraceCreateHints,
-  isBlockingCreateHint,
-  isIdEntryGracePeriod,
-  summarizeCreateHints,
-} from "../lib/createReadyHints";
+import { resolveCreateValidation } from "../lib/createReadyHints";
 import { canRunAmsIdLookup, isAmsBridgeConfigured } from "../lib/amsLookup";
 
 type Options = {
@@ -41,7 +36,6 @@ export function useCreateValidation({
   const amsConnected = useAmsBridgeStore((s) => s.connected);
   const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
 
-  const [createReady, setCreateReady] = useState(false);
   const [createHints, setCreateHints] = useState<string[]>([]);
   const [createReadyPulse, setCreateReadyPulse] = useState(false);
   const createReadyWasFalseRef = useRef(true);
@@ -68,29 +62,8 @@ export function useCreateValidation({
             hints.push("Speicherort wird beim Erstellen abgefragt und gespeichert.");
           }
           setCreateHints(hints);
-          const manualMode = normalizeManualEntryMode(
-            config?.manual_entry_mode,
-            config?.oldschool_mode ?? false,
-          );
-          const grace = isIdEntryGracePeriod({
-            active: kunde.form_mode === "manual" && manualMode === "id",
-            kundenId: kunde.kunden_id,
-            bookingId: kunde.booking_id,
-            amsLookupSettled,
-            lookupLive: canRunAmsIdLookup({
-              configured: isAmsBridgeConfigured(config),
-              connected: amsConnected,
-              capabilities: amsCapabilities,
-            }),
-          });
-          const blocking = filterGraceCreateHints(
-            hints.filter(isBlockingCreateHint),
-            grace,
-          );
-          setCreateReady(blocking.length === 0);
         } catch {
           if (!cancelled) {
-            setCreateReady(false);
             setCreateHints(["Validierung fehlgeschlagen"]);
           }
         }
@@ -114,34 +87,59 @@ export function useCreateValidation({
     amsCapabilities,
   ]);
 
+  const hasMedia =
+    (videoList.length > 0 || photoList.length > 0) && !pipelineActive;
+
   const workStarted =
     sessionTouched ||
-    videoList.length > 0 ||
-    photoList.length > 0 ||
+    hasMedia ||
     qrRevision > 0 ||
     amsLookupRevision > 0;
   const manualEntryMode = normalizeManualEntryMode(
     config?.manual_entry_mode,
     config?.oldschool_mode ?? false,
   );
-  const idEntryGrace = isIdEntryGracePeriod({
-    active: kunde.form_mode === "manual" && manualEntryMode === "id",
-    kundenId: kunde.kunden_id,
-    bookingId: kunde.booking_id,
-    amsLookupSettled,
-    lookupLive: canRunAmsIdLookup({
-      configured: isAmsBridgeConfigured(config),
-      connected: amsConnected,
-      capabilities: amsCapabilities,
-    }),
+  const lookupLive = canRunAmsIdLookup({
+    configured: isAmsBridgeConfigured(config),
+    connected: amsConnected,
+    capabilities: amsCapabilities,
   });
-  const createBanner = busy
-    ? null
-    : summarizeCreateHints(createHints, {
+
+  const resolved = useMemo(
+    () =>
+      resolveCreateValidation(createHints, {
+        formMode: kunde.form_mode,
+        manualEntryMode,
         workStarted,
-        suppressEmptyMedia: pipelineActive,
-        idEntryGrace,
-      });
+        pipelineActive,
+        sessionTouched,
+        hasMedia,
+        qrApplied: qrRevision > 0,
+        amsApplied: amsLookupRevision > 0,
+        kundenId: kunde.kunden_id,
+        bookingId: kunde.booking_id,
+        amsLookupSettled,
+        lookupLive,
+      }),
+    [
+      createHints,
+      kunde.form_mode,
+      kunde.kunden_id,
+      kunde.booking_id,
+      manualEntryMode,
+      workStarted,
+      pipelineActive,
+      sessionTouched,
+      hasMedia,
+      qrRevision,
+      amsLookupRevision,
+      amsLookupSettled,
+      lookupLive,
+    ],
+  );
+
+  const { createReady, createBanner: resolvedBanner } = resolved;
+  const createBanner = busy ? null : resolvedBanner;
 
   useEffect(() => {
     const becameReady = createReadyWasFalseRef.current && createReady;

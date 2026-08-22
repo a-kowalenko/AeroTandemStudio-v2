@@ -136,8 +136,10 @@ pub fn validate_create_job(
     photo_paths: &[String],
     watermark_photo_indices: &[usize],
     oldschool_mode: bool,
+    require_api_ids: bool,
 ) -> Vec<String> {
-    let mut errors = crate::model::validate_kunde(kunde, &[], oldschool_mode).errors;
+    let mut errors =
+        crate::model::validate_kunde(kunde, &[], oldschool_mode, require_api_ids).errors;
 
     let video_prod = needs_video_product(kunde);
     let foto_prod = needs_foto_product(kunde);
@@ -320,6 +322,7 @@ pub fn create_job(
         photo_paths,
         &options.watermark_photo_indices,
         config.oldschool_mode,
+        crate::model::require_api_ids(kunde, &config.manual_entry_mode),
     );
     if !validation.is_empty() {
         return Err(ProcessorError::Message(validation.join("\n")));
@@ -636,7 +639,7 @@ mod tests {
     #[test]
     fn validate_requires_product() {
         let k = Kunde::default();
-        let errs = validate_create_job(&k, &[], &[], &[], false);
+        let errs = validate_create_job(&k, &[], &[], &[], false, false);
         assert!(errs.iter().any(|e| e.contains("Produkt")));
     }
 
@@ -648,7 +651,7 @@ mod tests {
         k.vorname = Some("Max".into());
         k.nachname = Some("M".into());
         k.handcam_video = true;
-        let errs = validate_create_job(&k, &[], &[], &[], false);
+        let errs = validate_create_job(&k, &[], &[], &[], false, false);
         assert!(errs.iter().any(|e| e.contains("keine Videos")));
     }
 
@@ -661,7 +664,7 @@ mod tests {
         k.nachname = Some("M".into());
         k.handcam_foto = true;
         k.ist_bezahlt_handcam_foto = false;
-        let errs = validate_create_job(&k, &[], &["a.jpg".into()], &[], false);
+        let errs = validate_create_job(&k, &[], &["a.jpg".into()], &[], false, false);
         assert!(errs.iter().any(|e| e.contains("Wasserzeichen")));
     }
 }

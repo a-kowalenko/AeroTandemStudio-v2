@@ -125,8 +125,19 @@ pub fn validate_kunde_cmd(
             .map_err(|e| e.to_string())?
             .oldschool_mode
     };
+    let manual_entry_mode = state
+        .cache
+        .lock()
+        .map_err(|e| e.to_string())?
+        .manual_entry_mode
+        .clone();
     let paths = video_paths.unwrap_or_default();
-    Ok(validate_kunde(&kunde, &paths, oldschool))
+    Ok(validate_kunde(
+        &kunde,
+        &paths,
+        oldschool,
+        crate::model::require_api_ids(&kunde, &manual_entry_mode),
+    ))
 }
 
 #[tauri::command(rename = "propose_default_media_dirs")]

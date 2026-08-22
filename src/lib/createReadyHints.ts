@@ -47,10 +47,30 @@ export type CreateReadyBanner = {
 };
 
 export type SummarizeCreateHintsOpts = {
-  workStarted: boolean;
   suppressEmptyMedia: boolean;
-  /** Manual ID mode: defer Vorgang hints until IDs are complete and AMS lookup settled. */
+  /** Manual ID mode: defer name/product hints while IDs or AMS lookup are in progress. */
   idEntryGrace?: boolean;
+};
+
+export type CreateValidationContext = {
+  formMode: string;
+  manualEntryMode: "id" | "oldschool" | "lokal";
+  workStarted: boolean;
+  pipelineActive: boolean;
+  sessionTouched: boolean;
+  hasMedia: boolean;
+  qrApplied: boolean;
+  amsApplied: boolean;
+  kundenId: string | null | undefined;
+  bookingId: string | null | undefined;
+  amsLookupSettled: boolean;
+  lookupLive: boolean;
+};
+
+export type ResolvedCreateValidation = {
+  createReady: boolean;
+  blockingHints: string[];
+  createBanner: CreateReadyBanner | null;
 };
 
 export type IdEntryGraceOpts = {
@@ -69,14 +89,36 @@ export function isIdEntryGracePeriod(opts: IdEntryGraceOpts): boolean {
   return false;
 }
 
+function isManualIdWithAms(ctx: CreateValidationContext): boolean {
+  return (
+    ctx.formMode === "manual" &&
+    ctx.manualEntryMode === "id" &&
+    ctx.lookupLive
+  );
+}
+
+/** When the Vorgang validation banner may appear (button gate is separate). */
+export function shouldShowCreateBanner(ctx: CreateValidationContext): boolean {
+  if (!isManualIdWithAms(ctx)) {
+    return ctx.workStarted;
+  }
+
+  if (ctx.sessionTouched) {
+    return ctx.workStarted;
+  }
+  if (ctx.hasMedia || ctx.qrApplied || ctx.amsApplied) {
+    return ctx.workStarted;
+  }
+
+  return (
+    ctx.amsLookupSettled &&
+    isLookupIdPairReady(ctx.kundenId, ctx.bookingId)
+  );
+}
+
 function shouldSuppressGraceHint(meta: CreateReadyItem, grace: boolean): boolean {
   if (!grace) return false;
-  if (
-    (meta.target === "kunden-id" || meta.target === "booking-id") &&
-    meta.kind === "invalid"
-  ) {
-    return true;
-  }
+  // During ID entry: hide derived fields until IDs + AMS lookup are settled.
   if (
     meta.kind === "missing" &&
     (meta.target === "name" ||
@@ -113,6 +155,16 @@ const HINT_META: Record<string, Omit<HintMeta, "label"> & { labelKey: string }> 
     labelKey: "create.ready.chips.date",
     kind: "missing",
     target: "datum",
+  },
+  "Kunden-ID ist erforderlich": {
+    labelKey: "create.validation.customerIdRequired",
+    kind: "missing",
+    target: "kunden-id",
+  },
+  "Booking-ID ist erforderlich": {
+    labelKey: "create.validation.bookingIdRequired",
+    kind: "missing",
+    target: "booking-id",
   },
   "Vorname und Nachname sind erforderlich": {
     labelKey: "create.ready.chips.name",
@@ -257,10 +309,19 @@ function headlineFor(items: CreateReadyItem[]): string {
   return tr("create.ready.headline.missingMany", { count: n });
 }
 
+function shouldShowMissingHint(
+  hint: string,
+  _meta: HintMeta,
+  opts: SummarizeCreateHintsOpts,
+): boolean {
+  const src = HINT_META[hint];
+  if (src?.emptyMedia && opts.suppressEmptyMedia) return false;
+  return true;
+}
+
 export function summarizeCreateHints(
   hints: string[],
   opts: SummarizeCreateHintsOpts = {
-    workStarted: true,
     suppressEmptyMedia: false,
     idEntryGrace: false,
   },
@@ -269,9 +330,7 @@ export function summarizeCreateHints(
     filterGraceCreateHints(hints, opts.idEntryGrace ?? false).flatMap((hint) => {
       const meta = classifyHint(hint);
       if (!meta) return [];
-      if (meta.kind === "missing" && !opts.workStarted) return [];
-      const src = HINT_META[hint];
-      if (src?.emptyMedia && opts.suppressEmptyMedia) return [];
+      if (!shouldShowMissingHint(hint, meta, opts)) return [];
       return [{ label: meta.label, kind: meta.kind, target: meta.target }];
     }),
   );
@@ -281,6 +340,30 @@ export function summarizeCreateHints(
     items,
     showChips: items.length > 1,
   };
+}
+
+/** Single source for Erstellen button + Vorgang banner (button strict, banner guided). */
+export function resolveCreateValidation(
+  hints: string[],
+  ctx: CreateValidationContext,
+): ResolvedCreateValidation {
+  const blockingHints = hints.filter(isBlockingCreateHint);
+  const createReady = blockingHints.length === 0;
+  const idEntryGrace = isIdEntryGracePeriod({
+    active: ctx.formMode === "manual" && ctx.manualEntryMode === "id",
+    kundenId: ctx.kundenId,
+    bookingId: ctx.bookingId,
+    amsLookupSettled: ctx.amsLookupSettled,
+    lookupLive: ctx.lookupLive,
+  });
+  if (!shouldShowCreateBanner(ctx)) {
+    return { createReady, blockingHints, createBanner: null };
+  }
+  const createBanner = summarizeCreateHints(blockingHints, {
+    suppressEmptyMedia: ctx.pipelineActive,
+    idEntryGrace,
+  });
+  return { createReady, blockingHints, createBanner };
 }
 
 export function mediaTabForTarget(
@@ -315,6 +398,8 @@ export function translateValidationHint(hint: string): string {
   const keyMap: Record<string, string> = {
     "Tandemmaster ist erforderlich": "create.validation.tandemmasterRequired",
     "Datum ist erforderlich": "create.validation.dateRequired",
+    "Kunden-ID ist erforderlich": "create.validation.customerIdRequired",
+    "Booking-ID ist erforderlich": "create.validation.bookingIdRequired",
     "Vorname und Nachname sind erforderlich": "create.validation.nameRequired",
     "Email ist erforderlich": "create.validation.emailRequired",
     "Videospringer ist erforderlich bei Outside Video":

@@ -345,7 +345,9 @@
       "notMp4": "Not .mp4",
       "fileMissing": "File missing",
       "customerId": "Customer ID",
+      "customerIdRequired": "Customer ID is required",
       "bookingId": "Booking ID",
+      "bookingIdRequired": "Booking ID is required",
       "validation": "Validation"
     },
     "ready": {

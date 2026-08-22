@@ -768,7 +768,12 @@ pub async fn generate_preview(
 
     let config = ensure_ams_bridge_identity(&state)?;
 
-    let form = crate::model::validate_kunde(&kunde, &video_paths, config.oldschool_mode);
+    let form = crate::model::validate_kunde(
+        &kunde,
+        &video_paths,
+        config.oldschool_mode,
+        crate::model::require_api_ids(&kunde, &config.manual_entry_mode),
+    );
     if !form.valid {
         logging::warn(
             "preview",
@@ -1060,12 +1065,20 @@ pub fn validate_create_job(
             .map_err(|e| e.to_string())?
             .oldschool_mode
     };
+    let manual_entry_mode = state
+        .cache
+        .lock()
+        .map_err(|e| e.to_string())?
+        .manual_entry_mode
+        .clone();
+    let require_ids = crate::model::require_api_ids(&kunde, &manual_entry_mode);
     let errors = export_job::validate_create_job(
         &kunde,
         &video_paths.unwrap_or_default(),
         &photo_paths.unwrap_or_default(),
         &watermark_photo_indices.unwrap_or_default(),
         oldschool,
+        require_ids,
     );
     Ok(ValidationResult {
         valid: errors.is_empty(),
