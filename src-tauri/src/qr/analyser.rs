@@ -32,6 +32,16 @@ pub const MAX_QR_VIDEO_DECODE_WIDTH: u32 = 1280;
 pub const MAX_QR_FOLLOWUP_DECODE_WIDTH: u32 = 960;
 /// Lower width for the quick first-pass detect (faster FFmpeg + rxing).
 pub const QR_FAST_DETECT_WIDTH: u32 = 960;
+/// Cascade pass 1 — cheap rxing at reduced width (no `TryHarder`).
+pub const QR_CASCADE_CHEAP_WIDTH: u32 = 640;
+/// Cascade pass 2 — normal width with `TryHarder` on miss.
+pub const QR_CASCADE_NORMAL_WIDTH: u32 = 960;
+/// Cascade pass 4 — escalate width after preprocess miss.
+pub const QR_CASCADE_ESCALATE_WIDTH: u32 = 1280;
+/// Laplacian-variance below this → skip expensive rxing (video pipe).
+pub const QR_SHARPNESS_GATE_THRESHOLD: f64 = 20.0;
+/// Always try at least this many sharpest buffered frames even when below threshold.
+pub const QR_SHARPNESS_GATE_MIN_KEEP: usize = 3;
 /// Midpoint anchors tried via cheap PNG before the full pipe (0, last, mid…).
 pub const QR_QUICK_ANCHOR_COUNT: usize = 3;
 /// Temp dirs for hit-frame previews shown in SuccessDialog.
@@ -304,6 +314,7 @@ pub fn scaled_gray_frame_size(src_w: u32, src_h: u32, max_width: u32) -> Option<
 /// Uses `select=not(mod(n\,step))` + `fps_mode=vfr` so timestamps match
 /// [`target_frame_indices`] — the old `fps=` filter picked different frames and
 /// missed QRs that seek/PNG still found (e.g. src_frame 130 @ ~4.3s).
+/// Output is single-channel gray (no RGB→luma conversion in Rust).
 pub fn build_extract_frames_pipe_args(
     input: &str,
     scan_seconds: f64,
@@ -315,7 +326,7 @@ pub fn build_extract_frames_pipe_args(
     let step = frame_step.max(1);
     // Escape comma for FFmpeg filtergraph (same style as keyframe select elsewhere).
     let vf = format!(
-        "select='not(mod(n\\,{step}))',scale={out_w}:{out_h}:flags=fast_bilinear,format=rgb24"
+        "select='not(mod(n\\,{step}))',scale={out_w}:{out_h}:flags=fast_bilinear,format=gray"
     );
     vec![
         "-hide_banner".into(),
@@ -336,7 +347,7 @@ pub fn build_extract_frames_pipe_args(
         "-f".into(),
         "rawvideo".into(),
         "-pix_fmt".into(),
-        "rgb24".into(),
+        "gray".into(),
         "-".into(),
     ]
 }
@@ -553,29 +564,249 @@ fn clip_file_name(path: &str) -> &str {
         .unwrap_or(path)
 }
 
-/// Decode QR text + corner points from a greyscale luma8 buffer.
-/// Cheap pass first; `TryHarder` only when `allow_try_harder` (misses are otherwise cheap).
+/// Which cascade stage produced a QR hit (logged for OPT-14 acceptance).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QrDecodeCascadePass {
+    Cheap,
+    Normal,
+    PreprocessContrast,
+    PreprocessInvert,
+    PreprocessUnsharp,
+    Escalate,
+}
+
+impl QrDecodeCascadePass {
+    fn as_log_str(self) -> &'static str {
+        match self {
+            Self::Cheap => "cheap",
+            Self::Normal => "normal",
+            Self::PreprocessContrast => "preprocess_contrast",
+            Self::PreprocessInvert => "preprocess_invert",
+            Self::PreprocessUnsharp => "preprocess_unsharp",
+            Self::Escalate => "escalate",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QrCascadeMode {
+    /// Photo batch: cheap + normal only (no preprocess / width escalate).
+    Fast,
+    /// Full cascade including preprocess and multi-scale escalate.
+    Full,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum QrPreprocess {
+    Contrast,
+    Invert,
+    Unsharp,
+}
+
+/// Laplacian variance on luma (subsampled). Higher → sharper.
+pub fn laplacian_variance(luma: &[u8], width: u32, height: u32) -> f64 {
+    let w = width as usize;
+    let h = height as usize;
+    if w < 3 || h < 3 || luma.len() < w * h {
+        return 0.0;
+    }
+    let stride = 2usize;
+    let mut sum = 0.0f64;
+    let mut sum_sq = 0.0f64;
+    let mut n = 0usize;
+    for y in (1..h.saturating_sub(1)).step_by(stride) {
+        for x in (1..w.saturating_sub(1)).step_by(stride) {
+            let idx = y * w + x;
+            let c = luma[idx] as i32;
+            let lap = 4 * c
+                - luma[idx - 1] as i32
+                - luma[idx + 1] as i32
+                - luma[idx - w] as i32
+                - luma[idx + w] as i32;
+            let lf = lap as f64;
+            sum += lf;
+            sum_sq += lf * lf;
+            n += 1;
+        }
+    }
+    if n == 0 {
+        return 0.0;
+    }
+    let mean = sum / n as f64;
+    sum_sq / n as f64 - mean * mean
+}
+
+/// Slots allowed for rxing after the sharpness gate (anchors + top-N + above threshold).
+pub fn sharpness_gate_allowed_slots(
+    frame_lumas: &[(usize, f64)],
+    threshold: f64,
+    min_keep: usize,
+) -> HashSet<usize> {
+    let mut allowed = HashSet::new();
+    if frame_lumas.is_empty() {
+        return allowed;
+    }
+    // Anchor: slot 0 always tried when present.
+    if frame_lumas.iter().any(|(s, _)| *s == 0) {
+        allowed.insert(0);
+    }
+    let mut ranked = frame_lumas.to_vec();
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    for (slot, _) in ranked.iter().take(min_keep.max(1)) {
+        allowed.insert(*slot);
+    }
+    for (slot, score) in frame_lumas {
+        if *score >= threshold {
+            allowed.insert(*slot);
+        }
+    }
+    allowed
+}
+
+fn apply_qr_preprocess(luma: &[u8], width: u32, height: u32, kind: QrPreprocess) -> Vec<u8> {
+    match kind {
+        QrPreprocess::Contrast => contrast_stretch_luma(luma),
+        QrPreprocess::Invert => luma.iter().map(|p| 255 - p).collect(),
+        QrPreprocess::Unsharp => unsharp_luma(luma, width, height),
+    }
+}
+
+fn contrast_stretch_luma(luma: &[u8]) -> Vec<u8> {
+    let Some(&min_v) = luma.iter().min() else {
+        return Vec::new();
+    };
+    let Some(&max_v) = luma.iter().max() else {
+        return Vec::new();
+    };
+    if max_v == min_v {
+        return luma.to_vec();
+    }
+    let span = (max_v - min_v) as f32;
+    luma.iter()
+        .map(|&p| (((p - min_v) as f32 / span) * 255.0).round() as u8)
+        .collect()
+}
+
+fn unsharp_luma(luma: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let w = width as usize;
+    let h = height as usize;
+    if w < 3 || h < 3 || luma.len() < w * h {
+        return luma.to_vec();
+    }
+    let mut out = luma.to_vec();
+    for y in 1..h.saturating_sub(1) {
+        for x in 1..w.saturating_sub(1) {
+            let idx = y * w + x;
+            let blur = (luma[idx - 1] as u16
+                + luma[idx + 1] as u16
+                + luma[idx - w] as u16
+                + luma[idx + w] as u16
+                + luma[idx] as u16)
+                / 5;
+            let sharp = (luma[idx] as f32 + 0.6 * (luma[idx] as f32 - blur as f32))
+                .round()
+                .clamp(0.0, 255.0) as u8;
+            out[idx] = sharp;
+        }
+    }
+    out
+}
+
+/// Widths tried in order for multi-scale cascade (deduped, capped by `max_escalate`).
+/// Never upscales beyond `orig_w`.
+pub fn cascade_target_widths(max_escalate: u32, orig_w: u32) -> Vec<u32> {
+    let cap = max_escalate.max(1).min(MAX_QR_DECODE_WIDTH);
+    let orig_w = orig_w.max(1).min(cap);
+    if orig_w <= QR_CASCADE_CHEAP_WIDTH {
+        return vec![orig_w];
+    }
+    let candidates = [
+        QR_CASCADE_CHEAP_WIDTH,
+        QR_CASCADE_NORMAL_WIDTH,
+        QR_CASCADE_ESCALATE_WIDTH,
+        MAX_QR_DECODE_WIDTH,
+    ];
+    let mut widths: Vec<u32> = candidates
+        .iter()
+        .map(|&w| w.min(cap).min(orig_w))
+        .collect();
+    widths.sort();
+    widths.dedup();
+    if widths.is_empty() {
+        widths.push(orig_w);
+    }
+    widths
+}
+
+/// Decode QR text + corner points from a greyscale luma8 buffer (full cascade).
 pub fn decode_qr_from_luma(
     luma: Vec<u8>,
     width: u32,
     height: u32,
 ) -> Option<(String, Vec<(f32, f32)>)> {
-    decode_qr_from_luma_strategy(luma, width, height, true)
+    decode_qr_cascade_from_luma(luma, width, height, QrCascadeMode::Full, None)
+        .map(|h| (h.text, h.points))
 }
 
-fn decode_qr_from_luma_strategy(
+fn decode_qr_cascade_from_luma(
     luma: Vec<u8>,
     width: u32,
     height: u32,
-    allow_try_harder: bool,
-) -> Option<(String, Vec<(f32, f32)>)> {
-    if !allow_try_harder {
-        return decode_qr_from_luma_hints(luma, width, height, false);
-    }
+    mode: QrCascadeMode,
+    escalate_pass: Option<QrDecodeCascadePass>,
+) -> Option<QrLumaHit> {
+    // Pass 1 — cheap (no TryHarder).
     if let Some(hit) = decode_qr_from_luma_hints(luma.clone(), width, height, false) {
-        return Some(hit);
+        return Some(QrLumaHit {
+            text: hit.0,
+            points: hit.1,
+            pass: escalate_pass.unwrap_or(QrDecodeCascadePass::Cheap),
+        });
     }
-    decode_qr_from_luma_hints(luma, width, height, true)
+    // Pass 2 — normal + TryHarder.
+    if let Some(hit) = decode_qr_from_luma_hints(luma.clone(), width, height, true) {
+        return Some(QrLumaHit {
+            text: hit.0,
+            points: hit.1,
+            pass: escalate_pass.unwrap_or(QrDecodeCascadePass::Normal),
+        });
+    }
+    if mode == QrCascadeMode::Fast {
+        return None;
+    }
+    // Pass 3 — preprocess variants.
+    let preps = [
+        (QrPreprocess::Contrast, QrDecodeCascadePass::PreprocessContrast),
+        (QrPreprocess::Invert, QrDecodeCascadePass::PreprocessInvert),
+        (QrPreprocess::Unsharp, QrDecodeCascadePass::PreprocessUnsharp),
+    ];
+    for (prep, pass) in preps {
+        let processed = apply_qr_preprocess(&luma, width, height, prep);
+        if let Some(hit) = decode_qr_from_luma_hints(processed, width, height, true) {
+            return Some(QrLumaHit {
+                text: hit.0,
+                points: hit.1,
+                pass: escalate_pass.unwrap_or(pass),
+            });
+        }
+    }
+    None
+}
+
+struct QrLumaHit {
+    text: String,
+    points: Vec<(f32, f32)>,
+    pass: QrDecodeCascadePass,
+}
+
+fn log_qr_decode_pass(pass: QrDecodeCascadePass, width: u32, height: u32) {
+    logging::debug(
+        "qr",
+        format!(
+            "QR decode hit pass={} size={width}x{height}",
+            pass.as_log_str()
+        ),
+    );
 }
 
 fn decode_qr_from_luma_hints(
@@ -719,30 +950,54 @@ fn decode_kunde_from_dynamic_image(
     img: image::DynamicImage,
     max_width: u32,
     persist_preview: bool,
-    allow_try_harder: bool,
+    allow_escalate: bool,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
-    let (w, _h) = img.dimensions();
-    let img = if w > max_width {
-        img.resize(max_width, u32::MAX, FilterType::Triangle)
+    let (orig_w, _orig_h) = img.dimensions();
+    let mode = if allow_escalate {
+        QrCascadeMode::Full
     } else {
-        img
+        QrCascadeMode::Fast
     };
+    let widths = cascade_target_widths(max_width, orig_w);
 
-    let gray = img.to_luma8();
-    let width = gray.width();
-    let height = gray.height();
-    let luma = gray.into_raw();
+    let mut hit_img: Option<image::DynamicImage> = None;
+    let mut hit_luma: Option<QrLumaHit> = None;
+    let mut hit_dims = (0u32, 0u32);
 
-    let Some((text, points)) =
-        decode_qr_from_luma_strategy(luma, width, height, allow_try_harder)
-    else {
+    for (wi, &target_w) in widths.iter().enumerate() {
+        let scaled = if orig_w > target_w {
+            img.resize(target_w, u32::MAX, FilterType::Triangle)
+        } else {
+            img.clone()
+        };
+        let gray = scaled.to_luma8();
+        let width = gray.width();
+        let height = gray.height();
+        let luma = gray.into_raw();
+
+        let escalate_pass = if wi > 0 {
+            Some(QrDecodeCascadePass::Escalate)
+        } else {
+            None
+        };
+        if let Some(h) = decode_qr_cascade_from_luma(luma, width, height, mode, escalate_pass) {
+            log_qr_decode_pass(h.pass, width, height);
+            hit_img = Some(scaled);
+            hit_dims = (width, height);
+            hit_luma = Some(h);
+            break;
+        }
+    }
+
+    let Some(hit) = hit_luma else {
         return Ok(None);
     };
+    let (width, height) = hit_dims;
+    let preview_img = hit_img.unwrap_or_else(|| img.clone());
 
-    match parse_kunde_from_qr_string(&text) {
+    match parse_kunde_from_qr_string(&hit.text) {
         Ok(kunde) => {
             if !persist_preview {
-                // Follow-up / detect-only: no spotlight file on disk.
                 return Ok(Some((
                     kunde,
                     QrPreview {
@@ -753,8 +1008,8 @@ fn decode_kunde_from_dynamic_image(
                     },
                 )));
             }
-            let preview_path = persist_qr_preview_image(&img)?;
-            let spotlight = spotlight_from_points(&points, width, height);
+            let preview_path = persist_qr_preview_image(&preview_img)?;
+            let spotlight = spotlight_from_points(&hit.points, width, height);
             Ok(Some((
                 kunde,
                 QrPreview {
@@ -766,7 +1021,6 @@ fn decode_kunde_from_dynamic_image(
             )))
         }
         Err(e) => {
-            // QR found but not a valid customer payload — treat as miss for this frame.
             eprintln!("QR found but parse failed: {e}");
             Ok(None)
         }
@@ -801,27 +1055,66 @@ pub fn scan_photo(
     }
 }
 
-/// RGB24 frame → same Luma path as legacy PNG extract (`to_luma8`).
-fn decode_kunde_from_rgb_frame(
-    rgb: &[u8],
+/// Gray frame → cascade decode (pipe outputs `format=gray`).
+fn decode_kunde_from_gray_frame(
+    gray: &[u8],
     width: u32,
     height: u32,
     persist_preview: bool,
+    allow_escalate: bool,
 ) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
-    let needed = (width as usize)
-        .saturating_mul(height as usize)
-        .saturating_mul(3);
-    if rgb.len() < needed {
+    let needed = (width as usize).saturating_mul(height as usize);
+    if gray.len() < needed {
         return Err(QrScanError::Image(format!(
-            "rgb buffer too small: got {} need {needed}",
-            rgb.len()
+            "gray buffer too small: got {} need {needed}",
+            gray.len()
         )));
     }
-    let pixels = rgb[..needed].to_vec();
-    let buf = ImageBuffer::<image::Rgb<u8>, _>::from_raw(width, height, pixels)
-        .ok_or_else(|| QrScanError::Image("rgb buffer size mismatch".into()))?;
-    let img = DynamicImage::ImageRgb8(buf);
-    decode_kunde_from_dynamic_image(img, width, persist_preview, true)
+    let luma = gray[..needed].to_vec();
+    let mode = if allow_escalate {
+        QrCascadeMode::Full
+    } else {
+        QrCascadeMode::Fast
+    };
+    let Some(hit) = decode_qr_cascade_from_luma(luma, width, height, mode, None) else {
+        return Ok(None);
+    };
+    log_qr_decode_pass(hit.pass, width, height);
+
+    let buf = ImageBuffer::<image::Luma<u8>, _>::from_raw(width, height, gray[..needed].to_vec())
+        .ok_or_else(|| QrScanError::Image("gray buffer size mismatch".into()))?;
+    let img = DynamicImage::ImageLuma8(buf);
+
+    match parse_kunde_from_qr_string(&hit.text) {
+        Ok(kunde) => {
+            if !persist_preview {
+                return Ok(Some((
+                    kunde,
+                    QrPreview {
+                        path: String::new(),
+                        width,
+                        height,
+                        spotlight: None,
+                    },
+                )));
+            }
+            let preview_path = persist_qr_preview_image(&img)?;
+            let spotlight = spotlight_from_points(&hit.points, width, height);
+            Ok(Some((
+                kunde,
+                QrPreview {
+                    path: preview_path.to_string_lossy().to_string(),
+                    width,
+                    height,
+                    spotlight,
+                },
+            )))
+        }
+        Err(e) => {
+            eprintln!("QR found but parse failed: {e}");
+            Ok(None)
+        }
+    }
 }
 
 /// Optional progress: `(path, phase, frame, frames_total)`.
@@ -1042,9 +1335,7 @@ fn scan_video_pipe_pass(
     let order = midpoint_decode_order(indices.len());
     let frames_total = (indices.len() as u32).max(1);
     let args = build_extract_frames_pipe_args(path, scan_seconds, frame_step, out_w, out_h);
-    let frame_nbytes = (out_w as usize)
-        .saturating_mul(out_h as usize)
-        .saturating_mul(3);
+    let frame_nbytes = (out_w as usize).saturating_mul(out_h as usize);
 
     let notify = |phase: &str, frame: u32, total: u32| {
         if let Some(cb) = on_progress {
@@ -1057,6 +1348,31 @@ fn scan_video_pipe_pass(
     let mut early: Option<QrScanResult> = None;
     let mut slot0_tried = false;
 
+    let try_decode_slot = |slot: usize,
+                           gray: &[u8],
+                           attempt: u32,
+                           pass_label: &str|
+     -> Result<Option<QrScanResult>, QrScanError> {
+        let src_frame = indices.get(slot).copied().unwrap_or(0);
+        match decode_kunde_from_gray_frame(gray, out_w, out_h, true, true) {
+            Ok(Some((kunde, preview))) => {
+                logging::info(
+                    "qr",
+                    format!(
+                        "Clip-Treffer via={pass_label} frame={attempt}/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
+                        clip_file_name(path)
+                    ),
+                );
+                Ok(Some(QrScanResult::hit(kunde, path, Some(preview))))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => {
+                eprintln!("QR frame decode error ({path}): {e}");
+                Ok(None)
+            }
+        }
+    };
+
     let pipe_result = run_ffmpeg_raw_stdout_frames(ffmpeg, &args, frame_nbytes, |frame| {
         if is_stop(cancel) {
             early = Some(QrScanResult::cancelled());
@@ -1066,7 +1382,6 @@ fn scan_video_pipe_pass(
             return true;
         }
         frames[write_i] = Some(frame.to_vec());
-        // Preparing: do not drive the Prüfpunkt counter (avoids 15→1 jumps).
         if write_i == 0 {
             notify("extract", 0, frames_total);
         } else if write_i + 1 == frames.len() || (write_i + 1) % 4 == 0 {
@@ -1078,23 +1393,9 @@ fn scan_video_pipe_pass(
             slot0_tried = true;
             if !skip_slots.contains(&0) {
                 notify("fast", 1, frames_total);
-                match decode_kunde_from_rgb_frame(frame, out_w, out_h, true) {
-                    Ok(Some((kunde, preview))) => {
-                        let src_frame = indices[0];
-                        logging::info(
-                            "qr",
-                            format!(
-                                "Clip-Treffer via=pipe_midpoint frame=1/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
-                                clip_file_name(path)
-                            ),
-                        );
-                        early = Some(QrScanResult::hit(kunde, path, Some(preview)));
-                        return false;
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        eprintln!("QR frame decode error ({path}): {e}");
-                    }
+                if let Ok(Some(res)) = try_decode_slot(0, frame, 1, "pipe_midpoint") {
+                    early = Some(res);
+                    return false;
                 }
             }
         }
@@ -1115,7 +1416,38 @@ fn scan_video_pipe_pass(
                 return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
             }
 
-            // Midpoint decode over buffered frames (skip slots already covered by quick pass).
+            // Sharpness gate: skip blurry frames but keep anchors + top-N sharpest.
+            let sharpness_scored: Vec<(usize, f64)> = frames
+                .iter()
+                .enumerate()
+                .filter_map(|(slot, f)| {
+                    let gray = f.as_deref()?;
+                    Some((slot, laplacian_variance(gray, out_w, out_h)))
+                })
+                .collect();
+            let gate_allowed = sharpness_gate_allowed_slots(
+                &sharpness_scored,
+                QR_SHARPNESS_GATE_THRESHOLD,
+                QR_SHARPNESS_GATE_MIN_KEEP,
+            );
+            let gated_skip = sharpness_scored
+                .iter()
+                .filter(|(slot, score)| {
+                    !gate_allowed.contains(slot) && *score < QR_SHARPNESS_GATE_THRESHOLD
+                })
+                .count();
+            if gated_skip > 0 {
+                logging::debug(
+                    "qr",
+                    format!(
+                        "Sharpness-Gate skip={gated_skip}/{} threshold={} file={}",
+                        sharpness_scored.len(),
+                        QR_SHARPNESS_GATE_THRESHOLD,
+                        clip_file_name(path)
+                    ),
+                );
+            }
+
             let mut attempt = skip_slots.len() as u32;
             if slot0_tried && !skip_slots.contains(&0) {
                 attempt = attempt.saturating_add(1);
@@ -1127,34 +1459,19 @@ fn scan_video_pipe_pass(
                 if slot == 0 && slot0_tried {
                     continue;
                 }
+                if !gate_allowed.contains(&slot) {
+                    continue;
+                }
                 if is_stop(cancel) {
                     return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
                 }
-                let Some(rgb) = frames.get(slot).and_then(|f| f.as_deref()) else {
+                let Some(gray) = frames.get(slot).and_then(|f| f.as_deref()) else {
                     continue;
                 };
                 attempt = attempt.saturating_add(1);
                 notify("fast", attempt, frames_total);
-                let src_frame = indices.get(slot).copied().unwrap_or(0);
-                match decode_kunde_from_rgb_frame(rgb, out_w, out_h, true) {
-                    Ok(Some((kunde, preview))) => {
-                        logging::info(
-                            "qr",
-                            format!(
-                                "Clip-Treffer via=pipe_midpoint frame={attempt}/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
-                                clip_file_name(path)
-                            ),
-                        );
-                        return Ok(PipePassOutcome::Hit(QrScanResult::hit(
-                            kunde,
-                            path,
-                            Some(preview),
-                        )));
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        eprintln!("QR frame decode error ({path}): {e}");
-                    }
+                if let Ok(Some(res)) = try_decode_slot(slot, gray, attempt, "pipe_midpoint") {
+                    return Ok(PipePassOutcome::Hit(res));
                 }
             }
 
@@ -1341,7 +1658,7 @@ mod tests {
     }
 
     #[test]
-    fn build_extract_frames_pipe_args_select_step_rgb() {
+    fn build_extract_frames_pipe_args_select_step_gray() {
         let args = build_extract_frames_pipe_args("in.mp4", 5.0, 10, 1280, 720);
         assert_eq!(args[0], "-hide_banner");
         let i = args.iter().position(|a| a == "-i").unwrap();
@@ -1351,9 +1668,9 @@ mod tests {
         assert!(args.iter().any(|a| a.contains("not(mod(n")));
         assert!(args.iter().any(|a| a.contains("scale=1280:720")));
         assert!(args.iter().any(|a| a.contains("flags=fast_bilinear")));
-        assert!(args.iter().any(|a| a.contains("format=rgb24")));
+        assert!(args.iter().any(|a| a.contains("format=gray")));
         assert!(args.contains(&"rawvideo".to_string()));
-        assert!(args.contains(&"rgb24".to_string()));
+        assert!(args.contains(&"gray".to_string()));
         assert!(args.contains(&"-fps_mode".to_string()));
         assert!(args.contains(&"vfr".to_string()));
         assert_eq!(args.last().map(String::as_str), Some("-"));
@@ -1514,6 +1831,107 @@ mod tests {
     fn decode_qr_from_luma_rejects_empty() {
         assert!(decode_qr_from_luma(vec![], 0, 0).is_none());
         assert!(decode_qr_from_luma(vec![0; 4], 2, 2).is_none());
+    }
+
+    #[test]
+    fn cascade_target_widths_dedupes_and_caps() {
+        let w = cascade_target_widths(960, 4000);
+        assert_eq!(w, vec![640, 960]);
+        let w2 = cascade_target_widths(1920, 4000);
+        assert_eq!(w2, vec![640, 960, 1280, 1920]);
+        let w3 = cascade_target_widths(1920, 500);
+        assert_eq!(w3, vec![500]);
+    }
+
+    fn synthetic_checkerboard(w: u32, h: u32, cell: u32) -> Vec<u8> {
+        let mut luma = vec![0u8; (w * h) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let v = if ((x / cell) + (y / cell)) % 2 == 0 {
+                    255
+                } else {
+                    0
+                };
+                luma[(y * w + x) as usize] = v;
+            }
+        }
+        luma
+    }
+
+    fn box_blur_luma(luma: &[u8], w: u32, h: u32, radius: u32) -> Vec<u8> {
+        let w = w as usize;
+        let h = h as usize;
+        let r = radius as usize;
+        let mut out = luma.to_vec();
+        for y in 0..h {
+            for x in 0..w {
+                let mut sum = 0u32;
+                let mut n = 0u32;
+                for dy in 0..=(r * 2) {
+                    let yy = y.saturating_add(dy).saturating_sub(r);
+                    if yy >= h {
+                        continue;
+                    }
+                    for dx in 0..=(r * 2) {
+                        let xx = x.saturating_add(dx).saturating_sub(r);
+                        if xx >= w {
+                            continue;
+                        }
+                        sum += luma[yy * w + xx] as u32;
+                        n += 1;
+                    }
+                }
+                out[y * w + x] = (sum / n.max(1)) as u8;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn laplacian_variance_sharp_higher_than_blur() {
+        let w = 64u32;
+        let h = 64u32;
+        let sharp = synthetic_checkerboard(w, h, 4);
+        let blur = box_blur_luma(&sharp, w, h, 3);
+        let v_sharp = laplacian_variance(&sharp, w, h);
+        let v_blur = laplacian_variance(&blur, w, h);
+        assert!(
+            v_sharp > v_blur * 2.0,
+            "sharp={v_sharp} blur={v_blur}"
+        );
+        let uniform = vec![128u8; (w * h) as usize];
+        let v_uniform = laplacian_variance(&uniform, w, h);
+        assert!(v_uniform < QR_SHARPNESS_GATE_THRESHOLD);
+    }
+
+    #[test]
+    fn sharpness_gate_keeps_top_n_and_anchor() {
+        let scores = vec![(0, 5.0), (1, 100.0), (2, 80.0), (3, 1.0), (4, 90.0)];
+        let allowed = sharpness_gate_allowed_slots(&scores, 50.0, 3);
+        assert!(allowed.contains(&0), "anchor slot 0");
+        assert!(allowed.contains(&1));
+        assert!(allowed.contains(&2));
+        assert!(allowed.contains(&4));
+        assert!(!allowed.contains(&3), "blur slot 3 not in top-3");
+    }
+
+    #[test]
+    fn sharpness_gate_blur_slot_skipped_when_not_top_n() {
+        let scores = vec![(5, 2.0), (6, 3.0), (7, 4.0), (8, 1.0)];
+        let allowed = sharpness_gate_allowed_slots(&scores, 50.0, 3);
+        assert_eq!(allowed.len(), 3);
+        assert!(!allowed.contains(&8));
+    }
+
+    #[test]
+    fn cascade_fast_mode_stops_before_preprocess() {
+        let luma = vec![128u8; 64 * 64];
+        assert!(
+            decode_qr_cascade_from_luma(luma.clone(), 64, 64, QrCascadeMode::Fast, None).is_none()
+        );
+        assert!(
+            decode_qr_cascade_from_luma(luma, 64, 64, QrCascadeMode::Full, None).is_none()
+        );
     }
 
     #[test]

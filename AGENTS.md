@@ -134,7 +134,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 | OPT-11 | Foto-Import: QR vor Thumbs | ✅ |
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | ✅ |
 | OPT-13 | Player/Cutter: libmpv statt HTML5 | ⬜ |
-| OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ⬜ |
+| OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

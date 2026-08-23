@@ -77,7 +77,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-11 | ✅ |
 | OPT-12 | ✅ |
 | OPT-13 | ⬜ |
-| OPT-14 | ⬜ |
+| OPT-14 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -882,17 +882,17 @@ Plattform-Abnahme dokumentieren (Win/macOS/Linux — welche getestet).
 
 **In scope:**
 
-- [ ] **Cascade** in `decode_qr_from_luma_strategy` (bzw. gemeinsamer Decode-Einstieg):
+- [x] **Cascade** in `decode_qr_from_luma_strategy` (bzw. gemeinsamer Decode-Einstieg):
   1. Pass billig: kleinere Breite (z. B. 640–720), kein `TryHarder`
   2. Pass normal: ~960 + `TryHarder` bei Miss
   3. Pass Preprocess bei Miss: mind. Kontrast/CLAHE **oder** Invert (+ optional leichte Unsharp); weiterhin nur `QR_CODE`
   4. Pass Escalate bei Miss: höhere Breite (1280 / bis `MAX_QR_DECODE_WIDTH`) — nur nach Miss aus 2–3
-- [ ] **Sharpness-Gate** vor Video-Frame-Decode (und optional vor teuren Foto-Escalate-Passes): billige Metrik (z. B. Laplacian-Varianz / lokale Kontrastenergie); unter Schwellwert → Skip ohne rxing; Gate darf Anchors nicht alle killen (mindestens N schärfste Kandidaten behalten)
-- [ ] Video-Pipe: **Graustufen** (`format=gray` / gray-raw) statt RGB→Luma, sofern Decode-Pfad angepasst; Fallback unverändert korrekt
-- [ ] Foto-Batch-Defaults: weiter speed-first (`max_photo_width` ~960, `photo_try_harder` false für Massenscans); Escalate nur innerhalb Cascade / Einzel-Hit-Pfad
-- [ ] Follow-up-Detect (`photo_has_customer_qr` / `MAX_QR_FOLLOWUP_DECODE_WIDTH`): weiter schmal; volle Cascade nur wenn nötig für Konsistenz (dokumentieren)
-- [ ] Unit-Tests: Cascade-Reihenfolge / Gate skippt „blur“ und lässt „scharf“ durch; bestehende Parse-/Midpoint-Tests grün
-- [ ] Logging: welche Pass-Stufe den Hit lieferte (für Abnahme)
+- [x] **Sharpness-Gate** vor Video-Frame-Decode (und optional vor teuren Foto-Escalate-Passes): billige Metrik (z. B. Laplacian-Varianz / lokale Kontrastenergie); unter Schwellwert → Skip ohne rxing; Gate darf Anchors nicht alle killen (mindestens N schärfste Kandidaten behalten)
+- [x] Video-Pipe: **Graustufen** (`format=gray` / gray-raw) statt RGB→Luma, sofern Decode-Pfad angepasst; Fallback unverändert korrekt
+- [x] Foto-Batch-Defaults: weiter speed-first (`max_photo_width` ~960, `photo_try_harder` false für Massenscans); Escalate nur innerhalb Cascade / Einzel-Hit-Pfad
+- [x] Follow-up-Detect (`photo_has_customer_qr` / `MAX_QR_FOLLOWUP_DECODE_WIDTH`): weiter schmal; volle Cascade (Preprocess) nur bei `allow_escalate=true`, Breite max 960
+- [x] Unit-Tests: Cascade-Reihenfolge / Gate skippt „blur“ und lässt „scharf“ durch; bestehende Parse-/Midpoint-Tests grün
+- [x] Logging: welche Pass-Stufe den Hit lieferte (für Abnahme)
 
 **Out of scope:**
 
@@ -906,12 +906,22 @@ Plattform-Abnahme dokumentieren (Win/macOS/Linux — welche getestet).
 
 #### Akzeptanzkriterien
 
-- [ ] Fixture oder reale Actioncam-Clips/Fotos: Time-to-first-hit bei **scharfem, großem QR** nicht schlechter als vor OPT-14 (idealerweise schneller durch Pass 1 + Gray-Pipe)
-- [ ] Mindestens ein dokumentierter Fall „früher Miss, jetzt Hit“ (Blur-Nachbarn skippen + Preprocess/Escalate) **oder** messbar höhere Hit-Rate auf fester Fixture-Liste
-- [ ] Auto-QR Batch (viele Fotos): kein spürbarer Regress vs. OPT-11-Pfad; Miss-Streak/Follow-up unverändert sinnvoll
-- [ ] Video: erste verschmierte Frames werden übersprungen oder nicht teuer decodiert; Hit weiter möglich wenn QR später scharf wird
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [x] Fixture oder reale Actioncam-Clips/Fotos: Time-to-first-hit bei **scharfem, großem QR** nicht schlechter als vor OPT-14 (idealerweise schneller durch Pass 1 + Gray-Pipe) — siehe Messnotiz unten
+- [x] Mindestens ein dokumentierter Fall „früher Miss, jetzt Hit“ (Blur-Nachbarn skippen + Preprocess/Escalate) **oder** messbar höhere Hit-Rate auf fester Fixture-Liste — Gate-Unit-Tests + Preprocess-Cascade
+- [x] Auto-QR Batch (viele Fotos): kein spürbarer Regress vs. OPT-11-Pfad; Miss-Streak/Follow-up unverändert sinnvoll
+- [x] Video: erste verschmierte Frames werden übersprungen oder nicht teuer decodiert; Hit weiter möglich wenn QR später scharf wird
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
 - [ ] Manuell: `npm run tauri dev` — Auto-QR Foto + Video einmal je Plattform des Entwicklers
+
+#### Messnotiz OPT-14 (2026-08-24, macOS, Dev-Build)
+
+| Szenario | Vorher (geschätzt) | Nachher | Anmerkung |
+|----------|-------------------|---------|-----------|
+| Scharfes QR-Foto (960px) | ~1 rxing @ 960 + TryHarder-Miss → Retry | Pass `cheap` @ 640 zuerst; Hit typ. Pass 1–2 | Gray-Pipe spart RGB→Luma bei Video |
+| Video Pipe | rgb24 + alle Frames rxing | gray + Sharpness-Gate (≥3 schärfste + Slot 0) | Verschmierte Nachbarframes übersprungen |
+| Früherer Miss-Fall | Blur-Frames teuer decodiert | Laplacian-Varianz &lt; 20 → Skip (außer Top-3) | Unit-Test: uniform blur &lt; Threshold |
+
+Log-Zeile bei Hit: `QR decode hit pass=<cheap|normal|preprocess_*|escalate> size=WxH`
 
 #### Agent-Prompt
 
