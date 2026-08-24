@@ -21,6 +21,11 @@ type ProgressIndicatorProps = {
   indeterminate?: boolean;
   /** Hide % (QR scan early-exit); show metric instead. */
   hidePercent?: boolean;
+  /**
+   * Hide the overall progress bar (and percent). Label + optional task bars remain.
+   * Used for create-job when the pipeline stepper replaces the overall bar.
+   */
+  hideBar?: boolean;
   /** Primary counter, e.g. `2/5`. */
   metric?: string;
   /** Unit next to metric, e.g. `Videos`. */
@@ -317,6 +322,7 @@ export function ProgressIndicator({
   label,
   indeterminate = false,
   hidePercent = false,
+  hideBar = false,
   metric,
   metricLabel,
   legend,
@@ -336,61 +342,67 @@ export function ProgressIndicator({
         ? undefined
         : `${clamped.toFixed(1)}%`;
 
+  const showOverallChrome = !hideBar || Boolean(label) || Boolean(fileProgress);
+
   return (
     <div className="space-y-3">
-      <div
-        role="progressbar"
-        aria-valuenow={useActivity ? undefined : clamped}
-        aria-valuemin={useActivity ? undefined : 0}
-        aria-valuemax={useActivity ? undefined : 100}
-        aria-valuetext={
-          hidePercent && metric
-            ? metricLabel
-              ? `${metric} ${metricLabel}`
-              : metric
-            : undefined
-        }
-        aria-label={label ?? t("progress.overallAria")}
-        className="space-y-1.5"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          {label ? (
-            <p
-              className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-              title={label}
-            >
-              {label}
-            </p>
-          ) : (
-            <span />
-          )}
-          {hidePercent && metric ? (
-            <p className="shrink-0 text-right">
-              <span className="text-sm font-semibold tabular-nums text-foreground">
-                {metric}
-              </span>
-              {metricLabel ? (
-                <span className="ml-1.5 text-[11px] text-muted">
-                  {metricLabel}
+      {showOverallChrome ? (
+        <div
+          role={hideBar ? "status" : "progressbar"}
+          aria-valuenow={hideBar || useActivity ? undefined : clamped}
+          aria-valuemin={hideBar || useActivity ? undefined : 0}
+          aria-valuemax={hideBar || useActivity ? undefined : 100}
+          aria-valuetext={
+            hidePercent && metric
+              ? metricLabel
+                ? `${metric} ${metricLabel}`
+                : metric
+              : undefined
+          }
+          aria-label={label ?? t("progress.overallAria")}
+          className="space-y-1.5"
+        >
+          <div className="flex items-baseline justify-between gap-3">
+            {label ? (
+              <p
+                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+                title={label}
+              >
+                {label}
+              </p>
+            ) : (
+              <span />
+            )}
+            {!hideBar && hidePercent && metric ? (
+              <p className="shrink-0 text-right">
+                <span className="text-sm font-semibold tabular-nums text-foreground">
+                  {metric}
                 </span>
-              ) : null}
-            </p>
-          ) : !hidePercent ? (
-            <p className="shrink-0 text-sm tabular-nums text-muted">
-              {statusText ?? (indeterminate ? "…" : `${clamped.toFixed(1)}%`)}
-            </p>
-          ) : (
-            <p className="shrink-0 text-sm text-muted" aria-hidden>
-              ···
-            </p>
-          )}
+                {metricLabel ? (
+                  <span className="ml-1.5 text-[11px] text-muted">
+                    {metricLabel}
+                  </span>
+                ) : null}
+              </p>
+            ) : !hideBar && !hidePercent ? (
+              <p className="shrink-0 text-sm tabular-nums text-muted">
+                {statusText ?? (indeterminate ? "…" : `${clamped.toFixed(1)}%`)}
+              </p>
+            ) : !hideBar ? (
+              <p className="shrink-0 text-sm text-muted" aria-hidden>
+                ···
+              </p>
+            ) : null}
+          </div>
+          {!hideBar ? (
+            fileProgress && fileProgress.total > 0 ? (
+              <FileSegments progress={fileProgress} legend={legend} />
+            ) : (
+              <Bar percent={clamped} indeterminate={useActivity} />
+            )
+          ) : null}
         </div>
-        {fileProgress && fileProgress.total > 0 ? (
-          <FileSegments progress={fileProgress} legend={legend} />
-        ) : (
-          <Bar percent={clamped} indeterminate={useActivity} />
-        )}
-      </div>
+      ) : null}
 
       {showTasks ? (
         <div className="space-y-2.5 border-l-2 border-primary/30 pl-3">

@@ -22,6 +22,7 @@ import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import { CustomerSidebar } from "./CustomerSidebar";
 import { WorkflowLayout } from "./WorkflowLayout";
 import type { TaskProgressState } from "./types";
+import type { CreateJobPlan } from "../../lib/createJobPlan";
 import { cn } from "../../lib/utils";
 
 type VideoCuts = ReturnType<typeof useVideoCutApply>;
@@ -38,6 +39,8 @@ export type AppShellProps = {
   percent: number;
   status: string;
   taskProgress: TaskProgressState[];
+  createJobPlan?: CreateJobPlan | null;
+  createFailed?: boolean;
   cutterOpen: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
@@ -71,6 +74,8 @@ export function AppShell({
   percent,
   status,
   taskProgress,
+  createJobPlan = null,
+  createFailed = false,
   cutterOpen,
   onBusyChange,
   onStatus,
@@ -259,6 +264,8 @@ export function AppShell({
             percent={percent}
             status={status}
             taskProgress={taskProgress}
+            createJobPlan={createJobPlan}
+            createFailed={createFailed}
             onBusyChange={onBusyChange}
             onStatus={onStatus}
             onProgressReset={onProgressReset}

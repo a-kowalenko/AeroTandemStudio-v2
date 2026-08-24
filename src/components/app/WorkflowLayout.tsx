@@ -22,6 +22,7 @@ import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import type { useCreateValidation } from "../../hooks/useCreateValidation";
 import type { TaskProgressState } from "./types";
+import type { CreateJobPlan } from "../../lib/createJobPlan";
 import { cn } from "../../lib/utils";
 
 type CreateValidation = ReturnType<typeof useCreateValidation>;
@@ -38,6 +39,8 @@ type Props = {
   percent: number;
   status: string;
   taskProgress: TaskProgressState[];
+  createJobPlan?: CreateJobPlan | null;
+  createFailed?: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
   onProgressReset: () => void;
@@ -62,6 +65,8 @@ export function WorkflowLayout({
   percent,
   status,
   taskProgress,
+  createJobPlan = null,
+  createFailed = false,
   onBusyChange,
   onStatus,
   onProgressReset,
@@ -159,6 +164,8 @@ export function WorkflowLayout({
     status,
     taskProgress,
     cancelRequested,
+    createJobPlan,
+    createFailed,
   });
 
   useEffect(() => {
@@ -187,7 +194,8 @@ export function WorkflowLayout({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4",
-          workflowView.reserveSpace && "pb-36",
+          workflowView.reserveSpace &&
+            (workflowView.createPipeline ? "pb-44" : "pb-36"),
         )}
       >
         <MediaDropZone

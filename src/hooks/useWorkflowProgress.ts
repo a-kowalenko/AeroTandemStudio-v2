@@ -5,6 +5,11 @@ import {
   taskProgressLabel,
 } from "../lib/progressLabels";
 import {
+  resolveCreateJobPipeline,
+  type CreateJobPlan,
+  type CreateJobPipelineView,
+} from "../lib/createJobPlan";
+import {
   formatWorkflowDetail,
   formatWorkflowLabel,
   inferWorkflowStage,
@@ -37,6 +42,10 @@ export type WorkflowProgressView = {
   /** Cancel clicked; job still winding down cooperatively. */
   cancelling: boolean;
   reserveSpace: boolean;
+  /** Create-job pipeline chips (null when not creating). */
+  createPipeline: CreateJobPipelineView | null;
+  /** Hide overall % bar; stepper + detail/tasks only. */
+  hideOverallBar: boolean;
 };
 
 type TaskState = {
@@ -70,12 +79,18 @@ type Input = {
   taskProgress: TaskState[];
   /** User requested cancel; UI acknowledges until jobs go idle. */
   cancelRequested?: boolean;
+  /** Frozen create-job step plan for this run. */
+  createJobPlan?: CreateJobPlan | null;
+  /** Create job ended in error (not cancel). */
+  createFailed?: boolean;
 };
 
 export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const [dismissed, setDismissed] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const wasActiveRef = useRef(false);
+  const [createReachedIndex, setCreateReachedIndex] = useState(0);
+  const createPlanIdRef = useRef<CreateJobPlan | null>(null);
 
   const sdProgress = useMemo(
     () =>
@@ -203,6 +218,15 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     };
   }, [isActive, dismissed]);
 
+  // Reset monotonic create step cursor when a new plan is set.
+  useEffect(() => {
+    const plan = input.createJobPlan ?? null;
+    if (plan !== createPlanIdRef.current) {
+      createPlanIdRef.current = plan;
+      setCreateReachedIndex(0);
+    }
+  }, [input.createJobPlan]);
+
   const stage = inferWorkflowStage({
     sdWorkflowActive: input.sdWorkflowActive,
     sdPhase: input.sdPhase,
@@ -229,6 +253,91 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     manualImport: showManualImport,
     manualQr: showManualQr,
   });
+
+  const createPipelineBase = useMemo((): CreateJobPipelineView | null => {
+    const plan = input.createJobPlan ?? null;
+    if (!plan) return null;
+    if (input.appendActive) return null;
+    if (
+      !input.encodeBusy &&
+      !input.createUploading &&
+      !hasCompletionState &&
+      stage !== "create" &&
+      stage !== "done"
+    ) {
+      return null;
+    }
+
+    const cancelled =
+      Boolean(input.cancelRequested && !input.encodeBusy && !input.createUploading) ||
+      /abgebrochen|cancelled/i.test(input.status.trim());
+
+    return resolveCreateJobPipeline({
+      plan,
+      status: input.status,
+      uploading: Boolean(input.createUploading),
+      busy: input.encodeBusy || Boolean(input.createUploading),
+      cancelled,
+      failed: Boolean(input.createFailed),
+      reachedIndex: 0,
+    });
+  }, [
+    input.createJobPlan,
+    input.appendActive,
+    input.encodeBusy,
+    input.createUploading,
+    input.status,
+    input.cancelRequested,
+    input.createFailed,
+    hasCompletionState,
+    stage,
+  ]);
+
+  useEffect(() => {
+    if (!createPipelineBase) return;
+    setCreateReachedIndex((prev) => {
+      const next = Math.max(prev, createPipelineBase.activeIndex);
+      // If Upload is active, never keep a stale lock on Fertig from
+      // create_job's early "Vorgang fertig" event.
+      if (
+        input.createUploading &&
+        createPipelineBase.steps.some((s) => s.id === "upload")
+      ) {
+        const uploadIdx = createPipelineBase.steps.findIndex(
+          (s) => s.id === "upload",
+        );
+        if (uploadIdx >= 0 && next > uploadIdx && !createPipelineBase.completed) {
+          return uploadIdx;
+        }
+      }
+      return next;
+    });
+  }, [createPipelineBase, input.createUploading]);
+
+  const createPipeline = useMemo((): CreateJobPipelineView | null => {
+    if (!createPipelineBase) return null;
+    let activeIndex = Math.max(
+      createPipelineBase.activeIndex,
+      createReachedIndex,
+    );
+    if (
+      input.createUploading &&
+      !createPipelineBase.completed &&
+      !createPipelineBase.cancelled
+    ) {
+      const uploadIdx = createPipelineBase.steps.findIndex(
+        (s) => s.id === "upload",
+      );
+      if (uploadIdx >= 0) activeIndex = uploadIdx;
+    }
+    return {
+      ...createPipelineBase,
+      activeIndex,
+    };
+  }, [createPipelineBase, createReachedIndex, input.createUploading]);
+
+  // Keep the overall % bar together with the create stepper.
+  const hideOverallBar = false;
 
   let snapshot: WorkflowProgressSnapshot | null = null;
   if (input.encodeBusy || input.appendActive) {
@@ -293,5 +402,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     canCancel,
     cancelling,
     reserveSpace: shouldShowPanel && !collapsed,
+    createPipeline,
+    hideOverallBar,
   };
 }

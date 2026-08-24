@@ -889,6 +889,20 @@
   },
   "workflow": {
     "progress": "Fortschritt",
+    "createSteps": {
+      "aria": "Schritte beim Erstellen",
+      "folder": "Ordner",
+      "video": "Video",
+      "previewReuse": "Vorschau",
+      "wmVideo": "WM-Video",
+      "photos": "Fotos",
+      "wmPhotos": "WM-Fotos",
+      "handoff": "Übergabe",
+      "upload": "Upload",
+      "done": "Fertig",
+      "cancelled": "Abgebrochen",
+      "failed": "Fehler"
+    },
     "stage": {
       "preview": "Vorschau wird erzeugt",
       "cut": "Schnitt wird angewendet",

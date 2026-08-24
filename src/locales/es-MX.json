@@ -889,6 +889,20 @@
   },
   "workflow": {
     "progress": "Progreso",
+    "createSteps": {
+      "aria": "Pasos al crear el proceso",
+      "folder": "Carpeta",
+      "video": "Video",
+      "previewReuse": "Vista previa",
+      "wmVideo": "Video MM",
+      "photos": "Fotos",
+      "wmPhotos": "Fotos MM",
+      "handoff": "Entrega",
+      "upload": "Subida",
+      "done": "Listo",
+      "cancelled": "Cancelado",
+      "failed": "Error"
+    },
     "stage": {
       "preview": "Se está generando la vista previa",
       "cut": "Se está aplicando la edición",

@@ -889,6 +889,20 @@
   },
   "workflow": {
     "progress": "Progress",
+    "createSteps": {
+      "aria": "Create job steps",
+      "folder": "Folder",
+      "video": "Video",
+      "previewReuse": "Preview",
+      "wmVideo": "WM video",
+      "photos": "Photos",
+      "wmPhotos": "WM photos",
+      "handoff": "Handoff",
+      "upload": "Upload",
+      "done": "Done",
+      "cancelled": "Cancelled",
+      "failed": "Failed"
+    },
     "stage": {
       "preview": "Preview is being generated",
       "cut": "Edit is being applied",

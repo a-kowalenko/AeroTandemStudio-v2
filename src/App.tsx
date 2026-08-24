@@ -26,6 +26,7 @@ import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
+import { buildCreateJobPlan, type CreateJobPlan } from "./lib/createJobPlan";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
@@ -176,6 +177,8 @@ function App() {
   const [percent, setPercent] = useState(0);
   const [status, setStatus] = useState("");
   const [taskProgress, setTaskProgress] = useState<TaskProgressState[]>([]);
+  const [createJobPlan, setCreateJobPlan] = useState<CreateJobPlan | null>(null);
+  const [createFailed, setCreateFailed] = useState(false);
   /** Shared media list + preview tab (video | foto). */
   const [mediaTab, setMediaTab] = useState<"video" | "foto">("video");
   const photoList = usePhotoStore((s) => s.photoList);
@@ -1356,6 +1359,8 @@ function App() {
     setPercent(0);
     setStatus("");
     setTaskProgress([]);
+    setCreateJobPlan(null);
+    setCreateFailed(false);
   }, []);
 
   useEffect(() => {
@@ -1444,20 +1449,32 @@ function App() {
     jobCancelRequestedRef.current = false;
     uploadProgressActiveRef.current = false;
     resetProgress();
+    const encodingSig = previewEncodingSignature(
+      Boolean(config?.intro_enabled ?? false),
+      config?.dauer ?? 5,
+      config?.intro_mux_mode ?? "reencode",
+    );
+    const canReusePreview = getPreviewReusePlan(
+      videoList,
+      kunde,
+      encodingSig,
+    ).canReuse;
+    setCreateJobPlan(
+      buildCreateJobPlan({
+        kunde,
+        videoCount: paths.length,
+        photoCount: photos.length,
+        watermarkPhotoCount: wmPhotos.length,
+        uploadToServer: Boolean(config?.upload_to_server),
+        manualEntryMode: config?.manual_entry_mode,
+        reusePreview: canReusePreview,
+      }),
+    );
+    setCreateFailed(false);
     setStatus(t("create.job.creating"));
     setPercent(1);
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
-      const encodingSig = previewEncodingSignature(
-        Boolean(config?.intro_enabled ?? false),
-        config?.dauer ?? 5,
-        config?.intro_mux_mode ?? "reencode",
-      );
-      const canReusePreview = getPreviewReusePlan(
-        videoList,
-        kunde,
-        encodingSig,
-      ).canReuse;
       const res: CreateJobResult = await createJob(
         kunde,
         paths,
@@ -1502,7 +1519,8 @@ function App() {
             setServerPhase("connected");
             setUploadProgress(null);
             uploadProgressActiveRef.current = false;
-            resetProgress();
+            setTaskProgress([]);
+            setPercent(0);
             setStatus(t("progress.default.cancelled"));
             showWarning(t("create.job.cancelled"));
             return;
@@ -1543,10 +1561,12 @@ function App() {
       }
     } catch (e) {
       if (isCancellationError(e)) {
-        resetProgress();
+        setTaskProgress([]);
+        setPercent(0);
         setStatus(t("progress.default.cancelled"));
         showWarning(t("create.job.cancelled"));
       } else {
+        setCreateFailed(true);
         showError(presentAmsUserMessage(String(e)));
       }
     } finally {
@@ -1564,7 +1584,8 @@ function App() {
     try {
       await cancelEncode();
       if (!cancellingQr && (busy || appendActive)) {
-        resetProgress();
+        setTaskProgress([]);
+        setPercent(0);
         setStatus(t("progress.default.cancelled"));
       }
       // SD backup/import and QR: dedicated message when the job returns.
@@ -1651,6 +1672,8 @@ function App() {
         percent={percent}
         status={status}
         taskProgress={taskProgress}
+        createJobPlan={createJobPlan}
+        createFailed={createFailed}
         cutterOpen={cutterOpen}
         onBusyChange={setBusy}
         onStatus={setStatus}

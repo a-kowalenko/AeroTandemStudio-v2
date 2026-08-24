@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
+import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
@@ -59,15 +60,21 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
   const subtitle = cancelling
     ? t("workflow.stage.cancelling")
     : view.subtitle;
+  const pipeline = view.createPipeline;
+  const hideOverallBar = view.hideOverallBar;
   const showTasks =
     view.tasks.length > 0 &&
     (view.stage === "create" ||
       view.stage === "append" ||
       view.stage === "preview" ||
-      view.stage === "cut");
+      view.stage === "cut" ||
+      Boolean(pipeline));
 
   if (view.collapsed) {
-    const label = snapshot?.label ?? view.encodeLabel;
+    const label =
+      pipeline && !pipeline.completed && !pipeline.cancelled
+        ? t(pipeline.steps[pipeline.activeIndex]?.labelKey ?? "workflow.progress")
+        : (snapshot?.label ?? view.encodeLabel);
     return (
       <div
         className={cn(
@@ -132,6 +139,17 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         </div>
       </div>
 
+      {pipeline ? (
+        <div
+          className={cn(
+            "mb-3 transition-opacity duration-300",
+            cancelling && "opacity-55",
+          )}
+        >
+          <CreateJobPipelineStepper view={pipeline} />
+        </div>
+      ) : null}
+
       {snapshot ? (
         <div
           className={cn(
@@ -143,7 +161,8 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
             percent={snapshot.percent}
             label={snapshot.label}
             indeterminate={Boolean(snapshot.indeterminate)}
-            hidePercent={Boolean(snapshot.hidePercent)}
+            hidePercent={Boolean(snapshot.hidePercent) || hideOverallBar}
+            hideBar={hideOverallBar}
             metric={snapshot.metric}
             metricLabel={snapshot.metricLabel}
             legend={snapshot.legend}
@@ -165,7 +184,9 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         >
           <ProgressIndicator
             percent={view.tasks[0]?.percent ?? 0}
-            label={view.encodeLabel}
+            label={hideOverallBar ? undefined : view.encodeLabel}
+            hideBar={hideOverallBar}
+            hidePercent={hideOverallBar}
             tasks={view.tasks}
           />
         </div>
