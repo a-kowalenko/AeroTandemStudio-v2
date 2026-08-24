@@ -23,6 +23,36 @@ fn persist_last_ok(state: &ConfigState, base_url: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn persist_server_identity(
+    state: &ConfigState,
+    display_name: &str,
+    instance_id: &str,
+) -> Result<(), String> {
+    let name = display_name.trim();
+    let id = instance_id.trim();
+    if name.is_empty() && id.is_empty() {
+        return Ok(());
+    }
+    let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+    let mut changed = false;
+    if !name.is_empty() && cache.ams_bridge_display_name != name {
+        cache.ams_bridge_display_name = name.to_string();
+        changed = true;
+    }
+    if !id.is_empty() && cache.ams_bridge_server_instance_id != id {
+        cache.ams_bridge_server_instance_id = id.to_string();
+        changed = true;
+    }
+    if !changed {
+        return Ok(());
+    }
+    let cfg = cache.clone();
+    drop(cache);
+    let store = state.store.lock().map_err(|e| e.to_string())?;
+    store.save(&cfg).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, serde::Deserialize, Default)]
 pub struct BridgeHealthOverrides {
     #[serde(alias = "baseUrl")]
@@ -43,8 +73,17 @@ pub async fn ams_bridge_health(
         overrides.token.as_deref(),
     )
     .await;
-    if overrides.base_url.is_none() && overrides.token.is_none() && result.ok && !result.base_url.is_empty() {
-        let _ = persist_last_ok(&state, &result.base_url);
+    if result.ok {
+        if overrides.base_url.is_none() && overrides.token.is_none() && !result.base_url.is_empty() {
+            let _ = persist_last_ok(&state, &result.base_url);
+        }
+        if let Some(health) = result.health.as_ref() {
+            let _ = persist_server_identity(
+                &state,
+                &health.display_name,
+                &health.instance_id,
+            );
+        }
     }
     Ok(result)
 }

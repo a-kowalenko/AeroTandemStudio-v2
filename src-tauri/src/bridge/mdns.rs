@@ -16,12 +16,28 @@ const DEFAULT_BROWSE_SECS: u64 = 3;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DiscoveredBridge {
     pub instance: String,
+    pub display_name: String,
+    pub instance_id: String,
     pub host: String,
     pub port: u16,
     pub base_url: String,
     pub version: String,
     pub capabilities: Vec<String>,
     pub monitor_path: String,
+}
+
+impl DiscoveredBridge {
+    pub fn label(&self) -> String {
+        let name = self.display_name.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+        let inst = self.instance.trim();
+        if !inst.is_empty() {
+            return inst.to_string();
+        }
+        self.base_url.clone()
+    }
 }
 
 pub fn prefer_http_host(addrs: impl IntoIterator<Item = IpAddr>) -> Option<String> {
@@ -104,10 +120,20 @@ fn discover_bridges_blocking(timeout: Duration) -> Result<Vec<DiscoveredBridge>,
                     .get_property_val_str("path")
                     .unwrap_or("")
                     .to_string();
+                let display_name = info
+                    .get_property_val_str("name")
+                    .unwrap_or("")
+                    .to_string();
+                let instance_id = info
+                    .get_property_val_str("id")
+                    .unwrap_or("")
+                    .to_string();
                 found.insert(
                     fullname,
                     DiscoveredBridge {
                         instance,
+                        display_name,
+                        instance_id,
                         host: host.clone(),
                         port,
                         base_url: base_url_for(&host, port),
@@ -124,7 +150,7 @@ fn discover_bridges_blocking(timeout: Duration) -> Result<Vec<DiscoveredBridge>,
 
     let _ = daemon.shutdown();
     let mut list: Vec<_> = found.into_values().collect();
-    list.sort_by(|a, b| a.instance.cmp(&b.instance).then(a.base_url.cmp(&b.base_url)));
+    list.sort_by(|a, b| a.label().cmp(&b.label()).then(a.base_url.cmp(&b.base_url)));
     Ok(list)
 }
 

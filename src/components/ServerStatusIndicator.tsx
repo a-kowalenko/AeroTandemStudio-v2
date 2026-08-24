@@ -43,6 +43,7 @@ export function ServerStatusIndicator({ className }: Props) {
   const amsPhase = useAmsBridgeStore((s) => s.phase);
   const amsConnected = useAmsBridgeStore((s) => s.connected);
   const amsMessage = useAmsBridgeStore((s) => s.message);
+  const amsStoreDisplayName = useAmsBridgeStore((s) => s.displayName);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
 
   const config = useConfigStore((s) => s.config);
@@ -54,6 +55,10 @@ export function ServerStatusIndicator({ className }: Props) {
   const password = config?.server_password ?? "";
   const serverUrl = config?.server_url ?? "";
   const amsConfigured = isAmsBridgeConfigured(config);
+  const amsDisplayName =
+    amsStoreDisplayName.trim() ||
+    config?.ams_bridge_display_name?.trim() ||
+    "";
 
   const view = presentHeaderConnection({
     smbPhase,
@@ -66,6 +71,7 @@ export function ServerStatusIndicator({ className }: Props) {
     amsPhase,
     amsConnected,
     amsMessage,
+    amsDisplayName,
     serverUrl,
     login,
     password,

@@ -25,8 +25,23 @@ const ATS_BRIDGE_APP: &str = "AeroTandemStudio";
 pub struct BridgeHealth {
     pub online: bool,
     pub version: String,
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub instance_id: String,
     pub monitor_path: String,
     pub capabilities: Vec<String>,
+}
+
+impl BridgeHealth {
+    pub fn display_label(&self) -> String {
+        let name = self.display_name.trim();
+        if name.is_empty() {
+            "AMS".into()
+        } else {
+            name.to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -299,7 +314,8 @@ pub async fn check_health_with(
             ok: health.online,
             message: if health.online {
                 format!(
-                    "AMS online (v{}, capabilities: {})",
+                    "AMS „{}“ online (v{}, capabilities: {})",
+                    health.display_label(),
                     health.version,
                     health.capabilities.join(", ")
                 )

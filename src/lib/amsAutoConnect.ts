@@ -1,7 +1,7 @@
 ﻿import { tr } from "@/i18n";
 import type { AppConfig, AmsBridgeDiscovered, AmsBridgeHealthResult } from "@/lib/tauri";
 import { amsBridgeDiscover, amsBridgeHealth, saveConfig } from "@/lib/tauri";
-import { useAmsBridgeStore } from "@/store/amsBridgeStore";
+import { useAmsBridgeStore, discoveredAmsLabel } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 import { useUiStore } from "@/store/uiStore";
 
@@ -56,26 +56,31 @@ async function checkCandidate(baseUrl: string, token: string): Promise<AmsBridge
 async function askPickLanBridge(opts: {
   candidates: AmsBridgeDiscovered[];
   derivedBaseUrl: string | null;
-}): Promise<string | null> {
-  const { candidates, derivedBaseUrl } = opts;
+  savedServerInstanceId: string;
+}): Promise<AmsBridgeDiscovered | null> {
+  const { candidates, derivedBaseUrl, savedServerInstanceId } = opts;
   if (!candidates.length) return null;
 
-  // Order: derived match first, then stable fallback.
+  const savedId = trimToEmpty(savedServerInstanceId);
   const ordered = [...candidates].sort((a, b) => {
+    const aId = savedId && trimToEmpty(a.instance_id) === savedId;
+    const bId = savedId && trimToEmpty(b.instance_id) === savedId;
+    if (aId && !bId) return -1;
+    if (!aId && bId) return 1;
     const aHit = derivedBaseUrl && trimToEmpty(a.base_url) === trimToEmpty(derivedBaseUrl);
     const bHit = derivedBaseUrl && trimToEmpty(b.base_url) === trimToEmpty(derivedBaseUrl);
     if (aHit && !bHit) return -1;
     if (!aHit && bHit) return 1;
-    return a.base_url.localeCompare(b.base_url);
+    return discoveredAmsLabel(a).localeCompare(discoveredAmsLabel(b));
   });
 
   return new Promise((resolve) => {
     let settled = false;
-    const finish = (baseUrl: string | null) => {
+    const finish = (bridge: AmsBridgeDiscovered | null) => {
       if (settled) return;
       settled = true;
       useUiStore.getState().closeDialog();
-      resolve(baseUrl);
+      resolve(bridge);
     };
 
     useUiStore.getState().showSuccess(
@@ -85,19 +90,19 @@ async function askPickLanBridge(opts: {
         autoCloseSecs: 0,
         choices: {
           options: ordered.map((c) => {
-            const id = `${c.base_url}\0${c.instance}`;
+            const id = `${c.base_url}\0${c.instance_id || c.instance}`;
             const v = c.version?.trim();
             const meta = v ? ` (v${v})` : "";
             return {
               id,
-              label: c.instance ? `${c.instance}` : c.base_url,
+              label: discoveredAmsLabel(c),
               detail: `${c.base_url}${meta}`,
             };
           }),
           cancelLabel: tr("common.actions.cancel"),
           onPick: (id) => {
             const baseUrl = id.split("\0")[0];
-            finish(baseUrl || null);
+            finish(ordered.find((c) => c.base_url === baseUrl) ?? null);
           },
           onCancel: () => finish(null),
         },
@@ -141,6 +146,7 @@ export async function runAmsAutoConnect(opts: {
 
   let chosenBaseUrl: string | null = null;
   let usedFallbackPassword = false;
+  let discoveryMeta: Pick<AmsBridgeDiscovered, "display_name" | "instance_id"> | null = null;
 
   for (const baseUrl of candidates) {
     if (hasStoredToken) {
@@ -183,17 +189,22 @@ export async function runAmsAutoConnect(opts: {
     const discoveredList = await discoverLanCandidates();
     if (!discoveredList.length) return "not_found";
 
-    let discoveredBaseUrl: string | null = null;
+    let discoveredBridge: AmsBridgeDiscovered | null = null;
 
     if (discoveredList.length === 1) {
-      discoveredBaseUrl = discoveredList[0].base_url;
+      discoveredBridge = discoveredList[0];
     } else if (interactive) {
-      discoveredBaseUrl = await askPickLanBridge({
+      discoveredBridge = await askPickLanBridge({
         candidates: discoveredList,
         derivedBaseUrl: derived,
+        savedServerInstanceId: config.ams_bridge_server_instance_id,
       });
     }
 
+    const discoveredBaseUrl = discoveredBridge?.base_url ?? null;
+    if (discoveredBridge) {
+      discoveryMeta = discoveredBridge;
+    }
     if (!discoveredBaseUrl) return "not_found";
     if (hasStoredToken) {
       const result = await checkCandidate(discoveredBaseUrl, currentToken);
@@ -231,11 +242,20 @@ export async function runAmsAutoConnect(opts: {
     if (!chosenBaseUrl) return "not_found";
   }
 
+  const bridgeSnapshot = useAmsBridgeStore.getState();
   const nextConfig: AppConfig = {
     ...config,
     ams_bridge_url: chosenBaseUrl,
     ams_bridge_last_ok_url: chosenBaseUrl,
     ams_bridge_token: usedFallbackPassword ? serverPassword : config.ams_bridge_token,
+    ams_bridge_display_name:
+      bridgeSnapshot.displayName ||
+      discoveryMeta?.display_name?.trim() ||
+      config.ams_bridge_display_name,
+    ams_bridge_server_instance_id:
+      bridgeSnapshot.serverInstanceId ||
+      discoveryMeta?.instance_id?.trim() ||
+      config.ams_bridge_server_instance_id,
   };
   const saved = await persistConnectedConfig(nextConfig);
   if (saved && usedFallbackPassword && interactive) {

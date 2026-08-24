@@ -13,6 +13,7 @@ export function useAmsBridgeHealthPoll(enabled: boolean) {
   const url = config?.ams_bridge_url ?? "";
   const token = config?.ams_bridge_token ?? "";
   const lastOk = config?.ams_bridge_last_ok_url ?? "";
+  const displayName = config?.ams_bridge_display_name ?? "";
 
   useEffect(() => {
     if (!enabled) return;
@@ -26,5 +27,5 @@ export function useAmsBridgeHealthPoll(enabled: boolean) {
       void checkHealth();
     }, AMS_HEALTH_POLL_MS);
     return () => window.clearInterval(id);
-  }, [enabled, configured, url, token, lastOk, checkHealth, reset]);
+  }, [enabled, configured, url, token, lastOk, displayName, checkHealth, reset]);
 }
