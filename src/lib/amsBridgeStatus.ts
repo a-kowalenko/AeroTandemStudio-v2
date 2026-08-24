@@ -190,7 +190,11 @@ export function amsBridgeStatusErrorTooltip(message: string): string {
   }).message;
 }
 
-export function formatAmsConnectedTooltip(): string {
+export function formatAmsConnectedTooltip(displayName?: string): string {
+  const name = displayName?.trim();
+  if (name) {
+    return tr("ams.status.connectedTooltipNamed", { title: AMS_OPERATOR_TITLE, name });
+  }
   return tr("ams.status.connectedTooltip", { title: AMS_OPERATOR_TITLE });
 }
 

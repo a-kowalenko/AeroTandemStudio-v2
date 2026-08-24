@@ -256,6 +256,12 @@ pub struct AppConfig {
     /// Last base URL that answered health successfully (fallback / Netzwechsel).
     #[serde(default)]
     pub ams_bridge_last_ok_url: String,
+    /// Display name of the connected AMS server (from health / mDNS).
+    #[serde(default)]
+    pub ams_bridge_display_name: String,
+    /// Stable UUID of the connected AMS server (from health / mDNS).
+    #[serde(default)]
+    pub ams_bridge_server_instance_id: String,
     /// Prefer mpv/libmpv for Cutter & clip player when a binary is available (OPT-13).
     /// HTML5 fallback when false or when mpv is missing.
     #[serde(default = "default_true")]
@@ -631,6 +637,22 @@ impl AppConfig {
             self.active_server_profile_id = self.server_profiles[0].id.clone();
         }
     }
+
+    /// Keep AMS server identity fields when the UI omits them on save.
+    pub fn preserve_ams_bridge_server_identity_from(&mut self, existing: &AppConfig) {
+        if self.ams_bridge_display_name.trim().is_empty() {
+            let name = existing.ams_bridge_display_name.trim();
+            if !name.is_empty() {
+                self.ams_bridge_display_name = name.to_string();
+            }
+        }
+        if self.ams_bridge_server_instance_id.trim().is_empty() {
+            let id = existing.ams_bridge_server_instance_id.trim();
+            if !id.is_empty() {
+                self.ams_bridge_server_instance_id = id.to_string();
+            }
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -692,6 +714,8 @@ impl Default for AppConfig {
             ams_bridge_token: String::new(),
             ams_bridge_instance_id: String::new(),
             ams_bridge_last_ok_url: String::new(),
+            ams_bridge_display_name: String::new(),
+            ams_bridge_server_instance_id: String::new(),
             use_libmpv: true,
         }
     }

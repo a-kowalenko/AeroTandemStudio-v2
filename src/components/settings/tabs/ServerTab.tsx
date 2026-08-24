@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 import { useServerStore } from "@/store/serverStore";
-import { useAmsBridgeStore } from "@/store/amsBridgeStore";
+import { useAmsBridgeStore, discoveredAmsLabel } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsFocusTarget } from "@/store/uiStore";
@@ -128,10 +128,17 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       const refreshed = await getConfig();
       useConfigStore.getState().updateLocal({
         ams_bridge_instance_id: refreshed.ams_bridge_instance_id,
+        ams_bridge_display_name: refreshed.ams_bridge_display_name,
+        ams_bridge_server_instance_id: refreshed.ams_bridge_server_instance_id,
       });
       setDraft((current) =>
         current
-          ? { ...current, ams_bridge_instance_id: refreshed.ams_bridge_instance_id }
+          ? {
+              ...current,
+              ams_bridge_instance_id: refreshed.ams_bridge_instance_id,
+              ams_bridge_display_name: refreshed.ams_bridge_display_name,
+              ams_bridge_server_instance_id: refreshed.ams_bridge_server_instance_id,
+            }
           : current,
       );
       const action = presentAmsConnectionAction({
@@ -190,7 +197,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           t("settings.server.ams.operatorTitle"),
         );
       } else if (list.length === 1) {
-        await applyDiscoveredAmsUrl(list[0].base_url, list[0].instance);
+        await applyDiscoveredAmsUrl(list[0]);
       } else {
         setBridgeLabel(t("settings.server.ams.foundMany", { count: list.length }));
       }
@@ -207,11 +214,13 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   }
 
   /** Try server password as AMS token; on failure open token prompt. */
-  async function applyDiscoveredAmsUrl(baseUrl: string, instance?: string) {
+  async function applyDiscoveredAmsUrl(bridge: AmsBridgeDiscovered) {
+    const baseUrl = bridge.base_url;
+    const label = discoveredAmsLabel(bridge);
     patch("ams_bridge_url", baseUrl);
     setBridgeLabel(
       t("settings.server.ams.foundStatus", {
-        instance: instance ?? "",
+        instance: label,
         url: baseUrl,
       }),
     );
@@ -231,6 +240,14 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             ams_bridge_url: baseUrl,
             ams_bridge_token: serverPassword,
             ams_bridge_last_ok_url: result.base_url || baseUrl,
+            ams_bridge_display_name:
+              result.health?.display_name?.trim() ||
+              bridge.display_name?.trim() ||
+              current.ams_bridge_display_name,
+            ams_bridge_server_instance_id:
+              result.health?.instance_id?.trim() ||
+              bridge.instance_id?.trim() ||
+              current.ams_bridge_server_instance_id,
           };
           patch("ams_bridge_token", serverPassword);
           if (result.base_url) {
@@ -258,10 +275,13 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       }
     }
 
-    promptAmsTokenAfterDiscover(baseUrl);
+    promptAmsTokenAfterDiscover(baseUrl, bridge);
   }
 
-  function promptAmsTokenAfterDiscover(baseUrl: string) {
+  function promptAmsTokenAfterDiscover(
+    baseUrl: string,
+    bridge?: Pick<AmsBridgeDiscovered, "display_name" | "instance_id">,
+  ) {
     const current = draftRef.current;
     showSuccess(
       t("settings.server.ams.foundSuccess", { url: baseUrl }),
@@ -430,6 +450,13 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             })}
           </p>
         ) : null}
+        {draft.ams_bridge_display_name.trim() ? (
+          <p className="text-[11px] text-muted">
+            {t("settings.server.ams.connectedAs", {
+              name: draft.ams_bridge_display_name,
+            })}
+          </p>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -458,17 +485,17 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         {discovered.length > 1 ? (
           <ul className="space-y-1 rounded-md border border-border/60 p-2 text-xs">
             {discovered.map((d) => (
-              <li key={d.base_url + d.instance}>
+              <li key={d.base_url + d.instance_id + d.instance}>
                 <button
                   type="button"
                   className="w-full text-left hover:underline"
                   onClick={() => {
-                    void applyDiscoveredAmsUrl(d.base_url, d.instance);
+                    void applyDiscoveredAmsUrl(d);
                     setDiscovered([]);
                   }}
                 >
                   {t("settings.server.ams.discoveredItem", {
-                    instance: d.instance,
+                    instance: discoveredAmsLabel(d),
                     url: d.base_url,
                     version: d.version ? ` (v${d.version})` : "",
                   })}

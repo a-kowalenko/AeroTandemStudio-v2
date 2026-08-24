@@ -308,7 +308,8 @@
         "foundSuccessViaServerPassword": "Adresse und Zugangscode übernommen (Server-Passwort).",
         "foundMany": "{{count}} Adressen gefunden — bitte auswählen.",
         "applied": "Übernommen: {{instance}} → {{url}}",
-        "discoveredItem": "{{instance}} — {{url}}{{version}}"
+        "discoveredItem": "{{instance}} — {{url}}{{version}}",
+        "connectedAs": "Verbunden mit {{name}}"
       }
     },
     "save": {
@@ -1096,6 +1097,7 @@
       "lookupErrorFallback": "Kunde konnte nicht geladen werden",
       "healthOk": "Buchungssuche verbunden",
       "connectedTooltip": "{{title}}: verbunden",
+      "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Nur bei Online-Vorgängen, nicht bei Lokal",
       "customerNotFound": "Kunde in der Buchung nicht gefunden"
     },

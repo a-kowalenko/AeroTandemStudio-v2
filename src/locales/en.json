@@ -308,7 +308,8 @@
         "foundSuccessViaServerPassword": "Address and access code applied (server password).",
         "foundMany": "{{count}} addresses found — please choose one.",
         "applied": "Applied: {{instance}} → {{url}}",
-        "discoveredItem": "{{instance}} — {{url}}{{version}}"
+        "discoveredItem": "{{instance}} — {{url}}{{version}}",
+        "connectedAs": "Connected to {{name}}"
       }
     },
     "save": {
@@ -1096,6 +1097,7 @@
       "lookupErrorFallback": "Customer could not be loaded",
       "healthOk": "Booking lookup connected",
       "connectedTooltip": "{{title}}: connected",
+      "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Only for online jobs, not local",
       "customerNotFound": "Customer not found in booking"
     },

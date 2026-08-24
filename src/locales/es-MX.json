@@ -308,7 +308,8 @@
         "foundSuccessViaServerPassword": "Dirección y código de acceso aplicados (contraseña del servidor).",
         "foundMany": "{{count}} direcciones encontradas — elige una.",
         "applied": "Aplicado: {{instance}} → {{url}}",
-        "discoveredItem": "{{instance}} — {{url}}{{version}}"
+        "discoveredItem": "{{instance}} — {{url}}{{version}}",
+        "connectedAs": "Conectado a {{name}}"
       }
     },
     "save": {
@@ -1096,6 +1097,7 @@
       "lookupErrorFallback": "No se pudo cargar el cliente",
       "healthOk": "Búsqueda de reserva conectada",
       "connectedTooltip": "{{title}}: conectado",
+      "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Solo para trabajos en línea, no locales",
       "customerNotFound": "Cliente no encontrado en la reserva"
     },

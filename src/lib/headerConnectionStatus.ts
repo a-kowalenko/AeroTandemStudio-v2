@@ -72,6 +72,7 @@ function amsTooltipLine(
   phase: AmsBridgePhase,
   connected: boolean,
   message: string,
+  displayName?: string,
 ): string {
   if (phase === "checking") {
     return tr("header.connection.amsChecking", { title: AMS_OPERATOR_TITLE });
@@ -80,7 +81,7 @@ function amsTooltipLine(
     return amsBridgeStatusErrorTooltip(message);
   }
   if (phase === "connected" || connected) {
-    return formatAmsConnectedTooltip();
+    return formatAmsConnectedTooltip(displayName);
   }
   return tr("header.connection.amsNotChecked", { title: AMS_OPERATOR_TITLE });
 }
@@ -95,6 +96,7 @@ export function presentHeaderConnection(input: {
   amsPhase: AmsBridgePhase;
   amsConnected: boolean;
   amsMessage: string;
+  amsDisplayName?: string;
   serverUrl: string;
   login: string;
   password: string;
@@ -181,6 +183,7 @@ export function presentHeaderConnection(input: {
         input.amsPhase,
         input.amsConnected,
         input.amsMessage,
+        input.amsDisplayName,
       ),
     );
   }

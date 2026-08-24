@@ -149,6 +149,10 @@ export type AppConfig = {
   ams_bridge_instance_id: string;
   /** Last Bridge URL that answered health OK. */
   ams_bridge_last_ok_url: string;
+  /** Display name of the connected AMS server. */
+  ams_bridge_display_name: string;
+  /** Stable UUID of the connected AMS server. */
+  ams_bridge_server_instance_id: string;
   /**
    * Prefer mpv for Cutter / clip player when a binary is available (OPT-13).
    * HTML5 fallback when false or when mpv is missing.
@@ -1105,6 +1109,8 @@ export async function testServerConnection(
 export type AmsBridgeHealth = {
   online: boolean;
   version: string;
+  display_name?: string;
+  instance_id?: string;
   monitor_path: string;
   capabilities: string[];
 };
@@ -1207,6 +1213,8 @@ export async function amsBridgeHandoffReady(
 
 export type AmsBridgeDiscovered = {
   instance: string;
+  display_name: string;
+  instance_id: string;
   host: string;
   port: number;
   base_url: string;
