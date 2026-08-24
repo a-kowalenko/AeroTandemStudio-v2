@@ -8,17 +8,22 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
-## [0.3.3] - 2026-08-24
+### Neu
+
+- Optional mpv-Player für den Zuschnitt: flüssigeres Spulen und Springen (Video-Einstellungen; ohne mpv bleibt HTML5)
+- Fortschritt beim „Vorgang erstellen“ als Schritt-Leiste (Ordner, Video, Fotos, Upload …)
 
 ### Verbessert
 
-- Beim manuellen Eintrag per Kunden- und Booking-ID: klarere Hinweise, wann noch etwas fehlt
-- Der „Vorgang erstellen“-Button und die Hinweise erscheinen erst, wenn die IDs vollständig sind
+- Vorschaubilder der Clips in der Videoliste laden schneller und ruhiger
+- QR-Erkennung bei Actioncam-Aufnahmen zuverlässiger (unscharfe Frames überspringen, schwierige Fälle gründlicher prüfen)
+- Server- und Upload-Status in Kopfzeile und Abschluss klarer
+- Große Foto-Imports sortieren schneller
+- Mayo in der Standard-Crew als Tandemmaster und Videospringer
 
 ### Behoben
 
-- Kunden-ID und Booking-ID müssen im ID-Modus ausgefüllt sein (mindestens 4 Ziffern)
-- Weniger verwirrende Meldungen während der automatischen Kundendaten-Ladung
+- Stabilere Anzeige und Übergabe beim Upload bzw. Abschluss nach dem Erstellen
 
 ## [0.3.2] - 2026-08-22
 
