@@ -97,6 +97,11 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
         previewThumbnailQueue.scheduleWarmAfterImport(
           fresh.map((v) => v.path),
           fresh[0]?.path,
+          (path) => {
+            const v = fresh.find((x) => x.path === path);
+            if (!v) return "";
+            return `${v.size_bytes}-${v.duration_secs}-${get().getMediaRevision(path)}`;
+          },
         );
       }
     } catch (e) {

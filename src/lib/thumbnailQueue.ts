@@ -41,7 +41,11 @@ class PreviewThumbnailQueue {
   private cache = new Map<string, string>();
   private active = 0;
   private delayTimer: number | null = null;
-  private delayedWarm: Array<{ path: string; priority: number }> = [];
+  private delayedWarm: Array<{
+    path: string;
+    bustKey: string;
+    priority: number;
+  }> = [];
   private generation = 0;
 
   getCached(path: string, bustKey?: string | number | null): string | null {
@@ -103,14 +107,23 @@ class PreviewThumbnailQueue {
   /**
    * Enqueue background warming after import ends.
    * `firstPath` (or first entry) gets higher priority; starts after a short delay.
+   * Pass `bustKey` so warm hits match VideoPlayer / strip cache keys.
    */
-  scheduleWarmAfterImport(paths: string[], firstPath?: string) {
+  scheduleWarmAfterImport(
+    paths: string[],
+    firstPath?: string,
+    bustKeyFor?: (path: string) => string | number | null | undefined,
+  ) {
     if (paths.length === 0) return;
     const lead = firstPath ?? paths[0]!;
     for (const path of paths) {
       const priority =
         path === lead ? THUMB_PRIORITY.first : THUMB_PRIORITY.warm;
-      this.delayedWarm.push({ path, priority });
+      this.delayedWarm.push({
+        path,
+        bustKey: String(bustKeyFor?.(path) ?? ""),
+        priority,
+      });
     }
     if (this.delayTimer != null) {
       window.clearTimeout(this.delayTimer);
@@ -120,8 +133,8 @@ class PreviewThumbnailQueue {
       this.delayTimer = null;
       if (gen !== this.generation) return;
       const batch = this.delayedWarm.splice(0);
-      for (const { path, priority } of batch) {
-        void this.request(path, priority).catch(() => undefined);
+      for (const { path, bustKey, priority } of batch) {
+        void this.request(path, priority, bustKey).catch(() => undefined);
       }
     }, POST_IMPORT_DELAY_MS);
   }
@@ -145,17 +158,24 @@ class PreviewThumbnailQueue {
   private async runOne(flightKey: string, item: QueueItem) {
     this.inFlight.add(flightKey);
     this.active += 1;
-    const extra = this.inFlightWaiters.get(flightKey) ?? [];
-    this.inFlightWaiters.delete(flightKey);
     try {
       const res = await getMediaThumbnail(item.path, "preview");
       const displayUrl = thumbnailDisplayUrl(res);
       this.cache.set(flightKey, displayUrl);
-      for (const w of item.resolvers) w.resolve(displayUrl);
-      for (const w of extra) w.resolve(displayUrl);
+      // Drain waiters that joined while FFmpeg was running (e.g. strip + player).
+      const waiters = [
+        ...item.resolvers,
+        ...(this.inFlightWaiters.get(flightKey) ?? []),
+      ];
+      this.inFlightWaiters.delete(flightKey);
+      for (const w of waiters) w.resolve(displayUrl);
     } catch (e) {
-      for (const w of item.resolvers) w.reject(e);
-      for (const w of extra) w.reject(e);
+      const waiters = [
+        ...item.resolvers,
+        ...(this.inFlightWaiters.get(flightKey) ?? []),
+      ];
+      this.inFlightWaiters.delete(flightKey);
+      for (const w of waiters) w.reject(e);
     } finally {
       this.inFlight.delete(flightKey);
       this.active -= 1;

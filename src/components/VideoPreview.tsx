@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
@@ -19,14 +27,26 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Film, Pencil, Play, QrCode, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import {
+  Film,
+  Loader2,
+  Pencil,
+  Play,
+  QrCode,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
 import { VideoPlayer, type VideoPlayerHandle } from "./VideoPlayer";
 import { filmstripPrefetch } from "../lib/filmstripPrefetch";
-import { previewThumbnailQueue } from "../lib/thumbnailQueue";
+import {
+  previewThumbnailQueue,
+  THUMB_PRIORITY,
+} from "../lib/thumbnailQueue";
 import { useVideoStore } from "../store/videoStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useUiStore } from "../store/uiStore";
@@ -40,7 +60,11 @@ import {
   type VideoMetadata,
 } from "../lib/tauri";
 import { useConfigStore } from "../store/configStore";
-import { QrScanRowBar } from "../hooks/useQrScanProgress";
+import { QrScanRowBar, QrScanTileBadge } from "../hooks/useQrScanProgress";
+import {
+  useVideoThumbnailSrc,
+  videoPosterBustKey,
+} from "../hooks/useVideoThumbnailSrc";
 import { maybeRemoveQrVideo } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
 import { requestKundenIdFocus } from "../lib/kundenIdFocus";
@@ -76,6 +100,8 @@ function formatDuration(secs: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+const CLIP_POSTER_W = "w-[9.5rem]";
+
 type ClipChipProps = {
   video: VideoMetadata;
   index: number;
@@ -83,53 +109,122 @@ type ClipChipProps = {
   isWm: boolean;
   cutMark: "trim" | "split" | "rotate" | null;
   revision: number;
+  scrollRootRef: RefObject<HTMLElement | null>;
   onSelect: (index: number) => void;
   onContextMenu: (e: MouseEvent, path: string) => void;
-  /** Drag overlay: no sortable bindings. */
-  overlay?: boolean;
-  dragging?: boolean;
 };
 
-function ClipChipFace({
+function rectNearlyIntersects(
+  el: DOMRect,
+  root: DOMRect,
+  marginX: number,
+  marginY: number,
+): boolean {
+  return (
+    el.right >= root.left - marginX &&
+    el.left <= root.right + marginX &&
+    el.bottom >= root.top - marginY &&
+    el.top <= root.bottom + marginY
+  );
+}
+
+function ClipPosterFace({
   video,
   isWm,
   cutMark,
+  revision,
+  loadThumb,
   overlay,
-}: Omit<ClipChipProps, "index" | "revision" | "onSelect" | "onContextMenu" | "active" | "dragging"> & {
+}: {
+  video: VideoMetadata;
+  isWm: boolean;
+  cutMark: "trim" | "split" | "rotate" | null;
+  revision: number;
+  loadThumb: boolean;
   overlay?: boolean;
 }) {
+  const bustKey = videoPosterBustKey(
+    video.size_bytes,
+    video.duration_secs,
+    revision,
+  );
+  // Stable priority — active boost is handled by VideoPreview / queue.boost.
+  // Changing priority here would remount the request and race the player.
+  const thumbSrc = useVideoThumbnailSrc(
+    video.path,
+    bustKey,
+    THUMB_PRIORITY.warm,
+    {
+      enabled: loadThumb && !overlay,
+    },
+  );
+  const overlaySrc = overlay
+    ? previewThumbnailQueue.getCached(video.path, bustKey)
+    : null;
+  const src = overlay ? overlaySrc : thumbSrc;
+
   return (
     <>
-      <div className="truncate font-medium">{video.filename}</div>
-      <div className="text-muted">
-        {video.width}×{video.height} · {formatDuration(video.duration_secs)}
-      </div>
-      {!overlay && <QrScanRowBar path={video.path} />}
-      {cutMark && (
-        <span
-          className="absolute top-1 right-1 rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-          aria-label={
-            cutMark === "trim"
-              ? "Getrimmt"
-              : cutMark === "rotate"
-                ? "Gedreht"
-                : "Geteilt"
-          }
-        >
-          {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
+      <div className="relative aspect-video w-full overflow-hidden rounded-md bg-muted/50">
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        ) : (
+          <div
+            className="flex h-full w-full items-center justify-center"
+            aria-hidden
+          >
+            {loadThumb && !overlay ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/80" />
+            ) : (
+              <Film className="h-5 w-5 text-muted-foreground/50" />
+            )}
+          </div>
+        )}
+        <span className="pointer-events-none absolute right-1 bottom-1 z-[2] rounded bg-black/75 px-1 py-px text-[10px] font-semibold tabular-nums leading-none text-white shadow-sm">
+          {formatDuration(video.duration_secs)}
         </span>
-      )}
-      {isWm && (
-        <span
-          className={cn(
-            "absolute top-1 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm",
-            cutMark ? "right-9" : "right-1",
+        <div className="pointer-events-none absolute top-1 left-1 z-[1] flex flex-col items-start gap-0.5">
+          {!overlay && <QrScanTileBadge path={video.path} compact />}
+          {cutMark && (
+            <span
+              className="rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+              aria-label={
+                cutMark === "trim"
+                  ? "Getrimmt"
+                  : cutMark === "rotate"
+                    ? "Gedreht"
+                    : "Geteilt"
+              }
+            >
+              {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
+            </span>
           )}
-          aria-label="Wasserzeichen"
-        >
-          WM
-        </span>
-      )}
+        </div>
+        {isWm && (
+          <span
+            className="absolute top-1 right-1 z-[1] rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
+            aria-label="Wasserzeichen"
+          >
+            WM
+          </span>
+        )}
+        {!overlay && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] px-0.5 pb-0.5">
+            <QrScanRowBar path={video.path} />
+          </div>
+        )}
+      </div>
+      <div className="mt-1 truncate px-0.5 text-[11px] font-medium leading-tight">
+        {video.filename}
+      </div>
+      <div className="truncate px-0.5 text-[10px] text-muted">
+        {video.width}×{video.height}
+      </div>
     </>
   );
 }
@@ -141,9 +236,12 @@ function SortableClipChip({
   isWm,
   cutMark,
   revision,
+  scrollRootRef,
   onSelect,
   onContextMenu,
 }: ClipChipProps) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [inView, setInView] = useState(active);
   const {
     attributes,
     listeners,
@@ -159,6 +257,75 @@ function SortableClipChip({
     },
   });
 
+  useEffect(() => {
+    if (active) {
+      setInView(true);
+      return;
+    }
+    const el = buttonRef.current;
+    if (!el) return;
+
+    let io: IntersectionObserver | null = null;
+    let cancelled = false;
+    const marginX = 120;
+    const marginY = 40;
+
+    const applyGeometry = (root: Element | null) => {
+      const er = el.getBoundingClientRect();
+      if (root) {
+        setInView(
+          rectNearlyIntersects(er, root.getBoundingClientRect(), marginX, marginY),
+        );
+        return;
+      }
+      const vr = {
+        left: 0,
+        top: 0,
+        right: window.innerWidth,
+        bottom: window.innerHeight,
+      } as DOMRect;
+      setInView(rectNearlyIntersects(er, vr, marginX, marginY));
+    };
+
+    const connect = () => {
+      if (cancelled) return;
+      const root = scrollRootRef.current;
+      io?.disconnect();
+      io = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            setInView(entry.isIntersecting);
+          }
+        },
+        {
+          root: root ?? null,
+          rootMargin: `${marginY}px ${marginX}px`,
+          threshold: 0.01,
+        },
+      );
+      io.observe(el);
+      const records = io.takeRecords();
+      if (records.length > 0) {
+        setInView(records.some((e) => e.isIntersecting));
+      } else {
+        applyGeometry(root);
+      }
+    };
+
+    connect();
+    const raf = window.requestAnimationFrame(connect);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+      io?.disconnect();
+    };
+  }, [scrollRootRef, video.path, active]);
+
+  const setRefs = (node: HTMLButtonElement | null) => {
+    buttonRef.current = node;
+    setNodeRef(node);
+  };
+
   // With DragOverlay: keep the source as a stationary ghost (no pointer delta).
   // Sibling chips still receive layout transforms for the snappy shuffle.
   const style: CSSProperties = {
@@ -166,31 +333,40 @@ function SortableClipChip({
     transition: transition ?? undefined,
   };
 
+  const loadThumb = active || inView;
+
   return (
     <button
-      ref={setNodeRef}
+      ref={setRefs}
       type="button"
       style={style}
       {...attributes}
       {...listeners}
       onClick={() => onSelect(index)}
       onContextMenu={(e) => onContextMenu(e, video.path)}
+      aria-busy={loadThumb && !previewThumbnailQueue.getCached(
+        video.path,
+        videoPosterBustKey(video.size_bytes, video.duration_secs, revision),
+      ) ? true : undefined}
       className={cn(
-        "relative min-w-[7.5rem] max-w-[9rem] shrink-0 touch-none rounded-lg border px-2 py-1.5 pr-7 text-left text-xs",
+        "relative shrink-0 touch-none rounded-lg border p-1 text-left",
+        CLIP_POSTER_W,
         "cursor-grab active:cursor-grabbing",
         "will-change-transform",
         active
-          ? "border-primary bg-primary-soft"
+          ? "border-primary bg-primary-soft ring-2 ring-primary/25"
           : "border-border/70 bg-card/70 hover:border-primary/40",
         isDragging && "opacity-35 shadow-none",
       )}
       title={isWm ? `${video.path} (Wasserzeichen)` : video.path}
       data-revision={revision}
     >
-      <ClipChipFace
+      <ClipPosterFace
         video={video}
         isWm={isWm}
         cutMark={cutMark}
+        revision={revision}
+        loadThumb={loadThumb}
       />
     </button>
   );
@@ -201,16 +377,19 @@ function ClipChipOverlay({
   active,
   isWm,
   cutMark,
+  revision,
 }: {
   video: VideoMetadata;
   active: boolean;
   isWm: boolean;
   cutMark: "trim" | "split" | "rotate" | null;
+  revision: number;
 }) {
   return (
     <div
       className={cn(
-        "relative min-w-[7.5rem] max-w-[9rem] rounded-lg border px-2 py-1.5 pr-7 text-left text-xs",
+        "relative rounded-lg border p-1 text-left",
+        CLIP_POSTER_W,
         "shadow-xl ring-2 ring-primary/35",
         "cursor-grabbing",
         active
@@ -218,7 +397,14 @@ function ClipChipOverlay({
           : "border-border bg-card",
       )}
     >
-      <ClipChipFace video={video} isWm={isWm} cutMark={cutMark} overlay />
+      <ClipPosterFace
+        video={video}
+        isWm={isWm}
+        cutMark={cutMark}
+        revision={revision}
+        loadThumb={false}
+        overlay
+      />
     </div>
   );
 }
@@ -335,7 +521,11 @@ export function VideoPreview({
     if (!clip) return;
     previewThumbnailQueue.boost(
       clip.path,
-      `${clip.size_bytes}-${clip.duration_secs}-${getMediaRevision(clip.path)}`,
+      videoPosterBustKey(
+        clip.size_bytes,
+        clip.duration_secs,
+        getMediaRevision(clip.path),
+      ),
     );
   }, [activeClip, videoList, getMediaRevision]);
 
@@ -728,7 +918,11 @@ export function VideoPreview({
           ref={clipPlayerRef}
           chrome="playback"
           srcPath={current.path}
-          cacheKey={`${current.size_bytes}-${current.duration_secs}-${getMediaRevision(current.path)}`}
+          cacheKey={videoPosterBustKey(
+            current.size_bytes,
+            current.duration_secs,
+            getMediaRevision(current.path),
+          )}
           disabled={busy}
           autoPlay={playOnLoad && !playbackSuspended}
           onEnded={handleClipEnded}
@@ -801,6 +995,7 @@ export function VideoPreview({
                     isWm={isWm}
                     cutMark={cutMark}
                     revision={getMediaRevision(v.path)}
+                    scrollRootRef={clipStripRef}
                     onSelect={(idx) => selectClip(idx, autoNextClip)}
                     onContextMenu={(e, path) =>
                       mediaContextMenuHandler(path, setCtxMenu)(e)
@@ -815,9 +1010,10 @@ export function VideoPreview({
                 onClick={showCombinedPreview}
                 disabled={busy}
                 className={cn(
-                  "relative min-w-[7.5rem] max-w-[9rem] shrink-0 rounded-lg border px-2 py-1.5 text-left text-xs transition",
+                  "relative shrink-0 rounded-lg border p-1 text-left transition",
+                  CLIP_POSTER_W,
                   showingCombined
-                    ? "border-primary bg-primary-soft"
+                    ? "border-primary bg-primary-soft ring-2 ring-primary/25"
                     : "border-border/70 bg-card/70 hover:border-primary/40",
                 )}
                 title={
@@ -826,11 +1022,18 @@ export function VideoPreview({
                     : "Gespeicherte kombinierte Vorschau anzeigen"
                 }
               >
-                <div className="flex items-center gap-1 truncate font-medium">
-                  <Film className="h-3 w-3 shrink-0" aria-hidden />
+                <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-md bg-muted/50">
+                  <Film className="h-6 w-6 text-muted-foreground/70" aria-hidden />
+                  {previewStale && (
+                    <span className="absolute top-1 right-1 rounded bg-amber-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
+                      alt
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 truncate px-0.5 text-[11px] font-medium leading-tight">
                   Vorschau
                 </div>
-                <div className="text-muted">
+                <div className="truncate px-0.5 text-[10px] text-muted">
                   {previewStale ? "veraltet" : "kombiniert"}
                 </div>
               </button>
@@ -852,6 +1055,7 @@ export function VideoPreview({
                           active={einzelclipMode && idx === activeClip}
                           isWm={videoWmNeeded && watermarkClipIndex === idx}
                           cutMark={getCutMark(v.path)}
+                          revision={getMediaRevision(v.path)}
                         />
                       );
                     })()
