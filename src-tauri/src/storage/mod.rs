@@ -10,3 +10,5 @@ pub mod working_session;
 pub use config::{app_config_dir, config_db_path, AppConfig, ConfigStore};
 #[allow(unused_imports)]
 pub use config::CrewMember;
+#[allow(unused_imports)]
+pub use config::ServerProfile;

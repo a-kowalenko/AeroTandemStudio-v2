@@ -4,7 +4,6 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Check, FolderOpen, Info, Languages, Loader2, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
@@ -27,9 +26,10 @@ import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import {
   presentServerConnectionError,
-  serverGuestHint,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
+import { activeServerProfileSummary } from "@/lib/serverProfile";
+import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
 
@@ -488,36 +488,6 @@ export function SetupWizard({ open, onComplete }: Props) {
           nextRoles.videospringer && !nextRoles.tandemmaster ? trimmed : "",
       };
     });
-  }
-
-  function serverUrlToDialogDefaultPath(serverUrl: string) {
-    const raw = serverUrl.trim();
-    if (!raw) return undefined;
-    // Allow reusing existing value (best-effort) for the OS explorer initial focus.
-    if (raw.toLowerCase().startsWith("smb://")) {
-      let rest = raw.slice(6); // strip smb://
-      if (rest.includes("@")) {
-        // smb://user@host/share → \\host\share
-        rest = rest.split("@").slice(1).join("@");
-      }
-      rest = rest.replace(/\//g, "\\");
-      return `\\\\${rest.replace(/^\\+/, "")}`;
-    }
-    if (raw.startsWith("//")) return `\\${raw}`;
-    return raw;
-  }
-
-  async function pickServerPath() {
-    const selected = await openDialog({
-      directory: true,
-      multiple: false,
-      defaultPath: serverUrlToDialogDefaultPath(draft?.server_url ?? "") ?? undefined,
-    });
-    if (typeof selected === "string") {
-      const next = selected.trim();
-      if (!next) return;
-      patch("server_url", next);
-    }
   }
 
   async function pickFolder(key: "speicherort" | "sd_backup_folder") {
@@ -1091,88 +1061,50 @@ export function SetupWizard({ open, onComplete }: Props) {
               ) : null}
               <div
                 className={cn(
-                  "space-y-4",
                   !draft.upload_to_server && "pointer-events-none opacity-50",
                 )}
               >
-              <div className="space-y-1.5">
-                <Label>{t("settings.server.smb.url")}</Label>
-                <div className="relative">
-                  <Input
-                    disabled={!draft.upload_to_server}
-                    className="pr-10"
-                    value={draft.server_url}
-                    onChange={(e) => patch("server_url", e.target.value)}
-                    placeholder="smb://…"
-                  />
-                  <button
-                    type="button"
-                    disabled={!draft.upload_to_server}
-                    onClick={() => void pickServerPath()}
-                    title={t("common.actions.pickFolder")}
-                    aria-label={t("common.actions.pickFolder")}
-                    className={cn(
-                      "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
-                      "hover:bg-primary-soft hover:text-foreground",
-                      "disabled:pointer-events-none disabled:opacity-40",
-                    )}
-                  >
-                    <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label>{t("settings.server.smb.login")}</Label>
-                    <Input
-                      disabled={!draft.upload_to_server}
-                      value={draft.server_login}
-                      onChange={(e) => patch("server_login", e.target.value)}
-                      autoComplete="username"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("settings.server.smb.password")}</Label>
-                    <PasswordInput
-                      disabled={!draft.upload_to_server}
-                      value={draft.server_password}
-                      onChange={(e) =>
-                        patch("server_password", e.target.value)
-                      }
-                      autoComplete="current-password"
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] text-muted">{serverGuestHint()}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={testingServer || !draft.upload_to_server}
-                  onClick={() => void onTestServer()}
-                >
-                  {testingServer ? t("common.actions.checking") : t("common.actions.testConnection")}
-                </Button>
-                {!testingServer &&
-                serverPhase !== "checking" &&
-                serverPhase !== "idle" ? (
-                  <button
-                    type="button"
-                    className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title={
-                      serverPhase === "error" && serverMessage
-                        ? `${serverMessage}\nKlicken zum erneuten Prüfen`
-                        : t("header.connection.retry")
-                    }
-                    onClick={() => void onTestServer()}
-                  >
-                    {serverConnectionStatusLabel(serverPhase, serverMessage)}
-                  </button>
-                ) : null}
-              </div>
+                <ServerProfileEditor
+                  draft={draft}
+                  setDraft={setDraft}
+                  disabled={!draft.upload_to_server}
+                  onError={(message) => showError(message, t("app.server.title"))}
+                  errorTitle={t("app.server.title")}
+                  footer={
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={testingServer || !draft.upload_to_server}
+                        onClick={() => void onTestServer()}
+                      >
+                        {testingServer
+                          ? t("common.actions.checking")
+                          : t("common.actions.testConnection")}
+                      </Button>
+                      {!testingServer &&
+                      serverPhase !== "checking" &&
+                      serverPhase !== "idle" ? (
+                        <button
+                          type="button"
+                          className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          title={
+                            serverPhase === "error" && serverMessage
+                              ? `${serverMessage}\nKlicken zum erneuten Prüfen`
+                              : t("header.connection.retry")
+                          }
+                          onClick={() => void onTestServer()}
+                        >
+                          {serverConnectionStatusLabel(
+                            serverPhase,
+                            serverMessage,
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+                  }
+                />
               </div>
             </>
           ) : null}
@@ -1257,7 +1189,9 @@ export function SetupWizard({ open, onComplete }: Props) {
                     skippedSteps.has(3)
                       ? t("setupWizard.summary.skipped")
                       : draft.upload_to_server
-                        ? draft.server_url || t("setupWizard.summary.serverMissing")
+                        ? activeServerProfileSummary(draft) ||
+                          draft.server_url ||
+                          t("setupWizard.summary.serverMissing")
                         : t("setupWizard.summary.disabled")
                   }
                 />

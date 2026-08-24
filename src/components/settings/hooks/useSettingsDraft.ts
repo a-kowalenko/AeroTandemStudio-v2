@@ -15,6 +15,7 @@ import { useLocaleStore } from "@/store/localeStore";
 import type { SettingsPatch } from "../types";
 import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 import { runAmsAutoConnect } from "@/lib/amsAutoConnect";
+import { pushFlatToActiveProfile } from "@/lib/serverProfile";
 
 function sortCrewList(config: AppConfig): AppConfig {
   const crew_list = [...(config.crew_list ?? [])].sort((a, b) =>
@@ -97,21 +98,24 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
 
-    const toSave: AppConfig = {
+    const toSave: AppConfig = pushFlatToActiveProfile({
       ...draft,
       tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
       videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
       operator_name: op ? canonicalCrewName(crew_list, op) : "",
       sd_pc_name: draft.sd_pc_name.trim(),
       crew_list,
-    };
+    });
 
     const prev = config;
     const serverChanged =
       !prev ||
       prev.server_url !== toSave.server_url ||
       prev.server_login !== toSave.server_login ||
-      prev.server_password !== toSave.server_password;
+      prev.server_password !== toSave.server_password ||
+      prev.active_server_profile_id !== toSave.active_server_profile_id ||
+      JSON.stringify(prev.server_profiles) !==
+        JSON.stringify(toSave.server_profiles);
     const amsChanged =
       !prev ||
       prev.ams_bridge_url !== toSave.ams_bridge_url ||

@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { FolderOpen } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 import { useServerStore } from "@/store/serverStore";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
-  serverGuestHint,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
 import { presentAmsBridgeError } from "@/lib/amsBridgeStatus";
@@ -79,39 +77,6 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       target.input.current?.focus({ preventScroll: true });
     }, 120);
   }, [flashFocus]);
-
-  function serverUrlToDialogDefaultPath(serverUrl: string) {
-    const raw = serverUrl.trim();
-    if (!raw) return undefined;
-    if (raw.toLowerCase().startsWith("smb://")) {
-      let rest = raw.slice(6); // strip smb://
-      if (rest.includes("@")) {
-        // smb://user@host/share → \\host\share
-        rest = rest.split("@").slice(1).join("@");
-      }
-      rest = rest.replace(/\//g, "\\");
-      return `\\\\${rest.replace(/^\\+/, "")}`;
-    }
-    if (raw.startsWith("//")) return `\\${raw}`;
-    return raw;
-  }
-
-  async function pickServerPath() {
-    try {
-      const selected = await openDialog({
-        directory: true,
-        multiple: false,
-        defaultPath: serverUrlToDialogDefaultPath(draft?.server_url ?? ""),
-      });
-      if (typeof selected === "string") {
-        const next = selected.trim();
-        if (!next) return;
-        patch("server_url", next);
-      }
-    } catch (err) {
-      showError(String(err), t("settings.tabs.server"));
-    }
-  }
 
   async function onTestServer() {
     if (testingServer) return;
@@ -364,94 +329,52 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         title={t("settings.server.smb.title")}
         description={t("settings.server.smb.description")}
       >
-        <div ref={serverUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
-          {flashFocus === "server-url" ? (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
-            />
-          ) : null}
-          <Label className="relative">{t("settings.server.smb.url")}</Label>
-          <div className="relative">
-            <Input
-              ref={serverUrlInputRef}
-              className="relative pr-10"
-              value={draft.server_url}
-              onChange={(e) => patch("server_url", e.target.value)}
-              placeholder={t("settings.server.smb.urlPlaceholder")}
-            />
-            <button
-              type="button"
-              disabled={false}
-              onClick={() => void pickServerPath()}
-              title={t("common.actions.pickFolder")}
-              aria-label={t("common.actions.pickFolder")}
-              className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-            >
-              <FolderOpen className="h-3.5 w-3.5" aria-hidden />
-            </button>
-          </div>
-        </div>
-
-        <div
-          ref={serverCredentialsRef}
-          className="relative space-y-1.5 rounded-xl p-2.5"
-        >
-          {flashFocus === "server-credentials" ? (
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
-            />
-          ) : null}
-          <div className="relative grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>{t("settings.server.smb.login")}</Label>
-              <Input
-                ref={serverLoginInputRef}
-                value={draft.server_login}
-                onChange={(e) => patch("server_login", e.target.value)}
-                autoComplete="username"
-              />
+        <ServerProfileEditor
+          draft={draft}
+          setDraft={setDraft}
+          flashFocus={
+            flashFocus === "server-url" || flashFocus === "server-credentials"
+              ? flashFocus
+              : null
+          }
+          onError={showError}
+          errorTitle={t("settings.tabs.server")}
+          urlInputRef={serverUrlInputRef}
+          loginInputRef={serverLoginInputRef}
+          urlSectionRef={serverUrlRef}
+          credentialsSectionRef={serverCredentialsRef}
+          footer={
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={testingServer}
+                onClick={() => void onTestServer()}
+              >
+                {testingServer
+                  ? t("common.actions.checking")
+                  : t("common.actions.testConnection")}
+              </Button>
+              {!testingServer && serverPhase !== "checking" ? (
+                <button
+                  type="button"
+                  className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  title={
+                    serverPhase === "error" && serverMessage
+                      ? t("settings.server.smb.recheckTitleWithMessage", {
+                          message: serverMessage,
+                        })
+                      : t("settings.server.smb.recheckTitle")
+                  }
+                  onClick={() => void onTestServer()}
+                >
+                  {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                </button>
+              ) : null}
             </div>
-            <div className="space-y-1.5">
-              <Label>{t("settings.server.smb.password")}</Label>
-              <PasswordInput
-                value={draft.server_password}
-                onChange={(e) => patch("server_password", e.target.value)}
-                autoComplete="current-password"
-              />
-            </div>
-          </div>
-          <p className="relative text-[11px] text-muted">{serverGuestHint()}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={testingServer}
-            onClick={() => void onTestServer()}
-          >
-            {testingServer ? t("common.actions.checking") : t("common.actions.testConnection")}
-          </Button>
-          {!testingServer && serverPhase !== "checking" ? (
-            <button
-              type="button"
-              className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title={
-                serverPhase === "error" && serverMessage
-                  ? t("settings.server.smb.recheckTitleWithMessage", {
-                      message: serverMessage,
-                    })
-                  : t("settings.server.smb.recheckTitle")
-              }
-              onClick={() => void onTestServer()}
-            >
-              {serverConnectionStatusLabel(serverPhase, serverMessage)}
-            </button>
-          ) : null}
-        </div>
+          }
+        />
       </SettingsSection>
 
       <SettingsSection title={t("settings.server.upload.title")}>

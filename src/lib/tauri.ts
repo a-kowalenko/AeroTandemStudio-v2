@@ -62,6 +62,14 @@ export type CrewMember = {
   videospringer: boolean;
 };
 
+export type ServerProfile = {
+  id: string;
+  label: string;
+  url: string;
+  login: string;
+  password: string;
+};
+
 export type AppConfig = {
   speicherort: string;
   ort: string;
@@ -79,6 +87,9 @@ export type AppConfig = {
   /** Editable crew roster; roles filter form combobox suggestions. */
   crew_list: CrewMember[];
   upload_to_server: boolean;
+  /** Saved SMB profiles; active entry mirrors flat server_* fields. */
+  server_profiles: ServerProfile[];
+  active_server_profile_id: string;
   server_url: string;
   server_login: string;
   server_password: string;

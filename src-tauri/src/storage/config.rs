@@ -94,6 +94,21 @@ pub struct CrewMember {
     pub videospringer: bool,
 }
 
+/// Saved SMB server connection (URL + credentials).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ServerProfile {
+    pub id: String,
+    pub label: String,
+    pub url: String,
+    #[serde(default)]
+    pub login: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+/// Stable id for the factory-default profile in `AppConfig::default()`.
+pub const DEFAULT_SERVER_PROFILE_ID: &str = "default";
+
 /// App settings — keys from IMPLEMENTATION_PLAN §9 (+ a few UI helpers from legacy defaults).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
@@ -123,6 +138,11 @@ pub struct AppConfig {
     pub crew_list: Vec<CrewMember>,
     #[serde(default)]
     pub upload_to_server: bool,
+    /// Saved SMB profiles; active entry is mirrored in the flat `server_*` fields.
+    #[serde(default = "default_server_profiles")]
+    pub server_profiles: Vec<ServerProfile>,
+    #[serde(default = "default_active_server_profile_id")]
+    pub active_server_profile_id: String,
     #[serde(default = "default_server_url")]
     pub server_url: String,
     #[serde(default)]
@@ -398,6 +418,24 @@ fn default_true() -> bool {
 fn default_server_url() -> String {
     "smb://169.254.169.254/aktuell".into()
 }
+
+fn default_server_profile_label() -> String {
+    "Standard".into()
+}
+
+fn default_server_profiles() -> Vec<ServerProfile> {
+    vec![ServerProfile {
+        id: DEFAULT_SERVER_PROFILE_ID.into(),
+        label: default_server_profile_label(),
+        url: default_server_url(),
+        login: String::new(),
+        password: String::new(),
+    }]
+}
+
+fn default_active_server_profile_id() -> String {
+    DEFAULT_SERVER_PROFILE_ID.into()
+}
 fn default_codec() -> String {
     "auto".into()
 }
@@ -526,6 +564,73 @@ impl AppConfig {
             self.ams_bridge_instance_id = id.to_string();
         }
     }
+
+    fn active_server_profile_index(&self) -> Option<usize> {
+        self.server_profiles
+            .iter()
+            .position(|p| p.id == self.active_server_profile_id)
+    }
+
+    /// Rebuild profile list from flat `server_*` fields (legacy configs without `server_profiles`).
+    pub fn migrate_server_profiles_from_flat(&mut self) {
+        self.server_profiles = vec![ServerProfile {
+            id: DEFAULT_SERVER_PROFILE_ID.into(),
+            label: default_server_profile_label(),
+            url: self.server_url.clone(),
+            login: self.server_login.clone(),
+            password: self.server_password.clone(),
+        }];
+        self.active_server_profile_id = DEFAULT_SERVER_PROFILE_ID.into();
+    }
+
+    /// Copy flat `server_*` fields into the active profile entry.
+    pub fn push_active_profile_from_flat(&mut self) {
+        self.ensure_server_profiles();
+        let Some(idx) = self.active_server_profile_index() else {
+            return;
+        };
+        let url = self.server_url.clone();
+        let login = self.server_login.clone();
+        let password = self.server_password.clone();
+        self.server_profiles[idx].url = url;
+        self.server_profiles[idx].login = login;
+        self.server_profiles[idx].password = password;
+    }
+
+    /// Mirror the active profile into flat `server_*` fields (backward compat).
+    pub fn pull_flat_from_active_profile(&mut self) {
+        self.ensure_server_profiles();
+        let Some(idx) = self.active_server_profile_index() else {
+            return;
+        };
+        let profile = self.server_profiles[idx].clone();
+        self.server_url = profile.url;
+        self.server_login = profile.login;
+        self.server_password = profile.password;
+    }
+
+    /// Migrate legacy single-server configs and keep active profile + flat fields aligned.
+    pub fn sync_server_profiles(&mut self) {
+        self.ensure_server_profiles();
+        self.pull_flat_from_active_profile();
+    }
+
+    fn ensure_server_profiles(&mut self) {
+        if self.server_profiles.is_empty() {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.server_profiles.push(ServerProfile {
+                id: id.clone(),
+                label: default_server_profile_label(),
+                url: self.server_url.clone(),
+                login: self.server_login.clone(),
+                password: self.server_password.clone(),
+            });
+            self.active_server_profile_id = id;
+        }
+        if self.active_server_profile_index().is_none() {
+            self.active_server_profile_id = self.server_profiles[0].id.clone();
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -542,6 +647,8 @@ impl Default for AppConfig {
             operator_name: String::new(),
             crew_list: default_crew_list(),
             upload_to_server: false,
+            server_profiles: default_server_profiles(),
+            active_server_profile_id: default_active_server_profile_id(),
             server_url: default_server_url(),
             server_login: String::new(),
             server_password: String::new(),
@@ -616,6 +723,9 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     let had_setup_completed = obj
         .map(|o| o.contains_key("setup_completed"))
         .unwrap_or(false);
+    let had_server_profiles = obj
+        .map(|o| o.contains_key("server_profiles"))
+        .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
     if let (Value::Object(base), Value::Object(overlay)) = (&mut defaults, partial) {
         for (k, v) in overlay {
@@ -637,11 +747,15 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
             || !cfg.sd_backup_folder.trim().is_empty()
             || !cfg.server_login.trim().is_empty();
     }
+    if !had_server_profiles {
+        cfg.migrate_server_profiles_from_flat();
+    }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
     cfg.sync_body_concat_mode();
     cfg.sync_ui_language();
     cfg.sync_log_min_level();
+    cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
 }
@@ -730,6 +844,8 @@ impl ConfigStore {
         normalized.sync_body_concat_mode();
         normalized.sync_ui_language();
         normalized.sync_log_min_level();
+        normalized.push_active_profile_from_flat();
+        normalized.sync_server_profiles();
         crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
         let conn = self.connect()?;
         self.save_with_conn(&conn, &normalized)
@@ -1052,5 +1168,47 @@ mod tests {
             incoming.ams_bridge_instance_id,
             "22222222-2222-4222-8222-222222222222"
         );
+    }
+
+    #[test]
+    fn default_has_one_server_profile() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.server_profiles.len(), 1);
+        assert_eq!(cfg.server_profiles[0].id, DEFAULT_SERVER_PROFILE_ID);
+        assert_eq!(cfg.server_profiles[0].url, cfg.server_url);
+        assert_eq!(cfg.active_server_profile_id, DEFAULT_SERVER_PROFILE_ID);
+    }
+
+    #[test]
+    fn migrate_legacy_flat_server_into_profile() {
+        let cfg = merge_with_defaults(serde_json::json!({
+            "server_url": "smb://192.168.1.5/share",
+            "server_login": "nas",
+            "server_password": "secret"
+        }))
+        .unwrap();
+        assert_eq!(cfg.server_profiles.len(), 1);
+        assert_eq!(cfg.server_profiles[0].url, "smb://192.168.1.5/share");
+        assert_eq!(cfg.server_profiles[0].login, "nas");
+        assert_eq!(cfg.server_profiles[0].password, "secret");
+        assert_eq!(cfg.server_url, "smb://192.168.1.5/share");
+        assert_eq!(cfg.server_login, "nas");
+        assert_eq!(cfg.server_password, "secret");
+    }
+
+    #[test]
+    fn save_persists_active_profile_from_flat_fields() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.server_url = "smb://host/a".into();
+        cfg.server_login = "user".into();
+        cfg.server_password = "pw".into();
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.server_profiles.len(), 1);
+        assert_eq!(loaded.server_profiles[0].url, "smb://host/a");
+        assert_eq!(loaded.server_profiles[0].login, "user");
+        assert_eq!(loaded.server_profiles[0].password, "pw");
     }
 }
