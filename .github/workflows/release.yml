@@ -158,21 +158,25 @@ jobs:
           - platform: windows-latest
             args: ""
             ffmpeg_arch: ""
+            mpv_arch: ""
             bundles: ""
           # Apple Silicon (M1+) — native on macos-latest (arm64) + static arm64 FFmpeg
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
             ffmpeg_arch: arm64
+            mpv_arch: arm64
             bundles: ""
           # Intel Mac — cross-compile from arm64 runner + evermeet x86_64 FFmpeg
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
             ffmpeg_arch: x86_64
+            mpv_arch: x86_64
             bundles: ""
           # Linux x86_64 AppImage (WebKitGTK / patchelf via apt)
           - platform: ubuntu-22.04
             args: "--bundles appimage"
             ffmpeg_arch: ""
+            mpv_arch: ""
             bundles: appimage
 
     runs-on: ${{ matrix.platform }}
@@ -236,6 +240,11 @@ jobs:
         env:
           FFMPEG_MAC_ARCH: ${{ matrix.ffmpeg_arch }}
         run: npm run download-ffmpeg
+
+      - name: Download mpv sidecar
+        env:
+          MPV_MAC_ARCH: ${{ matrix.mpv_arch }}
+        run: npm run download-mpv
 
       - name: Build and upload to existing release
         uses: tauri-apps/tauri-action@v1

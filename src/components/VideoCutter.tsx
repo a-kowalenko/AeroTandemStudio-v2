@@ -408,11 +408,9 @@ export function VideoCutter({
               : undefined
           }
           srcPath={open ? videoPath : null}
-          cacheKey={
-            videoPath
-              ? `${useVideoStore.getState().getMediaRevision(videoPath)}-${durationMs}`
-              : null
-          }
+          // Revision only — do not include durationMs (player reports duration after
+          // boot and would remount → Kein Video / Thumbnail flicker).
+          cacheKey={videoPath ? String(mediaRevision) : null}
           keepRange={trimActive ? keepRange : undefined}
           keyframeMarks={
             trimActive || mode === "split" ? keyframeMarks : undefined

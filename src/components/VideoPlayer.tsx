@@ -466,11 +466,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }
 
     useEffect(() => {
+      // Keep a cached poster across boot so we never flash "Kein Video" while
+      // awaiting mpv/HTML5 (Strict Mode remount + async status open).
+      const cachedPoster = srcPath
+        ? previewThumbnailQueue.getCached(srcPath, cacheKey)
+        : null;
+
       setPlaying(false);
       setCurrentMs(0);
       setDurationMs(0);
       setSrc(null);
-      setPosterUrl(null);
+      setPosterUrl(cachedPoster);
       setLoadError(null);
       setMpvFrameUrl(null);
       setMpvActive(false);
@@ -487,17 +493,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
       async function boot() {
         // Poster for either backend (OPT-10 queue; Filmstrip OPT-7 unchanged).
-        const cached = previewThumbnailQueue.getCached(srcPath!, cacheKey);
-        if (cached) {
-          if (!cancelled) setPosterUrl(cached);
-        } else {
+        if (!cachedPoster) {
           void previewThumbnailQueue
             .request(srcPath!, THUMB_PRIORITY.onDemand, cacheKey)
             .then((url) => {
               if (!cancelled) setPosterUrl(url);
             })
             .catch(() => {
-              if (!cancelled) setPosterUrl(null);
+              /* keep null — empty surface until live frame/src */
             });
         }
 
@@ -1039,7 +1042,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           {backend === "mpv" ? (
             mpvFrameUrl || posterUrl ? (
               <img
-                key={mpvFrameUrl ?? posterUrl ?? "mpv"}
+                // Stable key: remounting on poster→frame URL swap flashes empty.
+                key="mpv-surface"
                 src={mpvFrameUrl ?? posterUrl ?? undefined}
                 alt=""
                 className={cn(
@@ -1051,7 +1055,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
               />
             ) : (
               <div className="flex h-full items-center justify-center text-sm text-white/70">
-                {t("video.player.noVideo")}
+                {srcPath ? t("common.actions.loading") : t("video.player.noVideo")}
               </div>
             )
           ) : src ? (
@@ -1134,9 +1138,21 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 );
               }}
             />
+          ) : posterUrl ? (
+            <img
+              key="html5-poster"
+              src={posterUrl}
+              alt=""
+              className={cn(
+                "pointer-events-none object-contain",
+                rotateMediaStyle ? null : "h-full w-full",
+              )}
+              style={rotateMediaStyle}
+              draggable={false}
+            />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-white/70">
-              {t("video.player.noVideo")}
+              {srcPath ? t("common.actions.loading") : t("video.player.noVideo")}
             </div>
           )}
 

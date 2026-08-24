@@ -57,13 +57,13 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren)  
-*(Phase 23.1 Windows WPD erledigt — manuelle Cam-Abnahme offen.)*  
+**Nächste Phase:** [Phase 29 — Low-Media Confirm vor Erstellen](#phase-29--low-media-confirm-vor-erstellen)  
+*(alternativ: [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später))*  
 *(Phase 28 Fotos Master–Detail erledigt.)*  
 *(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
 *(Phase 25 AMS-Lookup Autofill erledigt.)*  
 *(Phase 24 AMS-Nachreichen erledigt.)*  
-*(optional danach: [Phase 14 — ML Foto-Klassifikation](#phase-14--ml-foto-klassifikation-optional-später))*  
+*(Phase 23.1 Windows WPD erledigt — manuelle Cam-Abnahme offen.)*  
 *(Phase 22: macOS Titlebar-Align + Dialog-Zentrierung erledigt.)*
 *(Phase 20–21.1: Medien-Drehen + Foto-Crop + Crop-Settle UX erledigt.)*
 *(Phase 15–19: Linux, Setup-Wizard, QR-Spotlight, Standard-Medienordner, Operator-Identität)*
@@ -1560,6 +1560,73 @@ src/locales/de.json | en.json | es-MX.json
 
 ---
 
+### Phase 29 — Low-Media Confirm vor Erstellen
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** Phase 12 (`startCreate` / `validateCreateJob`), Phase 27 (Confirm-Dialog-Muster), Phase 24 (Append — Ausnahme)  
+**Ziel:** Vor Encode/Upload eine **weiche** Bestätigung, wenn für gebuchte Produkte ungewöhnlich wenig Medien importiert sind — ohne Hard-Block, ohne Alarmmüdigkeit.
+
+#### Ausgangslage (Ist)
+
+- `validate_create_job` / `validateCreateJob` blockt nur bei fehlenden Produkten oder fehlenden Medien (0 Videos / 0 Fotos bei gebuchtem Produkt)
+- Keine Soft-Warnung bei „ungewöhnlich wenig“ (z. B. 1 Video, &lt;20 Fotos)
+- Teure Schritte haben bereits Soft-Confirms (`ReencodeConfirmDialog`); Erstellen startet in `App.tsx` → `startCreate` nach harter Validation direkt mit `setBusy`
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Produktbezogen | Nur prüfen, was gebucht ist: Video-Produkt → Video-Schwelle; Foto-Produkt → Foto-Schwelle. Ungebuchte Medienart ignorieren |
+| 2 | Soft Confirm | Kein Error in `validate_create_job`. Dialog: Zurück / Trotzdem erstellen. Erstellen bleibt möglich |
+| 3 | UND/ODER | Pro aktivem Produkt unabhängig; Gründe in **einem** Dialog als Liste (nicht `videos≤1 AND fotos<20`) |
+| 4 | Schwellen & Copy | MVP: `videos ≤ 1`, `fotos < 20` (Konstanten; Config später Backlog). Copy: konkrete Zähler („1 Video · 12 Fotos“), Ton „ungewöhnlich wenig“, nicht „falsch“. i18n de/en/es-MX |
+| 5 | Click-Flow | In `startCreate` nach harter Validation + Server-Check, **vor** `setBusy` / Encode / Reencode-Confirm: Low-Media → (optional Reencode) → Job |
+| 6 | Alarmmüdigkeit | Nur on click, kein Dauer-Banner. Pro Vorgang einmal; nach Zurück + Medienänderung erneut. Keine „Nicht mehr fragen“-Checkbox im MVP |
+| 7 | Edge Cases | Append/AMS-Nachreichen: **keine** Low-Media-Warnung. Nur-Video / Nur-Foto / Beides unter Schwelle → ein Dialog, 1–2 Bullets |
+| 8 | UX | Primäraktion = **Zurück** (sicherer Default); Sekundär = Trotzdem erstellen. Kurzer Hinweis, dass danach Encode/Upload läuft |
+
+#### Scope
+
+- [ ] Hilfsfunktion `shouldWarnLowMedia({ kunde, videoCount, photoCount })` → Gründe (`video` / `photos`) + Counts
+- [ ] `LowMediaConfirmDialog` (Dialog wie Reencode-Confirm-Stil, kompakt)
+- [ ] Einbindung in `startCreate` / `AppDialogs` gemäß Flow-Reihenfolge (Punkt 5)
+- [ ] Append/Nachreichen überspringen (Punkt 7)
+- [ ] Session-/Vorgangs-Flag: nach Confirm oder Medienänderung Reset (Punkt 6)
+- [ ] i18n de / en / es-MX (Titel, Body mit Zählern, Buttons, Encode/Upload-Hinweis)
+- [ ] Unit-Tests für Schwellen-Logik (produktbezogen, Edge Cases)
+- [ ] Manuell: 1 Video+Foto-Produkt; 19 Fotos; 2 Videos+50 Fotos (kein Dialog); Append ohne Dialog; Zurück → nachlegen → erneut Erstellen
+
+#### Nicht tun
+
+- Keine neuen Errors in `validate_create_job` / Rust-Validation
+- Keine Config-Keys im MVP (`warn_min_photos` etc. = Backlog)
+- Keine „Nicht mehr fragen“-Persistenz
+- Phase 23 / Encode / AMS-Lookup nicht anfassen
+- Legacy-Projekt nicht ändern
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 29 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 29 (Low-Media Confirm vor Erstellen — alle 8 Entscheidungen).
+Soft Confirm, produktbezogen, Flow vor setBusy. Append überspringen.
+i18n de/en/es-MX. Unit-Tests für Schwellen. Danach cargo test && npm run check.
+```
+
+#### Referenzen
+
+```
+src/App.tsx                          # startCreate
+src/components/app/AppDialogs.tsx
+src/components/ReencodeConfirmDialog.tsx   # UX-Muster
+src/lib/createJobPlan.ts             # needsVideoProduct-Analog
+src-tauri/src/video/export_job.rs    # validate_create_job (nicht um Errors erweitern)
+src/locales/de.json | en.json | es-MX.json
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1744,6 +1811,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 25 | AMS-Lookup Autofill (Manuell / ID) | ✅ |
 | 27 | Encode-Profil & Reencode-Confirm UX | ✅ |
 | 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
+| 29 | Low-Media Confirm vor Erstellen | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

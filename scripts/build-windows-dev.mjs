@@ -1,7 +1,7 @@
 /**
  * Local Windows NSIS build for ad-hoc testing on another PC (no GitHub release).
  *
- * - Downloads FFmpeg sidecar if needed
+ * - Downloads FFmpeg + mpv sidecars if needed
  * - Builds NSIS setup only (skips updater artifacts when no signing key)
  * - Opens the nsis output folder in Explorer
  *
@@ -51,6 +51,7 @@ function main() {
   }
 
   run(npmCmd, ["run", "download-ffmpeg"]);
+  run(npmCmd, ["run", "download-mpv"]);
 
   // Without updater signing secrets, skip updater artifacts (same as CI overlay).
   const hasKey = Boolean(process.env.TAURI_SIGNING_PRIVATE_KEY?.trim());

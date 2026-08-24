@@ -219,9 +219,27 @@ fn platform_relative_mpv_candidates() -> Vec<PathBuf> {
         } else {
             "x86_64"
         };
+        // Flattened sidecar: mac/<arch>/mpv + mac/<arch>/lib/ (@executable_path).
+        // Also accept a vendored mpv.app if someone places one manually.
+        out.insert(0, PathBuf::from("mpv").join("mac").join(arch).join(bin));
         out.insert(
-            0,
-            PathBuf::from("mpv").join("mac").join(arch).join(bin),
+            1,
+            PathBuf::from("mpv")
+                .join("mac")
+                .join(arch)
+                .join("mpv.app")
+                .join("Contents")
+                .join("MacOS")
+                .join(bin),
+        );
+        out.insert(
+            2,
+            PathBuf::from("mpv")
+                .join("mac")
+                .join("mpv.app")
+                .join("Contents")
+                .join("MacOS")
+                .join(bin),
         );
     }
     #[cfg(target_os = "linux")]

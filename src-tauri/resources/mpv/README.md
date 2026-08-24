@@ -8,27 +8,41 @@ decoded frames via the loopback media HTTP server. Otherwise the existing
 Playback always uses the **working-copy absolute path** (`loadfile`), not
 `asset://` / `media://`. HTML5 still uses Range HTTP for the same files.
 
-## Layout (optional bundle)
+## Layout (bundled sidecar)
 
-| Platform | Binary | Optional libmpv |
-|----------|--------|-----------------|
-| Windows x64 | `win/mpv.exe` | `win/libmpv-2.dll` (future embed) |
-| macOS | `mac/arm64/mpv` or `mac/x86_64/mpv` (or `mac/mpv`) | Homebrew `libmpv.dylib` |
-| Linux | `linux/x86_64/mpv` (or `linux/mpv`) | system `libmpv.so.*` |
+| Platform | Binary | Notes |
+|----------|--------|-------|
+| Windows x64 | `win/mpv.exe` (+ DLLs in same folder) | First-party mingw zip from mpv releases |
+| macOS | `mac/arm64/mpv` + `mac/arm64/lib/` (or `mac/x86_64/…`) | Flattened from GitHub `mpv.app` (`@executable_path/lib`) |
+| Linux | `linux/x86_64/mpv` (optional) | No official zip — system `apt install mpv` |
 
 Also searched: `PATH`, `/opt/homebrew/bin/mpv`, `/usr/bin/mpv`,
 `%ProgramFiles%\mpv\mpv.exe`.
 
-Binaries are **not** committed (same idea as FFmpeg). Place them under this tree
-or install system mpv for development.
+Binaries are **not** committed (same idea as FFmpeg). Download for the host:
 
-## Dev install
+```bash
+npm run download-mpv
+# CI / Intel Mac on arm64 runner:
+MPV_MAC_ARCH=x86_64 npm run download-mpv
+# pin release:
+MPV_TAG=v0.41.0 npm run download-mpv
+```
+
+Tauri bundles `resources/mpv/` (`tauri.conf.json` → `bundle.resources`). Release CI
+runs `download-mpv` before `tauri-action` (Win + both Mac arches; Linux step is a no-op).
+
+macOS note: official CI zips contain `mpv.tar.gz` → `mpv.app`. The download script
+extracts **only** `Contents/MacOS/mpv` and `Contents/MacOS/lib/` (enough for
+`--vo=null` IPC). A relative `mac/mpv` → `<arch>/mpv` symlink is added for detect fallback.
+
+## Dev install (alternative)
 
 ### macOS
 
 ```bash
-brew install mpv
-# verify
+npm run download-mpv
+# or: brew install mpv
 mpv --version
 ```
 
@@ -42,28 +56,32 @@ sudo apt install libmpv-dev
 
 ### Windows
 
-1. Download a release build from https://mpv.io/installation/ (or zhongfly /
-   shinchiro winbuilds).
-2. Copy `mpv.exe` to `src-tauri/resources/mpv/win/mpv.exe`.
-3. Optional: copy `libmpv-2.dll` next to it for future libmpv embedding.
-4. Or install mpv and ensure it is on `PATH`.
+```powershell
+npm run download-mpv
+```
 
-Tauri already bundles `resources/` — add under `tauri.conf.json` →
-`bundle.resources` if you ship mpv (currently `resources/ffmpeg/` only; extend
-when you vendor mpv for release).
+Or download from https://mpv.io/installation/ / [mpv releases](https://github.com/mpv-player/mpv/releases)
+and copy `mpv.exe` **plus companion DLLs** into `src-tauri/resources/mpv/win/`.
 
 ## Config
 
 - `use_libmpv` (default `true`) in app config / Settings → Video → Advanced.
 - Disable to force HTML5 even when mpv is present.
 
-## Platform acceptance (OPT-13)
+## License
+
+mpv and its bundled libraries are covered by GPL / LGPL and other licenses from
+upstream. Redistribution of the sidecar follows the same terms as shipping the
+[official CI release zips](https://github.com/mpv-player/mpv/releases). Keep the
+upstream copyright notices with any redistributed binaries.
+
+## Platform acceptance (OPT-13 + sidecar)
 
 | Platform | Tested | Notes |
 |----------|--------|-------|
-| macOS (Intel, 2026-08-24) | ✅ | No system mpv → HTML5 fallback; `cargo test` 468 ok; `npm run check` ok |
-| Windows | Documented | Bundle `mpv.exe` under `resources/mpv/win/` or PATH for IPC backend |
-| Linux | Documented | `apt install mpv`; HTML5 + GStreamer remains fallback |
+| macOS (Intel, 2026-08-25) | ✅ | `npm run download-mpv` → flat `mac/x86_64/mpv`+`lib/`; detect IPC; `cargo test` player::detect ok |
+| Windows | Documented | `download-mpv` → `win/mpv.exe` + DLLs; bundled in release |
+| Linux | Documented | system `mpv` or manual `linux/x86_64/mpv`; HTML5 fallback |
 
 Scrub feeling (60–180 s clip): with mpv installed, seeks go through JSON-IPC +
 JPEG frame refresh (hr-seek); without mpv, prior HTML5 path is unchanged.
