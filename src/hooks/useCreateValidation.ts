@@ -6,8 +6,15 @@ import { usePhotoStore } from "../store/photoStore";
 import { useVideoStore } from "../store/videoStore";
 import { useUiStore } from "../store/uiStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
-import { validateCreateJob, normalizeManualEntryMode } from "../lib/tauri";
-import { resolveCreateValidation } from "../lib/createReadyHints";
+import {
+  validateCreateJob,
+  normalizeManualEntryMode,
+  type ManualEntryMode,
+} from "../lib/tauri";
+import {
+  resolveCreateValidation,
+  type CreateReadyBanner,
+} from "../lib/createReadyHints";
 import { canRunAmsIdLookup, isAmsBridgeConfigured } from "../lib/amsLookup";
 
 type Options = {
@@ -15,6 +22,11 @@ type Options = {
   busy: boolean;
   pipelineActive: boolean;
   uiLocked: boolean;
+};
+
+type ResolvedSnapshot = {
+  createReady: boolean;
+  createBanner: CreateReadyBanner | null;
 };
 
 export function useCreateValidation({
@@ -38,12 +50,28 @@ export function useCreateValidation({
   const amsCapabilities = useAmsBridgeStore((s) => s.capabilities);
 
   const [createHints, setCreateHints] = useState<string[]>([]);
+  /** Mode the current `createHints` were validated for — avoid re-summarizing stale hints. */
+  const [hintsManualEntryMode, setHintsManualEntryMode] =
+    useState<ManualEntryMode | null>(null);
   const [createReadyPulse, setCreateReadyPulse] = useState(false);
   const createReadyWasFalseRef = useRef(true);
+  const lastSyncedRef = useRef<ResolvedSnapshot>({
+    createReady: false,
+    createBanner: null,
+  });
+  const hintsModeRef = useRef<ManualEntryMode | null>(null);
+  hintsModeRef.current = hintsManualEntryMode;
+
+  const manualEntryMode = normalizeManualEntryMode(
+    config?.manual_entry_mode,
+    config?.oldschool_mode ?? false,
+  );
 
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
+    // Skip debounce while hints belong to another manual mode (avoids interim jump).
+    const delayMs = hintsModeRef.current !== manualEntryMode ? 0 : 200;
     const timer = window.setTimeout(() => {
       void (async () => {
         const paths = videoList.map((v) => v.path);
@@ -63,13 +91,15 @@ export function useCreateValidation({
             hints.push(tr("create.validation.storageDeferredHint"));
           }
           setCreateHints(hints);
+          setHintsManualEntryMode(manualEntryMode);
         } catch {
           if (!cancelled) {
             setCreateHints([tr("create.validation.failed")]);
+            setHintsManualEntryMode(manualEntryMode);
           }
         }
       })();
-    }, 200);
+    }, delayMs);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -86,6 +116,7 @@ export function useCreateValidation({
     amsLookupSettled,
     amsConnected,
     amsCapabilities,
+    manualEntryMode,
   ]);
 
   const hasMedia =
@@ -96,48 +127,57 @@ export function useCreateValidation({
     hasMedia ||
     qrRevision > 0 ||
     amsLookupRevision > 0;
-  const manualEntryMode = normalizeManualEntryMode(
-    config?.manual_entry_mode,
-    config?.oldschool_mode ?? false,
-  );
   const lookupLive = canRunAmsIdLookup({
     configured: isAmsBridgeConfigured(config),
     connected: amsConnected,
     capabilities: amsCapabilities,
   });
 
-  const resolved = useMemo(
-    () =>
-      resolveCreateValidation(createHints, {
-        formMode: kunde.form_mode,
-        manualEntryMode,
-        workStarted,
-        pipelineActive,
-        sessionTouched,
-        hasMedia,
-        qrApplied: qrRevision > 0,
-        amsApplied: amsLookupRevision > 0,
-        kundenId: kunde.kunden_id,
-        bookingId: kunde.booking_id,
-        amsLookupSettled,
-        lookupLive,
-      }),
-    [
-      createHints,
-      kunde.form_mode,
-      kunde.kunden_id,
-      kunde.booking_id,
+  const hintsInSync = hintsManualEntryMode === manualEntryMode;
+
+  const resolved = useMemo(() => {
+    if (!hintsInSync) {
+      return {
+        createReady: lastSyncedRef.current.createReady,
+        blockingHints: createHints,
+        createBanner: lastSyncedRef.current.createBanner,
+      };
+    }
+    const next = resolveCreateValidation(createHints, {
+      formMode: kunde.form_mode,
       manualEntryMode,
       workStarted,
       pipelineActive,
       sessionTouched,
       hasMedia,
-      qrRevision,
-      amsLookupRevision,
+      qrApplied: qrRevision > 0,
+      amsApplied: amsLookupRevision > 0,
+      kundenId: kunde.kunden_id,
+      bookingId: kunde.booking_id,
       amsLookupSettled,
       lookupLive,
-    ],
-  );
+    });
+    lastSyncedRef.current = {
+      createReady: next.createReady,
+      createBanner: next.createBanner,
+    };
+    return next;
+  }, [
+    createHints,
+    hintsInSync,
+    kunde.form_mode,
+    kunde.kunden_id,
+    kunde.booking_id,
+    manualEntryMode,
+    workStarted,
+    pipelineActive,
+    sessionTouched,
+    hasMedia,
+    qrRevision,
+    amsLookupRevision,
+    amsLookupSettled,
+    lookupLive,
+  ]);
 
   const { createReady, createBanner: resolvedBanner } = resolved;
   const createBanner = busy ? null : resolvedBanner;
