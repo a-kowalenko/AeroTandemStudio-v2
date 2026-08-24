@@ -234,7 +234,7 @@ export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Kai", tandemmaster: false, videospringer: true },
   { name: "Käthe", tandemmaster: false, videospringer: true },
   { name: "Max", tandemmaster: true, videospringer: false },
-  { name: "Mayo", tandemmaster: true, videospringer: false },
+  { name: "Mayo", tandemmaster: true, videospringer: true },
   { name: "Pascal", tandemmaster: true, videospringer: false },
   { name: "Ralph", tandemmaster: true, videospringer: true },
   { name: "Rene", tandemmaster: true, videospringer: false },

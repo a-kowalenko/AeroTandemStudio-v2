@@ -317,7 +317,7 @@ fn default_crew_list() -> Vec<CrewMember> {
         CrewMember {
             name: "Mayo".into(),
             tandemmaster: true,
-            videospringer: false,
+            videospringer: true,
         },
         CrewMember {
             name: "Pascal".into(),
@@ -1017,7 +1017,7 @@ mod tests {
         assert_eq!(
             vs,
             [
-                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Ralph",
+                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Mayo", "Ralph",
                 "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
             ]
         );
