@@ -66,7 +66,7 @@ function photoUnpaid(kunde: Kunde): boolean {
   );
 }
 
-/** Lokal manual entry skips AMS marker/manifest; QR kunde always writes them. */
+/** Lokal manual entry skips marker/manifest; QR kunde always writes them. */
 function skipHandoffMarker(
   formMode: string,
   manualEntryMode: string | undefined,
@@ -113,7 +113,12 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
     ids.push("wm-photos");
   }
 
-  if (!skipHandoffMarker(input.kunde.form_mode, input.manualEntryMode)) {
+  // Local marker/manifest: only as its own chip when there is no SMB upload.
+  // With upload, that work is invisible prep — the user-facing step is Upload.
+  if (
+    !input.uploadToServer &&
+    !skipHandoffMarker(input.kunde.form_mode, input.manualEntryMode)
+  ) {
     ids.push("handoff");
   }
 
@@ -264,10 +269,10 @@ export function resolveCreateJobPipeline(opts: {
       if (idx < 0 && fromStatus === "preview-reuse") {
         idx = stepIndex(plan, "video");
       }
-      // Lokal skip: handoff labels with no handoff step → next terminal step.
+      // Marker/manifest writing is not a visible chip when Upload follows (or Lokal skip).
+      // Do not advance the stepper on those status labels.
       if (idx < 0 && fromStatus === "handoff") {
-        idx = stepIndex(plan, "upload");
-        if (idx < 0) idx = stepIndex(plan, "done");
+        idx = -1;
       }
       // create_job "done" before optional upload → park on Upload, not Fertig.
       if (
