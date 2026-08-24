@@ -3,7 +3,8 @@
 use tauri::State;
 
 use crate::bridge::{
-    self, BridgeHealthResult, DiscoveredBridge, HandoffReadyResponse, LookupRequest, LookupResponse,
+    self, BridgeHealthResult, DiscoveredBridge, HandoffCancelResponse, HandoffReadyResponse,
+    LookupRequest, LookupResponse,
 };
 use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::model::Kunde;
@@ -125,6 +126,32 @@ pub async fn ams_bridge_handoff_ready(
         &config.ams_bridge_token,
         &correlation_id,
         folder_name.as_deref(),
+        &identity,
+    )
+    .await?;
+    if resp.ok {
+        let _ = persist_last_ok(&state, &base);
+    }
+    Ok(resp)
+}
+
+/// ATS aborted upload — notify AMS to drop pending handoff.
+#[tauri::command]
+pub async fn ams_bridge_handoff_cancel(
+    state: State<'_, ConfigState>,
+    correlation_id: String,
+    folder_name: Option<String>,
+    reason: Option<String>,
+) -> Result<HandoffCancelResponse, String> {
+    let config = ensure_ams_bridge_identity(&state)?;
+    let base = bridge::resolve_bridge_base_url(&config)?;
+    let identity = bridge::build_ats_bridge_identity(&config);
+    let resp = bridge::notify_handoff_cancel(
+        &base,
+        &config.ams_bridge_token,
+        &correlation_id,
+        folder_name.as_deref(),
+        reason.as_deref(),
         &identity,
     )
     .await?;

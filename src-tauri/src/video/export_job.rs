@@ -242,7 +242,7 @@ fn copy_photos(
         }
         emit(
             on_progress,
-            70.0 + 15.0 * ((idx + 1) as f64 / total as f64),
+            100.0 * ((idx + 1) as f64 / total as f64),
             &format!(
                 "Kopiere Foto ({}/{}): {}",
                 idx + 1,
@@ -388,7 +388,7 @@ pub fn create_job(
             .filter(|s| !s.is_empty());
 
         if let (Some(path), Some(fp)) = (reuse_path, reuse_fp) {
-            emit(&on_progress, 8.0, "Übernehme Vorschau als Finalvideo…");
+            emit(&on_progress, 0.0, "Übernehme Vorschau als Finalvideo…");
             logging::info(
                 "create",
                 format!("Versuche Preview-Reuse: {}", file_name(path)),
@@ -412,7 +412,7 @@ pub fn create_job(
                     body_clips = video_paths.len();
                     video_out = Some(out_str.clone());
                     logging::info("create", "Preview als Finalvideo übernommen");
-                    emit(&on_progress, 55.0, "Vorschau übernommen");
+                    emit(&on_progress, 100.0, "Vorschau übernommen");
                 }
                 Ok(false) => {
                     logging::info(
@@ -429,13 +429,14 @@ pub fn create_job(
         }
 
         if !reused_preview {
-            emit(&on_progress, 8.0, "Erstelle Video…");
+            emit(&on_progress, 0.0, "Erstelle Video…");
             logging::info(
                 "create",
                 format!("Video-Encoding: {} Clip(s)", video_paths.len()),
             );
+            // Full 0–100 for this phase (no compression into an overall job window).
             let stage_cb =
-                map_stage_progress(Arc::clone(&on_progress), 8.0, 55.0, "Erstelle Video…");
+                map_stage_progress(Arc::clone(&on_progress), 0.0, 100.0, "Erstelle Video…");
 
             let res: CreateVideoResult = create_video(
                 ffmpeg,
@@ -459,12 +460,13 @@ pub fn create_job(
                     "Video fertig: encoder={encoder}, intro={intro_created}, clips={body_clips}"
                 ),
             );
+            emit(&on_progress, 100.0, "Video fertig");
         }
     }
 
     if do_wm_video {
         ensure_not_cancelled()?;
-        emit(&on_progress, 56.0, "Erstelle Wasserzeichen-Video…");
+        emit(&on_progress, 0.0, "Erstelle Wasserzeichen-Video…");
         logging::info("create", "Wasserzeichen-Video wird erstellt…");
         if let Some(clip) = pick_watermark_clip(ffmpeg, video_paths, options.watermark_clip_index) {
             let clip_name = Path::new(&clip)
@@ -477,7 +479,7 @@ pub fn create_job(
             );
             emit(
                 &on_progress,
-                56.0,
+                0.0,
                 &format!("Erstelle Wasserzeichen-Video aus {clip_name}…"),
             );
             let wm_path = watermark_video_path(&layout).map_err(ProcessorError::Message)?;
@@ -487,9 +489,8 @@ pub fn create_job(
                 let outer = Arc::clone(&on_progress);
                 let stage_label = stage_label.clone();
                 Arc::new(move |p: EncodeProgress| {
-                    let mapped = 56.0 + (p.percent.clamp(0.0, 100.0) / 100.0) * 12.0;
                     let mut q = p;
-                    q.percent = mapped;
+                    q.percent = q.percent.clamp(0.0, 100.0);
                     if q.status == "continue" || q.status == "end" || q.status.is_empty() {
                         q.status = stage_label.clone();
                     }
@@ -507,12 +508,13 @@ pub fn create_job(
                 encoder = enc;
             }
             wm_video = Some(wm_str);
+            emit(&on_progress, 100.0, "Wasserzeichen-Video fertig");
         }
     }
 
     let rename_map = build_photo_rename_map(photo_paths);
     ensure_not_cancelled()?;
-    emit(&on_progress, 70.0, "Kopiere Fotos…");
+    emit(&on_progress, 0.0, "Kopiere Fotos…");
     logging::info(
         "create",
         format!("Kopiere {} Foto(s)…", photo_paths.len()),
@@ -525,11 +527,14 @@ pub fn create_job(
         &on_progress,
     )?;
     logging::info("create", format!("Fotos kopiert: {photos_copied}"));
+    if !photo_paths.is_empty() {
+        emit(&on_progress, 100.0, "Fotos kopiert");
+    }
 
     let mut watermark_photos = 0usize;
     if foto_unpaid(kunde) && !options.watermark_photo_indices.is_empty() {
         ensure_not_cancelled()?;
-        emit(&on_progress, 88.0, "Erstelle Foto-Wasserzeichen…");
+        emit(&on_progress, 0.0, "Erstelle Foto-Wasserzeichen…");
         logging::info(
             "create",
             format!(
@@ -563,7 +568,7 @@ pub fn create_job(
                 .unwrap_or_else(|| out_name.clone());
             emit(
                 &on_progress,
-                88.0 + 7.0 * ((wi + 1) as f64 / wm_total as f64),
+                100.0 * ((wi + 1) as f64 / wm_total as f64),
                 &format!(
                     "Foto-Wasserzeichen ({}/{}): {src_label}",
                     wi + 1,
@@ -579,15 +584,16 @@ pub fn create_job(
             create_photo_with_watermark(src, &out_path, &stamp)?;
             watermark_photos += 1;
         }
+        emit(&on_progress, 100.0, "Foto-Wasserzeichen fertig");
     }
 
     ensure_not_cancelled()?;
     let (marker_path, correlation_id) = if config.skip_marker_file(&kunde.form_mode) {
-        emit(&on_progress, 96.0, "Überspringe _fertig.txt (Lokal)…");
+        emit(&on_progress, 50.0, "Überspringe _fertig.txt (Lokal)…");
         logging::info("create", "Lokal-Modus: keine Marker-Datei _fertig.txt");
         (String::new(), String::new())
     } else {
-        emit(&on_progress, 94.0, "Schreibe AMS-Manifest…");
+        emit(&on_progress, 40.0, "Schreibe AMS-Manifest…");
         logging::info("create", "Schreibe _ams_manifest.v1.json…");
         let (correlation_id, _) =
             write_handoff_manifest(&layout, kunde, config).map_err(ProcessorError::Message)?;
@@ -596,7 +602,7 @@ pub fn create_job(
             format!("AMS-Manifest geschrieben (correlation_id={correlation_id})"),
         );
 
-        emit(&on_progress, 96.0, "Schreibe _fertig.txt…");
+        emit(&on_progress, 80.0, "Schreibe _fertig.txt…");
         logging::info("create", "Schreibe Marker _fertig.txt…");
         let marker = write_marker_file(&layout, kunde, config).map_err(ProcessorError::Message)?;
         (marker.to_string_lossy().to_string(), correlation_id)

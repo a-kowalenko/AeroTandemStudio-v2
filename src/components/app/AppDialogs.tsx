@@ -24,6 +24,7 @@ import type {
   DialogConfirmOptions,
   DialogKind,
   DialogPrimaryAction,
+  DialogPromptOptions,
   DialogVariant,
   SettingsTab,
   SettingsFocusTarget,
@@ -95,6 +96,7 @@ export type AppDialogsProps = {
   dialogPrimaryAction: DialogPrimaryAction | null;
   dialogConfirm: DialogConfirmOptions | null;
   dialogChoices: DialogChoicesOptions | null;
+  dialogPrompt: DialogPromptOptions | null;
   closeDialog: () => void;
   openSettings: (opts?: {
     tab?: SettingsTab;
@@ -166,6 +168,7 @@ export function AppDialogs(props: AppDialogsProps) {
     dialogPrimaryAction,
     dialogConfirm,
     dialogChoices,
+    dialogPrompt,
     closeDialog,
     openSettings,
     onSuccessClose,
@@ -291,6 +294,7 @@ export function AppDialogs(props: AppDialogsProps) {
         qrPreview={dialogQrPreview}
         confirm={dialogConfirm}
         choices={dialogChoices}
+        prompt={dialogPrompt}
         onClose={onSuccessClose}
       />
       <CreateSuccessDialog

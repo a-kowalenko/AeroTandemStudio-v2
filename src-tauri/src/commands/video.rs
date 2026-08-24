@@ -563,6 +563,13 @@ pub fn cancel_encode() -> Result<bool, String> {
     Ok(ffmpeg_cancel())
 }
 
+/// Clear the workflow cancel flag after a job has finished handling cancellation.
+#[tauri::command]
+pub fn reset_workflow_cancel() -> Result<(), String> {
+    reset_cancel_flag();
+    Ok(())
+}
+
 /// Probe a single video for duration, resolution, and codec.
 #[tauri::command]
 pub async fn probe_video(app: AppHandle, path: String) -> Result<VideoMetadata, String> {
@@ -1199,7 +1206,8 @@ pub async fn create_job(
                 );
             }
             // Optional AMS Bridge wake after Manifest + _fertig.txt (P3). Soft when down.
-            if !res.correlation_id.trim().is_empty() {
+            // When upload_to_server is enabled, handoff/ready is sent after successful SMB upload.
+            if !res.correlation_id.trim().is_empty() && !config_for_ready.upload_to_server {
                 match crate::bridge::maybe_notify_handoff_ready(
                     &config_for_ready,
                     &res.correlation_id,

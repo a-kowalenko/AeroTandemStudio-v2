@@ -1212,13 +1212,28 @@ export async function amsBridgeDiscover(
   });
 }
 
+export async function cancelEncode(): Promise<boolean> {
+  return invoke<boolean>("cancel_encode");
+}
+
+export async function resetWorkflowCancel(): Promise<void> {
+  await invoke("reset_workflow_cancel");
+}
+
+export type HandoffUploadContext = {
+  correlation_id?: string | null;
+  folder_name?: string | null;
+};
+
 export async function uploadToServer(
   localPath: string,
   overrides?: ServerOverrides,
+  handoff?: HandoffUploadContext | null,
 ): Promise<UploadResult> {
   return invoke<UploadResult>("upload_to_server", {
     localPath,
     overrides: overrides ?? null,
+    handoff: handoff ?? null,
   });
 }
 

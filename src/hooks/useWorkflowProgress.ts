@@ -64,6 +64,7 @@ type Input = {
   appendActive: boolean;
   appendGuest: string | null;
   appendUploading: boolean;
+  createUploading?: boolean;
   percent: number;
   status: string;
   taskProgress: TaskState[];
@@ -224,6 +225,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     appendActive: input.appendActive,
     appendGuest: input.appendGuest,
     appendUploading: input.appendUploading,
+    createUploading: Boolean(input.createUploading),
     manualImport: showManualImport,
     manualQr: showManualQr,
   });

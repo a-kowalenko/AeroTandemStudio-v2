@@ -21,14 +21,14 @@
       "testConnection": "Probar conexión",
       "checking": "Verificando…",
       "loading": "Cargando…",
-      "cancelling": "Cancelando…",
       "undo": "Deshacer",
       "edit": "Editar",
       "remove": "Quitar",
       "reset": "Restablecer",
       "add": "Agregar",
       "rename": "Renombrar",
-      "pleaseWait": "Espera…"
+      "pleaseWait": "Espera…",
+      "cancelling": "Cancelando…"
     },
     "status": {
       "error": "Error",
@@ -128,14 +128,6 @@
       "noneSet": "No hay carpeta definida.",
       "toastTitle": "Carpeta"
     },
-    "save": {
-      "pickBackup": "Elige una carpeta de respaldo.",
-      "pickSecondBackup": "Elige una segunda carpeta de respaldo o desactiva la opción.",
-      "operatorRole": "«Soy»: asigna al menos un rol o elige un nombre del equipo existente.",
-      "failed": "No se pudieron guardar los ajustes.",
-      "success": "Ajustes guardados.",
-      "resetFailed": "No se pudieron restaurar los ajustes predeterminados."
-    },
     "crew": {
       "who": {
         "title": "¿Quién eres?",
@@ -162,17 +154,17 @@
         "me": "(Yo)",
         "ariaRole": "{{name}}: {{role}}"
       },
-      "errors": {
-        "nameRequired": "Ingresa un nombre.",
-        "duplicate": "Este nombre ya está en la lista.",
-        "roleRequired": "Al menos un rol debe estar activo.",
-        "removeConfirm": "¿Quitar «{{name}}» de la lista del equipo?",
-        "removedFavorite": "«{{name}}» quitado — favorito («Soy») restablecido."
-      },
       "keep": {
         "off": "No conservar",
         "last": "Conservar el último usado",
         "selfSuffix": "Yo"
+      },
+      "errors": {
+        "duplicate": "Este nombre ya está en la lista.",
+        "nameRequired": "Ingresa un nombre.",
+        "removeConfirm": "¿Quitar «{{name}}» de la lista del equipo?",
+        "removedFavorite": "«{{name}}» quitado — favorito («Soy») restablecido.",
+        "roleRequired": "Al menos un rol debe estar activo."
       }
     },
     "encoding": {
@@ -198,9 +190,9 @@
       "introMuxReencode": "Recodificar (compatible)",
       "introMuxCopy": "Copia de stream (rápido)",
       "introMuxHint": "Recodificar genera intro y video de vuelo como un bitstream continuo — fiable en móviles y reproductores. La copia de stream es más rápida, pero puede congelarse en algunos dispositivos.",
-      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "reencodeMatching": "Recodificar clips coincidentes",
       "previewCrf": "CRF de vista previa",
+      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "useLibmpv": "Reproductor mpv para recorte (libmpv/mpv)",
       "useLibmpvHint": "Scrubbing más fluido en el cortador si mpv está instalado. Sin mpv se usa HTML5."
     },
@@ -299,11 +291,20 @@
         "noneFoundStatus": "No se encontró búsqueda de reserva en la red.",
         "noneFoundError": "Nada encontrado. Ingresa la dirección a mano si hace falta.",
         "foundStatus": "Encontrado: {{instance}} → {{url}}",
-        "foundSuccess": "Dirección aplicada: {{url}}. Sigue ingresando el código de acceso a mano.",
+        "foundSuccess": "Dirección aplicada:\n{{url}}\n\nIngresa el código de acceso aquí y comprueba.",
+        "foundSuccessViaServerPassword": "Dirección y código de acceso aplicados (contraseña del servidor).",
         "foundMany": "{{count}} direcciones encontradas — elige una.",
         "applied": "Aplicado: {{instance}} → {{url}}",
         "discoveredItem": "{{instance}} — {{url}}{{version}}"
       }
+    },
+    "save": {
+      "failed": "No se pudieron guardar los ajustes.",
+      "operatorRole": "«Soy»: asigna al menos un rol o elige un nombre del equipo existente.",
+      "pickBackup": "Elige una carpeta de respaldo.",
+      "pickSecondBackup": "Elige una segunda carpeta de respaldo o desactiva la opción.",
+      "resetFailed": "No se pudieron restaurar los ajustes predeterminados.",
+      "success": "Ajustes guardados."
     }
   },
   "errors": {
@@ -347,9 +348,7 @@
       "notMp4": "No es .mp4",
       "fileMissing": "Falta el archivo",
       "customerId": "ID de cliente",
-      "customerIdRequired": "Se requiere ID de cliente",
       "bookingId": "ID de reserva",
-      "bookingIdRequired": "Se requiere ID de reserva",
       "validation": "Validación"
     },
     "ready": {
@@ -376,16 +375,6 @@
       "creating": "Creando trabajo…",
       "done": "Trabajo terminado",
       "cancelled": "Trabajo cancelado."
-    },
-    "encode": {
-      "reusePreview": "Se reutilizará la vista previa — no hace falta recodificar",
-      "reusePreviewTitle": "La vista previa guardada se copia como video final (muy rápido)",
-      "reencodeTitle": "Al crear se recodificará el video",
-      "reencodeBecause": "Recodificar: {{reason}}",
-      "reasonNoPreview": "no hay vista previa",
-      "reasonClipsChanged": "los clips cambiaron (p. ej. recorte u orden)",
-      "reasonFormChanged": "cambiaron el formulario o los datos del cliente",
-      "reasonEncodingChanged": "cambiaron ajustes de intro o codificación"
     },
     "append": {
       "pickFile": "Elige al menos un archivo para reenviar.",
@@ -468,8 +457,6 @@
       "previewReused": "Vista previa aplicada",
       "createWatermarkVideo": "Creando video con marca de agua…",
       "copyPhotos": "Copiando fotos…",
-      "sortPhotos": "Ordenando fotos…",
-      "readPhotoMeta": "Leyendo metadatos de fotos…",
       "createPhotoWatermark": "Creando marca de agua en foto…",
       "skipDoneTxtLocal": "Omitiendo _fertig.txt (local)…",
       "writeAmsManifest": "Escribiendo manifiesto AMS…",
@@ -478,11 +465,11 @@
       "joinEncodedClips": "Uniendo clips codificados…",
       "analyseIntroVideo": "Analizando intro/video…",
       "streamCopyFailedWaiting": "Copia de stream falló — elige una opción…",
-      "reencodeWaiting": "Recodificación — esperando confirmación…",
       "exportWithoutIntro": "Exportando video sin intro…",
       "legacyMpegTs": "Unión legacy (MPEG-TS)…",
       "sdClearing": "Limpiando SD…",
-      "backupFinishing": "Finalizando respaldo…"
+      "backupFinishing": "Finalizando respaldo…",
+      "reencodeWaiting": "Recodificación — esperando confirmación…"
     },
     "legend": {
       "aria": "Leyenda de colores",
@@ -528,55 +515,6 @@
       "body": "No se pudieron unir los clips en un solo paso rápido. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
       "useLegacy": "Usar legacy"
     },
-    "reencode": {
-      "title": "Recodificar",
-      "body": "Elige un preset o ajusta parámetros.",
-      "proceed": "Codificar",
-      "kindLabel": "{{kind}}",
-      "clipsShort": "{{count}} clips",
-      "recommended": "Recomendado",
-      "preset": "Calidad",
-      "showAdvanced": "Más opciones",
-      "hideAdvanced": "Menos",
-      "swPreset": "Preset SW",
-      "nvencPreset": "NVENC",
-      "scaleMode": "Resolución",
-      "scaleSource": "Origen",
-      "scale1080": "1080p",
-      "fpsMode": "FPS",
-      "fpsSource": "Origen",
-      "fps30": "30",
-      "previewEqualsExport": "Vista previa = exportación.",
-      "presets": {
-        "recommended": "Recomendado",
-        "max_quality": "Máx. calidad",
-        "balanced": "Equilibrado",
-        "fast": "Rápido",
-        "compat": "Compatible",
-        "custom": "Personalizado"
-      },
-      "paramCodec": "Códec",
-      "paramEncoder": "Codificador",
-      "paramCrf": "CRF / CQ",
-      "paramHw": "Hardware",
-      "paramClips": "Clips",
-      "paramIntroDauer": "Intro",
-      "paramMux": "Mux de intro",
-      "paramStrategy": "Estrategia",
-      "paramDegrees": "Rotación",
-      "hwOn": "HW sí",
-      "hwOff": "HW no",
-      "kinds": {
-        "intro_mux": "Intro + video",
-        "preview_clips": "Clips de vista previa",
-        "preview_combined": "Vista previa",
-        "preview_remux_fallback": "Fallback remux",
-        "body_parallel": "Clips en paralelo",
-        "concat_fallback": "Unión",
-        "remux_fallback": "Remux",
-        "rotate": "Rotar"
-      }
-    },
     "introMux": {
       "title": "No se puede adjuntar el intro por copia de stream",
       "body": "Falló unir intro y video sin recodificar (común con archivos de cámaras modernas).",
@@ -605,6 +543,26 @@
       "canInstall": "Se puede instalar la versión {{to}}.",
       "current": "Actual: {{version}}",
       "downgradeHint": "La app se reemplazará y se reiniciará. La configuración suele conservarse."
+    },
+    "reencode": {
+      "clipsShort": "{{count}} clips",
+      "fps30": "30",
+      "fpsMode": "FPS",
+      "fpsSource": "Origen",
+      "hideAdvanced": "Menos",
+      "hwOff": "HW no",
+      "hwOn": "HW sí",
+      "nvencPreset": "NVENC",
+      "paramCodec": "Códec",
+      "paramCrf": "CRF / CQ",
+      "preset": "Calidad",
+      "proceed": "Codificar",
+      "scale1080": "1080p",
+      "scaleMode": "Resolución",
+      "scaleSource": "Origen",
+      "showAdvanced": "Más opciones",
+      "swPreset": "Preset SW",
+      "title": "Recodificar"
     }
   },
   "splash": {
@@ -634,10 +592,10 @@
       "loadAppInfo": "Cargando info de la app…",
       "loadSettings": "Cargando configuración…",
       "checkFfmpeg": "Comprobando FFmpeg y hardware…",
-      "clearCache": "Limpiando caché…",
       "ready": "¡Listo!",
       "startWithErrors": "Inicio con errores",
-      "ffmpegMissing": "No se encontró FFmpeg. La codificación no está disponible."
+      "ffmpegMissing": "No se encontró FFmpeg. La codificación no está disponible.",
+      "clearCache": "Limpiando caché…"
     },
     "chrome": {
       "historyTitle": "Archivos procesados",
@@ -924,9 +882,9 @@
       "pathTitle": "Ruta"
     },
     "import": {
-      "noValidVideos": "No se encontraron archivos de video válidos",
+      "allAlreadyListed": "Todos los archivos ya están en la lista",
       "noValidPhotos": "No se encontraron archivos de foto válidos",
-      "allAlreadyListed": "Todos los archivos ya están en la lista"
+      "noValidVideos": "No se encontraron archivos de video válidos"
     }
   },
   "workflow": {
@@ -945,6 +903,7 @@
       "manualImport": "Los medios se copian a la carpeta de trabajo — cancelar descarta la importación",
       "manualQr": "Búsqueda QR — cancelar detiene la búsqueda",
       "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg.",
+      "createUploading": "Trabajo actual — cancelar detiene la subida.",
       "cancelling": "Cancelación solicitada — se termina el paso actual"
     }
   },
@@ -960,55 +919,6 @@
     "appendSuccess": "{{count}} archivo(s) entregados ({{folder}}).\nEstado en “Reenvío” del historial.",
     "appendDialogTitle": "Reenviar",
     "appendCancelled": "Reenvío cancelado.",
-    "appendPanel": {
-      "capWarning": "El reenvío aún no está disponible en esta computadora. Pide a soporte actualizar el software; de lo contrario se creará una carpeta nueva.",
-      "noVideos": "No se encontraron videos compatibles.",
-      "noPhotos": "No se encontraron fotos compatibles.",
-      "wrongKindVideo": "Suelta videos (la categoría actual es video).",
-      "wrongKindPhoto": "Suelta fotos (la categoría actual es foto).",
-      "pickVideos": "Elegir videos",
-      "pickPhotos": "Elegir fotos",
-      "pickFolder": "Elegir carpeta",
-      "previewPhotoRequired": "El producto foto no está pagado — elige al menos una foto para la marca de agua.",
-      "previewVideoRequired": "El producto video no está pagado — elige al menos un video para la vista previa.",
-      "dropVideos": "Arrastra videos o carpetas aquí",
-      "dropPhotos": "Arrastra fotos o carpetas aquí",
-      "dropRelease": "Suelta para agregar",
-      "dropHintVideo": "Carpetas recursivas · .mp4, .mov …",
-      "dropHintPhoto": "Carpetas recursivas · .jpg, .png, .webp …",
-      "discardOne": "El archivo seleccionado no se enviará.",
-      "discardMany": "Los {{count}} archivos seleccionados no se enviarán.",
-      "productAria": "Producto para reenvío",
-      "previewAria": "Vista previa de {{name}}",
-      "modeOriginalPreview": "Original + vista previa",
-      "modeOriginal": "Original",
-      "statusPaid": "Pagado",
-      "statusOpen": "Abierto",
-      "statusNew": "Sin reservar",
-      "hintPaid": "Pagado — los archivos se reenvían como originales.",
-      "hintOpen": "No pagado — originales más vista previa opcional con marca de agua.",
-      "hintNew": "Sin reservar — originales más vista previa opcional con marca de agua.",
-      "catHandcamFoto": "Foto Handcam",
-      "catHandcamVideo": "Video Handcam",
-      "catOutsideFoto": "Foto Outside",
-      "catOutsideVideo": "Video Outside",
-      "groupHandcam": "Handcam",
-      "groupOutside": "Outside",
-      "productTitle": "Producto",
-      "discardTitle": "¿Descartar cambios?",
-      "discard": "Descartar",
-      "continueEditing": "Seguir editando",
-      "removeItemAria": "Quitar {{name}}",
-      "send": "Enviar",
-      "pickFilesBtn": "Elegir archivos…",
-      "pickFolderBtn": "Elegir carpeta…",
-      "emptyFiles": "Aún no hay archivos",
-      "emptyFilesHint": "Asigna archivos al producto seleccionado. Para productos abiertos o nuevos, opcionalmente se puede enviar una vista previa con marca de agua.",
-      "fileCountOne": "{{count}} archivo",
-      "fileCountMany": "{{count}} archivos",
-      "noneCount": "Ninguno",
-      "previewLabel": "Vista previa"
-    },
     "filters": {
       "all": "Todos",
       "open": "Abiertos",
@@ -1097,7 +1007,49 @@
     },
     "paidTitle": "{{label}} pagado",
     "ta": "TM: {{name}}",
-    "vs": "V: {{name}}"
+    "vs": "V: {{name}}",
+    "appendPanel": {
+      "capWarning": "El reenvío aún no está disponible en esta computadora. Pide a soporte actualizar el software; de lo contrario se creará una carpeta nueva.",
+      "continueEditing": "Seguir editando",
+      "discard": "Descartar",
+      "discardMany": "Los {{count}} archivos seleccionados no se enviarán.",
+      "discardOne": "El archivo seleccionado no se enviará.",
+      "discardTitle": "¿Descartar cambios?",
+      "dropHintPhoto": "Carpetas recursivas · .jpg, .png, .webp …",
+      "dropHintVideo": "Carpetas recursivas · .mp4, .mov …",
+      "dropPhotos": "Arrastra fotos o carpetas aquí",
+      "dropRelease": "Suelta para agregar",
+      "dropVideos": "Arrastra videos o carpetas aquí",
+      "emptyFiles": "Aún no hay archivos",
+      "emptyFilesHint": "Asigna archivos al producto seleccionado. Para productos abiertos o nuevos, opcionalmente se puede enviar una vista previa con marca de agua.",
+      "fileCountMany": "{{count}} archivos",
+      "fileCountOne": "{{count}} archivo",
+      "groupHandcam": "Handcam",
+      "groupOutside": "Outside",
+      "modeOriginal": "Original",
+      "modeOriginalPreview": "Original + vista previa",
+      "noPhotos": "No se encontraron fotos compatibles.",
+      "noVideos": "No se encontraron videos compatibles.",
+      "noneCount": "Ninguno",
+      "pickFilesBtn": "Elegir archivos…",
+      "pickFolder": "Elegir carpeta",
+      "pickFolderBtn": "Elegir carpeta…",
+      "pickPhotos": "Elegir fotos",
+      "pickVideos": "Elegir videos",
+      "previewAria": "Vista previa de {{name}}",
+      "previewLabel": "Vista previa",
+      "previewPhotoRequired": "El producto foto no está pagado — elige al menos una foto para la marca de agua.",
+      "previewVideoRequired": "El producto video no está pagado — elige al menos un video para la vista previa.",
+      "productAria": "Producto para reenvío",
+      "productTitle": "Producto",
+      "removeItemAria": "Quitar {{name}}",
+      "send": "Enviar",
+      "statusNew": "Sin reservar",
+      "statusOpen": "Abierto",
+      "statusPaid": "Pagado",
+      "wrongKindPhoto": "Suelta fotos (la categoría actual es foto).",
+      "wrongKindVideo": "Suelta videos (la categoría actual es video)."
+    }
   },
   "ams": {
     "actions": {
@@ -1119,23 +1071,6 @@
       "connectedTooltip": "{{title}}: conectado",
       "onlineOnly": "Solo para trabajos en línea, no locales",
       "customerNotFound": "Cliente no encontrado en la reserva"
-    },
-    "lookup": {
-      "foundTitle": "Cliente encontrado",
-      "searching": "Buscando…",
-      "notFound": "Cliente no encontrado",
-      "minDigits": "Al menos {{count}} dígitos",
-      "customerFallback": "Cliente",
-      "foundLine": "Encontrado: {{name}}",
-      "foundLineMedia": "Encontrado: {{name}} · {{media}}",
-      "overrideBody": "Anterior: {{previous}}\nReserva: {{next}}\n\n¿Aplicar estos datos?\nLugar, fecha y equipo se conservan.",
-      "typeChoiceBody": "Estos IDs tienen datos Handcam y Outside.\nElige el tipo de medio.",
-      "typeChoiceTitle": "Elegir tipo de medio",
-      "keep": "Conservar",
-      "apply": "Aplicar",
-      "videoPaid": "Video (pagado)",
-      "photoPaid": "Foto (pagada)",
-      "lanMultipleBody": "Se encontraron varias búsquedas de reserva (AMS) en la LAN.\nElige qué instancia usar."
     },
     "handoff": {
       "steps": {
@@ -1162,6 +1097,23 @@
         "waitingForAccept": "Esperando aceptación",
         "archive": "Archivo {{archive}}"
       }
+    },
+    "lookup": {
+      "apply": "Aplicar",
+      "customerFallback": "Cliente",
+      "foundLine": "Encontrado: {{name}}",
+      "foundLineMedia": "Encontrado: {{name}} · {{media}}",
+      "foundTitle": "Cliente encontrado",
+      "keep": "Conservar",
+      "lanMultipleBody": "Se encontraron varias búsquedas de reserva (AMS) en la LAN.\nElige qué instancia usar.",
+      "minDigits": "Al menos {{count}} dígitos",
+      "notFound": "Cliente no encontrado",
+      "overrideBody": "Anterior: {{previous}}\nReserva: {{next}}\n\n¿Aplicar estos datos?\nLugar, fecha y equipo se conservan.",
+      "photoPaid": "Foto (pagada)",
+      "searching": "Buscando…",
+      "typeChoiceBody": "Estos IDs tienen datos Handcam y Outside.\nElige el tipo de medio.",
+      "typeChoiceTitle": "Elegir tipo de medio",
+      "videoPaid": "Video (pagado)"
     }
   },
   "header": {
@@ -1177,67 +1129,77 @@
       "amsNotChecked": "{{title}}: no verificado",
       "retryOrSettings": "Clic: reintentar · clic derecho: configuración",
       "retry": "Clic para volver a comprobar",
-      "connectionTitle": "Conexión"
+      "connectionTitle": "Conexión",
+      "titleAllOk": "Todo conectado",
+      "titlePartial": "Parcial",
+      "titleFailed": "Sin conexión",
+      "titleServerOk": "Servidor conectado",
+      "titleAmsOk": "Búsqueda de reserva conectada",
+      "serverLabel": "Servidor",
+      "serverOk": "Accesible",
+      "serverOkLocal": "Accesible (local)",
+      "serverOkRemote": "Conectado",
+      "amsOk": "Conectado"
     }
   },
   "qr": {
-    "confirm": {
-      "manualEntry": "Entrada manual",
-      "newCustomer": "Cliente nuevo",
-      "currentCustomer": "Cliente actual",
-      "switchBody": "Actual: {{previous}}\nNuevo: {{next}}\n\n¿Cambiar datos del cliente? Los medios se conservan.",
-      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\n¿Descartar datos manuales y aplicar QR?\nLugar, fecha y equipo se conservan.",
-      "switchPrimary": "Cambiar",
-      "overridePrimary": "Aplicar QR",
-      "keep": "Conservar",
-      "switchSummary": "Otro cliente reconocido",
-      "overrideSummary": "Sobrescribir entrada manual",
-      "keepExistingSummary": "Conservar cliente existente",
-      "ignoredScan": "Escaneo nuevo ignorado",
-      "ignoredScanNamed": "Escaneo nuevo ignorado: {{name}}",
-      "ignoredQr": "QR ignorado",
-      "ignoredQrNamed": "QR ignorado: {{name}}",
-      "keepManualSummary": "Conservar entrada manual",
-      "label": "Código QR"
-    },
     "progress": {
       "pending": "Esperando búsqueda QR…",
       "found": "Código QR encontrado",
       "removed": "Quitado de la lista",
       "checked": "Código QR revisado",
+      "checking": "revisando…",
+      "checkingNeighbors": "QR encontrado — revisando fotos vecinas…",
       "chipActive": "QR",
-      "chipHit": "QR",
       "chipActiveTitle": "Comprobación QR en curso",
+      "chipHit": "QR",
       "chipHitTitle": "Código QR encontrado",
-      "photosCheckedOne": "1 foto revisada",
-      "photosCheckedMany": "{{count}} fotos revisadas",
-      "extraHitsOne": "1 coincidencia adicional",
-      "extraHitsMany": "{{count}} coincidencias adicionales",
-      "photosRemovedOne": "1 foto quitada",
-      "photosRemovedMany": "{{count}} fotos quitadas",
       "currentFile": "ahora: {{name}}",
+      "edgesLimited": "Bordes ({{count}} c/u)",
+      "extraHitsMany": "{{count}} coincidencias adicionales",
+      "extraHitsOne": "1 coincidencia adicional",
+      "fastSpots": "Revisando puntos del clip…",
+      "filesDone": "{{finished}} de {{total}} {{unit}} listos",
       "foundFile": "encontrado: {{name}}",
+      "hitFound": "Coincidencia encontrada",
       "missFile": "sin código: {{name}}",
       "neighborSeries": "Fotos vecinas de la serie…",
-      "removingQrPhotos": "Quitando fotos QR de la lista…",
-      "checkingNeighbors": "QR encontrado — revisando fotos vecinas…",
-      "readingVideo": "Leyendo video para búsqueda QR…",
-      "thorough": "Revisando código QR a fondo…",
-      "scanVideos": "Buscando código QR en videos…",
-      "scanPhotos": "Buscando código QR en fotos…",
-      "scanGeneric": "Buscando código QR…",
-      "filesDone": "{{finished}} de {{total}} {{unit}} listos",
-      "unitPhotos": "Fotos",
-      "unitVideos": "Videos",
-      "unitFiles": "Archivos",
-      "edgesLimited": "Bordes ({{count}} c/u)",
-      "hitFound": "Coincidencia encontrada",
-      "preparingClip": "Preparando clip…",
-      "thoroughSpots": "Revisando puntos con más detalle…",
-      "fastSpots": "Revisando puntos del clip…",
       "parallelCount": "{{count}} en paralelo",
-      "checking": "revisando…",
-      "preparing": "Preparando…"
+      "photosCheckedMany": "{{count}} fotos revisadas",
+      "photosCheckedOne": "1 foto revisada",
+      "photosRemovedMany": "{{count}} fotos quitadas",
+      "photosRemovedOne": "1 foto quitada",
+      "preparing": "Preparando…",
+      "preparingClip": "Preparando clip…",
+      "readingVideo": "Leyendo video para búsqueda QR…",
+      "removingQrPhotos": "Quitando fotos QR de la lista…",
+      "scanGeneric": "Buscando código QR…",
+      "scanPhotos": "Buscando código QR en fotos…",
+      "scanVideos": "Buscando código QR en videos…",
+      "thorough": "Revisando código QR a fondo…",
+      "thoroughSpots": "Revisando puntos con más detalle…",
+      "unitFiles": "Archivos",
+      "unitPhotos": "Fotos",
+      "unitVideos": "Videos"
+    },
+    "confirm": {
+      "currentCustomer": "Cliente actual",
+      "ignoredQr": "QR ignorado",
+      "ignoredQrNamed": "QR ignorado: {{name}}",
+      "ignoredScan": "Escaneo nuevo ignorado",
+      "ignoredScanNamed": "Escaneo nuevo ignorado: {{name}}",
+      "keep": "Conservar",
+      "keepExistingSummary": "Conservar cliente existente",
+      "keepManualSummary": "Conservar entrada manual",
+      "label": "Código QR",
+      "manualEntry": "Entrada manual",
+      "newCustomer": "Cliente nuevo",
+      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\n¿Descartar datos manuales y aplicar QR?\nLugar, fecha y equipo se conservan.",
+      "overridePrimary": "Aplicar QR",
+      "overrideSummary": "Sobrescribir entrada manual",
+      "switchBody": "Actual: {{previous}}\nNuevo: {{next}}\n\n¿Cambiar datos del cliente? Los medios se conservan.",
+      "switchPrimary": "Cambiar",
+      "switchSummary": "Otro cliente reconocido"
     }
   },
   "video": {
@@ -1284,10 +1246,8 @@
       "singleClipWithPreview": "Reproducción de clip único — usa “Mostrar vista previa” para el archivo combinado.",
       "singleClipWithoutPreview": "Reproducción de clip único — usa “Generar vista previa” para el archivo combinado.",
       "undoThisEditTitle": "Deshacer esta edición",
-      "createReuse": "Al crear: se reutilizará la vista previa",
-      "createReencode": "Al crear: recodificar — {{reason}}",
-      "previewStreamCopy": "Recodificación: no (copia de stream)",
-      "previewReencode": "Recodificación: {{reason}}"
+      "previewReencode": "Recodificación: {{reason}}",
+      "previewStreamCopy": "Recodificación: no (copia de stream)"
     },
     "cutter": {
       "warning": {
@@ -1345,35 +1305,36 @@
       "nextPhotoAria": "Foto siguiente",
       "empty": "No hay fotos — agrégalas arrastrando al área de medios",
       "loading": "Cargando vista previa…",
+      "loadingQr": "Comprobación QR en curso — la vista previa sigue…",
       "currentPhoto": "Foto actual",
       "undoThisEditTitle": "Deshacer esta edición",
-      "undoEdit": "Deshacer edición",
       "total": "Total",
-      "overview": "Resumen",
-      "review": "Revisión",
-      "viewModeAria": "Vista de fotos",
-      "overviewAria": "Resumen de fotos",
-      "detailTitle": "Detalle",
-      "detailEmpty": "Ninguna foto seleccionada",
-      "sessionTitle": "Sesión",
-      "wmToggleAria": "Foto de vista previa con sello de marca de agua",
-      "wmPreviewLabel": "Vista previa",
-      "wmPreviewHint": "Exportar con sello de marca de agua",
-      "removeCount": "Quitar {{count}}",
-      "clearSelection": "Quitar selección",
-      "batchSelected": "{{count}} seleccionadas",
       "batchRotate90": "Selección 90°",
       "batchRotateCcwTitle": "Rotar selección 90° en sentido antihorario",
       "batchRotateCwTitle": "Rotar selección 90° en sentido horario",
+      "batchSelected": "{{count}} seleccionadas",
+      "clearSelection": "Quitar selección",
+      "detailEmpty": "Ninguna foto seleccionada",
+      "detailTitle": "Detalle",
       "meta": {
-        "file": "Archivo",
-        "size": "Tamaño",
-        "resolution": "Resolución",
-        "position": "Posición",
         "camera": "Cámara",
         "count": "Cantidad",
+        "file": "Archivo",
+        "position": "Posición",
+        "resolution": "Resolución",
+        "size": "Tamaño",
         "watermark": "Marca de agua"
-      }
+      },
+      "overview": "Resumen",
+      "overviewAria": "Resumen de fotos",
+      "removeCount": "Quitar {{count}}",
+      "review": "Revisión",
+      "sessionTitle": "Sesión",
+      "undoEdit": "Deshacer edición",
+      "viewModeAria": "Vista de fotos",
+      "wmPreviewHint": "Exportar con sello de marca de agua",
+      "wmPreviewLabel": "Vista previa",
+      "wmToggleAria": "Foto de vista previa con sello de marca de agua"
     },
     "editor": {
       "warning": {
@@ -1400,26 +1361,6 @@
       "subtitleError": "Retira la tarjeta manualmente y con seguridad",
       "usbHint": "USB liberado — desconecta el cable y vuelve a conectar para importar."
     },
-    "monitor": {
-      "title": "Monitor SD",
-      "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
-      "secondaryBackupTitle": "Respaldo en servidor"
-    },
-    "catalog": {
-      "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
-      "mtpEmpty": "No se encontraron medios en la cámara.",
-      "sdEmpty": "No se encontraron archivos de medios en la tarjeta SD."
-    },
-    "fileSelectorUi": {
-      "drive": "Unidad {{drive}}",
-      "sdCard": "Tarjeta SD",
-      "videoCount": "{{count}} videos",
-      "photoCount": "{{count}} fotos",
-      "clearAfterBackup": "Vaciar tarjeta SD tras respaldo exitoso",
-      "scanQrAfterImport": "Revisar medios importados en busca de código QR",
-      "typeVideo": "Video",
-      "typePhoto": "Foto"
-    },
     "mode": {
       "autoTip": "Tras detectar: respaldar, importar, limpiar y expulsar según la configuración, sin preguntar.",
       "confirmTip": "Selección de archivos con opciones para respaldar, importar, limpiar y expulsar.",
@@ -1434,7 +1375,7 @@
       "chooseTitle": "Elegir tarjeta SD — abre el selector de archivos",
       "aria": "Tarjeta SD",
       "watching": "Monitoreo SD activo",
-      "monitoring": "Monitoreo SD",
+      "monitoring": "Monitoreo",
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
@@ -1447,33 +1388,19 @@
       "refresh": "Volver a leer",
       "title": "Tarjeta SD — elegir archivos",
       "titleSizeLimit": "Límite de tamaño superado — elegir archivos"
+    },
+    "catalog": {
+      "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
+      "mtpEmpty": "No se encontraron medios en la cámara.",
+      "sdEmpty": "No se encontraron archivos de medios en la tarjeta SD."
+    },
+    "monitor": {
+      "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
+      "secondaryBackupTitle": "Respaldo en servidor",
+      "title": "Monitor SD"
     }
   },
   "setupWizard": {
-    "steps": {
-      "appearance": "Idioma y apariencia",
-      "storage": "Almacenamiento",
-      "import": "Importacion",
-      "upload": "Subida",
-      "finish": "Listo"
-    },
-    "intro": {
-      "appearance": "Bienvenido a Aero Tandem Studio. En pocos pasos puedes definir idioma, apariencia, almacenamiento y comportamiento de importacion. Todo lo demas se puede ajustar despues en la configuracion.",
-      "storage": "Los trabajos terminados se guardan en la ubicacion de almacenamiento. Aqui tambien puedes definir la zona de entrega predeterminada.",
-      "import": "Aqui solo se configuran los valores de importacion mas importantes. Opciones avanzadas como limpiar, expulsar o borrar QR se pueden ajustar despues.",
-      "upload": "La subida es opcional. Si no la necesitas ahora, dejala apagada y configura el servidor despues."
-    },
-    "import": {
-      "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
-      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar despues."
-    },
-    "upload": {
-      "disabledHint": "La subida permanece apagada. Puedes configurar el servidor despues en cualquier momento."
-    },
-    "operatorHint": "Tu nombre se usara como favorito Yo en los menus del equipo.",
-    "operatorSingleRoleTm": "Solo se encontro el rol de tandem master; se conservara al restablecer la sesion.",
-    "operatorSingleRoleVs": "Solo se encontro el rol de video jumper; se conservara al restablecer la sesion.",
-    "operatorMultiRole": "Si hay varios roles o ninguno, no se conservara nada automaticamente al restablecer la sesion.",
     "standardDir": {
       "active": "Carpeta predeterminada activa",
       "exists": "La carpeta predeterminada ya existe",
@@ -1484,35 +1411,81 @@
     },
     "stepHint": {
       "appearance": "Puedes cambiar la apariencia después en cualquier momento.",
+      "crew": "Los valores predeterminados del equipo y Yo soy se pueden configurar después.",
       "storage": "Sin ubicación de almacenamiento, los trabajos no se pueden guardar; puedes configurarla después.",
-      "import": "Respaldo, importacion automatica y escaneo QR se pueden ajustar con mas detalle despues.",
-      "server": "El acceso al servidor se puede configurar después."
+      "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
+      "qr": "Las opciones de escaneo QR se pueden configurar después.",
+      "server": "El acceso al servidor se puede configurar después.",
+      "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
+    },
+    "crew": {
+      "operatorHintMissingRole": "Elige al menos un rol — entonces el nombre se agregará al equipo.",
+      "namePlaceholder": "Elige o escribe un nombre…",
+      "rolePlaceholder": "Elige un modo o nombre…",
+      "autoAddHint": "Un nombre nuevo se agrega automáticamente a la lista del equipo.",
+      "roleRequiredActive": "Al menos un rol debe seguir activo.",
+      "roleRequired": "Elige al menos un rol."
     },
     "storage": {
       "pickFolderError": "Elige una carpeta.",
       "folderPlaceholder": "Elegir carpeta…"
     },
     "sd": {
-      "pickFolderOrDisableAutoBackup": "Elige una carpeta o desactiva el respaldo automatico."
+      "pickFolderOrDisableAutoBackup": "Elige una carpeta o desactiva el respaldo automático.",
+      "onlyWithAutoBackup": "Solo es posible si el respaldo automático está activado",
+      "validLimitError": "Ingresa un límite válido en MB."
     },
     "skipAllConfirm": "¿Omitir toda la configuración?\n\nEl almacenamiento, respaldo y servidor se pueden configurar después. Algunas funciones quedarán limitadas.",
     "summary": {
       "skipped": "— omitido —",
+      "noneReset": "Ninguno (se restablecerán)",
       "description": "Revisa los datos y termina.",
+      "sizeLimit": "Límite de tamaño",
       "disabled": "Desactivado",
-      "on": "Activado",
-      "off": "Desactivado",
-      "notSet": "— sin definir —",
       "missingFolder": "— falta carpeta —",
+      "notSet": "— sin definir —",
+      "off": "Desactivado",
+      "on": "Activado",
+      "qrScan": "Escaneo QR",
       "serverMissing": "— falta servidor —",
-      "storageMissingHint": "Sin una ubicacion de almacenamiento, los trabajos no se pueden guardar. Puedes definirla despues en la configuracion."
+      "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración."
     },
     "finish": "Finalizar configuración",
     "skipAll": "Omitir toda la configuración",
-    "saveFailed": "No se pudieron guardar los ajustes.",
     "complete": "Configuración completada.",
     "completeTitle": "Éxito",
-    "standardFolderTitle": "Carpeta predeterminada"
+    "import": {
+      "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
+      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después."
+    },
+    "intro": {
+      "appearance": "Bienvenido a Aero Tandem Studio. En pocos pasos puedes definir idioma, apariencia, almacenamiento y comportamiento de importación. Todo lo demás se puede ajustar después en la configuración.",
+      "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
+      "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento. Aquí también puedes definir la zona de entrega predeterminada.",
+      "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después."
+    },
+    "operatorHint": "Tu nombre se usará como favorito Yo en los menús del equipo.",
+    "operatorMultiRole": "Si hay varios roles o ninguno, no se conservará nada automáticamente al restablecer la sesión.",
+    "operatorSingleRoleTm": "Solo se encontró el rol de tandem master; se conservará al restablecer la sesión.",
+    "operatorSingleRoleVs": "Solo se encontró el rol de video jumper; se conservará al restablecer la sesión.",
+    "progress": "Paso {{current}} de {{total}}",
+    "progressAria": "Configuración: paso {{current}} de {{total}}",
+    "saveFailed": "No se pudieron guardar los ajustes.",
+    "sections": {
+      "sdCards": "Tarjetas SD",
+      "qrDetection": "Detección QR"
+    },
+    "standardFolderTitle": "Carpeta predeterminada",
+    "steps": {
+      "appearance": "Bienvenida",
+      "storage": "Almacenamiento",
+      "import": "Importación",
+      "upload": "Subida",
+      "finish": "Listo"
+    },
+    "upload": {
+      "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento."
+    }
   },
   "dateField": {
     "chooseDateAria": "Elegir fecha",
@@ -1525,13 +1498,7 @@
     "title": "Consola",
     "resizeAria": "Altura de la consola",
     "searchAria": "Buscar en la consola",
-    "levelFilterAria": "Nivel mínimo de registro (grabación)",
-    "level": {
-      "debug": "Debug+",
-      "info": "Info+",
-      "warn": "Warn+",
-      "error": "Error"
-    },
+    "levelFilterAria": "Filtro de nivel",
     "autoScrollTitle": "Desplazar automáticamente al final",
     "copyVisibleTitle": "Copiar líneas visibles",
     "copy": "Copiar",
@@ -1543,6 +1510,12 @@
     "closeAria": "Cerrar consola",
     "closeTitle": "Cerrar (Esc)",
     "empty": "No hay entradas de registro.",
-    "toggleTitle": "Consola (Ctrl+Shift+J)"
+    "toggleTitle": "Consola (Ctrl+Shift+J)",
+    "level": {
+      "debug": "Debug+",
+      "error": "Error",
+      "info": "Info+",
+      "warn": "Warn+"
+    }
   }
 }

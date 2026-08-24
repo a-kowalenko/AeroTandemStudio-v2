@@ -14,9 +14,9 @@ import { cn } from "@/lib/utils";
 import {
   AMS_HANDOFF_STEPS,
   handoffChipClass,
+  handoffProgressStepIndex,
   handoffStateHint,
   handoffStateLabel,
-  handoffStepIndex,
   isAmsCancelled,
   isAmsHandoffActive,
   isAmsHandoffTerminal,
@@ -173,25 +173,38 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
   const cancelled = isAmsCancelled(view);
   const failed =
     !cancelled && (view.state === "rejected" || view.state === "failed");
-  const stepIdx = handoffStepIndex(view.state);
+  const stepIdx = handoffProgressStepIndex(view);
   const hint = handoffStateHint(view);
-  const done = isAmsHandoffTerminal(view.state) && view.state === "completed";
+  const done =
+    !cancelled &&
+    !failed &&
+    isAmsHandoffTerminal(view.state) &&
+    view.state === "completed";
+
+  // On cancel: only show steps already completed, then Abgebrochen
+  // (hide unfinished Upload / Fertig so the outcome follows the last reach).
+  const visibleSteps = (
+    cancelled
+      ? AMS_HANDOFF_STEPS.map((step, i) => ({ step, i })).filter(
+          ({ i }) => i <= Math.max(stepIdx - 1, 0),
+        )
+      : AMS_HANDOFF_STEPS.map((step, i) => ({ step, i }))
+  );
 
   return (
     <div className={cn("space-y-1.5", className)}>
       <AmsHandoffStatusChip view={view} />
       <ol className="flex flex-wrap items-center gap-x-0.5 gap-y-1 text-[10px]">
-        {AMS_HANDOFF_STEPS.map((step, i) => {
+        {visibleSteps.map(({ step, i }, visibleIdx) => {
           const reached =
             !failed &&
-            !cancelled &&
             stepIdx >= 0 &&
             (done ? i <= stepIdx : i < stepIdx);
           const current =
             !failed && !cancelled && stepIdx >= 0 && i === stepIdx && !done;
           return (
             <li key={step.id} className="flex items-center gap-0.5">
-              {i > 0 ? (
+              {visibleIdx > 0 ? (
                 <span
                   className={cn(
                     "mx-0.5 h-px w-2 shrink-0",
@@ -203,7 +216,7 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
               <span
                 className={cn(
                   "inline-flex items-center gap-0.5 rounded border px-1 py-0.5 transition-colors duration-300",
-                  stepChipClass({ reached, current, failed: failed || cancelled }),
+                  stepChipClass({ reached, current, failed }),
                   current && isAmsHandoffActive(view) && "ams-chip-active",
                 )}
               >
@@ -230,14 +243,17 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
         {failed || cancelled ? (
           <li className="flex items-center gap-0.5">
             <span
-              className="mx-0.5 h-px w-2 shrink-0 bg-destructive/50"
+              className={cn(
+                "mx-0.5 h-px w-2 shrink-0",
+                cancelled ? "bg-amber-500/50" : "bg-destructive/50",
+              )}
               aria-hidden
             />
             <span
               className={cn(
                 "inline-flex items-center gap-0.5 rounded border px-1 py-0.5 font-medium",
                 cancelled
-                  ? "border-border/70 bg-muted/50 text-muted-foreground"
+                  ? "border-amber-500/45 bg-amber-500/10 text-amber-900 dark:text-amber-100"
                   : "border-destructive/50 bg-destructive/10 text-destructive",
               )}
             >
@@ -246,7 +262,9 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
               ) : (
                 <AlertCircle className="size-2.5 shrink-0" aria-hidden />
               )}
-              {cancelled ? "Abgebrochen" : handoffStateLabel(view)}
+              {cancelled
+                ? t("ams.handoff.state.cancelled")
+                : handoffStateLabel(view)}
             </span>
           </li>
         ) : null}

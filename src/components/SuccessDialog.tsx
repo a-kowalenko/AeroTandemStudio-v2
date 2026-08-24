@@ -8,6 +8,8 @@ import {
   Eraser,
   MinusCircle,
   QrCode,
+  Search,
+  Server,
   XCircle,
 } from "lucide-react";
 import {
@@ -28,8 +30,12 @@ import type {
   DialogActionTone,
   DialogChoicesOptions,
   DialogConfirmOptions,
+  DialogPromptOptions,
   DialogVariant,
 } from "@/store/uiStore";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
+import { Input } from "@/components/ui/input";
 
 /** Classic macOS / SF Symbol eject glyph (triangle over bar). */
 function EjectIcon({ className }: { className?: string }) {
@@ -64,6 +70,8 @@ type Props = {
   confirm?: DialogConfirmOptions | null;
   /** Equal-weight choices (e.g. Handcam vs Outside). Dismiss = onCancel. */
   choices?: DialogChoicesOptions | null;
+  /** Inline text/password prompt (e.g. AMS access code). */
+  prompt?: DialogPromptOptions | null;
   onClose: () => void;
 };
 
@@ -80,6 +88,10 @@ function actionKindIcon(kind: DialogActionKind): ReactNode {
       return <Eraser className={cls} aria-hidden />;
     case "eject":
       return <EjectIcon className={cls} />;
+    case "server":
+      return <Server className={cls} aria-hidden />;
+    case "ams":
+      return <Search className={cls} aria-hidden />;
   }
 }
 
@@ -150,7 +162,7 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
         </p>
         {action.detail?.trim() ? (
           <p
-            className="mt-1 break-all text-xs text-muted [overflow-wrap:anywhere]"
+            className="mt-1 break-words text-xs text-muted"
             title={action.detail}
           >
             {action.detail}
@@ -172,16 +184,19 @@ export function SuccessDialog({
   qrPreview = null,
   confirm = null,
   choices = null,
+  prompt = null,
   onClose,
 }: Props) {
   const { t } = useTranslation();
   const resolvedTitle = title ?? t("dialogs.success.defaultTitle");
   const timeoutSecs =
-    !confirm && !choices && autoCloseSecs && autoCloseSecs > 0
+    !confirm && !choices && !prompt && autoCloseSecs && autoCloseSecs > 0
       ? autoCloseSecs
       : null;
   const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
   const [barActive, setBarActive] = useState(false);
+  const [promptValue, setPromptValue] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
   const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -189,6 +204,8 @@ export function SuccessDialog({
   confirmRef.current = confirm;
   const choicesRef = useRef(choices);
   choicesRef.current = choices;
+  const promptRef = useRef(prompt);
+  promptRef.current = prompt;
   const isQr = variant === "qr";
   const highlightText = highlight.trim();
   const hasActions = actions.length > 0;
@@ -196,10 +213,21 @@ export function SuccessDialog({
   const hasWarning =
     Boolean(confirm) ||
     Boolean(choices) ||
+    Boolean(prompt) ||
     actions.some((a) => a.tone === "warning");
   const accent = hasError ? "warning" : hasWarning ? "warning" : "success";
   const messageText = message.trim();
   const hasPreview = Boolean(qrPreview?.path?.trim());
+
+  useEffect(() => {
+    if (!open) {
+      setPromptValue("");
+      setPromptBusy(false);
+      return;
+    }
+    setPromptValue(prompt?.initialValue ?? "");
+    setPromptBusy(false);
+  }, [open, prompt?.initialValue]);
 
   useEffect(() => {
     if (!open || !timeoutSecs) {
@@ -232,8 +260,14 @@ export function SuccessDialog({
   }, [open, timeoutSecs, message, resolvedTitle, variant, highlightText, actions]);
 
   function dismissSafe() {
-    if (closedRef.current) return;
+    if (closedRef.current || promptBusy) return;
     closedRef.current = true;
+    const p = promptRef.current;
+    if (p) {
+      p.onCancel?.();
+      onCloseRef.current();
+      return;
+    }
     const c = confirmRef.current;
     if (c) {
       c.onSecondary();
@@ -269,6 +303,19 @@ export function SuccessDialog({
     if (closedRef.current) return;
     closedRef.current = true;
     choicesRef.current?.onCancel();
+  }
+
+  async function onPromptSubmit() {
+    const p = promptRef.current;
+    if (!p || promptBusy || closedRef.current) return;
+    const value = promptValue.trim();
+    if (!value) return;
+    setPromptBusy(true);
+    try {
+      await p.onSubmit(value);
+    } finally {
+      setPromptBusy(false);
+    }
   }
 
   function close() {
@@ -317,10 +364,16 @@ export function SuccessDialog({
             </div>
           ) : (
             <DialogTitle
-              className={
-                accent === "success" ? "text-success" : "text-warning"
-              }
+              className={cn(
+                "flex items-center gap-1.5",
+                accent === "success" ? "text-success" : "text-warning",
+              )}
             >
+              {accent === "success" ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+              ) : (
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              )}
               {resolvedTitle}
             </DialogTitle>
           )}
@@ -335,7 +388,7 @@ export function SuccessDialog({
             </p>
           ) : null}
           {!hasPreview && messageText && !hasActions ? (
-            <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
+            <DialogDescription className="whitespace-pre-wrap break-words text-foreground">
               {messageText}
             </DialogDescription>
           ) : (
@@ -373,6 +426,45 @@ export function SuccessDialog({
                 {messageText}
               </p>
             ) : null}
+
+            {prompt ? (
+              <div className="mt-3 space-y-1.5">
+                <Label htmlFor="success-dialog-prompt">{prompt.label}</Label>
+                {prompt.password !== false ? (
+                  <PasswordInput
+                    id="success-dialog-prompt"
+                    value={promptValue}
+                    disabled={promptBusy}
+                    autoFocus
+                    autoComplete="off"
+                    placeholder={prompt.placeholder}
+                    onChange={(e) => setPromptValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void onPromptSubmit();
+                      }
+                    }}
+                  />
+                ) : (
+                  <Input
+                    id="success-dialog-prompt"
+                    value={promptValue}
+                    disabled={promptBusy}
+                    autoFocus
+                    autoComplete="off"
+                    placeholder={prompt.placeholder}
+                    onChange={(e) => setPromptValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        void onPromptSubmit();
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            ) : null}
           </div>
 
           {hasPreview && qrPreview ? (
@@ -407,6 +499,28 @@ export function SuccessDialog({
                 onClick={onChoiceCancel}
               >
                 {choices.cancelLabel ?? t("common.actions.cancel")}
+              </Button>
+            </>
+          ) : prompt ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                className="shrink-0"
+                disabled={promptBusy}
+                onClick={close}
+              >
+                {prompt.cancelLabel ?? t("dialogs.update.later")}
+              </Button>
+              <Button
+                type="button"
+                className="shrink-0"
+                disabled={promptBusy || !promptValue.trim()}
+                onClick={() => void onPromptSubmit()}
+              >
+                {promptBusy
+                  ? t("common.actions.checking")
+                  : prompt.submitLabel}
               </Button>
             </>
           ) : confirm ? (

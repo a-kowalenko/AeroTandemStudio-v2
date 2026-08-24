@@ -1,6 +1,7 @@
 import type { AmsBridgePhase } from "@/store/amsBridgeStore";
 import type { ServerPhase } from "@/store/serverStore";
 import type {
+  DialogActionStatus,
   DialogPrimaryAction,
   SettingsFocusTarget,
 } from "@/store/uiStore";
@@ -10,7 +11,6 @@ import {
   AMS_OPERATOR_TITLE,
   amsBridgeStatusErrorTooltip,
   formatAmsConnectedTooltip,
-  formatAmsHealthSuccessMessage,
   presentAmsBridgeError,
 } from "./amsBridgeStatus";
 import {
@@ -117,16 +117,26 @@ export function presentHeaderConnection(input: {
     const pct = input.uploadPercent ?? 0;
     label = tr("app.upload.percent", { percent: pct.toFixed(0) });
     toneClass = "text-primary";
-  } else if (smbChecking) {
+  } else if (smbChecking || amsChecking) {
+    // Keep "Prüfe…" until SMB and AMS checks both finish (local path is often faster).
     label = tr("common.actions.checking");
     toneClass = "text-warning";
+  } else if (smbError && amsError) {
+    label = mapServerErrorLabel(input.smbMessage);
+    toneClass = "text-destructive";
   } else if (smbError) {
     label = mapServerErrorLabel(input.smbMessage);
+    toneClass = "text-destructive";
+  } else if (amsError && smbOk) {
+    label = tr("header.connection.titlePartial");
+    toneClass = "text-warning";
+  } else if (amsError) {
+    label = tr("header.connection.titleFailed");
     toneClass = "text-destructive";
   } else if (smbOk) {
     label = tr("chrome.server.connected");
     toneClass = "text-success";
-  } else if (amsOk && !amsError) {
+  } else if (amsOk) {
     label = tr("chrome.server.connected");
     toneClass = "text-success";
   }
@@ -135,7 +145,7 @@ export function presentHeaderConnection(input: {
     visible &&
     input.smbPhase !== "uploading" &&
     !smbChecking &&
-    !(input.smbPhase === "idle" && amsChecking);
+    !amsChecking;
 
   let contextMenuFocus: SettingsFocusTarget | null = null;
   if (smbError) {
@@ -202,9 +212,119 @@ export function presentHeaderConnection(input: {
 export type HeaderRetryOutcome = {
   kind: "success" | "error";
   title: string;
+  /** Optional footnote under action rows (usually empty). */
   message: string;
+  actions: DialogActionStatus[];
   primaryAction: DialogPrimaryAction | null;
+  /** Auto-dismiss only when every checked target is OK. */
+  autoCloseSecs: number | null;
 };
+
+const CONNECTION_SUCCESS_AUTO_CLOSE_SECS = 3;
+
+/** Extract path/share detail from Rust connection success messages. */
+export function parseServerSuccessDetail(raw: string): {
+  mode: "local" | "remote" | "unknown";
+  detail: string | null;
+} {
+  const text = raw.trim();
+  const local = text.match(/^Lokaler Pfad erreichbar:\s*(.+)$/i);
+  if (local?.[1]) {
+    return { mode: "local", detail: local[1].trim() };
+  }
+  const remote = text.match(
+    /^Verbindung zum Server erfolgreich\s*\((.+)\)$/i,
+  );
+  if (remote?.[1]) {
+    return { mode: "remote", detail: remote[1].trim() };
+  }
+  const localMissing = text.match(/^Lokaler Pfad nicht gefunden:\s*(.+)$/i);
+  if (localMissing?.[1]) {
+    return { mode: "local", detail: localMissing[1].trim() };
+  }
+  return { mode: "unknown", detail: text || null };
+}
+
+export function presentServerConnectionAction(opts: {
+  ok: boolean;
+  rawMessage: string;
+  serverUrl: string;
+  login: string;
+  password: string;
+}): DialogActionStatus {
+  const label = tr("header.connection.serverLabel");
+  if (opts.ok) {
+    const parsed = parseServerSuccessDetail(opts.rawMessage);
+    const summary =
+      parsed.mode === "local"
+        ? tr("header.connection.serverOkLocal")
+        : parsed.mode === "remote"
+          ? tr("header.connection.serverOkRemote")
+          : tr("header.connection.serverOk");
+    return {
+      kind: "server",
+      label,
+      tone: "success",
+      summary,
+      detail: parsed.detail ?? undefined,
+    };
+  }
+
+  const presented = presentServerConnectionError({
+    rawMessage: opts.rawMessage,
+    serverUrl: opts.serverUrl,
+    login: opts.login,
+    password: opts.password,
+    omitSettingsAction: true,
+  });
+  const lines = presented.message
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const parsed = parseServerSuccessDetail(opts.rawMessage);
+  const pathDetail =
+    parsed.mode === "local" && parsed.detail ? parsed.detail : null;
+  return {
+    kind: "server",
+    label,
+    tone: "error",
+    summary: lines[0] ?? mapServerErrorLabel(opts.rawMessage),
+    detail:
+      lines.length > 1
+        ? lines.slice(1).join("\n")
+        : (pathDetail ?? undefined),
+  };
+}
+
+export function presentAmsConnectionAction(opts: {
+  ok: boolean;
+  rawMessage: string;
+}): DialogActionStatus {
+  const label = AMS_OPERATOR_TITLE;
+  if (opts.ok) {
+    return {
+      kind: "ams",
+      label,
+      tone: "success",
+      summary: tr("header.connection.amsOk"),
+    };
+  }
+  const presented = presentAmsBridgeError({
+    rawMessage: opts.rawMessage,
+    omitSettingsAction: true,
+  });
+  const lines = presented.message
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return {
+    kind: "ams",
+    label,
+    tone: "error",
+    summary: lines[0] ?? presented.message,
+    detail: lines.length > 1 ? lines.slice(1).join("\n") : undefined,
+  };
+}
 
 export function presentHeaderRetryOutcome(opts: {
   smb: ConnectionTestResult | null;
@@ -230,45 +350,97 @@ export function presentHeaderRetryOutcome(opts: {
     ? presentAmsBridgeError({ rawMessage: ams.message })
     : null;
 
-  const parts: string[] = [];
-  if (smb) parts.push(smb.ok ? smb.message : smbPresented?.message ?? smb.message);
-  if (ams) {
-    parts.push(
-      ams.ok
-        ? formatAmsHealthSuccessMessage(ams.message)
-        : amsPresented?.message ?? ams.message,
+  const actions: DialogActionStatus[] = [];
+  if (smb) {
+    actions.push(
+      presentServerConnectionAction({
+        ok: smb.ok,
+        rawMessage: smb.message,
+        serverUrl: opts.serverUrl,
+        login: opts.login,
+        password: opts.password,
+      }),
     );
   }
-  const message = parts.join("\n\n");
+  if (ams) {
+    actions.push(
+      presentAmsConnectionAction({
+        ok: ams.ok,
+        rawMessage: ams.message,
+      }),
+    );
+  }
 
   if (smbOk && amsOk) {
-    const title = smb && ams
-      ? tr("header.connection.connectionTitle")
-      : smb
-        ? tr("app.server.title")
-        : AMS_OPERATOR_TITLE;
-    return { kind: "success", title, message, primaryAction: null };
-  }
-  if (!smbOk && !amsOk) {
+    const title =
+      smb && ams
+        ? tr("header.connection.titleAllOk")
+        : smb
+          ? tr("header.connection.titleServerOk")
+          : tr("header.connection.titleAmsOk");
     return {
-      kind: "error",
-      title: tr("header.connection.connectionTitle"),
-      message,
-      primaryAction: smbPresented?.primaryAction ?? amsPresented?.primaryAction ?? null,
+      kind: "success",
+      title,
+      message: "",
+      actions,
+      primaryAction: null,
+      autoCloseSecs: CONNECTION_SUCCESS_AUTO_CLOSE_SECS,
     };
   }
+
+  const primaryAction =
+    smbPresented?.primaryAction ?? amsPresented?.primaryAction ?? null;
+
+  if (!smbOk && !amsOk && smb && ams) {
+    return {
+      kind: "error",
+      title: tr("header.connection.titleFailed"),
+      message: "",
+      actions,
+      primaryAction,
+      autoCloseSecs: null,
+    };
+  }
+
+  if (!smbOk && smb && ams && amsOk) {
+    return {
+      kind: "error",
+      title: tr("header.connection.titlePartial"),
+      message: "",
+      actions,
+      primaryAction: smbPresented?.primaryAction ?? null,
+      autoCloseSecs: null,
+    };
+  }
+
+  if (!amsOk && ams && smb && smbOk) {
+    return {
+      kind: "error",
+      title: tr("header.connection.titlePartial"),
+      message: "",
+      actions,
+      primaryAction: amsPresented?.primaryAction ?? null,
+      autoCloseSecs: null,
+    };
+  }
+
   if (!smbOk) {
     return {
       kind: "error",
-      title: tr("app.server.title"),
-      message: smbPresented?.message ?? smb?.message ?? message,
+      title: tr("header.connection.titleFailed"),
+      message: "",
+      actions,
       primaryAction: smbPresented?.primaryAction ?? null,
+      autoCloseSecs: null,
     };
   }
+
   return {
     kind: "error",
-    title: AMS_OPERATOR_TITLE,
-    message: amsPresented?.message ?? ams?.message ?? message,
+    title: tr("header.connection.titleFailed"),
+    message: "",
+    actions,
     primaryAction: amsPresented?.primaryAction ?? null,
+    autoCloseSecs: null,
   };
 }

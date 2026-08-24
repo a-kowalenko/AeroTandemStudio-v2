@@ -21,14 +21,14 @@
       "testConnection": "Test connection",
       "checking": "Checking…",
       "loading": "Loading…",
-      "cancelling": "Cancelling…",
       "undo": "Undo",
       "edit": "Edit",
       "remove": "Remove",
       "reset": "Reset",
       "add": "Add",
       "rename": "Rename",
-      "pleaseWait": "Please wait…"
+      "pleaseWait": "Please wait…",
+      "cancelling": "Cancelling…"
     },
     "status": {
       "error": "Error",
@@ -128,14 +128,6 @@
       "noneSet": "No folder set.",
       "toastTitle": "Folder"
     },
-    "save": {
-      "pickBackup": "Please choose a backup folder.",
-      "pickSecondBackup": "Please choose a second backup folder or disable the option.",
-      "operatorRole": "“Who am I”: Please set at least one role or choose an existing crew name.",
-      "failed": "Settings could not be saved.",
-      "success": "Settings saved.",
-      "resetFailed": "Default settings could not be restored."
-    },
     "crew": {
       "who": {
         "title": "Who are you?",
@@ -162,17 +154,17 @@
         "me": "(Me)",
         "ariaRole": "{{name}}: {{role}}"
       },
-      "errors": {
-        "nameRequired": "Please enter a name.",
-        "duplicate": "This name is already in the list.",
-        "roleRequired": "At least one role must be active.",
-        "removeConfirm": "Remove “{{name}}” from the crew list?",
-        "removedFavorite": "“{{name}}” removed — favorite (“Me”) reset."
-      },
       "keep": {
         "off": "Don't keep",
         "last": "Keep last used",
         "selfSuffix": "Me"
+      },
+      "errors": {
+        "duplicate": "This name is already in the list.",
+        "nameRequired": "Please enter a name.",
+        "removeConfirm": "Remove “{{name}}” from the crew list?",
+        "removedFavorite": "“{{name}}” removed — favorite (“Me”) reset.",
+        "roleRequired": "At least one role must be active."
       }
     },
     "encoding": {
@@ -198,9 +190,9 @@
       "introMuxReencode": "Re-encode (compatible)",
       "introMuxCopy": "Stream copy (fast)",
       "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
-      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "reencodeMatching": "Re-encode matching clips",
       "previewCrf": "Preview CRF",
+      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "useLibmpv": "mpv player for trim (libmpv/mpv)",
       "useLibmpvHint": "Snappier scrubbing in the cutter when mpv is installed. Falls back to HTML5 if mpv is missing."
     },
@@ -299,11 +291,20 @@
         "noneFoundStatus": "No booking lookup found on the network.",
         "noneFoundError": "Nothing found. Enter the address manually if needed.",
         "foundStatus": "Found: {{instance}} → {{url}}",
-        "foundSuccess": "Address applied: {{url}}. Still enter the access code manually.",
+        "foundSuccess": "Address applied:\n{{url}}\n\nEnter the access code here and check.",
+        "foundSuccessViaServerPassword": "Address and access code applied (server password).",
         "foundMany": "{{count}} addresses found — please choose one.",
         "applied": "Applied: {{instance}} → {{url}}",
         "discoveredItem": "{{instance}} — {{url}}{{version}}"
       }
+    },
+    "save": {
+      "failed": "Settings could not be saved.",
+      "operatorRole": "“Who am I”: Please set at least one role or choose an existing crew name.",
+      "pickBackup": "Please choose a backup folder.",
+      "pickSecondBackup": "Please choose a second backup folder or disable the option.",
+      "resetFailed": "Default settings could not be restored.",
+      "success": "Settings saved."
     }
   },
   "errors": {
@@ -347,9 +348,7 @@
       "notMp4": "Not .mp4",
       "fileMissing": "File missing",
       "customerId": "Customer ID",
-      "customerIdRequired": "Customer ID is required",
       "bookingId": "Booking ID",
-      "bookingIdRequired": "Booking ID is required",
       "validation": "Validation"
     },
     "ready": {
@@ -376,16 +375,6 @@
       "creating": "Creating job…",
       "done": "Job complete",
       "cancelled": "Job cancelled."
-    },
-    "encode": {
-      "reusePreview": "Preview will be reused — no re-encode needed",
-      "reusePreviewTitle": "The saved preview is copied as the final video (very fast)",
-      "reencodeTitle": "Create will re-encode the video",
-      "reencodeBecause": "Re-encode: {{reason}}",
-      "reasonNoPreview": "no preview available",
-      "reasonClipsChanged": "clips changed (e.g. trim or order)",
-      "reasonFormChanged": "form or customer data changed",
-      "reasonEncodingChanged": "intro or encoding settings changed"
     },
     "append": {
       "pickFile": "Choose at least one file to append.",
@@ -468,8 +457,6 @@
       "previewReused": "Preview reused",
       "createWatermarkVideo": "Creating watermark video…",
       "copyPhotos": "Copying photos…",
-      "sortPhotos": "Sorting photos…",
-      "readPhotoMeta": "Reading photo metadata…",
       "createPhotoWatermark": "Creating photo watermark…",
       "skipDoneTxtLocal": "Skipping _fertig.txt (local)…",
       "writeAmsManifest": "Writing AMS manifest…",
@@ -478,11 +465,11 @@
       "joinEncodedClips": "Joining encoded clips…",
       "analyseIntroVideo": "Analyzing intro/video…",
       "streamCopyFailedWaiting": "Stream copy failed — please choose…",
-      "reencodeWaiting": "Re-encoding — waiting for confirmation…",
       "exportWithoutIntro": "Exporting video without intro…",
       "legacyMpegTs": "Legacy join (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
-      "backupFinishing": "Finishing backup…"
+      "backupFinishing": "Finishing backup…",
+      "reencodeWaiting": "Re-encoding — waiting for confirmation…"
     },
     "legend": {
       "aria": "Color legend",
@@ -528,55 +515,6 @@
       "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
       "useLegacy": "Use legacy"
     },
-    "reencode": {
-      "title": "Re-encode",
-      "body": "Pick a preset or adjust parameters.",
-      "proceed": "Encode",
-      "kindLabel": "{{kind}}",
-      "clipsShort": "{{count}} clips",
-      "recommended": "Recommended",
-      "preset": "Quality",
-      "showAdvanced": "More options",
-      "hideAdvanced": "Less",
-      "swPreset": "SW preset",
-      "nvencPreset": "NVENC",
-      "scaleMode": "Resolution",
-      "scaleSource": "Source",
-      "scale1080": "1080p",
-      "fpsMode": "FPS",
-      "fpsSource": "Source",
-      "fps30": "30",
-      "previewEqualsExport": "Preview = export.",
-      "presets": {
-        "recommended": "Recommended",
-        "max_quality": "Max quality",
-        "balanced": "Balanced",
-        "fast": "Fast",
-        "compat": "Compatible",
-        "custom": "Custom"
-      },
-      "paramCodec": "Codec",
-      "paramEncoder": "Encoder",
-      "paramCrf": "CRF / CQ",
-      "paramHw": "Hardware",
-      "paramClips": "Clips",
-      "paramIntroDauer": "Intro",
-      "paramMux": "Intro mux",
-      "paramStrategy": "Strategy",
-      "paramDegrees": "Rotation",
-      "hwOn": "HW on",
-      "hwOff": "HW off",
-      "kinds": {
-        "intro_mux": "Intro + video",
-        "preview_clips": "Preview clips",
-        "preview_combined": "Preview",
-        "preview_remux_fallback": "Remux fallback",
-        "body_parallel": "Parallel clips",
-        "concat_fallback": "Join",
-        "remux_fallback": "Remux",
-        "rotate": "Rotate"
-      }
-    },
     "introMux": {
       "title": "Intro cannot be attached via stream copy",
       "body": "Joining intro and video without re-encoding failed (common with modern camera files).",
@@ -605,6 +543,26 @@
       "canInstall": "Version {{to}} can be installed.",
       "current": "Current: {{version}}",
       "downgradeHint": "The app will be replaced and restarted. Settings are usually kept."
+    },
+    "reencode": {
+      "clipsShort": "{{count}} clips",
+      "fps30": "30",
+      "fpsMode": "FPS",
+      "fpsSource": "Source",
+      "hideAdvanced": "Less",
+      "hwOff": "HW off",
+      "hwOn": "HW on",
+      "nvencPreset": "NVENC",
+      "paramCodec": "Codec",
+      "paramCrf": "CRF / CQ",
+      "preset": "Quality",
+      "proceed": "Encode",
+      "scale1080": "1080p",
+      "scaleMode": "Resolution",
+      "scaleSource": "Source",
+      "showAdvanced": "More options",
+      "swPreset": "SW preset",
+      "title": "Re-encode"
     }
   },
   "splash": {
@@ -634,10 +592,10 @@
       "loadAppInfo": "Loading app info…",
       "loadSettings": "Loading settings…",
       "checkFfmpeg": "Checking FFmpeg & hardware…",
-      "clearCache": "Clearing cache…",
       "ready": "Ready!",
       "startWithErrors": "Started with errors",
-      "ffmpegMissing": "FFmpeg was not found. Encoding is unavailable."
+      "ffmpegMissing": "FFmpeg was not found. Encoding is unavailable.",
+      "clearCache": "Clearing cache…"
     },
     "chrome": {
       "historyTitle": "Processed files",
@@ -924,9 +882,9 @@
       "pathTitle": "Path"
     },
     "import": {
-      "noValidVideos": "No valid video files found",
+      "allAlreadyListed": "All files are already in the list",
       "noValidPhotos": "No valid photo files found",
-      "allAlreadyListed": "All files are already in the list"
+      "noValidVideos": "No valid video files found"
     }
   },
   "workflow": {
@@ -945,6 +903,7 @@
       "manualImport": "Media is being copied to the working folder — cancel discards the import",
       "manualQr": "QR search — cancel stops the search",
       "encodeBusy": "Current job — cancel stops FFmpeg.",
+      "createUploading": "Current job — cancel stops the upload.",
       "cancelling": "Cancel requested — finishing the current step"
     }
   },
@@ -960,55 +919,6 @@
     "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in history.",
     "appendDialogTitle": "Append",
     "appendCancelled": "Append cancelled.",
-    "appendPanel": {
-      "capWarning": "Append is not yet available on this computer. Please ask support to update the software — otherwise a new customer folder will be created.",
-      "noVideos": "No supported videos found.",
-      "noPhotos": "No supported photos found.",
-      "wrongKindVideo": "Please drop videos (current category is video).",
-      "wrongKindPhoto": "Please drop photos (current category is photo).",
-      "pickVideos": "Choose videos",
-      "pickPhotos": "Choose photos",
-      "pickFolder": "Choose folder",
-      "previewPhotoRequired": "Photo product is not paid — please select at least one photo for the watermark.",
-      "previewVideoRequired": "Video product is not paid — please select at least one video for the preview.",
-      "dropVideos": "Drop videos or folders here",
-      "dropPhotos": "Drop photos or folders here",
-      "dropRelease": "Release to add",
-      "dropHintVideo": "Folders recursive · .mp4, .mov …",
-      "dropHintPhoto": "Folders recursive · .jpg, .png, .webp …",
-      "discardOne": "The selected file will not be sent.",
-      "discardMany": "The {{count}} selected files will not be sent.",
-      "productAria": "Product for append",
-      "previewAria": "Preview for {{name}}",
-      "modeOriginalPreview": "Original + preview",
-      "modeOriginal": "Original",
-      "statusPaid": "Paid",
-      "statusOpen": "Open",
-      "statusNew": "Not booked",
-      "hintPaid": "Paid — files are appended as originals.",
-      "hintOpen": "Not paid — originals plus optional watermarked preview.",
-      "hintNew": "Not booked — originals plus optional watermarked preview.",
-      "catHandcamFoto": "Handcam photo",
-      "catHandcamVideo": "Handcam video",
-      "catOutsideFoto": "Outside photo",
-      "catOutsideVideo": "Outside video",
-      "groupHandcam": "Handcam",
-      "groupOutside": "Outside",
-      "productTitle": "Product",
-      "discardTitle": "Discard changes?",
-      "discard": "Discard",
-      "continueEditing": "Keep editing",
-      "removeItemAria": "Remove {{name}}",
-      "send": "Send",
-      "pickFilesBtn": "Choose files…",
-      "pickFolderBtn": "Choose folder…",
-      "emptyFiles": "No files yet",
-      "emptyFilesHint": "Assign files to the selected product. For open or new products, an optional watermarked preview can be sent along.",
-      "fileCountOne": "{{count}} file",
-      "fileCountMany": "{{count}} files",
-      "noneCount": "None",
-      "previewLabel": "Preview"
-    },
     "filters": {
       "all": "All",
       "open": "Open",
@@ -1097,7 +1007,49 @@
     },
     "paidTitle": "{{label}} paid",
     "ta": "TM: {{name}}",
-    "vs": "V: {{name}}"
+    "vs": "V: {{name}}",
+    "appendPanel": {
+      "capWarning": "Append is not yet available on this computer. Please ask support to update the software — otherwise a new customer folder will be created.",
+      "continueEditing": "Keep editing",
+      "discard": "Discard",
+      "discardMany": "The {{count}} selected files will not be sent.",
+      "discardOne": "The selected file will not be sent.",
+      "discardTitle": "Discard changes?",
+      "dropHintPhoto": "Folders recursive · .jpg, .png, .webp …",
+      "dropHintVideo": "Folders recursive · .mp4, .mov …",
+      "dropPhotos": "Drop photos or folders here",
+      "dropRelease": "Release to add",
+      "dropVideos": "Drop videos or folders here",
+      "emptyFiles": "No files yet",
+      "emptyFilesHint": "Assign files to the selected product. For open or new products, an optional watermarked preview can be sent along.",
+      "fileCountMany": "{{count}} files",
+      "fileCountOne": "{{count}} file",
+      "groupHandcam": "Handcam",
+      "groupOutside": "Outside",
+      "modeOriginal": "Original",
+      "modeOriginalPreview": "Original + preview",
+      "noPhotos": "No supported photos found.",
+      "noVideos": "No supported videos found.",
+      "noneCount": "None",
+      "pickFilesBtn": "Choose files…",
+      "pickFolder": "Choose folder",
+      "pickFolderBtn": "Choose folder…",
+      "pickPhotos": "Choose photos",
+      "pickVideos": "Choose videos",
+      "previewAria": "Preview for {{name}}",
+      "previewLabel": "Preview",
+      "previewPhotoRequired": "Photo product is not paid — please select at least one photo for the watermark.",
+      "previewVideoRequired": "Video product is not paid — please select at least one video for the preview.",
+      "productAria": "Product for append",
+      "productTitle": "Product",
+      "removeItemAria": "Remove {{name}}",
+      "send": "Send",
+      "statusNew": "Not booked",
+      "statusOpen": "Open",
+      "statusPaid": "Paid",
+      "wrongKindPhoto": "Please drop photos (current category is photo).",
+      "wrongKindVideo": "Please drop videos (current category is video)."
+    }
   },
   "ams": {
     "actions": {
@@ -1119,23 +1071,6 @@
       "connectedTooltip": "{{title}}: connected",
       "onlineOnly": "Only for online jobs, not local",
       "customerNotFound": "Customer not found in booking"
-    },
-    "lookup": {
-      "foundTitle": "Customer found",
-      "searching": "Searching…",
-      "notFound": "Customer not found",
-      "minDigits": "At least {{count}} digits",
-      "customerFallback": "Customer",
-      "foundLine": "Found: {{name}}",
-      "foundLineMedia": "Found: {{name}} · {{media}}",
-      "overrideBody": "Previous: {{previous}}\nBooking: {{next}}\n\nApply this data?\nLocation, date and crew are kept.",
-      "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
-      "typeChoiceTitle": "Choose media type",
-      "keep": "Keep",
-      "apply": "Apply",
-      "videoPaid": "Video (paid)",
-      "photoPaid": "Photo (paid)",
-      "lanMultipleBody": "Multiple booking lookups (AMS) found on the LAN.\nPlease choose which instance to use."
     },
     "handoff": {
       "steps": {
@@ -1162,6 +1097,23 @@
         "waitingForAccept": "Waiting to be accepted",
         "archive": "Archive {{archive}}"
       }
+    },
+    "lookup": {
+      "apply": "Apply",
+      "customerFallback": "Customer",
+      "foundLine": "Found: {{name}}",
+      "foundLineMedia": "Found: {{name}} · {{media}}",
+      "foundTitle": "Customer found",
+      "keep": "Keep",
+      "lanMultipleBody": "Multiple booking lookups (AMS) found on the LAN.\nPlease choose which instance to use.",
+      "minDigits": "At least {{count}} digits",
+      "notFound": "Customer not found",
+      "overrideBody": "Previous: {{previous}}\nBooking: {{next}}\n\nApply this data?\nLocation, date and crew are kept.",
+      "photoPaid": "Photo (paid)",
+      "searching": "Searching…",
+      "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
+      "typeChoiceTitle": "Choose media type",
+      "videoPaid": "Video (paid)"
     }
   },
   "header": {
@@ -1177,67 +1129,77 @@
       "amsNotChecked": "{{title}}: not checked",
       "retryOrSettings": "Click: retry · right click: settings",
       "retry": "Click to check again",
-      "connectionTitle": "Connection"
+      "connectionTitle": "Connection",
+      "titleAllOk": "All connected",
+      "titlePartial": "Partial",
+      "titleFailed": "No connection",
+      "titleServerOk": "Server connected",
+      "titleAmsOk": "Booking lookup connected",
+      "serverLabel": "Server",
+      "serverOk": "Reachable",
+      "serverOkLocal": "Reachable (local)",
+      "serverOkRemote": "Connected",
+      "amsOk": "Connected"
     }
   },
   "qr": {
-    "confirm": {
-      "manualEntry": "Manual entry",
-      "newCustomer": "New customer",
-      "currentCustomer": "Current customer",
-      "switchBody": "Current: {{previous}}\nNew: {{next}}\n\nReally switch customer data? Media is kept.",
-      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\nDiscard manual customer data and apply QR?\nLocation, date and crew are kept.",
-      "switchPrimary": "Switch",
-      "overridePrimary": "Apply QR",
-      "keep": "Keep",
-      "switchSummary": "Different customer recognized",
-      "overrideSummary": "Overwrite manual entry",
-      "keepExistingSummary": "Keep existing customer",
-      "ignoredScan": "New scan ignored",
-      "ignoredScanNamed": "New scan ignored: {{name}}",
-      "ignoredQr": "QR ignored",
-      "ignoredQrNamed": "QR ignored: {{name}}",
-      "keepManualSummary": "Keep manual entry",
-      "label": "QR code"
-    },
     "progress": {
       "pending": "QR search waiting…",
       "found": "QR code found",
       "removed": "Removed from list",
       "checked": "QR code checked",
+      "checking": "checking…",
+      "checkingNeighbors": "QR found — checking neighboring photos…",
       "chipActive": "QR",
-      "chipHit": "QR",
       "chipActiveTitle": "QR check in progress",
+      "chipHit": "QR",
       "chipHitTitle": "QR code found",
-      "photosCheckedOne": "1 photo checked",
-      "photosCheckedMany": "{{count}} photos checked",
-      "extraHitsOne": "1 additional hit",
-      "extraHitsMany": "{{count}} additional hits",
-      "photosRemovedOne": "1 photo removed",
-      "photosRemovedMany": "{{count}} photos removed",
       "currentFile": "now: {{name}}",
+      "edgesLimited": "Edges ({{count}} each)",
+      "extraHitsMany": "{{count}} additional hits",
+      "extraHitsOne": "1 additional hit",
+      "fastSpots": "Checking spots in clip…",
+      "filesDone": "{{finished}} of {{total}} {{unit}} done",
       "foundFile": "found: {{name}}",
+      "hitFound": "Hit found",
       "missFile": "no code: {{name}}",
       "neighborSeries": "Neighbor photos in series…",
-      "removingQrPhotos": "Removing QR photos from list…",
-      "checkingNeighbors": "QR found — checking neighboring photos…",
-      "readingVideo": "Reading video for QR search…",
-      "thorough": "Checking QR code thoroughly…",
-      "scanVideos": "Searching for QR code in videos…",
-      "scanPhotos": "Searching for QR code in photos…",
-      "scanGeneric": "Searching for QR code…",
-      "filesDone": "{{finished}} of {{total}} {{unit}} done",
-      "unitPhotos": "Photos",
-      "unitVideos": "Videos",
-      "unitFiles": "Files",
-      "edgesLimited": "Edges ({{count}} each)",
-      "hitFound": "Hit found",
-      "preparingClip": "Preparing clip…",
-      "thoroughSpots": "Checking spots more closely…",
-      "fastSpots": "Checking spots in clip…",
       "parallelCount": "{{count}} in parallel",
-      "checking": "checking…",
-      "preparing": "Preparing…"
+      "photosCheckedMany": "{{count}} photos checked",
+      "photosCheckedOne": "1 photo checked",
+      "photosRemovedMany": "{{count}} photos removed",
+      "photosRemovedOne": "1 photo removed",
+      "preparing": "Preparing…",
+      "preparingClip": "Preparing clip…",
+      "readingVideo": "Reading video for QR search…",
+      "removingQrPhotos": "Removing QR photos from list…",
+      "scanGeneric": "Searching for QR code…",
+      "scanPhotos": "Searching for QR code in photos…",
+      "scanVideos": "Searching for QR code in videos…",
+      "thorough": "Checking QR code thoroughly…",
+      "thoroughSpots": "Checking spots more closely…",
+      "unitFiles": "Files",
+      "unitPhotos": "Photos",
+      "unitVideos": "Videos"
+    },
+    "confirm": {
+      "currentCustomer": "Current customer",
+      "ignoredQr": "QR ignored",
+      "ignoredQrNamed": "QR ignored: {{name}}",
+      "ignoredScan": "New scan ignored",
+      "ignoredScanNamed": "New scan ignored: {{name}}",
+      "keep": "Keep",
+      "keepExistingSummary": "Keep existing customer",
+      "keepManualSummary": "Keep manual entry",
+      "label": "QR code",
+      "manualEntry": "Manual entry",
+      "newCustomer": "New customer",
+      "overrideBody": "Manual: {{previous}}\nQR: {{next}}\n\nDiscard manual customer data and apply QR?\nLocation, date and crew are kept.",
+      "overridePrimary": "Apply QR",
+      "overrideSummary": "Overwrite manual entry",
+      "switchBody": "Current: {{previous}}\nNew: {{next}}\n\nReally switch customer data? Media is kept.",
+      "switchPrimary": "Switch",
+      "switchSummary": "Different customer recognized"
     }
   },
   "video": {
@@ -1284,10 +1246,8 @@
       "singleClipWithPreview": "Single-clip playback — use “Show preview” for the combined file.",
       "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
       "undoThisEditTitle": "Undo this edit",
-      "createReuse": "On create: preview will be reused",
-      "createReencode": "On create: re-encode — {{reason}}",
-      "previewStreamCopy": "Re-encode: no (stream copy)",
-      "previewReencode": "Re-encode: {{reason}}"
+      "previewReencode": "Re-encode: {{reason}}",
+      "previewStreamCopy": "Re-encode: no (stream copy)"
     },
     "cutter": {
       "warning": {
@@ -1345,35 +1305,36 @@
       "nextPhotoAria": "Next photo",
       "empty": "No photos — add them via drag and drop in the media area",
       "loading": "Loading preview…",
+      "loadingQr": "QR check in progress — preview follows…",
       "currentPhoto": "Current photo",
       "undoThisEditTitle": "Undo this edit",
-      "undoEdit": "Undo edit",
       "total": "Total",
-      "overview": "Overview",
-      "review": "Review",
-      "viewModeAria": "Photo view",
-      "overviewAria": "Photo overview",
-      "detailTitle": "Detail",
-      "detailEmpty": "No photo selected",
-      "sessionTitle": "Session",
-      "wmToggleAria": "Preview photo with watermark stamp",
-      "wmPreviewLabel": "Preview",
-      "wmPreviewHint": "Export with watermark stamp",
-      "removeCount": "Remove {{count}}",
-      "clearSelection": "Clear selection",
-      "batchSelected": "{{count}} selected",
       "batchRotate90": "Selection 90°",
       "batchRotateCcwTitle": "Rotate selection 90° counter-clockwise",
       "batchRotateCwTitle": "Rotate selection 90° clockwise",
+      "batchSelected": "{{count}} selected",
+      "clearSelection": "Clear selection",
+      "detailEmpty": "No photo selected",
+      "detailTitle": "Detail",
       "meta": {
-        "file": "File",
-        "size": "Size",
-        "resolution": "Resolution",
-        "position": "Position",
         "camera": "Camera",
         "count": "Count",
+        "file": "File",
+        "position": "Position",
+        "resolution": "Resolution",
+        "size": "Size",
         "watermark": "Watermark"
-      }
+      },
+      "overview": "Overview",
+      "overviewAria": "Photo overview",
+      "removeCount": "Remove {{count}}",
+      "review": "Review",
+      "sessionTitle": "Session",
+      "undoEdit": "Undo edit",
+      "viewModeAria": "Photo view",
+      "wmPreviewHint": "Export with watermark stamp",
+      "wmPreviewLabel": "Preview",
+      "wmToggleAria": "Preview photo with watermark stamp"
     },
     "editor": {
       "warning": {
@@ -1400,26 +1361,6 @@
       "subtitleError": "Remove card manually and safely",
       "usbHint": "USB released — disconnect the cable, then reconnect to import."
     },
-    "monitor": {
-      "title": "SD monitor",
-      "secondaryBackupFailed": "Server backup (second path) failed.",
-      "secondaryBackupTitle": "Server backup"
-    },
-    "catalog": {
-      "filteredOnly": "No importable media (timelapse/proxies only).",
-      "mtpEmpty": "No media found on camera.",
-      "sdEmpty": "No media files found on SD card."
-    },
-    "fileSelectorUi": {
-      "drive": "Drive {{drive}}",
-      "sdCard": "SD card",
-      "videoCount": "{{count}} videos",
-      "photoCount": "{{count}} photos",
-      "clearAfterBackup": "Clear SD card after successful backup",
-      "scanQrAfterImport": "Check imported media for QR code",
-      "typeVideo": "Video",
-      "typePhoto": "Photo"
-    },
     "mode": {
       "autoTip": "After detection: backup, import, clear, and eject per settings — without asking.",
       "confirmTip": "File selection with options for backup, import, clear, and eject.",
@@ -1434,7 +1375,7 @@
       "chooseTitle": "Choose SD card — opens file picker",
       "aria": "SD card",
       "watching": "SD monitoring active",
-      "monitoring": "SD monitoring",
+      "monitoring": "Monitoring",
       "none": "No SD",
       "ejectTitle": "Eject “{{label}}”",
       "ejectAria": "Eject SD card {{label}}",
@@ -1447,33 +1388,19 @@
       "refresh": "Read again",
       "title": "SD card — choose files",
       "titleSizeLimit": "Size limit exceeded — choose files"
+    },
+    "catalog": {
+      "filteredOnly": "No importable media (timelapse/proxies only).",
+      "mtpEmpty": "No media found on camera.",
+      "sdEmpty": "No media files found on SD card."
+    },
+    "monitor": {
+      "secondaryBackupFailed": "Server backup (second path) failed.",
+      "secondaryBackupTitle": "Server backup",
+      "title": "SD monitor"
     }
   },
   "setupWizard": {
-    "steps": {
-      "appearance": "Language & appearance",
-      "storage": "Storage",
-      "import": "Import",
-      "upload": "Upload",
-      "finish": "Finish"
-    },
-    "intro": {
-      "appearance": "Welcome to Aero Tandem Studio. In just a few steps you can set language, appearance, storage, and import behavior. Everything else can be adjusted later in settings.",
-      "storage": "Completed jobs are saved to the storage location. You can also set the default drop zone here.",
-      "import": "Only the most important import defaults are set here. Advanced options like clearing, ejecting, or QR cleanup can be adjusted later in settings.",
-      "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later."
-    },
-    "import": {
-      "backupHint": "Imports the card through the recommended workflow using a local copy.",
-      "qrHint": "QR files stay in place by default. Cleanup behavior can be fine-tuned later."
-    },
-    "upload": {
-      "disabledHint": "Upload stays off. You can set up the server later in settings at any time."
-    },
-    "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
-    "operatorSingleRoleTm": "Only tandem master was found — that role will be kept on session reset.",
-    "operatorSingleRoleVs": "Only video jumper was found — that role will be kept on session reset.",
-    "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
     "standardDir": {
       "active": "Default folder active",
       "exists": "Default folder already exists",
@@ -1484,35 +1411,81 @@
     },
     "stepHint": {
       "appearance": "You can change the appearance later at any time.",
+      "crew": "Crew defaults and I am can be set later in settings.",
       "storage": "Without a storage location, jobs cannot be saved — you can set it later in settings.",
-      "import": "Backup, auto-import, and QR scan can be configured in more detail later.",
-      "server": "Server access can be configured later."
+      "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
+      "qr": "QR scan options can be configured later in settings.",
+      "server": "Server access can be configured later.",
+      "import": "Backup, import, eject, and QR scan are optional and can be changed later."
+    },
+    "crew": {
+      "operatorHintMissingRole": "Choose at least one role — then the name will be added to the crew.",
+      "namePlaceholder": "Choose or enter a name…",
+      "rolePlaceholder": "Choose a mode or name…",
+      "autoAddHint": "A new name is added to the crew list automatically.",
+      "roleRequiredActive": "At least one role must stay active.",
+      "roleRequired": "Choose at least one role."
     },
     "storage": {
       "pickFolderError": "Please choose a folder.",
       "folderPlaceholder": "Choose folder…"
     },
     "sd": {
-      "pickFolderOrDisableAutoBackup": "Choose a folder or disable auto backup."
+      "pickFolderOrDisableAutoBackup": "Choose a folder or disable auto backup.",
+      "onlyWithAutoBackup": "Only possible when auto backup is enabled",
+      "validLimitError": "Enter a valid limit in MB."
     },
     "skipAllConfirm": "Skip the entire setup?\n\nStorage, backup, and server can be configured later in settings. Some features will otherwise be limited.",
     "summary": {
       "skipped": "— skipped —",
+      "noneReset": "None (will be reset)",
       "description": "Please review the entries and finish.",
+      "sizeLimit": "Size limit",
       "disabled": "Disabled",
-      "on": "On",
-      "off": "Off",
-      "notSet": "— not set —",
       "missingFolder": "— folder missing —",
+      "notSet": "— not set —",
+      "off": "Off",
+      "on": "On",
+      "qrScan": "QR scan",
       "serverMissing": "— server missing —",
       "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
     "finish": "Finish setup",
     "skipAll": "Skip entire setup",
-    "saveFailed": "Settings could not be saved.",
     "complete": "Setup completed.",
     "completeTitle": "Success",
-    "standardFolderTitle": "Default folder"
+    "import": {
+      "backupHint": "Imports the card through the recommended workflow using a local copy.",
+      "qrHint": "QR files stay in place by default. Cleanup behavior can be fine-tuned later."
+    },
+    "intro": {
+      "appearance": "Welcome to Aero Tandem Studio. In just a few steps you can set language, appearance, storage, and import behavior. Everything else can be adjusted later in settings.",
+      "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
+      "storage": "Completed jobs are saved to the storage location. You can also set the default drop zone here.",
+      "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later."
+    },
+    "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
+    "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
+    "operatorSingleRoleTm": "Only tandem master was found — that role will be kept on session reset.",
+    "operatorSingleRoleVs": "Only video jumper was found — that role will be kept on session reset.",
+    "progress": "Step {{current}} of {{total}}",
+    "progressAria": "Setup: step {{current}} of {{total}}",
+    "saveFailed": "Settings could not be saved.",
+    "sections": {
+      "sdCards": "SD cards",
+      "qrDetection": "QR detection"
+    },
+    "standardFolderTitle": "Default folder",
+    "steps": {
+      "appearance": "Welcome",
+      "storage": "Storage",
+      "import": "Import",
+      "upload": "Upload",
+      "finish": "Finish"
+    },
+    "upload": {
+      "disabledHint": "Upload stays off. You can set up the server later in settings at any time."
+    }
   },
   "dateField": {
     "chooseDateAria": "Choose date",
@@ -1525,13 +1498,7 @@
     "title": "Console",
     "resizeAria": "Console height",
     "searchAria": "Search console",
-    "levelFilterAria": "Minimum log level (recording)",
-    "level": {
-      "debug": "Debug+",
-      "info": "Info+",
-      "warn": "Warn+",
-      "error": "Error"
-    },
+    "levelFilterAria": "Level filter",
     "autoScrollTitle": "Auto-scroll to bottom",
     "copyVisibleTitle": "Copy visible lines",
     "copy": "Copy",
@@ -1543,6 +1510,12 @@
     "closeAria": "Close console",
     "closeTitle": "Close (Esc)",
     "empty": "No log entries.",
-    "toggleTitle": "Console (Ctrl+Shift+J)"
+    "toggleTitle": "Console (Ctrl+Shift+J)",
+    "level": {
+      "debug": "Debug+",
+      "error": "Error",
+      "info": "Info+",
+      "warn": "Warn+"
+    }
   }
 }

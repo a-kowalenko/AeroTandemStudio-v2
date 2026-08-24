@@ -6,7 +6,11 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::config::ConfigState;
-use crate::smb::{test_connection, upload_path, ConnectionTestResult, UploadProgress, UploadResult};
+use crate::smb::{
+    abort_handoff_upload, notify_handoff_after_upload, upload_failure_is_cancelled,
+    test_connection, upload_path, ConnectionTestResult, HandoffUploadContext, UploadProgress,
+    UploadResult,
+};
 use crate::storage::logging::{self, file_name};
 
 pub const UPLOAD_PROGRESS_EVENT: &str = "upload-progress";
@@ -81,22 +85,27 @@ pub async fn test_server_connection(
 }
 
 /// Upload a finished video file or an entire folder to the configured server.
+///
+/// When `handoff` is set and upload succeeds, sends `handoff/ready` to AMS.
+/// On cancel with handoff context, cleans up the remote partial folder and notifies AMS.
 #[tauri::command]
 pub async fn upload_to_server(
     app: AppHandle,
     state: State<'_, ConfigState>,
     local_path: String,
     overrides: Option<ServerOverrides>,
+    handoff: Option<HandoffUploadContext>,
 ) -> Result<UploadResult, String> {
     let path = PathBuf::from(&local_path);
     if !path.exists() {
         return Err(format!("Lokaler Pfad existiert nicht: {local_path}"));
     }
 
-    let (url, login, password) = {
+    let (config, url, login, password) = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
         let o = overrides.unwrap_or_default();
         (
+            cache.clone(),
             o.server_url.unwrap_or_else(|| cache.server_url.clone()),
             o.server_login
                 .unwrap_or_else(|| cache.server_login.clone()),
@@ -111,7 +120,7 @@ pub async fn upload_to_server(
     );
 
     let app_for_progress = app.clone();
-    let result = upload_path(&path, &url, &login, &password, |progress| {
+    let result = upload_path(&path, &url, &login, &password, move |progress| {
         let event = UploadProgressEvent::from(progress);
         let _ = app_for_progress.emit(UPLOAD_PROGRESS_EVENT, &event);
     })
@@ -122,9 +131,17 @@ pub async fn upload_to_server(
             "smb",
             format!("Upload fertig: {} → {}", result.message, result.remote_path),
         );
+        if let Some(h) = handoff.as_ref().filter(|h| h.correlation_id().is_some()) {
+            notify_handoff_after_upload(&config, h).await;
+        }
         Ok(result)
     } else {
         logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
+        if upload_failure_is_cancelled(&result.message) {
+            if let Some(h) = handoff.as_ref().filter(|h| h.correlation_id().is_some()) {
+                abort_handoff_upload(&config, &path, h, &url, &login, &password).await;
+            }
+        }
         Err(result.message)
     }
 }

@@ -243,6 +243,7 @@ export function workflowStageSubtitle(
     appendActive: boolean;
     appendGuest: string | null;
     appendUploading: boolean;
+    createUploading?: boolean;
     manualImport: boolean;
     manualQr: boolean;
   },
@@ -274,6 +275,10 @@ export function workflowStageSubtitle(
   if (opts.manualQr && !opts.encodeBusy) {
     return tr("workflow.stage.manualQr");
   }
-  if (opts.encodeBusy) return tr("workflow.stage.encodeBusy");
+  if (opts.encodeBusy) {
+    return opts.createUploading
+      ? tr("workflow.stage.createUploading")
+      : tr("workflow.stage.encodeBusy");
+  }
   return tr("workflow.stage.done");
 }

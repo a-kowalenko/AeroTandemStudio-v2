@@ -369,6 +369,9 @@ pub async fn create_append_job(
     let local_folder_path = result.folder_path.clone();
 
     if config_for_ready.upload_to_server {
+        if crate::video::ffmpeg::is_cancelled() {
+            return Err(crate::video::ffmpeg::WORKFLOW_CANCELLED.into());
+        }
         logging::info(
             "append",
             format!("Nachreichung auf Server kopieren: {}", result.folder_name),
@@ -380,7 +383,7 @@ pub async fn create_append_job(
             &config_for_ready.server_url,
             &config_for_ready.server_login,
             &config_for_ready.server_password,
-            |progress| {
+            move |progress| {
                 let event =
                     crate::commands::smb::UploadProgressEvent::from(progress);
                 let _ = app_for_progress.emit(crate::commands::smb::UPLOAD_PROGRESS_EVENT, &event);
@@ -395,6 +398,21 @@ pub async fn create_append_job(
                     result.folder_name, uploaded.message
                 ),
             );
+            if crate::smb::upload_failure_is_cancelled(&uploaded.message) {
+                let handoff = crate::smb::HandoffUploadContext {
+                    correlation_id: Some(result.correlation_id.clone()),
+                    folder_name: Some(result.folder_name.clone()),
+                };
+                crate::smb::abort_handoff_upload(
+                    &config_for_ready,
+                    Path::new(&local_folder),
+                    &handoff,
+                    &config_for_ready.server_url,
+                    &config_for_ready.server_login,
+                    &config_for_ready.server_password,
+                )
+                .await;
+            }
             return Err(uploaded.message);
         }
         logging::info(

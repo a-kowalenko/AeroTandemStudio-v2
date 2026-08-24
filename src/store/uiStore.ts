@@ -6,8 +6,15 @@ export type DialogKind = "error" | "success" | "warning" | null;
 
 export type DialogVariant = "default" | "qr";
 
-/** SD-workflow (and similar) action rows in SuccessDialog. */
-export type DialogActionKind = "qr" | "backup" | "import" | "clear" | "eject";
+/** Status rows in SuccessDialog (SD workflow, connection check, …). */
+export type DialogActionKind =
+  | "qr"
+  | "backup"
+  | "import"
+  | "clear"
+  | "eject"
+  | "server"
+  | "ams";
 
 export type DialogActionTone = "success" | "error" | "warning" | "skipped";
 
@@ -34,6 +41,18 @@ export type DialogChoicesOptions = {
   onCancel: () => void;
 };
 
+/** Optional text/password field inside SuccessDialog (e.g. AMS access code). */
+export type DialogPromptOptions = {
+  label: string;
+  placeholder?: string;
+  password?: boolean;
+  initialValue?: string;
+  submitLabel: string;
+  cancelLabel?: string;
+  onSubmit: (value: string) => void | Promise<void>;
+  onCancel?: () => void;
+};
+
 export type DialogOptions = {
   autoCloseSecs?: number;
   /** Visual emphasis for QR customer recognition. */
@@ -51,6 +70,8 @@ export type DialogOptions = {
   confirm?: DialogConfirmOptions | null;
   /** Equal-weight choices (e.g. Handcam vs Outside). Escape = onCancel. */
   choices?: DialogChoicesOptions | null;
+  /** Inline prompt (e.g. enter AMS token after LAN discover). */
+  prompt?: DialogPromptOptions | null;
 };
 
 export type DialogConfirmOptions = {
@@ -103,6 +124,7 @@ type UiState = {
   dialogPrimaryAction: DialogPrimaryAction | null;
   dialogConfirm: DialogConfirmOptions | null;
   dialogChoices: DialogChoicesOptions | null;
+  dialogPrompt: DialogPromptOptions | null;
   loading: boolean;
   loadingMessage: string;
   settingsOpen: boolean;
@@ -155,6 +177,7 @@ const emptyDialogFields = {
   dialogPrimaryAction: null as DialogPrimaryAction | null,
   dialogConfirm: null as DialogConfirmOptions | null,
   dialogChoices: null as DialogChoicesOptions | null,
+  dialogPrompt: null as DialogPromptOptions | null,
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -193,6 +216,7 @@ export const useUiStore = create<UiState>((set) => ({
       dialogPrimaryAction: null,
       dialogConfirm: options?.confirm ?? null,
       dialogChoices: options?.choices ?? null,
+      dialogPrompt: options?.prompt ?? null,
     }),
   showWarning: (message, title, options) =>
     set({

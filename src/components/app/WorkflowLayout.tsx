@@ -130,6 +130,11 @@ export function WorkflowLayout({
     appendActive &&
     (serverPhase === "uploading" || /^upload/i.test(status.trim()));
 
+  const createUploading =
+    busy &&
+    !appendActive &&
+    (serverPhase === "uploading" || /^upload/i.test(status.trim()));
+
   const workflowView = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
     sdPhase,
@@ -149,6 +154,7 @@ export function WorkflowLayout({
     appendActive,
     appendGuest,
     appendUploading,
+    createUploading,
     percent,
     status,
     taskProgress,

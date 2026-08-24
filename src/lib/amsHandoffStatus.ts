@@ -40,10 +40,8 @@ export function isAmsHandoffTerminal(state: string | null | undefined): boolean 
 
 export function isAmsCancelled(view: AmsHandoffView): boolean {
   const code = (view.errorCode ?? "").trim().toLowerCase();
-  return (
-    view.state.trim().toLowerCase() === "failed" &&
-    (code === "cancelled" || code === "canceled")
-  );
+  if (code === "cancelled" || code === "canceled") return true;
+  return view.state.trim().toLowerCase() === "cancelled";
 }
 
 export function isAmsHandoffActive(view: AmsHandoffView): boolean {
@@ -114,7 +112,7 @@ export function handoffStateHint(view: AmsHandoffView): string | null {
 /** Tailwind classes for compact status chips. */
 export function handoffChipClass(view: AmsHandoffView): string {
   if (isAmsCancelled(view)) {
-    return "border-border/70 bg-muted/50 text-muted-foreground";
+    return "border-amber-500/45 bg-amber-500/10 text-amber-900 dark:text-amber-100";
   }
   switch (view.state.trim().toLowerCase()) {
     case "pending":
@@ -153,6 +151,21 @@ export function handoffStepIndex(state: string): number {
     default:
       return -1;
   }
+}
+
+/**
+ * Pipeline index used to color reached steps in the detail stepper.
+ * For cancel without a preserved pipeline state, assume interrupt at uploading
+ * (typical AMS abort) so earlier steps stay green.
+ */
+export function handoffProgressStepIndex(view: AmsHandoffView): number {
+  const fromState = handoffStepIndex(view.state);
+  if (fromState >= 0) return fromState;
+  if (isAmsCancelled(view)) {
+    // uploading — last step before Fertig; matches "Upload abgebrochen"
+    return 3;
+  }
+  return -1;
 }
 
 /** Categorize a Vorgang row for AMS filter chips. */

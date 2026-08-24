@@ -115,6 +115,23 @@ pub struct HandoffReadyResponse {
     pub error: Option<LookupErrorBody>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct HandoffCancelRequest {
+    pub correlation_id: String,
+    #[serde(default)]
+    pub folder_name: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct HandoffCancelResponse {
+    pub ok: bool,
+    pub cancelled: bool,
+    #[serde(default)]
+    pub error: Option<LookupErrorBody>,
+}
+
 fn normalize_base_url(raw: &str) -> Result<String, String> {
     let trimmed = raw.trim().trim_end_matches('/');
     if trimmed.is_empty() {
@@ -559,6 +576,91 @@ pub async fn notify_handoff_ready(
         return Err(msg);
     }
     Ok(body)
+}
+
+/// `POST /v1/handoff/cancel` — ATS aborted upload; drop pending handoff in AMS.
+pub async fn notify_handoff_cancel(
+    base_url: &str,
+    token: &str,
+    correlation_id: &str,
+    folder_name: Option<&str>,
+    reason: Option<&str>,
+    identity: &AtsBridgeIdentity,
+) -> Result<HandoffCancelResponse, String> {
+    let base = normalize_base_url(base_url)?;
+    let auth = auth_header(token)?;
+    let client = http_client().await?;
+    let req = HandoffCancelRequest {
+        correlation_id: correlation_id.trim().to_string(),
+        folder_name: folder_name.unwrap_or("").trim().to_string(),
+        reason: reason.unwrap_or("Upload abgebrochen").trim().to_string(),
+    };
+    let resp = client
+        .post(format!("{base}/v1/handoff/cancel"))
+        .header("Authorization", auth)
+        .header("x-ats-instance-id", identity.instance_id.clone())
+        .header("x-ats-hostname", identity.hostname.clone())
+        .header("x-ats-version", identity.ats_version.clone())
+        .header("x-ats-app", identity.ats_app.clone())
+        .json(&req)
+        .send()
+        .await
+        .map_err(|e| format!("AMS-Bridge handoff/cancel nicht erreichbar: {e}"))?;
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("AMS-Bridge: Token ungültig (401).".into());
+    }
+    let status = resp.status();
+    let body = resp
+        .json::<HandoffCancelResponse>()
+        .await
+        .map_err(|e| format!("AMS-Bridge handoff/cancel JSON (HTTP {status}): {e}"))?;
+    if !body.ok {
+        let msg = body
+            .error
+            .as_ref()
+            .map(|e| format!("{}: {}", e.code, e.message))
+            .unwrap_or_else(|| format!("handoff/cancel fehlgeschlagen (HTTP {status})"));
+        return Err(msg);
+    }
+    Ok(body)
+}
+
+/// Soft: only when bridge configured; unreachable → Ok(None).
+pub async fn maybe_notify_handoff_cancel(
+    config: &AppConfig,
+    correlation_id: &str,
+    folder_name: Option<&str>,
+    reason: Option<&str>,
+) -> Result<Option<HandoffCancelResponse>, String> {
+    let cid = correlation_id.trim();
+    if cid.is_empty() || !bridge_configured(config) {
+        return Ok(None);
+    }
+    let identity = build_ats_bridge_identity(config);
+    let base = match resolve_bridge_base_url(config) {
+        Ok(u) => u,
+        Err(_) => return Ok(None),
+    };
+    match notify_handoff_cancel(
+        &base,
+        &config.ams_bridge_token,
+        cid,
+        folder_name,
+        reason,
+        &identity,
+    )
+    .await
+    {
+        Ok(resp) => Ok(Some(resp)),
+        Err(e) if is_unreachable(&e) => Ok(None),
+        Err(e) => {
+            crate::storage::logging::warn(
+                "bridge",
+                format!("handoff/cancel ignoriert: {e}"),
+            );
+            Ok(None)
+        }
+    }
 }
 
 /// Soft: only when bridge configured; unreachable → Ok(None).

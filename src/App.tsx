@@ -41,11 +41,13 @@ import {
   getAppInfo,
   getUpdaterInstallHint,
   cancelUpdateInstall,
+  cancelEncode,
   installSpecificVersion,
   installUpdate,
   resolveBodyConcatFallback,
   resolveIntroMuxFallback,
   resolveReencodeConfirm,
+  resetWorkflowCancel,
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
@@ -136,6 +138,7 @@ function App() {
   const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
   const dialogConfirm = useUiStore((s) => s.dialogConfirm);
   const dialogChoices = useUiStore((s) => s.dialogChoices);
+  const dialogPrompt = useUiStore((s) => s.dialogPrompt);
   const closeDialog = useUiStore((s) => s.closeDialog);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -237,6 +240,8 @@ function App() {
 
   const appendActive = useAppendStore((s) => s.active);
   const appendWasActiveRef = useRef(false);
+  const uploadProgressActiveRef = useRef(false);
+  const jobCancelRequestedRef = useRef(false);
 
   const installBlockedReason = (() => {
     if (updateInstalling) return t("app.update.alreadyInstalling");
@@ -890,6 +895,8 @@ function App() {
           clear: 2,
           eject: 3,
           import: 4,
+          server: 5,
+          ams: 6,
         };
         statusActions.sort((a, b) => order[a.kind] - order[b.kind]);
 
@@ -1163,6 +1170,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen<EncodeProgress>("encode-progress", (event) => {
+      if (jobCancelRequestedRef.current) return;
       const p = event.payload;
 
       if (p.task_id != null && p.task_id > 0) {
@@ -1321,6 +1329,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen<UploadProgressEvent>("upload-progress", (event) => {
+      if (!uploadProgressActiveRef.current || jobCancelRequestedRef.current) return;
       const p = event.payload;
       setUploadProgress(p);
       setPercent(p.percent);
@@ -1341,7 +1350,7 @@ function App() {
     return () => {
       unlisten?.();
     };
-  }, [setUploadProgress]);
+  }, [setUploadProgress, t]);
 
   const resetProgress = useCallback(() => {
     setPercent(0);
@@ -1432,6 +1441,8 @@ function App() {
     }
 
     setBusy(true);
+    jobCancelRequestedRef.current = false;
+    uploadProgressActiveRef.current = false;
     resetProgress();
     setStatus(t("create.job.creating"));
     setPercent(1);
@@ -1477,16 +1488,30 @@ function App() {
         setTaskProgress([]);
         setServerPhase("uploading");
         setUploadProgress(null);
+        uploadProgressActiveRef.current = true;
         try {
-          const uploaded = await uploadToServer(res.base_output_dir);
+          const uploaded = await uploadToServer(res.base_output_dir, undefined, {
+            correlation_id: res.correlation_id?.trim() || null,
+            folder_name: res.base_filename?.trim() || null,
+          });
           uploadNote = uploaded.remote_path || uploaded.message || null;
           serverUploaded = true;
           setServerPhase("connected");
         } catch (uploadErr) {
+          if (isCancellationError(uploadErr)) {
+            setServerPhase("connected");
+            setUploadProgress(null);
+            uploadProgressActiveRef.current = false;
+            resetProgress();
+            setStatus(t("progress.default.cancelled"));
+            showWarning(t("create.job.cancelled"));
+            return;
+          }
           setServerPhase("error");
           showError(String(uploadErr), t("app.upload.title"));
           uploadNote = t("app.upload.failedNote");
         } finally {
+          uploadProgressActiveRef.current = false;
           setUploadProgress(null);
         }
       }
@@ -1518,26 +1543,29 @@ function App() {
       }
     } catch (e) {
       if (isCancellationError(e)) {
+        resetProgress();
         setStatus(t("progress.default.cancelled"));
         showWarning(t("create.job.cancelled"));
       } else {
         showError(presentAmsUserMessage(String(e)));
       }
     } finally {
+      uploadProgressActiveRef.current = false;
+      jobCancelRequestedRef.current = false;
       setBusy(false);
+      void resetWorkflowCancel().catch(() => {});
     }
   }
 
   async function cancel() {
     const cancellingQr = qrScanBusy && !busy && !appendActive;
+    jobCancelRequestedRef.current = true;
+    uploadProgressActiveRef.current = false;
     try {
-      await invoke("cancel_encode");
-      if (!cancellingQr && busy) {
-        setStatus("cancelled");
-        showWarning(t("create.job.cancelled"));
-      } else if (!cancellingQr && appendActive) {
-        setStatus("cancelled");
-        showWarning(t("history.appendCancelled"));
+      await cancelEncode();
+      if (!cancellingQr && (busy || appendActive)) {
+        resetProgress();
+        setStatus(t("progress.default.cancelled"));
       }
       // SD backup/import and QR: dedicated message when the job returns.
     } catch (e) {
@@ -1779,6 +1807,7 @@ function App() {
         dialogPrimaryAction={dialogPrimaryAction}
         dialogConfirm={dialogConfirm}
         dialogChoices={dialogChoices}
+        dialogPrompt={dialogPrompt}
         closeDialog={closeDialog}
         openSettings={openSettings}
         onSuccessClose={() => {

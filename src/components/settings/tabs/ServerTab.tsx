@@ -13,15 +13,15 @@ import { useConfigStore } from "@/store/configStore";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
-  presentServerConnectionError,
   serverGuestHint,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
+import { presentAmsBridgeError } from "@/lib/amsBridgeStatus";
 import {
-  formatAmsHealthSuccessMessage,
-  presentAmsBridgeError,
-} from "@/lib/amsBridgeStatus";
-import { amsBridgeDiscover } from "@/lib/tauri";
+  presentAmsConnectionAction,
+  presentServerConnectionAction,
+} from "@/lib/headerConnectionStatus";
+import { amsBridgeDiscover, amsBridgeHealth } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
@@ -34,6 +34,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   const { t } = useTranslation();
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
+  const closeDialog = useUiStore((s) => s.closeDialog);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
   const persistConfig = useConfigStore((s) => s.persist);
@@ -44,6 +45,8 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<AmsBridgeDiscovered[]>([]);
   const [bridgeLabel, setBridgeLabel] = useState("—");
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
   const serverUrlRef = useRef<HTMLDivElement | null>(null);
   const serverCredentialsRef = useRef<HTMLDivElement | null>(null);
   const serverUrlInputRef = useRef<HTMLInputElement | null>(null);
@@ -119,16 +122,22 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         server_login: draft.server_login,
         server_password: draft.server_password,
       });
-      if (result.ok) showSuccess(result.message, t("settings.tabs.server"));
-      else {
-        const presented = presentServerConnectionError({
-          rawMessage: result.message,
-          serverUrl: draft.server_url,
-          login: draft.server_login,
-          password: draft.server_password,
-          omitSettingsAction: true,
+      const action = presentServerConnectionAction({
+        ok: result.ok,
+        rawMessage: result.message,
+        serverUrl: draft.server_url,
+        login: draft.server_login,
+        password: draft.server_password,
+      });
+      if (result.ok) {
+        showSuccess("", t("header.connection.titleServerOk"), {
+          actions: [action],
+          autoCloseSecs: 3,
         });
-        showError(presented.message, t("settings.tabs.server"));
+      } else {
+        showSuccess("", t("header.connection.titleFailed"), {
+          actions: [action],
+        });
       }
     } finally {
       setTestingServer(false);
@@ -151,10 +160,16 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       }
       setDraft(saved);
       const result = await checkAmsHealth();
+      const action = presentAmsConnectionAction({
+        ok: result.ok,
+        rawMessage: result.message,
+      });
       if (result.ok) {
-        const okMsg = formatAmsHealthSuccessMessage(result.message);
-        setBridgeLabel(okMsg);
-        showSuccess(okMsg, t("settings.server.ams.operatorTitle"));
+        setBridgeLabel(action.summary);
+        showSuccess("", t("header.connection.titleAmsOk"), {
+          actions: [action],
+          autoCloseSecs: 3,
+        });
         if (result.base_url) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
@@ -164,7 +179,9 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           omitSettingsAction: true,
         });
         setBridgeLabel(presented.message);
-        showError(presented.message, t("settings.server.ams.operatorTitle"));
+        showSuccess("", t("header.connection.titleFailed"), {
+          actions: [action],
+        });
       }
     } catch (err) {
       const presented = presentAmsBridgeError({
@@ -172,7 +189,14 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         omitSettingsAction: true,
       });
       setBridgeLabel(presented.message);
-      showError(presented.message, t("settings.server.ams.operatorTitle"));
+      showSuccess("", t("header.connection.titleFailed"), {
+        actions: [
+          presentAmsConnectionAction({
+            ok: false,
+            rawMessage: String(err),
+          }),
+        ],
+      });
     } finally {
       setTestingBridge(false);
     }
@@ -192,17 +216,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           t("settings.server.ams.operatorTitle"),
         );
       } else if (list.length === 1) {
-        patch("ams_bridge_url", list[0].base_url);
-        setBridgeLabel(
-          t("settings.server.ams.foundStatus", {
-            instance: list[0].instance,
-            url: list[0].base_url,
-          }),
-        );
-        showSuccess(
-          t("settings.server.ams.foundSuccess", { url: list[0].base_url }),
-          t("settings.server.ams.operatorTitle"),
-        );
+        await applyDiscoveredAmsUrl(list[0].base_url, list[0].instance);
       } else {
         setBridgeLabel(t("settings.server.ams.foundMany", { count: list.length }));
       }
@@ -216,6 +230,123 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
     } finally {
       setDiscovering(false);
     }
+  }
+
+  /** Try server password as AMS token; on failure open token prompt. */
+  async function applyDiscoveredAmsUrl(baseUrl: string, instance?: string) {
+    patch("ams_bridge_url", baseUrl);
+    setBridgeLabel(
+      t("settings.server.ams.foundStatus", {
+        instance: instance ?? "",
+        url: baseUrl,
+      }),
+    );
+
+    const current = draftRef.current;
+    const serverPassword = current?.server_password?.trim() ?? "";
+    if (serverPassword && current) {
+      try {
+        const result = await amsBridgeHealth({
+          baseUrl,
+          token: serverPassword,
+        });
+        if (result.ok) {
+          useAmsBridgeStore.getState().applyResult(result);
+          const next = {
+            ...current,
+            ams_bridge_url: baseUrl,
+            ams_bridge_token: serverPassword,
+            ams_bridge_last_ok_url: result.base_url || baseUrl,
+          };
+          patch("ams_bridge_token", serverPassword);
+          if (result.base_url) {
+            patch("ams_bridge_last_ok_url", result.base_url);
+          }
+          const saved = await persistConfig(next);
+          if (saved) setDraft(saved);
+          const action = presentAmsConnectionAction({
+            ok: true,
+            rawMessage: result.message,
+          });
+          setBridgeLabel(action.summary);
+          showSuccess(
+            t("settings.server.ams.foundSuccessViaServerPassword"),
+            t("header.connection.titleAmsOk"),
+            {
+              actions: [action],
+              autoCloseSecs: 3,
+            },
+          );
+          return;
+        }
+      } catch {
+        // Fall through to manual token prompt.
+      }
+    }
+
+    promptAmsTokenAfterDiscover(baseUrl);
+  }
+
+  function promptAmsTokenAfterDiscover(baseUrl: string) {
+    const current = draftRef.current;
+    showSuccess(
+      t("settings.server.ams.foundSuccess", { url: baseUrl }),
+      t("settings.server.ams.operatorTitle"),
+      {
+        prompt: {
+          label: t("settings.server.ams.token"),
+          password: true,
+          initialValue: current?.ams_bridge_token ?? "",
+          submitLabel: t("ams.actions.checkToken"),
+          cancelLabel: t("dialogs.update.later"),
+          onCancel: () => closeDialog(),
+          onSubmit: async (token) => {
+            const latest = draftRef.current;
+            if (!latest) return;
+            const next = {
+              ...latest,
+              ams_bridge_url: baseUrl,
+              ams_bridge_token: token,
+            };
+            patch("ams_bridge_url", baseUrl);
+            patch("ams_bridge_token", token);
+            const saved = await persistConfig(next);
+            if (!saved) {
+              showError(
+                t("settings.server.ams.saveFailed"),
+                t("settings.server.ams.operatorTitle"),
+              );
+              return;
+            }
+            setDraft(saved);
+            const result = await checkAmsHealth();
+            const action = presentAmsConnectionAction({
+              ok: result.ok,
+              rawMessage: result.message,
+            });
+            if (result.ok) {
+              setBridgeLabel(action.summary);
+              if (result.base_url) {
+                patch("ams_bridge_last_ok_url", result.base_url);
+              }
+              showSuccess("", t("header.connection.titleAmsOk"), {
+                actions: [action],
+                autoCloseSecs: 3,
+              });
+            } else {
+              const presented = presentAmsBridgeError({
+                rawMessage: result.message,
+                omitSettingsAction: true,
+              });
+              setBridgeLabel(presented.message);
+              showSuccess("", t("header.connection.titleFailed"), {
+                actions: [action],
+              });
+            }
+          },
+        },
+      },
+    );
   }
 
   return (
@@ -400,13 +531,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
                   type="button"
                   className="w-full text-left hover:underline"
                   onClick={() => {
-                    patch("ams_bridge_url", d.base_url);
-                    setBridgeLabel(
-                      t("settings.server.ams.applied", {
-                        instance: d.instance,
-                        url: d.base_url,
-                      }),
-                    );
+                    void applyDiscoveredAmsUrl(d.base_url, d.instance);
                     setDiscovered([]);
                   }}
                 >

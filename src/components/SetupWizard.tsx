@@ -740,7 +740,10 @@ export function SetupWizard({ open, onComplete }: Props) {
       <div className="flex h-[min(720px,92vh)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
         <div className="shrink-0 border-b border-border px-6 py-4">
           <p className="text-xs uppercase tracking-wide text-muted">
-            Schritt {step + 1} von {STEPS.length}
+            {t("setupWizard.progress", {
+              current: step + 1,
+              total: STEPS.length,
+            })}
           </p>
           <h2
             id="setup-wizard-title"
@@ -754,7 +757,10 @@ export function SetupWizard({ open, onComplete }: Props) {
             aria-valuemin={1}
             aria-valuemax={STEPS.length}
             aria-valuenow={step + 1}
-            aria-label={`Einrichtung: Schritt ${step + 1} von ${STEPS.length}`}
+            aria-label={t("setupWizard.progressAria", {
+              current: step + 1,
+              total: STEPS.length,
+            })}
           >
             {STEPS.map((name, i) => (
               <span
@@ -891,7 +897,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  Ablage
+                  {t("settings.general.storage.title")}
                 </p>
                 <FolderDirField
                   label={t("common.labels.storageLocation")}
@@ -930,7 +936,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  SD-Karten
+                  {t("setupWizard.sections.sdCards")}
                 </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -987,6 +993,28 @@ export function SetupWizard({ open, onComplete }: Props) {
                     }
                     error={fieldErrors.sd_backup_folder}
                   />
+                  <label
+                    className={cn(
+                      "flex items-center gap-2 text-sm",
+                      !draft.sd_auto_backup && "pointer-events-none",
+                    )}
+                    title={
+                      draft.sd_auto_backup
+                        ? t("settings.sd.backup.clearAfterTitleOn")
+                        : t("settings.sd.backup.clearAfterTitleOff")
+                    }
+                  >
+                    <Checkbox
+                      checked={
+                        draft.sd_clear_after_backup && draft.sd_auto_backup
+                      }
+                      disabled={!draft.sd_auto_backup}
+                      onCheckedChange={(v) =>
+                        patch("sd_clear_after_backup", v === true)
+                      }
+                    />
+                    {t("settings.sd.backup.clearAfter")}
+                  </label>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1013,7 +1041,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               </div>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  QR-Erkennung
+                  {t("setupWizard.sections.qrDetection")}
                 </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1156,11 +1184,8 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <SummaryRow
                   label={t("common.labels.language")}
                   value={
-                    draft.ui_language === "en"
-                      ? "English"
-                      : draft.ui_language === "es-MX"
-                        ? "Espanol (Mexico)"
-                        : "Deutsch"
+                    LANGUAGE_OPTIONS.find((o) => o.value === draft.ui_language)
+                      ?.label ?? draft.ui_language
                   }
                 />
                 <SummaryRow
@@ -1198,6 +1223,14 @@ export function SetupWizard({ open, onComplete }: Props) {
                   }
                 />
                 <SummaryRow
+                  label={t("settings.sd.backup.clearAfter")}
+                  value={
+                    draft.sd_auto_backup && draft.sd_clear_after_backup
+                      ? t("setupWizard.summary.on")
+                      : t("setupWizard.summary.off")
+                  }
+                />
+                <SummaryRow
                   label={t("settings.sd.import.auto")}
                   value={draft.sd_auto_import ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
                 />
@@ -1206,7 +1239,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   value={draft.sd_eject_after_workflow ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
                 />
                 <SummaryRow
-                  label="QR-Scan"
+                  label={t("setupWizard.summary.qrScan")}
                   value={
                     skippedSteps.has(2)
                       ? t("setupWizard.summary.skipped")
