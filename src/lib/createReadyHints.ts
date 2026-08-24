@@ -157,12 +157,12 @@ const HINT_META: Record<string, Omit<HintMeta, "label"> & { labelKey: string }> 
     target: "datum",
   },
   "Kunden-ID ist erforderlich": {
-    labelKey: "create.validation.customerIdRequired",
+    labelKey: "create.ready.chips.customerId",
     kind: "missing",
     target: "kunden-id",
   },
   "Booking-ID ist erforderlich": {
-    labelKey: "create.validation.bookingIdRequired",
+    labelKey: "create.ready.chips.bookingId",
     kind: "missing",
     target: "booking-id",
   },

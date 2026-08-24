@@ -417,6 +417,8 @@
       "fileMissing": "Falta el archivo",
       "customerId": "ID de cliente",
       "bookingId": "ID de reserva",
+      "customerIdRequired": "Se requiere ID de cliente",
+      "bookingIdRequired": "Se requiere ID de reserva",
       "validation": "Validación",
       "storageDeferredHint": "La ubicación de almacenamiento se pedirá al crear y luego se guardará."
     },
@@ -433,6 +435,8 @@
         "date": "Fecha",
         "name": "Nombre",
         "email": "Correo",
+        "customerId": "ID de cliente",
+        "bookingId": "ID de reserva",
         "product": "Producto",
         "videos": "Videos",
         "photos": "Fotos",

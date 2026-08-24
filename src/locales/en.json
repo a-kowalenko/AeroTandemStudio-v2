@@ -417,6 +417,8 @@
       "fileMissing": "File missing",
       "customerId": "Customer ID",
       "bookingId": "Booking ID",
+      "customerIdRequired": "Customer ID is required",
+      "bookingIdRequired": "Booking ID is required",
       "validation": "Validation",
       "storageDeferredHint": "Storage location will be chosen when creating and then saved."
     },
@@ -433,6 +435,8 @@
         "date": "Date",
         "name": "Name",
         "email": "Email",
+        "customerId": "Customer ID",
+        "bookingId": "Booking ID",
         "product": "Product",
         "videos": "Videos",
         "photos": "Photos",

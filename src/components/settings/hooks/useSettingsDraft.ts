@@ -17,6 +17,7 @@ import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 import { runAmsAutoConnect } from "@/lib/amsAutoConnect";
 import { pushFlatToActiveProfile } from "@/lib/serverProfile";
 import { composeSdPcName, resolveSdPcName } from "@/lib/sdPcName";
+import { showSettingsSaveToast } from "@/lib/settingsSaveToast";
 
 function sortCrewList(config: AppConfig): AppConfig {
   const crew_list = [...(config.crew_list ?? [])].sort((a, b) =>
@@ -34,7 +35,6 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
   const persist = useConfigStore((s) => s.persist);
   const resetToDefaults = useConfigStore((s) => s.resetToDefaults);
   const saving = useConfigStore((s) => s.saving);
-  const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
@@ -138,7 +138,7 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       return false;
     }
 
-    showSuccess(t("settings.save.success"));
+    showSettingsSaveToast(t("settings.save.success"));
     if (serverChanged && toSave.server_url.trim()) {
       void checkConnection({
         server_url: toSave.server_url,
@@ -163,7 +163,6 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     persist,
     resetAmsHealth,
     showError,
-    showSuccess,
     t,
   ]);
 
