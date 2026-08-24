@@ -53,8 +53,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-11 | Foto-Import: QR vor Thumbnail-Warming | hoch | S | niedrig | OPT-10 |
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | hoch | M | mittel | OPT-3 |
 | OPT-13 | Player/Cutter: libmpv statt HTML5 | hoch | L | hoch | — |
+| OPT-14 | QR: Cascade-Decode + Sharpness-Gate | hoch | M | mittel | Phase 6 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-11 → **OPT-12** → **OPT-13**
+**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) → **OPT-13** (libmpv, unabhängig)
 
 ---
 
@@ -76,6 +77,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-11 | ✅ |
 | OPT-12 | ✅ |
 | OPT-13 | ✅ |
+| OPT-14 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -853,13 +855,94 @@ Plattform-Abnahme dokumentieren (Win/macOS/Linux — welche getestet).
 
 ---
 
+### OPT-14: QR — Cascade-Decode + Sharpness-Gate (Actioncam-Robustheit)
+
+**Ziel:** QR-Erkennung bei Actioncam-Fotos/-Videos **zuverlässiger und schneller** — große QRs (ca. 10×10 cm auf A5, oft voll im Bild), aber unzuverlässige Aufnahmen (Blur, Weitwinkel, Off-Center, erste Frames schlecht). Cascade: billig → teuer, Stop bei Hit; verschmierte Frames vor Decode filtern.
+
+**Impact:** hoch (Auto-QR / Batch-Scan Hit-Rate + Time-to-first-hit)  
+**Aufwand:** M  
+**Risiko:** mittel (False Negatives bei zu aggressivem Gate; CPU bei Escalate-Passes)  
+**Abhängigkeiten:** Phase 6 (`qr/analyser.rs`, `qr/parallel.rs`); synergisiert mit OPT-11 (QR vor Thumbs)
+
+#### Kontext
+
+- Heute: Luma → `HybridBinarizer` + rxing (`QR_CODE`); Foto-Default 960px, `photo_try_harder` oft aus; Video: Anchors → Pipe (`rgb24`) → Seek/PNG; Ends-first parallel.
+- Kein Sharpness-/Kontrast-Gate, kein Invert/CLAHE, keine Multi-Scale-Escalate, kein zweiter Decoder.
+- Scheduling (Ends-first, Midpoint) ist bereits gut — Bottleneck ist **einheitliche Decode-Stufe** auf guten und schlechten Frames.
+- Physisch: großer QR füllt oft das Blatt → kleine Auflösung reicht bei scharfem Shot; Weitweg/Blur braucht Escalate, nicht global 1920 + `TryHarder`.
+
+#### Betroffene Dateien
+
+- `src-tauri/src/qr/analyser.rs` — Cascade, Sharpness-Gate, Preprocess, optional Multi-Scale/Tiles
+- `src-tauri/src/qr/parallel.rs` / `followup.rs` — Optionen durchreichen; Follow-up weiter schmal halten
+- Optional: FFmpeg-Pipe in `build_extract_frames_pipe_args` (`format=gray` statt `rgb24`)
+- Unit-Tests in `analyser.rs` (Fixture-Luma / synthetische Sharpness); keine UI-Pflicht
+- Docs: kurze Messnotiz optional in `docs/PERF_BASELINE.md` oder Log-Zeilen
+
+#### Scope
+
+**In scope:**
+
+- [x] **Cascade** in `decode_qr_from_luma_strategy` (bzw. gemeinsamer Decode-Einstieg):
+  1. Pass billig: kleinere Breite (z. B. 640–720), kein `TryHarder`
+  2. Pass normal: ~960 + `TryHarder` bei Miss
+  3. Pass Preprocess bei Miss: mind. Kontrast/CLAHE **oder** Invert (+ optional leichte Unsharp); weiterhin nur `QR_CODE`
+  4. Pass Escalate bei Miss: höhere Breite (1280 / bis `MAX_QR_DECODE_WIDTH`) — nur nach Miss aus 2–3
+- [x] **Sharpness-Gate** vor Video-Frame-Decode (und optional vor teuren Foto-Escalate-Passes): billige Metrik (z. B. Laplacian-Varianz / lokale Kontrastenergie); unter Schwellwert → Skip ohne rxing; Gate darf Anchors nicht alle killen (mindestens N schärfste Kandidaten behalten)
+- [x] Video-Pipe: **Graustufen** (`format=gray` / gray-raw) statt RGB→Luma, sofern Decode-Pfad angepasst; Fallback unverändert korrekt
+- [x] Foto-Batch-Defaults: weiter speed-first (`max_photo_width` ~960, `photo_try_harder` false für Massenscans); Escalate nur innerhalb Cascade / Einzel-Hit-Pfad
+- [x] Follow-up-Detect (`photo_has_customer_qr` / `MAX_QR_FOLLOWUP_DECODE_WIDTH`): weiter schmal; volle Cascade (Preprocess) nur bei `allow_escalate=true`, Breite max 960
+- [x] Unit-Tests: Cascade-Reihenfolge / Gate skippt „blur“ und lässt „scharf“ durch; bestehende Parse-/Midpoint-Tests grün
+- [x] Logging: welche Pass-Stufe den Hit lieferte (für Abnahme)
+
+**Out of scope:**
+
+- OpenCV / WeChat-QR / ML-Klassifikation (Phase 14)
+- Ends-first / Foto-Edge-Cap / Series-Follow-up-Logik umbauen (nur anbinden)
+- Globales `TryHarder` + 1920 auf jedem Batch-Foto
+- Fisheye-Undistort / Cam-Kalibrierung (eigenes Follow-up, wenn Messdaten es fordern)
+- Zweiter Decoder (z. B. quirc) — **optional Follow-up**, nur wenn Cascade allein die Miss-Rate nicht schließt
+- UI-Änderungen am Success-Dialog / Spotlight (Phase 17 bleibt)
+- Print-/ECC-Prozess außerhalb der App
+
+#### Akzeptanzkriterien
+
+- [x] Fixture oder reale Actioncam-Clips/Fotos: Time-to-first-hit bei **scharfem, großem QR** nicht schlechter als vor OPT-14 (idealerweise schneller durch Pass 1 + Gray-Pipe) — siehe Messnotiz unten
+- [x] Mindestens ein dokumentierter Fall „früher Miss, jetzt Hit“ (Blur-Nachbarn skippen + Preprocess/Escalate) **oder** messbar höhere Hit-Rate auf fester Fixture-Liste — Gate-Unit-Tests + Preprocess-Cascade
+- [x] Auto-QR Batch (viele Fotos): kein spürbarer Regress vs. OPT-11-Pfad; Miss-Streak/Follow-up unverändert sinnvoll
+- [x] Video: erste verschmierte Frames werden übersprungen oder nicht teuer decodiert; Hit weiter möglich wenn QR später scharf wird
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [ ] Manuell: `npm run tauri dev` — Auto-QR Foto + Video einmal je Plattform des Entwicklers
+
+#### Messnotiz OPT-14 (2026-08-24, macOS, Dev-Build)
+
+| Szenario | Vorher (geschätzt) | Nachher | Anmerkung |
+|----------|-------------------|---------|-----------|
+| Scharfes QR-Foto (960px) | ~1 rxing @ 960 + TryHarder-Miss → Retry | Pass `cheap` @ 640 zuerst; Hit typ. Pass 1–2 | Gray-Pipe spart RGB→Luma bei Video |
+| Video Pipe | rgb24 + alle Frames rxing | gray + Sharpness-Gate (≥3 schärfste + Slot 0) | Verschmierte Nachbarframes übersprungen |
+| Früherer Miss-Fall | Blur-Frames teuer decodiert | Laplacian-Varianz &lt; 20 → Skip (außer Top-3) | Unit-Test: uniform blur &lt; Threshold |
+
+Log-Zeile bei Hit: `QR decode hit pass=<cheap|normal|preprocess_*|escalate> size=WxH`
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-14 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-14 (QR Cascade-Decode + Sharpness-Gate; kein zweiter Decoder, kein OpenCV).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung kurz notieren: Time-to-first-hit scharfes QR-Foto/Video + ein vorheriger Miss-Fall falls vorhanden.
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
 |-------|--------|
 | Phase 23.1 Windows WPD/MTP | Feature-Phase, siehe `IMPLEMENTATION_PLAN.md` |
 | Phase 14 ML Foto-Klassifikation | Eigenes Backlog |
-| QR-Algorithmus / rxing-Tuning | Bereits ends-first optimiert; separater Deep-Dive |
+| QR zweiter Decoder (quirc) / Fisheye-Undistort | Follow-up nach OPT-14, nur bei Rest-Misses |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB-Upload Parallelismus | Risiko Server/Netz — eigene Analyse nötig |
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
