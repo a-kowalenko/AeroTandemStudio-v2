@@ -32,6 +32,20 @@ import {
   previewRotateMediaStyle,
   previewRotateStageClass,
 } from "../lib/mediaPreviewRotate";
+import { FILMSTRIP_FRAME_COUNT } from "../lib/filmstripPrefetch";
+
+function FilmstripSkeleton({ count = FILMSTRIP_FRAME_COUNT }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => (
+        <div
+          key={`fs-sk-${i}`}
+          className="h-full min-w-0 flex-1 animate-pulse border-r border-neutral-900/50 bg-neutral-700/90 last:border-r-0"
+        />
+      ))}
+    </>
+  );
+}
 
 type PlayerBackend = "html5" | "mpv";
 function VolumeLevelIcon({
@@ -1347,7 +1361,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                           />
                         ))
                       ) : (
-                        <div className="h-full w-full bg-gradient-to-b from-neutral-700 to-neutral-900" />
+                        <FilmstripSkeleton />
                       )}
                     </div>
 
@@ -1453,13 +1467,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 <>
                   <div className="absolute inset-0 overflow-hidden rounded-md ring-1 ring-inset ring-white/10">
                     <div className="absolute inset-0 flex bg-neutral-800">
-                      {filmstripFrames?.map((url, i) => (
-                        <div
-                          key={`fs-split-${i}`}
-                          className="h-full min-w-0 flex-1 bg-cover bg-center"
-                          style={{ backgroundImage: `url(${url})` }}
-                        />
-                      ))}
+                      {filmstripFrames && filmstripFrames.length > 0 ? (
+                        filmstripFrames.map((url, i) => (
+                          <div
+                            key={`fs-split-${i}`}
+                            className="h-full min-w-0 flex-1 bg-cover bg-center"
+                            style={{ backgroundImage: `url(${url})` }}
+                          />
+                        ))
+                      ) : (
+                        <FilmstripSkeleton />
+                      )}
                     </div>
                     {/* Soft dim left/right with a narrow undimmed seam at the cut */}
                     <div

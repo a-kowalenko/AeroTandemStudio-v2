@@ -11,39 +11,73 @@ export type FilmstripPrefetchResult = {
   keyframesSecs: number[];
 };
 
+/** Incremental update while filmstrip / keyframes load independently. */
+export type FilmstripPrefetchPartial = {
+  frames?: string[];
+  keyframesSecs?: number[];
+};
+
 export type FilmstripPrefetchClip = {
   path: string;
   durationSecs: number | null;
   revision: number;
 };
 
+type CacheEntry = {
+  frames: string[] | null;
+  keyframesSecs: number[] | null;
+};
+
 function memKey(path: string, revision: number): string {
   return `${path}\0${revision}`;
+}
+
+function isComplete(entry: CacheEntry): entry is FilmstripPrefetchResult {
+  return entry.frames != null && entry.keyframesSecs != null;
+}
+
+function toResult(entry: CacheEntry): FilmstripPrefetchResult | null {
+  if (!isComplete(entry)) return null;
+  return { frames: entry.frames, keyframesSecs: entry.keyframesSecs };
 }
 
 const CONCURRENCY = 1;
 
 type PendingItem = FilmstripPrefetchClip & { priority: number; force: boolean };
 
+type Waiter = {
+  resolve: (value: FilmstripPrefetchResult) => void;
+  reject: (reason: unknown) => void;
+};
+
+type PartialListener = (partial: FilmstripPrefetchPartial) => void;
+
 class FilmstripPrefetchQueue {
-  private cache = new Map<string, FilmstripPrefetchResult>();
+  private cache = new Map<string, CacheEntry>();
   private pending = new Map<string, PendingItem>();
   private inFlight = new Set<string>();
-  private waiters = new Map<
-    string,
-    Array<{
-      resolve: (value: FilmstripPrefetchResult) => void;
-      reject: (reason: unknown) => void;
-    }>
-  >();
+  private waiters = new Map<string, Waiter[]>();
+  private partialListeners = new Map<string, PartialListener[]>();
   private active = 0;
   private paused = false;
   private debounceTimer: number | null = null;
   private scheduled: Array<FilmstripPrefetchClip & { priority: number }> = [];
   private generation = 0;
 
+  /** Full cache hit only (both filmstrip + keyframes). */
   getCached(path: string, revision: number): FilmstripPrefetchResult | null {
+    const entry = this.cache.get(memKey(path, revision));
+    return entry ? toResult(entry) : null;
+  }
+
+  /** Partial or full cache (either side may still be null). */
+  getPartial(path: string, revision: number): CacheEntry | null {
     return this.cache.get(memKey(path, revision)) ?? null;
+  }
+
+  isComplete(path: string, revision: number): boolean {
+    const entry = this.cache.get(memKey(path, revision));
+    return entry != null && isComplete(entry);
   }
 
   /** Block background prefetch during import/encode/QR (workflow busy). */
@@ -63,9 +97,7 @@ class FilmstripPrefetchQueue {
     for (const [key, item] of this.pending) {
       if (item.force) continue;
       this.pending.delete(key);
-      const ws = this.waiters.get(key) ?? [];
-      this.waiters.delete(key);
-      for (const w of ws) w.reject(new Error("filmstrip prefetch paused"));
+      this.rejectWaiters(key, new Error("filmstrip prefetch paused"));
     }
   }
 
@@ -75,7 +107,7 @@ class FilmstripPrefetchQueue {
   schedule(clips: FilmstripPrefetchClip[], debounceMs = PREFETCH_DEBOUNCE_MS) {
     if (this.paused || clips.length === 0) return;
     const [active, next] = clips.slice(0, 2);
-    this.enqueue(active.path, active.durationSecs, active.revision, 100, undefined, false);
+    this.enqueue(active.path, active.durationSecs, active.revision, 100, undefined, undefined, false);
     if (!next) {
       if (this.debounceTimer != null) {
         window.clearTimeout(this.debounceTimer);
@@ -94,37 +126,53 @@ class FilmstripPrefetchQueue {
       if (gen !== this.generation || this.paused) return;
       const batch = this.scheduled.splice(0);
       for (const item of batch) {
-        this.enqueue(item.path, item.durationSecs, item.revision, item.priority, undefined, false);
+        this.enqueue(
+          item.path,
+          item.durationSecs,
+          item.revision,
+          item.priority,
+          undefined,
+          undefined,
+          false,
+        );
       }
     }, debounceMs);
   }
 
-  /** Immediate prefetch (cutter open on cache miss). */
+  /**
+   * Immediate prefetch (cutter open on cache miss).
+   * `onPartial` fires as soon as filmstrip or keyframes arrive (progressive UI).
+   */
   prefetch(
     path: string,
     durationSecs: number | null,
     revision: number,
     priority = 90,
+    onPartial?: PartialListener,
   ): Promise<FilmstripPrefetchResult> {
     const key = memKey(path, revision);
-    const hit = this.cache.get(key);
-    if (hit) return Promise.resolve(hit);
+    const hit = toResult(this.cache.get(key) ?? { frames: null, keyframesSecs: null });
+    if (hit) {
+      onPartial?.({ frames: hit.frames, keyframesSecs: hit.keyframesSecs });
+      return Promise.resolve(hit);
+    }
 
-    if (this.inFlight.has(key)) {
-      return new Promise((resolve, reject) => {
-        const hit = this.cache.get(key);
-        if (hit) {
-          resolve(hit);
-          return;
-        }
-        const list = this.waiters.get(key) ?? [];
-        list.push({ resolve, reject });
-        this.waiters.set(key, list);
-      });
+    const partial = this.cache.get(key);
+    if (partial) {
+      if (partial.frames) onPartial?.({ frames: partial.frames });
+      if (partial.keyframesSecs) onPartial?.({ keyframesSecs: partial.keyframesSecs });
     }
 
     return new Promise((resolve, reject) => {
-      this.enqueue(path, durationSecs, revision, priority, [{ resolve, reject }], true);
+      this.enqueue(
+        path,
+        durationSecs,
+        revision,
+        priority,
+        [{ resolve, reject }],
+        onPartial ? [onPartial] : undefined,
+        true,
+      );
     });
   }
 
@@ -133,25 +181,36 @@ class FilmstripPrefetchQueue {
     durationSecs: number | null,
     revision: number,
     priority: number,
-    resolvers?: Array<{
-      resolve: (value: FilmstripPrefetchResult) => void;
-      reject: (reason: unknown) => void;
-    }>,
+    resolvers?: Waiter[],
+    partials?: PartialListener[],
     force = false,
   ) {
     const key = memKey(path, revision);
-    if (this.cache.has(key)) {
-      const hit = this.cache.get(key)!;
-      for (const w of resolvers ?? []) w.resolve(hit);
+    const complete = toResult(this.cache.get(key) ?? { frames: null, keyframesSecs: null });
+    if (complete) {
+      for (const w of resolvers ?? []) w.resolve(complete);
+      if (partials?.length) {
+        const payload = {
+          frames: complete.frames,
+          keyframesSecs: complete.keyframesSecs,
+        };
+        for (const p of partials) p(payload);
+      }
       return;
     }
 
+    if (resolvers?.length) {
+      const list = this.waiters.get(key) ?? [];
+      list.push(...resolvers);
+      this.waiters.set(key, list);
+    }
+    if (partials?.length) {
+      const list = this.partialListeners.get(key) ?? [];
+      list.push(...partials);
+      this.partialListeners.set(key, list);
+    }
+
     if (this.inFlight.has(key)) {
-      if (resolvers?.length) {
-        const list = this.waiters.get(key) ?? [];
-        list.push(...resolvers);
-        this.waiters.set(key, list);
-      }
       return;
     }
 
@@ -159,31 +218,32 @@ class FilmstripPrefetchQueue {
     if (existing) {
       existing.priority = Math.max(existing.priority, priority);
       existing.force = existing.force || force;
-      if (resolvers?.length) {
-        const list = this.waiters.get(key) ?? [];
-        list.push(...resolvers);
-        this.waiters.set(key, list);
-      }
       this.pump();
       return;
     }
 
     this.pending.set(key, { path, durationSecs, revision, priority, force });
-    if (resolvers?.length) {
-      const list = this.waiters.get(key) ?? [];
-      list.push(...resolvers);
-      this.waiters.set(key, list);
-    }
     this.pump();
   }
 
-  private flushWaiters(key: string, result: FilmstripPrefetchResult | null, error?: unknown) {
+  private notifyPartial(key: string, partial: FilmstripPrefetchPartial) {
+    const listeners = this.partialListeners.get(key);
+    if (!listeners?.length) return;
+    for (const listener of listeners) listener(partial);
+  }
+
+  private rejectWaiters(key: string, error: unknown) {
     const ws = this.waiters.get(key) ?? [];
     this.waiters.delete(key);
-    for (const w of ws) {
-      if (result) w.resolve(result);
-      else w.reject(error ?? new Error("filmstrip prefetch failed"));
-    }
+    this.partialListeners.delete(key);
+    for (const w of ws) w.reject(error);
+  }
+
+  private resolveWaiters(key: string, result: FilmstripPrefetchResult) {
+    const ws = this.waiters.get(key) ?? [];
+    this.waiters.delete(key);
+    this.partialListeners.delete(key);
+    for (const w of ws) w.resolve(result);
   }
 
   private pump() {
@@ -203,36 +263,66 @@ class FilmstripPrefetchQueue {
     }
   }
 
+  private ensureEntry(key: string): CacheEntry {
+    let entry = this.cache.get(key);
+    if (!entry) {
+      entry = { frames: null, keyframesSecs: null };
+      this.cache.set(key, entry);
+    }
+    return entry;
+  }
+
   private async runOne(key: string, item: FilmstripPrefetchClip) {
     this.inFlight.add(key);
     this.active += 1;
+    const entry = this.ensureEntry(key);
+
     try {
-      const result = await this.load(item.path, item.durationSecs);
-      this.cache.set(key, result);
-      this.flushWaiters(key, result);
+      const tasks: Promise<void>[] = [];
+
+      if (entry.frames == null) {
+        tasks.push(
+          getVideoFilmstrip(
+            item.path,
+            FILMSTRIP_FRAME_COUNT,
+            FILMSTRIP_FRAME_HEIGHT,
+            item.durationSecs,
+          ).then((frames) => {
+            entry.frames = frames;
+            this.notifyPartial(key, { frames });
+          }),
+        );
+      }
+
+      if (entry.keyframesSecs == null) {
+        tasks.push(
+          listVideoKeyframes(item.path, item.durationSecs).then((keyframesSecs) => {
+            entry.keyframesSecs = keyframesSecs;
+            this.notifyPartial(key, { keyframesSecs });
+          }),
+        );
+      }
+
+      const settled = await Promise.allSettled(tasks);
+      const result = toResult(entry);
+      if (result) {
+        this.resolveWaiters(key, result);
+        return;
+      }
+
+      const firstError = settled.find((s) => s.status === "rejected");
+      const reason =
+        firstError && firstError.status === "rejected"
+          ? firstError.reason
+          : new Error("filmstrip prefetch failed");
+      this.rejectWaiters(key, reason);
     } catch (e) {
-      this.flushWaiters(key, null, e);
+      this.rejectWaiters(key, e);
     } finally {
       this.inFlight.delete(key);
       this.active -= 1;
       this.pump();
     }
-  }
-
-  private async load(
-    path: string,
-    durationSecs: number | null,
-  ): Promise<FilmstripPrefetchResult> {
-    const [frames, keyframesSecs] = await Promise.all([
-      getVideoFilmstrip(
-        path,
-        FILMSTRIP_FRAME_COUNT,
-        FILMSTRIP_FRAME_HEIGHT,
-        durationSecs,
-      ),
-      listVideoKeyframes(path, durationSecs),
-    ]);
-    return { frames, keyframesSecs };
   }
 }
 

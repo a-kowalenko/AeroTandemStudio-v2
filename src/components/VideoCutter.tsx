@@ -13,7 +13,7 @@ import {
 } from "./VideoPlayer";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
 import { MediaEditRotateBar } from "./MediaEditRotateBar";
-import { filmstripPrefetch } from "../lib/filmstripPrefetch";
+import { filmstripPrefetch, type FilmstripPrefetchPartial } from "../lib/filmstripPrefetch";
 import { useUiStore } from "../store/uiStore";
 import { useVideoStore } from "../store/videoStore";
 import {
@@ -159,27 +159,29 @@ export function VideoCutter({
     let cancelled = false;
     const durationHint =
       durationSecsHint && durationSecsHint > 0 ? durationSecsHint : null;
-    const cached = filmstripPrefetch.getCached(videoPath, mediaRevision);
-    if (cached) {
-      setKeyframesSecs(cached.keyframesSecs);
-      setFilmstripFrames(cached.frames);
+
+    const applyPartial = (partial: FilmstripPrefetchPartial) => {
+      if (cancelled) return;
+      if (partial.frames) setFilmstripFrames(partial.frames);
+      if (partial.keyframesSecs) setKeyframesSecs(partial.keyframesSecs);
+    };
+
+    const cached = filmstripPrefetch.getPartial(videoPath, mediaRevision);
+    if (cached?.frames) setFilmstripFrames(cached.frames);
+    if (cached?.keyframesSecs) setKeyframesSecs(cached.keyframesSecs);
+    if (filmstripPrefetch.isComplete(videoPath, mediaRevision)) {
       return () => {
         cancelled = true;
       };
     }
+
     void filmstripPrefetch
-      .prefetch(videoPath, durationHint, mediaRevision, 100)
-      .then((result) => {
-        if (!cancelled) {
-          setKeyframesSecs(result.keyframesSecs);
-          setFilmstripFrames(result.frames);
-        }
-      })
+      .prefetch(videoPath, durationHint, mediaRevision, 100, applyPartial)
       .catch(() => {
-        if (!cancelled) {
-          setKeyframesSecs([]);
-          setFilmstripFrames([]);
-        }
+        if (cancelled) return;
+        const left = filmstripPrefetch.getPartial(videoPath, mediaRevision);
+        if (!left?.frames) setFilmstripFrames([]);
+        if (!left?.keyframesSecs) setKeyframesSecs([]);
       });
     return () => {
       cancelled = true;
