@@ -8,6 +8,8 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-24
+
 ### Neu
 
 - Optional mpv-Player für den Zuschnitt: flüssigeres Spulen und Springen (Video-Einstellungen; ohne mpv bleibt HTML5)
