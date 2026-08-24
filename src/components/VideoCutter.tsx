@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Crop,
@@ -41,20 +41,20 @@ type VideoCutterProps = {
   onComplete: (result: VideoCutterResult) => void;
 };
 
-const VIDEO_MODES: MediaEditModeOption<VideoEditMode>[] = [
+const VIDEO_MODE_DEFS: { id: VideoEditMode; labelKey: string; icon: ReactNode }[] = [
   {
     id: "trim",
-    label: "Zuschnitt",
+    labelKey: "video.edit.mode.trim",
     icon: <Crop className="h-4 w-4" strokeWidth={2} />,
   },
   {
     id: "rotate",
-    label: "Drehen",
+    labelKey: "video.edit.mode.rotate",
     icon: <RotateCw className="h-4 w-4" strokeWidth={2} />,
   },
   {
     id: "split",
-    label: "Teilen",
+    labelKey: "video.edit.mode.split",
     icon: <SplitSquareHorizontal className="h-4 w-4" strokeWidth={2} />,
   },
 ];
@@ -73,6 +73,15 @@ export function VideoCutter({
   onComplete,
 }: VideoCutterProps) {
   const { t } = useTranslation();
+  const videoModes = useMemo<MediaEditModeOption<VideoEditMode>[]>(
+    () =>
+      VIDEO_MODE_DEFS.map(({ id, labelKey, icon }) => ({
+        id,
+        label: t(labelKey),
+        icon,
+      })),
+    [t],
+  );
   const playerRef = useRef<VideoPlayerHandle>(null);
   const committedRef = useRef(false);
   const showWarning = useUiStore((s) => s.showWarning);
@@ -376,7 +385,7 @@ export function VideoCutter({
       title={t("common.actions.edit")}
       description={videoPath}
       mode={mode}
-      modes={VIDEO_MODES}
+      modes={videoModes}
       onModeChange={switchMode}
       onCancel={cancel}
       onDone={handleDone}

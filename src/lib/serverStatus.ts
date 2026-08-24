@@ -5,6 +5,26 @@ import type {
   SettingsFocusTarget,
 } from "@/store/uiStore";
 
+/** Rust SMB unreachable messages → i18n keys. */
+const SERVER_UNREACHABLE_KEY_MAP: Record<string, string> = {
+  "Server nicht erreichbar (Zeitüberschreitung).":
+    "errors.server.unreachableTimeout",
+  "Server nicht erreichbar (Verbindung abgelehnt).":
+    "errors.server.unreachableRefused",
+  "Server nicht erreichbar (Host nicht gefunden).":
+    "errors.server.unreachableHostNotFound",
+  "Server nicht erreichbar (Netzwerk).": "errors.server.unreachableNetwork",
+};
+
+function mapKnownServerUnreachableMessage(raw: string): string | null {
+  const trimmed = raw.trim();
+  const key = SERVER_UNREACHABLE_KEY_MAP[trimmed];
+  if (key) return tr(key);
+  const withDot = trimmed.endsWith(".") ? trimmed : `${trimmed}.`;
+  const keyWithDot = SERVER_UNREACHABLE_KEY_MAP[withDot];
+  return keyWithDot ? tr(keyWithDot) : null;
+}
+
 export function serverConnectionStatusLabel(
   phase: ServerPhase,
   message = "",
@@ -82,11 +102,10 @@ export function mapServerErrorDetail(message: string): {
     )
   ) {
     if (/server nicht erreichbar/i.test(raw)) {
-      const short = raw.replace(/\.$/, "");
+      const mapped = mapKnownServerUnreachableMessage(raw);
       return {
         kind: "unreachable",
-        text:
-          short.length > 60 ? tr("errors.server.notConnected") : short,
+        text: mapped ?? tr("errors.server.notConnected"),
       };
     }
     return { kind: "unreachable", text: tr("errors.server.notConnected") };

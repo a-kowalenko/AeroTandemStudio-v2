@@ -14,7 +14,11 @@ import type { SettingsFocusTarget } from "@/store/uiStore";
 import {
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
-import { presentAmsBridgeError } from "@/lib/amsBridgeStatus";
+import {
+  formatAmsConnectionDialogTitle,
+  formatAmsFoundSuccessViaServerPassword,
+  presentAmsBridgeError,
+} from "@/lib/amsBridgeStatus";
 import {
   presentAmsConnectionAction,
   presentServerConnectionAction,
@@ -144,13 +148,20 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       const action = presentAmsConnectionAction({
         ok: result.ok,
         rawMessage: result.message,
+        displayName: result.health?.display_name ?? refreshed.ams_bridge_display_name,
       });
       if (result.ok) {
         setBridgeLabel(action.summary);
-        showSuccess("", t("header.connection.titleAmsOk"), {
-          actions: [action],
-          autoCloseSecs: 3,
-        });
+        showSuccess(
+          "",
+          formatAmsConnectionDialogTitle(
+            result.health?.display_name ?? refreshed.ams_bridge_display_name,
+          ),
+          {
+            actions: [action],
+            autoCloseSecs: 3,
+          },
+        );
         if (result.base_url) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
@@ -175,6 +186,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           presentAmsConnectionAction({
             ok: false,
             rawMessage: String(err),
+            displayName: draft.ams_bridge_display_name,
           }),
         ],
       });
@@ -255,14 +267,19 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           }
           const saved = await persistConfig(next);
           if (saved) setDraft(saved);
+          const displayName =
+            result.health?.display_name?.trim() ||
+            bridge.display_name?.trim() ||
+            label;
           const action = presentAmsConnectionAction({
             ok: true,
             rawMessage: result.message,
+            displayName,
           });
           setBridgeLabel(action.summary);
           showSuccess(
-            t("settings.server.ams.foundSuccessViaServerPassword"),
-            t("header.connection.titleAmsOk"),
+            formatAmsFoundSuccessViaServerPassword(displayName),
+            formatAmsConnectionDialogTitle(displayName),
             {
               actions: [action],
               autoCloseSecs: 3,
@@ -280,12 +297,15 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
 
   function promptAmsTokenAfterDiscover(
     baseUrl: string,
-    bridge?: Pick<AmsBridgeDiscovered, "display_name" | "instance_id">,
+    bridge?: Pick<AmsBridgeDiscovered, "display_name" | "instance_id" | "instance" | "base_url">,
   ) {
     const current = draftRef.current;
+    const discoveredLabel = bridge ? discoveredAmsLabel(bridge) : "";
     showSuccess(
       t("settings.server.ams.foundSuccess", { url: baseUrl }),
-      t("settings.server.ams.operatorTitle"),
+      discoveredLabel
+        ? formatAmsConnectionDialogTitle(discoveredLabel)
+        : t("settings.server.ams.operatorTitle"),
       {
         prompt: {
           label: t("settings.server.ams.token"),
@@ -314,16 +334,22 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
             }
             setDraft(saved);
             const result = await checkAmsHealth();
+            const refreshed = await getConfig();
+            const displayName =
+              result.health?.display_name?.trim() ||
+              refreshed.ams_bridge_display_name?.trim() ||
+              discoveredLabel;
             const action = presentAmsConnectionAction({
               ok: result.ok,
               rawMessage: result.message,
+              displayName,
             });
             if (result.ok) {
               setBridgeLabel(action.summary);
               if (result.base_url) {
                 patch("ams_bridge_last_ok_url", result.base_url);
               }
-              showSuccess("", t("header.connection.titleAmsOk"), {
+              showSuccess("", formatAmsConnectionDialogTitle(displayName), {
                 actions: [action],
                 autoCloseSecs: 3,
               });

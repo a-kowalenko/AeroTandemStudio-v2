@@ -19,6 +19,8 @@ import { usePhotoStore } from "@/store/photoStore";
 import type { useReleaseList } from "../hooks/useReleaseList";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
+import { presentUpdaterInstallHint } from "@/lib/updaterInstallHint";
+import { presentCacheCleanupSummary } from "@/lib/cacheCleanupMessages";
 
 type ReleaseList = ReturnType<typeof useReleaseList>;
 
@@ -110,7 +112,10 @@ export function SystemTab({
                 include_hw_cache: false,
                 orphans_only: false,
               });
-              showSuccess(result.summary, t("settings.system.cache.toastTitle"));
+              showSuccess(
+                presentCacheCleanupSummary(result),
+                t("settings.system.cache.toastTitle"),
+              );
             } catch (e) {
               showError(String(e), t("settings.system.cache.toastTitle"));
             } finally {
@@ -134,7 +139,9 @@ export function SystemTab({
           </p>
         ) : null}
         {platformHint ? (
-          <p className="text-xs text-muted">{platformHint}</p>
+          <p className="text-xs text-muted">
+            {presentUpdaterInstallHint(platformHint)}
+          </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
           <Button

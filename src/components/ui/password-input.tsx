@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { tr } from "@/i18n";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -38,8 +39,8 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, Props>(
           type="button"
           tabIndex={-1}
           onClick={() => setVisible(!visible)}
-          title={visible ? "Passwort verbergen" : "Passwort anzeigen"}
-          aria-label={visible ? "Passwort verbergen" : "Passwort anzeigen"}
+          title={visible ? tr("common.actions.hidePassword") : tr("common.actions.showPassword")}
+          aria-label={visible ? tr("common.actions.hidePassword") : tr("common.actions.showPassword")}
           className={cn(
             "absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors",
             "hover:bg-primary-soft hover:text-foreground",

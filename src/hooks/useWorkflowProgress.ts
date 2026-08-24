@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackupProgress, WorkflowProgress } from "../lib/sdCard";
 import {
@@ -130,14 +131,14 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     if (input.workflowProgress?.stage === "import") {
       return {
         percent: input.workflowProgress.percent,
-        label: formatWorkflowLabel(input.workflowProgress, "Importiere…"),
+        label: formatWorkflowLabel(input.workflowProgress, tr("media.drop.importing")),
         detail: formatWorkflowDetail(input.workflowProgress),
       };
     }
     if (mediaImporting) {
       return {
         percent: 0,
-        label: "Importiere…",
+        label: tr("media.drop.importing"),
         indeterminate: true,
       };
     }
@@ -345,7 +346,9 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
-        input.encodeBusy || input.appendActive ? "In Arbeit…" : "Fertig",
+        input.encodeBusy || input.appendActive
+          ? tr("common.status.inProgress")
+          : tr("common.status.done"),
       ),
     };
   } else if (showSdProgress && sdProgress) {
@@ -359,7 +362,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
-        input.encodeBusy ? "In Arbeit…" : "Fertig",
+        input.encodeBusy ? tr("common.status.inProgress") : tr("common.status.done"),
       ),
     };
   }
@@ -378,7 +381,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
 
   const encodeLabel = formatOverallProgressLabel(
     input.status,
-    input.encodeBusy ? "In Arbeit…" : "Fertig",
+    input.encodeBusy ? tr("common.status.inProgress") : tr("common.status.done"),
   );
 
   const sdClearing = input.sdWorkflowActive && input.sdPhase === "clearing";

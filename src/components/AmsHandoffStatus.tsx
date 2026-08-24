@@ -10,6 +10,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { tr } from "@/i18n";
 import { cn } from "@/lib/utils";
 import {
   AMS_HANDOFF_STEPS,
@@ -80,6 +81,7 @@ export function AmsHandoffStatusChip({
   compact = false,
   onClick,
 }: ChipProps) {
+  const { t } = useTranslation();
   const label = handoffStateLabel(view, { compact });
   const hint = handoffStateHint(view);
   const active = isAmsHandoffActive(view) && !view.offline;
@@ -104,7 +106,7 @@ export function AmsHandoffStatusChip({
     (hint
       ? `${label} — ${hint}`
       : view.offline
-        ? `${label} (Cache)`
+        ? tr("ams.handoff.cacheTooltip", { label })
         : label);
 
   const classes = cn(
@@ -122,7 +124,7 @@ export function AmsHandoffStatusChip({
       <StateIcon view={view} />
       <span className="truncate">{label}</span>
       {view.offline ? (
-        <span className="shrink-0 text-[9px] font-normal opacity-80">Cache</span>
+        <span className="shrink-0 text-[9px] font-normal opacity-80">{t("ams.handoff.cache")}</span>
       ) : null}
       {view.archive && view.state.trim().toLowerCase() === "completed" ? (
         <Archive className="size-2.5 shrink-0 opacity-70" aria-hidden />

@@ -16,6 +16,7 @@ import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { cn } from "@/lib/utils";
 import type { UpdateInstallProgress } from "@/lib/tauri";
 import { compareVersionParts } from "@/lib/versionCompare";
+import { presentUpdaterInstallHint } from "@/lib/updaterInstallHint";
 
 export type VersionInstallDialogProps = {
   open: boolean;
@@ -231,7 +232,9 @@ export function UpdateDialog({
         ) : null}
 
         {platformHint && !installing ? (
-          <p className="text-xs text-muted">{platformHint}</p>
+          <p className="text-xs text-muted">
+            {presentUpdaterInstallHint(platformHint)}
+          </p>
         ) : null}
 
         {blockedReason && !installing ? (

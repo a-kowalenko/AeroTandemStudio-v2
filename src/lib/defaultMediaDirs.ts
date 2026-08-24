@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 /** Helpers for wizard default media folders (Speicherort / SD-Backup). */
 
 import {
@@ -15,6 +16,7 @@ export type ApplyDefaultMediaDirResult = {
   computerName: string;
 };
 
+/** Rust warning prefix — keep literal for backend string matching. */
 const ALTERNATE_HINT_PREFIX = "Weiterer lokaler Datenträger";
 
 function proposedPathForKind(
@@ -52,12 +54,16 @@ export async function applyDefaultMediaDir(
       ? opts.confirmAlternate(proposal)
       : window.confirm(
           [
-            "Ein anderer lokaler Datenträger hat deutlich mehr freien Speicher.",
+            tr("setupWizard.defaultMediaDir.alternateVolumeBody"),
             "",
-            `Standard: ${proposedPathForKind(proposal, kind, false)}`,
-            `Alternative: ${proposedPathForKind(proposal, kind, true)}`,
+            tr("setupWizard.defaultMediaDir.alternateStandard", {
+              path: proposedPathForKind(proposal, kind, false),
+            }),
+            tr("setupWizard.defaultMediaDir.alternateChoice", {
+              path: proposedPathForKind(proposal, kind, true),
+            }),
             "",
-            "OK = Alternative verwenden, Abbrechen = Standard behalten.",
+            tr("setupWizard.defaultMediaDir.alternateConfirm"),
           ].join("\n"),
         );
     if (useAlt) {
@@ -75,12 +81,12 @@ export async function applyDefaultMediaDir(
       ? opts.confirmWarnings(warnForChosen, targetPath)
       : window.confirm(
           [
-            "Hinweise zum Speicherort:",
+            tr("setupWizard.defaultMediaDir.warningsTitle"),
             ...warnForChosen.map((w) => `• ${w}`),
             "",
-            `Ordner anlegen:\n${targetPath}`,
+            tr("setupWizard.defaultMediaDir.createFolder", { path: targetPath }),
             "",
-            "Trotzdem fortfahren?",
+            tr("setupWizard.defaultMediaDir.proceedAnyway"),
           ].join("\n"),
         );
     if (!ok) return null;

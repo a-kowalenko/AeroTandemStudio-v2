@@ -28,7 +28,23 @@
       "add": "Agregar",
       "rename": "Renombrar",
       "pleaseWait": "Espera…",
-      "cancelling": "Cancelando…"
+      "cancelling": "Cancelando…",
+      "done": "Listo",
+      "showPassword": "Mostrar contraseña",
+      "hidePassword": "Ocultar contraseña",
+      "showSuggestions": "Mostrar sugerencias",
+      "play": "Reproducir",
+      "pause": "Pausa",
+      "mute": "Silencio",
+      "unmute": "Activar sonido",
+      "fullscreen": "Pantalla completa",
+      "exitFullscreen": "Salir de pantalla completa",
+      "selectNamed": "Seleccionar {{name}}",
+      "watermark": "Marca de agua",
+      "watermarkShort": "MA",
+      "knownProcessed": "Ya conocido",
+      "regenerate": "Nuevo",
+      "editMode": "Modo de edición"
     },
     "status": {
       "error": "Error",
@@ -46,14 +62,34 @@
       "themeDark": "Oscuro",
       "language": "Idioma",
       "storageLocation": "Ubicación de almacenamiento",
-      "dropzonePlaceholder": "Zona de entrega…"
+      "dropzonePlaceholder": "Zona de entrega…",
+      "all": "Todos",
+      "name": "Nombre",
+      "date": "Fecha",
+      "size": "Tamaño",
+      "type": "Tipo",
+      "preview": "Vista previa",
+      "actions": "Acciones",
+      "drive": "Unidad {{name}}",
+      "sdCard": "Tarjeta SD",
+      "filesCount": "{{count}} archivos",
+      "filesCountWithSize": "{{count}} archivos · {{sizeMb}} MB",
+      "selectedSummary": "seleccionados: {{count}} ({{sizeMb}} MB)",
+      "none": "Ninguno",
+      "sortAsc": "↑ Asc",
+      "sortDesc": "↓ Desc",
+      "yes": "sí",
+      "no": "no"
     },
     "language": {
       "de": "Alemán",
       "en": "Inglés",
       "esMX": "Español (México)"
     },
-    "unsavedChangesDiscard": "¿Descartar cambios sin guardar?"
+    "unsavedChangesDiscard": "¿Descartar cambios sin guardar?",
+    "filter": {
+      "newOnly": "Solo nuevos"
+    }
   },
   "settings": {
     "dialog": {
@@ -97,7 +133,9 @@
         "description": "Quita carpetas de vista previa/concat/trabajo en temporales, restos de cortes, archivos temporales conocidos y carpetas de trabajo junto al almacenamiento. También vacía la sesión de medios actual.",
         "toastTitle": "Caché",
         "cleaning": "Limpiando…",
-        "clear": "Vaciar caché"
+        "clear": "Vaciar caché",
+        "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}}).",
+        "cleanupErrors": "No se pudieron eliminar {{count}} elemento(s)."
       },
       "update": {
         "title": "Actualización",
@@ -119,7 +157,8 @@
         "applyVersion": "Aplicar versión",
         "noAutoInstall": "La instalación automática no está disponible para esta versión.",
         "versionHeading": "Versión {{version}}",
-        "noNotes": "Sin notas de la versión."
+        "noNotes": "Sin notas de la versión.",
+        "releasesUnavailable": "Lista de versiones no disponible — revisa tu conexión a internet."
       }
     },
     "folder": {
@@ -229,7 +268,7 @@
         "folder": "Carpeta de respaldo",
         "pcName": "Nombre del PC",
         "pcNamePlaceholder": "Nombre del equipo",
-        "pcNameHint": "Se usa en el nombre de la carpeta de respaldo, p. ej. SD_Backup_…[{{name}}]_…",
+        "pcNameHint": "Se usa en el nombre de la carpeta de respaldo y para AMS, p. ej. SD_Backup_…[{{name}}]_… (predeterminado: Nombre (Equipo))",
         "pcNameFallback": "PC",
         "clearAfter": "Vaciar SD tras el respaldo",
         "clearAfterTitleOn": "Vaciar la tarjeta SD tras un respaldo correcto",
@@ -267,10 +306,15 @@
         "title": "Servidor SMB",
         "description": "Credenciales para subir tras crear un trabajo.",
         "profileListTitle": "Servidores guardados",
-        "profileListHint": "Toca un perfil para cambiar. Los cambios aplican al perfil resaltado.",
-        "profileEditTitle": "Credenciales",
-        "profileEditHint": "Editando «{{name}}». Al cambiar de perfil se guardan los datos.",
-        "profileEditHintGeneric": "Editando el perfil seleccionado.",
+        "profileListHint": "Toca una fila para usarla en la subida. Lápiz = editar credenciales.",
+        "profileActiveHint": "Activo para subida: «{{name}}». Usa el lápiz para editar.",
+        "profileEditTitleNamed": "Editar «{{name}}»",
+        "profileCreateTitle": "Nuevo perfil de servidor",
+        "profileEditPanelHint": "Nombre, URL y credenciales de este perfil.",
+        "profileWizardHint": "URL y credenciales para subir tras crear un trabajo.",
+        "editProfile": "Editar",
+        "editProfileNamed": "Editar «{{name}}»",
+        "deleteProfileConfirm": "¿Eliminar el perfil «{{name}}»?",
         "profileLabel": "Nombre del perfil",
         "profileLabelPlaceholder": "p. ej. NAS dropzone",
         "profileNoUrl": "Sin URL de servidor",
@@ -281,6 +325,11 @@
         "cannotDeleteLast": "Debe quedar al menos un perfil de servidor.",
         "url": "URL del servidor",
         "urlPlaceholder": "smb://…",
+        "scheme": "Protocolo",
+        "schemePath": "Ruta",
+        "urlPlaceholderHost": "host/recurso",
+        "urlPlaceholderUnc": "servidor\\recurso",
+        "urlPlaceholderPath": "/ruta o C:\\carpeta",
         "login": "Usuario",
         "password": "Contraseña",
         "recheckTitle": "Clic para volver a comprobar",
@@ -306,6 +355,7 @@
         "foundStatus": "Encontrado: {{instance}} → {{url}}",
         "foundSuccess": "Dirección aplicada:\n{{url}}\n\nIngresa el código de acceso aquí y comprueba.",
         "foundSuccessViaServerPassword": "Dirección y código de acceso aplicados (contraseña del servidor).",
+        "foundSuccessViaServerPasswordNamed": "{{name}}: dirección y código de acceso aplicados (contraseña del servidor).",
         "foundMany": "{{count}} direcciones encontradas — elige una.",
         "applied": "Aplicado: {{instance}} → {{url}}",
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
@@ -340,7 +390,11 @@
       "guestHint": "Sin inicio de sesión, se conecta como invitado.",
       "openUrl": "Abrir URL del servidor",
       "checkCredentials": "Verificar credenciales",
-      "openCredentials": "Abrir credenciales"
+      "openCredentials": "Abrir credenciales",
+      "unreachableTimeout": "Servidor no accesible (tiempo agotado)",
+      "unreachableRefused": "Servidor no accesible (conexión rechazada)",
+      "unreachableHostNotFound": "Servidor no accesible (host no encontrado)",
+      "unreachableNetwork": "Servidor no accesible (red)"
     }
   },
   "create": {
@@ -363,7 +417,8 @@
       "fileMissing": "Falta el archivo",
       "customerId": "ID de cliente",
       "bookingId": "ID de reserva",
-      "validation": "Validación"
+      "validation": "Validación",
+      "storageDeferredHint": "La ubicación de almacenamiento se pedirá al crear y luego se guardará."
     },
     "ready": {
       "headline": {
@@ -609,7 +664,12 @@
       "ready": "¡Listo!",
       "startWithErrors": "Inicio con errores",
       "ffmpegMissing": "No se encontró FFmpeg. La codificación no está disponible.",
-      "clearCache": "Limpiando caché…"
+      "clearCache": "Limpiando caché…",
+      "checksOk": "Listo — FFmpeg OK, codificador {{encoder}}",
+      "ffmpegBinaryNotFound": "No se encontró el binario de FFmpeg (se esperaba en resources/ffmpeg/).",
+      "gstBasePluginsMissing": "Faltan plugins base de GStreamer — reproducción de video no disponible. Instalar: {{installHint}}",
+      "gstH264DecoderMissing": "No se encontró decodificador H.264 en GStreamer — la vista previa MP4 queda en negro. Instalar: {{installHint}}",
+      "gstCodecsMissing": "No se encontraron códecs GStreamer — la reproducción de video puede fallar. Instalar: {{installHint}}"
     },
     "chrome": {
       "historyTitle": "Archivos procesados",
@@ -631,7 +691,9 @@
       "switchTo": "¿Cambiar a la versión {{version}}?",
       "availableOn": "Actualización a {{version}} disponible.",
       "restartManual": "Versión instalada — reinicia la app a mano.",
-      "title": "Actualización"
+      "title": "Actualización",
+      "installHintMacApplications": "Para actualizaciones automáticas, la app debe estar en la carpeta Aplicaciones.",
+      "installHintLinuxAppImage": "Las actualizaciones automáticas solo funcionan de forma confiable como AppImage."
     },
     "sd": {
       "readingFiles": "Leyendo archivos de SD…",
@@ -677,7 +739,13 @@
       "source": "Origen: {{name}}",
       "notFound": "No se encontró código QR.",
       "scanFailed": "El escaneo falló",
-      "recognized": "Código QR reconocido"
+      "recognized": "Código QR reconocido",
+      "cleanup": {
+        "removedVideos": "{{count}} clip eliminado de la lista",
+        "removedVideosMany": "{{count}} clips eliminados de la lista",
+        "removedPhotos": "{{count}} foto eliminada de la lista",
+        "removedPhotosMany": "{{count}} fotos eliminadas de la lista"
+      }
     },
     "storage": {
       "pickTitle": "Elige ubicación para trabajos terminados",
@@ -899,6 +967,16 @@
       "allAlreadyListed": "Todos los archivos ya están en la lista",
       "noValidPhotos": "No se encontraron archivos de foto válidos",
       "noValidVideos": "No se encontraron archivos de video válidos"
+    },
+    "edit": {
+      "doneDefault": "Listo",
+      "modeAria": "Modo de edición"
+    },
+    "contextMenu": {
+      "open": "Abrir",
+      "revealInFolder": "Mostrar en carpeta",
+      "copyPath": "Copiar ruta",
+      "undoEdit": "Deshacer edición"
     }
   },
   "workflow": {
@@ -1096,6 +1174,7 @@
       "unreachableHint": "Ingresa los datos del cliente manualmente.",
       "lookupErrorFallback": "No se pudo cargar el cliente",
       "healthOk": "Búsqueda de reserva conectada",
+      "healthOkNamed": "{{name}} conectada",
       "connectedTooltip": "{{title}}: conectado",
       "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Solo para trabajos en línea, no locales",
@@ -1125,7 +1204,9 @@
         "uploadCancelled": "Subida cancelada",
         "waitingForAccept": "Esperando aceptación",
         "archive": "Archivo {{archive}}"
-      }
+      },
+      "cache": "Caché",
+      "cacheTooltip": "{{label}} (Caché)"
     },
     "lookup": {
       "apply": "Aplicar",
@@ -1164,6 +1245,7 @@
       "titleFailed": "Sin conexión",
       "titleServerOk": "Servidor conectado",
       "titleAmsOk": "Búsqueda de reserva conectada",
+      "titleAmsOkNamed": "{{name}} conectada",
       "serverLabel": "Servidor",
       "serverOk": "Accesible",
       "serverOkLocal": "Accesible (local)",
@@ -1256,6 +1338,11 @@
         "split": "Falló la división",
         "rotate": "Falló la rotación",
         "undo": "Falló deshacer"
+      },
+      "mode": {
+        "trim": "Recorte",
+        "rotate": "Rotar",
+        "split": "Dividir"
       }
     },
     "preview": {
@@ -1276,7 +1363,48 @@
       "singleClipWithoutPreview": "Reproducción de clip único — usa “Generar vista previa” para el archivo combinado.",
       "undoThisEditTitle": "Deshacer esta edición",
       "previewReencode": "Recodificación: {{reason}}",
-      "previewStreamCopy": "Recodificación: no (copia de stream)"
+      "previewStreamCopy": "Recodificación: no (copia de stream)",
+      "undoAllEditsBtn": "Deshacer todas las ediciones",
+      "generatePreview": "Generar vista previa",
+      "showPreview": "Mostrar vista previa",
+      "regenerateBtn": "Actualizar vista previa",
+      "regenerateNew": "Nuevo",
+      "combinedLabel": "Vista previa",
+      "combinedStale": "obsoleta",
+      "combinedFresh": "combinada",
+      "staleBadgeShort": "vieja",
+      "currentClip": "Clip actual",
+      "fileLabel": "Archivo:",
+      "resolutionLabel": "Resolución:",
+      "codecLabel": "Códec:",
+      "durationLabel": "Duración:",
+      "sizeLabel": "Tamaño:",
+      "totalPreview": "Total / vista previa",
+      "clipsCount": "Clips:",
+      "totalDuration": "Duración total:",
+      "totalSize": "Tamaño total:",
+      "strategyLabel": "Estrategia:",
+      "encoderLabel": "Codificador:",
+      "introLabel": "Intro:",
+      "previewExportTitle": "Preview",
+      "previewExportHint": "Exportar con sello de marca de agua",
+      "autoNextClip": "Reproducir automáticamente el siguiente clip",
+      "cutTrim": "Recortado",
+      "cutRotate": "Rotado",
+      "cutSplit": "Dividido",
+      "cutTrimShort": "Trim",
+      "cutRotateShort": "Rot",
+      "cutSplitShort": "Split",
+      "combinedCreatedWithIntro": "Vista previa combinada creada ({{strategy}}, con intro).{{suffix}}",
+      "combinedCreated": "Vista previa combinada creada ({{strategy}}).{{suffix}}",
+      "strategyStreamCopy": "Copia de stream",
+      "strategyPerClip": "Por clip",
+      "strategyCombined": "Combinada",
+      "showSavedStale": "Mostrar vista previa guardada (obsoleta)",
+      "showSaved": "Mostrar vista previa combinada guardada",
+      "watermarkStampAria": "Video de vista previa con sello de marca de agua",
+      "toastTitle": "Vista previa",
+      "reencodeSuffix": "\nRecodificar: {{reason}}"
     },
     "cutter": {
       "warning": {
@@ -1326,6 +1454,10 @@
         "apply": "Falló la edición",
         "rotateManyPartial": "Se rotaron {{count}} foto(s), luego error: {{error}}",
         "undo": "Falló deshacer"
+      },
+      "mode": {
+        "crop": "Recorte",
+        "rotate": "Rotar"
       }
     },
     "preview": {
@@ -1370,6 +1502,11 @@
         "noEdit": "No hay edición seleccionada."
       },
       "noPhoto": "No hay foto"
+    },
+    "rotate": {
+      "ccw": "90° en sentido antihorario",
+      "cw": "90° en sentido horario",
+      "reset": "Restablecer"
     }
   },
   "sd": {
@@ -1408,7 +1545,8 @@
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
-      "open": "Abrir"
+      "open": "Abrir",
+      "pickWithTooltip": "{{tip}} — elegir tarjeta SD / selector de archivos"
     },
     "selector": {
       "known": "Conocido",
@@ -1416,7 +1554,26 @@
       "executeCount": "Ejecutar ({{count}})",
       "refresh": "Volver a leer",
       "title": "Tarjeta SD — elegir archivos",
-      "titleSizeLimit": "Límite de tamaño superado — elegir archivos"
+      "titleSizeLimit": "Límite de tamaño superado — elegir archivos",
+      "viewTiles": "Mosaicos",
+      "viewDetails": "Detalles",
+      "selectAllFiltered": "Todos (filtrados)",
+      "selectAllNew": "Todos nuevos",
+      "selectAll": "Seleccionar todos",
+      "clearSd": "Limpiar tarjeta SD",
+      "clearOnlyAfterBackupHint": "Limpiar solo es posible después del respaldo.",
+      "clearNoFiles": "No hay archivos para limpiar",
+      "clearAfterBackup": "Limpiar tarjeta SD después de un respaldo exitoso",
+      "clearNeedsBackup": "Solo disponible cuando el respaldo está activado",
+      "ejectAfterBackupTitle": "Expulsar justo después del respaldo (importar/QR desde copias). Sin respaldo: después del import.",
+      "scanImportedQr": "Escanear medios importados en busca de QR",
+      "scanNeedsImport": "Solo disponible cuando la importación está activada",
+      "scanQrLabel": "Escaneo QR",
+      "proceedDespiteLimit": "Continuar de todos modos",
+      "readingInline": "Leyendo archivos SD… {{count}}",
+      "summaryVideos": ", {{count}} videos",
+      "summaryPhotos": ", {{count}} fotos",
+      "summarySelected": ", seleccionados: {{count}} ({{sizeMb}} MB)"
     },
     "catalog": {
       "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
@@ -1427,6 +1584,10 @@
       "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
       "secondaryBackupTitle": "Respaldo en servidor",
       "title": "Monitor SD"
+    },
+    "tile": {
+      "noPreviewCodec": "Sin vista previa (códec/WebView)",
+      "fullscreenNamed": "{{name}} pantalla completa"
     }
   },
   "setupWizard": {
@@ -1485,6 +1646,7 @@
     "completeTitle": "Éxito",
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
+      "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}».",
       "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después."
     },
     "intro": {
@@ -1502,7 +1664,8 @@
     "saveFailed": "No se pudieron guardar los ajustes.",
     "sections": {
       "sdCards": "Tarjetas SD",
-      "qrDetection": "Detección QR"
+      "qrDetection": "Detección QR",
+      "server": "Servidor"
     },
     "standardFolderTitle": "Carpeta predeterminada",
     "steps": {
@@ -1514,6 +1677,15 @@
     },
     "upload": {
       "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento."
+    },
+    "defaultMediaDir": {
+      "alternateVolumeBody": "Otro volumen local tiene significativamente más espacio libre.",
+      "alternateStandard": "Predeterminado: {{path}}",
+      "alternateChoice": "Alternativa: {{path}}",
+      "alternateConfirm": "OK = usar alternativa, Cancelar = mantener predeterminado.",
+      "warningsTitle": "Notas sobre la ubicación de almacenamiento:",
+      "createFolder": "Crear carpeta:\n{{path}}",
+      "proceedAnyway": "¿Continuar de todos modos?"
     }
   },
   "dateField": {

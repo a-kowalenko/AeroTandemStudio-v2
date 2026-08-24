@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
@@ -59,12 +60,12 @@ export function useCreateValidation({
           if (cancelled) return;
           const hints = [...validation.errors];
           if (!config?.speicherort?.trim()) {
-            hints.push("Speicherort wird beim Erstellen abgefragt und gespeichert.");
+            hints.push(tr("create.validation.storageDeferredHint"));
           }
           setCreateHints(hints);
         } catch {
           if (!cancelled) {
-            setCreateHints(["Validierung fehlgeschlagen"]);
+            setCreateHints([tr("create.validation.failed")]);
           }
         }
       })();

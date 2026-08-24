@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { tr } from "@/i18n";
 import type { AvailableRelease } from "@/lib/tauri";
 import { getAppInfo, listAvailableVersions } from "@/lib/tauri";
 import { compareVersionParts } from "@/lib/versionCompare";
@@ -56,7 +57,7 @@ export function useReleaseList(open: boolean) {
           );
         setReleasesError(
           looksTechnical
-            ? "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen."
+            ? tr("settings.system.update.releasesUnavailable")
             : raw,
         );
       })

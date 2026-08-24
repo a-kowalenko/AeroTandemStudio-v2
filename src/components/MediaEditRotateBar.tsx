@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { RotateCcw, RotateCw } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -23,6 +24,7 @@ export function MediaEditRotateBar({
   className,
   hint,
 }: MediaEditRotateBarProps) {
+  const { t } = useTranslation();
   const normalized = ((degrees % 360) + 360) % 360;
   return (
     <div className={cn("flex flex-col items-center gap-2", className)}>
@@ -30,7 +32,7 @@ export function MediaEditRotateBar({
         <ToolCircle
           disabled={disabled}
           onClick={onRotateCcw}
-          label="90° gegen den Uhrzeigersinn"
+          label={t("photo.rotate.ccw")}
         >
           <RotateCcw className="h-5 w-5" strokeWidth={1.75} />
         </ToolCircle>
@@ -40,7 +42,7 @@ export function MediaEditRotateBar({
         <ToolCircle
           disabled={disabled}
           onClick={onRotateCw}
-          label="90° im Uhrzeigersinn"
+          label={t("photo.rotate.cw")}
         >
           <RotateCw className="h-5 w-5" strokeWidth={1.75} />
         </ToolCircle>
@@ -55,7 +57,7 @@ export function MediaEditRotateBar({
             normalized === 0 && "invisible",
           )}
         >
-          Zurücksetzen
+          {t("photo.rotate.reset")}
         </button>
       ) : (
         <div className="h-5" aria-hidden />

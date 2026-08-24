@@ -7,7 +7,9 @@ import { tr } from "@/i18n";
 export const AMS_HEALTH_POLL_MS = 45_000;
 
 /** Operator-facing name for the AMS bridge. Keep “AMS” out of everyday UI. */
-export const AMS_OPERATOR_TITLE = "Buchungssuche";
+export function amsOperatorTitle(): string {
+  return tr("settings.server.ams.operatorTitle");
+}
 
 export type AmsBridgeErrorKind =
   | "unreachable"
@@ -193,13 +195,44 @@ export function amsBridgeStatusErrorTooltip(message: string): string {
 export function formatAmsConnectedTooltip(displayName?: string): string {
   const name = displayName?.trim();
   if (name) {
-    return tr("ams.status.connectedTooltipNamed", { title: AMS_OPERATOR_TITLE, name });
+    return tr("ams.status.connectedTooltipNamed", {
+      title: amsOperatorTitle(),
+      name,
+    });
   }
-  return tr("ams.status.connectedTooltip", { title: AMS_OPERATOR_TITLE });
+  return tr("ams.status.connectedTooltip", { title: amsOperatorTitle() });
 }
 
-export function formatAmsHealthSuccessMessage(_raw?: string): string {
+/** Instance label in connection dialogs (AMS display name or operator title). */
+export function amsConnectionLabel(displayName?: string | null): string {
+  const name = displayName?.trim();
+  return name || amsOperatorTitle();
+}
+
+export function formatAmsConnectionDialogTitle(displayName?: string | null): string {
+  const name = displayName?.trim();
+  if (name) {
+    return tr("header.connection.titleAmsOkNamed", { name });
+  }
+  return tr("header.connection.titleAmsOk");
+}
+
+export function formatAmsHealthSuccessMessage(displayName?: string | null): string {
+  const name = displayName?.trim();
+  if (name) {
+    return tr("ams.status.healthOkNamed", { name });
+  }
   return tr("ams.status.healthOk");
+}
+
+export function formatAmsFoundSuccessViaServerPassword(
+  displayName?: string | null,
+): string {
+  const name = displayName?.trim();
+  if (name) {
+    return tr("settings.server.ams.foundSuccessViaServerPasswordNamed", { name });
+  }
+  return tr("settings.server.ams.foundSuccessViaServerPassword");
 }
 
 export function presentAmsLookupError(raw: string): string {

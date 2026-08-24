@@ -209,6 +209,9 @@ export function SdFileSelector({
   const mode = useSdStore((s) => s.selectorMode);
   const listing = useSdStore((s) => s.selectorListing);
   const emptyReason = useSdStore((s) => s.selectorEmptyReason);
+  const locationLabel = drive
+    ? t("common.labels.drive", { name: drive })
+    : t("common.labels.sdCard");
   const [viewMode, setViewMode] = useState<ViewMode>("thumbnail");
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -886,12 +889,19 @@ export function SdFileSelector({
         <DialogHeader className="space-y-2.5 pr-8">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
-            {drive ? `Laufwerk ${drive}` : "SD-Karte"}
-            {`, ${files.length} Dateien, ${totalSizeMb.toFixed(1)} MB`}
-            {mediaCounts.videos > 0 ? `, ${mediaCounts.videos} Videos` : ""}
-            {mediaCounts.photos > 0 ? `, ${mediaCounts.photos} Fotos` : ""}
+            {locationLabel}
+            {`, ${t("common.labels.filesCount", { count: files.length })}, ${totalSizeMb.toFixed(1)} MB`}
+            {mediaCounts.videos > 0
+              ? t("sd.selector.summaryVideos", { count: mediaCounts.videos })
+              : ""}
+            {mediaCounts.photos > 0
+              ? t("sd.selector.summaryPhotos", { count: mediaCounts.photos })
+              : ""}
             {selectedCounts.total > 0
-              ? `, gewählt: ${selectedCounts.total} (${selectedSizeMb.toFixed(1)} MB)`
+              ? t("sd.selector.summarySelected", {
+                  count: selectedCounts.total,
+                  sizeMb: selectedSizeMb.toFixed(1),
+                })
               : ""}
           </DialogDescription>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-card-elevated/80 px-3 py-2.5">
@@ -901,7 +911,7 @@ export function SdFileSelector({
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold tracking-tight text-foreground">
-                  {drive ? `Laufwerk ${drive}` : "SD-Karte"}
+                  {locationLabel}
                 </p>
                 <p className="text-xs tabular-nums text-muted">
                   {listing ? (
@@ -910,12 +920,13 @@ export function SdFileSelector({
                         className="h-3 w-3 animate-spin"
                         aria-hidden
                       />
-                      SD-Dateien werden gelesen… {files.length}
+                      {t("sd.selector.readingInline", { count: files.length })}
                     </span>
                   ) : (
-                    <>
-                      {files.length} Dateien · {totalSizeMb.toFixed(1)} MB
-                    </>
+                    t("common.labels.filesCountWithSize", {
+                      count: files.length,
+                      sizeMb: totalSizeMb.toFixed(1),
+                    })
                   )}
                 </p>
               </div>
@@ -926,14 +937,18 @@ export function SdFileSelector({
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
                   <Film className="h-3 w-3" aria-hidden />
                   {mediaCounts.videos}{" "}
-                  {mediaCounts.videos === 1 ? "Video" : "Videos"}
+                  {mediaCounts.videos === 1
+                    ? t("common.labels.video")
+                    : t("common.labels.videos")}
                 </span>
               ) : null}
               {mediaCounts.photos > 0 ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
                   <ImageIcon className="h-3 w-3" aria-hidden />
                   {mediaCounts.photos}{" "}
-                  {mediaCounts.photos === 1 ? "Foto" : "Fotos"}
+                  {mediaCounts.photos === 1
+                    ? t("common.labels.photo")
+                    : t("common.labels.photos")}
                 </span>
               ) : null}
               {selectedCounts.total > 0 ? (
@@ -968,7 +983,7 @@ export function SdFileSelector({
               variant={viewMode === "thumbnail" ? "default" : "secondary"}
               onClick={() => setViewMode("thumbnail")}
             >
-              Kacheln
+              {t("sd.selector.viewTiles")}
             </Button>
             <Button
               type="button"
@@ -976,7 +991,7 @@ export function SdFileSelector({
               variant={viewMode === "details" ? "default" : "secondary"}
               onClick={() => setViewMode("details")}
             >
-              Details
+              {t("sd.selector.viewDetails")}
             </Button>
           </div>
           <Select
@@ -987,10 +1002,10 @@ export function SdFileSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Alle</SelectItem>
-              <SelectItem value="video">Videos</SelectItem>
-              <SelectItem value="photo">Fotos</SelectItem>
-              <SelectItem value="new">Nur neue</SelectItem>
+              <SelectItem value="all">{t("common.labels.all")}</SelectItem>
+              <SelectItem value="video">{t("common.labels.videos")}</SelectItem>
+              <SelectItem value="photo">{t("common.labels.photos")}</SelectItem>
+              <SelectItem value="new">{t("common.filter.newOnly")}</SelectItem>
             </SelectContent>
           </Select>
           <Select
@@ -1001,9 +1016,9 @@ export function SdFileSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="date">Datum</SelectItem>
-              <SelectItem value="name">Name</SelectItem>
-              <SelectItem value="size">Größe</SelectItem>
+              <SelectItem value="date">{t("common.labels.date")}</SelectItem>
+              <SelectItem value="name">{t("common.labels.name")}</SelectItem>
+              <SelectItem value="size">{t("common.labels.size")}</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -1012,7 +1027,7 @@ export function SdFileSelector({
             variant="secondary"
             onClick={() => setSortAsc((v) => !v)}
           >
-            {sortAsc ? "↑ Auf" : "↓ Ab"}
+            {sortAsc ? t("common.labels.sortAsc") : t("common.labels.sortDesc")}
           </Button>
           <span
             className="mx-1 h-6 w-px shrink-0 bg-border"
@@ -1032,7 +1047,7 @@ export function SdFileSelector({
             {allFilteredSelected ? (
               <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
             ) : null}
-            Alle auswählen
+            {t("sd.selector.selectAll")}
           </Button>
           <Button
             type="button"
@@ -1049,7 +1064,7 @@ export function SdFileSelector({
             {allNewSelected ? (
               <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
             ) : null}
-            Nur neue
+            {t("common.filter.newOnly")}
           </Button>
           <Button
             type="button"
@@ -1059,19 +1074,19 @@ export function SdFileSelector({
             onClick={clearSelection}
           >
             <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            Keine
+            {t("common.labels.none")}
           </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-4 rounded-md border border-border/60 bg-card-elevated px-3 py-2 text-sm">
-          <span className="text-xs font-medium text-muted">Aktionen:</span>
+          <span className="text-xs font-medium text-muted">{t("common.labels.actions")}:</span>
           <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
             <Checkbox
               checked={actions.backup}
               disabled={catalogEmpty}
               onCheckedChange={(v) => patchAction("backup", v === true)}
             />
-            Backup
+            {t("app.sd.backupLabel")}
           </label>
           <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
             <Checkbox
@@ -1079,7 +1094,7 @@ export function SdFileSelector({
               disabled={catalogEmpty}
               onCheckedChange={(v) => patchAction("import", v === true)}
             />
-            Import
+            {t("app.import.label")}
           </label>
           <label
             className={cn(
@@ -1088,10 +1103,10 @@ export function SdFileSelector({
             )}
             title={
               catalogEmpty
-                ? "Keine Dateien zum Bereinigen"
+                ? t("sd.selector.clearNoFiles")
                 : actions.backup
-                  ? "SD-Karte nach erfolgreichem Backup leeren"
-                  : "Nur möglich, wenn Backup aktiviert ist"
+                  ? t("sd.selector.clearAfterBackup")
+                  : t("sd.selector.clearNeedsBackup")
             }
           >
             <Checkbox
@@ -1099,21 +1114,21 @@ export function SdFileSelector({
               disabled={!actions.backup || catalogEmpty}
               onCheckedChange={(v) => patchAction("clear", v === true)}
             />
-            SD bereinigen
+            {t("sd.selector.clearSd")}
           </label>
           <label
             className="flex items-center gap-2"
-            title="Nach Backup sofort auswerfen (Import/QR von Kopien). Ohne Backup: nach dem Import."
+            title={t("sd.selector.ejectAfterBackupTitle")}
           >
             <Checkbox
               checked={actions.eject}
               onCheckedChange={(v) => patchAction("eject", v === true)}
             />
-            Auswerfen
+            {t("app.sd.ejectLabel")}
           </label>
           {!actions.backup ? (
             <span className="text-[11px] text-muted">
-              Bereinigen nur nach Backup möglich.
+              {t("sd.selector.clearOnlyAfterBackupHint")}
             </span>
           ) : null}
           <div
@@ -1123,8 +1138,8 @@ export function SdFileSelector({
             )}
             title={
               actions.import
-                ? "Importierte Medien auf QR-Code prüfen"
-                : "Nur möglich, wenn Import aktiviert ist"
+                ? t("sd.selector.scanImportedQr")
+                : t("sd.selector.scanNeedsImport")
             }
           >
             <Switch
@@ -1140,7 +1155,7 @@ export function SdFileSelector({
                 !actions.import && "pointer-events-none",
               )}
             >
-              QR scannen
+              {t("media.list.scanQr")}
             </Label>
           </div>
         </div>
@@ -1240,7 +1255,7 @@ export function SdFileSelector({
                           onCheckedChange={() =>
                             onCheckboxCheckedChange(file.path)
                           }
-                          aria-label={`${file.filename} auswählen`}
+                          aria-label={t("common.actions.selectNamed", { name: file.filename })}
                           className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
                         />
                       </div>
@@ -1311,11 +1326,11 @@ export function SdFileSelector({
               <thead className="sticky top-0 z-[1] bg-card">
                 <tr className="border-b border-border/60">
                   <th className="w-8 p-2" />
-                  <th className="w-14 p-2">Vorschau</th>
-                  <th className="p-2">Name</th>
-                  <th className="p-2">Typ</th>
-                  <th className="p-2">Größe</th>
-                  <th className="p-2">Datum</th>
+                  <th className="w-14 p-2">{t("common.labels.preview")}</th>
+                  <th className="p-2">{t("common.labels.name")}</th>
+                  <th className="p-2">{t("common.labels.type")}</th>
+                  <th className="p-2">{t("common.labels.size")}</th>
+                  <th className="p-2">{t("common.labels.date")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1380,7 +1395,7 @@ export function SdFileSelector({
                           />
                         </div>
                       </td>
-                      <td className="p-2">{file.is_video ? "Video" : "Foto"}</td>
+                      <td className="p-2">{file.is_video ? t("common.labels.video") : t("common.labels.photo")}</td>
                       <td className="p-2">{formatBytes(file.size_bytes)}</td>
                       <td className="p-2">{formatEpoch(file.display_epoch)}</td>
                     </tr>
@@ -1408,7 +1423,7 @@ export function SdFileSelector({
 
         <DialogFooter>
           <Button type="button" variant="secondary" onClick={onClose}>
-            Abbrechen
+            {t("common.actions.cancel")}
           </Button>
           {mode === "size_limit" && onProceedAll && (
             <Button
@@ -1417,7 +1432,7 @@ export function SdFileSelector({
               disabled={!anyAction || listing}
               onClick={() => onProceedAll(actions)}
             >
-              Alle trotzdem
+              {t("sd.selector.proceedDespiteLimit")}
             </Button>
           )}
           <Button
@@ -1438,7 +1453,7 @@ export function SdFileSelector({
             }}
           >
             {catalogEmpty && actions.eject
-              ? "Auswerfen"
+              ? t("app.sd.ejectLabel")
               : confirmLabel(actions, selected.size)}
           </Button>
         </DialogFooter>

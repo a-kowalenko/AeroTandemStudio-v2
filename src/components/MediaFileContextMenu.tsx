@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { Copy, FolderOpen, ExternalLink, Pencil, QrCode, RotateCcw, Trash2 } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -51,6 +52,7 @@ export function MediaFileContextMenu({
   onRemove,
   actionsDisabled = false,
 }: Props) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -146,13 +148,13 @@ export function MediaFileContextMenu({
         {basename(state.path)}
       </p>
       <MenuItem icon={<ExternalLink className="h-3.5 w-3.5" />} onClick={() => void openFile()}>
-        Öffnen
+        {t("media.contextMenu.open")}
       </MenuItem>
       <MenuItem icon={<FolderOpen className="h-3.5 w-3.5" />} onClick={() => void reveal()}>
-        Im Ordner zeigen
+        {t("media.contextMenu.revealInFolder")}
       </MenuItem>
       <MenuItem icon={<Copy className="h-3.5 w-3.5" />} onClick={() => void copyPath()}>
-        Pfad kopieren
+        {t("media.contextMenu.copyPath")}
       </MenuItem>
       {showExtra && <div className="my-1 border-t border-border/60" role="separator" />}
       {onScanQr && (
@@ -165,7 +167,7 @@ export function MediaFileContextMenu({
             onScanQr(path);
           }}
         >
-          QR scannen
+          {t("media.list.scanQr")}
         </MenuItem>
       )}
       {onCut && (
@@ -178,7 +180,7 @@ export function MediaFileContextMenu({
             onCut(path);
           }}
         >
-          Bearbeiten
+          {t("common.actions.edit")}
         </MenuItem>
       )}
       {canUndoCut && onUndoCut && (
@@ -191,7 +193,7 @@ export function MediaFileContextMenu({
             onUndoCut(path);
           }}
         >
-          Bearbeitung rückgängig
+          {t("media.contextMenu.undoEdit")}
         </MenuItem>
       )}
       {showClipActions && onRemove && (
@@ -208,7 +210,7 @@ export function MediaFileContextMenu({
             onRemove(path);
           }}
         >
-          Entfernen
+          {t("common.actions.remove")}
         </MenuItem>
       )}
     </div>,

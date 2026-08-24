@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { tr } from "@/i18n";
 import {
   testServerConnection,
   type ConnectionTestResult,
@@ -38,7 +39,7 @@ export const useServerStore = create<ServerState>((set) => ({
       phase: result.ok ? "connected" : "error",
     }),
   checkConnection: async (overrides) => {
-    set({ phase: "checking", message: "Prüfe…" });
+    set({ phase: "checking", message: tr("common.actions.checking") });
     try {
       const result = await testServerConnection(overrides);
       set({

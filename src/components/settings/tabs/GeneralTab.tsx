@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Combobox } from "@/components/ui/combobox";
 import { ORT_OPTIONS } from "@/lib/tauri";
 import { UI_LANGUAGES, type UiLanguage } from "@/i18n/types";
+import { UI_LANGUAGE_OPTIONS } from "@/lib/uiLanguageOptions";
 import { useLocaleStore } from "@/store/localeStore";
 import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
@@ -11,14 +12,6 @@ import { cn } from "@/lib/utils";
 import { FolderPathField } from "../FolderPathField";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
-
-// Language button labels should stay in the "native" language names
-// (not translated when the UI language changes).
-const LANGUAGE_OPTIONS: { value: UiLanguage; label: string }[] = [
-  { value: "de", label: "Deutsch" },
-  { value: "en", label: "English" },
-  { value: "es-MX", label: "Español (México)" },
-];
 
 export function GeneralTab({ draft, patch }: SettingsTabBaseProps) {
   const { t } = useTranslation();
@@ -75,7 +68,7 @@ export function GeneralTab({ draft, patch }: SettingsTabBaseProps) {
         description={t("settings.general.language.description")}
       >
         <div className="grid grid-cols-3 gap-2">
-          {LANGUAGE_OPTIONS.map(({ value, label }) => (
+          {UI_LANGUAGE_OPTIONS.map(({ value, label }) => (
             <button
               key={value}
               type="button"

@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 /** Post-QR cleanup: remove carrier media from the session lists when configured. */
 
 import { useConfigStore } from "@/store/configStore";
@@ -139,11 +140,19 @@ export function formatQrCleanupSummary(cleanup: QrCleanupResult): string {
   const parts: string[] = [];
   if (cleanup.removedVideos.length > 0) {
     const n = cleanup.removedVideos.length;
-    parts.push(`${n} Clip${n === 1 ? "" : "s"} aus Liste entfernt`);
+    parts.push(
+      tr(n === 1 ? "app.qr.cleanup.removedVideos" : "app.qr.cleanup.removedVideosMany", {
+        count: n,
+      }),
+    );
   }
   if (cleanup.removedPhotos.length > 0) {
     const n = cleanup.removedPhotos.length;
-    parts.push(`${n} Foto${n === 1 ? "" : "s"} aus Liste entfernt`);
+    parts.push(
+      tr(n === 1 ? "app.qr.cleanup.removedPhotos" : "app.qr.cleanup.removedPhotosMany", {
+        count: n,
+      }),
+    );
   }
   return parts.length > 0 ? `\n${parts.join(", ")}.` : "";
 }

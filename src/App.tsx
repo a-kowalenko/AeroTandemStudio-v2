@@ -19,6 +19,7 @@ import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
 import { useLocaleStore } from "./store/localeStore";
 import { normalizeUiLanguage } from "./i18n/types";
+import { tr } from "@/i18n";
 import { useKundeStore } from "./store/kundeStore";
 import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
@@ -102,6 +103,11 @@ import {
   shouldClearTaskProgress,
 } from "./lib/progressLabels";
 import { translateValidationHint } from "./lib/createReadyHints";
+import {
+  presentLinuxMediaWarning,
+  presentStartupCheckMessage,
+  presentStartupFfmpegError,
+} from "./lib/startupCheckMessages";
 import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { runAmsAutoConnect } from "./lib/amsAutoConnect";
 import { isCancellationError } from "./lib/utils";
@@ -582,7 +588,7 @@ function App() {
 
     const importAction: DialogActionStatus = {
       kind: "import",
-      label: "Import",
+      label: tr("app.import.label"),
       tone: "success",
       summary: importSummary,
     };
@@ -1064,16 +1070,23 @@ function App() {
 
         if (checks.hw) setHwInfo(checks.hw);
         setAppVersion(checks.version);
-        setSplashStatus(checks.message);
+        setSplashStatus(presentStartupCheckMessage(checks.message));
 
         if (!checks.ok) {
-          setSplashError(checks.ffmpeg_error || checks.message);
+          const ffmpegError = presentStartupFfmpegError(checks.ffmpeg_error);
+          const splashErr =
+            ffmpegError ?? presentStartupCheckMessage(checks.message);
+          setSplashError(splashErr);
           showError(
-            checks.ffmpeg_error || t("app.splash.ffmpegMissing"),
+            ffmpegError ?? tr("app.splash.ffmpegMissing"),
             t("app.ffmpeg.title"),
           );
         } else if (checks.media_warning) {
-          showWarning(checks.media_warning, t("app.mediaPlayback.title"));
+          showWarning(
+            presentLinuxMediaWarning(checks.media_warning) ??
+              checks.media_warning,
+            t("app.mediaPlayback.title"),
+          );
         }
 
         setSplashStatus(t("app.splash.clearCache"));
@@ -1196,7 +1209,7 @@ function App() {
           if (
             prev &&
             !/^(continue|end|starting|in arbeit…)$/i.test(prev.trim()) &&
-            prev !== "In Arbeit…"
+            prev !== tr("common.status.inProgress")
           ) {
             return prev;
           }

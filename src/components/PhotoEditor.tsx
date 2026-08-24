@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type SyntheticEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Crop, RotateCw } from "lucide-react";
@@ -52,15 +52,15 @@ const CROP_LAYOUT_MS = 350;
 const CROP_LAYOUT_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const CROP_LAYOUT_TRANSITION = `width ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, height ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, left ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}, top ${CROP_LAYOUT_MS}ms ${CROP_LAYOUT_EASE}`;
 
-const PHOTO_MODES: MediaEditModeOption<PhotoEditMode>[] = [
+const PHOTO_MODE_DEFS: { id: PhotoEditMode; labelKey: string; icon: React.ReactNode }[] = [
   {
     id: "crop",
-    label: "Zuschnitt",
+    labelKey: "photo.edit.mode.crop",
     icon: <Crop className="h-4 w-4" strokeWidth={2} />,
   },
   {
     id: "rotate",
-    label: "Drehen",
+    labelKey: "photo.edit.mode.rotate",
     icon: <RotateCw className="h-4 w-4" strokeWidth={2} />,
   },
 ];
@@ -148,6 +148,15 @@ export function PhotoEditor({
   onComplete,
 }: PhotoEditorProps) {
   const { t } = useTranslation();
+  const photoModes = useMemo<MediaEditModeOption<PhotoEditMode>[]>(
+    () =>
+      PHOTO_MODE_DEFS.map(({ id, labelKey, icon }) => ({
+        id,
+        label: t(labelKey),
+        icon,
+      })),
+    [t],
+  );
   const committedRef = useRef(false);
   const stageRef = useRef<HTMLDivElement>(null);
   const editOrderRef = useRef<PhotoEditOrder | null>(null);
@@ -520,7 +529,7 @@ export function PhotoEditor({
       title={t("common.actions.edit")}
       description={photoPath}
       mode={mode}
-      modes={PHOTO_MODES}
+      modes={photoModes}
       onModeChange={handleModeChange}
       onCancel={cancel}
       onDone={handleDone}

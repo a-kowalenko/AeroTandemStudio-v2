@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 type SpinnerProps = {
@@ -14,7 +15,7 @@ export function Spinner({ className, size = 28 }: SpinnerProps) {
       )}
       style={{ width: size, height: size }}
       role="status"
-      aria-label="Laden"
+      aria-label={tr("common.actions.loading")}
     />
   );
 }

@@ -128,7 +128,7 @@ export function SdDriveSelector({
     if (busyPhase) return t("sd.drive.busyTitle");
     if (selectedInfo) {
       const tip = driveTooltip(selectedInfo);
-      return `${tip} — SD-Karte wählen / Dateiauswahl`;
+      return t("sd.drive.pickWithTooltip", { tip });
     }
     if (drives.length === 0) {
       return watching

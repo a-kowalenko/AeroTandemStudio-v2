@@ -1,5 +1,10 @@
 ﻿import { tr } from "@/i18n";
 import type { AppConfig, AmsBridgeDiscovered, AmsBridgeHealthResult } from "@/lib/tauri";
+import {
+  formatAmsConnectionDialogTitle,
+  formatAmsFoundSuccessViaServerPassword,
+} from "@/lib/amsBridgeStatus";
+import { presentAmsConnectionAction } from "@/lib/headerConnectionStatus";
 import { amsBridgeDiscover, amsBridgeHealth, saveConfig } from "@/lib/tauri";
 import { useAmsBridgeStore, discoveredAmsLabel } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
@@ -259,9 +264,24 @@ export async function runAmsAutoConnect(opts: {
   };
   const saved = await persistConnectedConfig(nextConfig);
   if (saved && usedFallbackPassword && interactive) {
-    useUiStore
-      .getState()
-      .showSuccess(tr("ams.status.healthOk"), tr("settings.server.ams.operatorTitle"));
+    const displayName =
+      bridgeSnapshot.displayName ||
+      discoveryMeta?.display_name?.trim() ||
+      saved.ams_bridge_display_name;
+    useUiStore.getState().showSuccess(
+      formatAmsFoundSuccessViaServerPassword(displayName),
+      formatAmsConnectionDialogTitle(displayName),
+      {
+        actions: [
+          presentAmsConnectionAction({
+            ok: true,
+            rawMessage: "",
+            displayName,
+          }),
+        ],
+        autoCloseSecs: 3,
+      },
+    );
   }
   return "connected";
 }

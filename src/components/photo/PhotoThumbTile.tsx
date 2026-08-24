@@ -1,3 +1,4 @@
+import { tr } from "@/i18n";
 import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { Loader2 } from "lucide-react";
 import {
@@ -215,7 +216,7 @@ export function PhotoThumbTile({
           />
           <span
             className="absolute top-0.5 right-0.5 rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-            aria-label="WM"
+            aria-label={tr("common.actions.watermarkShort")}
           >
             WM
           </span>

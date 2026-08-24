@@ -829,7 +829,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             type="button"
             disabled={disabled}
             className="rounded p-0.5 text-white hover:bg-white/15 disabled:opacity-50"
-            aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+            aria-label={muted || volume === 0 ? t("common.actions.unmute") : t("common.actions.mute")}
             onClick={() => {
               if (muted || volume === 0) {
                 setMuted(false);
@@ -1150,7 +1150,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                   showOverlayTemporarily();
                 }
               }}
-              aria-label={playing ? "Pause" : "Play"}
+              aria-label={playing ? t("common.actions.pause") : t("common.actions.play")}
             >
               {/* Idle center Play: trim/split = hover only; playback = visible while paused */}
               <span
@@ -1260,7 +1260,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     className="h-9 w-9 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white"
                     disabled={disabled || !hasMediaSurface}
                     onClick={togglePlay}
-                    aria-label={playing ? "Pause" : "Play"}
+                    aria-label={playing ? t("common.actions.pause") : t("common.actions.play")}
                   >
                     {playing ? (
                       <Pause className="h-5 w-5 fill-current" />

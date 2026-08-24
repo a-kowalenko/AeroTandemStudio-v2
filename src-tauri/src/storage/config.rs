@@ -108,6 +108,8 @@ pub struct ServerProfile {
 
 /// Stable id for the factory-default profile in `AppConfig::default()`.
 pub const DEFAULT_SERVER_PROFILE_ID: &str = "default";
+/// Preset upload target for the Gera dropzone (no default SMB URL).
+pub const GERA_SERVER_PROFILE_ID: &str = "gera";
 
 /// App settings — keys from IMPLEMENTATION_PLAN §9 (+ a few UI helpers from legacy defaults).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -426,17 +428,26 @@ fn default_server_url() -> String {
 }
 
 fn default_server_profile_label() -> String {
-    "Standard".into()
+    "Video-PC Calden".into()
 }
 
 fn default_server_profiles() -> Vec<ServerProfile> {
-    vec![ServerProfile {
-        id: DEFAULT_SERVER_PROFILE_ID.into(),
-        label: default_server_profile_label(),
-        url: default_server_url(),
-        login: String::new(),
-        password: String::new(),
-    }]
+    vec![
+        ServerProfile {
+            id: DEFAULT_SERVER_PROFILE_ID.into(),
+            label: default_server_profile_label(),
+            url: default_server_url(),
+            login: String::new(),
+            password: String::new(),
+        },
+        ServerProfile {
+            id: GERA_SERVER_PROFILE_ID.into(),
+            label: "Video-PC Gera".into(),
+            url: String::new(),
+            login: String::new(),
+            password: String::new(),
+        },
+    ]
 }
 
 fn default_active_server_profile_id() -> String {
@@ -1195,11 +1206,15 @@ mod tests {
     }
 
     #[test]
-    fn default_has_one_server_profile() {
+    fn default_has_preset_server_profiles() {
         let cfg = AppConfig::default();
-        assert_eq!(cfg.server_profiles.len(), 1);
+        assert_eq!(cfg.server_profiles.len(), 2);
         assert_eq!(cfg.server_profiles[0].id, DEFAULT_SERVER_PROFILE_ID);
+        assert_eq!(cfg.server_profiles[0].label, "Video-PC Calden");
         assert_eq!(cfg.server_profiles[0].url, cfg.server_url);
+        assert_eq!(cfg.server_profiles[1].id, GERA_SERVER_PROFILE_ID);
+        assert_eq!(cfg.server_profiles[1].label, "Video-PC Gera");
+        assert!(cfg.server_profiles[1].url.is_empty());
         assert_eq!(cfg.active_server_profile_id, DEFAULT_SERVER_PROFILE_ID);
     }
 

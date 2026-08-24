@@ -8,9 +8,11 @@ import type {
 import type { AmsBridgeHealthResult, ConnectionTestResult } from "@/lib/tauri";
 import { tr } from "@/i18n";
 import {
-  AMS_OPERATOR_TITLE,
+  amsOperatorTitle,
   amsBridgeStatusErrorTooltip,
+  amsConnectionLabel,
   formatAmsConnectedTooltip,
+  formatAmsConnectionDialogTitle,
   presentAmsBridgeError,
 } from "./amsBridgeStatus";
 import {
@@ -75,7 +77,7 @@ function amsTooltipLine(
   displayName?: string,
 ): string {
   if (phase === "checking") {
-    return tr("header.connection.amsChecking", { title: AMS_OPERATOR_TITLE });
+    return tr("header.connection.amsChecking", { title: amsOperatorTitle() });
   }
   if (phase === "error") {
     return amsBridgeStatusErrorTooltip(message);
@@ -83,7 +85,7 @@ function amsTooltipLine(
   if (phase === "connected" || connected) {
     return formatAmsConnectedTooltip(displayName);
   }
-  return tr("header.connection.amsNotChecked", { title: AMS_OPERATOR_TITLE });
+  return tr("header.connection.amsNotChecked", { title: amsOperatorTitle() });
 }
 
 export function presentHeaderConnection(input: {
@@ -302,8 +304,9 @@ export function presentServerConnectionAction(opts: {
 export function presentAmsConnectionAction(opts: {
   ok: boolean;
   rawMessage: string;
+  displayName?: string | null;
 }): DialogActionStatus {
-  const label = AMS_OPERATOR_TITLE;
+  const label = amsConnectionLabel(opts.displayName);
   if (opts.ok) {
     return {
       kind: "ams",
@@ -370,6 +373,7 @@ export function presentHeaderRetryOutcome(opts: {
       presentAmsConnectionAction({
         ok: ams.ok,
         rawMessage: ams.message,
+        displayName: ams.health?.display_name,
       }),
     );
   }
@@ -380,7 +384,7 @@ export function presentHeaderRetryOutcome(opts: {
         ? tr("header.connection.titleAllOk")
         : smb
           ? tr("header.connection.titleServerOk")
-          : tr("header.connection.titleAmsOk");
+          : formatAmsConnectionDialogTitle(ams?.health?.display_name);
     return {
       kind: "success",
       title,

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
+import { tr } from "@/i18n";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -510,7 +511,7 @@ export function Combobox({
           type="button"
           tabIndex={-1}
           disabled={disabled}
-          aria-label="Vorschläge anzeigen"
+          aria-label={tr("common.actions.showSuggestions")}
           className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none"
           onClick={() => {
             if (open) {

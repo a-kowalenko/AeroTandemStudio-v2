@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
   Film,
@@ -107,6 +108,7 @@ export function SdVideoTile({
   previewEnabled = true,
   tileRef,
 }: Props) {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const immersiveVideoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -506,7 +508,7 @@ export function SdVideoTile({
               "pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow hover:bg-black/70",
               !showControls && "pointer-events-none",
             )}
-            aria-label={playing ? "Pause" : "Play"}
+            aria-label={playing ? t("common.actions.pause") : t("common.actions.play")}
             onClick={togglePlay}
             onPointerDown={(ev) => ev.stopPropagation()}
           >
@@ -539,7 +541,7 @@ export function SdVideoTile({
                 max={1}
                 step={0.01}
                 value={muted ? 0 : volume}
-                aria-label="Lautstärke"
+                aria-label={t("video.player.volumeAria")}
                 className="mr-1 h-1 w-14 cursor-pointer accent-white"
                 onChange={(ev) => {
                   const next = Number(ev.target.value);
@@ -551,7 +553,7 @@ export function SdVideoTile({
             <button
               type="button"
               className="flex h-7 w-7 items-center justify-center rounded bg-black/55 text-white hover:bg-black/70"
-              aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+              aria-label={muted || volume === 0 ? t("common.actions.unmute") : t("common.actions.mute")}
               onClick={(ev) => {
                 ev.stopPropagation();
                 if (muted || volume === 0) {
@@ -572,7 +574,7 @@ export function SdVideoTile({
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded bg-black/55 text-white hover:bg-black/70"
-            aria-label="Vollbild"
+            aria-label={t("common.actions.fullscreen")}
             onClick={(ev) => toggleFullscreen(ev)}
           >
             <Maximize className="h-3.5 w-3.5" />
@@ -687,7 +689,7 @@ export function SdVideoTile({
               }
               onSelect({ shiftKey: false });
             }}
-            aria-label={`${filename} auswählen`}
+            aria-label={t("common.actions.selectNamed", { name: filename })}
             className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           />
         </div>
@@ -695,16 +697,16 @@ export function SdVideoTile({
         {alreadyProcessed ? (
           <span
             className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-amber-400/80 bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-950 shadow-md shadow-black/35"
-            aria-label="Bereits bekannt"
+            aria-label={t("common.actions.knownProcessed")}
           >
-            Bekannt
+            {t("sd.selector.known")}
           </span>
         ) : showNewBadge ? (
           <span
             className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-sky-300/90 bg-sky-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-950 shadow-md shadow-black/35"
-            aria-label="Neu"
+            aria-label={t("sd.selector.new")}
           >
-            Neu
+            {t("sd.selector.new")}
           </span>
         ) : null}
 
@@ -767,7 +769,7 @@ export function SdVideoTile({
 
         {loadError && !immersive && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/50 px-2 text-center text-[10px] text-white/90 [transform:translateZ(1px)]">
-            Keine Vorschau (Codec/WebView)
+            {t("sd.tile.noPreviewCodec")}
           </div>
         )}
 
@@ -804,7 +806,7 @@ export function SdVideoTile({
             className="pointer-events-auto fixed inset-0 z-[9999] bg-black"
             role="dialog"
             aria-modal="true"
-            aria-label={`${filename} Vollbild`}
+            aria-label={t("sd.tile.fullscreenNamed", { name: filename })}
             data-sd-immersive-overlay=""
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -844,7 +846,7 @@ export function SdVideoTile({
                 />
               ) : (
                 <div className="text-sm text-white/80">
-                  {loadError ? "Keine Vorschau (Codec/WebView)" : "Lädt…"}
+                  {loadError ? t("sd.tile.noPreviewCodec") : t("common.actions.loading")}
                 </div>
               )}
 
@@ -860,7 +862,7 @@ export function SdVideoTile({
                     bumpImmersiveChrome();
                   }
                 }}
-                aria-label={playing ? "Pause" : "Play"}
+                aria-label={playing ? t("common.actions.pause") : t("common.actions.play")}
               >
                 <span
                   className={cn(
@@ -986,7 +988,7 @@ export function SdVideoTile({
                         max={1}
                         step={0.01}
                         value={muted ? 0 : volume}
-                        aria-label="Lautstärke"
+                        aria-label={t("video.player.volumeAria")}
                         className="h-1 w-24 cursor-pointer accent-white"
                         onChange={(ev) => {
                           const next = Number(ev.target.value);
@@ -998,7 +1000,7 @@ export function SdVideoTile({
                     <button
                       type="button"
                       className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
-                      aria-label={muted || volume === 0 ? "Ton an" : "Stumm"}
+                      aria-label={muted || volume === 0 ? t("common.actions.unmute") : t("common.actions.mute")}
                       onClick={(ev) => {
                         ev.stopPropagation();
                         if (muted || volume === 0) {
@@ -1021,7 +1023,7 @@ export function SdVideoTile({
                   <button
                     type="button"
                     className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-white/15 hover:text-white"
-                    aria-label="Vollbild beenden"
+                    aria-label={t("common.actions.exitFullscreen")}
                     onClick={(ev) => toggleFullscreen(ev)}
                   >
                     <Minimize className="h-5 w-5" />

@@ -16,6 +16,7 @@ import type { SettingsPatch } from "../types";
 import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 import { runAmsAutoConnect } from "@/lib/amsAutoConnect";
 import { pushFlatToActiveProfile } from "@/lib/serverProfile";
+import { composeSdPcName, resolveSdPcName } from "@/lib/sdPcName";
 
 function sortCrewList(config: AppConfig): AppConfig {
   const crew_list = [...(config.crew_list ?? [])].sort((a, b) =>
@@ -47,20 +48,22 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     // Reflect any unsaved language change that was already applied live
     setDraft(sortCrewList({ ...config, ui_language: activeLanguage }));
 
-    if (!config.sd_pc_name?.trim()) {
-      void getAppInfo()
-        .then((info) => {
-          if (cancelled) return;
-          setDraft((d) =>
-            d && !d.sd_pc_name.trim()
-              ? { ...d, sd_pc_name: info.computer_name || "" }
-              : d,
-          );
-        })
-        .catch(() => {
-          /* keep empty */
+    void getAppInfo()
+      .then((info) => {
+        if (cancelled) return;
+        const host = info.computer_name || "";
+        setDraft((d) => {
+          if (!d) return d;
+          const nextName = !d.sd_pc_name.trim()
+            ? composeSdPcName(host, d.operator_name)
+            : resolveSdPcName(d.sd_pc_name, host, d.operator_name);
+          if (nextName === d.sd_pc_name) return d;
+          return { ...d, sd_pc_name: nextName };
         });
-    }
+      })
+      .catch(() => {
+        /* keep existing */
+      });
 
     return () => {
       cancelled = true;
@@ -98,12 +101,20 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
 
+    let sd_pc_name = draft.sd_pc_name.trim();
+    try {
+      const host = (await getAppInfo()).computer_name || "";
+      sd_pc_name = resolveSdPcName(sd_pc_name, host, op);
+    } catch {
+      sd_pc_name = resolveSdPcName(sd_pc_name, "", op);
+    }
+
     const toSave: AppConfig = pushFlatToActiveProfile({
       ...draft,
       tandemmaster: draft.keep_tandemmaster_on_session_reset ? tm : "",
       videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
       operator_name: op ? canonicalCrewName(crew_list, op) : "",
-      sd_pc_name: draft.sd_pc_name.trim(),
+      sd_pc_name,
       crew_list,
     });
 

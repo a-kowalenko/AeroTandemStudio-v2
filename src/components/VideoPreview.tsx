@@ -143,6 +143,7 @@ function ClipPosterFace({
   loadThumb: boolean;
   overlay?: boolean;
 }) {
+  const { t } = useTranslation();
   const bustKey = videoPosterBustKey(
     video.size_bytes,
     video.duration_secs,
@@ -195,22 +196,26 @@ function ClipPosterFace({
               className="rounded bg-sky-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
               aria-label={
                 cutMark === "trim"
-                  ? "Getrimmt"
+                  ? t("video.preview.cutTrim")
                   : cutMark === "rotate"
-                    ? "Gedreht"
-                    : "Geteilt"
+                    ? t("video.preview.cutRotate")
+                    : t("video.preview.cutSplit")
               }
             >
-              {cutMark === "trim" ? "Trim" : cutMark === "rotate" ? "Rot" : "Split"}
+              {cutMark === "trim"
+                ? t("video.preview.cutTrimShort")
+                : cutMark === "rotate"
+                  ? t("video.preview.cutRotateShort")
+                  : t("video.preview.cutSplitShort")}
             </span>
           )}
         </div>
         {isWm && (
           <span
             className="absolute top-1 right-1 z-[1] rounded bg-amber-500 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm"
-            aria-label="Wasserzeichen"
+            aria-label={t("common.actions.watermark")}
           >
-            WM
+            {t("common.actions.watermarkShort")}
           </span>
         )}
         {!overlay && (
@@ -706,20 +711,20 @@ export function VideoPreview({
       onProgressComplete?.(t("video.preview.ready"));
       const strategy =
         result.strategy === "stream_copy_only"
-          ? "Stream-Copy"
+          ? t("video.preview.strategyStreamCopy")
           : result.strategy === "per_clip"
-            ? "Pro Clip"
+            ? t("video.preview.strategyPerClip")
             : result.strategy === "combined"
-              ? "Combined"
+              ? t("video.preview.strategyCombined")
               : result.strategy;
       const reasonSuffix = result.reencode_reason
-        ? `\nNeu-Kodierung: ${result.reencode_reason}`
+        ? t("video.preview.reencodeSuffix", { reason: result.reencode_reason })
         : "";
       showSuccess(
         result.intro_included
-          ? `Kombinierte Vorschau erstellt (${strategy}, mit Intro).${reasonSuffix}`
-          : `Kombinierte Vorschau erstellt (${strategy}).${reasonSuffix}`,
-        "Vorschau",
+          ? t("video.preview.combinedCreatedWithIntro", { strategy, suffix: reasonSuffix })
+          : t("video.preview.combinedCreated", { strategy, suffix: reasonSuffix }),
+        t("video.preview.toastTitle"),
         { autoCloseSecs: 5 },
       );
     } catch (e) {
@@ -834,7 +839,7 @@ export function VideoPreview({
               title={t("video.preview.undoAllEditsTitle")}
             >
               <RotateCcw className="h-4 w-4" />
-              Alle Bearbeitungen rückgängig
+              {t("video.preview.undoAllEditsBtn")}
             </Button>
           )}
           {videoList.length > 0 &&
@@ -852,7 +857,7 @@ export function VideoPreview({
                 }
               >
                 <Play className="h-4 w-4" />
-                Vorschau generieren
+                {t("video.preview.generatePreview")}
               </Button>
             ) : (
               <>
@@ -865,7 +870,7 @@ export function VideoPreview({
                   title={t("video.preview.showExistingTitle")}
                 >
                   <Play className="h-4 w-4" />
-                  Vorschau anzeigen
+                  {t("video.preview.showPreview")}
                 </Button>
                 <Button
                   type="button"
@@ -883,7 +888,7 @@ export function VideoPreview({
                   }
                 >
                   <RefreshCw className="h-4 w-4" />
-                  {previewStale ? "Vorschau aktualisieren" : "Neu"}
+                  {previewStale ? t("video.preview.regenerateBtn") : t("video.preview.regenerateNew")}
                 </Button>
               </>
             ))}
@@ -952,7 +957,7 @@ export function VideoPreview({
               htmlFor="auto-next-clip"
               className="cursor-pointer text-xs font-normal text-muted"
             >
-              Nächsten Clip automatisch abspielen
+              {t("video.preview.autoNextClip")}
             </Label>
           </div>
         </div>
@@ -1016,25 +1021,25 @@ export function VideoPreview({
                     ? "border-primary bg-primary-soft ring-2 ring-primary/25"
                     : "border-border/70 bg-card/70 hover:border-primary/40",
                 )}
-                title={
-                  previewStale
-                    ? "Gespeicherte Vorschau (veraltet) anzeigen"
-                    : "Gespeicherte kombinierte Vorschau anzeigen"
-                }
+                  title={
+                    previewStale
+                      ? t("video.preview.showSavedStale")
+                      : t("video.preview.showSaved")
+                  }
               >
                 <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-md bg-muted/50">
                   <Film className="h-6 w-6 text-muted-foreground/70" aria-hidden />
                   {previewStale && (
                     <span className="absolute top-1 right-1 rounded bg-amber-600 px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm">
-                      alt
+                      {t("video.preview.staleBadgeShort")}
                     </span>
                   )}
                 </div>
                 <div className="mt-1 truncate px-0.5 text-[11px] font-medium leading-tight">
-                  Vorschau
+                  {t("video.preview.combinedLabel")}
                 </div>
                 <div className="truncate px-0.5 text-[10px] text-muted">
-                  {previewStale ? "veraltet" : "kombiniert"}
+                  {previewStale ? t("video.preview.combinedStale") : t("video.preview.combinedFresh")}
                 </div>
               </button>
             )}
@@ -1068,27 +1073,27 @@ export function VideoPreview({
 
       <div className="grid gap-3 text-xs sm:grid-cols-2">
         <div className="rounded-lg border border-border/60 bg-card-elevated/80 p-3">
-          <p className="mb-1 font-semibold">Aktueller Clip</p>
+          <p className="mb-1 font-semibold">{t("video.preview.currentClip")}</p>
           {current ? (
             <dl className="space-y-0.5 text-muted">
               <div>
-                <dt className="inline text-foreground">Datei: </dt>
+                <dt className="inline text-foreground">{t("video.preview.fileLabel")} </dt>
                 <dd className="inline break-all">{current.filename}</dd>
               </div>
               <div>
-                Auflösung: {current.width} × {current.height}
+                {t("video.preview.resolutionLabel")} {current.width} × {current.height}
               </div>
-              <div>Codec: {current.codec || "—"}</div>
-              <div>Dauer: {formatDuration(current.duration_secs)}</div>
-              <div>Größe: {formatBytes(current.size_bytes)}</div>
+              <div>{t("video.preview.codecLabel")} {current.codec || "—"}</div>
+              <div>{t("video.preview.durationLabel")} {formatDuration(current.duration_secs)}</div>
+              <div>{t("video.preview.sizeLabel")} {formatBytes(current.size_bytes)}</div>
               {getCutMark(current.path) && (
                 <div className="pt-1">
                   <span className="inline-block rounded bg-sky-600/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-700 uppercase dark:text-sky-300">
                     {getCutMark(current.path) === "trim"
-                      ? "Getrimmt"
+                      ? t("video.preview.cutTrim")
                       : getCutMark(current.path) === "rotate"
-                        ? "Gedreht"
-                        : "Geteilt"}
+                        ? t("video.preview.cutRotate")
+                        : t("video.preview.cutSplit")}
                   </span>
                 </div>
               )}
@@ -1101,7 +1106,7 @@ export function VideoPreview({
               type="button"
               disabled={busy}
               aria-pressed={watermarkClipIndex === activeClip}
-              aria-label="Preview-Video mit Wasserzeichen-Stempel"
+              aria-label={t("video.preview.watermarkStampAria")}
               onClick={() => toggleWatermarkClip(activeClip)}
               className={cn(
                 "mt-2 flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
@@ -1113,10 +1118,10 @@ export function VideoPreview({
             >
               <span className="min-w-0 flex-1">
                 <span className="block text-xs font-semibold text-foreground">
-                  Preview
+                  {t("video.preview.previewExportTitle")}
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-snug text-muted">
-                  Mit Wasserzeichen-Stempel exportieren
+                  {t("video.preview.previewExportHint")}
                 </span>
               </span>
               <Checkbox
@@ -1141,7 +1146,7 @@ export function VideoPreview({
                 onClick={() => onCutClip?.(current.path, activeClip)}
               >
                 <Pencil className="h-3.5 w-3.5" />
-                Bearbeiten
+                {t("common.actions.edit")}
               </Button>
               {getCutMark(current.path) && onUndoClipCut && (
                 <Button
@@ -1153,7 +1158,7 @@ export function VideoPreview({
                   title={t("video.preview.undoThisEditTitle")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Bearbeitung rückgängig
+                  {t("common.actions.undo")}
                 </Button>
               )}
               <Button
@@ -1164,7 +1169,7 @@ export function VideoPreview({
                 onClick={() => void handleQrScan()}
               >
                 <QrCode className="h-3.5 w-3.5" />
-                QR scannen
+                {t("media.list.scanQr")}
               </Button>
               <Button
                 type="button"
@@ -1177,22 +1182,25 @@ export function VideoPreview({
                 }}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Entfernen
+                {t("common.actions.remove")}
               </Button>
             </div>
           )}
         </div>
         <div className="rounded-lg border border-border/60 bg-card-elevated/80 p-3">
-          <p className="mb-1 font-semibold">Gesamt / Preview</p>
+          <p className="mb-1 font-semibold">{t("video.preview.totalPreview")}</p>
           <dl className="space-y-0.5 text-muted">
-            <div>Clips: {videoList.length}</div>
-            <div>Gesamtdauer: {formatDuration(totalDuration)}</div>
-            <div>Gesamtgröße: {formatBytes(totalSize)}</div>
+            <div>{t("video.preview.clipsCount")} {videoList.length}</div>
+            <div>{t("video.preview.totalDuration")} {formatDuration(totalDuration)}</div>
+            <div>{t("video.preview.totalSize")} {formatBytes(totalSize)}</div>
             {preview && (
               <>
-                <div>Strategie: {preview.strategy}</div>
-                <div>Encoder: {preview.encoder}</div>
-                <div>Intro: {preview.intro_included ? "ja" : "nein"}</div>
+                <div>{t("video.preview.strategyLabel")} {preview.strategy}</div>
+                <div>{t("video.preview.encoderLabel")} {preview.encoder}</div>
+                <div>
+                  {t("video.preview.introLabel")}{" "}
+                  {preview.intro_included ? t("common.labels.yes") : t("common.labels.no")}
+                </div>
                 {preview.reencode_reason ? (
                   <div>
                     {t("video.preview.previewReencode", {

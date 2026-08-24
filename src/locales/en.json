@@ -28,7 +28,23 @@
       "add": "Add",
       "rename": "Rename",
       "pleaseWait": "Please wait…",
-      "cancelling": "Cancelling…"
+      "cancelling": "Cancelling…",
+      "done": "Done",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "showSuggestions": "Show suggestions",
+      "play": "Play",
+      "pause": "Pause",
+      "mute": "Mute",
+      "unmute": "Unmute",
+      "fullscreen": "Fullscreen",
+      "exitFullscreen": "Exit fullscreen",
+      "selectNamed": "Select {{name}}",
+      "watermark": "Watermark",
+      "watermarkShort": "WM",
+      "knownProcessed": "Already known",
+      "regenerate": "New",
+      "editMode": "Edit mode"
     },
     "status": {
       "error": "Error",
@@ -46,14 +62,34 @@
       "themeDark": "Dark",
       "language": "Language",
       "storageLocation": "Storage location",
-      "dropzonePlaceholder": "Drop zone…"
+      "dropzonePlaceholder": "Drop zone…",
+      "all": "All",
+      "name": "Name",
+      "date": "Date",
+      "size": "Size",
+      "type": "Type",
+      "preview": "Preview",
+      "actions": "Actions",
+      "drive": "Drive {{name}}",
+      "sdCard": "SD card",
+      "filesCount": "{{count}} files",
+      "filesCountWithSize": "{{count}} files · {{sizeMb}} MB",
+      "selectedSummary": "selected: {{count}} ({{sizeMb}} MB)",
+      "none": "None",
+      "sortAsc": "↑ Asc",
+      "sortDesc": "↓ Desc",
+      "yes": "yes",
+      "no": "no"
     },
     "language": {
       "de": "German",
       "en": "English",
       "esMX": "Spanish (Mexico)"
     },
-    "unsavedChangesDiscard": "Discard unsaved changes?"
+    "unsavedChangesDiscard": "Discard unsaved changes?",
+    "filter": {
+      "newOnly": "New only"
+    }
   },
   "settings": {
     "dialog": {
@@ -97,7 +133,9 @@
         "description": "Removes preview/concat/work folders in temp, leftover cuts, known temp files, and work folders next to the storage location. Also clears the current media session (working folder).",
         "toastTitle": "Cache",
         "cleaning": "Cleaning…",
-        "clear": "Clear cache"
+        "clear": "Clear cache",
+        "cleanupSummary": "Deleted {{dirs}} folders and {{files}} files ({{size}}).",
+        "cleanupErrors": "{{count}} item(s) could not be deleted."
       },
       "update": {
         "title": "Update",
@@ -119,7 +157,8 @@
         "applyVersion": "Apply version",
         "noAutoInstall": "Automatic installation is not available for this version.",
         "versionHeading": "Version {{version}}",
-        "noNotes": "No release notes."
+        "noNotes": "No release notes.",
+        "releasesUnavailable": "Version list unavailable — please check your internet connection."
       }
     },
     "folder": {
@@ -229,7 +268,7 @@
         "folder": "Backup folder",
         "pcName": "PC name",
         "pcNamePlaceholder": "Computer name",
-        "pcNameHint": "Used in the backup folder name, e.g. SD_Backup_…[{{name}}]_…",
+        "pcNameHint": "Used in backup folder names and for AMS, e.g. SD_Backup_…[{{name}}]_… (default: Name (Computer name))",
         "pcNameFallback": "PC",
         "clearAfter": "Clear SD after backup",
         "clearAfterTitleOn": "Clear SD card after successful backup",
@@ -267,10 +306,15 @@
         "title": "SMB server",
         "description": "Credentials for upload after creating a job.",
         "profileListTitle": "Saved servers",
-        "profileListHint": "Tap a profile to switch. Edits apply to the highlighted profile.",
-        "profileEditTitle": "Credentials",
-        "profileEditHint": "Editing “{{name}}”. Changes are saved when you switch profiles.",
-        "profileEditHintGeneric": "Editing the selected profile.",
+        "profileListHint": "Tap a row to use it for upload. Pencil = edit credentials.",
+        "profileActiveHint": "Active for upload: “{{name}}”. Use the pencil to edit.",
+        "profileEditTitleNamed": "Edit “{{name}}”",
+        "profileCreateTitle": "New server profile",
+        "profileEditPanelHint": "Name, URL, and credentials for this profile.",
+        "profileWizardHint": "URL and credentials for upload after creating a job.",
+        "editProfile": "Edit",
+        "editProfileNamed": "Edit “{{name}}”",
+        "deleteProfileConfirm": "Delete profile “{{name}}”?",
         "profileLabel": "Profile name",
         "profileLabelPlaceholder": "e.g. Dropzone NAS",
         "profileNoUrl": "No server URL yet",
@@ -281,6 +325,11 @@
         "cannotDeleteLast": "At least one server profile must remain.",
         "url": "Server URL",
         "urlPlaceholder": "smb://…",
+        "scheme": "Protocol",
+        "schemePath": "Path",
+        "urlPlaceholderHost": "host/share",
+        "urlPlaceholderUnc": "server\\share",
+        "urlPlaceholderPath": "/path or C:\\folder",
         "login": "Login",
         "password": "Password",
         "recheckTitle": "Click to check again",
@@ -306,6 +355,7 @@
         "foundStatus": "Found: {{instance}} → {{url}}",
         "foundSuccess": "Address applied:\n{{url}}\n\nEnter the access code here and check.",
         "foundSuccessViaServerPassword": "Address and access code applied (server password).",
+        "foundSuccessViaServerPasswordNamed": "{{name}}: Address and access code applied (server password).",
         "foundMany": "{{count}} addresses found — please choose one.",
         "applied": "Applied: {{instance}} → {{url}}",
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
@@ -340,7 +390,11 @@
       "guestHint": "Without login, connects as Guest.",
       "openUrl": "Open server URL",
       "checkCredentials": "Check credentials",
-      "openCredentials": "Open credentials"
+      "openCredentials": "Open credentials",
+      "unreachableTimeout": "Server unreachable (timeout)",
+      "unreachableRefused": "Server unreachable (connection refused)",
+      "unreachableHostNotFound": "Server unreachable (host not found)",
+      "unreachableNetwork": "Server unreachable (network)"
     }
   },
   "create": {
@@ -363,7 +417,8 @@
       "fileMissing": "File missing",
       "customerId": "Customer ID",
       "bookingId": "Booking ID",
-      "validation": "Validation"
+      "validation": "Validation",
+      "storageDeferredHint": "Storage location will be chosen when creating and then saved."
     },
     "ready": {
       "headline": {
@@ -609,7 +664,12 @@
       "ready": "Ready!",
       "startWithErrors": "Started with errors",
       "ffmpegMissing": "FFmpeg was not found. Encoding is unavailable.",
-      "clearCache": "Clearing cache…"
+      "clearCache": "Clearing cache…",
+      "checksOk": "Ready — FFmpeg OK, encoder {{encoder}}",
+      "ffmpegBinaryNotFound": "FFmpeg binary not found (expected under resources/ffmpeg/).",
+      "gstBasePluginsMissing": "GStreamer base plugins missing — video playback unavailable. Install: {{installHint}}",
+      "gstH264DecoderMissing": "No H.264 decoder found in GStreamer — MP4 preview stays black. Install: {{installHint}}",
+      "gstCodecsMissing": "GStreamer codecs not found — video playback may fail. Install: {{installHint}}"
     },
     "chrome": {
       "historyTitle": "Processed files",
@@ -631,7 +691,9 @@
       "switchTo": "Switch to version {{version}}?",
       "availableOn": "Update to {{version}} available.",
       "restartManual": "Version installed — please restart the app manually.",
-      "title": "Update"
+      "title": "Update",
+      "installHintMacApplications": "For automatic updates, the app should be in the Applications folder.",
+      "installHintLinuxAppImage": "Automatic updates work reliably only as an AppImage."
     },
     "sd": {
       "readingFiles": "Reading SD files…",
@@ -677,7 +739,13 @@
       "source": "Source: {{name}}",
       "notFound": "No QR code found.",
       "scanFailed": "Scan failed",
-      "recognized": "QR code recognized"
+      "recognized": "QR code recognized",
+      "cleanup": {
+        "removedVideos": "{{count}} clip removed from list",
+        "removedVideosMany": "{{count}} clips removed from list",
+        "removedPhotos": "{{count}} photo removed from list",
+        "removedPhotosMany": "{{count}} photos removed from list"
+      }
     },
     "storage": {
       "pickTitle": "Choose storage location for completed jobs",
@@ -899,6 +967,16 @@
       "allAlreadyListed": "All files are already in the list",
       "noValidPhotos": "No valid photo files found",
       "noValidVideos": "No valid video files found"
+    },
+    "edit": {
+      "doneDefault": "Done",
+      "modeAria": "Edit mode"
+    },
+    "contextMenu": {
+      "open": "Open",
+      "revealInFolder": "Show in folder",
+      "copyPath": "Copy path",
+      "undoEdit": "Undo edit"
     }
   },
   "workflow": {
@@ -1096,6 +1174,7 @@
       "unreachableHint": "Please enter customer data manually.",
       "lookupErrorFallback": "Customer could not be loaded",
       "healthOk": "Booking lookup connected",
+      "healthOkNamed": "{{name}} connected",
       "connectedTooltip": "{{title}}: connected",
       "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Only for online jobs, not local",
@@ -1125,7 +1204,9 @@
         "uploadCancelled": "Upload cancelled",
         "waitingForAccept": "Waiting to be accepted",
         "archive": "Archive {{archive}}"
-      }
+      },
+      "cache": "Cache",
+      "cacheTooltip": "{{label}} (Cache)"
     },
     "lookup": {
       "apply": "Apply",
@@ -1164,6 +1245,7 @@
       "titleFailed": "No connection",
       "titleServerOk": "Server connected",
       "titleAmsOk": "Booking lookup connected",
+      "titleAmsOkNamed": "{{name}} connected",
       "serverLabel": "Server",
       "serverOk": "Reachable",
       "serverOkLocal": "Reachable (local)",
@@ -1256,6 +1338,11 @@
         "split": "Split failed",
         "rotate": "Rotate failed",
         "undo": "Undo failed"
+      },
+      "mode": {
+        "trim": "Trim",
+        "rotate": "Rotate",
+        "split": "Split"
       }
     },
     "preview": {
@@ -1276,7 +1363,48 @@
       "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
       "undoThisEditTitle": "Undo this edit",
       "previewReencode": "Re-encode: {{reason}}",
-      "previewStreamCopy": "Re-encode: no (stream copy)"
+      "previewStreamCopy": "Re-encode: no (stream copy)",
+      "undoAllEditsBtn": "Undo all edits",
+      "generatePreview": "Generate preview",
+      "showPreview": "Show preview",
+      "regenerateBtn": "Update preview",
+      "regenerateNew": "New",
+      "combinedLabel": "Preview",
+      "combinedStale": "stale",
+      "combinedFresh": "combined",
+      "staleBadgeShort": "old",
+      "currentClip": "Current clip",
+      "fileLabel": "File:",
+      "resolutionLabel": "Resolution:",
+      "codecLabel": "Codec:",
+      "durationLabel": "Duration:",
+      "sizeLabel": "Size:",
+      "totalPreview": "Total / preview",
+      "clipsCount": "Clips:",
+      "totalDuration": "Total duration:",
+      "totalSize": "Total size:",
+      "strategyLabel": "Strategy:",
+      "encoderLabel": "Encoder:",
+      "introLabel": "Intro:",
+      "previewExportTitle": "Preview",
+      "previewExportHint": "Export with watermark stamp",
+      "autoNextClip": "Auto-play next clip",
+      "cutTrim": "Trimmed",
+      "cutRotate": "Rotated",
+      "cutSplit": "Split",
+      "cutTrimShort": "Trim",
+      "cutRotateShort": "Rot",
+      "cutSplitShort": "Split",
+      "combinedCreatedWithIntro": "Combined preview created ({{strategy}}, with intro).{{suffix}}",
+      "combinedCreated": "Combined preview created ({{strategy}}).{{suffix}}",
+      "strategyStreamCopy": "Stream copy",
+      "strategyPerClip": "Per clip",
+      "strategyCombined": "Combined",
+      "showSavedStale": "Show saved preview (stale)",
+      "showSaved": "Show saved combined preview",
+      "watermarkStampAria": "Preview video with watermark stamp",
+      "toastTitle": "Preview",
+      "reencodeSuffix": "\nRe-encode: {{reason}}"
     },
     "cutter": {
       "warning": {
@@ -1326,6 +1454,10 @@
         "apply": "Edit failed",
         "rotateManyPartial": "Rotated {{count}} photo(s), then error: {{error}}",
         "undo": "Undo failed"
+      },
+      "mode": {
+        "crop": "Crop",
+        "rotate": "Rotate"
       }
     },
     "preview": {
@@ -1370,6 +1502,11 @@
         "noEdit": "No edit selected."
       },
       "noPhoto": "No photo"
+    },
+    "rotate": {
+      "ccw": "90° counter-clockwise",
+      "cw": "90° clockwise",
+      "reset": "Reset"
     }
   },
   "sd": {
@@ -1408,7 +1545,8 @@
       "none": "No SD",
       "ejectTitle": "Eject “{{label}}”",
       "ejectAria": "Eject SD card {{label}}",
-      "open": "Open"
+      "open": "Open",
+      "pickWithTooltip": "{{tip}} — choose SD card / file picker"
     },
     "selector": {
       "known": "Known",
@@ -1416,7 +1554,26 @@
       "executeCount": "Run ({{count}})",
       "refresh": "Read again",
       "title": "SD card — choose files",
-      "titleSizeLimit": "Size limit exceeded — choose files"
+      "titleSizeLimit": "Size limit exceeded — choose files",
+      "viewTiles": "Tiles",
+      "viewDetails": "Details",
+      "selectAllFiltered": "All (filtered)",
+      "selectAllNew": "All new",
+      "selectAll": "Select all",
+      "clearSd": "Clear SD card",
+      "clearOnlyAfterBackupHint": "Clearing only possible after backup.",
+      "clearNoFiles": "No files to clear",
+      "clearAfterBackup": "Clear SD card after successful backup",
+      "clearNeedsBackup": "Only available when backup is enabled",
+      "ejectAfterBackupTitle": "Eject immediately after backup (import/QR from copies). Without backup: after import.",
+      "scanImportedQr": "Scan imported media for QR codes",
+      "scanNeedsImport": "Only available when import is enabled",
+      "scanQrLabel": "QR scan",
+      "proceedDespiteLimit": "Proceed anyway",
+      "readingInline": "Reading SD files… {{count}}",
+      "summaryVideos": ", {{count}} videos",
+      "summaryPhotos": ", {{count}} photos",
+      "summarySelected": ", selected: {{count}} ({{sizeMb}} MB)"
     },
     "catalog": {
       "filteredOnly": "No importable media (timelapse/proxies only).",
@@ -1427,6 +1584,10 @@
       "secondaryBackupFailed": "Server backup (second path) failed.",
       "secondaryBackupTitle": "Server backup",
       "title": "SD monitor"
+    },
+    "tile": {
+      "noPreviewCodec": "No preview (codec/WebView)",
+      "fullscreenNamed": "{{name}} fullscreen"
     }
   },
   "setupWizard": {
@@ -1485,6 +1646,7 @@
     "completeTitle": "Success",
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
+      "backupPcNameHint": "Backup folders are labeled with “{{name}}”.",
       "qrHint": "QR files stay in place by default. Cleanup behavior can be fine-tuned later."
     },
     "intro": {
@@ -1502,7 +1664,8 @@
     "saveFailed": "Settings could not be saved.",
     "sections": {
       "sdCards": "SD cards",
-      "qrDetection": "QR detection"
+      "qrDetection": "QR detection",
+      "server": "Server"
     },
     "standardFolderTitle": "Default folder",
     "steps": {
@@ -1514,6 +1677,15 @@
     },
     "upload": {
       "disabledHint": "Upload stays off. You can set up the server later in settings at any time."
+    },
+    "defaultMediaDir": {
+      "alternateVolumeBody": "Another local volume has significantly more free space.",
+      "alternateStandard": "Default: {{path}}",
+      "alternateChoice": "Alternative: {{path}}",
+      "alternateConfirm": "OK = use alternative, Cancel = keep default.",
+      "warningsTitle": "Storage location notes:",
+      "createFolder": "Create folder:\n{{path}}",
+      "proceedAnyway": "Continue anyway?"
     }
   },
   "dateField": {

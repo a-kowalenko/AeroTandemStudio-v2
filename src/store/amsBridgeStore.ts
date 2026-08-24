@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { tr } from "@/i18n";
 import {
   amsBridgeHealth,
   getConfig,
@@ -69,7 +70,7 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
 
   applyResult: (result) => set(resultFields(result)),
   checkHealth: async () => {
-    set({ phase: "checking", message: "Prüfe…" });
+    set({ phase: "checking", message: tr("common.actions.checking") });
     try {
       const result = await amsBridgeHealth();
       set(resultFields(result));

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 import { cn } from "../lib/utils";
 
@@ -43,10 +44,12 @@ export function MediaEditShell<T extends string>({
   onCancel,
   onDone,
   doneEnabled,
-  doneLabel = "Fertig",
+  doneLabel,
   children,
   controls,
 }: MediaEditShellProps<T>) {
+  const { t } = useTranslation();
+  const resolvedDoneLabel = doneLabel ?? t("media.edit.doneDefault");
   return (
     <Dialog
       open={open}
@@ -78,7 +81,7 @@ export function MediaEditShell<T extends string>({
             onClick={onCancel}
             className="justify-self-start rounded-md px-1.5 py-1 text-[15px] font-normal text-muted transition hover:text-foreground"
           >
-            Abbrechen
+            {t("common.actions.cancel")}
           </button>
           <h2 className="text-center text-[15px] font-semibold tracking-tight text-foreground">
             {title}
@@ -94,7 +97,7 @@ export function MediaEditShell<T extends string>({
                 : "cursor-not-allowed text-muted/40",
             )}
           >
-            {doneLabel}
+            {resolvedDoneLabel}
           </button>
         </header>
 
@@ -113,7 +116,7 @@ export function MediaEditShell<T extends string>({
         {/* Mode rail */}
         <nav
           className="shrink-0 border-t border-border px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
-          aria-label="Bearbeitungsmodus"
+          aria-label={t("media.edit.modeAria")}
         >
           <ul className="mx-auto flex max-w-md items-stretch justify-center gap-1 sm:gap-2">
             {modes.map((m) => {

@@ -9,15 +9,17 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
 import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
+import { composeSdPcName, isAutoSdPcName, resolveSdPcName } from "@/lib/sdPcName";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
   crewAllNames,
   findCrewMember,
+  getAppInfo,
   ORT_OPTIONS,
   proposeDefaultMediaDirs,
   upsertCrewMember,
 } from "@/lib/tauri";
-import type { UiLanguage } from "@/i18n/types";
+import { UI_LANGUAGE_OPTIONS, uiLanguageLabel } from "@/lib/uiLanguageOptions";
 import { useConfigStore } from "@/store/configStore";
 import { useLocaleStore } from "@/store/localeStore";
 import { useServerStore } from "@/store/serverStore";
@@ -28,7 +30,12 @@ import {
   presentServerConnectionError,
   serverConnectionStatusLabel,
 } from "@/lib/serverStatus";
-import { activeServerProfileSummary } from "@/lib/serverProfile";
+import {
+  activeServerProfileSummary,
+  DEFAULT_SERVER_PROFILE_ID,
+  ensureWizardServerProfiles,
+  switchServerProfile,
+} from "@/lib/serverProfile";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
@@ -280,12 +287,6 @@ type OperatorRoleDraft = {
 const SKIP_BTN_CLASS =
   "border-orange-300/90 bg-orange-100 text-orange-950 hover:bg-orange-200/90 dark:border-orange-400/35 dark:bg-orange-400/15 dark:text-orange-50 dark:hover:bg-orange-400/25";
 
-const LANGUAGE_OPTIONS: { value: UiLanguage; label: string }[] = [
-  { value: "de", label: "Deutsch" },
-  { value: "en", label: "English" },
-  { value: "es-MX", label: "Español (México)" },
-];
-
 export function SetupWizard({ open, onComplete }: Props) {
   const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
@@ -312,19 +313,23 @@ export function SetupWizard({ open, onComplete }: Props) {
     useState<DefaultMediaDirKind | null>(null);
   const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
   const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(null);
+  const [computerName, setComputerName] = useState("");
   const crewNames = crewAllNames(draft?.crew_list);
 
   useEffect(() => {
     if (!open || !config) return;
     let cancelled = false;
     // Wizard defaults: QR auto-scan for videos & photos on.
-    const next = {
-      ...config,
-      qr_check_enabled: true,
-      photo_qr_check_enabled: true,
-      sd_eject_after_workflow: true,
-      upload_to_server: true,
-    };
+    const next = switchServerProfile(
+      ensureWizardServerProfiles({
+        ...config,
+        qr_check_enabled: true,
+        photo_qr_check_enabled: true,
+        sd_eject_after_workflow: true,
+        upload_to_server: true,
+      }),
+      DEFAULT_SERVER_PROFILE_ID,
+    );
     const member = next.operator_name.trim()
       ? findCrewMember(next.crew_list, next.operator_name)
       : null;
@@ -360,6 +365,21 @@ export function SetupWizard({ open, onComplete }: Props) {
     setMediaDirsProposal(null);
     setCreatingDefaultDir(null);
     setDefaultDirDone({});
+    void getAppInfo()
+      .then((info) => {
+        if (cancelled) return;
+        const host = info.computer_name || "";
+        setComputerName(host);
+        setDraft((prev) => {
+          if (!prev) return prev;
+          const sd_pc_name = resolveSdPcName(prev.sd_pc_name, host, prev.operator_name);
+          if (sd_pc_name === prev.sd_pc_name) return prev;
+          return { ...prev, sd_pc_name };
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setComputerName("");
+      });
     void proposeDefaultMediaDirs()
       .then((p) => {
         if (!cancelled) setMediaDirsProposal(p);
@@ -391,18 +411,29 @@ export function SetupWizard({ open, onComplete }: Props) {
     });
   }
 
+  function applySdPcNameDefault(
+    config: AppConfig,
+    host: string,
+    operatorName: string,
+  ): AppConfig {
+    if (!host.trim()) return config;
+    const sd_pc_name = resolveSdPcName(config.sd_pc_name, host, operatorName);
+    if (sd_pc_name === config.sd_pc_name) return config;
+    return { ...config, sd_pc_name };
+  }
+
   function applyOperatorDefaults(raw: string) {
     const name = raw.trim();
     setDraft((prev) => {
       if (!prev) return prev;
-      const next: AppConfig = { ...prev, operator_name: raw };
+      let next: AppConfig = { ...prev, operator_name: raw };
       if (!name) {
         next.keep_tandemmaster_on_session_reset = false;
         next.tandemmaster = "";
         next.keep_videospringer_on_session_reset = false;
         next.videospringer = "";
         setOperatorRoles(null);
-        return next;
+        return applySdPcNameDefault(next, computerName, "");
       }
       const member = findCrewMember(prev.crew_list, name);
       const roles = {
@@ -430,6 +461,7 @@ export function SetupWizard({ open, onComplete }: Props) {
         next.keep_videospringer_on_session_reset = false;
         next.videospringer = "";
       }
+      next = applySdPcNameDefault(next, computerName, name);
       return next;
     });
   }
@@ -509,7 +541,9 @@ export function SetupWizard({ open, onComplete }: Props) {
     try {
       const result = await applyDefaultMediaDir(kind);
       if (!result) return;
-      const { ensured, computerName } = result;
+      const { ensured, computerName: detectedHost } = result;
+      const host = computerName || detectedHost;
+      if (host && !computerName) setComputerName(host);
       setDraft((prev) => {
         if (!prev) return prev;
         const next = { ...prev };
@@ -517,8 +551,11 @@ export function SetupWizard({ open, onComplete }: Props) {
           next.speicherort = ensured.path;
         } else {
           next.sd_backup_folder = ensured.path;
-          if (!next.sd_pc_name.trim() && computerName) {
-            next.sd_pc_name = computerName;
+          if (
+            host &&
+            isAutoSdPcName(next.sd_pc_name, host, next.operator_name)
+          ) {
+            next.sd_pc_name = composeSdPcName(host, next.operator_name);
           }
         }
         return next;
@@ -614,8 +651,13 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   function prepareForSave(markCompleted: boolean): AppConfig | null {
     if (!draft) return null;
+    const withPcName = applySdPcNameDefault(
+      draft,
+      computerName,
+      draft.operator_name,
+    );
     return {
-      ...draft,
+      ...withPcName,
       setup_completed: markCompleted,
     };
   }
@@ -761,7 +803,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               <div className="space-y-2">
                 <Label>{t("common.labels.language")}</Label>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  {LANGUAGE_OPTIONS.map(({ value, label }) => (
+                  {UI_LANGUAGE_OPTIONS.map(({ value, label }) => (
                     <button
                       key={value}
                       type="button"
@@ -985,6 +1027,17 @@ export function SetupWizard({ open, onComplete }: Props) {
                     />
                     {t("settings.sd.backup.clearAfter")}
                   </label>
+                  {draft.sd_auto_backup && computerName ? (
+                    <p className="text-[11px] leading-snug text-muted">
+                      {t("setupWizard.import.backupPcNameHint", {
+                        name: resolveSdPcName(
+                          draft.sd_pc_name,
+                          computerName,
+                          draft.operator_name,
+                        ),
+                      })}
+                    </p>
+                  ) : null}
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1061,12 +1114,17 @@ export function SetupWizard({ open, onComplete }: Props) {
               ) : null}
               <div
                 className={cn(
+                  "space-y-3 rounded-lg border border-border bg-background/60 p-3",
                   !draft.upload_to_server && "pointer-events-none opacity-50",
                 )}
               >
+                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                  {t("setupWizard.sections.server")}
+                </p>
                 <ServerProfileEditor
                   draft={draft}
                   setDraft={setDraft}
+                  variant="wizard"
                   disabled={!draft.upload_to_server}
                   onError={(message) => showError(message, t("app.server.title"))}
                   errorTitle={t("app.server.title")}
@@ -1091,8 +1149,11 @@ export function SetupWizard({ open, onComplete }: Props) {
                           className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           title={
                             serverPhase === "error" && serverMessage
-                              ? `${serverMessage}\nKlicken zum erneuten Prüfen`
-                              : t("header.connection.retry")
+                              ? t(
+                                  "settings.server.smb.recheckTitleWithMessage",
+                                  { message: serverMessage },
+                                )
+                              : t("settings.server.smb.recheckTitle")
                           }
                           onClick={() => void onTestServer()}
                         >
@@ -1115,10 +1176,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               <dl className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3 text-sm">
                 <SummaryRow
                   label={t("common.labels.language")}
-                  value={
-                    LANGUAGE_OPTIONS.find((o) => o.value === draft.ui_language)
-                      ?.label ?? draft.ui_language
-                  }
+                  value={uiLanguageLabel(draft.ui_language)}
                 />
                 <SummaryRow
                   label={t("settings.general.appearance.title")}
@@ -1154,6 +1212,18 @@ export function SetupWizard({ open, onComplete }: Props) {
                         : t("setupWizard.summary.disabled")
                   }
                 />
+                {draft.sd_auto_backup ? (
+                  <SummaryRow
+                    label={t("settings.sd.backup.pcName")}
+                    value={
+                      resolveSdPcName(
+                        draft.sd_pc_name,
+                        computerName,
+                        draft.operator_name,
+                      ) || t("setupWizard.summary.notSet")
+                    }
+                  />
+                ) : null}
                 <SummaryRow
                   label={t("settings.sd.backup.clearAfter")}
                   value={
