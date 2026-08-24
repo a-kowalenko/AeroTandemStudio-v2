@@ -21,7 +21,7 @@ import {
   presentAmsConnectionAction,
   presentServerConnectionAction,
 } from "@/lib/headerConnectionStatus";
-import { amsBridgeDiscover, amsBridgeHealth } from "@/lib/tauri";
+import { amsBridgeDiscover, amsBridgeHealth, getConfig } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
@@ -160,6 +160,15 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       }
       setDraft(saved);
       const result = await checkAmsHealth();
+      const refreshed = await getConfig();
+      useConfigStore.getState().updateLocal({
+        ams_bridge_instance_id: refreshed.ams_bridge_instance_id,
+      });
+      setDraft((current) =>
+        current
+          ? { ...current, ams_bridge_instance_id: refreshed.ams_bridge_instance_id }
+          : current,
+      );
       const action = presentAmsConnectionAction({
         ok: result.ok,
         rawMessage: result.message,

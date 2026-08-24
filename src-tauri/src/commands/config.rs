@@ -28,6 +28,25 @@ impl ConfigState {
     }
 }
 
+/// When the frontend saves settings it does not edit `ams_bridge_instance_id`; merge from cache/disk.
+fn preserve_ams_bridge_instance_id(state: &ConfigState, config: &mut AppConfig) -> Result<(), String> {
+    if !config.ams_bridge_instance_id.trim().is_empty() {
+        return Ok(());
+    }
+    {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        config.preserve_ams_bridge_instance_id_from(&cache);
+        if !config.ams_bridge_instance_id.trim().is_empty() {
+            return Ok(());
+        }
+    }
+    let store = state.store.lock().map_err(|e| e.to_string())?;
+    if let Ok(disk) = store.load() {
+        config.preserve_ams_bridge_instance_id_from(&disk);
+    }
+    Ok(())
+}
+
 pub fn ensure_ams_bridge_identity(state: &ConfigState) -> Result<AppConfig, String> {
     let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
     if !cache.ensure_ams_bridge_instance_id() {
@@ -59,7 +78,8 @@ pub fn get_config(state: State<'_, ConfigState>) -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-pub fn save_config(state: State<'_, ConfigState>, config: AppConfig) -> Result<AppConfig, String> {
+pub fn save_config(state: State<'_, ConfigState>, mut config: AppConfig) -> Result<AppConfig, String> {
+    preserve_ams_bridge_instance_id(&state, &mut config)?;
     {
         let store = state.store.lock().map_err(|e| e.to_string())?;
         store.save(&config).map_err(|e| e.to_string())?;

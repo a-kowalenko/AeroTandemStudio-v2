@@ -515,6 +515,17 @@ impl AppConfig {
         self.ams_bridge_instance_id = Uuid::new_v4().to_string();
         true
     }
+
+    /// Keep an existing bridge instance id when the UI omits the hidden field.
+    pub fn preserve_ams_bridge_instance_id_from(&mut self, existing: &AppConfig) {
+        if !self.ams_bridge_instance_id.trim().is_empty() {
+            return;
+        }
+        let id = existing.ams_bridge_instance_id.trim();
+        if !id.is_empty() {
+            self.ams_bridge_instance_id = id.to_string();
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -1020,6 +1031,26 @@ mod tests {
                 "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Mayo", "Ralph",
                 "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
             ]
+        );
+    }
+
+    #[test]
+    fn preserve_ams_bridge_instance_id_keeps_existing_when_incoming_empty() {
+        let mut incoming = AppConfig::default();
+        let mut existing = AppConfig::default();
+        existing.ams_bridge_instance_id = "11111111-1111-4111-8111-111111111111".into();
+
+        incoming.preserve_ams_bridge_instance_id_from(&existing);
+        assert_eq!(
+            incoming.ams_bridge_instance_id,
+            "11111111-1111-4111-8111-111111111111"
+        );
+
+        incoming.ams_bridge_instance_id = "22222222-2222-4222-8222-222222222222".into();
+        incoming.preserve_ams_bridge_instance_id_from(&existing);
+        assert_eq!(
+            incoming.ams_bridge_instance_id,
+            "22222222-2222-4222-8222-222222222222"
         );
     }
 }
