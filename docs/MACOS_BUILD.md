@@ -9,6 +9,7 @@ requires **Developer ID** signing + notarization.
 - macOS 11+ with Xcode Command Line Tools
 - Rust (`rustup`), Node.js LTS, npm
 - FFmpeg sidecar: `npm run download-ffmpeg` (or place binary under `src-tauri/resources/ffmpeg/mac/`)
+- Optional Cutter player (OPT-13): `brew install mpv` or place binary under `src-tauri/resources/mpv/mac/` — see `src-tauri/resources/mpv/README.md`. Without mpv the app uses HTML5.
 - Optional: Apple Developer Program membership for signing / notarization
 
 ## Local build (unsigned / ad-hoc)

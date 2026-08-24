@@ -200,7 +200,9 @@
       "introMuxHint": "Neu kodieren erzeugt Intro und Flugvideo als einen durchgängigen Bitstream — zuverlässig auf Handys und in Playern. Stream-Copy ist schneller, kann aber auf manchen Geräten einfrieren.",
       "previewReuseHint": "Tipp: Zuerst „Vorschau generieren“ — bei unveränderten Clips übernimmt Erstellen die Vorschau ohne Neu-Kodierung.",
       "reencodeMatching": "Passende Clips neu encodieren",
-      "previewCrf": "Preview CRF"
+      "previewCrf": "Preview CRF",
+      "useLibmpv": "mpv-Player für Zuschnitt (libmpv/mpv)",
+      "useLibmpvHint": "Schnellere Scrubs im Cutter wenn mpv installiert ist. Ohne mpv oder bei Fehlern bleibt HTML5 aktiv."
     },
     "qr": {
       "autoScan": {

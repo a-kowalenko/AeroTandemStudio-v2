@@ -9,6 +9,7 @@ function normalizeConfig(config: AppConfig): AppConfig {
     ...config,
     ui_language: normalizeUiLanguage(config.ui_language),
     log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
+    use_libmpv: config.use_libmpv ?? true,
   };
 }
 

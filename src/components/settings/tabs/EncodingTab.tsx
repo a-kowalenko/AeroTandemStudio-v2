@@ -207,6 +207,22 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
                 }
               />
             </div>
+
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={draft.use_libmpv}
+                onCheckedChange={(v) => patch("use_libmpv", v === true)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">
+                  {t("settings.encoding.useLibmpv")}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {t("settings.encoding.useLibmpvHint")}
+                </span>
+              </span>
+            </label>
           </div>
         ) : null}
       </div>

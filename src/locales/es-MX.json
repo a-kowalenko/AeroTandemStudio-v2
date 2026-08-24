@@ -200,7 +200,9 @@
       "introMuxHint": "Recodificar genera intro y video de vuelo como un bitstream continuo — fiable en móviles y reproductores. La copia de stream es más rápida, pero puede congelarse en algunos dispositivos.",
       "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "reencodeMatching": "Recodificar clips coincidentes",
-      "previewCrf": "CRF de vista previa"
+      "previewCrf": "CRF de vista previa",
+      "useLibmpv": "Reproductor mpv para recorte (libmpv/mpv)",
+      "useLibmpvHint": "Scrubbing más fluido en el cortador si mpv está instalado. Sin mpv se usa HTML5."
     },
     "qr": {
       "autoScan": {

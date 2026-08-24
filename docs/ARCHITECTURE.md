@@ -10,7 +10,7 @@
 | Backend | Rust (`src-tauri/`) |
 | Frontend | React 19 + TypeScript (`src/`) |
 | Video | FFmpeg CLI Sidecar |
-| Player | HTML5 (Phase 9); libmpv später optional |
+| Player | HTML5 + optional mpv IPC (OPT-13); libmpv embed later |
 | Storage | SQLite (ab Phase 5) |
 | SMB Upload | `smb2` crate (Phase 10) |
 | Auto-Update | Tauri Updater Plugin (Endpoint-Stub bis Production-Feed) |

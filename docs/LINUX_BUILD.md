@@ -13,6 +13,7 @@ Plan checklist: `docs/IMPLEMENTATION_PLAN.md` → Phase 15.
 - Target: **x86_64-unknown-linux-gnu**
 - Bundle: **AppImage** primary; `.deb` optional
 - Bundled FFmpeg under `resources/ffmpeg/linux/…` (not a PATH copy of system ffmpeg)
+- Optional Cutter player (OPT-13): system `mpv` (`apt install mpv`) or `resources/mpv/linux/…` — HTML5 fallback if missing (`resources/mpv/README.md`)
 - Encoding: **NVENC** when available, else **libx264** (VAAPI = backlog)
 - SD mounts, SMB upload, in-app updater for AppImage
 - No breaking changes for Win/Mac users
@@ -55,6 +56,7 @@ Also:
 - Rust stable (`rustup`)
 - Node.js LTS + npm
 - FFmpeg sidecar: `npm run download-ffmpeg` (after Phase 15 download script ships a static binary)
+- Optional Cutter mpv (OPT-13): `sudo apt install mpv` (HTML5 remains the fallback)
 
 Optional for NVENC testing: NVIDIA driver + `nvidia-smi`; FFmpeg sidecar must list `h264_nvenc`.
 

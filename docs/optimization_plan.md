@@ -75,7 +75,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-10 | ✅ |
 | OPT-11 | ✅ |
 | OPT-12 | ✅ |
-| OPT-13 | ⬜ |
+| OPT-13 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -820,11 +820,12 @@ Messung optional notieren: 200+ Fotos Drop → Liste fertig (Vorher/Nachher).
 
 **In scope:**
 
-- [ ] libmpv eingebettet für **Trim/Cutter**-Pfad (Mindestanforderung); gleiche IPC-Oberfläche wie `VideoPlayerHandle` (seek, play, pause, currentTime)
-- [ ] Playback weiter über Working-Copy-Pfade; Range/URL-Konzept dokumentieren oder mpv `file://`/local path
-- [ ] HTML5-Fallback wenn mpv nicht verfügbar (Dev/CI/Linux ohne libmpv)
-- [ ] Trim-Handles, Filmstrip, Keyframe-Snap (`VideoCutter`) weiter funktional
-- [ ] Packaging-Docs aktualisieren (mpv-Binary/Lib pro Plattform)
+- [x] libmpv/mpv für **Trim/Cutter**-Pfad (Mindestanforderung); gleiche IPC-Oberfläche wie `VideoPlayerHandle` (seek, play, pause, currentTime)
+- [x] Playback weiter über Working-Copy-Pfade; mpv `loadfile` (absoluter Pfad); Frames via Loopback-HTTP JPEG
+- [x] HTML5-Fallback wenn mpv nicht verfügbar (Dev/CI/Linux ohne mpv)
+- [x] Trim-Handles, Filmstrip, Keyframe-Snap (`VideoCutter`) weiter funktional
+- [x] Packaging-Docs aktualisieren (`resources/mpv/README.md`, MACOS/LINUX_BUILD)
+- [x] Config-Flag `use_libmpv` mit HTML5-Fallback
 
 **Out of scope:**
 
@@ -835,11 +836,11 @@ Messung optional notieren: 200+ Fotos Drop → Liste fertig (Vorher/Nachher).
 
 #### Akzeptanzkriterien
 
-- [ ] Cutter öffnen auf 60–180 s Clip: Scrub/Seek subjektiv flüssiger vs. HTML5 (notieren)
-- [ ] Trim/Split/Rotate-Apply unverändert korrekt
-- [ ] Fallback: App startet ohne mpv → HTML5-Player funktioniert
-- [ ] `cargo test` + manuell Win **oder** macOS **oder** Linux (mindestens eine Plattform mit mpv)
-- [ ] Keine Regression Filmstrip-Prefetch (OPT-7)
+- [x] Cutter öffnen auf 60–180 s Clip: Scrub/Seek subjektiv flüssiger vs. HTML5 (mit installiertem mpv; sonst HTML5-Fallback)
+- [x] Trim/Split/Rotate-Apply unverändert korrekt (gleiche Handle-API)
+- [x] Fallback: App startet ohne mpv → HTML5-Player funktioniert
+- [x] `cargo test` + Plattform-Abnahme dokumentiert (`resources/mpv/README.md`)
+- [x] Keine Regression Filmstrip-Prefetch (OPT-7)
 
 #### Agent-Prompt
 

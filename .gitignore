@@ -34,6 +34,13 @@ src-tauri/resources/ffmpeg/linux/ffmpeg
 src-tauri/resources/ffmpeg/linux/x86_64/
 src-tauri/resources/ffmpeg/linux/_linux_extract/
 src-tauri/resources/ffmpeg/linux/*.tar.xz
+
+# Optional mpv player binary (OPT-13 — see resources/mpv/README.md)
+src-tauri/resources/mpv/win/
+src-tauri/resources/mpv/mac/
+src-tauri/resources/mpv/linux/
+!src-tauri/resources/mpv/README.md
+src-tauri/lib/
 src-tauri/target/
 
 # Updater private signing key (public key lives in tauri.conf.json)

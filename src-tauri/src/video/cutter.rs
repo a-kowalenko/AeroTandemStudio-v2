@@ -5,9 +5,8 @@
 //! partial re-encode at keyframe edges is deferred; stream-copy matches the
 //! common DJI workflow where GOPs are short.
 //!
-//! Player note: libmpv sidecar is deferred — the React UI uses HTML5
-//! (`VideoPlayer.tsx`) against `convertFileSrc` until a dedicated mpv plugin
-//! lands in a later polish pass.
+//! Player note: OPT-13 prefers mpv JSON-IPC (`player/`) when available; the React
+//! UI keeps HTML5 (`VideoPlayer.tsx`) as fallback against loopback HTTP.
 
 use std::fs;
 use std::path::{Path, PathBuf};

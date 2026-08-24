@@ -15,12 +15,25 @@ import {
   previewThumbnailQueue,
   THUMB_PRIORITY,
 } from "../lib/thumbnailQueue";
+import {
+  mpvPlayerClose,
+  mpvPlayerFrameUrl,
+  mpvPlayerOpen,
+  mpvPlayerPause,
+  mpvPlayerPlay,
+  mpvPlayerSeek,
+  mpvPlayerSetVolume,
+  mpvPlayerStatus,
+  mpvPlayerTick,
+  type MpvSessionSnapshot,
+} from "../lib/mpvPlayer";
 import { cn, isLinuxHost } from "../lib/utils";
 import {
   previewRotateMediaStyle,
   previewRotateStageClass,
 } from "../lib/mediaPreviewRotate";
 
+type PlayerBackend = "html5" | "mpv";
 function VolumeLevelIcon({
   volume,
   muted,
@@ -163,8 +176,9 @@ const TRIM_CAP_W = 14;
 const TRIM_CAP_GUTTER = TRIM_CAP_W / 2;
 
 /**
- * HTML5 video player (Phase-9 interim — libmpv deferred).
- * Supports seek, play/pause, volume, and a custom timeline with keep-range / trim handles.
+ * Video player for Cutter / clip preview (OPT-13).
+ * Prefers mpv JSON-IPC when available (`use_libmpv`); otherwise HTML5 + loopback HTTP.
+ * Trim chrome, filmstrip, and keyframe snap stay identical across backends.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   function VideoPlayer(
@@ -206,6 +220,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [src, setSrc] = useState<string | null>(null);
     const [posterUrl, setPosterUrl] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [backend, setBackend] = useState<PlayerBackend>("html5");
+    const [mpvFrameUrl, setMpvFrameUrl] = useState<string | null>(null);
+    const [mpvActive, setMpvActive] = useState(false);
     /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
     const [overlayVisible, setOverlayVisible] = useState(false);
     const [controlsVisible, setControlsVisible] = useState(true);
@@ -240,6 +257,15 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     onTrimCommitRef.current = onTrimCommit;
     const snapSeekMsRef = useRef(snapSeekMs);
     snapSeekMsRef.current = snapSeekMs;
+    const backendRef = useRef<PlayerBackend>("html5");
+    backendRef.current = backend;
+    const mpvSessionRef = useRef<number | null>(null);
+    const mpvTickTimerRef = useRef<number | null>(null);
+    const mpvSeekGenRef = useRef(0);
+    const onEndedRef = useRef(onEnded);
+    onEndedRef.current = onEnded;
+    const currentMsRef = useRef(currentMs);
+    currentMsRef.current = currentMs;
 
     function applySeekSnap(ms: number): number {
       const snap = snapSeekMsRef.current;
@@ -264,27 +290,124 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       return v.currentTime >= dur - LINUX_ENDED_NEAR_END_SEC;
     }
 
+    const emitTime = useCallback(
+      (cur: number, dur: number) => {
+        setCurrentMs(cur);
+        if (dur > 0) setDurationMs(dur);
+        onTimeUpdate?.(cur, dur > 0 ? dur : durationMsRef.current);
+      },
+      [onTimeUpdate],
+    );
+
+    const applyMpvSnapshot = useCallback(
+      async (snap: MpvSessionSnapshot, opts?: { emitEnded?: boolean }) => {
+        emitTime(snap.current_ms, snap.duration_ms);
+        setPlaying(!snap.paused && !snap.eof_reached);
+        if (mpvSessionRef.current != null) {
+          try {
+            const url = await mpvPlayerFrameUrl(
+              mpvSessionRef.current,
+              snap.frame_rev,
+            );
+            setMpvFrameUrl(url);
+          } catch {
+            /* keep last frame */
+          }
+        }
+        if (opts?.emitEnded && snap.eof_reached) {
+          setPlaying(false);
+          onEndedRef.current?.();
+        }
+      },
+      [emitTime],
+    );
+
+    function stopMpvTick() {
+      if (mpvTickTimerRef.current != null) {
+        window.clearInterval(mpvTickTimerRef.current);
+        mpvTickTimerRef.current = null;
+      }
+    }
+
+    function startMpvTick() {
+      stopMpvTick();
+      mpvTickTimerRef.current = window.setInterval(() => {
+        const id = mpvSessionRef.current;
+        if (id == null || backendRef.current !== "mpv") return;
+        if (draggingRef.current) return;
+        void mpvPlayerTick(id)
+          .then((snap) => applyMpvSnapshot(snap, { emitEnded: true }))
+          .catch(() => {
+            /* session may have closed */
+          });
+      }, 80);
+    }
+
+    async function mpvSeekTo(ms: number) {
+      const id = mpvSessionRef.current;
+      if (id == null) return;
+      const snapped = applySeekSnap(Math.max(0, ms));
+      const gen = ++mpvSeekGenRef.current;
+      setCurrentMs(snapped);
+      try {
+        const snap = await mpvPlayerSeek(id, snapped);
+        if (gen !== mpvSeekGenRef.current) return;
+        await applyMpvSnapshot(snap);
+      } catch {
+        /* ignore */
+      }
+    }
+
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
+        if (backendRef.current === "mpv") return currentMsRef.current;
         const v = videoRef.current;
         return v ? v.currentTime * 1000 : 0;
       },
       getDurationMs: () => {
+        if (backendRef.current === "mpv") return durationMsRef.current;
         const v = videoRef.current;
-        return v && Number.isFinite(v.duration) ? v.duration * 1000 : durationMs;
+        return v && Number.isFinite(v.duration) ? v.duration * 1000 : durationMsRef.current;
       },
       seekMs: (ms: number) => {
+        const snapped = applySeekSnap(Math.max(0, ms));
+        if (backendRef.current === "mpv") {
+          void mpvSeekTo(snapped);
+          setCurrentMs(snapped);
+          return;
+        }
         const v = videoRef.current;
         if (!v) return;
-        const snapped = applySeekSnap(Math.max(0, ms));
         markLinuxUserSeek();
         v.currentTime = snapped / 1000;
         setCurrentMs(snapped);
       },
       pause: () => {
+        if (backendRef.current === "mpv") {
+          const id = mpvSessionRef.current;
+          if (id == null) return;
+          stopMpvTick();
+          void mpvPlayerPause(id)
+            .then((snap) => applyMpvSnapshot(snap))
+            .catch(() => setPlaying(false));
+          return;
+        }
         videoRef.current?.pause();
       },
       play: () => {
+        if (backendRef.current === "mpv") {
+          const id = mpvSessionRef.current;
+          if (id == null) return;
+          void mpvPlayerPlay(id)
+            .then((snap) => {
+              void applyMpvSnapshot(snap);
+              startMpvTick();
+            })
+            .catch(() => {
+              /* ignore */
+            });
+          return;
+        }
         void videoRef.current?.play();
       },
     }));
@@ -335,53 +458,118 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setSrc(null);
       setPosterUrl(null);
       setLoadError(null);
+      setMpvFrameUrl(null);
+      setMpvActive(false);
+      setBackend("html5");
+      backendRef.current = "html5";
+      stopMpvTick();
+      const prevSession = mpvSessionRef.current;
+      mpvSessionRef.current = null;
+      if (prevSession != null) {
+        void mpvPlayerClose(prevSession).catch(() => undefined);
+      }
       if (!srcPath) return;
       let cancelled = false;
-      void videoFileSrc(srcPath, cacheKey)
-        .then((url) => {
+
+      async function boot() {
+        // Poster for either backend (OPT-10 queue; Filmstrip OPT-7 unchanged).
+        const cached = previewThumbnailQueue.getCached(srcPath!, cacheKey);
+        if (cached) {
+          if (!cancelled) setPosterUrl(cached);
+        } else {
+          void previewThumbnailQueue
+            .request(srcPath!, THUMB_PRIORITY.onDemand, cacheKey)
+            .then((url) => {
+              if (!cancelled) setPosterUrl(url);
+            })
+            .catch(() => {
+              if (!cancelled) setPosterUrl(null);
+            });
+        }
+
+        let useMpv = false;
+        try {
+          const status = await mpvPlayerStatus();
+          useMpv = Boolean(status.available);
+        } catch {
+          useMpv = false;
+        }
+
+        if (cancelled) return;
+
+        if (useMpv) {
+          try {
+            const info = await mpvPlayerOpen(srcPath!);
+            if (cancelled) {
+              void mpvPlayerClose(info.session_id).catch(() => undefined);
+              return;
+            }
+            mpvSessionRef.current = info.session_id;
+            backendRef.current = "mpv";
+            setBackend("mpv");
+            setMpvActive(true);
+            setBufferedRatio(1);
+            emitTime(0, info.duration_ms);
+            await mpvPlayerSetVolume(
+              info.session_id,
+              volumeRef.current,
+              mutedRef.current,
+            );
+            const snap = await mpvPlayerTick(info.session_id);
+            if (!cancelled) await applyMpvSnapshot(snap);
+            if (!cancelled && autoPlayRef.current && !disabled) {
+              const played = await mpvPlayerPlay(info.session_id);
+              await applyMpvSnapshot(played);
+              startMpvTick();
+            }
+            return;
+          } catch {
+            // Fall through to HTML5.
+            mpvSessionRef.current = null;
+            backendRef.current = "html5";
+            setBackend("html5");
+            setMpvActive(false);
+          }
+        }
+
+        try {
+          const url = await videoFileSrc(srcPath!, cacheKey);
           if (!cancelled) setSrc(url);
-        })
-        .catch(() => {
+        } catch {
           if (!cancelled) {
             setSrc(null);
             setLoadError("Video-URL konnte nicht geladen werden.");
           }
-        });
-      // FFmpeg first-frame poster — on-demand via staggered queue (OPT-10).
-      const cached = previewThumbnailQueue.getCached(srcPath, cacheKey);
-      if (cached) {
-        setPosterUrl(cached);
-      } else {
-        void previewThumbnailQueue
-          .request(srcPath, THUMB_PRIORITY.onDemand, cacheKey)
-          .then((url) => {
-            if (!cancelled) setPosterUrl(url);
-          })
-          .catch(() => {
-            if (!cancelled) setPosterUrl(null);
-          });
+        }
       }
+
+      void boot();
       return () => {
         cancelled = true;
+        stopMpvTick();
+        const id = mpvSessionRef.current;
+        mpvSessionRef.current = null;
+        if (id != null) {
+          void mpvPlayerClose(id).catch(() => undefined);
+        }
       };
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- boot on path/cache only
     }, [srcPath, cacheKey]);
 
-    // Re-apply on `src` too: `key={src}` remounts <video> at browser defaults.
+    // Re-apply volume on HTML5 remount; mpv via IPC.
     useEffect(() => {
+      if (backend === "mpv") {
+        const id = mpvSessionRef.current;
+        if (id != null) {
+          void mpvPlayerSetVolume(id, volume, muted).catch(() => undefined);
+        }
+        return;
+      }
       const v = videoRef.current;
       if (!v) return;
       v.muted = muted;
       v.volume = muted ? 0 : volume;
-    }, [volume, muted, src]);
-
-    const emitTime = useCallback(
-      (cur: number, dur: number) => {
-        setCurrentMs(cur);
-        if (dur > 0) setDurationMs(dur);
-        onTimeUpdate?.(cur, dur > 0 ? dur : durationMs);
-      },
-      [onTimeUpdate, durationMs],
-    );
+    }, [volume, muted, src, backend]);
 
     function clearOverlayHideTimer() {
       if (overlayHideTimerRef.current != null) {
@@ -403,14 +591,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       clearOverlayHideTimer();
       clearControlsHideTimer();
       clearCenterCueTimer();
+      stopMpvTick();
     }, []);
 
     useEffect(() => {
-      if (disabled || !src || loadError) {
+      const hasSurface =
+        backend === "mpv" ? Boolean(mpvFrameUrl || posterUrl) : Boolean(src);
+      if (disabled || !hasSurface || loadError) {
         clearOverlayHideTimer();
         setOverlayVisible(false);
       }
-    }, [disabled, src, loadError]);
+    }, [disabled, src, loadError, backend, mpvFrameUrl, posterUrl]);
 
     useEffect(() => {
       bumpControlsVisibility();
@@ -418,8 +609,30 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }, [playing, stageHovered, volumeHovered, dragging]);
 
     function togglePlay() {
+      if (disabled) return;
+      if (backend === "mpv") {
+        const id = mpvSessionRef.current;
+        if (id == null) return;
+        if (playing) {
+          flashCenterCue("pause");
+          stopMpvTick();
+          void mpvPlayerPause(id)
+            .then((snap) => applyMpvSnapshot(snap))
+            .catch(() => setPlaying(false));
+        } else {
+          flashCenterCue("play");
+          void mpvPlayerPlay(id)
+            .then((snap) => {
+              void applyMpvSnapshot(snap);
+              startMpvTick();
+            })
+            .catch(() => undefined);
+        }
+        bumpControlsVisibility();
+        return;
+      }
       const v = videoRef.current;
-      if (!v || disabled) return;
+      if (!v) return;
       if (v.paused) {
         flashCenterCue("play");
         void v.play();
@@ -431,9 +644,18 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }
 
     function seekBy(deltaMs: number) {
-      const v = videoRef.current;
       const dur = durationMsRef.current;
-      if (!v || !dur) return;
+      if (!dur) return;
+      if (backend === "mpv") {
+        const next = applySeekSnap(
+          Math.max(0, Math.min(dur, currentMsRef.current + deltaMs)),
+        );
+        void mpvSeekTo(next);
+        bumpControlsVisibility();
+        return;
+      }
+      const v = videoRef.current;
+      if (!v) return;
       const next = applySeekSnap(
         Math.max(0, Math.min(dur, v.currentTime * 1000 + deltaMs)),
       );
@@ -443,7 +665,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       bumpControlsVisibility();
     }
 
-    const canTogglePlayback = Boolean(src && !disabled && !loadError);
+    const hasMediaSurface =
+      backend === "mpv"
+        ? mpvActive || Boolean(mpvFrameUrl || posterUrl)
+        : Boolean(src);
+    const canTogglePlayback = Boolean(hasMediaSurface && !disabled && !loadError);
 
     function msFromClientX(
       clientX: number,
@@ -472,10 +698,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       clientX: number,
       barEl?: HTMLDivElement | null,
     ) {
-      const v = videoRef.current;
       const ms = msFromClientX(clientX, barEl);
-      if (ms == null || !v) return;
+      if (ms == null) return;
       const snapped = applySeekSnap(ms);
+      if (backendRef.current === "mpv") {
+        void mpvSeekTo(snapped);
+        emitTime(snapped, durationMsRef.current);
+        bumpControlsVisibility();
+        return;
+      }
+      const v = videoRef.current;
+      if (!v) return;
       markLinuxUserSeek();
       v.currentTime = snapped / 1000;
       emitTime(snapped, durationMsRef.current);
@@ -484,10 +717,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     function applyTrimDrag(handle: TrimHandle, clientX: number) {
       const ms = msFromClientX(clientX, barRef.current);
-      const v = videoRef.current;
       const dur = durationMsRef.current;
       const kr = keepRangeRef.current;
-      if (ms == null || !v || !dur || !kr) return;
+      if (ms == null || !dur || !kr) return;
 
       let next = ms;
       if (handle === "start") {
@@ -498,6 +730,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         next = Math.min(dur, Math.max(ms, startMs + MIN_RANGE_MS));
       }
 
+      if (backendRef.current === "mpv") {
+        void mpvSeekTo(next);
+        emitTime(next, dur);
+        onTrimChangeRef.current?.(handle, next);
+        return;
+      }
+      const v = videoRef.current;
+      if (!v) return;
       v.pause();
       markLinuxUserSeek();
       v.currentTime = next / 1000;
@@ -635,7 +875,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const r = ratioFromClientX(e.clientX, bar);
       if (r != null) setScrubHoverRatio(r);
       if (mode === "seek") {
-        videoRef.current?.pause();
+        if (backendRef.current === "mpv") {
+          stopMpvTick();
+          const id = mpvSessionRef.current;
+          if (id != null) {
+            void mpvPlayerPause(id).catch(() => undefined);
+          }
+          setPlaying(false);
+        } else {
+          videoRef.current?.pause();
+        }
         seekFromClientX(e.clientX, bar);
       } else {
         applyTrimDrag(mode, e.clientX);
@@ -682,7 +931,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setDragging(false);
       setDragHandle(null);
       if (wasPlayingBeforeScrubRef.current && mode === "seek") {
-        void videoRef.current?.play();
+        if (backendRef.current === "mpv") {
+          const id = mpvSessionRef.current;
+          if (id != null) {
+            void mpvPlayerPlay(id)
+              .then((snap) => {
+                void applyMpvSnapshot(snap);
+                startMpvTick();
+              })
+              .catch(() => undefined);
+          }
+        } else {
+          void videoRef.current?.play();
+        }
       }
       wasPlayingBeforeScrubRef.current = false;
       bumpControlsVisibility();
@@ -761,7 +1022,25 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             seekBy(e.clientX < mid ? -DOUBLE_TAP_SKIP_MS : DOUBLE_TAP_SKIP_MS);
           }}
         >
-          {src ? (
+          {backend === "mpv" ? (
+            mpvFrameUrl || posterUrl ? (
+              <img
+                key={mpvFrameUrl ?? posterUrl ?? "mpv"}
+                src={mpvFrameUrl ?? posterUrl ?? undefined}
+                alt=""
+                className={cn(
+                  "pointer-events-none object-contain",
+                  rotateMediaStyle ? null : "h-full w-full",
+                )}
+                style={rotateMediaStyle}
+                draggable={false}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-white/70">
+                {t("video.player.noVideo")}
+              </div>
+            )
+          ) : src ? (
             <video
               key={src}
               ref={videoRef}
@@ -965,7 +1244,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     size="icon"
                     variant="ghost"
                     className="h-9 w-9 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white"
-                    disabled={disabled || !src}
+                    disabled={disabled || !hasMediaSurface}
                     onClick={togglePlay}
                     aria-label={playing ? "Pause" : "Play"}
                   >

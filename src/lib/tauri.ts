@@ -138,6 +138,11 @@ export type AppConfig = {
   ams_bridge_instance_id: string;
   /** Last Bridge URL that answered health OK. */
   ams_bridge_last_ok_url: string;
+  /**
+   * Prefer mpv for Cutter / clip player when a binary is available (OPT-13).
+   * HTML5 fallback when false or when mpv is missing.
+   */
+  use_libmpv: boolean;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox.

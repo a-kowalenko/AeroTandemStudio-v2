@@ -200,7 +200,9 @@
       "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
       "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "reencodeMatching": "Re-encode matching clips",
-      "previewCrf": "Preview CRF"
+      "previewCrf": "Preview CRF",
+      "useLibmpv": "mpv player for trim (libmpv/mpv)",
+      "useLibmpvHint": "Snappier scrubbing in the cutter when mpv is installed. Falls back to HTML5 if mpv is missing."
     },
     "qr": {
       "autoScan": {

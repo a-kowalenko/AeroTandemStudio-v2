@@ -236,6 +236,10 @@ pub struct AppConfig {
     /// Last base URL that answered health successfully (fallback / Netzwechsel).
     #[serde(default)]
     pub ams_bridge_last_ok_url: String,
+    /// Prefer mpv/libmpv for Cutter & clip player when a binary is available (OPT-13).
+    /// HTML5 fallback when false or when mpv is missing.
+    #[serde(default = "default_true")]
+    pub use_libmpv: bool,
 }
 
 fn default_ort() -> String {
@@ -570,6 +574,7 @@ impl Default for AppConfig {
             ams_bridge_token: String::new(),
             ams_bridge_instance_id: String::new(),
             ams_bridge_last_ok_url: String::new(),
+            use_libmpv: true,
         }
     }
 }
