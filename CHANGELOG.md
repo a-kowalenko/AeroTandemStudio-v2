@@ -8,6 +8,8 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-25
+
 ### Neu
 
 - Optional Beta-Updates in den Einstellungen: Vorabversionen beim Start und bei „Nach Updates suchen“ einbeziehen
