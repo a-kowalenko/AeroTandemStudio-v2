@@ -8,7 +8,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::commands::config::ConfigState;
 use crate::media::http_server::MediaServerState;
 use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
-use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
+use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, is_cancelled, WORKFLOW_CANCELLED};
 use crate::sd_card::autoplay;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
@@ -18,6 +18,25 @@ use crate::sd_card::monitor::{
 use crate::sd_card::secondary_backup::{SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP};
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
+
+fn is_backup_cancel_msg(msg: &str) -> bool {
+    is_cancelled()
+        || msg.trim() == WORKFLOW_CANCELLED
+        || {
+            let lower = msg.to_lowercase();
+            lower.contains("cancel") || lower.contains("abgebrochen") || lower.contains("abbruch")
+        }
+}
+
+fn log_backup_failure(msg: &str) {
+    if crate::sd_card::monitor::is_empty_catalog_message(msg) {
+        logging::warn("sd", format!("Backup übersprungen: {msg}"));
+    } else if is_backup_cancel_msg(msg) {
+        logging::warn("sd", format!("Backup abgebrochen: {msg}"));
+    } else {
+        logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+    }
+}
 
 #[derive(Debug, Serialize)]
 pub struct ThumbnailResult {
@@ -248,11 +267,7 @@ pub async fn backup_sd_card(
                     .error_message
                     .as_deref()
                     .unwrap_or("Backup fehlgeschlagen");
-                if crate::sd_card::monitor::is_empty_catalog_message(msg) {
-                    logging::warn("sd", format!("Backup übersprungen: {msg}"));
-                } else {
-                    logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
-                }
+                log_backup_failure(msg);
             } else {
                 logging::info(
                     "sd",
@@ -272,7 +287,7 @@ pub async fn backup_sd_card(
         }
         Err(e) => {
             let msg = e.to_string();
-            logging::error("sd", format!("Backup fehlgeschlagen: {msg}"));
+            log_backup_failure(&msg);
             Err(msg)
         }
     }

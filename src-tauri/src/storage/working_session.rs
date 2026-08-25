@@ -769,6 +769,7 @@ mod tests {
     #[test]
     fn import_photos_cancelled_leaves_no_working_copies() {
         let _guard = crate::storage::cache::test_temp_sweep_lock();
+        let _cancel = crate::video::ffmpeg::cancel_test_lock();
         crate::video::ffmpeg::reset_cancel_flag();
         crate::video::ffmpeg::cancel_encode();
 

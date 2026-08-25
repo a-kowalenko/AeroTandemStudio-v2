@@ -17,6 +17,8 @@ import { cn } from "@/lib/utils";
 import type { UpdateInstallProgress } from "@/lib/tauri";
 import { compareVersionParts } from "@/lib/versionCompare";
 import { presentUpdaterInstallHint } from "@/lib/updaterInstallHint";
+import { formatBytes } from "@/lib/formatBytes";
+import { formatSpeed } from "@/lib/formatSpeed";
 
 export type VersionInstallDialogProps = {
   open: boolean;
@@ -41,19 +43,6 @@ export type VersionInstallDialogProps = {
   onLater: () => void;
   onClose: () => void;
 };
-
-function formatBytes(n: number): string {
-  if (!Number.isFinite(n) || n < 0) return "—";
-  if (n < 1024) return `${Math.round(n)} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatSpeed(bps: number): string {
-  if (!Number.isFinite(bps) || bps <= 0) return "";
-  return `${formatBytes(bps)}/s`;
-}
 
 function installDirection(
   from: string,

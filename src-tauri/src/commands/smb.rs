@@ -22,6 +22,7 @@ pub struct UploadProgressEvent {
     pub total_files: u32,
     pub current_bytes: u64,
     pub total_bytes: u64,
+    pub speed_bps: f64,
     pub filename: String,
     pub status: String,
 }
@@ -41,6 +42,7 @@ impl From<UploadProgress> for UploadProgressEvent {
             total_files: p.total_files,
             current_bytes: p.current_bytes,
             total_bytes: p.total_bytes,
+            speed_bps: p.speed_bps,
             filename: p.filename,
             status,
         }
@@ -136,11 +138,13 @@ pub async fn upload_to_server(
         }
         Ok(result)
     } else {
-        logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         if upload_failure_is_cancelled(&result.message) {
+            logging::warn("smb", format!("Upload abgebrochen: {}", result.message));
             if let Some(h) = handoff.as_ref().filter(|h| h.correlation_id().is_some()) {
                 abort_handoff_upload(&config, &path, h, &url, &login, &password).await;
             }
+        } else {
+            logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         }
         Err(result.message)
     }

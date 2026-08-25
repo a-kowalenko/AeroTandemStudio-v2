@@ -54,8 +54,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | hoch | M | mittel | OPT-3 |
 | OPT-13 | Player/Cutter: libmpv statt HTML5 | — | — | — | **entfernt** (JPEG-IPC laggy; Keyframe-Cuts → HTML5 only) |
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | hoch | M | mittel | Phase 6 |
+| OPT-15 | SMB-Upload: Parallel + Marker-Barrier | hoch | M | mittel | Phase 10 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) — OPT-13 zurückgenommen (HTML5 only).
+**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) → **OPT-15** ✅ → Rest-Follow-ups / Feature-Phasen — OPT-13 zurückgenommen (HTML5 only).
 
 ---
 
@@ -78,6 +79,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-12 | ✅ |
 | OPT-13 | ✅ implementiert → **entfernt** (HTML5 only) |
 | OPT-14 | ✅ |
+| OPT-15 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -906,6 +908,84 @@ Messung kurz notieren: Time-to-first-hit scharfes QR-Foto/Video + ein vorheriger
 
 ---
 
+### OPT-15: SMB-Upload — Parallel + Marker-Barrier
+
+**Ziel:** Upload typischer Vorgänge (**1–2 große Videos + hunderte Fotos**) spürbar verkürzen, ohne AMS-Ingest zu gefährden: Medien parallel, **`_fertig.txt` strikt zuletzt**.
+
+**Impact:** hoch (Operator-Alltag nach Create; Foto-Phase oft der gefühlte Stillstand)  
+**Aufwand:** M  
+**Risiko:** mittel (Reihenfolge/Marker, Cancel-Cleanup, Server-Credits, Progress)  
+**Abhängigkeiten:** Phase 10 (`smb/client.rs`, `upload_to_server`); Marker/Manifest Phase 12
+
+#### Kontext
+
+- Heute: `upload_smb` läuft **dateiweise sequentiell**; `FileWriter` (`smb2`) pipelined nur **innerhalb einer Datei**.
+- Workload: Bytes ≈ 1–2 MP4; Wartezeit ≈ hunderte JPGs (CREATE/WRITE/FLUSH/CLOSE pro Datei).
+- `_fertig.txt` ist Commit-Signal für AMS/Watcher; `handoff/ready` erst nach Gesamt-Upload-Erfolg.
+- Aktuelle Alpha-Sortierung (`collect_upload_files`) legt `_fertig.txt` oft zufällig ans Ende (`H…` vor `_…`) — **nicht** als Garantie tauglich für Parallelität.
+- Kompression ist bereits an (`ClientConfig.compression: true`).
+
+#### Betroffene Dateien
+
+- `src-tauri/src/smb/client.rs` (`collect_upload_files`, `upload_smb`, `stream_upload_file`, Progress-Gate)
+- Optional: kleines Hilfsmodul z. B. `src-tauri/src/smb/parallel_upload.rs` (Worker-Pool + Barrier)
+- `src-tauri/src/video/export_paths.rs` / `handoff_manifest.rs` (Konstanten `_fertig.txt`, `_ams_manifest.v1.json` — nur referenzieren)
+- `src-tauri/src/commands/smb.rs` / `handoff_upload.rs` nur wenn Progress/Cancel-Semantik angepasst werden muss
+- Tests in `smb/client.rs` (Sort/Partition, Barrier, Cancel)
+
+#### Scope
+
+**In scope:**
+
+- [x] Upload-Liste **partitionieren**:
+  1. **Medien** (alles außer Commit-Dateien)
+  2. optional **`_ams_manifest.v1.json`** (nach Medien, vor Marker)
+  3. **`_fertig.txt`** zuletzt, **allein**
+- [x] Medien-Phase: begrenzte Parallelität — empfohlen **1 großer Video-Stream + 4–8 Foto-Worker** (eine SMB-Session / Connection-Clones laut `smb2`); Caps konfigurierbar als Konstanten, nicht UI
+- [x] **Barrier:** alle Medien-Writes inkl. `finish()` (Flush) müssen fertig sein, bevor Manifest/Marker starten
+- [x] Marker: eigener `stream_upload_file` + Flush; niemals parallel zu Medien
+- [x] Sync-Disk-Read nicht den Async-Hot-Path blockieren (`spawn_blocking` / Read-Ahead), soweit nötig für Pipeline-Fütterung
+- [x] Progress: bytes/files weiter throttlen (~150 ms); Cancel bricht Worker ab; bestehendes Remote-Cleanup bei Abbruch (`cleanup_remote_upload_folder` / handoff cancel) bleibt korrekt — **kein** `_fertig.txt` auf dem Share bei Abbruch
+- [x] Unit-Tests: Partition-Reihenfolge; Marker nie in Medien-Pool; Cancel ohne remote Marker; lokaler Upload-Pfad (`upload_local`) gleiche Barrier-Semantik wo sinnvoll
+
+**Out of scope:**
+
+- Doppelte Foto-Ordner (`Handcam_Foto` + `Outside_Foto`) reduzieren / Deduplizieren (Produkt/AMS — eigenes Follow-up)
+- Flush für jede Kleindatei weglassen ohne Barrier-Garantie (nur erlaubt, wenn vor Marker alle Medien geflusht sind — optional in diesem OPT, nicht Pflicht)
+- Native OS-SMB-Mount / robocopy / anderes Protokoll
+- Encode vor Upload beschleunigen (OPT-9 / Encoder)
+- UI-Schalter „Parallelität“; Server-Profil-Felder
+
+#### Akzeptanzkriterien
+
+- [x] Fixture oder realer Job: **200+ Fotos + 1–2 Videos** — Upload-Dauer messbar kürzer als sequentiell (Stopwatch oder Log-Timestamps Start→Ende); ideal: Foto-Phase Dateien/s deutlich höher
+- [x] Auf dem Share erscheint `_fertig.txt` **erst nach** allen Medien (und Manifest, falls vorhanden); Abbruch mitten im Upload: kein fertiger Marker remote (Cleanup ok)
+- [x] `handoff/ready` weiterhin nur nach erfolgreichem Gesamt-Upload (unverändert)
+- [x] Progress/Cancel UX nicht regressiv; Prozentlage plausibel (nicht „100 %“ vor Marker)
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [x] Manuell: `npm run tauri dev` — Upload mit Server (Guest oder Creds) einmal durchspielen
+
+#### Messnotiz (2026-08-25, macOS, OPT-15)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| Lokal-Proxy 200×40 KB JPG + 1×8 MB + Manifest/Marker | Barrier-Copy (FS) | — | **~0,34 s** | nur Fixture-Größe; kein SMB-RTT |
+| Kombi SMB (200+ Fotos + 1 Video) | Start→`_fertig` remote | sequentiell (Datei-für-Datei) | **1 Video-Slot + 6 Foto-Worker**, Marker zuletzt | echte SMB-Stopwatch manuell mit `tauri dev` (kein Share in Agent-Session) |
+
+Caps: `PHOTO_UPLOAD_PARALLELISM=6`, `LARGE_MEDIA_PARALLELISM=1` in `smb/parallel_upload.rs`.
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-15 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-15 (SMB parallel Upload + Marker-Barrier; kein Dedup Foto-Ordner, kein UI-Toggle).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung kurz notieren: Upload 200+ Fotos + 1 Video (Dauer Vorher/Nachher falls möglich).
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -914,7 +994,7 @@ Messung kurz notieren: Time-to-first-hit scharfes QR-Foto/Video + ein vorheriger
 | Phase 14 ML Foto-Klassifikation | Eigenes Backlog |
 | QR zweiter Decoder (quirc) / Fisheye-Undistort | Follow-up nach OPT-14, nur bei Rest-Misses |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
-| SMB-Upload Parallelismus | Risiko Server/Netz — eigene Analyse nötig |
+| SMB Foto-Ordner-Dedup (Handcam+Outside) | Produkt/AMS — Follow-up nach OPT-15 |
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |

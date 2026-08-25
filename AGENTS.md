@@ -114,8 +114,8 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
 - ✅ Phase 29: Low-Media Confirm vor Erstellen (Soft Confirm, produktbezogen, vor setBusy; Append übersprungen)
 
-**Nächster Schritt:** Phase 23.3 (Linux libmtp) oder Phase 14 ML Backlog  
-*(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
+**Nächster Schritt:** Phase 23.3 (Linux libmtp), Phase 14 ML Backlog, oder Feature-Follow-ups  
+*(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog
 
@@ -136,6 +136,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | ✅ |
 | OPT-13 | Player/Cutter: libmpv (entfernt; HTML5 only) | ✅ entfernt |
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ✅ |
+| OPT-15 | SMB-Upload Parallel + Marker-Barrier | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

@@ -13,6 +13,10 @@ import {
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
+import {
+  formatUploadProgressSnapshot,
+  formatUploadProgressTooltip,
+} from "../lib/uploadProgress";
 
 type Props = {
   className?: string;
@@ -83,13 +87,18 @@ export function ServerStatusIndicator({ className }: Props) {
     config?.ams_bridge_display_name?.trim() ||
     "";
 
+  const uploadDetail =
+    smbPhase === "uploading" && uploadProgress
+      ? formatUploadProgressTooltip(uploadProgress)
+      : null;
+
   const view = presentHeaderConnection({
     smbPhase,
     smbConnected,
     smbMessage,
     uploadPercent:
       smbPhase === "uploading" ? (uploadProgress?.percent ?? 0) : null,
-    uploadFilename: uploadProgress?.filename ?? null,
+    uploadDetail,
     amsConfigured,
     amsPhase,
     amsConnected,
@@ -116,10 +125,8 @@ export function ServerStatusIndicator({ className }: Props) {
   }
 
   const displayLabel =
-    smbPhase === "uploading"
-      ? t("chrome.server.uploadPercent", {
-          percent: Math.round(uploadProgress?.percent ?? 0),
-        })
+    smbPhase === "uploading" && uploadProgress
+      ? formatUploadProgressSnapshot(uploadProgress).label
       : loudChecking
         ? t("errors.server.checking")
         : view.label;
@@ -232,11 +239,6 @@ export function ServerStatusIndicator({ className }: Props) {
           <Loader2 className="h-3 w-3 animate-spin opacity-80" />
         ) : null}
       </span>
-      {smbPhase === "uploading" && uploadProgress?.filename ? (
-        <span className="max-w-[10rem] truncate text-muted">
-          {uploadProgress.filename}
-        </span>
-      ) : null}
     </>
   );
 

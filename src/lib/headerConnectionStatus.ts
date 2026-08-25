@@ -94,7 +94,8 @@ export function presentHeaderConnection(input: {
   smbConnected: boolean;
   smbMessage: string;
   uploadPercent: number | null;
-  uploadFilename: string | null;
+  /** Extra upload tooltip lines (bytes / files done); no single filename. */
+  uploadDetail: string | null;
   amsConfigured: boolean;
   amsPhase: AmsBridgePhase;
   amsConnected: boolean;
@@ -196,8 +197,8 @@ export function presentHeaderConnection(input: {
       ),
     );
   }
-  if (input.smbPhase === "uploading" && input.uploadFilename) {
-    lines.push(input.uploadFilename);
+  if (input.smbPhase === "uploading" && input.uploadDetail) {
+    lines.push(input.uploadDetail);
   }
   if (canRetry) {
     lines.push(

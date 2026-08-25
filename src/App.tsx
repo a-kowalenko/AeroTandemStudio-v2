@@ -1358,17 +1358,7 @@ function App() {
       const p = event.payload;
       setUploadProgress(p);
       setPercent(p.percent);
-      const parts = [t("app.upload.percent", { percent: p.percent.toFixed(0) })];
-      if (p.total_files > 0 && p.current_file > 0) {
-        parts.push(
-          t("app.upload.fileProgress", {
-            current: p.current_file,
-            total: p.total_files,
-          }),
-        );
-      }
-      if (p.filename) parts.push(p.filename);
-      setStatus(parts.join(" · "));
+      setStatus(t("app.upload.title"));
     }).then((fn) => {
       unlisten = fn;
     });

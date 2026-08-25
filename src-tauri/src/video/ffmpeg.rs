@@ -24,6 +24,16 @@ static ACTIVE_CHILDREN: Lazy<Mutex<HashMap<u64, Child>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
+/// Serializes unit tests that toggle [`CANCEL_FLAG`] so parallel `cargo test`
+/// threads do not observe each other's cancel state.
+#[cfg(test)]
+pub fn cancel_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: once_cell::sync::OnceCell<Mutex<()>> = once_cell::sync::OnceCell::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
 #[derive(Debug, Error)]
 pub enum FfmpegError {
     #[error("FFmpeg binary not found (expected under resources/ffmpeg/)")]
@@ -787,6 +797,7 @@ mod tests {
 
     #[test]
     fn reset_and_cancel_flag() {
+        let _guard = cancel_test_lock();
         reset_cancel_flag();
         assert!(!is_cancelled());
         CANCEL_FLAG.store(true, Ordering::SeqCst);
