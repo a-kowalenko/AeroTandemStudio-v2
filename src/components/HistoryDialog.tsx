@@ -324,6 +324,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const appendPanelRef = useRef<AppendMediaPanelHandle>(null);
   const runAppendJob = useAppendStore((s) => s.runJob);
   const showError = useUiStore((s) => s.showError);
+  const showWarning = useUiStore((s) => s.showWarning);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const appendOpen = appendVorgang != null;
   const confirmOpen = pendingConfirm != null;
@@ -368,7 +369,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
       setAppendRefreshKey((k) => k + 1);
     } catch (e) {
       if (isCancellationError(e)) {
-        showError(t("history.appendCancelled"), t("history.appendDialogTitle"));
+        showWarning(t("history.appendCancelled"), t("history.appendDialogTitle"));
       } else {
         showError(presentAmsUserMessage(String(e)), t("history.appendDialogTitle"));
       }

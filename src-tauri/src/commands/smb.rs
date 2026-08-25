@@ -138,11 +138,13 @@ pub async fn upload_to_server(
         }
         Ok(result)
     } else {
-        logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         if upload_failure_is_cancelled(&result.message) {
+            logging::warn("smb", format!("Upload abgebrochen: {}", result.message));
             if let Some(h) = handoff.as_ref().filter(|h| h.correlation_id().is_some()) {
                 abort_handoff_upload(&config, &path, h, &url, &login, &password).await;
             }
+        } else {
+            logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         }
         Err(result.message)
     }

@@ -776,7 +776,7 @@
       "failedNote": "Upload fehlgeschlagen (siehe Fehlerdialog).",
       "percent": "Upload {{percent}}%",
       "labelWithFiles": "Upload ({{current}}/{{total}})",
-      "fileProgress": "{{current}}/{{total}} Dateien",
+      "fileProgress": "Datei {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
       "titleBlockedOn": "Upload in den Einstellungen aktiv, Server nicht verbunden",

@@ -776,7 +776,7 @@
       "failedNote": "La subida falló (ver diálogo de error).",
       "percent": "Subida {{percent}}%",
       "labelWithFiles": "Subida ({{current}}/{{total}})",
-      "fileProgress": "{{current}}/{{total}} archivos",
+      "fileProgress": "Archivo {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Subida",
       "titleBlockedOn": "Subida activa en configuración, servidor sin conexión",

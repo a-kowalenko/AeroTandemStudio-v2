@@ -463,14 +463,25 @@ pub async fn create_append_job(
         )
         .await;
         if !uploaded.success {
-            logging::error(
-                "append",
-                format!(
-                    "Nachreichung-Upload fehlgeschlagen ({}): {}",
-                    result.folder_name, uploaded.message
-                ),
-            );
-            if crate::smb::upload_failure_is_cancelled(&uploaded.message) {
+            let cancelled = crate::smb::upload_failure_is_cancelled(&uploaded.message);
+            if cancelled {
+                logging::warn(
+                    "append",
+                    format!(
+                        "Nachreichung-Upload abgebrochen ({}): {}",
+                        result.folder_name, uploaded.message
+                    ),
+                );
+            } else {
+                logging::error(
+                    "append",
+                    format!(
+                        "Nachreichung-Upload fehlgeschlagen ({}): {}",
+                        result.folder_name, uploaded.message
+                    ),
+                );
+            }
+            if cancelled {
                 let handoff = crate::smb::HandoffUploadContext {
                     correlation_id: Some(result.correlation_id.clone()),
                     folder_name: Some(result.folder_name.clone()),

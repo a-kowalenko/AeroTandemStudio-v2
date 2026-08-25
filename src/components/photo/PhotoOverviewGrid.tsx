@@ -125,7 +125,7 @@ export function PhotoOverviewGrid({
 
   if (photos.length === 0) {
     return (
-      <div className="flex min-h-[14rem] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted">
+      <div className="flex min-h-[14rem] flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted">
         <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
         <p>{t("photo.preview.empty")}</p>
       </div>
@@ -138,7 +138,7 @@ export function PhotoOverviewGrid({
   return (
     <div
       ref={attachRef}
-      className="h-[min(28rem,55vh)] min-h-[14rem] overflow-auto py-0.5 pl-0.5 pr-[calc(var(--ats-scrollbar-size)+8px)] [scrollbar-gutter:stable]"
+      className="min-h-[14rem] flex-1 overflow-auto py-0.5 pl-0.5 pr-[calc(var(--ats-scrollbar-size)+8px)] [scrollbar-gutter:stable]"
       role="listbox"
       aria-label={t("photo.preview.overviewAria")}
     >

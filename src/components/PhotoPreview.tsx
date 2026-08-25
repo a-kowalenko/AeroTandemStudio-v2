@@ -294,7 +294,12 @@ export function PhotoPreview({
       </div>
 
       <div className="flex min-h-0 flex-col gap-3 lg:flex-row lg:items-stretch">
-        <div className="min-w-0 flex-1 space-y-2">
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-1 flex-col gap-2",
+            browseMode === "overview" && "min-h-[14rem]",
+          )}
+        >
           {browseMode === "overview" ? (
             <PhotoOverviewGrid
               photos={photoList}
