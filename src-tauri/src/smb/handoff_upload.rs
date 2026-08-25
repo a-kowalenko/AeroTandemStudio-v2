@@ -6,6 +6,7 @@ use crate::bridge::{maybe_notify_handoff_cancel, maybe_notify_handoff_ready};
 use crate::smb::cleanup_remote_upload_folder;
 use crate::storage::config::AppConfig;
 use crate::storage::logging;
+use crate::storage::vorgang_history::VorgangHistoryStore;
 use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -94,6 +95,21 @@ pub async fn abort_handoff_upload(
         ),
         Ok(None) => {}
         Err(e) => logging::warn("bridge", format!("handoff/cancel: {e}")),
+    }
+
+    // Persist locally so Historie does not stay on "Wartend" / pending after abort
+    // (Bridge/Outbox may be gone once the remote folder is cleaned up).
+    match VorgangHistoryStore::open_default()
+        .and_then(|store| store.mark_ams_handoff_cancelled(cid, WORKFLOW_CANCELLED))
+    {
+        Ok(()) => logging::info(
+            "vorgang_history",
+            format!("AMS-Status lokal auf cancelled gesetzt (correlation_id={cid})"),
+        ),
+        Err(e) => logging::warn(
+            "vorgang_history",
+            format!("AMS cancelled konnte nicht persistiert werden: {e}"),
+        ),
     }
 }
 

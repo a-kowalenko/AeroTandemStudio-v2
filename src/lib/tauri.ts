@@ -153,11 +153,6 @@ export type AppConfig = {
   ams_bridge_display_name: string;
   /** Stable UUID of the connected AMS server. */
   ams_bridge_server_instance_id: string;
-  /**
-   * Prefer mpv for Cutter / clip player when a binary is available (OPT-13).
-   * HTML5 fallback when false or when mpv is missing.
-   */
-  use_libmpv: boolean;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox.

@@ -649,6 +649,32 @@ impl VorgangHistoryStore {
         Ok(vorgang_id)
     }
 
+    /// Mark a handoff as cancelled locally (upload abort / ATS cancel).
+    ///
+    /// Updates the Vorgang and any append row with the same `correlation_id`.
+    pub fn mark_ams_handoff_cancelled(
+        &self,
+        correlation_id: &str,
+        message: &str,
+    ) -> Result<(), VorgangHistoryError> {
+        let cid = correlation_id.trim();
+        if cid.is_empty() {
+            return Ok(());
+        }
+        self.update_ams_handoff_status(
+            None,
+            cid,
+            &AmsHandoffStatusUpdate {
+                state: "cancelled".into(),
+                updated_at: utc_now_iso(),
+                error_code: "cancelled".into(),
+                error_message: message.trim().to_string(),
+                archive: String::new(),
+                source: "local".into(),
+            },
+        )
+    }
+
     /// Persist last-known AMS handoff status for a Vorgang (by id, or correlation_id fallback).
     pub fn update_ams_handoff_status(
         &self,
@@ -1390,6 +1416,18 @@ mod tests {
             .unwrap()
             .expect("cached");
         assert_eq!(cached.state, "uploading");
+
+        store
+            .mark_ams_handoff_cancelled(
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "Abgebrochen",
+            )
+            .unwrap();
+        let cancelled = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(cancelled.ams_state, "cancelled");
+        assert_eq!(cancelled.ams_error_code, "cancelled");
+        assert_eq!(cancelled.ams_error_message, "Abgebrochen");
+        assert_eq!(cancelled.ams_source, "local");
 
         let found = store.list_vorgaenge(10, Some("Mustermann")).unwrap();
         assert_eq!(found.len(), 1);

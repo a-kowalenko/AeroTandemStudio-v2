@@ -4,6 +4,19 @@ import { AMS_HEALTH_POLL_MS } from "@/lib/amsBridgeStatus";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 
+function canStartQuietPoll(): boolean {
+  const { phase, refreshing } = useAmsBridgeStore.getState();
+  return phase !== "checking" && !refreshing;
+}
+
+function runQuietHealthCheck(): void {
+  if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+    return;
+  }
+  if (!canStartQuietPoll()) return;
+  void useAmsBridgeStore.getState().checkHealth({ quiet: true });
+}
+
 /** Background AMS health: boot check + quiet poll. No toasts. */
 export function useAmsBridgeHealthPoll(enabled: boolean) {
   const config = useConfigStore((s) => s.config);
@@ -23,9 +36,19 @@ export function useAmsBridgeHealthPoll(enabled: boolean) {
     }
     void checkHealth();
     const id = window.setInterval(() => {
-      if (useAmsBridgeStore.getState().phase === "checking") return;
-      void checkHealth();
+      runQuietHealthCheck();
     }, AMS_HEALTH_POLL_MS);
-    return () => window.clearInterval(id);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        runQuietHealthCheck();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [enabled, configured, url, token, lastOk, displayName, checkHealth, reset]);
 }

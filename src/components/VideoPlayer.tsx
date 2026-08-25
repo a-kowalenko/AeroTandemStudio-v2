@@ -15,18 +15,6 @@ import {
   previewThumbnailQueue,
   THUMB_PRIORITY,
 } from "../lib/thumbnailQueue";
-import {
-  mpvPlayerClose,
-  mpvPlayerFrameUrl,
-  mpvPlayerOpen,
-  mpvPlayerPause,
-  mpvPlayerPlay,
-  mpvPlayerSeek,
-  mpvPlayerSetVolume,
-  mpvPlayerStatus,
-  mpvPlayerTick,
-  type MpvSessionSnapshot,
-} from "../lib/mpvPlayer";
 import { cn, isLinuxHost } from "../lib/utils";
 import {
   previewRotateMediaStyle,
@@ -47,7 +35,6 @@ function FilmstripSkeleton({ count = FILMSTRIP_FRAME_COUNT }: { count?: number }
   );
 }
 
-type PlayerBackend = "html5" | "mpv";
 function VolumeLevelIcon({
   volume,
   muted,
@@ -190,9 +177,8 @@ const TRIM_CAP_W = 14;
 const TRIM_CAP_GUTTER = TRIM_CAP_W / 2;
 
 /**
- * Video player for Cutter / clip preview (OPT-13).
- * Prefers mpv JSON-IPC when available (`use_libmpv`); otherwise HTML5 + loopback HTTP.
- * Trim chrome, filmstrip, and keyframe snap stay identical across backends.
+ * HTML5 video player for Cutter / clip preview (loopback HTTP media server).
+ * Trim chrome, filmstrip, and keyframe snap are unchanged.
  */
 export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
   function VideoPlayer(
@@ -234,9 +220,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [src, setSrc] = useState<string | null>(null);
     const [posterUrl, setPosterUrl] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [backend, setBackend] = useState<PlayerBackend>("html5");
-    const [mpvFrameUrl, setMpvFrameUrl] = useState<string | null>(null);
-    const [mpvActive, setMpvActive] = useState(false);
     /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
     const [overlayVisible, setOverlayVisible] = useState(false);
     const [controlsVisible, setControlsVisible] = useState(true);
@@ -271,15 +254,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     onTrimCommitRef.current = onTrimCommit;
     const snapSeekMsRef = useRef(snapSeekMs);
     snapSeekMsRef.current = snapSeekMs;
-    const backendRef = useRef<PlayerBackend>("html5");
-    backendRef.current = backend;
-    const mpvSessionRef = useRef<number | null>(null);
-    const mpvTickTimerRef = useRef<number | null>(null);
-    const mpvSeekGenRef = useRef(0);
-    const onEndedRef = useRef(onEnded);
-    onEndedRef.current = onEnded;
-    const currentMsRef = useRef(currentMs);
-    currentMsRef.current = currentMs;
 
     function applySeekSnap(ms: number): number {
       const snap = snapSeekMsRef.current;
@@ -313,83 +287,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       [onTimeUpdate],
     );
 
-    const applyMpvSnapshot = useCallback(
-      async (snap: MpvSessionSnapshot, opts?: { emitEnded?: boolean }) => {
-        emitTime(snap.current_ms, snap.duration_ms);
-        setPlaying(!snap.paused && !snap.eof_reached);
-        if (mpvSessionRef.current != null) {
-          try {
-            const url = await mpvPlayerFrameUrl(
-              mpvSessionRef.current,
-              snap.frame_rev,
-            );
-            setMpvFrameUrl(url);
-          } catch {
-            /* keep last frame */
-          }
-        }
-        if (opts?.emitEnded && snap.eof_reached) {
-          setPlaying(false);
-          onEndedRef.current?.();
-        }
-      },
-      [emitTime],
-    );
-
-    function stopMpvTick() {
-      if (mpvTickTimerRef.current != null) {
-        window.clearInterval(mpvTickTimerRef.current);
-        mpvTickTimerRef.current = null;
-      }
-    }
-
-    function startMpvTick() {
-      stopMpvTick();
-      mpvTickTimerRef.current = window.setInterval(() => {
-        const id = mpvSessionRef.current;
-        if (id == null || backendRef.current !== "mpv") return;
-        if (draggingRef.current) return;
-        void mpvPlayerTick(id)
-          .then((snap) => applyMpvSnapshot(snap, { emitEnded: true }))
-          .catch(() => {
-            /* session may have closed */
-          });
-      }, 80);
-    }
-
-    async function mpvSeekTo(ms: number) {
-      const id = mpvSessionRef.current;
-      if (id == null) return;
-      const snapped = applySeekSnap(Math.max(0, ms));
-      const gen = ++mpvSeekGenRef.current;
-      setCurrentMs(snapped);
-      try {
-        const snap = await mpvPlayerSeek(id, snapped);
-        if (gen !== mpvSeekGenRef.current) return;
-        await applyMpvSnapshot(snap);
-      } catch {
-        /* ignore */
-      }
-    }
-
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
-        if (backendRef.current === "mpv") return currentMsRef.current;
         const v = videoRef.current;
         return v ? v.currentTime * 1000 : 0;
       },
       getDurationMs: () => {
-        if (backendRef.current === "mpv") return durationMsRef.current;
         const v = videoRef.current;
         return v && Number.isFinite(v.duration) ? v.duration * 1000 : durationMsRef.current;
       },
       seekMs: (ms: number) => {
         const snapped = applySeekSnap(Math.max(0, ms));
-        if (backendRef.current === "mpv") {
-          void mpvSeekTo(snapped);
-          setCurrentMs(snapped);
-          return;
-        }
         const v = videoRef.current;
         if (!v) return;
         markLinuxUserSeek();
@@ -397,31 +305,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         setCurrentMs(snapped);
       },
       pause: () => {
-        if (backendRef.current === "mpv") {
-          const id = mpvSessionRef.current;
-          if (id == null) return;
-          stopMpvTick();
-          void mpvPlayerPause(id)
-            .then((snap) => applyMpvSnapshot(snap))
-            .catch(() => setPlaying(false));
-          return;
-        }
         videoRef.current?.pause();
       },
       play: () => {
-        if (backendRef.current === "mpv") {
-          const id = mpvSessionRef.current;
-          if (id == null) return;
-          void mpvPlayerPlay(id)
-            .then((snap) => {
-              void applyMpvSnapshot(snap);
-              startMpvTick();
-            })
-            .catch(() => {
-              /* ignore */
-            });
-          return;
-        }
         void videoRef.current?.play();
       },
     }));
@@ -467,7 +353,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     useEffect(() => {
       // Keep a cached poster across boot so we never flash "Kein Video" while
-      // awaiting mpv/HTML5 (Strict Mode remount + async status open).
+      // awaiting HTML5 (Strict Mode remount + async URL resolve).
       const cachedPoster = srcPath
         ? previewThumbnailQueue.getCached(srcPath, cacheKey)
         : null;
@@ -478,21 +364,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setSrc(null);
       setPosterUrl(cachedPoster);
       setLoadError(null);
-      setMpvFrameUrl(null);
-      setMpvActive(false);
-      setBackend("html5");
-      backendRef.current = "html5";
-      stopMpvTick();
-      const prevSession = mpvSessionRef.current;
-      mpvSessionRef.current = null;
-      if (prevSession != null) {
-        void mpvPlayerClose(prevSession).catch(() => undefined);
-      }
       if (!srcPath) return;
       let cancelled = false;
 
       async function boot() {
-        // Poster for either backend (OPT-10 queue; Filmstrip OPT-7 unchanged).
         if (!cachedPoster) {
           void previewThumbnailQueue
             .request(srcPath!, THUMB_PRIORITY.onDemand, cacheKey)
@@ -502,51 +377,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             .catch(() => {
               /* keep null — empty surface until live frame/src */
             });
-        }
-
-        let useMpv = false;
-        try {
-          const status = await mpvPlayerStatus();
-          useMpv = Boolean(status.available);
-        } catch {
-          useMpv = false;
-        }
-
-        if (cancelled) return;
-
-        if (useMpv) {
-          try {
-            const info = await mpvPlayerOpen(srcPath!);
-            if (cancelled) {
-              void mpvPlayerClose(info.session_id).catch(() => undefined);
-              return;
-            }
-            mpvSessionRef.current = info.session_id;
-            backendRef.current = "mpv";
-            setBackend("mpv");
-            setMpvActive(true);
-            setBufferedRatio(1);
-            emitTime(0, info.duration_ms);
-            await mpvPlayerSetVolume(
-              info.session_id,
-              volumeRef.current,
-              mutedRef.current,
-            );
-            const snap = await mpvPlayerTick(info.session_id);
-            if (!cancelled) await applyMpvSnapshot(snap);
-            if (!cancelled && autoPlayRef.current && !disabled) {
-              const played = await mpvPlayerPlay(info.session_id);
-              await applyMpvSnapshot(played);
-              startMpvTick();
-            }
-            return;
-          } catch {
-            // Fall through to HTML5.
-            mpvSessionRef.current = null;
-            backendRef.current = "html5";
-            setBackend("html5");
-            setMpvActive(false);
-          }
         }
 
         try {
@@ -563,30 +393,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       void boot();
       return () => {
         cancelled = true;
-        stopMpvTick();
-        const id = mpvSessionRef.current;
-        mpvSessionRef.current = null;
-        if (id != null) {
-          void mpvPlayerClose(id).catch(() => undefined);
-        }
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps -- boot on path/cache only
     }, [srcPath, cacheKey]);
 
-    // Re-apply volume on HTML5 remount; mpv via IPC.
+    // Re-apply volume on HTML5 remount.
     useEffect(() => {
-      if (backend === "mpv") {
-        const id = mpvSessionRef.current;
-        if (id != null) {
-          void mpvPlayerSetVolume(id, volume, muted).catch(() => undefined);
-        }
-        return;
-      }
       const v = videoRef.current;
       if (!v) return;
       v.muted = muted;
       v.volume = muted ? 0 : volume;
-    }, [volume, muted, src, backend]);
+    }, [volume, muted, src]);
 
     function clearOverlayHideTimer() {
       if (overlayHideTimerRef.current != null) {
@@ -608,17 +425,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       clearOverlayHideTimer();
       clearControlsHideTimer();
       clearCenterCueTimer();
-      stopMpvTick();
     }, []);
 
     useEffect(() => {
-      const hasSurface =
-        backend === "mpv" ? Boolean(mpvFrameUrl || posterUrl) : Boolean(src);
-      if (disabled || !hasSurface || loadError) {
+      if (disabled || !src || loadError) {
         clearOverlayHideTimer();
         setOverlayVisible(false);
       }
-    }, [disabled, src, loadError, backend, mpvFrameUrl, posterUrl]);
+    }, [disabled, src, loadError]);
 
     useEffect(() => {
       bumpControlsVisibility();
@@ -627,27 +441,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
 
     function togglePlay() {
       if (disabled) return;
-      if (backend === "mpv") {
-        const id = mpvSessionRef.current;
-        if (id == null) return;
-        if (playing) {
-          flashCenterCue("pause");
-          stopMpvTick();
-          void mpvPlayerPause(id)
-            .then((snap) => applyMpvSnapshot(snap))
-            .catch(() => setPlaying(false));
-        } else {
-          flashCenterCue("play");
-          void mpvPlayerPlay(id)
-            .then((snap) => {
-              void applyMpvSnapshot(snap);
-              startMpvTick();
-            })
-            .catch(() => undefined);
-        }
-        bumpControlsVisibility();
-        return;
-      }
       const v = videoRef.current;
       if (!v) return;
       if (v.paused) {
@@ -663,14 +456,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     function seekBy(deltaMs: number) {
       const dur = durationMsRef.current;
       if (!dur) return;
-      if (backend === "mpv") {
-        const next = applySeekSnap(
-          Math.max(0, Math.min(dur, currentMsRef.current + deltaMs)),
-        );
-        void mpvSeekTo(next);
-        bumpControlsVisibility();
-        return;
-      }
       const v = videoRef.current;
       if (!v) return;
       const next = applySeekSnap(
@@ -682,10 +467,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       bumpControlsVisibility();
     }
 
-    const hasMediaSurface =
-      backend === "mpv"
-        ? mpvActive || Boolean(mpvFrameUrl || posterUrl)
-        : Boolean(src);
+    const hasMediaSurface = Boolean(src);
     const canTogglePlayback = Boolean(hasMediaSurface && !disabled && !loadError);
 
     function msFromClientX(
@@ -718,12 +500,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const ms = msFromClientX(clientX, barEl);
       if (ms == null) return;
       const snapped = applySeekSnap(ms);
-      if (backendRef.current === "mpv") {
-        void mpvSeekTo(snapped);
-        emitTime(snapped, durationMsRef.current);
-        bumpControlsVisibility();
-        return;
-      }
       const v = videoRef.current;
       if (!v) return;
       markLinuxUserSeek();
@@ -747,12 +523,6 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         next = Math.min(dur, Math.max(ms, startMs + MIN_RANGE_MS));
       }
 
-      if (backendRef.current === "mpv") {
-        void mpvSeekTo(next);
-        emitTime(next, dur);
-        onTrimChangeRef.current?.(handle, next);
-        return;
-      }
       const v = videoRef.current;
       if (!v) return;
       v.pause();
@@ -892,16 +662,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       const r = ratioFromClientX(e.clientX, bar);
       if (r != null) setScrubHoverRatio(r);
       if (mode === "seek") {
-        if (backendRef.current === "mpv") {
-          stopMpvTick();
-          const id = mpvSessionRef.current;
-          if (id != null) {
-            void mpvPlayerPause(id).catch(() => undefined);
-          }
-          setPlaying(false);
-        } else {
-          videoRef.current?.pause();
-        }
+        videoRef.current?.pause();
         seekFromClientX(e.clientX, bar);
       } else {
         applyTrimDrag(mode, e.clientX);
@@ -948,19 +709,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       setDragging(false);
       setDragHandle(null);
       if (wasPlayingBeforeScrubRef.current && mode === "seek") {
-        if (backendRef.current === "mpv") {
-          const id = mpvSessionRef.current;
-          if (id != null) {
-            void mpvPlayerPlay(id)
-              .then((snap) => {
-                void applyMpvSnapshot(snap);
-                startMpvTick();
-              })
-              .catch(() => undefined);
-          }
-        } else {
-          void videoRef.current?.play();
-        }
+        void videoRef.current?.play();
       }
       wasPlayingBeforeScrubRef.current = false;
       bumpControlsVisibility();
@@ -1039,26 +788,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             seekBy(e.clientX < mid ? -DOUBLE_TAP_SKIP_MS : DOUBLE_TAP_SKIP_MS);
           }}
         >
-          {backend === "mpv" ? (
-            mpvFrameUrl || posterUrl ? (
-              <img
-                // Stable key: remounting on poster→frame URL swap flashes empty.
-                key="mpv-surface"
-                src={mpvFrameUrl ?? posterUrl ?? undefined}
-                alt=""
-                className={cn(
-                  "pointer-events-none object-contain",
-                  rotateMediaStyle ? null : "h-full w-full",
-                )}
-                style={rotateMediaStyle}
-                draggable={false}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-white/70">
-                {srcPath ? t("common.actions.loading") : t("video.player.noVideo")}
-              </div>
-            )
-          ) : src ? (
+          {src ? (
             <video
               key={src}
               ref={videoRef}

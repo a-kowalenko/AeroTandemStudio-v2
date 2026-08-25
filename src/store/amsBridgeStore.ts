@@ -9,19 +9,31 @@ import { useConfigStore } from "@/store/configStore";
 
 export type AmsBridgePhase = "idle" | "checking" | "connected" | "error";
 
+export type AmsHealthCheckOptions = {
+  /** Keep last phase/label; only set `refreshing` (background poll). */
+  quiet?: boolean;
+};
+
 type AmsBridgeState = {
   phase: AmsBridgePhase;
   connected: boolean;
   message: string;
+  /** True during quiet background revalidation (label stays stable). */
+  refreshing: boolean;
   baseUrl: string;
   version: string;
   displayName: string;
   serverInstanceId: string;
   capabilities: string[];
   applyResult: (result: AmsBridgeHealthResult) => void;
-  checkHealth: () => Promise<AmsBridgeHealthResult>;
+  checkHealth: (
+    opts?: AmsHealthCheckOptions,
+  ) => Promise<AmsBridgeHealthResult>;
   reset: () => void;
 };
+
+/** Ignore stale results when a newer checkHealth started. */
+let healthRequestSeq = 0;
 
 function resultFields(result: AmsBridgeHealthResult): Pick<
   AmsBridgeState,
@@ -62,28 +74,44 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
   phase: "idle",
   connected: false,
   message: "",
+  refreshing: false,
   baseUrl: "",
   version: "",
   displayName: "",
   serverInstanceId: "",
   capabilities: [],
 
-  applyResult: (result) => set(resultFields(result)),
-  checkHealth: async () => {
-    set({ phase: "checking", message: tr("common.actions.checking") });
+  applyResult: (result) => set({ ...resultFields(result), refreshing: false }),
+  checkHealth: async (opts) => {
+    const quiet = Boolean(opts?.quiet);
+    const seq = ++healthRequestSeq;
+    if (quiet) {
+      set({ refreshing: true });
+    } else {
+      set({
+        phase: "checking",
+        message: tr("common.actions.checking"),
+        refreshing: false,
+      });
+    }
     try {
       const result = await amsBridgeHealth();
-      set(resultFields(result));
+      if (seq !== healthRequestSeq) return result;
+      set({ ...resultFields(result), refreshing: false });
       if (result.ok) {
         await syncServerIdentityFromConfig();
       }
       return result;
     } catch (e) {
       const message = String(e);
+      if (seq !== healthRequestSeq) {
+        return { ok: false, message, health: null, base_url: "" };
+      }
       set({
         connected: false,
         message,
         phase: "error",
+        refreshing: false,
         baseUrl: "",
         version: "",
         displayName: "",
@@ -93,17 +121,20 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
       return { ok: false, message, health: null, base_url: "" };
     }
   },
-  reset: () =>
+  reset: () => {
+    healthRequestSeq += 1;
     set({
       phase: "idle",
       connected: false,
       message: "",
+      refreshing: false,
       baseUrl: "",
       version: "",
       displayName: "",
       serverInstanceId: "",
       capabilities: [],
-    }),
+    });
+  },
 }));
 
 export function discoveredAmsLabel(item: {

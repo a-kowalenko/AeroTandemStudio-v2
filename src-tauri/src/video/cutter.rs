@@ -5,8 +5,7 @@
 //! partial re-encode at keyframe edges is deferred; stream-copy matches the
 //! common DJI workflow where GOPs are short.
 //!
-//! Player note: OPT-13 prefers mpv JSON-IPC (`player/`) when available; the React
-//! UI keeps HTML5 (`VideoPlayer.tsx`) as fallback against loopback HTTP.
+//! Player: HTML5 `VideoPlayer.tsx` against the loopback media HTTP server.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -2,7 +2,6 @@ mod commands;
 mod constants;
 mod media;
 mod model;
-mod player;
 mod qr;
 mod sd_card;
 mod smb;
@@ -20,11 +19,6 @@ use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
     ams_bridge_handoff_ready, ams_bridge_health,
     ams_bridge_job_status, ams_bridge_preflight,
-};
-use commands::player::{
-    mpv_player_close, mpv_player_config_enabled, mpv_player_frame_url, mpv_player_open,
-    mpv_player_pause, mpv_player_play, mpv_player_seek, mpv_player_set_volume,
-    mpv_player_snapshot, mpv_player_status, mpv_player_tick,
 };
 use commands::config::{
     ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
@@ -139,13 +133,7 @@ pub fn run() {
             init_sd_monitor(app.handle());
             log_info("SD monitor initialized");
             log_info(&format!("Media HTTP server at {media_base_url}"));
-            {
-                use tauri::Manager;
-                let resource_dir = app.path().resource_dir().ok();
-                player::session::set_global_resource_dir(resource_dir.clone());
-                let mpv_status = player::mpv_availability(resource_dir.as_deref());
-                log_info(&format!("Player backend: {}", mpv_status.detail));
-            }
+            log_info("Player backend: HTML5 (loopback HTTP)");
             // macOS: tauri.macos.conf.json creates decorations + Overlay + hiddenTitle
             // (do not toggle decorations false→true — that restores a normal title bar).
             // Win/Linux: conf starts frameless; React AppChrome draws Min/Max/Close.
@@ -229,17 +217,6 @@ pub fn run() {
             delete_working_copy,
             get_media_server_base,
             media_file_url,
-            mpv_player_status,
-            mpv_player_open,
-            mpv_player_close,
-            mpv_player_seek,
-            mpv_player_play,
-            mpv_player_pause,
-            mpv_player_set_volume,
-            mpv_player_tick,
-            mpv_player_snapshot,
-            mpv_player_frame_url,
-            mpv_player_config_enabled,
             start_sd_monitor,
             stop_sd_monitor,
             get_sd_status,
@@ -282,7 +259,6 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                player::session::shutdown_all_sessions();
                 sd_card::autoplay::uninstall();
                 let result = cleanup_on_app_exit();
                 if result.deleted_dirs.is_empty() && result.deleted_files.is_empty() {

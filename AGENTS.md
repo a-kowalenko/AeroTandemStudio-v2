@@ -18,7 +18,7 @@ Performance-Optimierungen separat: `@docs/optimization_plan.md` — **nur ein OP
 
 Tauri 2 + Rust + React 19 + TypeScript + FFmpeg sidecar
 
-Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 + optional mpv IPC (OPT-13).
+Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 + Loopback-HTTP.
 
 ---
 
@@ -134,7 +134,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 | OPT-10 | Thumbnail-Warming staffeln | ✅ |
 | OPT-11 | Foto-Import: QR vor Thumbs | ✅ |
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | ✅ |
-| OPT-13 | Player/Cutter: libmpv statt HTML5 | ✅ |
+| OPT-13 | Player/Cutter: libmpv (entfernt; HTML5 only) | ✅ entfernt |
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ✅ |
 | OPT-15 | SMB-Upload Parallel + Marker-Barrier | ✅ |
 

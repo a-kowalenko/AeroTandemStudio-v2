@@ -106,6 +106,78 @@ impl HandoffStatusDto {
     }
 }
 
+fn is_ams_cancelled_update(update: &AmsHandoffStatusUpdate) -> bool {
+    let state = update.state.trim().to_ascii_lowercase();
+    let code = update.error_code.trim().to_ascii_lowercase();
+    state == "cancelled"
+        || state == "canceled"
+        || code == "cancelled"
+        || code == "canceled"
+}
+
+fn live_state_reopens_cancelled(live_state: &str, live_error_code: &str) -> bool {
+    let state = live_state.trim().to_ascii_lowercase();
+    let code = live_error_code.trim().to_ascii_lowercase();
+    if state == "cancelled"
+        || state == "canceled"
+        || code == "cancelled"
+        || code == "canceled"
+        || state == "rejected"
+        || state == "failed"
+    {
+        return false;
+    }
+    // pending/accepted/queued/uploading/completed after ATS cancel → keep local cancelled
+    true
+}
+
+fn prefer_cached_cancelled(
+    store: &VorgangHistoryStore,
+    vorgang_id: Option<i64>,
+    cid: &str,
+    live_state: &str,
+    live_error_code: &str,
+) -> Option<HandoffStatusDto> {
+    let Ok(Some(cached)) = store.get_cached_ams_status(vorgang_id, cid) else {
+        return None;
+    };
+    if !is_ams_cancelled_update(&cached) {
+        return None;
+    }
+    if !live_state_reopens_cancelled(live_state, live_error_code) {
+        return None;
+    }
+    Some(HandoffStatusDto::from_cached(cid, cached, false))
+}
+
+fn resolve_live_or_cached_cancelled(
+    store: &VorgangHistoryStore,
+    vorgang_id: Option<i64>,
+    job: StatusOutboxV1,
+    source: &str,
+) -> HandoffStatusDto {
+    let live_code = job
+        .error
+        .as_ref()
+        .map(|e| e.code.as_str())
+        .unwrap_or("");
+    if let Some(cached) =
+        prefer_cached_cancelled(store, vorgang_id, &job.correlation_id, &job.state, live_code)
+    {
+        logging::debug(
+            "vorgang_history",
+            format!(
+                "AMS-Live-Status {} ignoriert — lokal bereits cancelled (correlation_id={})",
+                job.state.trim(),
+                job.correlation_id.trim()
+            ),
+        );
+        return cached;
+    }
+    persist_live_status(store, vorgang_id, &job, source);
+    HandoffStatusDto::from_outbox(job, source, false)
+}
+
 fn persist_live_status(
     store: &VorgangHistoryStore,
     vorgang_id: Option<i64>,
@@ -244,8 +316,9 @@ pub async fn get_handoff_status(
             .await
             {
                 Ok(Some(job)) => {
-                    persist_live_status(&store, vorgang_id, &job, "bridge");
-                    return Ok(Some(HandoffStatusDto::from_outbox(job, "bridge", false)));
+                    return Ok(Some(resolve_live_or_cached_cancelled(
+                        &store, vorgang_id, job, "bridge",
+                    )));
                 }
                 Ok(None) => {}
                 Err(e) if e.contains("nicht erreichbar") => {}
@@ -260,10 +333,9 @@ pub async fn get_handoff_status(
     }
 
     match read_status_outbox_any(&share_roots, &cid) {
-        Ok(Some(job)) => {
-            persist_live_status(&store, vorgang_id, &job, "outbox");
-            Ok(Some(HandoffStatusDto::from_outbox(job, "outbox", false)))
-        }
+        Ok(Some(job)) => Ok(Some(resolve_live_or_cached_cancelled(
+            &store, vorgang_id, job, "outbox",
+        ))),
         Ok(None) => Ok(cached_or_pending(
             &store,
             vorgang_id,

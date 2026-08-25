@@ -231,9 +231,7 @@
       "introMuxHint": "Recodificar genera intro y video de vuelo como un bitstream continuo — fiable en móviles y reproductores. La copia de stream es más rápida, pero puede congelarse en algunos dispositivos.",
       "reencodeMatching": "Recodificar clips coincidentes",
       "previewCrf": "CRF de vista previa",
-      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
-      "useLibmpv": "Reproductor mpv para recorte (libmpv/mpv)",
-      "useLibmpvHint": "Scrubbing más fluido en el cortador si mpv está instalado. Sin mpv se usa HTML5."
+      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar."
     },
     "qr": {
       "autoScan": {
@@ -1556,7 +1554,7 @@
       "chooseTitle": "Elegir tarjeta SD — abre el selector de archivos",
       "aria": "Tarjeta SD",
       "watching": "Monitoreo SD activo",
-      "monitoring": "Monitoreo",
+      "monitoring": "Monitoreo SD",
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
