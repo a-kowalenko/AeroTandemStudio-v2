@@ -41,7 +41,7 @@ import {
 } from "../lib/vorgangHistory";
 import {
   isAmsCancelled,
-  isAmsHandoffTerminal,
+  isAmsHandoffSettled,
   matchesAmsStatusFilter,
   viewFromAppendEntry,
   viewFromAppendRecord,
@@ -839,7 +839,12 @@ function VorgaengePanel({
     }
 
     load(true);
-    if (isAmsHandoffTerminal(cachedState)) {
+    if (
+      isAmsHandoffSettled({
+        ams_state: cachedState,
+        ams_error_code: selected.ams_error_code,
+      })
+    ) {
       return () => {
         cancelled = true;
       };
@@ -857,6 +862,7 @@ function VorgaengePanel({
     selected?.correlation_id,
     selected?.base_output_dir,
     selected?.ams_state,
+    selected?.ams_error_code,
   ]);
 
   useEffect(() => {
@@ -952,7 +958,13 @@ function VorgaengePanel({
     if (seed) setAppendStatus(seed);
 
     load();
-    if (isAmsHandoffTerminal(cachedState)) {
+    if (
+      isAmsHandoffSettled({
+        ams_state: cachedState,
+        ams_error_code:
+          latestAppend?.ams_error_code || selected.last_append_ams_error_code,
+      })
+    ) {
       return () => {
         cancelled = true;
       };
@@ -988,10 +1000,16 @@ function VorgaengePanel({
         if (e.id === selectedIdRef.current) return false;
         const mainOpen =
           e.correlation_id?.trim() &&
-          !isAmsHandoffTerminal(e.ams_state);
+          !isAmsHandoffSettled({
+            ams_state: e.ams_state,
+            ams_error_code: e.ams_error_code,
+          });
         const appendOpen =
           e.last_append_correlation_id?.trim() &&
-          !isAmsHandoffTerminal(e.last_append_ams_state);
+          !isAmsHandoffSettled({
+            ams_state: e.last_append_ams_state,
+            ams_error_code: e.last_append_ams_error_code,
+          });
         return mainOpen || appendOpen;
       });
       if (pending.length === 0) return;
@@ -1000,7 +1018,10 @@ function VorgaengePanel({
           const jobs: Promise<void>[] = [];
           if (
             e.correlation_id?.trim() &&
-            !isAmsHandoffTerminal(e.ams_state) &&
+            !isAmsHandoffSettled({
+              ams_state: e.ams_state,
+              ams_error_code: e.ams_error_code,
+            }) &&
             e.id !== selectedIdRef.current
           ) {
             jobs.push(
@@ -1018,7 +1039,10 @@ function VorgaengePanel({
           const appendCid = e.last_append_correlation_id?.trim() ?? "";
           if (
             appendCid &&
-            !isAmsHandoffTerminal(e.last_append_ams_state) &&
+            !isAmsHandoffSettled({
+              ams_state: e.last_append_ams_state,
+              ams_error_code: e.last_append_ams_error_code,
+            }) &&
             e.id !== selectedIdRef.current
           ) {
             jobs.push(
@@ -1058,11 +1082,16 @@ function VorgaengePanel({
   const lastAppendBusy = Boolean(
     (latestAppend?.correlation_id?.trim() ||
       selected?.last_append_correlation_id?.trim()) &&
-      !isAmsHandoffTerminal(
-        appendStatus?.state ||
+      !isAmsHandoffSettled({
+        ams_state:
+          appendStatus?.state ||
           latestAppend?.ams_state ||
           selected?.last_append_ams_state,
-      ),
+        ams_error_code:
+          appendStatus?.error?.code ||
+          latestAppend?.ams_error_code ||
+          selected?.last_append_ams_error_code,
+      }),
   );
   const canAppend =
     Boolean(selected?.correlation_id?.trim()) &&

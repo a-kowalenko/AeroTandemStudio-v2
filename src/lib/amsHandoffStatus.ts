@@ -35,13 +35,29 @@ export const AMS_HANDOFF_STEPS = [
 
 export function isAmsHandoffTerminal(state: string | null | undefined): boolean {
   const s = (state ?? "").trim().toLowerCase();
-  return s === "completed" || s === "rejected" || s === "failed";
+  return (
+    s === "completed" ||
+    s === "rejected" ||
+    s === "failed" ||
+    s === "cancelled" ||
+    s === "canceled"
+  );
 }
 
 export function isAmsCancelled(view: AmsHandoffView): boolean {
   const code = (view.errorCode ?? "").trim().toLowerCase();
   if (code === "cancelled" || code === "canceled") return true;
   return view.state.trim().toLowerCase() === "cancelled";
+}
+
+/** True when Historie should stop polling this handoff (terminal or cancelled). */
+export function isAmsHandoffSettled(entry: {
+  ams_state?: string;
+  ams_error_code?: string;
+}): boolean {
+  if (isAmsHandoffTerminal(entry.ams_state)) return true;
+  const code = (entry.ams_error_code ?? "").trim().toLowerCase();
+  return code === "cancelled" || code === "canceled";
 }
 
 export function isAmsHandoffActive(view: AmsHandoffView): boolean {
