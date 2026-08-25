@@ -12,6 +12,7 @@ pub mod handoff_manifest;
 pub mod hw_accel;
 pub mod intro_mux_fallback;
 pub mod keyframe_cache;
+pub mod low_media;
 pub mod marker;
 pub mod parallel;
 pub mod preview_encode;

@@ -9,6 +9,12 @@ import type { CreateSuccessInfo } from "./components/CreateSuccessDialog";
 import type { IntroMuxFallbackChoice } from "./components/IntroMuxFallbackDialog";
 import type { BodyConcatFallbackChoice } from "./components/BodyConcatFallbackDialog";
 import type { ReencodeConfirmResult, ReencodeConfirmState } from "./components/ReencodeConfirmDialog";
+import type { LowMediaConfirmChoice } from "./components/LowMediaConfirmDialog";
+import {
+  lowMediaSignature,
+  shouldWarnLowMedia,
+  type LowMediaConfirmState,
+} from "./lib/lowMediaConfirm";
 import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
@@ -228,6 +234,10 @@ function App() {
   } | null>(null);
   const [reencodeConfirm, setReencodeConfirm] =
     useState<ReencodeConfirmState | null>(null);
+  const [lowMediaConfirm, setLowMediaConfirm] =
+    useState<LowMediaConfirmState | null>(null);
+  /** Ack signature: warn once per Vorgang until media/products change (Phase 29). */
+  const lowMediaAckRef = useRef<string | null>(null);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
@@ -1424,6 +1434,22 @@ function App() {
     }
   }
 
+  function onLowMediaChoice(choice: LowMediaConfirmChoice) {
+    const pending = lowMediaConfirm;
+    setLowMediaConfirm(null);
+    if (!pending) return;
+    const sig = lowMediaSignature({
+      kunde,
+      videoCount: pending.videoCount,
+      photoCount: pending.photoCount,
+    });
+    // Once per Vorgang until media/products change (Back or Proceed).
+    lowMediaAckRef.current = sig;
+    if (choice === "proceed") {
+      void runCreateJob();
+    }
+  }
+
   async function startCreate() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
       return;
@@ -1456,6 +1482,35 @@ function App() {
       );
       return;
     }
+
+    // Soft low-media confirm before setBusy / encode / reencode (not on Append).
+    const lowMediaInput = {
+      kunde,
+      videoCount: paths.length,
+      photoCount: photos.length,
+    };
+    const lowMedia = shouldWarnLowMedia(lowMediaInput);
+    const sig = lowMediaSignature(lowMediaInput);
+    if (lowMedia.warn && lowMediaAckRef.current !== sig) {
+      setLowMediaConfirm({
+        reasons: lowMedia.reasons,
+        videoCount: lowMedia.videoCount,
+        photoCount: lowMedia.photoCount,
+        uploadToServer: Boolean(config?.upload_to_server),
+      });
+      return;
+    }
+
+    await runCreateJob();
+  }
+
+  async function runCreateJob() {
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
+      return;
+
+    const paths = videoList.map((v) => v.path);
+    const photos = photoList.map((p) => p.path);
+    const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
 
     setBusy(true);
     jobCancelRequestedRef.current = false;
@@ -1570,6 +1625,7 @@ function App() {
           videospringerFixed: config.videospringer,
         });
         clearCreateReadyPulse();
+        lowMediaAckRef.current = null;
       }
     } catch (e) {
       if (isCancellationError(e)) {
@@ -1657,6 +1713,8 @@ function App() {
       videospringerFixed: config?.videospringer,
     });
     clearCreateReadyPulse();
+    lowMediaAckRef.current = null;
+    setLowMediaConfirm(null);
     showSessionResetToast(
       t("common.actions.reset"),
       t("app.session.resetDone"),
@@ -1857,6 +1915,8 @@ function App() {
         onBodyConcatChoice={onBodyConcatChoice}
         reencodeConfirm={reencodeConfirm}
         onReencodeChoice={onReencodeChoice}
+        lowMediaConfirm={lowMediaConfirm}
+        onLowMediaChoice={onLowMediaChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}

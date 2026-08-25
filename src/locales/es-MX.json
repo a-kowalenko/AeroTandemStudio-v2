@@ -30,21 +30,21 @@
       "pleaseWait": "Espera…",
       "cancelling": "Cancelando…",
       "done": "Listo",
-      "showPassword": "Mostrar contraseña",
-      "hidePassword": "Ocultar contraseña",
-      "showSuggestions": "Mostrar sugerencias",
-      "play": "Reproducir",
-      "pause": "Pausa",
-      "mute": "Silencio",
-      "unmute": "Activar sonido",
-      "fullscreen": "Pantalla completa",
+      "editMode": "Modo de edición",
       "exitFullscreen": "Salir de pantalla completa",
-      "selectNamed": "Seleccionar {{name}}",
-      "watermark": "Marca de agua",
-      "watermarkShort": "MA",
+      "fullscreen": "Pantalla completa",
+      "hidePassword": "Ocultar contraseña",
       "knownProcessed": "Ya conocido",
+      "mute": "Silencio",
+      "pause": "Pausa",
+      "play": "Reproducir",
       "regenerate": "Nuevo",
-      "editMode": "Modo de edición"
+      "selectNamed": "Seleccionar {{name}}",
+      "showPassword": "Mostrar contraseña",
+      "showSuggestions": "Mostrar sugerencias",
+      "unmute": "Activar sonido",
+      "watermark": "Marca de agua",
+      "watermarkShort": "MA"
     },
     "status": {
       "error": "Error",
@@ -63,23 +63,23 @@
       "language": "Idioma",
       "storageLocation": "Ubicación de almacenamiento",
       "dropzonePlaceholder": "Zona de entrega…",
-      "all": "Todos",
-      "name": "Nombre",
-      "date": "Fecha",
-      "size": "Tamaño",
-      "type": "Tipo",
-      "preview": "Vista previa",
       "actions": "Acciones",
+      "all": "Todos",
+      "date": "Fecha",
       "drive": "Unidad {{name}}",
-      "sdCard": "Tarjeta SD",
       "filesCount": "{{count}} archivos",
       "filesCountWithSize": "{{count}} archivos · {{sizeMb}} MB",
-      "selectedSummary": "seleccionados: {{count}} ({{sizeMb}} MB)",
+      "name": "Nombre",
+      "no": "no",
       "none": "Ninguno",
+      "preview": "Vista previa",
+      "sdCard": "Tarjeta SD",
+      "selectedSummary": "seleccionados: {{count}} ({{sizeMb}} MB)",
+      "size": "Tamaño",
       "sortAsc": "↑ Asc",
       "sortDesc": "↓ Desc",
-      "yes": "sí",
-      "no": "no"
+      "type": "Tipo",
+      "yes": "sí"
     },
     "language": {
       "de": "Alemán",
@@ -134,8 +134,8 @@
         "toastTitle": "Caché",
         "cleaning": "Limpiando…",
         "clear": "Vaciar caché",
-        "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}}).",
-        "cleanupErrors": "No se pudieron eliminar {{count}} elemento(s)."
+        "cleanupErrors": "No se pudieron eliminar {{count}} elemento(s).",
+        "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}})."
       },
       "update": {
         "title": "Actualización",
@@ -268,7 +268,7 @@
         "folder": "Carpeta de respaldo",
         "pcName": "Nombre del PC",
         "pcNamePlaceholder": "Nombre del equipo",
-        "pcNameHint": "Se usa en el nombre de la carpeta de respaldo y para AMS, p. ej. SD_Backup_…[{{name}}]_… (predeterminado: Nombre (Equipo))",
+        "pcNameHint": "Se usa en el nombre de la carpeta de respaldo, p. ej. SD_Backup_…[{{name}}]_…",
         "pcNameFallback": "PC",
         "clearAfter": "Vaciar SD tras el respaldo",
         "clearAfterTitleOn": "Vaciar la tarjeta SD tras un respaldo correcto",
@@ -305,35 +305,35 @@
       "smb": {
         "title": "Servidor SMB",
         "description": "Credenciales para subir tras crear un trabajo.",
-        "profileListTitle": "Servidores guardados",
-        "profileListHint": "Toca una fila para usarla en la subida. Lápiz = editar credenciales.",
-        "profileActiveHint": "Activo para subida: «{{name}}». Usa el lápiz para editar.",
-        "profileEditTitleNamed": "Editar «{{name}}»",
-        "profileCreateTitle": "Nuevo perfil de servidor",
-        "profileEditPanelHint": "Nombre, URL y credenciales de este perfil.",
-        "profileWizardHint": "URL y credenciales para subir tras crear un trabajo.",
-        "editProfile": "Editar",
-        "editProfileNamed": "Editar «{{name}}»",
-        "deleteProfileConfirm": "¿Eliminar el perfil «{{name}}»?",
-        "profileLabel": "Nombre del perfil",
-        "profileLabelPlaceholder": "p. ej. NAS dropzone",
-        "profileNoUrl": "Sin URL de servidor",
-        "addProfile": "Nuevo perfil",
-        "deleteProfile": "Eliminar perfil",
-        "deleteProfileNamed": "Eliminar perfil «{{name}}»",
-        "newProfileDefault": "Nuevo",
-        "cannotDeleteLast": "Debe quedar al menos un perfil de servidor.",
         "url": "URL del servidor",
         "urlPlaceholder": "smb://…",
-        "scheme": "Protocolo",
-        "schemePath": "Ruta",
-        "urlPlaceholderHost": "host/recurso",
-        "urlPlaceholderUnc": "servidor\\recurso",
-        "urlPlaceholderPath": "/ruta o C:\\carpeta",
         "login": "Usuario",
         "password": "Contraseña",
         "recheckTitle": "Clic para volver a comprobar",
-        "recheckTitleWithMessage": "{{message}}\nClic para volver a comprobar"
+        "recheckTitleWithMessage": "{{message}}\nClic para volver a comprobar",
+        "addProfile": "Nuevo perfil",
+        "cannotDeleteLast": "Debe quedar al menos un perfil de servidor.",
+        "deleteProfile": "Eliminar perfil",
+        "deleteProfileConfirm": "¿Eliminar el perfil «{{name}}»?",
+        "deleteProfileNamed": "Eliminar perfil «{{name}}»",
+        "editProfile": "Editar",
+        "editProfileNamed": "Editar «{{name}}»",
+        "newProfileDefault": "Nuevo",
+        "profileActiveHint": "Activo para subida: «{{name}}». Usa el lápiz para editar.",
+        "profileCreateTitle": "Nuevo perfil de servidor",
+        "profileEditPanelHint": "Nombre, URL y credenciales de este perfil.",
+        "profileEditTitleNamed": "Editar «{{name}}»",
+        "profileLabel": "Nombre del perfil",
+        "profileLabelPlaceholder": "p. ej. NAS dropzone",
+        "profileListHint": "Toca una fila para usarla en la subida. Lápiz = editar credenciales.",
+        "profileListTitle": "Servidores guardados",
+        "profileNoUrl": "Sin URL de servidor",
+        "profileWizardHint": "URL y credenciales para subir tras crear un trabajo.",
+        "scheme": "Protocolo",
+        "schemePath": "Ruta",
+        "urlPlaceholderHost": "host/recurso",
+        "urlPlaceholderPath": "/ruta o C:\\carpeta",
+        "urlPlaceholderUnc": "servidor\\recurso"
       },
       "upload": {
         "title": "Subida",
@@ -355,11 +355,11 @@
         "foundStatus": "Encontrado: {{instance}} → {{url}}",
         "foundSuccess": "Dirección aplicada:\n{{url}}\n\nIngresa el código de acceso aquí y comprueba.",
         "foundSuccessViaServerPassword": "Dirección y código de acceso aplicados (contraseña del servidor).",
-        "foundSuccessViaServerPasswordNamed": "{{name}}: dirección y código de acceso aplicados (contraseña del servidor).",
         "foundMany": "{{count}} direcciones encontradas — elige una.",
         "applied": "Aplicado: {{instance}} → {{url}}",
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
-        "connectedAs": "Conectado a {{name}}"
+        "connectedAs": "Conectado a {{name}}",
+        "foundSuccessViaServerPasswordNamed": "{{name}}: dirección y código de acceso aplicados (contraseña del servidor)."
       }
     },
     "save": {
@@ -391,10 +391,10 @@
       "openUrl": "Abrir URL del servidor",
       "checkCredentials": "Verificar credenciales",
       "openCredentials": "Abrir credenciales",
-      "unreachableTimeout": "Servidor no accesible (tiempo agotado)",
-      "unreachableRefused": "Servidor no accesible (conexión rechazada)",
       "unreachableHostNotFound": "Servidor no accesible (host no encontrado)",
-      "unreachableNetwork": "Servidor no accesible (red)"
+      "unreachableNetwork": "Servidor no accesible (red)",
+      "unreachableRefused": "Servidor no accesible (conexión rechazada)",
+      "unreachableTimeout": "Servidor no accesible (tiempo agotado)"
     }
   },
   "create": {
@@ -636,6 +636,17 @@
       "showAdvanced": "Más opciones",
       "swPreset": "Preset SW",
       "title": "Recodificar"
+    },
+    "lowMedia": {
+      "title": "Pocos archivos multimedia",
+      "body": "Para los productos reservados, la cantidad importada parece inusualmente baja. Aún puedes crear, o volver y agregar más.",
+      "reasonVideo": "{{count}} video — inusualmente poco para un producto de video",
+      "reasonPhotosOne": "{{count}} foto — inusualmente poca para un producto de fotos",
+      "reasonPhotosMany": "{{count}} fotos — inusualmente pocas para un producto de fotos",
+      "reasonVideosMany": "{{count}} videos — inusualmente pocos para un producto de video",
+      "hintEncode": "A continuación inicia la codificación.",
+      "hintUpload": "A continuación inician la codificación y la subida.",
+      "proceed": "Crear de todos modos"
     }
   },
   "splash": {
@@ -672,8 +683,8 @@
       "checksOk": "Listo — FFmpeg OK, codificador {{encoder}}",
       "ffmpegBinaryNotFound": "No se encontró el binario de FFmpeg (se esperaba en resources/ffmpeg/).",
       "gstBasePluginsMissing": "Faltan plugins base de GStreamer — reproducción de video no disponible. Instalar: {{installHint}}",
-      "gstH264DecoderMissing": "No se encontró decodificador H.264 en GStreamer — la vista previa MP4 queda en negro. Instalar: {{installHint}}",
-      "gstCodecsMissing": "No se encontraron códecs GStreamer — la reproducción de video puede fallar. Instalar: {{installHint}}"
+      "gstCodecsMissing": "No se encontraron códecs GStreamer — la reproducción de video puede fallar. Instalar: {{installHint}}",
+      "gstH264DecoderMissing": "No se encontró decodificador H.264 en GStreamer — la vista previa MP4 queda en negro. Instalar: {{installHint}}"
     },
     "chrome": {
       "historyTitle": "Archivos procesados",
@@ -696,8 +707,8 @@
       "availableOn": "Actualización a {{version}} disponible.",
       "restartManual": "Versión instalada — reinicia la app a mano.",
       "title": "Actualización",
-      "installHintMacApplications": "Para actualizaciones automáticas, la app debe estar en la carpeta Aplicaciones.",
-      "installHintLinuxAppImage": "Las actualizaciones automáticas solo funcionan de forma confiable como AppImage."
+      "installHintLinuxAppImage": "Las actualizaciones automáticas solo funcionan de forma confiable como AppImage.",
+      "installHintMacApplications": "Para actualizaciones automáticas, la app debe estar en la carpeta Aplicaciones."
     },
     "sd": {
       "readingFiles": "Leyendo archivos de SD…",
@@ -745,10 +756,10 @@
       "scanFailed": "El escaneo falló",
       "recognized": "Código QR reconocido",
       "cleanup": {
-        "removedVideos": "{{count}} clip eliminado de la lista",
-        "removedVideosMany": "{{count}} clips eliminados de la lista",
         "removedPhotos": "{{count}} foto eliminada de la lista",
-        "removedPhotosMany": "{{count}} fotos eliminadas de la lista"
+        "removedPhotosMany": "{{count}} fotos eliminadas de la lista",
+        "removedVideos": "{{count}} clip eliminado de la lista",
+        "removedVideosMany": "{{count}} clips eliminados de la lista"
       }
     },
     "storage": {
@@ -972,33 +983,19 @@
       "noValidPhotos": "No se encontraron archivos de foto válidos",
       "noValidVideos": "No se encontraron archivos de video válidos"
     },
+    "contextMenu": {
+      "copyPath": "Copiar ruta",
+      "open": "Abrir",
+      "revealInFolder": "Mostrar en carpeta",
+      "undoEdit": "Deshacer edición"
+    },
     "edit": {
       "doneDefault": "Listo",
       "modeAria": "Modo de edición"
-    },
-    "contextMenu": {
-      "open": "Abrir",
-      "revealInFolder": "Mostrar en carpeta",
-      "copyPath": "Copiar ruta",
-      "undoEdit": "Deshacer edición"
     }
   },
   "workflow": {
     "progress": "Progreso",
-    "createSteps": {
-      "aria": "Pasos al crear el proceso",
-      "folder": "Carpeta",
-      "video": "Video",
-      "previewReuse": "Vista previa",
-      "wmVideo": "Marca de agua",
-      "photos": "Fotos",
-      "wmPhotos": "Sello de vista previa",
-      "handoff": "Cierre",
-      "upload": "Subida",
-      "done": "Listo",
-      "cancelled": "Cancelado",
-      "failed": "Error"
-    },
     "stage": {
       "preview": "Se está generando la vista previa",
       "cut": "Se está aplicando la edición",
@@ -1015,6 +1012,20 @@
       "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg.",
       "createUploading": "Trabajo actual — cancelar detiene la subida.",
       "cancelling": "Cancelación solicitada — se termina el paso actual"
+    },
+    "createSteps": {
+      "aria": "Pasos al crear el proceso",
+      "cancelled": "Cancelado",
+      "done": "Listo",
+      "failed": "Error",
+      "folder": "Carpeta",
+      "handoff": "Cierre",
+      "photos": "Fotos",
+      "previewReuse": "Vista previa",
+      "upload": "Subida",
+      "video": "Video",
+      "wmPhotos": "Sello de vista previa",
+      "wmVideo": "Marca de agua"
     }
   },
   "history": {
@@ -1178,11 +1189,11 @@
       "unreachableHint": "Ingresa los datos del cliente manualmente.",
       "lookupErrorFallback": "No se pudo cargar el cliente",
       "healthOk": "Búsqueda de reserva conectada",
-      "healthOkNamed": "{{name}} conectada",
       "connectedTooltip": "{{title}}: conectado",
-      "connectedTooltipNamed": "{{title}}: {{name}}",
       "onlineOnly": "Solo para trabajos en línea, no locales",
-      "customerNotFound": "Cliente no encontrado en la reserva"
+      "customerNotFound": "Cliente no encontrado en la reserva",
+      "connectedTooltipNamed": "{{title}}: {{name}}",
+      "healthOkNamed": "{{name}} conectada"
     },
     "handoff": {
       "steps": {
@@ -1249,12 +1260,12 @@
       "titleFailed": "Sin conexión",
       "titleServerOk": "Servidor conectado",
       "titleAmsOk": "Búsqueda de reserva conectada",
-      "titleAmsOkNamed": "{{name}} conectada",
       "serverLabel": "Servidor",
       "serverOk": "Accesible",
       "serverOkLocal": "Accesible (local)",
       "serverOkRemote": "Conectado",
-      "amsOk": "Conectado"
+      "amsOk": "Conectado",
+      "titleAmsOkNamed": "{{name}} conectada"
     }
   },
   "qr": {
@@ -1344,9 +1355,9 @@
         "undo": "Falló deshacer"
       },
       "mode": {
-        "trim": "Recorte",
         "rotate": "Rotar",
-        "split": "Dividir"
+        "split": "Dividir",
+        "trim": "Recorte"
       }
     },
     "preview": {
@@ -1368,47 +1379,47 @@
       "undoThisEditTitle": "Deshacer esta edición",
       "previewReencode": "Recodificación: {{reason}}",
       "previewStreamCopy": "Recodificación: no (copia de stream)",
-      "undoAllEditsBtn": "Deshacer todas las ediciones",
-      "generatePreview": "Generar vista previa",
-      "showPreview": "Mostrar vista previa",
-      "regenerateBtn": "Actualizar vista previa",
-      "regenerateNew": "Nuevo",
+      "autoNextClip": "Reproducir automáticamente el siguiente clip",
+      "clipsCount": "Clips:",
+      "codecLabel": "Códec:",
+      "combinedCreated": "Vista previa combinada creada ({{strategy}}).{{suffix}}",
+      "combinedCreatedWithIntro": "Vista previa combinada creada ({{strategy}}, con intro).{{suffix}}",
+      "combinedFresh": "combinada",
       "combinedLabel": "Vista previa",
       "combinedStale": "obsoleta",
-      "combinedFresh": "combinada",
-      "staleBadgeShort": "vieja",
       "currentClip": "Clip actual",
-      "fileLabel": "Archivo:",
-      "resolutionLabel": "Resolución:",
-      "codecLabel": "Códec:",
-      "durationLabel": "Duración:",
-      "sizeLabel": "Tamaño:",
-      "totalPreview": "Total / vista previa",
-      "clipsCount": "Clips:",
-      "totalDuration": "Duración total:",
-      "totalSize": "Tamaño total:",
-      "strategyLabel": "Estrategia:",
-      "encoderLabel": "Codificador:",
-      "introLabel": "Intro:",
-      "previewExportTitle": "Preview",
-      "previewExportHint": "Exportar con sello de marca de agua",
-      "autoNextClip": "Reproducir automáticamente el siguiente clip",
-      "cutTrim": "Recortado",
       "cutRotate": "Rotado",
-      "cutSplit": "Dividido",
-      "cutTrimShort": "Trim",
       "cutRotateShort": "Rot",
+      "cutSplit": "Dividido",
       "cutSplitShort": "Split",
-      "combinedCreatedWithIntro": "Vista previa combinada creada ({{strategy}}, con intro).{{suffix}}",
-      "combinedCreated": "Vista previa combinada creada ({{strategy}}).{{suffix}}",
-      "strategyStreamCopy": "Copia de stream",
-      "strategyPerClip": "Por clip",
-      "strategyCombined": "Combinada",
-      "showSavedStale": "Mostrar vista previa guardada (obsoleta)",
+      "cutTrim": "Recortado",
+      "cutTrimShort": "Trim",
+      "durationLabel": "Duración:",
+      "encoderLabel": "Codificador:",
+      "fileLabel": "Archivo:",
+      "generatePreview": "Generar vista previa",
+      "introLabel": "Intro:",
+      "previewExportHint": "Exportar con sello de marca de agua",
+      "previewExportTitle": "Preview",
+      "reencodeSuffix": "\nRecodificar: {{reason}}",
+      "regenerateBtn": "Actualizar vista previa",
+      "regenerateNew": "Nuevo",
+      "resolutionLabel": "Resolución:",
+      "showPreview": "Mostrar vista previa",
       "showSaved": "Mostrar vista previa combinada guardada",
-      "watermarkStampAria": "Video de vista previa con sello de marca de agua",
+      "showSavedStale": "Mostrar vista previa guardada (obsoleta)",
+      "sizeLabel": "Tamaño:",
+      "staleBadgeShort": "vieja",
+      "strategyCombined": "Combinada",
+      "strategyLabel": "Estrategia:",
+      "strategyPerClip": "Por clip",
+      "strategyStreamCopy": "Copia de stream",
       "toastTitle": "Vista previa",
-      "reencodeSuffix": "\nRecodificar: {{reason}}"
+      "totalDuration": "Duración total:",
+      "totalPreview": "Total / vista previa",
+      "totalSize": "Tamaño total:",
+      "undoAllEditsBtn": "Deshacer todas las ediciones",
+      "watermarkStampAria": "Video de vista previa con sello de marca de agua"
     },
     "cutter": {
       "warning": {
@@ -1559,25 +1570,25 @@
       "refresh": "Volver a leer",
       "title": "Tarjeta SD — elegir archivos",
       "titleSizeLimit": "Límite de tamaño superado — elegir archivos",
-      "viewTiles": "Mosaicos",
-      "viewDetails": "Detalles",
-      "selectAllFiltered": "Todos (filtrados)",
-      "selectAllNew": "Todos nuevos",
-      "selectAll": "Seleccionar todos",
-      "clearSd": "Limpiar tarjeta SD",
-      "clearOnlyAfterBackupHint": "Limpiar solo es posible después del respaldo.",
-      "clearNoFiles": "No hay archivos para limpiar",
       "clearAfterBackup": "Limpiar tarjeta SD después de un respaldo exitoso",
       "clearNeedsBackup": "Solo disponible cuando el respaldo está activado",
+      "clearNoFiles": "No hay archivos para limpiar",
+      "clearOnlyAfterBackupHint": "Limpiar solo es posible después del respaldo.",
+      "clearSd": "Limpiar tarjeta SD",
       "ejectAfterBackupTitle": "Expulsar justo después del respaldo (importar/QR desde copias). Sin respaldo: después del import.",
+      "proceedDespiteLimit": "Continuar de todos modos",
+      "readingInline": "Leyendo archivos SD… {{count}}",
       "scanImportedQr": "Escanear medios importados en busca de QR",
       "scanNeedsImport": "Solo disponible cuando la importación está activada",
       "scanQrLabel": "Escaneo QR",
-      "proceedDespiteLimit": "Continuar de todos modos",
-      "readingInline": "Leyendo archivos SD… {{count}}",
-      "summaryVideos": ", {{count}} videos",
+      "selectAll": "Seleccionar todos",
+      "selectAllFiltered": "Todos (filtrados)",
+      "selectAllNew": "Todos nuevos",
       "summaryPhotos": ", {{count}} fotos",
-      "summarySelected": ", seleccionados: {{count}} ({{sizeMb}} MB)"
+      "summarySelected": ", seleccionados: {{count}} ({{sizeMb}} MB)",
+      "summaryVideos": ", {{count}} videos",
+      "viewDetails": "Detalles",
+      "viewTiles": "Mosaicos"
     },
     "catalog": {
       "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
@@ -1590,8 +1601,8 @@
       "title": "Monitor SD"
     },
     "tile": {
-      "noPreviewCodec": "Sin vista previa (códec/WebView)",
-      "fullscreenNamed": "{{name}} pantalla completa"
+      "fullscreenNamed": "{{name}} pantalla completa",
+      "noPreviewCodec": "Sin vista previa (códec/WebView)"
     }
   },
   "setupWizard": {
@@ -1650,8 +1661,8 @@
     "completeTitle": "Éxito",
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
-      "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}».",
-      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después."
+      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después.",
+      "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
       "appearance": "Bienvenido a Aero Tandem Studio. En pocos pasos puedes definir idioma, apariencia, almacenamiento y comportamiento de importación. Todo lo demás se puede ajustar después en la configuración.",
@@ -1683,13 +1694,13 @@
       "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento."
     },
     "defaultMediaDir": {
-      "alternateVolumeBody": "Otro volumen local tiene significativamente más espacio libre.",
-      "alternateStandard": "Predeterminado: {{path}}",
       "alternateChoice": "Alternativa: {{path}}",
       "alternateConfirm": "OK = usar alternativa, Cancelar = mantener predeterminado.",
-      "warningsTitle": "Notas sobre la ubicación de almacenamiento:",
+      "alternateStandard": "Predeterminado: {{path}}",
+      "alternateVolumeBody": "Otro volumen local tiene significativamente más espacio libre.",
       "createFolder": "Crear carpeta:\n{{path}}",
-      "proceedAnyway": "¿Continuar de todos modos?"
+      "proceedAnyway": "¿Continuar de todos modos?",
+      "warningsTitle": "Notas sobre la ubicación de almacenamiento:"
     }
   },
   "dateField": {

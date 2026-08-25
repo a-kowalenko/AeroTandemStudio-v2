@@ -112,9 +112,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 26: Mehrsprachige UI (de / en / es-MX, `ui_language` in Config, react-i18next)
 - ✅ Phase 27: Encode-Profil & Reencode-Confirm UX
 - ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
-- ⬜ Phase 29: Low-Media Confirm vor Erstellen (produktbezogen, Soft Confirm, &lt;20 Fotos / ≤1 Video)
+- ✅ Phase 29: Low-Media Confirm vor Erstellen (Soft Confirm, produktbezogen, vor setBusy; Append übersprungen)
 
-**Nächster Schritt:** Phase 29 (Low-Media Confirm) oder Phase 23.3 (Linux libmtp) oder Phase 14 ML Backlog  
+**Nächster Schritt:** Phase 23.3 (Linux libmtp) oder Phase 14 ML Backlog  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
 
 ### Performance-Backlog

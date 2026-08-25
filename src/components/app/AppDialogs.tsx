@@ -4,6 +4,8 @@ import type { SdWorkflowActions } from "../../lib/sdCard";
 import type { IntroMuxFallbackChoice } from "../IntroMuxFallbackDialog";
 import type { BodyConcatFallbackChoice } from "../BodyConcatFallbackDialog";
 import type { ReencodeConfirmResult, ReencodeConfirmState } from "../ReencodeConfirmDialog";
+import type { LowMediaConfirmChoice } from "../LowMediaConfirmDialog";
+import type { LowMediaConfirmState } from "@/lib/lowMediaConfirm";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
@@ -15,6 +17,7 @@ import { WarningDialog } from "../WarningDialog";
 import { IntroMuxFallbackDialog } from "../IntroMuxFallbackDialog";
 import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
 import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
+import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
 import { UpdateDialog } from "../UpdateDialog";
@@ -111,6 +114,8 @@ export type AppDialogsProps = {
   onBodyConcatChoice: (choice: BodyConcatFallbackChoice) => void;
   reencodeConfirm: ReencodeConfirmState | null;
   onReencodeChoice: (result: ReencodeConfirmResult) => void;
+  lowMediaConfirm: LowMediaConfirmState | null;
+  onLowMediaChoice: (choice: LowMediaConfirmChoice) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -180,6 +185,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onBodyConcatChoice,
     reencodeConfirm,
     onReencodeChoice,
+    lowMediaConfirm,
+    onLowMediaChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -336,6 +343,14 @@ export function AppDialogs(props: AppDialogsProps) {
         onChoose={(result) => {
           void onReencodeChoice(result);
         }}
+      />
+      <LowMediaConfirmDialog
+        open={lowMediaConfirm !== null}
+        reasons={lowMediaConfirm?.reasons ?? []}
+        videoCount={lowMediaConfirm?.videoCount ?? 0}
+        photoCount={lowMediaConfirm?.photoCount ?? 0}
+        uploadToServer={lowMediaConfirm?.uploadToServer ?? false}
+        onChoose={onLowMediaChoice}
       />
       <LoadingOverlay
         open={loading && !sdWorkflowUiActive}

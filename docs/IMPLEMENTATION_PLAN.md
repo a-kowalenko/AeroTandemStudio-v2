@@ -57,8 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 29 — Low-Media Confirm vor Erstellen](#phase-29--low-media-confirm-vor-erstellen)  
-*(alternativ: [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später))*  
+**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+*(Phase 29 Low-Media Confirm erledigt.)*  
 *(Phase 28 Fotos Master–Detail erledigt.)*  
 *(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
 *(Phase 25 AMS-Lookup Autofill erledigt.)*  
@@ -1562,7 +1562,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 29 — Low-Media Confirm vor Erstellen
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** Phase 12 (`startCreate` / `validateCreateJob`), Phase 27 (Confirm-Dialog-Muster), Phase 24 (Append — Ausnahme)  
 **Ziel:** Vor Encode/Upload eine **weiche** Bestätigung, wenn für gebuchte Produkte ungewöhnlich wenig Medien importiert sind — ohne Hard-Block, ohne Alarmmüdigkeit.
 
@@ -1587,13 +1587,13 @@ src/locales/de.json | en.json | es-MX.json
 
 #### Scope
 
-- [ ] Hilfsfunktion `shouldWarnLowMedia({ kunde, videoCount, photoCount })` → Gründe (`video` / `photos`) + Counts
-- [ ] `LowMediaConfirmDialog` (Dialog wie Reencode-Confirm-Stil, kompakt)
-- [ ] Einbindung in `startCreate` / `AppDialogs` gemäß Flow-Reihenfolge (Punkt 5)
-- [ ] Append/Nachreichen überspringen (Punkt 7)
-- [ ] Session-/Vorgangs-Flag: nach Confirm oder Medienänderung Reset (Punkt 6)
-- [ ] i18n de / en / es-MX (Titel, Body mit Zählern, Buttons, Encode/Upload-Hinweis)
-- [ ] Unit-Tests für Schwellen-Logik (produktbezogen, Edge Cases)
+- [x] Hilfsfunktion `shouldWarnLowMedia({ kunde, videoCount, photoCount })` → Gründe (`video` / `photos`) + Counts
+- [x] `LowMediaConfirmDialog` (Dialog wie Reencode-Confirm-Stil, kompakt)
+- [x] Einbindung in `startCreate` / `AppDialogs` gemäß Flow-Reihenfolge (Punkt 5)
+- [x] Append/Nachreichen überspringen (Punkt 7)
+- [x] Session-/Vorgangs-Flag: nach Confirm oder Medienänderung Reset (Punkt 6)
+- [x] i18n de / en / es-MX (Titel, Body mit Zählern, Buttons, Encode/Upload-Hinweis)
+- [x] Unit-Tests für Schwellen-Logik (produktbezogen, Edge Cases)
 - [ ] Manuell: 1 Video+Foto-Produkt; 19 Fotos; 2 Videos+50 Fotos (kein Dialog); Append ohne Dialog; Zurück → nachlegen → erneut Erstellen
 
 #### Nicht tun
@@ -1617,8 +1617,11 @@ i18n de/en/es-MX. Unit-Tests für Schwellen. Danach cargo test && npm run check.
 #### Referenzen
 
 ```
-src/App.tsx                          # startCreate
+src/App.tsx                          # startCreate / runCreateJob
 src/components/app/AppDialogs.tsx
+src/components/LowMediaConfirmDialog.tsx
+src/lib/lowMediaConfirm.ts
+src-tauri/src/video/low_media.rs     # Schwellen + Unit-Tests
 src/components/ReencodeConfirmDialog.tsx   # UX-Muster
 src/lib/createJobPlan.ts             # needsVideoProduct-Analog
 src-tauri/src/video/export_job.rs    # validate_create_job (nicht um Errors erweitern)
@@ -1811,7 +1814,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 25 | AMS-Lookup Autofill (Manuell / ID) | ✅ |
 | 27 | Encode-Profil & Reencode-Confirm UX | ✅ |
 | 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
-| 29 | Low-Media Confirm vor Erstellen | ⬜ |
+| 29 | Low-Media Confirm vor Erstellen | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

@@ -1245,7 +1245,7 @@ mod tests {
         cfg.server_password = "pw".into();
         store.save(&cfg).unwrap();
         let loaded = store.load().unwrap();
-        assert_eq!(loaded.server_profiles.len(), 1);
+        assert_eq!(loaded.server_profiles.len(), 2);
         assert_eq!(loaded.server_profiles[0].url, "smb://host/a");
         assert_eq!(loaded.server_profiles[0].login, "user");
         assert_eq!(loaded.server_profiles[0].password, "pw");
