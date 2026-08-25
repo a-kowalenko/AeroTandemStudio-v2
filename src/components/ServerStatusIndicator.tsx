@@ -13,6 +13,7 @@ import {
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
+import { formatBytes } from "../lib/formatBytes";
 
 type Props = {
   className?: string;
@@ -83,13 +84,33 @@ export function ServerStatusIndicator({ className }: Props) {
     config?.ams_bridge_display_name?.trim() ||
     "";
 
+  const uploadDetail =
+    smbPhase === "uploading" && uploadProgress
+      ? [
+          uploadProgress.total_bytes > 0
+            ? t("app.upload.bytesProgress", {
+                current: formatBytes(uploadProgress.current_bytes),
+                total: formatBytes(uploadProgress.total_bytes),
+              })
+            : null,
+          uploadProgress.total_files > 0
+            ? t("app.upload.fileProgress", {
+                current: uploadProgress.current_file,
+                total: uploadProgress.total_files,
+              })
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || null
+      : null;
+
   const view = presentHeaderConnection({
     smbPhase,
     smbConnected,
     smbMessage,
     uploadPercent:
       smbPhase === "uploading" ? (uploadProgress?.percent ?? 0) : null,
-    uploadFilename: uploadProgress?.filename ?? null,
+    uploadDetail,
     amsConfigured,
     amsPhase,
     amsConnected,
@@ -232,11 +253,6 @@ export function ServerStatusIndicator({ className }: Props) {
           <Loader2 className="h-3 w-3 animate-spin opacity-80" />
         ) : null}
       </span>
-      {smbPhase === "uploading" && uploadProgress?.filename ? (
-        <span className="max-w-[10rem] truncate text-muted">
-          {uploadProgress.filename}
-        </span>
-      ) : null}
     </>
   );
 

@@ -121,7 +121,6 @@ pub async fn upload_smb_media_parallel<F>(
     tree: Arc<Tree>,
     media: &[FileEntry],
     remote_paths: &[String],
-    file_indices: &[u32],
     total_files: u32,
     total_bytes: u64,
     progress: Arc<Mutex<UploadProgressGate<F>>>,
@@ -131,7 +130,6 @@ where
     F: FnMut(super::client::UploadProgress) + Send + 'static,
 {
     debug_assert_eq!(media.len(), remote_paths.len());
-    debug_assert_eq!(media.len(), file_indices.len());
 
     if media.is_empty() {
         return Ok(start_bytes);
@@ -148,7 +146,6 @@ where
         let client = Arc::clone(&client);
         let tree = Arc::clone(&tree);
         let remote = remote_paths[i].clone();
-        let file_index = file_indices[i];
         let absolute = file.absolute.clone();
         let relative = file.relative.clone();
         let large = is_large_media(file);
@@ -179,10 +176,6 @@ where
                 return Err(WORKFLOW_CANCELLED.to_string());
             }
 
-            let filename = absolute
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default();
             let mut last_reported = 0u64;
 
             let uploaded = stream_upload_file(
@@ -198,20 +191,21 @@ where
                     } else {
                         global_bytes.load(Ordering::Relaxed)
                     };
+                    let done = files_done.load(Ordering::Relaxed);
                     let percent = if total_bytes > 0 {
                         (current.min(total_bytes) as f64 / total_bytes as f64) * 100.0
                     } else {
-                        let done = files_done.load(Ordering::Relaxed);
                         (done as f64 / total_files.max(1) as f64) * 100.0
                     };
                     if let Ok(mut gate) = progress.lock() {
+                        // Report completed count (monotonic); omit basename under parallel workers.
                         gate.emit(
                             percent.min(99.9),
-                            file_index,
+                            done,
                             total_files,
                             current.min(total_bytes),
                             total_bytes,
-                            &filename,
+                            "",
                             false,
                         );
                     }
@@ -242,11 +236,11 @@ where
             if let Ok(mut gate) = progress.lock() {
                 gate.emit(
                     percent.min(99.9),
-                    file_index,
+                    done,
                     total_files,
                     now.min(total_bytes),
                     total_bytes,
-                    &filename,
+                    "",
                     true,
                 );
             }

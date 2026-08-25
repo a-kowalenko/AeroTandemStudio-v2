@@ -62,10 +62,12 @@ pub struct UploadResult {
 #[derive(Debug, Clone, Serialize)]
 pub struct UploadProgress {
     pub percent: f64,
+    /// Files fully uploaded so far (`0…total_files`). Monotonic; not a parallel worker slot.
     pub current_file: u32,
     pub total_files: u32,
     pub current_bytes: u64,
     pub total_bytes: u64,
+    /// Optional basename for diagnostics; UI should not treat this as “current file”.
     pub filename: String,
 }
 
@@ -722,12 +724,14 @@ fn upload_local<F: FnMut(UploadProgress)>(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
 
+        // `current_file` = completed count (0 while first file is in flight).
+        let completed_before = idx as u32;
         if let Err(e) = copy_file_chunked(&file.absolute, &dest, |copied_in_file| {
             let current = bytes_before + copied_in_file;
             let percent = if total_bytes > 0 {
                 (current as f64 / total_bytes as f64) * 100.0
             } else {
-                ((file_index - 1) as f64 / total_files as f64) * 100.0
+                (completed_before as f64 / total_files as f64) * 100.0
             };
             // Keep <100 until the final file finishes (marker barrier UX).
             let percent = if file_index < total_files {
@@ -737,7 +741,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
             };
             progress.emit(
                 percent,
-                file_index,
+                completed_before,
                 total_files,
                 current,
                 total_bytes,
@@ -899,14 +903,12 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         .iter()
         .map(|f| join_smb_path(subpath, &f.relative))
         .collect();
-    let media_indices: Vec<u32> = (1..=phases.media.len() as u32).collect();
 
     let mut copied_bytes = match upload_smb_media_parallel(
         Arc::clone(&client),
         Arc::clone(&tree),
         &phases.media,
         &media_remotes,
-        &media_indices,
         total_files,
         total_bytes,
         Arc::clone(&progress),
@@ -1029,12 +1031,14 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
 
+    // `file_index` is the completed count after this file finishes.
+    let completed_before = file_index.saturating_sub(1);
     match stream_upload_file(client, tree, &file.absolute, remote_rel, |copied_in_file| {
         let current = bytes_before + copied_in_file;
         let mut percent = if total_bytes > 0 {
             (current as f64 / total_bytes as f64) * 100.0
         } else {
-            ((file_index - 1) as f64 / total_files.max(1) as f64) * 100.0
+            (completed_before as f64 / total_files.max(1) as f64) * 100.0
         };
         if !allow_100 {
             percent = percent.min(99.9);
@@ -1042,7 +1046,7 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
         if let Ok(mut gate) = progress.lock() {
             gate.emit(
                 percent,
-                file_index,
+                completed_before,
                 total_files,
                 current,
                 total_bytes,
@@ -1594,6 +1598,45 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         assert!(!result.success);
         assert_eq!(result.message, WORKFLOW_CANCELLED);
+    }
+
+    #[test]
+    fn local_upload_current_file_is_completed_count() {
+        use crate::video::ffmpeg::reset_cancel_flag;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+
+        let dir = tempfile::tempdir().unwrap();
+        let job = dir.path().join("JobCount");
+        fs::create_dir_all(job.join("Handcam_Foto")).unwrap();
+        fs::write(job.join("Handcam_Foto/a.jpg"), b"a").unwrap();
+        fs::write(job.join("Handcam_Foto/b.jpg"), b"b").unwrap();
+        fs::write(job.join("_fertig.txt"), b"m").unwrap();
+
+        let files = collect_upload_files(&job).unwrap();
+        let dest = dir.path().join("server");
+        let total_files = files.len() as u32;
+        let total_bytes: u64 = files.iter().map(|f| f.size).sum();
+        let mut seen = Vec::<u32>::new();
+        let result = upload_local(
+            &dest,
+            &files,
+            total_files,
+            total_bytes,
+            &mut UploadProgressGate::new(|p| {
+                seen.push(p.current_file);
+            }),
+        );
+        assert!(result.success, "{}", result.message);
+        assert!(!seen.is_empty());
+        for w in seen.windows(2) {
+            assert!(
+                w[1] >= w[0],
+                "current_file must be monotonic completed count: {seen:?}"
+            );
+        }
+        assert_eq!(*seen.last().unwrap(), total_files);
     }
 
     #[test]

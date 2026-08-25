@@ -1047,10 +1047,12 @@ export type UploadResult = {
 
 export type UploadProgressEvent = {
   percent: number;
+  /** Files fully uploaded so far (0…total_files); not a parallel worker slot. */
   current_file: number;
   total_files: number;
   current_bytes: number;
   total_bytes: number;
+  /** Optional basename; UI should not treat as “current file”. */
   filename: string;
   status: string;
 };
