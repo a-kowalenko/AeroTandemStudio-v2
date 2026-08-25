@@ -8,6 +8,8 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-08-25
+
 ### Neu
 
 - Server-Profile in den Einstellungen: mehrere Upload-Ziele speichern und per Klick umschalten
