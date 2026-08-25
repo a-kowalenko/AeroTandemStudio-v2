@@ -4,12 +4,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ImageIcon } from "lucide-react";
 import { buildOffsets, sliceVirtualRange } from "../../lib/virtualList";
+import { cn } from "../../lib/utils";
 import type { PhotoItem } from "../../store/photoStore";
 import { PhotoThumbTile } from "./PhotoThumbTile";
 
@@ -28,6 +30,8 @@ type Props = {
   getMediaRevision: (path: string) => number;
   onThumbClick: (index: number, e: MouseEvent) => void;
   onContextMenu: (path: string) => (e: MouseEvent<HTMLButtonElement>) => void;
+  className?: string;
+  style?: CSSProperties;
 };
 
 function computeColumns(width: number): number {
@@ -46,6 +50,8 @@ export function PhotoOverviewGrid({
   getMediaRevision,
   onThumbClick,
   onContextMenu,
+  className,
+  style,
 }: Props) {
   const { t } = useTranslation();
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
@@ -123,9 +129,20 @@ export function PhotoOverviewGrid({
     }
   }, [currentIndex, columns, listEl, rowCount, rowOffsets, rowHeight]);
 
+  const rootClass = cn(
+    "min-h-[16rem] max-h-[min(28rem,55vh)] overflow-auto py-0.5 pl-0.5 pr-[calc(var(--ats-scrollbar-size)+8px)] [scrollbar-gutter:stable]",
+    className,
+  );
+
   if (photos.length === 0) {
     return (
-      <div className="flex min-h-[14rem] flex-1 flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted">
+      <div
+        className={cn(
+          rootClass,
+          "flex flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted",
+        )}
+        style={style}
+      >
         <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
         <p>{t("photo.preview.empty")}</p>
       </div>
@@ -138,7 +155,8 @@ export function PhotoOverviewGrid({
   return (
     <div
       ref={attachRef}
-      className="min-h-[14rem] flex-1 overflow-auto py-0.5 pl-0.5 pr-[calc(var(--ats-scrollbar-size)+8px)] [scrollbar-gutter:stable]"
+      className={rootClass}
+      style={style}
       role="listbox"
       aria-label={t("photo.preview.overviewAria")}
     >

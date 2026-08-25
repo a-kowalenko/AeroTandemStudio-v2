@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Pencil,
@@ -56,32 +57,36 @@ type Props = {
   onClearSelection: () => void;
 };
 
-export function PhotoDetailPanel({
-  current,
-  currentIndex,
-  photoCount,
-  totalSizeHint,
-  fotoWmNeeded,
-  watermarkCount,
-  isCurrentWm,
-  editMark,
-  revision,
-  qrScanBusy,
-  scanning,
-  disabled,
-  showMiniPreview,
-  effectiveSelectionSize,
-  explicitlySelected,
-  selectedIndices,
-  photoPathsByIndex,
-  onToggleWatermark,
-  onEditPhoto,
-  onUndoPhotoEdit,
-  onBatchRotate,
-  onScanQr,
-  onRemove,
-  onClearSelection,
-}: Props) {
+export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
+  function PhotoDetailPanel(
+    {
+      current,
+      currentIndex,
+      photoCount,
+      totalSizeHint,
+      fotoWmNeeded,
+      watermarkCount,
+      isCurrentWm,
+      editMark,
+      revision,
+      qrScanBusy,
+      scanning,
+      disabled,
+      showMiniPreview,
+      effectiveSelectionSize,
+      explicitlySelected,
+      selectedIndices,
+      photoPathsByIndex,
+      onToggleWatermark,
+      onEditPhoto,
+      onUndoPhotoEdit,
+      onBatchRotate,
+      onScanQr,
+      onRemove,
+      onClearSelection,
+    },
+    ref,
+  ) {
   const { t } = useTranslation();
 
   const previewSrc = usePhotoThumbnailSrc(
@@ -96,8 +101,11 @@ export function PhotoDetailPanel({
     : null;
 
   return (
-    <aside className="flex w-full flex-col gap-3 lg:min-w-[17.5rem] lg:w-[17.5rem] xl:w-80">
-      <div className="flex flex-1 flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
+    <aside
+      ref={ref}
+      className="flex w-full flex-col gap-3 lg:min-w-[17.5rem] lg:w-[17.5rem] xl:w-80"
+    >
+      <div className="flex flex-col rounded-lg border border-border/60 bg-card-elevated/80 p-3">
         <p className="mb-2 text-xs font-semibold tracking-wide text-muted uppercase">
           {t("photo.preview.detailTitle")}
         </p>
@@ -305,4 +313,5 @@ export function PhotoDetailPanel({
       </div>
     </aside>
   );
-}
+  },
+);

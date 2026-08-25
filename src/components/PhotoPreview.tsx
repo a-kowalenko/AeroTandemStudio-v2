@@ -39,6 +39,10 @@ import {
 } from "./photo/usePhotoThumbnailSrc";
 
 const AUTO_OVERVIEW_THRESHOLD = 8;
+/** Match Tailwind `lg` — side-by-side overview + detail panel. */
+const PHOTO_OVERVIEW_LG_MQ = "(min-width: 1024px)";
+/** Sensible floor so the thumb grid stays usable (~2 rows). */
+const PHOTO_OVERVIEW_MIN_PX = 256;
 
 type PhotoPreviewProps = {
   disabled?: boolean;
@@ -95,6 +99,11 @@ export function PhotoPreview({
   const [scanning, setScanning] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
   const stripRootRef = useRef<HTMLDivElement>(null);
+  const detailPanelRef = useRef<HTMLElement>(null);
+  const [detailPanelHeight, setDetailPanelHeight] = useState<number | null>(
+    null,
+  );
+  const [isLgOverviewRow, setIsLgOverviewRow] = useState(false);
 
   const browseMode = resolveBrowseMode(photoBrowseModePref, photoList.length);
   const current = currentIndex >= 0 ? photoList[currentIndex] : null;
@@ -123,6 +132,55 @@ export function PhotoPreview({
     const missing = photoList.some((p) => p.sizeBytes == null);
     if (missing) void refreshSizes();
   }, [photoList, refreshSizes]);
+
+  useEffect(() => {
+    const mq = window.matchMedia(PHOTO_OVERVIEW_LG_MQ);
+    const sync = () => setIsLgOverviewRow(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (browseMode !== "overview" || !isLgOverviewRow) {
+      setDetailPanelHeight(null);
+      return;
+    }
+    const el = detailPanelRef.current;
+    if (!el) return;
+    const sync = () => {
+      const h = el.getBoundingClientRect().height;
+      if (h > 0) setDetailPanelHeight(h);
+    };
+    sync();
+    const ro = new ResizeObserver(() => sync());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [
+    browseMode,
+    isLgOverviewRow,
+    photoList.length,
+    currentIndex,
+    explicitlySelected,
+    selectedIndices.length,
+    fotoWmNeeded,
+  ]);
+
+  const overviewGridStyle = useMemo(() => {
+    if (
+      browseMode !== "overview" ||
+      !isLgOverviewRow ||
+      detailPanelHeight == null
+    ) {
+      return undefined;
+    }
+    return {
+      height: Math.max(PHOTO_OVERVIEW_MIN_PX, detailPanelHeight),
+    };
+  }, [browseMode, isLgOverviewRow, detailPanelHeight]);
+
+  const overviewGridClassName =
+    isLgOverviewRow && detailPanelHeight != null ? "max-h-none" : undefined;
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
@@ -293,15 +351,12 @@ export function PhotoPreview({
         )}
       </div>
 
-      <div className="flex min-h-0 flex-col gap-3 lg:flex-row lg:items-stretch">
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 flex-1 flex-col gap-2",
-            browseMode === "overview" && "min-h-[14rem]",
-          )}
-        >
+      <div className="flex min-h-0 flex-col gap-3 lg:flex-row lg:items-start">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
           {browseMode === "overview" ? (
             <PhotoOverviewGrid
+              className={overviewGridClassName}
+              style={overviewGridStyle}
               photos={photoList}
               currentIndex={currentIndex}
               selected={selected}
@@ -396,6 +451,7 @@ export function PhotoPreview({
         </div>
 
         <PhotoDetailPanel
+          ref={detailPanelRef}
           current={current ?? null}
           currentIndex={currentIndex}
           photoCount={photoList.length}
