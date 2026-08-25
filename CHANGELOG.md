@@ -8,26 +8,22 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
-## [0.3.6] - 2026-08-25
-
 ### Neu
 
-- Server-Profile in den Einstellungen: mehrere Upload-Ziele speichern und per Klick umschalten
-- Vor „Vorgang erstellen“ Hinweis, wenn ungewöhnlich wenig Videos oder Fotos für das gebuchte Produkt importiert sind
-
-### Geändert
-
-- Optionaler mpv-Player entfernt — Vorschau und Cutter nutzen wieder nur HTML5 (kleineres Bundle, flüssigeres Playback)
-- Statuszeile: „Überwachung“ heißt jetzt „SD-Überwachung“
+- Optional Beta-Updates in den Einstellungen: Vorabversionen beim Start und bei „Nach Updates suchen“ einbeziehen
 
 ### Verbessert
 
-- Buchungssuche zeigt den verbundenen Dienstnamen in Status und Tooltip
-- Abgebrochene Uploads in der Historie werden korrekt als abgeschlossen erkannt
+- Update-Dialog kennzeichnet Beta-Versionen und warnt vor möglichen Fehlern
+- Fotos-Tab: Übersicht und Detailpanel auf breiten Bildschirmen besser aufeinander abgestimmt — die Miniatur-Ansicht nutzt die volle Höhe neben den Details
 
-### Behoben
+## [0.3.6] - 2026-08-25
 
-- Hinweise und „Vorgang erstellen“-Bereitschaft springen beim Wechsel des Eingabemodus nicht mehr falsch
+### Verbessert
+
+- Upload zum Server schneller bei vielen Fotos (mehrere Dateien gleichzeitig)
+- Fortschritt beim Upload zeigt übertragene Datenmenge und Geschwindigkeit statt Dateinamen
+- Abgebrochene Uploads werden zuverlässiger erkannt und in der Historie korrekt angezeigt
 
 ## [0.3.5] - 2026-08-25
 
