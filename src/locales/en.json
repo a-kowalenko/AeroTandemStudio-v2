@@ -1556,7 +1556,7 @@
       "chooseTitle": "Choose SD card — opens file picker",
       "aria": "SD card",
       "watching": "SD monitoring active",
-      "monitoring": "Monitoring",
+      "monitoring": "SD monitoring",
       "none": "No SD",
       "ejectTitle": "Eject “{{label}}”",
       "ejectAria": "Eject SD card {{label}}",

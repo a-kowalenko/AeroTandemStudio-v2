@@ -959,7 +959,7 @@ const catalog = {
   "sd.drive.chooseTitle": { de: "SD-Karte wählen — öffnet Dateiauswahl", en: "Choose SD card — opens file picker", "es-MX": "Elegir tarjeta SD — abre el selector de archivos" },
   "sd.drive.aria": { de: "SD-Karte", en: "SD card", "es-MX": "Tarjeta SD" },
   "sd.drive.watching": { de: "SD-Überwachung aktiv", en: "SD monitoring active", "es-MX": "Monitoreo SD activo" },
-  "sd.drive.monitoring": { de: "Überwachung", en: "Monitoring", "es-MX": "Monitoreo" },
+  "sd.drive.monitoring": { de: "SD-Überwachung", en: "SD monitoring", "es-MX": "Monitoreo SD" },
   "sd.drive.none": { de: "Keine SD", en: "No SD", "es-MX": "Sin SD" },
   "sd.drive.ejectTitle": { de: "„{{label}}“ auswerfen", en: "Eject “{{label}}”", "es-MX": "Expulsar “{{label}}”" },
   "sd.drive.ejectAria": { de: "SD-Karte {{label}} auswerfen", en: "Eject SD card {{label}}", "es-MX": "Expulsar tarjeta SD {{label}}" },

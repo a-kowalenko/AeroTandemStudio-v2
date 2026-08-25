@@ -1556,7 +1556,7 @@
       "chooseTitle": "SD-Karte wählen — öffnet Dateiauswahl",
       "aria": "SD-Karte",
       "watching": "SD-Überwachung aktiv",
-      "monitoring": "Überwachung",
+      "monitoring": "SD-Überwachung",
       "none": "Keine SD",
       "ejectTitle": "„{{label}}“ auswerfen",
       "ejectAria": "SD-Karte {{label}} auswerfen",

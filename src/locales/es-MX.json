@@ -1556,7 +1556,7 @@
       "chooseTitle": "Elegir tarjeta SD — abre el selector de archivos",
       "aria": "Tarjeta SD",
       "watching": "Monitoreo SD activo",
-      "monitoring": "Monitoreo",
+      "monitoring": "Monitoreo SD",
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
