@@ -117,6 +117,7 @@ mod tests {
 
     #[test]
     fn aborts_when_cancelled_before_copy() {
+        let _guard = crate::video::ffmpeg::cancel_test_lock();
         crate::video::ffmpeg::reset_cancel_flag();
         crate::video::ffmpeg::cancel_encode();
         let dir = tempfile::tempdir().unwrap();

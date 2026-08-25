@@ -2,6 +2,7 @@
 
 pub mod client;
 pub mod handoff_upload;
+pub mod parallel_upload;
 
 pub use client::{
     cleanup_remote_upload_folder, test_connection, upload_path, ConnectionTestResult,

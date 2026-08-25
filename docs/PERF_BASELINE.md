@@ -143,6 +143,18 @@ Notizen:
 
 ---
 
+## Nach OPT-15 (SMB parallel Upload)
+
+> **Implementiert:** 2026-08-25 · Modul `src-tauri/src/smb/parallel_upload.rs`  
+> **Caps:** 1 Large-Media-Stream + 6 Foto-Worker; `_ams_manifest.v1.json` dann `_fertig.txt` (Barrier)
+
+| Szenario | Vorher | Nachher | Notiz |
+|----------|--------|---------|-------|
+| Lokal-Fixture 200×40 KB + 1×8 MB + Commit | — | Barrier-Copy **~0,34 s** (macOS FS) | Proxy für Fixture-Größe, nicht SMB-RTT |
+| SMB 200+ Fotos + 1 Video | sequentiell CREATE/WRITE/FLUSH/CLOSE | parallel Medien, Marker zuletzt | Stopwatch manuell mit echtem Share (`tauri dev`) |
+
+---
+
 ## Referenzen
 
 - Backlog: `@docs/optimization_plan.md`

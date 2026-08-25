@@ -11,12 +11,15 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use smb2::{ClientConfig, SmbClient};
 
 use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
+
+use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
@@ -447,11 +450,11 @@ fn map_smb_error(err: &str, share: &str) -> String {
     }
 }
 
-#[derive(Clone)]
-struct FileEntry {
-    relative: String,
-    absolute: PathBuf,
-    size: u64,
+#[derive(Clone, Debug)]
+pub(crate) struct FileEntry {
+    pub(crate) relative: String,
+    pub(crate) absolute: PathBuf,
+    pub(crate) size: u64,
 }
 
 fn collect_upload_files(local: &Path) -> Result<Vec<FileEntry>, String> {
@@ -515,7 +518,7 @@ fn collect_dir_files(
     Ok(())
 }
 
-struct UploadProgressGate<F> {
+pub(crate) struct UploadProgressGate<F> {
     cb: F,
     last_emit: Instant,
     last_percent: f64,
@@ -534,7 +537,7 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
         }
     }
 
-    fn emit(
+    pub(crate) fn emit(
         &mut self,
         percent: f64,
         current_file: u32,
@@ -669,7 +672,7 @@ where
                 total_bytes,
                 login,
                 password,
-                &mut progress,
+                progress,
             )
             .await
         }
@@ -691,8 +694,12 @@ fn upload_local<F: FnMut(UploadProgress)>(
         };
     }
 
+    // Same barrier order as SMB: media → manifest → marker (never marker mid-media).
+    let phases = partition_upload_phases(files);
+    let ordered = phases.ordered();
     let mut copied_bytes = 0u64;
-    for (idx, file) in files.iter().enumerate() {
+
+    for (idx, file) in ordered.into_iter().enumerate() {
         if let Err(cancelled) = ensure_upload_not_cancelled() {
             return cancelled;
         }
@@ -721,6 +728,12 @@ fn upload_local<F: FnMut(UploadProgress)>(
                 (current as f64 / total_bytes as f64) * 100.0
             } else {
                 ((file_index - 1) as f64 / total_files as f64) * 100.0
+            };
+            // Keep <100 until the final file finishes (marker barrier UX).
+            let percent = if file_index < total_files {
+                percent.min(99.9)
+            } else {
+                percent
             };
             progress.emit(
                 percent,
@@ -808,7 +821,7 @@ fn copy_file_chunked(
     Ok(())
 }
 
-async fn upload_smb<F: FnMut(UploadProgress) + Send>(
+async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     host: &str,
     port: u16,
     share: &str,
@@ -818,7 +831,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send>(
     total_bytes: u64,
     login: &str,
     password: &str,
-    progress: &mut UploadProgressGate<F>,
+    progress: UploadProgressGate<F>,
 ) -> UploadResult {
     let mut client = match connect_smb(host, port, login, password).await {
         Ok(c) => c,
@@ -855,12 +868,10 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send>(
         }
     }
 
-    let mut copied_bytes = 0u64;
-    for (idx, file) in files.iter().enumerate() {
-        if let Err(cancelled) = ensure_upload_not_cancelled() {
-            return cancelled;
-        }
-        let file_index = (idx + 1) as u32;
+    let phases = partition_upload_phases(files);
+
+    // Create every parent directory before any parallel write (no races on mkdir).
+    for file in phases.ordered() {
         let remote_rel = join_smb_path(subpath, &file.relative);
         if let Some(parent) = Path::new(&remote_rel).parent() {
             let parent_str = parent.to_string_lossy().replace('\\', "/");
@@ -877,84 +888,104 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send>(
                 }
             }
         }
+    }
 
-        let filename = file
-            .absolute
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let bytes_before = copied_bytes;
+    let progress = Arc::new(Mutex::new(progress));
+    let client = Arc::new(client);
+    let tree = Arc::new(tree);
 
-        match stream_upload_file(
-            &client,
-            &tree,
-            &file.absolute,
-            &remote_rel,
-            |copied_in_file| {
-                let current = bytes_before + copied_in_file;
-                let percent = if total_bytes > 0 {
-                    (current as f64 / total_bytes as f64) * 100.0
-                } else {
-                    ((file_index - 1) as f64 / total_files as f64) * 100.0
-                };
-                progress.emit(
-                    percent,
-                    file_index,
-                    total_files,
-                    current,
-                    total_bytes,
-                    &filename,
-                    false,
-                );
-            },
+    let media_remotes: Vec<String> = phases
+        .media
+        .iter()
+        .map(|f| join_smb_path(subpath, &f.relative))
+        .collect();
+    let media_indices: Vec<u32> = (1..=phases.media.len() as u32).collect();
+
+    let mut copied_bytes = match upload_smb_media_parallel(
+        Arc::clone(&client),
+        Arc::clone(&tree),
+        &phases.media,
+        &media_remotes,
+        &media_indices,
+        total_files,
+        total_bytes,
+        Arc::clone(&progress),
+        0,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => return e,
+    };
+
+    if let Err(cancelled) = ensure_upload_not_cancelled() {
+        return cancelled;
+    }
+
+    // Barrier: media fully flushed before commit files.
+    let commit_start_index = phases.media.len() as u32;
+    if let Some(manifest) = &phases.manifest {
+        let file_index = commit_start_index + 1;
+        match upload_smb_one(
+            client.as_ref(),
+            tree.as_ref(),
+            manifest,
+            &join_smb_path(subpath, &manifest.relative),
+            file_index,
+            total_files,
+            total_bytes,
+            copied_bytes,
+            &progress,
+            false,
         )
         .await
         {
-            Ok(_) => {}
-            Err(e) => {
-                let message = if e == WORKFLOW_CANCELLED {
-                    WORKFLOW_CANCELLED.into()
-                } else {
-                    format!("Upload fehlgeschlagen ({}): {e}", file.relative)
-                };
-                return UploadResult {
-                    success: false,
-                    message,
-                    remote_path: String::new(),
-                };
-            }
+            Ok(b) => copied_bytes = b,
+            Err(e) => return e,
         }
-
-        copied_bytes += file.size;
-        let percent = if total_bytes > 0 {
-            (copied_bytes as f64 / total_bytes as f64) * 100.0
-        } else {
-            (file_index as f64 / total_files as f64) * 100.0
-        };
-        progress.emit(
-            percent,
-            file_index,
-            total_files,
-            copied_bytes,
-            total_bytes,
-            &filename,
-            true,
-        );
     }
 
     if let Err(cancelled) = ensure_upload_not_cancelled() {
         return cancelled;
     }
 
-    progress.emit(
-        100.0,
-        total_files,
-        total_files,
-        total_bytes,
-        total_bytes,
-        "",
-        true,
-    );
+    if let Some(marker) = &phases.marker {
+        let file_index = phases.total_files();
+        match upload_smb_one(
+            client.as_ref(),
+            tree.as_ref(),
+            marker,
+            &join_smb_path(subpath, &marker.relative),
+            file_index,
+            total_files,
+            total_bytes,
+            copied_bytes,
+            &progress,
+            true,
+        )
+        .await
+        {
+            Ok(b) => copied_bytes = b,
+            Err(e) => return e,
+        }
+    }
+
+    let _ = copied_bytes;
+    if let Err(cancelled) = ensure_upload_not_cancelled() {
+        return cancelled;
+    }
+
+    if let Ok(mut gate) = progress.lock() {
+        gate.emit(
+            100.0,
+            total_files,
+            total_files,
+            total_bytes,
+            total_bytes,
+            "",
+            true,
+        );
+    }
 
     let remote = display_remote(
         &ServerTarget::Smb {
@@ -965,10 +996,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send>(
         },
         files
             .first()
-            .map(|f| {
-                // Show the top-level folder or file name
-                f.relative.split('/').next().unwrap_or(&f.relative)
-            })
+            .map(|f| f.relative.split('/').next().unwrap_or(&f.relative))
             .unwrap_or(""),
     );
 
@@ -977,6 +1005,87 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send>(
         message: format!("Erfolgreich auf Server kopiert: {remote}"),
         remote_path: remote,
     }
+}
+
+async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
+    client: &SmbClient,
+    tree: &smb2::client::Tree,
+    file: &FileEntry,
+    remote_rel: &str,
+    file_index: u32,
+    total_files: u32,
+    total_bytes: u64,
+    bytes_before: u64,
+    progress: &Arc<Mutex<UploadProgressGate<F>>>,
+    allow_100: bool,
+) -> Result<u64, UploadResult> {
+    if let Err(cancelled) = ensure_upload_not_cancelled() {
+        return Err(cancelled);
+    }
+
+    let filename = file
+        .absolute
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    match stream_upload_file(client, tree, &file.absolute, remote_rel, |copied_in_file| {
+        let current = bytes_before + copied_in_file;
+        let mut percent = if total_bytes > 0 {
+            (current as f64 / total_bytes as f64) * 100.0
+        } else {
+            ((file_index - 1) as f64 / total_files.max(1) as f64) * 100.0
+        };
+        if !allow_100 {
+            percent = percent.min(99.9);
+        }
+        if let Ok(mut gate) = progress.lock() {
+            gate.emit(
+                percent,
+                file_index,
+                total_files,
+                current,
+                total_bytes,
+                &filename,
+                false,
+            );
+        }
+    })
+    .await
+    {
+        Ok(_) => {}
+        Err(e) => {
+            let message = if e == WORKFLOW_CANCELLED {
+                WORKFLOW_CANCELLED.into()
+            } else {
+                format!("Upload fehlgeschlagen ({}): {e}", file.relative)
+            };
+            return Err(UploadResult {
+                success: false,
+                message,
+                remote_path: String::new(),
+            });
+        }
+    }
+
+    let copied_bytes = bytes_before + file.size;
+    let percent = if total_bytes > 0 {
+        (copied_bytes as f64 / total_bytes as f64) * 100.0
+    } else {
+        (file_index as f64 / total_files.max(1) as f64) * 100.0
+    };
+    if let Ok(mut gate) = progress.lock() {
+        gate.emit(
+            percent,
+            file_index,
+            total_files,
+            copied_bytes,
+            total_bytes,
+            &filename,
+            true,
+        );
+    }
+    Ok(copied_bytes)
 }
 
 async fn ensure_remote_dirs(
@@ -1027,7 +1136,7 @@ async fn ensure_remote_dirs(
     Ok(())
 }
 
-async fn stream_upload_file(
+pub(crate) async fn stream_upload_file(
     client: &SmbClient,
     tree: &smb2::client::Tree,
     local: &Path,
@@ -1039,24 +1148,83 @@ async fn stream_upload_file(
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut input = File::open(local).map_err(|e| e.to_string())?;
-    let mut buf = vec![0u8; CHUNK_SIZE];
-    let mut copied = 0u64;
-    loop {
+    let file_size = fs::metadata(local).map(|m| m.len()).unwrap_or(0);
+    // Inline whole-file read for typical JPGs so disk IO stays off the async pool.
+    const INLINE_READ_MAX: u64 = 8 * 1024 * 1024;
+
+    if file_size > 0 && file_size <= INLINE_READ_MAX {
+        let path = local.to_path_buf();
+        let data = tauri::async_runtime::spawn_blocking(move || fs::read(path))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
         if is_cancelled() {
             return Err(WORKFLOW_CANCELLED.into());
         }
-        let n = input.read(&mut buf).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
+        let mut offset = 0usize;
+        while offset < data.len() {
+            if is_cancelled() {
+                return Err(WORKFLOW_CANCELLED.into());
+            }
+            let end = (offset + CHUNK_SIZE).min(data.len());
+            writer
+                .write_chunk(&data[offset..end])
+                .await
+                .map_err(|e| e.to_string())?;
+            offset = end;
+            on_chunk(offset as u64);
+        }
+        return writer.finish().await.map_err(|e| e.to_string());
+    }
+
+    // Large files: dedicated reader thread → async writer (no sync disk on async workers).
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(2);
+    let path = local.to_path_buf();
+    let reader = tauri::async_runtime::spawn_blocking(move || {
+        let mut input = File::open(&path).map_err(|e| e.to_string())?;
+        let mut buf = vec![0u8; CHUNK_SIZE];
+        loop {
+            if is_cancelled() {
+                let _ = tx.blocking_send(Err(WORKFLOW_CANCELLED.into()));
+                return Ok::<(), String>(());
+            }
+            let n = input.read(&mut buf).map_err(|e| e.to_string())?;
+            if n == 0 {
+                break;
+            }
+            if tx.blocking_send(Ok(buf[..n].to_vec())).is_err() {
+                break;
+            }
+        }
+        Ok(())
+    });
+
+    let mut copied = 0u64;
+    while let Some(chunk) = rx.recv().await {
+        let chunk = chunk?;
+        if is_cancelled() {
+            let _ = reader.await;
+            return Err(WORKFLOW_CANCELLED.into());
         }
         writer
-            .write_chunk(&buf[..n])
+            .write_chunk(&chunk)
             .await
             .map_err(|e| e.to_string())?;
-        copied += n as u64;
+        copied += chunk.len() as u64;
         on_chunk(copied);
     }
+
+    match reader.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(e) => {
+            if is_cancelled() {
+                return Err(WORKFLOW_CANCELLED.into());
+            }
+            return Err(format!("Disk-Read fehlgeschlagen: {e}"));
+        }
+    }
+
     writer.finish().await.map_err(|e| e.to_string())
 }
 
@@ -1157,6 +1325,12 @@ async fn cleanup_smb_upload_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::video::ffmpeg::cancel_test_lock;
+
+    /// Serializes tests that touch the global cancel flag / upload_local.
+    fn upload_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        cancel_test_lock()
+    }
 
     #[test]
     fn normalize_smb_url() {
@@ -1388,6 +1562,7 @@ mod tests {
         use crate::video::ffmpeg::{cancel_encode, reset_cancel_flag};
         use std::io::Write;
 
+        let _guard = upload_test_lock();
         reset_cancel_flag();
         let dir = std::env::temp_dir().join(format!(
             "aero_upload_cancel_{}",
@@ -1419,5 +1594,102 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         assert!(!result.success);
         assert_eq!(result.message, WORKFLOW_CANCELLED);
+    }
+
+    #[test]
+    fn local_upload_barrier_writes_marker_after_media() {
+        use crate::video::ffmpeg::reset_cancel_flag;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+
+        let dir = tempfile::tempdir().unwrap();
+        let job = dir.path().join("JobBarrier");
+        fs::create_dir_all(job.join("Handcam_Foto")).unwrap();
+        fs::write(job.join("Handcam_Foto/z_last.jpg"), b"photo").unwrap();
+        fs::write(job.join("_fertig.txt"), b"{\"ok\":1}").unwrap();
+        fs::write(job.join("_ams_manifest.v1.json"), b"{}").unwrap();
+        // Alpha-sort would place _ams / _fertig among underscores; barrier must still
+        // finish media first.
+        fs::write(job.join("zzz_note.txt"), b"note").unwrap();
+
+        let files = collect_upload_files(&job).unwrap();
+        let phases = partition_upload_phases(&files);
+        assert_eq!(phases.media.len(), 2);
+        assert!(phases.manifest.is_some());
+        assert!(phases.marker.is_some());
+
+        let order = Mutex::new(Vec::<String>::new());
+        let dest = dir.path().join("server");
+        let total_files = files.len() as u32;
+        let total_bytes: u64 = files.iter().map(|f| f.size).sum();
+        let result = upload_local(
+            &dest,
+            &files,
+            total_files,
+            total_bytes,
+            &mut UploadProgressGate::new(|p| {
+                if !p.filename.is_empty() {
+                    order.lock().unwrap().push(p.filename.clone());
+                }
+            }),
+        );
+        assert!(result.success, "{}", result.message);
+        let seen = order.into_inner().unwrap();
+        let marker_pos = seen.iter().rposition(|f| f == "_fertig.txt");
+        let manifest_pos = seen.iter().rposition(|f| f == "_ams_manifest.v1.json");
+        let media_last = seen
+            .iter()
+            .rposition(|f| f != "_fertig.txt" && f != "_ams_manifest.v1.json");
+        assert!(marker_pos.is_some());
+        assert!(manifest_pos.is_some());
+        assert!(media_last.is_some());
+        assert!(media_last.unwrap() < manifest_pos.unwrap());
+        assert!(manifest_pos.unwrap() < marker_pos.unwrap());
+        assert!(dest.join("JobBarrier").join("_fertig.txt").is_file());
+    }
+
+    #[test]
+    fn local_upload_cancel_before_marker_leaves_no_marker() {
+        use crate::video::ffmpeg::{cancel_encode, reset_cancel_flag};
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        let dir = tempfile::tempdir().unwrap();
+        let job = dir.path().join("JobCancel");
+        fs::create_dir_all(job.join("Handcam_Foto")).unwrap();
+        // Large enough for cancel to land between files.
+        let big = vec![0u8; CHUNK_SIZE + 128];
+        fs::write(job.join("Handcam_Foto/a.jpg"), &big).unwrap();
+        fs::write(job.join("Handcam_Foto/b.jpg"), &big).unwrap();
+        fs::write(job.join("_fertig.txt"), b"marker").unwrap();
+
+        let files = collect_upload_files(&job).unwrap();
+        let dest = dir.path().join("server");
+        let total_files = files.len() as u32;
+        let total_bytes: u64 = files.iter().map(|f| f.size).sum();
+        let started = AtomicU32::new(0);
+        let result = upload_local(
+            &dest,
+            &files,
+            total_files,
+            total_bytes,
+            &mut UploadProgressGate::new(|p| {
+                if !p.filename.is_empty() {
+                    let n = started.fetch_add(1, Ordering::SeqCst);
+                    if n >= 1 {
+                        cancel_encode();
+                    }
+                }
+            }),
+        );
+        reset_cancel_flag();
+        assert!(!result.success);
+        assert_eq!(result.message, WORKFLOW_CANCELLED);
+        assert!(
+            !dest.join("JobCancel").join("_fertig.txt").exists(),
+            "marker must not appear on cancel mid-upload"
+        );
     }
 }

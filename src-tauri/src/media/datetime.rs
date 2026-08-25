@@ -759,6 +759,8 @@ mod tests {
 
     #[test]
     fn photos_sorted_parallel_matches_sequential_mtime_order() {
+        let _guard = crate::video::ffmpeg::cancel_test_lock();
+        crate::video::ffmpeg::reset_cancel_flag();
         let dir = tempfile::tempdir().unwrap();
         let early = dir.path().join("a.jpg");
         let late = dir.path().join("b.jpg");
@@ -787,6 +789,7 @@ mod tests {
 
     #[test]
     fn photos_sort_cancelled_returns_error() {
+        let _guard = crate::video::ffmpeg::cancel_test_lock();
         crate::video::ffmpeg::reset_cancel_flag();
         crate::video::ffmpeg::cancel_encode();
         let dir = tempfile::tempdir().unwrap();
