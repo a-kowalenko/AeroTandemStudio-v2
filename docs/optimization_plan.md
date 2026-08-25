@@ -52,10 +52,10 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-5 | App.tsx Split + lazy Dialoge | mittel | L | mittel | — |
 | OPT-11 | Foto-Import: QR vor Thumbnail-Warming | hoch | S | niedrig | OPT-10 |
 | OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | hoch | M | mittel | OPT-3 |
-| OPT-13 | Player/Cutter: libmpv statt HTML5 | hoch | L | hoch | — |
+| OPT-13 | Player/Cutter: libmpv statt HTML5 | — | — | — | **entfernt** (JPEG-IPC laggy; Keyframe-Cuts → HTML5 only) |
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | hoch | M | mittel | Phase 6 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) → **OPT-13** (libmpv, unabhängig)
+**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) — OPT-13 zurückgenommen (HTML5 only).
 
 ---
 
@@ -76,7 +76,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-10 | ✅ |
 | OPT-11 | ✅ |
 | OPT-12 | ✅ |
-| OPT-13 | ✅ |
+| OPT-13 | ✅ implementiert → **entfernt** (HTML5 only) |
 | OPT-14 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
@@ -797,61 +797,31 @@ Messung optional notieren: 200+ Fotos Drop → Liste fertig (Vorher/Nachher).
 
 ### OPT-13: Player & Cutter — libmpv statt HTML5
 
-**Ziel:** Schnelleres, stabileres Scrubbing/Seek im **VideoCutter** und Clip-Player bei längeren Clips (30–180 s); weniger WebView-Quirks (WKWebView/GStreamer).
+**Status:** ✅ implementiert (IPC + JPEG-Frames), danach **entfernt**.  
+Begründung: Screenshot→JPEG→`<img>` war für Playback spürbar langsamer als HTML5; Trim/Split rastet ohnehin auf Keyframes — der Seek-Gewinn rechtfertigte Sidecar-Size und Komplexität nicht. Player bleibt HTML5 + Loopback-HTTP.
 
-**Impact:** hoch (wahrgenommene Latenz beim Schneiden) · **kein** Gewinn für Foto-Import oder Create-Encode  
-**Aufwand:** L  
-**Risiko:** hoch (Native Embedding, Packaging Win/macOS/Linux, Fallback)  
-**Abhängigkeiten:** keine (synergisiert mit OPT-7 Filmstrip-Prefetch)
+**Ziel (historisch):** Schnelleres Scrubbing/Seek im VideoCutter …
 
-#### Kontext
+<details><summary>Historischer Scope / Agent-Prompt (archiviert)</summary>
 
-- Aktuell: HTML5 `VideoPlayer.tsx` + Loopback-HTTP (`media/http_server.rs`).
-- Bekannte Workarounds im Code: Linux `ended` nach Seek, macOS „tiny seek“ für erstes Frame.
-- Operator-Workflow ohne Preview: Import → **Cutter** → Create; libmpv adressiert **Cutter-Feeling**, nicht Ladezeit nach Foto-Drop.
-- Architektur-Dokument: libmpv war „später optional“ (`ARCHITECTURE.md`, Phase 9).
+**Impact:** hoch · **Aufwand:** L · **Risiko:** hoch
 
-#### Betroffene Dateien
+#### Scope (damals erledigt)
 
-- `src/components/VideoPlayer.tsx`, `src/components/VideoCutter.tsx`, `src/components/VideoPreview.tsx` (Clip-Player — auch wenn Preview selten genutzt)
-- Neues Tauri-Modul / Sidecar / Plugin-Integration für mpv (Plattform-spezifisch)
-- `src-tauri/Cargo.toml`, Packaging (`MACOS_BUILD.md`, `LINUX_BUILD.md`, Windows-Bundle)
-- Optional: Feature-Flag / Config `use_libmpv` mit HTML5-Fallback
+- [x] mpv JSON-IPC + JPEG-Frames via Loopback-HTTP
+- [x] HTML5-Fallback / `use_libmpv`
+- [x] Packaging-Docs
 
-#### Scope
-
-**In scope:**
-
-- [x] libmpv/mpv für **Trim/Cutter**-Pfad (Mindestanforderung); gleiche IPC-Oberfläche wie `VideoPlayerHandle` (seek, play, pause, currentTime)
-- [x] Playback weiter über Working-Copy-Pfade; mpv `loadfile` (absoluter Pfad); Frames via Loopback-HTTP JPEG
-- [x] HTML5-Fallback wenn mpv nicht verfügbar (Dev/CI/Linux ohne mpv)
-- [x] Trim-Handles, Filmstrip, Keyframe-Snap (`VideoCutter`) weiter funktional
-- [x] Packaging-Docs aktualisieren (`resources/mpv/README.md`, MACOS/LINUX_BUILD)
-- [x] Config-Flag `use_libmpv` mit HTML5-Fallback
-
-**Out of scope:**
-
-- Preview-Encode / Create-Pipeline
-- Foto-Import (→ OPT-12)
-- Vollständiges Entfernen von HTML5 in derselben Session (Fallback muss bleiben)
-- libmpv für reine Poster-Thumbnails
-
-#### Akzeptanzkriterien
-
-- [x] Cutter öffnen auf 60–180 s Clip: Scrub/Seek subjektiv flüssiger vs. HTML5 (mit installiertem mpv; sonst HTML5-Fallback)
-- [x] Trim/Split/Rotate-Apply unverändert korrekt (gleiche Handle-API)
-- [x] Fallback: App startet ohne mpv → HTML5-Player funktioniert
-- [x] `cargo test` + Plattform-Abnahme dokumentiert (`resources/mpv/README.md`)
-- [x] Keine Regression Filmstrip-Prefetch (OPT-7)
-
-#### Agent-Prompt
+#### Agent-Prompt (nicht mehr ausführen)
 
 ```
 Implementiere OPT-13 aus @docs/optimization_plan.md
-Regeln: @AGENTS.md
-Nur OPT-13 (libmpv für Cutter/Player, HTML5-Fallback behalten). Danach cargo test && npm run tauri dev.
-Plattform-Abnahme dokumentieren (Win/macOS/Linux — welche getestet).
+…
 ```
+
+</details>
+
+---
 
 ---
 

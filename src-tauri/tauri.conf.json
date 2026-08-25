@@ -51,7 +51,6 @@
     ],
     "resources": [
       "resources/ffmpeg/",
-      "resources/mpv/",
       "resources/assets/"
     ],
     "linux": {

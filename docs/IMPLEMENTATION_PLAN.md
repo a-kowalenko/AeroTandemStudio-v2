@@ -80,7 +80,7 @@
 | Styling (ab Phase 5) | Tailwind CSS + shadcn/ui | Schrittweise einführen |
 | State (ab Phase 5) | Zustand | Globaler App-State |
 | Video-Engine | FFmpeg CLI (Sidecar) | **Kein MoviePy** |
-| Player (ab Phase 9) | libmpv | Ersetzt python-vlc |
+| Player (ab Phase 9) | HTML5 + Loopback-HTTP | Ersetzt python-vlc |
 | QR (ab Phase 6) | `rxing` oder `zbar` (Rust) | Kein pyzbar |
 | Storage (ab Phase 5) | SQLite (`rusqlite`) | Config + Media-History |
 | SMB (ab Phase 10) | `smb2` crate | Cross-platform |
@@ -269,7 +269,6 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio
                          │ subprocess
 ┌────────────────────────▼────────────────────────────────┐
 │  FFmpeg Sidecar (resources/ffmpeg/)                      │
-│  optional: libmpv (Phase 9)                              │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -628,7 +627,7 @@ Unit-Tests für Command-Generierung. Nur Phase 1.
 
 #### Aufgaben
 
-- [x] libmpv: pragmatischer Zwischenweg — HTML5 `VideoPlayer` (libmpv später)
+- [x] HTML5 `VideoPlayer` (Loopback-HTTP; optional mpv/OPT-13 später entfernt)
 - [x] `video/cutter.rs` — Trim/Split Commands (Stream-Copy + optionales Re-Encode)
 - [x] Tauri-Commands: `cut_video`, `split_video`
 - [x] React: `VideoPlayer.tsx`, `VideoCutter.tsx`

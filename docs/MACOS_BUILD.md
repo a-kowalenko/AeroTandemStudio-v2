@@ -9,7 +9,6 @@ requires **Developer ID** signing + notarization.
 - macOS 11+ with Xcode Command Line Tools
 - Rust (`rustup`), Node.js LTS, npm
 - FFmpeg sidecar: `npm run download-ffmpeg` (or place binary under `src-tauri/resources/ffmpeg/mac/`)
-- Cutter player (OPT-13): `npm run download-mpv` (flat `resources/mpv/mac/<arch>/mpv` + `lib/`) — or `brew install mpv`. Without mpv the app uses HTML5. See `src-tauri/resources/mpv/README.md`.
 - Optional: Apple Developer Program membership for signing / notarization
 
 ## Local build (unsigned / ad-hoc)
@@ -18,7 +17,6 @@ requires **Developer ID** signing + notarization.
 cd AeroTandemStudio-v2
 npm install
 npm run download-ffmpeg
-npm run download-mpv
 npm run tauri build -- --bundles app,dmg
 ```
 
@@ -34,10 +32,10 @@ will still warn when opening the app on another machine until notarized.
 
 Release CI builds **both** targets on `macos-latest` (arm64 host):
 
-| Target | FFmpeg (static) | mpv | Command |
-|--------|-----------------|-----|---------|
-| Apple Silicon | martin-riedl.de → `mac/arm64/` | `MPV_MAC_ARCH=arm64` → flat `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
-| Intel | evermeet.cx → `mac/x86_64/` | `MPV_MAC_ARCH=x86_64` → flat `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
+| Target | FFmpeg (static) | Command |
+|--------|-----------------|---------|
+| Apple Silicon | martin-riedl.de → `mac/arm64/` | `tauri build -- --target aarch64-apple-darwin` |
+| Intel | evermeet.cx → `mac/x86_64/` | `tauri build -- --target x86_64-apple-darwin` |
 
 Do **not** copy Homebrew `ffmpeg` into the bundle — it links `/opt/homebrew` dylibs and
 breaks on other Macs (`could not parse video stream` on import).
@@ -47,12 +45,10 @@ rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
 # Apple Silicon (static arm64 sidecars)
 FFMPEG_MAC_ARCH=arm64 npm run download-ffmpeg
-MPV_MAC_ARCH=arm64 npm run download-mpv
 npm run tauri build -- --target aarch64-apple-darwin --bundles app,dmg
 
 # Intel from Apple Silicon host (cross-compile)
 FFMPEG_MAC_ARCH=x86_64 npm run download-ffmpeg
-MPV_MAC_ARCH=x86_64 npm run download-mpv
 npm run tauri build -- --target x86_64-apple-darwin --bundles app,dmg
 ```
 

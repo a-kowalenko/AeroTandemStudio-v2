@@ -2,7 +2,6 @@ pub mod app;
 pub mod bridge;
 pub mod config;
 pub mod media;
-pub mod player;
 pub mod qr;
 pub mod sd_card;
 pub mod smb;

@@ -8,6 +8,10 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+### Geändert
+
+- Optionaler mpv-Player entfernt — Vorschau und Cutter nutzen wieder nur HTML5 (kleineres Bundle, flüssigeres Playback)
+
 ## [0.3.4] - 2026-08-24
 
 ### Neu

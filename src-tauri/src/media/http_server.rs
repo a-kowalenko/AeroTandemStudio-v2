@@ -243,15 +243,32 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
     file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     match std::io::copy(&mut file, &mut stream) {
         Ok(_) => Ok(()),
-        // Client often aborts the full GET once it has headers / switches to Range.
-        Err(e)
-            if e.kind() == std::io::ErrorKind::BrokenPipe
-                || e.kind() == std::io::ErrorKind::ConnectionReset
-                || e.kind() == std::io::ErrorKind::WriteZero =>
-        {
-            Ok(())
-        }
+        // Client often aborts the full GET once it has headers / switches to Range
+        // (or when the UI switches clips / cancels filmstrip prefetch).
+        Err(e) if is_client_abort(&e) => Ok(()),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+/// True when the peer closed the socket mid-transfer (clip switch, seek, cancel).
+///
+/// On Windows this often surfaces as os error 10053 (`WSAECONNABORTED`) with
+/// `ErrorKind::ConnectionAborted` rather than `BrokenPipe` / `ConnectionReset`.
+fn is_client_abort(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::WriteZero
+    ) || err.raw_os_error() == Some(10053) // WSAECONNABORTED (Windows)
+}
+
+fn map_write_err(err: std::io::Error) -> Result<(), String> {
+    if is_client_abort(&err) {
+        Ok(())
+    } else {
+        Err(err.to_string())
     }
 }
 
@@ -274,7 +291,10 @@ fn write_headers_only(
         out.push_str("\r\n");
     }
     out.push_str("Connection: close\r\n\r\n");
-    stream.write_all(out.as_bytes()).map_err(|e| e.to_string())
+    match stream.write_all(out.as_bytes()) {
+        Ok(()) => Ok(()),
+        Err(e) => map_write_err(e),
+    }
 }
 
 fn write_response(
@@ -285,7 +305,10 @@ fn write_response(
 ) -> Result<(), String> {
     write_headers_only(stream, status, headers)?;
     if !body.is_empty() {
-        stream.write_all(body).map_err(|e| e.to_string())?;
+        match stream.write_all(body) {
+            Ok(()) => {}
+            Err(e) => return map_write_err(e),
+        }
     }
     Ok(())
 }
@@ -318,8 +341,26 @@ pub fn ensure_media_file(path: &str) -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::ErrorKind;
     use std::net::TcpStream;
     use std::time::Duration;
+
+    #[test]
+    fn client_abort_kinds_are_ignored() {
+        assert!(is_client_abort(&std::io::Error::from(ErrorKind::BrokenPipe)));
+        assert!(is_client_abort(&std::io::Error::from(
+            ErrorKind::ConnectionReset
+        )));
+        assert!(is_client_abort(&std::io::Error::from(
+            ErrorKind::ConnectionAborted
+        )));
+        assert!(is_client_abort(&std::io::Error::from(ErrorKind::WriteZero)));
+        assert!(!is_client_abort(&std::io::Error::from(
+            ErrorKind::TimedOut
+        )));
+        assert!(map_write_err(std::io::Error::from(ErrorKind::ConnectionAborted)).is_ok());
+        assert!(map_write_err(std::io::Error::from(ErrorKind::TimedOut)).is_err());
+    }
 
     #[test]
     fn url_for_path_percent_encodes() {
