@@ -26,7 +26,7 @@ type ReleaseList = ReturnType<typeof useReleaseList>;
 
 type Props = SettingsTabBaseProps & {
   saving: boolean;
-  onRequestUpdateCheck?: () => void;
+  onRequestUpdateCheck?: (includeBeta: boolean) => void;
   onRequestReset: () => void;
   releaseList: ReleaseList;
   onRequestVersionSwitch?: (release: AvailableRelease) => void;
@@ -36,6 +36,7 @@ type Props = SettingsTabBaseProps & {
 
 export function SystemTab({
   draft,
+  patch,
   saving,
   onRequestUpdateCheck,
   onRequestReset,
@@ -64,8 +65,7 @@ export function SystemTab({
     setSelectedVersion,
     selectedRelease,
     selectedRelation,
-    showPrereleases,
-    setShowPrereleases,
+    installedIsBeta,
     formatReleaseDate,
     releaseRelationLabel,
   } = releaseList;
@@ -135,7 +135,14 @@ export function SystemTab({
       >
         {appVersion ? (
           <p className="text-xs text-muted">
-            {t("settings.system.update.installedVersion", { version: appVersion })}
+            {t("settings.system.update.installedVersion", {
+              version: appVersion,
+            })}
+            {installedIsBeta ? (
+              <span className="ml-1 font-medium text-amber-600 dark:text-amber-500">
+                ({t("settings.system.update.beta")})
+              </span>
+            ) : null}
           </p>
         ) : null}
         {platformHint ? (
@@ -149,18 +156,23 @@ export function SystemTab({
             variant="secondary"
             size="sm"
             disabled={Boolean(installBlockedReason)}
-            onClick={() => onRequestUpdateCheck?.()}
+            onClick={() => onRequestUpdateCheck?.(draft.beta_updates_enabled)}
           >
             {t("settings.system.update.check")}
           </Button>
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
-              checked={showPrereleases}
-              onCheckedChange={(v) => setShowPrereleases(v === true)}
+              checked={draft.beta_updates_enabled}
+              onCheckedChange={(v) =>
+                patch("beta_updates_enabled", v === true)
+              }
             />
-            {t("settings.system.update.showPrereleases")}
+            {t("settings.system.update.betaTester")}
           </label>
         </div>
+        <p className="text-xs text-muted">
+          {t("settings.system.update.betaTesterDescription")}
+        </p>
 
         <div className="space-y-1.5">
           <Label>{t("settings.system.update.availableVersions")}</Label>
@@ -187,7 +199,7 @@ export function SystemTab({
                   if (index === 0) labels.push(t("settings.system.update.latest"));
                   const installed = releaseRelationLabel(r.tag_name);
                   if (installed) labels.push(t("settings.system.update.installed"));
-                  if (r.prerelease) labels.push(t("settings.system.update.prerelease"));
+                  if (r.prerelease) labels.push(t("settings.system.update.beta"));
                   if (!r.updater_json_url)
                     labels.push(t("settings.system.update.notAutoInstallable"));
                   const suffix =

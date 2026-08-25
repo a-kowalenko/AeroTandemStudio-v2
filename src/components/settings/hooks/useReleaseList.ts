@@ -4,18 +4,24 @@ import type { AvailableRelease } from "@/lib/tauri";
 import { getAppInfo, listAvailableVersions } from "@/lib/tauri";
 import { compareVersionParts } from "@/lib/versionCompare";
 
-export function useReleaseList(open: boolean) {
+export function useReleaseList(open: boolean, betaUpdatesEnabled: boolean) {
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [releases, setReleases] = useState<AvailableRelease[]>([]);
   const [releasesLoading, setReleasesLoading] = useState(false);
   const [releasesError, setReleasesError] = useState<string | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string>("");
-  const [showPrereleases, setShowPrereleases] = useState(false);
 
   const filteredReleases = useMemo(() => {
-    if (showPrereleases) return releases;
+    if (betaUpdatesEnabled) return releases;
     return releases.filter((r) => !r.prerelease);
-  }, [releases, showPrereleases]);
+  }, [releases, betaUpdatesEnabled]);
+
+  const installedIsBeta = useMemo(() => {
+    if (!appVersion) return false;
+    return releases.some(
+      (r) => r.prerelease && compareVersionParts(r.tag_name, appVersion) === 0,
+    );
+  }, [appVersion, releases]);
 
   const selectedRelease = useMemo(
     () => filteredReleases.find((r) => r.tag_name === selectedVersion) ?? null,
@@ -72,7 +78,7 @@ export function useReleaseList(open: boolean) {
 
   useEffect(() => {
     if (!open || releases.length === 0) return;
-    const visible = showPrereleases
+    const visible = betaUpdatesEnabled
       ? releases
       : releases.filter((r) => !r.prerelease);
     if (appVersion && visible.some((r) => r.tag_name === appVersion)) {
@@ -84,7 +90,7 @@ export function useReleaseList(open: boolean) {
         ? prev
         : (visible[0]?.tag_name ?? ""),
     );
-  }, [appVersion, open, releases, showPrereleases]);
+  }, [appVersion, open, releases, betaUpdatesEnabled]);
 
   function formatReleaseDate(iso: string): string {
     if (!iso) return "";
@@ -112,8 +118,7 @@ export function useReleaseList(open: boolean) {
     setSelectedVersion,
     selectedRelease,
     selectedRelation,
-    showPrereleases,
-    setShowPrereleases,
+    installedIsBeta,
     formatReleaseDate,
     releaseRelationLabel,
   };

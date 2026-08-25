@@ -38,6 +38,8 @@ export type VersionInstallDialogProps = {
   platformHint?: string | null;
   /** Escape hatch when silent install is unavailable for this release. */
   installerUrl?: string | null;
+  /** Target release is a GitHub prerelease (beta). */
+  isBeta?: boolean;
   onInstall: () => void;
   onCancelInstall?: () => void;
   onLater: () => void;
@@ -68,6 +70,7 @@ export function UpdateDialog({
   blockedReason = null,
   platformHint = null,
   installerUrl = null,
+  isBeta = false,
   onInstall,
   onCancelInstall,
   onLater,
@@ -120,7 +123,9 @@ export function UpdateDialog({
     ? t("dialogs.update.checkTitle")
     : isDowngrade
       ? t("dialogs.update.downgradeTitle")
-      : t("dialogs.update.availableTitle");
+      : isBeta
+        ? t("dialogs.update.betaAvailableTitle")
+        : t("dialogs.update.availableTitle");
 
   const primaryLabel = installing
     ? t("dialogs.update.installing")
@@ -178,6 +183,11 @@ export function UpdateDialog({
                   to: toVersion,
                   from: fromVersion,
                 })
+              ) : isBeta ? (
+                t("dialogs.update.canInstallBeta", {
+                  to: toVersion,
+                  from: fromVersion,
+                })
               ) : (
                 <>
                   {t("dialogs.update.canInstall", { to: toVersion })}
@@ -186,6 +196,11 @@ export function UpdateDialog({
                 </>
               )}
             </p>
+            {isBeta && !isDowngrade ? (
+              <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                {t("dialogs.update.betaHint")}
+              </p>
+            ) : null}
             {isDowngrade ? (
               <p className="text-xs text-muted">
                 {t("dialogs.update.downgradeHint")}

@@ -211,6 +211,7 @@ function App() {
     updaterJsonUrl: string | null;
     silentAvailable: boolean;
     installerUrl: string | null;
+    isBeta: boolean;
   } | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
   const [updateInstallProgress, setUpdateInstallProgress] =
@@ -271,18 +272,21 @@ function App() {
     return null;
   })();
 
-  async function runUpdateCheck(forceDialog = false) {
+  async function runUpdateCheck(forceDialog = false, includeBeta?: boolean) {
+    const betaEnabled =
+      includeBeta ?? config?.beta_updates_enabled ?? false;
     try {
-      const result = await checkForUpdates();
+      const result = await checkForUpdates(betaEnabled);
       setVersionInstall({
         fromVersion: result.current_version,
         toVersion: result.latest_version,
         notes: result.body,
         available: result.available,
         message: result.message,
-        updaterJsonUrl: null,
-        silentAvailable: true,
-        installerUrl: null,
+        updaterJsonUrl: result.updater_json_url,
+        silentAvailable: Boolean(result.updater_json_url ?? !result.prerelease),
+        installerUrl: result.installer_url,
+        isBeta: result.prerelease,
       });
       if (forceDialog || result.available) {
         setUpdateDialogOpen(true);
@@ -313,6 +317,7 @@ function App() {
       updaterJsonUrl: release.updater_json_url,
       silentAvailable: Boolean(release.updater_json_url),
       installerUrl: release.installer_url,
+      isBeta: release.prerelease,
     });
     setUpdateDialogOpen(true);
   }
@@ -1114,7 +1119,10 @@ function App() {
           setSplashOpen(false);
         }
 
-        void runUpdateCheck(false);
+        void runUpdateCheck(
+          false,
+          useConfigStore.getState().config?.beta_updates_enabled ?? false,
+        );
       } catch (e) {
         if (cancelled) return;
         const msg = String(e);
@@ -1792,7 +1800,9 @@ function App() {
         updateInstallProgress={updateInstallProgress}
         installBlockedReason={installBlockedReason}
         updaterPlatformHint={updaterPlatformHint}
-        onRequestUpdateCheck={() => void runUpdateCheck(true)}
+        onRequestUpdateCheck={(includeBeta) =>
+          void runUpdateCheck(true, includeBeta)
+        }
         onRequestVersionSwitch={openVersionSwitchDialog}
         onAfterFactoryReset={() => {
           setSettingsOpen(false);

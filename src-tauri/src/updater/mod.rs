@@ -79,6 +79,9 @@ pub struct UpdateCheckResult {
     pub latest_version: Option<String>,
     pub body: Option<String>,
     pub message: String,
+    pub prerelease: bool,
+    pub updater_json_url: Option<String>,
+    pub installer_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,24 +160,25 @@ pub fn get_updater_install_hint() -> Option<String> {
 }
 
 /// Check for updates. When stub config is active, returns `configured: false`
-/// without contacting the network. When configured, uses the updater plugin.
+/// without contacting the network. Stable checks use the updater plugin; beta
+/// checks use the GitHub releases API (prereleases are excluded from `/latest/`).
 #[tauri::command]
-pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCheckResult, String> {
+pub async fn check_for_updates<R: Runtime>(
+    app: AppHandle<R>,
+    include_beta: bool,
+) -> Result<UpdateCheckResult, String> {
     let current_version = app.package_info().version.to_string();
 
     if !is_updater_configured() {
-        return Ok(UpdateCheckResult {
-            configured: false,
-            available: false,
-            current_version,
-            latest_version: None,
-            body: None,
-            message: "Auto-Update ist derzeit nicht verfügbar.".into(),
-        });
+        return Ok(unavailable_update_result(current_version));
     }
 
     #[cfg(desktop)]
     {
+        if include_beta {
+            return check_for_updates_via_releases_api(&current_version, true).await;
+        }
+
         use tauri_plugin_updater::UpdaterExt;
         let updater = app
             .updater_builder()
@@ -191,6 +195,9 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
                     latest_version: Some(update.version.clone()),
                     body,
                     message: format!("Update verfügbar: {}", update.version),
+                    prerelease: false,
+                    updater_json_url: None,
+                    installer_url: None,
                 })
             }
             Ok(None) => Ok(UpdateCheckResult {
@@ -200,6 +207,9 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
                 latest_version: None,
                 body: None,
                 message: format!("Sie haben bereits die neueste Version ({current_version})."),
+                prerelease: false,
+                updater_json_url: None,
+                installer_url: None,
             }),
             Err(e) => Err(format!("Update-Prüfung fehlgeschlagen: {e}")),
         }
@@ -207,6 +217,7 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
 
     #[cfg(not(desktop))]
     {
+        let _ = app;
         Ok(UpdateCheckResult {
             configured: false,
             available: false,
@@ -214,8 +225,80 @@ pub async fn check_for_updates<R: Runtime>(app: AppHandle<R>) -> Result<UpdateCh
             latest_version: None,
             body: None,
             message: "Updater nur auf Desktop verfügbar.".into(),
+            prerelease: false,
+            updater_json_url: None,
+            installer_url: None,
         })
     }
+}
+
+fn unavailable_update_result(current_version: String) -> UpdateCheckResult {
+    UpdateCheckResult {
+        configured: false,
+        available: false,
+        current_version,
+        latest_version: None,
+        body: None,
+        message: "Auto-Update ist derzeit nicht verfügbar.".into(),
+        prerelease: false,
+        updater_json_url: None,
+        installer_url: None,
+    }
+}
+
+async fn check_for_updates_via_releases_api(
+    current_version: &str,
+    include_beta: bool,
+) -> Result<UpdateCheckResult, String> {
+    let releases = fetch_available_releases().await?;
+    if let Some(candidate) = resolve_best_update(&releases, current_version, include_beta) {
+        let body = nonempty_notes(Some(&candidate.body))
+            .or(fetch_release_notes(&candidate.tag_name).await);
+        let beta_suffix = if candidate.prerelease { " (Beta)" } else { "" };
+        return Ok(UpdateCheckResult {
+            configured: true,
+            available: true,
+            current_version: current_version.to_string(),
+            latest_version: Some(candidate.tag_name.clone()),
+            body,
+            message: format!("Update verfügbar: {}{}", candidate.tag_name, beta_suffix),
+            prerelease: candidate.prerelease,
+            updater_json_url: candidate.updater_json_url.clone(),
+            installer_url: candidate.installer_url.clone(),
+        });
+    }
+
+    Ok(UpdateCheckResult {
+        configured: true,
+        available: false,
+        current_version: current_version.to_string(),
+        latest_version: None,
+        body: None,
+        message: format!("Sie haben bereits die neueste Version ({current_version})."),
+        prerelease: false,
+        updater_json_url: None,
+        installer_url: None,
+    })
+}
+
+fn is_installable_release(release: &AvailableRelease) -> bool {
+    release.updater_json_url.is_some() || release.installer_url.is_some()
+}
+
+/// Newest installable release newer than `current`. `releases` must be sorted desc.
+fn resolve_best_update<'a>(
+    releases: &'a [AvailableRelease],
+    current: &str,
+    include_beta: bool,
+) -> Option<&'a AvailableRelease> {
+    releases.iter().find(|release| {
+        is_installable_release(release)
+            && (include_beta || !release.prerelease)
+            && compare_version_parts(
+                &parse_version_parts(&release.tag_name),
+                &parse_version_parts(current),
+            ) == std::cmp::Ordering::Greater
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -393,6 +476,10 @@ fn map_releases_fetch_error(err: &reqwest::Error) -> String {
 /// List published releases that include a platform installer and/or updater manifest.
 #[tauri::command]
 pub async fn list_available_versions() -> Result<Vec<AvailableRelease>, String> {
+    fetch_available_releases().await
+}
+
+async fn fetch_available_releases() -> Result<Vec<AvailableRelease>, String> {
     let client = http_client()?;
     let response = client
         .get(RELEASES_API_URL)
@@ -809,5 +896,50 @@ mod tests {
         assert!(nonempty_notes(Some("   ")).is_none());
         assert!(nonempty_notes(Some("")).is_none());
         assert!(nonempty_notes(None).is_none());
+    }
+
+    fn sample_release(tag: &str, prerelease: bool, has_updater: bool) -> AvailableRelease {
+        AvailableRelease {
+            tag_name: tag.into(),
+            published_at: String::new(),
+            body: String::new(),
+            installer_url: None,
+            updater_json_url: has_updater.then(|| format!("https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/download/v{tag}/latest.json")),
+            prerelease,
+        }
+    }
+
+    #[test]
+    fn resolve_best_update_respects_beta_flag() {
+        let releases = vec![
+            sample_release("0.3.2", true, true),
+            sample_release("0.3.1", false, true),
+            sample_release("0.3.0", false, true),
+        ];
+        assert_eq!(
+            resolve_best_update(&releases, "0.3.0", false)
+                .map(|r| r.tag_name.as_str()),
+            Some("0.3.1")
+        );
+        assert_eq!(
+            resolve_best_update(&releases, "0.3.0", true)
+                .map(|r| r.tag_name.as_str()),
+            Some("0.3.2")
+        );
+        assert!(resolve_best_update(&releases, "0.3.2", false).is_none());
+        assert!(resolve_best_update(&releases, "0.3.2", true).is_none());
+    }
+
+    #[test]
+    fn resolve_best_update_skips_non_installable() {
+        let releases = vec![AvailableRelease {
+            tag_name: "9.9.9".into(),
+            published_at: String::new(),
+            body: String::new(),
+            installer_url: None,
+            updater_json_url: None,
+            prerelease: false,
+        }];
+        assert!(resolve_best_update(&releases, "0.1.0", true).is_none());
     }
 }

@@ -139,6 +139,8 @@ export type AppConfig = {
   setup_completed: boolean;
   /** UI language: "de" | "en" | "es-MX". */
   ui_language: string;
+  /** Include GitHub prerelease (beta) builds in auto-update checks. */
+  beta_updates_enabled: boolean;
   /** Min log level for file + console IPC: "debug" | "info" | "warn" | "error". */
   log_min_level: string;
   /** Optional AMS LAN Bridge base URL (`http://host:8787`). */
@@ -1078,6 +1080,9 @@ export type UpdateCheckResult = {
   latest_version: string | null;
   body: string | null;
   message: string;
+  prerelease: boolean;
+  updater_json_url: string | null;
+  installer_url: string | null;
 };
 
 export type UpdateInstallProgress = {
@@ -1263,8 +1268,10 @@ export async function getUpdaterInstallHint(): Promise<string | null> {
   return invoke<string | null>("get_updater_install_hint");
 }
 
-export async function checkForUpdates(): Promise<UpdateCheckResult> {
-  return invoke<UpdateCheckResult>("check_for_updates");
+export async function checkForUpdates(
+  includeBeta = false,
+): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates", { includeBeta });
 }
 
 export async function installUpdate(): Promise<string> {

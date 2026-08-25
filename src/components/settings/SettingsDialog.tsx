@@ -31,7 +31,7 @@ import type { AvailableRelease } from "@/lib/tauri";
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onRequestUpdateCheck?: () => void;
+  onRequestUpdateCheck?: (includeBeta: boolean) => void;
   onRequestVersionSwitch?: (release: AvailableRelease) => void;
   installBlockedReason?: string | null;
   platformHint?: string | null;
@@ -76,7 +76,7 @@ export function SettingsDialog({
     saving,
     hasUnsavedChanges,
   } = useSettingsDraft(open, config);
-  const releaseList = useReleaseList(open);
+  const releaseList = useReleaseList(open, draft?.beta_updates_enabled ?? false);
   const crewEditor = useCrewEditor({
     draft: draft ?? config,
     patch,

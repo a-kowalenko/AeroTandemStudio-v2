@@ -59,13 +59,14 @@ export type AppDialogsProps = {
     updaterJsonUrl: string | null;
     silentAvailable: boolean;
     installerUrl: string | null;
+    isBeta: boolean;
   } | null;
   appVersion: string;
   updateInstalling: boolean;
   updateInstallProgress: UpdateInstallProgress | null;
   installBlockedReason: string | null;
   updaterPlatformHint: string | null;
-  onRequestUpdateCheck: () => void;
+  onRequestUpdateCheck: (includeBeta: boolean) => void;
   onRequestVersionSwitch: (release: AvailableRelease) => void;
   onAfterFactoryReset: () => void;
   onInstallVersion: () => void;
@@ -231,6 +232,7 @@ export function AppDialogs(props: AppDialogsProps) {
         blockedReason={installBlockedReason}
         platformHint={updaterPlatformHint}
         installerUrl={versionInstall?.installerUrl ?? null}
+        isBeta={versionInstall?.isBeta ?? false}
         onInstall={onInstallVersion}
         onCancelInstall={onCancelInstallVersion}
         onLater={onUpdateLater}

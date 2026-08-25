@@ -243,6 +243,9 @@ pub struct AppConfig {
     /// UI language: `"de"` | `"en"` | `"es-MX"`.
     #[serde(default = "default_ui_language")]
     pub ui_language: String,
+    /// Include GitHub prerelease (beta) builds in auto-update checks and version lists.
+    #[serde(default)]
+    pub beta_updates_enabled: bool,
     /// Minimum log level written to `app.log` / console IPC: `debug` | `info` | `warn` | `error`.
     #[serde(default = "default_log_min_level")]
     pub log_min_level: String,
@@ -716,6 +719,7 @@ impl Default for AppConfig {
             auto_clear_files_after_creation: false,
             setup_completed: false,
             ui_language: default_ui_language(),
+            beta_updates_enabled: false,
             log_min_level: default_log_min_level(),
             ams_bridge_url: String::new(),
             ams_bridge_token: String::new(),
