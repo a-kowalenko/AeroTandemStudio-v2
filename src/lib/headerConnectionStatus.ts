@@ -75,8 +75,9 @@ function amsTooltipLine(
   connected: boolean,
   message: string,
   displayName?: string,
+  refreshing?: boolean,
 ): string {
-  if (phase === "checking") {
+  if (phase === "checking" || refreshing) {
     return tr("header.connection.amsChecking", { title: amsOperatorTitle() });
   }
   if (phase === "error") {
@@ -98,6 +99,8 @@ export function presentHeaderConnection(input: {
   amsPhase: AmsBridgePhase;
   amsConnected: boolean;
   amsMessage: string;
+  /** Quiet background revalidation — label stays; UI may show a spinner. */
+  amsRefreshing?: boolean;
   amsDisplayName?: string;
   serverUrl: string;
   login: string;
@@ -109,6 +112,8 @@ export function presentHeaderConnection(input: {
 
   const smbChecking = input.smbPhase === "checking";
   const amsChecking = input.amsConfigured && input.amsPhase === "checking";
+  const amsRefreshing =
+    input.amsConfigured && Boolean(input.amsRefreshing) && !amsChecking;
   const smbOk = input.smbConnected || input.smbPhase === "connected";
   const amsOk = input.amsConnected || input.amsPhase === "connected";
   const smbError = input.smbPhase === "error";
@@ -122,7 +127,7 @@ export function presentHeaderConnection(input: {
     label = tr("app.upload.percent", { percent: pct.toFixed(0) });
     toneClass = "text-primary";
   } else if (smbChecking || amsChecking) {
-    // Keep "Prüfe…" until SMB and AMS checks both finish (local path is often faster).
+    // Loud checks only — quiet AMS refresh keeps the last label (spinner in UI).
     label = tr("common.actions.checking");
     toneClass = "text-warning";
   } else if (smbError && amsError) {
@@ -149,7 +154,8 @@ export function presentHeaderConnection(input: {
     visible &&
     input.smbPhase !== "uploading" &&
     !smbChecking &&
-    !amsChecking;
+    !amsChecking &&
+    !amsRefreshing;
 
   let contextMenuFocus: SettingsFocusTarget | null = null;
   if (smbError) {
@@ -186,6 +192,7 @@ export function presentHeaderConnection(input: {
         input.amsConnected,
         input.amsMessage,
         input.amsDisplayName,
+        amsRefreshing,
       ),
     );
   }

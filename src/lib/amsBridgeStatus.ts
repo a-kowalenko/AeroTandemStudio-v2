@@ -6,6 +6,9 @@ import { tr } from "@/i18n";
 
 export const AMS_HEALTH_POLL_MS = 45_000;
 
+/** Delay before showing the quiet-refresh spinner (avoids flicker). */
+export const AMS_HEALTH_SPINNER_DELAY_MS = 250;
+
 /** Operator-facing name for the AMS bridge. Keep “AMS” out of everyday UI. */
 export function amsOperatorTitle(): string {
   return tr("settings.server.ams.operatorTitle");

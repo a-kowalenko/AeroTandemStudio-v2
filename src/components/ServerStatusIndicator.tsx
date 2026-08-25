@@ -1,11 +1,12 @@
-import { Server } from "lucide-react";
-import { useState, type MouseEvent } from "react";
+import { Loader2, Server } from "lucide-react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../store/configStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { useServerStore } from "../store/serverStore";
 import { useUiStore } from "../store/uiStore";
 import { isAmsBridgeConfigured } from "../lib/amsLookup";
+import { AMS_HEALTH_SPINNER_DELAY_MS } from "../lib/amsBridgeStatus";
 import {
   presentHeaderConnection,
   presentHeaderRetryOutcome,
@@ -31,6 +32,27 @@ function StatusDot({ tone }: { tone: ConnectionDot }) {
   );
 }
 
+/** Show spinner only after delay (quiet refresh) or immediately (loud check). */
+function useDelayedSpinner(active: boolean, immediate: boolean): boolean {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShow(false);
+      return;
+    }
+    if (immediate) {
+      setShow(true);
+      return;
+    }
+    const id = window.setTimeout(
+      () => setShow(true),
+      AMS_HEALTH_SPINNER_DELAY_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [active, immediate]);
+  return show;
+}
+
 export function ServerStatusIndicator({ className }: Props) {
   const { t } = useTranslation();
   const [retrying, setRetrying] = useState(false);
@@ -43,6 +65,7 @@ export function ServerStatusIndicator({ className }: Props) {
   const amsPhase = useAmsBridgeStore((s) => s.phase);
   const amsConnected = useAmsBridgeStore((s) => s.connected);
   const amsMessage = useAmsBridgeStore((s) => s.message);
+  const amsRefreshing = useAmsBridgeStore((s) => s.refreshing);
   const amsStoreDisplayName = useAmsBridgeStore((s) => s.displayName);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
 
@@ -71,26 +94,33 @@ export function ServerStatusIndicator({ className }: Props) {
     amsPhase,
     amsConnected,
     amsMessage,
+    amsRefreshing,
     amsDisplayName,
     serverUrl,
     login,
     password,
   });
 
+  const amsChecking = amsConfigured && amsPhase === "checking";
+  const loudChecking =
+    retrying || smbPhase === "checking" || amsChecking;
+  const quietRefreshing =
+    amsConfigured && amsRefreshing && !loudChecking;
+  const showSpinner = useDelayedSpinner(
+    loudChecking || quietRefreshing,
+    loudChecking,
+  );
+
   if (!view.visible) {
     return null;
   }
-
-  const amsChecking = amsConfigured && amsPhase === "checking";
-  const checking =
-    retrying || smbPhase === "checking" || amsChecking;
 
   const displayLabel =
     smbPhase === "uploading"
       ? t("chrome.server.uploadPercent", {
           percent: Math.round(uploadProgress?.percent ?? 0),
         })
-      : checking
+      : loudChecking
         ? t("errors.server.checking")
         : view.label;
 
@@ -147,7 +177,7 @@ export function ServerStatusIndicator({ className }: Props) {
 
   const classNames = cn(
     "flex items-center gap-2 rounded-lg border border-border bg-card/80 px-2.5 py-1.5 text-xs shadow-sm",
-    checking ? "text-warning" : view.toneClass,
+    loudChecking ? "text-warning" : view.toneClass,
     canClick &&
       "cursor-pointer transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     retrying && "cursor-wait opacity-90",
@@ -162,14 +192,14 @@ export function ServerStatusIndicator({ className }: Props) {
           <span className="flex flex-col gap-0.5" aria-hidden>
             <StatusDot
               tone={
-                checking && view.smbDot !== "error"
+                loudChecking && view.smbDot !== "error"
                   ? "checking"
                   : view.smbDot
               }
             />
             <StatusDot
               tone={
-                checking && view.amsDot !== "error"
+                loudChecking && view.amsDot !== "error"
                   ? "checking"
                   : view.amsDot
               }
@@ -193,6 +223,15 @@ export function ServerStatusIndicator({ className }: Props) {
         </span>
         <span className="col-start-1 row-start-1 truncate">{displayLabel}</span>
       </span>
+      {/* Fixed slot so the spinner never widens the chip when it appears. */}
+      <span
+        className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
+        aria-hidden
+      >
+        {showSpinner ? (
+          <Loader2 className="h-3 w-3 animate-spin opacity-80" />
+        ) : null}
+      </span>
       {smbPhase === "uploading" && uploadProgress?.filename ? (
         <span className="max-w-[10rem] truncate text-muted">
           {uploadProgress.filename}
@@ -208,7 +247,7 @@ export function ServerStatusIndicator({ className }: Props) {
         className={classNames}
         title={view.title}
         disabled={retrying}
-        aria-busy={retrying || undefined}
+        aria-busy={loudChecking || quietRefreshing || undefined}
         onClick={() => void onRetry()}
         onContextMenu={onContextMenu}
       >
@@ -218,7 +257,11 @@ export function ServerStatusIndicator({ className }: Props) {
   }
 
   return (
-    <div className={classNames} title={view.title}>
+    <div
+      className={classNames}
+      title={view.title}
+      aria-busy={loudChecking || quietRefreshing || undefined}
+    >
       {body}
     </div>
   );
