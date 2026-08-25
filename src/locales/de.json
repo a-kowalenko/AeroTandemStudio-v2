@@ -775,6 +775,7 @@
       "toServer": "Upload zum Server…",
       "failedNote": "Upload fehlgeschlagen (siehe Fehlerdialog).",
       "percent": "Upload {{percent}}%",
+      "labelWithFiles": "Upload ({{current}}/{{total}})",
       "fileProgress": "{{current}}/{{total}} Dateien",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",

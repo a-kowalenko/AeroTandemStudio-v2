@@ -100,6 +100,7 @@ export function WorkflowLayout({
   const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const serverPhase = useServerStore((s) => s.phase);
+  const uploadProgress = useServerStore((s) => s.uploadProgress);
 
   const { createReady, createHints } = createValidation;
 
@@ -160,6 +161,7 @@ export function WorkflowLayout({
     appendGuest,
     appendUploading,
     createUploading,
+    uploadProgress,
     percent,
     status,
     taskProgress,

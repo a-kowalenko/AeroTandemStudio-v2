@@ -67,6 +67,8 @@ pub struct UploadProgress {
     pub total_files: u32,
     pub current_bytes: u64,
     pub total_bytes: u64,
+    /// Average throughput since upload start (bytes per second).
+    pub speed_bps: f64,
     /// Optional basename for diagnostics; UI should not treat this as “current file”.
     pub filename: String,
 }
@@ -525,17 +527,20 @@ pub(crate) struct UploadProgressGate<F> {
     last_emit: Instant,
     last_percent: f64,
     last_file: u32,
+    started: Instant,
 }
 
 impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
     fn new(cb: F) -> Self {
+        let now = Instant::now();
         Self {
             cb,
-            last_emit: Instant::now()
+            last_emit: now
                 .checked_sub(UPLOAD_PROGRESS_MIN_INTERVAL)
-                .unwrap_or_else(Instant::now),
+                .unwrap_or(now),
             last_percent: -1.0,
             last_file: 0,
+            started: now,
         }
     }
 
@@ -568,12 +573,19 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
         self.last_emit = Instant::now();
         self.last_percent = percent;
         self.last_file = current_file;
+        let elapsed = self.started.elapsed().as_secs_f64().max(0.001);
+        let speed_bps = if current_bytes > 0 {
+            current_bytes as f64 / elapsed
+        } else {
+            0.0
+        };
         (self.cb)(UploadProgress {
             percent,
             current_file,
             total_files,
             current_bytes,
             total_bytes,
+            speed_bps,
             filename: filename.to_string(),
         });
     }
@@ -1535,6 +1547,15 @@ mod tests {
         gate.emit(50.0, 1, 3, 500, 1000, "a.bin", true);
         gate.emit(50.0, 2, 3, 500, 1000, "b.bin", false);
         assert_eq!(count.get(), 2);
+    }
+
+    #[test]
+    fn upload_progress_gate_reports_average_speed_bps() {
+        use std::cell::Cell;
+        let speed = Cell::new(0.0_f64);
+        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps));
+        gate.emit(10.0, 1, 5, 1_000_000, 10_000_000, "a.bin", true);
+        assert!(speed.get() > 0.0);
     }
 
     #[test]

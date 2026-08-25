@@ -13,7 +13,10 @@ import {
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
-import { formatBytes } from "../lib/formatBytes";
+import {
+  formatUploadProgressSnapshot,
+  formatUploadProgressTooltip,
+} from "../lib/uploadProgress";
 
 type Props = {
   className?: string;
@@ -86,22 +89,7 @@ export function ServerStatusIndicator({ className }: Props) {
 
   const uploadDetail =
     smbPhase === "uploading" && uploadProgress
-      ? [
-          uploadProgress.total_bytes > 0
-            ? t("app.upload.bytesProgress", {
-                current: formatBytes(uploadProgress.current_bytes),
-                total: formatBytes(uploadProgress.total_bytes),
-              })
-            : null,
-          uploadProgress.total_files > 0
-            ? t("app.upload.fileProgress", {
-                current: uploadProgress.current_file,
-                total: uploadProgress.total_files,
-              })
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || null
+      ? formatUploadProgressTooltip(uploadProgress)
       : null;
 
   const view = presentHeaderConnection({
@@ -137,10 +125,8 @@ export function ServerStatusIndicator({ className }: Props) {
   }
 
   const displayLabel =
-    smbPhase === "uploading"
-      ? t("chrome.server.uploadPercent", {
-          percent: Math.round(uploadProgress?.percent ?? 0),
-        })
+    smbPhase === "uploading" && uploadProgress
+      ? formatUploadProgressSnapshot(uploadProgress).label
       : loudChecking
         ? t("errors.server.checking")
         : view.label;

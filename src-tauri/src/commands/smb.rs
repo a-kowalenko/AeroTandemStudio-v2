@@ -22,6 +22,7 @@ pub struct UploadProgressEvent {
     pub total_files: u32,
     pub current_bytes: u64,
     pub total_bytes: u64,
+    pub speed_bps: f64,
     pub filename: String,
     pub status: String,
 }
@@ -41,6 +42,7 @@ impl From<UploadProgress> for UploadProgressEvent {
             total_files: p.total_files,
             current_bytes: p.current_bytes,
             total_bytes: p.total_bytes,
+            speed_bps: p.speed_bps,
             filename: p.filename,
             status,
         }

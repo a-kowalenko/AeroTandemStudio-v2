@@ -20,6 +20,8 @@ import {
   type WorkflowProgressStage,
   type WorkflowTaskProgress,
 } from "../lib/workflowProgress";
+import { formatUploadProgressSnapshot } from "../lib/uploadProgress";
+import type { UploadProgressEvent } from "../lib/tauri";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -75,6 +77,7 @@ type Input = {
   appendGuest: string | null;
   appendUploading: boolean;
   createUploading?: boolean;
+  uploadProgress: UploadProgressEvent | null;
   percent: number;
   status: string;
   taskProgress: TaskState[];
@@ -341,16 +344,24 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const hideOverallBar = false;
 
   let snapshot: WorkflowProgressSnapshot | null = null;
+  const uploadActive = Boolean(
+    input.uploadProgress &&
+      (input.createUploading || input.appendUploading),
+  );
   if (input.encodeBusy || input.appendActive) {
-    snapshot = {
-      percent: input.percent,
-      label: formatOverallProgressLabel(
-        input.status,
-        input.encodeBusy || input.appendActive
-          ? tr("common.status.inProgress")
-          : tr("common.status.done"),
-      ),
-    };
+    if (uploadActive && input.uploadProgress) {
+      snapshot = formatUploadProgressSnapshot(input.uploadProgress);
+    } else {
+      snapshot = {
+        percent: input.percent,
+        label: formatOverallProgressLabel(
+          input.status,
+          input.encodeBusy || input.appendActive
+            ? tr("common.status.inProgress")
+            : tr("common.status.done"),
+        ),
+      };
+    }
   } else if (showSdProgress && sdProgress) {
     snapshot = sdProgress;
   } else if (showManualImport && manualImportProgress) {

@@ -1052,6 +1052,8 @@ export type UploadProgressEvent = {
   total_files: number;
   current_bytes: number;
   total_bytes: number;
+  /** Average throughput since upload start (bytes per second). */
+  speed_bps: number;
   /** Optional basename; UI should not treat as “current file”. */
   filename: string;
   status: string;
