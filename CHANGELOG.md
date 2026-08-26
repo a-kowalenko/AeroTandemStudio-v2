@@ -27,6 +27,25 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
 
 
+
+## [0.3.9-beta.2] - 2026-08-26
+
+### Neu
+
+- Vorgang lokal erstellen, wenn der Server nicht erreichbar ist — Upload bleibt ausstehend und kann später nachgeholt werden
+- Unter Vorgänge: ausstehende Uploads einzeln oder gesammelt nachholen
+- Badge in der Kopfzeile bei ausstehenden Uploads; Hinweis, wenn der Server wieder erreichbar ist
+- Fehlende Dateien beim Upload-Nachholen: Ordner öffnen oder nur die vorhandenen Medien hochladen
+- Zusätzliche Dateien im Ausgabeordner: mit hochladen (Lieferliste wird angepasst) oder überschüssige Dateien vor dem Upload löschen
+- Gesammeltes Nachholen: bereite Vorgänge zuerst, bei Problemen nacheinander mit Rückfrage
+
+### Verbessert
+
+- Kopfzeile passt sich schmaleren Fenstern an: Titel wird zu „ATS“, Encoder-Anzeige und Version weichen schrittweise — bis nur noch das Logo sichtbar ist (ohne abgeschnittene …)
+- Server-Status aktualisiert sich im Hintergrund — Verbindungsprobleme fallen schneller auf
+- Bezeichnungen vereinheitlicht: der Bereich heißt durchgängig „Vorgänge“ (statt teils „Historie“)
+- Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
+
 ## [0.3.9-beta.1] - 2026-08-26
 
 ### Neu
