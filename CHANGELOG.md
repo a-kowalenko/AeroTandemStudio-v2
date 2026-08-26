@@ -8,6 +8,14 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+### Neu
+
+- Vor „Vorgang erstellen“ Hinweis, wenn der Ausgabeordner schon Dateien enthält — mit Option, den Ordner zu ersetzen und neu zu erstellen
+
+### Verbessert
+
+- Beim erneuten Erstellen landen keine alten Fotos oder Videos mehr still mit im Upload
+
 ## [0.3.7] - 2026-08-25
 
 ### Neu
