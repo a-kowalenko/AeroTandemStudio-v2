@@ -491,6 +491,7 @@ mod tests {
             ams_error_message: String::new(),
             ams_archive: "erfolg".into(),
             ams_source: "outbox".into(),
+            upload_state: "done".into(),
             append_count: 0,
             last_append_correlation_id: String::new(),
             last_append_ams_state: String::new(),

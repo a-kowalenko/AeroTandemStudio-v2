@@ -16,6 +16,9 @@ use crate::video::handoff_manifest::{
     handoff_share_roots, read_status_outbox_any, OutboxAmsMeta, OutboxError, StatusOutboxV1,
 };
 use crate::video::progress::EncodeProgress;
+use crate::video::upload_preflight::{
+    preflight_vorgang_upload as run_upload_preflight, UploadPreflightInput, UploadPreflightResult,
+};
 
 fn open_store() -> Result<VorgangHistoryStore, String> {
     VorgangHistoryStore::open_default().map_err(|e| e.to_string())
@@ -368,6 +371,39 @@ pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
         msg
     })?;
     Ok(())
+}
+
+/// Update SMB upload lifecycle (`none` / `pending` / `uploading` / `done` / `failed`).
+#[tauri::command]
+pub fn set_vorgang_upload_state(
+    vorgang_id: Option<i64>,
+    correlation_id: Option<String>,
+    upload_state: String,
+) -> Result<(), String> {
+    let store = open_store()?;
+    store
+        .update_upload_state(
+            vorgang_id,
+            correlation_id.as_deref().unwrap_or(""),
+            &upload_state,
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// Prefight local job folder against `_ams_manifest.v1.json` before SMB retry (Phase 31.2).
+#[tauri::command]
+pub fn preflight_vorgang_upload(vorgang_id: i64) -> Result<UploadPreflightResult, String> {
+    let store = open_store()?;
+    let entry = store
+        .get_by_id(vorgang_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Vorgang {vorgang_id} nicht gefunden."))?;
+    Ok(run_upload_preflight(&UploadPreflightInput {
+        base_output_dir: &entry.base_output_dir,
+        correlation_id: &entry.correlation_id,
+        upload_state: &entry.upload_state,
+        ams_state: &entry.ams_state,
+    }))
 }
 
 #[tauri::command]

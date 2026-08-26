@@ -8,6 +8,10 @@ import type { LowMediaConfirmChoice } from "../LowMediaConfirmDialog";
 import type { LowMediaConfirmState } from "@/lib/lowMediaConfirm";
 import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog";
 import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
+import type { OfflineCreateConfirmChoice } from "../OfflineCreateConfirmDialog";
+import type { OfflineCreateConfirmState } from "@/lib/offlineCreateConfirm";
+import type { BulkUploadSummary, VorgangEntry } from "@/lib/vorgangHistory";
+import { BulkUploadSummaryDialog } from "../BulkUploadSummaryDialog";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
@@ -21,6 +25,7 @@ import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
 import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
 import { FolderConflictConfirmDialog } from "../FolderConflictConfirmDialog";
+import { OfflineCreateConfirmDialog } from "../OfflineCreateConfirmDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
 import { UpdateDialog } from "../UpdateDialog";
@@ -78,6 +83,10 @@ export type AppDialogsProps = {
   onUpdateClose: () => void;
   processedOpen: boolean;
   setProcessedOpen: (open: boolean) => void;
+  onRetryVorgangUpload: (entry: VorgangEntry) => void;
+  onBulkRetryUploads: (entries: VorgangEntry[]) => void;
+  bulkUploadSummary: BulkUploadSummary | null;
+  onBulkUploadSummaryClose: () => void;
   settingsSdActions: () => SdWorkflowActions;
   onSdSelectorClose: () => void;
   onSdSelectorConfirm: (paths: string[], actions: SdWorkflowActions) => void;
@@ -122,6 +131,8 @@ export type AppDialogsProps = {
   onLowMediaChoice: (choice: LowMediaConfirmChoice) => void;
   folderConflictConfirm: FolderConflictConfirmState | null;
   onFolderConflictChoice: (choice: FolderConflictConfirmChoice) => void;
+  offlineCreateConfirm: OfflineCreateConfirmState | null;
+  onOfflineCreateChoice: (choice: OfflineCreateConfirmChoice) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -154,6 +165,10 @@ export function AppDialogs(props: AppDialogsProps) {
     onUpdateClose,
     processedOpen,
     setProcessedOpen,
+    onRetryVorgangUpload,
+    onBulkRetryUploads,
+    bulkUploadSummary,
+    onBulkUploadSummaryClose,
     settingsSdActions,
     onSdSelectorClose,
     onSdSelectorConfirm,
@@ -195,6 +210,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onLowMediaChoice,
     folderConflictConfirm,
     onFolderConflictChoice,
+    offlineCreateConfirm,
+    onOfflineCreateChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -258,7 +275,12 @@ export function AppDialogs(props: AppDialogsProps) {
 
       {processedOpen ? (
         <DialogChunk>
-          <LazyHistoryDialog open={processedOpen} onOpenChange={setProcessedOpen} />
+          <LazyHistoryDialog
+            open={processedOpen}
+            onOpenChange={setProcessedOpen}
+            onRetryUpload={onRetryVorgangUpload}
+            onBulkRetryUploads={onBulkRetryUploads}
+          />
         </DialogChunk>
       ) : null}
 
@@ -370,6 +392,15 @@ export function AppDialogs(props: AppDialogsProps) {
         otherFileCount={folderConflictConfirm?.otherFileCount ?? 0}
         uploadToServer={folderConflictConfirm?.uploadToServer ?? false}
         onChoose={onFolderConflictChoice}
+      />
+      <OfflineCreateConfirmDialog
+        open={offlineCreateConfirm !== null}
+        onChoose={onOfflineCreateChoice}
+      />
+      <BulkUploadSummaryDialog
+        open={bulkUploadSummary !== null}
+        summary={bulkUploadSummary}
+        onClose={onBulkUploadSummaryClose}
       />
       <LoadingOverlay
         open={loading && !sdWorkflowUiActive}

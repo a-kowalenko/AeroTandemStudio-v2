@@ -518,6 +518,8 @@ export type CreateJobResult = {
   body_clips: number;
   reused_preview: boolean;
   correlation_id: string;
+  /** History row id after create (null if history write failed). */
+  vorgang_id?: number | null;
 };
 
 export type PreviewResult = {

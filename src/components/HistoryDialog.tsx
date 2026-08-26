@@ -33,12 +33,27 @@ import {
   listVorgangDateien,
   listVorgaenge,
   listVorgangAppends,
+  preflightVorgangUpload,
+  canRetryVorgangUpload,
+  pendingUploadCandidates,
   type AppendMediaItem,
   type HandoffStatus,
+  type UploadPreflightIssue,
   type VorgangAppendEntry,
   type VorgangEntry,
   type VorgangFileEntry,
 } from "../lib/vorgangHistory";
+import { useConfigStore } from "@/store/configStore";
+import { useServerStore } from "@/store/serverStore";
+import {
+  UploadExtraFilesConfirmDialog,
+  type UploadExtraFilesConfirmChoice,
+} from "@/components/UploadExtraFilesConfirmDialog";
+import { UploadPreflightHardFailDialog } from "@/components/UploadPreflightHardFailDialog";
+import type {
+  UploadExtraFilesConfirmState,
+  UploadPreflightHardFailState,
+} from "@/lib/uploadPreflight";
 import {
   isAmsCancelled,
   isAmsHandoffSettled,
@@ -73,6 +88,10 @@ import {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** After preflight OK (and soft-ack if needed): run SMB upload with Create progress UX. */
+  onRetryUpload?: (entry: VorgangEntry) => void;
+  /** Sequentially retry all ready pending/failed uploads (Phase 31.3). */
+  onBulkRetryUploads?: (entries: VorgangEntry[]) => void;
 };
 
 type TypeFilter = "all" | "video" | "photo";
@@ -84,6 +103,8 @@ type PendingConfirm = {
   title: string;
   description: string;
   actionLabel: string;
+  /** Default: destructive (delete). Bulk upload uses default. */
+  actionVariant?: "destructive" | "default";
   run: () => Promise<void>;
 };
 
@@ -172,6 +193,34 @@ function ProductStatusChip({ badge }: { badge: ProductBadge }) {
       {badge.paid ? (
         <Check className="size-2.5 shrink-0" strokeWidth={2.5} aria-hidden />
       ) : null}
+    </span>
+  );
+}
+
+/** SMB upload chip (Phase 31.1); retry action in detail panel (31.2). */
+function UploadStateChip({ state }: { state: string }) {
+  const { t } = useTranslation();
+  const s = state.trim().toLowerCase();
+  if (s !== "pending" && s !== "failed" && s !== "uploading") return null;
+  const label =
+    s === "failed"
+      ? t("history.upload.failed")
+      : s === "uploading"
+        ? t("history.upload.uploading")
+        : t("history.upload.pending");
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        s === "failed"
+          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          : s === "uploading"
+            ? "border-primary/40 bg-primary/10 text-primary"
+            : "border-warning/40 bg-warning/10 text-warning",
+      )}
+      title={label}
+    >
+      {label}
     </span>
   );
 }
@@ -312,7 +361,12 @@ export function ProcessedFilesDialog(props: Props) {
   return <HistoryDialog {...props} />;
 }
 
-export function HistoryDialog({ open, onOpenChange }: Props) {
+export function HistoryDialog({
+  open,
+  onOpenChange,
+  onRetryUpload = () => {},
+  onBulkRetryUploads = () => {},
+}: Props) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
@@ -326,15 +380,91 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
   const showError = useUiStore((s) => s.showError);
   const showWarning = useUiStore((s) => s.showWarning);
   const showSuccess = useUiStore((s) => s.showSuccess);
+  const [extraFilesConfirm, setExtraFilesConfirm] =
+    useState<UploadExtraFilesConfirmState | null>(null);
+  const [preflightHardFail, setPreflightHardFail] =
+    useState<UploadPreflightHardFailState | null>(null);
+  const pendingRetryEntryRef = useRef<VorgangEntry | null>(null);
+  const [retryPreflightBusy, setRetryPreflightBusy] = useState(false);
   const appendOpen = appendVorgang != null;
   const confirmOpen = pendingConfirm != null;
   const nestedOpen =
-    confirmOpen || qrScanOpen || appendOpen || appendPickingFiles;
+    confirmOpen ||
+    qrScanOpen ||
+    appendOpen ||
+    appendPickingFiles ||
+    extraFilesConfirm != null ||
+    preflightHardFail != null;
 
   const closeAppendView = useCallback(() => {
     setAppendVorgang(null);
     setAppendPickingFiles(false);
   }, []);
+
+  const startRetryUpload = useCallback(
+    (entry: VorgangEntry) => {
+      pendingRetryEntryRef.current = null;
+      setExtraFilesConfirm(null);
+      setPreflightHardFail(null);
+      onOpenChange(false);
+      onRetryUpload(entry);
+    },
+    [onOpenChange, onRetryUpload],
+  );
+
+  const startBulkRetryUploads = useCallback(
+    (entries: VorgangEntry[]) => {
+      if (entries.length === 0) return;
+      setExtraFilesConfirm(null);
+      setPreflightHardFail(null);
+      onOpenChange(false);
+      onBulkRetryUploads(entries);
+    },
+    [onOpenChange, onBulkRetryUploads],
+  );
+
+  async function handleRequestRetryUpload(entry: VorgangEntry) {
+    if (retryPreflightBusy) return;
+    setRetryPreflightBusy(true);
+    try {
+      const result = await preflightVorgangUpload(entry.id);
+      if (!result.ok || result.hard_errors.length > 0) {
+        setPreflightHardFail({
+          guest: entry.gast,
+          issues: result.hard_errors,
+        });
+        return;
+      }
+      const extras = result.soft_warnings
+        .filter((w) => w.code === "extra_file")
+        .map((w) => w.path)
+        .filter(Boolean);
+      if (extras.length > 0) {
+        pendingRetryEntryRef.current = entry;
+        setExtraFilesConfirm({
+          vorgangId: entry.id,
+          guest: entry.gast,
+          extraPaths: extras,
+        });
+        return;
+      }
+      startRetryUpload(entry);
+    } catch (e) {
+      showError(String(e), t("history.upload.retryTitle"));
+    } finally {
+      setRetryPreflightBusy(false);
+    }
+  }
+
+  function onExtraFilesChoice(choice: UploadExtraFilesConfirmChoice) {
+    const entry = pendingRetryEntryRef.current;
+    setExtraFilesConfirm(null);
+    if (choice !== "proceed" || !entry) {
+      pendingRetryEntryRef.current = null;
+      return;
+    }
+    startRetryUpload(entry);
+  }
 
   async function runConfirm() {
     if (!pendingConfirm || confirmBusy) return;
@@ -388,6 +518,9 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
             }
             setPendingConfirm(null);
             setQrScanOpen(false);
+            setExtraFilesConfirm(null);
+            setPreflightHardFail(null);
+            pendingRetryEntryRef.current = null;
             closeAppendView();
           }
           onOpenChange(v);
@@ -410,7 +543,12 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
               e.preventDefault();
               return;
             }
-            if (confirmOpen || qrScanOpen) {
+            if (
+              confirmOpen ||
+              qrScanOpen ||
+              extraFilesConfirm != null ||
+              preflightHardFail != null
+            ) {
               e.preventDefault();
               return;
             }
@@ -474,6 +612,11 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
                     appendRefreshKey={appendRefreshKey}
                     onOpenAppend={setAppendVorgang}
                     onRequestConfirm={setPendingConfirm}
+                    onRequestRetryUpload={(entry) =>
+                      void handleRequestRetryUpload(entry)
+                    }
+                    onStartBulkRetry={startBulkRetryUploads}
+                    retryPreflightBusy={retryPreflightBusy}
                   />
                 </TabsContent>
                 <TabsContent
@@ -524,11 +667,23 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
         }}
       >
         <DialogContent
-          className="z-[60] max-w-md border-l-4 border-l-destructive"
+          className={cn(
+            "z-[60] max-w-md border-l-4",
+            (pendingConfirm?.actionVariant ?? "destructive") === "destructive"
+              ? "border-l-destructive"
+              : "border-l-primary",
+          )}
           overlayClassName="z-[60]"
         >
           <DialogHeader>
-            <DialogTitle className="text-destructive">
+            <DialogTitle
+              className={
+                (pendingConfirm?.actionVariant ?? "destructive") ===
+                "destructive"
+                  ? "text-destructive"
+                  : undefined
+              }
+            >
               {pendingConfirm?.title}
             </DialogTitle>
             <DialogDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-foreground">
@@ -546,7 +701,7 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant={pendingConfirm?.actionVariant ?? "destructive"}
               disabled={confirmBusy}
               onClick={() => void runConfirm()}
             >
@@ -555,6 +710,19 @@ export function HistoryDialog({ open, onOpenChange }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UploadExtraFilesConfirmDialog
+        open={extraFilesConfirm != null}
+        guest={extraFilesConfirm?.guest ?? ""}
+        extraPaths={extraFilesConfirm?.extraPaths ?? []}
+        onChoose={onExtraFilesChoice}
+      />
+      <UploadPreflightHardFailDialog
+        open={preflightHardFail != null}
+        guest={preflightHardFail?.guest ?? ""}
+        issues={(preflightHardFail?.issues ?? []) as UploadPreflightIssue[]}
+        onClose={() => setPreflightHardFail(null)}
+      />
     </>
   );
 }
@@ -594,6 +762,9 @@ function VorgaengePanel({
   appendRefreshKey,
   onOpenAppend,
   onRequestConfirm,
+  onRequestRetryUpload,
+  onStartBulkRetry,
+  retryPreflightBusy,
 }: {
   dialogOpen: boolean;
   qrScanOpen: boolean;
@@ -601,8 +772,16 @@ function VorgaengePanel({
   appendRefreshKey: number;
   onOpenAppend: (vorgang: VorgangEntry) => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
+  onRequestRetryUpload: (entry: VorgangEntry) => void;
+  onStartBulkRetry: (entries: VorgangEntry[]) => void;
+  retryPreflightBusy: boolean;
 }) {
   const { t } = useTranslation();
+  const uploadToServer = useConfigStore((s) =>
+    Boolean(s.config?.upload_to_server),
+  );
+  const serverConnected = useServerStore((s) => s.connected);
+  const showWarning = useUiStore((s) => s.showWarning);
   const [entries, setEntries] = useState<VorgangEntry[]>(
     () => seedVorgaengePanel().entries,
   );
@@ -1099,6 +1278,13 @@ function VorgaengePanel({
     (selected?.ams_state ?? "").trim().toLowerCase() === "completed" &&
     !lastAppendBusy &&
     !appendJobActive;
+  const canRetry = selected
+    ? canRetryVorgangUpload(selected, uploadToServer)
+    : false;
+  const bulkCandidates = useMemo(
+    () => pendingUploadCandidates(entries, uploadToServer),
+    [entries, uploadToServer],
+  );
   const qrPreview = selected?.qr_preview?.path?.trim()
     ? selected.qr_preview
     : null;
@@ -1159,6 +1345,27 @@ function VorgaengePanel({
     });
   }
 
+  function requestBulkRetry() {
+    if (bulkCandidates.length === 0 || retryPreflightBusy) return;
+    if (!serverConnected) {
+      showWarning(
+        t("history.upload.bulkOffline"),
+        t("history.upload.bulkTitle"),
+      );
+      return;
+    }
+    const n = bulkCandidates.length;
+    onRequestConfirm({
+      title: t("history.upload.bulkConfirmTitle"),
+      description: t("history.upload.bulkConfirmBody", { count: n }),
+      actionLabel: t("history.upload.bulkBtn"),
+      actionVariant: "default",
+      run: async () => {
+        onStartBulkRetry(bulkCandidates);
+      },
+    });
+  }
+
   const showEmptyList = ready && !loading && filteredEntries.length === 0;
 
   return (
@@ -1202,6 +1409,24 @@ function VorgaengePanel({
                   total: entries.length,
                 })}
         </span>
+        {uploadToServer && bulkCandidates.length > 0 ? (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            disabled={retryPreflightBusy || appendJobActive || !serverConnected}
+            title={
+              !serverConnected
+                ? t("history.upload.bulkOffline")
+                : t("history.upload.bulkTitleOk", {
+                    count: bulkCandidates.length,
+                  })
+            }
+            onClick={requestBulkRetry}
+          >
+            {t("history.upload.bulkBtn")}
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="secondary"
@@ -1283,22 +1508,29 @@ function VorgaengePanel({
                       )}
                     </td>
                     <td className="p-2">
-                      {amsView ? (
-                        <AmsHandoffStatusChip
-                          view={amsView}
-                          compact
-                          onClick={
-                            amsProblem
-                              ? (ev) => {
-                                  ev.stopPropagation();
-                                  setSelectedId(e.id);
-                                }
-                              : undefined
-                          }
-                        />
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
+                      <span className="flex flex-wrap items-center gap-1">
+                        {amsView ? (
+                          <AmsHandoffStatusChip
+                            view={amsView}
+                            compact
+                            onClick={
+                              amsProblem
+                                ? (ev) => {
+                                    ev.stopPropagation();
+                                    setSelectedId(e.id);
+                                  }
+                                : undefined
+                            }
+                          />
+                        ) : null}
+                        <UploadStateChip state={e.upload_state ?? ""} />
+                        {!amsView &&
+                        !["pending", "failed", "uploading"].includes(
+                          (e.upload_state ?? "").trim().toLowerCase(),
+                        ) ? (
+                          <span className="text-muted">—</span>
+                        ) : null}
+                      </span>
                     </td>
                     <td
                       className="truncate p-2 text-muted"
@@ -1440,26 +1672,58 @@ function VorgaengePanel({
                         </div>
                       </div>
                     ) : null}
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="mt-2 h-7"
-                      disabled={!canAppend}
-                      title={
-                        !selected.correlation_id?.trim()
-                          ? t("history.appendTitleLokal")
-                          : (selected.ams_state ?? "").trim().toLowerCase() !==
-                              "completed"
-                            ? t("history.appendTitleWait")
-                            : lastAppendBusy || appendJobActive
-                              ? t("history.appendTitleBusy")
-                              : t("history.appendTitleOk")
-                      }
-                      onClick={() => onOpenAppend(selected)}
-                    >
-                      {t("history.appendBtn")}
-                    </Button>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {canRetry ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="default"
+                          className="h-7"
+                          disabled={
+                            retryPreflightBusy ||
+                            appendJobActive ||
+                            !serverConnected
+                          }
+                          title={
+                            !serverConnected
+                              ? t("history.upload.retryOffline")
+                              : t("history.upload.retryTitleOk")
+                          }
+                          onClick={() => {
+                            if (!serverConnected) {
+                              showWarning(
+                                t("history.upload.retryOffline"),
+                                t("history.upload.retryTitle"),
+                              );
+                              return;
+                            }
+                            onRequestRetryUpload(selected);
+                          }}
+                        >
+                          {t("history.upload.retryBtn")}
+                        </Button>
+                      ) : null}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-7"
+                        disabled={!canAppend}
+                        title={
+                          !selected.correlation_id?.trim()
+                            ? t("history.appendTitleLokal")
+                            : (selected.ams_state ?? "").trim().toLowerCase() !==
+                                "completed"
+                              ? t("history.appendTitleWait")
+                              : lastAppendBusy || appendJobActive
+                                ? t("history.appendTitleBusy")
+                                : t("history.appendTitleOk")
+                        }
+                        onClick={() => onOpenAppend(selected)}
+                      >
+                        {t("history.appendBtn")}
+                      </Button>
+                    </div>
                   </div>
                 ) : null}
               </div>

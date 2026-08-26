@@ -38,6 +38,7 @@ const VORGAENGE_SELECT: &str = "SELECT v.id, v.created_at, v.gast, v.vorname, v.
                         IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
                         IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
                         IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
+                        IFNULL(v.upload_state,'none'),
                         IFNULL(fc.file_count, 0) AS file_count,
                         IFNULL(ac.append_count, 0) AS append_count,
                         IFNULL(la.correlation_id, ''),
@@ -127,6 +128,8 @@ pub struct VorgangEntry {
     pub ams_archive: String,
     /// `bridge` | `outbox` | `local` | empty
     pub ams_source: String,
+    /// SMB upload lifecycle, separate from AMS: `none` | `pending` | `uploading` | `done` | `failed`.
+    pub upload_state: String,
     pub append_count: i64,
     pub last_append_correlation_id: String,
     pub last_append_ams_state: String,
@@ -384,6 +387,14 @@ impl VorgangHistoryStore {
             "ams_source",
             "ALTER TABLE vorgaenge ADD COLUMN ams_source TEXT NOT NULL DEFAULT ''",
         )?;
+        // Phase 31.1: SMB upload state (separate from ams_state). Legacy rows keep `none`
+        // — we do not backfill from ams_state/marker (ambiguous for mid-fail / never-uploaded).
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "upload_state",
+            "ALTER TABLE vorgaenge ADD COLUMN upload_state TEXT NOT NULL DEFAULT 'none'",
+        )?;
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS vorgang_appends (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -481,6 +492,7 @@ impl VorgangHistoryStore {
         result: &CreateJobResult,
         manual_entry_mode: &str,
         qr_preview: Option<&QrPreview>,
+        upload_to_server: bool,
     ) -> Result<i64, VorgangHistoryError> {
         let mut files = Vec::new();
         for p in video_paths {
@@ -502,7 +514,14 @@ impl VorgangHistoryStore {
                 "marker",
             ));
         }
-        self.insert_vorgang(kunde, result, manual_entry_mode, &files, qr_preview)
+        self.insert_vorgang(
+            kunde,
+            result,
+            manual_entry_mode,
+            &files,
+            qr_preview,
+            upload_to_server,
+        )
     }
 
     pub fn insert_vorgang(
@@ -512,6 +531,7 @@ impl VorgangHistoryStore {
         manual_entry_mode: &str,
         files: &[VorgangFileInput],
         qr_preview: Option<&QrPreview>,
+        upload_to_server: bool,
     ) -> Result<i64, VorgangHistoryError> {
         let conn = self.connect()?;
         let created_at = utc_now_iso();
@@ -531,6 +551,7 @@ impl VorgangHistoryStore {
                 "local".to_string(),
             )
         };
+        let upload_state = initial_upload_state(upload_to_server, &correlation_id);
 
         tx.execute(
             "INSERT INTO vorgaenge (
@@ -542,11 +563,11 @@ impl VorgangHistoryStore {
                 ist_bezahlt_outside_foto, ist_bezahlt_outside_video,
                 base_output_dir, base_filename, encoder, intro_created,
                 body_clips, photos_copied, watermark_photos, marker_path, reused_preview,
-                correlation_id, ams_state, ams_updated_at, ams_source
+                correlation_id, ams_state, ams_updated_at, ams_source, upload_state
             ) VALUES (
                 ?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,
                 ?16,?17,?18,?19,?20,?21,?22,?23,
-                ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36
+                ?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?37
             )",
             params![
                 created_at,
@@ -585,6 +606,7 @@ impl VorgangHistoryStore {
                 ams_state,
                 ams_updated_at,
                 ams_source,
+                upload_state,
             ],
         )?;
         let vorgang_id = tx.last_insert_rowid();
@@ -647,6 +669,43 @@ impl VorgangHistoryStore {
             ),
         );
         Ok(vorgang_id)
+    }
+
+    /// Set SMB `upload_state` (`none` / `pending` / `uploading` / `done` / `failed`).
+    /// Prefer `vorgang_id`; fall back to `correlation_id` when id is unknown.
+    pub fn update_upload_state(
+        &self,
+        vorgang_id: Option<i64>,
+        correlation_id: &str,
+        upload_state: &str,
+    ) -> Result<(), VorgangHistoryError> {
+        let state = normalize_upload_state(upload_state)?;
+        let cid = correlation_id.trim();
+        if vorgang_id.is_none() && cid.is_empty() {
+            return Ok(());
+        }
+        let conn = self.connect()?;
+        let n = if let Some(id) = vorgang_id {
+            conn.execute(
+                "UPDATE vorgaenge SET upload_state = ?1 WHERE id = ?2",
+                params![state, id],
+            )?
+        } else {
+            conn.execute(
+                "UPDATE vorgaenge SET upload_state = ?1 WHERE correlation_id = ?2",
+                params![state, cid],
+            )?
+        };
+        if n == 0 {
+            logging::warn(
+                "vorgang_history",
+                format!(
+                    "upload_state update matched 0 rows (id={:?}, cid={})",
+                    vorgang_id, cid
+                ),
+            );
+        }
+        Ok(())
     }
 
     /// Mark a handoff as cancelled locally (upload abort / ATS cancel).
@@ -1145,6 +1204,36 @@ fn opt_str(s: Option<&str>) -> Option<String> {
     s.map(str::trim).filter(|x| !x.is_empty()).map(str::to_string)
 }
 
+/// Initial SMB upload state when recording a create job.
+/// - Lokal / no correlation / upload off → `none`
+/// - Upload intended → `pending` (done/failed set after SMB attempt)
+fn initial_upload_state(upload_to_server: bool, correlation_id: &str) -> &'static str {
+    if upload_to_server && !correlation_id.trim().is_empty() {
+        "pending"
+    } else {
+        "none"
+    }
+}
+
+fn normalize_upload_state(raw: &str) -> Result<&'static str, VorgangHistoryError> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "none" => Ok("none"),
+        "pending" => Ok("pending"),
+        "uploading" => Ok("uploading"),
+        "done" => Ok("done"),
+        "failed" => Ok("failed"),
+        other => Err(VorgangHistoryError::Message(format!(
+            "Ungültiger upload_state: {other}"
+        ))),
+    }
+}
+
+fn normalize_upload_state_loose(raw: &str) -> String {
+    normalize_upload_state(raw)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|_| "none".into())
+}
+
 fn map_qr_preview(
     path: String,
     width: i64,
@@ -1223,13 +1312,16 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
         ams_error_message: row.get::<_, String>(43).unwrap_or_default(),
         ams_archive: row.get::<_, String>(44).unwrap_or_default(),
         ams_source: row.get::<_, String>(45).unwrap_or_default(),
-        file_count: row.get(46)?,
-        append_count: row.get::<_, i64>(47).unwrap_or(0),
-        last_append_correlation_id: row.get::<_, String>(48).unwrap_or_default(),
-        last_append_ams_state: row.get::<_, String>(49).unwrap_or_default(),
-        last_append_ams_error_code: row.get::<_, String>(50).unwrap_or_default(),
-        last_append_ams_error_message: row.get::<_, String>(51).unwrap_or_default(),
-        last_append_folder_path: row.get::<_, String>(52).unwrap_or_default(),
+        upload_state: normalize_upload_state_loose(
+            &row.get::<_, String>(46).unwrap_or_else(|_| "none".into()),
+        ),
+        file_count: row.get(47)?,
+        append_count: row.get::<_, i64>(48).unwrap_or(0),
+        last_append_correlation_id: row.get::<_, String>(49).unwrap_or_default(),
+        last_append_ams_state: row.get::<_, String>(50).unwrap_or_default(),
+        last_append_ams_error_code: row.get::<_, String>(51).unwrap_or_default(),
+        last_append_ams_error_message: row.get::<_, String>(52).unwrap_or_default(),
+        last_append_folder_path: row.get::<_, String>(53).unwrap_or_default(),
     })
 }
 
@@ -1339,6 +1431,7 @@ mod tests {
             body_clips: 1,
             reused_preview: false,
             correlation_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+            vorgang_id: None,
         }
     }
 
@@ -1377,7 +1470,7 @@ mod tests {
             },
         ];
         let id = store
-            .insert_vorgang(&kunde, &result, "oldschool", &files, None)
+            .insert_vorgang(&kunde, &result, "oldschool", &files, None, true)
             .unwrap();
         assert!(id > 0);
 
@@ -1392,6 +1485,7 @@ mod tests {
         assert_eq!(list[0].correlation_id, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         assert_eq!(list[0].ams_state, "pending");
         assert_eq!(list[0].ams_source, "local");
+        assert_eq!(list[0].upload_state, "pending");
         assert!(list[0].qr_preview.is_none());
 
         store
@@ -1469,7 +1563,7 @@ mod tests {
             }),
         };
         let id = store
-            .insert_vorgang(&kunde, &sample_result(), "", &[], Some(&preview))
+            .insert_vorgang(&kunde, &sample_result(), "", &[], Some(&preview), true)
             .unwrap();
 
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];
@@ -1523,11 +1617,13 @@ mod tests {
                 &result,
                 "id",
                 None,
+                true,
             )
             .unwrap();
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];
         assert_eq!(entry.form_mode, "kunde");
         assert_eq!(entry.manual_entry_mode, "");
+        assert_eq!(entry.upload_state, "pending");
         let files = store.list_files(id).unwrap();
         let roles: Vec<_> = files.iter().map(|f| f.role.as_str()).collect();
         assert!(roles.contains(&"source_video"));
@@ -1542,7 +1638,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
             .unwrap();
         store
             .update_ams_handoff_status(
@@ -1641,7 +1737,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
             .unwrap();
 
         let append_dir = dir.path().join("Max_nachreichung_01");
@@ -1680,7 +1776,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
             .unwrap();
 
         let append_dir = dir.path().join("Max_nachreichung_01");
@@ -1710,7 +1806,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None)
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
             .unwrap();
         store
             .record_append(
@@ -1758,5 +1854,139 @@ mod tests {
         let fetched = store.get_by_id(id).unwrap().expect("row");
         assert_eq!(fetched.last_append_correlation_id, "append-two");
         assert_eq!(fetched.append_count, 2);
+    }
+
+    #[test]
+    fn upload_state_none_when_upload_off_or_local() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+
+        let id_off = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, false)
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "none"
+        );
+
+        let mut local = sample_result();
+        local.correlation_id.clear();
+        let _id_local = store
+            .insert_vorgang(&sample_kunde(), &local, "lokal", &[], None, true)
+            .unwrap();
+        let local_row = store
+            .list_vorgaenge(10, None)
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id != id_off)
+            .expect("local row");
+        assert_eq!(local_row.upload_state, "none");
+        assert!(local_row.correlation_id.is_empty());
+    }
+
+    #[test]
+    fn upload_state_transitions_pending_uploading_done_failed() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "pending"
+        );
+
+        store
+            .update_upload_state(Some(id), "", "uploading")
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "uploading"
+        );
+
+        store
+            .update_upload_state(Some(id), "", "done")
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "done"
+        );
+
+        store
+            .update_upload_state(
+                None,
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+                "failed",
+            )
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "failed"
+        );
+
+        assert!(store.update_upload_state(Some(id), "", "bogus").is_err());
+    }
+
+    #[test]
+    fn upload_state_column_defaults_none_for_legacy_compatible_schema() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("legacy.db");
+        {
+            let conn = Connection::open(&db).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE vorgaenge (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    gast TEXT NOT NULL,
+                    vorname TEXT,
+                    nachname TEXT,
+                    kunden_id TEXT,
+                    booking_id TEXT,
+                    datum TEXT NOT NULL DEFAULT '',
+                    ort TEXT NOT NULL DEFAULT '',
+                    tandemmaster TEXT NOT NULL DEFAULT '',
+                    videospringer TEXT NOT NULL DEFAULT '',
+                    video_mode TEXT NOT NULL DEFAULT '',
+                    form_mode TEXT NOT NULL DEFAULT '',
+                    handcam_foto INTEGER NOT NULL DEFAULT 0,
+                    handcam_video INTEGER NOT NULL DEFAULT 0,
+                    outside_foto INTEGER NOT NULL DEFAULT 0,
+                    outside_video INTEGER NOT NULL DEFAULT 0,
+                    ist_bezahlt_handcam_foto INTEGER NOT NULL DEFAULT 0,
+                    ist_bezahlt_handcam_video INTEGER NOT NULL DEFAULT 0,
+                    ist_bezahlt_outside_foto INTEGER NOT NULL DEFAULT 0,
+                    ist_bezahlt_outside_video INTEGER NOT NULL DEFAULT 0,
+                    base_output_dir TEXT NOT NULL,
+                    base_filename TEXT NOT NULL,
+                    encoder TEXT NOT NULL DEFAULT '',
+                    intro_created INTEGER NOT NULL DEFAULT 0,
+                    body_clips INTEGER NOT NULL DEFAULT 0,
+                    photos_copied INTEGER NOT NULL DEFAULT 0,
+                    watermark_photos INTEGER NOT NULL DEFAULT 0,
+                    marker_path TEXT NOT NULL DEFAULT '',
+                    reused_preview INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE vorgang_dateien (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    vorgang_id INTEGER NOT NULL REFERENCES vorgaenge(id) ON DELETE CASCADE,
+                    filename TEXT NOT NULL,
+                    media_type TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    size_bytes INTEGER,
+                    path TEXT
+                );",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO vorgaenge (
+                    created_at, gast, base_output_dir, base_filename
+                 ) VALUES ('2020-01-01T00:00:00Z', 'Alt', '/tmp', 'Alt')",
+                [],
+            )
+            .unwrap();
+        }
+        let store = VorgangHistoryStore::open_at(db).unwrap();
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.upload_state, "none");
     }
 }

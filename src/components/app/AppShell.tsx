@@ -14,6 +14,7 @@ import { usePhotoStore } from "../../store/photoStore";
 import { useVideoStore } from "../../store/videoStore";
 import { useUiStore } from "../../store/uiStore";
 import { useQrScanStore } from "../../store/qrScanStore";
+import { useHistoryStore } from "../../store/historyStore";
 import { useCreateValidation } from "../../hooks/useCreateValidation";
 import { useButtonActionPhase } from "../../hooks/useTimedFlash";
 import type { HwAccelInfo } from "../../lib/tauri";
@@ -99,6 +100,8 @@ export function AppShell({
 }: AppShellProps) {
   const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
+  const uploadToServer = Boolean(config?.upload_to_server);
+  const pendingUploadCount = useHistoryStore((s) => s.pendingUploadCount);
   const secondaryBackup = useSdStore((s) => s.secondaryBackup);
   const appendActive = useAppendStore((s) => s.active);
   const videoImporting = useVideoStore((s) => s.importing);
@@ -156,10 +159,25 @@ export function AppShell({
               size="sm"
               onClick={onOpenHistory}
               disabled={busy || !ready}
-              title={t("app.chrome.historyTitle")}
+              title={
+                uploadToServer && pendingUploadCount > 0
+                  ? t("history.upload.pendingBadgeTooltip", {
+                      count: pendingUploadCount,
+                    })
+                  : t("app.chrome.historyTitle")
+              }
+              className="relative"
             >
               <FolderClock className="h-4 w-4" />
               <span className="hidden sm:inline">{t("common.actions.history")}</span>
+              {uploadToServer && pendingUploadCount > 0 ? (
+                <span
+                  className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-semibold leading-none text-white tabular-nums"
+                  aria-hidden
+                >
+                  {pendingUploadCount > 99 ? "99+" : pendingUploadCount}
+                </span>
+              ) : null}
             </Button>
             <Button
               type="button"

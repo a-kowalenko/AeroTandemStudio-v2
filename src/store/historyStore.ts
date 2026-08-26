@@ -9,6 +9,8 @@ import type { ProcessedFileEntry } from "@/lib/sdCard";
 type HistoryState = {
   vorgaenge: VorgangEntry[];
   vorgaengeLoaded: boolean;
+  /** Historie-button badge: `pending` + `failed` (0 when upload_to_server off). */
+  pendingUploadCount: number;
   selectedId: number | null;
   files: VorgangFileEntry[];
   filesVorgangId: number | null;
@@ -18,6 +20,7 @@ type HistoryState = {
   medienLoaded: boolean;
   medienQuery: string;
   setVorgaenge: (rows: VorgangEntry[]) => void;
+  setPendingUploadCount: (n: number) => void;
   patchVorgang: (id: number, fn: (row: VorgangEntry) => VorgangEntry) => void;
   setSelectedId: (id: number | null) => void;
   setFiles: (vorgangId: number, files: VorgangFileEntry[]) => void;
@@ -28,9 +31,18 @@ type HistoryState = {
   clearMedien: () => void;
 };
 
+function countRetryableUploads(rows: VorgangEntry[]): number {
+  return rows.reduce((n, e) => {
+    if (!e.correlation_id?.trim() || !e.base_output_dir?.trim()) return n;
+    const s = (e.upload_state ?? "").trim().toLowerCase();
+    return n + (s === "pending" || s === "failed" ? 1 : 0);
+  }, 0);
+}
+
 export const useHistoryStore = create<HistoryState>((set) => ({
   vorgaenge: [],
   vorgaengeLoaded: false,
+  pendingUploadCount: 0,
   selectedId: null,
   files: [],
   filesVorgangId: null,
@@ -45,12 +57,25 @@ export const useHistoryStore = create<HistoryState>((set) => ({
         s.selectedId != null && rows.some((r) => r.id === s.selectedId)
           ? s.selectedId
           : (rows[0]?.id ?? null);
-      return { vorgaenge: rows, vorgaengeLoaded: true, selectedId };
+      return {
+        vorgaenge: rows,
+        vorgaengeLoaded: true,
+        selectedId,
+        pendingUploadCount: countRetryableUploads(rows),
+      };
     }),
+  setPendingUploadCount: (n) =>
+    set({ pendingUploadCount: Math.max(0, Math.floor(n)) }),
   patchVorgang: (id, fn) =>
-    set((s) => ({
-      vorgaenge: s.vorgaenge.map((row) => (row.id === id ? fn(row) : row)),
-    })),
+    set((s) => {
+      const vorgaenge = s.vorgaenge.map((row) => (row.id === id ? fn(row) : row));
+      return {
+        vorgaenge,
+        pendingUploadCount: s.vorgaengeLoaded
+          ? countRetryableUploads(vorgaenge)
+          : s.pendingUploadCount,
+      };
+    }),
   setSelectedId: (selectedId) => set({ selectedId }),
   setFiles: (vorgangId, files) =>
     set({ files, filesVorgangId: vorgangId }),
@@ -69,6 +94,9 @@ export const useHistoryStore = create<HistoryState>((set) => ({
       return {
         vorgaenge,
         selectedId,
+        pendingUploadCount: s.vorgaengeLoaded
+          ? countRetryableUploads(vorgaenge)
+          : s.pendingUploadCount,
         files: drop.has(s.filesVorgangId ?? -1) ? [] : s.files,
         filesVorgangId: drop.has(s.filesVorgangId ?? -1)
           ? null

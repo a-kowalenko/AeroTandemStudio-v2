@@ -464,6 +464,8 @@
       "previewPhotos": "{{count}} Vorschau-Foto erstellt",
       "previewPhotosMany": "{{count}} Vorschau-Fotos erstellt",
       "uploaded": "Auf Server hochgeladen",
+      "uploadPending": "Lokal erstellt — Upload ausstehend",
+      "uploadPendingHint": "Upload später in der Historie nachholen.",
       "encoder": "Encoder",
       "dirCreated": "Verzeichnis wurde erstellt",
       "openLocation": "Zum Speicherort",
@@ -664,6 +666,42 @@
       "hintEncode": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu.",
       "hintUpload": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu — nur aktuelle Medien werden hochgeladen.",
       "replace": "Ordner ersetzen und erstellen"
+    },
+    "offlineCreate": {
+      "title": "Server nicht erreichbar",
+      "body": "Upload ist aktiv, aber der Server ist offline. Du kannst den Vorgang trotzdem lokal erstellen; der Upload bleibt ausstehend.",
+      "hint": "Später in der Historie nachholen (wenn der Server wieder da ist).",
+      "proceed": "Trotzdem lokal erstellen"
+    },
+    "uploadExtraFiles": {
+      "title": "Zusätzliche Dateien im Ordner",
+      "body": "Im Ordner von „{{guest}}“ liegen Dateien, die nicht im Manifest stehen. Trotzdem hochladen?",
+      "hint": "Zusätzliche Dateien werden mit hochgeladen.",
+      "proceed": "Trotzdem hochladen"
+    },
+    "uploadPreflightFail": {
+      "title": "Upload nicht möglich",
+      "body": "Der Vorgang „{{guest}}“ kann nicht nachgeholt werden:",
+      "codes": {
+        "local_vorgang": "Lokal-Vorgang (kein AMS-Handoff)",
+        "already_done": "Upload bereits erledigt",
+        "ams_completed": "AMS-Handoff bereits abgeschlossen",
+        "folder_missing": "Ausgabeordner fehlt",
+        "folder_empty": "Ausgabeordner ist leer",
+        "manifest_missing": "Manifest fehlt",
+        "manifest_invalid": "Manifest ungültig",
+        "marker_missing": "Fertig-Marker fehlt",
+        "file_missing": "Datei fehlt",
+        "size_mismatch": "Dateigröße weicht ab",
+        "extra_file": "Zusätzliche Datei"
+      }
+    },
+    "bulkUploadSummary": {
+      "title": "Upload-Abarbeitung fertig",
+      "ok": "{{count}} erfolgreich",
+      "skipped": "{{count}} übersprungen",
+      "failed": "{{count}} Upload-Fehler",
+      "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline)."
     }
   },
   "splash": {
@@ -798,7 +836,7 @@
       "fileProgress": "Datei {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleBlockedOn": "Upload in den Einstellungen aktiv, Server nicht verbunden",
+      "titleBlockedOn": "Upload an, Server offline — lokal erstellen möglich",
       "titleBlockedOff": "Server nicht verbunden — Upload nicht möglich",
       "titleActive": "Aktiv — Vorgang wird nach Erstellen hochgeladen",
       "titleOff": "Upload aus — einschalten, wenn der Vorgang auf den Server soll"
@@ -1085,6 +1123,27 @@
     },
     "emptyFilter": "Keine Vorgänge für diesen Status.",
     "emptyJobs": "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier.",
+    "upload": {
+      "pending": "Upload ausstehend",
+      "uploading": "Upload läuft",
+      "failed": "Upload fehlgeschlagen",
+      "retryBtn": "Upload nachholen",
+      "retryTitle": "Upload nachholen",
+      "retryTitleOk": "Ausstehenden Upload jetzt starten",
+      "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
+      "retryDone": "Upload erfolgreich nachgeholt.",
+      "retryCancelled": "Upload abgebrochen.",
+      "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
+      "bulkBtn": "Ausstehende Uploads abarbeiten…",
+      "bulkTitle": "Ausstehende Uploads",
+      "bulkTitleOk": "{{count}} Uploads nacheinander starten",
+      "bulkOffline": "Server offline — Bulk-Upload erst möglich, wenn die Verbindung steht",
+      "bulkConfirmTitle": "Ausstehende Uploads abarbeiten?",
+      "bulkConfirmBody": "{{count}} Vorgänge werden nacheinander hochgeladen. Vorgänge mit Prefight-Problemen werden übersprungen.",
+      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
+      "reconnectToastTitle": "Server wieder online",
+      "reconnectToastBody": "{{count}} Uploads ausstehend — in der Historie nachholen."
+    },
     "selectJob": "Vorgang auswählen",
     "previewReuse": "Preview-Reuse",
     "customer": "Kunde: {{id}}",

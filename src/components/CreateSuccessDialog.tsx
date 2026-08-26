@@ -16,6 +16,8 @@ export type CreateSuccessInfo = {
   result: CreateJobResult;
   /** True when upload ran and completed successfully. */
   serverUploaded?: boolean;
+  /** True when upload was skipped because the server was offline (pending). */
+  uploadDeferred?: boolean;
   /** Optional short note (success path or failure hint). */
   uploadNote?: string | null;
   vorname?: string | null;
@@ -45,7 +47,7 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
     .join(" ");
 
   function buildRows(current: CreateSuccessInfo): Row[] {
-    const { result, serverUploaded, uploadNote } = current;
+    const { result, serverUploaded, uploadDeferred, uploadNote } = current;
     const rows: Row[] = [];
 
     if (result.video_output) {
@@ -83,6 +85,11 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
       rows.push({
         label: t("create.success.uploaded"),
         detail: uploadNote?.trim() || undefined,
+      });
+    } else if (uploadDeferred) {
+      rows.push({
+        label: t("create.success.uploadPending"),
+        detail: uploadNote?.trim() || t("create.success.uploadPendingHint"),
       });
     } else if (uploadNote?.trim()) {
       rows.push({ label: uploadNote.trim() });

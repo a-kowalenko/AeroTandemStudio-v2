@@ -464,6 +464,8 @@
       "previewPhotos": "{{count}} foto de vista previa creada",
       "previewPhotosMany": "{{count}} fotos de vista previa creadas",
       "uploaded": "Subido al servidor",
+      "uploadPending": "Creado localmente — subida pendiente",
+      "uploadPendingHint": "Completa la subida más tarde desde el historial.",
       "encoder": "Codificador",
       "dirCreated": "Se creó el directorio",
       "openLocation": "Ir a la ubicación",
@@ -664,6 +666,42 @@
       "hintEncode": "“Reemplazar carpeta” borra el contenido y crea de nuevo.",
       "hintUpload": "“Reemplazar carpeta” borra el contenido y crea de nuevo — solo se subirán los medios actuales.",
       "replace": "Reemplazar carpeta y crear"
+    },
+    "offlineCreate": {
+      "title": "Servidor no disponible",
+      "body": "La subida está activa, pero el servidor está fuera de línea. Aún puedes crear el trabajo localmente; la subida quedará pendiente.",
+      "hint": "Más tarde puedes completar la subida desde el historial cuando el servidor vuelva.",
+      "proceed": "Crear localmente de todos modos"
+    },
+    "uploadExtraFiles": {
+      "title": "Archivos adicionales en la carpeta",
+      "body": "La carpeta de “{{guest}}” tiene archivos que no están en el manifiesto. ¿Subir de todos modos?",
+      "hint": "Los archivos adicionales se incluirán en la subida.",
+      "proceed": "Subir de todos modos"
+    },
+    "uploadPreflightFail": {
+      "title": "Subida no posible",
+      "body": "No se puede reintentar el trabajo “{{guest}}”:",
+      "codes": {
+        "local_vorgang": "Trabajo local (sin handoff AMS)",
+        "already_done": "Subida ya completada",
+        "ams_completed": "Handoff AMS ya completado",
+        "folder_missing": "Falta la carpeta de salida",
+        "folder_empty": "La carpeta de salida está vacía",
+        "manifest_missing": "Falta el manifiesto",
+        "manifest_invalid": "Manifiesto inválido",
+        "marker_missing": "Falta el marcador de listo",
+        "file_missing": "Falta un archivo",
+        "size_mismatch": "Tamaño de archivo distinto",
+        "extra_file": "Archivo adicional"
+      }
+    },
+    "bulkUploadSummary": {
+      "title": "Proceso de subidas terminado",
+      "ok": "{{count}} correctas",
+      "skipped": "{{count}} omitidas",
+      "failed": "{{count}} errores de subida",
+      "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea)."
     }
   },
   "splash": {
@@ -798,7 +836,7 @@
       "fileProgress": "Archivo {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Subida",
-      "titleBlockedOn": "Subida activa en configuración, servidor sin conexión",
+      "titleBlockedOn": "Subida activa, servidor offline — se puede crear localmente",
       "titleBlockedOff": "Servidor sin conexión — no se puede subir",
       "titleActive": "Activo — el trabajo se subirá al crear",
       "titleOff": "Subida apagada — actívala para enviar el trabajo al servidor"
@@ -1085,6 +1123,27 @@
     },
     "emptyFilter": "No hay trabajos para este estado.",
     "emptyJobs": "Aún no hay trabajos. Aparecen aquí al crear.",
+    "upload": {
+      "pending": "Subida pendiente",
+      "uploading": "Subiendo",
+      "failed": "Subida fallida",
+      "retryBtn": "Reintentar subida",
+      "retryTitle": "Reintentar subida",
+      "retryTitleOk": "Iniciar ahora la subida pendiente",
+      "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
+      "retryDone": "Subida completada correctamente.",
+      "retryCancelled": "Subida cancelada.",
+      "pendingBadgeTooltip": "{{count}} subidas pendientes",
+      "bulkBtn": "Procesar subidas pendientes…",
+      "bulkTitle": "Subidas pendientes",
+      "bulkTitleOk": "Iniciar {{count}} subidas una tras otra",
+      "bulkOffline": "Servidor fuera de línea — la subida masiva solo es posible con conexión",
+      "bulkConfirmTitle": "¿Procesar subidas pendientes?",
+      "bulkConfirmBody": "{{count}} trabajos se subirán uno tras otro. Los que fallen el preflight se omiten.",
+      "bulkProgress": "Subida {{current}}/{{total}}: {{guest}}",
+      "reconnectToastTitle": "Servidor de nuevo en línea",
+      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde el historial."
+    },
     "selectJob": "Selecciona un trabajo",
     "previewReuse": "Reuso de vista previa",
     "customer": "Cliente: {{id}}",

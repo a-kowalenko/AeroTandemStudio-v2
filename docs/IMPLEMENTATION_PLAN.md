@@ -57,7 +57,10 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 31 — Offline-Create & Upload nachholen](#phase-31--offline-create--upload-nachholen) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+*(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
+*(Phase 31.2 Prefight + Upload nachholen erledigt.)*  
+*(Phase 31.1 Soft-Block Create + upload_state erledigt.)*  
 *(Phase 30 Ausgabeordner-Konflikt erledigt.)*  
 *(Phase 29 Low-Media Confirm erledigt.)*  
 *(Phase 28 Fotos Master–Detail erledigt.)*  
@@ -1697,7 +1700,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 31 — Offline-Create & Upload nachholen
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅)  
 **Abhängigkeiten:** Phase 10 (SMB-Upload + Marker-Barrier OPT-15), Phase 12 (Create/Historie), Phase 24 (Historie-UI / Append-Muster), Phase 29/30 (Soft-Confirm-Muster)  
 **Ziel:** Bei aktivem Upload und offline Server trotzdem **lokal erstellen**; Upload bewusst **nachholen** (pro Vorgang + alle bereiten) — ohne persistente Auto-Queue und ohne stillen Background-Drain.
 
@@ -1731,14 +1734,15 @@ src/locales/de.json | en.json | es-MX.json
 | 4 | Hard fail Prefight | Ordner fehlt/leer; Manifest fehlt; Marker fehlt; ≥1 Manifest-Datei fehlt; Size weicht ab; Lokal-Vorgang (`correlation_id` leer); bereits `upload_state=done` / AMS Erst-Handoff `completed` |
 | 5 | Soft warn Prefight | Extra-Dateien im Ordner, die **nicht** im Manifest stehen → Confirm „trotzdem hochladen?“ (wie Folder-Conflict Soft Confirm) |
 | 6 | Upload-Pipeline | Bestehenden `upload_to_server` + Phasen-Barrier wiederverwenden; danach `handoff/ready` wie nach erfolgreichem Erst-Upload |
-| 7 | Reconnect | Badge / Zähler „n ausstehend“; **kein** Auto-Start ohne Klick |
-| 8 | Bulk | Sequentiell; Hard-Fail → skip + zählen; Ende: Summary `ok / übersprungen / Upload-Fehler` |
+| 7 | Historie-Badge | Zähler am Historie-Button: `pending` + `failed`. **Nur wenn** `upload_to_server` an; sonst nie zeigen. Tooltip z. B. „2 Uploads ausstehend“ (i18n). Klick → Historie öffnen (kein Auto-Upload). Nicht am Server-Status-Indicator |
+| 8 | Reconnect | **Kein** Auto-Start. Optional **einmaliger** Toast bei Reconnect („n Uploads ausstehend“) — Badge reicht oft; Toast nicht Pflicht für MVP |
+| 9 | Bulk | Sequentiell; Hard-Fail → skip + zählen; Ende: Summary `ok / übersprungen / Upload-Fehler` |
 
 ---
 
 #### Phase 31.1 — Soft-Block Create + `upload_state`
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Ziel:** Offline nicht mehr hart blockieren; Create lokal; Upload überspringen und als ausstehend markieren.
 
 ##### Entscheidungen (31.1)
@@ -1751,15 +1755,15 @@ src/locales/de.json | en.json | es-MX.json
 | Mid-fail | Bestehend: Create ok + Upload fail → `upload_state=failed` (für 31.2 nachholbar) |
 | Online Create | Unverändert: Upload sofort; bei Erfolg `upload_state=done` |
 | Lokal-Modus | `upload_state=none` (kein Upload vorgesehen) |
-| Schema | SQLite-Migration: Spalte an `vorgaenge` (Default sinnvoll für Altzeilen: `none` oder aus `ams_state`/Marker ableiten — dokumentieren) |
+| Schema | SQLite-Migration: Spalte `upload_state` an `vorgaenge` (Default `none` für Altzeilen — kein Backfill aus `ams_state`/Marker, da Mid-fail vs. nie-hochgeladen mehrdeutig) |
 
 ##### Scope
 
-- [ ] Soft-Confirm in `startCreate` statt Hard-Return
-- [ ] `upload_state` persistieren + bei Create/Upload-Erfolg/-Fail setzen
-- [ ] Success-/Historie-Chip grob: „Upload ausstehend“ / „Upload fehlgeschlagen“ (Minimal-UI ok; volle Buttons in 31.2)
-- [ ] i18n de / en / es-MX
-- [ ] Unit-/Store-Tests Migration + State-Übergänge
+- [x] Soft-Confirm in `startCreate` statt Hard-Return
+- [x] `upload_state` persistieren + bei Create/Upload-Erfolg/-Fail setzen
+- [x] Success-/Historie-Chip grob: „Upload ausstehend“ / „Upload fehlgeschlagen“ (Minimal-UI ok; volle Buttons in 31.2)
+- [x] i18n de / en / es-MX
+- [x] Unit-/Store-Tests Migration + State-Übergänge
 - [ ] Manuell: Upload an, Server offline → Confirm → Create lokal → Historie zeigt pending; online Create → done
 
 ##### Agent-Prompt
@@ -1775,7 +1779,7 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 #### Phase 31.2 — Prefight + Upload nachholen (pro Vorgang)
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** 31.1  
 **Ziel:** Aus der Historie einen ausstehenden/fehlgeschlagenen Erst-Upload nachholen — mit Manifest-Prefight.
 
@@ -1793,10 +1797,10 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 ##### Scope
 
-- [ ] Prefight (Manifest ↔ Disk, Marker); Unit-Tests Hard/Soft-Fälle
-- [ ] Command `retry_vorgang_upload` (oder äquivalent) → Prefight → SMB-Phasen → Handoff
-- [ ] Historie-UI: Aktion „Upload nachholen“ + Soft-Extra-Files-Confirm
-- [ ] i18n de / en / es-MX
+- [x] Prefight (Manifest ↔ Disk, Marker); Unit-Tests Hard/Soft-Fälle
+- [x] Command `retry_vorgang_upload` (oder äquivalent) → Prefight → SMB-Phasen → Handoff
+- [x] Historie-UI: Aktion „Upload nachholen“ + Soft-Extra-Files-Confirm
+- [x] i18n de / en / es-MX
 - [ ] Manuell: pending → Prefight ok → Upload; fehlende Datei → Hard fail; Extra-Datei → Warnung
 
 ##### Agent-Prompt
@@ -1813,7 +1817,7 @@ i18n de/en/es-MX. Unit-Tests Prefight. Danach cargo test && npm run check.
 
 #### Phase 31.3 — Alle bereiten abarbeiten
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** 31.2  
 **Ziel:** Mehrere ausstehende Uploads sequentiell abarbeiten mit Summary; kein Auto-Drain.
 
@@ -1826,24 +1830,28 @@ i18n de/en/es-MX. Unit-Tests Prefight. Danach cargo test && npm run check.
 | Parallelität | **Sequentiell** ein SMB-Job |
 | Hard-Fail | Skip, weiter; in Summary zählen |
 | Server down mid-bulk | Abbruch Rest; bereits erledigte bleiben `done` |
-| Reconnect-Badge | Optional: Header/Historie „n ausstehend“; Klick öffnet Historie oder startet Bulk-Confirm — **kein** Auto-Start |
+| Historie-Badge | Am Historie-Einstieg (Header-Button): Count `pending`\|`failed`. Sichtbar **nur** wenn `upload_to_server`. Tooltip: „{{n}} Uploads ausstehend“ (i18n). Klick öffnet Historie — **kein** Auto-Start / kein Bulk ohne weiteren Confirm |
+| Reconnect-Toast | Optional, **einmalig** pro Reconnect-Übergang offline→online wenn Count &gt; 0; kein Dauer-Toast. Badge bleibt die Haupt-Hinweisquelle |
 | UX Ende | Ein Summary-Dialog: ok / übersprungen / Fehler |
 
 ##### Scope
 
-- [ ] Command oder Frontend-Orchestrierung: Liste kandidaten → sequentiell retry
-- [ ] Historie: „Ausstehende Uploads abarbeiten…“ + Summary
-- [ ] Optional Badge-Zähler (kein Auto-Upload)
-- [ ] i18n de / en / es-MX
-- [ ] Manuell: 2 pending + 1 kaputt → 2 ok, 1 skip; Reconnect ohne Auto-Start
+- [x] Command oder Frontend-Orchestrierung: Liste kandidaten → sequentiell retry
+- [x] Historie: „Ausstehende Uploads abarbeiten…“ + Summary
+- [x] Badge-Zähler am Historie-Button (nur bei `upload_to_server`; Tooltip mit Anzahl; kein Auto-Upload)
+- [x] Optional: einmaliger Reconnect-Toast (nicht Pflicht für MVP, wenn Badge steht)
+- [x] i18n de / en / es-MX (Badge-Tooltip, optional Toast, Bulk/Summary)
+- [ ] Manuell: 2 pending + 1 kaputt → 2 ok, 1 skip; Badge nur bei Upload an; Reconnect ohne Auto-Start; Tooltip stimmt
 
 ##### Agent-Prompt
 
 ```
 Implementiere Phase 31.3 aus @docs/IMPLEMENTATION_PLAN.md
 Regeln: @AGENTS.md
-Nur 31.3 (Bulk sequentiell + Summary). Kein Auto-Drain bei Reconnect.
-i18n de/en/es-MX. Danach cargo test && npm run check.
+Nur 31.3 (Bulk sequentiell + Summary + Historie-Badge).
+Badge nur wenn upload_to_server; Tooltip „n Uploads ausstehend“; kein Auto-Drain.
+Reconnect-Toast optional einmalig (nicht Pflicht). i18n de/en/es-MX.
+Danach cargo test && npm run check.
 ```
 
 ---
@@ -1853,7 +1861,7 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 ```
 src/App.tsx                              # startCreate Hard-Block → Soft Confirm
 src/components/HistoryDialog.tsx         # Nachholen / Bulk
-src/components/ServerStatusIndicator.tsx # optional Badge
+src/components/app/…                     # Historie-Button + Badge-Counter (Header)
 src-tauri/src/storage/vorgang_history.rs # upload_state Migration
 src-tauri/src/commands/vorgang_history.rs
 src-tauri/src/commands/smb.rs            # upload_to_server / handoff
@@ -2055,8 +2063,8 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 29 | Low-Media Confirm vor Erstellen | ✅ |
 | 30 | Ausgabeordner-Konflikt vor Erstellen | ✅ |
 | 31 | Offline-Create & Upload nachholen | ⬜ |
-| 31.1 | Soft-Block Create + `upload_state` | ⬜ |
-| 31.2 | Prefight + Upload nachholen (pro Vorgang) | ⬜ |
+| 31.1 | Soft-Block Create + `upload_state` | ✅ |
+| 31.2 | Prefight + Upload nachholen (pro Vorgang) | ✅ |
 | 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt

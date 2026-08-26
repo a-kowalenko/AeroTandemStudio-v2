@@ -22,6 +22,8 @@ import {
   toFolderConflictConfirmState,
   type FolderConflictConfirmState,
 } from "./lib/folderConflictConfirm";
+import type { OfflineCreateConfirmChoice } from "./components/OfflineCreateConfirmDialog";
+import type { OfflineCreateConfirmState } from "./lib/offlineCreateConfirm";
 import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
@@ -126,6 +128,15 @@ import { presentAmsUserMessage } from "./lib/amsBridgeStatus";
 import { runAmsAutoConnect } from "./lib/amsAutoConnect";
 import { isCancellationError } from "./lib/utils";
 import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback";
+import {
+  preflightVorgangUpload,
+  refreshPendingUploadCount,
+  setVorgangUploadState,
+  type BulkUploadSummary,
+  type VorgangEntry,
+} from "./lib/vorgangHistory";
+import { showPendingUploadsToast } from "./lib/pendingUploadToast";
+import { useHistoryStore } from "./store/historyStore";
 import type { EncodeProgress } from "./components/app/types";
 import "./App.css";
 
@@ -247,11 +258,20 @@ function App() {
     useState<LowMediaConfirmState | null>(null);
   const [folderConflictConfirm, setFolderConflictConfirm] =
     useState<FolderConflictConfirmState | null>(null);
+  const [offlineCreateConfirm, setOfflineCreateConfirm] =
+    useState<OfflineCreateConfirmState | null>(null);
+  const [bulkUploadSummary, setBulkUploadSummary] =
+    useState<BulkUploadSummary | null>(null);
   /** Ack signature: warn once per Vorgang until media/products change (Phase 29). */
   const lowMediaAckRef = useRef<string | null>(null);
   /** Ack signature after user chose Replace for this planned folder (Phase 30). */
   const folderConflictAckRef = useRef<string | null>(null);
+  /** Soft-ack: create locally while upload is on but server offline (Phase 31.1). */
+  const offlineCreateAckRef = useRef(false);
   const replaceExistingDirRef = useRef(false);
+  /** Track SMB connected edge for optional reconnect toast (Phase 31.3). */
+  const serverWasConnectedRef = useRef(false);
+  const pendingUploadToastArmedRef = useRef(false);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
@@ -1182,6 +1202,54 @@ function App() {
     setupWizardOpen,
   ]);
 
+  /** Historie badge: refresh pending/failed count when upload is enabled. */
+  useEffect(() => {
+    if (!ready || splashOpen || setupWizardOpen) return;
+    const uploadOn = Boolean(config?.upload_to_server);
+    void refreshPendingUploadCount(uploadOn).catch(() => {});
+  }, [
+    ready,
+    splashOpen,
+    setupWizardOpen,
+    config?.upload_to_server,
+  ]);
+
+  /** Optional once-per-reconnect toast when uploads are pending (no auto-drain). */
+  useEffect(() => {
+    if (!ready || splashOpen || setupWizardOpen) {
+      serverWasConnectedRef.current = serverConnected;
+      return;
+    }
+    const uploadOn = Boolean(config?.upload_to_server);
+    const was = serverWasConnectedRef.current;
+    serverWasConnectedRef.current = serverConnected;
+    if (!uploadOn) {
+      pendingUploadToastArmedRef.current = false;
+      return;
+    }
+    if (!serverConnected) {
+      pendingUploadToastArmedRef.current = true;
+      return;
+    }
+    if (!was && serverConnected && pendingUploadToastArmedRef.current) {
+      pendingUploadToastArmedRef.current = false;
+      const count = useHistoryStore.getState().pendingUploadCount;
+      if (count > 0) {
+        showPendingUploadsToast(
+          t("history.upload.reconnectToastTitle"),
+          t("history.upload.reconnectToastBody", { count }),
+        );
+      }
+    }
+  }, [
+    ready,
+    splashOpen,
+    setupWizardOpen,
+    serverConnected,
+    config?.upload_to_server,
+    t,
+  ]);
+
   useEffect(() => {
     if (!ready || splashOpen || setupWizardOpen || !config || !serverConnected) return;
     if (config.ams_bridge_url.trim() && config.ams_bridge_token.trim()) return;
@@ -1489,6 +1557,16 @@ function App() {
     void continueCreateAfterFolderConflict();
   }
 
+  function onOfflineCreateChoice(choice: OfflineCreateConfirmChoice) {
+    setOfflineCreateConfirm(null);
+    if (choice === "back") {
+      offlineCreateAckRef.current = false;
+      return;
+    }
+    offlineCreateAckRef.current = true;
+    void startCreate();
+  }
+
   /** After folder replace ack: low-media soft confirm, then create. */
   async function continueCreateAfterFolderConflict() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
@@ -1540,11 +1618,12 @@ function App() {
     }
 
     if (config?.upload_to_server && !serverConnected) {
-      showWarning(
-        t("app.upload.serverUnreachable"),
-        t("app.server.title"),
-      );
-      return;
+      if (!offlineCreateAckRef.current) {
+        setOfflineCreateConfirm({ open: true });
+        return;
+      }
+    } else {
+      offlineCreateAckRef.current = false;
     }
 
     // Soft folder-conflict confirm before low-media / setBusy (not on Append).
@@ -1657,43 +1736,71 @@ function App() {
 
       let uploadNote: string | null = null;
       let serverUploaded = false;
-      if (config?.upload_to_server) {
-        setStatus(t("app.upload.toServer"));
-        setTaskProgress([]);
-        setServerPhase("uploading");
-        setUploadProgress(null);
-        uploadProgressActiveRef.current = true;
+      let uploadDeferred = false;
+      const vorgangId = res.vorgang_id ?? null;
+      const correlationId = res.correlation_id?.trim() || null;
+      const persistUploadState = async (
+        state: "pending" | "uploading" | "done" | "failed",
+      ) => {
+        if (vorgangId == null && !correlationId) return;
         try {
-          const uploaded = await uploadToServer(res.base_output_dir, undefined, {
-            correlation_id: res.correlation_id?.trim() || null,
-            folder_name: res.base_filename?.trim() || null,
+          await setVorgangUploadState(state, {
+            vorgangId,
+            correlationId,
           });
-          uploadNote = uploaded.remote_path || uploaded.message || null;
-          serverUploaded = true;
-          setServerPhase("connected");
-        } catch (uploadErr) {
-          if (isCancellationError(uploadErr)) {
-            setServerPhase("connected");
-            setUploadProgress(null);
-            uploadProgressActiveRef.current = false;
-            setTaskProgress([]);
-            setPercent(0);
-            setStatus(t("progress.default.cancelled"));
-            showWarning(t("create.job.cancelled"));
-            return;
-          }
-          setServerPhase("error");
-          showError(String(uploadErr), t("app.upload.title"));
-          uploadNote = t("app.upload.failedNote");
-        } finally {
-          uploadProgressActiveRef.current = false;
+        } catch (e) {
+          console.error("upload_state update failed:", e);
+        }
+      };
+
+      if (config?.upload_to_server) {
+        if (!serverConnected) {
+          // Soft-ack offline create: keep upload_state=pending; no SMB this run.
+          uploadDeferred = true;
+          uploadNote = t("create.success.uploadPendingHint");
+        } else {
+          setStatus(t("app.upload.toServer"));
+          setTaskProgress([]);
+          setServerPhase("uploading");
           setUploadProgress(null);
+          uploadProgressActiveRef.current = true;
+          await persistUploadState("uploading");
+          try {
+            const uploaded = await uploadToServer(res.base_output_dir, undefined, {
+              correlation_id: correlationId,
+              folder_name: res.base_filename?.trim() || null,
+            });
+            uploadNote = uploaded.remote_path || uploaded.message || null;
+            serverUploaded = true;
+            await persistUploadState("done");
+            setServerPhase("connected");
+          } catch (uploadErr) {
+            if (isCancellationError(uploadErr)) {
+              await persistUploadState("pending");
+              setServerPhase("connected");
+              setUploadProgress(null);
+              uploadProgressActiveRef.current = false;
+              setTaskProgress([]);
+              setPercent(0);
+              setStatus(t("progress.default.cancelled"));
+              showWarning(t("create.job.cancelled"));
+              return;
+            }
+            await persistUploadState("failed");
+            setServerPhase("error");
+            showError(String(uploadErr), t("app.upload.title"));
+            uploadNote = t("app.upload.failedNote");
+          } finally {
+            uploadProgressActiveRef.current = false;
+            setUploadProgress(null);
+          }
         }
       }
 
       setCreateSuccess({
         result: res,
         serverUploaded,
+        uploadDeferred,
         uploadNote,
         vorname: kunde.vorname,
         nachname: kunde.nachname,
@@ -1703,6 +1810,10 @@ function App() {
       setTaskProgress([]);
       folderConflictAckRef.current = null;
       replaceExistingDirRef.current = false;
+      offlineCreateAckRef.current = false;
+      if (config?.upload_to_server) {
+        void refreshPendingUploadCount(true).catch(() => {});
+      }
 
       if (config?.auto_clear_files_after_creation) {
         videoCuts.clearUndoState();
@@ -1720,6 +1831,7 @@ function App() {
         lowMediaAckRef.current = null;
         folderConflictAckRef.current = null;
         replaceExistingDirRef.current = false;
+        offlineCreateAckRef.current = false;
       }
     } catch (e) {
       if (isCancellationError(e)) {
@@ -1753,6 +1865,205 @@ function App() {
       // SD backup/import and QR: dedicated message when the job returns.
     } catch (e) {
       if (!isCancellationError(e)) showError(String(e));
+    }
+  }
+
+  /** Historie „Upload nachholen“ — reuses Create SMB pipeline + progress (Phase 31.2). */
+  async function retryVorgangUpload(entry: VorgangEntry) {
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
+      return;
+    }
+    await runVorgangUploadAttempt(entry, { quietSuccess: false });
+    void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
+      () => {},
+    );
+  }
+
+  /**
+   * Phase 31.3: sequential bulk retry. Soft extras → skip (MVP).
+   * Server down / cancel mid-bulk → abort remainder; done rows stay done.
+   */
+  async function retryVorgangUploadsBulk(entries: VorgangEntry[]) {
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
+      return;
+    }
+    if (entries.length === 0) return;
+
+    const summary: BulkUploadSummary = {
+      ok: 0,
+      skipped: 0,
+      failed: 0,
+      aborted: false,
+      remaining: 0,
+    };
+
+    setBusy(true);
+    jobCancelRequestedRef.current = false;
+    uploadProgressActiveRef.current = false;
+    setTaskProgress([]);
+    setPercent(0);
+    setCreateFailed(false);
+
+    try {
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i]!;
+        if (!useServerStore.getState().connected) {
+          summary.aborted = true;
+          summary.remaining = entries.length - i;
+          break;
+        }
+        if (jobCancelRequestedRef.current) {
+          summary.aborted = true;
+          summary.remaining = entries.length - i;
+          break;
+        }
+
+        setStatus(
+          t("history.upload.bulkProgress", {
+            current: i + 1,
+            total: entries.length,
+            guest: entry.gast,
+          }),
+        );
+
+        let preflightOk = false;
+        try {
+          const pf = await preflightVorgangUpload(entry.id);
+          // MVP: extra files count as skip (same as hard) — use single retry for soft-ack.
+          const hasExtras = pf.soft_warnings.some((w) => w.code === "extra_file");
+          if (!pf.ok || pf.hard_errors.length > 0 || hasExtras) {
+            summary.skipped += 1;
+            continue;
+          }
+          preflightOk = true;
+        } catch {
+          summary.skipped += 1;
+          continue;
+        }
+        if (!preflightOk) continue;
+
+        const result = await runVorgangUploadAttempt(entry, {
+          quietSuccess: true,
+        });
+        if (result === "ok") {
+          summary.ok += 1;
+        } else if (result === "cancelled") {
+          summary.aborted = true;
+          summary.remaining = entries.length - i;
+          break;
+        } else {
+          summary.failed += 1;
+          if (!useServerStore.getState().connected) {
+            summary.aborted = true;
+            summary.remaining = entries.length - (i + 1);
+            break;
+          }
+        }
+      }
+    } finally {
+      uploadProgressActiveRef.current = false;
+      setUploadProgress(null);
+      jobCancelRequestedRef.current = false;
+      setBusy(false);
+      void resetWorkflowCancel().catch(() => {});
+      void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
+        () => {},
+      );
+    }
+
+    setBulkUploadSummary(summary);
+  }
+
+  /** Shared SMB attempt used by single retry and bulk (Phase 31.2 / 31.3). */
+  async function runVorgangUploadAttempt(
+    entry: VorgangEntry,
+    opts: { quietSuccess: boolean },
+  ): Promise<"ok" | "failed" | "cancelled"> {
+    const correlationId = entry.correlation_id?.trim() || null;
+    const vorgangId = entry.id;
+    const persistUploadState = async (
+      state: "pending" | "uploading" | "done" | "failed",
+    ) => {
+      try {
+        await setVorgangUploadState(state, {
+          vorgangId,
+          correlationId,
+        });
+        useHistoryStore.getState().patchVorgang(vorgangId, (row) => ({
+          ...row,
+          upload_state: state,
+        }));
+      } catch (e) {
+        console.error("upload_state update failed:", e);
+      }
+    };
+
+    const ownBusy = !opts.quietSuccess;
+    if (ownBusy) {
+      setBusy(true);
+      jobCancelRequestedRef.current = false;
+      uploadProgressActiveRef.current = false;
+      setTaskProgress([]);
+      setPercent(0);
+      setCreateFailed(false);
+      setStatus(t("app.upload.toServer"));
+    }
+
+    setServerPhase("uploading");
+    setUploadProgress(null);
+    uploadProgressActiveRef.current = true;
+    await persistUploadState("uploading");
+
+    try {
+      await resetWorkflowCancel();
+      const uploaded = await uploadToServer(entry.base_output_dir, undefined, {
+        correlation_id: correlationId,
+        folder_name: entry.base_filename?.trim() || null,
+      });
+      await persistUploadState("done");
+      setServerPhase("connected");
+      setPercent(100);
+      if (!opts.quietSuccess) {
+        setStatus(t("create.job.done"));
+        showSuccess(
+          uploaded.remote_path || uploaded.message || t("history.upload.retryDone"),
+          t("history.upload.retryTitle"),
+          { autoCloseSecs: 8 },
+        );
+      }
+      return "ok";
+    } catch (uploadErr) {
+      if (isCancellationError(uploadErr)) {
+        await persistUploadState("pending");
+        setServerPhase("connected");
+        setUploadProgress(null);
+        uploadProgressActiveRef.current = false;
+        if (!opts.quietSuccess) {
+          setTaskProgress([]);
+          setPercent(0);
+          setStatus(t("progress.default.cancelled"));
+          showWarning(
+            t("history.upload.retryCancelled"),
+            t("history.upload.retryTitle"),
+          );
+        }
+        return "cancelled";
+      }
+      await persistUploadState("failed");
+      setServerPhase("error");
+      if (!opts.quietSuccess) {
+        showError(String(uploadErr), t("history.upload.retryTitle"));
+        setStatus(t("app.upload.failedNote"));
+      }
+      return "failed";
+    } finally {
+      if (ownBusy) {
+        uploadProgressActiveRef.current = false;
+        setUploadProgress(null);
+        jobCancelRequestedRef.current = false;
+        setBusy(false);
+        void resetWorkflowCancel().catch(() => {});
+      }
     }
   }
 
@@ -1812,6 +2123,8 @@ function App() {
     folderConflictAckRef.current = null;
     replaceExistingDirRef.current = false;
     setFolderConflictConfirm(null);
+    offlineCreateAckRef.current = false;
+    setOfflineCreateConfirm(null);
     showSessionResetToast(
       t("common.actions.reset"),
       t("app.session.resetDone"),
@@ -1917,6 +2230,10 @@ function App() {
         }}
         processedOpen={processedOpen}
         setProcessedOpen={setProcessedOpen}
+        onRetryVorgangUpload={(entry) => void retryVorgangUpload(entry)}
+        onBulkRetryUploads={(entries) => void retryVorgangUploadsBulk(entries)}
+        bulkUploadSummary={bulkUploadSummary}
+        onBulkUploadSummaryClose={() => setBulkUploadSummary(null)}
         settingsSdActions={settingsSdActions}
         onSdSelectorClose={() => {
           sdEnrichGenRef.current += 1;
@@ -2018,6 +2335,8 @@ function App() {
         onLowMediaChoice={onLowMediaChoice}
         folderConflictConfirm={folderConflictConfirm}
         onFolderConflictChoice={onFolderConflictChoice}
+        offlineCreateConfirm={offlineCreateConfirm}
+        onOfflineCreateChoice={onOfflineCreateChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}

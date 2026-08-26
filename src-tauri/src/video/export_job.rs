@@ -69,6 +69,9 @@ pub struct CreateJobResult {
     pub reused_preview: bool,
     /// AMS handoff correlation id (empty when manual Lokal / skip_marker_file).
     pub correlation_id: String,
+    /// History row id after `record_create_job` (None until persisted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vorgang_id: Option<i64>,
 }
 
 fn emit(on_progress: &ProgressCallback, percent: f64, status: &str) {
@@ -659,6 +662,7 @@ pub fn create_job(
         body_clips,
         reused_preview,
         correlation_id,
+        vorgang_id: None,
     })
 }
 

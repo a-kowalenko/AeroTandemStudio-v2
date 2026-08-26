@@ -1203,7 +1203,7 @@ pub async fn create_job(
     .map_err(|e| e.to_string())?;
 
     match result {
-        Ok(res) => {
+        Ok(mut res) => {
             logging::info(
                 "create",
                 format!(
@@ -1216,8 +1216,8 @@ pub async fn create_job(
                     res.encoder
                 ),
             );
-            if let Err(e) = crate::storage::vorgang_history::VorgangHistoryStore::open_default()
-                .and_then(|store| {
+            match crate::storage::vorgang_history::VorgangHistoryStore::open_default().and_then(
+                |store| {
                     store.record_create_job(
                         &kunde_for_history,
                         &videos_for_history,
@@ -1225,13 +1225,19 @@ pub async fn create_job(
                         &res,
                         &manual_entry_mode_for_history,
                         qr_preview_for_history.as_ref(),
+                        config_for_ready.upload_to_server,
                     )
-                })
-            {
-                logging::error(
-                    "vorgang_history",
-                    format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
-                );
+                },
+            ) {
+                Ok(id) => {
+                    res.vorgang_id = Some(id);
+                }
+                Err(e) => {
+                    logging::error(
+                        "vorgang_history",
+                        format!("Vorgang-Historie konnte nicht gespeichert werden: {e}"),
+                    );
+                }
             }
             // Optional AMS Bridge wake after Manifest + _fertig.txt (P3). Soft when down.
             // When upload_to_server is enabled, handoff/ready is sent after successful SMB upload.

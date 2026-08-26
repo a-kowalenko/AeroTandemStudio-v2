@@ -464,6 +464,8 @@
       "previewPhotos": "{{count}} preview photo created",
       "previewPhotosMany": "{{count}} preview photos created",
       "uploaded": "Uploaded to server",
+      "uploadPending": "Created locally — upload pending",
+      "uploadPendingHint": "Retry the upload later from History.",
       "encoder": "Encoder",
       "dirCreated": "Directory was created",
       "openLocation": "Go to location",
@@ -664,6 +666,42 @@
       "hintEncode": "“Replace folder” deletes its contents and creates again.",
       "hintUpload": "“Replace folder” deletes its contents and creates again — only current media will be uploaded.",
       "replace": "Replace folder and create"
+    },
+    "offlineCreate": {
+      "title": "Server unreachable",
+      "body": "Upload is on, but the server is offline. You can still create the job locally; the upload will stay pending.",
+      "hint": "Retry later from History when the server is back.",
+      "proceed": "Create locally anyway"
+    },
+    "uploadExtraFiles": {
+      "title": "Extra files in folder",
+      "body": "The folder for “{{guest}}” has files that are not listed in the manifest. Upload anyway?",
+      "hint": "Extra files will be included in the upload.",
+      "proceed": "Upload anyway"
+    },
+    "uploadPreflightFail": {
+      "title": "Upload not possible",
+      "body": "The job “{{guest}}” cannot be retried:",
+      "codes": {
+        "local_vorgang": "Local job (no AMS handoff)",
+        "already_done": "Upload already completed",
+        "ams_completed": "AMS handoff already completed",
+        "folder_missing": "Output folder missing",
+        "folder_empty": "Output folder is empty",
+        "manifest_missing": "Manifest missing",
+        "manifest_invalid": "Manifest invalid",
+        "marker_missing": "Ready marker missing",
+        "file_missing": "File missing",
+        "size_mismatch": "File size mismatch",
+        "extra_file": "Extra file"
+      }
+    },
+    "bulkUploadSummary": {
+      "title": "Bulk upload finished",
+      "ok": "{{count}} succeeded",
+      "skipped": "{{count}} skipped",
+      "failed": "{{count}} upload errors",
+      "aborted": "{{count}} not started (cancelled or server offline)."
     }
   },
   "splash": {
@@ -798,7 +836,7 @@
       "fileProgress": "File {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleBlockedOn": "Upload is on in settings, server not connected",
+      "titleBlockedOn": "Upload on, server offline — local create available",
       "titleBlockedOff": "Server not connected — upload not possible",
       "titleActive": "On — job will be uploaded after create",
       "titleOff": "Upload off — turn on to send the job to the server"
@@ -1085,6 +1123,27 @@
     },
     "emptyFilter": "No jobs for this status.",
     "emptyJobs": "No jobs yet. They appear here after creating.",
+    "upload": {
+      "pending": "Upload pending",
+      "uploading": "Uploading",
+      "failed": "Upload failed",
+      "retryBtn": "Retry upload",
+      "retryTitle": "Retry upload",
+      "retryTitleOk": "Start the pending upload now",
+      "retryOffline": "Server offline — upload only when the connection is back",
+      "retryDone": "Upload completed successfully.",
+      "retryCancelled": "Upload cancelled.",
+      "pendingBadgeTooltip": "{{count}} uploads pending",
+      "bulkBtn": "Process pending uploads…",
+      "bulkTitle": "Pending uploads",
+      "bulkTitleOk": "Start {{count}} uploads one after another",
+      "bulkOffline": "Server offline — bulk upload only when the connection is back",
+      "bulkConfirmTitle": "Process pending uploads?",
+      "bulkConfirmBody": "{{count}} jobs will upload one after another. Jobs with preflight problems are skipped.",
+      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
+      "reconnectToastTitle": "Server back online",
+      "reconnectToastBody": "{{count}} uploads pending — retry from History."
+    },
     "selectJob": "Select a job",
     "previewReuse": "Preview reuse",
     "customer": "Customer: {{id}}",

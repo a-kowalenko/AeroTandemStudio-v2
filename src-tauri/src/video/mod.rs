@@ -23,4 +23,5 @@ pub mod processor;
 pub mod progress;
 pub mod reencode_confirm;
 pub mod rotate;
+pub mod upload_preflight;
 pub mod watermark;
