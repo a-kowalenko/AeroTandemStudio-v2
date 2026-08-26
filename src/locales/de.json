@@ -14,6 +14,7 @@
       "apply": "Übernehmen",
       "create": "Erstellen",
       "createAndUpload": "Erstellen & Upload",
+      "createAndUploadLater": "Erstellen · Upload später",
       "history": "Historie",
       "settings": "Einstellungen",
       "pickFolder": "Ordner wählen",
@@ -836,8 +837,9 @@
       "fileProgress": "Datei {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleBlockedOn": "Upload an, Server offline — lokal erstellen möglich",
-      "titleBlockedOff": "Server nicht verbunden — Upload nicht möglich",
+      "titleLater": "Upload · später",
+      "titleBlockedOn": "Upload an, Server offline — lokal erstellen, Upload später nachholen",
+      "titleBlockedOff": "Server offline — Upload kann vorgemerkt werden (lokal erstellen, später nachholen)",
       "titleActive": "Aktiv — Vorgang wird nach Erstellen hochgeladen",
       "titleOff": "Upload aus — einschalten, wenn der Vorgang auf den Server soll"
     },
@@ -846,6 +848,7 @@
       "clear": "Leeren",
       "clearTitle": "Nach Erstellen Formular und Medien zurücksetzen",
       "createUploadTitle": "Vorgang erstellen und auf den Server hochladen",
+      "createUploadLaterTitle": "Lokal erstellen — Upload bleibt ausstehend bis der Server wieder da ist",
       "uploadAria": "Server-Upload"
     },
     "ready": {

@@ -57,7 +57,7 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+**Nächste Phase:** [Phase 32 — SMB Quiet-Poll](#phase-32--smb-quiet-poll-parity-mit-ams-health) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
 *(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
 *(Phase 31.2 Prefight + Upload nachholen erledigt.)*  
 *(Phase 31.1 Soft-Block Create + upload_state erledigt.)*  
@@ -1873,6 +1873,86 @@ src/locales/de.json | en.json | es-MX.json
 
 ---
 
+### Phase 32 — SMB Quiet-Poll (Parity mit AMS-Health)
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** Phase 10 (`test_server_connection`), bestehender AMS-Poll (`useAmsBridgeHealthPoll`, `AMS_HEALTH_POLL_MS = 45_000`); Phase 31.3 (Reconnect-Toast nutzt `serverConnected`)  
+**Ziel:** SMB-Pfad im gleichen Rhythmus wie AMS **leise** revalidieren, damit Header-Status, Offline-Create und Reconnect-Toast nicht auf einem einmaligen Boot-Check hängen bleiben.
+
+> Eine Agent-Session = nur Phase 32. Kein Auto-Upload, keine AMS-API-Änderung, kein Intervall unter 45 s.
+
+#### Ausgangslage (Ist)
+
+- **AMS:** Boot-Check + alle 45 s quiet `checkHealth` + bei Tab wieder sichtbar
+- **SMB:** einmal bei Start / Config-Änderung; manuell in Settings/Wizard; Header-Retry prüft beide parallel (laut)
+- `serverStore.checkConnection` hat **keinen** Quiet-Mode (setzt immer `phase: "checking"`)
+- Phase 31.3 Reconnect-Toast reagiert auf `serverConnected` — ohne SMB-Poll oft erst nach manuellem Retry
+
+#### Out of Scope
+
+- Auto-Upload / Background-Drain bei Reconnect
+- Anderes Intervall als AMS (kein separates SMB-Intervall)
+- Gegenseitige Trigger („SMB ok → AMS prüfen“ / umgekehrt)
+- Umbau von `runAmsAutoConnect`
+- Änderungen an `test_server_connection` (Backend bleibt)
+- Legacy-Projekt
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Rhythmus | Gleich wie AMS: `AMS_HEALTH_POLL_MS` (45 s) + `visibilitychange` → visible |
+| 2 | Was | Pro Tick **unabhängig**: SMB wenn `server_url` gesetzt; AMS wenn Bridge konfiguriert. Parallel ok |
+| 3 | Quiet SMB | Analog AMS: Label/Phase bleiben; Flag `refreshing`; Ergebnis aktualisiert `connected` / Dot — kein dauerndes „Prüfe…“ |
+| 4 | Skip | Tab unsichtbar; SMB `phase === "uploading"`; bereits laufender Check (`checking` / `refreshing`) |
+| 5 | Kopplung | Keine Extra-Polls aus dem Status des anderen. Auto-Connect unverändert |
+| 6 | Hook | AMS-Hook zu gemeinsamem Poll erweitern (z. B. `useServerHealthPoll`) oder Orchestrator; App bindet einmal |
+| 7 | Spinner | Quiet SMB `refreshing` wie AMS: verzögerter Spinner; laut nur Boot / Retry / Settings |
+| 8 | Boot | SMB-Boot-Check in denselben Hook ziehen **oder** App-`useEffect` behalten — **kein** doppelter lauter Start-Check |
+| 9 | i18n | Nur bei neuen Strings; sonst keine |
+
+#### Scope
+
+- [ ] `serverStore`: `checkConnection({ quiet?: boolean })` + `refreshing` + Stale-Request-Guard (wie AMS)
+- [ ] Gemeinsamer Poll-Hook: 45 s + visibility; quiet SMB + quiet AMS je nach Config
+- [ ] Skip-Regeln (hidden / uploading / busy)
+- [ ] `ServerStatusIndicator`: quiet SMB `refreshing` in Spinner-Logik
+- [ ] Boot-Check deduplizieren
+- [ ] Regression: Header-Retry bleibt laut für beide
+- [ ] Manuell: SMB fällt nach Boot weg → Dot wird rot ohne Flackern; während Upload kein Quiet-Poll; Hintergrund-Tab → kein Poll; Reconnect-Toast kann nach Quiet-OK feuern
+
+#### Referenzen
+
+```
+src/hooks/useAmsBridgeHealthPoll.ts
+src/lib/amsBridgeStatus.ts
+src/store/amsBridgeStore.ts
+src/store/serverStore.ts
+src/App.tsx
+src/components/ServerStatusIndicator.tsx
+```
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 32 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 32 (SMB Quiet-Poll Parity mit AMS). Kein Auto-Upload, kein Intervall < 45s,
+keine SMB↔AMS Kopplung. Quiet-Mode analog AMS. Danach cargo test && npm run check.
+```
+
+#### Akzeptanz
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Mit `server_url`: SMB-Status ~alle 45 s und bei Tab-Focus, ohne dauerndes „Prüfe…“ |
+| 2 | AMS-Poll unverändert (weiter 45 s quiet) |
+| 3 | Während SMB-Upload kein Quiet-Recheck |
+| 4 | Header-Klick prüft weiter beide laut |
+| 5 | Poll startet keinen Auto-Upload und keinen AMS-Auto-Connect |
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1980,6 +2060,7 @@ cargo test
 | 31.1 | Upload an + Server offline → Soft Confirm → lokal erstellen → `upload_state=pending` |
 | 31.2 | Historie „Upload nachholen“; Prefight fehlt Datei → Hard fail; Extra-Datei → Warnung; ok → SMB + Handoff |
 | 31.3 | Mehrere pending sequentiell; kaputter Ordner skip; Summary; Reconnect ohne Auto-Upload |
+| 32 | SMB Quiet-Poll: Status ~45 s + Tab-Focus; kein Flackern; Skip während Upload; Header-Retry laut |
 
 ### End-to-End (Phase 11)
 
@@ -2062,10 +2143,11 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
 | 29 | Low-Media Confirm vor Erstellen | ✅ |
 | 30 | Ausgabeordner-Konflikt vor Erstellen | ✅ |
-| 31 | Offline-Create & Upload nachholen | ⬜ |
+| 31 | Offline-Create & Upload nachholen | ✅ |
 | 31.1 | Soft-Block Create + `upload_state` | ✅ |
 | 31.2 | Prefight + Upload nachholen (pro Vorgang) | ✅ |
-| 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ⬜ |
+| 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ✅ |
+| 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2082,8 +2164,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Linux (Phase 15):** zusätzlich `@docs/LINUX_BUILD.md` — siehe Prompt dort bzw. unten in der Datei.
 
-**Phase 31:** jeweils nur eine Unterphase (`31.1` / `31.2` / `31.3`) — Prompt im Phasenabschnitt.
+**Phase 32:** Prompt im Phasenabschnitt (SMB Quiet-Poll).
 
 ---
 
-*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 31 Plan (Offline-Create & Upload nachholen)*
+*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 32 Plan (SMB Quiet-Poll)*

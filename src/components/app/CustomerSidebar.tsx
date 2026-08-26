@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
+  CloudOff,
   CloudUpload,
   ExternalLink,
   FolderOpen,
@@ -76,18 +77,20 @@ export function CustomerSidebar({
   const sessionStripLocked = busy;
   const formModeToggleLocked = busy || pipelineActive;
 
-  const uploadActive = Boolean(config?.upload_to_server && serverConnected);
-  const uploadBlocked = Boolean(config?.upload_to_server) && !serverConnected;
-  const uploadNudge = serverConnected && !config?.upload_to_server;
+  const uploadIntentOn = Boolean(config?.upload_to_server);
+  const uploadActive = Boolean(uploadIntentOn && serverConnected);
+  const uploadBlocked = Boolean(uploadIntentOn && !serverConnected);
+  const uploadNudge = serverConnected && !uploadIntentOn;
   const autoClearAfterCreate = Boolean(config?.auto_clear_files_after_creation);
-  const uploadTitle = !serverConnected
-    ? uploadBlocked
-      ? t("app.upload.titleBlockedOn")
-      : t("app.upload.titleBlockedOff")
-    : uploadActive
-      ? t("app.upload.titleActive")
-      : t("app.upload.titleOff");
-
+  const uploadTitle = uploadBlocked
+    ? t("app.upload.titleBlockedOn")
+    : !serverConnected
+      ? t("app.upload.titleBlockedOff")
+      : uploadActive
+        ? t("app.upload.titleActive")
+        : t("app.upload.titleOff");
+  const createUploadLater = uploadBlocked;
+  const createUploadNow = uploadActive;
   return (
     <aside className="ats-sidebar-bg flex w-full max-w-md flex-col border-r border-border backdrop-blur-md sm:w-[400px]">
       <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
@@ -115,24 +118,34 @@ export function CustomerSidebar({
                 "flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors",
                 uploadActive
                   ? "border-primary/40 bg-primary/10 text-primary"
-                  : uploadNudge
-                    ? "border-destructive bg-destructive/20 text-destructive"
-                    : uploadBlocked
-                      ? "border-warning/40 bg-warning/10 text-warning"
+                  : uploadBlocked
+                    ? "border-warning/40 bg-warning/10 text-warning"
+                    : uploadNudge
+                      ? "border-destructive bg-destructive/20 text-destructive"
                       : "border-border bg-card-elevated/80 text-muted",
-                (!serverConnected || uiLocked || !config) && "cursor-not-allowed",
+                (uiLocked || !config) && "cursor-not-allowed",
               )}
               title={uploadTitle}
             >
-              <CloudUpload className="h-3.5 w-3.5" aria-hidden />
-              {t("app.upload.title")}
+              {uploadBlocked ? (
+                <CloudOff className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <CloudUpload className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {uploadBlocked
+                ? t("app.upload.titleLater")
+                : t("app.upload.title")}
               <Switch
                 id="vorgang-upload"
-                className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"
-                checked={uploadActive}
-                disabled={uiLocked || !config || !serverConnected}
+                className={cn(
+                  "h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3",
+                  uploadBlocked &&
+                    "data-[state=checked]:bg-warning disabled:opacity-80",
+                )}
+                checked={uploadIntentOn}
+                disabled={uiLocked || !config}
                 onCheckedChange={(v) => {
-                  if (!config || !serverConnected) return;
+                  if (!config) return;
                   void persistConfig({
                     ...config,
                     upload_to_server: v === true,
@@ -298,15 +311,22 @@ export function CustomerSidebar({
                 }
               }}
               title={
-                config?.upload_to_server && serverConnected
+                createUploadNow
                   ? t("app.job.createUploadTitle")
-                  : undefined
+                  : createUploadLater
+                    ? t("app.job.createUploadLaterTitle")
+                    : undefined
               }
             >
-              {config?.upload_to_server && serverConnected ? (
+              {createUploadNow ? (
                 <>
                   <CloudUpload className="h-4 w-4" aria-hidden />
                   {t("common.actions.createAndUpload")}
+                </>
+              ) : createUploadLater ? (
+                <>
+                  <CloudOff className="h-4 w-4" aria-hidden />
+                  {t("common.actions.createAndUploadLater")}
                 </>
               ) : (
                 t("common.actions.create")

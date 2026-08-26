@@ -14,6 +14,7 @@
       "apply": "Apply",
       "create": "Create",
       "createAndUpload": "Create & upload",
+      "createAndUploadLater": "Create · upload later",
       "history": "History",
       "settings": "Settings",
       "pickFolder": "Choose folder",
@@ -836,8 +837,9 @@
       "fileProgress": "File {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleBlockedOn": "Upload on, server offline — local create available",
-      "titleBlockedOff": "Server not connected — upload not possible",
+      "titleLater": "Upload · later",
+      "titleBlockedOn": "Upload on, server offline — create locally, retry upload later",
+      "titleBlockedOff": "Server offline — you can still enable upload (create locally, upload later)",
       "titleActive": "On — job will be uploaded after create",
       "titleOff": "Upload off — turn on to send the job to the server"
     },
@@ -846,6 +848,7 @@
       "clear": "Clear",
       "clearTitle": "Reset form and media after creating",
       "createUploadTitle": "Create job and upload to the server",
+      "createUploadLaterTitle": "Create locally — upload stays pending until the server is back",
       "uploadAria": "Server upload"
     },
     "ready": {
