@@ -75,4 +75,4 @@ libc = "0.2"
 debug = 1
 
 [profile.dev.package."*"]
-debug = 1
+debug = 0
