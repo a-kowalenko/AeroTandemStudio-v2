@@ -1,8 +1,7 @@
-# CI checks — lightweight (no Tauri bundle, no Rust tests).
+# CI checks — lightweight PR validation on Windows.
 #
-# Full Windows/macOS app builds run only in `release.yml` (version tags).
-# Rust unit tests: lokal mit `npm run test:rust` (nicht in CI — zu langsam).
-# This workflow does NOT run on pushes to master.
+# Full Windows/macOS/Linux app bundles run only in `release.yml` (version tags).
+# Rust unit tests still run here to keep backend regressions visible.
 
 name: test
 
@@ -27,8 +26,22 @@ jobs:
           node-version: lts/*
           cache: npm
 
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Typecheck / frontend build
+      - name: Frontend build
         run: npm run build
+
+      - name: Rust unit tests
+        run: npm run test:rust
+
+      - name: Release script tests
+        run: npm run test:scripts

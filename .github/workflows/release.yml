@@ -8,7 +8,7 @@
 #   TAURI_SIGNING_PRIVATE_KEY          — updater private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password
 #
-# Stable tags: after all platform builds succeed, promote-latest sets GitHub Latest.
+# Stable tags: after merge-updater-manifest, promote-latest sets GitHub Latest.
 # Prerelease tags (vX.Y.Z-beta.N / -rc.N): marked prerelease, never Latest.
 #
 # The public releases repo must have at least one commit on its default branch
@@ -184,24 +184,21 @@ jobs:
       matrix:
         include:
           - platform: windows-latest
-            args: ""
+            # NSIS only — MSI/WiX rejects SemVer pre-release (e.g. 0.3.9-beta.1).
+            args: "--bundles nsis"
             ffmpeg_arch: ""
-            bundles: ""
           # Apple Silicon (M1+) — native on macos-latest (arm64) + static arm64 FFmpeg
           - platform: macos-latest
             args: "--target aarch64-apple-darwin"
             ffmpeg_arch: arm64
-            bundles: ""
           # Intel Mac — cross-compile from arm64 runner + evermeet x86_64 FFmpeg
           - platform: macos-latest
             args: "--target x86_64-apple-darwin"
             ffmpeg_arch: x86_64
-            bundles: ""
           # Linux x86_64 AppImage (WebKitGTK / patchelf via apt)
           - platform: ubuntu-22.04
             args: "--bundles appimage"
             ffmpeg_arch: ""
-            bundles: appimage
 
     runs-on: ${{ matrix.platform }}
 
@@ -280,15 +277,96 @@ jobs:
           releaseBody: ${{ needs.prepare.outputs.release_notes }}
           releaseDraft: false
           prerelease: ${{ needs.prepare.outputs.is_prerelease == 'true' }}
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
+          # latest.json is merged in merge-updater-manifest (parallel jobs overwrite each other).
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
-  # After all platform assets are uploaded, mark stable releases as Latest
+      # tauri-action uploads DMG/NSIS/AppImage; macOS updater .app.tar.gz (+ .sig) need
+      # an explicit upload when bundle.targets is narrowed — belt-and-suspenders with
+      # targets "all". merge-updater-manifest requires these on the release.
+      - name: Upload macOS updater bundles
+        if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPO="${RELEASES_OWNER}/${RELEASES_REPO}"
+          shopt -s nullglob
+          files=()
+          for dir in \
+            src-tauri/target/release/bundle/macos \
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
+            src-tauri/target/x86_64-apple-darwin/release/bundle/macos; do
+            for f in "$dir"/*.app.tar.gz "$dir"/*.app.tar.gz.sig; do
+              if [ -f "$f" ]; then
+                files+=("$f")
+              fi
+            done
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "ERROR: No macOS .app.tar.gz updater bundles found under src-tauri/target" >&2
+            find src-tauri/target -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' 2>/dev/null || true
+            exit 1
+          fi
+          echo "Uploading macOS updater bundles:"
+          printf '  %s\n' "${files[@]}"
+          gh release upload "${TAG}" "${files[@]}" --repo "${REPO}" --clobber
+
+  # Merge signed updater manifest from all release assets (fixes macOS keys lost when
+  # the last matrix job overwrote latest.json with Windows/Linux-only entries).
+  merge-updater-manifest:
+    needs: [prepare, release]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Merge and upload latest.json
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Missing secret RELEASES_GITHUB_TOKEN" >&2
+            exit 1
+          fi
+          REPO="${RELEASES_OWNER}/${RELEASES_REPO}"
+          ASSETS="$(gh release view "${TAG}" --repo "${REPO}" --json assets --jq '.assets[].name')"
+          echo "Release assets on ${TAG}:"
+          echo "${ASSETS}"
+          for pattern in '_aarch64\.app\.tar\.gz$' '_x64\.app\.tar\.gz$' '_x64-setup\.exe$' '_amd64\.AppImage$'; do
+            if ! echo "${ASSETS}" | grep -qE "${pattern}"; then
+              echo "ERROR: Missing release asset matching /${pattern}/ — run failed matrix jobs first." >&2
+              exit 1
+            fi
+          done
+          NOTES_FILE="$(mktemp)"
+          node scripts/changelog.mjs extract "${TAG#v}" > "${NOTES_FILE}" || true
+          node scripts/merge-updater-manifest.mjs \
+            --tag "${TAG}" \
+            --out latest.json \
+            --notes-file "${NOTES_FILE}" \
+            --upload
+          rm -f "${NOTES_FILE}"
+
+  # After merged latest.json is on the release, mark stable releases as Latest
   # so /releases/latest/download/latest.json points at a complete build.
   promote-latest:
-    needs: [prepare, release]
-    if: needs.prepare.outputs.is_prerelease == 'false'
+    needs: [prepare, merge-updater-manifest]
+    if: needs.prepare.outputs.is_prerelease == 'false' && needs.merge-updater-manifest.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (semver helper)

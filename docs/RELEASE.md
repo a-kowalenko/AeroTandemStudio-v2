@@ -20,7 +20,7 @@ Quelle der Body: Abschnitt in `CHANGELOG.md` zur Version.
 |--------|---------|
 | `RELEASES_GITHUB_TOKEN` | ja — PAT, Contents R/W auf Releases-Repo |
 | `TAURI_SIGNING_PRIVATE_KEY` | ja |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | ja (Key ist verschlüsselt) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | ja (Key ist verschlüsselt; optional wenn Key ohne Passwort) |
 | Apple / Windows Authenticode | nein (optional, kostet) |
 
 ## Release-Notes (`CHANGELOG.md`)
@@ -124,15 +124,19 @@ Das Skript setzt die Version in `package.json`, Locks, `tauri.conf.json`, `Cargo
 ### CI-Verhalten
 
 ```text
-prepare → release (Win + 2× Mac + Linux) → promote-latest (nur Stable)
+prepare → release (Win + 2× Mac + Linux) → merge-updater-manifest → promote-latest (nur Stable)
 ```
 
 | Tag | GitHub | Latest |
 |-----|--------|--------|
 | `v0.3.9-beta.1` | Prerelease | nein |
-| `v0.3.9` | Release | **ja**, automatisch nach grünem Matrix-Build (`promote-latest`) |
+| `v0.3.9` | Release | **ja**, automatisch nach Merge von `latest.json` (`promote-latest`) |
+
+`latest.json` wird **nicht** von jedem Matrix-Job hochgeladen (Race/Overwrite), sondern am Ende per `scripts/merge-updater-manifest.mjs` aus allen Release-Assets zusammengeführt — auch bei Beta-Tags (eigene Manifest-URL am Tag).
 
 `promote-latest` startet von selbst — kein manueller Trigger. Voraussetzung: Asset `latest.json` vorhanden; ältere Stable-Tags demote kein neueres Latest.
+
+Kaputtes Manifest auf bestehendem Tag reparieren (ohne Neu-Build): Actions → **repair-updater-manifest** → Tag z. B. `v0.3.9` oder `v0.3.9-beta.1`.
 
 Beispiel-Timeline:
 
@@ -162,6 +166,14 @@ macOS erscheint als **zwei** DMGs (Tauri-Namensschema):
 „Dieses Programm wird auf diesem Mac nicht unterstützt“ = meist falsche Architektur (Intel braucht `_x64.dmg`).
 
 Linux: **AppImage** (`…_amd64.AppImage` o. ä.) — Details: `docs/LINUX_BUILD.md`.
+
+## Plattform-Artefakte
+
+| OS | Bundle |
+|----|--------|
+| Windows | NSIS `-setup.exe` (+ Updater-Signatur); kein MSI — CI setzt `--bundles nsis` (WiX/`‑beta.N`) |
+| macOS | `.dmg` (aarch64 + x64) + `.app.tar.gz` (+ `.sig`) für Auto-Update; CI lädt Updater-Bundles explizit hoch |
+| Linux | `.AppImage` (amd64) |
 
 ## Hinweise
 
