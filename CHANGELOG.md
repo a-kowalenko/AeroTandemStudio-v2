@@ -8,6 +8,8 @@ Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-26
+
 ### Neu
 
 - Vor „Vorgang erstellen“ Hinweis, wenn der Ausgabeordner schon Dateien enthält — mit Option, den Ordner zu ersetzen und neu zu erstellen
