@@ -219,6 +219,43 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         <p className="text-[11px] leading-snug text-muted">
           {t("settings.sd.import.usbCamerasHint")}
         </p>
+        <div
+          className={cn(
+            "space-y-1.5 pl-1",
+            !draft.usb_camera_import_enabled && "pointer-events-none opacity-50",
+          )}
+        >
+          <Label>{t("settings.sd.import.usbImportMode")}</Label>
+          <Select
+            value={
+              draft.usb_import_mode === "volume_only"
+                ? "volume_only"
+                : draft.usb_import_mode === "mtp_preferred"
+                  ? "mtp_preferred"
+                  : "auto"
+            }
+            disabled={!draft.usb_camera_import_enabled}
+            onValueChange={(v) => patch("usb_import_mode", v)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">
+                {t("settings.sd.import.usbImportModeAuto")}
+              </SelectItem>
+              <SelectItem value="volume_only">
+                {t("settings.sd.import.usbImportModeVolume")}
+              </SelectItem>
+              <SelectItem value="mtp_preferred">
+                {t("settings.sd.import.usbImportModeMtp")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] leading-snug text-muted">
+            {t("settings.sd.import.usbImportModeHint")}
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection

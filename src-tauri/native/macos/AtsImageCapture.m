@@ -425,12 +425,29 @@ int ats_ica_has_held(void) {
     return [n containsString:@"gopro"] || [n containsString:@"hero"];
   }
   if ([h containsString:@"dji"] || [h containsString:@"osmo"]) {
-    return [n containsString:@"dji"] || [n containsString:@"osmo"];
+    return [n containsString:@"dji"] || [n containsString:@"osmo"] || [n containsString:@"sd_card"];
   }
   if ([h containsString:@"insta"]) {
     return [n containsString:@"insta"];
   }
   return [n containsString:h] || [h containsString:n];
+}
+
+- (NSString *)browseFailureInstructions {
+  NSString *h = [self.nameHint lowercaseString] ?: @"";
+  if ([h containsString:@"dji"] || [h containsString:@"osmo"]) {
+    return @"Bitte „Fotos“ und „Bildübernahme“ schließen, an der DJI USB-Modus "
+           @"„Dateiübertragung“ wählen, Kabel kurz ab/an — oder MicroSD im Kartenleser nutzen. "
+           @"Systemeinstellungen → Datenschutz → Wechseldatenträger: Aero Tandem Studio erlauben.";
+  }
+  if ([h containsString:@"insta"]) {
+    return @"Bitte „Fotos“ und „Bildübernahme“ schließen, Insta360 im Datei-/U-Disk-Modus "
+           @"verbinden, Kabel kurz ab/an — oder MicroSD im Kartenleser nutzen. "
+           @"Systemeinstellungen → Datenschutz → Wechseldatenträger: Aero Tandem Studio erlauben.";
+  }
+  return @"Bitte „Fotos“ und „Bildübernahme“ schließen, an der GoPro den USB-Bildschirm "
+         @"bestätigen, Kabel kurz ab/an — oder MicroSD im Kartenleser nutzen. "
+         @"Systemeinstellungen → Datenschutz → Wechseldatenträger: Aero Tandem Studio erlauben.";
 }
 
 - (BOOL)isMediaName:(NSString *)name {
@@ -839,11 +856,8 @@ int ats_ica_has_held(void) {
   }
   NSString *joined = names.count ? [names componentsJoinedByString:@", "] : @"(keine)";
   [self failWithMessage:[NSString stringWithFormat:
-      @"Keine passende USB-Kamera in Bildübernahme gefunden. Gefunden: %@. Hinweis: %@. "
-       "Bitte „Fotos“ und „Bildübernahme“ schließen, an der GoPro den USB-Bildschirm "
-       "bestätigen, Kabel kurz ab/an — oder MicroSD im Kartenleser nutzen. "
-       "Systemeinstellungen → Datenschutz → Wechseldatenträger: Aero Tandem Studio erlauben.",
-      joined, self.nameHint]];
+      @"Keine passende USB-Kamera in Bildübernahme gefunden. Gefunden: %@. Hinweis: %@. %@",
+      joined, self.nameHint, [self browseFailureInstructions]]];
 }
 
 - (void)collectAllFilesFromItems:(NSArray<ICCameraItem *> *)items

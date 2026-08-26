@@ -8,7 +8,9 @@
 
 pub mod allowlist;
 pub mod catalog;
+pub mod mtp_whitelist;
 pub mod usb_enumerate;
+pub mod volume_link;
 
 #[cfg(target_os = "macos")]
 pub mod macos_ica;

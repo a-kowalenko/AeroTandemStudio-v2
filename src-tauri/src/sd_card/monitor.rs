@@ -21,6 +21,7 @@ use crate::media::dji_paths::{
     media_type_from_filename, resolve_drive_dcim_path, unique_dest_name, write_backup_manifest,
     ManifestEntry,
 };
+use crate::sd_card::mtp::mtp_whitelist::UsbImportMode;
 use crate::sd_card::copy_progress::copy_file_with_progress;
 use crate::sd_card::secondary_backup::{new_job_id, SecondaryBackupJob, SECONDARY_BACKUP};
 use crate::storage::media_history::{spawn_identity_hasher, MediaHistoryStore};
@@ -95,7 +96,10 @@ fn usb_action_cam_source_ids_attached() -> HashSet<String> {
     if !SD_MONITOR.config().usb_camera_import_enabled {
         return HashSet::new();
     }
-    crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras()
+    let ready = crate::sd_card::mtp::volume_link::ready_volumes();
+    let attached = crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras();
+    let mode = UsbImportMode::parse(&SD_MONITOR.config().usb_import_mode);
+    crate::sd_card::mtp::volume_link::filter_visible_usb_cameras(&ready, attached, mode)
         .into_iter()
         .map(|c| c.source_id)
         .collect()
@@ -661,8 +665,11 @@ impl SdCardMonitor {
     }
 
     fn poll_once(&self) -> Result<(), SdError> {
-        let current = available_drives();
-        let ready: HashSet<String> = current.into_iter().filter(|d| is_drive_ready(d)).collect();
+        let ready: HashSet<String> = available_drives()
+            .into_iter()
+            .filter(|d| is_drive_ready(d))
+            .collect();
+        self.supersede_mtp_with_volumes(&ready);
         let mut current_action = ready_action_cam_drives(&ready);
         // USB cameras are not volume mounts — keep them in `known` so removal is detected.
         let usb_now = usb_action_cam_source_ids();
@@ -714,6 +721,50 @@ impl SdCardMonitor {
         self.cleanup_removed(&ready_with_usb);
         *self.known_drives.lock().unwrap() = ready_with_usb;
         Ok(())
+    }
+
+    /// Drop tracked MTP sources when a matching DCIM volume is ready (Phase 23.2f).
+    fn supersede_mtp_with_volumes(&self, ready: &HashSet<String>) {
+        if !self.config().usb_camera_import_enabled {
+            return;
+        }
+        let attached = crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras();
+        let tracked_mtp: HashSet<String> = {
+            let action = self.action_cam_drives.lock().unwrap();
+            let pending = self.pending_drives.lock().unwrap();
+            action
+                .iter()
+                .chain(pending.iter())
+                .filter(|d| is_mtp_source(d))
+                .cloned()
+                .collect()
+        };
+        if tracked_mtp.is_empty() {
+            return;
+        }
+        let pairs = crate::sd_card::mtp::volume_link::mtp_superseded_by_volumes(
+            ready,
+            &attached,
+            &tracked_mtp,
+        );
+        for (mtp_id, vol) in pairs {
+            eprintln!("usb_mtp_superseded: {mtp_id} -> {vol}");
+            self.release_mtp_session_resources(&mtp_id);
+            self.pending_drives.lock().unwrap().remove(&mtp_id);
+            self.processing_drives.lock().unwrap().remove(&mtp_id);
+            self.declined_drives.lock().unwrap().remove(&mtp_id);
+            self.processed_drives.lock().unwrap().remove(&mtp_id);
+            self.action_cam_drives.lock().unwrap().remove(&mtp_id);
+            self.known_drives.lock().unwrap().remove(&mtp_id);
+            self.emit_status(
+                "usb_mtp_superseded",
+                serde_json::json!({
+                    "old": mtp_id,
+                    "new": vol,
+                }),
+            );
+            self.notify_removed(&[mtp_id]);
+        }
     }
 
     fn handle_sd_detection(&self, drive: &str, is_new_insertion: bool) {
@@ -1019,6 +1070,12 @@ impl SdCardMonitor {
             return Err(SdError::Message(
                 "USB-Kamera-Import ist in den Einstellungen deaktiviert.".into(),
             ));
+        }
+        if let Some(vol) =
+            crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(drive)
+        {
+            eprintln!("usb_mtp_suppressed: {drive} list redirected to {vol}");
+            return self.list_files(&vol);
         }
         let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
 
@@ -2719,7 +2776,10 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
         return drives;
     }
     let visible_usb = SD_MONITOR.visible_usb_action_cam_ids();
-    for cam in crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras() {
+    let ready = crate::sd_card::mtp::volume_link::ready_volumes();
+    let attached = crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras();
+    let mode = UsbImportMode::parse(&SD_MONITOR.config().usb_import_mode);
+    for cam in crate::sd_card::mtp::volume_link::filter_visible_usb_cameras(&ready, attached, mode) {
         if !visible_usb.contains(&cam.source_id) {
             continue;
         }

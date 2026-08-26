@@ -290,8 +290,13 @@
         "ejectTitle": "Expulsar justo tras el respaldo (importar/QR desde copias). Sin respaldo: tras importar.",
         "ejectHint": "Con respaldo, justo después; sin respaldo, tras importar.",
         "skipProcessed": "Omitir archivos ya procesados",
-        "usbCameras": "Cámaras de acción USB (GoPro / DJI / Insta360)",
-        "usbCamerasHint": "Detecta cámaras por USB (MTP/WPD), copia los medios localmente e importa como desde la tarjeta SD. Teléfonos y memorias normales quedan fuera."
+        "usbCameras": "Cámaras de acción USB (modelos aprobados)",
+        "usbCamerasHint": "Importación MTP/USB solo para modelos aprobados sin volumen SD (p. ej. GoPro HERO 5+). DJI Osmo y lectores usan el volumen montado.",
+        "usbImportMode": "Método de importación USB",
+        "usbImportModeAuto": "Automático (lista blanca)",
+        "usbImportModeVolume": "Solo volumen / SD",
+        "usbImportModeMtp": "Preferir MTP (experimental)",
+        "usbImportModeHint": "Automático: solo GoPro en la lista. «Solo volumen» para DJI Osmo (Transferencia de archivos en la cámara). Preferir MTP solo si la lista falla."
       },
       "size": {
         "title": "Umbral de aviso",

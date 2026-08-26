@@ -223,6 +223,9 @@ pub struct AppConfig {
     /// Default: on for macOS (already shipped), off for Windows until WPD acceptance.
     #[serde(default = "default_usb_camera_import_enabled")]
     pub usb_camera_import_enabled: bool,
+    /// USB import path: `"auto"` (whitelist) | `"volume_only"` | `"mtp_preferred"`.
+    #[serde(default = "default_usb_import_mode")]
+    pub usb_import_mode: String,
     /// Legacy flag — kept in sync with `manual_entry_mode == "oldschool"`.
     #[serde(default)]
     pub oldschool_mode: bool,
@@ -499,6 +502,9 @@ fn default_usb_camera_import_enabled() -> bool {
     // macOS ICA path already shipped; Windows WPD stays opt-in until acceptance.
     cfg!(target_os = "macos")
 }
+fn default_usb_import_mode() -> String {
+    "auto".into()
+}
 fn default_sd_server_backup_mode() -> String {
     "local_then_server_async".into()
 }
@@ -527,6 +533,15 @@ impl AppConfig {
             _ => "id".into(),
         };
         self.oldschool_mode = self.manual_entry_mode == "oldschool";
+    }
+
+    /// Canonicalize `usb_import_mode`.
+    pub fn sync_usb_import_mode(&mut self) {
+        self.usb_import_mode = crate::sd_card::mtp::mtp_whitelist::UsbImportMode::parse(
+            &self.usb_import_mode,
+        )
+        .as_str()
+        .to_string();
     }
 
     /// Canonicalize `intro_mux_mode` to `stream_copy` | `reencode`.
@@ -712,6 +727,7 @@ impl Default for AppConfig {
             sd_size_limit_enabled: true,
             sd_size_limit_mb: default_sd_size_limit(),
             usb_camera_import_enabled: default_usb_camera_import_enabled(),
+            usb_import_mode: default_usb_import_mode(),
             oldschool_mode: false,
             manual_entry_mode: default_manual_entry_mode(),
             keep_tandemmaster_on_session_reset: false,
@@ -786,6 +802,7 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
+    cfg.sync_usb_import_mode();
     cfg.sync_body_concat_mode();
     cfg.sync_ui_language();
     cfg.sync_log_min_level();
@@ -875,6 +892,7 @@ impl ConfigStore {
         let mut normalized = cfg.clone();
         normalized.sync_manual_entry_mode();
         normalized.sync_intro_mux_mode();
+        normalized.sync_usb_import_mode();
         normalized.sync_body_concat_mode();
         normalized.sync_ui_language();
         normalized.sync_log_min_level();

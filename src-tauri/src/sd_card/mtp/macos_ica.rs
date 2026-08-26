@@ -262,6 +262,12 @@ pub fn list_camera_catalog(
     dest_dir: &Path,
     mut on_tick: Option<Box<dyn FnMut(Vec<CameraCatalogFile>) + Send>>,
 ) -> Result<Vec<CameraCatalogFile>, IcaError> {
+    if let Some(vol) = crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(source_id)
+    {
+        return Err(IcaError::Message(format!(
+            "USB-Kamera wird über das gemountete Laufwerk {vol} genutzt — kein Bildübernahme-Import nötig."
+        )));
+    }
     if let Some(block) = crate::sd_card::mtp::usb_enumerate::media_access_block_for(source_id) {
         return Err(IcaError::Message(block.user_message(label)));
     }
@@ -339,6 +345,12 @@ pub fn download_camera_files(
     names: &[String],
     mut on_progress: Option<Box<dyn FnMut(u32, u32, String, u64, u64) + Send>>,
 ) -> Result<Vec<PathBuf>, IcaError> {
+    if let Some(vol) = crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(source_id)
+    {
+        return Err(IcaError::Message(format!(
+            "USB-Kamera wird über das gemountete Laufwerk {vol} genutzt — kein Bildübernahme-Import nötig."
+        )));
+    }
     if let Some(block) = crate::sd_card::mtp::usb_enumerate::media_access_block_for(source_id) {
         return Err(IcaError::Message(block.user_message(label)));
     }
@@ -434,6 +446,12 @@ pub fn delete_camera_files_named(
 ) -> Result<usize, IcaError> {
     if basenames.is_empty() {
         return Ok(0);
+    }
+    if let Some(vol) = crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(source_id)
+    {
+        return Err(IcaError::Message(format!(
+            "USB-Kamera wird über das gemountete Laufwerk {vol} genutzt — Bereinigung über das Laufwerk."
+        )));
     }
     let joined = basenames.join("\n");
     let names = CString::new(joined.as_bytes())

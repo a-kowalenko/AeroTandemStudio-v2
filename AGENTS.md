@@ -106,7 +106,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 21: Foto-Zuschnitt (Crop-Overlay, Working-Copy, Undo)
 - ✅ Phase 21.1: Crop-Settle UX (1.4s Idle, Overlay am Settled-Rand, Shadow-Reveal)
 - ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo center) & Dialog-Zentrierung (Update-Dialog)
-- 🔄 Phase 23: USB-Action-Cams — macOS Detect + Image Capture Staging ✅; ICA UI-Perf ✅; leere Kataloge ✅; ICA-Browser Replug ✅; Windows WPD/MTP Staging ✅; als Nächstes 23.3 Linux libmtp
+- 🔄 Phase 23: USB-Action-Cams — … 23.2f Volume/MTP-Dedup ✅; 23.2g MTP-Modell-Whitelist ✅; als Nächstes 23.2h oder 23.3 Linux libmtp
 - ✅ Phase 24: AMS-Nachreichen (Historie → Dateien + Kategorie + Preview/Voll)
 - ✅ Phase 25: AMS-Lookup Autofill (Manuell/ID → Name/Medien, sperren wie QR; keine Hashes)
 - ✅ Phase 26: Mehrsprachige UI (de / en / es-MX, `ui_language` in Config, react-i18next)
@@ -120,7 +120,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 32: SMB Quiet-Poll (Parity mit AMS-Health; 45 s + visibility; kein Auto-Upload)
 - ✅ Phase 33: Label Historie → Vorgänge (i18n: DE Vorgänge / EN Jobs / ES Trabajos; kein Component-Rename)
 
-**Nächster Schritt:** Phase 31.5 (Extra-Dateien), oder Phase 23.3 (Linux libmtp), oder Phase 14 ML Backlog  
+**Nächster Schritt:** Phase 23.2h (USB-Geräte-Overrides), Phase 23.3 (Linux libmtp), Phase 31.5, oder Phase 14 ML Backlog  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog
