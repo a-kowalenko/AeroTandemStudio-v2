@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Check, FolderClock, Loader2, RotateCcw } from "lucide-react";
 import { AppChrome } from "../chrome/AppChrome";
+import { HeaderBrand } from "../chrome/HeaderBrand";
 import { ServerStatusIndicator } from "../ServerStatusIndicator";
 import { SdModeSelector } from "../SdModeSelector";
 import { SdDriveSelector } from "../SdDriveSelector";
@@ -219,44 +220,12 @@ export function AppShell({
           </>
         }
       >
-        <div className="pointer-events-none flex min-w-0 items-center gap-2.5">
-          <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
-            <img
-              src="/logo.png"
-              alt=""
-              className="h-[22px] w-[22px] object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = "none";
-              }}
-            />
-          </div>
-          <div className="flex min-h-[34px] min-w-0 flex-col justify-center gap-0.5">
-            <div className="flex min-w-0 items-baseline gap-x-1.5">
-              <h1 className="font-display truncate text-base font-semibold leading-none tracking-tight text-primary">
-                Aero Tandem Studio
-              </h1>
-              <span className="shrink-0 text-[11px] leading-none text-muted">
-                v{appVersion}
-              </span>
-            </div>
-            <p className="truncate text-[10px] leading-none text-muted">
-              {secondaryBackup &&
-              (secondaryBackup.state === "started" ||
-                secondaryBackup.state === "progress")
-                ? `${t("app.chrome.serverBackupPercent", { percent: Math.round(secondaryBackup.percent) })}` +
-                  (secondaryBackup.file_name
-                    ? ` · ${secondaryBackup.file_name}`
-                    : "")
-                : secondaryBackup?.state === "done"
-                  ? t("app.chrome.serverBackupDone")
-                  : hwLabel
-                    ? t("app.chrome.encoder", { label: hwLabel })
-                    : ready
-                      ? t("app.chrome.ready")
-                      : t("app.chrome.starting")}
-            </p>
-          </div>
-        </div>
+        <HeaderBrand
+          appVersion={appVersion}
+          ready={ready}
+          hwLabel={hwLabel}
+          secondaryBackup={secondaryBackup}
+        />
       </AppChrome>
 
       <div className="flex min-h-0 flex-1 flex-col">

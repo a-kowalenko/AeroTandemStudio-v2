@@ -1,4 +1,5 @@
 export { AppChrome } from "./AppChrome";
+export { HeaderBrand } from "./HeaderBrand";
 export { TitleBarControls } from "./TitleBarControls";
 export { useWindowChrome } from "./useWindowChrome";
 export { resolveChromeMode, type ChromeMode } from "./chromeMode";
