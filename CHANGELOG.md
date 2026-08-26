@@ -10,6 +10,21 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Vorgang lokal erstellen, wenn der Server nicht erreichbar ist — Upload bleibt ausstehend und kann später nachgeholt werden
+- Unter Vorgänge: ausstehende Uploads einzeln oder gesammelt nachholen
+- Badge in der Kopfzeile bei ausstehenden Uploads; Hinweis, wenn der Server wieder erreichbar ist
+- Fehlende Dateien beim Upload-Nachholen: Ordner öffnen oder nur die vorhandenen Medien hochladen
+- Zusätzliche Dateien im Ausgabeordner: mit hochladen (Lieferliste wird angepasst) oder überschüssige Dateien vor dem Upload löschen
+- Gesammeltes Nachholen: bereite Vorgänge zuerst, bei Problemen nacheinander mit Rückfrage
+
+### Verbessert
+
+- Server-Status aktualisiert sich im Hintergrund — Verbindungsprobleme fallen schneller auf
+- Bezeichnungen vereinheitlicht: der Bereich heißt durchgängig „Vorgänge“ (statt teils „Historie“)
+- Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
+
 ## [0.3.8] - 2026-08-26
 
 ### Neu
