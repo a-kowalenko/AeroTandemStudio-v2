@@ -16,10 +16,10 @@ use thiserror::Error;
 
 use crate::media::datetime::resolve_video_display_epoch;
 use crate::media::dji_paths::{
-    camera_clear_basenames, collect_media_paths_from_tree, expand_files_for_sd_clear,
+    collect_media_paths_from_tree, expand_basenames_for_camera_clear, expand_files_for_sd_clear,
     filter_listable_media_paths, filter_media_paths_for_backup, is_photo_ext, is_video_ext,
-    media_type_from_filename, resolve_drive_dcim_path, unique_dest_name, write_backup_manifest,
-    ManifestEntry,
+    media_type_from_filename, paths_for_sd_clear, resolve_drive_dcim_path, unique_dest_name,
+    write_backup_manifest, ManifestEntry,
 };
 use crate::sd_card::copy_progress::copy_file_with_progress;
 use crate::sd_card::secondary_backup::{new_job_id, SecondaryBackupJob, SECONDARY_BACKUP};
@@ -984,7 +984,11 @@ impl SdCardMonitor {
 
         let all = collect_media_paths_from_tree(&dcim_path);
         let seen = all.len();
-        let (filtered, _) = filter_media_paths_for_backup(&all, &dcim, true);
+        let (filtered, _) = {
+            let result = filter_media_paths_for_backup(&all, &dcim, true);
+            let skipped = result.skipped_count();
+            (result.kept, skipped)
+        };
         let total: u64 = filtered
             .iter()
             .filter_map(|p| fs::metadata(p).ok().map(|m| m.len()))
@@ -1206,8 +1210,9 @@ impl SdCardMonitor {
         };
         let filter_root = dcim;
 
-        let (media_files, _tl_skipped) =
-            filter_media_paths_for_backup(&media_files, &filter_root, true);
+        let filter_result = filter_media_paths_for_backup(&media_files, &filter_root, true);
+        let media_files = filter_result.kept;
+        let skipped_timelapse_videos = filter_result.skipped_timelapse_videos;
         if media_files.is_empty() {
             return Ok(BackupResult::fail(
                 empty_media_message(is_mtp_source(drive)).to_string(),
@@ -1603,13 +1608,17 @@ impl SdCardMonitor {
             }
             self.emit_status("clearing_started", serde_json::json!(drive));
             if is_mtp_source(drive) {
-                let (deleted, warn) = self.clear_mtp_after_backup(drive, &copied_sources);
+                let clear_sources =
+                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
+                let (deleted, warn) = self.clear_mtp_after_backup(drive, &clear_sources);
                 clear_deleted_count = deleted;
                 clear_warning = warn;
             } else {
                 let before = copied_sources.len();
+                let clear_paths =
+                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
                 clear_sd_files(
-                    &copied_sources,
+                    &clear_paths,
                     Some(|current, total| {
                         self.emit_workflow(workflow_progress(
                             "clear",
@@ -1725,8 +1734,9 @@ impl SdCardMonitor {
 
             let virtual_paths: Vec<String> = chosen.iter().map(|f| f.path.clone()).collect();
             let cache_root = cache_dir_for(drive).to_string_lossy().into_owned();
-            let (filtered_paths, _tl) =
-                filter_media_paths_for_backup(&virtual_paths, &cache_root, true);
+            let mtp_filter = filter_media_paths_for_backup(&virtual_paths, &cache_root, true);
+            let filtered_paths = mtp_filter.kept;
+            let skipped_timelapse_videos = mtp_filter.skipped_timelapse_videos;
             let keep: HashSet<String> = filtered_paths.iter().cloned().collect();
             chosen.retain(|f| keep.contains(&f.path));
             if chosen.is_empty() {
@@ -2068,7 +2078,9 @@ impl SdCardMonitor {
             let mut clear_deleted_count: Option<usize> = None;
             if want_clear && !copied_sources.is_empty() {
                 self.emit_status("clearing_started", serde_json::json!(drive));
-                let (deleted, warn) = self.clear_mtp_after_backup(drive, &copied_sources);
+                let clear_sources =
+                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
+                let (deleted, warn) = self.clear_mtp_after_backup(drive, &clear_sources);
                 clear_deleted_count = deleted;
                 clear_warning = warn;
                 self.emit_status(
@@ -2107,11 +2119,11 @@ impl SdCardMonitor {
     fn clear_mtp_after_backup(
         &self,
         drive: &str,
-        copied_sources: &[String],
+        clear_sources: &[String],
     ) -> (Option<usize>, Option<String>) {
-        let names = camera_clear_basenames(copied_sources);
+        let names = expand_basenames_for_camera_clear(clear_sources);
         // Do not use expanded sidecar candidate count as progress total (looks like 0/7).
-        let masters = copied_sources.len().max(1) as u64;
+        let masters = clear_sources.len().max(1) as u64;
         self.emit_workflow(workflow_progress(
             "clear",
             0,
@@ -2850,8 +2862,15 @@ mod tests {
         let paths = collect_media_paths_from_tree(&dir.path().join("DCIM"));
         assert_eq!(paths.len(), 2);
 
-        let (kept, _) =
-            filter_media_paths_for_backup(&paths, &dir.path().join("DCIM").to_string_lossy(), true);
+        let (kept, _) = {
+            let result = filter_media_paths_for_backup(
+                &paths,
+                &dir.path().join("DCIM").to_string_lossy(),
+                true,
+            );
+            let skipped = result.skipped_count();
+            (result.kept, skipped)
+        };
         assert_eq!(kept.len(), 2);
     }
 
@@ -3266,6 +3285,46 @@ mod tests {
             .unwrap();
         assert!(listed.files.is_empty());
         assert_eq!(listed.empty_reason, Some(ListEmptyReason::NoMedia));
+    }
+
+    #[test]
+    fn filter_from_dcim_tree_pairs_timelapse_suffixes() {
+        let src = tempdir().unwrap();
+        let dcim = src.path().join("DCIM");
+        let tl6 = dcim.join("TIMELAPSE").join("001_0006");
+        let tl8 = dcim.join("TIMELAPSE").join("001_0008");
+        let dji = dcim.join("DJI_001");
+        fs::create_dir_all(&tl6).unwrap();
+        fs::create_dir_all(&tl8).unwrap();
+        fs::create_dir_all(&dji).unwrap();
+        fs::write(tl6.join("IMG_001.JPG"), b"photo").unwrap();
+        fs::write(tl8.join("IMG_001.JPG"), b"photo").unwrap();
+        fs::write(dji.join("DJI_20260827_0006.MP4"), b"v6").unwrap();
+        fs::write(dji.join("DJI_20260827_0006.LRF"), b"p6").unwrap();
+        fs::write(dji.join("DJI_20260827_0007.MP4"), b"v7").unwrap();
+        fs::write(dji.join("DJI_20260827_0008.MP4"), b"v8").unwrap();
+
+        let all = collect_media_paths_from_tree(&dcim);
+        let result = filter_media_paths_for_backup(
+            &all,
+            &dcim.to_string_lossy(),
+            true,
+        );
+        assert!(result
+            .kept
+            .iter()
+            .any(|p| p.ends_with("IMG_001.JPG")));
+        assert!(result
+            .kept
+            .iter()
+            .any(|p| p.ends_with("_0007.MP4")));
+        assert_eq!(result.skipped_count(), 2);
+        let companion_clear = expand_files_for_sd_clear(&result.skipped_timelapse_videos);
+        assert!(companion_clear.iter().any(|p| p.ends_with("_0006.MP4")));
+        assert!(companion_clear.iter().any(|p| p.ends_with("_0006.LRF")));
+        assert!(companion_clear.iter().any(|p| p.ends_with("_0008.MP4")));
+        assert!(!companion_clear.iter().any(|p| p.ends_with("_0007.MP4")));
+        assert!(!companion_clear.iter().any(|p| p.ends_with("_0007.LRF")));
     }
 
     #[test]

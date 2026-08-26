@@ -2169,6 +2169,47 @@ keine SMB↔AMS Kopplung. Quiet-Mode analog AMS. Danach cargo test && npm run ch
 
 ---
 
+### Phase 31.7 — DJI Foto-Timelapse: Suffix-Pairing + Clear
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 7 (`dji_paths.rs`, SD-Backup/Clear)  
+**Ziel:** DJI Foto-Timelapse korrekt von normalen Videos trennen; Begleitvideos + Sidecars (`.LRF`) beim SD-Clear entfernen.
+
+#### Struktur (Osmo Action, bestätigt)
+
+```
+DCIM/TIMELAPSE/001_NNNN/   ← Fotoserie
+DCIM/DJI_001/DJI_*_NNNN.MP4 + .LRF   ← Timelapse-Begleitvideo (NNNN = Suffix aus Ordner)
+DCIM/DJI_001/DJI_*_MMMM.MP4          ← normales Video (kein passender TIMELAPSE/001_MMMM/)
+```
+
+#### Aufgaben
+
+- [x] `001_NNNN` ↔ `DJI_*_NNNN.MP4` Pairing in `dji_paths.rs` (nicht „alle Videos“)
+- [x] `filter_media_paths_for_backup` → `BackupMediaFilterResult` mit `skipped_timelapse_videos`
+- [x] SD/MTP-Clear: `copied_sources ∪ skipped_timelapse_videos` → Sidecars via `expand_*`
+- [x] `.lrf` in `SIDECAR_EXTENSIONS` (DJI-Proxy, Parity mit `.lrv`)
+- [x] DCIM-Scan `TIMELAPSE/*/` für Session-IDs (auch ohne Fotos in aktueller Pfadliste)
+- [x] Legacy-Fallback: Fotos direkt unter `DJI_*/TIMELAPSE/` ohne `001_NNNN`
+- [x] Unit-Tests (Suffix 0006/0007/0008, `.LRF`-Clear)
+
+#### Akzeptanz
+
+- Timelapse `_0006` + `_0008`: Backup skip, Clear inkl. `.LRF`
+- Normales `_0007`: Backup + Clear wie bisher
+- Kein globales Überspringen aller Videos bei Timelapse-Session
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 31.7 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Legacy: @C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\dji_media_paths.py
+Nur Phase 31.7. Danach cargo test && npm run tauri dev.
+```
+
+---
+
 ### Phase 33 — Label Historie → Vorgänge
 
 **Status:** ✅ Erledigt (manuelle Abnahme offen)  
@@ -2434,6 +2475,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ✅ |
 | 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
 | 33 | Label Historie → Vorgänge (i18n) | ✅ |
+| 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2456,4 +2498,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 33 erledigt (Label Historie → Vorgänge)*
+*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 31.7 erledigt (DJI Timelapse Suffix-Pairing + Clear)*

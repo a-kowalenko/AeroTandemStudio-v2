@@ -71,3 +71,8 @@ windows = { version = "0.61", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
 
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+debug = 0

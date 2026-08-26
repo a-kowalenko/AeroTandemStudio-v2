@@ -25,7 +25,7 @@ pub const MEDIA_EXTENSIONS: &[&str] = &[
 ];
 
 /// Camera proxies / companions: never import or list as media; delete with the master on SD clear.
-pub const SIDECAR_EXTENSIONS: &[&str] = &[".lrv", ".thm", ".wav"];
+pub const SIDECAR_EXTENSIONS: &[&str] = &[".lrv", ".lrf", ".thm", ".wav"];
 
 fn ext_of(path: &Path) -> String {
     // Prefer last path segment after `/` or `\` so Windows-style strings work on Unix.
@@ -236,19 +236,208 @@ pub fn paths_indicate_timelapse_session(media_paths: &[String]) -> bool {
     media_paths.iter().any(|p| is_timelapse_photo_path(p))
 }
 
+/// Parsed DJI Foto-Timelapse context for backup skip + SD clear.
+#[derive(Debug, Clone, Default)]
+pub struct TimelapseFilterContext {
+    /// Session suffix from `TIMELAPSE/001_NNNN/` folders (e.g. `"0006"`).
+    pub session_ids: HashSet<String>,
+    /// Legacy layout: timelapse photos directly under `DJI_*/TIMELAPSE/` without `001_NNNN`.
+    pub legacy_dji_folders: HashSet<String>,
+}
+
+impl TimelapseFilterContext {
+    pub fn is_active(&self) -> bool {
+        !self.session_ids.is_empty() || !self.legacy_dji_folders.is_empty()
+    }
+}
+
+/// Result of [`filter_media_paths_for_backup`].
+#[derive(Debug, Clone, Default)]
+pub struct BackupMediaFilterResult {
+    pub kept: Vec<String>,
+    pub skipped_timelapse_videos: Vec<String>,
+}
+
+impl BackupMediaFilterResult {
+    pub fn skipped_count(&self) -> usize {
+        self.skipped_timelapse_videos.len()
+    }
+}
+
+/// Session suffix from a timelapse folder name (`001_0006` → `0006`).
+pub fn timelapse_session_id_from_folder(folder: &str) -> Option<String> {
+    static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+        Regex::new(r"(?i)^\d+_(\d+)$").unwrap()
+    });
+    RE.captures(folder.trim())
+        .map(|caps| caps[1].to_string())
+}
+
+/// Session suffix from a DJI master video basename (`DJI_20260827_0006.MP4` → `0006`).
+pub fn dji_video_session_suffix(filename: &str) -> Option<String> {
+    static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
+        Regex::new(r"(?i)^DJI_.*_(\d+)$").unwrap()
+    });
+    let base = Path::new(filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(filename);
+    let stem = Path::new(base)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(base);
+    RE.captures(stem).map(|caps| caps[1].to_string())
+}
+
+fn timelapse_session_id_from_photo_path(file_path: &str) -> Option<String> {
+    if !is_timelapse_photo_path(file_path) {
+        return None;
+    }
+    let parent = Path::new(file_path).parent()?;
+    let folder = parent.file_name()?.to_str()?;
+    if folder.eq_ignore_ascii_case("timelapse") {
+        return None;
+    }
+    timelapse_session_id_from_folder(folder)
+}
+
+fn legacy_dji_folder_for_timelapse_photo(file_path: &str) -> Option<String> {
+    if !is_timelapse_photo_path(file_path) || timelapse_session_id_from_photo_path(file_path).is_some()
+    {
+        return None;
+    }
+    let parts = path_parts(file_path);
+    let dcim_idx = dcim_index(&parts)?;
+    for part in parts.iter().skip(dcim_idx + 1) {
+        let lower = part.to_ascii_lowercase();
+        if lower.starts_with("dji_") {
+            return Some(lower);
+        }
+    }
+    None
+}
+
+fn direct_dji_folder_name(file_path: &str) -> Option<String> {
+    let parts = path_parts(file_path);
+    let dcim_idx = dcim_index(&parts)?;
+    if parts.len() < dcim_idx + 3 {
+        return None;
+    }
+    let parent = parts.get(parts.len() - 2)?;
+    let lower = parent.to_ascii_lowercase();
+    if lower.starts_with("dji_") {
+        Some(lower)
+    } else {
+        None
+    }
+}
+
+fn timelapse_folder_has_photos(folder: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(folder) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false)
+            && is_photo_ext(&ext_of(&entry.path()))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Collect timelapse session suffixes from photo paths and optionally `DCIM/TIMELAPSE/*/`.
+pub fn build_timelapse_filter_context(
+    dcim_root: &str,
+    media_paths: &[String],
+) -> TimelapseFilterContext {
+    let mut ctx = TimelapseFilterContext::default();
+    for path in media_paths {
+        if let Some(id) = timelapse_session_id_from_photo_path(path) {
+            ctx.session_ids.insert(id);
+        }
+        if let Some(dji) = legacy_dji_folder_for_timelapse_photo(path) {
+            ctx.legacy_dji_folders.insert(dji);
+        }
+    }
+
+    let Some(dcim) = resolve_dcim_root(dcim_root) else {
+        return ctx;
+    };
+    let timelapse_root = PathBuf::from(&dcim).join("TIMELAPSE");
+    if !timelapse_root.is_dir() {
+        return ctx;
+    }
+    let Ok(entries) = fs::read_dir(&timelapse_root) else {
+        return ctx;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name_owned = entry.file_name();
+        let Some(name) = name_owned.to_str() else {
+            continue;
+        };
+        if !timelapse_folder_has_photos(&entry.path()) {
+            continue;
+        }
+        if let Some(id) = timelapse_session_id_from_folder(name) {
+            ctx.session_ids.insert(id);
+        }
+    }
+    ctx
+}
+
+pub fn is_timelapse_companion_video(file_path: &str, ctx: &TimelapseFilterContext) -> bool {
+    if ctx.session_ids.is_empty() {
+        return false;
+    }
+    if !is_video_ext(&ext_of(Path::new(file_path))) {
+        return false;
+    }
+    let Some(dji_folder) = direct_dji_folder_name(file_path) else {
+        return false;
+    };
+    if !dji_folder.starts_with("dji_") {
+        return false;
+    }
+    let name = Path::new(file_path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(file_path);
+    let Some(suffix) = dji_video_session_suffix(name) else {
+        return false;
+    };
+    ctx.session_ids.contains(&suffix)
+}
+
 pub fn should_skip_file_for_timelapse_session(
     file_path: &str,
     is_video: bool,
-    timelapse_session_active: bool,
+    ctx: &TimelapseFilterContext,
     exclude_timelapse_videos: bool,
 ) -> bool {
     if !exclude_timelapse_videos || !is_video {
         return false;
     }
-    if timelapse_session_active {
+    if is_under_dji_timelapse_tree(file_path) {
         return true;
     }
-    is_under_dji_timelapse_tree(file_path)
+    if is_timelapse_companion_video(file_path, ctx) {
+        return true;
+    }
+    if let Some(dji_folder) = direct_dji_folder_name(file_path) {
+        return ctx.legacy_dji_folders.contains(&dji_folder);
+    }
+    false
+}
+
+/// Merge backed-up masters with skipped timelapse companion videos for SD/MTP clear.
+pub fn paths_for_sd_clear(copied_sources: &[String], skipped_timelapse_videos: &[String]) -> Vec<String> {
+    let mut out = copied_sources.to_vec();
+    out.extend_from_slice(skipped_timelapse_videos);
+    out
 }
 
 pub fn resolve_timelapse_session_active_for_paths(
@@ -269,30 +458,35 @@ pub fn resolve_timelapse_session_active_for_paths(
     paths_indicate_timelapse_session(media_paths)
 }
 
-/// Filter media paths for SD backup/import; returns (kept, skipped_count).
+/// Filter media paths for SD backup/import.
 pub fn filter_media_paths_for_backup(
     media_paths: &[String],
     dcim_root: &str,
     exclude_timelapse_videos: bool,
-) -> (Vec<String>, usize) {
+) -> BackupMediaFilterResult {
     if !exclude_timelapse_videos {
-        return (media_paths.to_vec(), 0);
+        return BackupMediaFilterResult {
+            kept: media_paths.to_vec(),
+            skipped_timelapse_videos: Vec::new(),
+        };
     }
-    let effective = resolve_dcim_root(dcim_root)
-        .map(|p| normalize_media_path(&p))
-        .unwrap_or_else(|| normalize_media_path(dcim_root));
-    let session_active = resolve_timelapse_session_active_for_paths(&effective, media_paths, None);
+    let ctx = build_timelapse_filter_context(dcim_root, media_paths);
     let mut kept = Vec::new();
-    let mut skipped = 0;
+    let mut skipped_timelapse_videos = Vec::new();
     for path in media_paths {
         let is_video = is_video_ext(&ext_of(Path::new(path)));
-        if should_skip_file_for_timelapse_session(path, is_video, session_active, true) {
-            skipped += 1;
+        if should_skip_file_for_timelapse_session(path, is_video, &ctx, true) {
+            if is_video {
+                skipped_timelapse_videos.push(path.clone());
+            }
             continue;
         }
         kept.push(path.clone());
     }
-    (kept, skipped)
+    BackupMediaFilterResult {
+        kept,
+        skipped_timelapse_videos,
+    }
 }
 
 pub fn collect_media_paths_from_tree(scan_root: &Path) -> Vec<String> {
@@ -662,18 +856,83 @@ mod tests {
     }
 
     #[test]
-    fn filter_skips_videos_when_timelapse_session() {
+    fn filter_skips_only_matching_timelapse_companion_videos() {
+        let paths = vec![
+            "E:\\DCIM\\TIMELAPSE\\001_0006\\IMG_001.JPG".into(),
+            "E:\\DCIM\\TIMELAPSE\\001_0008\\IMG_001.JPG".into(),
+            "E:\\DCIM\\DJI_001\\DJI_20260827_0006.MP4".into(),
+            "E:\\DCIM\\DJI_001\\DJI_20260827_0007.MP4".into(),
+            "E:\\DCIM\\DJI_001\\DJI_20260827_0008.MP4".into(),
+        ];
+        let result = filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
+        assert_eq!(result.skipped_count(), 2);
+        assert_eq!(result.kept.len(), 3);
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0006.MP4")));
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0008.MP4")));
+        assert!(result
+            .kept
+            .iter()
+            .any(|p| p.ends_with("_0007.MP4")));
+    }
+
+    #[test]
+    fn filter_skips_videos_when_legacy_timelapse_under_dji_folder() {
         let paths = vec![
             "E:\\DCIM\\DJI_001\\TIMELAPSE\\IMG_001.JPG".into(),
             "E:\\DCIM\\DJI_001\\movie.MP4".into(),
             "E:\\DCIM\\DJI_001\\photo.JPG".into(),
         ];
-        let (kept, skipped) = filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
-        assert_eq!(skipped, 1);
-        assert_eq!(kept.len(), 2);
-        assert!(kept
+        let result = filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
+        assert_eq!(result.skipped_count(), 1);
+        assert_eq!(result.kept.len(), 2);
+        assert!(result
+            .kept
             .iter()
             .all(|p| !p.to_ascii_lowercase().ends_with(".mp4")));
+    }
+
+    #[test]
+    fn sd_clear_timelapse_companion_includes_lrf_sidecar() {
+        let dir = tempfile::tempdir().unwrap();
+        let mp4 = dir.path().join("DJI_20260827_0006.MP4");
+        fs::write(&mp4, b"v").unwrap();
+        fs::write(dir.path().join("DJI_20260827_0006.LRF"), b"proxy").unwrap();
+        fs::write(dir.path().join("DJI_20260827_0007.LRF"), b"keep").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("DJI_20260827_0006.MP4")));
+        assert!(expanded.iter().any(|p| p.ends_with("DJI_20260827_0006.LRF")));
+        assert!(!expanded.iter().any(|p| p.ends_with("DJI_20260827_0007.LRF")));
+    }
+
+    #[test]
+    fn expand_basenames_for_camera_clear_include_dji_lrf() {
+        let names = expand_basenames_for_camera_clear(&["/tmp/DJI_20260827_0006.MP4".into()]);
+        let lower: Vec<_> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
+        assert!(lower.iter().any(|n| n == "dji_20260827_0006.mp4"));
+        assert!(lower.iter().any(|n| n == "dji_20260827_0006.lrf"));
+    }
+
+    #[test]
+    fn timelapse_session_id_parsing() {
+        assert_eq!(
+            timelapse_session_id_from_folder("001_0006").as_deref(),
+            Some("0006")
+        );
+        assert_eq!(
+            dji_video_session_suffix("DJI_20260827_0006.MP4").as_deref(),
+            Some("0006")
+        );
+        assert_eq!(
+            dji_video_session_suffix("DJI_20260827143022123_0008.MP4").as_deref(),
+            Some("0008")
+        );
     }
 
     #[test]
@@ -755,6 +1014,7 @@ mod tests {
     #[test]
     fn sidecars_not_collected_as_media() {
         assert!(is_sidecar_ext(".lrv"));
+        assert!(is_sidecar_ext(".lrf"));
         assert!(is_sidecar_ext("THM"));
         assert!(!is_video_ext(".lrv"));
         assert!(!is_media_ext(".lrv"));
