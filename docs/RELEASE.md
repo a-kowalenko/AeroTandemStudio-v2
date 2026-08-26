@@ -80,7 +80,7 @@ node scripts/changelog.mjs extract 0.3.9
 
 | Ja | Nein |
 |----|------|
-| Begriffe wie in der UI (Historie, Nachreichen, Fotos, Einstellungen) | Interne Kürzel: AMS, MTP, WPD, ICA, OPT-*, Phase 24, … |
+| Begriffe wie in der UI (Vorgänge, Nachreichen, Fotos, Einstellungen) | Interne Kürzel: AMS, MTP, WPD, ICA, OPT-*, Phase 24, … |
 | Was der Nutzer merkt („Kunden per ID laden“) | Wie es technisch läuft („Lookup-Bridge“, „Stream-Copy“) |
 | Plattform nur wenn nötig („Windows & Mac“) | Entwickler-Stack („libmtp“, „react-i18next“) |
 

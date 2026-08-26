@@ -58,6 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+*(Phase 33 Label Historie → Vorgänge erledigt.)*  
 *(Phase 32 SMB Quiet-Poll erledigt.)*  
 *(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
 *(Phase 31.2 Prefight + Upload nachholen erledigt.)*  
@@ -1955,6 +1956,74 @@ keine SMB↔AMS Kopplung. Quiet-Mode analog AMS. Danach cargo test && npm run ch
 
 ---
 
+### Phase 33 — Label Historie → Vorgänge
+
+**Status:** ✅ Erledigt (manuelle Abnahme offen)  
+**Abhängigkeiten:** Phase 26 (i18n), Phase 31 (Historie-Einstieg / Upload-Hinweise)  
+**Ziel:** Header-Button und Dialogtitel sprechen die Domäne an (**Vorgänge**), konsistent zu „Vorgang erstellen“ und den Phase-31-Upload-Aktionen — ohne Component-/Store-Rename.
+
+> Eine Agent-Session = nur Phase 33. Nur sichtbare i18n-Strings (+ kurzes RELEASE-Glossar). Keine Key-/Modul-Renames.
+
+#### Entscheidung
+
+| Oberfläche | DE | EN | ES-MX |
+|---|---|---|---|
+| Header-Button | Vorgänge | Jobs | Trabajos |
+| Dialogtitel | Vorgänge | Jobs | Trabajos |
+| Tab (unverändert) | Vorgänge / Medien | Jobs / Media | Trabajos / Medios |
+| Medien-Confirm | „Medien-Historie“ behalten | media history | historial de medios |
+
+#### Out of Scope
+
+- Rename von `HistoryDialog`, `historyStore`, i18n-Keys `history.*`, Rust-Tabellen/Commands
+- Tab „Medien“ entfernen oder umbauen
+- CHANGELOG-Release-Text (erst beim nächsten Release)
+- Phase 32 / andere Features
+
+#### Scope
+
+- [x] `common.actions.history` → DE Vorgänge / EN Jobs / ES Trabajos
+- [x] `history.title` gleich wie Button
+- [x] `history.description` schärfen (ohne „Historie“ als Dachbegriff, wenn Button „Vorgänge“ heißt)
+- [x] Verweise auf den Einstieg anpassen: `success.uploadPendingHint`, `create.offlineCreate.hint`, `history.upload.reconnectToastBody`, `history.appendSuccess`
+- [x] Job-Confirms `history.confirm.removeJob*`: „aus der Historie“ → „aus den Vorgängen“ / „from Jobs“; Medien-Confirms mit „Medien-Historie“ belassen
+- [x] `app.chrome.historyTitle` Tooltip anpassen (z. B. „Vorgänge und Medien“ / „Jobs and media“)
+- [x] `docs/RELEASE.md`: Glossar-Beispiel `Historie` → `Vorgänge`
+
+#### Referenzen
+
+```
+src/locales/de.json | en.json | es-MX.json
+src/components/app/AppShell.tsx          # common.actions.history + historyTitle
+src/components/HistoryDialog.tsx         # history.title / description (nur Keys)
+docs/RELEASE.md                          # Glossar UI-Begriffe
+```
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 33 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 33 (Label Historie → Vorgänge). Nur i18n + RELEASE-Glossar.
+DE: Vorgänge | EN: Jobs | ES: Trabajos
+Dialogtitel + Button + Verweise in Hints/Toasts/Job-Confirms.
+Medien-Tab und „Medien-Historie“ in Media-Confirms behalten.
+Keine Component-/Store-/i18n-Key-Renames.
+Danach manuell: Header, Dialog, Offline-Hint, Sprachwechsel de/en/es prüfen.
+```
+
+#### Akzeptanz
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Header zeigt **Vorgänge** / **Jobs** / **Trabajos** |
+| 2 | Dialogtitel gleich; Tabs Vorgänge/Medien weiter nutzbar |
+| 3 | Offline-Create / Reconnect-Toast / Upload-Pending-Hint nennen den neuen Einstieg |
+| 4 | Job-Löschen-Confirm ohne „Historie“; Medien-Confirm mit „Medien-Historie“ ok |
+| 5 | Keine Key-/Component-Renames; Sprachwechsel de/en/es ok |
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -2063,6 +2132,7 @@ cargo test
 | 31.2 | Historie „Upload nachholen“; Prefight fehlt Datei → Hard fail; Extra-Datei → Warnung; ok → SMB + Handoff |
 | 31.3 | Mehrere pending sequentiell; kaputter Ordner skip; Summary; Reconnect ohne Auto-Upload |
 | 32 | SMB Quiet-Poll: Status ~45 s + Tab-Focus; kein Flackern; Skip während Upload; Header-Retry laut |
+| 33 | Header/Dialog „Vorgänge“ (de) / Jobs / Trabajos; Hints ohne „Historie“; Medien-Confirm unverändert |
 
 ### End-to-End (Phase 11)
 
@@ -2150,6 +2220,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 31.2 | Prefight + Upload nachholen (pro Vorgang) | ✅ |
 | 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ✅ |
 | 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
+| 33 | Label Historie → Vorgänge (i18n) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2168,6 +2239,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 32:** Prompt im Phasenabschnitt (SMB Quiet-Poll).
 
+**Phase 33:** Prompt im Phasenabschnitt (Label Historie → Vorgänge).
+
 ---
 
-*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 32 erledigt (SMB Quiet-Poll)*
+*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 33 erledigt (Label Historie → Vorgänge)*

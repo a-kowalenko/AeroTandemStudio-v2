@@ -15,7 +15,7 @@
       "create": "Create",
       "createAndUpload": "Create & upload",
       "createAndUploadLater": "Create · upload later",
-      "history": "History",
+      "history": "Jobs",
       "settings": "Settings",
       "pickFolder": "Choose folder",
       "pickFiles": "Choose files",
@@ -466,7 +466,7 @@
       "previewPhotosMany": "{{count}} preview photos created",
       "uploaded": "Uploaded to server",
       "uploadPending": "Created locally — upload pending",
-      "uploadPendingHint": "Retry the upload later from History.",
+      "uploadPendingHint": "Retry the upload later from Jobs.",
       "encoder": "Encoder",
       "dirCreated": "Directory was created",
       "openLocation": "Go to location",
@@ -671,7 +671,7 @@
     "offlineCreate": {
       "title": "Server unreachable",
       "body": "Upload is on, but the server is offline. You can still create the job locally; the upload will stay pending.",
-      "hint": "Retry later from History when the server is back.",
+      "hint": "Retry later from Jobs when the server is back.",
       "proceed": "Create locally anyway"
     },
     "uploadExtraFiles": {
@@ -743,7 +743,7 @@
       "gstH264DecoderMissing": "No H.264 decoder found in GStreamer — MP4 preview stays black. Install: {{installHint}}"
     },
     "chrome": {
-      "historyTitle": "Processed files",
+      "historyTitle": "Jobs and media",
       "resetTitle": "Reset form and media",
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1089,7 +1089,7 @@
     }
   },
   "history": {
-    "title": "History",
+    "title": "Jobs",
     "description": "Created jobs and media history (duplicate detection).",
     "appendTitle": "Append · {{guest}}",
     "appendDescription": "Additional files into the existing customer folder.",
@@ -1097,7 +1097,7 @@
       "jobs": "Jobs",
       "media": "Media"
     },
-    "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in history.",
+    "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in Jobs.",
     "appendDialogTitle": "Append",
     "appendCancelled": "Append cancelled.",
     "filters": {
@@ -1145,7 +1145,7 @@
       "bulkConfirmBody": "{{count}} jobs will upload one after another. Jobs with preflight problems are skipped.",
       "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Server back online",
-      "reconnectToastBody": "{{count}} uploads pending — retry from History."
+      "reconnectToastBody": "{{count}} uploads pending — retry from Jobs."
     },
     "selectJob": "Select a job",
     "previewReuse": "Preview reuse",
@@ -1165,10 +1165,10 @@
     "noFiles": "No files",
     "scanDescriptionJob": "Hit frame of this job",
     "confirm": {
-      "removeJobOne": "Remove job from history?",
-      "removeJobMany": "Remove {{count}} jobs from history?",
-      "removeJobOneBody": "The selected job will be deleted from history. Files on disk are kept; a related app QR scan frame is removed.",
-      "removeJobManyBody": "Selected jobs will be deleted from history. Files on disk are kept; related app QR scan frames are removed.",
+      "removeJobOne": "Remove job from Jobs?",
+      "removeJobMany": "Remove {{count}} jobs from Jobs?",
+      "removeJobOneBody": "The selected job will be deleted from Jobs. Files on disk are kept; a related app QR scan frame is removed.",
+      "removeJobManyBody": "Selected jobs will be deleted from Jobs. Files on disk are kept; related app QR scan frames are removed.",
       "removeMediaOne": "Remove media entry from history?",
       "removeMediaMany": "Remove {{count}} media entries from history?",
       "removeMediaOneBody": "The entry will be deleted from media history. The file itself is kept.",

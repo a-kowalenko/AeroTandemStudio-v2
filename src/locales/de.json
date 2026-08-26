@@ -15,7 +15,7 @@
       "create": "Erstellen",
       "createAndUpload": "Erstellen & Upload",
       "createAndUploadLater": "Erstellen · Upload später",
-      "history": "Historie",
+      "history": "Vorgänge",
       "settings": "Einstellungen",
       "pickFolder": "Ordner wählen",
       "pickFiles": "Dateien wählen",
@@ -466,7 +466,7 @@
       "previewPhotosMany": "{{count}} Vorschau-Fotos erstellt",
       "uploaded": "Auf Server hochgeladen",
       "uploadPending": "Lokal erstellt — Upload ausstehend",
-      "uploadPendingHint": "Upload später in der Historie nachholen.",
+      "uploadPendingHint": "Upload später unter Vorgänge nachholen.",
       "encoder": "Encoder",
       "dirCreated": "Verzeichnis wurde erstellt",
       "openLocation": "Zum Speicherort",
@@ -671,7 +671,7 @@
     "offlineCreate": {
       "title": "Server nicht erreichbar",
       "body": "Upload ist aktiv, aber der Server ist offline. Du kannst den Vorgang trotzdem lokal erstellen; der Upload bleibt ausstehend.",
-      "hint": "Später in der Historie nachholen (wenn der Server wieder da ist).",
+      "hint": "Später unter Vorgänge nachholen (wenn der Server wieder da ist).",
       "proceed": "Trotzdem lokal erstellen"
     },
     "uploadExtraFiles": {
@@ -743,7 +743,7 @@
       "gstH264DecoderMissing": "Kein H.264-Decoder in GStreamer gefunden — MP4-Vorschau bleibt schwarz. Installieren: {{installHint}}"
     },
     "chrome": {
-      "historyTitle": "Verarbeitete Dateien",
+      "historyTitle": "Vorgänge und Medien",
       "resetTitle": "Formular und Medien zurücksetzen",
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1089,15 +1089,15 @@
     }
   },
   "history": {
-    "title": "Historie",
-    "description": "Erstellte Vorgänge und Medien-Historie (Duplikat-Erkennung).",
+    "title": "Vorgänge",
+    "description": "Übersicht erstellter Vorgänge und der Medien-Historie (Duplikat-Erkennung).",
     "appendTitle": "Nachreichen · {{guest}}",
     "appendDescription": "Zusätzliche Dateien in den bestehenden Kundenordner.",
     "tabs": {
       "jobs": "Vorgänge",
       "media": "Medien"
     },
-    "appendSuccess": "{{count}} Datei(en) übergeben ({{folder}}).\nStatus unter „Nachreichung“ in der Historie.",
+    "appendSuccess": "{{count}} Datei(en) übergeben ({{folder}}).\nStatus unter „Nachreichung“ in den Vorgängen.",
     "appendDialogTitle": "Nachreichen",
     "appendCancelled": "Nachreichen abgebrochen.",
     "filters": {
@@ -1145,7 +1145,7 @@
       "bulkConfirmBody": "{{count}} Vorgänge werden nacheinander hochgeladen. Vorgänge mit Prefight-Problemen werden übersprungen.",
       "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Server wieder online",
-      "reconnectToastBody": "{{count}} Uploads ausstehend — in der Historie nachholen."
+      "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen."
     },
     "selectJob": "Vorgang auswählen",
     "previewReuse": "Preview-Reuse",
@@ -1165,10 +1165,10 @@
     "noFiles": "Keine Dateien",
     "scanDescriptionJob": "Treffer-Frame dieses Vorgangs",
     "confirm": {
-      "removeJobOne": "Vorgang aus der Historie entfernen?",
-      "removeJobMany": "{{count}} Vorgänge aus der Historie entfernen?",
-      "removeJobOneBody": "Der ausgewählte Vorgang wird aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; ein zugehöriger QR-Scan-Frame der App wird mit entfernt.",
-      "removeJobManyBody": "Die ausgewählten Vorgänge werden aus der Historie gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt.",
+      "removeJobOne": "Vorgang aus den Vorgängen entfernen?",
+      "removeJobMany": "{{count}} Vorgänge aus den Vorgängen entfernen?",
+      "removeJobOneBody": "Der ausgewählte Vorgang wird aus den Vorgängen gelöscht. Dateien auf dem Speicherort bleiben erhalten; ein zugehöriger QR-Scan-Frame der App wird mit entfernt.",
+      "removeJobManyBody": "Die ausgewählten Vorgänge werden aus den Vorgängen gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt.",
       "removeMediaOne": "Medien-Eintrag aus der Historie entfernen?",
       "removeMediaMany": "{{count}} Medien-Einträge aus der Historie entfernen?",
       "removeMediaOneBody": "Der Eintrag wird aus der Medien-Historie gelöscht. Die Datei selbst bleibt erhalten.",

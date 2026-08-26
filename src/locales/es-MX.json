@@ -15,7 +15,7 @@
       "create": "Crear",
       "createAndUpload": "Crear y subir",
       "createAndUploadLater": "Crear · subir después",
-      "history": "Historial",
+      "history": "Trabajos",
       "settings": "Configuración",
       "pickFolder": "Elegir carpeta",
       "pickFiles": "Elegir archivos",
@@ -466,7 +466,7 @@
       "previewPhotosMany": "{{count}} fotos de vista previa creadas",
       "uploaded": "Subido al servidor",
       "uploadPending": "Creado localmente — subida pendiente",
-      "uploadPendingHint": "Completa la subida más tarde desde el historial.",
+      "uploadPendingHint": "Completa la subida más tarde desde Trabajos.",
       "encoder": "Codificador",
       "dirCreated": "Se creó el directorio",
       "openLocation": "Ir a la ubicación",
@@ -671,7 +671,7 @@
     "offlineCreate": {
       "title": "Servidor no disponible",
       "body": "La subida está activa, pero el servidor está fuera de línea. Aún puedes crear el trabajo localmente; la subida quedará pendiente.",
-      "hint": "Más tarde puedes completar la subida desde el historial cuando el servidor vuelva.",
+      "hint": "Más tarde puedes completar la subida desde Trabajos cuando el servidor vuelva.",
       "proceed": "Crear localmente de todos modos"
     },
     "uploadExtraFiles": {
@@ -743,7 +743,7 @@
       "gstH264DecoderMissing": "No se encontró decodificador H.264 en GStreamer — la vista previa MP4 queda en negro. Instalar: {{installHint}}"
     },
     "chrome": {
-      "historyTitle": "Archivos procesados",
+      "historyTitle": "Trabajos y medios",
       "resetTitle": "Restablecer formulario y medios",
       "encoder": "Codificador: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1089,15 +1089,15 @@
     }
   },
   "history": {
-    "title": "Historial",
-    "description": "Trabajos creados e historial de medios (detección de duplicados).",
+    "title": "Trabajos",
+    "description": "Resumen de trabajos creados e historial de medios (detección de duplicados).",
     "appendTitle": "Reenviar · {{guest}}",
     "appendDescription": "Archivos adicionales en la carpeta del cliente.",
     "tabs": {
       "jobs": "Trabajos",
       "media": "Medios"
     },
-    "appendSuccess": "{{count}} archivo(s) entregados ({{folder}}).\nEstado en “Reenvío” del historial.",
+    "appendSuccess": "{{count}} archivo(s) entregados ({{folder}}).\nEstado en “Reenvío” en Trabajos.",
     "appendDialogTitle": "Reenviar",
     "appendCancelled": "Reenvío cancelado.",
     "filters": {
@@ -1145,7 +1145,7 @@
       "bulkConfirmBody": "{{count}} trabajos se subirán uno tras otro. Los que fallen el preflight se omiten.",
       "bulkProgress": "Subida {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Servidor de nuevo en línea",
-      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde el historial."
+      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos."
     },
     "selectJob": "Selecciona un trabajo",
     "previewReuse": "Reuso de vista previa",
@@ -1165,10 +1165,10 @@
     "noFiles": "Sin archivos",
     "scanDescriptionJob": "Fotograma del acierto de este trabajo",
     "confirm": {
-      "removeJobOne": "¿Quitar trabajo del historial?",
-      "removeJobMany": "¿Quitar {{count}} trabajos del historial?",
-      "removeJobOneBody": "El trabajo seleccionado se elimina del historial. Los archivos en disco se conservan; se quita un fotograma QR de la app.",
-      "removeJobManyBody": "Los trabajos seleccionados se eliminan del historial. Los archivos en disco se conservan; se quitan fotogramas QR de la app.",
+      "removeJobOne": "¿Quitar trabajo de Trabajos?",
+      "removeJobMany": "¿Quitar {{count}} trabajos de Trabajos?",
+      "removeJobOneBody": "El trabajo seleccionado se elimina de Trabajos. Los archivos en disco se conservan; se quita un fotograma QR de la app.",
+      "removeJobManyBody": "Los trabajos seleccionados se eliminan de Trabajos. Los archivos en disco se conservan; se quitan fotogramas QR de la app.",
       "removeMediaOne": "¿Quitar entrada de medios del historial?",
       "removeMediaMany": "¿Quitar {{count}} entradas de medios del historial?",
       "removeMediaOneBody": "La entrada se elimina del historial de medios. El archivo se conserva.",

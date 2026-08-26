@@ -116,8 +116,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 30: Ausgabeordner-Konflikt Soft Confirm (Probe + Replace; keine stillen Restmedien beim Upload)
 - ✅ Phase 31: Offline-Create & Upload nachholen (Soft-Block + `upload_state`; Prefight + Nachholen; Bulk sequentiell + Summary + Historie-Badge)
 - ✅ Phase 32: SMB Quiet-Poll (Parity mit AMS-Health; 45 s + visibility; kein Auto-Upload)
+- ✅ Phase 33: Label Historie → Vorgänge (i18n: DE Vorgänge / EN Jobs / ES Trabajos; kein Component-Rename)
 
-**Nächster Schritt:** Phase 23.3 (Linux libmtp), oder Phase 14 ML Backlog 
+**Nächster Schritt:** Phase 23.3 (Linux libmtp), oder Phase 14 ML Backlog  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog
