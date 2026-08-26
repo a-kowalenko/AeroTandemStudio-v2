@@ -15,7 +15,7 @@ import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 import { cn } from "@/lib/utils";
 import type { UpdateInstallProgress } from "@/lib/tauri";
-import { compareVersionParts } from "@/lib/versionCompare";
+import { compareVersionParts, isVersionPrerelease } from "@/lib/versionCompare";
 import { presentUpdaterInstallHint } from "@/lib/updaterInstallHint";
 import { formatBytes } from "@/lib/formatBytes";
 import { formatSpeed } from "@/lib/formatSpeed";
@@ -80,6 +80,13 @@ export function UpdateDialog({
   const [notesOpen, setNotesOpen] = useState(false);
   const direction = installDirection(fromVersion, toVersion);
   const isDowngrade = direction === "downgrade";
+  const targetIsBeta =
+    isBeta || (toVersion != null && isVersionPrerelease(toVersion));
+  const isFinalize =
+    Boolean(toVersion) &&
+    !isDowngrade &&
+    !targetIsBeta &&
+    isVersionPrerelease(fromVersion);
   const canSilentInstall =
     available &&
     silentAvailable &&
@@ -123,9 +130,11 @@ export function UpdateDialog({
     ? t("dialogs.update.checkTitle")
     : isDowngrade
       ? t("dialogs.update.downgradeTitle")
-      : isBeta
+      : targetIsBeta
         ? t("dialogs.update.betaAvailableTitle")
-        : t("dialogs.update.availableTitle");
+        : isFinalize
+          ? t("dialogs.update.finalAvailableTitle")
+          : t("dialogs.update.availableTitle");
 
   const primaryLabel = installing
     ? t("dialogs.update.installing")
@@ -183,8 +192,13 @@ export function UpdateDialog({
                   to: toVersion,
                   from: fromVersion,
                 })
-              ) : isBeta ? (
+              ) : targetIsBeta ? (
                 t("dialogs.update.canInstallBeta", {
+                  to: toVersion,
+                  from: fromVersion,
+                })
+              ) : isFinalize ? (
+                t("dialogs.update.canInstallFinal", {
                   to: toVersion,
                   from: fromVersion,
                 })
@@ -196,7 +210,7 @@ export function UpdateDialog({
                 </>
               )}
             </p>
-            {isBeta && !isDowngrade ? (
+            {targetIsBeta && !isDowngrade ? (
               <p className="text-xs font-medium text-amber-600 dark:text-amber-500">
                 {t("dialogs.update.betaHint")}
               </p>

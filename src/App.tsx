@@ -75,7 +75,7 @@ import {
   type UpdateInstallProgress,
   type UploadProgressEvent,
 } from "./lib/tauri";
-import { compareVersionParts } from "./lib/versionCompare";
+import { compareVersionParts, isVersionPrerelease } from "./lib/versionCompare";
 import {
   backupSdCard,
   ejectSdCard,
@@ -299,7 +299,11 @@ function App() {
         updaterJsonUrl: result.updater_json_url,
         silentAvailable: Boolean(result.updater_json_url ?? !result.prerelease),
         installerUrl: result.installer_url,
-        isBeta: result.prerelease,
+        isBeta:
+          result.prerelease ||
+          (result.latest_version
+            ? isVersionPrerelease(result.latest_version)
+            : false),
       });
       if (forceDialog || result.available) {
         setUpdateDialogOpen(true);
@@ -330,7 +334,7 @@ function App() {
       updaterJsonUrl: release.updater_json_url,
       silentAvailable: Boolean(release.updater_json_url),
       installerUrl: release.installer_url,
-      isBeta: release.prerelease,
+      isBeta: release.prerelease || isVersionPrerelease(release.tag_name),
     });
     setUpdateDialogOpen(true);
   }

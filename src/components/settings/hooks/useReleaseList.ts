@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { tr } from "@/i18n";
 import type { AvailableRelease } from "@/lib/tauri";
 import { getAppInfo, listAvailableVersions } from "@/lib/tauri";
-import { compareVersionParts } from "@/lib/versionCompare";
+import { compareVersionParts, isVersionPrerelease } from "@/lib/versionCompare";
 
 export function useReleaseList(open: boolean, betaUpdatesEnabled: boolean) {
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -18,6 +18,7 @@ export function useReleaseList(open: boolean, betaUpdatesEnabled: boolean) {
 
   const installedIsBeta = useMemo(() => {
     if (!appVersion) return false;
+    if (isVersionPrerelease(appVersion)) return true;
     return releases.some(
       (r) => r.prerelease && compareVersionParts(r.tag_name, appVersion) === 0,
     );

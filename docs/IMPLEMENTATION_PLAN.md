@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+**Nächste Phase:** [Phase 31 — Offline-Create & Upload nachholen](#phase-31--offline-create--upload-nachholen) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+*(Phase 30 Ausgabeordner-Konflikt erledigt.)*  
 *(Phase 29 Low-Media Confirm erledigt.)*  
 *(Phase 28 Fotos Master–Detail erledigt.)*  
 *(Phase 27 Encode-Profil & Reencode-Confirm UX erledigt.)*  
@@ -1694,6 +1695,176 @@ src/locales/de.json | en.json | es-MX.json
 
 ---
 
+### Phase 31 — Offline-Create & Upload nachholen
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** Phase 10 (SMB-Upload + Marker-Barrier OPT-15), Phase 12 (Create/Historie), Phase 24 (Historie-UI / Append-Muster), Phase 29/30 (Soft-Confirm-Muster)  
+**Ziel:** Bei aktivem Upload und offline Server trotzdem **lokal erstellen**; Upload bewusst **nachholen** (pro Vorgang + alle bereiten) — ohne persistente Auto-Queue und ohne stillen Background-Drain.
+
+> Pro Agent-Session **eine Unterphase** (31.1 → 31.2 → 31.3). Keine AMS-API-Änderung.
+
+#### Ausgangslage (Ist)
+
+- `startCreate`: `upload_to_server && !serverConnected` → **Hard-Block** (Warnung, kein Encode)
+- Create schreibt Historie + Manifest/`_fertig.txt`; bei `upload_to_server` kommt `handoff/ready` erst **nach erfolgreichem SMB**
+- Mid-Upload-Fail: Vorgang lokal da, kein klarer „Upload nachholen“-Pfad
+- Upload-Reihenfolge (unverändert nutzen): Medien (parallel) → `_ams_manifest.v1.json` → `_fertig.txt`
+- Append-Button nur bei Erst-Handoff `completed` — Offline-Erst-Upload bleibt blockiert, bis nachgeholt
+
+#### Out of Scope (gesamte Phase 31)
+
+- Keine persistente Job-Queue / Worker / App-Restart Auto-Drain
+- Kein stiller Auto-Upload bei Reconnect (höchstens Badge + manueller Start)
+- Kein Hash-Integrity-Check (Size wie Manifest reicht)
+- Kein Auto-Repair / fehlende Dateien aus SD-Sources nachbauen
+- Kein Manifest neu generieren aus Disk, wenn Manifest fehlt
+- Append-/Nachreichen-Pipeline nicht umbauen
+- Legacy-Projekt nicht ändern
+
+#### Globale Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Create vs. Upload | Entkoppeln: lokal fertigstellen darf ohne SMB/AMS-Reachability |
+| 2 | Status-Modell | **Separat** von `ams_state`: z. B. `upload_state` (`none` / `pending` / `uploading` / `done` / `failed`). AMS `pending` bleibt „noch nicht von AMS abgeschlossen“ — nicht mit „SMB nie gelaufen“ vermischen |
+| 3 | Quelle Prefight | `_ams_manifest.v1.json` → `integrity.files` (Pfad + Size) + Marker-Existenz. **Nicht** `vorgang_dateien`-Sources (SD oft weg) |
+| 4 | Hard fail Prefight | Ordner fehlt/leer; Manifest fehlt; Marker fehlt; ≥1 Manifest-Datei fehlt; Size weicht ab; Lokal-Vorgang (`correlation_id` leer); bereits `upload_state=done` / AMS Erst-Handoff `completed` |
+| 5 | Soft warn Prefight | Extra-Dateien im Ordner, die **nicht** im Manifest stehen → Confirm „trotzdem hochladen?“ (wie Folder-Conflict Soft Confirm) |
+| 6 | Upload-Pipeline | Bestehenden `upload_to_server` + Phasen-Barrier wiederverwenden; danach `handoff/ready` wie nach erfolgreichem Erst-Upload |
+| 7 | Reconnect | Badge / Zähler „n ausstehend“; **kein** Auto-Start ohne Klick |
+| 8 | Bulk | Sequentiell; Hard-Fail → skip + zählen; Ende: Summary `ok / übersprungen / Upload-Fehler` |
+
+---
+
+#### Phase 31.1 — Soft-Block Create + `upload_state`
+
+**Status:** ⬜ Offen  
+**Ziel:** Offline nicht mehr hart blockieren; Create lokal; Upload überspringen und als ausstehend markieren.
+
+##### Entscheidungen (31.1)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Dialog | Soft Confirm: Zurück / **Trotzdem lokal erstellen** (Primär = Zurück). Hinweis: Upload später in Historie |
+| Wann | Nur wenn `upload_to_server` und Server **nicht** connected; sonst unverändert |
+| Nach Create | Kein SMB-Versuch in diesem Lauf; `upload_state=pending`; Success-Dialog: klar „lokal, Upload ausstehend“ |
+| Mid-fail | Bestehend: Create ok + Upload fail → `upload_state=failed` (für 31.2 nachholbar) |
+| Online Create | Unverändert: Upload sofort; bei Erfolg `upload_state=done` |
+| Lokal-Modus | `upload_state=none` (kein Upload vorgesehen) |
+| Schema | SQLite-Migration: Spalte an `vorgaenge` (Default sinnvoll für Altzeilen: `none` oder aus `ams_state`/Marker ableiten — dokumentieren) |
+
+##### Scope
+
+- [ ] Soft-Confirm in `startCreate` statt Hard-Return
+- [ ] `upload_state` persistieren + bei Create/Upload-Erfolg/-Fail setzen
+- [ ] Success-/Historie-Chip grob: „Upload ausstehend“ / „Upload fehlgeschlagen“ (Minimal-UI ok; volle Buttons in 31.2)
+- [ ] i18n de / en / es-MX
+- [ ] Unit-/Store-Tests Migration + State-Übergänge
+- [ ] Manuell: Upload an, Server offline → Confirm → Create lokal → Historie zeigt pending; online Create → done
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.1 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.1 (Soft-Block Create + upload_state). Kein Prefight/Nachholen-UI (31.2).
+i18n de/en/es-MX. Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 31.2 — Prefight + Upload nachholen (pro Vorgang)
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** 31.1  
+**Ziel:** Aus der Historie einen ausstehenden/fehlgeschlagenen Erst-Upload nachholen — mit Manifest-Prefight.
+
+##### Entscheidungen (31.2)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Button sichtbar | `upload_to_server` Config an; Vorgang nicht Lokal; `upload_state` in `pending`\|`failed`; Ordner-Pfad gesetzt |
+| Prefight-Command | z. B. `preflight_vorgang_upload(vorgang_id)` → ok / hard_errors[] / soft_warnings[] (Extra-Files) |
+| Hard fail UX | Fehlerdialog mit konkreter Dateiliste; kein Upload-Start |
+| Soft warn UX | Confirm; bei Ack Upload starten |
+| Busy / Cancel | Gleicher Upload-Progress + Cancel wie Create-Upload; `upload_state=uploading` währenddessen |
+| Erfolg | `upload_state=done` + bestehendes Handoff/ready; AMS-Status-Poll unverändert |
+| Append | Unverändert: Append erst nach Erst-Handoff `completed` (nach erfolgreichem Nachholen möglich) |
+
+##### Scope
+
+- [ ] Prefight (Manifest ↔ Disk, Marker); Unit-Tests Hard/Soft-Fälle
+- [ ] Command `retry_vorgang_upload` (oder äquivalent) → Prefight → SMB-Phasen → Handoff
+- [ ] Historie-UI: Aktion „Upload nachholen“ + Soft-Extra-Files-Confirm
+- [ ] i18n de / en / es-MX
+- [ ] Manuell: pending → Prefight ok → Upload; fehlende Datei → Hard fail; Extra-Datei → Warnung
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.2 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.2 (Prefight + Upload nachholen pro Vorgang). Kein Bulk (31.3).
+Upload-Pipeline/Barrier nicht umbauen — wiederverwenden.
+i18n de/en/es-MX. Unit-Tests Prefight. Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 31.3 — Alle bereiten abarbeiten
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** 31.2  
+**Ziel:** Mehrere ausstehende Uploads sequentiell abarbeiten mit Summary; kein Auto-Drain.
+
+##### Entscheidungen (31.3)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Kandidaten | Liste `upload_state` in `pending`\|`failed`, Prefight ohne Hard-Fail (Soft-Warn: entweder vorab Confirm „Extras überspringen/trotzdem“ oder pro Item Confirm — MVP: Extra-Files → **skip** wie Hard, oder ein Bulk-Confirm „Extras erlauben“) |
+| Reihenfolge | Älteste zuerst (`created_at` ASC) |
+| Parallelität | **Sequentiell** ein SMB-Job |
+| Hard-Fail | Skip, weiter; in Summary zählen |
+| Server down mid-bulk | Abbruch Rest; bereits erledigte bleiben `done` |
+| Reconnect-Badge | Optional: Header/Historie „n ausstehend“; Klick öffnet Historie oder startet Bulk-Confirm — **kein** Auto-Start |
+| UX Ende | Ein Summary-Dialog: ok / übersprungen / Fehler |
+
+##### Scope
+
+- [ ] Command oder Frontend-Orchestrierung: Liste kandidaten → sequentiell retry
+- [ ] Historie: „Ausstehende Uploads abarbeiten…“ + Summary
+- [ ] Optional Badge-Zähler (kein Auto-Upload)
+- [ ] i18n de / en / es-MX
+- [ ] Manuell: 2 pending + 1 kaputt → 2 ok, 1 skip; Reconnect ohne Auto-Start
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.3 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.3 (Bulk sequentiell + Summary). Kein Auto-Drain bei Reconnect.
+i18n de/en/es-MX. Danach cargo test && npm run check.
+```
+
+---
+
+#### Referenzen (Phase 31)
+
+```
+src/App.tsx                              # startCreate Hard-Block → Soft Confirm
+src/components/HistoryDialog.tsx         # Nachholen / Bulk
+src/components/ServerStatusIndicator.tsx # optional Badge
+src-tauri/src/storage/vorgang_history.rs # upload_state Migration
+src-tauri/src/commands/vorgang_history.rs
+src-tauri/src/commands/smb.rs            # upload_to_server / handoff
+src-tauri/src/smb/client.rs              # collect_upload_files
+src-tauri/src/smb/parallel_upload.rs     # Phasen: media → manifest → marker
+src-tauri/src/video/handoff_manifest.rs  # integrity.files Prefight-Quelle
+src/locales/de.json | en.json | es-MX.json
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1798,6 +1969,9 @@ cargo test
 | 15 | Linux: AppImage, FFmpeg sidecar, SD mounts, SMB, Updater |
 | 25 | Manuell/ID + AMS online: IDs eingeben → Name/Medien füllen, Form sperren; offline: manuell weiter |
 | 28 | Fotos-Tab: Übersicht/Review-Toggle; Klick → Detail rechts; 30+ Fotos Grid flüssig; kein doppeltes MediaListPanel |
+| 31.1 | Upload an + Server offline → Soft Confirm → lokal erstellen → `upload_state=pending` |
+| 31.2 | Historie „Upload nachholen“; Prefight fehlt Datei → Hard fail; Extra-Datei → Warnung; ok → SMB + Handoff |
+| 31.3 | Mehrere pending sequentiell; kaputter Ordner skip; Summary; Reconnect ohne Auto-Upload |
 
 ### End-to-End (Phase 11)
 
@@ -1880,6 +2054,10 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
 | 29 | Low-Media Confirm vor Erstellen | ✅ |
 | 30 | Ausgabeordner-Konflikt vor Erstellen | ✅ |
+| 31 | Offline-Create & Upload nachholen | ⬜ |
+| 31.1 | Soft-Block Create + `upload_state` | ⬜ |
+| 31.2 | Prefight + Upload nachholen (pro Vorgang) | ⬜ |
+| 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -1896,6 +2074,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Linux (Phase 15):** zusätzlich `@docs/LINUX_BUILD.md` — siehe Prompt dort bzw. unten in der Datei.
 
+**Phase 31:** jeweils nur eine Unterphase (`31.1` / `31.2` / `31.3`) — Prompt im Phasenabschnitt.
+
 ---
 
-*Letzte Aktualisierung: 2026-08-20 · Projekt: Aero Tandem Studio v2 · Phase 28 Fotos Master–Detail erledigt*
+*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 31 Plan (Offline-Create & Upload nachholen)*

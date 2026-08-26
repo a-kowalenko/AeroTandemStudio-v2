@@ -4,7 +4,9 @@ Nutzer-sichtbare Release Notes (Update-Dialog & GitHub Release).
 
 Schreibregeln & Struktur: `docs/RELEASE.md` → Abschnitt **Release-Notes**.
 Neue Einträge unter **`[Unreleased]`**; `npm run release` versioniert sie.
-Patch ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
+- **Beta:** Snapshot unter `## [x.y.z-beta.N]` — `[Unreleased]` bleibt erhalten.
+- **Stable:** `[Unreleased]` wird nach `## [x.y.z]` verschoben.
+Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernommen.
 
 ## [Unreleased]
 

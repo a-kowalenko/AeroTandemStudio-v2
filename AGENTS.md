@@ -114,8 +114,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
 - ✅ Phase 29: Low-Media Confirm vor Erstellen (Soft Confirm, produktbezogen, vor setBusy; Append übersprungen)
 - ✅ Phase 30: Ausgabeordner-Konflikt Soft Confirm (Probe + Replace; keine stillen Restmedien beim Upload)
+- ⬜ Phase 31: Offline-Create & Upload nachholen — Plan ✅; Code offen (31.1 Soft-Block + `upload_state` → 31.2 Prefight/Nachholen → 31.3 Bulk)
 
-**Nächster Schritt:** Phase 23.3 (Linux libmtp), Phase 14 ML Backlog, oder Feature-Follow-ups  
+**Nächster Schritt:** Phase 31.1 (Soft-Block Create + `upload_state`), Phase 23.3 (Linux libmtp), oder Phase 14 ML Backlog  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog
