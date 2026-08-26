@@ -13,8 +13,9 @@ use crate::storage::vorgang_history::{
 use crate::video::append_job::{self, AppendJobResult, AppendMediaItem};
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 use crate::video::handoff_manifest::{
-    handoff_share_roots, read_status_outbox_any, resync_integrity_from_disk, DeliveryResyncReport,
-    OutboxAmsMeta, OutboxError, StatusOutboxV1,
+    delete_extra_files_from_disk, handoff_share_roots, read_status_outbox_any,
+    resync_integrity_from_disk, DeleteExtraFilesReport, DeliveryResyncReport, OutboxAmsMeta,
+    OutboxError, StatusOutboxV1,
 };
 use crate::video::progress::EncodeProgress;
 use crate::video::upload_preflight::{
@@ -429,6 +430,42 @@ pub fn resync_vorgang_delivery_list(vorgang_id: i64) -> Result<DeliveryResyncRep
             format!(
                 "Lieferliste angepasst: vorgang_id={vorgang_id}, entfernt={}",
                 report.removed_paths.len()
+            ),
+        );
+    }
+    Ok(report)
+}
+
+/// Delete extra payload files listed by upload preflight before SMB retry (Phase 31.5).
+#[tauri::command]
+pub fn delete_vorgang_extra_files(
+    vorgang_id: i64,
+    relative_paths: Vec<String>,
+) -> Result<DeleteExtraFilesReport, String> {
+    if relative_paths.is_empty() {
+        return Ok(DeleteExtraFilesReport {
+            deleted_paths: Vec::new(),
+        });
+    }
+    let store = open_store()?;
+    let entry = store
+        .get_by_id(vorgang_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Vorgang {vorgang_id} nicht gefunden."))?;
+    let job_dir = Path::new(entry.base_output_dir.trim());
+    if entry.base_output_dir.trim().is_empty() || !job_dir.is_dir() {
+        return Err(format!(
+            "Ausgabeordner fehlt: {}",
+            entry.base_output_dir.trim()
+        ));
+    }
+    let report = delete_extra_files_from_disk(job_dir, &relative_paths)?;
+    if !report.deleted_paths.is_empty() {
+        logging::info(
+            "upload",
+            format!(
+                "Extra-Dateien gelöscht: vorgang_id={vorgang_id}, count={}",
+                report.deleted_paths.len()
             ),
         );
     }

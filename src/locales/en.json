@@ -676,9 +676,12 @@
     },
     "uploadExtraFiles": {
       "title": "Extra files in folder",
-      "body": "The folder for “{{guest}}” has files that are not listed in the manifest. Upload anyway?",
-      "hint": "Extra files will be included in the upload.",
-      "proceed": "Upload anyway"
+      "body": "The folder for “{{guest}}” contains files that were not part of the original job:",
+      "purgeSwitch": "Delete surplus files before upload",
+      "hintInclude": "Upload all files: the delivery list will be updated before upload.",
+      "hintPurge": "The listed files will be deleted locally, then upload starts.",
+      "proceedInclude": "Upload all",
+      "proceedPurge": "Delete and upload"
     },
     "uploadMissingFiles": {
       "body": "The job “{{guest}}” cannot be uploaded as-is. These files are missing from the output folder:",
@@ -705,14 +708,22 @@
         "marker_missing": "Ready marker missing",
         "file_missing": "File missing",
         "size_mismatch": "File size mismatch",
-        "extra_file": "Extra file"
+        "extra_file": "Extra file",
+        "preflight_error": "Preflight failed",
+        "skipped": "Skipped",
+        "unknown": "Unknown error"
       }
     },
     "bulkUploadSummary": {
       "title": "Bulk upload finished",
       "ok": "{{count}} succeeded",
+      "decided": "{{count}} uploaded after confirmation",
       "skipped": "{{count}} skipped",
+      "blocked": "{{count}} not possible",
       "failed": "{{count}} upload errors",
+      "blockedList": "Not possible",
+      "skippedList": "Skipped",
+      "reason": "{{reason}}",
       "aborted": "{{count}} not started (cancelled or server offline)."
     }
   },
@@ -1147,6 +1158,7 @@
       "retryOffline": "Server offline — upload only when the connection is back",
       "retryDone": "Upload completed successfully.",
       "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
+      "extraIncluded": "Upload finished. {{count}} additional file(s) included.",
       "retryCancelled": "Upload cancelled.",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "bulkBtn": "Process pending uploads…",
@@ -1155,6 +1167,13 @@
       "bulkOffline": "Server offline — bulk upload only when the connection is back",
       "bulkConfirmTitle": "Process pending uploads?",
       "bulkConfirmBody": "{{count}} jobs will upload one after another. Jobs with preflight problems are skipped.",
+      "bulkConfirmBodyScan": "{{total}} jobs: {{ready}} ready · {{needs}} need confirmation · {{blocked}} not possible.",
+      "bulkScanning": "Running preflight scan…",
+      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2PromptTitle": "Decisions still needed",
+      "bulkPhase2PromptBody": "{{count}} jobs still need a decision — handle them now?",
+      "bulkPhase2Later": "Later",
+      "bulkPhase2Now": "Handle now",
       "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Server back online",
       "reconnectToastBody": "{{count}} uploads pending — retry from Jobs."

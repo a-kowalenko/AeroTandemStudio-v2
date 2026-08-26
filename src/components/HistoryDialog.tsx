@@ -35,11 +35,19 @@ import {
   listVorgangAppends,
   preflightVorgangUpload,
   resyncVorgangDeliveryList,
+  deleteVorgangExtraFiles,
   canRetryVorgangUpload,
   pendingUploadCandidates,
+  scanBulkUploadCandidates,
+  bulkSummaryItemFromScanEntry,
+  type BulkPhase2Session,
+  type BulkScanEntry,
+  type BulkUploadScanResult,
+  type BulkUploadSummary,
   type AppendMediaItem,
   type HandoffStatus,
   type UploadPreflightIssue,
+  type UploadPreflightResult,
   type VorgangAppendEntry,
   type VorgangEntry,
   type VorgangFileEntry,
@@ -66,6 +74,7 @@ import type {
 import {
   canOfferPartialUpload,
   missingFilePathsFromPreflight,
+  primaryPreflightReasonCode,
 } from "@/lib/uploadPreflight";
 import {
   isAmsCancelled,
@@ -103,8 +112,15 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** After preflight OK (and soft-ack if needed): run SMB upload with Create progress UX. */
   onRetryUpload?: (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => void;
-  /** Sequentially retry all ready pending/failed uploads (Phase 31.3). */
-  onBulkRetryUploads?: (entries: VorgangEntry[]) => void;
+  /** Two-stage bulk: scan result from Historie confirm (Phase 31.6). */
+  onBulkRetryUploads?: (scan: BulkUploadScanResult) => void;
+  /** Phase 2 queue after phase 1 — same decision dialogs as single retry. */
+  bulkPhase2Session?: BulkPhase2Session | null;
+  onBulkPhase2Complete?: (summary: BulkUploadSummary) => void;
+  onBulkPhase2Upload?: (
+    entry: VorgangEntry,
+    opts?: VorgangUploadRetryOptions,
+  ) => Promise<"ok" | "failed" | "cancelled">;
 };
 
 type TypeFilter = "all" | "video" | "photo";
@@ -379,6 +395,9 @@ export function HistoryDialog({
   onOpenChange,
   onRetryUpload = () => {},
   onBulkRetryUploads = () => {},
+  bulkPhase2Session = null,
+  onBulkPhase2Complete = () => {},
+  onBulkPhase2Upload,
 }: Props) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
@@ -404,6 +423,15 @@ export function HistoryDialog({
   const pendingRetryEntryRef = useRef<VorgangEntry | null>(null);
   const pendingOmittedCountRef = useRef(0);
   const [retryPreflightBusy, setRetryPreflightBusy] = useState(false);
+  const bulkPhase2ModeRef = useRef(false);
+  const bulkPhase2QueueRef = useRef<BulkScanEntry[]>([]);
+  const bulkPhase2SummaryRef = useRef<BulkUploadSummary | null>(null);
+  const [bulkPhase2Prompt, setBulkPhase2Prompt] =
+    useState<BulkPhase2Session | null>(null);
+  const onBulkPhase2CompleteRef = useRef(onBulkPhase2Complete);
+  onBulkPhase2CompleteRef.current = onBulkPhase2Complete;
+  const onBulkPhase2UploadRef = useRef(onBulkPhase2Upload);
+  onBulkPhase2UploadRef.current = onBulkPhase2Upload;
   const appendOpen = appendVorgang != null;
   const confirmOpen = pendingConfirm != null;
   const nestedOpen =
@@ -414,15 +442,170 @@ export function HistoryDialog({
     extraFilesConfirm != null ||
     preflightHardFail != null ||
     missingFilesConfirm != null ||
-    partialUploadConfirm != null;
+    partialUploadConfirm != null ||
+    bulkPhase2Prompt != null;
 
   const closeAppendView = useCallback(() => {
     setAppendVorgang(null);
     setAppendPickingFiles(false);
   }, []);
 
+  const processNextBulkPhase2EntryRef = useRef<() => Promise<void>>(
+    async () => {},
+  );
+
+  const finishBulkPhase2 = useCallback(() => {
+    bulkPhase2ModeRef.current = false;
+    const summary = bulkPhase2SummaryRef.current;
+    bulkPhase2SummaryRef.current = null;
+    bulkPhase2QueueRef.current = [];
+    if (summary) {
+      onBulkPhase2CompleteRef.current(summary);
+    }
+  }, []);
+
+  function finishBulkPhase2Entry(
+    result: "ok" | "failed" | "skipped" | "cancelled",
+    entry: VorgangEntry,
+    reasonCode?: string,
+  ) {
+    const summary = bulkPhase2SummaryRef.current;
+    if (!summary) return;
+
+    if (result === "ok") {
+      summary.decided += 1;
+    } else if (result === "failed") {
+      summary.failed += 1;
+    } else if (result === "skipped") {
+      summary.skipped += 1;
+      summary.skippedItems.push({
+        guest: entry.gast,
+        vorgangId: entry.id,
+        reasonCode: reasonCode ?? "skipped",
+      });
+    } else if (result === "cancelled") {
+      summary.aborted = true;
+      summary.remaining = bulkPhase2QueueRef.current.length;
+    }
+
+    bulkPhase2QueueRef.current.shift();
+
+    if (result === "cancelled") {
+      finishBulkPhase2();
+      return;
+    }
+
+    void processNextBulkPhase2EntryRef.current();
+  }
+
+  processNextBulkPhase2EntryRef.current = async () => {
+    if (!bulkPhase2ModeRef.current) return;
+    const queue = bulkPhase2QueueRef.current;
+    if (queue.length === 0) {
+      finishBulkPhase2();
+      return;
+    }
+    const entry = queue[0]!;
+    setRetryPreflightBusy(true);
+    try {
+      const result = await preflightVorgangUpload(entry.id);
+      if (!result.ok || result.hard_errors.length > 0) {
+        if (canOfferPartialUpload(result.hard_errors)) {
+          pendingRetryEntryRef.current = entry;
+          setMissingFilesConfirm({
+            guest: entry.gast,
+            folderPath: entry.base_output_dir,
+            missingPaths: missingFilePathsFromPreflight(result.hard_errors),
+          });
+          return;
+        }
+        pendingRetryEntryRef.current = entry;
+        setPreflightHardFail({
+          guest: entry.gast,
+          issues: result.hard_errors,
+        });
+        return;
+      }
+      const extras = result.soft_warnings
+        .filter((w) => w.code === "extra_file")
+        .map((w) => w.path)
+        .filter(Boolean);
+      if (extras.length > 0) {
+        pendingRetryEntryRef.current = entry;
+        pendingOmittedCountRef.current = 0;
+        setExtraFilesConfirm({
+          vorgangId: entry.id,
+          guest: entry.gast,
+          extraPaths: extras,
+        });
+        return;
+      }
+      const uploadFn = onBulkPhase2UploadRef.current;
+      if (!uploadFn) {
+        finishBulkPhase2Entry("skipped", entry, "skipped");
+        return;
+      }
+      const uploadResult = await uploadFn(entry);
+      finishBulkPhase2Entry(
+        uploadResult === "ok"
+          ? "ok"
+          : uploadResult === "cancelled"
+            ? "cancelled"
+            : "failed",
+        entry,
+      );
+    } catch (e) {
+      showError(String(e), t("history.upload.retryTitle"));
+      finishBulkPhase2Entry("skipped", entry, "preflight_error");
+    } finally {
+      setRetryPreflightBusy(false);
+    }
+  };
+
+  const startBulkPhase2 = useCallback((session: BulkPhase2Session) => {
+    bulkPhase2ModeRef.current = true;
+    bulkPhase2QueueRef.current = [...session.entries];
+    bulkPhase2SummaryRef.current = { ...session.summary };
+    setBulkPhase2Prompt(null);
+    void processNextBulkPhase2EntryRef.current();
+  }, []);
+
+  const deferBulkPhase2 = useCallback((session: BulkPhase2Session) => {
+    const summary = { ...session.summary };
+    for (const entry of session.entries) {
+      summary.skipped += 1;
+      summary.skippedItems.push(bulkSummaryItemFromScanEntry(entry));
+    }
+    setBulkPhase2Prompt(null);
+    onBulkPhase2CompleteRef.current(summary);
+  }, []);
+
+  useEffect(() => {
+    if (open && bulkPhase2Session && bulkPhase2Session.entries.length > 0) {
+      setBulkPhase2Prompt(bulkPhase2Session);
+    }
+  }, [open, bulkPhase2Session]);
+
   const startRetryUpload = useCallback(
-    (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => {
+    async (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => {
+      if (bulkPhase2ModeRef.current && onBulkPhase2UploadRef.current) {
+        pendingRetryEntryRef.current = null;
+        pendingOmittedCountRef.current = 0;
+        setExtraFilesConfirm(null);
+        setPreflightHardFail(null);
+        setMissingFilesConfirm(null);
+        setPartialUploadConfirm(null);
+        const result = await onBulkPhase2UploadRef.current(entry, opts);
+        finishBulkPhase2Entry(
+          result === "ok"
+            ? "ok"
+            : result === "cancelled"
+              ? "cancelled"
+              : "failed",
+          entry,
+        );
+        return;
+      }
       pendingRetryEntryRef.current = null;
       pendingOmittedCountRef.current = 0;
       setExtraFilesConfirm(null);
@@ -436,17 +619,92 @@ export function HistoryDialog({
   );
 
   const startBulkRetryUploads = useCallback(
-    (entries: VorgangEntry[]) => {
-      if (entries.length === 0) return;
+    (scan: BulkUploadScanResult) => {
       setExtraFilesConfirm(null);
       setPreflightHardFail(null);
       setMissingFilesConfirm(null);
       setPartialUploadConfirm(null);
       onOpenChange(false);
-      onBulkRetryUploads(entries);
+      onBulkRetryUploads(scan);
     },
     [onOpenChange, onBulkRetryUploads],
   );
+
+  async function handleRequestBulkRetry(entries: VorgangEntry[]) {
+    if (retryPreflightBusy || entries.length === 0) return;
+    setRetryPreflightBusy(true);
+    try {
+      const scan = await scanBulkUploadCandidates(entries);
+      const total = entries.length;
+      setPendingConfirm({
+        title: t("history.upload.bulkConfirmTitle"),
+        description: t("history.upload.bulkConfirmBodyScan", {
+          total,
+          ready: scan.ready.length,
+          needs: scan.needsDecision.length,
+          blocked: scan.blocked.length,
+        }),
+        actionLabel: t("history.upload.bulkBtn"),
+        actionVariant: "default",
+        run: async () => {
+          startBulkRetryUploads(scan);
+        },
+      });
+    } catch (e) {
+      showError(String(e), t("history.upload.bulkTitle"));
+    } finally {
+      setRetryPreflightBusy(false);
+    }
+  }
+
+  async function continueRetryAfterPreflight(
+    entry: VorgangEntry,
+    pf: UploadPreflightResult,
+    opts: { omitted: number; includedExtraCount?: number },
+  ) {
+    if (!pf.ok || pf.hard_errors.length > 0) {
+      if (canOfferPartialUpload(pf.hard_errors)) {
+        pendingRetryEntryRef.current = entry;
+        setMissingFilesConfirm({
+          guest: entry.gast,
+          folderPath: entry.base_output_dir,
+          missingPaths: missingFilePathsFromPreflight(pf.hard_errors),
+        });
+      } else {
+        setMissingFilesConfirm(null);
+        setPreflightHardFail({
+          guest: entry.gast,
+          issues: pf.hard_errors,
+        });
+      }
+      return;
+    }
+    const extras = pf.soft_warnings
+      .filter((w) => w.code === "extra_file")
+      .map((w) => w.path)
+      .filter(Boolean);
+    if (extras.length > 0) {
+      pendingRetryEntryRef.current = entry;
+      pendingOmittedCountRef.current = opts.omitted;
+      setMissingFilesConfirm(null);
+      setExtraFilesConfirm({
+        vorgangId: entry.id,
+        guest: entry.gast,
+        extraPaths: extras,
+      });
+      return;
+    }
+    setMissingFilesConfirm(null);
+    const retryOpts: VorgangUploadRetryOptions = {};
+    if (opts.omitted > 0) retryOpts.omittedFileCount = opts.omitted;
+    if (opts.includedExtraCount != null && opts.includedExtraCount > 0) {
+      retryOpts.includedExtraCount = opts.includedExtraCount;
+    }
+    startRetryUpload(
+      entry,
+      Object.keys(retryOpts).length > 0 ? retryOpts : undefined,
+    );
+  }
 
   async function handleRequestRetryUpload(entry: VorgangEntry) {
     if (retryPreflightBusy) return;
@@ -491,16 +749,39 @@ export function HistoryDialog({
     }
   }
 
-  function onExtraFilesChoice(choice: UploadExtraFilesConfirmChoice) {
+  async function onExtraFilesChoice(choice: UploadExtraFilesConfirmChoice) {
     const entry = pendingRetryEntryRef.current;
     const omitted = pendingOmittedCountRef.current;
+    const extraPaths = extraFilesConfirm?.extraPaths ?? [];
     setExtraFilesConfirm(null);
-    pendingOmittedCountRef.current = 0;
-    if (choice !== "proceed" || !entry) {
+    if (choice === "back" || !entry) {
+      if (bulkPhase2ModeRef.current && entry) {
+        finishBulkPhase2Entry("skipped", entry, "extra_file");
+      }
       pendingRetryEntryRef.current = null;
+      pendingOmittedCountRef.current = 0;
       return;
     }
-    startRetryUpload(entry, omitted > 0 ? { omittedFileCount: omitted } : undefined);
+    const purgeExtras = choice.purgeExtras;
+    setRetryPreflightBusy(true);
+    try {
+      if (purgeExtras) {
+        await deleteVorgangExtraFiles(entry.id, extraPaths);
+      } else {
+        await resyncVorgangDeliveryList(entry.id);
+      }
+      const pf = await preflightVorgangUpload(entry.id);
+      await continueRetryAfterPreflight(entry, pf, {
+        omitted,
+        includedExtraCount: purgeExtras ? undefined : extraPaths.length,
+      });
+    } catch (e) {
+      pendingRetryEntryRef.current = null;
+      pendingOmittedCountRef.current = 0;
+      showError(String(e), t("history.upload.retryTitle"));
+    } finally {
+      setRetryPreflightBusy(false);
+    }
   }
 
   function onMissingFilesUploadAvailable() {
@@ -517,6 +798,10 @@ export function HistoryDialog({
     const missingPaths = partialUploadConfirm?.missingPaths ?? [];
     setPartialUploadConfirm(null);
     if (choice !== "proceed" || !entry) {
+      if (bulkPhase2ModeRef.current && entry) {
+        finishBulkPhase2Entry("skipped", entry, "file_missing");
+      }
+      pendingRetryEntryRef.current = null;
       return;
     }
     setRetryPreflightBusy(true);
@@ -524,41 +809,8 @@ export function HistoryDialog({
       const report = await resyncVorgangDeliveryList(entry.id);
       const omitted = report.removed_paths.length;
       const pf = await preflightVorgangUpload(entry.id);
-      if (!pf.ok || pf.hard_errors.length > 0) {
-        if (canOfferPartialUpload(pf.hard_errors)) {
-          pendingRetryEntryRef.current = entry;
-          setMissingFilesConfirm({
-            guest: entry.gast,
-            folderPath: entry.base_output_dir,
-            missingPaths: missingFilePathsFromPreflight(pf.hard_errors),
-          });
-        } else {
-          setMissingFilesConfirm(null);
-          setPreflightHardFail({
-            guest: entry.gast,
-            issues: pf.hard_errors,
-          });
-        }
-        return;
-      }
-      const extras = pf.soft_warnings
-        .filter((w) => w.code === "extra_file")
-        .map((w) => w.path)
-        .filter(Boolean);
-      if (extras.length > 0) {
-        pendingRetryEntryRef.current = entry;
-        pendingOmittedCountRef.current = omitted;
-        setMissingFilesConfirm(null);
-        setExtraFilesConfirm({
-          vorgangId: entry.id,
-          guest: entry.gast,
-          extraPaths: extras,
-        });
-        return;
-      }
-      setMissingFilesConfirm(null);
-      startRetryUpload(entry, {
-        omittedFileCount: omitted > 0 ? omitted : missingPaths.length,
+      await continueRetryAfterPreflight(entry, pf, {
+        omitted: omitted > 0 ? omitted : missingPaths.length,
       });
     } catch (e) {
       showError(String(e), t("history.upload.retryTitle"));
@@ -617,10 +869,24 @@ export function HistoryDialog({
               appendPanelRef.current?.requestBack();
               return;
             }
+            if (bulkPhase2Prompt) {
+              deferBulkPhase2(bulkPhase2Prompt);
+            } else if (
+              bulkPhase2ModeRef.current &&
+              bulkPhase2SummaryRef.current
+            ) {
+              const summary = bulkPhase2SummaryRef.current;
+              for (const entry of bulkPhase2QueueRef.current) {
+                summary.skipped += 1;
+                summary.skippedItems.push(bulkSummaryItemFromScanEntry(entry));
+              }
+              finishBulkPhase2();
+            }
             setPendingConfirm(null);
             setQrScanOpen(false);
             setExtraFilesConfirm(null);
             setPreflightHardFail(null);
+            setBulkPhase2Prompt(null);
             pendingRetryEntryRef.current = null;
             closeAppendView();
           }
@@ -716,7 +982,9 @@ export function HistoryDialog({
                     onRequestRetryUpload={(entry) =>
                       void handleRequestRetryUpload(entry)
                     }
-                    onStartBulkRetry={startBulkRetryUploads}
+                    onRequestBulkRetry={(entries) =>
+                      void handleRequestBulkRetry(entries)
+                    }
                     retryPreflightBusy={retryPreflightBusy}
                   />
                 </TabsContent>
@@ -816,13 +1084,25 @@ export function HistoryDialog({
         open={extraFilesConfirm != null}
         guest={extraFilesConfirm?.guest ?? ""}
         extraPaths={extraFilesConfirm?.extraPaths ?? []}
-        onChoose={onExtraFilesChoice}
+        onChoose={(choice) => void onExtraFilesChoice(choice)}
       />
       <UploadPreflightHardFailDialog
         open={preflightHardFail != null}
         guest={preflightHardFail?.guest ?? ""}
         issues={(preflightHardFail?.issues ?? []) as UploadPreflightIssue[]}
-        onClose={() => setPreflightHardFail(null)}
+        onClose={() => {
+          const entry = pendingRetryEntryRef.current;
+          const issues = preflightHardFail?.issues ?? [];
+          setPreflightHardFail(null);
+          pendingRetryEntryRef.current = null;
+          if (bulkPhase2ModeRef.current && entry) {
+            finishBulkPhase2Entry(
+              "skipped",
+              entry,
+              primaryPreflightReasonCode(issues.map((i) => i.code)),
+            );
+          }
+        }}
       />
       <UploadMissingFilesDialog
         open={missingFilesConfirm != null}
@@ -831,8 +1111,12 @@ export function HistoryDialog({
         missingPaths={missingFilesConfirm?.missingPaths ?? []}
         onUploadAvailable={onMissingFilesUploadAvailable}
         onClose={() => {
+          const entry = pendingRetryEntryRef.current;
           pendingRetryEntryRef.current = null;
           setMissingFilesConfirm(null);
+          if (bulkPhase2ModeRef.current && entry) {
+            finishBulkPhase2Entry("skipped", entry, "file_missing");
+          }
         }}
       />
       <UploadPartialConfirmDialog
@@ -841,6 +1125,55 @@ export function HistoryDialog({
         missingPaths={partialUploadConfirm?.missingPaths ?? []}
         onChoose={onPartialUploadChoice}
       />
+
+      <Dialog
+        open={bulkPhase2Prompt != null}
+        onOpenChange={(v) => {
+          if (!v && bulkPhase2Prompt) {
+            deferBulkPhase2(bulkPhase2Prompt);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-md overflow-hidden border-l-4 border-l-primary"
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => {
+            e.preventDefault();
+            if (bulkPhase2Prompt) deferBulkPhase2(bulkPhase2Prompt);
+          }}
+        >
+          <DialogHeader className="min-w-0">
+            <DialogTitle>{t("history.upload.bulkPhase2PromptTitle")}</DialogTitle>
+            <DialogDescription asChild>
+              <p className="text-sm text-foreground">
+                {t("history.upload.bulkPhase2PromptBody", {
+                  count: bulkPhase2Prompt?.entries.length ?? 0,
+                })}
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (bulkPhase2Prompt) deferBulkPhase2(bulkPhase2Prompt);
+              }}
+            >
+              {t("history.upload.bulkPhase2Later")}
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              onClick={() => {
+                if (bulkPhase2Prompt) startBulkPhase2(bulkPhase2Prompt);
+              }}
+            >
+              {t("history.upload.bulkPhase2Now")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -881,7 +1214,7 @@ function VorgaengePanel({
   onOpenAppend,
   onRequestConfirm,
   onRequestRetryUpload,
-  onStartBulkRetry,
+  onRequestBulkRetry,
   retryPreflightBusy,
 }: {
   dialogOpen: boolean;
@@ -891,7 +1224,7 @@ function VorgaengePanel({
   onOpenAppend: (vorgang: VorgangEntry) => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
   onRequestRetryUpload: (entry: VorgangEntry) => void;
-  onStartBulkRetry: (entries: VorgangEntry[]) => void;
+  onRequestBulkRetry: (entries: VorgangEntry[]) => void;
   retryPreflightBusy: boolean;
 }) {
   const { t } = useTranslation();
@@ -1472,16 +1805,7 @@ function VorgaengePanel({
       );
       return;
     }
-    const n = bulkCandidates.length;
-    onRequestConfirm({
-      title: t("history.upload.bulkConfirmTitle"),
-      description: t("history.upload.bulkConfirmBody", { count: n }),
-      actionLabel: t("history.upload.bulkBtn"),
-      actionVariant: "default",
-      run: async () => {
-        onStartBulkRetry(bulkCandidates);
-      },
-    });
+    onRequestBulkRetry(bulkCandidates);
   }
 
   const showEmptyList = ready && !loading && filteredEntries.length === 0;
@@ -1542,7 +1866,9 @@ function VorgaengePanel({
             }
             onClick={requestBulkRetry}
           >
-            {t("history.upload.bulkBtn")}
+            {retryPreflightBusy
+              ? t("history.upload.bulkScanning")
+              : t("history.upload.bulkBtn")}
           </Button>
         ) : null}
         <Button

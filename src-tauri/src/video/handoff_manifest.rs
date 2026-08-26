@@ -235,6 +235,86 @@ pub struct DeliveryResyncReport {
     pub file_count: usize,
 }
 
+/// Result of deleting extra payload files before upload retry (Phase 31.5).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DeleteExtraFilesReport {
+    pub deleted_paths: Vec<String>,
+}
+
+fn resolve_payload_path_under_job(job_dir: &Path, rel: &str) -> Result<PathBuf, String> {
+    let rel_norm = rel.replace('\\', "/");
+    if rel_norm.trim().is_empty() {
+        return Err("Leerer Pfad".into());
+    }
+    if rel_norm.starts_with('/') || rel_norm.starts_with('\\') {
+        return Err(format!("Absoluter Pfad nicht erlaubt: {rel}"));
+    }
+    let mut abs = job_dir.to_path_buf();
+    for part in rel_norm.split('/') {
+        if part.is_empty() {
+            continue;
+        }
+        if part == ".." {
+            return Err(format!("Pfad-Escape nicht erlaubt: {rel}"));
+        }
+        if part.contains('\\') {
+            return Err(format!("Ungültiger Pfad: {rel}"));
+        }
+        abs.push(part);
+    }
+    Ok(abs)
+}
+
+fn canonical_job_root(job_dir: &Path) -> Result<PathBuf, String> {
+    job_dir
+        .canonicalize()
+        .map_err(|e| format!("Ausgabeordner lesen '{}': {e}", job_dir.display()))
+}
+
+/// Delete listed extra payload files under the job root (Phase 31.5).
+pub fn delete_extra_files_from_disk(
+    job_dir: &Path,
+    relative_paths: &[String],
+) -> Result<DeleteExtraFilesReport, String> {
+    if !job_dir.is_dir() {
+        return Err(format!("Ausgabeordner fehlt: {}", job_dir.display()));
+    }
+    let job_root = canonical_job_root(job_dir)?;
+    let mut deleted_paths = Vec::new();
+
+    for rel in relative_paths {
+        let rel_norm = rel.replace('\\', "/");
+        let file_name = rel_norm.rsplit('/').next().unwrap_or("");
+        if is_ignored_handoff_name(file_name) {
+            return Err(format!(
+                "Geschützte Datei darf nicht gelöscht werden: {rel_norm}"
+            ));
+        }
+
+        let abs = resolve_payload_path_under_job(job_dir, rel)?;
+        let canon = abs.canonicalize().map_err(|e| {
+            format!("Datei fehlt oder nicht lesbar '{}': {e}", abs.display())
+        })?;
+        if !canon.starts_with(&job_root) {
+            return Err(format!("Pfad außerhalb des Ordners: {rel_norm}"));
+        }
+        if !canon.is_file() {
+            return Err(format!("Keine Datei: {rel_norm}"));
+        }
+
+        fs::remove_file(&canon).map_err(|e| {
+            format!(
+                "Datei löschen '{}': {e}",
+                rel_norm
+            )
+        })?;
+        deleted_paths.push(rel_norm);
+    }
+
+    deleted_paths.sort();
+    Ok(DeleteExtraFilesReport { deleted_paths })
+}
+
 /// Rewrite manifest `integrity.files` from the job folder; preserve handoff metadata.
 pub fn resync_integrity_from_disk(job_dir: &Path) -> Result<DeliveryResyncReport, String> {
     let path = job_dir.join(MANIFEST_FILENAME);
@@ -548,6 +628,57 @@ mod tests {
         assert_eq!(parsed_after.correlation_id, cid);
         assert_eq!(parsed_after.integrity.files.len(), 1);
         assert_eq!(parsed_after.integrity.files[0].path, "Handcam_Video/a.mp4");
+    }
+
+    #[test]
+    fn delete_extra_files_removes_only_listed_paths() {
+        let dir = tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "20260815_Test".into(),
+        };
+        fs::create_dir_all(dir.path().join("Outside_Foto")).unwrap();
+        fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
+        fs::write(dir.path().join("Outside_Foto/keep.jpg"), b"jpeg").unwrap();
+        fs::write(dir.path().join("Outside_Foto/extra.jpg"), b"extra").unwrap();
+        fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
+        write_handoff_manifest(&layout, &Kunde::default(), &AppConfig::default()).unwrap();
+
+        let report = delete_extra_files_from_disk(
+            dir.path(),
+            &["Outside_Foto/extra.jpg".into()],
+        )
+        .unwrap();
+        assert_eq!(report.deleted_paths, vec!["Outside_Foto/extra.jpg"]);
+        assert!(dir.path().join("Outside_Foto/keep.jpg").is_file());
+        assert!(dir.path().join("Handcam_Video/a.mp4").is_file());
+        assert!(!dir.path().join("Outside_Foto/extra.jpg").exists());
+    }
+
+    #[test]
+    fn delete_extra_files_rejects_path_escape() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
+        fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
+
+        let err = delete_extra_files_from_disk(dir.path(), &["../outside.txt".into()])
+            .unwrap_err();
+        assert!(err.contains("Escape") || err.contains("Ungültig"));
+    }
+
+    #[test]
+    fn delete_extra_files_rejects_marker_and_manifest() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join(MARKER_FERTIG), b"{}").unwrap();
+        fs::write(dir.path().join(MANIFEST_FILENAME), b"{}").unwrap();
+
+        let marker_err =
+            delete_extra_files_from_disk(dir.path(), &[MARKER_FERTIG.into()]).unwrap_err();
+        assert!(marker_err.contains("Geschützte"));
+
+        let manifest_err =
+            delete_extra_files_from_disk(dir.path(), &[MANIFEST_FILENAME.into()]).unwrap_err();
+        assert!(manifest_err.contains("Geschützte"));
     }
 
     #[test]

@@ -676,9 +676,12 @@
     },
     "uploadExtraFiles": {
       "title": "Archivos adicionales en la carpeta",
-      "body": "La carpeta de “{{guest}}” tiene archivos que no están en el manifiesto. ¿Subir de todos modos?",
-      "hint": "Los archivos adicionales se incluirán en la subida.",
-      "proceed": "Subir de todos modos"
+      "body": "La carpeta de “{{guest}}” contiene archivos que no formaban parte del trabajo original:",
+      "purgeSwitch": "Eliminar archivos sobrantes antes de subir",
+      "hintInclude": "Subir todos: la lista de entrega se actualizará antes de subir.",
+      "hintPurge": "Los archivos listados se eliminarán localmente y luego comenzará la subida.",
+      "proceedInclude": "Subir todos",
+      "proceedPurge": "Eliminar y subir"
     },
     "uploadMissingFiles": {
       "body": "El trabajo “{{guest}}” no se puede subir así. Faltan estos archivos en la carpeta de salida:",
@@ -705,14 +708,22 @@
         "marker_missing": "Falta el marcador de listo",
         "file_missing": "Falta un archivo",
         "size_mismatch": "Tamaño de archivo distinto",
-        "extra_file": "Archivo adicional"
+        "extra_file": "Archivo adicional",
+        "preflight_error": "Preflight falló",
+        "skipped": "Omitido",
+        "unknown": "Error desconocido"
       }
     },
     "bulkUploadSummary": {
       "title": "Proceso de subidas terminado",
       "ok": "{{count}} correctas",
+      "decided": "{{count}} subidas tras confirmación",
       "skipped": "{{count}} omitidas",
+      "blocked": "{{count}} no posibles",
       "failed": "{{count}} errores de subida",
+      "blockedList": "No posibles",
+      "skippedList": "Omitidas",
+      "reason": "{{reason}}",
       "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea)."
     }
   },
@@ -1147,6 +1158,7 @@
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
       "retryDone": "Subida completada correctamente.",
       "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
+      "extraIncluded": "Subida lista. Se incluyeron {{count}} archivo(s) adicional(es).",
       "retryCancelled": "Subida cancelada.",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "bulkBtn": "Procesar subidas pendientes…",
@@ -1155,6 +1167,13 @@
       "bulkOffline": "Servidor fuera de línea — la subida masiva solo es posible con conexión",
       "bulkConfirmTitle": "¿Procesar subidas pendientes?",
       "bulkConfirmBody": "{{count}} trabajos se subirán uno tras otro. Los que fallen el preflight se omiten.",
+      "bulkConfirmBodyScan": "{{total}} trabajos: {{ready}} listos · {{needs}} con confirmación · {{blocked}} no posibles.",
+      "bulkScanning": "Comprobando preflight…",
+      "bulkPhase1Progress": "Subida {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2PromptTitle": "Aún faltan decisiones",
+      "bulkPhase2PromptBody": "{{count}} trabajos aún necesitan una decisión — ¿procesarlos ahora?",
+      "bulkPhase2Later": "Después",
+      "bulkPhase2Now": "Procesar ahora",
       "bulkProgress": "Subida {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Servidor de nuevo en línea",
       "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos."

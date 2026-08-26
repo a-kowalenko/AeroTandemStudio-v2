@@ -132,9 +132,18 @@ import {
   preflightVorgangUpload,
   refreshPendingUploadCount,
   setVorgangUploadState,
+  bulkSummaryItemFromScanEntry,
+  createEmptyBulkUploadSummary,
+  type BulkPhase2Session,
+  type BulkUploadScanResult,
   type BulkUploadSummary,
   type VorgangEntry,
+  type VorgangUploadRetryOptions,
 } from "./lib/vorgangHistory";
+import {
+  classifyBulkPreflight,
+  primaryPreflightReasonCode,
+} from "./lib/uploadPreflight";
 import { showPendingUploadsToast } from "./lib/pendingUploadToast";
 import { useHistoryStore } from "./store/historyStore";
 import type { EncodeProgress } from "./components/app/types";
@@ -261,6 +270,8 @@ function App() {
     useState<OfflineCreateConfirmState | null>(null);
   const [bulkUploadSummary, setBulkUploadSummary] =
     useState<BulkUploadSummary | null>(null);
+  const [bulkPhase2Session, setBulkPhase2Session] =
+    useState<BulkPhase2Session | null>(null);
   /** Ack signature: warn once per Vorgang until media/products change (Phase 29). */
   const lowMediaAckRef = useRef<string | null>(null);
   /** Ack signature after user chose Replace for this planned folder (Phase 30). */
@@ -1858,7 +1869,7 @@ function App() {
   /** Historie „Upload nachholen“ — reuses Create SMB pipeline + progress (Phase 31.2). */
   async function retryVorgangUpload(
     entry: VorgangEntry,
-    opts?: { omittedFileCount?: number },
+    opts?: { omittedFileCount?: number; includedExtraCount?: number },
   ) {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
       return;
@@ -1866,29 +1877,51 @@ function App() {
     await runVorgangUploadAttempt(entry, {
       quietSuccess: false,
       omittedFileCount: opts?.omittedFileCount,
+      includedExtraCount: opts?.includedExtraCount,
     });
     void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
       () => {},
     );
   }
 
+  /** Quiet SMB retry for bulk phase 1 / phase 2 (returns upload outcome). */
+  async function retryVorgangUploadForBulk(
+    entry: VorgangEntry,
+    opts?: VorgangUploadRetryOptions,
+  ): Promise<"ok" | "failed" | "cancelled"> {
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
+      return "failed";
+    }
+    const result = await runVorgangUploadAttempt(entry, {
+      quietSuccess: true,
+      omittedFileCount: opts?.omittedFileCount,
+      includedExtraCount: opts?.includedExtraCount,
+    });
+    void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
+      () => {},
+    );
+    return result;
+  }
+
   /**
-   * Phase 31.3: sequential bulk retry. Soft extras → skip (MVP).
-   * Server down / cancel mid-bulk → abort remainder; done rows stay done.
+   * Phase 31.6: scan → phase 1 (ready only) → optional phase 2 (decisions in Historie).
    */
-  async function retryVorgangUploadsBulk(entries: VorgangEntry[]) {
+  async function retryVorgangUploadsBulk(scan: BulkUploadScanResult) {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
       return;
     }
-    if (entries.length === 0) return;
 
-    const summary: BulkUploadSummary = {
-      ok: 0,
-      skipped: 0,
-      failed: 0,
-      aborted: false,
-      remaining: 0,
-    };
+    const summary = createEmptyBulkUploadSummary();
+    for (const entry of scan.blocked) {
+      summary.blocked += 1;
+      summary.blockedItems.push(bulkSummaryItemFromScanEntry(entry));
+    }
+
+    const readyEntries = scan.ready;
+    if (readyEntries.length === 0 && scan.needsDecision.length === 0) {
+      setBulkUploadSummary(summary);
+      return;
+    }
 
     setBusy(true);
     jobCancelRequestedRef.current = false;
@@ -1898,42 +1931,50 @@ function App() {
     setCreateFailed(false);
 
     try {
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i]!;
+      for (let i = 0; i < readyEntries.length; i++) {
+        const entry = readyEntries[i]!;
         if (!useServerStore.getState().connected) {
           summary.aborted = true;
-          summary.remaining = entries.length - i;
+          summary.remaining =
+            readyEntries.length - i + scan.needsDecision.length;
           break;
         }
         if (jobCancelRequestedRef.current) {
           summary.aborted = true;
-          summary.remaining = entries.length - i;
+          summary.remaining =
+            readyEntries.length - i + scan.needsDecision.length;
           break;
         }
 
         setStatus(
-          t("history.upload.bulkProgress", {
+          t("history.upload.bulkPhase1Progress", {
             current: i + 1,
-            total: entries.length,
+            total: readyEntries.length,
             guest: entry.gast,
           }),
         );
 
-        let preflightOk = false;
         try {
           const pf = await preflightVorgangUpload(entry.id);
-          // MVP: extra files count as skip (same as hard) — use single retry for soft-ack.
-          const hasExtras = pf.soft_warnings.some((w) => w.code === "extra_file");
-          if (!pf.ok || pf.hard_errors.length > 0 || hasExtras) {
+          const cls = classifyBulkPreflight(pf);
+          if (cls.bucket !== "ready") {
             summary.skipped += 1;
+            summary.skippedItems.push({
+              guest: entry.gast,
+              vorgangId: entry.id,
+              reasonCode: primaryPreflightReasonCode(cls.reasonCodes),
+            });
             continue;
           }
-          preflightOk = true;
         } catch {
           summary.skipped += 1;
+          summary.skippedItems.push({
+            guest: entry.gast,
+            vorgangId: entry.id,
+            reasonCode: "preflight_error",
+          });
           continue;
         }
-        if (!preflightOk) continue;
 
         const result = await runVorgangUploadAttempt(entry, {
           quietSuccess: true,
@@ -1942,13 +1983,15 @@ function App() {
           summary.ok += 1;
         } else if (result === "cancelled") {
           summary.aborted = true;
-          summary.remaining = entries.length - i;
+          summary.remaining =
+            readyEntries.length - i + scan.needsDecision.length;
           break;
         } else {
           summary.failed += 1;
           if (!useServerStore.getState().connected) {
             summary.aborted = true;
-            summary.remaining = entries.length - (i + 1);
+            summary.remaining =
+              readyEntries.length - (i + 1) + scan.needsDecision.length;
             break;
           }
         }
@@ -1964,13 +2007,28 @@ function App() {
       );
     }
 
+    if (scan.needsDecision.length > 0 && !summary.aborted) {
+      setBulkPhase2Session({ entries: scan.needsDecision, summary });
+      setProcessedOpen(true);
+      return;
+    }
+
     setBulkUploadSummary(summary);
+  }
+
+  function completeBulkPhase2(finalSummary: BulkUploadSummary) {
+    setBulkPhase2Session(null);
+    setBulkUploadSummary(finalSummary);
   }
 
   /** Shared SMB attempt used by single retry and bulk (Phase 31.2 / 31.3). */
   async function runVorgangUploadAttempt(
     entry: VorgangEntry,
-    opts: { quietSuccess: boolean; omittedFileCount?: number },
+    opts: {
+      quietSuccess: boolean;
+      omittedFileCount?: number;
+      includedExtraCount?: number;
+    },
   ): Promise<"ok" | "failed" | "cancelled"> {
     const correlationId = entry.correlation_id?.trim() || null;
     const vorgangId = entry.id;
@@ -2019,12 +2077,18 @@ function App() {
       if (!opts.quietSuccess) {
         setStatus(t("create.job.done"));
         const omitted = opts.omittedFileCount ?? 0;
-        const message =
-          omitted > 0
-            ? t("history.upload.partialSuccess", { count: omitted })
-            : uploaded.remote_path ||
-              uploaded.message ||
-              t("history.upload.retryDone");
+        const included = opts.includedExtraCount ?? 0;
+        let message: string;
+        if (omitted > 0) {
+          message = t("history.upload.partialSuccess", { count: omitted });
+        } else if (included > 0) {
+          message = t("history.upload.extraIncluded", { count: included });
+        } else {
+          message =
+            uploaded.remote_path ||
+            uploaded.message ||
+            t("history.upload.retryDone");
+        }
         showSuccess(message, t("history.upload.retryTitle"), { autoCloseSecs: 8 });
       }
       return "ok";
@@ -2227,7 +2291,12 @@ function App() {
         processedOpen={processedOpen}
         setProcessedOpen={setProcessedOpen}
         onRetryVorgangUpload={(entry, opts) => void retryVorgangUpload(entry, opts)}
-        onBulkRetryUploads={(entries) => void retryVorgangUploadsBulk(entries)}
+        onBulkRetryUploads={(scan) => void retryVorgangUploadsBulk(scan)}
+        bulkPhase2Session={bulkPhase2Session}
+        onBulkPhase2Complete={completeBulkPhase2}
+        onBulkPhase2Upload={(entry, opts) =>
+          retryVorgangUploadForBulk(entry, opts)
+        }
         bulkUploadSummary={bulkUploadSummary}
         onBulkUploadSummaryClose={() => setBulkUploadSummary(null)}
         settingsSdActions={settingsSdActions}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -9,8 +9,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 
-export type UploadExtraFilesConfirmChoice = "back" | "proceed";
+export type UploadExtraFilesConfirmChoice =
+  | "back"
+  | { action: "proceed"; purgeExtras: boolean };
 
 type Props = {
   open: boolean;
@@ -20,8 +23,8 @@ type Props = {
 };
 
 /**
- * Soft confirm when the job folder has files not listed in `_ams_manifest.v1.json`.
- * Proceed still uploads (extras included via collect_upload_files); Back cancels.
+ * Soft confirm when the job folder has files not in the original delivery list.
+ * Default: resync delivery list and upload all files. Optional: delete extras first.
  */
 export function UploadExtraFilesConfirmDialog({
   open,
@@ -33,10 +36,12 @@ export function UploadExtraFilesConfirmDialog({
   const chosenRef = useRef(false);
   const onChooseRef = useRef(onChoose);
   onChooseRef.current = onChoose;
+  const [purgeExtras, setPurgeExtras] = useState(false);
 
   useEffect(() => {
     if (!open) {
       chosenRef.current = false;
+      setPurgeExtras(false);
     }
   }, [open]);
 
@@ -77,13 +82,37 @@ export function UploadExtraFilesConfirmDialog({
                   </li>
                 ))}
               </ul>
-              <p className="text-muted">{t("dialogs.uploadExtraFiles.hint")}</p>
+              <label
+                htmlFor="upload-extra-purge-switch"
+                className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+              >
+                <Switch
+                  id="upload-extra-purge-switch"
+                  checked={purgeExtras}
+                  onCheckedChange={setPurgeExtras}
+                />
+                <span className="text-sm text-foreground">
+                  {t("dialogs.uploadExtraFiles.purgeSwitch")}
+                </span>
+              </label>
+              <p className="text-muted">
+                {purgeExtras
+                  ? t("dialogs.uploadExtraFiles.hintPurge")
+                  : t("dialogs.uploadExtraFiles.hintInclude")}
+              </p>
             </div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="min-w-0 gap-2 sm:justify-between">
-          <Button variant="outline" onClick={() => choose("proceed")}>
-            {t("dialogs.uploadExtraFiles.proceed")}
+          <Button
+            variant="outline"
+            onClick={() =>
+              choose({ action: "proceed", purgeExtras })
+            }
+          >
+            {purgeExtras
+              ? t("dialogs.uploadExtraFiles.proceedPurge")
+              : t("dialogs.uploadExtraFiles.proceedInclude")}
           </Button>
           <Button variant="default" onClick={() => choose("back")}>
             {t("common.actions.back")}

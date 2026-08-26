@@ -676,9 +676,12 @@
     },
     "uploadExtraFiles": {
       "title": "Zusätzliche Dateien im Ordner",
-      "body": "Im Ordner von „{{guest}}“ liegen Dateien, die nicht im Manifest stehen. Trotzdem hochladen?",
-      "hint": "Zusätzliche Dateien werden mit hochgeladen.",
-      "proceed": "Trotzdem hochladen"
+      "body": "Im Ordner von „{{guest}}“ liegen Dateien, die nicht zum ursprünglichen Vorgang gehörten:",
+      "purgeSwitch": "Überschüssige Dateien vor dem Upload löschen",
+      "hintInclude": "Mit allen Dateien hochladen: Die Lieferliste wird vor dem Upload angepasst.",
+      "hintPurge": "Die gelisteten Dateien werden lokal gelöscht, danach der Upload gestartet.",
+      "proceedInclude": "Mit allen hochladen",
+      "proceedPurge": "Löschen und hochladen"
     },
     "uploadMissingFiles": {
       "body": "Der Vorgang „{{guest}}“ kann so nicht hochgeladen werden. Diese Dateien fehlen im Ausgabeordner:",
@@ -705,14 +708,22 @@
         "marker_missing": "Fertig-Marker fehlt",
         "file_missing": "Datei fehlt",
         "size_mismatch": "Dateigröße weicht ab",
-        "extra_file": "Zusätzliche Datei"
+        "extra_file": "Zusätzliche Datei",
+        "preflight_error": "Preflight fehlgeschlagen",
+        "skipped": "Übersprungen",
+        "unknown": "Unbekannter Fehler"
       }
     },
     "bulkUploadSummary": {
       "title": "Upload-Abarbeitung fertig",
       "ok": "{{count}} erfolgreich",
+      "decided": "{{count}} nach Rückfrage hochgeladen",
       "skipped": "{{count}} übersprungen",
+      "blocked": "{{count}} nicht möglich",
       "failed": "{{count}} Upload-Fehler",
+      "blockedList": "Nicht möglich",
+      "skippedList": "Übersprungen",
+      "reason": "{{reason}}",
       "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline)."
     }
   },
@@ -1147,6 +1158,7 @@
       "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
       "retryDone": "Upload erfolgreich nachgeholt.",
       "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
+      "extraIncluded": "Upload fertig. {{count}} zusätzliche Datei(en) mitgeliefert.",
       "retryCancelled": "Upload abgebrochen.",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
       "bulkBtn": "Ausstehende Uploads abarbeiten…",
@@ -1155,6 +1167,13 @@
       "bulkOffline": "Server offline — Bulk-Upload erst möglich, wenn die Verbindung steht",
       "bulkConfirmTitle": "Ausstehende Uploads abarbeiten?",
       "bulkConfirmBody": "{{count}} Vorgänge werden nacheinander hochgeladen. Vorgänge mit Prefight-Problemen werden übersprungen.",
+      "bulkConfirmBodyScan": "{{total}} Vorgänge: {{ready}} sofort · {{needs}} mit Rückfrage · {{blocked}} nicht möglich.",
+      "bulkScanning": "Preflight wird geprüft…",
+      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2PromptTitle": "Noch Entscheidungen nötig",
+      "bulkPhase2PromptBody": "{{count}} Vorgänge brauchen noch eine Entscheidung — jetzt bearbeiten?",
+      "bulkPhase2Later": "Später",
+      "bulkPhase2Now": "Jetzt bearbeiten",
       "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
       "reconnectToastTitle": "Server wieder online",
       "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen."

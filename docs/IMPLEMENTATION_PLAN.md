@@ -2004,7 +2004,7 @@ Danach cargo test && npm run check.
 
 #### Phase 31.6 — Bulk zweistufig (Vorab-Scan + problematische einzeln)
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** 31.3 (Bulk sequentiell + Summary), 31.4 (Missing-Dialoge), 31.5 (Extra-Dialoge + Resync/Löschen)  
 **Ziel:** Beim Bulk-Upload zuerst **alle problemlosen** Vorgänge durchlaufen lassen; **problematische** danach **einzeln** mit denselben Entscheidungs-Dialogen wie beim Einzel-Nachholen — statt alles pauschal als „übersprungen“ zu verlieren.
 
@@ -2058,11 +2058,11 @@ Bulk starten
 
 ##### Scope
 
-- [ ] `classifyBulkPreflight(result)` (TS): `ready` \| `needs_decision` \| `blocked` + reason codes
-- [ ] `retryVorgangUploadsBulk` in `App.tsx`: Scan → Phase 1 → optional Phase 2-Orchestrierung
-- [ ] Bulk-Confirm in `HistoryDialog`: Scan vor Anzeige (async) oder Scan im Confirm-Text nach kurzem Laden
-- [ ] Phase-2-Prompt + Wiederverwendung der Einzel-Dialoge (Extract shared handler aus `HistoryDialog` oder Bulk-Callback mit `onRetryWithDecision`)
-- [ ] `BulkUploadSummary` + Dialog: `blocked[]` / `skipped[]` mit `{ guest, reason }`; i18n de / en / es-MX
+- [x] `classifyBulkPreflight(result)` (TS): `ready` \| `needs_decision` \| `blocked` + reason codes
+- [x] `retryVorgangUploadsBulk` in `App.tsx`: Scan → Phase 1 → optional Phase 2-Orchestrierung
+- [x] Bulk-Confirm in `HistoryDialog`: Scan vor Anzeige (async) oder Scan im Confirm-Text nach kurzem Laden
+- [x] Phase-2-Prompt + Wiederverwendung der Einzel-Dialoge (Extract shared handler aus `HistoryDialog` oder Bulk-Callback mit `onRetryWithDecision`)
+- [x] `BulkUploadSummary` + Dialog: `blocked[]` / `skipped[]` mit `{ guest, reason }`; i18n de / en / es-MX
 - [ ] Manuell: 5 ready + 1 extra + 1 missing → Phase 1 = 5 ok; Phase 2 = 2 Entscheidungen; 1 blocked in Summary
 
 ##### Referenzen

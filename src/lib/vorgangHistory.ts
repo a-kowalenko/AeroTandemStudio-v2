@@ -1,6 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { QrPreview } from "./tauri";
 import { useHistoryStore } from "@/store/historyStore";
+import {
+  classifyBulkPreflight,
+  primaryPreflightReasonCode,
+} from "./uploadPreflight";
 
 export type VorgangEntry = {
   id: number;
@@ -162,6 +166,10 @@ export type DeliveryResyncReport = {
   file_count: number;
 };
 
+export type DeleteExtraFilesReport = {
+  deleted_paths: string[];
+};
+
 /** Align on-disk delivery list with files currently in the output folder (Phase 31.4). */
 export async function resyncVorgangDeliveryList(
   vorgangId: number,
@@ -171,8 +179,20 @@ export async function resyncVorgangDeliveryList(
   });
 }
 
+/** Delete extra payload files under the job folder before upload retry (Phase 31.5). */
+export async function deleteVorgangExtraFiles(
+  vorgangId: number,
+  relativePaths: string[],
+): Promise<DeleteExtraFilesReport> {
+  return invoke<DeleteExtraFilesReport>("delete_vorgang_extra_files", {
+    vorgangId,
+    relativePaths,
+  });
+}
+
 export type VorgangUploadRetryOptions = {
   omittedFileCount?: number;
+  includedExtraCount?: number;
 };
 
 /** `pending` | `failed` — counts toward Historie badge / bulk candidates. */
@@ -206,7 +226,6 @@ export function countPendingUploads(
 
 /**
  * Bulk candidates: retryable rows, oldest first (`created_at` ASC, then id).
- * Soft-extra files are skipped later in preflight (MVP: treat like hard skip).
  */
 export function pendingUploadCandidates(
   entries: VorgangEntry[],
@@ -234,14 +253,89 @@ export function pendingUploadCandidates(
     });
 }
 
+export type BulkUploadSummaryItem = {
+  guest: string;
+  vorgangId: number;
+  reasonCode: string;
+};
+
+export type BulkScanEntry = VorgangEntry & { reasonCodes: string[] };
+
+export type BulkUploadScanResult = {
+  ready: VorgangEntry[];
+  needsDecision: BulkScanEntry[];
+  blocked: BulkScanEntry[];
+};
+
+export type BulkPhase2Session = {
+  entries: BulkScanEntry[];
+  summary: BulkUploadSummary;
+};
+
 export type BulkUploadSummary = {
   ok: number;
+  /** Phase 2 uploads after user decision (Phase 31.6). */
+  decided: number;
   skipped: number;
   failed: number;
+  blocked: number;
   /** Remaining candidates not attempted (cancel or server down mid-bulk). */
   aborted: boolean;
   remaining: number;
+  blockedItems: BulkUploadSummaryItem[];
+  skippedItems: BulkUploadSummaryItem[];
 };
+
+export function createEmptyBulkUploadSummary(): BulkUploadSummary {
+  return {
+    ok: 0,
+    decided: 0,
+    skipped: 0,
+    failed: 0,
+    blocked: 0,
+    aborted: false,
+    remaining: 0,
+    blockedItems: [],
+    skippedItems: [],
+  };
+}
+
+/** Preflight all bulk candidates once before confirm (Phase 31.6). */
+export async function scanBulkUploadCandidates(
+  entries: VorgangEntry[],
+): Promise<BulkUploadScanResult> {
+  const ready: VorgangEntry[] = [];
+  const needsDecision: BulkScanEntry[] = [];
+  const blocked: BulkScanEntry[] = [];
+
+  for (const entry of entries) {
+    try {
+      const pf = await preflightVorgangUpload(entry.id);
+      const cls = classifyBulkPreflight(pf);
+      if (cls.bucket === "ready") {
+        ready.push(entry);
+      } else if (cls.bucket === "needs_decision") {
+        needsDecision.push({ ...entry, reasonCodes: cls.reasonCodes });
+      } else {
+        blocked.push({ ...entry, reasonCodes: cls.reasonCodes });
+      }
+    } catch {
+      blocked.push({ ...entry, reasonCodes: ["preflight_error"] });
+    }
+  }
+
+  return { ready, needsDecision, blocked };
+}
+
+export function bulkSummaryItemFromScanEntry(
+  entry: BulkScanEntry,
+): BulkUploadSummaryItem {
+  return {
+    guest: entry.gast,
+    vorgangId: entry.id,
+    reasonCode: primaryPreflightReasonCode(entry.reasonCodes),
+  };
+}
 
 /** Refresh Historie badge counter from SQLite (no auto-upload). */
 export async function refreshPendingUploadCount(

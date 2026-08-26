@@ -10,7 +10,7 @@ import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog
 import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
 import type { OfflineCreateConfirmChoice } from "../OfflineCreateConfirmDialog";
 import type { OfflineCreateConfirmState } from "@/lib/offlineCreateConfirm";
-import type { BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
+import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
 import { BulkUploadSummaryDialog } from "../BulkUploadSummaryDialog";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
@@ -84,7 +84,13 @@ export type AppDialogsProps = {
   processedOpen: boolean;
   setProcessedOpen: (open: boolean) => void;
   onRetryVorgangUpload: (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => void;
-  onBulkRetryUploads: (entries: VorgangEntry[]) => void;
+  onBulkRetryUploads: (scan: BulkUploadScanResult) => void;
+  bulkPhase2Session: BulkPhase2Session | null;
+  onBulkPhase2Complete: (summary: BulkUploadSummary) => void;
+  onBulkPhase2Upload: (
+    entry: VorgangEntry,
+    opts?: VorgangUploadRetryOptions,
+  ) => Promise<"ok" | "failed" | "cancelled">;
   bulkUploadSummary: BulkUploadSummary | null;
   onBulkUploadSummaryClose: () => void;
   settingsSdActions: () => SdWorkflowActions;
@@ -167,6 +173,9 @@ export function AppDialogs(props: AppDialogsProps) {
     setProcessedOpen,
     onRetryVorgangUpload,
     onBulkRetryUploads,
+    bulkPhase2Session,
+    onBulkPhase2Complete,
+    onBulkPhase2Upload,
     bulkUploadSummary,
     onBulkUploadSummaryClose,
     settingsSdActions,
@@ -280,6 +289,9 @@ export function AppDialogs(props: AppDialogsProps) {
             onOpenChange={setProcessedOpen}
             onRetryUpload={onRetryVorgangUpload}
             onBulkRetryUploads={onBulkRetryUploads}
+            bulkPhase2Session={bulkPhase2Session}
+            onBulkPhase2Complete={onBulkPhase2Complete}
+            onBulkPhase2Upload={onBulkPhase2Upload}
           />
         </DialogChunk>
       ) : null}
