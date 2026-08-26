@@ -21,6 +21,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Verbessert
 
+- Kopfzeile passt sich schmaleren Fenstern an: Titel wird zu „ATS“, Encoder-Anzeige und Version weichen schrittweise — bis nur noch das Logo sichtbar ist (ohne abgeschnittene …)
 - Server-Status aktualisiert sich im Hintergrund — Verbindungsprobleme fallen schneller auf
 - Bezeichnungen vereinheitlicht: der Bereich heißt durchgängig „Vorgänge“ (statt teils „Historie“)
 - Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
