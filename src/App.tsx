@@ -15,6 +15,13 @@ import {
   shouldWarnLowMedia,
   type LowMediaConfirmState,
 } from "./lib/lowMediaConfirm";
+import type { FolderConflictConfirmChoice } from "./components/FolderConflictConfirmDialog";
+import {
+  folderConflictSignature,
+  shouldWarnFolderConflict,
+  toFolderConflictConfirmState,
+  type FolderConflictConfirmState,
+} from "./lib/folderConflictConfirm";
 import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
@@ -58,6 +65,7 @@ import {
   runStartupChecks,
   uploadToServer,
   validateCreateJob,
+  probeCreateOutputFolder,
   type AvailableRelease,
   type BodyConcatFallbackPayload,
   type CreateJobResult,
@@ -237,8 +245,13 @@ function App() {
     useState<ReencodeConfirmState | null>(null);
   const [lowMediaConfirm, setLowMediaConfirm] =
     useState<LowMediaConfirmState | null>(null);
+  const [folderConflictConfirm, setFolderConflictConfirm] =
+    useState<FolderConflictConfirmState | null>(null);
   /** Ack signature: warn once per Vorgang until media/products change (Phase 29). */
   const lowMediaAckRef = useRef<string | null>(null);
+  /** Ack signature after user chose Replace for this planned folder (Phase 30). */
+  const folderConflictAckRef = useRef<string | null>(null);
+  const replaceExistingDirRef = useRef(false);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
@@ -1448,6 +1461,55 @@ function App() {
     }
   }
 
+  function onFolderConflictChoice(choice: FolderConflictConfirmChoice) {
+    const pending = folderConflictConfirm;
+    setFolderConflictConfirm(null);
+    if (!pending) return;
+    if (choice === "back") {
+      replaceExistingDirRef.current = false;
+      return;
+    }
+    const sig = folderConflictSignature({
+      exists: true,
+      is_empty: false,
+      folder_name: pending.folderName,
+      folder_path: pending.folderPath,
+      has_marker: pending.hasMarker,
+      video_file_count: pending.videoFileCount,
+      photo_file_count: pending.photoFileCount,
+      other_file_count: pending.otherFileCount,
+      total_file_count: pending.totalFileCount,
+    });
+    folderConflictAckRef.current = sig;
+    replaceExistingDirRef.current = true;
+    void continueCreateAfterFolderConflict();
+  }
+
+  /** After folder replace ack: low-media soft confirm, then create. */
+  async function continueCreateAfterFolderConflict() {
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
+      return;
+    const paths = videoList.map((v) => v.path);
+    const photos = photoList.map((p) => p.path);
+    const lowMediaInput = {
+      kunde,
+      videoCount: paths.length,
+      photoCount: photos.length,
+    };
+    const lowMedia = shouldWarnLowMedia(lowMediaInput);
+    const sig = lowMediaSignature(lowMediaInput);
+    if (lowMedia.warn && lowMediaAckRef.current !== sig) {
+      setLowMediaConfirm({
+        reasons: lowMedia.reasons,
+        videoCount: lowMedia.videoCount,
+        photoCount: lowMedia.photoCount,
+        uploadToServer: Boolean(config?.upload_to_server),
+      });
+      return;
+    }
+    await runCreateJob();
+  }
+
   async function startCreate() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
       return;
@@ -1481,6 +1543,30 @@ function App() {
       return;
     }
 
+    // Soft folder-conflict confirm before low-media / setBusy (not on Append).
+    try {
+      const probe = await probeCreateOutputFolder(kunde);
+      if (shouldWarnFolderConflict(probe)) {
+        const fSig = folderConflictSignature(probe);
+        if (folderConflictAckRef.current !== fSig) {
+          setFolderConflictConfirm(
+            toFolderConflictConfirmState(
+              probe,
+              Boolean(config?.upload_to_server),
+            ),
+          );
+          return;
+        }
+        replaceExistingDirRef.current = true;
+      } else {
+        replaceExistingDirRef.current = false;
+        folderConflictAckRef.current = null;
+      }
+    } catch (e) {
+      showError(String(e), t("dialogs.folderConflict.title"));
+      return;
+    }
+
     // Soft low-media confirm before setBusy / encode / reencode (not on Append).
     const lowMediaInput = {
       kunde,
@@ -1509,6 +1595,7 @@ function App() {
     const paths = videoList.map((v) => v.path);
     const photos = photoList.map((p) => p.path);
     const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
+    const replaceExistingDir = replaceExistingDirRef.current;
 
     setBusy(true);
     jobCancelRequestedRef.current = false;
@@ -1559,6 +1646,7 @@ function App() {
           reuse_preview_fingerprint: canReusePreview
             ? cachedPreviewFingerprint
             : null,
+          replace_existing_dir: replaceExistingDir,
         },
         kunde.form_mode === "kunde" ? qrPreview : null,
       );
@@ -1609,6 +1697,8 @@ function App() {
       setPercent(100);
       setStatus(t("create.job.done"));
       setTaskProgress([]);
+      folderConflictAckRef.current = null;
+      replaceExistingDirRef.current = false;
 
       if (config?.auto_clear_files_after_creation) {
         videoCuts.clearUndoState();
@@ -1624,6 +1714,8 @@ function App() {
         });
         clearCreateReadyPulse();
         lowMediaAckRef.current = null;
+        folderConflictAckRef.current = null;
+        replaceExistingDirRef.current = false;
       }
     } catch (e) {
       if (isCancellationError(e)) {
@@ -1713,6 +1805,9 @@ function App() {
     clearCreateReadyPulse();
     lowMediaAckRef.current = null;
     setLowMediaConfirm(null);
+    folderConflictAckRef.current = null;
+    replaceExistingDirRef.current = false;
+    setFolderConflictConfirm(null);
     showSessionResetToast(
       t("common.actions.reset"),
       t("app.session.resetDone"),
@@ -1917,6 +2012,8 @@ function App() {
         onReencodeChoice={onReencodeChoice}
         lowMediaConfirm={lowMediaConfirm}
         onLowMediaChoice={onLowMediaChoice}
+        folderConflictConfirm={folderConflictConfirm}
+        onFolderConflictChoice={onFolderConflictChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}

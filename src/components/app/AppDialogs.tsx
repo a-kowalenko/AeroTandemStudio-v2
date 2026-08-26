@@ -6,6 +6,8 @@ import type { BodyConcatFallbackChoice } from "../BodyConcatFallbackDialog";
 import type { ReencodeConfirmResult, ReencodeConfirmState } from "../ReencodeConfirmDialog";
 import type { LowMediaConfirmChoice } from "../LowMediaConfirmDialog";
 import type { LowMediaConfirmState } from "@/lib/lowMediaConfirm";
+import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog";
+import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
@@ -18,6 +20,7 @@ import { IntroMuxFallbackDialog } from "../IntroMuxFallbackDialog";
 import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
 import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
+import { FolderConflictConfirmDialog } from "../FolderConflictConfirmDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
 import { UpdateDialog } from "../UpdateDialog";
@@ -117,6 +120,8 @@ export type AppDialogsProps = {
   onReencodeChoice: (result: ReencodeConfirmResult) => void;
   lowMediaConfirm: LowMediaConfirmState | null;
   onLowMediaChoice: (choice: LowMediaConfirmChoice) => void;
+  folderConflictConfirm: FolderConflictConfirmState | null;
+  onFolderConflictChoice: (choice: FolderConflictConfirmChoice) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -188,6 +193,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onReencodeChoice,
     lowMediaConfirm,
     onLowMediaChoice,
+    folderConflictConfirm,
+    onFolderConflictChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -353,6 +360,16 @@ export function AppDialogs(props: AppDialogsProps) {
         photoCount={lowMediaConfirm?.photoCount ?? 0}
         uploadToServer={lowMediaConfirm?.uploadToServer ?? false}
         onChoose={onLowMediaChoice}
+      />
+      <FolderConflictConfirmDialog
+        open={folderConflictConfirm !== null}
+        folderName={folderConflictConfirm?.folderName ?? ""}
+        hasMarker={folderConflictConfirm?.hasMarker ?? false}
+        videoFileCount={folderConflictConfirm?.videoFileCount ?? 0}
+        photoFileCount={folderConflictConfirm?.photoFileCount ?? 0}
+        otherFileCount={folderConflictConfirm?.otherFileCount ?? 0}
+        uploadToServer={folderConflictConfirm?.uploadToServer ?? false}
+        onChoose={onFolderConflictChoice}
       />
       <LoadingOverlay
         open={loading && !sdWorkflowUiActive}

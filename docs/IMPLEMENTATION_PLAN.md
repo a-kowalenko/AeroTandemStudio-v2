@@ -1629,6 +1629,71 @@ src/locales/de.json | en.json | es-MX.json
 
 ---
 
+### Phase 30 — Ausgabeordner-Konflikt vor Erstellen
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 12 (`create_job` / Ordnerlayout), Phase 29 (Soft-Confirm-Muster)  
+**Ziel:** Wenn der deterministische Ausgabeordner schon Dateien enthält, Soft-Confirm mit **Ordner ersetzen** — kein stilles Mischen alter Fotos/Videos beim erneuten Erstellen/Upload.
+
+#### Ausgangslage (Ist)
+
+- `create_base_output_dir` nutzt `create_dir_all` → existierender Ordner wird still weiterverwendet
+- Zweites Erstellen nur mit Video überschreibt Video, lässt Fotos liegen → Upload/AMS-Manifest nehmen den ganzen Ordner mit
+- Append/Nachreichen ist der vorgesehene Weg für Extra-Medien
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Soft Confirm | Kein Error in `validate_create_job`. Dialog: Zurück / Ordner ersetzen und erstellen |
+| 2 | Wann warnen | Ordner existiert und enthält ≥1 Datei. Leere Ordner (nur Unterordner) → kein Dialog |
+| 3 | Ersetzen | `replace_existing_dir`: Job-Ordner `remove_dir_all` + neu anlegen, dann normaler Create |
+| 4 | Kein „Trotzdem ohne Löschen“ | Stilles Mischen bleibt unmöglich — sonst Restfotos-Bug |
+| 5 | Click-Flow | Nach harter Validation + Server-Check, **vor** Low-Media / `setBusy`: Probe → Conflict → Low-Media → Job |
+| 6 | Alarmmüdigkeit | Pro geplanter Ordner-Signatur einmal Replace-Ack; nach erfolgreichem Create / Session-Reset erneut |
+| 7 | Edge Cases | Append/Nachreichen: **keine** Conflict-Warnung. Probe read-only |
+| 8 | UX | Primäraktion = **Zurück**; Sekundär = Ordner ersetzen. Counts (Videos/Fotos/Marker) + Upload-Hinweis |
+
+#### Scope
+
+- [x] `video/folder_conflict.rs` — Probe, Clear, Unit-Tests
+- [x] Command `probe_create_output_folder` + `CreateJobOptions.replace_existing_dir`
+- [x] `FolderConflictConfirmDialog` + `folderConflictConfirm.ts`
+- [x] Einbindung in `startCreate` / `AppDialogs` (vor Low-Media)
+- [x] i18n de / en / es-MX
+- [ ] Manuell: 1× Video+Foto erstellen → 2× nur Video → Dialog → Ersetzen → keine alten Fotos im Upload
+
+#### Nicht tun
+
+- Keine neuen Errors in `validate_create_job`
+- Kein automatisches `_2`-Suffix am Ordnernamen (AMS/Cloud-Konvention)
+- Append-Flow nicht anfassen
+- Legacy-Projekt nicht ändern
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 30 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 30 (Ausgabeordner-Konflikt Soft Confirm + Replace).
+Flow vor Low-Media / setBusy. Append überspringen.
+i18n de/en/es-MX. Unit-Tests Probe/Clear. Danach cargo test && npm run check.
+```
+
+#### Referenzen
+
+```
+src/App.tsx
+src/components/FolderConflictConfirmDialog.tsx
+src/lib/folderConflictConfirm.ts
+src-tauri/src/video/folder_conflict.rs
+src-tauri/src/video/export_job.rs
+src-tauri/src/commands/video.rs
+src/locales/de.json | en.json | es-MX.json
+```
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -1814,6 +1879,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 27 | Encode-Profil & Reencode-Confirm UX | ✅ |
 | 28 | Fotos-Tab Master–Detail (Übersicht / Review) | ✅ |
 | 29 | Low-Media Confirm vor Erstellen | ✅ |
+| 30 | Ausgabeordner-Konflikt vor Erstellen | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

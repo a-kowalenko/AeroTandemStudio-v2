@@ -649,6 +649,19 @@
       "hintEncode": "A continuación inicia la codificación.",
       "hintUpload": "A continuación inician la codificación y la subida.",
       "proceed": "Crear de todos modos"
+    },
+    "folderConflict": {
+      "title": "La carpeta de salida ya existe",
+      "body": "La carpeta “{{name}}” ya contiene archivos. Sin reemplazarla, medios antiguos (p. ej. fotos) se subirían con el nuevo trabajo.",
+      "videosOne": "{{count}} archivo de video en la carpeta",
+      "videosMany": "{{count}} archivos de video en la carpeta",
+      "photosOne": "{{count}} foto en la carpeta",
+      "photosMany": "{{count}} fotos en la carpeta",
+      "otherFiles": "{{count}} otro(s) archivo(s)",
+      "hasMarker": "Marcador listo (_fertig.txt) presente — el trabajo parecía ya terminado",
+      "hintEncode": "“Reemplazar carpeta” borra el contenido y crea de nuevo.",
+      "hintUpload": "“Reemplazar carpeta” borra el contenido y crea de nuevo — solo se subirán los medios actuales.",
+      "replace": "Reemplazar carpeta y crear"
     }
   },
   "splash": {

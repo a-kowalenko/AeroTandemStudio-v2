@@ -46,6 +46,9 @@ pub struct CreateJobOptions {
     /// Fingerprint returned by `generate_preview` for the same form + clips.
     #[serde(default)]
     pub reuse_preview_fingerprint: Option<String>,
+    /// After soft folder-conflict confirm: wipe the job folder before writing.
+    #[serde(default)]
+    pub replace_existing_dir: bool,
     #[serde(default, flatten)]
     pub video: CreateVideoOptions,
 }
@@ -346,6 +349,27 @@ pub fn create_job(
             speicherort, gast
         ),
     );
+
+    if options.replace_existing_dir {
+        let planned = crate::video::folder_conflict::planned_output_dir(
+            Path::new(speicherort),
+            &gast,
+            kunde.tandemmaster.trim(),
+            kunde.videospringer.trim(),
+            kunde.datum.trim(),
+            outside_mode,
+            kunde.ort.trim(),
+        );
+        if planned.exists() {
+            logging::info(
+                "create",
+                format!("Ersetze bestehenden Ausgabeordner: {}", planned.display()),
+            );
+            crate::video::folder_conflict::clear_job_output_dir(&planned)
+                .map_err(ProcessorError::Message)?;
+        }
+    }
+
     let layout = create_base_output_dir(
         Path::new(speicherort),
         &gast,

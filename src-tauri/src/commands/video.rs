@@ -1,5 +1,6 @@
 //! Tauri commands for video encoding, concat, trim, cut, split, import, create_video, preview.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -20,6 +21,7 @@ use crate::video::probe::{self, VideoMetadata};
 use crate::model::Kunde;
 use crate::video::body_concat_fallback::{self, BodyConcatAskFn, BodyConcatChoice};
 use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
+use crate::video::folder_conflict::{self, OutputFolderProbe};
 use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
 use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn};
 use crate::video::progress::EncodeProgress;
@@ -1091,6 +1093,32 @@ pub fn validate_create_job(
         valid: errors.is_empty(),
         errors,
     })
+}
+
+/// Read-only probe: does the planned create output folder already contain files?
+#[tauri::command]
+pub fn probe_create_output_folder(
+    state: State<'_, ConfigState>,
+    kunde: Kunde,
+) -> Result<OutputFolderProbe, String> {
+    let speicherort = {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        cache.speicherort.clone()
+    };
+    let speicher = speicherort.trim();
+    if speicher.is_empty() {
+        return Err("Speicherort ist nicht gesetzt. Bitte Ordner wählen.".into());
+    }
+    let outside_mode = kunde.is_outside_video() || kunde.video_mode == "outside";
+    folder_conflict::probe_output_folder(
+        Path::new(speicher),
+        &kunde.resolve_gast(),
+        kunde.tandemmaster.trim(),
+        kunde.videospringer.trim(),
+        kunde.datum.trim(),
+        outside_mode,
+        kunde.ort.trim(),
+    )
 }
 
 /// Full export job: folders, video, photos, watermarks, `_fertig.txt`.

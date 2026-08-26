@@ -113,6 +113,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 27: Encode-Profil & Reencode-Confirm UX
 - ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
 - ✅ Phase 29: Low-Media Confirm vor Erstellen (Soft Confirm, produktbezogen, vor setBusy; Append übersprungen)
+- ✅ Phase 30: Ausgabeordner-Konflikt Soft Confirm (Probe + Replace; keine stillen Restmedien beim Upload)
 
 **Nächster Schritt:** Phase 23.3 (Linux libmtp), Phase 14 ML Backlog, oder Feature-Follow-ups  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*

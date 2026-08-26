@@ -649,6 +649,19 @@
       "hintEncode": "Encoding will start next.",
       "hintUpload": "Encoding and upload will start next.",
       "proceed": "Create anyway"
+    },
+    "folderConflict": {
+      "title": "Output folder already exists",
+      "body": "The folder “{{name}}” already contains files. Without replacing, old media (e.g. photos) would be uploaded with the new job.",
+      "videosOne": "{{count}} video file in the folder",
+      "videosMany": "{{count}} video files in the folder",
+      "photosOne": "{{count}} photo in the folder",
+      "photosMany": "{{count}} photos in the folder",
+      "otherFiles": "{{count}} other file(s)",
+      "hasMarker": "Done marker (_fertig.txt) present — job looked already finished",
+      "hintEncode": "“Replace folder” deletes its contents and creates again.",
+      "hintUpload": "“Replace folder” deletes its contents and creates again — only current media will be uploaded.",
+      "replace": "Replace folder and create"
     }
   },
   "splash": {

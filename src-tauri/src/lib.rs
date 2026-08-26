@@ -46,9 +46,10 @@ use commands::video::{
     cancel_encode, clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
     discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
     get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
-    list_video_keyframes, probe_video, reset_workflow_cancel, resolve_body_concat_fallback,
-    resolve_intro_mux_fallback, resolve_reencode_confirm, rotate_video, split_video, trim_video,
-    undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path, validate_create_job,
+    list_video_keyframes, probe_create_output_folder, probe_video, reset_workflow_cancel,
+    resolve_body_concat_fallback, resolve_intro_mux_fallback, resolve_reencode_confirm,
+    rotate_video, split_video, trim_video, undo_all_video_cuts, undo_last_video_cut,
+    undo_video_cut_for_path, validate_create_job,
 };
 use commands::vorgang_history::{
     delete_vorgaenge, get_handoff_status, list_vorgang_appends, list_vorgang_dateien, list_vorgaenge,
@@ -179,6 +180,7 @@ pub fn run() {
             resolve_body_concat_fallback,
             resolve_reencode_confirm,
             validate_create_job,
+            probe_create_output_folder,
             generate_preview,
             get_config,
             save_config,

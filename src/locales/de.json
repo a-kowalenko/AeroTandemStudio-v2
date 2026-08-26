@@ -649,6 +649,19 @@
       "hintEncode": "Danach startet Encoding.",
       "hintUpload": "Danach starten Encoding und Upload.",
       "proceed": "Trotzdem erstellen"
+    },
+    "folderConflict": {
+      "title": "Ausgabeordner existiert bereits",
+      "body": "Der Ordner „{{name}}“ enthält bereits Dateien. Ohne Ersetzen würden alte Medien (z. B. Fotos) mit dem neuen Vorgang hochgeladen.",
+      "videosOne": "{{count}} Video-Datei im Ordner",
+      "videosMany": "{{count}} Video-Dateien im Ordner",
+      "photosOne": "{{count}} Foto im Ordner",
+      "photosMany": "{{count}} Fotos im Ordner",
+      "otherFiles": "{{count}} weitere Datei(en)",
+      "hasMarker": "Fertig-Marker (_fertig.txt) vorhanden — Vorgang wirkte schon abgeschlossen",
+      "hintEncode": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu.",
+      "hintUpload": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu — nur aktuelle Medien werden hochgeladen.",
+      "replace": "Ordner ersetzen und erstellen"
     }
   },
   "splash": {

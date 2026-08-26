@@ -501,6 +501,8 @@ export type CreateJobOptions = {
   /** Path from last matching `generate_preview` (backend verifies fingerprint). */
   reuse_preview_path?: string | null;
   reuse_preview_fingerprint?: string | null;
+  /** After folder-conflict confirm: wipe job folder before writing. */
+  replace_existing_dir?: boolean;
 };
 
 export type CreateJobResult = {
@@ -663,6 +665,25 @@ export async function validateCreateJob(
     watermarkPhotoIndices: watermarkPhotoIndices ?? null,
     oldschoolMode: oldschoolMode ?? null,
   });
+}
+
+export type OutputFolderProbe = {
+  exists: boolean;
+  is_empty: boolean;
+  folder_name: string;
+  folder_path: string;
+  has_marker: boolean;
+  video_file_count: number;
+  photo_file_count: number;
+  other_file_count: number;
+  total_file_count: number;
+};
+
+/** Read-only: planned create folder already has files? */
+export async function probeCreateOutputFolder(
+  kunde: Kunde,
+): Promise<OutputFolderProbe> {
+  return invoke<OutputFolderProbe>("probe_create_output_folder", { kunde });
 }
 
 export async function createJob(
