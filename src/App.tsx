@@ -46,7 +46,7 @@ import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
-import { useAmsBridgeHealthPoll } from "./hooks/useAmsBridgeHealthPoll";
+import { useServerHealthPoll } from "./hooks/useServerHealthPoll";
 import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
@@ -182,7 +182,6 @@ function App() {
   const openSettings = useUiStore((s) => s.openSettings);
   const clearCreateReadyPulse = useUiStore((s) => s.clearCreateReadyPulse);
 
-  const checkServerConnection = useServerStore((s) => s.checkConnection);
   const setServerPhase = useServerStore((s) => s.setPhase);
   const setUploadProgress = useServerStore((s) => s.setUploadProgress);
   const serverConnected = useServerStore((s) => s.connected);
@@ -1190,18 +1189,6 @@ function App() {
       .setLanguage(normalizeUiLanguage(config.ui_language));
   }, [config?.ui_language]);
 
-  useEffect(() => {
-    if (!config?.server_url || !ready || setupWizardOpen) return;
-    void checkServerConnection();
-  }, [
-    config?.server_url,
-    config?.server_login,
-    config?.server_password,
-    checkServerConnection,
-    ready,
-    setupWizardOpen,
-  ]);
-
   /** Historie badge: refresh pending/failed count when upload is enabled. */
   useEffect(() => {
     if (!ready || splashOpen || setupWizardOpen) return;
@@ -1271,7 +1258,7 @@ function App() {
     splashOpen,
   ]);
 
-  useAmsBridgeHealthPoll(ready && !splashOpen && !setupWizardOpen);
+  useServerHealthPoll(ready && !splashOpen && !setupWizardOpen);
 
   useEffect(() => {
     if (!config || defaultsApplied.current) return;

@@ -63,6 +63,7 @@ export function ServerStatusIndicator({ className }: Props) {
   const smbPhase = useServerStore((s) => s.phase);
   const smbConnected = useServerStore((s) => s.connected);
   const smbMessage = useServerStore((s) => s.message);
+  const smbRefreshing = useServerStore((s) => s.refreshing);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const checkConnection = useServerStore((s) => s.checkConnection);
 
@@ -103,6 +104,7 @@ export function ServerStatusIndicator({ className }: Props) {
     amsPhase,
     amsConnected,
     amsMessage,
+    smbRefreshing,
     amsRefreshing,
     amsDisplayName,
     serverUrl,
@@ -114,7 +116,8 @@ export function ServerStatusIndicator({ className }: Props) {
   const loudChecking =
     retrying || smbPhase === "checking" || amsChecking;
   const quietRefreshing =
-    amsConfigured && amsRefreshing && !loudChecking;
+    !loudChecking &&
+    (smbRefreshing || (amsConfigured && amsRefreshing));
   const showSpinner = useDelayedSpinner(
     loudChecking || quietRefreshing,
     loudChecking,

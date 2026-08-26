@@ -56,8 +56,11 @@ function smbTooltipLine(
   login: string,
   password: string,
   serverUrl: string,
+  refreshing?: boolean,
 ): string {
-  if (phase === "checking") return tr("header.connection.serverChecking");
+  if (phase === "checking" || refreshing) {
+    return tr("header.connection.serverChecking");
+  }
   if (phase === "uploading") return tr("header.connection.serverUploading");
   if (phase === "error") {
     const detail = serverStatusErrorTooltip(message, login, password, serverUrl);
@@ -101,6 +104,8 @@ export function presentHeaderConnection(input: {
   amsConnected: boolean;
   amsMessage: string;
   /** Quiet background revalidation — label stays; UI may show a spinner. */
+  smbRefreshing?: boolean;
+  /** Quiet background revalidation — label stays; UI may show a spinner. */
   amsRefreshing?: boolean;
   amsDisplayName?: string;
   serverUrl: string;
@@ -113,6 +118,7 @@ export function presentHeaderConnection(input: {
 
   const smbChecking = input.smbPhase === "checking";
   const amsChecking = input.amsConfigured && input.amsPhase === "checking";
+  const smbRefreshing = Boolean(input.smbRefreshing) && !smbChecking;
   const amsRefreshing =
     input.amsConfigured && Boolean(input.amsRefreshing) && !amsChecking;
   const smbOk = input.smbConnected || input.smbPhase === "connected";
@@ -128,7 +134,7 @@ export function presentHeaderConnection(input: {
     label = tr("app.upload.percent", { percent: pct.toFixed(0) });
     toneClass = "text-primary";
   } else if (smbChecking || amsChecking) {
-    // Loud checks only — quiet AMS refresh keeps the last label (spinner in UI).
+    // Loud checks only — quiet refresh keeps the last label (spinner in UI).
     label = tr("common.actions.checking");
     toneClass = "text-warning";
   } else if (smbError && amsError) {
@@ -156,6 +162,7 @@ export function presentHeaderConnection(input: {
     input.smbPhase !== "uploading" &&
     !smbChecking &&
     !amsChecking &&
+    !smbRefreshing &&
     !amsRefreshing;
 
   let contextMenuFocus: SettingsFocusTarget | null = null;
@@ -184,6 +191,7 @@ export function presentHeaderConnection(input: {
       input.login,
       input.password,
       input.serverUrl,
+      smbRefreshing,
     ),
   ];
   if (input.amsConfigured) {

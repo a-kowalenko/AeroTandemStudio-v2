@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 32 — SMB Quiet-Poll](#phase-32--smb-quiet-poll-parity-mit-ams-health) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+**Nächste Phase:** [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · oder [Phase 14 — ML](#phase-14--ml-foto-klassifikation-optional-später)  
+*(Phase 32 SMB Quiet-Poll erledigt.)*  
 *(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
 *(Phase 31.2 Prefight + Upload nachholen erledigt.)*  
 *(Phase 31.1 Soft-Block Create + upload_state erledigt.)*  
@@ -1875,7 +1876,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 32 — SMB Quiet-Poll (Parity mit AMS-Health)
 
-**Status:** ⬜ Offen  
+**Status:** ✅ Erledigt  
 **Abhängigkeiten:** Phase 10 (`test_server_connection`), bestehender AMS-Poll (`useAmsBridgeHealthPoll`, `AMS_HEALTH_POLL_MS = 45_000`); Phase 31.3 (Reconnect-Toast nutzt `serverConnected`)  
 **Ziel:** SMB-Pfad im gleichen Rhythmus wie AMS **leise** revalidieren, damit Header-Status, Offline-Create und Reconnect-Toast nicht auf einem einmaligen Boot-Check hängen bleiben.
 
@@ -1913,18 +1914,19 @@ src/locales/de.json | en.json | es-MX.json
 
 #### Scope
 
-- [ ] `serverStore`: `checkConnection({ quiet?: boolean })` + `refreshing` + Stale-Request-Guard (wie AMS)
-- [ ] Gemeinsamer Poll-Hook: 45 s + visibility; quiet SMB + quiet AMS je nach Config
-- [ ] Skip-Regeln (hidden / uploading / busy)
-- [ ] `ServerStatusIndicator`: quiet SMB `refreshing` in Spinner-Logik
-- [ ] Boot-Check deduplizieren
-- [ ] Regression: Header-Retry bleibt laut für beide
+- [x] `serverStore`: `checkConnection({ quiet?: boolean })` + `refreshing` + Stale-Request-Guard (wie AMS)
+- [x] Gemeinsamer Poll-Hook: 45 s + visibility; quiet SMB + quiet AMS je nach Config
+- [x] Skip-Regeln (hidden / uploading / busy)
+- [x] `ServerStatusIndicator`: quiet SMB `refreshing` in Spinner-Logik
+- [x] Boot-Check deduplizieren
+- [x] Regression: Header-Retry bleibt laut für beide
 - [ ] Manuell: SMB fällt nach Boot weg → Dot wird rot ohne Flackern; während Upload kein Quiet-Poll; Hintergrund-Tab → kein Poll; Reconnect-Toast kann nach Quiet-OK feuern
 
 #### Referenzen
 
 ```
-src/hooks/useAmsBridgeHealthPoll.ts
+src/hooks/useServerHealthPoll.ts
+src/hooks/useAmsBridgeHealthPoll.ts  (Re-export)
 src/lib/amsBridgeStatus.ts
 src/store/amsBridgeStore.ts
 src/store/serverStore.ts
@@ -2147,7 +2149,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 31.1 | Soft-Block Create + `upload_state` | ✅ |
 | 31.2 | Prefight + Upload nachholen (pro Vorgang) | ✅ |
 | 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ✅ |
-| 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ⬜ |
+| 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2168,4 +2170,4 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 32 Plan (SMB Quiet-Poll)*
+*Letzte Aktualisierung: 2026-08-26 · Projekt: Aero Tandem Studio v2 · Phase 32 erledigt (SMB Quiet-Poll)*
