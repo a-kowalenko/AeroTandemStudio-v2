@@ -1856,11 +1856,17 @@ function App() {
   }
 
   /** Historie „Upload nachholen“ — reuses Create SMB pipeline + progress (Phase 31.2). */
-  async function retryVorgangUpload(entry: VorgangEntry) {
+  async function retryVorgangUpload(
+    entry: VorgangEntry,
+    opts?: { omittedFileCount?: number },
+  ) {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
       return;
     }
-    await runVorgangUploadAttempt(entry, { quietSuccess: false });
+    await runVorgangUploadAttempt(entry, {
+      quietSuccess: false,
+      omittedFileCount: opts?.omittedFileCount,
+    });
     void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
       () => {},
     );
@@ -1964,7 +1970,7 @@ function App() {
   /** Shared SMB attempt used by single retry and bulk (Phase 31.2 / 31.3). */
   async function runVorgangUploadAttempt(
     entry: VorgangEntry,
-    opts: { quietSuccess: boolean },
+    opts: { quietSuccess: boolean; omittedFileCount?: number },
   ): Promise<"ok" | "failed" | "cancelled"> {
     const correlationId = entry.correlation_id?.trim() || null;
     const vorgangId = entry.id;
@@ -2012,11 +2018,14 @@ function App() {
       setPercent(100);
       if (!opts.quietSuccess) {
         setStatus(t("create.job.done"));
-        showSuccess(
-          uploaded.remote_path || uploaded.message || t("history.upload.retryDone"),
-          t("history.upload.retryTitle"),
-          { autoCloseSecs: 8 },
-        );
+        const omitted = opts.omittedFileCount ?? 0;
+        const message =
+          omitted > 0
+            ? t("history.upload.partialSuccess", { count: omitted })
+            : uploaded.remote_path ||
+              uploaded.message ||
+              t("history.upload.retryDone");
+        showSuccess(message, t("history.upload.retryTitle"), { autoCloseSecs: 8 });
       }
       return "ok";
     } catch (uploadErr) {
@@ -2217,7 +2226,7 @@ function App() {
         }}
         processedOpen={processedOpen}
         setProcessedOpen={setProcessedOpen}
-        onRetryVorgangUpload={(entry) => void retryVorgangUpload(entry)}
+        onRetryVorgangUpload={(entry, opts) => void retryVorgangUpload(entry, opts)}
         onBulkRetryUploads={(entries) => void retryVorgangUploadsBulk(entries)}
         bulkUploadSummary={bulkUploadSummary}
         onBulkUploadSummaryClose={() => setBulkUploadSummary(null)}

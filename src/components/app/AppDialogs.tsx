@@ -10,7 +10,7 @@ import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog
 import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
 import type { OfflineCreateConfirmChoice } from "../OfflineCreateConfirmDialog";
 import type { OfflineCreateConfirmState } from "@/lib/offlineCreateConfirm";
-import type { BulkUploadSummary, VorgangEntry } from "@/lib/vorgangHistory";
+import type { BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
 import { BulkUploadSummaryDialog } from "../BulkUploadSummaryDialog";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
@@ -83,7 +83,7 @@ export type AppDialogsProps = {
   onUpdateClose: () => void;
   processedOpen: boolean;
   setProcessedOpen: (open: boolean) => void;
-  onRetryVorgangUpload: (entry: VorgangEntry) => void;
+  onRetryVorgangUpload: (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => void;
   onBulkRetryUploads: (entries: VorgangEntry[]) => void;
   bulkUploadSummary: BulkUploadSummary | null;
   onBulkUploadSummaryClose: () => void;

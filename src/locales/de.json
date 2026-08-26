@@ -680,6 +680,17 @@
       "hint": "Zusätzliche Dateien werden mit hochgeladen.",
       "proceed": "Trotzdem hochladen"
     },
+    "uploadMissingFiles": {
+      "body": "Der Vorgang „{{guest}}“ kann so nicht hochgeladen werden. Diese Dateien fehlen im Ausgabeordner:",
+      "hint": "Du kannst die fehlenden Dateien in den Ordner legen und es erneut versuchen — oder nur die vorhandenen Dateien hochladen. Fehlende Dateien werden dann nicht mitgeliefert.",
+      "openFolder": "Ordner öffnen",
+      "uploadAvailable": "Mit vorhandenen Dateien hochladen"
+    },
+    "uploadPartialConfirm": {
+      "title": "Unvollständig hochladen?",
+      "body": "{{count}} Datei(en) fehlen und werden nicht hochgeladen. Der Vorgang „{{guest}}“ wird mit den restlichen Medien an den Server gesendet.",
+      "proceed": "Trotzdem hochladen"
+    },
     "uploadPreflightFail": {
       "title": "Upload nicht möglich",
       "body": "Der Vorgang „{{guest}}“ kann nicht nachgeholt werden:",
@@ -1135,6 +1146,7 @@
       "retryTitleOk": "Ausstehenden Upload jetzt starten",
       "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
       "retryDone": "Upload erfolgreich nachgeholt.",
+      "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
       "retryCancelled": "Upload abgebrochen.",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
       "bulkBtn": "Ausstehende Uploads abarbeiten…",

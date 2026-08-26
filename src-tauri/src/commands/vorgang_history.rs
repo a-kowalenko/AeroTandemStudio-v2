@@ -13,7 +13,8 @@ use crate::storage::vorgang_history::{
 use crate::video::append_job::{self, AppendJobResult, AppendMediaItem};
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 use crate::video::handoff_manifest::{
-    handoff_share_roots, read_status_outbox_any, OutboxAmsMeta, OutboxError, StatusOutboxV1,
+    handoff_share_roots, read_status_outbox_any, resync_integrity_from_disk, DeliveryResyncReport,
+    OutboxAmsMeta, OutboxError, StatusOutboxV1,
 };
 use crate::video::progress::EncodeProgress;
 use crate::video::upload_preflight::{
@@ -404,6 +405,34 @@ pub fn preflight_vorgang_upload(vorgang_id: i64) -> Result<UploadPreflightResult
         upload_state: &entry.upload_state,
         ams_state: &entry.ams_state,
     }))
+}
+
+/// Align manifest delivery list with files currently in the job folder (Phase 31.4).
+#[tauri::command]
+pub fn resync_vorgang_delivery_list(vorgang_id: i64) -> Result<DeliveryResyncReport, String> {
+    let store = open_store()?;
+    let entry = store
+        .get_by_id(vorgang_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Vorgang {vorgang_id} nicht gefunden."))?;
+    let job_dir = Path::new(entry.base_output_dir.trim());
+    if entry.base_output_dir.trim().is_empty() || !job_dir.is_dir() {
+        return Err(format!(
+            "Ausgabeordner fehlt: {}",
+            entry.base_output_dir.trim()
+        ));
+    }
+    let report = resync_integrity_from_disk(job_dir)?;
+    if !report.removed_paths.is_empty() {
+        logging::info(
+            "upload",
+            format!(
+                "Lieferliste angepasst: vorgang_id={vorgang_id}, entfernt={}",
+                report.removed_paths.len()
+            ),
+        );
+    }
+    Ok(report)
 }
 
 #[tauri::command]

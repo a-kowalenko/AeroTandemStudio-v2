@@ -456,6 +456,40 @@ mod tests {
     }
 
     #[test]
+    fn preflight_ok_after_resync_drops_missing_file() {
+        let dir = tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("Outside_Foto")).unwrap();
+        fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
+        fs::write(dir.path().join("Outside_Foto/keep.jpg"), b"jpeg").unwrap();
+        fs::write(dir.path().join("Outside_Foto/gone.jpg"), b"jpeg").unwrap();
+        fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
+        write_manifest(
+            dir.path(),
+            &[
+                ("Outside_Foto/keep.jpg", 4),
+                ("Outside_Foto/gone.jpg", 4),
+                ("Handcam_Video/a.mp4", 3),
+            ],
+        );
+        write_marker(dir.path());
+
+        fs::remove_file(dir.path().join("Outside_Foto/gone.jpg")).unwrap();
+        let before = preflight_vorgang_upload(&input(dir.path()));
+        assert!(!before.ok);
+        assert!(before
+            .hard_errors
+            .iter()
+            .any(|e| e.code == codes::FILE_MISSING && e.path == "Outside_Foto/gone.jpg"));
+
+        let report = crate::video::handoff_manifest::resync_integrity_from_disk(dir.path()).unwrap();
+        assert_eq!(report.removed_paths, vec!["Outside_Foto/gone.jpg"]);
+
+        let after = preflight_vorgang_upload(&input(dir.path()));
+        assert!(after.ok);
+        assert!(after.hard_errors.is_empty());
+    }
+
+    #[test]
     fn ignores_marker_and_manifest_as_extras() {
         let dir = tempdir().unwrap();
         fs::create_dir_all(dir.path().join("Outside_Foto")).unwrap();

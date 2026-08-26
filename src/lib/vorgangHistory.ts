@@ -157,6 +157,24 @@ export async function preflightVorgangUpload(
   });
 }
 
+export type DeliveryResyncReport = {
+  removed_paths: string[];
+  file_count: number;
+};
+
+/** Align on-disk delivery list with files currently in the output folder (Phase 31.4). */
+export async function resyncVorgangDeliveryList(
+  vorgangId: number,
+): Promise<DeliveryResyncReport> {
+  return invoke<DeliveryResyncReport>("resync_vorgang_delivery_list", {
+    vorgangId,
+  });
+}
+
+export type VorgangUploadRetryOptions = {
+  omittedFileCount?: number;
+};
+
 /** `pending` | `failed` — counts toward Historie badge / bulk candidates. */
 export function isRetryableUploadState(state: string | null | undefined): boolean {
   const s = (state ?? "").trim().toLowerCase();

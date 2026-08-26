@@ -1702,7 +1702,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 31 — Offline-Create & Upload nachholen
 
-**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅)  
+**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅ · 31.4 ✅) · 🔄 31.5 / 31.6 geplant  
 **Abhängigkeiten:** Phase 10 (SMB-Upload + Marker-Barrier OPT-15), Phase 12 (Create/Historie), Phase 24 (Historie-UI / Append-Muster), Phase 29/30 (Soft-Confirm-Muster)  
 **Ziel:** Bei aktivem Upload und offline Server trotzdem **lokal erstellen**; Upload bewusst **nachholen** (pro Vorgang + alle bereiten) — ohne persistente Auto-Queue und ohne stillen Background-Drain.
 
@@ -1869,8 +1869,221 @@ src-tauri/src/commands/vorgang_history.rs
 src-tauri/src/commands/smb.rs            # upload_to_server / handoff
 src-tauri/src/smb/client.rs              # collect_upload_files
 src-tauri/src/smb/parallel_upload.rs     # Phasen: media → manifest → marker
-src-tauri/src/video/handoff_manifest.rs  # integrity.files Prefight-Quelle
+src-tauri/src/video/handoff_manifest.rs  # integrity.files Prefight-Quelle; 31.4/31.5 Resync
 src/locales/de.json | en.json | es-MX.json
+```
+
+---
+
+#### Phase 31.4 — Upload mit fehlenden Dateien (Partial Retry)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** 31.2 (Prefight + Upload nachholen)  
+**Ziel:** Wenn beim Nachholen Dateien im Ausgabeordner fehlen, kann der Operator bewusst **nur vorhandene Medien** hochladen — mit klarer Warnung, ohne blindes Prefight-Bypass.
+
+##### Entscheidungen (31.4)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Auslöser | Prefight Hard-Fail **nur** `file_missing` (keine gemischten Hard-Codes) |
+| UX Stufe 1 | Dialog: fehlende Dateien, **Ordner öffnen**, **Mit vorhandenen Dateien hochladen**, Schließen |
+| UX Stufe 2 | Soft Confirm: „Unvollständig hochladen?“ mit Liste + **Trotzdem hochladen** |
+| Technik | Lieferliste (`integrity.files`) aus Disk neu schreiben (`resync_integrity_from_disk`), dann normaler Upload |
+| Erfolg | `upload_state=done` + Success-Hinweis „{{count}} Datei(en) ausgelassen“ |
+| Bulk | Weiterhin skip (kein Partial im Bulk) |
+| Out of Scope | SD-Recovery, `size_mismatch`-Override, neuer `upload_state` |
+
+##### Scope
+
+- [x] Rust: `resync_integrity_from_disk` + `resync_vorgang_delivery_list` + Unit-Tests
+- [x] UI: `UploadMissingFilesDialog` + `UploadPartialConfirmDialog` in Historie-Flow
+- [x] i18n de / en / es-MX (nutzerfreundlich, ohne Manifest/AMS-Begriffe in UI)
+- [ ] Manuell: fehlende Outside-Foto → Ordner öffnen / Partial → Upload ok + Hinweis
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.4 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.4 (Partial Upload bei file_missing). Kein Bulk-Partial, kein SD-Recovery.
+Upload-Pipeline unverändert wiederverwenden. i18n de/en/es-MX.
+Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 31.5 — Extra-Dateien: Lieferliste angleichen + optional löschen
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** 31.2 (Extra-Files Soft Confirm), 31.4 (`resync_integrity_from_disk` / `resync_vorgang_delivery_list`)  
+**Ziel:** Beim Nachholen mit **zusätzlichen** Dateien im Ausgabeordner (nicht in der ursprünglichen Lieferliste) zwei klare Operator-Wege — und **keine** Asymmetrie mehr „Datei liegt auf dem Server, steht aber nicht in der Lieferliste“.
+
+> Eine Agent-Session = nur 31.5. Kein Bulk-Partial, kein Auto-Löschen ohne Confirm, keine AMS-API-Änderung.
+
+##### Ausgangslage (Ist nach 31.2 / 31.4)
+
+- Prefight Soft-Warn `extra_file` → Dialog „Zusätzliche Dateien… / Trotzdem hochladen“
+- Proceed startet Upload **ohne** Lieferlisten-Update
+- SMB (`collect_upload_files`) lädt **alle** Dateien im Ordner hoch — inkl. Extras
+- Die alte Lieferliste (`_ams_manifest.v1.json` → `integrity.files`) kennt die Extras **nicht** → Share und Verarbeitung können auseinanderlaufen
+- Dialog-Text erwähnt „Manifest“ (Operator-Sprache unpassend; 31.4 hat das für Missing bereits vermieden)
+- Bulk: Extra-Files → **skip** (unverändert lassen)
+
+##### Out of Scope (31.5)
+
+- Bulk: weiterhin skip bei Extras in 31.3-Schleife — **Bulk zweistufig → Phase 31.6**
+- Kein Löschen außerhalb der gelisteten Extra-Pfade
+- Kein Löschen von Marker / Lieferliste / Ignore-Namen (`.DS_Store`, `Thumbs.db`, …)
+- Kein `size_mismatch`-Override, kein SD-Recovery
+- Kein neuer `upload_state`
+- Create-Erst-Upload-Pfad nicht umbauen (nur Historie-Nachholen / gleicher Soft-Dialog)
+- Legacy-Projekt
+
+##### Entscheidungen (31.5)
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Problem | Heute: Extra wird per SMB mitgeschickt, Lieferliste bleibt alt → inkonsistent. Fix: vor Upload angleichen **oder** Extra entfernen |
+| 2 | Default-Weg A | Switch **aus**: „Mit allen Dateien hochladen“ → zuerst `resync_vorgang_delivery_list` (Disk → Lieferliste, Extras **rein**), Prefight erneut, dann Upload. Erfolgshinweis optional: „{{count}} zusätzliche Datei(en) mitgeliefert“ |
+| 3 | Weg B (Switch an) | Switch **an**: „Überschüssige Dateien vor dem Upload löschen“ → nur die Prefight-`extra_file`-Pfade lokal löschen → Prefight erneut (sollte ok sein) → **normaler** Upload ohne Resync-Sonderfall. Primär-Button-Label wechselt z. B. zu „Löschen und hochladen“ |
+| 4 | Primär-Sicherheit | Primär-Aktion im Footer bleibt **Zurück** (wie Extra-/Offline-Confirms). Proceed/Löschen+Upload = Outline/Sekundär |
+| 5 | UX-Sprache | Kein „Manifest“ / AMS in UI. z. B. „Diese Dateien liegen im Ordner, gehörten aber nicht zum ursprünglichen Vorgang.“ |
+| 6 | Lösch-Sicherheit | Nur relative Pfade aus dem aktuellen Soft-Warn; Resolve unter `base_output_dir` (kein Path-Escape); Datei muss existieren; Fehler → Abbruch, kein Upload |
+| 7 | Leere Ordner nach Löschen | Leere Medien-Unterordner dürfen bleiben (kein aggressives rmdir nötig) |
+| 8 | Prefight nach Aktion | Immer erneut `preflight_vorgang_upload`; bei neuem Hard-Fail → bestehender Hard-Fail-/Missing-Dialog; bei neuen Extras → Dialog erneut |
+| 9 | Bulk | Unverändert in 31.5 (skip); zweistufige Bulk-Entscheidungen → **31.6** |
+| 10 | Technik Wiederverwendung | Resync: bestehender Command aus 31.4. Neu: Command zum Löschen der Extra-Pfade (oder erweiterter Command mit Mode `include` \| `purge_extras`) |
+
+##### UX-Flow
+
+```
+Upload nachholen
+  → Prefight soft extra_file
+  → Dialog „Zusätzliche Dateien“
+       [Switch] Überschüssige Dateien vor dem Upload löschen  (default aus)
+       Liste der Pfade
+       Zurück | Mit allen hochladen   (Switch aus)
+       Zurück | Löschen und hochladen (Switch an)
+  → Switch aus: resync → preflight → upload
+  → Switch an:  delete extras → preflight → upload
+```
+
+##### Scope
+
+- [ ] `UploadExtraFilesConfirmDialog`: Switch + dynamisches Proceed-Label; i18n ohne „Manifest“
+- [ ] Frontend: Proceed-Pfad ruft Resync **oder** Delete-Extras auf, dann Prefight, dann `startRetryUpload`
+- [ ] Rust: sicheres Löschen der Extra-Pfade unter Job-Root (Unit-Tests: nur Extras, Path-Escape abgelehnt, Marker unberührt)
+- [ ] Optional Success-Hinweis bei mitgenommenen Extras (`history.upload.extraIncluded` o. ä.)
+- [ ] i18n de / en / es-MX
+- [ ] Manuell: Extra-JPG in Outside_Video → (a) mitnehmen inkl. Lieferliste; (b) Switch löschen → Upload ohne Extra
+
+##### Referenzen
+
+```
+src/components/UploadExtraFilesConfirmDialog.tsx
+src/components/HistoryDialog.tsx          # onExtraFilesChoice
+src/lib/uploadPreflight.ts
+src/lib/vorgangHistory.ts                 # resyncVorgangDeliveryList
+src-tauri/src/video/handoff_manifest.rs   # resync_integrity_from_disk
+src-tauri/src/commands/vorgang_history.rs
+src/locales/de.json | en.json | es-MX.json
+```
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.5 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.5 (Extra-Dateien: Resync vor Upload ODER optional löschen + Switch-UX).
+Bestehenden resync_vorgang_delivery_list wiederverwenden. Bulk unverändert skip.
+i18n de/en/es-MX ohne Manifest/AMS in der UI. Unit-Tests Delete-Extras.
+Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 31.6 — Bulk zweistufig (Vorab-Scan + problematische einzeln)
+
+**Status:** ⬜ Offen  
+**Abhängigkeiten:** 31.3 (Bulk sequentiell + Summary), 31.4 (Missing-Dialoge), 31.5 (Extra-Dialoge + Resync/Löschen)  
+**Ziel:** Beim Bulk-Upload zuerst **alle problemlosen** Vorgänge durchlaufen lassen; **problematische** danach **einzeln** mit denselben Entscheidungs-Dialogen wie beim Einzel-Nachholen — statt alles pauschal als „übersprungen“ zu verlieren.
+
+> Eine Agent-Session = nur 31.6. Kein Auto-Partial, kein Auto-Löschen, kein Auto-Resync im Bulk ohne User. Parallel-SMB bleibt out of scope.
+
+##### Ausgangslage (Ist nach 31.3)
+
+- Bulk: eine Schleife, Prefight pro Vorgang; Hard-Fail **oder** Extra → `skipped++`, weiter
+- Summary nur Zahlen (`ok` / `übersprungen` / `Fehler`) — **keine Gastnamen, keine Gründe**
+- Confirm-Text: „Vorgänge mit Prefight-Problemen werden übersprungen“ — ohne Vorab-Zählung
+- 31.4/31.5-Dialoge existieren nur im **Einzel**-Pfad (`HistoryDialog` → Upload nachholen)
+- Operator muss übersprungene Vorgänge manuell wiederfinden und einzeln starten
+
+##### Out of Scope (31.6)
+
+- Kein Mid-Bulk-Dialog **zwischen** zwei erfolgreichen Uploads in Phase 1
+- Kein stilles Auto-Partial (`file_missing`) oder Auto-Löschen/Auto-Resync bei Extras in Phase 2
+- Keine parallelen SMB-Uploads
+- Kein Auto-Drain / Background-Worker
+- Create-Erst-Upload nicht umbauen
+- Legacy-Projekt
+
+##### Entscheidungen (31.6)
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Vorab-Scan | Vor Phase 1: alle Kandidaten einmal `preflight_vorgang_upload`; sortieren in `ready` / `needs_decision` / `blocked` |
+| 2 | `ready` | Prefight `ok`, keine Hard-Errors, keine `extra_file`-Warnings |
+| 3 | `needs_decision` | Nur `extra_file` (31.5-Dialog) **oder** nur `file_missing` und `canOfferPartialUpload` (31.4-Dialoge) |
+| 4 | `blocked` | Andere Hard-Fails (Ordner fehlt, `size_mismatch`, Marker fehlt, …) — kein Upload in Phase 2; in Summary mit Grund |
+| 5 | Phase 1 | Sequentiell nur `ready` hochladen (wie heute `runVorgangUploadAttempt`, `quietSuccess: true`); Server down / Cancel → Rest Phase 1 + Phase 2 abbrechen |
+| 6 | Phase 2 | Optional nach Phase 1: Prompt „{{count}} Vorgänge brauchen noch eine Entscheidung — jetzt bearbeiten?“ → **Ja** / **Später** |
+| 7 | Phase 2 Ablauf | Pro `needs_decision`-Eintrag: **dieselben** UI-Flows wie Einzel-Nachholen (Missing-/Extra-Dialoge aus 31.4/31.5); User kann pro Vorgang entscheiden oder überspringen |
+| 8 | Confirm vor Start | Bulk-Confirm zeigt Scan-Ergebnis: z. B. „{{ready}} sofort, {{needs}} mit Rückfrage, {{blocked}} nicht möglich“ |
+| 9 | Summary | Erweitert: Zahlen **plus** Liste übersprungener/blockierter Vorgänge mit Gast + Kurzgrund (i18n-Code aus Prefight) |
+| 10 | Prefight erneut | Vor jedem Upload in Phase 1 optional erneut preflight (Ordner kann sich ändern); bei neuem Fail → skip + in Summary |
+| 11 | Historie-UI | Phase 2 braucht sichtbare Dialoge — Historie darf während Phase 2 offen bleiben oder Bulk pausiert mit Modal-Stack (kein stilles Hintergrund-Upload) |
+
+##### UX-Flow
+
+```
+Bulk starten
+  → Vorab-Scan (alle Kandidaten)
+  → Confirm: „5 sofort · 2 mit Rückfrage · 1 nicht möglich“
+  → Phase 1: 5× Upload sequentiell (keine Dialoge)
+  → „2 Vorgänge brauchen noch eine Entscheidung — jetzt bearbeiten?“
+       Später → Summary mit Details
+       Ja → Phase 2: pro Vorgang Missing-/Extra-Flow (31.4/31.5)
+  → Summary: ok / entschieden / übersprungen / blockiert / abgebrochen
+```
+
+##### Scope
+
+- [ ] `classifyBulkPreflight(result)` (TS): `ready` \| `needs_decision` \| `blocked` + reason codes
+- [ ] `retryVorgangUploadsBulk` in `App.tsx`: Scan → Phase 1 → optional Phase 2-Orchestrierung
+- [ ] Bulk-Confirm in `HistoryDialog`: Scan vor Anzeige (async) oder Scan im Confirm-Text nach kurzem Laden
+- [ ] Phase-2-Prompt + Wiederverwendung der Einzel-Dialoge (Extract shared handler aus `HistoryDialog` oder Bulk-Callback mit `onRetryWithDecision`)
+- [ ] `BulkUploadSummary` + Dialog: `blocked[]` / `skipped[]` mit `{ guest, reason }`; i18n de / en / es-MX
+- [ ] Manuell: 5 ready + 1 extra + 1 missing → Phase 1 = 5 ok; Phase 2 = 2 Entscheidungen; 1 blocked in Summary
+
+##### Referenzen
+
+```
+src/App.tsx                              # retryVorgangUploadsBulk
+src/components/HistoryDialog.tsx         # Bulk-Confirm, Einzel-Dialoge 31.4/31.5
+src/components/BulkUploadSummaryDialog.tsx
+src/lib/uploadPreflight.ts               # canOfferPartialUpload, codes
+src/lib/vorgangHistory.ts                # BulkUploadSummary, pendingUploadCandidates
+src/locales/de.json | en.json | es-MX.json
+```
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.6 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.6 (Bulk zweistufig: Vorab-Scan, Phase 1 ready, Phase 2 Einzel-Entscheidungen).
+Abhängigkeit: 31.4 + 31.5 Dialoge/Commands müssen existieren. Kein Auto-Partial/Löschen.
+Summary mit Gast + Grund. i18n de/en/es-MX. Danach cargo test && npm run check.
 ```
 
 ---

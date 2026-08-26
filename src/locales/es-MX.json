@@ -680,6 +680,17 @@
       "hint": "Los archivos adicionales se incluirán en la subida.",
       "proceed": "Subir de todos modos"
     },
+    "uploadMissingFiles": {
+      "body": "El trabajo “{{guest}}” no se puede subir así. Faltan estos archivos en la carpeta de salida:",
+      "hint": "Puedes volver a poner los archivos faltantes en la carpeta e intentarlo de nuevo — o subir solo los que aún están. Los faltantes no se entregarán.",
+      "openFolder": "Abrir carpeta",
+      "uploadAvailable": "Subir archivos disponibles"
+    },
+    "uploadPartialConfirm": {
+      "title": "¿Subir incompleto?",
+      "body": "Faltan {{count}} archivo(s) y no se subirán. El trabajo “{{guest}}” se enviará al servidor con el resto de los medios.",
+      "proceed": "Subir de todos modos"
+    },
     "uploadPreflightFail": {
       "title": "Subida no posible",
       "body": "No se puede reintentar el trabajo “{{guest}}”:",
@@ -1135,6 +1146,7 @@
       "retryTitleOk": "Iniciar ahora la subida pendiente",
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
       "retryDone": "Subida completada correctamente.",
+      "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
       "retryCancelled": "Subida cancelada.",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "bulkBtn": "Procesar subidas pendientes…",

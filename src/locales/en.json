@@ -680,6 +680,17 @@
       "hint": "Extra files will be included in the upload.",
       "proceed": "Upload anyway"
     },
+    "uploadMissingFiles": {
+      "body": "The job “{{guest}}” cannot be uploaded as-is. These files are missing from the output folder:",
+      "hint": "You can put the missing files back in the folder and try again — or upload only the files that are still there. Missing files will not be delivered.",
+      "openFolder": "Open folder",
+      "uploadAvailable": "Upload available files"
+    },
+    "uploadPartialConfirm": {
+      "title": "Upload incomplete set?",
+      "body": "{{count}} file(s) are missing and will not be uploaded. The job “{{guest}}” will be sent to the server with the remaining media.",
+      "proceed": "Upload anyway"
+    },
     "uploadPreflightFail": {
       "title": "Upload not possible",
       "body": "The job “{{guest}}” cannot be retried:",
@@ -1135,6 +1146,7 @@
       "retryTitleOk": "Start the pending upload now",
       "retryOffline": "Server offline — upload only when the connection is back",
       "retryDone": "Upload completed successfully.",
+      "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
       "retryCancelled": "Upload cancelled.",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "bulkBtn": "Process pending uploads…",

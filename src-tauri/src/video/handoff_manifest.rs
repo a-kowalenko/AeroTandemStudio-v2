@@ -1,6 +1,7 @@
 //! AMS handoff manifest (`_ams_manifest.v1.json`) written before `_fertig.txt`.
 //! Spec: AeroMediaService-v2 `docs/HANDOFF.md` (Phase 13 / P1).
 
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -223,6 +224,57 @@ pub fn write_append_handoff_manifest(
     atomic_write(&path, text.as_bytes())
         .map_err(|e| format!("{MANIFEST_FILENAME} schreiben: {e}"))?;
     Ok((correlation_id, path))
+}
+
+/// Result of aligning manifest `integrity.files` with files currently on disk (Phase 31.4).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct DeliveryResyncReport {
+    /// Manifest paths removed because they are no longer present on disk.
+    pub removed_paths: Vec<String>,
+    /// Payload files listed after resync.
+    pub file_count: usize,
+}
+
+/// Rewrite manifest `integrity.files` from the job folder; preserve handoff metadata.
+pub fn resync_integrity_from_disk(job_dir: &Path) -> Result<DeliveryResyncReport, String> {
+    let path = job_dir.join(MANIFEST_FILENAME);
+    if !path.is_file() {
+        return Err(format!("{MANIFEST_FILENAME} fehlt"));
+    }
+    let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let mut manifest: HandoffManifestV1 = serde_json::from_str(raw.trim())
+        .map_err(|e| format!("Manifest parse: {e}"))?;
+
+    let old_paths: HashSet<String> = manifest
+        .integrity
+        .files
+        .iter()
+        .map(|f| f.path.replace('\\', "/"))
+        .collect();
+
+    let new_files = collect_integrity_files(job_dir)?;
+    if new_files.is_empty() {
+        return Err("Ordner enthält keine Medien".into());
+    }
+
+    let new_paths: HashSet<String> = new_files.iter().map(|f| f.path.clone()).collect();
+    let mut removed_paths: Vec<String> = old_paths
+        .difference(&new_paths)
+        .cloned()
+        .collect();
+    removed_paths.sort();
+
+    manifest.integrity.files = new_files;
+    let file_count = manifest.integrity.files.len();
+
+    let text = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    atomic_write(&path, text.as_bytes())
+        .map_err(|e| format!("{MANIFEST_FILENAME} schreiben: {e}"))?;
+
+    Ok(DeliveryResyncReport {
+        removed_paths,
+        file_count,
+    })
 }
 
 /// After Vorgang history insert: set `producer_ref.vorgang_id` in the on-disk manifest (best-effort).
@@ -463,6 +515,55 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(patched.producer_ref.vorgang_id, Some(99));
         assert_eq!(patched.correlation_id, cid);
+    }
+
+    #[test]
+    fn resync_integrity_drops_missing_files_preserves_correlation_id() {
+        let dir = tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "20260815_Test".into(),
+        };
+        fs::create_dir_all(dir.path().join("Outside_Foto")).unwrap();
+        fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
+        fs::write(dir.path().join("Outside_Foto/keep.jpg"), b"jpeg").unwrap();
+        fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
+
+        let kunde = Kunde::default();
+        let config = AppConfig::default();
+        let (cid, manifest_path) = write_handoff_manifest(&layout, &kunde, &config).unwrap();
+
+        // Simulate a missing Outside photo still listed in the manifest.
+        fs::remove_file(dir.path().join("Outside_Foto/keep.jpg")).unwrap();
+        let parsed_before: HandoffManifestV1 =
+            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(parsed_before.integrity.files.len(), 2);
+
+        let report = resync_integrity_from_disk(dir.path()).unwrap();
+        assert_eq!(report.removed_paths, vec!["Outside_Foto/keep.jpg"]);
+        assert_eq!(report.file_count, 1);
+
+        let parsed_after: HandoffManifestV1 =
+            serde_json::from_str(&fs::read_to_string(&manifest_path).unwrap()).unwrap();
+        assert_eq!(parsed_after.correlation_id, cid);
+        assert_eq!(parsed_after.integrity.files.len(), 1);
+        assert_eq!(parsed_after.integrity.files[0].path, "Handcam_Video/a.mp4");
+    }
+
+    #[test]
+    fn resync_integrity_fails_when_folder_has_no_payload_files() {
+        let dir = tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "empty".into(),
+        };
+        fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
+        fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
+        write_handoff_manifest(&layout, &Kunde::default(), &AppConfig::default()).unwrap();
+        fs::remove_file(dir.path().join("Handcam_Video/a.mp4")).unwrap();
+
+        let err = resync_integrity_from_disk(dir.path()).unwrap_err();
+        assert!(err.contains("keine Medien"));
     }
 
     #[test]

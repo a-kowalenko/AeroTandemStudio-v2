@@ -34,6 +34,7 @@ import {
   listVorgaenge,
   listVorgangAppends,
   preflightVorgangUpload,
+  resyncVorgangDeliveryList,
   canRetryVorgangUpload,
   pendingUploadCandidates,
   type AppendMediaItem,
@@ -42,6 +43,7 @@ import {
   type VorgangAppendEntry,
   type VorgangEntry,
   type VorgangFileEntry,
+  type VorgangUploadRetryOptions,
 } from "../lib/vorgangHistory";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
@@ -50,9 +52,20 @@ import {
   type UploadExtraFilesConfirmChoice,
 } from "@/components/UploadExtraFilesConfirmDialog";
 import { UploadPreflightHardFailDialog } from "@/components/UploadPreflightHardFailDialog";
+import { UploadMissingFilesDialog } from "@/components/UploadMissingFilesDialog";
+import {
+  UploadPartialConfirmDialog,
+  type UploadPartialConfirmChoice,
+} from "@/components/UploadPartialConfirmDialog";
 import type {
   UploadExtraFilesConfirmState,
+  UploadMissingFilesState,
+  UploadPartialConfirmState,
   UploadPreflightHardFailState,
+} from "@/lib/uploadPreflight";
+import {
+  canOfferPartialUpload,
+  missingFilePathsFromPreflight,
 } from "@/lib/uploadPreflight";
 import {
   isAmsCancelled,
@@ -89,7 +102,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** After preflight OK (and soft-ack if needed): run SMB upload with Create progress UX. */
-  onRetryUpload?: (entry: VorgangEntry) => void;
+  onRetryUpload?: (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => void;
   /** Sequentially retry all ready pending/failed uploads (Phase 31.3). */
   onBulkRetryUploads?: (entries: VorgangEntry[]) => void;
 };
@@ -384,7 +397,12 @@ export function HistoryDialog({
     useState<UploadExtraFilesConfirmState | null>(null);
   const [preflightHardFail, setPreflightHardFail] =
     useState<UploadPreflightHardFailState | null>(null);
+  const [missingFilesConfirm, setMissingFilesConfirm] =
+    useState<UploadMissingFilesState | null>(null);
+  const [partialUploadConfirm, setPartialUploadConfirm] =
+    useState<UploadPartialConfirmState | null>(null);
   const pendingRetryEntryRef = useRef<VorgangEntry | null>(null);
+  const pendingOmittedCountRef = useRef(0);
   const [retryPreflightBusy, setRetryPreflightBusy] = useState(false);
   const appendOpen = appendVorgang != null;
   const confirmOpen = pendingConfirm != null;
@@ -394,7 +412,9 @@ export function HistoryDialog({
     appendOpen ||
     appendPickingFiles ||
     extraFilesConfirm != null ||
-    preflightHardFail != null;
+    preflightHardFail != null ||
+    missingFilesConfirm != null ||
+    partialUploadConfirm != null;
 
   const closeAppendView = useCallback(() => {
     setAppendVorgang(null);
@@ -402,12 +422,15 @@ export function HistoryDialog({
   }, []);
 
   const startRetryUpload = useCallback(
-    (entry: VorgangEntry) => {
+    (entry: VorgangEntry, opts?: VorgangUploadRetryOptions) => {
       pendingRetryEntryRef.current = null;
+      pendingOmittedCountRef.current = 0;
       setExtraFilesConfirm(null);
       setPreflightHardFail(null);
+      setMissingFilesConfirm(null);
+      setPartialUploadConfirm(null);
       onOpenChange(false);
-      onRetryUpload(entry);
+      onRetryUpload(entry, opts);
     },
     [onOpenChange, onRetryUpload],
   );
@@ -417,6 +440,8 @@ export function HistoryDialog({
       if (entries.length === 0) return;
       setExtraFilesConfirm(null);
       setPreflightHardFail(null);
+      setMissingFilesConfirm(null);
+      setPartialUploadConfirm(null);
       onOpenChange(false);
       onBulkRetryUploads(entries);
     },
@@ -429,6 +454,16 @@ export function HistoryDialog({
     try {
       const result = await preflightVorgangUpload(entry.id);
       if (!result.ok || result.hard_errors.length > 0) {
+        if (canOfferPartialUpload(result.hard_errors)) {
+          pendingRetryEntryRef.current = entry;
+          const missingPaths = missingFilePathsFromPreflight(result.hard_errors);
+          setMissingFilesConfirm({
+            guest: entry.gast,
+            folderPath: entry.base_output_dir,
+            missingPaths,
+          });
+          return;
+        }
         setPreflightHardFail({
           guest: entry.gast,
           issues: result.hard_errors,
@@ -458,12 +493,78 @@ export function HistoryDialog({
 
   function onExtraFilesChoice(choice: UploadExtraFilesConfirmChoice) {
     const entry = pendingRetryEntryRef.current;
+    const omitted = pendingOmittedCountRef.current;
     setExtraFilesConfirm(null);
+    pendingOmittedCountRef.current = 0;
     if (choice !== "proceed" || !entry) {
       pendingRetryEntryRef.current = null;
       return;
     }
-    startRetryUpload(entry);
+    startRetryUpload(entry, omitted > 0 ? { omittedFileCount: omitted } : undefined);
+  }
+
+  function onMissingFilesUploadAvailable() {
+    const entry = pendingRetryEntryRef.current;
+    if (!entry || !missingFilesConfirm) return;
+    setPartialUploadConfirm({
+      guest: entry.gast,
+      missingPaths: missingFilesConfirm.missingPaths,
+    });
+  }
+
+  async function onPartialUploadChoice(choice: UploadPartialConfirmChoice) {
+    const entry = pendingRetryEntryRef.current;
+    const missingPaths = partialUploadConfirm?.missingPaths ?? [];
+    setPartialUploadConfirm(null);
+    if (choice !== "proceed" || !entry) {
+      return;
+    }
+    setRetryPreflightBusy(true);
+    try {
+      const report = await resyncVorgangDeliveryList(entry.id);
+      const omitted = report.removed_paths.length;
+      const pf = await preflightVorgangUpload(entry.id);
+      if (!pf.ok || pf.hard_errors.length > 0) {
+        if (canOfferPartialUpload(pf.hard_errors)) {
+          pendingRetryEntryRef.current = entry;
+          setMissingFilesConfirm({
+            guest: entry.gast,
+            folderPath: entry.base_output_dir,
+            missingPaths: missingFilePathsFromPreflight(pf.hard_errors),
+          });
+        } else {
+          setMissingFilesConfirm(null);
+          setPreflightHardFail({
+            guest: entry.gast,
+            issues: pf.hard_errors,
+          });
+        }
+        return;
+      }
+      const extras = pf.soft_warnings
+        .filter((w) => w.code === "extra_file")
+        .map((w) => w.path)
+        .filter(Boolean);
+      if (extras.length > 0) {
+        pendingRetryEntryRef.current = entry;
+        pendingOmittedCountRef.current = omitted;
+        setMissingFilesConfirm(null);
+        setExtraFilesConfirm({
+          vorgangId: entry.id,
+          guest: entry.gast,
+          extraPaths: extras,
+        });
+        return;
+      }
+      setMissingFilesConfirm(null);
+      startRetryUpload(entry, {
+        omittedFileCount: omitted > 0 ? omitted : missingPaths.length,
+      });
+    } catch (e) {
+      showError(String(e), t("history.upload.retryTitle"));
+    } finally {
+      setRetryPreflightBusy(false);
+    }
   }
 
   async function runConfirm() {
@@ -722,6 +823,23 @@ export function HistoryDialog({
         guest={preflightHardFail?.guest ?? ""}
         issues={(preflightHardFail?.issues ?? []) as UploadPreflightIssue[]}
         onClose={() => setPreflightHardFail(null)}
+      />
+      <UploadMissingFilesDialog
+        open={missingFilesConfirm != null}
+        guest={missingFilesConfirm?.guest ?? ""}
+        folderPath={missingFilesConfirm?.folderPath ?? ""}
+        missingPaths={missingFilesConfirm?.missingPaths ?? []}
+        onUploadAvailable={onMissingFilesUploadAvailable}
+        onClose={() => {
+          pendingRetryEntryRef.current = null;
+          setMissingFilesConfirm(null);
+        }}
+      />
+      <UploadPartialConfirmDialog
+        open={partialUploadConfirm != null}
+        guest={partialUploadConfirm?.guest ?? ""}
+        missingPaths={partialUploadConfirm?.missingPaths ?? []}
+        onChoose={onPartialUploadChoice}
       />
     </>
   );
