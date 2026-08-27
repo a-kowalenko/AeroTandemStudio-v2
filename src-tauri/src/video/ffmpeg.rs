@@ -23,6 +23,11 @@ static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
 static ACTIVE_CHILDREN: Lazy<Mutex<HashMap<u64, Child>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 static CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+/// Separate from [`CANCEL_FLAG`]: Vorgang/Historie SMB upload only.
+/// SD server-backup mirrors must not observe this flag.
+static UPLOAD_SLOT_CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
+/// Separate from workflow + slot: SD server-backup mirror only (current job).
+static SECONDARY_BACKUP_CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 
 /// Serializes unit tests that toggle [`CANCEL_FLAG`] so parallel `cargo test`
 /// threads do not observe each other's cancel state.
@@ -226,9 +231,63 @@ pub fn reset_cancel_flag() {
     CANCEL_FLAG.store(false, Ordering::SeqCst);
 }
 
-/// Whether cancellation was requested.
+/// Whether workflow cancellation was requested (encode / SD / QR / quit).
 pub fn is_cancelled() -> bool {
     CANCEL_FLAG.load(Ordering::SeqCst)
+}
+
+/// Clear Vorgang-upload slot cancel (does not touch workflow cancel).
+pub fn reset_upload_slot_cancel() {
+    UPLOAD_SLOT_CANCEL_FLAG.store(false, Ordering::SeqCst);
+}
+
+/// Request cancel of the active Vorgang/Historie SMB upload only.
+pub fn cancel_upload_slot() -> bool {
+    UPLOAD_SLOT_CANCEL_FLAG.store(true, Ordering::SeqCst);
+    true
+}
+
+/// Whether the upload-slot cancel was requested.
+pub fn is_upload_slot_cancelled() -> bool {
+    UPLOAD_SLOT_CANCEL_FLAG.load(Ordering::SeqCst)
+}
+
+/// Clear SD server-backup cancel (does not touch workflow or slot cancel).
+pub fn reset_secondary_backup_cancel() {
+    SECONDARY_BACKUP_CANCEL_FLAG.store(false, Ordering::SeqCst);
+}
+
+/// Request cancel of the active SD server-backup job only (not Vorgang upload).
+pub fn cancel_secondary_backup() -> bool {
+    SECONDARY_BACKUP_CANCEL_FLAG.store(true, Ordering::SeqCst);
+    true
+}
+
+/// Whether SD server-backup cancel was requested.
+pub fn is_secondary_backup_cancelled() -> bool {
+    SECONDARY_BACKUP_CANCEL_FLAG.load(Ordering::SeqCst)
+}
+
+/// Which cancel flags an SMB transfer should honor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UploadCancelPolicy {
+    /// Only global workflow cancel (legacy / tests).
+    WorkflowOnly,
+    /// Vorgang / Historie / Append upload: workflow **or** slot cancel.
+    WorkflowOrSlot,
+    /// SD server-backup mirror: workflow **or** backup-only cancel (not slot).
+    WorkflowOrBackup,
+}
+
+/// Cancel check for SMB `upload_path` and helpers.
+pub fn is_upload_cancelled(policy: UploadCancelPolicy) -> bool {
+    match policy {
+        UploadCancelPolicy::WorkflowOnly => is_cancelled(),
+        UploadCancelPolicy::WorkflowOrSlot => is_cancelled() || is_upload_slot_cancelled(),
+        UploadCancelPolicy::WorkflowOrBackup => {
+            is_cancelled() || is_secondary_backup_cancelled()
+        }
+    }
 }
 
 /// Stable user-facing message for workflow cancellation (copy, backup, import, encode).

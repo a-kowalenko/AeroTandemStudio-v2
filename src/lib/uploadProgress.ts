@@ -4,6 +4,57 @@ import { formatSpeed } from "./formatSpeed";
 import type { UploadProgressEvent } from "./tauri";
 import type { WorkflowProgressSnapshot } from "./workflowProgress";
 
+export type UploadCompactParts = {
+  percent: number;
+  /** `current / total` byte sizes, or null when unknown. */
+  bytesLabel: string | null;
+  /** Throughput label, or empty when unknown. */
+  speedLabel: string;
+};
+
+/** Compact-bar fields for Phase 37.2 (Bar / % / MB / Speed). */
+export function formatUploadCompactParts(
+  p: UploadProgressEvent | null,
+): UploadCompactParts {
+  if (!p) {
+    return { percent: 0, bytesLabel: null, speedLabel: "" };
+  }
+  const bytesLabel =
+    p.total_bytes > 0
+      ? tr("app.upload.bytesProgress", {
+          current: formatBytes(p.current_bytes),
+          total: formatBytes(p.total_bytes),
+        })
+      : null;
+  return {
+    percent: Math.max(0, Math.min(100, p.percent)),
+    bytesLabel,
+    speedLabel: formatSpeed(p.speed_bps ?? 0),
+  };
+}
+
+/** Map secondary-backup event → compact metrics (same labels as upload bar). */
+export function formatSecondaryBackupCompactParts(input: {
+  percent: number;
+  current_bytes?: number;
+  total_bytes?: number;
+  speed_bps?: number;
+} | null): UploadCompactParts {
+  if (!input) {
+    return { percent: 0, bytesLabel: null, speedLabel: "" };
+  }
+  return formatUploadCompactParts({
+    percent: input.percent,
+    current_file: 0,
+    total_files: 0,
+    current_bytes: input.current_bytes ?? 0,
+    total_bytes: input.total_bytes ?? 0,
+    speed_bps: input.speed_bps ?? 0,
+    filename: "",
+    status: "progress",
+  });
+}
+
 export function formatUploadProgressSnapshot(
   p: UploadProgressEvent,
 ): WorkflowProgressSnapshot {
@@ -15,17 +66,10 @@ export function formatUploadProgressSnapshot(
         })
       : tr("app.upload.title");
 
+  const compact = formatUploadCompactParts(p);
   const detailParts: string[] = [];
-  if (p.total_bytes > 0) {
-    detailParts.push(
-      tr("app.upload.bytesProgress", {
-        current: formatBytes(p.current_bytes),
-        total: formatBytes(p.total_bytes),
-      }),
-    );
-  }
-  const speed = formatSpeed(p.speed_bps ?? 0);
-  if (speed) detailParts.push(speed);
+  if (compact.bytesLabel) detailParts.push(compact.bytesLabel);
+  if (compact.speedLabel) detailParts.push(compact.speedLabel);
 
   return {
     percent: p.percent,

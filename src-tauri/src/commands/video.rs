@@ -12,8 +12,10 @@ use crate::util::natural_sort::sort_paths_by_basename;
 use crate::video::concat;
 use crate::video::cutter::{self, CutResult, SplitResult};
 use crate::video::ffmpeg::{
-    cancel_encode as ffmpeg_cancel, find_ffmpeg_with_resource_dir, is_cancelled,
-    probe_duration_secs, reset_cancel_flag, run_ffmpeg, WORKFLOW_CANCELLED,
+    cancel_encode as ffmpeg_cancel, cancel_secondary_backup as ffmpeg_cancel_secondary_backup,
+    cancel_upload_slot as ffmpeg_cancel_upload_slot, find_ffmpeg_with_resource_dir, is_cancelled,
+    probe_duration_secs, reset_cancel_flag,
+    reset_upload_slot_cancel as reset_upload_slot_cancel_flag, run_ffmpeg, WORKFLOW_CANCELLED,
 };
 use crate::video::hw_accel::{build_encode_command, detect_hardware, HwAccelInfo, HwType};
 use crate::video::preview_encode::{self, PreviewResult};
@@ -565,10 +567,31 @@ pub fn cancel_encode() -> Result<bool, String> {
     Ok(ffmpeg_cancel())
 }
 
+/// Cancel the active Vorgang/Historie SMB upload slot (not SD server-backup).
+#[tauri::command]
+pub fn cancel_upload_slot() -> Result<bool, String> {
+    logging::warn("smb", "Upload-Slot-Abbruch angefordert (cancel_upload_slot)");
+    Ok(ffmpeg_cancel_upload_slot())
+}
+
+/// Cancel the active SD server-backup mirror job only (not Vorgang upload).
+#[tauri::command]
+pub fn cancel_secondary_backup() -> Result<bool, String> {
+    logging::warn("sd", "Server-Backup-Abbruch angefordert (cancel_secondary_backup)");
+    Ok(ffmpeg_cancel_secondary_backup())
+}
+
 /// Clear the workflow cancel flag after a job has finished handling cancellation.
 #[tauri::command]
 pub fn reset_workflow_cancel() -> Result<(), String> {
     reset_cancel_flag();
+    Ok(())
+}
+
+/// Clear the upload-slot cancel flag before starting a new Vorgang upload.
+#[tauri::command]
+pub fn reset_upload_slot_cancel() -> Result<(), String> {
+    reset_upload_slot_cancel_flag();
     Ok(())
 }
 

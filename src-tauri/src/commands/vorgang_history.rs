@@ -526,7 +526,7 @@ pub async fn create_append_job(
         let _ = app_for_cb.emit("encode-progress", &p);
     });
 
-    let mut result = tauri::async_runtime::spawn_blocking(move || {
+    let result = tauri::async_runtime::spawn_blocking(move || {
         append_job::create_append_job(
             &ffmpeg,
             &vorgang,
@@ -540,75 +540,9 @@ pub async fn create_append_job(
     .await
     .map_err(|e| e.to_string())??;
 
+    // Local staging only. SMB upload runs via the shared frontend upload slot
+    // (Phase 37.3) so Append does not hold the session for transfer.
     let local_folder_path = result.folder_path.clone();
-
-    if config_for_ready.upload_to_server {
-        if crate::video::ffmpeg::is_cancelled() {
-            return Err(crate::video::ffmpeg::WORKFLOW_CANCELLED.into());
-        }
-        logging::info(
-            "append",
-            format!("Nachreichung auf Server kopieren: {}", result.folder_name),
-        );
-        let local_folder = result.folder_path.clone();
-        let app_for_progress = app.clone();
-        let uploaded = crate::smb::upload_path(
-            Path::new(&local_folder),
-            &config_for_ready.server_url,
-            &config_for_ready.server_login,
-            &config_for_ready.server_password,
-            move |progress| {
-                let event =
-                    crate::commands::smb::UploadProgressEvent::from(progress);
-                let _ = app_for_progress.emit(crate::commands::smb::UPLOAD_PROGRESS_EVENT, &event);
-            },
-        )
-        .await;
-        if !uploaded.success {
-            let cancelled = crate::smb::upload_failure_is_cancelled(&uploaded.message);
-            if cancelled {
-                logging::warn(
-                    "append",
-                    format!(
-                        "Nachreichung-Upload abgebrochen ({}): {}",
-                        result.folder_name, uploaded.message
-                    ),
-                );
-            } else {
-                logging::error(
-                    "append",
-                    format!(
-                        "Nachreichung-Upload fehlgeschlagen ({}): {}",
-                        result.folder_name, uploaded.message
-                    ),
-                );
-            }
-            if cancelled {
-                let handoff = crate::smb::HandoffUploadContext {
-                    correlation_id: Some(result.correlation_id.clone()),
-                    folder_name: Some(result.folder_name.clone()),
-                };
-                crate::smb::abort_handoff_upload(
-                    &config_for_ready,
-                    Path::new(&local_folder),
-                    &handoff,
-                    &config_for_ready.server_url,
-                    &config_for_ready.server_login,
-                    &config_for_ready.server_password,
-                )
-                .await;
-            }
-            return Err(uploaded.message);
-        }
-        logging::info(
-            "append",
-            format!(
-                "Nachreichung auf Server kopiert: {}",
-                uploaded.remote_path
-            ),
-        );
-        result.folder_path = uploaded.remote_path;
-    }
 
     let append_id = match store.record_append(
         vorgang_id,
@@ -642,7 +576,9 @@ pub async fn create_append_job(
         }
     }
 
-    if !result.correlation_id.trim().is_empty() {
+    // When upload_to_server is on, handoff/ready is sent after successful SMB
+    // (same parity as create_job). Offline / local-only: notify immediately.
+    if !result.correlation_id.trim().is_empty() && !config_for_ready.upload_to_server {
         match crate::bridge::maybe_notify_handoff_ready(
             &config_for_ready,
             &result.correlation_id,

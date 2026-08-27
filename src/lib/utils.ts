@@ -7,7 +7,17 @@ export function cn(...inputs: ClassValue[]) {
 
 /** True when a Tauri/FFmpeg rejection is a user cancel, not a real failure. */
 export function isCancellationError(error: unknown): boolean {
-  const msg = String(error ?? "");
+  let msg = "";
+  if (typeof error === "string") {
+    msg = error;
+  } else if (error && typeof error === "object") {
+    const o = error as { message?: unknown; error?: unknown };
+    if (typeof o.message === "string") msg = o.message;
+    else if (typeof o.error === "string") msg = o.error;
+    else msg = String(error);
+  } else {
+    msg = String(error ?? "");
+  }
   return /cancel|abgebrochen|abbruch/i.test(msg);
 }
 

@@ -14,7 +14,6 @@
       "apply": "Apply",
       "create": "Create",
       "createAndUpload": "Create & upload",
-      "createAndUploadLater": "Create · upload later",
       "history": "Jobs",
       "settings": "Settings",
       "pickFolder": "Choose folder",
@@ -45,7 +44,8 @@
       "showSuggestions": "Show suggestions",
       "unmute": "Unmute",
       "watermark": "Watermark",
-      "watermarkShort": "WM"
+      "watermarkShort": "WM",
+      "createAndUploadLater": "Create · upload later"
     },
     "status": {
       "error": "Error",
@@ -143,15 +143,17 @@
         "description": "Newer versions are checked automatically at startup. You can also pick an older or newer version here — install like auto-update (silent, with progress).",
         "installedVersion": "Installed version: {{version}}",
         "check": "Check for updates",
+        "beta": "Beta",
         "betaTester": "Join beta program",
         "betaTesterDescription": "Beta versions may contain bugs. They are included in startup and manual update checks — even when you are on a stable version.",
+        "showPrereleases": "Show prereleases",
         "availableVersions": "Available versions",
         "loadingVersions": "Loading versions…",
         "unavailable": "Unavailable",
         "chooseVersion": "Choose version…",
         "latest": "Latest",
         "installed": "Installed",
-        "beta": "Beta",
+        "prerelease": "Prerelease",
         "notAutoInstallable": "not auto-installable",
         "openInstaller": "Open installer…",
         "installOlder": "Install older version",
@@ -277,17 +279,17 @@
         "serverUrl": "Server backup URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Same SMB upload as Create; destination independent of “aktuell”. Uses upload-server credentials.",
-        "serverUrlFromProfile": "From server profile “{{name}}”.",
-        "serverUrlMissing": "No backup URL on the active server profile. Set it under Server.",
-        "setInServerProfile": "Set backup URL in server profile",
-        "editInServerProfile": "Edit in server profile",
         "serverUrlTest": "Test",
         "serverUrlTesting": "Testing…",
         "serverUrlMountWarn": "Legacy mount/folder path detected — please set an smb:// URL (no Finder mount).",
         "copyStrategy": "Server mirror",
         "copyAsync": "Background: local done → server in parallel",
         "copyMirror": "Mirror: local first, then wait → server",
-        "copyHint": "Recommended: background — the workflow does not wait for the server mirror."
+        "copyHint": "Recommended: background — the workflow does not wait for the server mirror.",
+        "editInServerProfile": "Edit in server profile",
+        "serverUrlFromProfile": "From server profile “{{name}}”.",
+        "serverUrlMissing": "No backup URL on the active server profile. Set it under Server.",
+        "setInServerProfile": "Set backup URL in server profile"
       },
       "import": {
         "title": "Import & eject",
@@ -298,13 +300,13 @@
         "ejectTitle": "Eject immediately after backup (import/QR then from copies). Without backup: after import.",
         "ejectHint": "With backup, right after; without backup, after import.",
         "skipProcessed": "Skip already processed files",
-        "usbCameras": "USB action cams (approved models)",
-        "usbCamerasHint": "MTP/USB import only for approved models without an SD volume (e.g. GoPro HERO 5+). DJI Osmo and card readers use the mounted volume.",
+        "usbCameras": "USB action cams (GoPro / DJI / Insta360)",
+        "usbCamerasHint": "Detects cameras over USB (MTP/WPD), copies media locally, then imports like an SD card. Phones and regular sticks stay excluded.",
         "usbImportMode": "USB import method",
         "usbImportModeAuto": "Automatic (whitelist)",
-        "usbImportModeVolume": "Volume / SD drive only",
+        "usbImportModeHint": "Automatic: whitelisted GoPro models only. “Volume only” for DJI Osmo (File Transfer on camera). Prefer MTP only if whitelist misbehaves.",
         "usbImportModeMtp": "Prefer MTP (experimental)",
-        "usbImportModeHint": "Automatic: whitelisted GoPro models only. “Volume only” for DJI Osmo (File Transfer on camera). Prefer MTP only if whitelist misbehaves."
+        "usbImportModeVolume": "Volume / SD drive only"
       },
       "size": {
         "title": "Warning threshold",
@@ -322,12 +324,6 @@
         "urlPlaceholder": "smb://…",
         "login": "Login",
         "password": "Password",
-        "backupUrl": "Backup URL (optional)",
-        "backupUrlPlaceholder": "smb://…/backup",
-        "backupUrlHint": "Second SMB target for this profile — no failover, just an extra share.",
-        "backupLogin": "Backup login",
-        "backupPassword": "Backup password",
-        "backupCredsPlaceholder": "Empty = same as primary",
         "recheckTitle": "Click to check again",
         "recheckTitleWithMessage": "{{message}}\nClick to check again",
         "addProfile": "New profile",
@@ -352,7 +348,13 @@
         "schemePath": "Path",
         "urlPlaceholderHost": "host/share",
         "urlPlaceholderPath": "/path or C:\\folder",
-        "urlPlaceholderUnc": "server\\share"
+        "urlPlaceholderUnc": "server\\share",
+        "backupCredsPlaceholder": "Empty = same as primary",
+        "backupLogin": "Backup login",
+        "backupPassword": "Backup password",
+        "backupUrl": "Backup URL (optional)",
+        "backupUrlHint": "Second SMB target for this profile — no failover, just an extra share.",
+        "backupUrlPlaceholder": "smb://…/backup"
       },
       "upload": {
         "title": "Upload",
@@ -381,32 +383,32 @@
         "foundSuccessViaServerPasswordNamed": "{{name}}: Address and access code applied (server password)."
       },
       "pathHints": {
-        "suggestTitle": "SMB paths from booking lookup",
-        "primaryLabel": "Primary",
-        "backupLabel": "Backup",
-        "suggestBody": "Primary: {{primary}}{{backup}}",
-        "suggestBackupLine": " · Backup: {{url}}",
-        "backupProfileLabel": "AMS backup",
-        "newProfileLabel": "AMS server",
         "applyFailed": "Paths could not be saved.",
-        "credentialsTitlePrimary": "SMB credentials (primary)",
-        "credentialsTitleBackup": "SMB credentials (backup)",
-        "credentialsBodyPrimary": "Enter the primary SMB login. The AMS token is tried silently as the password first.",
+        "backupLabel": "Backup",
+        "backupProfileLabel": "AMS backup",
         "credentialsBodyBackup": "Enter the backup target login. The AMS token is tried silently as the password first.",
-        "driftTitle": "SMB path differs from booking lookup",
-        "driftCurrentLabel": "Current",
-        "driftSuggestedLabel": "New",
-        "driftPrimaryLine": "Primary: {{current}} → {{suggested}}",
-        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "credentialsBodyPrimary": "Enter the primary SMB login. The AMS token is tried silently as the password first.",
+        "credentialsTitleBackup": "SMB credentials (backup)",
+        "credentialsTitlePrimary": "SMB credentials (primary)",
         "dismissLater": "Later",
-        "instanceMismatch": "Paths belong to a different booking lookup instance — apply is disabled."
+        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "driftCurrentLabel": "Current",
+        "driftPrimaryLine": "Primary: {{current}} → {{suggested}}",
+        "driftSuggestedLabel": "New",
+        "driftTitle": "SMB path differs from booking lookup",
+        "instanceMismatch": "Paths belong to a different booking lookup instance — apply is disabled.",
+        "newProfileLabel": "AMS server",
+        "primaryLabel": "Primary",
+        "suggestBackupLine": " · Backup: {{url}}",
+        "suggestBody": "Primary: {{primary}}{{backup}}",
+        "suggestTitle": "SMB paths from booking lookup"
       }
     },
     "save": {
       "failed": "Settings could not be saved.",
       "operatorRole": "“Who am I”: Please set at least one role or choose an existing crew name.",
       "pickBackup": "Please choose a backup folder.",
-      "pickSecondBackup": "Please set the backup URL on the active server profile or disable “Back up to server”.",
+      "pickSecondBackup": "Please set a server backup URL (smb://…) or disable the option.",
       "resetFailed": "Default settings could not be restored.",
       "success": "Settings saved."
     }
@@ -505,6 +507,10 @@
       "previewPhotos": "{{count}} preview photo created",
       "previewPhotosMany": "{{count}} preview photos created",
       "uploaded": "Uploaded to server",
+      "uploadRunning": "Upload running in the background",
+      "uploadLiveLabel": "Upload",
+      "uploadLiveWaiting": "Starting…",
+      "uploadQueued": "+{{count}} queued",
       "uploadPending": "Created locally — upload pending",
       "uploadPendingHint": "Retry the upload later from Jobs.",
       "encoder": "Encoder",
@@ -695,33 +701,59 @@
       "hintUpload": "Encoding and upload will start next.",
       "proceed": "Create anyway"
     },
+    "quitUpload": {
+      "title": "Upload still running",
+      "body": "An upload is running or waiting in the queue. Quitting will cancel the upload.",
+      "hint": "You can retry cancelled uploads later from Jobs.",
+      "stay": "Keep running",
+      "quit": "Quit and cancel"
+    },
+    "cancelServerBackup": {
+      "title": "Cancel server backup?",
+      "body": "Only the current server backup will be cancelled. A running job upload is not affected.",
+      "hint": "The local backup remains. The remote folder may be incomplete.",
+      "keep": "Keep running",
+      "cancel": "Cancel backup"
+    },
+    "bulkUploadSummary": {
+      "aborted": "{{count}} not started (cancelled or server offline).",
+      "blocked": "{{count}} not possible",
+      "blockedList": "Not possible",
+      "decided": "{{count}} uploaded after confirmation",
+      "failed": "{{count}} upload errors",
+      "ok": "{{count}} succeeded",
+      "reason": "{{reason}}",
+      "skipped": "{{count}} skipped",
+      "skippedList": "Skipped",
+      "title": "Bulk upload finished"
+    },
     "folderConflict": {
-      "title": "Output folder already exists",
       "body": "The folder “{{name}}” already contains files. Without replacing, old media (e.g. photos) would be uploaded with the new job.",
-      "videosOne": "{{count}} video file in the folder",
-      "videosMany": "{{count}} video files in the folder",
-      "photosOne": "{{count}} photo in the folder",
-      "photosMany": "{{count}} photos in the folder",
-      "otherFiles": "{{count}} other file(s)",
       "hasMarker": "Done marker (_fertig.txt) present — job looked already finished",
       "hintEncode": "“Replace folder” deletes its contents and creates again.",
       "hintUpload": "“Replace folder” deletes its contents and creates again — only current media will be uploaded.",
-      "replace": "Replace folder and create"
+      "otherFiles": "{{count}} other file(s)",
+      "photosMany": "{{count}} photos in the folder",
+      "photosOne": "{{count}} photo in the folder",
+      "replace": "Replace folder and create",
+      "title": "Output folder already exists",
+      "videosMany": "{{count}} video files in the folder",
+      "videosOne": "{{count}} video file in the folder"
     },
     "offlineCreate": {
-      "title": "Server unreachable",
       "body": "Upload is on, but the server is offline. You can still create the job locally; the upload will stay pending.",
       "hint": "Retry later from Jobs when the server is back.",
-      "proceed": "Create locally anyway"
+      "proceed": "Create locally anyway",
+      "title": "Server unreachable"
     },
     "uploadExtraFiles": {
-      "title": "Extra files in folder",
       "body": "The folder for “{{guest}}” contains files that were not part of the original job:",
-      "purgeSwitch": "Delete surplus files before upload",
       "hintInclude": "Upload all files: the delivery list will be updated before upload.",
       "hintPurge": "The listed files will be deleted locally, then upload starts.",
       "proceedInclude": "Upload all",
-      "proceedPurge": "Delete and upload"
+      "proceedPurge": "Delete and upload",
+      "purgeSwitch": "Delete surplus files before upload",
+      "title": "Extra files in folder"
     },
     "uploadMissingFiles": {
       "body": "The job “{{guest}}” cannot be uploaded as-is. These files are missing from the output folder:",
@@ -730,41 +762,29 @@
       "uploadAvailable": "Upload available files"
     },
     "uploadPartialConfirm": {
-      "title": "Upload incomplete set?",
       "body": "{{count}} file(s) are missing and will not be uploaded. The job “{{guest}}” will be sent to the server with the remaining media.",
-      "proceed": "Upload anyway"
+      "proceed": "Upload anyway",
+      "title": "Upload incomplete set?"
     },
     "uploadPreflightFail": {
-      "title": "Upload not possible",
       "body": "The job “{{guest}}” cannot be retried:",
       "codes": {
-        "local_vorgang": "Local job (no AMS handoff)",
         "already_done": "Upload already completed",
         "ams_completed": "AMS handoff already completed",
-        "folder_missing": "Output folder missing",
-        "folder_empty": "Output folder is empty",
-        "manifest_missing": "Manifest missing",
-        "manifest_invalid": "Manifest invalid",
-        "marker_missing": "Ready marker missing",
-        "file_missing": "File missing",
-        "size_mismatch": "File size mismatch",
         "extra_file": "Extra file",
+        "file_missing": "File missing",
+        "folder_empty": "Output folder is empty",
+        "folder_missing": "Output folder missing",
+        "local_vorgang": "Local job (no AMS handoff)",
+        "manifest_invalid": "Manifest invalid",
+        "manifest_missing": "Manifest missing",
+        "marker_missing": "Ready marker missing",
         "preflight_error": "Preflight failed",
+        "size_mismatch": "File size mismatch",
         "skipped": "Skipped",
         "unknown": "Unknown error"
-      }
-    },
-    "bulkUploadSummary": {
-      "title": "Bulk upload finished",
-      "ok": "{{count}} succeeded",
-      "decided": "{{count}} uploaded after confirmation",
-      "skipped": "{{count}} skipped",
-      "blocked": "{{count}} not possible",
-      "failed": "{{count}} upload errors",
-      "blockedList": "Not possible",
-      "skippedList": "Skipped",
-      "reason": "{{reason}}",
-      "aborted": "{{count}} not started (cancelled or server offline)."
+      },
+      "title": "Upload not possible"
     }
   },
   "splash": {
@@ -810,7 +830,9 @@
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
       "ready": "Ready",
-      "starting": "Starting…"
+      "starting": "Starting…",
+      "serverBackupPercent": "Server backup {{percent}}%",
+      "serverBackupDone": "Server backup done"
     },
     "update": {
       "alreadyInstalling": "Installation already running…",
@@ -897,19 +919,25 @@
       "fileProgress": "File {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleLater": "Upload · later",
-      "titleBlockedOn": "Upload on, server offline — create locally, retry upload later",
-      "titleBlockedOff": "Server offline — you can still enable upload (create locally, upload later)",
+      "titleBlockedOn": "Upload is on in settings, server not connected",
+      "titleBlockedOff": "Server not connected — upload not possible",
       "titleActive": "On — job will be uploaded after create",
-      "titleOff": "Upload off — turn on to send the job to the server"
+      "titleOff": "Upload off — turn on to send the job to the server",
+      "bgDoneTitle": "Upload finished",
+      "bgDoneMessage": "{{folder}}",
+      "bgFailTitle": "Upload failed",
+      "bgFailMessage": "{{detail}} Retry from Jobs.",
+      "bgFailHint": "Please retry from Jobs.",
+      "bgCancelled": "Upload cancelled — pending in Jobs.",
+      "titleLater": "Upload · later"
     },
     "job": {
       "section": "Job",
       "clear": "Clear",
       "clearTitle": "Reset form and media after creating",
       "createUploadTitle": "Create job and upload to the server",
-      "createUploadLaterTitle": "Create locally — upload stays pending until the server is back",
-      "uploadAria": "Server upload"
+      "uploadAria": "Server upload",
+      "createUploadLaterTitle": "Create locally — upload stays pending until the server is back"
     },
     "ready": {
       "showTarget": "Show {{label}}"
@@ -1133,6 +1161,12 @@
       "createUploading": "Current job — cancel stops the upload.",
       "cancelling": "Cancel requested — finishing the current step"
     },
+    "upload": {
+      "expand": "Show upload details",
+      "collapse": "Hide upload details",
+      "queueWaiting": "{{count}} more waiting in queue",
+      "failedHold": "Upload failed — retry from Jobs"
+    },
     "createSteps": {
       "aria": "Create job steps",
       "cancelled": "Cancelled",
@@ -1160,6 +1194,7 @@
     "appendSuccess": "{{count}} file(s) handed over ({{folder}}).\nStatus under “Append” in Jobs.",
     "appendDialogTitle": "Append",
     "appendCancelled": "Append cancelled.",
+    "appendUploadPending": "Ready locally — upload pending (server offline). Retry later under Jobs.",
     "filters": {
       "all": "All",
       "open": "Open",
@@ -1186,36 +1221,6 @@
     },
     "emptyFilter": "No jobs for this status.",
     "emptyJobs": "No jobs yet. They appear here after creating.",
-    "upload": {
-      "pending": "Upload pending",
-      "uploading": "Uploading",
-      "failed": "Upload failed",
-      "retryBtn": "Retry upload",
-      "retryTitle": "Retry upload",
-      "retryTitleOk": "Start the pending upload now",
-      "retryOffline": "Server offline — upload only when the connection is back",
-      "retryDone": "Upload completed successfully.",
-      "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
-      "extraIncluded": "Upload finished. {{count}} additional file(s) included.",
-      "retryCancelled": "Upload cancelled.",
-      "pendingBadgeTooltip": "{{count}} uploads pending",
-      "bulkBtn": "Process pending uploads…",
-      "bulkTitle": "Pending uploads",
-      "bulkTitleOk": "Start {{count}} uploads one after another",
-      "bulkOffline": "Server offline — bulk upload only when the connection is back",
-      "bulkConfirmTitle": "Process pending uploads?",
-      "bulkConfirmBody": "{{count}} jobs will upload one after another. Jobs with preflight problems are skipped.",
-      "bulkConfirmBodyScan": "{{total}} jobs: {{ready}} ready · {{needs}} need confirmation · {{blocked}} not possible.",
-      "bulkScanning": "Running preflight scan…",
-      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
-      "bulkPhase2PromptTitle": "Decisions still needed",
-      "bulkPhase2PromptBody": "{{count}} jobs still need a decision — handle them now?",
-      "bulkPhase2Later": "Later",
-      "bulkPhase2Now": "Handle now",
-      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
-      "reconnectToastTitle": "Server back online",
-      "reconnectToastBody": "{{count}} uploads pending — retry from Jobs."
-    },
     "selectJob": "Select a job",
     "previewReuse": "Preview reuse",
     "customer": "Customer: {{id}}",
@@ -1320,6 +1325,36 @@
       "statusPaid": "Paid",
       "wrongKindPhoto": "Please drop photos (current category is photo).",
       "wrongKindVideo": "Please drop videos (current category is video)."
+    },
+    "upload": {
+      "bulkBtn": "Process pending uploads…",
+      "bulkConfirmBody": "{{count}} jobs will upload one after another. Jobs with preflight problems are skipped.",
+      "bulkConfirmBodyScan": "{{total}} jobs: {{ready}} ready · {{needs}} need confirmation · {{blocked}} not possible.",
+      "bulkConfirmTitle": "Process pending uploads?",
+      "bulkOffline": "Server offline — bulk upload only when the connection is back",
+      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2Later": "Later",
+      "bulkPhase2Now": "Handle now",
+      "bulkPhase2PromptBody": "{{count}} jobs still need a decision — handle them now?",
+      "bulkPhase2PromptTitle": "Decisions still needed",
+      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkScanning": "Running preflight scan…",
+      "bulkTitle": "Pending uploads",
+      "bulkTitleOk": "Start {{count}} uploads one after another",
+      "extraIncluded": "Upload finished. {{count}} additional file(s) included.",
+      "failed": "Upload failed",
+      "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
+      "pending": "Upload pending",
+      "pendingBadgeTooltip": "{{count}} uploads pending",
+      "reconnectToastBody": "{{count}} uploads pending — retry from Jobs.",
+      "reconnectToastTitle": "Server back online",
+      "retryBtn": "Retry upload",
+      "retryCancelled": "Upload cancelled.",
+      "retryDone": "Upload completed successfully.",
+      "retryOffline": "Server offline — upload only when the connection is back",
+      "retryTitle": "Retry upload",
+      "retryTitleOk": "Start the pending upload now",
+      "uploading": "Uploading"
     }
   },
   "ams": {
@@ -1404,8 +1439,6 @@
       "amsNotChecked": "{{title}}: not checked",
       "retryOrSettings": "Click: retry · right click: settings",
       "retry": "Click to check again",
-      "backupFailedHint": "Click: dismiss & recheck · right click: backup URL",
-      "backupSettingsHint": "Right click: backup URL in settings",
       "connectionTitle": "Connection",
       "titleAllOk": "All connected",
       "titlePartial": "Partial",
@@ -1418,18 +1451,25 @@
       "serverOkRemote": "Connected",
       "amsOk": "Connected",
       "titleAmsOkNamed": "{{name}} connected",
-      "chipUpload": "Upload",
+      "backupFailedHint": "Click: dismiss & recheck · right click: backup URL",
+      "backupSettingsHint": "Right click: backup URL in settings",
+      "backupPopoverHint": "Click: details · right click: backup URL",
       "chipServerBackup": "Server backup",
       "chipServerBackupDone": "Server backup done",
       "chipServerBackupFailed": "Server backup failed",
-      "percent": "{{percent}}%",
-      "serverBackupRunning": "Server backup: {{percent}}%",
-      "serverBackupWithDetail": "Server backup: {{percent}}% · {{detail}}",
-      "serverBackupFiles": "{{current}}/{{total}}",
+      "chipServerBackupCancelled": "Server backup cancelled",
+      "chipUpload": "Upload",
+      "liveServerBackup": "Server backup {{percent}} percent",
+      "liveUpload": "Upload {{percent}} percent",
       "parallelServerBackup": "Also: server backup {{percent}}%",
       "parallelUpload": "Also: upload {{percent}}%",
-      "liveUpload": "Upload {{percent}} percent",
-      "liveServerBackup": "Server backup {{percent}} percent"
+      "percent": "{{percent}}%",
+      "serverBackupFiles": "{{current}}/{{total}}",
+      "serverBackupRunning": "Server backup: {{percent}}%",
+      "serverBackupWithDetail": "Server backup: {{percent}}% · {{detail}}"
+    },
+    "backupPopover": {
+      "cancelledLocalRemains": "Local backup remains."
     }
   },
   "qr": {
@@ -1762,6 +1802,8 @@
     "monitor": {
       "secondaryBackupFailed": "Server backup (second path) failed.",
       "secondaryBackupTitle": "Server backup",
+      "secondaryBackupCancelledTitle": "Server backup cancelled",
+      "secondaryBackupCancelledBody": "Local backup remains. Remote folder may be incomplete.",
       "title": "SD monitor"
     },
     "tile": {
@@ -1835,7 +1877,6 @@
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later."
     },
     "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
-    "operatorRequired": "Please set who you are.",
     "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
     "operatorSingleRoleTm": "Only tandem master was found — that role will be kept on session reset.",
     "operatorSingleRoleVs": "Only video jumper was found — that role will be kept on session reset.",
@@ -1857,27 +1898,27 @@
     },
     "upload": {
       "disabledHint": "Upload stays off. You can set up the server later in settings at any time.",
-      "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
       "amsHint": "We search automatically for the booking bridge. You can apply discovered paths, or set up the server manually.",
-      "searchNetwork": "Search network",
+      "connectAndApply": "Connect to server",
+      "connectRequired": "Please connect to the server first.",
+      "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
+      "manualHint": "Pick a default profile or enter SMB address and credentials.",
+      "noneFound": "No bridge found. Search again or set up the server manually.",
+      "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
+      "pathsApplied": "Paths applied: {{primary}}",
+      "presetCaldenHint": "Default URL for Calden",
+      "presetGeraHint": "Gera profile — enter URL yourself",
+      "profileName": "Profile name",
+      "profilesHint": "Server profiles with the applied paths (including optional backup URL). Unused default profiles were removed.",
       "searchAgain": "Search server",
+      "searchNetwork": "Search network",
       "searching": "Searching…",
       "searchingHint": "Scanning the network…",
-      "noneFound": "No bridge found. Search again or set up the server manually.",
       "setupManually": "Set up manually",
-      "tokenRequired": "Please enter the AMS token or key.",
-      "connectRequired": "Please connect to the server first.",
-      "tokenPlaceholder": "Token / key",
-      "tokenHint": "Often the same password as for the SMB server.",
-      "profileName": "Profile name",
-      "connectAndApply": "Connect to server",
       "skipAms": "Continue without server",
-      "pathsApplied": "Paths applied: {{primary}}",
-      "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
-      "profilesHint": "Server profiles with the applied paths (including optional backup URL). Unused default profiles were removed.",
-      "manualHint": "Pick a default profile or enter SMB address and credentials.",
-      "presetCaldenHint": "Default URL for Calden",
-      "presetGeraHint": "Gera profile — enter URL yourself"
+      "tokenHint": "Often the same password as for the SMB server.",
+      "tokenPlaceholder": "Token / key",
+      "tokenRequired": "Please enter the AMS token or key."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",
@@ -1887,7 +1928,8 @@
       "createFolder": "Create folder:\n{{path}}",
       "proceedAnyway": "Continue anyway?",
       "warningsTitle": "Storage location notes:"
-    }
+    },
+    "operatorRequired": "Please set who you are."
   },
   "dateField": {
     "chooseDateAria": "Choose date",

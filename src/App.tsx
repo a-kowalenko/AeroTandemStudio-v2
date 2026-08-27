@@ -58,11 +58,13 @@ import {
   getUpdaterInstallHint,
   cancelUpdateInstall,
   cancelEncode,
+  cancelUploadSlot,
   installSpecificVersion,
   installUpdate,
   resolveBodyConcatFallback,
   resolveIntroMuxFallback,
   resolveReencodeConfirm,
+  resetUploadSlotCancel,
   resetWorkflowCancel,
   runStartupChecks,
   uploadToServer,
@@ -145,8 +147,25 @@ import {
   primaryPreflightReasonCode,
 } from "./lib/uploadPreflight";
 import { showPendingUploadsToast } from "./lib/pendingUploadToast";
+import {
+  showBackgroundUploadDoneToast,
+  showBackgroundUploadFailToast,
+} from "./lib/backgroundUploadToast";
+import {
+  bindUploadSlotRunner,
+  cancelQueuedUploads,
+  enqueueUpload,
+  type UploadSlotResult,
+} from "./lib/uploadSlot";
+import type { UploadQueueJob } from "./lib/uploadQueue";
 import { useHistoryStore } from "./store/historyStore";
+import { useUploadQueueStore } from "./store/uploadQueueStore";
 import type { EncodeProgress } from "./components/app/types";
+import { QuitUploadConfirmDialog } from "./components/QuitUploadConfirmDialog";
+import {
+  useQuitUploadConfirmState,
+  useUploadQuitGuard,
+} from "./hooks/useUploadQuitGuard";
 import "./App.css";
 
 function App() {
@@ -253,6 +272,11 @@ function App() {
   const [ready, setReady] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
+  const quitUploadConfirm = useQuitUploadConfirmState();
+  const { onConfirmQuit, onConfirmStay } = useUploadQuitGuard({
+    openConfirm: quitUploadConfirm.openConfirm,
+    confirmOpen: quitUploadConfirm.open,
+  });
   const [introMuxFallback, setIntroMuxFallback] = useState<{
     reason: string;
     timeoutSecs: number;
@@ -304,6 +328,13 @@ function App() {
   const appendWasActiveRef = useRef(false);
   const uploadProgressActiveRef = useRef(false);
   const jobCancelRequestedRef = useRef(false);
+  /** Latest SMB slot executor (bound once; body refreshed each render). */
+  const uploadSlotRunnerRef = useRef<
+    (job: UploadQueueJob) => Promise<UploadSlotResult>
+  >(async () => "failed");
+  const uploadSlotHasWork = useUploadQueueStore(
+    (s) => s.active !== null || s.queue.length > 0,
+  );
 
   const installBlockedReason = (() => {
     if (updateInstalling) return t("app.update.alreadyInstalling");
@@ -311,7 +342,8 @@ function App() {
     if (appendActive) return t("app.update.blockedAppend");
     if (sdWorkflowUiActive) return t("app.update.blockedSd");
     if (qrScanBusy) return t("app.update.blockedQr");
-    if (serverPhase === "uploading") return t("app.update.blockedUpload");
+    if (serverPhase === "uploading" || uploadSlotHasWork)
+      return t("app.update.blockedUpload");
     return null;
   })();
 
@@ -1443,7 +1475,131 @@ function App() {
   }
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
+    bindUploadSlotRunner({
+      runJob: (job) => uploadSlotRunnerRef.current(job),
+    });
+  }, []);
+
+  uploadSlotRunnerRef.current = async (job) => {
+    const persistUploadState = async (
+      state: "pending" | "uploading" | "done" | "failed",
+    ) => {
+      // Append SMB must not flip the parent vorgang's Erst-Upload state.
+      if (job.source === "append") return;
+      if (job.vorgangId == null && !job.correlationId) return;
+      try {
+        await setVorgangUploadState(state, {
+          vorgangId: job.vorgangId,
+          correlationId: job.correlationId,
+        });
+        if (job.vorgangId != null) {
+          useHistoryStore.getState().patchVorgang(job.vorgangId, (row) => ({
+            ...row,
+            upload_state: state,
+          }));
+        }
+      } catch (e) {
+        console.error("upload_state update failed:", e);
+      }
+    };
+
+    const folderLabel =
+      job.guestLabel?.trim() ||
+      job.folderName?.trim() ||
+      null;
+
+    setServerPhase("uploading");
+    setUploadProgress(null);
+    uploadProgressActiveRef.current = true;
+    jobCancelRequestedRef.current = false;
+    useUploadQueueStore.getState().setCancelPhase(null);
+    setStatus(t("app.upload.toServer"));
+    await persistUploadState("uploading");
+
+    try {
+      await resetUploadSlotCancel();
+      // Cancel may have landed between enqueue and reset — honor it.
+      if (jobCancelRequestedRef.current) {
+        await persistUploadState("pending");
+        setServerPhase("connected");
+        setUploadProgress(null);
+        uploadProgressActiveRef.current = false;
+        useUploadQueueStore.getState().setCancelPhase(null);
+        setPercent(0);
+        setStatus("");
+        return "cancelled";
+      }
+      const uploaded = await uploadToServer(job.localDir, undefined, {
+        correlation_id: job.correlationId,
+        folder_name: job.folderName,
+      });
+      if (jobCancelRequestedRef.current) {
+        await persistUploadState("pending");
+        setServerPhase("connected");
+        setUploadProgress(null);
+        uploadProgressActiveRef.current = false;
+        useUploadQueueStore.getState().setCancelPhase(null);
+        setPercent(0);
+        setStatus("");
+        return "cancelled";
+      }
+      await persistUploadState("done");
+      setServerPhase("connected");
+      setPercent(100);
+      if (!job.quietSuccess) {
+        showBackgroundUploadDoneToast({
+          title: t("app.upload.bgDoneTitle"),
+          message:
+            folderLabel ||
+            uploaded.remote_path ||
+            uploaded.message ||
+            undefined,
+        });
+      }
+      return "ok";
+    } catch (uploadErr) {
+      if (isCancellationError(uploadErr) || jobCancelRequestedRef.current) {
+        await persistUploadState("pending");
+        setServerPhase("connected");
+        setUploadProgress(null);
+        uploadProgressActiveRef.current = false;
+        useUploadQueueStore.getState().setCancelPhase(null);
+        setPercent(0);
+        setStatus("");
+        if (!job.quietSuccess) {
+          showWarning(
+            t("app.upload.bgCancelled"),
+            t("app.upload.title"),
+          );
+        }
+        return "cancelled";
+      }
+      await persistUploadState("failed");
+      setServerPhase("error");
+      useUploadQueueStore.getState().setCancelPhase(null);
+      if (!job.quietSuccess) {
+        const detail = String(uploadErr).trim();
+        showBackgroundUploadFailToast({
+          title: t("app.upload.bgFailTitle"),
+          message: detail
+            ? t("app.upload.bgFailMessage", { detail: `${detail}.` })
+            : t("app.upload.bgFailHint"),
+        });
+      }
+      return "failed";
+    } finally {
+      uploadProgressActiveRef.current = false;
+      setUploadProgress(null);
+      useUploadQueueStore.getState().setCancelPhase(null);
+      void refreshPendingUploadCount(
+        Boolean(useConfigStore.getState().config?.upload_to_server),
+      ).catch(() => {});
+    }
+  };
+
+  useEffect(() => {
+    let unlistenProgress: (() => void) | undefined;
+    let unlistenPhase: (() => void) | undefined;
     listen<UploadProgressEvent>("upload-progress", (event) => {
       if (!uploadProgressActiveRef.current || jobCancelRequestedRef.current) return;
       const p = event.payload;
@@ -1451,10 +1607,19 @@ function App() {
       setPercent(p.percent);
       setStatus(t("app.upload.title"));
     }).then((fn) => {
-      unlisten = fn;
+      unlistenProgress = fn;
+    });
+    listen<{ phase: string }>("upload-slot-phase", (event) => {
+      if (event.payload.phase === "cleanup") {
+        useUploadQueueStore.getState().setCancelPhase("cleanup");
+        setStatus(t("workflow.upload.cleaningUp"));
+      }
+    }).then((fn) => {
+      unlistenPhase = fn;
     });
     return () => {
-      unlisten?.();
+      unlistenProgress?.();
+      unlistenPhase?.();
     };
   }, [setUploadProgress, t]);
 
@@ -1735,21 +1900,11 @@ function App() {
       let uploadNote: string | null = null;
       let serverUploaded = false;
       let uploadDeferred = false;
+      let uploadInProgress = false;
+      let uploadJobId: string | null = null;
+      let detachedUpload = false;
       const vorgangId = res.vorgang_id ?? null;
       const correlationId = res.correlation_id?.trim() || null;
-      const persistUploadState = async (
-        state: "pending" | "uploading" | "done" | "failed",
-      ) => {
-        if (vorgangId == null && !correlationId) return;
-        try {
-          await setVorgangUploadState(state, {
-            vorgangId,
-            correlationId,
-          });
-        } catch (e) {
-          console.error("upload_state update failed:", e);
-        }
-      };
 
       if (config?.upload_to_server) {
         if (!serverConnected) {
@@ -1757,41 +1912,54 @@ function App() {
           uploadDeferred = true;
           uploadNote = t("create.success.uploadPendingHint");
         } else {
-          setStatus(t("app.upload.toServer"));
-          setTaskProgress([]);
-          setServerPhase("uploading");
-          setUploadProgress(null);
-          uploadProgressActiveRef.current = true;
-          await persistUploadState("uploading");
-          try {
-            const uploaded = await uploadToServer(res.base_output_dir, undefined, {
-              correlation_id: correlationId,
-              folder_name: res.base_filename?.trim() || null,
+          const folderLabel =
+            res.base_filename?.trim() ||
+            [kunde.vorname, kunde.nachname].filter(Boolean).join(" ").trim() ||
+            null;
+          uploadJobId = `create-${vorgangId ?? correlationId ?? Date.now()}`;
+          uploadInProgress = true;
+          uploadNote = null;
+          detachedUpload = true;
+
+          void enqueueUpload({
+            id: uploadJobId,
+            source: "create",
+            localDir: res.base_output_dir,
+            folderName: res.base_filename?.trim() || null,
+            correlationId,
+            vorgangId,
+            guestLabel: folderLabel,
+            quietSuccess: false,
+          }).then((result) => {
+            setCreateSuccess((prev) => {
+              if (!prev || prev.uploadJobId !== uploadJobId) return prev;
+              if (result === "ok") {
+                return {
+                  ...prev,
+                  uploadInProgress: false,
+                  serverUploaded: true,
+                  uploadDeferred: false,
+                  uploadNote: folderLabel,
+                };
+              }
+              if (result === "cancelled") {
+                return {
+                  ...prev,
+                  uploadInProgress: false,
+                  serverUploaded: false,
+                  uploadDeferred: true,
+                  uploadNote: t("app.upload.bgCancelled"),
+                };
+              }
+              return {
+                ...prev,
+                uploadInProgress: false,
+                serverUploaded: false,
+                uploadDeferred: false,
+                uploadNote: t("app.upload.failedNote"),
+              };
             });
-            uploadNote = uploaded.remote_path || uploaded.message || null;
-            serverUploaded = true;
-            await persistUploadState("done");
-            setServerPhase("connected");
-          } catch (uploadErr) {
-            if (isCancellationError(uploadErr)) {
-              await persistUploadState("pending");
-              setServerPhase("connected");
-              setUploadProgress(null);
-              uploadProgressActiveRef.current = false;
-              setTaskProgress([]);
-              setPercent(0);
-              setStatus(t("progress.default.cancelled"));
-              showWarning(t("create.job.cancelled"));
-              return;
-            }
-            await persistUploadState("failed");
-            setServerPhase("error");
-            showError(String(uploadErr), t("app.upload.title"));
-            uploadNote = t("app.upload.failedNote");
-          } finally {
-            uploadProgressActiveRef.current = false;
-            setUploadProgress(null);
-          }
+          });
         }
       }
 
@@ -1799,6 +1967,8 @@ function App() {
         result: res,
         serverUploaded,
         uploadDeferred,
+        uploadInProgress,
+        uploadJobId,
         uploadNote,
         vorname: kunde.vorname,
         nachname: kunde.nachname,
@@ -1831,6 +2001,12 @@ function App() {
         replaceExistingDirRef.current = false;
         offlineCreateAckRef.current = false;
       }
+
+      // Encode finished; slot runner owns cancel flag while SMB runs.
+      if (!detachedUpload) {
+        jobCancelRequestedRef.current = false;
+        void resetWorkflowCancel().catch(() => {});
+      }
     } catch (e) {
       if (isCancellationError(e)) {
         setTaskProgress([]);
@@ -1841,18 +2017,44 @@ function App() {
         setCreateFailed(true);
         showError(presentAmsUserMessage(String(e)));
       }
-    } finally {
-      uploadProgressActiveRef.current = false;
       jobCancelRequestedRef.current = false;
-      setBusy(false);
       void resetWorkflowCancel().catch(() => {});
+    } finally {
+      setBusy(false);
     }
   }
 
   async function cancel() {
-    const cancellingQr = qrScanBusy && !busy && !appendActive;
+    const slotState = useUploadQueueStore.getState();
+    const slotActive = slotState.active !== null;
+    const queueWaiting = slotState.queue.length > 0;
+    const backgroundOnly =
+      (slotActive || queueWaiting) && !busy && !appendActive;
+    const cancellingQr = qrScanBusy && !busy && !appendActive && !slotActive;
     jobCancelRequestedRef.current = true;
-    uploadProgressActiveRef.current = false;
+
+    // Background upload: keep slot occupied through cancel + remote cleanup.
+    // Use slot cancel only — do NOT cancelEncode (would abort SD server-backup).
+    if (backgroundOnly) {
+      if (slotActive) {
+        useUploadQueueStore.getState().setCancelPhase("cancelling");
+        setStatus(t("workflow.stage.cancelling"));
+      }
+      try {
+        await cancelUploadSlot();
+      } catch (e) {
+        if (!isCancellationError(e)) showError(String(e));
+      }
+      // Toast + clearActive happen when runJob returns (after cleanup).
+      return;
+    }
+
+    if (queueWaiting && !slotActive) {
+      cancelQueuedUploads();
+    }
+    if (!slotActive) {
+      uploadProgressActiveRef.current = false;
+    }
     try {
       await cancelEncode();
       if (!cancellingQr && (busy || appendActive)) {
@@ -1860,20 +2062,17 @@ function App() {
         setPercent(0);
         setStatus(t("progress.default.cancelled"));
       }
-      // SD backup/import and QR: dedicated message when the job returns.
+      // Encode / SD / QR: dedicated message when the job returns.
     } catch (e) {
       if (!isCancellationError(e)) showError(String(e));
     }
   }
 
-  /** Historie „Upload nachholen“ — reuses Create SMB pipeline + progress (Phase 31.2). */
+  /** Historie „Upload nachholen“ — shared background upload slot (Phase 37.3). */
   async function retryVorgangUpload(
     entry: VorgangEntry,
     opts?: { omittedFileCount?: number; includedExtraCount?: number },
   ) {
-    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
-      return;
-    }
     await runVorgangUploadAttempt(entry, {
       quietSuccess: false,
       omittedFileCount: opts?.omittedFileCount,
@@ -1889,9 +2088,6 @@ function App() {
     entry: VorgangEntry,
     opts?: VorgangUploadRetryOptions,
   ): Promise<"ok" | "failed" | "cancelled"> {
-    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
-      return "failed";
-    }
     const result = await runVorgangUploadAttempt(entry, {
       quietSuccess: true,
       omittedFileCount: opts?.omittedFileCount,
@@ -1904,13 +2100,10 @@ function App() {
   }
 
   /**
-   * Phase 31.6: scan → phase 1 (ready only) → optional phase 2 (decisions in Historie).
+   * Phase 31.6 / 37.3: scan → phase 1 (ready via FIFO queue) → optional phase 2.
+   * Session stays unlocked; only the shared upload slot serializes SMB.
    */
   async function retryVorgangUploadsBulk(scan: BulkUploadScanResult) {
-    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
-      return;
-    }
-
     const summary = createEmptyBulkUploadSummary();
     for (const entry of scan.blocked) {
       summary.blocked += 1;
@@ -1923,89 +2116,84 @@ function App() {
       return;
     }
 
-    setBusy(true);
     jobCancelRequestedRef.current = false;
-    uploadProgressActiveRef.current = false;
-    setTaskProgress([]);
-    setPercent(0);
-    setCreateFailed(false);
 
-    try {
-      for (let i = 0; i < readyEntries.length; i++) {
-        const entry = readyEntries[i]!;
-        if (!useServerStore.getState().connected) {
-          summary.aborted = true;
-          summary.remaining =
-            readyEntries.length - i + scan.needsDecision.length;
-          break;
-        }
-        if (jobCancelRequestedRef.current) {
-          summary.aborted = true;
-          summary.remaining =
-            readyEntries.length - i + scan.needsDecision.length;
-          break;
-        }
+    const pendingResults: Promise<"ok" | "failed" | "cancelled">[] = [];
+    let enqueued = 0;
 
-        setStatus(
-          t("history.upload.bulkPhase1Progress", {
-            current: i + 1,
-            total: readyEntries.length,
-            guest: entry.gast,
-          }),
-        );
+    for (let i = 0; i < readyEntries.length; i++) {
+      const entry = readyEntries[i]!;
+      if (!useServerStore.getState().connected) {
+        summary.aborted = true;
+        summary.remaining =
+          readyEntries.length - i + scan.needsDecision.length;
+        break;
+      }
+      if (jobCancelRequestedRef.current) {
+        summary.aborted = true;
+        summary.remaining =
+          readyEntries.length - i + scan.needsDecision.length;
+        break;
+      }
 
-        try {
-          const pf = await preflightVorgangUpload(entry.id);
-          const cls = classifyBulkPreflight(pf);
-          if (cls.bucket !== "ready") {
-            summary.skipped += 1;
-            summary.skippedItems.push({
-              guest: entry.gast,
-              vorgangId: entry.id,
-              reasonCode: primaryPreflightReasonCode(cls.reasonCodes),
-            });
-            continue;
-          }
-        } catch {
+      try {
+        const pf = await preflightVorgangUpload(entry.id);
+        const cls = classifyBulkPreflight(pf);
+        if (cls.bucket !== "ready") {
           summary.skipped += 1;
           summary.skippedItems.push({
             guest: entry.gast,
             vorgangId: entry.id,
-            reasonCode: "preflight_error",
+            reasonCode: primaryPreflightReasonCode(cls.reasonCodes),
           });
           continue;
         }
-
-        const result = await runVorgangUploadAttempt(entry, {
-          quietSuccess: true,
+      } catch {
+        summary.skipped += 1;
+        summary.skippedItems.push({
+          guest: entry.gast,
+          vorgangId: entry.id,
+          reasonCode: "preflight_error",
         });
+        continue;
+      }
+
+      enqueued += 1;
+      pendingResults.push(
+        runVorgangUploadAttempt(entry, { quietSuccess: true }),
+      );
+    }
+
+    if (pendingResults.length > 0) {
+      setStatus(
+        t("history.upload.bulkPhase1Progress", {
+          current: 1,
+          total: enqueued,
+          guest: readyEntries[0]?.gast ?? "",
+        }),
+      );
+      const results = await Promise.all(pendingResults);
+      for (const result of results) {
         if (result === "ok") {
           summary.ok += 1;
         } else if (result === "cancelled") {
           summary.aborted = true;
-          summary.remaining =
-            readyEntries.length - i + scan.needsDecision.length;
-          break;
         } else {
           summary.failed += 1;
-          if (!useServerStore.getState().connected) {
-            summary.aborted = true;
-            summary.remaining =
-              readyEntries.length - (i + 1) + scan.needsDecision.length;
-            break;
-          }
         }
       }
-    } finally {
-      uploadProgressActiveRef.current = false;
-      setUploadProgress(null);
-      jobCancelRequestedRef.current = false;
-      setBusy(false);
-      void resetWorkflowCancel().catch(() => {});
-      void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
-        () => {},
-      );
+      if (summary.aborted || !useServerStore.getState().connected) {
+        summary.aborted = true;
+        // Only jobs never enqueued + phase-2 remain; enqueued ones already settled.
+        summary.remaining =
+          readyEntries.length - enqueued + scan.needsDecision.length;
+      }
     }
+
+    jobCancelRequestedRef.current = false;
+    void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
+      () => {},
+    );
 
     if (scan.needsDecision.length > 0 && !summary.aborted) {
       setBulkPhase2Session({ entries: scan.needsDecision, summary });
@@ -2021,7 +2209,7 @@ function App() {
     setBulkUploadSummary(finalSummary);
   }
 
-  /** Shared SMB attempt used by single retry and bulk (Phase 31.2 / 31.3). */
+  /** Shared SMB attempt used by single retry and bulk (Phase 31.2 / 31.3 / 37.3 slot). */
   async function runVorgangUploadAttempt(
     entry: VorgangEntry,
     opts: {
@@ -2030,101 +2218,37 @@ function App() {
       includedExtraCount?: number;
     },
   ): Promise<"ok" | "failed" | "cancelled"> {
-    const correlationId = entry.correlation_id?.trim() || null;
-    const vorgangId = entry.id;
-    const persistUploadState = async (
-      state: "pending" | "uploading" | "done" | "failed",
-    ) => {
-      try {
-        await setVorgangUploadState(state, {
-          vorgangId,
-          correlationId,
-        });
-        useHistoryStore.getState().patchVorgang(vorgangId, (row) => ({
-          ...row,
-          upload_state: state,
-        }));
-      } catch (e) {
-        console.error("upload_state update failed:", e);
-      }
-    };
+    const omitted = opts.omittedFileCount ?? 0;
+    const included = opts.includedExtraCount ?? 0;
+    const hasPartialNote = omitted > 0 || included > 0;
+    let toastDetail: string | null = entry.gast?.trim() || entry.base_filename?.trim() || null;
+    if (omitted > 0) {
+      toastDetail = t("history.upload.partialSuccess", { count: omitted });
+    } else if (included > 0) {
+      toastDetail = t("history.upload.extraIncluded", { count: included });
+    }
 
-    const ownBusy = !opts.quietSuccess;
-    if (ownBusy) {
-      setBusy(true);
-      jobCancelRequestedRef.current = false;
-      uploadProgressActiveRef.current = false;
+    const result = await enqueueUpload({
+      source: opts.quietSuccess ? "bulk" : "history",
+      localDir: entry.base_output_dir,
+      folderName: entry.base_filename?.trim() || null,
+      correlationId: entry.correlation_id?.trim() || null,
+      vorgangId: entry.id,
+      guestLabel: toastDetail,
+      quietSuccess: opts.quietSuccess,
+    });
+
+    if (result === "cancelled" && !opts.quietSuccess) {
       setTaskProgress([]);
       setPercent(0);
-      setCreateFailed(false);
-      setStatus(t("app.upload.toServer"));
-    }
-
-    setServerPhase("uploading");
-    setUploadProgress(null);
-    uploadProgressActiveRef.current = true;
-    await persistUploadState("uploading");
-
-    try {
-      await resetWorkflowCancel();
-      const uploaded = await uploadToServer(entry.base_output_dir, undefined, {
-        correlation_id: correlationId,
-        folder_name: entry.base_filename?.trim() || null,
-      });
-      await persistUploadState("done");
-      setServerPhase("connected");
+      setStatus(t("progress.default.cancelled"));
+    } else if (result === "ok" && !opts.quietSuccess && hasPartialNote) {
+      setStatus(t("create.job.done"));
       setPercent(100);
-      if (!opts.quietSuccess) {
-        setStatus(t("create.job.done"));
-        const omitted = opts.omittedFileCount ?? 0;
-        const included = opts.includedExtraCount ?? 0;
-        let message: string;
-        if (omitted > 0) {
-          message = t("history.upload.partialSuccess", { count: omitted });
-        } else if (included > 0) {
-          message = t("history.upload.extraIncluded", { count: included });
-        } else {
-          message =
-            uploaded.remote_path ||
-            uploaded.message ||
-            t("history.upload.retryDone");
-        }
-        showSuccess(message, t("history.upload.retryTitle"), { autoCloseSecs: 8 });
-      }
-      return "ok";
-    } catch (uploadErr) {
-      if (isCancellationError(uploadErr)) {
-        await persistUploadState("pending");
-        setServerPhase("connected");
-        setUploadProgress(null);
-        uploadProgressActiveRef.current = false;
-        if (!opts.quietSuccess) {
-          setTaskProgress([]);
-          setPercent(0);
-          setStatus(t("progress.default.cancelled"));
-          showWarning(
-            t("history.upload.retryCancelled"),
-            t("history.upload.retryTitle"),
-          );
-        }
-        return "cancelled";
-      }
-      await persistUploadState("failed");
-      setServerPhase("error");
-      if (!opts.quietSuccess) {
-        showError(String(uploadErr), t("history.upload.retryTitle"));
-        setStatus(t("app.upload.failedNote"));
-      }
-      return "failed";
-    } finally {
-      if (ownBusy) {
-        uploadProgressActiveRef.current = false;
-        setUploadProgress(null);
-        jobCancelRequestedRef.current = false;
-        setBusy(false);
-        void resetWorkflowCancel().catch(() => {});
-      }
+    } else if (result === "failed" && !opts.quietSuccess) {
+      setStatus(t("app.upload.failedNote"));
     }
+    return result;
   }
 
   async function handleSelectorConfirm(paths: string[], actions: SdWorkflowActions) {
@@ -2214,6 +2338,7 @@ function App() {
         taskProgress={taskProgress}
         createJobPlan={createJobPlan}
         createFailed={createFailed}
+        createSuccessOpen={createSuccess !== null}
         cutterOpen={cutterOpen}
         onBusyChange={setBusy}
         onStatus={setStatus}
@@ -2405,6 +2530,18 @@ function App() {
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}
+      />
+
+      <QuitUploadConfirmDialog
+        open={quitUploadConfirm.open}
+        onChoose={(choice) => {
+          quitUploadConfirm.closeConfirm();
+          if (choice === "quit") {
+            void onConfirmQuit();
+          } else {
+            onConfirmStay();
+          }
+        }}
       />
     </div>
   );

@@ -55,6 +55,7 @@ import {
 } from "../lib/vorgangHistory";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
+import { enqueueUpload } from "@/lib/uploadSlot";
 import {
   UploadExtraFilesConfirmDialog,
   type UploadExtraFilesConfirmChoice,
@@ -409,6 +410,10 @@ export function HistoryDialog({
   const [appendRefreshKey, setAppendRefreshKey] = useState(0);
   const appendPanelRef = useRef<AppendMediaPanelHandle>(null);
   const runAppendJob = useAppendStore((s) => s.runJob);
+  const uploadToServerEnabled = useConfigStore((s) =>
+    Boolean(s.config?.upload_to_server),
+  );
+  const serverConnected = useServerStore((s) => s.connected);
   const showError = useUiStore((s) => s.showError);
   const showWarning = useUiStore((s) => s.showWarning);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -841,6 +846,7 @@ export function HistoryDialog({
         guest: vorgang.gast,
         fileCount: items.length,
       });
+      // Local append done — session free; SMB via shared upload slot (37.3).
       showSuccess(
         t("history.appendSuccess", {
           count: res.file_count,
@@ -850,6 +856,28 @@ export function HistoryDialog({
         { autoCloseSecs: 8 },
       );
       setAppendRefreshKey((k) => k + 1);
+
+      if (uploadToServerEnabled) {
+        if (!serverConnected) {
+          showWarning(
+            t("history.appendUploadPending"),
+            t("history.appendDialogTitle"),
+          );
+        } else {
+          const guestLabel =
+            vorgang.gast?.trim() || res.folder_name.trim() || null;
+          void enqueueUpload({
+            id: `append-${res.correlation_id || vorgang.id}-${Date.now()}`,
+            source: "append",
+            localDir: res.folder_path,
+            folderName: res.folder_name.trim() || null,
+            correlationId: res.correlation_id?.trim() || null,
+            vorgangId: vorgang.id,
+            guestLabel,
+            quietSuccess: false,
+          });
+        }
+      }
     } catch (e) {
       if (isCancellationError(e)) {
         showWarning(t("history.appendCancelled"), t("history.appendDialogTitle"));

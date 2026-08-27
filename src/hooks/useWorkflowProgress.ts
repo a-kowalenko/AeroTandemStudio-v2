@@ -20,8 +20,13 @@ import {
   type WorkflowProgressStage,
   type WorkflowTaskProgress,
 } from "../lib/workflowProgress";
-import { formatUploadProgressSnapshot } from "../lib/uploadProgress";
+import {
+  formatUploadCompactParts,
+  formatUploadProgressSnapshot,
+  type UploadCompactParts,
+} from "../lib/uploadProgress";
 import type { UploadProgressEvent } from "../lib/tauri";
+import type { UploadSlotResult } from "../lib/uploadQueue";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -32,6 +37,10 @@ import {
 
 const COLLAPSE_AFTER_MS = 3500;
 const HIDE_AFTER_MS = 9000;
+/** Auto-shrink after Success-Modal close while background upload still expanded. */
+const BG_AUTO_SHRINK_MS = 5000;
+/** Brief hold after background upload success before hide. */
+const BG_DONE_HIDE_MS = 3500;
 
 export type WorkflowProgressView = {
   visible: boolean;
@@ -49,6 +58,18 @@ export type WorkflowProgressView = {
   createPipeline: CreateJobPipelineView | null;
   /** Hide overall % bar; stepper + detail/tasks only. */
   hideOverallBar: boolean;
+  /** Phase 37.2: compact upload bar with expand/collapse. */
+  backgroundUpload: boolean;
+  /** Waiting jobs behind the active slot. */
+  uploadQueueCount: number;
+  /** Cancel → cleanup while slot stays occupied. */
+  uploadCancelPhase: "cancelling" | "cleanup" | null;
+  /** Compact metrics (Bar/%/MB/Speed). */
+  uploadCompact: UploadCompactParts;
+  /** Failed background upload held until dismiss. */
+  uploadFailedHold: boolean;
+  onToggleCollapsed: () => void;
+  onDismissFailedHold: () => void;
 };
 
 type TaskState = {
@@ -77,6 +98,14 @@ type Input = {
   appendGuest: string | null;
   appendUploading: boolean;
   createUploading?: boolean;
+  /** True when only the background SMB slot is running (no encode). */
+  backgroundUploadActive?: boolean;
+  uploadQueueCount?: number;
+  /** Cancel/cleanup phase while slot stays occupied. */
+  uploadCancelPhase?: "cancelling" | "cleanup" | null;
+  /** Bumps when CreateSuccessDialog closes (auto-shrink trigger). */
+  successCloseGeneration?: number;
+  uploadLastOutcome?: UploadSlotResult | null;
   uploadProgress: UploadProgressEvent | null;
   percent: number;
   status: string;
@@ -92,9 +121,20 @@ type Input = {
 export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const [dismissed, setDismissed] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const [failedHold, setFailedHold] = useState(false);
   const wasActiveRef = useRef(false);
+  const wasBgUploadRef = useRef(false);
   const [createReachedIndex, setCreateReachedIndex] = useState(0);
   const createPlanIdRef = useRef<CreateJobPlan | null>(null);
+  const autoShrinkTimerRef = useRef<number | null>(null);
+  const prevSuccessCloseRef = useRef(input.successCloseGeneration ?? 0);
+
+  const clearAutoShrinkTimer = () => {
+    if (autoShrinkTimerRef.current != null) {
+      window.clearTimeout(autoShrinkTimerRef.current);
+      autoShrinkTimerRef.current = null;
+    }
+  };
 
   const sdProgress = useMemo(
     () =>
@@ -178,25 +218,63 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     input.percent > 0 ||
     input.taskProgress.length > 0;
 
+  const backgroundUploadActive = Boolean(input.backgroundUploadActive);
+  const uploadQueueCount = input.uploadQueueCount ?? 0;
+
   const isActive =
     showSdProgress ||
     showManualImport ||
     showManualQr ||
     input.encodeBusy ||
     input.appendActive ||
-    input.qrScanBusy;
+    input.qrScanBusy ||
+    Boolean(input.createUploading) ||
+    backgroundUploadActive;
 
   const hasCompletionState =
     !input.encodeBusy &&
     (input.percent > 0 || input.taskProgress.length > 0 || Boolean(input.status.trim()));
 
+  // Track fail hold when background upload ends with failure and queue empty.
+  useEffect(() => {
+    if (backgroundUploadActive) {
+      if (!wasBgUploadRef.current) {
+        // First entry into background-upload: show expanded (Success live).
+        setCollapsed(false);
+      }
+      wasBgUploadRef.current = true;
+      setFailedHold(false);
+      setDismissed(false);
+      return;
+    }
+    if (
+      wasBgUploadRef.current &&
+      input.uploadLastOutcome === "failed" &&
+      !isActive
+    ) {
+      setFailedHold(true);
+      setDismissed(false);
+    }
+    wasBgUploadRef.current = false;
+  }, [backgroundUploadActive, input.uploadLastOutcome, isActive]);
+
   const shouldShowPanel =
     !dismissed &&
     (isActive ||
+      failedHold ||
       hasCompletionState ||
       showEncodeProgress);
 
+  // Classic collapse/hide for non-background-upload jobs only.
   useEffect(() => {
+    if (backgroundUploadActive || failedHold) {
+      if (backgroundUploadActive) {
+        wasActiveRef.current = true;
+        setDismissed(false);
+      }
+      return;
+    }
+
     if (isActive) {
       wasActiveRef.current = true;
       setDismissed(false);
@@ -206,6 +284,10 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
 
     if (!wasActiveRef.current || dismissed) return;
 
+    // After successful background upload: short hide (no long idle hide during upload).
+    const hideDelay =
+      input.uploadLastOutcome === "ok" ? BG_DONE_HIDE_MS : HIDE_AFTER_MS;
+
     const collapseTimer = window.setTimeout(() => {
       setCollapsed(true);
     }, COLLAPSE_AFTER_MS);
@@ -214,13 +296,43 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       setDismissed(true);
       setCollapsed(false);
       wasActiveRef.current = false;
-    }, HIDE_AFTER_MS);
+    }, hideDelay);
 
     return () => {
       window.clearTimeout(collapseTimer);
       window.clearTimeout(hideTimer);
     };
-  }, [isActive, dismissed]);
+  }, [
+    isActive,
+    dismissed,
+    backgroundUploadActive,
+    failedHold,
+    input.uploadLastOutcome,
+  ]);
+
+  // Auto-shrink 5s after Success-Modal close, only if still expanded.
+  useEffect(() => {
+    const gen = input.successCloseGeneration ?? 0;
+    if (gen === prevSuccessCloseRef.current) return;
+    prevSuccessCloseRef.current = gen;
+
+    clearAutoShrinkTimer();
+    if (!backgroundUploadActive) return;
+    if (collapsed) return;
+
+    autoShrinkTimerRef.current = window.setTimeout(() => {
+      autoShrinkTimerRef.current = null;
+      setCollapsed(true);
+    }, BG_AUTO_SHRINK_MS);
+
+    return clearAutoShrinkTimer;
+  }, [
+    input.successCloseGeneration,
+    backgroundUploadActive,
+    collapsed,
+  ]);
+
+  useEffect(() => () => clearAutoShrinkTimer(), []);
 
   // Reset monotonic create step cursor when a new plan is set.
   useEffect(() => {
@@ -244,20 +356,33 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     sdProgress,
   });
 
-  const cancelling = Boolean(input.cancelRequested && isActive);
-  const subtitle = workflowStageSubtitle(stage, {
-    sdWorkflowActive: input.sdWorkflowActive,
-    sdPhase: input.sdPhase,
-    qrScanBusy: input.qrScanBusy,
-    encodeBusy: input.encodeBusy,
-    appendActive: input.appendActive,
-    appendGuest: input.appendGuest,
-    appendUploading: input.appendUploading,
-    createUploading: Boolean(input.createUploading),
-    manualImport: showManualImport,
-    manualQr: showManualQr,
-  });
+  const cancelling = Boolean(
+    (input.cancelRequested || input.uploadCancelPhase) && isActive,
+  );
+  const subtitle = failedHold
+    ? tr("workflow.upload.failedHold")
+    : input.uploadCancelPhase === "cleanup"
+      ? tr("workflow.upload.cleaningUp")
+      : input.uploadCancelPhase === "cancelling" ||
+          (Boolean(input.cancelRequested) && backgroundUploadActive)
+        ? tr("workflow.stage.cancelling")
+        : backgroundUploadActive
+          ? tr("workflow.stage.createUploading")
+          : workflowStageSubtitle(stage, {
+              sdWorkflowActive: input.sdWorkflowActive,
+              sdPhase: input.sdPhase,
+              qrScanBusy: input.qrScanBusy,
+              encodeBusy: input.encodeBusy,
+              appendActive: input.appendActive,
+              appendGuest: input.appendGuest,
+              appendUploading: input.appendUploading,
+              createUploading: Boolean(input.createUploading),
+              manualImport: showManualImport,
+              manualQr: showManualQr,
+            });
 
+  // Keep Create-Pipeline-Stepper through background upload after session reset
+  // (same chips as create: Ordner → Video → … → Upload → Fertig).
   const createPipelineBase = useMemo((): CreateJobPipelineView | null => {
     const plan = input.createJobPlan ?? null;
     if (!plan) return null;
@@ -265,6 +390,8 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     if (
       !input.encodeBusy &&
       !input.createUploading &&
+      !backgroundUploadActive &&
+      !failedHold &&
       !hasCompletionState &&
       stage !== "create" &&
       stage !== "done"
@@ -272,20 +399,27 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       return null;
     }
 
+    const uploadPhase =
+      Boolean(input.createUploading) || backgroundUploadActive;
     const cancelled =
-      Boolean(input.cancelRequested && !input.encodeBusy && !input.createUploading) ||
-      /abgebrochen|cancelled/i.test(input.status.trim());
+      Boolean(
+        input.cancelRequested &&
+          !input.encodeBusy &&
+          !uploadPhase,
+      ) || /abgebrochen|cancelled/i.test(input.status.trim());
 
     return resolveCreateJobPipeline({
       plan,
       status: input.status,
-      uploading: Boolean(input.createUploading),
-      busy: input.encodeBusy || Boolean(input.createUploading),
+      uploading: uploadPhase,
+      busy: input.encodeBusy || uploadPhase,
       cancelled,
-      failed: Boolean(input.createFailed),
+      failed: Boolean(input.createFailed) || failedHold,
       reachedIndex: 0,
     });
   }, [
+    backgroundUploadActive,
+    failedHold,
     input.createJobPlan,
     input.appendActive,
     input.encodeBusy,
@@ -299,12 +433,14 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
 
   useEffect(() => {
     if (!createPipelineBase) return;
+    const uploadPhase =
+      Boolean(input.createUploading) || backgroundUploadActive;
     setCreateReachedIndex((prev) => {
       const next = Math.max(prev, createPipelineBase.activeIndex);
       // If Upload is active, never keep a stale lock on Fertig from
       // create_job's early "Vorgang fertig" event.
       if (
-        input.createUploading &&
+        uploadPhase &&
         createPipelineBase.steps.some((s) => s.id === "upload")
       ) {
         const uploadIdx = createPipelineBase.steps.findIndex(
@@ -316,7 +452,7 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       }
       return next;
     });
-  }, [createPipelineBase, input.createUploading]);
+  }, [createPipelineBase, input.createUploading, backgroundUploadActive]);
 
   const createPipeline = useMemo((): CreateJobPipelineView | null => {
     if (!createPipelineBase) return null;
@@ -324,10 +460,13 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       createPipelineBase.activeIndex,
       createReachedIndex,
     );
+    const uploadPhase =
+      Boolean(input.createUploading) || backgroundUploadActive;
     if (
-      input.createUploading &&
+      uploadPhase &&
       !createPipelineBase.completed &&
-      !createPipelineBase.cancelled
+      !createPipelineBase.cancelled &&
+      !createPipelineBase.failed
     ) {
       const uploadIdx = createPipelineBase.steps.findIndex(
         (s) => s.id === "upload",
@@ -338,7 +477,12 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       ...createPipelineBase,
       activeIndex,
     };
-  }, [createPipelineBase, createReachedIndex, input.createUploading]);
+  }, [
+    createPipelineBase,
+    createReachedIndex,
+    input.createUploading,
+    backgroundUploadActive,
+  ]);
 
   // Keep the overall % bar together with the create stepper.
   const hideOverallBar = false;
@@ -346,11 +490,30 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   let snapshot: WorkflowProgressSnapshot | null = null;
   const uploadActive = Boolean(
     input.uploadProgress &&
-      (input.createUploading || input.appendUploading),
+      (input.createUploading || input.appendUploading || backgroundUploadActive),
   );
-  if (input.encodeBusy || input.appendActive) {
+  if (
+    input.encodeBusy ||
+    input.appendActive ||
+    input.createUploading ||
+    backgroundUploadActive ||
+    failedHold
+  ) {
     if (uploadActive && input.uploadProgress) {
       snapshot = formatUploadProgressSnapshot(input.uploadProgress);
+    } else if (
+      (input.createUploading || backgroundUploadActive || failedHold) &&
+      !input.encodeBusy
+    ) {
+      snapshot = {
+        percent: failedHold ? input.percent : input.percent,
+        label: formatOverallProgressLabel(
+          input.status,
+          failedHold
+            ? tr("workflow.upload.failedHold")
+            : tr("app.upload.title"),
+        ),
+      };
     } else {
       snapshot = {
         percent: input.percent,
@@ -398,16 +561,41 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
   const sdClearing = input.sdWorkflowActive && input.sdPhase === "clearing";
   const canCancel =
     !sdClearing &&
+    !failedHold &&
     (input.encodeBusy ||
       input.appendActive ||
       input.qrScanBusy ||
       input.sdWorkflowActive ||
       input.videoImporting ||
-      input.photoImporting);
+      input.photoImporting ||
+      Boolean(input.createUploading) ||
+      backgroundUploadActive);
+
+  const showBackgroundChrome = backgroundUploadActive || failedHold;
+  const effectiveCollapsed = showBackgroundChrome
+    ? collapsed
+    : collapsed && !isActive;
+
+  const uploadCompact = formatUploadCompactParts(
+    showBackgroundChrome ? input.uploadProgress : null,
+  );
+
+  function onToggleCollapsed() {
+    // Manual expand/collapse: clear Success-Close auto-shrink; do not re-arm.
+    clearAutoShrinkTimer();
+    setCollapsed((prev) => !prev);
+  }
+
+  function onDismissFailedHold() {
+    setFailedHold(false);
+    setDismissed(true);
+    setCollapsed(false);
+    wasActiveRef.current = false;
+  }
 
   return {
     visible: shouldShowPanel,
-    collapsed: collapsed && !isActive,
+    collapsed: effectiveCollapsed,
     stage,
     subtitle,
     snapshot,
@@ -415,8 +603,17 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     encodeLabel,
     canCancel,
     cancelling,
-    reserveSpace: shouldShowPanel && !collapsed,
+    reserveSpace:
+      shouldShowPanel &&
+      (!effectiveCollapsed || showBackgroundChrome),
     createPipeline,
     hideOverallBar,
+    backgroundUpload: showBackgroundChrome,
+    uploadQueueCount,
+    uploadCancelPhase: input.uploadCancelPhase ?? null,
+    uploadCompact,
+    uploadFailedHold: failedHold,
+    onToggleCollapsed,
+    onDismissFailedHold,
   };
 }

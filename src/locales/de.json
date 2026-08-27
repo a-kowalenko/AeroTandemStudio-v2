@@ -14,7 +14,6 @@
       "apply": "Übernehmen",
       "create": "Erstellen",
       "createAndUpload": "Erstellen & Upload",
-      "createAndUploadLater": "Erstellen · Upload später",
       "history": "Vorgänge",
       "settings": "Einstellungen",
       "pickFolder": "Ordner wählen",
@@ -45,7 +44,8 @@
       "showSuggestions": "Vorschläge anzeigen",
       "unmute": "Ton an",
       "watermark": "Wasserzeichen",
-      "watermarkShort": "WM"
+      "watermarkShort": "WM",
+      "createAndUploadLater": "Erstellen · Upload später"
     },
     "status": {
       "error": "Fehler",
@@ -143,15 +143,17 @@
         "description": "Beim Start wird automatisch nach neueren Versionen gesucht. Hier können Sie auch eine ältere oder neuere Version manuell auswählen — Installation wie beim Auto-Update (still, mit Fortschritt).",
         "installedVersion": "Installierte Version: {{version}}",
         "check": "Nach Updates suchen",
+        "beta": "Beta",
         "betaTester": "Betatester werden",
         "betaTesterDescription": "Beta-Versionen können Fehler enthalten. Sie werden beim Start und bei „Nach Updates suchen“ berücksichtigt — auch wenn Sie aktuell eine Stable-Version nutzen.",
+        "showPrereleases": "Prereleases anzeigen",
         "availableVersions": "Verfügbare Versionen",
         "loadingVersions": "Lade Versionen…",
         "unavailable": "Nicht verfügbar",
         "chooseVersion": "Version wählen…",
         "latest": "Neueste",
         "installed": "Installiert",
-        "beta": "Beta",
+        "prerelease": "Prerelease",
         "notAutoInstallable": "nicht auto-installierbar",
         "openInstaller": "Installer öffnen…",
         "installOlder": "Ältere Version installieren",
@@ -273,21 +275,21 @@
         "clearAfter": "SD nach Backup leeren",
         "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
         "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
-        "secondPath": "Backup auf Server sichern",
+        "secondPath": "Auf Server sichern",
         "serverUrl": "Server-Backup-URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Gleicher SMB-Upload wie bei Erstellen; Ziel unabhängig von „aktuell“. Zugangsdaten vom Upload-Server.",
-        "serverUrlFromProfile": "Aus Server-Profil „{{name}}“.",
-        "serverUrlMissing": "Kein Backup-URL im aktiven Server-Profil. Bitte unter Server setzen.",
-        "setInServerProfile": "Backup-URL im Server-Profil setzen",
-        "editInServerProfile": "Im Server-Profil bearbeiten",
         "serverUrlTest": "Testen",
         "serverUrlTesting": "Test…",
         "serverUrlMountWarn": "Alter Mount-/Ordnerpfad erkannt — bitte eine smb://-URL setzen (kein Finder-Mount).",
         "copyStrategy": "Server-Spiegel",
         "copyAsync": "Hintergrund: lokal fertig → Server parallel",
         "copyMirror": "Spiegeln: erst lokal, dann warten → Server",
-        "copyHint": "Empfohlen: Hintergrund — der Workflow wartet nicht auf den Server-Spiegel."
+        "copyHint": "Empfohlen: Hintergrund — der Workflow wartet nicht auf den Server-Spiegel.",
+        "editInServerProfile": "Im Server-Profil bearbeiten",
+        "serverUrlFromProfile": "Aus Server-Profil „{{name}}“.",
+        "serverUrlMissing": "Kein Backup-URL im aktiven Server-Profil. Bitte unter Server setzen.",
+        "setInServerProfile": "Backup-URL im Server-Profil setzen"
       },
       "import": {
         "title": "Import & Auswerfen",
@@ -298,13 +300,13 @@
         "ejectTitle": "Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import.",
         "ejectHint": "Mit Backup direkt danach; ohne Backup erst nach dem Import.",
         "skipProcessed": "Bereits verarbeitete Dateien überspringen",
-        "usbCameras": "USB-Action-Cams (freigegebene Modelle)",
-        "usbCamerasHint": "MTP/USB-Import nur für freigegebene Modelle ohne SD-Laufwerk (z. B. GoPro HERO 5+). DJI Osmo und Kartenleser nutzen das gemountete Volume.",
+        "usbCameras": "USB-Action-Cams (GoPro / DJI / Insta360)",
+        "usbCamerasHint": "Erkennt Kameras per USB (MTP/WPD), kopiert Medien lokal und importiert wie von der SD-Karte. Handys und normale Sticks bleiben außen vor.",
         "usbImportMode": "USB-Import-Methode",
         "usbImportModeAuto": "Automatisch (Whitelist)",
-        "usbImportModeVolume": "Nur SD-Laufwerk / Volume",
+        "usbImportModeHint": "Automatisch: nur freigegebene GoPro-Modelle per MTP. „Nur Volume“ für DJI Osmo (File Transfer an der Kamera). MTP bevorzugen nur bei Problemen mit der Whitelist.",
         "usbImportModeMtp": "MTP bevorzugen (Experimentell)",
-        "usbImportModeHint": "Automatisch: nur freigegebene GoPro-Modelle per MTP. „Nur Volume“ für DJI Osmo (File Transfer an der Kamera). MTP bevorzugen nur bei Problemen mit der Whitelist."
+        "usbImportModeVolume": "Nur SD-Laufwerk / Volume"
       },
       "size": {
         "title": "Warnschwelle",
@@ -322,12 +324,6 @@
         "urlPlaceholder": "smb://…",
         "login": "Login",
         "password": "Passwort",
-        "backupUrl": "Backup-URL (optional)",
-        "backupUrlPlaceholder": "smb://…/backup",
-        "backupUrlHint": "Zweites SMB-Ziel für dieses Profil — kein Failover, nur zusätzliche Freigabe.",
-        "backupLogin": "Backup-Login",
-        "backupPassword": "Backup-Passwort",
-        "backupCredsPlaceholder": "Leer = wie Primär",
         "recheckTitle": "Klicken zum erneuten Prüfen",
         "recheckTitleWithMessage": "{{message}}\nKlicken zum erneuten Prüfen",
         "addProfile": "Neues Profil",
@@ -352,7 +348,13 @@
         "schemePath": "Pfad",
         "urlPlaceholderHost": "host/freigabe",
         "urlPlaceholderPath": "/pfad oder C:\\ordner",
-        "urlPlaceholderUnc": "server\\freigabe"
+        "urlPlaceholderUnc": "server\\freigabe",
+        "backupCredsPlaceholder": "Leer = wie Primär",
+        "backupLogin": "Backup-Login",
+        "backupPassword": "Backup-Passwort",
+        "backupUrl": "Backup-URL (optional)",
+        "backupUrlHint": "Zweites SMB-Ziel für dieses Profil — kein Failover, nur zusätzliche Freigabe.",
+        "backupUrlPlaceholder": "smb://…/backup"
       },
       "upload": {
         "title": "Upload",
@@ -381,32 +383,32 @@
         "foundSuccessViaServerPasswordNamed": "{{name}}: Adresse und Zugangscode übernommen (Server-Passwort)."
       },
       "pathHints": {
-        "suggestTitle": "SMB-Pfade von der Buchungssuche",
-        "primaryLabel": "Primär",
-        "backupLabel": "Backup",
-        "suggestBody": "Primär: {{primary}}{{backup}}",
-        "suggestBackupLine": " · Backup: {{url}}",
-        "backupProfileLabel": "AMS Backup",
-        "newProfileLabel": "AMS Server",
         "applyFailed": "Pfade konnten nicht gespeichert werden.",
-        "credentialsTitlePrimary": "SMB-Zugangsdaten (Primär)",
-        "credentialsTitleBackup": "SMB-Zugangsdaten (Backup)",
-        "credentialsBodyPrimary": "Bitte Login für den primären SMB-Server. Der AMS-Token wird zuerst still als Passwort geprüft.",
+        "backupLabel": "Backup",
+        "backupProfileLabel": "AMS Backup",
         "credentialsBodyBackup": "Bitte Login für das Backup-Ziel. Der AMS-Token wird zuerst still als Passwort geprüft.",
-        "driftTitle": "SMB-Pfad weicht von der Buchungssuche ab",
-        "driftCurrentLabel": "Aktuell",
-        "driftSuggestedLabel": "Neu",
-        "driftPrimaryLine": "Primär: {{current}} → {{suggested}}",
-        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "credentialsBodyPrimary": "Bitte Login für den primären SMB-Server. Der AMS-Token wird zuerst still als Passwort geprüft.",
+        "credentialsTitleBackup": "SMB-Zugangsdaten (Backup)",
+        "credentialsTitlePrimary": "SMB-Zugangsdaten (Primär)",
         "dismissLater": "Später",
-        "instanceMismatch": "Die Pfade stammen von einer anderen Buchungs-Instanz — Übernehmen ist deaktiviert."
+        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "driftCurrentLabel": "Aktuell",
+        "driftPrimaryLine": "Primär: {{current}} → {{suggested}}",
+        "driftSuggestedLabel": "Neu",
+        "driftTitle": "SMB-Pfad weicht von der Buchungssuche ab",
+        "instanceMismatch": "Die Pfade stammen von einer anderen Buchungs-Instanz — Übernehmen ist deaktiviert.",
+        "newProfileLabel": "AMS Server",
+        "primaryLabel": "Primär",
+        "suggestBackupLine": " · Backup: {{url}}",
+        "suggestBody": "Primär: {{primary}}{{backup}}",
+        "suggestTitle": "SMB-Pfade von der Buchungssuche"
       }
     },
     "save": {
       "failed": "Einstellungen konnten nicht gespeichert werden.",
       "operatorRole": "„Ich bin“: Bitte mindestens eine Rolle setzen oder einen bestehenden Crew-Namen wählen.",
       "pickBackup": "Bitte einen Backup-Ordner wählen.",
-      "pickSecondBackup": "Bitte die Backup-URL im aktiven Server-Profil setzen oder „Auf Server sichern“ deaktivieren.",
+      "pickSecondBackup": "Bitte eine Server-Backup-URL (smb://…) setzen oder die Option deaktivieren.",
       "resetFailed": "Standardeinstellungen konnten nicht wiederhergestellt werden.",
       "success": "Einstellungen wurden gespeichert."
     }
@@ -505,6 +507,10 @@
       "previewPhotos": "{{count}} Vorschau-Foto erstellt",
       "previewPhotosMany": "{{count}} Vorschau-Fotos erstellt",
       "uploaded": "Auf Server hochgeladen",
+      "uploadRunning": "Upload läuft im Hintergrund",
+      "uploadLiveLabel": "Upload",
+      "uploadLiveWaiting": "Wird gestartet…",
+      "uploadQueued": "+{{count}} in Warteschlange",
       "uploadPending": "Lokal erstellt — Upload ausstehend",
       "uploadPendingHint": "Upload später unter Vorgänge nachholen.",
       "encoder": "Encoder",
@@ -695,33 +701,59 @@
       "hintUpload": "Danach starten Encoding und Upload.",
       "proceed": "Trotzdem erstellen"
     },
+    "quitUpload": {
+      "title": "Upload läuft noch",
+      "body": "Ein Upload läuft oder wartet in der Warteschlange. Beim Beenden wird der Upload abgebrochen.",
+      "hint": "Abgebrochene Uploads kannst du später unter Vorgänge nachholen.",
+      "stay": "Weiterlaufen lassen",
+      "quit": "Beenden und abbrechen"
+    },
+    "cancelServerBackup": {
+      "title": "Server-Backup abbrechen?",
+      "body": "Nur das aktuelle Server-Backup wird abgebrochen. Ein laufender Vorgang-Upload bleibt unberührt.",
+      "hint": "Das lokale Backup bleibt erhalten. Auf dem Server kann der Ordner unvollständig sein.",
+      "keep": "Weiterlaufen lassen",
+      "cancel": "Backup abbrechen"
+    },
+    "bulkUploadSummary": {
+      "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline).",
+      "blocked": "{{count}} nicht möglich",
+      "blockedList": "Nicht möglich",
+      "decided": "{{count}} nach Rückfrage hochgeladen",
+      "failed": "{{count}} Upload-Fehler",
+      "ok": "{{count}} erfolgreich",
+      "reason": "{{reason}}",
+      "skipped": "{{count}} übersprungen",
+      "skippedList": "Übersprungen",
+      "title": "Upload-Abarbeitung fertig"
+    },
     "folderConflict": {
-      "title": "Ausgabeordner existiert bereits",
       "body": "Der Ordner „{{name}}“ enthält bereits Dateien. Ohne Ersetzen würden alte Medien (z. B. Fotos) mit dem neuen Vorgang hochgeladen.",
-      "videosOne": "{{count}} Video-Datei im Ordner",
-      "videosMany": "{{count}} Video-Dateien im Ordner",
-      "photosOne": "{{count}} Foto im Ordner",
-      "photosMany": "{{count}} Fotos im Ordner",
-      "otherFiles": "{{count}} weitere Datei(en)",
       "hasMarker": "Fertig-Marker (_fertig.txt) vorhanden — Vorgang wirkte schon abgeschlossen",
       "hintEncode": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu.",
       "hintUpload": "„Ordner ersetzen“ löscht den Inhalt und erstellt neu — nur aktuelle Medien werden hochgeladen.",
-      "replace": "Ordner ersetzen und erstellen"
+      "otherFiles": "{{count}} weitere Datei(en)",
+      "photosMany": "{{count}} Fotos im Ordner",
+      "photosOne": "{{count}} Foto im Ordner",
+      "replace": "Ordner ersetzen und erstellen",
+      "title": "Ausgabeordner existiert bereits",
+      "videosMany": "{{count}} Video-Dateien im Ordner",
+      "videosOne": "{{count}} Video-Datei im Ordner"
     },
     "offlineCreate": {
-      "title": "Server nicht erreichbar",
       "body": "Upload ist aktiv, aber der Server ist offline. Du kannst den Vorgang trotzdem lokal erstellen; der Upload bleibt ausstehend.",
       "hint": "Später unter Vorgänge nachholen (wenn der Server wieder da ist).",
-      "proceed": "Trotzdem lokal erstellen"
+      "proceed": "Trotzdem lokal erstellen",
+      "title": "Server nicht erreichbar"
     },
     "uploadExtraFiles": {
-      "title": "Zusätzliche Dateien im Ordner",
       "body": "Im Ordner von „{{guest}}“ liegen Dateien, die nicht zum ursprünglichen Vorgang gehörten:",
-      "purgeSwitch": "Überschüssige Dateien vor dem Upload löschen",
       "hintInclude": "Mit allen Dateien hochladen: Die Lieferliste wird vor dem Upload angepasst.",
       "hintPurge": "Die gelisteten Dateien werden lokal gelöscht, danach der Upload gestartet.",
       "proceedInclude": "Mit allen hochladen",
-      "proceedPurge": "Löschen und hochladen"
+      "proceedPurge": "Löschen und hochladen",
+      "purgeSwitch": "Überschüssige Dateien vor dem Upload löschen",
+      "title": "Zusätzliche Dateien im Ordner"
     },
     "uploadMissingFiles": {
       "body": "Der Vorgang „{{guest}}“ kann so nicht hochgeladen werden. Diese Dateien fehlen im Ausgabeordner:",
@@ -730,41 +762,29 @@
       "uploadAvailable": "Mit vorhandenen Dateien hochladen"
     },
     "uploadPartialConfirm": {
-      "title": "Unvollständig hochladen?",
       "body": "{{count}} Datei(en) fehlen und werden nicht hochgeladen. Der Vorgang „{{guest}}“ wird mit den restlichen Medien an den Server gesendet.",
-      "proceed": "Trotzdem hochladen"
+      "proceed": "Trotzdem hochladen",
+      "title": "Unvollständig hochladen?"
     },
     "uploadPreflightFail": {
-      "title": "Upload nicht möglich",
       "body": "Der Vorgang „{{guest}}“ kann nicht nachgeholt werden:",
       "codes": {
-        "local_vorgang": "Lokal-Vorgang (kein AMS-Handoff)",
         "already_done": "Upload bereits erledigt",
         "ams_completed": "AMS-Handoff bereits abgeschlossen",
-        "folder_missing": "Ausgabeordner fehlt",
-        "folder_empty": "Ausgabeordner ist leer",
-        "manifest_missing": "Manifest fehlt",
-        "manifest_invalid": "Manifest ungültig",
-        "marker_missing": "Fertig-Marker fehlt",
-        "file_missing": "Datei fehlt",
-        "size_mismatch": "Dateigröße weicht ab",
         "extra_file": "Zusätzliche Datei",
+        "file_missing": "Datei fehlt",
+        "folder_empty": "Ausgabeordner ist leer",
+        "folder_missing": "Ausgabeordner fehlt",
+        "local_vorgang": "Lokal-Vorgang (kein AMS-Handoff)",
+        "manifest_invalid": "Manifest ungültig",
+        "manifest_missing": "Manifest fehlt",
+        "marker_missing": "Fertig-Marker fehlt",
         "preflight_error": "Preflight fehlgeschlagen",
+        "size_mismatch": "Dateigröße weicht ab",
         "skipped": "Übersprungen",
         "unknown": "Unbekannter Fehler"
-      }
-    },
-    "bulkUploadSummary": {
-      "title": "Upload-Abarbeitung fertig",
-      "ok": "{{count}} erfolgreich",
-      "decided": "{{count}} nach Rückfrage hochgeladen",
-      "skipped": "{{count}} übersprungen",
-      "blocked": "{{count}} nicht möglich",
-      "failed": "{{count}} Upload-Fehler",
-      "blockedList": "Nicht möglich",
-      "skippedList": "Übersprungen",
-      "reason": "{{reason}}",
-      "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline)."
+      },
+      "title": "Upload nicht möglich"
     }
   },
   "splash": {
@@ -810,7 +830,9 @@
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
       "ready": "Bereit",
-      "starting": "Start…"
+      "starting": "Start…",
+      "serverBackupPercent": "Server-Backup {{percent}}%",
+      "serverBackupDone": "Server-Backup fertig"
     },
     "update": {
       "alreadyInstalling": "Installation läuft bereits…",
@@ -897,19 +919,25 @@
       "fileProgress": "Datei {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Upload",
-      "titleLater": "Upload · später",
-      "titleBlockedOn": "Upload an, Server offline — lokal erstellen, Upload später nachholen",
-      "titleBlockedOff": "Server offline — Upload kann vorgemerkt werden (lokal erstellen, später nachholen)",
+      "titleBlockedOn": "Upload in den Einstellungen aktiv, Server nicht verbunden",
+      "titleBlockedOff": "Server nicht verbunden — Upload nicht möglich",
       "titleActive": "Aktiv — Vorgang wird nach Erstellen hochgeladen",
-      "titleOff": "Upload aus — einschalten, wenn der Vorgang auf den Server soll"
+      "titleOff": "Upload aus — einschalten, wenn der Vorgang auf den Server soll",
+      "bgDoneTitle": "Upload abgeschlossen",
+      "bgDoneMessage": "{{folder}}",
+      "bgFailTitle": "Upload fehlgeschlagen",
+      "bgFailMessage": "{{detail}} Nachholen unter Vorgänge.",
+      "bgFailHint": "Bitte unter Vorgänge nachholen.",
+      "bgCancelled": "Upload abgebrochen — ausstehend unter Vorgänge.",
+      "titleLater": "Upload · später"
     },
     "job": {
       "section": "Vorgang",
       "clear": "Leeren",
       "clearTitle": "Nach Erstellen Formular und Medien zurücksetzen",
       "createUploadTitle": "Vorgang erstellen und auf den Server hochladen",
-      "createUploadLaterTitle": "Lokal erstellen — Upload bleibt ausstehend bis der Server wieder da ist",
-      "uploadAria": "Server-Upload"
+      "uploadAria": "Server-Upload",
+      "createUploadLaterTitle": "Lokal erstellen — Upload bleibt ausstehend bis der Server wieder da ist"
     },
     "ready": {
       "showTarget": "{{label}} anzeigen"
@@ -1133,6 +1161,12 @@
       "createUploading": "Aktueller Vorgang — Abbrechen stoppt den Upload.",
       "cancelling": "Abbruch angefordert — aktueller Schritt wird noch beendet"
     },
+    "upload": {
+      "expand": "Upload-Details einblenden",
+      "collapse": "Upload-Details ausblenden",
+      "queueWaiting": "{{count}} weitere in der Warteschlange",
+      "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge"
+    },
     "createSteps": {
       "aria": "Schritte beim Erstellen",
       "cancelled": "Abgebrochen",
@@ -1160,6 +1194,7 @@
     "appendSuccess": "{{count}} Datei(en) übergeben ({{folder}}).\nStatus unter „Nachreichung“ in den Vorgängen.",
     "appendDialogTitle": "Nachreichen",
     "appendCancelled": "Nachreichen abgebrochen.",
+    "appendUploadPending": "Lokal bereit — Upload ausstehend (Server offline). Später unter Vorgänge nachholen.",
     "filters": {
       "all": "Alle",
       "open": "Offen",
@@ -1186,36 +1221,6 @@
     },
     "emptyFilter": "Keine Vorgänge für diesen Status.",
     "emptyJobs": "Noch keine Vorgänge. Nach dem Erstellen erscheinen sie hier.",
-    "upload": {
-      "pending": "Upload ausstehend",
-      "uploading": "Upload läuft",
-      "failed": "Upload fehlgeschlagen",
-      "retryBtn": "Upload nachholen",
-      "retryTitle": "Upload nachholen",
-      "retryTitleOk": "Ausstehenden Upload jetzt starten",
-      "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
-      "retryDone": "Upload erfolgreich nachgeholt.",
-      "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
-      "extraIncluded": "Upload fertig. {{count}} zusätzliche Datei(en) mitgeliefert.",
-      "retryCancelled": "Upload abgebrochen.",
-      "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
-      "bulkBtn": "Ausstehende Uploads abarbeiten…",
-      "bulkTitle": "Ausstehende Uploads",
-      "bulkTitleOk": "{{count}} Uploads nacheinander starten",
-      "bulkOffline": "Server offline — Bulk-Upload erst möglich, wenn die Verbindung steht",
-      "bulkConfirmTitle": "Ausstehende Uploads abarbeiten?",
-      "bulkConfirmBody": "{{count}} Vorgänge werden nacheinander hochgeladen. Vorgänge mit Prefight-Problemen werden übersprungen.",
-      "bulkConfirmBodyScan": "{{total}} Vorgänge: {{ready}} sofort · {{needs}} mit Rückfrage · {{blocked}} nicht möglich.",
-      "bulkScanning": "Preflight wird geprüft…",
-      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
-      "bulkPhase2PromptTitle": "Noch Entscheidungen nötig",
-      "bulkPhase2PromptBody": "{{count}} Vorgänge brauchen noch eine Entscheidung — jetzt bearbeiten?",
-      "bulkPhase2Later": "Später",
-      "bulkPhase2Now": "Jetzt bearbeiten",
-      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
-      "reconnectToastTitle": "Server wieder online",
-      "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen."
-    },
     "selectJob": "Vorgang auswählen",
     "previewReuse": "Preview-Reuse",
     "customer": "Kunde: {{id}}",
@@ -1320,6 +1325,36 @@
       "statusPaid": "Bezahlt",
       "wrongKindPhoto": "Bitte Fotos ablegen (aktuelle Kategorie ist Foto).",
       "wrongKindVideo": "Bitte Videos ablegen (aktuelle Kategorie ist Video)."
+    },
+    "upload": {
+      "bulkBtn": "Ausstehende Uploads abarbeiten…",
+      "bulkConfirmBody": "{{count}} Vorgänge werden nacheinander hochgeladen. Vorgänge mit Prefight-Problemen werden übersprungen.",
+      "bulkConfirmBodyScan": "{{total}} Vorgänge: {{ready}} sofort · {{needs}} mit Rückfrage · {{blocked}} nicht möglich.",
+      "bulkConfirmTitle": "Ausstehende Uploads abarbeiten?",
+      "bulkOffline": "Server offline — Bulk-Upload erst möglich, wenn die Verbindung steht",
+      "bulkPhase1Progress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2Later": "Später",
+      "bulkPhase2Now": "Jetzt bearbeiten",
+      "bulkPhase2PromptBody": "{{count}} Vorgänge brauchen noch eine Entscheidung — jetzt bearbeiten?",
+      "bulkPhase2PromptTitle": "Noch Entscheidungen nötig",
+      "bulkProgress": "Upload {{current}}/{{total}}: {{guest}}",
+      "bulkScanning": "Preflight wird geprüft…",
+      "bulkTitle": "Ausstehende Uploads",
+      "bulkTitleOk": "{{count}} Uploads nacheinander starten",
+      "extraIncluded": "Upload fertig. {{count}} zusätzliche Datei(en) mitgeliefert.",
+      "failed": "Upload fehlgeschlagen",
+      "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
+      "pending": "Upload ausstehend",
+      "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
+      "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen.",
+      "reconnectToastTitle": "Server wieder online",
+      "retryBtn": "Upload nachholen",
+      "retryCancelled": "Upload abgebrochen.",
+      "retryDone": "Upload erfolgreich nachgeholt.",
+      "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
+      "retryTitle": "Upload nachholen",
+      "retryTitleOk": "Ausstehenden Upload jetzt starten",
+      "uploading": "Upload läuft"
     }
   },
   "ams": {
@@ -1404,8 +1439,6 @@
       "amsNotChecked": "{{title}}: nicht geprüft",
       "retryOrSettings": "Klicken: erneut prüfen · Rechtsklick: Einstellungen",
       "retry": "Klicken zum erneuten Prüfen",
-      "backupFailedHint": "Klicken: Hinweis schließen & erneut prüfen · Rechtsklick: Backup-URL",
-      "backupSettingsHint": "Rechtsklick: Backup-URL in den Einstellungen",
       "connectionTitle": "Verbindung",
       "titleAllOk": "Alles verbunden",
       "titlePartial": "Teilweise",
@@ -1418,18 +1451,25 @@
       "serverOkRemote": "Verbunden",
       "amsOk": "Verbunden",
       "titleAmsOkNamed": "{{name}} verbunden",
-      "chipUpload": "Upload",
+      "backupFailedHint": "Klicken: Hinweis schließen & erneut prüfen · Rechtsklick: Backup-URL",
+      "backupSettingsHint": "Rechtsklick: Backup-URL in den Einstellungen",
+      "backupPopoverHint": "Klicken: Details · Rechtsklick: Backup-URL",
       "chipServerBackup": "Server-Backup",
       "chipServerBackupDone": "Server-Backup fertig",
       "chipServerBackupFailed": "Server-Backup fehlgeschlagen",
-      "percent": "{{percent}}%",
-      "serverBackupRunning": "Server-Backup: {{percent}}%",
-      "serverBackupWithDetail": "Server-Backup: {{percent}}% · {{detail}}",
-      "serverBackupFiles": "{{current}}/{{total}}",
+      "chipServerBackupCancelled": "Server-Backup abgebrochen",
+      "chipUpload": "Upload",
+      "liveServerBackup": "Server-Backup {{percent}} Prozent",
+      "liveUpload": "Upload {{percent}} Prozent",
       "parallelServerBackup": "Parallel: Server-Backup {{percent}}%",
       "parallelUpload": "Parallel: Upload {{percent}}%",
-      "liveUpload": "Upload {{percent}} Prozent",
-      "liveServerBackup": "Server-Backup {{percent}} Prozent"
+      "percent": "{{percent}}%",
+      "serverBackupFiles": "{{current}}/{{total}}",
+      "serverBackupRunning": "Server-Backup: {{percent}}%",
+      "serverBackupWithDetail": "Server-Backup: {{percent}}% · {{detail}}"
+    },
+    "backupPopover": {
+      "cancelledLocalRemains": "Lokales Backup bleibt erhalten."
     }
   },
   "qr": {
@@ -1762,6 +1802,8 @@
     "monitor": {
       "secondaryBackupFailed": "Server-Backup (zweiter Pfad) fehlgeschlagen.",
       "secondaryBackupTitle": "Server-Backup",
+      "secondaryBackupCancelledTitle": "Server-Backup abgebrochen",
+      "secondaryBackupCancelledBody": "Lokales Backup bleibt. Server-Ordner kann unvollständig sein.",
       "title": "SD-Monitor"
     },
     "tile": {
@@ -1835,7 +1877,6 @@
       "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein."
     },
     "operatorHint": "Dein Name wird als Ich-Favorit in der Crew verwendet.",
-    "operatorRequired": "Bitte „Ich bin“ setzen.",
     "operatorMultiRole": "Bei mehreren oder keinen Rollen wird für den Session-Reset nichts automatisch beibehalten.",
     "operatorSingleRoleTm": "Nur Tandemmaster gefunden — diese Rolle wird für den Session-Reset beibehalten.",
     "operatorSingleRoleVs": "Nur Videospringer gefunden — diese Rolle wird für den Session-Reset beibehalten.",
@@ -1857,27 +1898,27 @@
     },
     "upload": {
       "disabledHint": "Upload bleibt aus. Du kannst den Server jederzeit später in den Einstellungen einrichten.",
-      "optionalNote": "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.",
       "amsHint": "Wir suchen automatisch nach der Buchungs-Bridge. Gefundene Pfade kannst du übernehmen; sonst richtest du den Server manuell ein.",
-      "searchNetwork": "Im Netzwerk suchen",
+      "connectAndApply": "Mit Server verbinden",
+      "connectRequired": "Bitte zuerst mit dem Server verbinden.",
+      "connectedNoPaths": "AMS verbunden — keine Pfadvorschläge. Bitte Server manuell eintragen.",
+      "manualHint": "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.",
+      "noneFound": "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.",
+      "optionalNote": "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.",
+      "pathsApplied": "Pfade übernommen: {{primary}}",
+      "presetCaldenHint": "Standard-URL für Calden",
+      "presetGeraHint": "Profil für Gera — URL selbst eintragen",
+      "profileName": "Profilname",
+      "profilesHint": "Server-Profile mit übernommenen Pfaden (inkl. optionaler Backup-URL). Ungenutzte Standardprofile wurden entfernt.",
       "searchAgain": "Server suchen",
+      "searchNetwork": "Im Netzwerk suchen",
       "searching": "Suche…",
       "searchingHint": "Netzwerk wird durchsucht…",
-      "noneFound": "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.",
       "setupManually": "Manuell einrichten",
-      "tokenRequired": "Bitte AMS-Token oder Schlüssel eingeben.",
-      "connectRequired": "Bitte zuerst mit dem Server verbinden.",
-      "tokenPlaceholder": "Token / Schlüssel",
-      "tokenHint": "Oft dasselbe Passwort wie für den SMB-Server.",
-      "profileName": "Profilname",
-      "connectAndApply": "Mit Server verbinden",
       "skipAms": "Ohne Server fortfahren",
-      "pathsApplied": "Pfade übernommen: {{primary}}",
-      "connectedNoPaths": "AMS verbunden — keine Pfadvorschläge. Bitte Server manuell eintragen.",
-      "profilesHint": "Server-Profile mit übernommenen Pfaden (inkl. optionaler Backup-URL). Ungenutzte Standardprofile wurden entfernt.",
-      "manualHint": "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.",
-      "presetCaldenHint": "Standard-URL für Calden",
-      "presetGeraHint": "Profil für Gera — URL selbst eintragen"
+      "tokenHint": "Oft dasselbe Passwort wie für den SMB-Server.",
+      "tokenPlaceholder": "Token / Schlüssel",
+      "tokenRequired": "Bitte AMS-Token oder Schlüssel eingeben."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",
@@ -1887,7 +1928,8 @@
       "createFolder": "Ordner anlegen:\n{{path}}",
       "proceedAnyway": "Trotzdem fortfahren?",
       "warningsTitle": "Hinweise zum Speicherort:"
-    }
+    },
+    "operatorRequired": "Bitte „Ich bin“ setzen."
   },
   "dateField": {
     "chooseDateAria": "Datum wählen",

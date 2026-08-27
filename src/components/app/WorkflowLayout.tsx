@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Film, ImageIcon, Loader2 } from "lucide-react";
 import { MediaDropZone } from "../MediaDropZone";
@@ -15,6 +15,7 @@ import { useSdStore } from "../../store/sdStore";
 import { useQrScanStore } from "../../store/qrScanStore";
 import { useAppendStore } from "../../store/appendStore";
 import { useServerStore } from "../../store/serverStore";
+import { useUploadQueueStore } from "../../store/uploadQueueStore";
 import { deleteWorkingCopies, discardVideoCutUndoForPath } from "../../lib/tauri";
 import { useWorkflowProgress } from "../../hooks/useWorkflowProgress";
 import { useButtonActionPhaseKind } from "../../hooks/useTimedFlash";
@@ -41,6 +42,8 @@ type Props = {
   taskProgress: TaskProgressState[];
   createJobPlan?: CreateJobPlan | null;
   createFailed?: boolean;
+  /** CreateSuccessDialog open — used to trigger Auto-Shrink on close. */
+  createSuccessOpen?: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
   onProgressReset: () => void;
@@ -67,6 +70,7 @@ export function WorkflowLayout({
   taskProgress,
   createJobPlan = null,
   createFailed = false,
+  createSuccessOpen = false,
   onBusyChange,
   onStatus,
   onProgressReset,
@@ -82,6 +86,8 @@ export function WorkflowLayout({
 }: Props) {
   const { t } = useTranslation();
   const [cancelRequested, setCancelRequested] = useState(false);
+  const [successCloseGeneration, setSuccessCloseGeneration] = useState(0);
+  const prevSuccessOpenRef = useRef(createSuccessOpen);
   const videoList = useVideoStore((s) => s.videoList);
   const photoList = usePhotoStore((s) => s.photoList);
   const videoImporting = useVideoStore((s) => s.importing);
@@ -101,6 +107,11 @@ export function WorkflowLayout({
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const serverPhase = useServerStore((s) => s.phase);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
+  const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
+  const uploadQueueLen = useUploadQueueStore((s) => s.queue.length);
+  const uploadLastOutcome = useUploadQueueStore((s) => s.lastOutcome);
+  const uploadCancelPhase = useUploadQueueStore((s) => s.cancelPhase);
+  const uploadSlotHasWork = uploadSlotActive || uploadQueueLen > 0;
 
   const { createReady, createHints } = createValidation;
 
@@ -126,20 +137,31 @@ export function WorkflowLayout({
     sdWorkflowUiActive ||
     qrScanBusy ||
     videoImporting ||
-    photoImporting;
+    photoImporting ||
+    uploadSlotHasWork;
 
   useEffect(() => {
     if (!cancellableJobActive) setCancelRequested(false);
   }, [cancellableJobActive]);
 
+  // Success-Modal close → bump generation for Auto-Shrink (only while expanded).
+  useEffect(() => {
+    const wasOpen = prevSuccessOpenRef.current;
+    prevSuccessOpenRef.current = createSuccessOpen;
+    if (wasOpen && !createSuccessOpen && uploadSlotHasWork) {
+      setSuccessCloseGeneration((n) => n + 1);
+    }
+  }, [createSuccessOpen, uploadSlotHasWork]);
+
   const appendUploading =
     appendActive &&
     (serverPhase === "uploading" || /^upload/i.test(status.trim()));
 
+  const backgroundUploadActive = uploadSlotHasWork && !busy && !appendActive;
+
   const createUploading =
-    busy &&
     !appendActive &&
-    (serverPhase === "uploading" || /^upload/i.test(status.trim()));
+    (uploadSlotHasWork || serverPhase === "uploading");
 
   const workflowView = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
@@ -161,6 +183,11 @@ export function WorkflowLayout({
     appendGuest,
     appendUploading,
     createUploading,
+    backgroundUploadActive,
+    uploadQueueCount: uploadQueueLen,
+    uploadCancelPhase,
+    successCloseGeneration,
+    uploadLastOutcome,
     uploadProgress,
     percent,
     status,
@@ -171,13 +198,14 @@ export function WorkflowLayout({
   });
 
   useEffect(() => {
-    if (busy || appendActive) return;
+    if (busy || appendActive || uploadSlotHasWork) return;
     if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
     if (workflowView.visible) return;
     onResetProgress();
   }, [
     busy,
     appendActive,
+    uploadSlotHasWork,
     percent,
     taskProgress.length,
     status,
@@ -197,7 +225,11 @@ export function WorkflowLayout({
         className={cn(
           "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4",
           workflowView.reserveSpace &&
-            (workflowView.createPipeline ? "pb-44" : "pb-36"),
+            (workflowView.createPipeline
+              ? "pb-44"
+              : workflowView.backgroundUpload && workflowView.collapsed
+                ? "pb-20"
+                : "pb-36"),
         )}
       >
         <MediaDropZone

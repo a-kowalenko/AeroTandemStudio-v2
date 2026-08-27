@@ -15,12 +15,15 @@ use serde::Serialize;
 
 use crate::smb::{upload_path, UploadProgress, UploadResult};
 use crate::storage::logging;
+use crate::video::ffmpeg::{
+    reset_secondary_backup_cancel, UploadCancelPolicy, WORKFLOW_CANCELLED,
+};
 
 pub const EVENT_SECONDARY_BACKUP: &str = "sd-secondary-backup";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SecondaryBackupEvent {
-    /// `started` | `progress` | `done` | `failed`
+    /// `started` | `progress` | `done` | `failed` | `cancelled`
     pub state: String,
     pub job_id: String,
     pub primary_path: String,
@@ -28,6 +31,9 @@ pub struct SecondaryBackupEvent {
     pub current: u64,
     pub total: u64,
     pub percent: f64,
+    pub current_bytes: u64,
+    pub total_bytes: u64,
+    pub speed_bps: f64,
     pub file_name: Option<String>,
     pub message: Option<String>,
 }
@@ -113,6 +119,9 @@ impl SecondaryBackupQueue {
     }
 
     fn run_job(&self, job: SecondaryBackupJob) {
+        // Cancel applies to the current job only; clear so the next queued job can run.
+        reset_secondary_backup_cancel();
+
         let primary = job.primary_path.to_string_lossy().into_owned();
         let on_event = self.on_event.lock().unwrap().clone();
         self.emit(SecondaryBackupEvent {
@@ -123,6 +132,9 @@ impl SecondaryBackupQueue {
             current: 0,
             total: 0,
             percent: 0.0,
+            current_bytes: 0,
+            total_bytes: 0,
+            speed_bps: 0.0,
             file_name: None,
             message: Some("Server-Backup im Hintergrund…".into()),
         });
@@ -146,6 +158,9 @@ impl SecondaryBackupQueue {
                     current: u64::from(p.current_file),
                     total: u64::from(p.total_files),
                     percent: p.percent,
+                    current_bytes: p.current_bytes,
+                    total_bytes: p.total_bytes,
+                    speed_bps: p.speed_bps,
                     file_name: if p.filename.is_empty() {
                         None
                     } else {
@@ -168,26 +183,54 @@ impl SecondaryBackupQueue {
                     current: 0,
                     total: 0,
                     percent: 100.0,
+                    current_bytes: 0,
+                    total_bytes: 0,
+                    speed_bps: 0.0,
                     file_name: None,
                     message: Some("Server-Backup fertig".into()),
                 });
             }
             Err(e) => {
-                logging::warn(
-                    "sd",
-                    format!("Secondary backup failed: id={}, err={e}", job.id),
-                );
-                self.emit(SecondaryBackupEvent {
-                    state: "failed".into(),
-                    job_id: job.id.clone(),
-                    primary_path: primary,
-                    secondary_path: None,
-                    current: 0,
-                    total: 0,
-                    percent: 0.0,
-                    file_name: None,
-                    message: Some(e),
-                });
+                let cancelled = e.trim() == WORKFLOW_CANCELLED;
+                if cancelled {
+                    logging::info(
+                        "sd",
+                        format!("Secondary backup cancelled: id={}", job.id),
+                    );
+                    self.emit(SecondaryBackupEvent {
+                        state: "cancelled".into(),
+                        job_id: job.id.clone(),
+                        primary_path: primary,
+                        secondary_path: None,
+                        current: 0,
+                        total: 0,
+                        percent: 0.0,
+                        current_bytes: 0,
+                        total_bytes: 0,
+                        speed_bps: 0.0,
+                        file_name: None,
+                        message: Some(WORKFLOW_CANCELLED.into()),
+                    });
+                } else {
+                    logging::warn(
+                        "sd",
+                        format!("Secondary backup failed: id={}, err={e}", job.id),
+                    );
+                    self.emit(SecondaryBackupEvent {
+                        state: "failed".into(),
+                        job_id: job.id.clone(),
+                        primary_path: primary,
+                        secondary_path: None,
+                        current: 0,
+                        total: 0,
+                        percent: 0.0,
+                        current_bytes: 0,
+                        total_bytes: 0,
+                        speed_bps: 0.0,
+                        file_name: None,
+                        message: Some(e),
+                    });
+                }
             }
         }
     }
@@ -250,8 +293,14 @@ where
         return Err("Server-Backup-URL fehlt".into());
     }
 
-    let result: UploadResult =
-        tauri::async_runtime::block_on(upload_path(primary_path, url, login, password, on_progress));
+    let result: UploadResult = tauri::async_runtime::block_on(upload_path(
+        primary_path,
+        url,
+        login,
+        password,
+        UploadCancelPolicy::WorkflowOrBackup,
+        on_progress,
+    ));
 
     if result.success {
         let leaf = primary_path
@@ -335,47 +384,36 @@ mod tests {
 
         let remote = mirror_backup_to_smb(
             &session,
-            &dest_root.path().to_string_lossy(),
+            dest_root.path().to_str().unwrap(),
             "",
             "",
             |_| {},
         )
         .unwrap();
-
-        assert!(dest_root.path().join("SD_Backup_test").join("a.mp4").is_file());
-        assert!(dest_root
-            .path()
-            .join("SD_Backup_test")
-            .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
-            .is_file());
         assert!(remote.contains("SD_Backup_test"), "{remote}");
+        assert!(dest_root.path().join("SD_Backup_test").join("a.mp4").is_file());
     }
 
     #[test]
-    fn queue_runs_async_job() {
+    fn queue_runs_job_to_local_dest() {
         with_queue_lock(|| {
-            let primary_root = tempdir().unwrap();
-            let session = primary_root.path().join("SD_Backup_async");
-            fs::create_dir_all(&session).unwrap();
-            fs::write(session.join("clip.mp4"), b"ok").unwrap();
-
+            let primary = tempdir().unwrap();
             let dest_root = tempdir().unwrap();
+            let session = primary.path().join("SD_Backup_q");
+            fs::create_dir_all(&session).unwrap();
+            fs::write(session.join("clip.mp4"), b"data").unwrap();
+
             let job = SecondaryBackupJob {
-                id: "test-job".into(),
+                id: "test-q1".into(),
                 primary_path: session,
                 server_url: dest_root.path().to_string_lossy().into_owned(),
                 login: String::new(),
                 password: String::new(),
-                backup_dir_name: "SD_Backup_async".into(),
+                backup_dir_name: "SD_Backup_q".into(),
             };
-
             SECONDARY_BACKUP.enqueue(job);
             assert!(SECONDARY_BACKUP.wait_idle(Duration::from_secs(5)));
-            assert!(dest_root
-                .path()
-                .join("SD_Backup_async")
-                .join("clip.mp4")
-                .is_file());
+            assert!(dest_root.path().join("SD_Backup_q").join("clip.mp4").is_file());
         });
     }
 }

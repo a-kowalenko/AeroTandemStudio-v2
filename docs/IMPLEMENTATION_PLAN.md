@@ -57,7 +57,9 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
+**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …  
+*(Phase 37.1–37.3 ✅ Background-SMB-Upload (Slot/Queue, Compact-Bar, Append/Historie/Bulk).)*
+*(Phase 34.1 ✅ Server-Backup Popover + eigener Cancel-Kanal.)*
 *(Phase 36 Crew-Defaults mergen erledigt.)*  
 *(Phase 35 AMS Path Hints erledigt.)*  
 *(Phase 34 SD-Server-Backup über SMB erledigt.)*  
@@ -2543,6 +2545,49 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 ---
 
+### Phase 34.1 — Server-Backup Popover (Details + Abbruch)
+
+**Status:** ✅ Fertig  
+**Abhängigkeiten:** Phase 34 (Secondary SMB), Phase 37 (Compact-Bar-Parität, Slot-Cancel-Trennung)  
+**Ziel:** Linksklick auf den Header-Chip „Server-Backup“ öffnet ein Popover mit Progress (Bar/%/MB/Speed) und Abbruch nur des aktuellen Backup-Jobs — ohne Vorgang-Upload oder Workflow zu stoppen.
+
+#### Entscheidungen
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Trigger | Linksklick → Popover; Rechtsklick → Settings (Backup-URL) unverändert |
+| Cancel-Kanal | Eigener Flag `SECONDARY_BACKUP_CANCEL` / Policy `WorkflowOrBackup` — weder Slot noch allein über `cancel_encode` für den Button |
+| Abbruch-Semantik | Nur aktueller Job; Queue bleibt; Toast; Remote nicht still löschen; lokal bleibt |
+| Parallel | Chip/Popover = Backup; Compact-Bar = Vorgang-Upload (getrennt) |
+| Soft-Confirm | Dialog vor Abbruch („lokal bleibt“) |
+| Progress-Event | `current_bytes` / `total_bytes` / `speed_bps` im `sd-secondary-backup` Event |
+
+#### Scope
+
+- [x] `UploadCancelPolicy::WorkflowOrBackup` + `cancel_secondary_backup` Command
+- [x] Secondary-Event Bytes/Speed; State `cancelled`
+- [x] Popover unter Chip (Compact-Bar-Parität) + Soft-Confirm + Toast
+- [x] i18n de / en / es-MX
+- [x] Tests: Slot-Cancel trifft Backup nicht; Backup-Cancel trifft Slot nicht
+
+#### Out of Scope
+
+- Native Context-Menu für Details
+- Chip zur Mini-Bar aufblasen
+- Backup-Details in Workflow-Compact-Bar mischen
+- Warteschlange leeren / Remote-Cleanup beim Abbruch
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 34.1 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 34.1: Server-Backup-Popover + eigener Cancel-Kanal.
+Danach cargo test.
+```
+
+---
+
 ### Phase 35 — AMS Path Hints (Bridge → SMB)
 
 **Status:** ✅ Docs · Code 35.a–35.d  
@@ -2740,6 +2785,199 @@ Unit-Tests für Merge/Tombstone/Reset. Danach cargo test && npm run check.
 3. Load-Hook + Save-if-dirty  
 4. Editor/Wizard Tombstone set/clear + Factory-Reset  
 5. Optional Log; Docs/Tracker  
+
+---
+
+### Phase 37 — Background-SMB-Upload nach Create (Session frei)
+
+**Status:** ✅ Fertig (37.1 ✅ · 37.2 ✅ · 37.3 ✅)  
+**Abhängigkeiten:** Phase 10 (SMB + Progress), Phase 12 (Create/Success/Reset), Phase 31 (`upload_state`, Nachholen), Phase 32 (SMB Quiet-Poll)  
+**Ziel:** Nach lokalem Create Success + Session-Reset sofort; SMB-Upload läuft im Hintergrund. UI nicht mehr durch Upload gesperrt. Compact Upload-Bar + Queue für weitere Uploads.
+
+> Pro Agent-Session **eine Unterphase** (37.1 → 37.2 → 37.3). Keine Implementierung starten, bis eine Unterphase explizit beauftragt wird.
+
+#### Ausgangslage (Ist)
+
+- `startCreate` hält `busy` über Encode **und** `await uploadToServer(…)`
+- Success-Dialog + `auto_clear`/Reset erst **nach** Upload-Ende
+- Workflow-Panel: Collapse nach Idle (3,5 s) / Hide (9 s) — ungeeignet für laufenden Background-Upload
+- Compact-Collapse heute: Pill nur mit Label (ohne Progressbar)
+- Historie-Nachholen / Bulk / Append setzen ebenfalls `busy` und blockieren die Session
+- Header-`ServerStatusIndicator`: Upload-Tooltip/Ring — **unverändert lassen**
+
+#### Out of Scope
+
+- Persistente Disk-Queue über App-Restart (In-Memory-Queue reicht; Restart → `uploading` ggf. auf `pending`/`failed` wie heute bei Abbruch)
+- Parallele SMB-Jobs (mehrere Vorgänge gleichzeitig hochladen)
+- Redesign Header-Chip
+- Auto-Upload bei Reconnect (Phase 31 bleibt)
+- Legacy ändern
+
+#### Globale Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Busy trennen | Encode/Create: `busy` (UI-Lock). Background-Upload: **kein** UI-Lock; eigener State (`backgroundUpload` / Slot). Update-Install weiter blockiert bei Upload |
+| 2 | Zweiter Upload | **In-Memory-FIFO-Queue**. Nur ein aktiver SMB-Upload. Weitere Create-/Historie-/Append-Uploads enqueuen |
+| 3 | Success-Dialog | Sofort nach lokalem Create. Text: erstellt + „Upload läuft“. **Live-Mini:** Progressbar + % + MB. Abschluss/Fehler → **Toast**, kein zweites Success-Modal |
+| 4 | Compact-Bar | Eine Zeile: Label · Bar · % · MB · Speed · Expand/Collapse · Cancel (nur aktiver Upload) |
+| 5 | Auto-Shrink | Timer **5 s** erst wenn Success-Modal geschlossen **und** Panel noch expanded. Bei manuellem Expand: Timer stoppen; optional erneut nach Idle |
+| 6 | Quit | Close/Quit mit Confirm, wenn Slot oder Queue nicht leer („Upload wird abgebrochen“) |
+| 7 | Header-Chip | **Unverändert** (Ring/Tooltip wie jetzt) |
+| 8 | Slot-Logik | Create-Background, Historie-Retry, Bulk-Items, Append-Upload → **derselbe** Upload-Slot + Queue |
+| 9 | Animation | Höhen-/Layout-Transition (`grid-template-rows` / `max-height` + opacity). Compact **mit** Progressbar (kein Label-only-Pill) |
+| 10 | Upload-Pfad | Immer `base_output_dir` des fertigen Vorgangs — unabhängig von Session-Reset/Working-Clear |
+
+---
+
+#### Phase 37.1 — Upload entkoppeln + Slot/Queue + Success Live-Hinweis
+
+**Status:** ✅ Fertig  
+**Ziel:** Create endet lokal → Success + Unlock/Reset; Upload detached über gemeinsamen Slot; Queue; Success mit Mini-Progress; Done/Fail Toast.
+
+##### Entscheidungen (37.1)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Nach `create_job` OK | `busy=false`; Success öffnen; optional `auto_clear`/Reset; Upload in Slot enqueuen/starten |
+| Offline | Unverändert Phase 31.1 (`pending`, kein SMB) |
+| Success Live | Kleiner Balken + % + MB (aus `uploadProgress`), solange dieser Vorgang aktiver Slot-Job ist |
+| Toast Erfolg | Kurz: „Upload abgeschlossen“ (+ optional Ordnername) |
+| Toast Fehler | Fehlertext + Hinweis Historie/Nachholen; `upload_state=failed` |
+| Cancel während Success | Nur Upload canceln; Modal bleibt / schließbar; Session schon frei |
+| Queue-UI (minimal) | Optional Badge „+n in Warteschlange“ am Panel; Details in 37.2 ok |
+| Concurrent Create | Erlaubt (Session frei). Dessen Upload → Queue hinter laufendem |
+| Historie/Append in 37.1 | Mindestens: gleicher Slot-API (`enqueueUpload` / `runUploadSlot`). UI-Busy-Entkopplung für Nachholen/Append kann 37.1 grob oder 37.3 Feinschliff |
+
+##### Scope
+
+- [x] Upload-Slot + FIFO-Queue (Frontend-Store; ein aktives `uploadToServer`)
+- [x] `startCreate`: nach lokalem Create Success/Reset/`busy=false`; Upload nicht mehr UI-blockierend awaiten
+- [x] `upload_state` weiter: `uploading` → `done` / `failed` / Cancel → `pending`
+- [x] `CreateSuccessDialog`: Upload-live (Bar/%/MB); kein Warten auf Upload-Ende für „hochgeladen“-Zeile
+- [x] Toasts für Upload Done/Fail
+- [x] Create-Background + Historie-Retry teilen Slot (Append/Bulk anbinden oder klar stubben → 37.3)
+- [x] i18n de / en / es-MX
+- [x] Tests: Queue-Reihenfolge, Cancel aktives Item, Fail → nächstes Item startet
+- [ ] Manuell: Create online → Success + neue Session während Upload
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 37.1 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 37.1: Busy von Background-Upload trennen; FIFO Upload-Slot/Queue;
+Create Success+Reset sofort; Success Live Bar/%/MB; Done/Fail Toast.
+Kein Compact-Bar-Redesign (37.2), kein Quit-Confirm (37.2).
+i18n de/en/es-MX. Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 37.2 — Compact Upload-Bar, Auto-Shrink, Animation, Quit-Confirm
+
+**Status:** ✅ Fertig  
+**Ziel:** Panel für Background-Upload: expand/collapse mit Progressbar; Auto-Shrink 5 s; Layout-Transition; Quit-Warnung.
+
+##### Entscheidungen (37.2)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Compact-Inhalt | `Upload` · Progressbar · `%` · `current/total MB` · Speed · Chevron · Cancel |
+| Expanded | Compact-Bar + Details (Subtitle, Queue); **mit** Create-Pipeline-Stepper wenn Plan noch da (Upload-Chip aktiv, wie beim Create) |
+| Auto-Shrink | 5 s nach Close Success **nur wenn** Panel expanded; bei manuellem Expand Timer clear; erneutes Auto-Minimize optional nach 5 s Idle expanded |
+| Während Upload | **Kein** Auto-Hide (heutiges `HIDE_AFTER_MS` gilt nicht für Background-Upload) |
+| Nach Done | Kurz sichtbar → dann ausblenden (oder nach Compact kurz fade-out) |
+| Nach Fail | Sichtbar bleiben bis Dismiss / nächster Upload |
+| Animation | `grid-rows`/`max-height` + opacity; Compact **nicht** als Label-Pill |
+| Header-Chip | Unverändert |
+| Quit | Tauri CloseRequested / Exit: Confirm wenn Slot aktiv oder Queue `.length > 0`; Bestätigen → Cancel Upload + App beenden |
+
+##### Scope
+
+- [x] `WorkflowProgressPanel` / Hook: Background-Upload-Modus (expanded ↔ compact mit Bar)
+- [x] Auto-Shrink-Timer laut Entscheidung 5
+- [x] Layout-Transition
+- [x] Quit/Close Confirm + Cancel vor Exit
+- [x] i18n
+- [ ] Manuell: Modal zu → 5 s → Shrink; Expand/Collapse; Quit mit laufendem Upload
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 37.2 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 37.2: Compact Upload-Bar (Bar/%/MB/Speed), Expand/Collapse,
+Auto-Shrink 5s nach Success-Close nur wenn expanded, Layout-Transition,
+Quit-Confirm bei aktivem Slot/Queue. Header-Chip unverändert.
+i18n. Danach cargo test && npm run check.
+```
+
+---
+
+#### Phase 37.3 — Append / Historie-Nachholen / Bulk über denselben Slot
+
+**Status:** ✅ Fertig  
+**Ziel:** Nachholen, Bulk und Append-Upload nutzen dieselbe Queue; blockieren die Session nicht mehr nur wegen Upload.
+
+##### Entscheidungen (37.3)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Historie Einzel-Retry | Enqueue; UI bleibt bedienbar; Progress über Compact/Expanded-Bar |
+| Bulk | Items sequentiell **über Queue** (nicht parallele Jobs); Summary am Ende wie 31.6 |
+| Append-Upload | Nach lokalem Append-Erfolg ebenfalls Slot/Queue (Parity zu Create) |
+| Encode/SD/QR | Weiter `busy`/eigene Locks — nur Upload entkoppelt |
+| Queue voll / lang | Kein Limit nötig; optional Status „n wartend“ |
+
+##### Scope
+
+- [x] `retryVorgangUpload` / Bulk / Append-Upload → Slot API (kein session-`busy` nur für Upload)
+- [x] Cancel: nur aktiver Upload; Queue-Items bleiben oder „Cancel all“ optional (MVP: nur aktiv + optional Clear-Queue im Confirm)
+- [x] Tests + manuelle Abnahme: Create-Upload läuft → Nachholen enqueued → nach Done startet Retry
+- [x] Tracker / AGENTS „Nächster Schritt“ aktualisieren
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 37.3 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 37.3: Historie-Retry, Bulk und Append-Upload über denselben
+Background-Upload-Slot/Queue; Session nicht durch Upload locken.
+Danach cargo test && npm run check.
+```
+
+#### Referenzen
+
+```
+src/App.tsx                          # startCreate, retryVorgangUpload, busy
+src/components/CreateSuccessDialog.tsx
+src/components/WorkflowProgressPanel.tsx
+src/hooks/useWorkflowProgress.ts
+src/lib/uploadProgress.ts
+src/store/serverStore.ts             # phase, uploadProgress
+src/components/ServerStatusIndicator.tsx  # unverändert (Chip)
+src/components/HistoryDialog.tsx
+src-tauri/src/commands/smb.rs
+src-tauri/src/lib.rs                 # CloseRequested / exit hook
+```
+
+#### Akzeptanz (gesamt)
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Nach lokalem Create: Success sofort, UI frei, neue Session möglich; Upload weiter |
+| 2 | Success: Live Bar/%/MB; Done/Fail nur Toast |
+| 3 | Zweite Uploads (Create/Historie/Append) gehen in FIFO-Queue; nie zwei SMB-Jobs parallel |
+| 4 | Compact-Bar mit Progressbar; Auto-Shrink 5 s nur nach Modal-Close + expanded |
+| 5 | Quit mit Confirm bei laufendem/queued Upload |
+| 6 | Header-Chip unverändert |
+
+##### Umsetzungsreihenfolge
+
+1. 37.1 — Entkoppeln + Slot/Queue + Success Live + Toasts  
+2. 37.2 — Compact-Bar + Auto-Shrink + Animation + Quit-Confirm  
+3. 37.3 — Append / Historie / Bulk über denselben Slot  
 
 ---
 
@@ -2951,8 +3189,13 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 33 | Label Historie → Vorgänge (i18n) | ✅ |
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
 | 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
+| 34.1 | Server-Backup Popover (Details + Abbruch) | ✅ |
 | 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |
-| 36 | Crew-Defaults beim Update mergen (Add-only + Tombstones) | ⬜ |
+| 36 | Crew-Defaults beim Update mergen (Add-only + Tombstones) | ✅ |
+| 37 | Background-SMB-Upload nach Create (Session frei) | ✅ 37.1–37.3 |
+| 37.1 | Upload entkoppeln + Slot/Queue + Success Live | ✅ |
+| 37.2 | Compact Upload-Bar, Auto-Shrink, Quit-Confirm | ✅ |
+| 37.3 | Append / Historie / Bulk über denselben Slot | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2979,6 +3222,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 36:** Prompt im Phasenabschnitt (Crew-Defaults mergen / Tombstones).
 
+**Phase 37:** Prompt im Phasenabschnitt (Background-SMB-Upload); Unterphasen 37.1 → 37.2 → 37.3.
+
 ---
 
-*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 36 Crew-Defaults mergen erledigt*
+*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 34.1 Server-Backup-Popover ✅*

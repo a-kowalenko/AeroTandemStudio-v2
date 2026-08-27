@@ -26,18 +26,22 @@ export type ConnectionDot = "ok" | "error" | "checking" | "idle";
 /** Left icon in the header connection chip. */
 export type HeaderConnectionIcon = "server" | "upload" | "check";
 
-/** Active / sticky transfer shown in the chip (priority: upload > backup). */
+/** Active / sticky transfer shown in the chip (priority: backup > upload). */
 export type HeaderTransferKind =
   | "upload"
   | "serverBackup"
   | "serverBackupDone"
-  | "serverBackupFailed";
+  | "serverBackupFailed"
+  | "serverBackupCancelled";
 
 export type HeaderSecondaryBackupInput = {
   state: string;
   percent: number;
   current?: number;
   total?: number;
+  current_bytes?: number;
+  total_bytes?: number;
+  speed_bps?: number;
   file_name?: string | null;
   message?: string | null;
 } | null;
@@ -58,6 +62,8 @@ export type HeaderConnectionView = {
   amsDot: ConnectionDot | null;
   title: string;
   canRetry: boolean;
+  /** Left-click opens backup detail popover (not reconnect). */
+  canOpenBackupPopover: boolean;
   contextMenuFocus: SettingsFocusTarget | null;
 };
 
@@ -175,11 +181,13 @@ export function presentHeaderConnection(input: {
   const backupActive = Boolean(backup && isBackupActive(backup.state));
   const backupDone = backup?.state === "done";
   const backupFailed = backup?.state === "failed";
+  const backupCancelled = backup?.state === "cancelled";
   const uploading = input.smbPhase === "uploading";
 
   const smbVisible = !(input.smbPhase === "idle" && !input.smbConnected);
   const amsVisible = input.amsConfigured && input.amsPhase !== "idle";
-  const backupVisible = backupActive || backupDone || backupFailed;
+  const backupVisible =
+    backupActive || backupDone || backupFailed || backupCancelled;
   const visible = smbVisible || amsVisible || backupVisible;
 
   const smbChecking = input.smbPhase === "checking";
@@ -221,6 +229,14 @@ export function presentHeaderConnection(input: {
     percentText = null;
     toneClass = "text-success";
     liveMessage = tr("header.connection.chipServerBackupDone");
+  } else if (backupCancelled) {
+    transferKind = "serverBackupCancelled";
+    leftIcon = "server";
+    transferBusy = false;
+    label = tr("header.connection.chipServerBackupCancelled");
+    percentText = null;
+    toneClass = "text-muted";
+    liveMessage = tr("header.connection.chipServerBackupCancelled");
   } else if (backupFailed) {
     transferKind = "serverBackupFailed";
     leftIcon = "server";
@@ -266,8 +282,11 @@ export function presentHeaderConnection(input: {
     toneClass = "text-success";
   }
 
-  // Active transfer / done flash: no reconnect click. Failed stays clickable.
-  const transferBlocksRetry = uploading || backupActive || backupDone;
+  // Active transfer / done/cancelled flash / failed detail: no reconnect click.
+  const canOpenBackupPopover =
+    backupActive || backupDone || backupFailed || backupCancelled;
+  const transferBlocksRetry =
+    uploading || canOpenBackupPopover;
 
   const canRetry =
     visible &&
@@ -278,7 +297,7 @@ export function presentHeaderConnection(input: {
     !amsRefreshing;
 
   let contextMenuFocus: SettingsFocusTarget | null = null;
-  if (backupFailed || backupActive || backupDone) {
+  if (canOpenBackupPopover) {
     contextMenuFocus = "server-backup-url";
   } else if (smbError) {
     contextMenuFocus =
@@ -340,6 +359,8 @@ export function presentHeaderConnection(input: {
     }
   } else if (backupDone) {
     lines.push(tr("header.connection.chipServerBackupDone"));
+  } else if (backupCancelled) {
+    lines.push(tr("header.connection.chipServerBackupCancelled"));
   } else if (backupFailed) {
     const failMsg =
       backup?.message?.trim() || tr("header.connection.chipServerBackupFailed");
@@ -349,14 +370,12 @@ export function presentHeaderConnection(input: {
   }
   if (canRetry) {
     lines.push(
-      backupFailed
-        ? tr("header.connection.backupFailedHint")
-        : contextMenuFocus
-          ? tr("header.connection.retryOrSettings")
-          : tr("header.connection.retry"),
+      contextMenuFocus
+        ? tr("header.connection.retryOrSettings")
+        : tr("header.connection.retry"),
     );
-  } else if (contextMenuFocus && (backupActive || backupDone)) {
-    lines.push(tr("header.connection.backupSettingsHint"));
+  } else if (canOpenBackupPopover) {
+    lines.push(tr("header.connection.backupPopoverHint"));
   }
 
   return {
@@ -374,6 +393,7 @@ export function presentHeaderConnection(input: {
       : null,
     title: lines.join("\n"),
     canRetry,
+    canOpenBackupPopover,
     contextMenuFocus,
   };
 }

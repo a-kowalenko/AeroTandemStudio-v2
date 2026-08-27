@@ -12,8 +12,17 @@ use crate::smb::{
     UploadResult,
 };
 use crate::storage::logging::{self, file_name};
+use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 pub const UPLOAD_PROGRESS_EVENT: &str = "upload-progress";
+/// Emitted when cancel has stopped the transfer and remote job-root cleanup starts.
+pub const UPLOAD_SLOT_PHASE_EVENT: &str = "upload-slot-phase";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UploadSlotPhaseEvent {
+    /// `cleanup` while remote job-root removal (+ AMS abort) runs.
+    pub phase: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UploadProgressEvent {
@@ -121,11 +130,26 @@ pub async fn upload_to_server(
         format!("Upload start: {}", file_name(&local_path)),
     );
 
+    // Do NOT reset slot cancel here — the frontend clears it when starting a
+    // fresh slot job. Resetting at command entry would swallow a cancel that
+    // landed between the UI force-cancel and this invoke.
+    if is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot) {
+        logging::warn("smb", "Upload abgebrochen (bereits vor Start)");
+        return Err(WORKFLOW_CANCELLED.into());
+    }
+
     let app_for_progress = app.clone();
-    let result = upload_path(&path, &url, &login, &password, move |progress| {
-        let event = UploadProgressEvent::from(progress);
-        let _ = app_for_progress.emit(UPLOAD_PROGRESS_EVENT, &event);
-    })
+    let result = upload_path(
+        &path,
+        &url,
+        &login,
+        &password,
+        UploadCancelPolicy::WorkflowOrSlot,
+        move |progress| {
+            let event = UploadProgressEvent::from(progress);
+            let _ = app_for_progress.emit(UPLOAD_PROGRESS_EVENT, &event);
+        },
+    )
     .await;
 
     if result.success {
@@ -140,9 +164,16 @@ pub async fn upload_to_server(
     } else {
         if upload_failure_is_cancelled(&result.message) {
             logging::warn("smb", format!("Upload abgebrochen: {}", result.message));
-            if let Some(h) = handoff.as_ref().filter(|h| h.correlation_id().is_some()) {
-                abort_handoff_upload(&config, &path, h, &url, &login, &password).await;
-            }
+            // Keep the upload slot busy until job-root cleanup finishes so a
+            // retry of the same folder cannot race leftover remote files.
+            let _ = app.emit(
+                UPLOAD_SLOT_PHASE_EVENT,
+                &UploadSlotPhaseEvent {
+                    phase: "cleanup".into(),
+                },
+            );
+            let h = handoff.unwrap_or_default();
+            abort_handoff_upload(&config, &path, &h, &url, &login, &password).await;
         } else {
             logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         }

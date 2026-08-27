@@ -43,6 +43,7 @@ export type AppShellProps = {
   taskProgress: TaskProgressState[];
   createJobPlan?: CreateJobPlan | null;
   createFailed?: boolean;
+  createSuccessOpen?: boolean;
   cutterOpen: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
@@ -78,6 +79,7 @@ export function AppShell({
   taskProgress,
   createJobPlan = null,
   createFailed = false,
+  createSuccessOpen = false,
   cutterOpen,
   onBusyChange,
   onStatus,
@@ -252,6 +254,7 @@ export function AppShell({
             taskProgress={taskProgress}
             createJobPlan={createJobPlan}
             createFailed={createFailed}
+            createSuccessOpen={createSuccessOpen}
             onBusyChange={onBusyChange}
             onStatus={onStatus}
             onProgressReset={onProgressReset}

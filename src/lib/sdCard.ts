@@ -80,13 +80,16 @@ export type BackupResult = {
 };
 
 export type SecondaryBackupEvent = {
-  state: "started" | "progress" | "done" | "failed" | string;
+  state: "started" | "progress" | "done" | "failed" | "cancelled" | string;
   job_id: string;
   primary_path: string;
   secondary_path: string | null;
   current: number;
   total: number;
   percent: number;
+  current_bytes?: number;
+  total_bytes?: number;
+  speed_bps?: number;
   file_name?: string | null;
   message?: string | null;
 };

@@ -1,5 +1,11 @@
 import { Check, Loader2, Server, Upload } from "lucide-react";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../store/configStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
@@ -14,7 +20,16 @@ import {
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
-import { formatUploadProgressTooltip } from "../lib/uploadProgress";
+import {
+  formatSecondaryBackupCompactParts,
+  formatUploadProgressTooltip,
+} from "../lib/uploadProgress";
+import { cancelSecondaryBackup } from "../lib/tauri";
+import {
+  CancelSecondaryBackupConfirmDialog,
+  type CancelSecondaryBackupConfirmChoice,
+} from "./CancelSecondaryBackupConfirmDialog";
+import { SecondaryBackupPopover } from "./SecondaryBackupPopover";
 
 type Props = {
   className?: string;
@@ -78,7 +93,13 @@ function useSparseLiveMessage(message: string | null, percentText: string | null
 
 export function ServerStatusIndicator({ className }: Props) {
   const { t } = useTranslation();
+  const popoverId = useId();
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
   const smbPhase = useServerStore((s) => s.phase);
   const smbConnected = useServerStore((s) => s.connected);
   const smbMessage = useServerStore((s) => s.message);
@@ -149,21 +170,91 @@ export function ServerStatusIndicator({ className }: Props) {
 
   const liveMessage = useSparseLiveMessage(view.liveMessage, view.percentText);
 
-  if (!view.visible) {
-    return null;
-  }
+  // Close popover when backup chip leaves; keep open across progress updates.
+  useEffect(() => {
+    if (!view.canOpenBackupPopover) {
+      setPopoverOpen(false);
+      setConfirmOpen(false);
+      setCancelling(false);
+    }
+  }, [view.canOpenBackupPopover]);
+
+  // Auto-close shortly after done / cancelled flash.
+  useEffect(() => {
+    const state = secondaryBackup?.state;
+    if (state !== "done" && state !== "cancelled") return;
+    if (!popoverOpen) return;
+    const id = window.setTimeout(() => setPopoverOpen(false), 1800);
+    return () => window.clearTimeout(id);
+  }, [secondaryBackup?.state, secondaryBackup?.job_id, popoverOpen]);
+
+  // Click outside + Escape.
+  useEffect(() => {
+    if (!popoverOpen) return;
+    function onPointerDown(e: PointerEvent) {
+      if (confirmOpen) return;
+      const el = rootRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && el.contains(e.target)) return;
+      setPopoverOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !confirmOpen) {
+        setPopoverOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [popoverOpen, confirmOpen]);
+
+  // Clear cancelling when terminal event arrives.
+  useEffect(() => {
+    const state = secondaryBackup?.state;
+    if (
+      state === "cancelled" ||
+      state === "failed" ||
+      state === "done"
+    ) {
+      setCancelling(false);
+    }
+  }, [secondaryBackup?.state, secondaryBackup?.job_id]);
 
   const displayLabel = loudChecking && !view.transferKind
     ? t("errors.server.checking")
     : view.label;
 
-  const canClick = view.canRetry && !retrying;
+  const canClickRetry = view.canRetry && !retrying;
+  const canClickPopover = view.canOpenBackupPopover;
+  const interactive = canClickRetry || canClickPopover || retrying;
+
+  const backupCompact = formatSecondaryBackupCompactParts(
+    secondaryBackup
+      ? {
+          percent: secondaryBackup.percent,
+          current_bytes: secondaryBackup.current_bytes,
+          total_bytes: secondaryBackup.total_bytes,
+          speed_bps: secondaryBackup.speed_bps,
+        }
+      : null,
+  );
+
+  const filesLabel =
+    secondaryBackup &&
+    typeof secondaryBackup.current === "number" &&
+    typeof secondaryBackup.total === "number" &&
+    secondaryBackup.total > 0
+      ? t("header.connection.serverBackupFiles", {
+          current: secondaryBackup.current,
+          total: secondaryBackup.total,
+        })
+      : null;
 
   async function onRetry() {
-    if (!canClick) return;
-    if (secondaryBackup?.state === "failed") {
-      setSecondaryBackup(null);
-    }
+    if (!canClickRetry) return;
     setRetrying(true);
     try {
       const [smbResult, amsResult] = await Promise.all([
@@ -195,11 +286,18 @@ export function ServerStatusIndicator({ className }: Props) {
               }
             : null,
       };
-      // Structured rows (incl. failures) use SuccessDialog action list + tone icons.
       showSuccess(outcome.message, outcome.title, options);
     } finally {
       setRetrying(false);
     }
+  }
+
+  function onChipClick() {
+    if (canClickPopover) {
+      setPopoverOpen((v) => !v);
+      return;
+    }
+    void onRetry();
   }
 
   function onContextMenu(e: MouseEvent) {
@@ -211,10 +309,34 @@ export function ServerStatusIndicator({ className }: Props) {
     });
   }
 
+  function onDismissBackup() {
+    setSecondaryBackup(null);
+    setPopoverOpen(false);
+  }
+
+  function onCancelRequest() {
+    setConfirmOpen(true);
+  }
+
+  async function onConfirmChoose(choice: CancelSecondaryBackupConfirmChoice) {
+    setConfirmOpen(false);
+    if (choice !== "cancel") return;
+    setCancelling(true);
+    try {
+      await cancelSecondaryBackup();
+    } catch {
+      setCancelling(false);
+    }
+  }
+
+  if (!view.visible) {
+    return null;
+  }
+
   const classNames = cn(
     "flex items-center gap-2 rounded-lg border border-border bg-card/80 px-2.5 py-1.5 text-xs shadow-sm",
     loudChecking && !view.transferKind ? "text-warning" : view.toneClass,
-    canClick &&
+    interactive &&
       "cursor-pointer transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     retrying && "cursor-wait opacity-90",
     className,
@@ -257,7 +379,6 @@ export function ServerStatusIndicator({ className }: Props) {
         ) : null}
       </span>
       <span className="relative inline-grid max-w-[14rem] text-left">
-        {/* Stable width across Prüfe… / Verbunden / Teilweise — not transfer labels. */}
         {!view.transferKind ? (
           <>
             <span
@@ -276,7 +397,6 @@ export function ServerStatusIndicator({ className }: Props) {
         ) : null}
         <span className="col-start-1 row-start-1 truncate">{displayLabel}</span>
       </span>
-      {/* Fixed slot: percent during transfer, else spinner for checks. */}
       <span
         className="inline-flex h-3 min-w-3 shrink-0 items-center justify-center"
         aria-hidden
@@ -301,34 +421,59 @@ export function ServerStatusIndicator({ className }: Props) {
     </>
   );
 
-  if (canClick || retrying) {
-    return (
-      <button
-        type="button"
-        className={classNames}
-        title={view.title}
-        disabled={retrying}
-        aria-busy={
-          view.transferBusy || loudChecking || quietRefreshing || undefined
-        }
-        onClick={() => void onRetry()}
-        onContextMenu={onContextMenu}
-      >
-        {body}
-      </button>
-    );
-  }
-
   return (
-    <div
-      className={classNames}
-      title={view.title}
-      aria-busy={
-        view.transferBusy || loudChecking || quietRefreshing || undefined
-      }
-      onContextMenu={onContextMenu}
-    >
-      {body}
+    <div ref={rootRef} className="relative">
+      {interactive ? (
+        <button
+          type="button"
+          className={classNames}
+          title={view.title}
+          disabled={retrying}
+          aria-busy={
+            view.transferBusy || loudChecking || quietRefreshing || undefined
+          }
+          aria-expanded={canClickPopover ? popoverOpen : undefined}
+          aria-controls={canClickPopover ? popoverId : undefined}
+          onClick={onChipClick}
+          onContextMenu={onContextMenu}
+        >
+          {body}
+        </button>
+      ) : (
+        <div
+          className={classNames}
+          title={view.title}
+          aria-busy={
+            view.transferBusy || loudChecking || quietRefreshing || undefined
+          }
+          onContextMenu={onContextMenu}
+        >
+          {body}
+        </div>
+      )}
+
+      <div id={popoverId}>
+        <SecondaryBackupPopover
+          open={popoverOpen && Boolean(secondaryBackup)}
+          compact={backupCompact}
+          state={secondaryBackup?.state ?? ""}
+          filesLabel={filesLabel}
+          message={secondaryBackup?.message ?? null}
+          parallelUploadPercent={
+            smbPhase === "uploading"
+              ? (uploadProgress?.percent ?? 0)
+              : null
+          }
+          cancelling={cancelling}
+          onCancelRequest={onCancelRequest}
+          onDismiss={onDismissBackup}
+        />
+      </div>
+
+      <CancelSecondaryBackupConfirmDialog
+        open={confirmOpen}
+        onChoose={(choice) => void onConfirmChoose(choice)}
+      />
     </div>
   );
 }

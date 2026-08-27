@@ -11,6 +11,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { CreateJobResult } from "@/lib/tauri";
+import { formatBytes } from "@/lib/formatBytes";
+import { useServerStore } from "@/store/serverStore";
+import { useUploadQueueStore } from "@/store/uploadQueueStore";
 
 export type CreateSuccessInfo = {
   result: CreateJobResult;
@@ -18,6 +21,10 @@ export type CreateSuccessInfo = {
   serverUploaded?: boolean;
   /** True when upload was skipped because the server was offline (pending). */
   uploadDeferred?: boolean;
+  /** Background upload enqueued / running (Phase 37.1). */
+  uploadInProgress?: boolean;
+  /** Slot job id for live progress matching. */
+  uploadJobId?: string | null;
   /** Optional short note (success path or failure hint). */
   uploadNote?: string | null;
   vorname?: string | null;
@@ -46,8 +53,34 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
     .filter(Boolean)
     .join(" ");
 
+  const uploadProgress = useServerStore((s) => s.uploadProgress);
+  const activeUploadId = useUploadQueueStore((s) => s.active?.id ?? null);
+  const queuedCount = useUploadQueueStore((s) => s.queue.length);
+
+  const liveUpload =
+    Boolean(info?.uploadInProgress) &&
+    Boolean(info?.uploadJobId) &&
+    activeUploadId === info?.uploadJobId;
+
+  const livePercent = liveUpload
+    ? Math.max(0, Math.min(100, uploadProgress?.percent ?? 0))
+    : 0;
+  const liveBytes =
+    liveUpload && uploadProgress && uploadProgress.total_bytes > 0
+      ? t("app.upload.bytesProgress", {
+          current: formatBytes(uploadProgress.current_bytes),
+          total: formatBytes(uploadProgress.total_bytes),
+        })
+      : null;
+
   function buildRows(current: CreateSuccessInfo): Row[] {
-    const { result, serverUploaded, uploadDeferred, uploadNote } = current;
+    const {
+      result,
+      serverUploaded,
+      uploadDeferred,
+      uploadInProgress,
+      uploadNote,
+    } = current;
     const rows: Row[] = [];
 
     if (result.video_output) {
@@ -81,7 +114,12 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
         ),
       });
     }
-    if (serverUploaded) {
+    if (uploadInProgress) {
+      rows.push({
+        label: t("create.success.uploadRunning"),
+        detail: uploadNote?.trim() || undefined,
+      });
+    } else if (serverUploaded) {
       rows.push({
         label: t("create.success.uploaded"),
         detail: uploadNote?.trim() || undefined,
@@ -160,6 +198,41 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
                 </p>
               )}
             </div>
+
+            {info.uploadInProgress ? (
+              <div
+                className="min-w-0 space-y-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+                aria-live="polite"
+              >
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="font-medium text-foreground">
+                    {t("create.success.uploadLiveLabel")}
+                  </span>
+                  <span className="tabular-nums text-muted">
+                    {liveUpload ? `${Math.round(livePercent)}%` : "…"}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-border/60">
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--ats-progress-from),var(--ats-progress-to))] transition-[width] duration-300 ease-out"
+                    style={{
+                      width: liveUpload ? `${livePercent}%` : "8%",
+                      opacity: liveUpload ? 1 : 0.55,
+                    }}
+                  />
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[11px] text-muted">
+                  <span className="tabular-nums">
+                    {liveBytes ?? t("create.success.uploadLiveWaiting")}
+                  </span>
+                  {queuedCount > 0 ? (
+                    <span>
+                      {t("create.success.uploadQueued", { count: queuedCount })}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             <ul className="min-w-0 space-y-2">
               {rows.map((row) => (

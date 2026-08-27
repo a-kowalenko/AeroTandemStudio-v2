@@ -1320,8 +1320,22 @@ export async function cancelEncode(): Promise<boolean> {
   return invoke<boolean>("cancel_encode");
 }
 
+/** Cancel Vorgang/Historie SMB upload only (does not abort SD server-backup). */
+export async function cancelUploadSlot(): Promise<boolean> {
+  return invoke<boolean>("cancel_upload_slot");
+}
+
+/** Cancel SD server-backup mirror only (does not abort Vorgang upload). */
+export async function cancelSecondaryBackup(): Promise<boolean> {
+  return invoke<boolean>("cancel_secondary_backup");
+}
+
 export async function resetWorkflowCancel(): Promise<void> {
   await invoke("reset_workflow_cancel");
+}
+
+export async function resetUploadSlotCancel(): Promise<void> {
+  await invoke("reset_upload_slot_cancel");
 }
 
 export type HandoffUploadContext = {

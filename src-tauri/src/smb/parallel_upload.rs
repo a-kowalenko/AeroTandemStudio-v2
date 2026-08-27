@@ -6,12 +6,13 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use smb2::{SmbClient, Tree};
 use tokio::sync::Semaphore;
 
 use crate::video::export_paths::MARKER_FILENAME;
-use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
+use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 use crate::video::handoff_manifest::MANIFEST_FILENAME;
 
 use super::client::{
@@ -24,6 +25,8 @@ pub const PHOTO_UPLOAD_PARALLELISM: usize = 6;
 pub const LARGE_MEDIA_PARALLELISM: usize = 1;
 /// Size floor for treating a media file as “large” (video slot), regardless of extension.
 pub const LARGE_MEDIA_MIN_BYTES: u64 = 16 * 1024 * 1024;
+/// How often the media join loop re-checks slot/workflow cancel while workers run.
+const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "m4v", "avi", "webm"];
 
@@ -125,6 +128,7 @@ pub async fn upload_smb_media_parallel<F>(
     total_bytes: u64,
     progress: Arc<Mutex<UploadProgressGate<F>>>,
     start_bytes: u64,
+    cancel: UploadCancelPolicy,
 ) -> Result<u64, UploadResult>
 where
     F: FnMut(super::client::UploadProgress) + Send + 'static,
@@ -156,7 +160,7 @@ where
         let progress = Arc::clone(&progress);
 
         set.spawn(async move {
-            if is_cancelled() {
+            if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.to_string());
             }
 
@@ -172,7 +176,7 @@ where
                     .map_err(|_| "SMB photo semaphore closed".to_string())?
             };
 
-            if is_cancelled() {
+            if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.to_string());
             }
 
@@ -183,6 +187,7 @@ where
                 tree.as_ref(),
                 &absolute,
                 &remote,
+                cancel,
                 |copied_in_file| {
                     let delta = copied_in_file.saturating_sub(last_reported);
                     last_reported = copied_in_file;
@@ -248,47 +253,66 @@ where
         });
     }
 
-    while let Some(joined) = set.join_next().await {
-        if is_cancelled() {
-            set.abort_all();
-            while set.join_next().await.is_some() {}
-            return Err(UploadResult {
-                success: false,
-                message: WORKFLOW_CANCELLED.into(),
-                remote_path: String::new(),
-            });
-        }
-        match joined {
-            Ok(Ok(())) => {}
-            Ok(Err(e)) => {
-                set.abort_all();
-                while set.join_next().await.is_some() {}
-                let message = if e == WORKFLOW_CANCELLED || is_cancelled() {
-                    WORKFLOW_CANCELLED.into()
-                } else {
-                    e
+    while !set.is_empty() {
+        tokio::select! {
+            biased;
+            joined = set.join_next() => {
+                let Some(joined) = joined else {
+                    break;
                 };
-                return Err(UploadResult {
-                    success: false,
-                    message,
-                    remote_path: String::new(),
-                });
-            }
-            Err(e) => {
-                set.abort_all();
-                while set.join_next().await.is_some() {}
-                if is_cancelled() || e.is_cancelled() {
+                if is_upload_cancelled(cancel) {
+                    set.abort_all();
+                    while set.join_next().await.is_some() {}
                     return Err(UploadResult {
                         success: false,
                         message: WORKFLOW_CANCELLED.into(),
                         remote_path: String::new(),
                     });
                 }
-                return Err(UploadResult {
-                    success: false,
-                    message: format!("Upload-Worker abgestürzt: {e}"),
-                    remote_path: String::new(),
-                });
+                match joined {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        set.abort_all();
+                        while set.join_next().await.is_some() {}
+                        let message = if e == WORKFLOW_CANCELLED || is_upload_cancelled(cancel) {
+                            WORKFLOW_CANCELLED.into()
+                        } else {
+                            e
+                        };
+                        return Err(UploadResult {
+                            success: false,
+                            message,
+                            remote_path: String::new(),
+                        });
+                    }
+                    Err(e) => {
+                        set.abort_all();
+                        while set.join_next().await.is_some() {}
+                        if is_upload_cancelled(cancel) || e.is_cancelled() {
+                            return Err(UploadResult {
+                                success: false,
+                                message: WORKFLOW_CANCELLED.into(),
+                                remote_path: String::new(),
+                            });
+                        }
+                        return Err(UploadResult {
+                            success: false,
+                            message: format!("Upload-Worker abgestürzt: {e}"),
+                            remote_path: String::new(),
+                        });
+                    }
+                }
+            }
+            _ = tokio::time::sleep(CANCEL_POLL_INTERVAL) => {
+                if is_upload_cancelled(cancel) {
+                    set.abort_all();
+                    while set.join_next().await.is_some() {}
+                    return Err(UploadResult {
+                        success: false,
+                        message: WORKFLOW_CANCELLED.into(),
+                        remote_path: String::new(),
+                    });
+                }
             }
         }
     }

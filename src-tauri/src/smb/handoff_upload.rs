@@ -7,7 +7,7 @@ use crate::smb::cleanup_remote_upload_folder;
 use crate::storage::config::AppConfig;
 use crate::storage::logging;
 use crate::storage::vorgang_history::VorgangHistoryStore;
-use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
+use crate::video::ffmpeg::{is_cancelled, is_upload_slot_cancelled, WORKFLOW_CANCELLED};
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 pub struct HandoffUploadContext {
@@ -114,5 +114,7 @@ pub async fn abort_handoff_upload(
 }
 
 pub fn upload_failure_is_cancelled(message: &str) -> bool {
-    is_cancelled() || message.trim() == WORKFLOW_CANCELLED
+    is_cancelled()
+        || is_upload_slot_cancelled()
+        || message.trim() == WORKFLOW_CANCELLED
 }

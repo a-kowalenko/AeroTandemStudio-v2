@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use smb2::{ClientConfig, SmbClient};
 
-use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
+use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
 
@@ -528,10 +528,11 @@ pub(crate) struct UploadProgressGate<F> {
     last_percent: f64,
     last_file: u32,
     started: Instant,
+    cancel: UploadCancelPolicy,
 }
 
 impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
-    fn new(cb: F) -> Self {
+    fn new(cb: F, cancel: UploadCancelPolicy) -> Self {
         let now = Instant::now();
         Self {
             cb,
@@ -541,6 +542,7 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
             last_percent: -1.0,
             last_file: 0,
             started: now,
+            cancel,
         }
     }
 
@@ -554,7 +556,7 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
         filename: &str,
         force: bool,
     ) {
-        if is_cancelled() {
+        if is_upload_cancelled(self.cancel) {
             return;
         }
         let percent = percent.clamp(0.0, 100.0);
@@ -599,8 +601,8 @@ fn cancelled_upload_result() -> UploadResult {
     }
 }
 
-fn ensure_upload_not_cancelled() -> Result<(), UploadResult> {
-    if is_cancelled() {
+fn ensure_upload_not_cancelled(cancel: UploadCancelPolicy) -> Result<(), UploadResult> {
+    if is_upload_cancelled(cancel) {
         Err(cancelled_upload_result())
     } else {
         Ok(())
@@ -608,17 +610,22 @@ fn ensure_upload_not_cancelled() -> Result<(), UploadResult> {
 }
 
 /// Upload a local file or directory to the configured server.
+///
+/// `cancel` selects whether Vorgang-slot cancel aborts this transfer
+/// ([`UploadCancelPolicy::WorkflowOrSlot`]) or workflow/backup-only cancel
+/// ([`UploadCancelPolicy::WorkflowOrBackup`] — SD server-backup mirrors).
 pub async fn upload_path<F>(
     local_path: &Path,
     server_url: &str,
     login: &str,
     password: &str,
+    cancel: UploadCancelPolicy,
     on_progress: F,
 ) -> UploadResult
 where
     F: FnMut(UploadProgress) + Send + 'static,
 {
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return cancelled;
     }
 
@@ -646,7 +653,7 @@ where
 
     let total_files = files.len() as u32;
     let total_bytes: u64 = files.iter().map(|f| f.size).sum();
-    let mut progress = UploadProgressGate::new(on_progress);
+    let mut progress = UploadProgressGate::new(on_progress, cancel);
     progress.emit(0.0, 0, total_files, 0, total_bytes, "", true);
 
     match &target {
@@ -654,14 +661,14 @@ where
             let dest = path.clone();
             let files = files.to_vec();
             match tauri::async_runtime::spawn_blocking(move || {
-                upload_local(&dest, &files, total_files, total_bytes, &mut progress)
+                upload_local(&dest, &files, total_files, total_bytes, cancel, &mut progress)
             })
             .await
             {
                 Ok(result) => result,
                 Err(e) => UploadResult {
                     success: false,
-                    message: if is_cancelled() {
+                    message: if is_upload_cancelled(cancel) {
                         WORKFLOW_CANCELLED.into()
                     } else {
                         format!("Upload fehlgeschlagen: {e}")
@@ -686,6 +693,7 @@ where
                 total_bytes,
                 login,
                 password,
+                cancel,
                 progress,
             )
             .await
@@ -698,6 +706,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
     files: &[FileEntry],
     total_files: u32,
     total_bytes: u64,
+    cancel: UploadCancelPolicy,
     progress: &mut UploadProgressGate<F>,
 ) -> UploadResult {
     if let Err(e) = fs::create_dir_all(dest_root) {
@@ -714,7 +723,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
     let mut copied_bytes = 0u64;
 
     for (idx, file) in ordered.into_iter().enumerate() {
-        if let Err(cancelled) = ensure_upload_not_cancelled() {
+        if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
             return cancelled;
         }
         let file_index = (idx + 1) as u32;
@@ -738,7 +747,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
 
         // `current_file` = completed count (0 while first file is in flight).
         let completed_before = idx as u32;
-        if let Err(e) = copy_file_chunked(&file.absolute, &dest, |copied_in_file| {
+        if let Err(e) = copy_file_chunked(&file.absolute, &dest, cancel, |copied_in_file| {
             let current = bytes_before + copied_in_file;
             let percent = if total_bytes > 0 {
                 (current as f64 / total_bytes as f64) * 100.0
@@ -790,7 +799,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
         );
     }
 
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return cancelled;
     }
 
@@ -815,6 +824,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
 fn copy_file_chunked(
     src: &Path,
     dst: &Path,
+    cancel: UploadCancelPolicy,
     mut on_chunk: impl FnMut(u64),
 ) -> Result<(), String> {
     let mut input = File::open(src).map_err(|e| e.to_string())?;
@@ -822,7 +832,7 @@ fn copy_file_chunked(
     let mut buf = vec![0u8; CHUNK_SIZE];
     let mut copied = 0u64;
     loop {
-        if is_cancelled() {
+        if is_upload_cancelled(cancel) {
             let _ = fs::remove_file(dst);
             return Err(WORKFLOW_CANCELLED.into());
         }
@@ -847,6 +857,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     total_bytes: u64,
     login: &str,
     password: &str,
+    cancel: UploadCancelPolicy,
     progress: UploadProgressGate<F>,
 ) -> UploadResult {
     let mut client = match connect_smb(host, port, login, password).await {
@@ -888,6 +899,9 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
 
     // Create every parent directory before any parallel write (no races on mkdir).
     for file in phases.ordered() {
+        if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
+            return cancelled;
+        }
         let remote_rel = join_smb_path(subpath, &file.relative);
         if let Some(parent) = Path::new(&remote_rel).parent() {
             let parent_str = parent.to_string_lossy().replace('\\', "/");
@@ -925,6 +939,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         total_bytes,
         Arc::clone(&progress),
         0,
+        cancel,
     )
     .await
     {
@@ -932,7 +947,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         Err(e) => return e,
     };
 
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return cancelled;
     }
 
@@ -951,6 +966,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             copied_bytes,
             &progress,
             false,
+            cancel,
         )
         .await
         {
@@ -959,7 +975,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         }
     }
 
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return cancelled;
     }
 
@@ -976,6 +992,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             copied_bytes,
             &progress,
             true,
+            cancel,
         )
         .await
         {
@@ -985,7 +1002,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     }
 
     let _ = copied_bytes;
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return cancelled;
     }
 
@@ -1032,8 +1049,9 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
     bytes_before: u64,
     progress: &Arc<Mutex<UploadProgressGate<F>>>,
     allow_100: bool,
+    cancel: UploadCancelPolicy,
 ) -> Result<u64, UploadResult> {
-    if let Err(cancelled) = ensure_upload_not_cancelled() {
+    if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
         return Err(cancelled);
     }
 
@@ -1045,7 +1063,7 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
 
     // `file_index` is the completed count after this file finishes.
     let completed_before = file_index.saturating_sub(1);
-    match stream_upload_file(client, tree, &file.absolute, remote_rel, |copied_in_file| {
+    match stream_upload_file(client, tree, &file.absolute, remote_rel, cancel, |copied_in_file| {
         let current = bytes_before + copied_in_file;
         let mut percent = if total_bytes > 0 {
             (current as f64 / total_bytes as f64) * 100.0
@@ -1157,6 +1175,7 @@ pub(crate) async fn stream_upload_file(
     tree: &smb2::client::Tree,
     local: &Path,
     remote: &str,
+    cancel: UploadCancelPolicy,
     mut on_chunk: impl FnMut(u64),
 ) -> Result<u64, String> {
     let mut writer = client
@@ -1174,12 +1193,12 @@ pub(crate) async fn stream_upload_file(
             .await
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
-        if is_cancelled() {
+        if is_upload_cancelled(cancel) {
             return Err(WORKFLOW_CANCELLED.into());
         }
         let mut offset = 0usize;
         while offset < data.len() {
-            if is_cancelled() {
+            if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.into());
             }
             let end = (offset + CHUNK_SIZE).min(data.len());
@@ -1200,7 +1219,7 @@ pub(crate) async fn stream_upload_file(
         let mut input = File::open(&path).map_err(|e| e.to_string())?;
         let mut buf = vec![0u8; CHUNK_SIZE];
         loop {
-            if is_cancelled() {
+            if is_upload_cancelled(cancel) {
                 let _ = tx.blocking_send(Err(WORKFLOW_CANCELLED.into()));
                 return Ok::<(), String>(());
             }
@@ -1218,7 +1237,7 @@ pub(crate) async fn stream_upload_file(
     let mut copied = 0u64;
     while let Some(chunk) = rx.recv().await {
         let chunk = chunk?;
-        if is_cancelled() {
+        if is_upload_cancelled(cancel) {
             let _ = reader.await;
             return Err(WORKFLOW_CANCELLED.into());
         }
@@ -1234,7 +1253,7 @@ pub(crate) async fn stream_upload_file(
         Ok(Ok(())) => {}
         Ok(Err(e)) => return Err(e),
         Err(e) => {
-            if is_cancelled() {
+            if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.into());
             }
             return Err(format!("Disk-Read fehlgeschlagen: {e}"));
@@ -1245,7 +1264,10 @@ pub(crate) async fn stream_upload_file(
 }
 
 /// Best-effort removal of a partial upload tree on the configured server.
-/// Uses the same path layout as [`upload_path`] (job folder name from `local_path`).
+///
+/// Deletes the **job root** (folder name of `local_path`) under the share
+/// target — recursive list/delete, not one SMB call per local file. That
+/// also removes remote leftovers that are no longer in the local tree.
 pub async fn cleanup_remote_upload_folder(
     local_path: &Path,
     server_url: &str,
@@ -1253,40 +1275,36 @@ pub async fn cleanup_remote_upload_folder(
     password: &str,
 ) -> Result<(), String> {
     let target = parse_server_target(server_url)?;
-    let files = collect_upload_files(local_path)?;
-    if files.is_empty() {
-        return Ok(());
-    }
+    let job_name = local_path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Kein Upload-Ziel zum Aufräumen".to_string())?;
 
     match target {
-        ServerTarget::Local { path } => cleanup_local_upload_tree(&path, &files),
+        ServerTarget::Local { path } => cleanup_local_job_root(&path, &job_name),
         ServerTarget::Smb {
             host,
             port,
             share,
             subpath,
         } => {
-            cleanup_smb_upload_tree(
+            cleanup_smb_job_root(
                 &host,
                 port,
                 &share,
                 &subpath,
                 login,
                 password,
-                &files,
+                &job_name,
             )
             .await
         }
     }
 }
 
-fn cleanup_local_upload_tree(dest_root: &Path, files: &[FileEntry]) -> Result<(), String> {
-    let top_name = files
-        .first()
-        .and_then(|f| f.relative.split('/').next())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| "Kein Upload-Ziel zum Aufräumen".to_string())?;
-    let top = dest_root.join(top_name);
+fn cleanup_local_job_root(dest_root: &Path, job_name: &str) -> Result<(), String> {
+    let top = dest_root.join(job_name);
     if top.is_dir() {
         fs::remove_dir_all(&top).map_err(|e| format!("Remote-Ordner löschen: {e}"))?;
     } else if top.is_file() {
@@ -1295,14 +1313,14 @@ fn cleanup_local_upload_tree(dest_root: &Path, files: &[FileEntry]) -> Result<()
     Ok(())
 }
 
-async fn cleanup_smb_upload_tree(
+async fn cleanup_smb_job_root(
     host: &str,
     port: u16,
     share: &str,
     subpath: &str,
     login: &str,
     password: &str,
-    files: &[FileEntry],
+    job_name: &str,
 ) -> Result<(), String> {
     let mut client = connect_smb(host, port, login, password).await?;
     let mut tree = client
@@ -1310,32 +1328,43 @@ async fn cleanup_smb_upload_tree(
         .await
         .map_err(|e| map_smb_error(&e.to_string(), share))?;
 
-    let mut remote_paths: Vec<String> = files
-        .iter()
-        .map(|f| join_smb_path(subpath, &f.relative))
-        .collect();
-    remote_paths.sort_by_key(|p| std::cmp::Reverse(p.matches('/').count()));
-
-    for remote in &remote_paths {
-        let _ = client.delete_file(&mut tree, remote).await;
-    }
-
-    let mut dirs: Vec<String> = remote_paths
-        .iter()
-        .filter_map(|p| {
-            Path::new(p)
-                .parent()
-                .map(|parent| parent.to_string_lossy().replace('\\', "/"))
-        })
-        .filter(|p| !p.is_empty() && p != ".")
-        .collect();
-    dirs.sort_by_key(|p| std::cmp::Reverse(p.matches('/').count()));
-    dirs.dedup();
-    for dir in dirs {
-        let _ = client.delete_directory(&mut tree, &dir).await;
-    }
-
+    let job_root = join_smb_path(subpath, job_name);
+    delete_smb_tree_recursive(&mut client, &mut tree, &job_root).await;
     Ok(())
+}
+
+/// Recursively delete a remote directory (or a single file) under `path`.
+/// Best-effort: individual delete failures are ignored so partial trees clear.
+fn delete_smb_tree_recursive<'a>(
+    client: &'a mut SmbClient,
+    tree: &'a mut smb2::client::Tree,
+    path: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        if path.is_empty() {
+            return;
+        }
+        match client.list_directory(tree, path).await {
+            Ok(entries) => {
+                for entry in entries {
+                    if entry.name == "." || entry.name == ".." {
+                        continue;
+                    }
+                    let child = format!("{path}/{}", entry.name);
+                    if entry.is_directory {
+                        delete_smb_tree_recursive(client, tree, &child).await;
+                    } else {
+                        let _ = client.delete_file(tree, &child).await;
+                    }
+                }
+                let _ = client.delete_directory(tree, path).await;
+            }
+            Err(_) => {
+                // Not a directory (or gone) — try as file.
+                let _ = client.delete_file(tree, path).await;
+            }
+        }
+    })
 }
 
 #[cfg(test)]
@@ -1529,9 +1558,16 @@ mod tests {
 
     #[test]
     fn upload_progress_gate_skips_redundant_chunk_updates() {
+        use crate::video::ffmpeg::{
+            reset_cancel_flag, reset_upload_slot_cancel, UploadCancelPolicy,
+        };
         use std::cell::Cell;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1));
+        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::WorkflowOrSlot);
         gate.emit(10.0, 1, 5, 100, 1000, "a.bin", true);
         gate.emit(10.4, 1, 5, 104, 1000, "a.bin", false);
         assert_eq!(count.get(), 1);
@@ -1541,9 +1577,16 @@ mod tests {
 
     #[test]
     fn upload_progress_gate_emits_on_file_change() {
+        use crate::video::ffmpeg::{
+            reset_cancel_flag, reset_upload_slot_cancel, UploadCancelPolicy,
+        };
         use std::cell::Cell;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1));
+        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::WorkflowOrSlot);
         gate.emit(50.0, 1, 3, 500, 1000, "a.bin", true);
         gate.emit(50.0, 2, 3, 500, 1000, "b.bin", false);
         assert_eq!(count.get(), 2);
@@ -1551,9 +1594,16 @@ mod tests {
 
     #[test]
     fn upload_progress_gate_reports_average_speed_bps() {
+        use crate::video::ffmpeg::{
+            reset_cancel_flag, reset_upload_slot_cancel, UploadCancelPolicy,
+        };
         use std::cell::Cell;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
         let speed = Cell::new(0.0_f64);
-        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps));
+        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps), UploadCancelPolicy::WorkflowOrSlot);
         gate.emit(10.0, 1, 5, 1_000_000, 10_000_000, "a.bin", true);
         assert!(speed.get() > 0.0);
     }
@@ -1577,14 +1627,105 @@ mod tests {
             fs::create_dir_all(remote.parent().unwrap()).unwrap();
             fs::write(&remote, b"x").unwrap();
         }
+        // Extra remote leftover not in a fresh local list must still vanish.
+        fs::write(dest_root.join("JobA").join("orphan.bin"), b"x").unwrap();
         assert!(dest_root.join("JobA").is_dir());
-        cleanup_local_upload_tree(&dest_root, &files).unwrap();
+        cleanup_local_job_root(&dest_root, "JobA").unwrap();
         assert!(!dest_root.join("JobA").exists());
     }
 
     #[test]
+    fn slot_cancel_does_not_trip_workflow_only_policy() {
+        use crate::video::ffmpeg::{
+            cancel_secondary_backup, cancel_upload_slot, is_upload_cancelled, reset_cancel_flag,
+            reset_secondary_backup_cancel, reset_upload_slot_cancel, UploadCancelPolicy,
+        };
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
+        reset_secondary_backup_cancel();
+        cancel_upload_slot();
+        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOnly));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrBackup));
+        assert!(is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+        reset_upload_slot_cancel();
+        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+
+        cancel_secondary_backup();
+        assert!(is_upload_cancelled(UploadCancelPolicy::WorkflowOrBackup));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOnly));
+        reset_secondary_backup_cancel();
+    }
+
+    #[test]
+    fn local_upload_respects_slot_cancel_flag() {
+        use crate::video::ffmpeg::{
+            cancel_upload_slot, reset_cancel_flag, reset_upload_slot_cancel,
+            UploadCancelPolicy,
+        };
+        use std::io::Write;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
+        let dir = std::env::temp_dir().join(format!(
+            "aero_upload_slot_cancel_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.bin");
+        {
+            let mut f = File::create(&src).unwrap();
+            let chunk = vec![0u8; CHUNK_SIZE + 64];
+            f.write_all(&chunk).unwrap();
+        }
+        let dest = dir.join("dest");
+        cancel_upload_slot();
+        let result = upload_local(
+            &dest,
+            &[FileEntry {
+                absolute: src.clone(),
+                relative: "src.bin".into(),
+                size: fs::metadata(&src).unwrap().len(),
+            }],
+            1,
+            fs::metadata(&src).unwrap().len(),
+            UploadCancelPolicy::WorkflowOrSlot,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrSlot),
+        );
+        // WorkflowOrBackup ignores slot cancel — production server-backup policy.
+        let backup_style = upload_local(
+            &dest,
+            &[FileEntry {
+                absolute: src.clone(),
+                relative: "src2.bin".into(),
+                size: fs::metadata(&src).unwrap().len(),
+            }],
+            1,
+            fs::metadata(&src).unwrap().len(),
+            UploadCancelPolicy::WorkflowOrBackup,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrBackup),
+        );
+        reset_upload_slot_cancel();
+        reset_cancel_flag();
+        let _ = fs::remove_dir_all(&dir);
+        assert!(!result.success);
+        assert_eq!(result.message, WORKFLOW_CANCELLED);
+        assert!(
+            backup_style.success,
+            "WorkflowOrBackup must ignore slot cancel: {}",
+            backup_style.message
+        );
+    }
+
+    #[test]
     fn local_upload_respects_cancel_flag() {
-        use crate::video::ffmpeg::{cancel_encode, reset_cancel_flag};
+        use crate::video::ffmpeg::{
+            cancel_encode, reset_cancel_flag, UploadCancelPolicy,
+        };
         use std::io::Write;
 
         let _guard = upload_test_lock();
@@ -1613,7 +1754,8 @@ mod tests {
             }],
             1,
             fs::metadata(&src).unwrap().len(),
-            &mut UploadProgressGate::new(|_| {}),
+            UploadCancelPolicy::WorkflowOrSlot,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrSlot),
         );
         reset_cancel_flag();
         let _ = fs::remove_dir_all(&dir);
@@ -1645,9 +1787,13 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            &mut UploadProgressGate::new(|p| {
-                seen.push(p.current_file);
-            }),
+            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            &mut UploadProgressGate::new(
+                |p| {
+                    seen.push(p.current_file);
+                },
+                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            ),
         );
         assert!(result.success, "{}", result.message);
         assert!(!seen.is_empty());
@@ -1692,11 +1838,15 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            &mut UploadProgressGate::new(|p| {
-                if !p.filename.is_empty() {
-                    order.lock().unwrap().push(p.filename.clone());
-                }
-            }),
+            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            &mut UploadProgressGate::new(
+                |p| {
+                    if !p.filename.is_empty() {
+                        order.lock().unwrap().push(p.filename.clone());
+                    }
+                },
+                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            ),
         );
         assert!(result.success, "{}", result.message);
         let seen = order.into_inner().unwrap();
@@ -1739,14 +1889,18 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            &mut UploadProgressGate::new(|p| {
-                if !p.filename.is_empty() {
-                    let n = started.fetch_add(1, Ordering::SeqCst);
-                    if n >= 1 {
-                        cancel_encode();
+            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            &mut UploadProgressGate::new(
+                |p| {
+                    if !p.filename.is_empty() {
+                        let n = started.fetch_add(1, Ordering::SeqCst);
+                        if n >= 1 {
+                            cancel_encode();
+                        }
                     }
-                }
-            }),
+                },
+                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            ),
         );
         reset_cancel_flag();
         assert!(!result.success);

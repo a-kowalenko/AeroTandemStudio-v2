@@ -14,7 +14,6 @@
       "apply": "Aplicar",
       "create": "Crear",
       "createAndUpload": "Crear y subir",
-      "createAndUploadLater": "Crear · subir después",
       "history": "Trabajos",
       "settings": "Configuración",
       "pickFolder": "Elegir carpeta",
@@ -45,7 +44,8 @@
       "showSuggestions": "Mostrar sugerencias",
       "unmute": "Activar sonido",
       "watermark": "Marca de agua",
-      "watermarkShort": "MA"
+      "watermarkShort": "MA",
+      "createAndUploadLater": "Crear · subir después"
     },
     "status": {
       "error": "Error",
@@ -143,15 +143,17 @@
         "description": "Al iniciar se buscan versiones nuevas. Aquí también puedes elegir una versión anterior o más nueva — instalación como la automática (silenciosa, con progreso).",
         "installedVersion": "Versión instalada: {{version}}",
         "check": "Buscar actualizaciones",
+        "beta": "Beta",
         "betaTester": "Probar versión beta",
         "betaTesterDescription": "Las versiones beta pueden tener errores. Se incluyen al iniciar y al buscar actualizaciones — también si usas una versión estable.",
+        "showPrereleases": "Mostrar prelanzamientos",
         "availableVersions": "Versiones disponibles",
         "loadingVersions": "Cargando versiones…",
         "unavailable": "No disponible",
         "chooseVersion": "Elegir versión…",
         "latest": "Más reciente",
         "installed": "Instalada",
-        "beta": "Beta",
+        "prerelease": "Prelanzamiento",
         "notAutoInstallable": "no se instala automáticamente",
         "openInstaller": "Abrir instalador…",
         "installOlder": "Instalar versión anterior",
@@ -277,17 +279,17 @@
         "serverUrl": "URL de respaldo en servidor",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Mismo envío SMB que al crear; destino independiente de «aktuell». Usa las credenciales del servidor de subida.",
-        "serverUrlFromProfile": "Del perfil de servidor «{{name}}».",
-        "serverUrlMissing": "No hay URL de respaldo en el perfil de servidor activo. Configúrala en Servidor.",
-        "setInServerProfile": "Definir URL de respaldo en el perfil",
-        "editInServerProfile": "Editar en el perfil de servidor",
         "serverUrlTest": "Probar",
         "serverUrlTesting": "Probando…",
         "serverUrlMountWarn": "Se detectó una ruta de montaje antigua — configura una URL smb:// (sin montaje del Finder).",
         "copyStrategy": "Espejo en servidor",
         "copyAsync": "Segundo plano: local listo → servidor en paralelo",
         "copyMirror": "Espejo: primero local, luego esperar → servidor",
-        "copyHint": "Recomendado: segundo plano — el flujo no espera el espejo en el servidor."
+        "copyHint": "Recomendado: segundo plano — el flujo no espera el espejo en el servidor.",
+        "editInServerProfile": "Editar en el perfil de servidor",
+        "serverUrlFromProfile": "Del perfil de servidor «{{name}}».",
+        "serverUrlMissing": "No hay URL de respaldo en el perfil de servidor activo. Configúrala en Servidor.",
+        "setInServerProfile": "Definir URL de respaldo en el perfil"
       },
       "import": {
         "title": "Importar y expulsar",
@@ -298,13 +300,13 @@
         "ejectTitle": "Expulsar justo tras el respaldo (importar/QR desde copias). Sin respaldo: tras importar.",
         "ejectHint": "Con respaldo, justo después; sin respaldo, tras importar.",
         "skipProcessed": "Omitir archivos ya procesados",
-        "usbCameras": "Cámaras de acción USB (modelos aprobados)",
-        "usbCamerasHint": "Importación MTP/USB solo para modelos aprobados sin volumen SD (p. ej. GoPro HERO 5+). DJI Osmo y lectores usan el volumen montado.",
+        "usbCameras": "Cámaras de acción USB (GoPro / DJI / Insta360)",
+        "usbCamerasHint": "Detecta cámaras por USB (MTP/WPD), copia los medios localmente e importa como desde la tarjeta SD. Teléfonos y memorias normales quedan fuera.",
         "usbImportMode": "Método de importación USB",
         "usbImportModeAuto": "Automático (lista blanca)",
-        "usbImportModeVolume": "Solo volumen / SD",
+        "usbImportModeHint": "Automático: solo GoPro en la lista. «Solo volumen» para DJI Osmo (Transferencia de archivos en la cámara). Preferir MTP solo si la lista falla.",
         "usbImportModeMtp": "Preferir MTP (experimental)",
-        "usbImportModeHint": "Automático: solo GoPro en la lista. «Solo volumen» para DJI Osmo (Transferencia de archivos en la cámara). Preferir MTP solo si la lista falla."
+        "usbImportModeVolume": "Solo volumen / SD"
       },
       "size": {
         "title": "Umbral de aviso",
@@ -322,12 +324,6 @@
         "urlPlaceholder": "smb://…",
         "login": "Usuario",
         "password": "Contraseña",
-        "backupUrl": "URL de respaldo (opcional)",
-        "backupUrlPlaceholder": "smb://…/backup",
-        "backupUrlHint": "Segundo destino SMB de este perfil — sin conmutación automática, solo un recurso adicional.",
-        "backupLogin": "Usuario de respaldo",
-        "backupPassword": "Contraseña de respaldo",
-        "backupCredsPlaceholder": "Vacío = igual que el principal",
         "recheckTitle": "Clic para volver a comprobar",
         "recheckTitleWithMessage": "{{message}}\nClic para volver a comprobar",
         "addProfile": "Nuevo perfil",
@@ -352,7 +348,13 @@
         "schemePath": "Ruta",
         "urlPlaceholderHost": "host/recurso",
         "urlPlaceholderPath": "/ruta o C:\\carpeta",
-        "urlPlaceholderUnc": "servidor\\recurso"
+        "urlPlaceholderUnc": "servidor\\recurso",
+        "backupCredsPlaceholder": "Vacío = igual que el principal",
+        "backupLogin": "Usuario de respaldo",
+        "backupPassword": "Contraseña de respaldo",
+        "backupUrl": "URL de respaldo (opcional)",
+        "backupUrlHint": "Segundo destino SMB de este perfil — sin conmutación automática, solo un recurso adicional.",
+        "backupUrlPlaceholder": "smb://…/backup"
       },
       "upload": {
         "title": "Subida",
@@ -381,32 +383,32 @@
         "foundSuccessViaServerPasswordNamed": "{{name}}: dirección y código de acceso aplicados (contraseña del servidor)."
       },
       "pathHints": {
-        "suggestTitle": "Rutas SMB desde búsqueda de reservas",
-        "primaryLabel": "Primario",
-        "backupLabel": "Respaldo",
-        "suggestBody": "Primario: {{primary}}{{backup}}",
-        "suggestBackupLine": " · Respaldo: {{url}}",
-        "backupProfileLabel": "Respaldo AMS",
-        "newProfileLabel": "Servidor AMS",
         "applyFailed": "No se pudieron guardar las rutas.",
-        "credentialsTitlePrimary": "Credenciales SMB (primario)",
-        "credentialsTitleBackup": "Credenciales SMB (respaldo)",
-        "credentialsBodyPrimary": "Introduce el usuario SMB primario. Primero se prueba en silencio el token AMS como contraseña.",
+        "backupLabel": "Respaldo",
+        "backupProfileLabel": "Respaldo AMS",
         "credentialsBodyBackup": "Introduce el usuario del destino de respaldo. Primero se prueba en silencio el token AMS como contraseña.",
-        "driftTitle": "La ruta SMB difiere de la búsqueda de reservas",
-        "driftCurrentLabel": "Actual",
-        "driftSuggestedLabel": "Nuevo",
-        "driftPrimaryLine": "Primario: {{current}} → {{suggested}}",
-        "driftBackupLine": "Respaldo: {{current}} → {{suggested}}",
+        "credentialsBodyPrimary": "Introduce el usuario SMB primario. Primero se prueba en silencio el token AMS como contraseña.",
+        "credentialsTitleBackup": "Credenciales SMB (respaldo)",
+        "credentialsTitlePrimary": "Credenciales SMB (primario)",
         "dismissLater": "Más tarde",
-        "instanceMismatch": "Las rutas pertenecen a otra instancia de reservas — aplicar está desactivado."
+        "driftBackupLine": "Respaldo: {{current}} → {{suggested}}",
+        "driftCurrentLabel": "Actual",
+        "driftPrimaryLine": "Primario: {{current}} → {{suggested}}",
+        "driftSuggestedLabel": "Nuevo",
+        "driftTitle": "La ruta SMB difiere de la búsqueda de reservas",
+        "instanceMismatch": "Las rutas pertenecen a otra instancia de reservas — aplicar está desactivado.",
+        "newProfileLabel": "Servidor AMS",
+        "primaryLabel": "Primario",
+        "suggestBackupLine": " · Respaldo: {{url}}",
+        "suggestBody": "Primario: {{primary}}{{backup}}",
+        "suggestTitle": "Rutas SMB desde búsqueda de reservas"
       }
     },
     "save": {
       "failed": "No se pudieron guardar los ajustes.",
       "operatorRole": "«Soy»: asigna al menos un rol o elige un nombre del equipo existente.",
       "pickBackup": "Elige una carpeta de respaldo.",
-      "pickSecondBackup": "Define la URL de respaldo en el perfil de servidor activo o desactiva «Respaldar en el servidor».",
+      "pickSecondBackup": "Configura una URL de respaldo en servidor (smb://…) o desactiva la opción.",
       "resetFailed": "No se pudieron restaurar los ajustes predeterminados.",
       "success": "Ajustes guardados."
     }
@@ -505,6 +507,10 @@
       "previewPhotos": "{{count}} foto de vista previa creada",
       "previewPhotosMany": "{{count}} fotos de vista previa creadas",
       "uploaded": "Subido al servidor",
+      "uploadRunning": "Subida en segundo plano",
+      "uploadLiveLabel": "Subida",
+      "uploadLiveWaiting": "Iniciando…",
+      "uploadQueued": "+{{count}} en cola",
       "uploadPending": "Creado localmente — subida pendiente",
       "uploadPendingHint": "Completa la subida más tarde desde Trabajos.",
       "encoder": "Codificador",
@@ -695,33 +701,59 @@
       "hintUpload": "A continuación inician la codificación y la subida.",
       "proceed": "Crear de todos modos"
     },
+    "quitUpload": {
+      "title": "La subida sigue en curso",
+      "body": "Hay una subida en curso o en cola. Al salir se cancelará la subida.",
+      "hint": "Puedes reintentar subidas canceladas más tarde en Trabajos.",
+      "stay": "Seguir en curso",
+      "quit": "Salir y cancelar"
+    },
+    "cancelServerBackup": {
+      "title": "¿Cancelar respaldo en servidor?",
+      "body": "Solo se cancelará el respaldo actual en el servidor. Una subida de trabajo en curso no se ve afectada.",
+      "hint": "El respaldo local se conserva. La carpeta remota puede quedar incompleta.",
+      "keep": "Seguir en curso",
+      "cancel": "Cancelar respaldo"
+    },
+    "bulkUploadSummary": {
+      "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea).",
+      "blocked": "{{count}} no posibles",
+      "blockedList": "No posibles",
+      "decided": "{{count}} subidas tras confirmación",
+      "failed": "{{count}} errores de subida",
+      "ok": "{{count}} correctas",
+      "reason": "{{reason}}",
+      "skipped": "{{count}} omitidas",
+      "skippedList": "Omitidas",
+      "title": "Proceso de subidas terminado"
+    },
     "folderConflict": {
-      "title": "La carpeta de salida ya existe",
       "body": "La carpeta “{{name}}” ya contiene archivos. Sin reemplazarla, medios antiguos (p. ej. fotos) se subirían con el nuevo trabajo.",
-      "videosOne": "{{count}} archivo de video en la carpeta",
-      "videosMany": "{{count}} archivos de video en la carpeta",
-      "photosOne": "{{count}} foto en la carpeta",
-      "photosMany": "{{count}} fotos en la carpeta",
-      "otherFiles": "{{count}} otro(s) archivo(s)",
       "hasMarker": "Marcador listo (_fertig.txt) presente — el trabajo parecía ya terminado",
       "hintEncode": "“Reemplazar carpeta” borra el contenido y crea de nuevo.",
       "hintUpload": "“Reemplazar carpeta” borra el contenido y crea de nuevo — solo se subirán los medios actuales.",
-      "replace": "Reemplazar carpeta y crear"
+      "otherFiles": "{{count}} otro(s) archivo(s)",
+      "photosMany": "{{count}} fotos en la carpeta",
+      "photosOne": "{{count}} foto en la carpeta",
+      "replace": "Reemplazar carpeta y crear",
+      "title": "La carpeta de salida ya existe",
+      "videosMany": "{{count}} archivos de video en la carpeta",
+      "videosOne": "{{count}} archivo de video en la carpeta"
     },
     "offlineCreate": {
-      "title": "Servidor no disponible",
       "body": "La subida está activa, pero el servidor está fuera de línea. Aún puedes crear el trabajo localmente; la subida quedará pendiente.",
       "hint": "Más tarde puedes completar la subida desde Trabajos cuando el servidor vuelva.",
-      "proceed": "Crear localmente de todos modos"
+      "proceed": "Crear localmente de todos modos",
+      "title": "Servidor no disponible"
     },
     "uploadExtraFiles": {
-      "title": "Archivos adicionales en la carpeta",
       "body": "La carpeta de “{{guest}}” contiene archivos que no formaban parte del trabajo original:",
-      "purgeSwitch": "Eliminar archivos sobrantes antes de subir",
       "hintInclude": "Subir todos: la lista de entrega se actualizará antes de subir.",
       "hintPurge": "Los archivos listados se eliminarán localmente y luego comenzará la subida.",
       "proceedInclude": "Subir todos",
-      "proceedPurge": "Eliminar y subir"
+      "proceedPurge": "Eliminar y subir",
+      "purgeSwitch": "Eliminar archivos sobrantes antes de subir",
+      "title": "Archivos adicionales en la carpeta"
     },
     "uploadMissingFiles": {
       "body": "El trabajo “{{guest}}” no se puede subir así. Faltan estos archivos en la carpeta de salida:",
@@ -730,41 +762,29 @@
       "uploadAvailable": "Subir archivos disponibles"
     },
     "uploadPartialConfirm": {
-      "title": "¿Subir incompleto?",
       "body": "Faltan {{count}} archivo(s) y no se subirán. El trabajo “{{guest}}” se enviará al servidor con el resto de los medios.",
-      "proceed": "Subir de todos modos"
+      "proceed": "Subir de todos modos",
+      "title": "¿Subir incompleto?"
     },
     "uploadPreflightFail": {
-      "title": "Subida no posible",
       "body": "No se puede reintentar el trabajo “{{guest}}”:",
       "codes": {
-        "local_vorgang": "Trabajo local (sin handoff AMS)",
         "already_done": "Subida ya completada",
         "ams_completed": "Handoff AMS ya completado",
-        "folder_missing": "Falta la carpeta de salida",
-        "folder_empty": "La carpeta de salida está vacía",
-        "manifest_missing": "Falta el manifiesto",
-        "manifest_invalid": "Manifiesto inválido",
-        "marker_missing": "Falta el marcador de listo",
-        "file_missing": "Falta un archivo",
-        "size_mismatch": "Tamaño de archivo distinto",
         "extra_file": "Archivo adicional",
+        "file_missing": "Falta un archivo",
+        "folder_empty": "La carpeta de salida está vacía",
+        "folder_missing": "Falta la carpeta de salida",
+        "local_vorgang": "Trabajo local (sin handoff AMS)",
+        "manifest_invalid": "Manifiesto inválido",
+        "manifest_missing": "Falta el manifiesto",
+        "marker_missing": "Falta el marcador de listo",
         "preflight_error": "Preflight falló",
+        "size_mismatch": "Tamaño de archivo distinto",
         "skipped": "Omitido",
         "unknown": "Error desconocido"
-      }
-    },
-    "bulkUploadSummary": {
-      "title": "Proceso de subidas terminado",
-      "ok": "{{count}} correctas",
-      "decided": "{{count}} subidas tras confirmación",
-      "skipped": "{{count}} omitidas",
-      "blocked": "{{count}} no posibles",
-      "failed": "{{count}} errores de subida",
-      "blockedList": "No posibles",
-      "skippedList": "Omitidas",
-      "reason": "{{reason}}",
-      "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea)."
+      },
+      "title": "Subida no posible"
     }
   },
   "splash": {
@@ -810,7 +830,9 @@
       "encoder": "Codificador: {{label}}",
       "softwareSuffix": " (Software)",
       "ready": "Listo",
-      "starting": "Iniciando…"
+      "starting": "Iniciando…",
+      "serverBackupPercent": "Respaldo de servidor {{percent}}%",
+      "serverBackupDone": "Respaldo de servidor listo"
     },
     "update": {
       "alreadyInstalling": "La instalación ya está en curso…",
@@ -897,19 +919,25 @@
       "fileProgress": "Archivo {{current}}/{{total}}",
       "bytesProgress": "{{current}} / {{total}}",
       "title": "Subida",
-      "titleLater": "Subida · después",
-      "titleBlockedOn": "Subida activa, servidor offline — crear localmente y completar la subida después",
-      "titleBlockedOff": "Servidor offline — puedes activar la subida (crear local, subir después)",
+      "titleBlockedOn": "Subida activa en configuración, servidor sin conexión",
+      "titleBlockedOff": "Servidor sin conexión — no se puede subir",
       "titleActive": "Activo — el trabajo se subirá al crear",
-      "titleOff": "Subida apagada — actívala para enviar el trabajo al servidor"
+      "titleOff": "Subida apagada — actívala para enviar el trabajo al servidor",
+      "bgDoneTitle": "Subida finalizada",
+      "bgDoneMessage": "{{folder}}",
+      "bgFailTitle": "Subida fallida",
+      "bgFailMessage": "{{detail}} Reintentar en Trabajos.",
+      "bgFailHint": "Reintenta desde Trabajos.",
+      "bgCancelled": "Subida cancelada — pendiente en Trabajos.",
+      "titleLater": "Subida · después"
     },
     "job": {
       "section": "Trabajo",
       "clear": "Vaciar",
       "clearTitle": "Restablecer formulario y medios al crear",
       "createUploadTitle": "Crear trabajo y subir al servidor",
-      "createUploadLaterTitle": "Crear localmente — la subida queda pendiente hasta que vuelva el servidor",
-      "uploadAria": "Subida al servidor"
+      "uploadAria": "Subida al servidor",
+      "createUploadLaterTitle": "Crear localmente — la subida queda pendiente hasta que vuelva el servidor"
     },
     "ready": {
       "showTarget": "Mostrar {{label}}"
@@ -1133,6 +1161,12 @@
       "createUploading": "Trabajo actual — cancelar detiene la subida.",
       "cancelling": "Cancelación solicitada — se termina el paso actual"
     },
+    "upload": {
+      "expand": "Mostrar detalles de la subida",
+      "collapse": "Ocultar detalles de la subida",
+      "queueWaiting": "{{count}} más en cola",
+      "failedHold": "Subida fallida — reintentar en Trabajos"
+    },
     "createSteps": {
       "aria": "Pasos al crear el proceso",
       "cancelled": "Cancelado",
@@ -1160,6 +1194,7 @@
     "appendSuccess": "{{count}} archivo(s) entregados ({{folder}}).\nEstado en “Reenvío” en Trabajos.",
     "appendDialogTitle": "Reenviar",
     "appendCancelled": "Reenvío cancelado.",
+    "appendUploadPending": "Listo en local — carga pendiente (servidor sin conexión). Reintenta luego en Trabajos.",
     "filters": {
       "all": "Todos",
       "open": "Abiertos",
@@ -1186,36 +1221,6 @@
     },
     "emptyFilter": "No hay trabajos para este estado.",
     "emptyJobs": "Aún no hay trabajos. Aparecen aquí al crear.",
-    "upload": {
-      "pending": "Subida pendiente",
-      "uploading": "Subiendo",
-      "failed": "Subida fallida",
-      "retryBtn": "Reintentar subida",
-      "retryTitle": "Reintentar subida",
-      "retryTitleOk": "Iniciar ahora la subida pendiente",
-      "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
-      "retryDone": "Subida completada correctamente.",
-      "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
-      "extraIncluded": "Subida lista. Se incluyeron {{count}} archivo(s) adicional(es).",
-      "retryCancelled": "Subida cancelada.",
-      "pendingBadgeTooltip": "{{count}} subidas pendientes",
-      "bulkBtn": "Procesar subidas pendientes…",
-      "bulkTitle": "Subidas pendientes",
-      "bulkTitleOk": "Iniciar {{count}} subidas una tras otra",
-      "bulkOffline": "Servidor fuera de línea — la subida masiva solo es posible con conexión",
-      "bulkConfirmTitle": "¿Procesar subidas pendientes?",
-      "bulkConfirmBody": "{{count}} trabajos se subirán uno tras otro. Los que fallen el preflight se omiten.",
-      "bulkConfirmBodyScan": "{{total}} trabajos: {{ready}} listos · {{needs}} con confirmación · {{blocked}} no posibles.",
-      "bulkScanning": "Comprobando preflight…",
-      "bulkPhase1Progress": "Subida {{current}}/{{total}}: {{guest}}",
-      "bulkPhase2PromptTitle": "Aún faltan decisiones",
-      "bulkPhase2PromptBody": "{{count}} trabajos aún necesitan una decisión — ¿procesarlos ahora?",
-      "bulkPhase2Later": "Después",
-      "bulkPhase2Now": "Procesar ahora",
-      "bulkProgress": "Subida {{current}}/{{total}}: {{guest}}",
-      "reconnectToastTitle": "Servidor de nuevo en línea",
-      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos."
-    },
     "selectJob": "Selecciona un trabajo",
     "previewReuse": "Reuso de vista previa",
     "customer": "Cliente: {{id}}",
@@ -1320,6 +1325,36 @@
       "statusPaid": "Pagado",
       "wrongKindPhoto": "Suelta fotos (la categoría actual es foto).",
       "wrongKindVideo": "Suelta videos (la categoría actual es video)."
+    },
+    "upload": {
+      "bulkBtn": "Procesar subidas pendientes…",
+      "bulkConfirmBody": "{{count}} trabajos se subirán uno tras otro. Los que fallen el preflight se omiten.",
+      "bulkConfirmBodyScan": "{{total}} trabajos: {{ready}} listos · {{needs}} con confirmación · {{blocked}} no posibles.",
+      "bulkConfirmTitle": "¿Procesar subidas pendientes?",
+      "bulkOffline": "Servidor fuera de línea — la subida masiva solo es posible con conexión",
+      "bulkPhase1Progress": "Subida {{current}}/{{total}}: {{guest}}",
+      "bulkPhase2Later": "Después",
+      "bulkPhase2Now": "Procesar ahora",
+      "bulkPhase2PromptBody": "{{count}} trabajos aún necesitan una decisión — ¿procesarlos ahora?",
+      "bulkPhase2PromptTitle": "Aún faltan decisiones",
+      "bulkProgress": "Subida {{current}}/{{total}}: {{guest}}",
+      "bulkScanning": "Comprobando preflight…",
+      "bulkTitle": "Subidas pendientes",
+      "bulkTitleOk": "Iniciar {{count}} subidas una tras otra",
+      "extraIncluded": "Subida lista. Se incluyeron {{count}} archivo(s) adicional(es).",
+      "failed": "Subida fallida",
+      "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
+      "pending": "Subida pendiente",
+      "pendingBadgeTooltip": "{{count}} subidas pendientes",
+      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos.",
+      "reconnectToastTitle": "Servidor de nuevo en línea",
+      "retryBtn": "Reintentar subida",
+      "retryCancelled": "Subida cancelada.",
+      "retryDone": "Subida completada correctamente.",
+      "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
+      "retryTitle": "Reintentar subida",
+      "retryTitleOk": "Iniciar ahora la subida pendiente",
+      "uploading": "Subiendo"
     }
   },
   "ams": {
@@ -1404,8 +1439,6 @@
       "amsNotChecked": "{{title}}: no verificado",
       "retryOrSettings": "Clic: reintentar · clic derecho: configuración",
       "retry": "Clic para volver a comprobar",
-      "backupFailedHint": "Clic: cerrar aviso y comprobar · clic derecho: URL de respaldo",
-      "backupSettingsHint": "Clic derecho: URL de respaldo en configuración",
       "connectionTitle": "Conexión",
       "titleAllOk": "Todo conectado",
       "titlePartial": "Parcial",
@@ -1418,18 +1451,25 @@
       "serverOkRemote": "Conectado",
       "amsOk": "Conectado",
       "titleAmsOkNamed": "{{name}} conectada",
-      "chipUpload": "Subida",
+      "backupFailedHint": "Clic: cerrar aviso y comprobar · clic derecho: URL de respaldo",
+      "backupSettingsHint": "Clic derecho: URL de respaldo en configuración",
+      "backupPopoverHint": "Clic: detalles · clic derecho: URL de respaldo",
       "chipServerBackup": "Respaldo servidor",
       "chipServerBackupDone": "Respaldo servidor listo",
       "chipServerBackupFailed": "Respaldo servidor falló",
-      "percent": "{{percent}}%",
-      "serverBackupRunning": "Respaldo servidor: {{percent}}%",
-      "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}",
-      "serverBackupFiles": "{{current}}/{{total}}",
+      "chipServerBackupCancelled": "Respaldo servidor cancelado",
+      "chipUpload": "Subida",
+      "liveServerBackup": "Respaldo de servidor {{percent}} por ciento",
+      "liveUpload": "Subida {{percent}} por ciento",
       "parallelServerBackup": "También: respaldo servidor {{percent}}%",
       "parallelUpload": "También: subida {{percent}}%",
-      "liveUpload": "Subida {{percent}} por ciento",
-      "liveServerBackup": "Respaldo de servidor {{percent}} por ciento"
+      "percent": "{{percent}}%",
+      "serverBackupFiles": "{{current}}/{{total}}",
+      "serverBackupRunning": "Respaldo servidor: {{percent}}%",
+      "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}"
+    },
+    "backupPopover": {
+      "cancelledLocalRemains": "El respaldo local se conserva."
     }
   },
   "qr": {
@@ -1762,6 +1802,8 @@
     "monitor": {
       "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
       "secondaryBackupTitle": "Respaldo en servidor",
+      "secondaryBackupCancelledTitle": "Respaldo en servidor cancelado",
+      "secondaryBackupCancelledBody": "El respaldo local se conserva. La carpeta remota puede quedar incompleta.",
       "title": "Monitor SD"
     },
     "tile": {
@@ -1835,7 +1877,6 @@
       "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después."
     },
     "operatorHint": "Tu nombre se usará como favorito Yo en los menús del equipo.",
-    "operatorRequired": "Indica quién eres.",
     "operatorMultiRole": "Si hay varios roles o ninguno, no se conservará nada automáticamente al restablecer la sesión.",
     "operatorSingleRoleTm": "Solo se encontró el rol de tandem master; se conservará al restablecer la sesión.",
     "operatorSingleRoleVs": "Solo se encontró el rol de video jumper; se conservará al restablecer la sesión.",
@@ -1857,27 +1898,27 @@
     },
     "upload": {
       "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento.",
-      "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
       "amsHint": "Buscamos automáticamente el puente de reservas. Puedes aplicar las rutas encontradas o configurar el servidor manualmente.",
-      "searchNetwork": "Buscar en la red",
+      "connectAndApply": "Conectar con el servidor",
+      "connectRequired": "Conéctate primero al servidor.",
+      "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
+      "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
+      "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
+      "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
+      "pathsApplied": "Rutas aplicadas: {{primary}}",
+      "presetCaldenHint": "URL predeterminada para Calden",
+      "presetGeraHint": "Perfil Gera — introduce la URL tú mismo",
+      "profileName": "Nombre del perfil",
+      "profilesHint": "Perfiles de servidor con las rutas aplicadas (incluida la URL de respaldo opcional). Se eliminaron los perfiles predeterminados no usados.",
       "searchAgain": "Buscar servidor",
+      "searchNetwork": "Buscar en la red",
       "searching": "Buscando…",
       "searchingHint": "Explorando la red…",
-      "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
       "setupManually": "Configurar manualmente",
-      "tokenRequired": "Introduce el token o clave de AMS.",
-      "connectRequired": "Conéctate primero al servidor.",
-      "tokenPlaceholder": "Token / clave",
-      "tokenHint": "A menudo es la misma contraseña que para el servidor SMB.",
-      "profileName": "Nombre del perfil",
-      "connectAndApply": "Conectar con el servidor",
       "skipAms": "Continuar sin servidor",
-      "pathsApplied": "Rutas aplicadas: {{primary}}",
-      "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
-      "profilesHint": "Perfiles de servidor con las rutas aplicadas (incluida la URL de respaldo opcional). Se eliminaron los perfiles predeterminados no usados.",
-      "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
-      "presetCaldenHint": "URL predeterminada para Calden",
-      "presetGeraHint": "Perfil Gera — introduce la URL tú mismo"
+      "tokenHint": "A menudo es la misma contraseña que para el servidor SMB.",
+      "tokenPlaceholder": "Token / clave",
+      "tokenRequired": "Introduce el token o clave de AMS."
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternativa: {{path}}",
@@ -1887,7 +1928,8 @@
       "createFolder": "Crear carpeta:\n{{path}}",
       "proceedAnyway": "¿Continuar de todos modos?",
       "warningsTitle": "Notas sobre la ubicación de almacenamiento:"
-    }
+    },
+    "operatorRequired": "Indica quién eres."
   },
   "dateField": {
     "chooseDateAria": "Elegir fecha",

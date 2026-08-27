@@ -17,6 +17,7 @@ import {
   showSdQueueDroppedToast,
   showSdQueuedToast,
 } from "../lib/sdQueueToast";
+import { showSecondaryBackupCancelledToast } from "../lib/backgroundUploadToast";
 import { useConfigStore } from "../store/configStore";
 import { isSdPipelineBusy, useSdStore } from "../store/sdStore";
 import { useUiStore } from "../store/uiStore";
@@ -335,6 +336,18 @@ export function useSdCardMonitor(opts?: {
               p.message?.trim() || tr("sd.monitor.secondaryBackupFailed"),
               tr("sd.monitor.secondaryBackupTitle"),
             );
+          }
+          if (p.state === "cancelled") {
+            showSecondaryBackupCancelledToast({
+              title: tr("sd.monitor.secondaryBackupCancelledTitle"),
+              message: tr("sd.monitor.secondaryBackupCancelledBody"),
+            });
+            window.setTimeout(() => {
+              const cur = useSdStore.getState().secondaryBackup;
+              if (cur?.job_id === p.job_id && cur.state === "cancelled") {
+                setSecondaryBackup(null);
+              }
+            }, 2500);
           }
           if (p.state === "done") {
             window.setTimeout(() => {
