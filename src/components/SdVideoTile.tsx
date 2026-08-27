@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
-  Film,
   Maximize,
   Minimize,
   Pause,
@@ -14,6 +13,7 @@ import { videoFileSrc } from "../lib/mediaUrl";
 import type { ThumbQuality } from "../lib/sdCard";
 import { cn, isLinuxHost } from "../lib/utils";
 import { Checkbox } from "./ui/checkbox";
+import { SdTilePreview } from "./SdTilePreview";
 
 const HOVER_PLAY_DELAY_MS = 180;
 const LINUX_HOVER_PLAY_DELAY_MS = 280;
@@ -656,8 +656,13 @@ export function SdVideoTile({
         pinned && isActive && !selected && "ring-2 ring-primary/50",
       )}
     >
-      <div
-        className="relative isolate flex aspect-video items-center justify-center overflow-hidden bg-black/90"
+      <SdTilePreview
+        thumbUrl={!immersive ? thumbUrl : undefined}
+        thumbQuality={thumbQuality}
+        suppressLqEnhance={showVideo && !!src}
+        placeholder={
+          immersive ? "dark" : showVideo && src ? "none" : "video-icon"
+        }
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}
         onClick={(e) => {
@@ -710,30 +715,6 @@ export function SdVideoTile({
           </span>
         ) : null}
 
-        {/* Poster stays mounted under the video to avoid swap/layout jitter. */}
-        {thumbUrl && !immersive ? (
-          <img
-            src={thumbUrl}
-            alt=""
-            className={cn(
-              "absolute inset-0 z-0 h-full w-full object-cover transition-[filter,transform] duration-300",
-              thumbQuality === "lq" &&
-                !(showVideo && src) &&
-                "scale-[1.03] blur-[0.6px]",
-            )}
-            draggable={false}
-          />
-        ) : !immersive && !(showVideo && src) ? (
-          <div className="absolute inset-0 z-0 flex h-full w-full items-center justify-center bg-gradient-to-br from-muted/50 to-black/40">
-            <div className="absolute inset-0 animate-pulse bg-muted/30" />
-            <Film className="relative h-8 w-8 text-muted" />
-          </div>
-        ) : immersive ? (
-          <div className="absolute inset-0 z-0 flex h-full w-full items-center justify-center bg-black/80">
-            <Film className="h-8 w-8 text-white/40" />
-          </div>
-        ) : null}
-
         {showVideo && src && !loadError && !immersive ? (
           <video
             key={src}
@@ -774,7 +755,7 @@ export function SdVideoTile({
         )}
 
         {!immersive && renderTileTransportControls()}
-      </div>
+      </SdTilePreview>
 
       <button
         type="button"

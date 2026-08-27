@@ -33,6 +33,7 @@ import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useSdStore } from "../store/sdStore";
 import { SdVideoTile } from "./SdVideoTile";
+import { SdTilePreview } from "./SdTilePreview";
 import { Check, Film, HardDrive, ImageIcon, Loader2, RefreshCw, X } from "lucide-react";
 
 type Props = {
@@ -557,6 +558,11 @@ export function SdFileSelector({
     return false;
   }, [files]);
 
+  const filteredPathsKey = useMemo(
+    () => filtered.map((f) => f.path).join("\0"),
+    [filtered],
+  );
+
   // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
   // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
   useEffect(() => {
@@ -612,7 +618,7 @@ export function SdFileSelector({
       io.disconnect();
       loader.releaseAllVisible();
     };
-  }, [open, viewMode, gridEl, detailsEl, drive, listing]);
+  }, [open, viewMode, gridEl, detailsEl, drive, listing, filteredPathsKey]);
 
   function selectPath(path: string, mode: SelectMode) {
     if (suppressClickRef.current) return;
@@ -1223,16 +1229,11 @@ export function SdFileSelector({
                 }
 
                 return (
-                  <button
+                  <div
                     key={file.path}
-                    type="button"
                     data-tile
-                    data-marquee-ok=""
                     data-thumb-path={file.path}
                     ref={setTileEl}
-                    onClick={(e) =>
-                      selectPath(file.path, e.shiftKey ? "range" : "toggle")
-                    }
                     className={cn(
                       "relative flex flex-col overflow-hidden rounded-md text-left transition",
                       isSel
@@ -1240,7 +1241,17 @@ export function SdFileSelector({
                         : "border border-border/70",
                     )}
                   >
-                    <div className="relative flex aspect-video items-center justify-center bg-muted/40">
+                    <SdTilePreview
+                      thumbUrl={thumbs[file.path]?.url}
+                      thumbQuality={thumbs[file.path]?.quality}
+                      placeholder="pulse"
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest("[data-no-marquee]")) {
+                          return;
+                        }
+                        selectPath(file.path, e.shiftKey ? "range" : "toggle");
+                      }}
+                    >
                       <div
                         className="absolute top-1.5 left-1.5 z-10"
                         data-no-marquee=""
@@ -1264,36 +1275,39 @@ export function SdFileSelector({
                         showNewBadge={showNewBadges}
                         className="absolute top-1.5 right-1.5 z-10"
                       />
-                      {thumbs[file.path]?.url ? (
-                        <img
-                          src={thumbs[file.path].url}
-                          alt=""
-                          className={cn(
-                            "h-full w-full object-cover transition-[filter] duration-300",
-                            thumbs[file.path].quality === "lq" && "blur-[0.5px] scale-[1.02]",
-                          )}
-                          draggable={false}
-                        />
-                      ) : (
-                        <div className="h-full w-full animate-pulse bg-gradient-to-br from-muted/60 to-muted/20" />
-                      )}
                       {file.is_video ? (
                         <Film
-                          className="pointer-events-none absolute bottom-1.5 left-1.5 h-3.5 w-3.5 text-white/90 drop-shadow"
+                          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 h-3.5 w-3.5 text-white/90 drop-shadow"
                           aria-hidden
                         />
                       ) : null}
-                    </div>
-                    <div className="truncate px-2 py-1 text-[11px]">{file.filename}</div>
-                    <div className="flex items-baseline justify-between gap-2 px-2 pb-1 text-[10px] text-muted">
+                    </SdTilePreview>
+                    <button
+                      type="button"
+                      data-marquee-ok=""
+                      className="truncate px-2 py-1 text-left text-[11px] hover:bg-black/5"
+                      onClick={(e) =>
+                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
+                      }
+                    >
+                      {file.filename}
+                    </button>
+                    <button
+                      type="button"
+                      data-marquee-ok=""
+                      className="flex w-full items-baseline justify-between gap-2 px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
+                      onClick={(e) =>
+                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
+                      }
+                    >
                       <span className="min-w-0 truncate">
                         {formatBytes(file.size_bytes)}
                       </span>
                       {captureLabel ? (
                         <span className="shrink-0 tabular-nums">{captureLabel}</span>
                       ) : null}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
               </div>
@@ -1368,22 +1382,15 @@ export function SdFileSelector({
                         />
                       </td>
                       <td className="p-1.5">
-                        <div
-                          data-thumb-path={file.path}
-                          className="h-9 w-14 overflow-hidden rounded bg-muted/40"
-                        >
-                          {thumb?.url ? (
-                            <img
-                              src={thumb.url}
-                              alt=""
-                              className="h-full w-full object-cover"
-                              draggable={false}
-                              decoding="async"
-                            />
-                          ) : (
-                            <div className="h-full w-full animate-pulse bg-gradient-to-br from-muted/50 to-muted/20" />
-                          )}
-                        </div>
+                        <SdTilePreview
+                          thumbPath={file.path}
+                          thumbUrl={thumb?.url}
+                          thumbQuality={thumb?.quality}
+                          placeholder="pulse"
+                          suppressLqEnhance
+                          layout="inline"
+                          className="h-9 w-14 shrink-0 rounded"
+                        />
                       </td>
                       <td className="max-w-[280px] p-2">
                         <div className="flex min-w-0 items-center gap-1.5">
