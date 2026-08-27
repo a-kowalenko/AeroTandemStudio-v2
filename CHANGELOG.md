@@ -22,6 +22,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Server-Profile: optionale Backup-URL als zweites SMB-Ziel (eigene Zugangsdaten möglich)
 - SD-Karten zusätzlich per SMB auf den Server sichern — Ziel kommt aus der Backup-URL des aktiven Server-Profils
 - USB-Action-Cams: Import nur für freigegebene Modelle; unter Einstellungen → SD die Import-Methode wählbar
+- Nach „Vorgang erstellen“ sofort weiterarbeiten — Upload läuft im Hintergrund (Fortschritt in der Leiste, weitere Uploads in der Warteschlange)
+- Beim Beenden mit laufendem Upload: Rückfrage, ob der Upload abgebrochen werden soll
+- Server-Backup in der Kopfzeile: Klick öffnet Details (Fortschritt, Geschwindigkeit) und Abbruch nur für das aktuelle Backup
 
 ### Verbessert
 
@@ -37,6 +40,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Pfad-Vorschläge und Abweichungs-Hinweise: Primär und Backup übersichtlicher — aktueller und vorgeschlagener Pfad nebeneinander
 - Einrichtungsassistent: einheitliche Bezeichnung „Server“ statt „AMS“ bei Suche und Verbindung
 - Einrichtungsassistent: „Ich bin“ ist Pflicht; mit aktivem Upload muss vor dem Fortfahren eine Server-Verbindung stehen — der Verbinden-Button wird hervorgehoben
+- Crew-Liste: neue Standard-Namen aus App-Updates erscheinen automatisch — selbst entfernte Namen bleiben weg
+- Manuell abgebrochene Uploads zählen nicht mehr als ausstehend (kein Badge, kein Sammel-Nachholen) — unter Vorgänge weiterhin nachholbar
 
 ## [0.3.9-beta.3] - 2026-08-27
 
