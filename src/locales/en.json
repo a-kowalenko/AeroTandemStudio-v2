@@ -1166,6 +1166,9 @@
       "expand": "Show upload details",
       "collapse": "Hide upload details",
       "queueWaiting": "{{count}} more waiting in queue",
+      "queueExpand": "Show upload queue",
+      "queueCollapse": "Hide upload queue",
+      "queueUntitled": "Upload",
       "failedHold": "Upload failed — retry from Jobs",
       "cleaningUp": "Finishing upload…"
     },
@@ -1348,10 +1351,13 @@
       "bulkTitle": "Pending uploads",
       "bulkTitleOk": "Start {{count}} uploads one after another",
       "extraIncluded": "Upload finished. {{count}} additional file(s) included.",
-      "failed": "Upload failed",
+      "failed": "Failed",
+      "failedHint": "Upload failed — retry from Jobs",
       "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
-      "pending": "Upload pending",
-      "cancelled": "Upload cancelled",
+      "pending": "Pending",
+      "pendingHint": "Ready locally — upload still pending",
+      "cancelled": "Cancelled",
+      "cancelledHint": "Upload cancelled — retry from Jobs",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "reconnectToastBody": "{{count}} uploads pending — retry from Jobs.",
       "reconnectToastTitle": "Server back online",
@@ -1361,7 +1367,8 @@
       "retryOffline": "Server offline — upload only when the connection is back",
       "retryTitle": "Retry upload",
       "retryTitleOk": "Start the pending upload now",
-      "uploading": "Uploading"
+      "uploading": "Upload",
+      "uploadingHint": "Files are being copied to the server"
     }
   },
   "ams": {
@@ -1391,25 +1398,25 @@
       "steps": {
         "pending": "Transferred",
         "accepted": "Accepted",
-        "queued": "Queue",
-        "uploading": "Upload",
+        "queued": "Queued",
+        "uploading": "Sending",
         "completed": "Done"
       },
       "state": {
         "cancelled": "Cancelled",
         "pending": "Transferred",
-        "pendingCompact": "Waiting",
+        "pendingCompact": "Awaiting",
         "accepted": "Accepted",
         "rejected": "Rejected",
-        "queued": "Queue",
-        "queuedCompact": "Queue",
-        "uploading": "Upload",
+        "queued": "Queued",
+        "queuedCompact": "Queued",
+        "uploading": "Sending",
         "completed": "Done"
       },
       "hint": {
         "offline": "Status offline (last known state)",
-        "uploadCancelled": "Upload cancelled",
-        "waitingForAccept": "Waiting to be accepted",
+        "uploadCancelled": "Transfer cancelled",
+        "waitingForAccept": "Waiting for booking acceptance",
         "archive": "Archive {{archive}}"
       },
       "cache": "Cache",

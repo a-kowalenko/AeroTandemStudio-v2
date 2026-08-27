@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   canRetryVorgangUpload,
+  isListUploadStatus,
   isOutstandingUploadState,
   isOutstandingVorgangUpload,
   isRetryableUploadState,
@@ -39,5 +40,15 @@ describe("upload_state cancelled vs outstanding (Phase 31.8)", () => {
     );
     assert.equal(canRetryVorgangUpload(rows[2], true), true);
     assert.equal(canRetryVorgangUpload(rows[3], true), false);
+  });
+
+  it("list chip shows only actionable SMB states", () => {
+    assert.equal(isListUploadStatus("uploading"), true);
+    assert.equal(isListUploadStatus("pending"), true);
+    assert.equal(isListUploadStatus("cancelled"), true);
+    assert.equal(isListUploadStatus("failed"), true);
+    assert.equal(isListUploadStatus("done"), false);
+    assert.equal(isListUploadStatus("none"), false);
+    assert.equal(isListUploadStatus(""), false);
   });
 });

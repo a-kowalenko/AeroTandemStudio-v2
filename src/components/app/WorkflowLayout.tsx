@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Film, ImageIcon, Loader2 } from "lucide-react";
 import { MediaDropZone } from "../MediaDropZone";
@@ -17,6 +17,7 @@ import { useAppendStore } from "../../store/appendStore";
 import { useServerStore } from "../../store/serverStore";
 import { useUploadQueueStore } from "../../store/uploadQueueStore";
 import { deleteWorkingCopies, discardVideoCutUndoForPath } from "../../lib/tauri";
+import { toUploadQueueJobPreview } from "../../lib/uploadQueue";
 import { useWorkflowProgress } from "../../hooks/useWorkflowProgress";
 import { useButtonActionPhaseKind } from "../../hooks/useTimedFlash";
 import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
@@ -112,13 +113,20 @@ export function WorkflowLayout({
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
+  const uploadActiveId = useUploadQueueStore((s) => s.active?.id ?? null);
   const uploadGuestLabel = useUploadQueueStore(
     (s) => s.active?.guestLabel ?? null,
   );
-  const uploadQueueLen = useUploadQueueStore((s) => s.queue.length);
+  const uploadQueue = useUploadQueueStore((s) => s.queue);
+  const uploadQueueLen = uploadQueue.length;
+  const uploadQueueJobs = useMemo(
+    () => uploadQueue.map(toUploadQueueJobPreview),
+    [uploadQueue],
+  );
   const uploadLastOutcome = useUploadQueueStore((s) => s.lastOutcome);
   const uploadCancelPhase = useUploadQueueStore((s) => s.cancelPhase);
   const uploadSlotHasWork = uploadSlotActive || uploadQueueLen > 0;
+  const prevUploadActiveIdRef = useRef(uploadActiveId);
 
   const { createReady, createHints } = createValidation;
 
@@ -154,6 +162,14 @@ export function WorkflowLayout({
     if (!uploadSlotHasWork) setUploadCancelRequested(false);
   }, [uploadSlotHasWork]);
 
+  // Clear cancel chrome when the active slot job changes (next queued upload
+  // after abort). Do not wait until the whole queue is empty.
+  useEffect(() => {
+    if (prevUploadActiveIdRef.current === uploadActiveId) return;
+    prevUploadActiveIdRef.current = uploadActiveId;
+    setUploadCancelRequested(false);
+  }, [uploadActiveId]);
+
   // Success-Modal close → bump generation for Auto-Shrink (only while expanded).
   useEffect(() => {
     const wasOpen = prevSuccessOpenRef.current;
@@ -186,6 +202,7 @@ export function WorkflowLayout({
     backgroundUploadActive: uploadSlotHasWork,
     uploadGuestLabel,
     uploadQueueCount: uploadQueueLen,
+    uploadQueueJobs,
     uploadCancelPhase,
     successCloseGeneration,
     uploadLastOutcome,

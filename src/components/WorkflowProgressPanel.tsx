@@ -1,6 +1,7 @@
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Clapperboard,
   Download,
@@ -15,12 +16,14 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
+import type { UploadQueueJobPreview } from "../lib/uploadQueue";
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 
 type Props = {
@@ -52,6 +55,72 @@ function stageIcon(stage: WorkflowProgressStage): LucideIcon {
     default:
       return Clapperboard;
   }
+}
+
+function formatQueueJobLine(
+  job: UploadQueueJobPreview,
+  t: (key: string, options?: { name?: string }) => string,
+): string {
+  const guest =
+    job.guestLabel?.trim() ||
+    job.folderName?.trim() ||
+    t("workflow.upload.queueUntitled");
+  const crew: string[] = [];
+  if (job.tandemmaster) {
+    crew.push(t("history.ta", { name: job.tandemmaster }));
+  }
+  if (job.videospringer) {
+    crew.push(t("history.vs", { name: job.videospringer }));
+  }
+  return crew.length > 0 ? `${guest} — ${crew.join(" · ")}` : guest;
+}
+
+function UploadQueueCollapsible({
+  jobs,
+}: {
+  jobs: UploadQueueJobPreview[];
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  if (jobs.length === 0) return null;
+
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        className="flex w-full items-center gap-1 rounded-md text-left text-xs text-muted hover:text-foreground"
+        aria-expanded={open}
+        aria-label={
+          open
+            ? t("workflow.upload.queueCollapse")
+            : t("workflow.upload.queueExpand")
+        }
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        )}
+        <span>
+          {t("workflow.upload.queueWaiting", { count: jobs.length })}
+        </span>
+      </button>
+      {open ? (
+        <ul className="space-y-0.5 border-l border-border/60 pl-3">
+          {jobs.map((job) => (
+            <li
+              key={job.id}
+              className="truncate text-xs text-muted"
+              title={formatQueueJobLine(job, t)}
+            >
+              {formatQueueJobLine(job, t)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 function CompactUploadBar({ view }: { view: WorkflowProgressView }) {
@@ -220,21 +289,8 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
                     <CreateJobPipelineStepper view={pipeline} />
                   </div>
                 ) : null}
-                {snapshot?.detail ? (
-                  <p
-                    className="text-xs tabular-nums text-muted"
-                    aria-live="polite"
-                  >
-                    {snapshot.detail}
-                  </p>
-                ) : null}
-                {view.uploadQueueCount > 0 ? (
-                  <p className="text-xs text-muted">
-                    {t("workflow.upload.queueWaiting", {
-                      count: view.uploadQueueCount,
-                    })}
-                  </p>
-                ) : null}
+                {/* Bytes/speed live in CompactUploadBar — skip snapshot.detail duplicate. */}
+                <UploadQueueCollapsible jobs={view.uploadQueueJobs} />
               </div>
               {view.canCancel && onCancel ? (
                 <Button

@@ -13,9 +13,34 @@ export type UploadQueueJob = {
   vorgangId: number | null;
   /** Optional guest / folder label for toasts. */
   guestLabel?: string | null;
+  /** Snapshotted at enqueue for queue UI (Compact-Bar). */
+  tandemmaster?: string | null;
+  /** Snapshotted at enqueue for queue UI (Compact-Bar). */
+  videospringer?: string | null;
   /** Suppress success toast (bulk quiet phase). */
   quietSuccess?: boolean;
 };
+
+/** Waiting-job row for Compact-Bar queue collapsible. */
+export type UploadQueueJobPreview = {
+  id: string;
+  guestLabel: string | null;
+  folderName: string | null;
+  tandemmaster: string | null;
+  videospringer: string | null;
+};
+
+export function toUploadQueueJobPreview(
+  job: UploadQueueJob,
+): UploadQueueJobPreview {
+  return {
+    id: job.id,
+    guestLabel: job.guestLabel?.trim() || null,
+    folderName: job.folderName?.trim() || null,
+    tandemmaster: job.tandemmaster?.trim() || null,
+    videospringer: job.videospringer?.trim() || null,
+  };
+}
 
 export type UploadQueueSnapshot = {
   active: UploadQueueJob | null;

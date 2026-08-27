@@ -1189,23 +1189,32 @@ pub(crate) async fn stream_upload_file(
 
     if file_size > 0 && file_size <= INLINE_READ_MAX {
         let path = local.to_path_buf();
-        let data = tauri::async_runtime::spawn_blocking(move || fs::read(path))
-            .await
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
+        let data = match tauri::async_runtime::spawn_blocking(move || fs::read(path)).await {
+            Ok(Ok(data)) => data,
+            Ok(Err(e)) => {
+                let _ = writer.abort().await;
+                return Err(e.to_string());
+            }
+            Err(e) => {
+                let _ = writer.abort().await;
+                return Err(e.to_string());
+            }
+        };
         if is_upload_cancelled(cancel) {
+            let _ = writer.abort().await;
             return Err(WORKFLOW_CANCELLED.into());
         }
         let mut offset = 0usize;
         while offset < data.len() {
             if is_upload_cancelled(cancel) {
+                let _ = writer.abort().await;
                 return Err(WORKFLOW_CANCELLED.into());
             }
             let end = (offset + CHUNK_SIZE).min(data.len());
-            writer
-                .write_chunk(&data[offset..end])
-                .await
-                .map_err(|e| e.to_string())?;
+            if let Err(e) = writer.write_chunk(&data[offset..end]).await {
+                let _ = writer.abort().await;
+                return Err(e.to_string());
+            }
             offset = end;
             on_chunk(offset as u64);
         }
@@ -1236,23 +1245,36 @@ pub(crate) async fn stream_upload_file(
 
     let mut copied = 0u64;
     while let Some(chunk) = rx.recv().await {
-        let chunk = chunk?;
+        let chunk = match chunk {
+            Ok(c) => c,
+            Err(e) => {
+                let _ = reader.await;
+                let _ = writer.abort().await;
+                return Err(e);
+            }
+        };
         if is_upload_cancelled(cancel) {
             let _ = reader.await;
+            let _ = writer.abort().await;
             return Err(WORKFLOW_CANCELLED.into());
         }
-        writer
-            .write_chunk(&chunk)
-            .await
-            .map_err(|e| e.to_string())?;
+        if let Err(e) = writer.write_chunk(&chunk).await {
+            let _ = reader.await;
+            let _ = writer.abort().await;
+            return Err(e.to_string());
+        }
         copied += chunk.len() as u64;
         on_chunk(copied);
     }
 
     match reader.await {
         Ok(Ok(())) => {}
-        Ok(Err(e)) => return Err(e),
+        Ok(Err(e)) => {
+            let _ = writer.abort().await;
+            return Err(e);
+        }
         Err(e) => {
+            let _ = writer.abort().await;
             if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.into());
             }
@@ -1263,11 +1285,14 @@ pub(crate) async fn stream_upload_file(
     writer.finish().await.map_err(|e| e.to_string())
 }
 
-/// Best-effort removal of a partial upload tree on the configured server.
+/// Removal of a partial upload tree on the configured server.
 ///
 /// Deletes the **job root** (folder name of `local_path`) under the share
 /// target — recursive list/delete, not one SMB call per local file. That
 /// also removes remote leftovers that are no longer in the local tree.
+///
+/// SMB deletes are retried: cancelled parallel writers can briefly leave
+/// sharing-violation locks until the upload session fully tears down.
 pub async fn cleanup_remote_upload_folder(
     local_path: &Path,
     server_url: &str,
@@ -1313,6 +1338,17 @@ fn cleanup_local_job_root(dest_root: &Path, job_name: &str) -> Result<(), String
     Ok(())
 }
 
+fn smb_path_not_found(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    e.contains("not_found")
+        || e.contains("no_such_file")
+        || e.contains("no such file")
+        || e.contains("object_name_not_found")
+        || e.contains("object_path_not_found")
+        || e.contains("path_not_found")
+        || e.contains("does not exist")
+}
+
 async fn cleanup_smb_job_root(
     host: &str,
     port: u16,
@@ -1322,6 +1358,10 @@ async fn cleanup_smb_job_root(
     password: &str,
     job_name: &str,
 ) -> Result<(), String> {
+    // Brief pause so the cancelled upload session can release file handles
+    // (FileWriter drop without abort() leaks until session teardown).
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
     let mut client = connect_smb(host, port, login, password).await?;
     let mut tree = client
         .connect_share(share)
@@ -1329,39 +1369,110 @@ async fn cleanup_smb_job_root(
         .map_err(|e| map_smb_error(&e.to_string(), share))?;
 
     let job_root = join_smb_path(subpath, job_name);
-    delete_smb_tree_recursive(&mut client, &mut tree, &job_root).await;
-    Ok(())
+    if job_root.is_empty() {
+        return Err("Leerer Cleanup-Pfad".into());
+    }
+
+    const ATTEMPTS: u32 = 5;
+    let mut last_err: Option<String> = None;
+    for attempt in 1..=ATTEMPTS {
+        match delete_smb_tree_recursive(&mut client, &mut tree, &job_root).await {
+            Ok(()) => {
+                if smb_remote_gone(&mut client, &mut tree, &job_root).await {
+                    return Ok(());
+                }
+                last_err = Some(format!(
+                    "Remote-Ordner noch vorhanden nach Löschen: {job_root}"
+                ));
+            }
+            Err(e) => {
+                last_err = Some(e);
+            }
+        }
+        if attempt < ATTEMPTS {
+            tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt))).await;
+        }
+    }
+    Err(last_err.unwrap_or_else(|| format!("Aufräumen fehlgeschlagen: {job_root}")))
+}
+
+async fn smb_remote_gone(
+    client: &mut SmbClient,
+    tree: &mut smb2::client::Tree,
+    path: &str,
+) -> bool {
+    match client.list_directory(tree, path).await {
+        Ok(_) => false,
+        Err(e) => smb_path_not_found(&e.to_string()),
+    }
 }
 
 /// Recursively delete a remote directory (or a single file) under `path`.
-/// Best-effort: individual delete failures are ignored so partial trees clear.
+///
+/// Returns `Err` when the tree could not be cleared (callers retry). Individual
+/// "not found" races are treated as success.
 fn delete_smb_tree_recursive<'a>(
     client: &'a mut SmbClient,
     tree: &'a mut smb2::client::Tree,
     path: &'a str,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
     Box::pin(async move {
         if path.is_empty() {
-            return;
+            return Err("Leerer Cleanup-Pfad".into());
         }
         match client.list_directory(tree, path).await {
             Ok(entries) => {
+                let mut errors: Vec<String> = Vec::new();
                 for entry in entries {
                     if entry.name == "." || entry.name == ".." {
                         continue;
                     }
                     let child = format!("{path}/{}", entry.name);
                     if entry.is_directory {
-                        delete_smb_tree_recursive(client, tree, &child).await;
-                    } else {
-                        let _ = client.delete_file(tree, &child).await;
+                        if let Err(e) = delete_smb_tree_recursive(client, tree, &child).await {
+                            errors.push(e);
+                        }
+                    } else if let Err(e) = client.delete_file(tree, &child).await {
+                        let msg = e.to_string();
+                        if !smb_path_not_found(&msg) {
+                            errors.push(format!("{child}: {msg}"));
+                        }
                     }
                 }
-                let _ = client.delete_directory(tree, path).await;
+                match client.delete_directory(tree, path).await {
+                    Ok(()) => {}
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if !smb_path_not_found(&msg) {
+                            errors.push(format!("{path} (dir): {msg}"));
+                        }
+                    }
+                }
+                if errors.is_empty() {
+                    Ok(())
+                } else {
+                    Err(errors.join("; "))
+                }
             }
-            Err(_) => {
-                // Not a directory (or gone) — try as file.
-                let _ = client.delete_file(tree, path).await;
+            Err(list_err) => {
+                let list_msg = list_err.to_string();
+                if smb_path_not_found(&list_msg) {
+                    return Ok(());
+                }
+                // list failed for another reason — try directory then file delete.
+                match client.delete_directory(tree, path).await {
+                    Ok(()) => return Ok(()),
+                    Err(e) if smb_path_not_found(&e.to_string()) => return Ok(()),
+                    Err(dir_err) => {
+                        match client.delete_file(tree, path).await {
+                            Ok(()) => Ok(()),
+                            Err(e) if smb_path_not_found(&e.to_string()) => Ok(()),
+                            Err(file_err) => Err(format!(
+                                "{path}: list={list_msg}; dir={dir_err}; file={file_err}"
+                            )),
+                        }
+                    }
+                }
             }
         }
     })
@@ -1632,6 +1743,16 @@ mod tests {
         assert!(dest_root.join("JobA").is_dir());
         cleanup_local_job_root(&dest_root, "JobA").unwrap();
         assert!(!dest_root.join("JobA").exists());
+    }
+
+    #[test]
+    fn smb_path_not_found_matches_common_status_strings() {
+        assert!(smb_path_not_found("STATUS_OBJECT_NAME_NOT_FOUND"));
+        assert!(smb_path_not_found("STATUS_OBJECT_PATH_NOT_FOUND"));
+        assert!(smb_path_not_found("path_not_found"));
+        assert!(smb_path_not_found("No such file"));
+        assert!(!smb_path_not_found("STATUS_SHARING_VIOLATION"));
+        assert!(!smb_path_not_found("STATUS_ACCESS_DENIED"));
     }
 
     #[test]

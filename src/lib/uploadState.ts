@@ -6,6 +6,29 @@ export type UploadStateLike = {
   upload_state?: string | null;
 };
 
+/** Normalize for comparisons; empty → "". */
+export function normalizeUploadState(
+  state: string | null | undefined,
+): string {
+  return (state ?? "").trim().toLowerCase();
+}
+
+/**
+ * List chip states that need operator attention (not `none` / `done`).
+ * Prefer this over AMS handoff in the Vorgänge status column.
+ */
+export function isListUploadStatus(
+  state: string | null | undefined,
+): boolean {
+  const s = normalizeUploadState(state);
+  return (
+    s === "pending" ||
+    s === "failed" ||
+    s === "uploading" ||
+    s === "cancelled"
+  );
+}
+
 /**
  * Still expected by the system: badge, reconnect toast, bulk candidates.
  * Manual cancel is `cancelled` — retryable, but not outstanding.
@@ -13,7 +36,7 @@ export type UploadStateLike = {
 export function isOutstandingUploadState(
   state: string | null | undefined,
 ): boolean {
-  const s = (state ?? "").trim().toLowerCase();
+  const s = normalizeUploadState(state);
   return s === "pending" || s === "failed";
 }
 
@@ -21,7 +44,7 @@ export function isOutstandingUploadState(
 export function isRetryableUploadState(
   state: string | null | undefined,
 ): boolean {
-  const s = (state ?? "").trim().toLowerCase();
+  const s = normalizeUploadState(state);
   return s === "pending" || s === "failed" || s === "cancelled";
 }
 

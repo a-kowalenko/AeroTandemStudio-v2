@@ -27,8 +27,36 @@ pub const LARGE_MEDIA_PARALLELISM: usize = 1;
 pub const LARGE_MEDIA_MIN_BYTES: u64 = 16 * 1024 * 1024;
 /// How often the media join loop re-checks slot/workflow cancel while workers run.
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
+/// Max wait for workers to exit via FileWriter::abort before force-cancelling tasks.
+const COOPERATIVE_CANCEL_TIMEOUT: Duration = Duration::from_secs(8);
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "m4v", "avi", "webm"];
+
+/// Wait for remaining workers after cancel was signaled.
+///
+/// Prefer cooperative exit (`stream_upload_file` → `FileWriter::abort`) over
+/// `JoinSet::abort_all`, which drops writers mid-write and leaks SMB handles
+/// until session teardown — blocking remote cleanup deletes.
+async fn drain_media_workers_after_cancel(
+    set: &mut tokio::task::JoinSet<Result<(), String>>,
+) {
+    let deadline = tokio::time::Instant::now() + COOPERATIVE_CANCEL_TIMEOUT;
+    while !set.is_empty() {
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            set.abort_all();
+            while set.join_next().await.is_some() {}
+            return;
+        }
+        let wait = (deadline - now).min(CANCEL_POLL_INTERVAL);
+        tokio::select! {
+            joined = set.join_next() => {
+                let _ = joined;
+            }
+            _ = tokio::time::sleep(wait) => {}
+        }
+    }
+}
 
 /// Upload list split into barrier phases (media → manifest → marker).
 #[derive(Debug, Clone, Default)]
@@ -261,8 +289,7 @@ where
                     break;
                 };
                 if is_upload_cancelled(cancel) {
-                    set.abort_all();
-                    while set.join_next().await.is_some() {}
+                    drain_media_workers_after_cancel(&mut set).await;
                     return Err(UploadResult {
                         success: false,
                         message: WORKFLOW_CANCELLED.into(),
@@ -272,29 +299,36 @@ where
                 match joined {
                     Ok(Ok(())) => {}
                     Ok(Err(e)) => {
-                        set.abort_all();
-                        while set.join_next().await.is_some() {}
-                        let message = if e == WORKFLOW_CANCELLED || is_upload_cancelled(cancel) {
-                            WORKFLOW_CANCELLED.into()
-                        } else {
-                            e
-                        };
-                        return Err(UploadResult {
-                            success: false,
-                            message,
-                            remote_path: String::new(),
-                        });
-                    }
-                    Err(e) => {
-                        set.abort_all();
-                        while set.join_next().await.is_some() {}
-                        if is_upload_cancelled(cancel) || e.is_cancelled() {
+                        let cancelled =
+                            e == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
+                        if cancelled {
+                            drain_media_workers_after_cancel(&mut set).await;
                             return Err(UploadResult {
                                 success: false,
                                 message: WORKFLOW_CANCELLED.into(),
                                 remote_path: String::new(),
                             });
                         }
+                        // Hard failure: stop siblings quickly (no remote cleanup path).
+                        set.abort_all();
+                        while set.join_next().await.is_some() {}
+                        return Err(UploadResult {
+                            success: false,
+                            message: e,
+                            remote_path: String::new(),
+                        });
+                    }
+                    Err(e) => {
+                        if is_upload_cancelled(cancel) || e.is_cancelled() {
+                            drain_media_workers_after_cancel(&mut set).await;
+                            return Err(UploadResult {
+                                success: false,
+                                message: WORKFLOW_CANCELLED.into(),
+                                remote_path: String::new(),
+                            });
+                        }
+                        set.abort_all();
+                        while set.join_next().await.is_some() {}
                         return Err(UploadResult {
                             success: false,
                             message: format!("Upload-Worker abgestürzt: {e}"),
@@ -305,8 +339,7 @@ where
             }
             _ = tokio::time::sleep(CANCEL_POLL_INTERVAL) => {
                 if is_upload_cancelled(cancel) {
-                    set.abort_all();
-                    while set.join_next().await.is_some() {}
+                    drain_media_workers_after_cancel(&mut set).await;
                     return Err(UploadResult {
                         success: false,
                         message: WORKFLOW_CANCELLED.into(),

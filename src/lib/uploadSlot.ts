@@ -51,6 +51,8 @@ export function enqueueUpload(
     correlationId: input.correlationId ?? null,
     vorgangId: input.vorgangId ?? null,
     guestLabel: input.guestLabel ?? null,
+    tandemmaster: input.tandemmaster?.trim() || null,
+    videospringer: input.videospringer?.trim() || null,
     quietSuccess: input.quietSuccess,
   };
 

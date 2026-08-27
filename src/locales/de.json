@@ -1166,6 +1166,9 @@
       "expand": "Upload-Details einblenden",
       "collapse": "Upload-Details ausblenden",
       "queueWaiting": "{{count}} weitere in der Warteschlange",
+      "queueExpand": "Warteschlange anzeigen",
+      "queueCollapse": "Warteschlange ausblenden",
+      "queueUntitled": "Upload",
       "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge",
       "cleaningUp": "Upload wird beendet…"
     },
@@ -1348,10 +1351,13 @@
       "bulkTitle": "Ausstehende Uploads",
       "bulkTitleOk": "{{count}} Uploads nacheinander starten",
       "extraIncluded": "Upload fertig. {{count}} zusätzliche Datei(en) mitgeliefert.",
-      "failed": "Upload fehlgeschlagen",
+      "failed": "Fehlgeschlagen",
+      "failedHint": "Upload fehlgeschlagen — unter Vorgänge nachholbar",
       "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
-      "pending": "Upload ausstehend",
-      "cancelled": "Upload abgebrochen",
+      "pending": "Ausstehend",
+      "pendingHint": "Lokal fertig — Upload noch ausstehend",
+      "cancelled": "Abgebrochen",
+      "cancelledHint": "Upload abgebrochen — unter Vorgänge nachholbar",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
       "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen.",
       "reconnectToastTitle": "Server wieder online",
@@ -1361,7 +1367,8 @@
       "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
       "retryTitle": "Upload nachholen",
       "retryTitleOk": "Ausstehenden Upload jetzt starten",
-      "uploading": "Upload läuft"
+      "uploading": "Upload",
+      "uploadingHint": "Dateien werden auf den Server kopiert"
     }
   },
   "ams": {
@@ -1392,24 +1399,24 @@
         "pending": "Übertragen",
         "accepted": "Übernommen",
         "queued": "Warteschlange",
-        "uploading": "Upload",
+        "uploading": "Senden",
         "completed": "Fertig"
       },
       "state": {
         "cancelled": "Abgebrochen",
         "pending": "Übertragen",
-        "pendingCompact": "Wartend",
+        "pendingCompact": "Übernahme",
         "accepted": "Übernommen",
         "rejected": "Abgelehnt",
         "queued": "Warteschlange",
-        "queuedCompact": "Queue",
-        "uploading": "Upload",
+        "queuedCompact": "Warteschlange",
+        "uploading": "Senden",
         "completed": "Fertig"
       },
       "hint": {
         "offline": "Status offline (letzter bekannter Stand)",
-        "uploadCancelled": "Upload abgebrochen",
-        "waitingForAccept": "Wartet auf Übernahme",
+        "uploadCancelled": "Übergabe abgebrochen",
+        "waitingForAccept": "Wartet auf Übernahme in der Buchung",
         "archive": "Archiv {{archive}}"
       },
       "cache": "Cache",

@@ -1514,7 +1514,7 @@ function App() {
     uploadProgressActiveRef.current = true;
     uploadCancelRequestedRef.current = false;
     useUploadQueueStore.getState().setCancelPhase(null);
-    setStatus(t("app.upload.toServer"));
+    // Background upload must not touch session percent/status (Dual-Panel 37.4).
     await persistUploadState("uploading");
 
     try {
@@ -1526,8 +1526,6 @@ function App() {
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
         useUploadQueueStore.getState().setCancelPhase(null);
-        setPercent(0);
-        setStatus("");
         return "cancelled";
       }
       const uploaded = await uploadToServer(job.localDir, undefined, {
@@ -1540,13 +1538,10 @@ function App() {
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
         useUploadQueueStore.getState().setCancelPhase(null);
-        setPercent(0);
-        setStatus("");
         return "cancelled";
       }
       await persistUploadState("done");
       setServerPhase("connected");
-      setPercent(100);
       if (!job.quietSuccess) {
         showBackgroundUploadDoneToast({
           title: t("app.upload.bgDoneTitle"),
@@ -1565,8 +1560,6 @@ function App() {
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
         useUploadQueueStore.getState().setCancelPhase(null);
-        setPercent(0);
-        setStatus("");
         if (!job.quietSuccess) {
           showWarning(
             t("app.upload.bgCancelled"),
@@ -1601,19 +1594,16 @@ function App() {
   useEffect(() => {
     let unlistenProgress: (() => void) | undefined;
     let unlistenPhase: (() => void) | undefined;
+    // Upload channel only — never write session percent/status (concurrent Create).
     listen<UploadProgressEvent>("upload-progress", (event) => {
       if (!uploadProgressActiveRef.current || uploadCancelRequestedRef.current) return;
-      const p = event.payload;
-      setUploadProgress(p);
-      setPercent(p.percent);
-      setStatus(t("app.upload.title"));
+      setUploadProgress(event.payload);
     }).then((fn) => {
       unlistenProgress = fn;
     });
     listen<{ phase: string }>("upload-slot-phase", (event) => {
       if (event.payload.phase === "cleanup") {
         useUploadQueueStore.getState().setCancelPhase("cleanup");
-        setStatus(t("workflow.upload.cleaningUp"));
       }
     }).then((fn) => {
       unlistenPhase = fn;
@@ -1622,7 +1612,7 @@ function App() {
       unlistenProgress?.();
       unlistenPhase?.();
     };
-  }, [setUploadProgress, t]);
+  }, [setUploadProgress]);
 
   const resetProgress = useCallback(() => {
     setPercent(0);
@@ -1846,7 +1836,7 @@ function App() {
 
     setBusy(true);
     sessionCancelRequestedRef.current = false;
-    uploadProgressActiveRef.current = false;
+    // Keep uploadProgressActiveRef alone — Create must not gate the upload channel.
     resetProgress();
     const encodingSig = previewEncodingSignature(
       Boolean(config?.intro_enabled ?? false),
@@ -1930,6 +1920,8 @@ function App() {
             correlationId,
             vorgangId,
             guestLabel,
+            tandemmaster: kunde.tandemmaster.trim() || null,
+            videospringer: kunde.videospringer.trim() || null,
             quietSuccess: false,
           }).then((result) => {
             setCreateSuccess((prev) => {
@@ -2052,7 +2044,6 @@ function App() {
 
     if (slotActive) {
       useUploadQueueStore.getState().setCancelPhase("cancelling");
-      setStatus(t("workflow.stage.cancelling"));
       try {
         await cancelUploadSlot();
       } catch (e) {
@@ -2164,13 +2155,6 @@ function App() {
     }
 
     if (pendingResults.length > 0) {
-      setStatus(
-        t("history.upload.bulkPhase1Progress", {
-          current: 1,
-          total: enqueued,
-          guest: readyEntries[0]?.gast ?? "",
-        }),
-      );
       const results = await Promise.all(pendingResults);
       for (const result of results) {
         if (result === "ok") {
@@ -2217,33 +2201,22 @@ function App() {
       includedExtraCount?: number;
     },
   ): Promise<"ok" | "failed" | "cancelled"> {
-    const omitted = opts.omittedFileCount ?? 0;
-    const included = opts.includedExtraCount ?? 0;
-    const hasPartialNote = omitted > 0 || included > 0;
     const guestLabel =
       entry.gast?.trim() || entry.base_filename?.trim() || null;
 
-    const result = await enqueueUpload({
+    // Outcomes stay on the upload channel (toasts / fail-hold / Success note).
+    // Do not write session percent/status — Create may be running in parallel.
+    return enqueueUpload({
       source: opts.quietSuccess ? "bulk" : "history",
       localDir: entry.base_output_dir,
       folderName: entry.base_filename?.trim() || null,
       correlationId: entry.correlation_id?.trim() || null,
       vorgangId: entry.id,
       guestLabel,
+      tandemmaster: entry.tandemmaster?.trim() || null,
+      videospringer: entry.videospringer?.trim() || null,
       quietSuccess: opts.quietSuccess,
     });
-
-    if (result === "cancelled" && !opts.quietSuccess) {
-      setTaskProgress([]);
-      setPercent(0);
-      setStatus(t("progress.default.cancelled"));
-    } else if (result === "ok" && !opts.quietSuccess && hasPartialNote) {
-      setStatus(t("create.job.done"));
-      setPercent(100);
-    } else if (result === "failed" && !opts.quietSuccess) {
-      setStatus(t("app.upload.failedNote"));
-    }
-    return result;
   }
 
   async function handleSelectorConfirm(paths: string[], actions: SdWorkflowActions) {

@@ -11,6 +11,7 @@ import {
 
 export {
   canRetryVorgangUpload,
+  isListUploadStatus,
   isOutstandingUploadState,
   isOutstandingVorgangUpload,
   isRetryableUploadState,

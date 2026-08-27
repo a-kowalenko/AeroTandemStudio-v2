@@ -1166,6 +1166,9 @@
       "expand": "Mostrar detalles de la subida",
       "collapse": "Ocultar detalles de la subida",
       "queueWaiting": "{{count}} más en cola",
+      "queueExpand": "Mostrar cola de subida",
+      "queueCollapse": "Ocultar cola de subida",
+      "queueUntitled": "Subida",
       "failedHold": "Subida fallida — reintentar en Trabajos",
       "cleaningUp": "Finalizando la subida…"
     },
@@ -1348,10 +1351,13 @@
       "bulkTitle": "Subidas pendientes",
       "bulkTitleOk": "Iniciar {{count}} subidas una tras otra",
       "extraIncluded": "Subida lista. Se incluyeron {{count}} archivo(s) adicional(es).",
-      "failed": "Subida fallida",
+      "failed": "Fallida",
+      "failedHint": "Subida fallida — reintentar desde Trabajos",
       "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
-      "pending": "Subida pendiente",
-      "cancelled": "Subida cancelada",
+      "pending": "Pendiente",
+      "pendingHint": "Listo en local — subida aún pendiente",
+      "cancelled": "Cancelada",
+      "cancelledHint": "Subida cancelada — reintentar desde Trabajos",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos.",
       "reconnectToastTitle": "Servidor de nuevo en línea",
@@ -1361,7 +1367,8 @@
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
       "retryTitle": "Reintentar subida",
       "retryTitleOk": "Iniciar ahora la subida pendiente",
-      "uploading": "Subiendo"
+      "uploading": "Subida",
+      "uploadingHint": "Se están copiando los archivos al servidor"
     }
   },
   "ams": {
@@ -1391,25 +1398,25 @@
       "steps": {
         "pending": "Transferido",
         "accepted": "Aceptado",
-        "queued": "Cola",
-        "uploading": "Subida",
+        "queued": "En cola",
+        "uploading": "Enviando",
         "completed": "Listo"
       },
       "state": {
         "cancelled": "Cancelado",
         "pending": "Transferido",
-        "pendingCompact": "Esperando",
+        "pendingCompact": "Aceptación",
         "accepted": "Aceptado",
         "rejected": "Rechazado",
-        "queued": "Cola",
-        "queuedCompact": "Cola",
-        "uploading": "Subida",
+        "queued": "En cola",
+        "queuedCompact": "En cola",
+        "uploading": "Enviando",
         "completed": "Listo"
       },
       "hint": {
         "offline": "Estado sin conexión (último conocido)",
-        "uploadCancelled": "Subida cancelada",
-        "waitingForAccept": "Esperando aceptación",
+        "uploadCancelled": "Entrega cancelada",
+        "waitingForAccept": "Esperando aceptación en la reserva",
         "archive": "Archivo {{archive}}"
       },
       "cache": "Caché",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Eye } from "lucide-react";
+import { Check, Eye, Loader2, Upload } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,7 @@ import {
   resyncVorgangDeliveryList,
   deleteVorgangExtraFiles,
   canRetryVorgangUpload,
+  isListUploadStatus,
   pendingUploadCandidates,
   scanBulkUploadCandidates,
   bulkSummaryItemFromScanEntry,
@@ -231,12 +232,7 @@ function ProductStatusChip({ badge }: { badge: ProductBadge }) {
 function UploadStateChip({ state }: { state: string }) {
   const { t } = useTranslation();
   const s = state.trim().toLowerCase();
-  if (
-    s !== "pending" &&
-    s !== "failed" &&
-    s !== "uploading" &&
-    s !== "cancelled"
-  ) {
+  if (!isListUploadStatus(s)) {
     return null;
   }
   const label =
@@ -247,21 +243,38 @@ function UploadStateChip({ state }: { state: string }) {
         : s === "cancelled"
           ? t("history.upload.cancelled")
           : t("history.upload.pending");
+  const tip =
+    s === "failed"
+      ? t("history.upload.failedHint")
+      : s === "uploading"
+        ? t("history.upload.uploadingHint")
+        : s === "cancelled"
+          ? t("history.upload.cancelledHint")
+          : t("history.upload.pendingHint");
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        "inline-flex max-w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
         s === "failed"
           ? "border-destructive/40 bg-destructive/10 text-destructive"
           : s === "uploading"
-            ? "border-primary/40 bg-primary/10 text-primary"
+            ? "border-primary/40 bg-primary/10 text-primary ams-chip-active"
             : s === "cancelled"
               ? "border-border bg-muted/40 text-muted-foreground"
               : "border-warning/40 bg-warning/10 text-warning",
       )}
-      title={label}
+      title={tip}
     >
-      {label}
+      {s === "uploading" ? (
+        <Upload className="size-3 shrink-0 animate-pulse" aria-hidden />
+      ) : null}
+      {s === "pending" ? (
+        <Loader2
+          className="size-3 shrink-0 animate-spin [animation-duration:1.4s]"
+          aria-hidden
+        />
+      ) : null}
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -885,6 +898,8 @@ export function HistoryDialog({
             correlationId: res.correlation_id?.trim() || null,
             vorgangId: vorgang.id,
             guestLabel,
+            tandemmaster: vorgang.tandemmaster?.trim() || null,
+            videospringer: vorgang.videospringer?.trim() || null,
             quietSuccess: false,
           });
         }
@@ -934,7 +949,7 @@ export function HistoryDialog({
       >
         <DialogContent
           hideCloseButton={appendOpen}
-          className="relative !flex h-[min(88vh,720px)] w-[min(1100px,96vw)] max-w-none flex-col gap-0 overflow-hidden p-0"
+          className="relative !flex h-[min(88vh,720px)] w-[min(1150px,96vw)] max-w-none flex-col gap-0 overflow-hidden p-0"
           onPointerDownOutside={(e) => {
             if (nestedOpen) e.preventDefault();
           }}
@@ -1927,10 +1942,10 @@ function VorgaengePanel({
             <colgroup>
               <col className="w-8" />
               <col className="w-[24%]" />
-              <col className="w-[14%]" />
+              <col className="w-[12%]" />
               <col className="w-[18%]" />
-              <col className="w-[18%]" />
-              <col className="w-[18%]" />
+              <col className="w-[27%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border/60">
@@ -1952,6 +1967,10 @@ function VorgaengePanel({
                   handoffStatus.offline
                     ? { ...baseView, offline: true }
                     : baseView;
+                const uploadState = e.upload_state ?? "";
+                const showUploadChip = isListUploadStatus(uploadState);
+                // One primary chip in the list: SMB attention wins over AMS handoff.
+                const showAmsChip = Boolean(amsView) && !showUploadChip;
                 const amsProblem =
                   amsView != null &&
                   (isAmsCancelled(amsView) ||
@@ -1992,7 +2011,7 @@ function VorgaengePanel({
                     </td>
                     <td className="p-2">
                       <span className="flex flex-wrap items-center gap-1">
-                        {amsView ? (
+                        {showAmsChip && amsView ? (
                           <AmsHandoffStatusChip
                             view={amsView}
                             compact
@@ -2006,11 +2025,10 @@ function VorgaengePanel({
                             }
                           />
                         ) : null}
-                        <UploadStateChip state={e.upload_state ?? ""} />
-                        {!amsView &&
-                        !["pending", "failed", "uploading", "cancelled"].includes(
-                          (e.upload_state ?? "").trim().toLowerCase(),
-                        ) ? (
+                        {showUploadChip ? (
+                          <UploadStateChip state={uploadState} />
+                        ) : null}
+                        {!showAmsChip && !showUploadChip ? (
                           <span className="text-muted">—</span>
                         ) : null}
                       </span>

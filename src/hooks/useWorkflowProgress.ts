@@ -27,7 +27,7 @@ import {
   type UploadCompactParts,
 } from "../lib/uploadProgress";
 import type { UploadProgressEvent } from "../lib/tauri";
-import type { UploadSlotResult } from "../lib/uploadQueue";
+import type { UploadSlotResult, UploadQueueJobPreview } from "../lib/uploadQueue";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -61,6 +61,8 @@ export type WorkflowProgressView = {
   backgroundUpload: boolean;
   /** Waiting jobs behind the active slot. */
   uploadQueueCount: number;
+  /** Waiting jobs for Compact-Bar queue collapsible. */
+  uploadQueueJobs: UploadQueueJobPreview[];
   /** Cancel → cleanup while slot stays occupied. */
   uploadCancelPhase: "cancelling" | "cleanup" | null;
   /** Compact metrics (Bar/%/MB/Speed). */
@@ -107,6 +109,8 @@ type Input = {
   /** Active upload guest / customer label for subtitle. */
   uploadGuestLabel?: string | null;
   uploadQueueCount?: number;
+  /** Waiting jobs (FIFO) for Compact-Bar collapsible. */
+  uploadQueueJobs?: UploadQueueJobPreview[];
   /** Cancel/cleanup phase while slot stays occupied. */
   uploadCancelPhase?: "cancelling" | "cleanup" | null;
   /** Bumps when CreateSuccessDialog closes (auto-shrink trigger). */
@@ -245,6 +249,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
 
   const uploadSlotActive = Boolean(input.backgroundUploadActive);
   const uploadQueueCount = input.uploadQueueCount ?? 0;
+  const uploadQueueJobs = input.uploadQueueJobs ?? [];
 
   // Session work only — never background upload alone.
   const sessionWorkActive =
@@ -599,20 +604,21 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   const sessionEffectiveCollapsed =
     sessionCollapsed && !sessionWorkActive;
 
-  // --- Upload snapshot ---
+  // --- Upload snapshot (never session percent/status) ---
   let uploadSnapshot: WorkflowProgressSnapshot | null = null;
   if (showUploadChrome) {
     if (input.uploadProgress) {
       uploadSnapshot = formatUploadProgressSnapshot(input.uploadProgress);
     } else {
       uploadSnapshot = {
-        percent: input.percent,
+        percent: 0,
         label: formatOverallProgressLabel(
-          input.status,
+          "",
           failedHold
             ? tr("workflow.upload.failedHold")
             : tr("app.upload.title"),
         ),
+        indeterminate: !failedHold,
       };
     }
   }
@@ -656,6 +662,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     hideOverallBar: false,
     backgroundUpload: false,
     uploadQueueCount: 0,
+    uploadQueueJobs: [],
     uploadCancelPhase: null,
     uploadCompact: EMPTY_UPLOAD_COMPACT,
     uploadFailedHold: false,
@@ -678,6 +685,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     hideOverallBar: false,
     backgroundUpload: true,
     uploadQueueCount,
+    uploadQueueJobs,
     uploadCancelPhase: input.uploadCancelPhase ?? null,
     uploadCompact,
     uploadFailedHold: failedHold,
