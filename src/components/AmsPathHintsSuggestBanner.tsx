@@ -12,6 +12,7 @@ import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
 import type { AppConfig } from "@/lib/tauri";
+import { PathHintsSuggestList } from "@/components/PathHintsDisplay";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -134,16 +135,10 @@ export function AmsPathHintsSuggestBanner({
         <p className="text-sm font-medium text-foreground">
           {t("settings.server.pathHints.suggestTitle")}
         </p>
-        <p className="text-xs leading-snug text-muted">
-          {t("settings.server.pathHints.suggestBody", {
-            primary: hints.primarySmbUrl,
-            backup: hints.backupSmbUrl
-              ? t("settings.server.pathHints.suggestBackupLine", {
-                  url: hints.backupSmbUrl,
-                })
-              : "",
-          })}
-        </p>
+        <PathHintsSuggestList
+          primary={hints.primarySmbUrl}
+          backup={hints.backupSmbUrl}
+        />
         {!instanceAllowed ? (
           <p className="text-xs leading-snug text-sky-900/90 dark:text-sky-100/90">
             {t("settings.server.pathHints.instanceMismatch")}

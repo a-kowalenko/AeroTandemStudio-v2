@@ -43,6 +43,8 @@ type Props = {
   onError: (message: string, title?: string) => void;
   onSuccess: (message: string, title?: string) => void;
   disabled?: boolean;
+  /** Incremented when Next validates before a pending AMS connect. */
+  connectNudge?: number;
 };
 
 export function WizardUploadServerStep({
@@ -51,6 +53,7 @@ export function WizardUploadServerStep({
   onError,
   onSuccess,
   disabled = false,
+  connectNudge = 0,
 }: Props) {
   const { t } = useTranslation();
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -68,8 +71,10 @@ export function WizardUploadServerStep({
   const [testingServer, setTestingServer] = useState(false);
   const [pathsApplied, setPathsApplied] = useState(false);
   const [amsStatus, setAmsStatus] = useState("");
+  const [connectAttention, setConnectAttention] = useState(false);
 
   const autoDiscoverStarted = useRef(false);
+  const connectBtnRef = useRef<HTMLButtonElement>(null);
   const title = t("app.server.title");
 
   const selected =
@@ -88,6 +93,33 @@ export function WizardUploadServerStep({
     const label = discoveredAmsLabel(selected);
     setProfileLabel((prev) => (prev.trim() ? prev : label));
   }, [selected]);
+
+  const locked = disabled || discovering || connecting;
+  const connectReady =
+    mode === "ams" &&
+    Boolean(selected) &&
+    !locked &&
+    Boolean(token.trim());
+
+  useEffect(() => {
+    if (!connectNudge || !connectReady) return;
+    setConnectAttention(true);
+    const btn = connectBtnRef.current;
+    if (btn) {
+      const container = btn.closest(".overflow-y-auto");
+      if (container instanceof HTMLElement) {
+        const cRect = container.getBoundingClientRect();
+        const bRect = btn.getBoundingClientRect();
+        const visible =
+          bRect.top >= cRect.top && bRect.bottom <= cRect.bottom;
+        if (!visible) {
+          btn.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }
+      }
+    }
+    const timer = window.setTimeout(() => setConnectAttention(false), 2400);
+    return () => window.clearTimeout(timer);
+  }, [connectNudge, connectReady]);
 
   async function runDiscover() {
     if (discovering || disabled) return;
@@ -240,8 +272,6 @@ export function WizardUploadServerStep({
     }
   }
 
-  const locked = disabled || discovering || connecting;
-
   return (
     <div
       className={cn(
@@ -382,10 +412,15 @@ export function WizardUploadServerStep({
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button
+                  ref={connectBtnRef}
                   type="button"
                   size="sm"
                   disabled={locked || !token.trim()}
                   onClick={() => void onConnectAndApply()}
+                  className={cn(
+                    connectAttention &&
+                      "ring-2 ring-primary ring-offset-2 ring-offset-background animate-pulse shadow-[0_0_0_1px] shadow-primary/40",
+                  )}
                 >
                   {connecting ? (
                     <>
@@ -398,7 +433,7 @@ export function WizardUploadServerStep({
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
                   size="sm"
                   disabled={locked}
                   onClick={() => setMode("manual")}

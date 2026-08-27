@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Check, FolderOpen, Info, Languages, Loader2, Moon, Sun } from "lucide-react";
@@ -22,6 +22,7 @@ import {
 import { UI_LANGUAGE_OPTIONS, uiLanguageLabel } from "@/lib/uiLanguageOptions";
 import { useConfigStore } from "@/store/configStore";
 import { useLocaleStore } from "@/store/localeStore";
+import { useServerStore } from "@/store/serverStore";
 import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
@@ -269,8 +270,10 @@ type Props = {
 };
 
 type FieldErrors = {
+  operator_name?: string;
   speicherort?: string;
   sd_backup_folder?: string;
+  server_connection?: string;
 };
 
 type OperatorRoleDraft = {
@@ -292,11 +295,13 @@ export function SetupWizard({ open, onComplete }: Props) {
   const setThemeMode = useThemeStore((s) => s.setMode);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
+  const serverConnected = useServerStore((s) => s.connected);
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [skippedSteps, setSkippedSteps] = useState<Set<number>>(() => new Set());
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [uploadConnectNudge, setUploadConnectNudge] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const [mediaDirsProposal, setMediaDirsProposal] =
     useState<DefaultMediaDirsProposal | null>(null);
@@ -305,6 +310,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [defaultDirDone, setDefaultDirDone] = useState<DefaultDirDone>({});
   const [operatorRoles, setOperatorRoles] = useState<OperatorRoleDraft | null>(null);
   const [computerName, setComputerName] = useState("");
+  const stepContentRef = useRef<HTMLDivElement>(null);
   const crewNames = crewAllNames(draft?.crew_list);
 
   useEffect(() => {
@@ -384,12 +390,40 @@ export function SetupWizard({ open, onComplete }: Props) {
     };
   }, [open, config]);
 
+  useEffect(() => {
+    if (!serverConnected) return;
+    setFieldErrors((prev) => {
+      if (!prev.server_connection) return prev;
+      const next = { ...prev };
+      delete next.server_connection;
+      return next;
+    });
+  }, [serverConnected]);
+
+  useEffect(() => {
+    if (Object.keys(fieldErrors).length === 0) return;
+    const container = stepContentRef.current;
+    if (!container) return;
+    const alert = container.querySelector('[role="alert"]');
+    if (!(alert instanceof HTMLElement)) return;
+    const cRect = container.getBoundingClientRect();
+    const aRect = alert.getBoundingClientRect();
+    const visible =
+      aRect.top >= cRect.top && aRect.bottom <= cRect.bottom;
+    if (!visible) {
+      alert.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [fieldErrors, step]);
+
   if (!open || !draft) return null;
 
   function patch<K extends keyof AppConfig>(key: K, value: AppConfig[K]) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
     if (key === "speicherort" || key === "sd_backup_folder") {
       clearFieldError(key);
+    }
+    if (key === "upload_to_server" && value === false) {
+      clearFieldError("server_connection");
     }
   }
 
@@ -415,6 +449,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   function applyOperatorDefaults(raw: string) {
     const name = raw.trim();
+    if (name) clearFieldError("operator_name");
     setDraft((prev) => {
       if (!prev) return prev;
       let next: AppConfig = { ...prev, operator_name: raw };
@@ -584,12 +619,18 @@ export function SetupWizard({ open, onComplete }: Props) {
   function collectFieldErrors(index: number): FieldErrors {
     const errors: FieldErrors = {};
     if (!draft) return errors;
+    if (index === 0 && !draft.operator_name.trim()) {
+      errors.operator_name = t("setupWizard.operatorRequired");
+    }
     if (index === 1 && !draft.speicherort.trim()) {
       errors.speicherort = t("setupWizard.storage.pickFolderError");
     }
     if (index === 2 && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
       errors.sd_backup_folder =
         t("setupWizard.sd.pickFolderOrDisableAutoBackup");
+    }
+    if (index === 3 && draft.upload_to_server && !serverConnected) {
+      errors.server_connection = t("setupWizard.upload.connectRequired");
     }
     return errors;
   }
@@ -598,10 +639,17 @@ export function SetupWizard({ open, onComplete }: Props) {
     return Object.keys(errors).length > 0;
   }
 
+  function applyValidationErrors(errors: FieldErrors, index: number) {
+    setFieldErrors(errors);
+    if (errors.server_connection && index === 3) {
+      setUploadConnectNudge((n) => n + 1);
+    }
+  }
+
   function goNext() {
     const errors = collectFieldErrors(step);
     if (hasFieldErrors(errors)) {
-      setFieldErrors(errors);
+      applyValidationErrors(errors, step);
       return;
     }
     setFieldErrors({});
@@ -687,11 +735,11 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   function finishFromSummary() {
-    const checks = [1, 2].filter((i) => !skippedSteps.has(i));
+    const checks = [0, 1, 2, 3].filter((i) => !skippedSteps.has(i));
     for (const i of checks) {
       const errors = collectFieldErrors(i);
       if (hasFieldErrors(errors)) {
-        setFieldErrors(errors);
+        applyValidationErrors(errors, i);
         setStep(i);
         return;
       }
@@ -760,7 +808,10 @@ export function SetupWizard({ open, onComplete }: Props) {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+        <div
+          ref={stepContentRef}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5"
+        >
           {step === 0 ? (
             <>
               <p className="text-sm text-foreground">
@@ -832,6 +883,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                   options={crewNames}
                   placeholder={t("settings.crew.who.placeholder")}
                   hint={t("setupWizard.operatorHint")}
+                  error={fieldErrors.operator_name}
                   listZIndex={200}
                 />
                 {draft.operator_name.trim() && operatorRoles ? (
@@ -1094,10 +1146,16 @@ export function SetupWizard({ open, onComplete }: Props) {
                   draft={draft}
                   setDraft={(next) => setDraft(next)}
                   disabled={!draft.upload_to_server}
+                  connectNudge={uploadConnectNudge}
                   onError={(message, title) => showError(message, title)}
                   onSuccess={(message, title) => showSuccess(message, title)}
                 />
               )}
+              {fieldErrors.server_connection ? (
+                <p className="text-[11px] leading-snug text-destructive" role="alert">
+                  {fieldErrors.server_connection}
+                </p>
+              ) : null}
             </>
           ) : null}
 

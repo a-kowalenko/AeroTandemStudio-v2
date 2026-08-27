@@ -20,6 +20,7 @@ import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
 import type { AppConfig } from "@/lib/tauri";
+import { PathHintsDriftList } from "@/components/PathHintsDisplay";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -143,23 +144,19 @@ export function AmsPathHintsDriftBanner({
     }
   }
 
-  const bodyParts: string[] = [];
-  if (primaryDrift) {
-    bodyParts.push(
-      t("settings.server.pathHints.driftPrimaryLine", {
+  const driftPrimary = primaryDrift
+    ? {
         current: pathHintsDiff.currentPrimary,
         suggested: hints.primarySmbUrl,
-      }),
-    );
-  }
-  if (backupDrift && hints.backupSmbUrl) {
-    bodyParts.push(
-      t("settings.server.pathHints.driftBackupLine", {
-        current: pathHintsDiff.currentBackup || "—",
-        suggested: hints.backupSmbUrl,
-      }),
-    );
-  }
+      }
+    : null;
+  const driftBackup =
+    backupDrift && hints.backupSmbUrl
+      ? {
+          current: pathHintsDiff.currentBackup || "—",
+          suggested: hints.backupSmbUrl,
+        }
+      : null;
 
   return (
     <div
@@ -180,11 +177,7 @@ export function AmsPathHintsDriftBanner({
         <p className="text-sm font-medium text-foreground">
           {t("settings.server.pathHints.driftTitle")}
         </p>
-        {bodyParts.length > 0 ? (
-          <p className="text-xs leading-snug text-muted">
-            {bodyParts.join(" · ")}
-          </p>
-        ) : null}
+        <PathHintsDriftList primary={driftPrimary} backup={driftBackup} />
         {!instanceAllowed ? (
           <p className="text-xs leading-snug text-amber-900/90 dark:text-amber-100/90">
             {t("settings.server.pathHints.instanceMismatch")}
