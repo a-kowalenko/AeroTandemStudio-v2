@@ -1120,6 +1120,8 @@ export type UploadResult = {
   success: boolean;
   message: string;
   remote_path: string;
+  /** Present when a staged SMB upload did not promote to the final job folder. */
+  staging_root?: string | null;
 };
 
 export type UploadProgressEvent = {

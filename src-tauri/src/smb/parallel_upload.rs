@@ -295,6 +295,7 @@ where
                         success: false,
                         message: WORKFLOW_CANCELLED.into(),
                         remote_path: String::new(),
+                        staging_root: None,
                     });
                 }
                 match joined {
@@ -308,6 +309,7 @@ where
                                 success: false,
                                 message: WORKFLOW_CANCELLED.into(),
                                 remote_path: String::new(),
+                        staging_root: None,
                             });
                         }
                         // Hard failure: stop siblings quickly (no remote cleanup path).
@@ -317,6 +319,7 @@ where
                             success: false,
                             message: e,
                             remote_path: String::new(),
+                        staging_root: None,
                         });
                     }
                     Err(e) => {
@@ -326,6 +329,7 @@ where
                                 success: false,
                                 message: WORKFLOW_CANCELLED.into(),
                                 remote_path: String::new(),
+                        staging_root: None,
                             });
                         }
                         set.abort_all();
@@ -334,6 +338,7 @@ where
                             success: false,
                             message: format!("Upload-Worker abgestürzt: {e}"),
                             remote_path: String::new(),
+                        staging_root: None,
                         });
                     }
                 }
@@ -345,6 +350,7 @@ where
                         success: false,
                         message: WORKFLOW_CANCELLED.into(),
                         remote_path: String::new(),
+                        staging_root: None,
                     });
                 }
             }

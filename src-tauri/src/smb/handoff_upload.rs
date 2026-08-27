@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use crate::bridge::{maybe_notify_handoff_cancel, maybe_notify_handoff_ready};
-use crate::smb::cleanup_remote_upload_folder;
+use crate::smb::{cleanup_remote_upload_folder, drain_smb_staging_gc};
 use crate::storage::config::AppConfig;
 use crate::storage::logging;
 use crate::storage::vorgang_history::VorgangHistoryStore;
@@ -50,6 +50,10 @@ pub async fn notify_handoff_after_upload(
 }
 
 /// On upload abort: remote cleanup + optional AMS cancel (best effort).
+///
+/// Staged uploads already enqueue deferred GC inside `upload_smb`. This still
+/// tries an explicit `staging_root` (when known) plus the final job name
+/// (legacy / promote races), then drains the GC queue once.
 pub async fn abort_handoff_upload(
     config: &AppConfig,
     local_path: &Path,
@@ -57,7 +61,21 @@ pub async fn abort_handoff_upload(
     server_url: &str,
     login: &str,
     password: &str,
+    staging_root: Option<&str>,
 ) {
+    if let Some(root) = staging_root.map(str::trim).filter(|s| !s.is_empty()) {
+        if let Err(e) =
+            crate::smb::client::cleanup_staging_path(server_url, login, password, root).await
+        {
+            logging::warn(
+                "smb",
+                format!("Staging-Aufräumen nach Upload-Abbruch: {e}"),
+            );
+        } else {
+            logging::info("smb", format!("Staging aufgeräumt: {root}"));
+        }
+    }
+
     if let Err(e) =
         cleanup_remote_upload_folder(local_path, server_url, login, password).await
     {
@@ -75,6 +93,14 @@ pub async fn abort_handoff_upload(
                     .map(str::to_string)
                     .unwrap_or_else(|| local_path.display().to_string())
             ),
+        );
+    }
+
+    let cleared = drain_smb_staging_gc(login, password).await;
+    if cleared > 0 {
+        logging::info(
+            "smb",
+            format!("Staging-GC: {cleared} Ordner nachträglich entfernt"),
         );
     }
 

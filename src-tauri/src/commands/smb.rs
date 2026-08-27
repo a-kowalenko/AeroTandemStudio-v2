@@ -173,7 +173,16 @@ pub async fn upload_to_server(
                 },
             );
             let h = handoff.unwrap_or_default();
-            abort_handoff_upload(&config, &path, &h, &url, &login, &password).await;
+            abort_handoff_upload(
+                &config,
+                &path,
+                &h,
+                &url,
+                &login,
+                &password,
+                result.staging_root.as_deref(),
+            )
+            .await;
         } else {
             logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         }

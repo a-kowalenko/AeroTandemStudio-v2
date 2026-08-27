@@ -20,6 +20,10 @@ use smb2::{ClientConfig, FileWriter, SmbClient};
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
+use super::staging_gc::{
+    dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
+    staging_prefix,
+};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
@@ -64,6 +68,25 @@ pub struct UploadResult {
     pub success: bool,
     pub message: String,
     pub remote_path: String,
+    /// Share-relative staging root when a staged SMB upload did not promote.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staging_root: Option<String>,
+}
+
+impl UploadResult {
+    fn fail(message: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            message: message.into(),
+            remote_path: String::new(),
+            staging_root: None,
+        }
+    }
+
+    fn with_staging(mut self, staging_root: Option<String>) -> Self {
+        self.staging_root = staging_root;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -601,11 +624,7 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
 }
 
 fn cancelled_upload_result() -> UploadResult {
-    UploadResult {
-        success: false,
-        message: WORKFLOW_CANCELLED.into(),
-        remote_path: String::new(),
-    }
+    UploadResult::fail(WORKFLOW_CANCELLED)
 }
 
 fn ensure_upload_not_cancelled(cancel: UploadCancelPolicy) -> Result<(), UploadResult> {
@@ -643,6 +662,7 @@ where
                 success: false,
                 message: e,
                 remote_path: String::new(),
+                staging_root: None,
             }
         }
     };
@@ -654,6 +674,7 @@ where
                 success: false,
                 message: e,
                 remote_path: String::new(),
+                staging_root: None,
             }
         }
     };
@@ -681,6 +702,7 @@ where
                         format!("Upload fehlgeschlagen: {e}")
                     },
                     remote_path: String::new(),
+                staging_root: None,
                 },
             }
         }
@@ -708,6 +730,46 @@ where
     }
 }
 
+fn copy_file_chunked(
+    src: &Path,
+    dst: &Path,
+    cancel: UploadCancelPolicy,
+    mut on_chunk: impl FnMut(u64),
+) -> Result<(), String> {
+    let mut input = File::open(src).map_err(|e| e.to_string())?;
+    let mut output = File::create(dst).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; CHUNK_SIZE];
+    let mut copied = 0u64;
+    loop {
+        if is_upload_cancelled(cancel) {
+            let _ = fs::remove_file(dst);
+            return Err(WORKFLOW_CANCELLED.into());
+        }
+        let n = input.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        output.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        copied += n as u64;
+        on_chunk(copied);
+    }
+    Ok(())
+}
+
+fn job_top_name(files: &[FileEntry]) -> String {
+    files
+        .first()
+        .map(|f| {
+            f.relative
+                .split('/')
+                .next()
+                .unwrap_or(f.relative.as_str())
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "upload".into())
+}
+
 fn upload_local<F: FnMut(UploadProgress)>(
     dest_root: &Path,
     files: &[FileEntry],
@@ -717,12 +779,20 @@ fn upload_local<F: FnMut(UploadProgress)>(
     progress: &mut UploadProgressGate<F>,
 ) -> UploadResult {
     if let Err(e) = fs::create_dir_all(dest_root) {
-        return UploadResult {
-            success: false,
-            message: format!("Zielverzeichnis konnte nicht erstellt werden: {e}"),
-            remote_path: String::new(),
-        };
+        return UploadResult::fail(format!("Zielverzeichnis konnte nicht erstellt werden: {e}"));
     }
+
+    let job_name = job_top_name(files);
+    let staging_id = uuid::Uuid::new_v4().to_string();
+    let staging_base = dest_root
+        .join(super::staging_gc::staging_dir_name())
+        .join(&staging_id);
+
+    let cleanup_local_staging = |base: &Path| {
+        let _ = fs::remove_dir_all(base);
+        let staging_parent = dest_root.join(super::staging_gc::staging_dir_name());
+        let _ = fs::remove_dir(staging_parent); // only if empty
+    };
 
     // Same barrier order as SMB: media → manifest → marker (never marker mid-media).
     let phases = partition_upload_phases(files);
@@ -731,17 +801,15 @@ fn upload_local<F: FnMut(UploadProgress)>(
 
     for (idx, file) in ordered.into_iter().enumerate() {
         if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
+            cleanup_local_staging(&staging_base);
             return cancelled;
         }
         let file_index = (idx + 1) as u32;
-        let dest = dest_root.join(file.relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let dest = staging_base.join(file.relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         if let Some(parent) = dest.parent() {
             if let Err(e) = fs::create_dir_all(parent) {
-                return UploadResult {
-                    success: false,
-                    message: format!("Ordner erstellen fehlgeschlagen: {e}"),
-                    remote_path: String::new(),
-                };
+                cleanup_local_staging(&staging_base);
+                return UploadResult::fail(format!("Ordner erstellen fehlgeschlagen: {e}"));
             }
         }
 
@@ -777,16 +845,13 @@ fn upload_local<F: FnMut(UploadProgress)>(
                 false,
             );
         }) {
+            cleanup_local_staging(&staging_base);
             let message = if e == WORKFLOW_CANCELLED {
                 WORKFLOW_CANCELLED.into()
             } else {
                 format!("Kopieren fehlgeschlagen ({}): {e}", file.relative)
             };
-            return UploadResult {
-                success: false,
-                message,
-                remote_path: String::new(),
-            };
+            return UploadResult::fail(message);
         }
 
         copied_bytes += file.size;
@@ -807,8 +872,25 @@ fn upload_local<F: FnMut(UploadProgress)>(
     }
 
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
+        cleanup_local_staging(&staging_base);
         return cancelled;
     }
+
+    // Promote staging → final job root.
+    let staged_job = staging_base.join(&job_name);
+    let final_job = dest_root.join(&job_name);
+    if final_job.exists() {
+        cleanup_local_staging(&staging_base);
+        return UploadResult::fail(format!(
+            "Ziel existiert bereits: {}",
+            final_job.display()
+        ));
+    }
+    if let Err(e) = fs::rename(&staged_job, &final_job) {
+        cleanup_local_staging(&staging_base);
+        return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {e}"));
+    }
+    cleanup_local_staging(&staging_base);
 
     progress.emit(
         100.0,
@@ -825,33 +907,8 @@ fn upload_local<F: FnMut(UploadProgress)>(
         success: true,
         message: format!("Erfolgreich auf Server kopiert: {remote}"),
         remote_path: remote,
+        staging_root: None,
     }
-}
-
-fn copy_file_chunked(
-    src: &Path,
-    dst: &Path,
-    cancel: UploadCancelPolicy,
-    mut on_chunk: impl FnMut(u64),
-) -> Result<(), String> {
-    let mut input = File::open(src).map_err(|e| e.to_string())?;
-    let mut output = File::create(dst).map_err(|e| e.to_string())?;
-    let mut buf = vec![0u8; CHUNK_SIZE];
-    let mut copied = 0u64;
-    loop {
-        if is_upload_cancelled(cancel) {
-            let _ = fs::remove_file(dst);
-            return Err(WORKFLOW_CANCELLED.into());
-        }
-        let n = input.read(&mut buf).map_err(|e| e.to_string())?;
-        if n == 0 {
-            break;
-        }
-        output.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-        copied += n as u64;
-        on_chunk(copied);
-    }
-    Ok(())
 }
 
 /// Drop the shared SMB upload session, then pause on cancel so remote cleanup
@@ -877,6 +934,43 @@ where
     result
 }
 
+/// After a failed/cancelled staged upload: hard-drop session, enqueue GC, best-effort delete.
+async fn abandon_smb_staging<F>(
+    result: UploadResult,
+    cancel: UploadCancelPolicy,
+    progress: Arc<Mutex<UploadProgressGate<F>>>,
+    tree: Arc<smb2::client::Tree>,
+    client: Arc<SmbClient>,
+    host: &str,
+    port: u16,
+    share: &str,
+    staging_root: &str,
+    login: &str,
+    password: &str,
+) -> UploadResult
+where
+    F: FnMut(UploadProgress) + Send + 'static,
+{
+    let result = release_smb_session_for_cleanup(result, cancel, progress, tree, client).await;
+    enqueue_new_staging_gc(host, port, share, staging_root);
+    match cleanup_smb_remote_tree(host, port, share, login, password, staging_root, true).await {
+        Ok(()) => {
+            dequeue_staging_gc(host, port, share, staging_root);
+            crate::storage::logging::info(
+                "smb",
+                format!("Staging sofort aufgeräumt: {staging_root}"),
+            );
+        }
+        Err(e) => {
+            crate::storage::logging::warn(
+                "smb",
+                format!("Staging-GC später: {staging_root} ({e})"),
+            );
+        }
+    }
+    result.with_staging(Some(staging_root.to_string()))
+}
+
 async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     host: &str,
     port: u16,
@@ -890,39 +984,28 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     cancel: UploadCancelPolicy,
     progress: UploadProgressGate<F>,
 ) -> UploadResult {
+    // Opportunistic drain of leftover staging folders from prior cancels.
+    let _ = drain_smb_staging_gc(login, password).await;
+
     let mut client = match connect_smb(host, port, login, password).await {
         Ok(c) => c,
-        Err(e) => {
-            return UploadResult {
-                success: false,
-                message: e,
-                remote_path: String::new(),
-            }
-        }
+        Err(e) => return UploadResult::fail(e),
     };
 
     let mut tree = match client.connect_share(share).await {
         Ok(t) => t,
-        Err(e) => {
-            return UploadResult {
-                success: false,
-                message: map_smb_error(&e.to_string(), share),
-                remote_path: String::new(),
-            }
-        }
+        Err(e) => return UploadResult::fail(map_smb_error(&e.to_string(), share)),
     };
 
+    let job_name = job_top_name(files);
+    let staging_id = uuid::Uuid::new_v4().to_string();
+    let staging_root = staging_prefix(subpath, &staging_id);
+    let write_root = staging_root.clone();
+
     let mut created_dirs = std::collections::HashSet::<String>::new();
-    if !subpath.is_empty() {
-        if let Err(e) =
-            ensure_remote_dirs(&mut client, &mut tree, subpath, &mut created_dirs).await
-        {
-            return UploadResult {
-                success: false,
-                message: e,
-                remote_path: String::new(),
-            };
-        }
+    if let Err(e) = ensure_remote_dirs(&mut client, &mut tree, &write_root, &mut created_dirs).await
+    {
+        return UploadResult::fail(e);
     }
 
     let phases = partition_upload_phases(files);
@@ -930,9 +1013,14 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     // Create every parent directory before any parallel write (no races on mkdir).
     for file in phases.ordered() {
         if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-            return cancelled;
+            drop(tree);
+            drop(client);
+            enqueue_new_staging_gc(host, port, share, &staging_root);
+            let _ = cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
+                .await;
+            return cancelled.with_staging(Some(staging_root));
         }
-        let remote_rel = join_smb_path(subpath, &file.relative);
+        let remote_rel = join_smb_path(&write_root, &file.relative);
         if let Some(parent) = Path::new(&remote_rel).parent() {
             let parent_str = parent.to_string_lossy().replace('\\', "/");
             if !parent_str.is_empty() && parent_str != "." {
@@ -940,11 +1028,13 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
                     ensure_remote_dirs(&mut client, &mut tree, &parent_str, &mut created_dirs)
                         .await
                 {
-                    return UploadResult {
-                        success: false,
-                        message: e,
-                        remote_path: String::new(),
-                    };
+                    drop(tree);
+                    drop(client);
+                    enqueue_new_staging_gc(host, port, share, &staging_root);
+                    let _ =
+                        cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
+                            .await;
+                    return UploadResult::fail(e).with_staging(Some(staging_root));
                 }
             }
         }
@@ -957,7 +1047,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     let media_remotes: Vec<String> = phases
         .media
         .iter()
-        .map(|f| join_smb_path(subpath, &f.relative))
+        .map(|f| join_smb_path(&write_root, &f.relative))
         .collect();
 
     let mut copied_bytes = match upload_smb_media_parallel(
@@ -975,13 +1065,38 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     {
         Ok(b) => b,
         Err(e) => {
-            return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+            return abandon_smb_staging(
+                e,
+                cancel,
+                progress,
+                tree,
+                client,
+                host,
+                port,
+                share,
+                &staging_root,
+                login,
+                password,
+            )
+            .await;
         }
     };
 
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
-            .await;
+        return abandon_smb_staging(
+            cancelled,
+            cancel,
+            progress,
+            tree,
+            client,
+            host,
+            port,
+            share,
+            &staging_root,
+            login,
+            password,
+        )
+        .await;
     }
 
     // Barrier: media fully flushed before commit files.
@@ -992,7 +1107,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             client.as_ref(),
             tree.as_ref(),
             manifest,
-            &join_smb_path(subpath, &manifest.relative),
+            &join_smb_path(&write_root, &manifest.relative),
             file_index,
             total_files,
             total_bytes,
@@ -1005,14 +1120,39 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         {
             Ok(b) => copied_bytes = b,
             Err(e) => {
-                return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+                return abandon_smb_staging(
+                    e,
+                    cancel,
+                    progress,
+                    tree,
+                    client,
+                    host,
+                    port,
+                    share,
+                    &staging_root,
+                    login,
+                    password,
+                )
+                .await;
             }
         }
     }
 
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
-            .await;
+        return abandon_smb_staging(
+            cancelled,
+            cancel,
+            progress,
+            tree,
+            client,
+            host,
+            port,
+            share,
+            &staging_root,
+            login,
+            password,
+        )
+        .await;
     }
 
     if let Some(marker) = &phases.marker {
@@ -1021,7 +1161,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             client.as_ref(),
             tree.as_ref(),
             marker,
-            &join_smb_path(subpath, &marker.relative),
+            &join_smb_path(&write_root, &marker.relative),
             file_index,
             total_files,
             total_bytes,
@@ -1034,15 +1174,40 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         {
             Ok(b) => copied_bytes = b,
             Err(e) => {
-                return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+                return abandon_smb_staging(
+                    e,
+                    cancel,
+                    progress,
+                    tree,
+                    client,
+                    host,
+                    port,
+                    share,
+                    &staging_root,
+                    login,
+                    password,
+                )
+                .await;
             }
         }
     }
 
     let _ = copied_bytes;
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
-            .await;
+        return abandon_smb_staging(
+            cancelled,
+            cancel,
+            progress,
+            tree,
+            client,
+            host,
+            port,
+            share,
+            &staging_root,
+            login,
+            password,
+        )
+        .await;
     }
 
     if let Ok(mut gate) = progress.lock() {
@@ -1056,6 +1221,50 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             true,
         );
     }
+    drop(progress);
+
+    // Promote staging job folder → final name (same share).
+    let staged_job = join_smb_path(&staging_root, &job_name);
+    let final_job = join_smb_path(subpath, &job_name);
+
+    let mut client = match Arc::try_unwrap(client) {
+        Ok(c) => c,
+        Err(_) => {
+            drop(tree);
+            enqueue_new_staging_gc(host, port, share, &staging_root);
+            return UploadResult::fail(
+                "Upload-Session konnte für Promote nicht exklusiv übernommen werden",
+            )
+            .with_staging(Some(staging_root));
+        }
+    };
+    let mut tree = match Arc::try_unwrap(tree) {
+        Ok(t) => t,
+        Err(_) => {
+            drop(client);
+            enqueue_new_staging_gc(host, port, share, &staging_root);
+            return UploadResult::fail(
+                "Upload-Tree konnte für Promote nicht exklusiv übernommen werden",
+            )
+            .with_staging(Some(staging_root));
+        }
+    };
+
+    if let Err(e) = client.rename(&mut tree, &staged_job, &final_job).await {
+        let msg = e.to_string();
+        drop(tree);
+        drop(client);
+        enqueue_new_staging_gc(host, port, share, &staging_root);
+        let _ = cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
+            .await;
+        return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {msg}"))
+            .with_staging(Some(staging_root));
+    }
+
+    // Best-effort remove empty `.ats_staging/<id>` parent.
+    let _ = client.delete_directory(&mut tree, &staging_root).await;
+    drop(tree);
+    drop(client);
 
     let remote = display_remote(
         &ServerTarget::Smb {
@@ -1064,16 +1273,14 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             share: share.to_string(),
             subpath: subpath.to_string(),
         },
-        files
-            .first()
-            .map(|f| f.relative.split('/').next().unwrap_or(&f.relative))
-            .unwrap_or(""),
+        &job_name,
     );
 
     UploadResult {
         success: true,
         message: format!("Erfolgreich auf Server kopiert: {remote}"),
         remote_path: remote,
+        staging_root: None,
     }
 }
 
@@ -1137,6 +1344,7 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
                 success: false,
                 message,
                 remote_path: String::new(),
+            staging_root: None,
             });
         }
     }
@@ -1376,6 +1584,46 @@ pub(crate) async fn stream_upload_file(
     writer.finish().await.map_err(|e| e.to_string())
 }
 
+/// Public helper for abort path: delete a share-relative staging root.
+pub async fn cleanup_staging_path(
+    server_url: &str,
+    login: &str,
+    password: &str,
+    staging_root: &str,
+) -> Result<(), String> {
+    let target = parse_server_target(server_url)?;
+    match target {
+        ServerTarget::Local { path } => {
+            let top = path.join(staging_root.replace('/', std::path::MAIN_SEPARATOR_STR));
+            if top.is_dir() {
+                fs::remove_dir_all(&top).map_err(|e| e.to_string())?;
+            } else if top.is_file() {
+                let _ = fs::remove_file(&top);
+            }
+            Ok(())
+        }
+        ServerTarget::Smb {
+            host,
+            port,
+            share,
+            ..
+        } => {
+            cleanup_smb_remote_tree(
+                &host,
+                port,
+                &share,
+                login,
+                password,
+                staging_root,
+                true,
+            )
+            .await?;
+            dequeue_staging_gc(&host, port, &share, staging_root);
+            Ok(())
+        }
+    }
+}
+
 /// Removal of a partial upload tree on the configured server.
 ///
 /// Deletes the **job root** (folder name of `local_path`) under the share
@@ -1455,40 +1703,53 @@ async fn cleanup_smb_job_root(
     job_name: &str,
 ) -> Result<(), String> {
     let job_root = join_smb_path(subpath, job_name);
-    if job_root.is_empty() {
+    cleanup_smb_remote_tree(host, port, share, login, password, &job_root, false).await
+}
+
+/// Delete an arbitrary share-relative path (job root or `.ats_staging/<id>`).
+///
+/// When `already_paused` is true, skips the initial session-teardown sleep
+/// (caller already waited after dropping the upload session).
+async fn cleanup_smb_remote_tree(
+    host: &str,
+    port: u16,
+    share: &str,
+    login: &str,
+    password: &str,
+    remote_root: &str,
+    already_paused: bool,
+) -> Result<(), String> {
+    if remote_root.is_empty() {
         return Err("Leerer Cleanup-Pfad".into());
     }
 
-    // Wait for the cancelled upload TCP session to release exclusive locks.
-    tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
+    if !already_paused {
+        tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
+    }
 
     const ATTEMPTS: u32 = 8;
     let mut last_err: Option<String> = None;
     for attempt in 1..=ATTEMPTS {
-        // Fresh connection each attempt — avoids a poisoned tree after
-        // SHARING_VIOLATION / DIRECTORY_NOT_EMPTY mid-delete.
         let mut client = connect_smb(host, port, login, password).await?;
         let mut tree = client
             .connect_share(share)
             .await
             .map_err(|e| map_smb_error(&e.to_string(), share))?;
 
-        match delete_smb_tree_recursive(&mut client, &mut tree, &job_root).await {
+        match delete_smb_tree_recursive(&mut client, &mut tree, remote_root).await {
             Ok(()) => {
-                if smb_remote_gone(&mut client, &mut tree, &job_root).await {
+                if smb_remote_gone(&mut client, &mut tree, remote_root).await {
                     return Ok(());
                 }
                 last_err = Some(format!(
-                    "Remote-Ordner noch vorhanden nach Löschen: {job_root}"
+                    "Remote-Ordner noch vorhanden nach Löschen: {remote_root}"
                 ));
             }
             Err(e) => {
                 last_err = Some(e);
             }
         }
-        let retry_sharing = last_err
-            .as_deref()
-            .is_some_and(smb_sharing_violation);
+        let retry_sharing = last_err.as_deref().is_some_and(smb_sharing_violation);
         drop(tree);
         drop(client);
         if attempt < ATTEMPTS {
@@ -1500,7 +1761,58 @@ async fn cleanup_smb_job_root(
             tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
         }
     }
-    Err(last_err.unwrap_or_else(|| format!("Aufräumen fehlgeschlagen: {job_root}")))
+    Err(last_err.unwrap_or_else(|| format!("Aufräumen fehlgeschlagen: {remote_root}")))
+}
+
+/// Process due deferred staging GC entries (fresh connections, credentials from caller).
+pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
+    let due = list_due_staging_gc();
+    if due.is_empty() {
+        return 0;
+    }
+    let mut cleared = 0usize;
+    for entry in due {
+        match cleanup_smb_remote_tree(
+            &entry.host,
+            entry.port,
+            &entry.share,
+            login,
+            password,
+            &entry.staging_root,
+            true,
+        )
+        .await
+        {
+            Ok(()) => {
+                record_gc_attempt(
+                    &entry.host,
+                    entry.port,
+                    &entry.share,
+                    &entry.staging_root,
+                    true,
+                );
+                cleared += 1;
+                crate::storage::logging::info(
+                    "smb",
+                    format!("Staging-GC OK: {}", entry.staging_root),
+                );
+            }
+            Err(e) => {
+                record_gc_attempt(
+                    &entry.host,
+                    entry.port,
+                    &entry.share,
+                    &entry.staging_root,
+                    false,
+                );
+                crate::storage::logging::warn(
+                    "smb",
+                    format!("Staging-GC Versuch fehlgeschlagen ({}): {e}", entry.staging_root),
+                );
+            }
+        }
+    }
+    cleared
 }
 
 async fn smb_remote_gone(
