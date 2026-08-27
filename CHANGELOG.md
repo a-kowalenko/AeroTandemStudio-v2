@@ -46,6 +46,44 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Unter Vorgänge: Upload-Status kürzer und mit Tooltip (Ausstehend, Abgebrochen, Fehlgeschlagen, Upload)
 - Upload-Abbruch räumt unvollständige Server-Ordner zuverlässiger auf
 
+## [0.3.9-beta.5] - 2026-08-27
+
+### Neu
+
+- Vorgang lokal erstellen, wenn der Server nicht erreichbar ist — Upload bleibt ausstehend und kann später nachgeholt werden
+- Unter Vorgänge: ausstehende Uploads einzeln oder gesammelt nachholen
+- Badge in der Kopfzeile bei ausstehenden Uploads; Hinweis, wenn der Server wieder erreichbar ist
+- Fehlende Dateien beim Upload-Nachholen: Ordner öffnen oder nur die vorhandenen Medien hochladen
+- Zusätzliche Dateien im Ausgabeordner: mit hochladen (Lieferliste wird angepasst) oder überschüssige Dateien vor dem Upload löschen
+- Gesammeltes Nachholen: bereite Vorgänge zuerst, bei Problemen nacheinander mit Rückfrage
+- Einrichtungsassistent und Einstellungen: Upload- und Backup-Pfade von der Buchungssuche vorschlagen und übernehmen — Hinweis, wenn der eingestellte Pfad abweicht
+- Server-Profile: optionale Backup-URL als zweites SMB-Ziel (eigene Zugangsdaten möglich)
+- SD-Karten zusätzlich per SMB auf den Server sichern — Ziel kommt aus der Backup-URL des aktiven Server-Profils
+- USB-Action-Cams: Import nur für freigegebene Modelle; unter Einstellungen → SD die Import-Methode wählbar
+- Nach „Vorgang erstellen“ sofort weiterarbeiten — Upload läuft im Hintergrund (Fortschritt in der Leiste, weitere Uploads in der Warteschlange)
+- Beim Beenden mit laufendem Upload: Rückfrage, ob der Upload abgebrochen werden soll
+- Server-Backup in der Kopfzeile: Klick öffnet Details (Fortschritt, Geschwindigkeit) und Abbruch nur für das aktuelle Backup
+
+### Verbessert
+
+- Kopfzeile passt sich schmaleren Fenstern an: Titel wird zu „ATS“, Encoder-Anzeige und Version weichen schrittweise — bis nur noch das Logo sichtbar ist (ohne abgeschnittene …)
+- Server-Status aktualisiert sich im Hintergrund — Verbindungsprobleme fallen schneller auf
+- Bezeichnungen vereinheitlicht: der Bereich heißt durchgängig „Vorgänge“ (statt teils „Historie“)
+- Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
+- DJI Foto-Timelapse: Begleitvideos landen nicht mehr im Backup und werden beim Leeren der Karte mit entfernt
+- Vorschaubilder in der SD-Dateiauswahl werden zuverlässiger angezeigt
+- Einrichtungsassistent: nach Übernahme der Pfade von der Buchungssuche direkt die Server-Profile prüfen und anpassen
+- Einrichtungsassistent (Upload): Checkbox „Backup auf Server sichern“ unter dem Upload-Schalter
+- Unter SD: Server-Backup-URL nur Anzeige — Bearbeitung über Einstellungen → Server am Profil
+- Pfad-Vorschläge und Abweichungs-Hinweise: Primär und Backup übersichtlicher — aktueller und vorgeschlagener Pfad nebeneinander
+- Einrichtungsassistent: einheitliche Bezeichnung „Server“ statt „AMS“ bei Suche und Verbindung
+- Einrichtungsassistent: „Ich bin“ ist Pflicht; mit aktivem Upload muss vor dem Fortfahren eine Server-Verbindung stehen — der Verbinden-Button wird hervorgehoben
+- Crew-Liste: neue Standard-Namen aus App-Updates erscheinen automatisch — selbst entfernte Namen bleiben weg
+- Manuell abgebrochene Uploads zählen nicht mehr als ausstehend (kein Badge, kein Sammel-Nachholen) — unter Vorgänge weiterhin nachholbar
+- Upload-Leiste: Warteschlange aufklappbar — wartende Vorgänge mit Gast und Crew sichtbar
+- Unter Vorgänge: Upload-Status kürzer und mit Tooltip (Ausstehend, Abgebrochen, Fehlgeschlagen, Upload)
+- Upload-Abbruch räumt unvollständige Server-Ordner zuverlässiger auf
+
 ## [0.3.9-beta.4] - 2026-08-27
 
 ### Neu
