@@ -274,9 +274,10 @@ pub fn timelapse_session_id_from_folder(folder: &str) -> Option<String> {
 }
 
 /// Session suffix from a DJI master video basename (`DJI_20260827_0006.MP4` → `0006`).
+/// Osmo Action timelapse companions may end with `_D` (`…_0006_D.MP4`).
 pub fn dji_video_session_suffix(filename: &str) -> Option<String> {
     static RE: once_cell::sync::Lazy<Regex> = once_cell::sync::Lazy::new(|| {
-        Regex::new(r"(?i)^DJI_.*_(\d+)$").unwrap()
+        Regex::new(r"(?i)^DJI_.*_(\d+)(?:_D)?$").unwrap()
     });
     let base = Path::new(filename)
         .file_name()
@@ -858,13 +859,14 @@ mod tests {
     #[test]
     fn filter_skips_only_matching_timelapse_companion_videos() {
         let paths = vec![
-            "E:\\DCIM\\TIMELAPSE\\001_0006\\IMG_001.JPG".into(),
-            "E:\\DCIM\\TIMELAPSE\\001_0008\\IMG_001.JPG".into(),
-            "E:\\DCIM\\DJI_001\\DJI_20260827_0006.MP4".into(),
-            "E:\\DCIM\\DJI_001\\DJI_20260827_0007.MP4".into(),
-            "E:\\DCIM\\DJI_001\\DJI_20260827_0008.MP4".into(),
+            "/Volumes/SD_Card/DCIM/TIMELAPSE/001_0006/IMG_001.JPG".into(),
+            "/Volumes/SD_Card/DCIM/TIMELAPSE/001_0008/IMG_001.JPG".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827_0006.MP4".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827_0007.MP4".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827_0008.MP4".into(),
         ];
-        let result = filter_media_paths_for_backup(&paths, "E:\\DCIM", true);
+        let result =
+            filter_media_paths_for_backup(&paths, "/Volumes/SD_Card/DCIM", true);
         assert_eq!(result.skipped_count(), 2);
         assert_eq!(result.kept.len(), 3);
         assert!(result
@@ -933,6 +935,47 @@ mod tests {
             dji_video_session_suffix("DJI_20260827143022123_0008.MP4").as_deref(),
             Some("0008")
         );
+        assert_eq!(
+            dji_video_session_suffix("DJI_20260827004523_0005_D.MP4").as_deref(),
+            Some("0005")
+        );
+        assert_eq!(
+            dji_video_session_suffix("DJI_20260827005028_0007_D.MP4").as_deref(),
+            Some("0007")
+        );
+    }
+
+    #[test]
+    fn filter_skips_osmo_action_timelapse_d_suffix_companions() {
+        let paths = vec![
+            "/Volumes/SD_Card/DCIM/TIMELAPSE/001_0005/IMG_001.JPG".into(),
+            "/Volumes/SD_Card/DCIM/TIMELAPSE/001_0006/IMG_001.JPG".into(),
+            "/Volumes/SD_Card/DCIM/TIMELAPSE/001_0008/IMG_001.JPG".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827004523_0005_D.MP4".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827005007_0006_D.MP4".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827005028_0007_D.MP4".into(),
+            "/Volumes/SD_Card/DCIM/DJI_001/DJI_20260827005045_0008_D.MP4".into(),
+        ];
+        let result =
+            filter_media_paths_for_backup(&paths, "/Volumes/SD_Card/DCIM", true);
+        assert_eq!(result.skipped_count(), 3);
+        assert_eq!(result.kept.len(), 4);
+        assert!(result
+            .kept
+            .iter()
+            .any(|p| p.ends_with("_0007_D.MP4")));
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0005_D.MP4")));
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0006_D.MP4")));
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0008_D.MP4")));
     }
 
     #[test]

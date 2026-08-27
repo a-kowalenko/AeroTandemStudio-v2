@@ -3388,6 +3388,51 @@ mod tests {
     }
 
     #[test]
+    fn list_files_filters_osmo_action_timelapse_d_suffix_companions() {
+        let src = tempdir().unwrap();
+        let dcim = src.path().join("DCIM");
+        let dji = dcim.join("DJI_001");
+        for id in ["0005", "0006", "0008"] {
+            let tl = dcim.join("TIMELAPSE").join(format!("001_{id}"));
+            fs::create_dir_all(&tl).unwrap();
+            fs::write(tl.join("IMG_001.JPG"), b"photo").unwrap();
+        }
+        fs::create_dir_all(&dji).unwrap();
+        fs::write(
+            dji.join("DJI_20260827004523_0005_D.MP4"),
+            vec![0u8; 1024],
+        )
+        .unwrap();
+        fs::write(
+            dji.join("DJI_20260827005007_0006_D.MP4"),
+            vec![0u8; 1024],
+        )
+        .unwrap();
+        fs::write(
+            dji.join("DJI_20260827005028_0007_D.MP4"),
+            vec![0u8; 1024],
+        )
+        .unwrap();
+        fs::write(
+            dji.join("DJI_20260827005045_0008_D.MP4"),
+            vec![0u8; 1024],
+        )
+        .unwrap();
+
+        let hist = tempdir().unwrap();
+        let monitor = test_monitor(&hist);
+        let listed = monitor
+            .list_files(&src.path().to_string_lossy())
+            .unwrap();
+        let names: Vec<_> = listed.files.iter().map(|f| f.filename.as_str()).collect();
+        assert!(names.iter().any(|n| n.ends_with("IMG_001.JPG")));
+        assert!(names.iter().any(|n| *n == "DJI_20260827005028_0007_D.MP4"));
+        assert!(!names.iter().any(|n| n.ends_with("_0005_D.MP4")));
+        assert!(!names.iter().any(|n| n.ends_with("_0006_D.MP4")));
+        assert!(!names.iter().any(|n| n.ends_with("_0008_D.MP4")));
+    }
+
+    #[test]
     fn list_files_timelapse_only_videos_are_filtered() {
         let src = tempdir().unwrap();
         let tl = src.path().join("DCIM").join("100MEDIA").join("timelapse");
