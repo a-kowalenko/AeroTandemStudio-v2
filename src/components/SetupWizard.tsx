@@ -1075,6 +1075,15 @@ export function SetupWizard({ open, onComplete }: Props) {
                   />
                   {t("settings.server.upload.afterCreate")}
                 </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={draft.sd_server_backup_enabled}
+                    onCheckedChange={(v) =>
+                      patch("sd_server_backup_enabled", v === true)
+                    }
+                  />
+                  {t("settings.sd.backup.secondPath")}
+                </label>
               </div>
               {!draft.upload_to_server ? (
                 <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
@@ -1185,6 +1194,16 @@ export function SetupWizard({ open, onComplete }: Props) {
                           draft.server_url ||
                           t("setupWizard.summary.serverMissing")
                         : t("setupWizard.summary.disabled")
+                  }
+                />
+                <SummaryRow
+                  label={t("settings.sd.backup.secondPath")}
+                  value={
+                    skippedSteps.has(3)
+                      ? t("setupWizard.summary.skipped")
+                      : draft.sd_server_backup_enabled
+                        ? t("setupWizard.summary.on")
+                        : t("setupWizard.summary.off")
                   }
                 />
                 {draft.upload_to_server && draft.ams_bridge_display_name.trim() ? (

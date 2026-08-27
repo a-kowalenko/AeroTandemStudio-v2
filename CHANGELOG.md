@@ -18,8 +18,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Fehlende Dateien beim Upload-Nachholen: Ordner öffnen oder nur die vorhandenen Medien hochladen
 - Zusätzliche Dateien im Ausgabeordner: mit hochladen (Lieferliste wird angepasst) oder überschüssige Dateien vor dem Upload löschen
 - Gesammeltes Nachholen: bereite Vorgänge zuerst, bei Problemen nacheinander mit Rückfrage
-- Einrichtungsassistent und Einstellungen: Upload-Pfade von der Buchungssuche vorschlagen und übernehmen — Hinweis, wenn der eingestellte Pfad abweicht
-- SD-Karten zusätzlich per SMB auf den Server sichern (eigenes Ziel, unabhängig vom Upload-Ordner „aktuell“)
+- Einrichtungsassistent und Einstellungen: Upload- und Backup-Pfade von der Buchungssuche vorschlagen und übernehmen — Hinweis, wenn der eingestellte Pfad abweicht
+- Server-Profile: optionale Backup-URL als zweites SMB-Ziel (eigene Zugangsdaten möglich)
+- SD-Karten zusätzlich per SMB auf den Server sichern — Ziel kommt aus der Backup-URL des aktiven Server-Profils
 - USB-Action-Cams: Import nur für freigegebene Modelle; unter Einstellungen → SD die Import-Methode wählbar
 
 ### Verbessert
@@ -30,6 +31,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Update-Dialog: Wechsel von Beta auf finale Version und Beta-Hinweise in den Einstellungen klarer formuliert
 - DJI Foto-Timelapse: Begleitvideos landen nicht mehr im Backup und werden beim Leeren der Karte mit entfernt
 - Vorschaubilder in der SD-Dateiauswahl werden zuverlässiger angezeigt
+- Einrichtungsassistent: nach Übernahme der Pfade von der Buchungssuche direkt die Server-Profile prüfen und anpassen
+- Einrichtungsassistent (Upload): Checkbox „Backup auf Server sichern“ unter dem Upload-Schalter
+- Unter SD: Server-Backup-URL nur Anzeige — Bearbeitung über Einstellungen → Server am Profil
 
 
 

@@ -273,7 +273,7 @@
         "clearAfter": "SD nach Backup leeren",
         "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
         "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
-        "secondPath": "Auf Server sichern",
+        "secondPath": "Backup auf Server sichern",
         "serverUrl": "Server-Backup-URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Gleicher SMB-Upload wie bei Erstellen; Ziel unabhängig von „aktuell“. Zugangsdaten vom Upload-Server.",
