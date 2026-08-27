@@ -27,15 +27,17 @@ pub const LARGE_MEDIA_PARALLELISM: usize = 1;
 pub const LARGE_MEDIA_MIN_BYTES: u64 = 16 * 1024 * 1024;
 /// How often the media join loop re-checks slot/workflow cancel while workers run.
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
-/// Max wait for workers to exit via FileWriter::abort before force-cancelling tasks.
-const COOPERATIVE_CANCEL_TIMEOUT: Duration = Duration::from_secs(8);
+/// Max wait for workers to exit via interruptible write + FileWriter::abort.
+/// With cancel racing `write_chunk`, this should complete in well under a second;
+/// the long bound is only a safety net before force-abort.
+const COOPERATIVE_CANCEL_TIMEOUT: Duration = Duration::from_secs(15);
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "m4v", "avi", "webm"];
 
 /// Wait for remaining workers after cancel was signaled.
 ///
-/// Prefer cooperative exit (`stream_upload_file` → `FileWriter::abort`) over
-/// `JoinSet::abort_all`, which drops writers mid-write and leaks SMB handles
+/// Prefer cooperative exit (`stream_upload_file` → interrupt write → `FileWriter::abort`)
+/// over `JoinSet::abort_all`, which drops writers mid-write and leaks SMB handles
 /// until session teardown — blocking remote cleanup deletes.
 async fn drain_media_workers_after_cancel(
     set: &mut tokio::task::JoinSet<Result<(), String>>,
@@ -44,8 +46,11 @@ async fn drain_media_workers_after_cancel(
     while !set.is_empty() {
         let now = tokio::time::Instant::now();
         if now >= deadline {
+            // Last resort: force-cancel tasks, then pause so TCP teardown can
+            // release SHARING_VIOLATION locks before cleanup connects.
             set.abort_all();
             while set.join_next().await.is_some() {}
+            tokio::time::sleep(Duration::from_millis(500)).await;
             return;
         }
         let wait = (deadline - now).min(CANCEL_POLL_INTERVAL);

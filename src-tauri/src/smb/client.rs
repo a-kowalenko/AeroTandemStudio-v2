@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use smb2::{ClientConfig, SmbClient};
+use smb2::{ClientConfig, FileWriter, SmbClient};
 
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
@@ -24,6 +24,8 @@ use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel}
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
 const UPLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(150);
+/// How often in-flight `write_chunk` is interrupted to honor cancel.
+const WRITE_CANCEL_POLL: Duration = Duration::from_millis(50);
 
 /// Result of `normalize_server_path` (mirrors legacy tuple).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -847,6 +849,29 @@ fn copy_file_chunked(
     Ok(())
 }
 
+/// Drop the shared SMB upload session, then pause on cancel so remote cleanup
+/// does not hit STATUS_SHARING_VIOLATION on still-open writers.
+async fn release_smb_session_for_cleanup<F>(
+    result: UploadResult,
+    cancel: UploadCancelPolicy,
+    progress: Arc<Mutex<UploadProgressGate<F>>>,
+    tree: Arc<smb2::client::Tree>,
+    client: Arc<SmbClient>,
+) -> UploadResult
+where
+    F: FnMut(UploadProgress) + Send + 'static,
+{
+    let cancelled =
+        result.message.trim() == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
+    drop(progress);
+    drop(tree);
+    drop(client);
+    if cancelled {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+    }
+    result
+}
+
 async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     host: &str,
     port: u16,
@@ -944,11 +969,14 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     .await
     {
         Ok(b) => b,
-        Err(e) => return e,
+        Err(e) => {
+            return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+        }
     };
 
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return cancelled;
+        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
+            .await;
     }
 
     // Barrier: media fully flushed before commit files.
@@ -971,12 +999,15 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         .await
         {
             Ok(b) => copied_bytes = b,
-            Err(e) => return e,
+            Err(e) => {
+                return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+            }
         }
     }
 
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return cancelled;
+        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
+            .await;
     }
 
     if let Some(marker) = &phases.marker {
@@ -997,13 +1028,16 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         .await
         {
             Ok(b) => copied_bytes = b,
-            Err(e) => return e,
+            Err(e) => {
+                return release_smb_session_for_cleanup(e, cancel, progress, tree, client).await;
+            }
         }
     }
 
     let _ = copied_bytes;
     if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-        return cancelled;
+        return release_smb_session_for_cleanup(cancelled, cancel, progress, tree, client)
+            .await;
     }
 
     if let Ok(mut gate) = progress.lock() {
@@ -1170,6 +1204,37 @@ async fn ensure_remote_dirs(
     Ok(())
 }
 
+/// Poll until the upload cancel flag is set (or return immediately if already set).
+async fn wait_until_upload_cancelled(cancel: UploadCancelPolicy) {
+    loop {
+        if is_upload_cancelled(cancel) {
+            return;
+        }
+        tokio::time::sleep(WRITE_CANCEL_POLL).await;
+    }
+}
+
+/// Write one chunk, but bail within ~50ms of a cancel request so `FileWriter::abort`
+/// can run instead of waiting out a multi-second SMB write.
+async fn write_chunk_unless_cancelled(
+    writer: &mut FileWriter,
+    chunk: &[u8],
+    cancel: UploadCancelPolicy,
+) -> Result<(), String> {
+    if is_upload_cancelled(cancel) {
+        return Err(WORKFLOW_CANCELLED.into());
+    }
+    tokio::select! {
+        biased;
+        result = writer.write_chunk(chunk) => {
+            result.map_err(|e| e.to_string())
+        }
+        _ = wait_until_upload_cancelled(cancel) => {
+            Err(WORKFLOW_CANCELLED.into())
+        }
+    }
+}
+
 pub(crate) async fn stream_upload_file(
     client: &SmbClient,
     tree: &smb2::client::Tree,
@@ -1211,9 +1276,15 @@ pub(crate) async fn stream_upload_file(
                 return Err(WORKFLOW_CANCELLED.into());
             }
             let end = (offset + CHUNK_SIZE).min(data.len());
-            if let Err(e) = writer.write_chunk(&data[offset..end]).await {
+            if let Err(e) = write_chunk_unless_cancelled(
+                &mut writer,
+                &data[offset..end],
+                cancel,
+            )
+            .await
+            {
                 let _ = writer.abort().await;
-                return Err(e.to_string());
+                return Err(e);
             }
             offset = end;
             on_chunk(offset as u64);
@@ -1258,10 +1329,10 @@ pub(crate) async fn stream_upload_file(
             let _ = writer.abort().await;
             return Err(WORKFLOW_CANCELLED.into());
         }
-        if let Err(e) = writer.write_chunk(&chunk).await {
+        if let Err(e) = write_chunk_unless_cancelled(&mut writer, &chunk, cancel).await {
             let _ = reader.await;
             let _ = writer.abort().await;
-            return Err(e.to_string());
+            return Err(e);
         }
         copied += chunk.len() as u64;
         on_chunk(copied);
@@ -1358,24 +1429,26 @@ async fn cleanup_smb_job_root(
     password: &str,
     job_name: &str,
 ) -> Result<(), String> {
-    // Brief pause so the cancelled upload session can release file handles
-    // (FileWriter drop without abort() leaks until session teardown).
-    tokio::time::sleep(Duration::from_millis(250)).await;
-
-    let mut client = connect_smb(host, port, login, password).await?;
-    let mut tree = client
-        .connect_share(share)
-        .await
-        .map_err(|e| map_smb_error(&e.to_string(), share))?;
-
     let job_root = join_smb_path(subpath, job_name);
     if job_root.is_empty() {
         return Err("Leerer Cleanup-Pfad".into());
     }
 
-    const ATTEMPTS: u32 = 5;
+    // Give the cancelled upload session time to release file handles after
+    // FileWriter::abort / TCP teardown.
+    tokio::time::sleep(Duration::from_millis(400)).await;
+
+    const ATTEMPTS: u32 = 6;
     let mut last_err: Option<String> = None;
     for attempt in 1..=ATTEMPTS {
+        // Fresh connection each attempt — avoids a poisoned tree after
+        // SHARING_VIOLATION / DIRECTORY_NOT_EMPTY mid-delete.
+        let mut client = connect_smb(host, port, login, password).await?;
+        let mut tree = client
+            .connect_share(share)
+            .await
+            .map_err(|e| map_smb_error(&e.to_string(), share))?;
+
         match delete_smb_tree_recursive(&mut client, &mut tree, &job_root).await {
             Ok(()) => {
                 if smb_remote_gone(&mut client, &mut tree, &job_root).await {
@@ -1389,8 +1462,10 @@ async fn cleanup_smb_job_root(
                 last_err = Some(e);
             }
         }
+        drop(tree);
+        drop(client);
         if attempt < ATTEMPTS {
-            tokio::time::sleep(Duration::from_millis(200 * u64::from(attempt))).await;
+            tokio::time::sleep(Duration::from_millis(300 * u64::from(attempt))).await;
         }
     }
     Err(last_err.unwrap_or_else(|| format!("Aufräumen fehlgeschlagen: {job_root}")))
