@@ -213,16 +213,16 @@ function ProductStatusChip({ badge }: { badge: ProductBadge }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium leading-tight ring-1 ring-inset",
         badge.paid
-          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100"
-          : "border-border/60 bg-muted/30 text-muted-foreground",
+          ? "bg-emerald-500/12 text-emerald-900 ring-emerald-500/30 dark:text-emerald-100"
+          : "bg-muted/30 text-muted-foreground ring-border/60",
       )}
       title={badge.paid ? t("history.paidTitle", { label: badge.label }) : badge.label}
     >
       {badge.label}
       {badge.paid ? (
-        <Check className="size-2.5 shrink-0" strokeWidth={2.5} aria-hidden />
+        <Check className="size-3 shrink-0" strokeWidth={2.5} aria-hidden />
       ) : null}
     </span>
   );
@@ -254,14 +254,14 @@ function UploadStateChip({ state }: { state: string }) {
   return (
     <span
       className={cn(
-        "inline-flex max-w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+        "inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-tight ring-1 ring-inset",
         s === "failed"
-          ? "border-destructive/40 bg-destructive/10 text-destructive"
+          ? "bg-destructive/10 text-destructive ring-destructive/35"
           : s === "uploading"
-            ? "border-primary/40 bg-primary/10 text-primary ams-chip-active"
+            ? "bg-primary/10 text-primary ring-primary/30 ams-chip-active"
             : s === "cancelled"
-              ? "border-border bg-muted/40 text-muted-foreground"
-              : "border-warning/40 bg-warning/10 text-warning",
+              ? "bg-muted/40 text-muted-foreground ring-border/60"
+              : "bg-warning/10 text-warning ring-warning/30",
       )}
       title={tip}
     >
@@ -2260,7 +2260,7 @@ function VorgaengePanel({
                         <td className="p-2">
                           {f.append_id != null ? (
                             <span
-                              className="inline-flex rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-violet-900 dark:text-violet-100"
+                              className="inline-flex rounded-md bg-violet-500/12 px-2 py-1 text-[11px] font-medium leading-tight text-violet-900 ring-1 ring-inset ring-violet-500/30 dark:text-violet-100"
                               title={
                                 f.append_folder_name
                                   ? t("history.appendedFolder", {

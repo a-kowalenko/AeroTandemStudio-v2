@@ -128,25 +128,25 @@ export function handoffStateHint(view: AmsHandoffView): string | null {
 /** Tailwind classes for compact status chips. */
 export function handoffChipClass(view: AmsHandoffView): string {
   if (isAmsCancelled(view)) {
-    return "border-amber-500/45 bg-amber-500/10 text-amber-900 dark:text-amber-100";
+    return "bg-amber-500/12 text-amber-900 ring-amber-500/30 dark:text-amber-100";
   }
   switch (view.state.trim().toLowerCase()) {
     case "pending":
     case "":
-      return "border-sky-500/40 bg-sky-500/10 text-sky-800 dark:text-sky-200";
+      return "bg-sky-500/12 text-sky-800 ring-sky-500/30 dark:text-sky-200";
     case "accepted":
-      return "border-cyan-500/40 bg-cyan-500/10 text-cyan-800 dark:text-cyan-200";
+      return "bg-cyan-500/12 text-cyan-800 ring-cyan-500/30 dark:text-cyan-200";
     case "queued":
-      return "border-amber-500/45 bg-amber-500/10 text-amber-900 dark:text-amber-100";
+      return "bg-amber-500/12 text-amber-900 ring-amber-500/30 dark:text-amber-100";
     case "uploading":
-      return "border-violet-500/40 bg-violet-500/10 text-violet-900 dark:text-violet-100";
+      return "bg-violet-500/12 text-violet-900 ring-violet-500/30 dark:text-violet-100";
     case "completed":
-      return "border-emerald-500/45 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
+      return "bg-emerald-500/12 text-emerald-900 ring-emerald-500/30 dark:text-emerald-100";
     case "rejected":
     case "failed":
-      return "border-destructive/50 bg-destructive/10 text-destructive";
+      return "bg-destructive/10 text-destructive ring-destructive/35";
     default:
-      return "border-border/60 bg-muted/40 text-muted-foreground";
+      return "bg-muted/40 text-muted-foreground ring-border/60";
   }
 }
 

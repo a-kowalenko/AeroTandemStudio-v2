@@ -110,9 +110,9 @@ export function AmsHandoffStatusChip({
         : label);
 
   const classes = cn(
-    "inline-flex max-w-full items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none transition-colors duration-300",
+    "inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-tight ring-1 ring-inset transition-colors duration-300",
     handoffChipClass(view),
-    view.offline && "border-dashed opacity-80",
+    view.offline && "opacity-80 [ring-style:dashed]",
     active && "ams-chip-active",
     successFlash && "ams-chip-success-flash",
     onClick && "cursor-pointer hover:brightness-[1.03]",
@@ -158,15 +158,15 @@ function stepChipClass(opts: {
   failed: boolean;
 }): string {
   if (opts.failed) {
-    return "border-border/50 bg-muted/30 text-muted-foreground/60";
+    return "bg-muted/30 text-muted-foreground/60 ring-border/50";
   }
   if (opts.current) {
-    return "border-foreground/25 bg-foreground/10 font-medium text-foreground";
+    return "bg-foreground/10 font-medium text-foreground ring-foreground/25";
   }
   if (opts.reached) {
-    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100";
+    return "bg-emerald-500/12 text-emerald-900 ring-emerald-500/30 dark:text-emerald-100";
   }
-  return "border-border/50 bg-transparent text-muted-foreground/70";
+  return "bg-transparent text-muted-foreground/70 ring-border/50";
 }
 
 /** Phase stepper as chip pipeline for AMS handoff (detail pane). */
@@ -217,7 +217,7 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
               ) : null}
               <span
                 className={cn(
-                  "inline-flex items-center gap-0.5 rounded border px-1 py-0.5 transition-colors duration-300",
+                  "inline-flex items-center gap-1 rounded-md px-1.5 py-1 leading-tight ring-1 ring-inset transition-colors duration-300",
                   stepChipClass({ reached, current, failed }),
                   current && isAmsHandoffActive(view) && "ams-chip-active",
                 )}
@@ -253,10 +253,10 @@ export function AmsHandoffStepper({ view, className }: StepperProps) {
             />
             <span
               className={cn(
-                "inline-flex items-center gap-0.5 rounded border px-1 py-0.5 font-medium",
+                "inline-flex items-center gap-1 rounded-md px-1.5 py-1 font-medium leading-tight ring-1 ring-inset",
                 cancelled
-                  ? "border-amber-500/45 bg-amber-500/10 text-amber-900 dark:text-amber-100"
-                  : "border-destructive/50 bg-destructive/10 text-destructive",
+                  ? "bg-amber-500/12 text-amber-900 ring-amber-500/30 dark:text-amber-100"
+                  : "bg-destructive/10 text-destructive ring-destructive/35",
               )}
             >
               {cancelled ? (
