@@ -2024,37 +2024,13 @@ function App() {
     }
   }
 
-  async function cancel() {
+  async function cancelSessionWork() {
     const slotState = useUploadQueueStore.getState();
     const slotActive = slotState.active !== null;
-    const queueWaiting = slotState.queue.length > 0;
-    const backgroundOnly =
-      (slotActive || queueWaiting) && !busy && !appendActive;
     const cancellingQr = qrScanBusy && !busy && !appendActive && !slotActive;
     jobCancelRequestedRef.current = true;
 
-    // Background upload: keep slot occupied through cancel + remote cleanup.
-    // Use slot cancel only — do NOT cancelEncode (would abort SD server-backup).
-    if (backgroundOnly) {
-      if (slotActive) {
-        useUploadQueueStore.getState().setCancelPhase("cancelling");
-        setStatus(t("workflow.stage.cancelling"));
-      }
-      try {
-        await cancelUploadSlot();
-      } catch (e) {
-        if (!isCancellationError(e)) showError(String(e));
-      }
-      // Toast + clearActive happen when runJob returns (after cleanup).
-      return;
-    }
-
-    if (queueWaiting && !slotActive) {
-      cancelQueuedUploads();
-    }
-    if (!slotActive) {
-      uploadProgressActiveRef.current = false;
-    }
+    // Never cancel the upload slot from the session panel.
     try {
       await cancelEncode();
       if (!cancellingQr && (busy || appendActive)) {
@@ -2062,10 +2038,32 @@ function App() {
         setPercent(0);
         setStatus(t("progress.default.cancelled"));
       }
-      // Encode / SD / QR: dedicated message when the job returns.
     } catch (e) {
       if (!isCancellationError(e)) showError(String(e));
     }
+  }
+
+  async function cancelBackgroundUpload() {
+    const slotState = useUploadQueueStore.getState();
+    const slotActive = slotState.active !== null;
+    const queueWaiting = slotState.queue.length > 0;
+    jobCancelRequestedRef.current = true;
+
+    if (slotActive) {
+      useUploadQueueStore.getState().setCancelPhase("cancelling");
+      setStatus(t("workflow.stage.cancelling"));
+      try {
+        await cancelUploadSlot();
+      } catch (e) {
+        if (!isCancellationError(e)) showError(String(e));
+      }
+      return;
+    }
+
+    if (queueWaiting) {
+      cancelQueuedUploads();
+    }
+    uploadProgressActiveRef.current = false;
   }
 
   /** Historie „Upload nachholen“ — shared background upload slot (Phase 37.3). */
@@ -2347,7 +2345,8 @@ function App() {
           setPercent(100);
           setStatus(finalStatus);
         }}
-        onCancel={() => void cancel()}
+        onCancelSession={() => void cancelSessionWork()}
+        onCancelUpload={() => void cancelBackgroundUpload()}
         onResetProgress={resetProgress}
         onOpenCutter={(path, durationSecs) => {
           setCutterPath(path);

@@ -48,7 +48,10 @@ type Props = {
   onStatus: (status: string) => void;
   onProgressReset: () => void;
   onProgressComplete: (finalStatus: string) => void;
-  onCancel: () => void;
+  /** Cancel session work (encode / SD / QR / import) — not upload slot. */
+  onCancelSession: () => void;
+  /** Cancel background upload slot only. */
+  onCancelUpload: () => void;
   onResetProgress: () => void;
   onOpenCutter: (path: string, durationSecs: number) => void;
   onOpenPhotoEditor: (path: string) => void;
@@ -75,7 +78,8 @@ export function WorkflowLayout({
   onStatus,
   onProgressReset,
   onProgressComplete,
-  onCancel,
+  onCancelSession,
+  onCancelUpload,
   onResetProgress,
   onOpenCutter,
   onOpenPhotoEditor,
@@ -85,7 +89,8 @@ export function WorkflowLayout({
   photoEdits,
 }: Props) {
   const { t } = useTranslation();
-  const [cancelRequested, setCancelRequested] = useState(false);
+  const [sessionCancelRequested, setSessionCancelRequested] = useState(false);
+  const [uploadCancelRequested, setUploadCancelRequested] = useState(false);
   const [successCloseGeneration, setSuccessCloseGeneration] = useState(0);
   const prevSuccessOpenRef = useRef(createSuccessOpen);
   const videoList = useVideoStore((s) => s.videoList);
@@ -105,7 +110,6 @@ export function WorkflowLayout({
   const qrScanOrder = useQrScanStore((s) => s.scanOrder);
   const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
-  const serverPhase = useServerStore((s) => s.phase);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
   const uploadQueueLen = useUploadQueueStore((s) => s.queue.length);
@@ -131,18 +135,21 @@ export function WorkflowLayout({
     videoImporting ||
     photoImporting;
 
-  const cancellableJobActive =
+  const sessionCancellable =
     busy ||
     appendActive ||
     sdWorkflowUiActive ||
     qrScanBusy ||
     videoImporting ||
-    photoImporting ||
-    uploadSlotHasWork;
+    photoImporting;
 
   useEffect(() => {
-    if (!cancellableJobActive) setCancelRequested(false);
-  }, [cancellableJobActive]);
+    if (!sessionCancellable) setSessionCancelRequested(false);
+  }, [sessionCancellable]);
+
+  useEffect(() => {
+    if (!uploadSlotHasWork) setUploadCancelRequested(false);
+  }, [uploadSlotHasWork]);
 
   // Success-Modal close → bump generation for Auto-Shrink (only while expanded).
   useEffect(() => {
@@ -153,17 +160,8 @@ export function WorkflowLayout({
     }
   }, [createSuccessOpen, uploadSlotHasWork]);
 
-  const appendUploading =
-    appendActive &&
-    (serverPhase === "uploading" || /^upload/i.test(status.trim()));
-
-  const backgroundUploadActive = uploadSlotHasWork && !busy && !appendActive;
-
-  const createUploading =
-    !appendActive &&
-    (uploadSlotHasWork || serverPhase === "uploading");
-
-  const workflowView = useWorkflowProgress({
+  // Phase 37.4: upload panel tracks slot independently of session busy/append.
+  const { session: sessionView, upload: uploadView } = useWorkflowProgress({
     sdWorkflowActive: sdWorkflowUiActive,
     sdPhase,
     backupProgress,
@@ -181,9 +179,8 @@ export function WorkflowLayout({
     encodeBusy: busy,
     appendActive,
     appendGuest,
-    appendUploading,
-    createUploading,
-    backgroundUploadActive,
+    appendUploading: false,
+    backgroundUploadActive: uploadSlotHasWork,
     uploadQueueCount: uploadQueueLen,
     uploadCancelPhase,
     successCloseGeneration,
@@ -192,7 +189,8 @@ export function WorkflowLayout({
     percent,
     status,
     taskProgress,
-    cancelRequested,
+    sessionCancelRequested,
+    uploadCancelRequested,
     createJobPlan,
     createFailed,
   });
@@ -200,7 +198,7 @@ export function WorkflowLayout({
   useEffect(() => {
     if (busy || appendActive || uploadSlotHasWork) return;
     if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
-    if (workflowView.visible) return;
+    if (sessionView.visible || uploadView.visible) return;
     onResetProgress();
   }, [
     busy,
@@ -209,28 +207,50 @@ export function WorkflowLayout({
     percent,
     taskProgress.length,
     status,
-    workflowView.visible,
+    sessionView.visible,
+    uploadView.visible,
     onResetProgress,
   ]);
 
-  function handleCancel() {
-    if (cancelRequested) return;
-    setCancelRequested(true);
-    onCancel();
+  function handleCancelSession() {
+    if (sessionCancelRequested) return;
+    setSessionCancelRequested(true);
+    onCancelSession();
   }
+
+  function handleCancelUpload() {
+    if (uploadCancelRequested) return;
+    setUploadCancelRequested(true);
+    onCancelUpload();
+  }
+
+  /** Bottom padding ≈ stacked panel heights + gap (absolute overlay). */
+  const stackPadPx =
+    (sessionView.visible
+      ? sessionView.collapsed
+        ? 48
+        : sessionView.createPipeline
+          ? 176
+          : 144
+      : 0) +
+    (uploadView.visible
+      ? uploadView.collapsed
+        ? 64
+        : uploadView.createPipeline
+          ? 176
+          : 144
+      : 0) +
+    (sessionView.visible && uploadView.visible ? 8 : 0);
 
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
-        className={cn(
-          "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4",
-          workflowView.reserveSpace &&
-            (workflowView.createPipeline
-              ? "pb-44"
-              : workflowView.backgroundUpload && workflowView.collapsed
-                ? "pb-20"
-                : "pb-36"),
-        )}
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4"
+        style={
+          stackPadPx > 0
+            ? { paddingBottom: `calc(1rem + ${stackPadPx}px)` }
+            : undefined
+        }
       >
         <MediaDropZone
           disabled={uiLocked}
@@ -433,11 +453,16 @@ export function WorkflowLayout({
         </section>
       </div>
 
-      <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20">
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex flex-col gap-2">
         <WorkflowProgressPanel
-          view={workflowView}
-          onCancel={handleCancel}
-          className="mx-auto max-w-2xl"
+          view={sessionView}
+          onCancel={handleCancelSession}
+          className="mx-auto w-full max-w-2xl"
+        />
+        <WorkflowProgressPanel
+          view={uploadView}
+          onCancel={handleCancelUpload}
+          className="mx-auto w-full max-w-2xl"
         />
       </div>
     </main>

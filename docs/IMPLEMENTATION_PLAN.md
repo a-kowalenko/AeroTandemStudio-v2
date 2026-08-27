@@ -58,7 +58,7 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …  
-*(Phase 37.1–37.3 ✅ Background-SMB-Upload (Slot/Queue, Compact-Bar, Append/Historie/Bulk).)*
+*(Phase 37.1–37.4 ✅ Background-SMB-Upload (Slot/Queue, Compact-Bar, Append/Historie/Bulk, Dual-Panel-Stack).)*
 *(Phase 34.1 ✅ Server-Backup Popover + eigener Cancel-Kanal.)*
 *(Phase 36 Crew-Defaults mergen erledigt.)*  
 *(Phase 35 AMS Path Hints erledigt.)*  
@@ -2947,6 +2947,50 @@ Background-Upload-Slot/Queue; Session nicht durch Upload locken.
 Danach cargo test && npm run check.
 ```
 
+---
+
+#### Phase 37.4 — Dual Progress-Panel (Session über Upload)
+
+**Status:** ✅ Fertig  
+**Ziel:** Bei paralleler Session-Arbeit (Import/SD/QR/Encode) und Background-Upload zwei Panels: normales Workflow-Panel **oben**, Compact-Upload-Bar **unten**, kleiner Gap. Jeder Vorgang behält sein Panel; Cancel pro Panel.
+
+##### Entscheidungen (37.4)
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Layout | Stack `flex-col gap-2`, absolute bottom; Upload immer unten |
+| Session-Panel | Unverändertes Normal-Panel (Import/SD/QR/Encode/Append); **ohne** Upload-Chrome |
+| Upload-Panel | Unverändertes Compact-Bar (37.2); sichtbar solange Slot/Queue oder Fail-Hold |
+| Parallel | Beide sichtbar; Upload nicht mehr Session-Progress schlucken |
+| Nur Upload | Nur Compact-Bar (wie 37.2) |
+| Nur Session | Nur Normal-Panel (wie vor 37) |
+| Create-Pipeline | Während Encode → Session-Panel; nach Create nur noch Upload → Upload-Panel (Expanded-Details) |
+| Cancel oben | Session-Job (`cancelEncode` / SD / QR / Import) — **nicht** Upload-Slot |
+| Cancel unten | Nur Upload-Slot (+ Cleanup) |
+| Padding | Bottom-Padding = Summe beider Höhen + Gap |
+| Header-Chip | Unverändert |
+| Out of Scope | Zweites SMB parallel; Persistenz-Queue; Redesign Compact-Bar |
+
+##### Scope
+
+- [x] `useWorkflowProgress` → `{ session, upload }` (getrennte Visibility/Snapshot/Collapse)
+- [x] `WorkflowLayout`: zwei `WorkflowProgressPanel` gestapelt
+- [x] `App`/`AppShell`: `onCancelSession` + `onCancelUpload`
+- [x] Upload-Panel unabhängig von `busy`/`appendActive` (Concurrent Create/Import)
+- [x] i18n unverändert (keine neuen Strings nötig)
+- [x] Tracker / AGENTS aktualisieren
+- [x] `cargo test` && `npm run check`
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 37.4 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 37.4: Dual-Panel — Session-Progress oben, Upload-Compact unten,
+Cancel pro Panel, Padding-Summe. Header-Chip unverändert.
+Danach cargo test && npm run check.
+```
+
 #### Referenzen
 
 ```
@@ -2972,12 +3016,14 @@ src-tauri/src/lib.rs                 # CloseRequested / exit hook
 | 4 | Compact-Bar mit Progressbar; Auto-Shrink 5 s nur nach Modal-Close + expanded |
 | 5 | Quit mit Confirm bei laufendem/queued Upload |
 | 6 | Header-Chip unverändert |
+| 7 | Parallel Import/SD + Upload: zwei Panels (Session oben, Upload unten); Cancel getrennt |
 
 ##### Umsetzungsreihenfolge
 
 1. 37.1 — Entkoppeln + Slot/Queue + Success Live + Toasts  
 2. 37.2 — Compact-Bar + Auto-Shrink + Animation + Quit-Confirm  
 3. 37.3 — Append / Historie / Bulk über denselben Slot  
+4. 37.4 — Dual Progress-Panel (Session über Upload)  
 
 ---
 
@@ -3192,10 +3238,11 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 34.1 | Server-Backup Popover (Details + Abbruch) | ✅ |
 | 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |
 | 36 | Crew-Defaults beim Update mergen (Add-only + Tombstones) | ✅ |
-| 37 | Background-SMB-Upload nach Create (Session frei) | ✅ 37.1–37.3 |
+| 37 | Background-SMB-Upload nach Create (Session frei) | ✅ 37.1–37.4 |
 | 37.1 | Upload entkoppeln + Slot/Queue + Success Live | ✅ |
 | 37.2 | Compact Upload-Bar, Auto-Shrink, Quit-Confirm | ✅ |
 | 37.3 | Append / Historie / Bulk über denselben Slot | ✅ |
+| 37.4 | Dual Progress-Panel (Session über Upload) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -3222,7 +3269,7 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 36:** Prompt im Phasenabschnitt (Crew-Defaults mergen / Tombstones).
 
-**Phase 37:** Prompt im Phasenabschnitt (Background-SMB-Upload); Unterphasen 37.1 → 37.2 → 37.3.
+**Phase 37:** Prompt im Phasenabschnitt (Background-SMB-Upload); Unterphasen 37.1 → 37.2 → 37.3 → 37.4.
 
 ---
 

@@ -124,9 +124,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 34.1: Server-Backup-Popover (Chip-Details Bar/%/MB/Speed + Soft-Confirm-Abbruch nur aktueller Job)
 - ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
 - ✅ Phase 36: Crew-Defaults beim Update mergen (Add-only + `crew_removed_names` Tombstones)
-- ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk über denselben Slot)
+- ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
 
-**Nächster Schritt:** Phase 23.2h / 23.3 / 31.5  
+**Nächster Schritt:** Phase 23.2h / 23.3 / 31.5 
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog

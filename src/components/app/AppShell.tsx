@@ -49,7 +49,8 @@ export type AppShellProps = {
   onStatus: (status: string) => void;
   onProgressReset: () => void;
   onProgressComplete: (finalStatus: string) => void;
-  onCancel: () => void;
+  onCancelSession: () => void;
+  onCancelUpload: () => void;
   onResetProgress: () => void;
   onOpenCutter: (path: string, durationSecs: number) => void;
   onOpenPhotoEditor: (path: string) => void;
@@ -85,7 +86,8 @@ export function AppShell({
   onStatus,
   onProgressReset,
   onProgressComplete,
-  onCancel,
+  onCancelSession,
+  onCancelUpload,
   onResetProgress,
   onOpenCutter,
   onOpenPhotoEditor,
@@ -259,7 +261,8 @@ export function AppShell({
             onStatus={onStatus}
             onProgressReset={onProgressReset}
             onProgressComplete={onProgressComplete}
-            onCancel={onCancel}
+            onCancelSession={onCancelSession}
+            onCancelUpload={onCancelUpload}
             onResetProgress={onResetProgress}
             onOpenCutter={onOpenCutter}
             onOpenPhotoEditor={onOpenPhotoEditor}

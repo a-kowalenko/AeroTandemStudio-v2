@@ -39,8 +39,6 @@ const COLLAPSE_AFTER_MS = 3500;
 const HIDE_AFTER_MS = 9000;
 /** Auto-shrink after Success-Modal close while background upload still expanded. */
 const BG_AUTO_SHRINK_MS = 5000;
-/** Brief hold after background upload success before hide. */
-const BG_DONE_HIDE_MS = 3500;
 
 export type WorkflowProgressView = {
   visible: boolean;
@@ -72,6 +70,12 @@ export type WorkflowProgressView = {
   onDismissFailedHold: () => void;
 };
 
+/** Phase 37.4: session work and background upload as separate panels. */
+export type DualWorkflowProgress = {
+  session: WorkflowProgressView;
+  upload: WorkflowProgressView;
+};
+
 type TaskState = {
   taskId: number;
   percent: number;
@@ -97,8 +101,7 @@ type Input = {
   appendActive: boolean;
   appendGuest: string | null;
   appendUploading: boolean;
-  createUploading?: boolean;
-  /** True when only the background SMB slot is running (no encode). */
+  /** Slot/queue has work (independent of session busy). */
   backgroundUploadActive?: boolean;
   uploadQueueCount?: number;
   /** Cancel/cleanup phase while slot stays occupied. */
@@ -110,19 +113,30 @@ type Input = {
   percent: number;
   status: string;
   taskProgress: TaskState[];
-  /** User requested cancel; UI acknowledges until jobs go idle. */
-  cancelRequested?: boolean;
+  /** Session panel cancel in flight. */
+  sessionCancelRequested?: boolean;
+  /** Upload panel cancel in flight. */
+  uploadCancelRequested?: boolean;
   /** Frozen create-job step plan for this run. */
   createJobPlan?: CreateJobPlan | null;
   /** Create job ended in error (not cancel). */
   createFailed?: boolean;
 };
 
-export function useWorkflowProgress(input: Input): WorkflowProgressView {
-  const [dismissed, setDismissed] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+const EMPTY_UPLOAD_COMPACT: UploadCompactParts = {
+  percent: 0,
+  bytesLabel: null,
+  speedLabel: "",
+};
+
+function noop() {}
+
+export function useWorkflowProgress(input: Input): DualWorkflowProgress {
+  const [sessionDismissed, setSessionDismissed] = useState(false);
+  const [sessionCollapsed, setSessionCollapsed] = useState(false);
+  const [uploadCollapsed, setUploadCollapsed] = useState(false);
   const [failedHold, setFailedHold] = useState(false);
-  const wasActiveRef = useRef(false);
+  const wasSessionActiveRef = useRef(false);
   const wasBgUploadRef = useRef(false);
   const [createReachedIndex, setCreateReachedIndex] = useState(0);
   const createPlanIdRef = useRef<CreateJobPlan | null>(null);
@@ -174,7 +188,10 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     if (input.workflowProgress?.stage === "import") {
       return {
         percent: input.workflowProgress.percent,
-        label: formatWorkflowLabel(input.workflowProgress, tr("media.drop.importing")),
+        label: formatWorkflowLabel(
+          input.workflowProgress,
+          tr("media.drop.importing"),
+        ),
         detail: formatWorkflowDetail(input.workflowProgress),
       };
     }
@@ -186,7 +203,12 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
       };
     }
     return null;
-  }, [input.sdWorkflowActive, input.qrScanBusy, input.workflowProgress, mediaImporting]);
+  }, [
+    input.sdWorkflowActive,
+    input.qrScanBusy,
+    input.workflowProgress,
+    mediaImporting,
+  ]);
 
   const manualQrProgress = useMemo((): WorkflowProgressSnapshot | null => {
     if (!input.qrScanBusy || input.sdWorkflowActive) return null;
@@ -218,96 +240,86 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     input.percent > 0 ||
     input.taskProgress.length > 0;
 
-  const backgroundUploadActive = Boolean(input.backgroundUploadActive);
+  const uploadSlotActive = Boolean(input.backgroundUploadActive);
   const uploadQueueCount = input.uploadQueueCount ?? 0;
 
-  const isActive =
+  // Session work only — never background upload alone.
+  const sessionWorkActive =
     showSdProgress ||
     showManualImport ||
     showManualQr ||
     input.encodeBusy ||
     input.appendActive ||
-    input.qrScanBusy ||
-    Boolean(input.createUploading) ||
-    backgroundUploadActive;
+    input.qrScanBusy;
 
-  const hasCompletionState =
+  const hasSessionCompletionState =
     !input.encodeBusy &&
-    (input.percent > 0 || input.taskProgress.length > 0 || Boolean(input.status.trim()));
+    !input.appendActive &&
+    !uploadSlotActive &&
+    !failedHold &&
+    (input.percent > 0 ||
+      input.taskProgress.length > 0 ||
+      Boolean(input.status.trim()));
 
   // Track fail hold when background upload ends with failure and queue empty.
   useEffect(() => {
-    if (backgroundUploadActive) {
+    if (uploadSlotActive) {
       if (!wasBgUploadRef.current) {
-        // First entry into background-upload: show expanded (Success live).
-        setCollapsed(false);
+        setUploadCollapsed(false);
       }
       wasBgUploadRef.current = true;
       setFailedHold(false);
-      setDismissed(false);
       return;
     }
-    if (
-      wasBgUploadRef.current &&
-      input.uploadLastOutcome === "failed" &&
-      !isActive
-    ) {
+    if (wasBgUploadRef.current && input.uploadLastOutcome === "failed") {
       setFailedHold(true);
-      setDismissed(false);
     }
     wasBgUploadRef.current = false;
-  }, [backgroundUploadActive, input.uploadLastOutcome, isActive]);
+  }, [uploadSlotActive, input.uploadLastOutcome]);
 
-  const shouldShowPanel =
-    !dismissed &&
-    (isActive ||
-      failedHold ||
-      hasCompletionState ||
-      showEncodeProgress);
+  const showUploadChrome = uploadSlotActive || failedHold;
 
-  // Classic collapse/hide for non-background-upload jobs only.
+  const shouldShowSession =
+    !sessionDismissed &&
+    (sessionWorkActive || hasSessionCompletionState || showEncodeProgress);
+
+  // Classic collapse/hide for session jobs only (not while upload-only).
   useEffect(() => {
-    if (backgroundUploadActive || failedHold) {
-      if (backgroundUploadActive) {
-        wasActiveRef.current = true;
-        setDismissed(false);
-      }
+    if (sessionWorkActive) {
+      wasSessionActiveRef.current = true;
+      setSessionDismissed(false);
+      setSessionCollapsed(false);
       return;
     }
 
-    if (isActive) {
-      wasActiveRef.current = true;
-      setDismissed(false);
-      setCollapsed(false);
+    if (!wasSessionActiveRef.current || sessionDismissed) return;
+    // Leftover encode % while upload runs: don't keep a session completion pill.
+    if (uploadSlotActive || failedHold) {
+      setSessionDismissed(true);
+      setSessionCollapsed(false);
+      wasSessionActiveRef.current = false;
       return;
     }
-
-    if (!wasActiveRef.current || dismissed) return;
-
-    // After successful background upload: short hide (no long idle hide during upload).
-    const hideDelay =
-      input.uploadLastOutcome === "ok" ? BG_DONE_HIDE_MS : HIDE_AFTER_MS;
 
     const collapseTimer = window.setTimeout(() => {
-      setCollapsed(true);
+      setSessionCollapsed(true);
     }, COLLAPSE_AFTER_MS);
 
     const hideTimer = window.setTimeout(() => {
-      setDismissed(true);
-      setCollapsed(false);
-      wasActiveRef.current = false;
-    }, hideDelay);
+      setSessionDismissed(true);
+      setSessionCollapsed(false);
+      wasSessionActiveRef.current = false;
+    }, HIDE_AFTER_MS);
 
     return () => {
       window.clearTimeout(collapseTimer);
       window.clearTimeout(hideTimer);
     };
   }, [
-    isActive,
-    dismissed,
-    backgroundUploadActive,
+    sessionWorkActive,
+    sessionDismissed,
+    uploadSlotActive,
     failedHold,
-    input.uploadLastOutcome,
   ]);
 
   // Auto-shrink 5s after Success-Modal close, only if still expanded.
@@ -317,19 +329,19 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     prevSuccessCloseRef.current = gen;
 
     clearAutoShrinkTimer();
-    if (!backgroundUploadActive) return;
-    if (collapsed) return;
+    if (!uploadSlotActive) return;
+    if (uploadCollapsed) return;
 
     autoShrinkTimerRef.current = window.setTimeout(() => {
       autoShrinkTimerRef.current = null;
-      setCollapsed(true);
+      setUploadCollapsed(true);
     }, BG_AUTO_SHRINK_MS);
 
     return clearAutoShrinkTimer;
   }, [
     input.successCloseGeneration,
-    backgroundUploadActive,
-    collapsed,
+    uploadSlotActive,
+    uploadCollapsed,
   ]);
 
   useEffect(() => () => clearAutoShrinkTimer(), []);
@@ -356,195 +368,196 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
     sdProgress,
   });
 
-  const cancelling = Boolean(
-    (input.cancelRequested || input.uploadCancelPhase) && isActive,
-  );
-  const subtitle = failedHold
+  const sessionSubtitle = workflowStageSubtitle(stage, {
+    sdWorkflowActive: input.sdWorkflowActive,
+    sdPhase: input.sdPhase,
+    qrScanBusy: input.qrScanBusy,
+    encodeBusy: input.encodeBusy,
+    appendActive: input.appendActive,
+    appendGuest: input.appendGuest,
+    appendUploading: false,
+    createUploading: false,
+    manualImport: showManualImport,
+    manualQr: showManualQr,
+  });
+
+  const uploadSubtitle = failedHold
     ? tr("workflow.upload.failedHold")
     : input.uploadCancelPhase === "cleanup"
       ? tr("workflow.upload.cleaningUp")
       : input.uploadCancelPhase === "cancelling" ||
-          (Boolean(input.cancelRequested) && backgroundUploadActive)
+          Boolean(input.uploadCancelRequested)
         ? tr("workflow.stage.cancelling")
-        : backgroundUploadActive
-          ? tr("workflow.stage.createUploading")
-          : workflowStageSubtitle(stage, {
-              sdWorkflowActive: input.sdWorkflowActive,
-              sdPhase: input.sdPhase,
-              qrScanBusy: input.qrScanBusy,
-              encodeBusy: input.encodeBusy,
-              appendActive: input.appendActive,
-              appendGuest: input.appendGuest,
-              appendUploading: input.appendUploading,
-              createUploading: Boolean(input.createUploading),
-              manualImport: showManualImport,
-              manualQr: showManualQr,
-            });
+        : tr("workflow.stage.createUploading");
 
-  // Keep Create-Pipeline-Stepper through background upload after session reset
-  // (same chips as create: Ordner → Video → … → Upload → Fertig).
-  const createPipelineBase = useMemo((): CreateJobPipelineView | null => {
+  // Session pipeline: encode / append / completion (not background-upload-only).
+  const sessionPipelineBase = useMemo((): CreateJobPipelineView | null => {
     const plan = input.createJobPlan ?? null;
     if (!plan) return null;
     if (input.appendActive) return null;
     if (
       !input.encodeBusy &&
-      !input.createUploading &&
-      !backgroundUploadActive &&
-      !failedHold &&
-      !hasCompletionState &&
+      !hasSessionCompletionState &&
       stage !== "create" &&
       stage !== "done"
     ) {
       return null;
     }
+    // While only upload runs, pipeline lives on the upload panel.
+    if (!input.encodeBusy && (uploadSlotActive || failedHold)) {
+      return null;
+    }
 
-    const uploadPhase =
-      Boolean(input.createUploading) || backgroundUploadActive;
     const cancelled =
-      Boolean(
-        input.cancelRequested &&
-          !input.encodeBusy &&
-          !uploadPhase,
-      ) || /abgebrochen|cancelled/i.test(input.status.trim());
+      Boolean(input.sessionCancelRequested && !input.encodeBusy) ||
+      /abgebrochen|cancelled/i.test(input.status.trim());
 
     return resolveCreateJobPipeline({
       plan,
       status: input.status,
-      uploading: uploadPhase,
-      busy: input.encodeBusy || uploadPhase,
+      uploading: false,
+      busy: input.encodeBusy,
+      cancelled,
+      failed: Boolean(input.createFailed),
+      reachedIndex: 0,
+    });
+  }, [
+    failedHold,
+    hasSessionCompletionState,
+    input.appendActive,
+    input.createFailed,
+    input.createJobPlan,
+    input.encodeBusy,
+    input.sessionCancelRequested,
+    input.status,
+    stage,
+    uploadSlotActive,
+  ]);
+
+  // Upload pipeline: post-create background upload (plan still held).
+  const uploadPipelineBase = useMemo((): CreateJobPipelineView | null => {
+    const plan = input.createJobPlan ?? null;
+    if (!plan) return null;
+    if (input.encodeBusy || input.appendActive) return null;
+    if (!uploadSlotActive && !failedHold) return null;
+
+    const cancelled =
+      Boolean(input.uploadCancelRequested) ||
+      /abgebrochen|cancelled/i.test(input.status.trim());
+
+    return resolveCreateJobPipeline({
+      plan,
+      status: input.status,
+      uploading: true,
+      busy: true,
       cancelled,
       failed: Boolean(input.createFailed) || failedHold,
       reachedIndex: 0,
     });
   }, [
-    backgroundUploadActive,
     failedHold,
-    input.createJobPlan,
     input.appendActive,
-    input.encodeBusy,
-    input.createUploading,
-    input.status,
-    input.cancelRequested,
     input.createFailed,
-    hasCompletionState,
-    stage,
+    input.createJobPlan,
+    input.encodeBusy,
+    input.status,
+    input.uploadCancelRequested,
+    uploadSlotActive,
   ]);
 
   useEffect(() => {
-    if (!createPipelineBase) return;
-    const uploadPhase =
-      Boolean(input.createUploading) || backgroundUploadActive;
+    const base = sessionPipelineBase ?? uploadPipelineBase;
+    if (!base) return;
     setCreateReachedIndex((prev) => {
-      const next = Math.max(prev, createPipelineBase.activeIndex);
-      // If Upload is active, never keep a stale lock on Fertig from
-      // create_job's early "Vorgang fertig" event.
+      let next = Math.max(prev, base.activeIndex);
       if (
-        uploadPhase &&
-        createPipelineBase.steps.some((s) => s.id === "upload")
+        uploadPipelineBase &&
+        uploadPipelineBase.steps.some((s) => s.id === "upload")
       ) {
-        const uploadIdx = createPipelineBase.steps.findIndex(
+        const uploadIdx = uploadPipelineBase.steps.findIndex(
           (s) => s.id === "upload",
         );
-        if (uploadIdx >= 0 && next > uploadIdx && !createPipelineBase.completed) {
+        if (
+          uploadIdx >= 0 &&
+          next > uploadIdx &&
+          !uploadPipelineBase.completed
+        ) {
           return uploadIdx;
         }
       }
       return next;
     });
-  }, [createPipelineBase, input.createUploading, backgroundUploadActive]);
+  }, [sessionPipelineBase, uploadPipelineBase]);
 
-  const createPipeline = useMemo((): CreateJobPipelineView | null => {
-    if (!createPipelineBase) return null;
+  const sessionPipeline = useMemo((): CreateJobPipelineView | null => {
+    if (!sessionPipelineBase) return null;
+    return {
+      ...sessionPipelineBase,
+      activeIndex: Math.max(
+        sessionPipelineBase.activeIndex,
+        createReachedIndex,
+      ),
+    };
+  }, [sessionPipelineBase, createReachedIndex]);
+
+  const uploadPipeline = useMemo((): CreateJobPipelineView | null => {
+    if (!uploadPipelineBase) return null;
     let activeIndex = Math.max(
-      createPipelineBase.activeIndex,
+      uploadPipelineBase.activeIndex,
       createReachedIndex,
     );
-    const uploadPhase =
-      Boolean(input.createUploading) || backgroundUploadActive;
     if (
-      uploadPhase &&
-      !createPipelineBase.completed &&
-      !createPipelineBase.cancelled &&
-      !createPipelineBase.failed
+      !uploadPipelineBase.completed &&
+      !uploadPipelineBase.cancelled &&
+      !uploadPipelineBase.failed
     ) {
-      const uploadIdx = createPipelineBase.steps.findIndex(
+      const uploadIdx = uploadPipelineBase.steps.findIndex(
         (s) => s.id === "upload",
       );
       if (uploadIdx >= 0) activeIndex = uploadIdx;
     }
     return {
-      ...createPipelineBase,
+      ...uploadPipelineBase,
       activeIndex,
     };
-  }, [
-    createPipelineBase,
-    createReachedIndex,
-    input.createUploading,
-    backgroundUploadActive,
-  ]);
+  }, [uploadPipelineBase, createReachedIndex]);
 
-  // Keep the overall % bar together with the create stepper.
-  const hideOverallBar = false;
-
-  let snapshot: WorkflowProgressSnapshot | null = null;
-  const uploadActive = Boolean(
-    input.uploadProgress &&
-      (input.createUploading || input.appendUploading || backgroundUploadActive),
-  );
-  if (
-    input.encodeBusy ||
-    input.appendActive ||
-    input.createUploading ||
-    backgroundUploadActive ||
-    failedHold
-  ) {
-    if (uploadActive && input.uploadProgress) {
-      snapshot = formatUploadProgressSnapshot(input.uploadProgress);
-    } else if (
-      (input.createUploading || backgroundUploadActive || failedHold) &&
-      !input.encodeBusy
-    ) {
-      snapshot = {
-        percent: failedHold ? input.percent : input.percent,
-        label: formatOverallProgressLabel(
-          input.status,
-          failedHold
-            ? tr("workflow.upload.failedHold")
-            : tr("app.upload.title"),
-        ),
-      };
-    } else {
-      snapshot = {
-        percent: input.percent,
-        label: formatOverallProgressLabel(
-          input.status,
-          input.encodeBusy || input.appendActive
-            ? tr("common.status.inProgress")
-            : tr("common.status.done"),
-        ),
-      };
-    }
-  } else if (showSdProgress && sdProgress) {
-    snapshot = sdProgress;
-  } else if (showManualImport && manualImportProgress) {
-    snapshot = manualImportProgress;
-  } else if (showManualQr && manualQrProgress) {
-    snapshot = manualQrProgress;
-  } else if (showEncodeProgress) {
-    snapshot = {
+  // --- Session snapshot (never upload progress) ---
+  let sessionSnapshot: WorkflowProgressSnapshot | null = null;
+  if (input.encodeBusy || input.appendActive) {
+    sessionSnapshot = {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
-        input.encodeBusy ? tr("common.status.inProgress") : tr("common.status.done"),
+        tr("common.status.inProgress"),
+      ),
+    };
+  } else if (showSdProgress && sdProgress) {
+    sessionSnapshot = sdProgress;
+  } else if (showManualImport && manualImportProgress) {
+    sessionSnapshot = manualImportProgress;
+  } else if (showManualQr && manualQrProgress) {
+    sessionSnapshot = manualQrProgress;
+  } else if (showEncodeProgress && !uploadSlotActive && !failedHold) {
+    sessionSnapshot = {
+      percent: input.percent,
+      label: formatOverallProgressLabel(
+        input.status,
+        input.encodeBusy
+          ? tr("common.status.inProgress")
+          : tr("common.status.done"),
       ),
     };
   }
 
-  const tasks: WorkflowTaskProgress[] =
+  const sessionTasks: WorkflowTaskProgress[] =
     input.encodeBusy ||
     input.appendActive ||
-    (!showSdProgress && !showManualImport && !showManualQr && showEncodeProgress)
+    (!showSdProgress &&
+      !showManualImport &&
+      !showManualQr &&
+      showEncodeProgress &&
+      !uploadSlotActive)
       ? input.taskProgress.map((t) => ({
           taskId: t.taskId,
           percent: t.percent,
@@ -555,65 +568,113 @@ export function useWorkflowProgress(input: Input): WorkflowProgressView {
 
   const encodeLabel = formatOverallProgressLabel(
     input.status,
-    input.encodeBusy ? tr("common.status.inProgress") : tr("common.status.done"),
+    input.encodeBusy
+      ? tr("common.status.inProgress")
+      : tr("common.status.done"),
   );
 
   const sdClearing = input.sdWorkflowActive && input.sdPhase === "clearing";
-  const canCancel =
+  const sessionCanCancel =
     !sdClearing &&
-    !failedHold &&
     (input.encodeBusy ||
       input.appendActive ||
       input.qrScanBusy ||
       input.sdWorkflowActive ||
       input.videoImporting ||
-      input.photoImporting ||
-      Boolean(input.createUploading) ||
-      backgroundUploadActive);
+      input.photoImporting);
 
-  const showBackgroundChrome = backgroundUploadActive || failedHold;
-  const effectiveCollapsed = showBackgroundChrome
-    ? collapsed
-    : collapsed && !isActive;
-
-  const uploadCompact = formatUploadCompactParts(
-    showBackgroundChrome ? input.uploadProgress : null,
+  const sessionCancelling = Boolean(
+    input.sessionCancelRequested && sessionWorkActive,
   );
 
-  function onToggleCollapsed() {
-    // Manual expand/collapse: clear Success-Close auto-shrink; do not re-arm.
+  const sessionEffectiveCollapsed =
+    sessionCollapsed && !sessionWorkActive;
+
+  // --- Upload snapshot ---
+  let uploadSnapshot: WorkflowProgressSnapshot | null = null;
+  if (showUploadChrome) {
+    if (input.uploadProgress) {
+      uploadSnapshot = formatUploadProgressSnapshot(input.uploadProgress);
+    } else {
+      uploadSnapshot = {
+        percent: input.percent,
+        label: formatOverallProgressLabel(
+          input.status,
+          failedHold
+            ? tr("workflow.upload.failedHold")
+            : tr("app.upload.title"),
+        ),
+      };
+    }
+  }
+
+  const uploadCompact = formatUploadCompactParts(
+    showUploadChrome ? input.uploadProgress : null,
+  );
+
+  const uploadCancelling = Boolean(
+    (input.uploadCancelRequested || input.uploadCancelPhase) &&
+      showUploadChrome,
+  );
+
+  function onToggleUploadCollapsed() {
     clearAutoShrinkTimer();
-    setCollapsed((prev) => !prev);
+    setUploadCollapsed((prev) => !prev);
   }
 
   function onDismissFailedHold() {
     setFailedHold(false);
-    setDismissed(true);
-    setCollapsed(false);
-    wasActiveRef.current = false;
   }
 
-  return {
-    visible: shouldShowPanel,
-    collapsed: effectiveCollapsed,
+  const sessionVisible =
+    shouldShowSession &&
+    Boolean(sessionSnapshot || sessionTasks.length > 0 || sessionPipeline);
+
+  const session: WorkflowProgressView = {
+    visible: sessionVisible,
+    collapsed: sessionEffectiveCollapsed,
     stage,
-    subtitle,
-    snapshot,
-    tasks,
+    subtitle: sessionCancelling
+      ? tr("workflow.stage.cancelling")
+      : sessionSubtitle,
+    snapshot: sessionSnapshot,
+    tasks: sessionTasks,
     encodeLabel,
-    canCancel,
-    cancelling,
-    reserveSpace:
-      shouldShowPanel &&
-      (!effectiveCollapsed || showBackgroundChrome),
-    createPipeline,
-    hideOverallBar,
-    backgroundUpload: showBackgroundChrome,
+    canCancel: sessionCanCancel,
+    cancelling: sessionCancelling,
+    reserveSpace: sessionVisible && !sessionEffectiveCollapsed,
+    createPipeline: sessionPipeline,
+    hideOverallBar: false,
+    backgroundUpload: false,
+    uploadQueueCount: 0,
+    uploadCancelPhase: null,
+    uploadCompact: EMPTY_UPLOAD_COMPACT,
+    uploadFailedHold: false,
+    onToggleCollapsed: noop,
+    onDismissFailedHold: noop,
+  };
+
+  const upload: WorkflowProgressView = {
+    visible: showUploadChrome,
+    collapsed: uploadCollapsed,
+    stage: "create",
+    subtitle: uploadSubtitle,
+    snapshot: uploadSnapshot,
+    tasks: [],
+    encodeLabel: tr("app.upload.title"),
+    canCancel: uploadSlotActive && !failedHold,
+    cancelling: uploadCancelling,
+    reserveSpace: showUploadChrome,
+    createPipeline: uploadPipeline,
+    hideOverallBar: false,
+    backgroundUpload: true,
     uploadQueueCount,
     uploadCancelPhase: input.uploadCancelPhase ?? null,
     uploadCompact,
     uploadFailedHold: failedHold,
-    onToggleCollapsed,
+    onToggleCollapsed: onToggleUploadCollapsed,
     onDismissFailedHold,
   };
+
+  return { session, upload };
 }
