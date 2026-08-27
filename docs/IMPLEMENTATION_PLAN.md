@@ -2555,14 +2555,14 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 | # | Entscheidung |
 |---|--------------|
-| 1 | Backup = nur zweites Profil (`ams-backup`) — kein Failover |
+| 1 | Backup = optionales `backup_url` am aktiven Server-Profil — kein Failover, kein zweites Profil |
 | 2 | Default-URL `smb://169.254.169.254/aktuell` gilt als „leer“ für Suggest |
 | 3 | Credentials: gemeinsame Probe; bei Bedarf pro Ziel (Primär/Backup) abfragen |
 | 4 | Wire: ein Feld pro Ziel, bevorzugt `smb://` |
 
 #### Credentials nach Pfad-Übernahme
 
-1. Primär → aktives Profil / `server_url`; Backup → Profil `ams-backup`.
+1. Primär → aktives Profil / `server_url`; Backup → `backup_url` (optional) am selben Profil.
 2. `test_server_connection` mit aktuellen Creds gegen Primär; bei Backup dieselbe Probe gegen Backup-URL.
 3. Ergebnis-Matrix:
 
@@ -2580,7 +2580,7 @@ Guest/leer ok → nichts abfragen. Quiet-Poll ändert keine Credentials / keine 
 
 - [x] **Docs** — dieser Abschnitt + AMS `HANDOFF.md` §9.3 / P6
 - [x] **35.a** (= AMS P6b): Health-DTO `ats_paths`; `amsBridgeStore`; Pure Helpers `lib/amsPathHints.ts` (Default-URL, Normalisierung, Diff); Unit-Tests; kein Persist
-- [x] **35.b** (= AMS P6c): ServerTab / Wizard Banner „Übernehmen“; Profil `ams-backup`; Credentials-Flow; SMB-Test; i18n
+- [x] **35.b** (= AMS P6c): ServerTab / Wizard Banner „Übernehmen“; `backup_url` am Profil; Credentials-Flow; SMB-Test; i18n
 - [x] **35.c** (optional, = AMS P6d): Drift-Warnung wenn `server_url` ≠ AMS-Primär
 - [x] **35.d** (Polish): Drift-Banner „Später“/Dismiss-Signatur; `instance_id`-Bindung beim Übernehmen; Settings-Draft-Diff; i18n
 
@@ -2621,7 +2621,7 @@ Danach cargo test && npm run check.
 |---|-----------|
 | 1 | Mit `paths-v1` + Primär: Suggest bei leerer/Default-URL; Übernehmen setzt `server_url` |
 | 2 | Abweichende manuelle URL → Warnung, kein Auto-Overwrite |
-| 3 | Backup → Profil `ams-backup`; aktives Ziel bleibt Primär |
+| 3 | Backup → `backup_url` am aktiven Profil; aktives Ziel bleibt Primär |
 | 4 | Credentials-Matrix wie oben; SMB-Test vor „verbunden“ |
 | 5 | Ohne Capability / Bridge down → manueller Pfad unverändert nutzbar |
 | 6 | Quiet-Poll ohne Dialog-Spam |

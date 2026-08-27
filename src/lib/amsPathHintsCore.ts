@@ -46,10 +46,14 @@ export type ServerProfileWire = {
   label?: string;
   login?: string;
   password?: string;
+  backup_url?: string;
+  backup_login?: string;
+  backup_password?: string;
 };
 
 export type PathHintsConfigWire = {
   server_url?: string;
+  active_server_profile_id?: string;
   server_profiles?: ServerProfileWire[];
 };
 
@@ -106,9 +110,37 @@ export function parsePathHintsFromHealth(
 
 export function backupProfileUrlFromProfiles(
   profiles: ServerProfileWire[] | undefined,
+  activeId?: string,
 ): string {
-  const profile = (profiles ?? []).find((p) => p.id === AMS_BACKUP_PROFILE_ID);
-  return profile?.url?.trim() ?? "";
+  const list = profiles ?? [];
+  const active =
+    (activeId && list.find((p) => p.id === activeId)) ||
+    list.find((p) => p.id === "default") ||
+    list[0];
+  const fromActive = active?.backup_url?.trim() ?? "";
+  if (fromActive) return fromActive;
+  // Legacy Phase 35: standalone ams-backup profile
+  const legacy = list.find((p) => p.id === AMS_BACKUP_PROFILE_ID);
+  return legacy?.url?.trim() ?? "";
+}
+
+/** True when any saved profile already has the AMS primary (+ backup if hinted). */
+export function anyProfileMatchesPathHints(
+  profiles: ServerProfileWire[] | undefined,
+  hints: AmsPathHints,
+): boolean {
+  const primary = hints.primarySmbUrl;
+  if (!primary) return false;
+  const needBackup = Boolean(hints.backupSmbUrl);
+  for (const profile of profiles ?? []) {
+    if (profile.id === AMS_BACKUP_PROFILE_ID) continue;
+    const url = normalizeSmbUrlForCompare(profile.url ?? "");
+    if (url !== primary) continue;
+    if (!needBackup) return true;
+    const backup = normalizeSmbUrlForCompare(profile.backup_url ?? "");
+    if (backup === hints.backupSmbUrl) return true;
+  }
+  return false;
 }
 
 /** Compare current SMB config against AMS path hints (no side effects). */
@@ -118,7 +150,10 @@ export function computePathHintsDiff(
 ): AmsPathHintsDiff {
   const currentPrimary = normalizeSmbUrlForCompare(config.server_url ?? "");
   const currentBackup = normalizeSmbUrlForCompare(
-    backupProfileUrlFromProfiles(config.server_profiles),
+    backupProfileUrlFromProfiles(
+      config.server_profiles,
+      config.active_server_profile_id,
+    ),
   );
 
   if (!hints?.primarySmbUrl) {
@@ -138,7 +173,13 @@ export function computePathHintsDiff(
     (!currentBackup && !hints.backupSmbUrl);
 
   let kind: AmsPathHintsDiffKind;
-  if (isPlaceholderServerUrl(config.server_url ?? "")) {
+  if (
+    isPlaceholderServerUrl(config.server_url ?? "") &&
+    anyProfileMatchesPathHints(config.server_profiles, hints)
+  ) {
+    // Creating/placeholder active, but another profile already has AMS paths.
+    kind = "match";
+  } else if (isPlaceholderServerUrl(config.server_url ?? "")) {
     kind = "suggest";
   } else if (!primaryMatch || !backupMatch) {
     kind = "drift";
@@ -163,14 +204,17 @@ export function diffPathHintsFromHealth(
   return computePathHintsDiff(config, parsePathHintsFromHealth(health));
 }
 
-/** Whether backup hint differs from the `ams-backup` profile (for 35.b). */
+/** Whether backup hint differs from the active profile's backup_url. */
 export function backupHintDrift(
   hints: AmsPathHints,
   config: PathHintsConfigWire,
 ): boolean {
   if (!hints.backupSmbUrl) return false;
   const current = normalizeSmbUrlForCompare(
-    backupProfileUrlFromProfiles(config.server_profiles),
+    backupProfileUrlFromProfiles(
+      config.server_profiles,
+      config.active_server_profile_id,
+    ),
   );
   return current !== hints.backupSmbUrl;
 }

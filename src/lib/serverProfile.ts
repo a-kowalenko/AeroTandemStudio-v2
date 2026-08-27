@@ -1,5 +1,6 @@
 import type { AppConfig } from "@/lib/tauri";
 import { tr } from "@/i18n";
+import { pruneWizardPresetsAfterPathApplyWire } from "@/lib/amsPathHintsApplyCore";
 
 export const DEFAULT_SERVER_PROFILE_ID = "default";
 export const GERA_SERVER_PROFILE_ID = "gera";
@@ -10,12 +11,31 @@ export const PRESET_SERVER_PROFILE_LABELS = {
   gera: "Video-PC Gera",
 } as const;
 
+export type ServerProfile = {
+  id: string;
+  label: string;
+  url: string;
+  login: string;
+  password: string;
+  backup_url: string;
+  backup_login: string;
+  backup_password: string;
+};
+
+export function emptyServerProfileBackup(): Pick<
+  ServerProfile,
+  "backup_url" | "backup_login" | "backup_password"
+> {
+  return { backup_url: "", backup_login: "", backup_password: "" };
+}
+
 const PRESET_CALDEN_PROFILE: ServerProfile = {
   id: DEFAULT_SERVER_PROFILE_ID,
   label: PRESET_SERVER_PROFILE_LABELS.calden,
   url: DEFAULT_SERVER_URL,
   login: "",
   password: "",
+  ...emptyServerProfileBackup(),
 };
 
 const PRESET_GERA_PROFILE: ServerProfile = {
@@ -24,14 +44,7 @@ const PRESET_GERA_PROFILE: ServerProfile = {
   url: "",
   login: "",
   password: "",
-};
-
-export type ServerProfile = {
-  id: string;
-  label: string;
-  url: string;
-  login: string;
-  password: string;
+  ...emptyServerProfileBackup(),
 };
 
 export function findServerProfile(
@@ -60,6 +73,8 @@ export function displayServerProfileLabel(profile: ServerProfile): string {
 
 export function displayServerProfileSubtitle(profile: ServerProfile): string {
   const url = profile.url.trim();
+  const backup = profile.backup_url?.trim() ?? "";
+  if (url && backup) return `${url} · backup`;
   if (url) return url;
   return "";
 }
@@ -169,6 +184,34 @@ export function patchActiveServerProfileLabel(
   return { ...config, server_profiles: profiles };
 }
 
+export function patchActiveServerProfileBackup(
+  config: AppConfig,
+  patch: Partial<{
+    backup_url: string;
+    backup_login: string;
+    backup_password: string;
+  }>,
+): AppConfig {
+  const profiles = [...(config.server_profiles ?? [])];
+  const idx = profiles.findIndex(
+    (p) => p.id === config.active_server_profile_id,
+  );
+  if (idx < 0) return config;
+  profiles[idx] = {
+    ...profiles[idx],
+    ...(patch.backup_url !== undefined
+      ? { backup_url: patch.backup_url }
+      : {}),
+    ...(patch.backup_login !== undefined
+      ? { backup_login: patch.backup_login }
+      : {}),
+    ...(patch.backup_password !== undefined
+      ? { backup_password: patch.backup_password }
+      : {}),
+  };
+  return { ...config, server_profiles: profiles };
+}
+
 export function switchServerProfile(
   config: AppConfig,
   profileId: string,
@@ -213,6 +256,7 @@ export function createServerProfile(
     url: "",
     login: "",
     password: "",
+    ...emptyServerProfileBackup(),
   };
   profiles.push(fresh);
   return {
@@ -258,6 +302,15 @@ export function activeServerProfileSummary(config: AppConfig): string {
   const url = active.url.trim();
   if (!url || label === url) return label;
   return `${label} (${url})`;
+}
+
+/**
+ * After AMS path apply in the wizard: drop unused Calden/Gera presets.
+ * Keeps the active profile (incl. optional backup_url) and custom profiles.
+ */
+export function pruneWizardPresetsAfterPathApply(config: AppConfig): AppConfig {
+  const pushed = pushFlatToActiveProfile(config);
+  return pruneWizardPresetsAfterPathApplyWire(pushed) as AppConfig;
 }
 
 /** Ensure Calden + Gera presets exist (wizard + legacy configs with a single profile). */

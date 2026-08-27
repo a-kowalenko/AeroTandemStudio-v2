@@ -1,17 +1,12 @@
 import type { AppConfig } from "@/lib/tauri";
-import {
-  findServerProfile,
-  type ServerProfile,
-} from "@/lib/serverProfile";
-import {
-  AMS_BACKUP_PROFILE_ID,
-  backupProfileUrlFromProfiles,
-} from "./amsPathHintsCore";
+import { getActiveServerProfile } from "@/lib/serverProfile";
+import { backupProfileUrlFromProfiles } from "./amsPathHintsCore";
 
 export {
   AMS_BACKUP_PROFILE_ID,
   DEFAULT_SERVER_URL,
   PATHS_V1_CAPABILITY,
+  anyProfileMatchesPathHints,
   backupHintDrift,
   backupProfileUrlFromProfiles,
   bindPathHintsServerInstance,
@@ -34,11 +29,12 @@ export {
 } from "./amsPathHintsCore";
 
 export function backupProfileUrl(config: AppConfig): string {
-  return backupProfileUrlFromProfiles(config.server_profiles);
+  return backupProfileUrlFromProfiles(
+    config.server_profiles,
+    config.active_server_profile_id,
+  );
 }
 
-export function findBackupServerProfile(
-  profiles: ServerProfile[] | undefined,
-): ServerProfile | undefined {
-  return findServerProfile(profiles, AMS_BACKUP_PROFILE_ID);
+export function activeProfileBackupUrl(config: AppConfig): string {
+  return getActiveServerProfile(config)?.backup_url?.trim() ?? "";
 }

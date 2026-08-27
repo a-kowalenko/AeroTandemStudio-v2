@@ -97,9 +97,19 @@ const EMPTY_PATH_HINTS: Pick<AmsBridgeState, "pathHints" | "pathHintsDiff"> = {
 async function syncServerIdentityFromConfig(): Promise<void> {
   try {
     const cfg = await getConfig();
+    const current = useConfigStore.getState().config;
+    if (!current) return;
+    const displayName = cfg.ams_bridge_display_name;
+    const instanceId = cfg.ams_bridge_server_instance_id;
+    if (
+      current.ams_bridge_display_name === displayName &&
+      current.ams_bridge_server_instance_id === instanceId
+    ) {
+      return;
+    }
     useConfigStore.getState().updateLocal({
-      ams_bridge_display_name: cfg.ams_bridge_display_name,
-      ams_bridge_server_instance_id: cfg.ams_bridge_server_instance_id,
+      ams_bridge_display_name: displayName,
+      ams_bridge_server_instance_id: instanceId,
     });
   } catch {
     // Best-effort after backend persist.

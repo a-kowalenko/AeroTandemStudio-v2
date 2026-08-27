@@ -12,6 +12,7 @@ import {
   findServerProfile,
   getActiveServerProfile,
   parseServerUrlParts,
+  patchActiveServerProfileBackup,
   patchActiveServerProfileLabel,
   patchServerConnection,
   pushFlatToActiveProfile,
@@ -41,12 +42,16 @@ type Props = {
   variant?: "settings" | "wizard";
   onError?: (message: string, title?: string) => void;
   errorTitle?: string;
-  flashFocus?: "server-url" | "server-credentials" | null;
+  flashFocus?: "server-url" | "server-credentials" | "server-backup-url" | null;
   urlInputRef?: RefObject<HTMLInputElement | null>;
   loginInputRef?: RefObject<HTMLInputElement | null>;
+  backupUrlInputRef?: RefObject<HTMLInputElement | null>;
   urlSectionRef?: RefObject<HTMLDivElement | null>;
   credentialsSectionRef?: RefObject<HTMLDivElement | null>;
+  backupUrlSectionRef?: RefObject<HTMLDivElement | null>;
   footer?: ReactNode;
+  /** Fired when create/edit panel opens or closes (settings banners). */
+  onEditingChange?: (editing: boolean) => void;
 };
 
 export function ServerProfileEditor({
@@ -59,9 +64,12 @@ export function ServerProfileEditor({
   flashFocus = null,
   urlInputRef,
   loginInputRef,
+  backupUrlInputRef,
   urlSectionRef,
   credentialsSectionRef,
+  backupUrlSectionRef,
   footer,
+  onEditingChange,
 }: Props) {
   const { t } = useTranslation();
   const profiles = draft.server_profiles ?? [];
@@ -76,11 +84,27 @@ export function ServerProfileEditor({
   const wizardAutoOpenedRef = useRef(false);
   const focusNameOnProfileRef = useRef<string | null>(null);
   const profileNameInputRef = useRef<HTMLInputElement | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   const editorOpen = editorMode !== null;
   const editingProfile = editorMode
     ? findServerProfile(profiles, editorMode.profileId)
     : undefined;
+
+  /** Avoid stale closures overwriting URL/login while typing. */
+  function replaceDraft(next: AppConfig) {
+    draftRef.current = next;
+    setDraft(next);
+  }
+
+  function updateDraft(updater: (prev: AppConfig) => AppConfig) {
+    replaceDraft(updater(draftRef.current));
+  }
+
+  useEffect(() => {
+    onEditingChange?.(editorOpen || singleWizardProfile);
+  }, [editorOpen, singleWizardProfile, onEditingChange]);
 
   useEffect(() => {
     if (!flashFocus || !activeId) return;
@@ -120,26 +144,37 @@ export function ServerProfileEditor({
 
   function closeEditor(save: boolean) {
     if (singleWizardProfile) {
-      if (save) setDraft(pushFlatToActiveProfile(draft));
+      if (save) updateDraft((prev) => pushFlatToActiveProfile(prev));
       return;
     }
     if (save) {
-      setDraft(pushFlatToActiveProfile(draft));
+      updateDraft((prev) => pushFlatToActiveProfile(prev));
     }
     setEditorMode(null);
   }
 
-  async function pickServerPath() {
+  async function pickServerPath(target: "primary" | "backup" = "primary") {
     try {
+      const current = draftRef.current;
+      const currentUrl =
+        target === "backup"
+          ? (getActiveServerProfile(current)?.backup_url ?? "")
+          : current.server_url;
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        defaultPath: serverUrlToDialogDefaultPath(draft.server_url),
+        defaultPath: serverUrlToDialogDefaultPath(currentUrl),
       });
       if (typeof selected === "string") {
         const next = selected.trim();
         if (!next) return;
-        setDraft(patchServerConnection(draft, { url: next }));
+        if (target === "backup") {
+          updateDraft((prev) =>
+            patchActiveServerProfileBackup(prev, { backup_url: next }),
+          );
+        } else {
+          updateDraft((prev) => patchServerConnection(prev, { url: next }));
+        }
       }
     } catch (err) {
       onError?.(String(err), errorTitle);
@@ -147,8 +182,9 @@ export function ServerProfileEditor({
   }
 
   function prepareDraftForProfileChange(): AppConfig {
-    if (!editorOpen && !wizardExpandedEditor) return draft;
-    return pushFlatToActiveProfile(draft);
+    const current = draftRef.current;
+    if (!editorOpen && !wizardExpandedEditor) return current;
+    return pushFlatToActiveProfile(current);
   }
 
   function onSelectProfile(profileId: string) {
@@ -158,14 +194,14 @@ export function ServerProfileEditor({
     if (profileId !== next.active_server_profile_id) {
       next = switchServerProfile(next, profileId);
     }
-    setDraft(next);
+    replaceDraft(next);
   }
 
   function onEditProfile(profileId: string) {
     if (disabled) return;
     let next = prepareDraftForProfileChange();
     next = switchServerProfile(next, profileId);
-    setDraft(next);
+    replaceDraft(next);
     setEditorMode({ profileId });
   }
 
@@ -176,7 +212,7 @@ export function ServerProfileEditor({
       t("settings.server.smb.newProfileDefault"),
     );
     focusNameOnProfileRef.current = next.active_server_profile_id;
-    setDraft(next);
+    replaceDraft(next);
     setEditorMode({
       profileId: next.active_server_profile_id,
       created: true,
@@ -213,7 +249,7 @@ export function ServerProfileEditor({
     if (editorMode?.profileId === profileId) {
       setEditorMode(null);
     }
-    setDraft(next);
+    replaceDraft(next);
   }
 
   function renderProfileRow(profile: (typeof profiles)[number]) {
@@ -371,7 +407,9 @@ export function ServerProfileEditor({
             disabled={disabled}
             value={formProfile.label}
             onChange={(e) =>
-              setDraft(patchActiveServerProfileLabel(draft, e.target.value))
+              updateDraft((prev) =>
+                patchActiveServerProfileLabel(prev, e.target.value),
+              )
             }
             placeholder={t("settings.server.smb.profileLabelPlaceholder")}
           />
@@ -404,11 +442,12 @@ export function ServerProfileEditor({
               labelFor={schemeLabel}
               listZIndex={variant === "wizard" ? 200 : 80}
               onChange={(nextScheme) =>
-                setDraft(
-                  patchServerConnection(draft, {
-                    url: composeServerUrl(nextScheme, rest),
-                  }),
-                )
+                updateDraft((prev) => {
+                  const parts = parseServerUrlParts(prev.server_url);
+                  return patchServerConnection(prev, {
+                    url: composeServerUrl(nextScheme, parts.rest),
+                  });
+                })
               }
             />
             <div className="relative min-w-0 flex-1">
@@ -419,18 +458,19 @@ export function ServerProfileEditor({
                 className="h-9 rounded-none rounded-r-md border-0 pr-10 shadow-none focus-visible:ring-0"
                 value={rest}
                 onChange={(e) =>
-                  setDraft(
-                    patchServerConnection(draft, {
-                      url: composeServerUrl(scheme, e.target.value),
-                    }),
-                  )
+                  updateDraft((prev) => {
+                    const parts = parseServerUrlParts(prev.server_url);
+                    return patchServerConnection(prev, {
+                      url: composeServerUrl(parts.scheme, e.target.value),
+                    });
+                  })
                 }
                 placeholder={restPlaceholder}
               />
               <button
                 type="button"
                 disabled={disabled}
-                onClick={() => void pickServerPath()}
+                onClick={() => void pickServerPath("primary")}
                 title={t("common.actions.pickFolder")}
                 aria-label={t("common.actions.pickFolder")}
                 className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
@@ -462,8 +502,8 @@ export function ServerProfileEditor({
                 disabled={disabled}
                 value={draft.server_login}
                 onChange={(e) =>
-                  setDraft(
-                    patchServerConnection(draft, { login: e.target.value }),
+                  updateDraft((prev) =>
+                    patchServerConnection(prev, { login: e.target.value }),
                   )
                 }
                 autoComplete="username"
@@ -478,8 +518,8 @@ export function ServerProfileEditor({
                 disabled={disabled}
                 value={draft.server_password}
                 onChange={(e) =>
-                  setDraft(
-                    patchServerConnection(draft, {
+                  updateDraft((prev) =>
+                    patchServerConnection(prev, {
                       password: e.target.value,
                     }),
                   )
@@ -491,6 +531,140 @@ export function ServerProfileEditor({
         </div>
 
         <p className="text-[11px] text-muted">{serverGuestHint()}</p>
+
+        {(() => {
+          const backupParts = parseServerUrlParts(formProfile.backup_url ?? "");
+          const backupRestPlaceholder =
+            backupParts.scheme === "\\\\"
+              ? t("settings.server.smb.urlPlaceholderUnc")
+              : backupParts.scheme === "path"
+                ? t("settings.server.smb.urlPlaceholderPath")
+                : t("settings.server.smb.urlPlaceholderHost");
+          return (
+            <div
+              ref={backupUrlSectionRef}
+              className="relative space-y-1.5 rounded-xl p-2.5"
+            >
+              {flashFocus === "server-backup-url" ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
+                />
+              ) : null}
+              <Label htmlFor="server-profile-backup-url" className="relative">
+                {t("settings.server.smb.backupUrl")}
+              </Label>
+              <div
+                className={cn(
+                  "flex rounded-md border border-border bg-card shadow-sm",
+                  "focus-within:ring-2 focus-within:ring-ring",
+                  disabled && "opacity-50",
+                )}
+              >
+                <ServerUrlSchemePicker
+                  value={backupParts.scheme}
+                  disabled={disabled}
+                  aria-label={t("settings.server.smb.scheme")}
+                  labelFor={schemeLabel}
+                  listZIndex={variant === "wizard" ? 200 : 80}
+                  onChange={(nextScheme) =>
+                    updateDraft((prev) => {
+                      const profile = getActiveServerProfile(prev);
+                      const parts = parseServerUrlParts(
+                        profile?.backup_url ?? "",
+                      );
+                      return patchActiveServerProfileBackup(prev, {
+                        backup_url: composeServerUrl(
+                          nextScheme,
+                          parts.rest,
+                        ),
+                      });
+                    })
+                  }
+                />
+                <div className="relative min-w-0 flex-1">
+                  <Input
+                    id="server-profile-backup-url"
+                    ref={backupUrlInputRef}
+                    disabled={disabled}
+                    className="h-9 rounded-none rounded-r-md border-0 pr-10 shadow-none focus-visible:ring-0"
+                    value={backupParts.rest}
+                    onChange={(e) =>
+                      updateDraft((prev) => {
+                        const profile = getActiveServerProfile(prev);
+                        const parts = parseServerUrlParts(
+                          profile?.backup_url ?? "",
+                        );
+                        return patchActiveServerProfileBackup(prev, {
+                          backup_url: composeServerUrl(
+                            parts.scheme,
+                            e.target.value,
+                          ),
+                        });
+                      })
+                    }
+                    placeholder={backupRestPlaceholder}
+                  />
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => void pickServerPath("backup")}
+                    title={t("common.actions.pickFolder")}
+                    aria-label={t("common.actions.pickFolder")}
+                    className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors hover:bg-primary-soft hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                  >
+                    <FolderOpen className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </div>
+              </div>
+              <p className="text-[11px] text-muted">
+                {t("settings.server.smb.backupUrlHint")}
+              </p>
+            </div>
+          );
+        })()}
+
+        {(formProfile.backup_url ?? "").trim() ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="server-profile-backup-login">
+                {t("settings.server.smb.backupLogin")}
+              </Label>
+              <Input
+                id="server-profile-backup-login"
+                disabled={disabled}
+                value={formProfile.backup_login ?? ""}
+                onChange={(e) =>
+                  updateDraft((prev) =>
+                    patchActiveServerProfileBackup(prev, {
+                      backup_login: e.target.value,
+                    }),
+                  )
+                }
+                autoComplete="username"
+                placeholder={t("settings.server.smb.backupCredsPlaceholder")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="server-profile-backup-password">
+                {t("settings.server.smb.backupPassword")}
+              </Label>
+              <PasswordInput
+                id="server-profile-backup-password"
+                disabled={disabled}
+                value={formProfile.backup_password ?? ""}
+                onChange={(e) =>
+                  updateDraft((prev) =>
+                    patchActiveServerProfileBackup(prev, {
+                      backup_password: e.target.value,
+                    }),
+                  )
+                }
+                autoComplete="current-password"
+              />
+            </div>
+          </div>
+        ) : null}
 
         {footer ? <div className="pt-1">{footer}</div> : null}
       </div>

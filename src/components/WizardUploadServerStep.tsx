@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
+import { ServerProfileEditor } from "@/components/ServerProfileEditor";
 import { applyAmsPathHintsWithCredentials } from "@/lib/amsPathHintsCredentialsFlow";
 import {
   bindPathHintsServerInstance,
@@ -21,6 +22,7 @@ import {
   PRESET_SERVER_PROFILE_LABELS,
   patchActiveServerProfileLabel,
   patchServerConnection,
+  pruneWizardPresetsAfterPathApply,
   switchServerProfile,
 } from "@/lib/serverProfile";
 import {
@@ -33,7 +35,7 @@ import { discoveredAmsLabel, useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useServerStore } from "@/store/serverStore";
 import { cn } from "@/lib/utils";
 
-type Mode = "ams" | "manual";
+type Mode = "ams" | "manual" | "profiles";
 
 type Props = {
   draft: AppConfig;
@@ -175,7 +177,9 @@ export function WizardUploadServerStep({
         if (label) {
           next = patchActiveServerProfileLabel(next, label);
         }
+        next = pruneWizardPresetsAfterPathApply(next);
         setPathsApplied(true);
+        setMode("profiles");
         setAmsStatus(
           t("setupWizard.upload.pathsApplied", {
             primary: hints.primarySmbUrl,
@@ -249,7 +253,7 @@ export function WizardUploadServerStep({
         <p className="text-xs font-semibold tracking-wide text-muted uppercase">
           {t("setupWizard.sections.server")}
         </p>
-        {mode === "manual" ? (
+        {mode === "manual" || mode === "profiles" ? (
           <Button
             type="button"
             variant="ghost"
@@ -258,6 +262,7 @@ export function WizardUploadServerStep({
             disabled={locked}
             onClick={() => {
               setMode("ams");
+              setPathsApplied(false);
               void runDiscover();
             }}
           >
@@ -268,7 +273,9 @@ export function WizardUploadServerStep({
       </div>
 
       <p className="text-xs leading-snug text-muted">
-        {t("setupWizard.upload.amsHint")}
+        {mode === "profiles"
+          ? t("setupWizard.upload.profilesHint")
+          : t("setupWizard.upload.amsHint")}
       </p>
 
       {mode === "ams" ? (
@@ -399,24 +406,55 @@ export function WizardUploadServerStep({
                   {t("setupWizard.upload.skipAms")}
                 </Button>
               </div>
-              {amsStatus ? (
-                <p
-                  className={cn(
-                    "text-xs",
-                    pathsApplied ? "text-emerald-800 dark:text-emerald-200" : "text-muted",
-                  )}
-                >
-                  {amsStatus}
-                </p>
-              ) : null}
             </div>
           ) : null}
+        </div>
+      ) : mode === "profiles" ? (
+        <div className="space-y-3">
+          {amsStatus ? (
+            <p className="text-xs text-emerald-800 dark:text-emerald-200">
+              {amsStatus}
+            </p>
+          ) : null}
+          <ServerProfileEditor
+            draft={draft}
+            setDraft={setDraft}
+            variant="wizard"
+            disabled={locked}
+            onError={onError}
+            errorTitle={title}
+            footer={
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={locked || testingServer}
+                  onClick={() => void onTestServer()}
+                >
+                  {testingServer
+                    ? t("common.actions.checking")
+                    : t("common.actions.testConnection")}
+                </Button>
+                {!testingServer &&
+                serverPhase !== "checking" &&
+                serverPhase !== "idle" ? (
+                  <span className="text-xs text-muted">
+                    {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                  </span>
+                ) : null}
+              </div>
+            }
+          />
         </div>
       ) : (
         <div className="space-y-3">
           <p className="text-xs text-muted">
             {t("setupWizard.upload.manualHint")}
           </p>
+          {amsStatus && !pathsApplied ? (
+            <p className="text-xs text-muted">{amsStatus}</p>
+          ) : null}
           <div className="grid gap-2 sm:grid-cols-2">
             <button
               type="button"

@@ -93,6 +93,7 @@ export type SettingsTab =
 export type SettingsFocusTarget =
   | "server-url"
   | "server-credentials"
+  | "server-backup-url"
   | "ams-bridge-url"
   | "ams-bridge-token";
 

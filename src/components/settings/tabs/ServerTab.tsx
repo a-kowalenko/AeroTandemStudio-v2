@@ -48,13 +48,16 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
   const [testingBridge, setTestingBridge] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discovered, setDiscovered] = useState<AmsBridgeDiscovered[]>([]);
+  const [profileEditing, setProfileEditing] = useState(false);
   const [bridgeLabel, setBridgeLabel] = useState("—");
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const serverUrlRef = useRef<HTMLDivElement | null>(null);
   const serverCredentialsRef = useRef<HTMLDivElement | null>(null);
+  const serverBackupUrlRef = useRef<HTMLDivElement | null>(null);
   const serverUrlInputRef = useRef<HTMLInputElement | null>(null);
   const serverLoginInputRef = useRef<HTMLInputElement | null>(null);
+  const serverBackupUrlInputRef = useRef<HTMLInputElement | null>(null);
   const amsUrlRef = useRef<HTMLDivElement | null>(null);
   const amsTokenRef = useRef<HTMLDivElement | null>(null);
   const amsUrlInputRef = useRef<HTMLInputElement | null>(null);
@@ -73,6 +76,10 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       "server-credentials": {
         container: serverCredentialsRef,
         input: serverLoginInputRef,
+      },
+      "server-backup-url": {
+        container: serverBackupUrlRef,
+        input: serverBackupUrlInputRef,
       },
       "ams-bridge-url": { container: amsUrlRef, input: amsUrlInputRef },
       "ams-bridge-token": { container: amsTokenRef, input: amsTokenInputRef },
@@ -379,25 +386,30 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
       >
         <AmsPathHintsSuggestBanner
           draft={draft}
-          setDraft={setDraft}
+          setDraft={(next) => setDraft(next)}
           persist={persistConfig}
           onError={showError}
           errorTitle={t("settings.tabs.server")}
           diffFromDraft
+          hidden={profileEditing}
         />
         <AmsPathHintsDriftBanner
           draft={draft}
-          setDraft={setDraft}
+          setDraft={(next) => setDraft(next)}
           persist={persistConfig}
           onError={showError}
           errorTitle={t("settings.tabs.server")}
           diffFromDraft
+          hidden={profileEditing}
         />
         <ServerProfileEditor
           draft={draft}
-          setDraft={setDraft}
+          setDraft={(next) => setDraft(next)}
+          onEditingChange={setProfileEditing}
           flashFocus={
-            flashFocus === "server-url" || flashFocus === "server-credentials"
+            flashFocus === "server-url" ||
+            flashFocus === "server-credentials" ||
+            flashFocus === "server-backup-url"
               ? flashFocus
               : null
           }
@@ -405,8 +417,10 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           errorTitle={t("settings.tabs.server")}
           urlInputRef={serverUrlInputRef}
           loginInputRef={serverLoginInputRef}
+          backupUrlInputRef={serverBackupUrlInputRef}
           urlSectionRef={serverUrlRef}
           credentialsSectionRef={serverCredentialsRef}
+          backupUrlSectionRef={serverBackupUrlRef}
           footer={
             <div className="flex flex-wrap items-center gap-2">
               <Button

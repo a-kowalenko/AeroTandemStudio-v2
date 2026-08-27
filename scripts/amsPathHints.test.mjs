@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   AMS_BACKUP_PROFILE_ID,
+  anyProfileMatchesPathHints,
   bindPathHintsServerInstance,
   buildPathHintsDriftDismissState,
   computePathHintsDiff,
@@ -20,6 +21,7 @@ import {
   applyPathHintsToConfigWire,
   credentialPromptPlan,
   copyPrimaryCredsToBackupProfileWire,
+  pruneWizardPresetsAfterPathApplyWire,
 } from "../src/lib/amsPathHintsApplyCore.ts";
 
 describe("amsPathHints", () => {
@@ -82,14 +84,15 @@ describe("amsPathHints", () => {
     };
     const baseConfig = {
       server_url: DEFAULT_SERVER_URL,
+      active_server_profile_id: "default",
       server_profiles: [
-        { id: "default", label: "x", url: DEFAULT_SERVER_URL, login: "", password: "" },
         {
-          id: AMS_BACKUP_PROFILE_ID,
-          label: "backup",
-          url: "",
+          id: "default",
+          label: "x",
+          url: DEFAULT_SERVER_URL,
           login: "",
           password: "",
+          backup_url: "",
         },
       ],
     };
@@ -107,16 +110,55 @@ describe("amsPathHints", () => {
         ...baseConfig,
         server_url: hints.primarySmbUrl,
         server_profiles: [
-          baseConfig.server_profiles[0],
           {
-            ...baseConfig.server_profiles[1],
-            url: hints.backupSmbUrl,
+            ...baseConfig.server_profiles[0],
+            url: hints.primarySmbUrl,
+            backup_url: hints.backupSmbUrl,
           },
         ],
       },
       hints,
     );
     assert.equal(match.kind, "match");
+  });
+
+  it("diff: no suggest when another profile already has AMS paths", () => {
+    const hints = {
+      primarySmbUrl: "smb://10.0.0.5/aktuell",
+      backupSmbUrl: "smb://10.0.0.5/backup",
+    };
+    assert.ok(
+      anyProfileMatchesPathHints(
+        [
+          {
+            id: "ams-live",
+            url: hints.primarySmbUrl,
+            backup_url: hints.backupSmbUrl,
+          },
+        ],
+        hints,
+      ),
+    );
+    const kind = computePathHintsDiff(
+      {
+        server_url: DEFAULT_SERVER_URL,
+        active_server_profile_id: "new",
+        server_profiles: [
+          {
+            id: "ams-live",
+            url: hints.primarySmbUrl,
+            backup_url: hints.backupSmbUrl,
+          },
+          {
+            id: "new",
+            url: DEFAULT_SERVER_URL,
+            backup_url: "",
+          },
+        ],
+      },
+      hints,
+    ).kind;
+    assert.equal(kind, "match");
   });
 
   it("drift facets: primary only, backup only, both", () => {
@@ -127,8 +169,13 @@ describe("amsPathHints", () => {
     const primaryOnly = computePathHintsDiff(
       {
         server_url: "smb://other/share",
+        active_server_profile_id: "default",
         server_profiles: [
-          { id: AMS_BACKUP_PROFILE_ID, url: hints.backupSmbUrl },
+          {
+            id: "default",
+            url: "smb://other/share",
+            backup_url: hints.backupSmbUrl,
+          },
         ],
       },
       hints,
@@ -141,7 +188,14 @@ describe("amsPathHints", () => {
     const backupOnly = computePathHintsDiff(
       {
         server_url: hints.primarySmbUrl,
-        server_profiles: [{ id: AMS_BACKUP_PROFILE_ID, url: "smb://x/old" }],
+        active_server_profile_id: "default",
+        server_profiles: [
+          {
+            id: "default",
+            url: hints.primarySmbUrl,
+            backup_url: "smb://x/old",
+          },
+        ],
       },
       hints,
     );
@@ -153,7 +207,14 @@ describe("amsPathHints", () => {
     const both = computePathHintsDiff(
       {
         server_url: "smb://other/share",
-        server_profiles: [{ id: AMS_BACKUP_PROFILE_ID, url: "smb://x/old" }],
+        active_server_profile_id: "default",
+        server_profiles: [
+          {
+            id: "default",
+            url: "smb://other/share",
+            backup_url: "smb://x/old",
+          },
+        ],
       },
       hints,
     );
@@ -163,7 +224,7 @@ describe("amsPathHints", () => {
     });
   });
 
-  it("apply: sets primary url and creates ams-backup profile", () => {
+  it("apply: creates new profile and keeps existing ones", () => {
     const hints = {
       primarySmbUrl: "smb://10.0.0.5/aktuell",
       backupSmbUrl: "smb://10.0.0.5/backup",
@@ -173,16 +234,77 @@ describe("amsPathHints", () => {
       active_server_profile_id: "default",
       server_login: "user",
       server_password: "pass",
+      ams_bridge_display_name: "Video-PC Nord",
       server_profiles: [
-        { id: "default", url: DEFAULT_SERVER_URL, login: "user", password: "pass" },
+        {
+          id: "default",
+          label: "Video-PC Calden",
+          url: DEFAULT_SERVER_URL,
+          login: "user",
+          password: "pass",
+          backup_url: "",
+        },
+        {
+          id: "gera",
+          label: "Video-PC Gera",
+          url: "",
+          login: "",
+          password: "",
+          backup_url: "",
+        },
       ],
     };
-    const applied = applyPathHintsToConfigWire(config, hints, "AMS Backup");
+    const applied = applyPathHintsToConfigWire(config, hints, "Video-PC Nord");
     assert.equal(applied.server_url, hints.primarySmbUrl);
-    const backup = applied.server_profiles.find((p) => p.id === AMS_BACKUP_PROFILE_ID);
-    assert.ok(backup);
-    assert.equal(backup.url, hints.backupSmbUrl);
-    assert.equal(backup.label, "AMS Backup");
+    assert.ok(
+      !applied.server_profiles.some((p) => p.id === AMS_BACKUP_PROFILE_ID),
+    );
+    assert.equal(applied.server_profiles.length, 3);
+    assert.ok(applied.server_profiles.some((p) => p.id === "default"));
+    assert.ok(applied.server_profiles.some((p) => p.id === "gera"));
+    const active = applied.server_profiles.find(
+      (p) => p.id === applied.active_server_profile_id,
+    );
+    assert.ok(active);
+    assert.notEqual(active.id, "default");
+    assert.notEqual(active.id, "gera");
+    assert.equal(active.url, hints.primarySmbUrl);
+    assert.equal(active.backup_url, hints.backupSmbUrl);
+    assert.equal(active.label, "Video-PC Nord");
+    // Original profiles untouched
+    const calden = applied.server_profiles.find((p) => p.id === "default");
+    assert.equal(calden.url, DEFAULT_SERVER_URL);
+  });
+
+  it("apply: activates existing matching profile instead of duplicating", () => {
+    const hints = {
+      primarySmbUrl: "smb://10.0.0.5/aktuell",
+      backupSmbUrl: "smb://10.0.0.5/backup",
+    };
+    const config = {
+      server_url: DEFAULT_SERVER_URL,
+      active_server_profile_id: "default",
+      server_profiles: [
+        {
+          id: "default",
+          url: DEFAULT_SERVER_URL,
+          backup_url: "",
+        },
+        {
+          id: "ams-live",
+          label: "AMS Live",
+          url: hints.primarySmbUrl,
+          backup_url: hints.backupSmbUrl,
+          login: "u",
+          password: "p",
+        },
+      ],
+    };
+    const applied = applyPathHintsToConfigWire(config, hints, "Video-PC Nord");
+    assert.equal(applied.active_server_profile_id, "ams-live");
+    assert.equal(applied.server_profiles.length, 2);
+    assert.equal(applied.server_url, hints.primarySmbUrl);
+    assert.equal(applied.server_login, "u");
   });
 
   it("credential matrix: guest ok needs no prompt", () => {
@@ -210,17 +332,24 @@ describe("amsPathHints", () => {
     );
   });
 
-  it("copy primary creds into backup profile", () => {
+  it("copy primary creds into active profile backup fields", () => {
     const next = copyPrimaryCredsToBackupProfileWire({
       server_login: "a",
       server_password: "b",
+      active_server_profile_id: "default",
       server_profiles: [
-        { id: AMS_BACKUP_PROFILE_ID, url: "smb://x/backup" },
+        {
+          id: "default",
+          url: "smb://x/primary",
+          backup_url: "smb://x/backup",
+          backup_login: "",
+          backup_password: "",
+        },
       ],
     });
-    const backup = next.server_profiles.find((p) => p.id === AMS_BACKUP_PROFILE_ID);
-    assert.equal(backup.login, "a");
-    assert.equal(backup.password, "b");
+    const active = next.server_profiles.find((p) => p.id === "default");
+    assert.equal(active.backup_login, "a");
+    assert.equal(active.backup_password, "b");
   });
 
   it("drift signature and dismiss suppress until hints or config change", () => {
@@ -231,7 +360,10 @@ describe("amsPathHints", () => {
     const diff = computePathHintsDiff(
       {
         server_url: "smb://other/share",
-        server_profiles: [{ id: AMS_BACKUP_PROFILE_ID, url: "smb://x/old" }],
+        active_server_profile_id: "default",
+        server_profiles: [
+          { id: "default", url: "smb://other/share", backup_url: "smb://x/old" },
+        ],
       },
       hints,
     );
@@ -250,7 +382,10 @@ describe("amsPathHints", () => {
     const afterHintChange = computePathHintsDiff(
       {
         server_url: "smb://other/share",
-        server_profiles: [{ id: AMS_BACKUP_PROFILE_ID, url: "smb://x/old" }],
+        active_server_profile_id: "default",
+        server_profiles: [
+          { id: "default", url: "smb://other/share", backup_url: "smb://x/old" },
+        ],
       },
       newHints,
     );
@@ -259,7 +394,14 @@ describe("amsPathHints", () => {
     const afterUserEdit = computePathHintsDiff(
       {
         server_url: "smb://user-edited/share",
-        server_profiles: [{ id: AMS_BACKUP_PROFILE_ID, url: "smb://x/old" }],
+        active_server_profile_id: "default",
+        server_profiles: [
+          {
+            id: "default",
+            url: "smb://user-edited/share",
+            backup_url: "smb://x/old",
+          },
+        ],
       },
       hints,
     );
@@ -282,5 +424,45 @@ describe("amsPathHints", () => {
     assert.equal(next.ams_bridge_server_instance_id, "inst-42");
     const unchanged = bindPathHintsServerInstance(next, "  ");
     assert.equal(unchanged.ams_bridge_server_instance_id, "inst-42");
+  });
+
+  it("pruneWizardPresetsAfterPathApply keeps active with backup_url, drops gera and legacy ams-backup", () => {
+    const pruned = pruneWizardPresetsAfterPathApplyWire({
+      server_url: "smb://10.0.0.5/aktuell",
+      server_login: "u",
+      server_password: "p",
+      active_server_profile_id: "default",
+      server_profiles: [
+        {
+          id: "default",
+          label: "AMS Live",
+          url: "smb://10.0.0.5/aktuell",
+          login: "u",
+          password: "p",
+          backup_url: "smb://10.0.0.5/backup",
+        },
+        {
+          id: "gera",
+          label: "Video-PC Gera",
+          url: "",
+          login: "",
+          password: "",
+        },
+        {
+          id: AMS_BACKUP_PROFILE_ID,
+          label: "AMS Backup",
+          url: "smb://10.0.0.5/backup",
+          login: "u",
+          password: "p",
+        },
+      ],
+    });
+    assert.deepEqual(
+      pruned.server_profiles?.map((p) => p.id),
+      ["default"],
+    );
+    assert.equal(pruned.server_profiles[0].backup_url, "smb://10.0.0.5/backup");
+    assert.equal(pruned.active_server_profile_id, "default");
+    assert.equal(pruned.server_url, "smb://10.0.0.5/aktuell");
   });
 });

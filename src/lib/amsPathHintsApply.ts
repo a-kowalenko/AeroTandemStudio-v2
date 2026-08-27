@@ -1,6 +1,6 @@
 import { tr } from "@/i18n";
 import type { AppConfig } from "@/lib/tauri";
-import { findBackupServerProfile } from "@/lib/amsPathHints";
+import { getActiveServerProfile } from "@/lib/serverProfile";
 import type { AmsPathHints } from "@/lib/amsPathHintsCore";
 import {
   applyPathHintsToConfigWire,
@@ -15,11 +15,17 @@ export {
   credentialPromptPlan,
   patchBackupProfileCredsWire,
   patchPrimaryCredsWire,
-  upsertAmsBackupProfileWire,
+  pruneWizardPresetsAfterPathApplyWire,
+  stripLegacyAmsBackupProfileWire,
   type CredentialProbeResult,
   type CredentialPromptPlan,
 } from "@/lib/amsPathHintsApplyCore";
 
+export function pathHintsProfileDefaultLabel(): string {
+  return tr("settings.server.pathHints.newProfileLabel");
+}
+
+/** @deprecated Use pathHintsProfileDefaultLabel */
 export function backupProfileDefaultLabel(): string {
   return tr("settings.server.pathHints.backupProfileLabel");
 }
@@ -27,12 +33,13 @@ export function backupProfileDefaultLabel(): string {
 export function applyPathHintsToConfig(
   config: AppConfig,
   hints: AmsPathHints,
+  profileLabel?: string,
 ): AppConfig {
-  return applyPathHintsToConfigWire(
-    config,
-    hints,
-    backupProfileDefaultLabel(),
-  ) as AppConfig;
+  const label =
+    profileLabel?.trim() ||
+    config.ams_bridge_display_name?.trim() ||
+    pathHintsProfileDefaultLabel();
+  return applyPathHintsToConfigWire(config, hints, label) as AppConfig;
 }
 
 export function copyPrimaryCredsToBackupProfile(config: AppConfig): AppConfig {
@@ -56,16 +63,21 @@ export function patchPrimaryCreds(
 }
 
 export function backupUrlFromConfig(config: AppConfig): string {
-  return findBackupServerProfile(config.server_profiles)?.url?.trim() ?? "";
+  return getActiveServerProfile(config)?.backup_url?.trim() ?? "";
 }
 
 export function backupCredsFromConfig(config: AppConfig): {
   login: string;
   password: string;
 } {
-  const profile = findBackupServerProfile(config.server_profiles);
+  const profile = getActiveServerProfile(config);
+  const backupLogin = profile?.backup_login?.trim() ?? "";
+  const backupPassword = profile?.backup_password ?? "";
+  if (backupLogin || backupPassword) {
+    return { login: backupLogin, password: backupPassword };
+  }
   return {
-    login: profile?.login?.trim() ?? config.server_login?.trim() ?? "",
-    password: profile?.password ?? config.server_password ?? "",
+    login: config.server_login?.trim() ?? "",
+    password: config.server_password ?? "",
   };
 }

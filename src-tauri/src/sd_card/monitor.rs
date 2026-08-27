@@ -465,7 +465,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
         };
     }
 
-    let url = cfg.sd_server_backup_url.trim().to_string();
+    let url = cfg.resolve_sd_server_backup_url();
     if url.is_empty() {
         return SecondaryMirrorPlan {
             active: false,
@@ -475,7 +475,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
             password: String::new(),
             soft_warning,
             disable_warning: Some(
-                "Server-Backup-URL fehlt (Primär bleibt erfolgreich) — bitte smb://… setzen."
+                "Server-Backup-URL fehlt (Primär bleibt erfolgreich) — bitte smb://… im Server-Profil setzen."
                     .into(),
             ),
         };
@@ -495,12 +495,14 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
         };
     }
 
+    let (login, password) = cfg.resolve_sd_server_backup_credentials();
+
     SecondaryMirrorPlan {
         active: true,
         async_mode,
         url,
-        login: cfg.server_login.clone(),
-        password: cfg.server_password.clone(),
+        login,
+        password,
         soft_warning,
         disable_warning: None,
     }

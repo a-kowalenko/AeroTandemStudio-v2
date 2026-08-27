@@ -15,6 +15,10 @@ import {
 import { useUiStore } from "@/store/uiStore";
 import { useServerStore } from "@/store/serverStore";
 import { presentServerConnectionAction } from "@/lib/headerConnectionStatus";
+import {
+  displayServerProfileLabel,
+  getActiveServerProfile,
+} from "@/lib/serverProfile";
 import { cn } from "@/lib/utils";
 import { FolderPathField } from "../FolderPathField";
 import { SettingsSection } from "../SettingsSection";
@@ -30,12 +34,26 @@ function looksLikeMountPath(url: string): boolean {
   return t.startsWith("/");
 }
 
+function activeProfileBackupTarget(draft: SettingsTabBaseProps["draft"]) {
+  const profile = getActiveServerProfile(draft);
+  const url = profile?.backup_url?.trim() ?? "";
+  const login =
+    profile?.backup_login?.trim() || draft.server_login || "";
+  const password =
+    (profile?.backup_password ?? "") || draft.server_password || "";
+  return { profile, url, login, password };
+}
+
 export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
+  const openSettings = useUiStore((s) => s.openSettings);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const [testingBackupUrl, setTestingBackupUrl] = useState(false);
+
+  const backupTarget = activeProfileBackupTarget(draft);
+  const profileBackupUrl = backupTarget.url;
 
   async function pickFolder(key: "sd_backup_folder") {
     const selected = await openDialog({ directory: true, multiple: false });
@@ -43,20 +61,20 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
   }
 
   async function onTestBackupUrl() {
-    if (testingBackupUrl) return;
+    if (testingBackupUrl || !profileBackupUrl) return;
     setTestingBackupUrl(true);
     try {
       const result = await checkConnection({
-        server_url: draft.sd_server_backup_url,
-        server_login: draft.server_login,
-        server_password: draft.server_password,
+        server_url: profileBackupUrl,
+        server_login: backupTarget.login,
+        server_password: backupTarget.password,
       });
       const action = presentServerConnectionAction({
         ok: result.ok,
         rawMessage: result.message,
-        serverUrl: draft.sd_server_backup_url,
-        login: draft.server_login,
-        password: draft.server_password,
+        serverUrl: profileBackupUrl,
+        login: backupTarget.login,
+        password: backupTarget.password,
       });
       if (result.ok) {
         showSuccess("", t("header.connection.titleServerOk"), {
@@ -73,14 +91,17 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
     }
   }
 
+  function goToServerBackupUrl() {
+    openSettings({ tab: "server", focus: "server-backup-url" });
+  }
+
   const modeValue =
     draft.sd_server_backup_mode === "local_then_server"
       ? "local_then_server"
       : "local_then_server_async";
 
   const showMountHint =
-    draft.sd_server_backup_enabled &&
-    looksLikeMountPath(draft.sd_server_backup_url);
+    draft.sd_server_backup_enabled && looksLikeMountPath(profileBackupUrl);
 
   return (
     <div className="space-y-4">
@@ -187,29 +208,60 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
           <div className="space-y-3 pl-1">
             <div className="space-y-1.5">
               <Label>{t("settings.sd.backup.serverUrl")}</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={draft.sd_server_backup_url}
-                  placeholder={t("settings.sd.backup.serverUrlPlaceholder")}
-                  onChange={(e) => patch("sd_server_backup_url", e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={
-                    testingBackupUrl || !draft.sd_server_backup_url.trim()
-                  }
-                  onClick={() => void onTestBackupUrl()}
-                >
-                  {testingBackupUrl
-                    ? t("settings.sd.backup.serverUrlTesting")
-                    : t("settings.sd.backup.serverUrlTest")}
-                </Button>
-              </div>
-              <p className="text-xs text-muted">
-                {t("settings.sd.backup.serverUrlHint")}
-              </p>
+              {profileBackupUrl ? (
+                <>
+                  <div className="flex gap-2">
+                    <Input
+                      value={profileBackupUrl}
+                      readOnly
+                      className="flex-1"
+                      title={
+                        backupTarget.profile
+                          ? displayServerProfileLabel(backupTarget.profile)
+                          : undefined
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={testingBackupUrl}
+                      onClick={() => void onTestBackupUrl()}
+                    >
+                      {testingBackupUrl
+                        ? t("settings.sd.backup.serverUrlTesting")
+                        : t("settings.sd.backup.serverUrlTest")}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted">
+                    {t("settings.sd.backup.serverUrlFromProfile", {
+                      name: backupTarget.profile
+                        ? displayServerProfileLabel(backupTarget.profile)
+                        : t("settings.tabs.server"),
+                    })}{" "}
+                    <button
+                      type="button"
+                      className="text-foreground underline-offset-2 hover:underline"
+                      onClick={goToServerBackupUrl}
+                    >
+                      {t("settings.sd.backup.editInServerProfile")}
+                    </button>
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-2 rounded-md border border-dashed border-border/80 bg-background/40 px-3 py-2.5">
+                  <p className="text-sm text-muted">
+                    {t("settings.sd.backup.serverUrlMissing")}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={goToServerBackupUrl}
+                  >
+                    {t("settings.sd.backup.setInServerProfile")}
+                  </Button>
+                </div>
+              )}
               {showMountHint ? (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
                   {t("settings.sd.backup.serverUrlMountWarn")}

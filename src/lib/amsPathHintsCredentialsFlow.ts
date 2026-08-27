@@ -39,62 +39,48 @@ async function defaultTest(
   return testServerConnection(overrides);
 }
 
-function promptLoginPassword(opts: {
+function promptText(opts: {
   title: string;
   body: string;
-  initialLogin: string;
-  initialPassword: string;
-}): Promise<{ login: string; password: string } | null> {
+  label: string;
+  password: boolean;
+  initialValue: string;
+  submitLabel: string;
+}): Promise<string | null> {
   return new Promise((resolve) => {
     const { closeDialog } = useUiStore.getState();
-    let loginDraft = opts.initialLogin;
-
-    const askPassword = () => {
-      useUiStore.getState().showSuccess(opts.body, opts.title, {
-        autoCloseSecs: 0,
-        prompt: {
-          label: tr("settings.server.smb.password"),
-          password: true,
-          initialValue: opts.initialPassword,
-          submitLabel: tr("common.actions.apply"),
-          cancelLabel: tr("common.actions.cancel"),
-          onCancel: () => {
-            closeDialog();
-            resolve(null);
-          },
-          onSubmit: (password) => {
-            closeDialog();
-            resolve({ login: loginDraft, password });
-          },
-        },
-      });
-    };
-
     useUiStore.getState().showSuccess(opts.body, opts.title, {
       autoCloseSecs: 0,
       prompt: {
-        label: tr("settings.server.smb.login"),
-        password: false,
-        initialValue: opts.initialLogin,
-        submitLabel: tr("common.actions.next"),
+        label: opts.label,
+        password: opts.password,
+        initialValue: opts.initialValue,
+        submitLabel: opts.submitLabel,
         cancelLabel: tr("common.actions.cancel"),
         onCancel: () => {
           closeDialog();
           resolve(null);
         },
-        onSubmit: (login) => {
-          loginDraft = login;
+        onSubmit: (value) => {
           closeDialog();
-          window.setTimeout(askPassword, 0);
+          resolve(value);
         },
       },
     });
   });
 }
 
+/**
+ * Ask login, then optionally try `candidatePassword` (e.g. AMS token) before
+ * showing the password dialog.
+ */
 async function promptCredentialsForTarget(
   target: "primary" | "backup",
   initial: { login: string; password: string },
+  opts?: {
+    candidatePassword?: string;
+    tryPassword?: (login: string, password: string) => Promise<boolean>;
+  },
 ): Promise<{ login: string; password: string } | null> {
   const title =
     target === "primary"
@@ -104,12 +90,35 @@ async function promptCredentialsForTarget(
     target === "primary"
       ? tr("settings.server.pathHints.credentialsBodyPrimary")
       : tr("settings.server.pathHints.credentialsBodyBackup");
-  return promptLoginPassword({
+
+  const login = await promptText({
     title,
     body,
-    initialLogin: initial.login,
-    initialPassword: initial.password,
+    label: tr("settings.server.smb.login"),
+    password: false,
+    initialValue: initial.login,
+    submitLabel: tr("common.actions.next"),
   });
+  if (login === null) return null;
+
+  const candidate = opts?.candidatePassword?.trim() ?? "";
+  if (candidate && opts?.tryPassword) {
+    const ok = await opts.tryPassword(login, candidate);
+    if (ok) {
+      return { login, password: candidate };
+    }
+  }
+
+  const password = await promptText({
+    title,
+    body,
+    label: tr("settings.server.smb.password"),
+    password: true,
+    initialValue: initial.password,
+    submitLabel: tr("common.actions.apply"),
+  });
+  if (password === null) return null;
+  return { login, password };
 }
 
 async function probeTarget(
@@ -167,9 +176,18 @@ function needsBackupPrompt(
   return false;
 }
 
+/** Prefer AMS bridge token as SMB password when it differs from the failing one. */
+function smbPasswordCandidate(config: AppConfig): string {
+  const token = config.ams_bridge_token?.trim() ?? "";
+  if (!token) return "";
+  if (token === (config.server_password ?? "")) return "";
+  return token;
+}
+
 /**
  * After path hints are applied: SMB-test primary + backup, prompt credentials per matrix.
  * Guest/empty creds that work → no prompts.
+ * When AMS token is set: ask login, try token as password silently, else ask password.
  */
 export async function runPathHintsCredentialsFlow(
   opts: PathHintsCredentialsFlowOptions,
@@ -193,10 +211,19 @@ export async function runPathHintsCredentialsFlow(
   if (!interactive) return config;
 
   if (needsPrimaryPrompt(plan)) {
-    const creds = await promptCredentialsForTarget("primary", {
-      login: config.server_login,
-      password: config.server_password,
-    });
+    const candidate = smbPasswordCandidate(config);
+    const creds = await promptCredentialsForTarget(
+      "primary",
+      {
+        login: config.server_login,
+        password: config.server_password,
+      },
+      {
+        candidatePassword: candidate,
+        tryPassword: (login, password) =>
+          probeTarget(test, hints.primarySmbUrl, login, password),
+      },
+    );
     if (!creds) return config;
     config = patchPrimaryCreds(config, creds.login, creds.password);
     probe = await probeBoth(config, hints, test);
@@ -210,9 +237,18 @@ export async function runPathHintsCredentialsFlow(
   }
 
   if (needsBackupPrompt(plan, probe, hasBackup)) {
+    const backupCreds = backupCredsFromConfig(config);
+    const token = config.ams_bridge_token?.trim() ?? "";
+    const candidate =
+      token && token !== backupCreds.password ? token : "";
     const creds = await promptCredentialsForTarget(
       "backup",
-      backupCredsFromConfig(config),
+      backupCreds,
+      {
+        candidatePassword: candidate,
+        tryPassword: (login, password) =>
+          probeTarget(test, hints.backupSmbUrl, login, password),
+      },
     );
     if (creds) {
       config = patchBackupProfileCreds(config, creds.login, creds.password);

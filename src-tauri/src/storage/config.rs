@@ -104,12 +104,21 @@ pub struct ServerProfile {
     pub login: String,
     #[serde(default)]
     pub password: String,
+    /// Optional secondary SMB target for this profile (AMS path hint / manual).
+    #[serde(default)]
+    pub backup_url: String,
+    #[serde(default)]
+    pub backup_login: String,
+    #[serde(default)]
+    pub backup_password: String,
 }
 
 /// Stable id for the factory-default profile in `AppConfig::default()`.
 pub const DEFAULT_SERVER_PROFILE_ID: &str = "default";
 /// Preset upload target for the Gera dropzone (no default SMB URL).
 pub const GERA_SERVER_PROFILE_ID: &str = "gera";
+/// Legacy Phase-35 second profile; folded into `ServerProfile::backup_url` on load.
+pub const LEGACY_AMS_BACKUP_PROFILE_ID: &str = "ams-backup";
 
 /// App settings — keys from IMPLEMENTATION_PLAN §9 (+ a few UI helpers from legacy defaults).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -443,6 +452,9 @@ fn default_server_profiles() -> Vec<ServerProfile> {
             url: default_server_url(),
             login: String::new(),
             password: String::new(),
+            backup_url: String::new(),
+            backup_login: String::new(),
+            backup_password: String::new(),
         },
         ServerProfile {
             id: GERA_SERVER_PROFILE_ID.into(),
@@ -450,6 +462,9 @@ fn default_server_profiles() -> Vec<ServerProfile> {
             url: String::new(),
             login: String::new(),
             password: String::new(),
+            backup_url: String::new(),
+            backup_login: String::new(),
+            backup_password: String::new(),
         },
     ]
 }
@@ -655,8 +670,94 @@ impl AppConfig {
             url: self.server_url.clone(),
             login: self.server_login.clone(),
             password: self.server_password.clone(),
+            backup_url: String::new(),
+            backup_login: String::new(),
+            backup_password: String::new(),
         }];
         self.active_server_profile_id = DEFAULT_SERVER_PROFILE_ID.into();
+    }
+
+    /// Fold legacy `ams-backup` second profile into the active profile's `backup_*` fields.
+    pub fn migrate_legacy_ams_backup_profile(&mut self) {
+        let Some(legacy_idx) = self
+            .server_profiles
+            .iter()
+            .position(|p| p.id == LEGACY_AMS_BACKUP_PROFILE_ID)
+        else {
+            return;
+        };
+        let legacy = self.server_profiles.remove(legacy_idx);
+        if self.active_server_profile_id == LEGACY_AMS_BACKUP_PROFILE_ID {
+            self.active_server_profile_id = self
+                .server_profiles
+                .first()
+                .map(|p| p.id.clone())
+                .unwrap_or_else(|| DEFAULT_SERVER_PROFILE_ID.into());
+        }
+        let Some(idx) = self.active_server_profile_index() else {
+            return;
+        };
+        if self.server_profiles[idx].backup_url.trim().is_empty()
+            && !legacy.url.trim().is_empty()
+        {
+            self.server_profiles[idx].backup_url = legacy.url;
+            if self.server_profiles[idx].backup_login.trim().is_empty() {
+                self.server_profiles[idx].backup_login = legacy.login;
+            }
+            if self.server_profiles[idx].backup_password.is_empty() {
+                self.server_profiles[idx].backup_password = legacy.password;
+            }
+        }
+    }
+
+    /// Prefer active profile `backup_url`; fall back to legacy `sd_server_backup_url`.
+    pub fn resolve_sd_server_backup_url(&self) -> String {
+        if let Some(idx) = self.active_server_profile_index() {
+            let url = self.server_profiles[idx].backup_url.trim();
+            if !url.is_empty() {
+                return url.to_string();
+            }
+        }
+        self.sd_server_backup_url.trim().to_string()
+    }
+
+    /// SMB credentials for the SD server-backup target (profile backup_* or primary).
+    pub fn resolve_sd_server_backup_credentials(&self) -> (String, String) {
+        if let Some(idx) = self.active_server_profile_index() {
+            let p = &self.server_profiles[idx];
+            if !p.backup_url.trim().is_empty() {
+                let login = if p.backup_login.trim().is_empty() {
+                    self.server_login.clone()
+                } else {
+                    p.backup_login.clone()
+                };
+                let password = if p.backup_password.is_empty() {
+                    self.server_password.clone()
+                } else {
+                    p.backup_password.clone()
+                };
+                return (login, password);
+            }
+        }
+        (self.server_login.clone(), self.server_password.clone())
+    }
+
+    /// Fold legacy flat `sd_server_backup_url` into the active profile when empty.
+    pub fn migrate_sd_server_backup_url_into_profile(&mut self) {
+        let flat = self.sd_server_backup_url.trim().to_string();
+        if flat.is_empty() {
+            return;
+        }
+        self.ensure_server_profiles();
+        let Some(idx) = self.active_server_profile_index() else {
+            return;
+        };
+        if self.server_profiles[idx].backup_url.trim().is_empty() {
+            self.server_profiles[idx].backup_url = flat.clone();
+        }
+        // Keep flat field aligned with profile source of truth.
+        let resolved = self.resolve_sd_server_backup_url();
+        self.sd_server_backup_url = resolved;
     }
 
     /// Copy flat `server_*` fields into the active profile entry.
@@ -688,6 +789,9 @@ impl AppConfig {
     /// Migrate legacy single-server configs and keep active profile + flat fields aligned.
     pub fn sync_server_profiles(&mut self) {
         self.ensure_server_profiles();
+        self.migrate_legacy_ams_backup_profile();
+        self.migrate_sd_server_backup_url_into_profile();
+        self.ensure_server_profiles();
         self.pull_flat_from_active_profile();
     }
 
@@ -700,6 +804,9 @@ impl AppConfig {
                 url: self.server_url.clone(),
                 login: self.server_login.clone(),
                 password: self.server_password.clone(),
+                backup_url: String::new(),
+                backup_login: String::new(),
+                backup_password: String::new(),
             });
             self.active_server_profile_id = id;
         }
@@ -1288,10 +1395,61 @@ mod tests {
         assert_eq!(cfg.server_profiles[0].id, DEFAULT_SERVER_PROFILE_ID);
         assert_eq!(cfg.server_profiles[0].label, "Video-PC Calden");
         assert_eq!(cfg.server_profiles[0].url, cfg.server_url);
+        assert!(cfg.server_profiles[0].backup_url.is_empty());
         assert_eq!(cfg.server_profiles[1].id, GERA_SERVER_PROFILE_ID);
         assert_eq!(cfg.server_profiles[1].label, "Video-PC Gera");
         assert!(cfg.server_profiles[1].url.is_empty());
         assert_eq!(cfg.active_server_profile_id, DEFAULT_SERVER_PROFILE_ID);
+    }
+
+    #[test]
+    fn migrate_legacy_ams_backup_profile_into_active_backup_url() {
+        let mut cfg = AppConfig::default();
+        cfg.server_profiles.push(ServerProfile {
+            id: LEGACY_AMS_BACKUP_PROFILE_ID.into(),
+            label: "AMS Backup".into(),
+            url: "smb://10.0.0.5/backup".into(),
+            login: "bu".into(),
+            password: "bp".into(),
+            backup_url: String::new(),
+            backup_login: String::new(),
+            backup_password: String::new(),
+        });
+        cfg.sync_server_profiles();
+        assert!(!cfg
+            .server_profiles
+            .iter()
+            .any(|p| p.id == LEGACY_AMS_BACKUP_PROFILE_ID));
+        let active = cfg
+            .server_profiles
+            .iter()
+            .find(|p| p.id == cfg.active_server_profile_id)
+            .unwrap();
+        assert_eq!(active.backup_url, "smb://10.0.0.5/backup");
+        assert_eq!(active.backup_login, "bu");
+        assert_eq!(active.backup_password, "bp");
+    }
+
+    #[test]
+    fn resolve_sd_server_backup_prefers_profile_backup_url() {
+        let mut cfg = AppConfig::default();
+        cfg.sd_server_backup_url = "smb://legacy/sd".into();
+        cfg.server_profiles[0].backup_url = "smb://profile/backup".into();
+        cfg.server_profiles[0].backup_login = "bu".into();
+        cfg.server_profiles[0].backup_password = "bp".into();
+        assert_eq!(cfg.resolve_sd_server_backup_url(), "smb://profile/backup");
+        let (login, password) = cfg.resolve_sd_server_backup_credentials();
+        assert_eq!(login, "bu");
+        assert_eq!(password, "bp");
+    }
+
+    #[test]
+    fn migrate_flat_sd_server_backup_url_into_profile() {
+        let mut cfg = AppConfig::default();
+        cfg.sd_server_backup_url = "smb://nas/sd-backups".into();
+        cfg.sync_server_profiles();
+        assert_eq!(cfg.server_profiles[0].backup_url, "smb://nas/sd-backups");
+        assert_eq!(cfg.resolve_sd_server_backup_url(), "smb://nas/sd-backups");
     }
 
     #[test]

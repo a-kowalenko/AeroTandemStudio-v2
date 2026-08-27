@@ -32,6 +32,8 @@ type Props = {
   disabled?: boolean;
   /** Settings / Wizard: diff from draft + store hints (avoids quiet-poll flicker). */
   diffFromDraft?: boolean;
+  /** Hide while the server-profile editor is open (create/edit). */
+  hidden?: boolean;
 };
 
 export function AmsPathHintsDriftBanner({
@@ -42,6 +44,7 @@ export function AmsPathHintsDriftBanner({
   errorTitle,
   disabled = false,
   diffFromDraft = false,
+  hidden = false,
 }: Props) {
   const { t } = useTranslation();
   const pathHints = useAmsBridgeStore((s) => s.pathHints);
@@ -70,6 +73,7 @@ export function AmsPathHintsDriftBanner({
   );
 
   if (
+    hidden ||
     !connected ||
     !pathHintsDiff?.available ||
     pathHintsDiff.kind !== "drift" ||

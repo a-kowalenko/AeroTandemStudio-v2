@@ -15,7 +15,7 @@ import { useLocaleStore } from "@/store/localeStore";
 import type { SettingsPatch } from "../types";
 import { isAmsBridgeConfigured } from "@/lib/amsLookup";
 import { runAmsAutoConnect } from "@/lib/amsAutoConnect";
-import { pushFlatToActiveProfile } from "@/lib/serverProfile";
+import { getActiveServerProfile, pushFlatToActiveProfile } from "@/lib/serverProfile";
 import { composeSdPcName, resolveSdPcName } from "@/lib/sdPcName";
 import { showSettingsSaveToast } from "@/lib/settingsSaveToast";
 
@@ -36,17 +36,21 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
   const resetToDefaults = useConfigStore((s) => s.resetToDefaults);
   const saving = useConfigStore((s) => s.saving);
   const showError = useUiStore((s) => s.showError);
+  const openSettings = useUiStore((s) => s.openSettings);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
   const resetAmsHealth = useAmsBridgeStore((s) => s.reset);
   const activeLanguage = useLocaleStore((s) => s.language);
   const [draft, setDraft] = useState<AppConfig | null>(null);
 
+  // Seed draft only when the dialog opens — not on every quiet-poll config touch.
   useEffect(() => {
-    if (!open || !config) return;
+    if (!open) return;
+    const cfg = useConfigStore.getState().config;
+    const lang = useLocaleStore.getState().language;
+    if (!cfg) return;
     let cancelled = false;
-    // Reflect any unsaved language change that was already applied live
-    setDraft(sortCrewList({ ...config, ui_language: activeLanguage }));
+    setDraft(sortCrewList({ ...cfg, ui_language: lang }));
 
     void getAppInfo()
       .then((info) => {
@@ -68,7 +72,15 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     return () => {
       cancelled = true;
     };
-  }, [open, config]);
+  }, [open]);
+
+  // Config arrived after open (or first paint with null): seed once, never clobber edits.
+  useEffect(() => {
+    if (!open || !config) return;
+    setDraft((prev) =>
+      prev ?? sortCrewList({ ...config, ui_language: activeLanguage }),
+    );
+  }, [open, config, activeLanguage]);
 
   const patch = useCallback<SettingsPatch>((key, value) => {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
@@ -80,8 +92,11 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       showError(t("settings.save.pickBackup"));
       return false;
     }
-    if (draft.sd_server_backup_enabled && !draft.sd_server_backup_url.trim()) {
-      showError(t("settings.save.pickSecondBackup"));
+    const activeBackupUrl =
+      getActiveServerProfile(draft)?.backup_url?.trim() ?? "";
+    if (draft.sd_server_backup_enabled && !activeBackupUrl) {
+      showError(t("settings.save.pickSecondBackup"), t("settings.tabs.sd"));
+      openSettings({ tab: "server", focus: "server-backup-url" });
       return false;
     }
 
@@ -115,6 +130,8 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       videospringer: draft.keep_videospringer_on_session_reset ? vs : "",
       operator_name: op ? canonicalCrewName(crew_list, op) : "",
       sd_pc_name,
+      /** Keep flat field in sync for Rust SD mirror (source of truth = profile). */
+      sd_server_backup_url: activeBackupUrl,
       crew_list,
     });
 
@@ -160,6 +177,7 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
     checkConnection,
     config,
     draft,
+    openSettings,
     persist,
     resetAmsHealth,
     showError,

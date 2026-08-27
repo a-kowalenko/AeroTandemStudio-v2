@@ -68,6 +68,10 @@ export type ServerProfile = {
   url: string;
   login: string;
   password: string;
+  /** Optional secondary SMB target for this profile. */
+  backup_url: string;
+  backup_login: string;
+  backup_password: string;
 };
 
 export type AppConfig = {
