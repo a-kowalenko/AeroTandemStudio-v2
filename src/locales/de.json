@@ -1159,6 +1159,7 @@
       "manualQr": "QR-Code-Suche — Abbrechen stoppt die Suche",
       "encodeBusy": "Aktueller Vorgang — Abbrechen stoppt FFmpeg.",
       "createUploading": "Aktueller Vorgang — Abbrechen stoppt den Upload.",
+      "createUploadingFor": "{{guest}} — Abbrechen stoppt den Upload.",
       "cancelling": "Abbruch angefordert — aktueller Schritt wird noch beendet"
     },
     "upload": {

@@ -1131,7 +1131,7 @@ fn concat_stream_copy_fast(
     let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
     write_concat_file_list(&refs, &list_path)?;
 
-    emit(on_progress, 20.0, "fast-concat");
+    emit(on_progress, 0.0, "fast-concat");
     let args = build_concat_demuxer_copy_args(&path_str(&list_path), output, has_audio);
     let result = run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone());
     let _ = fs::remove_dir_all(&work);

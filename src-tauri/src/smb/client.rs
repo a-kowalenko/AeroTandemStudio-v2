@@ -612,8 +612,8 @@ fn ensure_upload_not_cancelled(cancel: UploadCancelPolicy) -> Result<(), UploadR
 /// Upload a local file or directory to the configured server.
 ///
 /// `cancel` selects whether Vorgang-slot cancel aborts this transfer
-/// ([`UploadCancelPolicy::WorkflowOrSlot`]) or workflow/backup-only cancel
-/// ([`UploadCancelPolicy::WorkflowOrBackup`] — SD server-backup mirrors).
+/// ([`UploadCancelPolicy::SlotOnly`]) or backup-only cancel
+/// ([`UploadCancelPolicy::BackupOnly`] — SD server-backup mirrors).
 pub async fn upload_path<F>(
     local_path: &Path,
     server_url: &str,
@@ -1567,7 +1567,7 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::WorkflowOrSlot);
+        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
         gate.emit(10.0, 1, 5, 100, 1000, "a.bin", true);
         gate.emit(10.4, 1, 5, 104, 1000, "a.bin", false);
         assert_eq!(count.get(), 1);
@@ -1586,7 +1586,7 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::WorkflowOrSlot);
+        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
         gate.emit(50.0, 1, 3, 500, 1000, "a.bin", true);
         gate.emit(50.0, 2, 3, 500, 1000, "b.bin", false);
         assert_eq!(count.get(), 2);
@@ -1603,7 +1603,7 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let speed = Cell::new(0.0_f64);
-        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps), UploadCancelPolicy::WorkflowOrSlot);
+        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps), UploadCancelPolicy::SlotOnly);
         gate.emit(10.0, 1, 5, 1_000_000, 10_000_000, "a.bin", true);
         assert!(speed.get() > 0.0);
     }
@@ -1635,10 +1635,11 @@ mod tests {
     }
 
     #[test]
-    fn slot_cancel_does_not_trip_workflow_only_policy() {
+    fn slot_cancel_does_not_trip_backup_only_policy() {
         use crate::video::ffmpeg::{
-            cancel_secondary_backup, cancel_upload_slot, is_upload_cancelled, reset_cancel_flag,
-            reset_secondary_backup_cancel, reset_upload_slot_cancel, UploadCancelPolicy,
+            cancel_encode, cancel_secondary_backup, cancel_upload_slot, is_upload_cancelled,
+            reset_cancel_flag, reset_secondary_backup_cancel, reset_upload_slot_cancel,
+            UploadCancelPolicy,
         };
 
         let _guard = upload_test_lock();
@@ -1647,16 +1648,23 @@ mod tests {
         reset_secondary_backup_cancel();
         cancel_upload_slot();
         assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOnly));
-        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrBackup));
-        assert!(is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::BackupOnly));
+        assert!(is_upload_cancelled(UploadCancelPolicy::SlotOnly));
         reset_upload_slot_cancel();
-        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::SlotOnly));
 
         cancel_secondary_backup();
-        assert!(is_upload_cancelled(UploadCancelPolicy::WorkflowOrBackup));
-        assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot));
+        assert!(is_upload_cancelled(UploadCancelPolicy::BackupOnly));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::SlotOnly));
         assert!(!is_upload_cancelled(UploadCancelPolicy::WorkflowOnly));
         reset_secondary_backup_cancel();
+
+        // Session/import cancel must not trip backup or slot transfers.
+        cancel_encode();
+        assert!(!is_upload_cancelled(UploadCancelPolicy::BackupOnly));
+        assert!(!is_upload_cancelled(UploadCancelPolicy::SlotOnly));
+        assert!(is_upload_cancelled(UploadCancelPolicy::WorkflowOnly));
+        reset_cancel_flag();
     }
 
     #[test]
@@ -1693,10 +1701,10 @@ mod tests {
             }],
             1,
             fs::metadata(&src).unwrap().len(),
-            UploadCancelPolicy::WorkflowOrSlot,
-            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrSlot),
+            UploadCancelPolicy::SlotOnly,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::SlotOnly),
         );
-        // WorkflowOrBackup ignores slot cancel — production server-backup policy.
+        // BackupOnly ignores slot cancel — production server-backup policy.
         let backup_style = upload_local(
             &dest,
             &[FileEntry {
@@ -1706,8 +1714,8 @@ mod tests {
             }],
             1,
             fs::metadata(&src).unwrap().len(),
-            UploadCancelPolicy::WorkflowOrBackup,
-            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrBackup),
+            UploadCancelPolicy::BackupOnly,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::BackupOnly),
         );
         reset_upload_slot_cancel();
         reset_cancel_flag();
@@ -1716,22 +1724,23 @@ mod tests {
         assert_eq!(result.message, WORKFLOW_CANCELLED);
         assert!(
             backup_style.success,
-            "WorkflowOrBackup must ignore slot cancel: {}",
+            "BackupOnly must ignore slot cancel: {}",
             backup_style.message
         );
     }
 
     #[test]
-    fn local_upload_respects_cancel_flag() {
+    fn local_backup_ignores_workflow_cancel_flag() {
         use crate::video::ffmpeg::{
-            cancel_encode, reset_cancel_flag, UploadCancelPolicy,
+            cancel_encode, reset_cancel_flag, reset_secondary_backup_cancel, UploadCancelPolicy,
         };
         use std::io::Write;
 
         let _guard = upload_test_lock();
         reset_cancel_flag();
+        reset_secondary_backup_cancel();
         let dir = std::env::temp_dir().join(format!(
-            "aero_upload_cancel_{}",
+            "aero_backup_ignore_workflow_{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
@@ -1739,7 +1748,6 @@ mod tests {
         let src = dir.join("src.bin");
         {
             let mut f = File::create(&src).unwrap();
-            // Multi-chunk so cancel mid-copy is observable.
             let chunk = vec![0u8; CHUNK_SIZE + 64];
             f.write_all(&chunk).unwrap();
         }
@@ -1754,13 +1762,64 @@ mod tests {
             }],
             1,
             fs::metadata(&src).unwrap().len(),
-            UploadCancelPolicy::WorkflowOrSlot,
-            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::WorkflowOrSlot),
+            UploadCancelPolicy::BackupOnly,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::BackupOnly),
         );
         reset_cancel_flag();
+        reset_secondary_backup_cancel();
         let _ = fs::remove_dir_all(&dir);
-        assert!(!result.success);
-        assert_eq!(result.message, WORKFLOW_CANCELLED);
+        assert!(
+            result.success,
+            "BackupOnly must ignore workflow cancel: {}",
+            result.message
+        );
+    }
+
+    #[test]
+    fn local_upload_slot_only_ignores_workflow_cancel_flag() {
+        use crate::video::ffmpeg::{
+            cancel_encode, reset_cancel_flag, reset_upload_slot_cancel, UploadCancelPolicy,
+        };
+        use std::io::Write;
+
+        let _guard = upload_test_lock();
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
+        let dir = std::env::temp_dir().join(format!(
+            "aero_upload_ignore_workflow_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.bin");
+        {
+            let mut f = File::create(&src).unwrap();
+            let chunk = vec![0u8; CHUNK_SIZE + 64];
+            f.write_all(&chunk).unwrap();
+        }
+        let dest = dir.join("dest");
+        // Session/import cancel must not abort background Vorgang upload.
+        cancel_encode();
+        let result = upload_local(
+            &dest,
+            &[FileEntry {
+                absolute: src.clone(),
+                relative: "src.bin".into(),
+                size: fs::metadata(&src).unwrap().len(),
+            }],
+            1,
+            fs::metadata(&src).unwrap().len(),
+            UploadCancelPolicy::SlotOnly,
+            &mut UploadProgressGate::new(|_| {}, UploadCancelPolicy::SlotOnly),
+        );
+        reset_cancel_flag();
+        reset_upload_slot_cancel();
+        let _ = fs::remove_dir_all(&dir);
+        assert!(
+            result.success,
+            "SlotOnly must ignore workflow cancel: {}",
+            result.message
+        );
     }
 
     #[test]
@@ -1787,12 +1846,12 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             &mut UploadProgressGate::new(
                 |p| {
                     seen.push(p.current_file);
                 },
-                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+                crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             ),
         );
         assert!(result.success, "{}", result.message);
@@ -1838,14 +1897,14 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             &mut UploadProgressGate::new(
                 |p| {
                     if !p.filename.is_empty() {
                         order.lock().unwrap().push(p.filename.clone());
                     }
                 },
-                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+                crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             ),
         );
         assert!(result.success, "{}", result.message);
@@ -1865,11 +1924,14 @@ mod tests {
 
     #[test]
     fn local_upload_cancel_before_marker_leaves_no_marker() {
-        use crate::video::ffmpeg::{cancel_encode, reset_cancel_flag};
+        use crate::video::ffmpeg::{
+            cancel_upload_slot, reset_cancel_flag, reset_upload_slot_cancel,
+        };
         use std::sync::atomic::{AtomicU32, Ordering};
 
         let _guard = upload_test_lock();
         reset_cancel_flag();
+        reset_upload_slot_cancel();
         let dir = tempfile::tempdir().unwrap();
         let job = dir.path().join("JobCancel");
         fs::create_dir_all(job.join("Handcam_Foto")).unwrap();
@@ -1889,19 +1951,20 @@ mod tests {
             &files,
             total_files,
             total_bytes,
-            crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+            crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             &mut UploadProgressGate::new(
                 |p| {
                     if !p.filename.is_empty() {
                         let n = started.fetch_add(1, Ordering::SeqCst);
                         if n >= 1 {
-                            cancel_encode();
+                            cancel_upload_slot();
                         }
                     }
                 },
-                crate::video::ffmpeg::UploadCancelPolicy::WorkflowOrSlot,
+                crate::video::ffmpeg::UploadCancelPolicy::SlotOnly,
             ),
         );
+        reset_upload_slot_cancel();
         reset_cancel_flag();
         assert!(!result.success);
         assert_eq!(result.message, WORKFLOW_CANCELLED);

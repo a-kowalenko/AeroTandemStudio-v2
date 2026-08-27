@@ -28,6 +28,27 @@ Output:
 Ad-hoc signing (`signingIdentity: "-"`) is enough for local testing. Gatekeeper
 will still warn when opening the app on another machine until notarized.
 
+### One-click local release test (`build:mac`)
+
+For **release-parity** performance on this Mac (not `tauri dev`), use:
+
+```bash
+npm run build:mac
+```
+
+Same as CI for the host arch: static FFmpeg sidecar, Cargo release, `.app` only.
+Without `TAURI_SIGNING_PRIVATE_KEY`, uses `tauri.conf.ci.json` (no updater artifacts).
+Opens the bundle folder in Finder when done.
+
+| Host | FFmpeg | Target | Output |
+|------|--------|--------|--------|
+| Intel | `x86_64` | `x86_64-apple-darwin` | `src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app` |
+| Apple Silicon | `arm64` | `aarch64-apple-darwin` | `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app` |
+
+Override: `MAC_BUILD_ARCH=x86_64 npm run build:mac` (or `arm64`).
+
+RustRover: Run configuration **Build macOS** → npm script `build:mac`.
+
 ### Explicit architecture (CI / Intel)
 
 Release CI builds **both** targets on `macos-latest` (arm64 host):

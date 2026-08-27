@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUploadQueueStore } from "@/store/uploadQueueStore";
 import { abortAllUploadsForExit } from "@/lib/uploadSlot";
-import { cancelEncode, cancelUploadSlot } from "@/lib/tauri";
+import { cancelEncode, cancelSecondaryBackup, cancelUploadSlot } from "@/lib/tauri";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -58,7 +58,11 @@ export function useUploadQuitGuard(opts: {
     pendingCloseRef.current = true;
     abortAllUploadsForExit();
     try {
-      await Promise.all([cancelEncode(), cancelUploadSlot()]);
+      await Promise.all([
+        cancelEncode(),
+        cancelUploadSlot(),
+        cancelSecondaryBackup(),
+      ]);
     } catch {
       /* best-effort cancel before destroy */
     }

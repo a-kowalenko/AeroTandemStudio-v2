@@ -133,7 +133,7 @@ pub async fn upload_to_server(
     // Do NOT reset slot cancel here — the frontend clears it when starting a
     // fresh slot job. Resetting at command entry would swallow a cancel that
     // landed between the UI force-cancel and this invoke.
-    if is_upload_cancelled(UploadCancelPolicy::WorkflowOrSlot) {
+    if is_upload_cancelled(UploadCancelPolicy::SlotOnly) {
         logging::warn("smb", "Upload abgebrochen (bereits vor Start)");
         return Err(WORKFLOW_CANCELLED.into());
     }
@@ -144,7 +144,7 @@ pub async fn upload_to_server(
         &url,
         &login,
         &password,
-        UploadCancelPolicy::WorkflowOrSlot,
+        UploadCancelPolicy::SlotOnly,
         move |progress| {
             let event = UploadProgressEvent::from(progress);
             let _ = app_for_progress.emit(UPLOAD_PROGRESS_EVENT, &event);

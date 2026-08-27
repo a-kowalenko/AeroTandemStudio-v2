@@ -298,7 +298,7 @@ where
         url,
         login,
         password,
-        UploadCancelPolicy::WorkflowOrBackup,
+        UploadCancelPolicy::BackupOnly,
         on_progress,
     ));
 

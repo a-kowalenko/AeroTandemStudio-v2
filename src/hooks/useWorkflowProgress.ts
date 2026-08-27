@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackupProgress, WorkflowProgress } from "../lib/sdCard";
 import {
   formatOverallProgressLabel,
+  isEncodeProbeIndeterminate,
   taskProgressLabel,
 } from "../lib/progressLabels";
 import {
@@ -103,6 +104,8 @@ type Input = {
   appendUploading: boolean;
   /** Slot/queue has work (independent of session busy). */
   backgroundUploadActive?: boolean;
+  /** Active upload guest / customer label for subtitle. */
+  uploadGuestLabel?: string | null;
   uploadQueueCount?: number;
   /** Cancel/cleanup phase while slot stays occupied. */
   uploadCancelPhase?: "cancelling" | "cleanup" | null;
@@ -381,6 +384,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     manualQr: showManualQr,
   });
 
+  const uploadGuest = input.uploadGuestLabel?.trim() || null;
   const uploadSubtitle = failedHold
     ? tr("workflow.upload.failedHold")
     : input.uploadCancelPhase === "cleanup"
@@ -388,7 +392,9 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       : input.uploadCancelPhase === "cancelling" ||
           Boolean(input.uploadCancelRequested)
         ? tr("workflow.stage.cancelling")
-        : tr("workflow.stage.createUploading");
+        : uploadGuest
+          ? tr("workflow.stage.createUploadingFor", { guest: uploadGuest })
+          : tr("workflow.stage.createUploading");
 
   // Session pipeline: encode / append / completion (not background-upload-only).
   const sessionPipelineBase = useMemo((): CreateJobPipelineView | null => {
@@ -525,12 +531,15 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   // --- Session snapshot (never upload progress) ---
   let sessionSnapshot: WorkflowProgressSnapshot | null = null;
   if (input.encodeBusy || input.appendActive) {
+    const probeIndeterminate = isEncodeProbeIndeterminate(input.status);
     sessionSnapshot = {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
         tr("common.status.inProgress"),
       ),
+      indeterminate: probeIndeterminate,
+      hidePercent: probeIndeterminate,
     };
   } else if (showSdProgress && sdProgress) {
     sessionSnapshot = sdProgress;

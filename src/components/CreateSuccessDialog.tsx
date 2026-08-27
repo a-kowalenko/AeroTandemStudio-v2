@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, FolderOpen, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -12,8 +13,12 @@ import {
 import { Button } from "@/components/ui/button";
 import type { CreateJobResult } from "@/lib/tauri";
 import { formatBytes } from "@/lib/formatBytes";
+import { cn } from "@/lib/utils";
 import { useServerStore } from "@/store/serverStore";
 import { useUploadQueueStore } from "@/store/uploadQueueStore";
+
+/** Default auto-dismiss after create success (parity with other success dialogs). */
+export const CREATE_SUCCESS_AUTO_CLOSE_SECS = 5;
 
 export type CreateSuccessInfo = {
   result: CreateJobResult;
@@ -34,6 +39,8 @@ export type CreateSuccessInfo = {
 type Props = {
   open: boolean;
   info: CreateSuccessInfo | null;
+  /** Auto-dismiss after N seconds (null/0 = manual only). */
+  autoCloseSecs?: number | null;
   onClose: () => void;
 };
 
@@ -44,8 +51,21 @@ function basename(path: string): string {
 
 type Row = { label: string; detail?: string };
 
-export function CreateSuccessDialog({ open, info, onClose }: Props) {
+export function CreateSuccessDialog({
+  open,
+  info,
+  autoCloseSecs = CREATE_SUCCESS_AUTO_CLOSE_SECS,
+  onClose,
+}: Props) {
   const { t } = useTranslation();
+  const timeoutSecs =
+    autoCloseSecs && autoCloseSecs > 0 ? autoCloseSecs : null;
+  const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
+  const [barActive, setBarActive] = useState(false);
+  const closedRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   const outputDir = info?.result.base_output_dir?.trim() ?? "";
   const videoPath = info?.result.video_output?.trim() ?? "";
   const customerName = [info?.vorname, info?.nachname]
@@ -72,6 +92,43 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
           total: formatBytes(uploadProgress.total_bytes),
         })
       : null;
+
+  // Timer keyed on open + timeout only — live upload updates must not reset countdown.
+  useEffect(() => {
+    if (!open || !timeoutSecs) {
+      closedRef.current = false;
+      setRemaining(timeoutSecs ?? 0);
+      setBarActive(false);
+      return;
+    }
+
+    closedRef.current = false;
+    setRemaining(timeoutSecs);
+    setBarActive(false);
+    const startRaf = window.requestAnimationFrame(() => setBarActive(true));
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      const left = Math.max(
+        0,
+        timeoutSecs - Math.floor((Date.now() - started) / 1000),
+      );
+      setRemaining(left);
+      if (left <= 0 && !closedRef.current) {
+        closedRef.current = true;
+        onCloseRef.current();
+      }
+    }, 250);
+    return () => {
+      window.cancelAnimationFrame(startRaf);
+      window.clearInterval(id);
+    };
+  }, [open, timeoutSecs]);
+
+  function close() {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    onCloseRef.current();
+  }
 
   function buildRows(current: CreateSuccessInfo): Row[] {
     const {
@@ -162,8 +219,8 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[min(28rem,calc(100vw-2rem))] border-l-4 border-l-success gap-5">
+    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+      <DialogContent className="max-w-[min(28rem,calc(100vw-2rem))] border-l-4 border-l-success gap-5 pb-7">
         <DialogHeader className="min-w-0 space-y-3 pr-6">
           <div className="flex min-w-0 items-center gap-3">
             <CheckCircle2 className="h-8 w-8 shrink-0 text-success" aria-hidden />
@@ -285,10 +342,37 @@ export function CreateSuccessDialog({ open, info, onClose }: Props) {
               </Button>
             )}
           </div>
-          <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
+          <Button type="button" className="w-full sm:w-auto" onClick={close}>
             {t("common.actions.ok")}
+            {timeoutSecs && remaining > 0
+              ? t("dialogs.countdownSuffix", { seconds: remaining })
+              : ""}
           </Button>
         </DialogFooter>
+        {timeoutSecs ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-success/15"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              barActive
+                ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100)
+                : 0
+            }
+            aria-label={t("dialogs.autoCloseAria")}
+          >
+            <div
+              className={cn("h-full origin-left bg-success")}
+              style={{
+                transform: barActive ? "scaleX(1)" : "scaleX(0)",
+                transition: barActive
+                  ? `transform ${timeoutSecs}s linear`
+                  : "none",
+              }}
+            />
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

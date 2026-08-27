@@ -18,7 +18,10 @@ import type { PhotoEditorResult } from "../PhotoEditor";
 import type { VideoCutterResult } from "../VideoCutter";
 import { ErrorDialog } from "../ErrorDialog";
 import { SuccessDialog } from "../SuccessDialog";
-import { CreateSuccessDialog } from "../CreateSuccessDialog";
+import {
+  CREATE_SUCCESS_AUTO_CLOSE_SECS,
+  CreateSuccessDialog,
+} from "../CreateSuccessDialog";
 import { WarningDialog } from "../WarningDialog";
 import { IntroMuxFallbackDialog } from "../IntroMuxFallbackDialog";
 import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
@@ -350,6 +353,7 @@ export function AppDialogs(props: AppDialogsProps) {
       <CreateSuccessDialog
         open={createSuccess !== null}
         info={createSuccess}
+        autoCloseSecs={CREATE_SUCCESS_AUTO_CLOSE_SECS}
         onClose={onCreateSuccessClose}
       />
       <WarningDialog

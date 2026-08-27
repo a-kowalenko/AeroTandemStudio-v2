@@ -899,6 +899,7 @@ const catalog = {
   "workflow.stage.manualQr": { de: "QR-Code-Suche — Abbrechen stoppt die Suche", en: "QR search — cancel stops the search", "es-MX": "Búsqueda QR — cancelar detiene la búsqueda" },
   "workflow.stage.encodeBusy": { de: "Aktueller Vorgang — Abbrechen stoppt FFmpeg.", en: "Current job — cancel stops FFmpeg.", "es-MX": "Trabajo actual — cancelar detiene FFmpeg." },
   "workflow.stage.createUploading": { de: "Aktueller Vorgang — Abbrechen stoppt den Upload.", en: "Current job — cancel stops the upload.", "es-MX": "Trabajo actual — cancelar detiene la subida." },
+  "workflow.stage.createUploadingFor": { de: "{{guest}} — Abbrechen stoppt den Upload.", en: "{{guest}} — cancel stops the upload.", "es-MX": "{{guest}} — cancelar detiene la subida." },
   "qr.progress.pending": { de: "QR-Code-Suche wartet…", en: "QR search waiting…", "es-MX": "Esperando búsqueda QR…" },
   "qr.progress.found": { de: "QR-Code gefunden", en: "QR code found", "es-MX": "Código QR encontrado" },
   "qr.progress.removed": { de: "Aus Liste entfernt", en: "Removed from list", "es-MX": "Quitado de la lista" },

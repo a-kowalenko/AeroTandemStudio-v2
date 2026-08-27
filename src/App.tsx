@@ -327,7 +327,8 @@ function App() {
   const appendActive = useAppendStore((s) => s.active);
   const appendWasActiveRef = useRef(false);
   const uploadProgressActiveRef = useRef(false);
-  const jobCancelRequestedRef = useRef(false);
+  const sessionCancelRequestedRef = useRef(false);
+  const uploadCancelRequestedRef = useRef(false);
   /** Latest SMB slot executor (bound once; body refreshed each render). */
   const uploadSlotRunnerRef = useRef<
     (job: UploadQueueJob) => Promise<UploadSlotResult>
@@ -1022,7 +1023,7 @@ function App() {
               })
             : {}),
           // Free the pipeline sooner when another SD is waiting.
-          autoCloseSecs: queuedNext ? 2 : 10,
+          autoCloseSecs: queuedNext ? 2 : 5,
           actions: statusActions,
         });
       }
@@ -1318,7 +1319,7 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     listen<EncodeProgress>("encode-progress", (event) => {
-      if (jobCancelRequestedRef.current) return;
+      if (sessionCancelRequestedRef.current) return;
       const p = event.payload;
 
       if (p.task_id != null && p.task_id > 0) {
@@ -1511,7 +1512,7 @@ function App() {
     setServerPhase("uploading");
     setUploadProgress(null);
     uploadProgressActiveRef.current = true;
-    jobCancelRequestedRef.current = false;
+    uploadCancelRequestedRef.current = false;
     useUploadQueueStore.getState().setCancelPhase(null);
     setStatus(t("app.upload.toServer"));
     await persistUploadState("uploading");
@@ -1519,7 +1520,7 @@ function App() {
     try {
       await resetUploadSlotCancel();
       // Cancel may have landed between enqueue and reset — honor it.
-      if (jobCancelRequestedRef.current) {
+      if (uploadCancelRequestedRef.current) {
         await persistUploadState("pending");
         setServerPhase("connected");
         setUploadProgress(null);
@@ -1533,7 +1534,7 @@ function App() {
         correlation_id: job.correlationId,
         folder_name: job.folderName,
       });
-      if (jobCancelRequestedRef.current) {
+      if (uploadCancelRequestedRef.current) {
         await persistUploadState("pending");
         setServerPhase("connected");
         setUploadProgress(null);
@@ -1558,7 +1559,7 @@ function App() {
       }
       return "ok";
     } catch (uploadErr) {
-      if (isCancellationError(uploadErr) || jobCancelRequestedRef.current) {
+      if (isCancellationError(uploadErr) || uploadCancelRequestedRef.current) {
         await persistUploadState("pending");
         setServerPhase("connected");
         setUploadProgress(null);
@@ -1601,7 +1602,7 @@ function App() {
     let unlistenProgress: (() => void) | undefined;
     let unlistenPhase: (() => void) | undefined;
     listen<UploadProgressEvent>("upload-progress", (event) => {
-      if (!uploadProgressActiveRef.current || jobCancelRequestedRef.current) return;
+      if (!uploadProgressActiveRef.current || uploadCancelRequestedRef.current) return;
       const p = event.payload;
       setUploadProgress(p);
       setPercent(p.percent);
@@ -1844,7 +1845,7 @@ function App() {
     const replaceExistingDir = replaceExistingDirRef.current;
 
     setBusy(true);
-    jobCancelRequestedRef.current = false;
+    sessionCancelRequestedRef.current = false;
     uploadProgressActiveRef.current = false;
     resetProgress();
     const encodingSig = previewEncodingSignature(
@@ -1912,9 +1913,9 @@ function App() {
           uploadDeferred = true;
           uploadNote = t("create.success.uploadPendingHint");
         } else {
-          const folderLabel =
-            res.base_filename?.trim() ||
+          const guestLabel =
             [kunde.vorname, kunde.nachname].filter(Boolean).join(" ").trim() ||
+            res.base_filename?.trim() ||
             null;
           uploadJobId = `create-${vorgangId ?? correlationId ?? Date.now()}`;
           uploadInProgress = true;
@@ -1928,7 +1929,7 @@ function App() {
             folderName: res.base_filename?.trim() || null,
             correlationId,
             vorgangId,
-            guestLabel: folderLabel,
+            guestLabel,
             quietSuccess: false,
           }).then((result) => {
             setCreateSuccess((prev) => {
@@ -1939,7 +1940,7 @@ function App() {
                   uploadInProgress: false,
                   serverUploaded: true,
                   uploadDeferred: false,
-                  uploadNote: folderLabel,
+                  uploadNote: guestLabel,
                 };
               }
               if (result === "cancelled") {
@@ -2004,7 +2005,7 @@ function App() {
 
       // Encode finished; slot runner owns cancel flag while SMB runs.
       if (!detachedUpload) {
-        jobCancelRequestedRef.current = false;
+        sessionCancelRequestedRef.current = false;
         void resetWorkflowCancel().catch(() => {});
       }
     } catch (e) {
@@ -2017,7 +2018,7 @@ function App() {
         setCreateFailed(true);
         showError(presentAmsUserMessage(String(e)));
       }
-      jobCancelRequestedRef.current = false;
+      sessionCancelRequestedRef.current = false;
       void resetWorkflowCancel().catch(() => {});
     } finally {
       setBusy(false);
@@ -2028,7 +2029,7 @@ function App() {
     const slotState = useUploadQueueStore.getState();
     const slotActive = slotState.active !== null;
     const cancellingQr = qrScanBusy && !busy && !appendActive && !slotActive;
-    jobCancelRequestedRef.current = true;
+    sessionCancelRequestedRef.current = true;
 
     // Never cancel the upload slot from the session panel.
     try {
@@ -2047,7 +2048,7 @@ function App() {
     const slotState = useUploadQueueStore.getState();
     const slotActive = slotState.active !== null;
     const queueWaiting = slotState.queue.length > 0;
-    jobCancelRequestedRef.current = true;
+    uploadCancelRequestedRef.current = true;
 
     if (slotActive) {
       useUploadQueueStore.getState().setCancelPhase("cancelling");
@@ -2114,7 +2115,7 @@ function App() {
       return;
     }
 
-    jobCancelRequestedRef.current = false;
+    uploadCancelRequestedRef.current = false;
 
     const pendingResults: Promise<"ok" | "failed" | "cancelled">[] = [];
     let enqueued = 0;
@@ -2127,7 +2128,7 @@ function App() {
           readyEntries.length - i + scan.needsDecision.length;
         break;
       }
-      if (jobCancelRequestedRef.current) {
+      if (uploadCancelRequestedRef.current) {
         summary.aborted = true;
         summary.remaining =
           readyEntries.length - i + scan.needsDecision.length;
@@ -2188,7 +2189,7 @@ function App() {
       }
     }
 
-    jobCancelRequestedRef.current = false;
+    uploadCancelRequestedRef.current = false;
     void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
       () => {},
     );
@@ -2219,12 +2220,8 @@ function App() {
     const omitted = opts.omittedFileCount ?? 0;
     const included = opts.includedExtraCount ?? 0;
     const hasPartialNote = omitted > 0 || included > 0;
-    let toastDetail: string | null = entry.gast?.trim() || entry.base_filename?.trim() || null;
-    if (omitted > 0) {
-      toastDetail = t("history.upload.partialSuccess", { count: omitted });
-    } else if (included > 0) {
-      toastDetail = t("history.upload.extraIncluded", { count: included });
-    }
+    const guestLabel =
+      entry.gast?.trim() || entry.base_filename?.trim() || null;
 
     const result = await enqueueUpload({
       source: opts.quietSuccess ? "bulk" : "history",
@@ -2232,7 +2229,7 @@ function App() {
       folderName: entry.base_filename?.trim() || null,
       correlationId: entry.correlation_id?.trim() || null,
       vorgangId: entry.id,
-      guestLabel: toastDetail,
+      guestLabel,
       quietSuccess: opts.quietSuccess,
     });
 

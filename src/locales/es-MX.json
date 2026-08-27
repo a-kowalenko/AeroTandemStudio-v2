@@ -1159,6 +1159,7 @@
       "manualQr": "Búsqueda QR — cancelar detiene la búsqueda",
       "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg.",
       "createUploading": "Trabajo actual — cancelar detiene la subida.",
+      "createUploadingFor": "{{guest}} — cancelar detiene la subida.",
       "cancelling": "Cancelación solicitada — se termina el paso actual"
     },
     "upload": {

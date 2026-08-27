@@ -273,20 +273,20 @@ pub fn is_secondary_backup_cancelled() -> bool {
 pub enum UploadCancelPolicy {
     /// Only global workflow cancel (legacy / tests).
     WorkflowOnly,
-    /// Vorgang / Historie / Append upload: workflow **or** slot cancel.
-    WorkflowOrSlot,
-    /// SD server-backup mirror: workflow **or** backup-only cancel (not slot).
-    WorkflowOrBackup,
+    /// Background Vorgang / Historie / Append upload: slot cancel only.
+    /// Session cancel (import / SD / encode) must not abort this transfer.
+    SlotOnly,
+    /// SD server-backup mirror: backup-only cancel.
+    /// Session cancel and upload-slot cancel must not abort this transfer.
+    BackupOnly,
 }
 
 /// Cancel check for SMB `upload_path` and helpers.
 pub fn is_upload_cancelled(policy: UploadCancelPolicy) -> bool {
     match policy {
         UploadCancelPolicy::WorkflowOnly => is_cancelled(),
-        UploadCancelPolicy::WorkflowOrSlot => is_cancelled() || is_upload_slot_cancelled(),
-        UploadCancelPolicy::WorkflowOrBackup => {
-            is_cancelled() || is_secondary_backup_cancelled()
-        }
+        UploadCancelPolicy::SlotOnly => is_upload_slot_cancelled(),
+        UploadCancelPolicy::BackupOnly => is_secondary_backup_cancelled(),
     }
 }
 

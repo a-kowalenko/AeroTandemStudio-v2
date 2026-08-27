@@ -76,6 +76,18 @@ export function createVideoStageLabel(): string {
   return tr("progress.createVideoStage");
 }
 
+/** Phases without meaningful % — use indeterminate bar (probe / folder prep). */
+export function isEncodeProbeIndeterminate(
+  status: string | null | undefined,
+): boolean {
+  const s = (status ?? "").trim().toLowerCase();
+  if (!s) return false;
+  if (s === "probing" || s === "preview-analyse") return true;
+  return /analysiere videos|analysiere intro\/?video|analyzing videos|analyzing intro\/?video|analizando videos|analizando intro\/?video|analysiere für vorschau|analyzing for preview|analizando para vista previa|generiere ausgabe|generating output (dir|directory|folder)|generando directorio/.test(
+    s,
+  );
+}
+
 /** Parent stage for nested create_video progress inside create_job. */
 export const CREATE_VIDEO_STAGE = "Erstelle Video…";
 
