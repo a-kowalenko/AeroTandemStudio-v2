@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -11,21 +13,74 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUiStore } from "@/store/uiStore";
+import { useServerStore } from "@/store/serverStore";
+import { presentServerConnectionAction } from "@/lib/headerConnectionStatus";
 import { cn } from "@/lib/utils";
 import { FolderPathField } from "../FolderPathField";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
+function looksLikeMountPath(url: string): boolean {
+  const t = url.trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  if (lower.startsWith("smb://")) return false;
+  if (t.startsWith("\\\\") || t.startsWith("//")) return false;
+  if (t.length >= 2 && /^[a-zA-Z]:/.test(t)) return true;
+  return t.startsWith("/");
+}
+
 export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
+  const showSuccess = useUiStore((s) => s.showSuccess);
+  const checkConnection = useServerStore((s) => s.checkConnection);
+  const [testingBackupUrl, setTestingBackupUrl] = useState(false);
 
-  async function pickFolder(
-    key: "sd_backup_folder" | "sd_server_backup_path",
-  ) {
+  async function pickFolder(key: "sd_backup_folder") {
     const selected = await openDialog({ directory: true, multiple: false });
     if (typeof selected === "string") patch(key, selected);
   }
+
+  async function onTestBackupUrl() {
+    if (testingBackupUrl) return;
+    setTestingBackupUrl(true);
+    try {
+      const result = await checkConnection({
+        server_url: draft.sd_server_backup_url,
+        server_login: draft.server_login,
+        server_password: draft.server_password,
+      });
+      const action = presentServerConnectionAction({
+        ok: result.ok,
+        rawMessage: result.message,
+        serverUrl: draft.sd_server_backup_url,
+        login: draft.server_login,
+        password: draft.server_password,
+      });
+      if (result.ok) {
+        showSuccess("", t("header.connection.titleServerOk"), {
+          actions: [action],
+          autoCloseSecs: 3,
+        });
+      } else {
+        showSuccess("", t("header.connection.titleFailed"), {
+          actions: [action],
+        });
+      }
+    } finally {
+      setTestingBackupUrl(false);
+    }
+  }
+
+  const modeValue =
+    draft.sd_server_backup_mode === "local_then_server"
+      ? "local_then_server"
+      : "local_then_server_async";
+
+  const showMountHint =
+    draft.sd_server_backup_enabled &&
+    looksLikeMountPath(draft.sd_server_backup_url);
 
   return (
     <div className="space-y-4">
@@ -130,24 +185,41 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         </label>
         {draft.sd_server_backup_enabled ? (
           <div className="space-y-3 pl-1">
-            <FolderPathField
-              label={t("settings.sd.backup.secondFolder")}
-              value={draft.sd_server_backup_path}
-              onPick={() => void pickFolder("sd_server_backup_path")}
-              onOpenError={(message) =>
-                showError(message, t("settings.folder.toastTitle"))
-              }
-            />
+            <div className="space-y-1.5">
+              <Label>{t("settings.sd.backup.serverUrl")}</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={draft.sd_server_backup_url}
+                  placeholder={t("settings.sd.backup.serverUrlPlaceholder")}
+                  onChange={(e) => patch("sd_server_backup_url", e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    testingBackupUrl || !draft.sd_server_backup_url.trim()
+                  }
+                  onClick={() => void onTestBackupUrl()}
+                >
+                  {testingBackupUrl
+                    ? t("settings.sd.backup.serverUrlTesting")
+                    : t("settings.sd.backup.serverUrlTest")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted">
+                {t("settings.sd.backup.serverUrlHint")}
+              </p>
+              {showMountHint ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {t("settings.sd.backup.serverUrlMountWarn")}
+                </p>
+              ) : null}
+            </div>
             <div className="space-y-1.5">
               <Label>{t("settings.sd.backup.copyStrategy")}</Label>
               <Select
-                value={
-                  draft.sd_server_backup_mode === "local_then_server"
-                    ? "local_then_server"
-                    : draft.sd_server_backup_mode === "local_then_server_async"
-                      ? "local_then_server_async"
-                      : "direct_dual_write"
-                }
+                value={modeValue}
                 onValueChange={(v) => patch("sd_server_backup_mode", v)}
               >
                 <SelectTrigger>
@@ -159,9 +231,6 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
                   </SelectItem>
                   <SelectItem value="local_then_server">
                     {t("settings.sd.backup.copyMirror")}
-                  </SelectItem>
-                  <SelectItem value="direct_dual_write">
-                    {t("settings.sd.backup.copyDirect")}
                   </SelectItem>
                 </SelectContent>
               </Select>

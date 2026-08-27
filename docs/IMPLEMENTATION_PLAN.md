@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …
+**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
+*(Phase 34 SD-Server-Backup über SMB erledigt.)*  
 *(Phase 33 Label Historie → Vorgänge erledigt.)*  
 *(Phase 32 SMB Quiet-Poll erledigt.)*  
 *(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
@@ -2421,6 +2422,124 @@ Danach manuell: Header, Dialog, Offline-Hint, Sprachwechsel de/en/es prüfen.
 
 ---
 
+### Phase 34 — SD-Server-Backup über SMB (statt Mount-Pfad)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 7 (SD-Backup), Phase 10 (`smb/client.rs`, `upload_path`), bestehendes Secondary-Queue (`secondary_backup.rs`)  
+**Ziel:** „Zweites Backup“ landet per **SMB2** (wie Erstellen-Upload) in einem **konfigurierbaren** Server-Ziel — nicht zwingend unter `aktuell/`, kein Finder-/OS-Mount, keine AppleDouble-`._`.
+
+> Eine Agent-Session = nur Phase 34. Kein Umbau Erstellen-Upload, kein Auto-Upload von Vorgängen, kein Phase-23-MTP.
+
+#### Ausgangslage (Ist)
+
+- Toggle `sd_server_backup_enabled` + Ordner `sd_server_backup_path` (Folder-Picker)
+- Modes: `direct_dual_write` | `local_then_server` | `local_then_server_async`
+- Mirror: `fs::copy` / Mount → auf macOS oft `._*`-Sidecars
+- Erstellen-Upload: `server_url` + Creds → `smb2` Byte-Stream → keine `._`
+
+#### Produktentscheidung
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Semantik | Server-Spiegel der **lokalen** SD-Backup-Session, nicht generischer Zweitdisk |
+| 2 | Transport | Immer SMB2 (bzw. `ServerTarget`-Parser wie Upload: `smb://`, UNC; lokaler Absolutfad nur Fallback wie bei Upload) |
+| 3 | Zielort | **Eigene** Config-URL — darf anderer Share/Subpfad als `server_url`/`aktuell` sein |
+| 4 | Credentials | Default: `server_login` / `server_password` vom Upload-Server; optionale eigene Creds Out of Scope v1 |
+| 5 | Ablauf | Lokal (`sd_backup_folder`) zuerst → dann Server-Mirror; Default-Mode **async** |
+| 6 | Ordnername | Unverändert `build_backup_dir_name` unter dem konfigurierten Backup-Root |
+| 7 | Soft-fail | Lokal ok, Server fail → Warning; Clear-after-Backup nur an lokalem Erfolg koppeln (wie heute) |
+| 8 | `._` | Durch SMB-Stream gelöst; kein User-`COPYFILE_DISABLE`; optional Sweep nur falls Local-Target-Fallback |
+
+#### Config
+
+| Key | Änderung |
+|-----|----------|
+| `sd_server_backup_enabled` | bleibt |
+| `sd_server_backup_path` | **ersetzt** durch `sd_server_backup_url` (`smb://host/share[/sub…]`; Serde-Alias für Alt-Configs) |
+| `sd_server_backup_mode` | behalten; `direct_dual_write` **deprecaten** (UI: nur sync/async; Direct → async + Soft-Warn) |
+| Migration | Alter lokaler/Mount-Pfad: Soft-Warn in Settings + leerer URL → Toggle aus oder Hinweis „bitte SMB-URL setzen“ |
+
+Beispiel:
+
+```text
+server_url              = smb://nas/aktuell          # Vorgänge
+sd_server_backup_url    = smb://nas/sd-backups       # oder smb://other/share/raw
+```
+
+#### Out of Scope
+
+- Eigenes Credential-UI für Backup-Server (v1 = Upload-Creds)
+- SMB Quiet-Poll für zweite URL (optional Follow-up; Health weiter über `server_url`)
+- Parallel-Upload-OPT für Backup (sequentiell oder bestehende `upload_path`-Phasen ok)
+- Löschen alter `._` auf NAS rückwirkend
+- Legacy-Python
+
+#### Scope
+
+**Backend**
+
+- [x] Secondary-Job: statt `fs::copy` → SMB-Upload des lokalen Backup-Ordners (Dateien + Manifest) nach `sd_server_backup_url` + `backup_dir_name`
+- [x] Wiederverwendung: `normalize_server_path` / `upload_path` / `stream_upload_file` (Wrapper `mirror_backup_to_smb`)
+- [x] Modes: `local_then_server` + `local_then_server_async` über SMB; Direct-Dual von SD→SMB entfernt / auf async gemappt
+- [x] Progress-Events Secondary unverändert nutzbar (`sd-secondary-backup`)
+- [x] Unit-Tests: URL-Parsing, Job baut Remote-Relpath, Soft-fail bei bad URL; kein Mount-`is_dir()`-Gate mehr als Hard-Require
+
+**Frontend / i18n**
+
+- [x] SdTab: Folder-Picker → Textfeld SMB-URL (+ „Test“ mit Upload-Creds)
+- [x] Labels: „Auf Server sichern“ / Hint: gleiches Verfahren wie Upload, Ziel unabhängig von `aktuell`
+- [x] Mode-Texte anpassen (Direct entfernt)
+- [x] de / en / es-MX
+
+**Docs**
+
+- [x] Phase in Tracker + kurzer Config-Hinweis; AGENTS „Nächster Schritt“ optional
+
+#### Referenzen
+
+```
+src-tauri/src/sd_card/secondary_backup.rs
+src-tauri/src/sd_card/monitor.rs
+src-tauri/src/smb/client.rs
+src-tauri/src/storage/config.rs
+src/components/settings/tabs/SdTab.tsx
+src/locales/de.json | en.json | es-MX.json
+```
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 34 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 34: SD-Server-Backup über SMB2 (wie Erstellen-Upload),
+konfigurierbare sd_server_backup_url (nicht zwingend unter aktuell/),
+lokal zuerst + async Mirror, Upload-Credentials wiederverwenden.
+Kein Mount-fs::copy als Primärweg; direct_dual_write deprecaten.
+i18n de/en/es-MX. Danach cargo test && npm run check.
+```
+
+#### Akzeptanz
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Mit `smb://…`-Backup-URL: lokaler Backup ok, Server erhält denselben Session-Ordner inkl. Manifest |
+| 2 | Backup-URL ≠ `server_url` möglich (anderer Share/Subpfad) |
+| 3 | Unter Windows-Sicht auf dem Share: **keine** neuen `._*`-Sidecars durch den Mirror |
+| 4 | Async: Workflow endet nach lokalem Backup; Secondary-Events `started`/`done`/`failed` |
+| 5 | Server down: lokal erfolgreich + Warning; kein false Clear-Fail |
+| 6 | Settings ohne Folder-Mount-Pflicht; Migration alter Pfade ohne Crash |
+| 7 | Erstellen-Upload unverändert |
+
+##### Umsetzungsreihenfolge (innerhalb der Phase)
+
+1. Config-Key + Migration + Types  
+2. `mirror_backup_to_smb` an `upload_path` anbinden  
+3. `secondary_backup` / monitor umstellen; Direct deprecaten  
+4. SdTab + i18n  
+5. Tests + manuell Mac→Windows-Share  
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -2447,6 +2566,9 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "qr_video_scan_seconds": 5,
   "sd_auto_backup": false,
   "sd_backup_folder": "",
+  "sd_server_backup_enabled": false,
+  "sd_server_backup_url": "",
+  "sd_server_backup_mode": "local_then_server_async",
   "sd_backup_mode": "confirm",
   "sd_clear_after_backup": false,
   "sd_auto_import": false,
@@ -2619,6 +2741,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
 | 33 | Label Historie → Vorgänge (i18n) | ✅ |
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
+| 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2639,6 +2762,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 33:** Prompt im Phasenabschnitt (Label Historie → Vorgänge).
 
+**Phase 34:** Prompt im Phasenabschnitt (SD-Server-Backup über SMB).
+
 ---
 
-*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 31.7 erledigt (DJI Timelapse Suffix-Pairing + Clear)*
+*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 34 erledigt (SD-Server-Backup über SMB)*

@@ -80,7 +80,7 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       showError(t("settings.save.pickBackup"));
       return false;
     }
-    if (draft.sd_server_backup_enabled && !draft.sd_server_backup_path.trim()) {
+    if (draft.sd_server_backup_enabled && !draft.sd_server_backup_url.trim()) {
       showError(t("settings.save.pickSecondBackup"));
       return false;
     }

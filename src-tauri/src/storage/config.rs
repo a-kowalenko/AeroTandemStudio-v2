@@ -193,12 +193,14 @@ pub struct AppConfig {
     pub sd_auto_backup: bool,
     #[serde(default)]
     pub sd_backup_folder: String,
-    /// Optional second backup root (legacy: server/NAS dual write).
+    /// Optional server mirror of the local SD backup session (SMB2).
     #[serde(default)]
     pub sd_server_backup_enabled: bool,
-    #[serde(default)]
-    pub sd_server_backup_path: String,
-    /// `"direct_dual_write"` | `"local_then_server"` | `"local_then_server_async"`.
+    /// Target for the mirror: `smb://host/share[/sub…]`, UNC, or local path fallback.
+    /// Serde alias keeps configs that still store `sd_server_backup_path`.
+    #[serde(default, alias = "sd_server_backup_path")]
+    pub sd_server_backup_url: String,
+    /// `"local_then_server"` | `"local_then_server_async"` (legacy `direct_dual_write` → async).
     #[serde(default = "default_sd_server_backup_mode")]
     pub sd_server_backup_mode: String,
     #[serde(default = "default_sd_backup_mode")]
@@ -508,6 +510,43 @@ fn default_usb_import_mode() -> String {
 fn default_sd_server_backup_mode() -> String {
     "local_then_server_async".into()
 }
+
+/// Canonical secondary mode; maps deprecated `direct_dual_write` → async.
+pub fn normalize_sd_server_backup_mode(mode: &str) -> String {
+    match mode.trim() {
+        "local_then_server" => "local_then_server".into(),
+        "local_then_server_async" => "local_then_server_async".into(),
+        // Deprecated dual-write from SD → both roots.
+        "direct_dual_write" => "local_then_server_async".into(),
+        _ => default_sd_server_backup_mode(),
+    }
+}
+
+/// True when the value looks like a legacy Finder/OS mount path (not smb/UNC).
+/// Kept free of `smb` imports to avoid a storage↔smb cycle.
+pub fn sd_server_backup_url_looks_like_mount_path(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("smb://") {
+        return false;
+    }
+    if trimmed.starts_with(r"\\") || trimmed.starts_with("//") {
+        return false;
+    }
+    // Drive letter (Windows) or absolute Unix path → treat as legacy mount/local.
+    if trimmed.len() >= 2 {
+        let mut chars = trimmed.chars();
+        if let (Some(letter), Some(':')) = (chars.next(), chars.next()) {
+            if letter.is_ascii_alphabetic() {
+                return true;
+            }
+        }
+    }
+    trimmed.starts_with('/')
+}
 fn default_sd_size_limit() -> u32 {
     3000
 }
@@ -567,6 +606,12 @@ impl AppConfig {
     pub fn sync_log_min_level(&mut self) {
         self.log_min_level =
             crate::storage::logging::normalize_min_level_name(&self.log_min_level);
+    }
+
+    /// Canonicalize `sd_server_backup_mode` (maps deprecated `direct_dual_write`).
+    pub fn sync_sd_server_backup_mode(&mut self) {
+        self.sd_server_backup_mode =
+            normalize_sd_server_backup_mode(&self.sd_server_backup_mode);
     }
 
     /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
@@ -716,7 +761,7 @@ impl Default for AppConfig {
             sd_auto_backup: true,
             sd_backup_folder: String::new(),
             sd_server_backup_enabled: false,
-            sd_server_backup_path: String::new(),
+            sd_server_backup_url: String::new(),
             sd_server_backup_mode: default_sd_server_backup_mode(),
             sd_backup_mode: default_sd_backup_mode(),
             sd_pc_name: String::new(),
@@ -777,7 +822,19 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
         .map(|o| o.contains_key("server_profiles"))
         .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
-    if let (Value::Object(base), Value::Object(overlay)) = (&mut defaults, partial) {
+    if let (Value::Object(base), Value::Object(mut overlay)) = (&mut defaults, partial) {
+        // Phase 34: legacy `sd_server_backup_path` → `sd_server_backup_url` before
+        // deserialize (avoids duplicate-field with serde alias + defaults).
+        if let Some(path_val) = overlay.remove("sd_server_backup_path") {
+            let url_empty = overlay
+                .get("sd_server_backup_url")
+                .and_then(|v| v.as_str())
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
+            if url_empty {
+                overlay.insert("sd_server_backup_url".into(), path_val);
+            }
+        }
         for (k, v) in overlay {
             base.insert(k, v);
         }
@@ -806,6 +863,7 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_body_concat_mode();
     cfg.sync_ui_language();
     cfg.sync_log_min_level();
+    cfg.sync_sd_server_backup_mode();
     cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
@@ -896,6 +954,7 @@ impl ConfigStore {
         normalized.sync_body_concat_mode();
         normalized.sync_ui_language();
         normalized.sync_log_min_level();
+        normalized.sync_sd_server_backup_mode();
         normalized.push_active_profile_from_flat();
         normalized.sync_server_profiles();
         crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
@@ -973,7 +1032,7 @@ mod tests {
         assert!(!cfg.sd_clear_after_backup);
         assert!(!cfg.sd_eject_after_workflow);
         assert!(!cfg.sd_server_backup_enabled);
-        assert!(cfg.sd_server_backup_path.is_empty());
+        assert!(cfg.sd_server_backup_url.is_empty());
         assert_eq!(cfg.sd_server_backup_mode, "local_then_server_async");
         assert_eq!(cfg.sd_size_limit_mb, 3000);
         assert!(cfg.sd_size_limit_enabled);
@@ -1266,5 +1325,32 @@ mod tests {
         assert_eq!(loaded.server_profiles[0].url, "smb://host/a");
         assert_eq!(loaded.server_profiles[0].login, "user");
         assert_eq!(loaded.server_profiles[0].password, "pw");
+    }
+
+    #[test]
+    fn sd_server_backup_path_alias_migrates_to_url() {
+        let cfg = merge_with_defaults(serde_json::json!({
+            "sd_server_backup_enabled": true,
+            "sd_server_backup_path": "smb://nas/sd-backups",
+            "sd_server_backup_mode": "direct_dual_write"
+        }))
+        .unwrap();
+        assert_eq!(cfg.sd_server_backup_url, "smb://nas/sd-backups");
+        assert_eq!(cfg.sd_server_backup_mode, "local_then_server_async");
+    }
+
+    #[test]
+    fn normalize_sd_server_backup_mode_deprecates_direct() {
+        assert_eq!(
+            normalize_sd_server_backup_mode("direct_dual_write"),
+            "local_then_server_async"
+        );
+        assert_eq!(
+            normalize_sd_server_backup_mode("local_then_server"),
+            "local_then_server"
+        );
+        assert!(sd_server_backup_url_looks_like_mount_path("/Volumes/NAS/backups"));
+        assert!(!sd_server_backup_url_looks_like_mount_path("smb://nas/sd-backups"));
+        assert!(!sd_server_backup_url_looks_like_mount_path(r"\\nas\sd-backups"));
     }
 }

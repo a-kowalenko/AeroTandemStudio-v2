@@ -23,7 +23,11 @@ use crate::media::dji_paths::{
 };
 use crate::sd_card::mtp::mtp_whitelist::UsbImportMode;
 use crate::sd_card::copy_progress::copy_file_with_progress;
-use crate::sd_card::secondary_backup::{new_job_id, SecondaryBackupJob, SECONDARY_BACKUP};
+use crate::sd_card::secondary_backup::{
+    mirror_backup_to_smb, new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
+};
+use crate::smb::client::parse_server_target;
+use crate::storage::config::normalize_sd_server_backup_mode;
 use crate::storage::media_history::{spawn_identity_hasher, MediaHistoryStore};
 use crate::storage::AppConfig;
 use crate::util::file_times::get_mtime_timestamp;
@@ -391,11 +395,11 @@ pub struct BackupResult {
     pub copied_dest_paths: Vec<String>,
     /// Source paths on the SD card that were successfully copied.
     pub copied_source_paths: Vec<String>,
-    /// Second backup root folder when dual-write succeeded.
+    /// Second backup destination when server mirror succeeded (remote path / display).
     pub secondary_backup_path: Option<String>,
-    /// Soft-fail message for the optional second path (primary may still succeed).
+    /// Soft-fail message for the optional server mirror (primary may still succeed).
     pub secondary_warning: Option<String>,
-    /// True when a background mirror to the second path was queued (async mode).
+    /// True when a background SMB mirror was queued (async mode).
     pub secondary_async_started: bool,
     /// `None` = clear not requested; `Some(n)` = files removed (SD) / deleted on camera (MTP).
     pub clear_deleted_count: Option<usize>,
@@ -419,6 +423,151 @@ impl BackupResult {
             clear_deleted_count: None,
             clear_warning: None,
         }
+    }
+}
+
+/// Resolved server-mirror plan for an SD backup (local first, then SMB).
+struct SecondaryMirrorPlan {
+    active: bool,
+    async_mode: bool,
+    url: String,
+    login: String,
+    password: String,
+    /// Soft warning (e.g. deprecated mode) that does not disable the mirror.
+    soft_warning: Option<String>,
+    /// Hard soft-fail that disables the mirror (bad/empty URL).
+    disable_warning: Option<String>,
+}
+
+fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
+    let raw_mode = cfg.sd_server_backup_mode.trim();
+    let deprecated_direct = raw_mode == "direct_dual_write";
+    let mode = normalize_sd_server_backup_mode(raw_mode);
+    let async_mode = mode == "local_then_server_async";
+    let soft_warning = if deprecated_direct {
+        Some(
+            "Kopierstrategie „Direkt“ ist veraltet — Server-Spiegel läuft im Hintergrund (lokal zuerst)."
+                .into(),
+        )
+    } else {
+        None
+    };
+
+    if !cfg.sd_server_backup_enabled {
+        return SecondaryMirrorPlan {
+            active: false,
+            async_mode,
+            url: String::new(),
+            login: String::new(),
+            password: String::new(),
+            soft_warning: None,
+            disable_warning: None,
+        };
+    }
+
+    let url = cfg.sd_server_backup_url.trim().to_string();
+    if url.is_empty() {
+        return SecondaryMirrorPlan {
+            active: false,
+            async_mode,
+            url,
+            login: String::new(),
+            password: String::new(),
+            soft_warning,
+            disable_warning: Some(
+                "Server-Backup-URL fehlt (Primär bleibt erfolgreich) — bitte smb://… setzen."
+                    .into(),
+            ),
+        };
+    }
+
+    if let Err(e) = parse_server_target(&url) {
+        return SecondaryMirrorPlan {
+            active: false,
+            async_mode,
+            url,
+            login: String::new(),
+            password: String::new(),
+            soft_warning,
+            disable_warning: Some(format!(
+                "Server-Backup-URL ungültig (Primär bleibt erfolgreich): {e}"
+            )),
+        };
+    }
+
+    SecondaryMirrorPlan {
+        active: true,
+        async_mode,
+        url,
+        login: cfg.server_login.clone(),
+        password: cfg.server_password.clone(),
+        soft_warning,
+        disable_warning: None,
+    }
+}
+
+fn merge_secondary_warnings(soft: Option<String>, hard: Option<String>) -> Option<String> {
+    match (soft, hard) {
+        (Some(a), Some(b)) => Some(format!("{a}\n{b}")),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
+/// After local backup + manifest: sync or queue SMB mirror. Clear-after stays tied to local only.
+fn finish_secondary_mirror(
+    plan: &SecondaryMirrorPlan,
+    backup_path: &Path,
+    backup_dir_name: &str,
+    has_files: bool,
+    emit_status: &impl Fn(&str, serde_json::Value),
+) -> (Option<String>, Option<String>, bool) {
+    let mut warning = plan.soft_warning.clone();
+    if let Some(w) = &plan.disable_warning {
+        warning = merge_secondary_warnings(warning, Some(w.clone()));
+    }
+    if !plan.active || !has_files {
+        return (None, warning, false);
+    }
+
+    if plan.async_mode {
+        SECONDARY_BACKUP.enqueue(SecondaryBackupJob {
+            id: new_job_id(),
+            primary_path: backup_path.to_path_buf(),
+            server_url: plan.url.clone(),
+            login: plan.login.clone(),
+            password: plan.password.clone(),
+            backup_dir_name: backup_dir_name.to_string(),
+        });
+        emit_status(
+            "secondary_backup_queued",
+            serde_json::json!({
+                "primary_path": backup_path.to_string_lossy(),
+                "server_url": plan.url,
+            }),
+        );
+        return (None, warning, true);
+    }
+
+    match mirror_backup_to_smb(
+        backup_path,
+        &plan.url,
+        &plan.login,
+        &plan.password,
+        |_| {},
+    ) {
+        Ok(remote) => (Some(remote), warning, false),
+        Err(e) => (
+            None,
+            merge_secondary_warnings(
+                warning,
+                Some(format!(
+                    "Server-Backup fehlgeschlagen (Primär bleibt erfolgreich): {e}"
+                )),
+            ),
+            false,
+        ),
     }
 }
 
@@ -1320,49 +1469,12 @@ impl SdCardMonitor {
         let backup_path = PathBuf::from(&backup_folder).join(&backup_dir_name);
         fs::create_dir_all(&backup_path)?;
 
-        let dual_mode = {
-            let m = cfg.sd_server_backup_mode.trim();
-            match m {
-                "local_then_server" => "local_then_server",
-                "local_then_server_async" => "local_then_server_async",
-                _ => "direct_dual_write",
-            }
-        };
-        let async_secondary = dual_mode == "local_then_server_async";
-        let mut secondary_active = cfg.sd_server_backup_enabled;
-        let dual_root = cfg.sd_server_backup_path.trim().to_string();
-        let mut secondary_path: Option<PathBuf> = None;
-        let mut secondary_warning: Option<String> = None;
-        let mut secondary_async_started = false;
-
-        if secondary_active {
-            if dual_root.is_empty() || !Path::new(&dual_root).is_dir() {
-                secondary_warning = Some(format!(
-                    "Zweiter Backup-Pfad ungültig (Primär bleibt erfolgreich): {dual_root}"
-                ));
-                secondary_active = false;
-            } else if async_secondary {
-                // Folder is created by the background worker after primary returns.
-                secondary_path = None;
-            } else {
-                let sp = PathBuf::from(&dual_root).join(&backup_dir_name);
-                match fs::create_dir_all(&sp) {
-                    Ok(()) => secondary_path = Some(sp),
-                    Err(e) => {
-                        secondary_warning = Some(format!(
-                            "Zweiter Backup-Pfad nicht erstellbar (Primär bleibt erfolgreich): {e}"
-                        ));
-                        secondary_active = false;
-                    }
-                }
-            }
-        }
+        let secondary_plan = resolve_secondary_mirror(&cfg);
 
         let mut used_names = HashSet::new();
         let mut copied_sources = Vec::new();
         let mut copied_dests = Vec::new();
         let mut manifest_entries = Vec::new();
-        let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
         let mut copied_size: u64 = 0;
         let start = SystemTime::now();
         let mut last_progress_emit = Instant::now()
@@ -1420,9 +1532,6 @@ impl SdCardMonitor {
         for (i, src_file) in filtered.iter().enumerate() {
             if is_cancelled() {
                 let _ = fs::remove_dir_all(&backup_path);
-                if let Some(ref sp) = secondary_path {
-                    let _ = fs::remove_dir_all(sp);
-                }
                 return Ok(BackupResult {
                     success: false,
                     backup_path: None,
@@ -1485,28 +1594,6 @@ impl SdCardMonitor {
                         media_type: media_type_from_filename(&original_name).to_string(),
                     });
 
-                    if secondary_active && !async_secondary {
-                        if let Some(ref sp) = secondary_path {
-                            if dual_mode == "direct_dual_write" {
-                                let secondary_dst = sp.join(&dst_filename);
-                                if let Err(e) = fs::copy(src_path, &secondary_dst) {
-                                    secondary_warning = Some(format!(
-                                        "Zweiter Backup teilweise fehlgeschlagen: {e}"
-                                    ));
-                                    secondary_active = false;
-                                } else if let Ok(meta) = fs::metadata(src_path) {
-                                    if let Ok(mtime) = meta.modified() {
-                                        let _ = filetime_set_mtime(&secondary_dst, mtime);
-                                    }
-                                }
-                            } else {
-                                local_to_secondary.push((dst.clone(), dst_filename.clone()));
-                            }
-                        }
-                    } else if secondary_active && async_secondary {
-                        local_to_secondary.push((dst.clone(), dst_filename.clone()));
-                    }
-
                     let _ = hash_tx.send(dst.clone());
                     // Always emit once per completed file (smooth bar + accurate end-of-file %).
                     emit_progress(
@@ -1521,9 +1608,6 @@ impl SdCardMonitor {
                 }
                 Err(e) => {
                     let _ = fs::remove_dir_all(&backup_path);
-                    if let Some(ref sp) = secondary_path {
-                        let _ = fs::remove_dir_all(sp);
-                    }
                     let msg = if is_cancelled() || e.to_string().contains(WORKFLOW_CANCELLED) {
                         WORKFLOW_CANCELLED.to_string()
                     } else {
@@ -1567,25 +1651,6 @@ impl SdCardMonitor {
             let _ = hist.mark_backed_up_identities(&entries);
         }
 
-        if secondary_active && dual_mode == "local_then_server" {
-            if let Some(ref sp) = secondary_path {
-                for (local_file, dst_filename) in &local_to_secondary {
-                    let secondary_dst = sp.join(dst_filename);
-                    if let Err(e) = fs::copy(local_file, &secondary_dst) {
-                        secondary_warning =
-                            Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
-                        secondary_active = false;
-                        break;
-                    }
-                    if let Ok(meta) = fs::metadata(local_file) {
-                        if let Ok(mtime) = meta.modified() {
-                            let _ = filetime_set_mtime(&secondary_dst, mtime);
-                        }
-                    }
-                }
-            }
-        }
-
         let session_active = crate::media::dji_paths::resolve_timelapse_session_active_for_paths(
             &filter_root,
             &copied_sources,
@@ -1598,41 +1663,14 @@ impl SdCardMonitor {
             session_active,
         );
 
-        if secondary_active && async_secondary && !local_to_secondary.is_empty() {
-            let filenames: Vec<String> = local_to_secondary
-                .iter()
-                .map(|(_, name)| name.clone())
-                .collect();
-            SECONDARY_BACKUP.enqueue(SecondaryBackupJob {
-                id: new_job_id(),
-                primary_path: backup_path.clone(),
-                secondary_root: PathBuf::from(&dual_root),
-                backup_dir_name: backup_dir_name.clone(),
-                filenames,
-                dcim_source: filter_root.clone(),
-                manifest_entries: manifest_entries.clone(),
-                timelapse_session_active: session_active,
-            });
-            secondary_async_started = true;
-            self.emit_status(
-                "secondary_backup_queued",
-                serde_json::json!({
-                    "primary_path": backup_path.to_string_lossy(),
-                    "secondary_root": dual_root,
-                }),
+        let (secondary_backup_path, secondary_warning, secondary_async_started) =
+            finish_secondary_mirror(
+                &secondary_plan,
+                &backup_path,
+                &backup_dir_name,
+                !copied_sources.is_empty(),
+                &|status, payload| self.emit_status(status, payload),
             );
-        }
-
-        let secondary_ok = secondary_active
-            && !async_secondary
-            && secondary_path.is_some()
-            && secondary_warning.is_none()
-            && !copied_sources.is_empty();
-        if secondary_ok {
-            if let Some(ref sp) = secondary_path {
-                let _ = write_backup_manifest(sp, &filter_root, &manifest_entries, session_active);
-            }
-        }
 
         // Only ever clear files that were successfully copied in THIS backup run.
         // Never clear from config alone when the caller did not opt in via `clear_after`.
@@ -1717,11 +1755,7 @@ impl SdCardMonitor {
             skipped_count,
             copied_dest_paths: copied_dests,
             copied_source_paths: copied_sources,
-            secondary_backup_path: if secondary_ok {
-                secondary_path.map(|p| p.to_string_lossy().into_owned())
-            } else {
-                None
-            },
+            secondary_backup_path,
             secondary_warning,
             secondary_async_started,
             clear_deleted_count,
@@ -1822,42 +1856,7 @@ impl SdCardMonitor {
             let backup_path = PathBuf::from(&backup_folder).join(&backup_dir_name);
             fs::create_dir_all(&backup_path)?;
 
-            let dual_mode = {
-                let m = cfg.sd_server_backup_mode.trim();
-                match m {
-                    "local_then_server" => "local_then_server",
-                    "local_then_server_async" => "local_then_server_async",
-                    _ => "direct_dual_write",
-                }
-            };
-            let async_secondary = dual_mode == "local_then_server_async";
-            let mut secondary_active = cfg.sd_server_backup_enabled;
-            let dual_root = cfg.sd_server_backup_path.trim().to_string();
-            let mut secondary_path: Option<PathBuf> = None;
-            let mut secondary_warning: Option<String> = None;
-            let mut secondary_async_started = false;
-
-            if secondary_active {
-                if dual_root.is_empty() || !Path::new(&dual_root).is_dir() {
-                    secondary_warning = Some(format!(
-                        "Zweiter Backup-Pfad ungültig (Primär bleibt erfolgreich): {dual_root}"
-                    ));
-                    secondary_active = false;
-                } else if async_secondary {
-                    secondary_path = None;
-                } else {
-                    let sp = PathBuf::from(&dual_root).join(&backup_dir_name);
-                    match fs::create_dir_all(&sp) {
-                        Ok(()) => secondary_path = Some(sp),
-                        Err(e) => {
-                            secondary_warning = Some(format!(
-                                "Zweiter Backup-Pfad nicht erstellbar (Primär bleibt erfolgreich): {e}"
-                            ));
-                            secondary_active = false;
-                        }
-                    }
-                }
-            }
+            let secondary_plan = resolve_secondary_mirror(&cfg);
 
             let start = SystemTime::now();
             let (hash_tx, hash_join) = spawn_identity_hasher();
@@ -1957,9 +1956,6 @@ impl SdCardMonitor {
                         Ok(paths) => paths,
                         Err(e) => {
                             let _ = fs::remove_dir_all(&backup_path);
-                            if let Some(ref sp) = secondary_path {
-                                let _ = fs::remove_dir_all(sp);
-                            }
                             let msg = e.to_string();
                             let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
                                 WORKFLOW_CANCELLED.to_string()
@@ -1982,9 +1978,6 @@ impl SdCardMonitor {
                         Ok(paths) => paths,
                         Err(e) => {
                             let _ = fs::remove_dir_all(&backup_path);
-                            if let Some(ref sp) = secondary_path {
-                                let _ = fs::remove_dir_all(sp);
-                            }
                             let msg = e.to_string();
                             let msg = if is_cancelled() || msg.contains(WORKFLOW_CANCELLED) {
                                 WORKFLOW_CANCELLED.to_string()
@@ -2009,7 +2002,6 @@ impl SdCardMonitor {
             let mut copied_dests: Vec<String> = Vec::new();
             let mut copied_sources: Vec<String> = Vec::new();
             let mut manifest_entries = Vec::new();
-            let mut local_to_secondary: Vec<(PathBuf, String)> = Vec::new();
             let mut used_names = HashSet::new();
             let mut hist_entries: Vec<(String, String, u64)> = Vec::new();
 
@@ -2047,40 +2039,10 @@ impl SdCardMonitor {
                 if let Some((hash, size)) = ident {
                     hist_entries.push((dst_filename.clone(), hash, size));
                 }
-                if secondary_active && !async_secondary {
-                    if let Some(ref sp) = secondary_path {
-                        if dual_mode == "direct_dual_write" {
-                            let secondary_dst = sp.join(&dst_filename);
-                            if let Err(e) = fs::copy(&final_dest, &secondary_dst) {
-                                secondary_warning =
-                                    Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
-                                secondary_active = false;
-                            }
-                        } else {
-                            local_to_secondary.push((final_dest.clone(), dst_filename.clone()));
-                        }
-                    }
-                } else if secondary_active && async_secondary {
-                    local_to_secondary.push((final_dest.clone(), dst_filename.clone()));
-                }
             }
 
             if let Ok(hist) = self.history.lock() {
                 let _ = hist.mark_backed_up_identities(&hist_entries);
-            }
-
-            if secondary_active && dual_mode == "local_then_server" {
-                if let Some(ref sp) = secondary_path {
-                    for (local_file, dst_filename) in &local_to_secondary {
-                        let secondary_dst = sp.join(dst_filename);
-                        if let Err(e) = fs::copy(local_file, &secondary_dst) {
-                            secondary_warning =
-                                Some(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
-                            secondary_active = false;
-                            break;
-                        }
-                    }
-                }
             }
 
             let session_active =
@@ -2092,42 +2054,14 @@ impl SdCardMonitor {
             let _ =
                 write_backup_manifest(&backup_path, &cache_root, &manifest_entries, session_active);
 
-            if secondary_active && async_secondary && !local_to_secondary.is_empty() {
-                let filenames: Vec<String> = local_to_secondary
-                    .iter()
-                    .map(|(_, name)| name.clone())
-                    .collect();
-                SECONDARY_BACKUP.enqueue(SecondaryBackupJob {
-                    id: new_job_id(),
-                    primary_path: backup_path.clone(),
-                    secondary_root: PathBuf::from(&dual_root),
-                    backup_dir_name: backup_dir_name.clone(),
-                    filenames,
-                    dcim_source: cache_root.clone(),
-                    manifest_entries: manifest_entries.clone(),
-                    timelapse_session_active: session_active,
-                });
-                secondary_async_started = true;
-                self.emit_status(
-                    "secondary_backup_queued",
-                    serde_json::json!({
-                        "primary_path": backup_path.to_string_lossy(),
-                        "secondary_root": dual_root,
-                    }),
+            let (secondary_backup_path, secondary_warning, secondary_async_started) =
+                finish_secondary_mirror(
+                    &secondary_plan,
+                    &backup_path,
+                    &backup_dir_name,
+                    !copied_sources.is_empty(),
+                    &|status, payload| self.emit_status(status, payload),
                 );
-            }
-
-            let secondary_ok = secondary_active
-                && !async_secondary
-                && secondary_path.is_some()
-                && secondary_warning.is_none()
-                && !copied_sources.is_empty();
-            if secondary_ok {
-                if let Some(ref sp) = secondary_path {
-                    let _ =
-                        write_backup_manifest(sp, &cache_root, &manifest_entries, session_active);
-                }
-            }
 
             let want_clear = matches!(clear_after, Some(true))
                 || (clear_after.is_none() && cfg.sd_clear_after_backup);
@@ -2158,11 +2092,7 @@ impl SdCardMonitor {
                 skipped_count: 0,
                 copied_dest_paths: copied_dests,
                 copied_source_paths: copied_sources,
-                secondary_backup_path: if secondary_ok {
-                    secondary_path.map(|p| p.to_string_lossy().into_owned())
-                } else {
-                    None
-                },
+                secondary_backup_path,
                 secondary_warning,
                 secondary_async_started,
                 clear_deleted_count,
@@ -3001,7 +2931,7 @@ mod tests {
     }
 
     #[test]
-    fn backup_dual_write_copies_to_both_roots() {
+    fn backup_sync_server_mirror_copies_to_local_fallback() {
         let src = tempdir().unwrap();
         let dcim = src.path().join("DCIM").join("100");
         fs::create_dir_all(&dcim).unwrap();
@@ -3030,8 +2960,8 @@ mod tests {
                     let mut c = AppConfig::default();
                     c.sd_backup_folder = p.to_string_lossy().into_owned();
                     c.sd_server_backup_enabled = true;
-                    c.sd_server_backup_path = s.to_string_lossy().into_owned();
-                    c.sd_server_backup_mode = "direct_dual_write".into();
+                    c.sd_server_backup_url = s.to_string_lossy().into_owned();
+                    c.sd_server_backup_mode = "local_then_server".into();
                     c
                 }
             })),
@@ -3051,7 +2981,9 @@ mod tests {
             result.secondary_warning
         );
         let primary = PathBuf::from(result.backup_path.as_ref().unwrap());
-        let secondary = PathBuf::from(result.secondary_backup_path.as_ref().unwrap());
+        let folder_name = primary.file_name().unwrap().to_string_lossy();
+        let secondary = secondary_root.path().join(folder_name.as_ref());
+        assert!(result.secondary_backup_path.is_some());
         assert!(primary.join("clip.mp4").is_file());
         assert!(secondary.join("clip.mp4").is_file());
         assert_eq!(
@@ -3064,7 +2996,7 @@ mod tests {
     }
 
     #[test]
-    fn backup_dual_write_soft_fails_invalid_secondary() {
+    fn backup_server_mirror_soft_fails_bad_url() {
         let src = tempdir().unwrap();
         let dcim = src.path().join("DCIM").join("100");
         fs::create_dir_all(&dcim).unwrap();
@@ -3091,7 +3023,8 @@ mod tests {
                     let mut c = AppConfig::default();
                     c.sd_backup_folder = p.to_string_lossy().into_owned();
                     c.sd_server_backup_enabled = true;
-                    c.sd_server_backup_path = "Z:\\does\\not\\exist\\backup".into();
+                    c.sd_server_backup_url = "smb://".into();
+                    c.sd_server_backup_mode = "local_then_server".into();
                     c
                 }
             })),
@@ -3146,7 +3079,7 @@ mod tests {
                         let mut c = AppConfig::default();
                         c.sd_backup_folder = p.to_string_lossy().into_owned();
                         c.sd_server_backup_enabled = true;
-                        c.sd_server_backup_path = s.to_string_lossy().into_owned();
+                        c.sd_server_backup_url = s.to_string_lossy().into_owned();
                         c.sd_server_backup_mode = "local_then_server_async".into();
                         c
                     }

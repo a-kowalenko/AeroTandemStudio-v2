@@ -259,7 +259,7 @@
     "sd": {
       "backup": {
         "title": "Backup",
-        "description": "SD card backups and optional second destination.",
+        "description": "SD card backups and optional SMB server mirror.",
         "mode": "Backup mode",
         "modeConfirm": "Confirm first",
         "modeAuto": "Automatic",
@@ -273,13 +273,17 @@
         "clearAfter": "Clear SD after backup",
         "clearAfterTitleOn": "Clear SD card after successful backup",
         "clearAfterTitleOff": "Only available when auto backup is enabled",
-        "secondPath": "Also back up to a second path",
-        "secondFolder": "Second backup folder",
-        "copyStrategy": "Copy strategy (second path)",
+        "secondPath": "Back up to server",
+        "serverUrl": "Server backup URL",
+        "serverUrlPlaceholder": "smb://nas/sd-backups",
+        "serverUrlHint": "Same SMB upload as Create; destination independent of “aktuell”. Uses upload-server credentials.",
+        "serverUrlTest": "Test",
+        "serverUrlTesting": "Testing…",
+        "serverUrlMountWarn": "Legacy mount/folder path detected — please set an smb:// URL (no Finder mount).",
+        "copyStrategy": "Server mirror",
         "copyAsync": "Background: local done → server in parallel",
-        "copyMirror": "Mirror: local first, then wait → second path",
-        "copyDirect": "Direct: per file SD → both",
-        "copyHint": "Recommended for network targets: background — the workflow does not wait for the second path."
+        "copyMirror": "Mirror: local first, then wait → server",
+        "copyHint": "Recommended: background — the workflow does not wait for the server mirror."
       },
       "import": {
         "title": "Import & eject",
@@ -371,7 +375,7 @@
       "failed": "Settings could not be saved.",
       "operatorRole": "“Who am I”: Please set at least one role or choose an existing crew name.",
       "pickBackup": "Please choose a backup folder.",
-      "pickSecondBackup": "Please choose a second backup folder or disable the option.",
+      "pickSecondBackup": "Please set a server backup URL (smb://…) or disable the option.",
       "resetFailed": "Default settings could not be restored.",
       "success": "Settings saved."
     }
@@ -810,8 +814,8 @@
       "backupCancelled": "SD backup cancelled.",
       "backupFailed": "Backup failed",
       "notClearedNoBackup": "SD was not cleared (no successful backup).",
-      "secondPath": "Second path: {{path}}",
-      "secondPathBackground": "Second path: running in the background…",
+      "secondPath": "Server: {{path}}",
+      "secondPathBackground": "Server backup: running in the background…",
       "skippedCount": "Skipped: {{count}}",
       "copiedFiles": "{{count}} files copied",
       "clearFailed": "Clearing failed",

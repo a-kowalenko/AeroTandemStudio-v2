@@ -259,7 +259,7 @@
     "sd": {
       "backup": {
         "title": "Respaldo",
-        "description": "Respaldos de tarjeta SD y destino secundario opcional.",
+        "description": "Respaldos de tarjeta SD y espejo opcional por SMB.",
         "mode": "Modo de respaldo",
         "modeConfirm": "Confirmar antes",
         "modeAuto": "Automático",
@@ -273,13 +273,17 @@
         "clearAfter": "Vaciar SD tras el respaldo",
         "clearAfterTitleOn": "Vaciar la tarjeta SD tras un respaldo correcto",
         "clearAfterTitleOff": "Solo disponible si el respaldo automático está activo",
-        "secondPath": "También respaldar en una segunda ruta",
-        "secondFolder": "Segunda carpeta de respaldo",
-        "copyStrategy": "Estrategia de copia (segunda ruta)",
+        "secondPath": "Respaldar en el servidor",
+        "serverUrl": "URL de respaldo en servidor",
+        "serverUrlPlaceholder": "smb://nas/sd-backups",
+        "serverUrlHint": "Mismo envío SMB que al crear; destino independiente de «aktuell». Usa las credenciales del servidor de subida.",
+        "serverUrlTest": "Probar",
+        "serverUrlTesting": "Probando…",
+        "serverUrlMountWarn": "Se detectó una ruta de montaje antigua — configura una URL smb:// (sin montaje del Finder).",
+        "copyStrategy": "Espejo en servidor",
         "copyAsync": "Segundo plano: local listo → servidor en paralelo",
-        "copyMirror": "Espejo: primero local, luego esperar → segunda ruta",
-        "copyDirect": "Directo: por archivo SD → ambos",
-        "copyHint": "Recomendado para destinos de red: segundo plano — el flujo no espera la segunda ruta."
+        "copyMirror": "Espejo: primero local, luego esperar → servidor",
+        "copyHint": "Recomendado: segundo plano — el flujo no espera el espejo en el servidor."
       },
       "import": {
         "title": "Importar y expulsar",
@@ -371,7 +375,7 @@
       "failed": "No se pudieron guardar los ajustes.",
       "operatorRole": "«Soy»: asigna al menos un rol o elige un nombre del equipo existente.",
       "pickBackup": "Elige una carpeta de respaldo.",
-      "pickSecondBackup": "Elige una segunda carpeta de respaldo o desactiva la opción.",
+      "pickSecondBackup": "Configura una URL de respaldo en servidor (smb://…) o desactiva la opción.",
       "resetFailed": "No se pudieron restaurar los ajustes predeterminados.",
       "success": "Ajustes guardados."
     }
@@ -810,8 +814,8 @@
       "backupCancelled": "Respaldo de SD cancelado.",
       "backupFailed": "El respaldo falló",
       "notClearedNoBackup": "No se limpió la SD (no hubo respaldo correcto).",
-      "secondPath": "Segunda ruta: {{path}}",
-      "secondPathBackground": "Segunda ruta: en segundo plano…",
+      "secondPath": "Servidor: {{path}}",
+      "secondPathBackground": "Respaldo en servidor: en segundo plano…",
       "skippedCount": "Omitidos: {{count}}",
       "copiedFiles": "{{count}} archivos copiados",
       "clearFailed": "Falló la limpieza",

@@ -259,7 +259,7 @@
     "sd": {
       "backup": {
         "title": "Backup",
-        "description": "SD-Karten-Backups und optionaler zweiter Zielpfad.",
+        "description": "SD-Karten-Backups und optionaler Server-Spiegel per SMB.",
         "mode": "Backup-Modus",
         "modeConfirm": "Vorher bestätigen",
         "modeAuto": "Automatisch",
@@ -273,13 +273,17 @@
         "clearAfter": "SD nach Backup leeren",
         "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
         "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
-        "secondPath": "Zusätzlich auf zweiten Pfad sichern",
-        "secondFolder": "Zweiter Backup-Ordner",
-        "copyStrategy": "Kopierstrategie (zweiter Pfad)",
+        "secondPath": "Auf Server sichern",
+        "serverUrl": "Server-Backup-URL",
+        "serverUrlPlaceholder": "smb://nas/sd-backups",
+        "serverUrlHint": "Gleicher SMB-Upload wie bei Erstellen; Ziel unabhängig von „aktuell“. Zugangsdaten vom Upload-Server.",
+        "serverUrlTest": "Testen",
+        "serverUrlTesting": "Test…",
+        "serverUrlMountWarn": "Alter Mount-/Ordnerpfad erkannt — bitte eine smb://-URL setzen (kein Finder-Mount).",
+        "copyStrategy": "Server-Spiegel",
         "copyAsync": "Hintergrund: lokal fertig → Server parallel",
-        "copyMirror": "Spiegeln: erst lokal, dann warten → zweiter Pfad",
-        "copyDirect": "Direkt: pro Datei SD → beide",
-        "copyHint": "Empfohlen für Netzwerkziele: Hintergrund — der Workflow wartet nicht auf den zweiten Pfad."
+        "copyMirror": "Spiegeln: erst lokal, dann warten → Server",
+        "copyHint": "Empfohlen: Hintergrund — der Workflow wartet nicht auf den Server-Spiegel."
       },
       "import": {
         "title": "Import & Auswerfen",
@@ -371,7 +375,7 @@
       "failed": "Einstellungen konnten nicht gespeichert werden.",
       "operatorRole": "„Ich bin“: Bitte mindestens eine Rolle setzen oder einen bestehenden Crew-Namen wählen.",
       "pickBackup": "Bitte einen Backup-Ordner wählen.",
-      "pickSecondBackup": "Bitte einen zweiten Backup-Ordner wählen oder die Option deaktivieren.",
+      "pickSecondBackup": "Bitte eine Server-Backup-URL (smb://…) setzen oder die Option deaktivieren.",
       "resetFailed": "Standardeinstellungen konnten nicht wiederhergestellt werden.",
       "success": "Einstellungen wurden gespeichert."
     }
@@ -810,8 +814,8 @@
       "backupCancelled": "SD-Backup abgebrochen.",
       "backupFailed": "Backup fehlgeschlagen",
       "notClearedNoBackup": "SD wurde nicht bereinigt (kein erfolgreiches Backup).",
-      "secondPath": "Zweiter Pfad: {{path}}",
-      "secondPathBackground": "Zweiter Pfad: läuft im Hintergrund…",
+      "secondPath": "Server: {{path}}",
+      "secondPathBackground": "Server-Backup: läuft im Hintergrund…",
       "skippedCount": "Übersprungen: {{count}}",
       "copiedFiles": "{{count}} Dateien kopiert",
       "clearFailed": "Bereinigung fehlgeschlagen",

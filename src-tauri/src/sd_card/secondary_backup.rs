@@ -1,8 +1,8 @@
-﻿//! Background mirror of a completed local SD backup to an optional second root
-//! (NAS / network path) so the interactive workflow is not blocked.
+﻿//! Background mirror of a completed local SD backup to a server target via SMB2
+//! (same transport as Erstellen-Upload). Local absolute paths remain a fallback
+//! for tests / rare local dual-disk setups — not Finder mounts as the primary path.
 
 use std::collections::VecDeque;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
-use crate::media::dji_paths::{write_backup_manifest, ManifestEntry};
+use crate::smb::{upload_path, UploadProgress, UploadResult};
 use crate::storage::logging;
 
 pub const EVENT_SECONDARY_BACKUP: &str = "sd-secondary-backup";
@@ -36,13 +36,11 @@ pub struct SecondaryBackupEvent {
 pub struct SecondaryBackupJob {
     pub id: String,
     pub primary_path: PathBuf,
-    pub secondary_root: PathBuf,
+    /// `smb://…`, UNC, or local path fallback (same as Erstellen-Upload).
+    pub server_url: String,
+    pub login: String,
+    pub password: String,
     pub backup_dir_name: String,
-    /// Destination filenames relative to the primary backup folder.
-    pub filenames: Vec<String>,
-    pub dcim_source: String,
-    pub manifest_entries: Vec<ManifestEntry>,
-    pub timelapse_session_active: bool,
 }
 
 type EventCb = Arc<dyn Fn(SecondaryBackupEvent) + Send + Sync>;
@@ -69,10 +67,8 @@ impl SecondaryBackupQueue {
         logging::info(
             "sd",
             format!(
-                "Secondary backup queued: id={}, files={}, dest={}",
-                job.id,
-                job.filenames.len(),
-                job.secondary_root.display()
+                "Secondary backup queued: id={}, dest={}, folder={}",
+                job.id, job.server_url, job.backup_dir_name
             ),
         );
         self.jobs.lock().unwrap().push_back(job);
@@ -118,59 +114,59 @@ impl SecondaryBackupQueue {
 
     fn run_job(&self, job: SecondaryBackupJob) {
         let primary = job.primary_path.to_string_lossy().into_owned();
-        let total = job.filenames.len() as u64;
+        let on_event = self.on_event.lock().unwrap().clone();
         self.emit(SecondaryBackupEvent {
             state: "started".into(),
             job_id: job.id.clone(),
             primary_path: primary.clone(),
             secondary_path: None,
             current: 0,
-            total,
+            total: 0,
             percent: 0.0,
             file_name: None,
             message: Some("Server-Backup im Hintergrund…".into()),
         });
 
-        match mirror_primary_to_secondary(
+        let job_id = job.id.clone();
+        let primary_for_cb = primary.clone();
+        match mirror_backup_to_smb(
             &job.primary_path,
-            &job.secondary_root,
-            &job.backup_dir_name,
-            &job.filenames,
-            &job.dcim_source,
-            &job.manifest_entries,
-            job.timelapse_session_active,
-            |current, file_name| {
-                let percent = if total > 0 {
-                    (current as f64 / total as f64) * 100.0
-                } else {
-                    100.0
+            &job.server_url,
+            &job.login,
+            &job.password,
+            move |p: UploadProgress| {
+                let Some(cb) = on_event.as_ref() else {
+                    return;
                 };
-                self.emit(SecondaryBackupEvent {
+                cb(SecondaryBackupEvent {
                     state: "progress".into(),
-                    job_id: job.id.clone(),
-                    primary_path: primary.clone(),
+                    job_id: job_id.clone(),
+                    primary_path: primary_for_cb.clone(),
                     secondary_path: None,
-                    current,
-                    total,
-                    percent,
-                    file_name: Some(file_name.to_string()),
+                    current: u64::from(p.current_file),
+                    total: u64::from(p.total_files),
+                    percent: p.percent,
+                    file_name: if p.filename.is_empty() {
+                        None
+                    } else {
+                        Some(p.filename.clone())
+                    },
                     message: None,
                 });
             },
         ) {
             Ok(secondary) => {
-                let path = secondary.to_string_lossy().into_owned();
                 logging::info(
                     "sd",
-                    format!("Secondary backup done: id={}, path={path}", job.id),
+                    format!("Secondary backup done: id={}, path={secondary}", job.id),
                 );
                 self.emit(SecondaryBackupEvent {
                     state: "done".into(),
                     job_id: job.id.clone(),
                     primary_path: primary,
-                    secondary_path: Some(path),
-                    current: total,
-                    total,
+                    secondary_path: Some(secondary),
+                    current: 0,
+                    total: 0,
                     percent: 100.0,
                     file_name: None,
                     message: Some("Server-Backup fertig".into()),
@@ -187,7 +183,7 @@ impl SecondaryBackupQueue {
                     primary_path: primary,
                     secondary_path: None,
                     current: 0,
-                    total,
+                    total: 0,
                     percent: 0.0,
                     file_name: None,
                     message: Some(e),
@@ -229,61 +225,59 @@ pub fn with_queue_lock<R>(f: impl FnOnce() -> R) -> R {
     f()
 }
 
-/// Copy `filenames` from `primary_path` into `secondary_root/backup_dir_name` and write manifest.
-pub fn mirror_primary_to_secondary(
+/// Upload the local backup session folder to `server_url` (SMB2 / UNC / local fallback).
+///
+/// Uses the same layout as Erstellen-Upload: remote folder name = leaf of `primary_path`
+/// (i.e. `backup_dir_name`), including the backup manifest.
+pub fn mirror_backup_to_smb<F>(
     primary_path: &Path,
-    secondary_root: &Path,
-    backup_dir_name: &str,
-    filenames: &[String],
-    dcim_source: &str,
-    manifest_entries: &[ManifestEntry],
-    timelapse_session_active: bool,
-    mut on_file: impl FnMut(u64, &str),
-) -> Result<PathBuf, String> {
+    server_url: &str,
+    login: &str,
+    password: &str,
+    on_progress: F,
+) -> Result<String, String>
+where
+    F: FnMut(UploadProgress) + Send + 'static,
+{
     if !primary_path.is_dir() {
         return Err(format!(
             "Lokaler Backup-Ordner fehlt: {}",
             primary_path.display()
         ));
     }
-    if !secondary_root.is_dir() {
-        return Err(format!(
-            "Zweiter Backup-Pfad ungültig: {}",
-            secondary_root.display()
-        ));
+    let url = server_url.trim();
+    if url.is_empty() {
+        return Err("Server-Backup-URL fehlt".into());
     }
 
-    let secondary = secondary_root.join(backup_dir_name);
-    fs::create_dir_all(&secondary).map_err(|e| {
-        format!(
-            "Zweiter Backup-Pfad nicht erstellbar ({}): {e}",
-            secondary.display()
-        )
-    })?;
+    let result: UploadResult =
+        tauri::async_runtime::block_on(upload_path(primary_path, url, login, password, on_progress));
 
-    for (i, name) in filenames.iter().enumerate() {
-        let src = primary_path.join(name);
-        let dst = secondary.join(name);
-        if !src.is_file() {
-            let _ = fs::remove_dir_all(&secondary);
-            return Err(format!("Quelldatei fehlt im lokalen Backup: {name}"));
-        }
-        if let Err(e) = fs::copy(&src, &dst) {
-            let _ = fs::remove_dir_all(&secondary);
-            return Err(format!("Zweiter Backup teilweise fehlgeschlagen: {e}"));
-        }
-        on_file((i as u64) + 1, name);
+    if result.success {
+        let leaf = primary_path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let remote = if result.remote_path.is_empty() {
+            format!("{}/{}", url.trim_end_matches('/'), leaf)
+        } else if !leaf.is_empty() && !result.remote_path.contains(&leaf) {
+            // Local upload returns dest root only; append session folder for display.
+            std::path::Path::new(&result.remote_path)
+                .join(&leaf)
+                .to_string_lossy()
+                .into_owned()
+        } else {
+            result.remote_path
+        };
+        Ok(remote)
+    } else {
+        Err(result.message)
     }
+}
 
-    write_backup_manifest(
-        &secondary,
-        dcim_source,
-        manifest_entries,
-        timelapse_session_active,
-    )
-    .map_err(|e| format!("Manifest auf zweitem Pfad fehlgeschlagen: {e}"))?;
-
-    Ok(secondary)
+/// Expected remote relative folder under the configured backup root.
+pub fn remote_backup_relpath(backup_dir_name: &str) -> String {
+    backup_dir_name.trim().trim_matches('/').replace('\\', "/")
 }
 
 pub fn new_job_id() -> String {
@@ -297,74 +291,87 @@ pub fn new_job_id() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use tempfile::tempdir;
 
     #[test]
-    fn mirror_copies_files_and_manifest() {
-        let primary = tempdir().unwrap();
-        let secondary_root = tempdir().unwrap();
-        fs::write(primary.path().join("a.mp4"), b"video").unwrap();
-        fs::write(primary.path().join("b.jpg"), b"photo").unwrap();
+    fn remote_backup_relpath_normalizes() {
+        assert_eq!(remote_backup_relpath("SD_Backup_x"), "SD_Backup_x");
+        assert_eq!(remote_backup_relpath("  a\\b  "), "a/b");
+    }
 
-        let entries = vec![
-            ManifestEntry {
-                dest: "a.mp4".into(),
-                src: Some("X:/a.mp4".into()),
-                media_type: "video".into(),
-            },
-            ManifestEntry {
-                dest: "b.jpg".into(),
-                src: Some("X:/b.jpg".into()),
-                media_type: "photo".into(),
-            },
-        ];
-        let filenames = vec!["a.mp4".into(), "b.jpg".into()];
-        let mut seen = 0u64;
-        let out = mirror_primary_to_secondary(
-            primary.path(),
-            secondary_root.path(),
-            "SD_Backup_test",
-            &filenames,
-            "X:/DCIM",
-            &entries,
-            false,
-            |n, _| seen = n,
+    #[test]
+    fn mirror_soft_fails_empty_url() {
+        let primary = tempdir().unwrap();
+        fs::write(primary.path().join("a.mp4"), b"v").unwrap();
+        let err = mirror_backup_to_smb(primary.path(), "  ", "", "", |_| {}).unwrap_err();
+        assert!(err.contains("URL"), "{err}");
+    }
+
+    #[test]
+    fn mirror_soft_fails_bad_smb_url() {
+        let primary = tempdir().unwrap();
+        fs::write(primary.path().join("a.mp4"), b"v").unwrap();
+        let err = mirror_backup_to_smb(primary.path(), "smb://", "", "", |_| {}).unwrap_err();
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn mirror_uploads_folder_to_local_fallback() {
+        let primary = tempdir().unwrap();
+        let dest_root = tempdir().unwrap();
+        fs::write(primary.path().join("a.mp4"), b"video").unwrap();
+        fs::write(primary.path().join("manifest.json"), b"{}").unwrap();
+
+        // Mimic build_backup_dir_name leaf under a parent.
+        let session = primary.path().join("SD_Backup_test");
+        fs::create_dir_all(&session).unwrap();
+        fs::write(session.join("a.mp4"), b"video").unwrap();
+        fs::write(
+            session.join(crate::media::dji_paths::BACKUP_MANIFEST_NAME),
+            b"{}",
         )
         .unwrap();
 
-        assert_eq!(seen, 2);
-        assert!(out.join("a.mp4").is_file());
-        assert!(out.join("b.jpg").is_file());
-        assert!(out
+        let remote = mirror_backup_to_smb(
+            &session,
+            &dest_root.path().to_string_lossy(),
+            "",
+            "",
+            |_| {},
+        )
+        .unwrap();
+
+        assert!(dest_root.path().join("SD_Backup_test").join("a.mp4").is_file());
+        assert!(dest_root
+            .path()
+            .join("SD_Backup_test")
             .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
             .is_file());
+        assert!(remote.contains("SD_Backup_test"), "{remote}");
     }
 
     #[test]
     fn queue_runs_async_job() {
         with_queue_lock(|| {
-            let primary = tempdir().unwrap();
-            let secondary_root = tempdir().unwrap();
-            fs::write(primary.path().join("clip.mp4"), b"ok").unwrap();
+            let primary_root = tempdir().unwrap();
+            let session = primary_root.path().join("SD_Backup_async");
+            fs::create_dir_all(&session).unwrap();
+            fs::write(session.join("clip.mp4"), b"ok").unwrap();
 
+            let dest_root = tempdir().unwrap();
             let job = SecondaryBackupJob {
                 id: "test-job".into(),
-                primary_path: primary.path().to_path_buf(),
-                secondary_root: secondary_root.path().to_path_buf(),
+                primary_path: session,
+                server_url: dest_root.path().to_string_lossy().into_owned(),
+                login: String::new(),
+                password: String::new(),
                 backup_dir_name: "SD_Backup_async".into(),
-                filenames: vec!["clip.mp4".into()],
-                dcim_source: "X:/DCIM".into(),
-                manifest_entries: vec![ManifestEntry {
-                    dest: "clip.mp4".into(),
-                    src: None,
-                    media_type: "video".into(),
-                }],
-                timelapse_session_active: false,
             };
 
             SECONDARY_BACKUP.enqueue(job);
             assert!(SECONDARY_BACKUP.wait_idle(Duration::from_secs(5)));
-            assert!(secondary_root
+            assert!(dest_root
                 .path()
                 .join("SD_Backup_async")
                 .join("clip.mp4")

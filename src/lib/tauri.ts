@@ -111,10 +111,11 @@ export type AppConfig = {
   qr_remove_video_max_duration_sec: number;
   sd_auto_backup: boolean;
   sd_backup_folder: string;
-  /** Optional second backup root (dual write). */
+  /** Optional SMB mirror of local SD backups. */
   sd_server_backup_enabled: boolean;
-  sd_server_backup_path: string;
-  /** "direct_dual_write" | "local_then_server" | "local_then_server_async" */
+  /** smb://host/share[/sub…] (UNC / local path fallback like upload). */
+  sd_server_backup_url: string;
+  /** "local_then_server" | "local_then_server_async" (legacy direct_dual_write → async) */
   sd_server_backup_mode: string;
   sd_backup_mode: string;
   /** Label in backup folder names; empty uses hostname when opening settings. */
