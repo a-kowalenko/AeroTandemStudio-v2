@@ -26,6 +26,11 @@ const CHUNK_SIZE: usize = 1024 * 1024;
 const UPLOAD_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(150);
 /// How often in-flight `write_chunk` is interrupted to honor cancel.
 const WRITE_CANCEL_POLL: Duration = Duration::from_millis(50);
+/// Max time to wait for `FileWriter::abort()` before dropping the writer
+/// (session teardown releases locks; hanging abort blocked cleanup for 15s+).
+const WRITER_ABORT_TIMEOUT: Duration = Duration::from_secs(1);
+/// Pause after dropping the upload session so the NAS releases exclusive locks.
+const SESSION_TEARDOWN_PAUSE: Duration = Duration::from_millis(800);
 
 /// Result of `normalize_server_path` (mirrors legacy tuple).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -867,7 +872,7 @@ where
     drop(tree);
     drop(client);
     if cancelled {
-        tokio::time::sleep(Duration::from_millis(400)).await;
+        tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
     }
     result
 }
@@ -1214,6 +1219,21 @@ async fn wait_until_upload_cancelled(cancel: UploadCancelPolicy) {
     }
 }
 
+/// Best-effort `FileWriter::abort` with a hard timeout.
+///
+/// A hung abort (desynced in-flight WRITEs after cancelling `write_chunk`) used
+/// to block cooperative cancel for 15s until JoinSet force-abort leaked handles.
+/// Timing out drops the writer; the upload session is torn down right after.
+async fn abort_writer_bounded(writer: FileWriter) {
+    tokio::select! {
+        _ = writer.abort() => {}
+        _ = tokio::time::sleep(WRITER_ABORT_TIMEOUT) => {
+            // abort() future dropped → FileWriter Drop without CLOSE; OK because
+            // release_smb_session_for_cleanup kills the TCP session next.
+        }
+    }
+}
+
 /// Write one chunk, but bail within ~50ms of a cancel request so `FileWriter::abort`
 /// can run instead of waiting out a multi-second SMB write.
 async fn write_chunk_unless_cancelled(
@@ -1257,22 +1277,22 @@ pub(crate) async fn stream_upload_file(
         let data = match tauri::async_runtime::spawn_blocking(move || fs::read(path)).await {
             Ok(Ok(data)) => data,
             Ok(Err(e)) => {
-                let _ = writer.abort().await;
+                abort_writer_bounded(writer).await;
                 return Err(e.to_string());
             }
             Err(e) => {
-                let _ = writer.abort().await;
+                abort_writer_bounded(writer).await;
                 return Err(e.to_string());
             }
         };
         if is_upload_cancelled(cancel) {
-            let _ = writer.abort().await;
+            abort_writer_bounded(writer).await;
             return Err(WORKFLOW_CANCELLED.into());
         }
         let mut offset = 0usize;
         while offset < data.len() {
             if is_upload_cancelled(cancel) {
-                let _ = writer.abort().await;
+                abort_writer_bounded(writer).await;
                 return Err(WORKFLOW_CANCELLED.into());
             }
             let end = (offset + CHUNK_SIZE).min(data.len());
@@ -1283,7 +1303,7 @@ pub(crate) async fn stream_upload_file(
             )
             .await
             {
-                let _ = writer.abort().await;
+                abort_writer_bounded(writer).await;
                 return Err(e);
             }
             offset = end;
@@ -1320,18 +1340,18 @@ pub(crate) async fn stream_upload_file(
             Ok(c) => c,
             Err(e) => {
                 let _ = reader.await;
-                let _ = writer.abort().await;
+                abort_writer_bounded(writer).await;
                 return Err(e);
             }
         };
         if is_upload_cancelled(cancel) {
             let _ = reader.await;
-            let _ = writer.abort().await;
+            abort_writer_bounded(writer).await;
             return Err(WORKFLOW_CANCELLED.into());
         }
         if let Err(e) = write_chunk_unless_cancelled(&mut writer, &chunk, cancel).await {
             let _ = reader.await;
-            let _ = writer.abort().await;
+            abort_writer_bounded(writer).await;
             return Err(e);
         }
         copied += chunk.len() as u64;
@@ -1341,11 +1361,11 @@ pub(crate) async fn stream_upload_file(
     match reader.await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => {
-            let _ = writer.abort().await;
+            abort_writer_bounded(writer).await;
             return Err(e);
         }
         Err(e) => {
-            let _ = writer.abort().await;
+            abort_writer_bounded(writer).await;
             if is_upload_cancelled(cancel) {
                 return Err(WORKFLOW_CANCELLED.into());
             }
@@ -1420,6 +1440,11 @@ fn smb_path_not_found(err: &str) -> bool {
         || e.contains("does not exist")
 }
 
+fn smb_sharing_violation(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    e.contains("sharing_violation") || e.contains("directory_not_empty")
+}
+
 async fn cleanup_smb_job_root(
     host: &str,
     port: u16,
@@ -1434,11 +1459,10 @@ async fn cleanup_smb_job_root(
         return Err("Leerer Cleanup-Pfad".into());
     }
 
-    // Give the cancelled upload session time to release file handles after
-    // FileWriter::abort / TCP teardown.
-    tokio::time::sleep(Duration::from_millis(400)).await;
+    // Wait for the cancelled upload TCP session to release exclusive locks.
+    tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
 
-    const ATTEMPTS: u32 = 6;
+    const ATTEMPTS: u32 = 8;
     let mut last_err: Option<String> = None;
     for attempt in 1..=ATTEMPTS {
         // Fresh connection each attempt — avoids a poisoned tree after
@@ -1462,10 +1486,18 @@ async fn cleanup_smb_job_root(
                 last_err = Some(e);
             }
         }
+        let retry_sharing = last_err
+            .as_deref()
+            .is_some_and(smb_sharing_violation);
         drop(tree);
         drop(client);
         if attempt < ATTEMPTS {
-            tokio::time::sleep(Duration::from_millis(300 * u64::from(attempt))).await;
+            let backoff_ms = if retry_sharing {
+                400 * u64::from(attempt)
+            } else {
+                250 * u64::from(attempt)
+            };
+            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
         }
     }
     Err(last_err.unwrap_or_else(|| format!("Aufräumen fehlgeschlagen: {job_root}")))
@@ -1828,6 +1860,13 @@ mod tests {
         assert!(smb_path_not_found("No such file"));
         assert!(!smb_path_not_found("STATUS_SHARING_VIOLATION"));
         assert!(!smb_path_not_found("STATUS_ACCESS_DENIED"));
+    }
+
+    #[test]
+    fn smb_sharing_violation_matches_lock_errors() {
+        assert!(smb_sharing_violation("STATUS_SHARING_VIOLATION during Create"));
+        assert!(smb_sharing_violation("STATUS_DIRECTORY_NOT_EMPTY during SetInfo"));
+        assert!(!smb_sharing_violation("STATUS_OBJECT_NAME_NOT_FOUND"));
     }
 
     #[test]
