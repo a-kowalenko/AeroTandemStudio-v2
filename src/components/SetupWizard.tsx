@@ -37,6 +37,8 @@ import {
   switchServerProfile,
 } from "@/lib/serverProfile";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
+import { AmsPathHintsSuggestBanner } from "@/components/AmsPathHintsSuggestBanner";
+import { AmsPathHintsDriftBanner } from "@/components/AmsPathHintsDriftBanner";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
 
@@ -1121,6 +1123,22 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
                   {t("setupWizard.sections.server")}
                 </p>
+                <AmsPathHintsSuggestBanner
+                  draft={draft}
+                  setDraft={setDraft}
+                  disabled={!draft.upload_to_server}
+                  onError={(message, title) => showError(message, title)}
+                  errorTitle={t("app.server.title")}
+                  diffFromDraft
+                />
+                <AmsPathHintsDriftBanner
+                  draft={draft}
+                  setDraft={setDraft}
+                  disabled={!draft.upload_to_server}
+                  onError={(message, title) => showError(message, title)}
+                  errorTitle={t("app.server.title")}
+                  diffFromDraft
+                />
                 <ServerProfileEditor
                   draft={draft}
                   setDraft={setDraft}

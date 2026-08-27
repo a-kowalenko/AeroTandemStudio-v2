@@ -1,9 +1,17 @@
 import { create } from "zustand";
 import { tr } from "@/i18n";
 import {
+  computePathHintsDiff,
+  diffPathHintsFromHealth,
+  parsePathHintsFromHealth,
+  type AmsPathHints,
+  type AmsPathHintsDiff,
+} from "@/lib/amsPathHints";
+import {
   amsBridgeHealth,
   getConfig,
   type AmsBridgeHealthResult,
+  type AppConfig,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 
@@ -25,17 +33,37 @@ type AmsBridgeState = {
   displayName: string;
   serverInstanceId: string;
   capabilities: string[];
+  /** Parsed AMS SMB hints (`paths-v1`); not persisted. */
+  pathHints: AmsPathHints | null;
+  /** Diff vs current config; updated on health + `refreshPathHintsDiff`. */
+  pathHintsDiff: AmsPathHintsDiff | null;
   applyResult: (result: AmsBridgeHealthResult) => void;
   checkHealth: (
     opts?: AmsHealthCheckOptions,
   ) => Promise<AmsBridgeHealthResult>;
+  /** Recompute diff when config changes (no health round-trip). */
+  refreshPathHintsDiff: (config?: AppConfig | null) => void;
   reset: () => void;
 };
 
 /** Ignore stale results when a newer checkHealth started. */
 let healthRequestSeq = 0;
 
-function resultFields(result: AmsBridgeHealthResult): Pick<
+function pathHintFields(
+  health: AmsBridgeHealthResult["health"],
+  config: AppConfig | null | undefined,
+): Pick<AmsBridgeState, "pathHints" | "pathHintsDiff"> {
+  const pathHints = parsePathHintsFromHealth(health);
+  const pathHintsDiff = config
+    ? diffPathHintsFromHealth(config, health)
+    : null;
+  return { pathHints, pathHintsDiff };
+}
+
+function resultFields(
+  result: AmsBridgeHealthResult,
+  config: AppConfig | null | undefined,
+): Pick<
   AmsBridgeState,
   | "connected"
   | "message"
@@ -45,6 +73,8 @@ function resultFields(result: AmsBridgeHealthResult): Pick<
   | "displayName"
   | "serverInstanceId"
   | "capabilities"
+  | "pathHints"
+  | "pathHintsDiff"
 > {
   return {
     connected: result.ok,
@@ -55,8 +85,14 @@ function resultFields(result: AmsBridgeHealthResult): Pick<
     displayName: result.health?.display_name?.trim() ?? "",
     serverInstanceId: result.health?.instance_id?.trim() ?? "",
     capabilities: result.health?.capabilities ?? [],
+    ...pathHintFields(result.health, config),
   };
 }
+
+const EMPTY_PATH_HINTS: Pick<AmsBridgeState, "pathHints" | "pathHintsDiff"> = {
+  pathHints: null,
+  pathHintsDiff: null,
+};
 
 async function syncServerIdentityFromConfig(): Promise<void> {
   try {
@@ -80,8 +116,22 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
   displayName: "",
   serverInstanceId: "",
   capabilities: [],
+  pathHints: null,
+  pathHintsDiff: null,
 
-  applyResult: (result) => set({ ...resultFields(result), refreshing: false }),
+  applyResult: (result) => {
+    const config = useConfigStore.getState().config;
+    set({ ...resultFields(result, config), refreshing: false });
+  },
+  refreshPathHintsDiff: (config) => {
+    const cfg = config ?? useConfigStore.getState().config;
+    const currentHints = useAmsBridgeStore.getState().pathHints;
+    if (!cfg || !currentHints) {
+      set({ pathHintsDiff: null });
+      return;
+    }
+    set({ pathHintsDiff: computePathHintsDiff(cfg, currentHints) });
+  },
   checkHealth: async (opts) => {
     const quiet = Boolean(opts?.quiet);
     const seq = ++healthRequestSeq;
@@ -97,7 +147,8 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
     try {
       const result = await amsBridgeHealth();
       if (seq !== healthRequestSeq) return result;
-      set({ ...resultFields(result), refreshing: false });
+      const config = useConfigStore.getState().config;
+      set({ ...resultFields(result, config), refreshing: false });
       if (result.ok) {
         await syncServerIdentityFromConfig();
       }
@@ -117,6 +168,7 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
         displayName: "",
         serverInstanceId: "",
         capabilities: [],
+        ...EMPTY_PATH_HINTS,
       });
       return { ok: false, message, health: null, base_url: "" };
     }
@@ -133,6 +185,7 @@ export const useAmsBridgeStore = create<AmsBridgeState>((set) => ({
       displayName: "",
       serverInstanceId: "",
       capabilities: [],
+      ...EMPTY_PATH_HINTS,
     });
   },
 }));

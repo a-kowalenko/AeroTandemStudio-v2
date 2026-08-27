@@ -369,6 +369,22 @@
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
         "connectedAs": "Verbunden mit {{name}}",
         "foundSuccessViaServerPasswordNamed": "{{name}}: Adresse und Zugangscode übernommen (Server-Passwort)."
+      },
+      "pathHints": {
+        "suggestTitle": "SMB-Pfade von der Buchungssuche",
+        "suggestBody": "Primär: {{primary}}{{backup}}",
+        "suggestBackupLine": " · Backup: {{url}}",
+        "backupProfileLabel": "AMS Backup",
+        "applyFailed": "Pfade konnten nicht gespeichert werden.",
+        "credentialsTitlePrimary": "SMB-Zugangsdaten (Primär)",
+        "credentialsTitleBackup": "SMB-Zugangsdaten (Backup)",
+        "credentialsBodyPrimary": "Bitte Login und Passwort für den primären SMB-Server eintragen.",
+        "credentialsBodyBackup": "Bitte Login und Passwort für das Backup-Ziel eintragen.",
+        "driftTitle": "SMB-Pfad weicht von der Buchungssuche ab",
+        "driftPrimaryLine": "Primär: {{current}} → {{suggested}}",
+        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "dismissLater": "Später",
+        "instanceMismatch": "Die Pfade stammen von einer anderen Buchungs-Instanz — Übernehmen ist deaktiviert."
       }
     },
     "save": {

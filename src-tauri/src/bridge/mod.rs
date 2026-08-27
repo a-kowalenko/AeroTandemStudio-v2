@@ -21,6 +21,14 @@ use crate::util::host::current_computer_name;
 const REQUEST_TIMEOUT_SECS: u64 = 15;
 const ATS_BRIDGE_APP: &str = "AeroTandemStudio";
 
+/// Client-taugliche SMB-Hints für ATS (HANDOFF.md §9.3). Wire-Format bevorzugt `smb://`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct AtsPathsHint {
+    pub primary_smb_url: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub backup_smb_url: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BridgeHealth {
     pub online: bool,
@@ -30,6 +38,8 @@ pub struct BridgeHealth {
     #[serde(default)]
     pub instance_id: String,
     pub monitor_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ats_paths: Option<AtsPathsHint>,
     pub capabilities: Vec<String>,
 }
 
@@ -770,5 +780,39 @@ mod tests {
             "AMS-Bridge Job-Status nicht erreichbar: timeout"
         ));
         assert!(!is_unreachable("AMS-Bridge: Token ungültig (401)."));
+    }
+
+    #[test]
+    fn health_deserializes_optional_ats_paths() {
+        let json = r#"{
+            "online": true,
+            "version": "0.4.0",
+            "display_name": "AMS",
+            "instance_id": "inst-1",
+            "monitor_path": "D:\\Shares\\aktuell",
+            "ats_paths": {
+                "primary_smb_url": "smb://169.254.169.254/aktuell",
+                "backup_smb_url": "smb://169.254.169.254/aktuell-backup"
+            },
+            "capabilities": ["lookup", "paths-v1"]
+        }"#;
+        let health: BridgeHealth = serde_json::from_str(json).expect("parse health");
+        assert!(health.ats_paths.is_some());
+        let paths = health.ats_paths.unwrap();
+        assert_eq!(paths.primary_smb_url, "smb://169.254.169.254/aktuell");
+        assert_eq!(paths.backup_smb_url, "smb://169.254.169.254/aktuell-backup");
+        assert!(health.capabilities.contains(&"paths-v1".to_string()));
+    }
+
+    #[test]
+    fn health_deserializes_without_ats_paths() {
+        let json = r#"{
+            "online": true,
+            "version": "0.3.0",
+            "monitor_path": "D:\\x",
+            "capabilities": ["lookup"]
+        }"#;
+        let health: BridgeHealth = serde_json::from_str(json).expect("parse health");
+        assert!(health.ats_paths.is_none());
     }
 }

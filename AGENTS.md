@@ -121,8 +121,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 33: Label Historie → Vorgänge (i18n: DE Vorgänge / EN Jobs / ES Trabajos; kein Component-Rename)
 - ✅ Phase 31.7: DJI Foto-Timelapse Suffix-Pairing (`001_NNNN` ↔ `DJI_*_NNNN.MP4`) + Clear inkl. `.LRF`
 - ✅ Phase 34: SD-Server-Backup über SMB (`sd_server_backup_url`, lokal zuerst + async Mirror; kein Mount-`fs::copy`)
+- ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
 
-**Nächster Schritt:** Phase 23.2h (USB-Geräte-Overrides), Phase 23.3 (Linux libmtp), Phase 31.5, oder Phase 14 ML Backlog  
+**Nächster Schritt:** Phase 23.2h / 23.3 / 31.5  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
 
 ### Performance-Backlog

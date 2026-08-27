@@ -369,6 +369,22 @@
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
         "connectedAs": "Connected to {{name}}",
         "foundSuccessViaServerPasswordNamed": "{{name}}: Address and access code applied (server password)."
+      },
+      "pathHints": {
+        "suggestTitle": "SMB paths from booking lookup",
+        "suggestBody": "Primary: {{primary}}{{backup}}",
+        "suggestBackupLine": " · Backup: {{url}}",
+        "backupProfileLabel": "AMS backup",
+        "applyFailed": "Paths could not be saved.",
+        "credentialsTitlePrimary": "SMB credentials (primary)",
+        "credentialsTitleBackup": "SMB credentials (backup)",
+        "credentialsBodyPrimary": "Enter login and password for the primary SMB server.",
+        "credentialsBodyBackup": "Enter login and password for the backup target.",
+        "driftTitle": "SMB path differs from booking lookup",
+        "driftPrimaryLine": "Primary: {{current}} → {{suggested}}",
+        "driftBackupLine": "Backup: {{current}} → {{suggested}}",
+        "dismissLater": "Later",
+        "instanceMismatch": "Paths belong to a different booking lookup instance — apply is disabled."
       }
     },
     "save": {

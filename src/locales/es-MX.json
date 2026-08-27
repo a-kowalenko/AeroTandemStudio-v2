@@ -369,6 +369,22 @@
         "discoveredItem": "{{instance}} — {{url}}{{version}}",
         "connectedAs": "Conectado a {{name}}",
         "foundSuccessViaServerPasswordNamed": "{{name}}: dirección y código de acceso aplicados (contraseña del servidor)."
+      },
+      "pathHints": {
+        "suggestTitle": "Rutas SMB desde búsqueda de reservas",
+        "suggestBody": "Primario: {{primary}}{{backup}}",
+        "suggestBackupLine": " · Respaldo: {{url}}",
+        "backupProfileLabel": "Respaldo AMS",
+        "applyFailed": "No se pudieron guardar las rutas.",
+        "credentialsTitlePrimary": "Credenciales SMB (primario)",
+        "credentialsTitleBackup": "Credenciales SMB (respaldo)",
+        "credentialsBodyPrimary": "Introduce usuario y contraseña del servidor SMB primario.",
+        "credentialsBodyBackup": "Introduce usuario y contraseña del destino de respaldo.",
+        "driftTitle": "La ruta SMB difiere de la búsqueda de reservas",
+        "driftPrimaryLine": "Primario: {{current}} → {{suggested}}",
+        "driftBackupLine": "Respaldo: {{current}} → {{suggested}}",
+        "dismissLater": "Más tarde",
+        "instanceMismatch": "Las rutas pertenecen a otra instancia de reservas — aplicar está desactivado."
       }
     },
     "save": {

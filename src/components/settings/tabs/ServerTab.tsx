@@ -6,6 +6,8 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { ServerProfileEditor } from "@/components/ServerProfileEditor";
+import { AmsPathHintsSuggestBanner } from "@/components/AmsPathHintsSuggestBanner";
+import { AmsPathHintsDriftBanner } from "@/components/AmsPathHintsDriftBanner";
 import { useServerStore } from "@/store/serverStore";
 import { useAmsBridgeStore, discoveredAmsLabel } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
@@ -375,6 +377,22 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         title={t("settings.server.smb.title")}
         description={t("settings.server.smb.description")}
       >
+        <AmsPathHintsSuggestBanner
+          draft={draft}
+          setDraft={setDraft}
+          persist={persistConfig}
+          onError={showError}
+          errorTitle={t("settings.tabs.server")}
+          diffFromDraft
+        />
+        <AmsPathHintsDriftBanner
+          draft={draft}
+          setDraft={setDraft}
+          persist={persistConfig}
+          onError={showError}
+          errorTitle={t("settings.tabs.server")}
+          diffFromDraft
+        />
         <ServerProfileEditor
           draft={draft}
           setDraft={setDraft}

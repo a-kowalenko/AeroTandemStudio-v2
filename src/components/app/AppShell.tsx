@@ -23,6 +23,7 @@ import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import { CustomerSidebar } from "./CustomerSidebar";
 import { WorkflowLayout } from "./WorkflowLayout";
+import { AppPathHintsDriftBanner } from "./AppPathHintsDriftBanner";
 import type { TaskProgressState } from "./types";
 import type { CreateJobPlan } from "../../lib/createJobPlan";
 import { cn } from "../../lib/utils";
@@ -229,6 +230,7 @@ export function AppShell({
       </AppChrome>
 
       <div className="flex min-h-0 flex-1 flex-col">
+        <AppPathHintsDriftBanner />
         <div className="flex min-h-0 flex-1">
           <CustomerSidebar
             busy={busy}

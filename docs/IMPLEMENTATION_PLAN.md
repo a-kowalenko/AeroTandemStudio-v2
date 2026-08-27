@@ -57,7 +57,7 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
+**Nächste Phase:** [Phase 35 — AMS Path Hints](#phase-35--ams-path-hints-bridge--smb) · [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
 *(Phase 34 SD-Server-Backup über SMB erledigt.)*  
 *(Phase 33 Label Historie → Vorgänge erledigt.)*  
 *(Phase 32 SMB Quiet-Poll erledigt.)*  
@@ -2540,6 +2540,95 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 ---
 
+### Phase 35 — AMS Path Hints (Bridge → SMB)
+
+**Status:** ✅ Docs · Code 35.a–35.d  
+**Abhängigkeiten:** Phase 10 (SMB + Profile), Phase 32 (Quiet-Poll), AMS Phase 13 / P6 (AeroMediaService-v2 `docs/HANDOFF.md` §9.3)  
+**Partner:** AMS `P6a` muss Health `ats_paths` + Capability `paths-v1` liefern (oder ATS soft-degradieren)
+
+**Ziel:** Nach Bridge-Connect die von AMS gelieferten client-tauglichen SMB-Pfade als **Vorschlag** in `server_url` / `server_profiles` übernehmen — ohne stilles Overwrite, ohne Failover.
+
+> Eine Agent-Session = nur ein Slice (35.a / 35.b / 35.c). Kein Auto-Upload, kein Failover Primär→Backup, `sd_server_backup_url` nicht anfassen.
+
+#### Produktentscheidungen (fest)
+
+| # | Entscheidung |
+|---|--------------|
+| 1 | Backup = nur zweites Profil (`ams-backup`) — kein Failover |
+| 2 | Default-URL `smb://169.254.169.254/aktuell` gilt als „leer“ für Suggest |
+| 3 | Credentials: gemeinsame Probe; bei Bedarf pro Ziel (Primär/Backup) abfragen |
+| 4 | Wire: ein Feld pro Ziel, bevorzugt `smb://` |
+
+#### Credentials nach Pfad-Übernahme
+
+1. Primär → aktives Profil / `server_url`; Backup → Profil `ams-backup`.
+2. `test_server_connection` mit aktuellen Creds gegen Primär; bei Backup dieselbe Probe gegen Backup-URL.
+3. Ergebnis-Matrix:
+
+| Primär | Backup | Aktion |
+|--------|--------|--------|
+| ok | ok / kein Backup | fertig; Backup-Profil übernimmt dieselben Creds |
+| ok | fail | nur Backup-Credentials abfragen |
+| fail | ok | nur Primär-Credentials abfragen |
+| fail | fail | Primär abfragen → testen → Backup mit denselben Creds erneut; sonst separat Backup |
+| fail | (kein Backup) | nur Primär-Credentials |
+
+Guest/leer ok → nichts abfragen. Quiet-Poll ändert keine Credentials / keine Dialoge.
+
+#### Slices
+
+- [x] **Docs** — dieser Abschnitt + AMS `HANDOFF.md` §9.3 / P6
+- [x] **35.a** (= AMS P6b): Health-DTO `ats_paths`; `amsBridgeStore`; Pure Helpers `lib/amsPathHints.ts` (Default-URL, Normalisierung, Diff); Unit-Tests; kein Persist
+- [x] **35.b** (= AMS P6c): ServerTab / Wizard Banner „Übernehmen“; Profil `ams-backup`; Credentials-Flow; SMB-Test; i18n
+- [x] **35.c** (optional, = AMS P6d): Drift-Warnung wenn `server_url` ≠ AMS-Primär
+- [x] **35.d** (Polish): Drift-Banner „Später“/Dismiss-Signatur; `instance_id`-Bindung beim Übernehmen; Settings-Draft-Diff; i18n
+
+**Reihenfolge:** erst AMS **P6a**, dann ATS **35.a → 35.b → 35.c → 35.d**.
+
+#### Out of Scope
+
+- Stiller Failover / Auto-Switch auf Backup
+- Auto-Apply ohne User-Aktion (außer leerer/Default-URL Soft-Suggest nach Connect)
+- Vermischung mit `sd_server_backup_url` (Phase 34)
+- AMS-Upload-Pipeline
+
+#### Referenzen
+
+```
+AMS: docs/HANDOFF.md §9.3
+src/lib/tauri.ts                     # AmsBridgeHealth
+src/store/amsBridgeStore.ts
+src/lib/serverProfile.ts
+src/lib/amsAutoConnect.ts            # nur optional Soft-Prompt-Hook
+src/components/settings/tabs/ServerTab.tsx
+src/components/SetupWizard.tsx
+```
+
+#### Agent-Prompt (nächste ATS-Session = 35.a, nach AMS P6a)
+
+```
+Implementiere Phase 35 Slice 35.a aus @docs/IMPLEMENTATION_PLAN.md
+Spec: AMS docs/HANDOFF.md §9.3
+Regeln: @AGENTS.md
+Nur 35.a (DTO + Diff-Helpers + Store). Kein Auto-Apply, kein UI-Übernehmen.
+Danach cargo test && npm run check.
+```
+
+#### Akzeptanz (gesamt Phase 35)
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Mit `paths-v1` + Primär: Suggest bei leerer/Default-URL; Übernehmen setzt `server_url` |
+| 2 | Abweichende manuelle URL → Warnung, kein Auto-Overwrite |
+| 3 | Backup → Profil `ams-backup`; aktives Ziel bleibt Primär |
+| 4 | Credentials-Matrix wie oben; SMB-Test vor „verbunden“ |
+| 5 | Ohne Capability / Bridge down → manueller Pfad unverändert nutzbar |
+| 6 | Quiet-Poll ohne Dialog-Spam |
+| 7 | Drift „Später“: gleiche Signatur unterdrückt bis Hints oder manuelle URL/Profil-Änderung |
+| 8 | Übernehmen nur bei leerer oder passender `ams_bridge_server_instance_id` |
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -2652,6 +2741,7 @@ cargo test
 | 31.3 | Mehrere pending sequentiell; kaputter Ordner skip; Summary; Reconnect ohne Auto-Upload |
 | 32 | SMB Quiet-Poll: Status ~45 s + Tab-Focus; kein Flackern; Skip während Upload; Header-Retry laut |
 | 33 | Header/Dialog „Vorgänge“ (de) / Jobs / Trabajos; Hints ohne „Historie“; Medien-Confirm unverändert |
+| 35 | Bridge `paths-v1`: Suggest bei Default-URL; Backup-Profil; Credentials-Matrix; kein Auto-Overwrite |
 
 ### End-to-End (Phase 11)
 
@@ -2742,6 +2832,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 33 | Label Historie → Vorgänge (i18n) | ✅ |
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
 | 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
+| 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2764,6 +2855,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 34:** Prompt im Phasenabschnitt (SD-Server-Backup über SMB).
 
+**Phase 35:** Prompt im Phasenabschnitt (AMS Path Hints); Spec AMS `docs/HANDOFF.md` §9.3.
+
 ---
 
-*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 34 erledigt (SD-Server-Backup über SMB)*
+*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 35 Docs (AMS Path Hints) eingetragen*

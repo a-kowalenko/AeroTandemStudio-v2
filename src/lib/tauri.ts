@@ -1136,12 +1136,18 @@ export async function testServerConnection(
   });
 }
 
+export type AmsBridgeAtsPaths = {
+  primary_smb_url: string;
+  backup_smb_url?: string;
+};
+
 export type AmsBridgeHealth = {
   online: boolean;
   version: string;
   display_name?: string;
   instance_id?: string;
   monitor_path: string;
+  ats_paths?: AmsBridgeAtsPaths | null;
   capabilities: string[];
 };
 
