@@ -42,6 +42,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einrichtungsassistent: „Ich bin“ ist Pflicht; mit aktivem Upload muss vor dem Fortfahren eine Server-Verbindung stehen — der Verbinden-Button wird hervorgehoben
 - Crew-Liste: neue Standard-Namen aus App-Updates erscheinen automatisch — selbst entfernte Namen bleiben weg
 - Manuell abgebrochene Uploads zählen nicht mehr als ausstehend (kein Badge, kein Sammel-Nachholen) — unter Vorgänge weiterhin nachholbar
+- Upload-Leiste: Warteschlange aufklappbar — wartende Vorgänge mit Gast und Crew sichtbar
+- Unter Vorgänge: Upload-Status kürzer und mit Tooltip (Ausstehend, Abgebrochen, Fehlgeschlagen, Upload)
+- Upload-Abbruch räumt unvollständige Server-Ordner zuverlässiger auf
 
 ## [0.3.9-beta.4] - 2026-08-27
 
