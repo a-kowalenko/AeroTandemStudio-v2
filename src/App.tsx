@@ -1483,7 +1483,7 @@ function App() {
 
   uploadSlotRunnerRef.current = async (job) => {
     const persistUploadState = async (
-      state: "pending" | "uploading" | "done" | "failed",
+      state: "pending" | "uploading" | "done" | "failed" | "cancelled",
     ) => {
       // Append SMB must not flip the parent vorgang's Erst-Upload state.
       if (job.source === "append") return;
@@ -1521,7 +1521,7 @@ function App() {
       await resetUploadSlotCancel();
       // Cancel may have landed between enqueue and reset — honor it.
       if (uploadCancelRequestedRef.current) {
-        await persistUploadState("pending");
+        await persistUploadState("cancelled");
         setServerPhase("connected");
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
@@ -1535,7 +1535,7 @@ function App() {
         folder_name: job.folderName,
       });
       if (uploadCancelRequestedRef.current) {
-        await persistUploadState("pending");
+        await persistUploadState("cancelled");
         setServerPhase("connected");
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
@@ -1560,7 +1560,7 @@ function App() {
       return "ok";
     } catch (uploadErr) {
       if (isCancellationError(uploadErr) || uploadCancelRequestedRef.current) {
-        await persistUploadState("pending");
+        await persistUploadState("cancelled");
         setServerPhase("connected");
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
@@ -1948,7 +1948,7 @@ function App() {
                   ...prev,
                   uploadInProgress: false,
                   serverUploaded: false,
-                  uploadDeferred: true,
+                  uploadDeferred: false,
                   uploadNote: t("app.upload.bgCancelled"),
                 };
               }

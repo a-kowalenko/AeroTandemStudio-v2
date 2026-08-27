@@ -928,7 +928,7 @@
       "bgFailTitle": "Upload failed",
       "bgFailMessage": "{{detail}} Retry from Jobs.",
       "bgFailHint": "Please retry from Jobs.",
-      "bgCancelled": "Upload cancelled — pending in Jobs.",
+      "bgCancelled": "Upload cancelled — can retry in Jobs.",
       "titleLater": "Upload · later"
     },
     "job": {
@@ -1166,7 +1166,8 @@
       "expand": "Show upload details",
       "collapse": "Hide upload details",
       "queueWaiting": "{{count}} more waiting in queue",
-      "failedHold": "Upload failed — retry from Jobs"
+      "failedHold": "Upload failed — retry from Jobs",
+      "cleaningUp": "Finishing upload…"
     },
     "createSteps": {
       "aria": "Create job steps",
@@ -1301,6 +1302,10 @@
       "emptyFilesHint": "Assign files to the selected product. For open or new products, an optional watermarked preview can be sent along.",
       "fileCountMany": "{{count}} files",
       "fileCountOne": "{{count}} file",
+      "catHandcamFoto": "Handcam photo",
+      "catHandcamVideo": "Handcam video",
+      "catOutsideFoto": "Outside photo",
+      "catOutsideVideo": "Outside video",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
       "modeOriginal": "Original",
@@ -1346,6 +1351,7 @@
       "failed": "Upload failed",
       "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
       "pending": "Upload pending",
+      "cancelled": "Upload cancelled",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "reconnectToastBody": "{{count}} uploads pending — retry from Jobs.",
       "reconnectToastTitle": "Server back online",

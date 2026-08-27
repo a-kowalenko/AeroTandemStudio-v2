@@ -227,17 +227,26 @@ function ProductStatusChip({ badge }: { badge: ProductBadge }) {
   );
 }
 
-/** SMB upload chip (Phase 31.1); retry action in detail panel (31.2). */
+/** SMB upload chip (Phase 31.1 / 31.8); retry action in detail panel (31.2). */
 function UploadStateChip({ state }: { state: string }) {
   const { t } = useTranslation();
   const s = state.trim().toLowerCase();
-  if (s !== "pending" && s !== "failed" && s !== "uploading") return null;
+  if (
+    s !== "pending" &&
+    s !== "failed" &&
+    s !== "uploading" &&
+    s !== "cancelled"
+  ) {
+    return null;
+  }
   const label =
     s === "failed"
       ? t("history.upload.failed")
       : s === "uploading"
         ? t("history.upload.uploading")
-        : t("history.upload.pending");
+        : s === "cancelled"
+          ? t("history.upload.cancelled")
+          : t("history.upload.pending");
   return (
     <span
       className={cn(
@@ -246,7 +255,9 @@ function UploadStateChip({ state }: { state: string }) {
           ? "border-destructive/40 bg-destructive/10 text-destructive"
           : s === "uploading"
             ? "border-primary/40 bg-primary/10 text-primary"
-            : "border-warning/40 bg-warning/10 text-warning",
+            : s === "cancelled"
+              ? "border-border bg-muted/40 text-muted-foreground"
+              : "border-warning/40 bg-warning/10 text-warning",
       )}
       title={label}
     >
@@ -1997,7 +2008,7 @@ function VorgaengePanel({
                         ) : null}
                         <UploadStateChip state={e.upload_state ?? ""} />
                         {!amsView &&
-                        !["pending", "failed", "uploading"].includes(
+                        !["pending", "failed", "uploading", "cancelled"].includes(
                           (e.upload_state ?? "").trim().toLowerCase(),
                         ) ? (
                           <span className="text-muted">—</span>

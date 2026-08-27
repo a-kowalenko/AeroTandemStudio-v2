@@ -4,12 +4,13 @@ import type {
   VorgangEntry,
   VorgangFileEntry,
 } from "@/lib/vorgangHistory";
+import { isOutstandingUploadState } from "@/lib/uploadState";
 import type { ProcessedFileEntry } from "@/lib/sdCard";
 
 type HistoryState = {
   vorgaenge: VorgangEntry[];
   vorgaengeLoaded: boolean;
-  /** Historie-button badge: `pending` + `failed` (0 when upload_to_server off). */
+  /** Historie-button badge: `pending` + `failed` only (not `cancelled`). */
   pendingUploadCount: number;
   selectedId: number | null;
   files: VorgangFileEntry[];
@@ -34,8 +35,8 @@ type HistoryState = {
 function countRetryableUploads(rows: VorgangEntry[]): number {
   return rows.reduce((n, e) => {
     if (!e.correlation_id?.trim() || !e.base_output_dir?.trim()) return n;
-    const s = (e.upload_state ?? "").trim().toLowerCase();
-    return n + (s === "pending" || s === "failed" ? 1 : 0);
+    // Badge: outstanding only (not manually cancelled).
+    return n + (isOutstandingUploadState(e.upload_state) ? 1 : 0);
   }, 0);
 }
 

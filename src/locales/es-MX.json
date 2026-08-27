@@ -928,7 +928,7 @@
       "bgFailTitle": "Subida fallida",
       "bgFailMessage": "{{detail}} Reintentar en Trabajos.",
       "bgFailHint": "Reintenta desde Trabajos.",
-      "bgCancelled": "Subida cancelada — pendiente en Trabajos.",
+      "bgCancelled": "Subida cancelada — se puede reintentar en Trabajos.",
       "titleLater": "Subida · después"
     },
     "job": {
@@ -1166,7 +1166,8 @@
       "expand": "Mostrar detalles de la subida",
       "collapse": "Ocultar detalles de la subida",
       "queueWaiting": "{{count}} más en cola",
-      "failedHold": "Subida fallida — reintentar en Trabajos"
+      "failedHold": "Subida fallida — reintentar en Trabajos",
+      "cleaningUp": "Finalizando la subida…"
     },
     "createSteps": {
       "aria": "Pasos al crear el proceso",
@@ -1301,6 +1302,10 @@
       "emptyFilesHint": "Asigna archivos al producto seleccionado. Para productos abiertos o nuevos, opcionalmente se puede enviar una vista previa con marca de agua.",
       "fileCountMany": "{{count}} archivos",
       "fileCountOne": "{{count}} archivo",
+      "catHandcamFoto": "Foto Handcam",
+      "catHandcamVideo": "Video Handcam",
+      "catOutsideFoto": "Foto Outside",
+      "catOutsideVideo": "Video Outside",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
       "modeOriginal": "Original",
@@ -1346,6 +1351,7 @@
       "failed": "Subida fallida",
       "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
       "pending": "Subida pendiente",
+      "cancelled": "Subida cancelada",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos.",
       "reconnectToastTitle": "Servidor de nuevo en línea",

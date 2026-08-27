@@ -375,7 +375,8 @@ pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
     Ok(())
 }
 
-/// Update SMB upload lifecycle (`none` / `pending` / `uploading` / `done` / `failed`).
+/// Update SMB upload lifecycle
+/// (`none` / `pending` / `uploading` / `done` / `failed` / `cancelled`).
 #[tauri::command]
 pub fn set_vorgang_upload_state(
     vorgang_id: Option<i64>,

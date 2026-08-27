@@ -928,7 +928,7 @@
       "bgFailTitle": "Upload fehlgeschlagen",
       "bgFailMessage": "{{detail}} Nachholen unter Vorgänge.",
       "bgFailHint": "Bitte unter Vorgänge nachholen.",
-      "bgCancelled": "Upload abgebrochen — ausstehend unter Vorgänge.",
+      "bgCancelled": "Upload abgebrochen — unter Vorgänge nachholbar.",
       "titleLater": "Upload · später"
     },
     "job": {
@@ -1166,7 +1166,8 @@
       "expand": "Upload-Details einblenden",
       "collapse": "Upload-Details ausblenden",
       "queueWaiting": "{{count}} weitere in der Warteschlange",
-      "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge"
+      "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge",
+      "cleaningUp": "Upload wird beendet…"
     },
     "createSteps": {
       "aria": "Schritte beim Erstellen",
@@ -1301,6 +1302,10 @@
       "emptyFilesHint": "Dateien dem gewählten Produkt zuordnen. Bei offenen oder neuen Produkten kann optional eine Preview mit Wasserzeichen mitgesendet werden.",
       "fileCountMany": "{{count}} Dateien",
       "fileCountOne": "{{count}} Datei",
+      "catHandcamFoto": "Handcam Foto",
+      "catHandcamVideo": "Handcam Video",
+      "catOutsideFoto": "Outside Foto",
+      "catOutsideVideo": "Outside Video",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
       "modeOriginal": "Original",
@@ -1346,6 +1351,7 @@
       "failed": "Upload fehlgeschlagen",
       "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
       "pending": "Upload ausstehend",
+      "cancelled": "Upload abgebrochen",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
       "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen.",
       "reconnectToastTitle": "Server wieder online",

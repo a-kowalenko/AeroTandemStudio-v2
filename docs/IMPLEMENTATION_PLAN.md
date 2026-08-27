@@ -66,6 +66,7 @@
 *(Phase 33 Label Historie → Vorgänge erledigt.)*  
 *(Phase 32 SMB Quiet-Poll erledigt.)*  
 *(Phase 31 Offline-Create & Upload nachholen erledigt.)*  
+*(Phase 31.8 ✅ Manueller Upload-Abbruch → `cancelled` (kein Badge).)*  
 *(Phase 31.2 Prefight + Upload nachholen erledigt.)*  
 *(Phase 31.1 Soft-Block Create + upload_state erledigt.)*  
 *(Phase 30 Ausgabeordner-Konflikt erledigt.)*  
@@ -1851,7 +1852,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 31 — Offline-Create & Upload nachholen
 
-**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅ · 31.4 ✅) · 🔄 31.5 / 31.6 geplant  
+**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅ · 31.4 ✅ · 31.6 ✅ · 31.7 ✅ · 31.8 ✅) · 🔄 31.5 geplant  
 **Abhängigkeiten:** Phase 10 (SMB-Upload + Marker-Barrier OPT-15), Phase 12 (Create/Historie), Phase 24 (Historie-UI / Append-Muster), Phase 29/30 (Soft-Confirm-Muster)  
 **Ziel:** Bei aktivem Upload und offline Server trotzdem **lokal erstellen**; Upload bewusst **nachholen** (pro Vorgang + alle bereiten) — ohne persistente Auto-Queue und ohne stillen Background-Drain.
 
@@ -1880,7 +1881,7 @@ src/locales/de.json | en.json | es-MX.json
 | # | Thema | Entscheidung |
 |---|--------|----------------|
 | 1 | Create vs. Upload | Entkoppeln: lokal fertigstellen darf ohne SMB/AMS-Reachability |
-| 2 | Status-Modell | **Separat** von `ams_state`: z. B. `upload_state` (`none` / `pending` / `uploading` / `done` / `failed`). AMS `pending` bleibt „noch nicht von AMS abgeschlossen“ — nicht mit „SMB nie gelaufen“ vermischen |
+| 2 | Status-Modell | **Separat** von `ams_state`: z. B. `upload_state` (`none` / `pending` / `uploading` / `done` / `failed` / `cancelled`). AMS `pending` bleibt „noch nicht von AMS abgeschlossen“ — nicht mit „SMB nie gelaufen“ vermischen. Manueller Abbruch → `cancelled` (nachholbar, **kein** Badge/Bulk) — siehe 31.8 |
 | 3 | Quelle Prefight | `_ams_manifest.v1.json` → `integrity.files` (Pfad + Size) + Marker-Existenz. **Nicht** `vorgang_dateien`-Sources (SD oft weg) |
 | 4 | Hard fail Prefight | Ordner fehlt/leer; Manifest fehlt; Marker fehlt; ≥1 Manifest-Datei fehlt; Size weicht ab; Lokal-Vorgang (`correlation_id` leer); bereits `upload_state=done` / AMS Erst-Handoff `completed` |
 | 5 | Soft warn Prefight | Extra-Dateien im Ordner, die **nicht** im Manifest stehen → Confirm „trotzdem hochladen?“ (wie Folder-Conflict Soft Confirm) |
@@ -1938,7 +1939,7 @@ i18n de/en/es-MX. Danach cargo test && npm run check.
 
 | Thema | Entscheidung |
 |--------|----------------|
-| Button sichtbar | `upload_to_server` Config an; Vorgang nicht Lokal; `upload_state` in `pending`\|`failed`; Ordner-Pfad gesetzt |
+| Button sichtbar | `upload_to_server` Config an; Vorgang nicht Lokal; `upload_state` in `pending`\|`failed`\|`cancelled` (31.8); Ordner-Pfad gesetzt |
 | Prefight-Command | z. B. `preflight_vorgang_upload(vorgang_id)` → ok / hard_errors[] / soft_warnings[] (Extra-Files) |
 | Hard fail UX | Fehlerdialog mit konkreter Dateiliste; kein Upload-Start |
 | Soft warn UX | Confirm; bei Ack Upload starten |
@@ -2355,6 +2356,49 @@ Implementiere Phase 31.7 aus @docs/IMPLEMENTATION_PLAN.md
 Regeln: @AGENTS.md
 Legacy: @C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\dji_media_paths.py
 Nur Phase 31.7. Danach cargo test && npm run tauri dev.
+```
+
+---
+
+#### Phase 31.8 — Manueller Upload-Abbruch → `cancelled`
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 31.1 (`upload_state`), Phase 37 (Background-Slot Cancel)  
+**Ziel:** Bewusst abgebrochene Vorgang-Uploads nicht mehr als „ausstehend“ (`pending`) führen — nachholbar ja, Badge/Bulk/Reconnect nein.
+
+##### Problem
+
+Cancel setzte `upload_state=pending` → Historie-Badge, Reconnect-Toast und Bulk zählten den Vorgang wie Offline-Create. Semantik von `pending` = „System erwartet noch Upload“ passt nicht zu Operator-Abbruch.
+
+##### Entscheidungen
+
+| Thema | Entscheidung |
+|--------|----------------|
+| Neuer State | `cancelled` (zusätzlich zu `none` / `pending` / `uploading` / `done` / `failed`) |
+| Wann | Aktiver Slot-Job manuell abgebrochen (Compact-Bar / Quit) → `cancelled` |
+| Offline-Create | Unverändert `pending` |
+| Upload-Fehler | Unverändert `failed` |
+| Badge / Reconnect / Bulk | Nur `pending` + `failed` |
+| Einzel-Nachholen | `pending` \| `failed` \| `cancelled` |
+| Chip | „Abgebrochen“ (neutral) |
+| Success-Dialog | Kein „Upload ausstehend“-Ton nach Cancel |
+| Schema | Keine Migration — TEXT-Spalte akzeptiert neuen Wert via `normalize_upload_state` |
+
+##### Scope
+
+- [x] Rust: `normalize_upload_state` + Unit-Test `cancelled`
+- [x] Frontend: Cancel → `cancelled`; `isOutstandingUploadState` vs `isRetryableUploadState`
+- [x] Historie-Chip + i18n; Toast/Success-Texte ohne „ausstehend“
+- [x] Script-Test Badge vs Retry
+- [ ] Manuell: Upload abbrechen → kein Badge; Vorgänge → Chip + Nachholen → `done`
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 31.8 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 31.8 (Cancel → cancelled; Badge nur pending|failed; Retry inkl. cancelled).
+Danach cargo test && npm run check && npm run test:scripts.
 ```
 
 ---
@@ -2844,7 +2888,7 @@ Unit-Tests für Merge/Tombstone/Reset. Danach cargo test && npm run check.
 | Success Live | Kleiner Balken + % + MB (aus `uploadProgress`), solange dieser Vorgang aktiver Slot-Job ist |
 | Toast Erfolg | Kurz: „Upload abgeschlossen“ (+ optional Ordnername) |
 | Toast Fehler | Fehlertext + Hinweis Historie/Nachholen; `upload_state=failed` |
-| Cancel während Success | Nur Upload canceln; Modal bleibt / schließbar; Session schon frei |
+| Cancel während Success | Nur Upload canceln; Modal bleibt / schließbar; Session schon frei; `upload_state=cancelled` (31.8, kein Badge) |
 | Queue-UI (minimal) | Optional Badge „+n in Warteschlange“ am Panel; Details in 37.2 ok |
 | Concurrent Create | Erlaubt (Session frei). Dessen Upload → Queue hinter laufendem |
 | Historie/Append in 37.1 | Mindestens: gleicher Slot-API (`enqueueUpload` / `runUploadSlot`). UI-Busy-Entkopplung für Nachholen/Append kann 37.1 grob oder 37.3 Feinschliff |
@@ -2853,7 +2897,7 @@ Unit-Tests für Merge/Tombstone/Reset. Danach cargo test && npm run check.
 
 - [x] Upload-Slot + FIFO-Queue (Frontend-Store; ein aktives `uploadToServer`)
 - [x] `startCreate`: nach lokalem Create Success/Reset/`busy=false`; Upload nicht mehr UI-blockierend awaiten
-- [x] `upload_state` weiter: `uploading` → `done` / `failed` / Cancel → `pending`
+- [x] `upload_state` weiter: `uploading` → `done` / `failed` / Cancel → `cancelled` (31.8)
 - [x] `CreateSuccessDialog`: Upload-live (Bar/%/MB); kein Warten auf Upload-Ende für „hochgeladen“-Zeile
 - [x] Toasts für Upload Done/Fail
 - [x] Create-Background + Historie-Retry teilen Slot (Append/Bulk anbinden oder klar stubben → 37.3)
@@ -3234,6 +3278,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
 | 33 | Label Historie → Vorgänge (i18n) | ✅ |
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
+| 31.8 | Manueller Upload-Abbruch → `cancelled` | ✅ |
 | 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
 | 34.1 | Server-Backup Popover (Details + Abbruch) | ✅ |
 | 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |

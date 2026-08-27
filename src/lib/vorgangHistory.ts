@@ -5,6 +5,16 @@ import {
   classifyBulkPreflight,
   primaryPreflightReasonCode,
 } from "./uploadPreflight";
+import {
+  isOutstandingVorgangUpload,
+} from "./uploadState";
+
+export {
+  canRetryVorgangUpload,
+  isOutstandingUploadState,
+  isOutstandingVorgangUpload,
+  isRetryableUploadState,
+} from "./uploadState";
 
 export type VorgangEntry = {
   id: number;
@@ -53,7 +63,7 @@ export type VorgangEntry = {
   ams_archive: string;
   /** `bridge` | `outbox` | `local` | `cached` */
   ams_source: string;
-  /** SMB upload: `none` | `pending` | `uploading` | `done` | `failed`. */
+  /** SMB upload: `none` | `pending` | `uploading` | `done` | `failed` | `cancelled`. */
   upload_state: string;
   append_count: number;
   last_append_correlation_id: string;
@@ -126,7 +136,8 @@ export type VorgangUploadState =
   | "pending"
   | "uploading"
   | "done"
-  | "failed";
+  | "failed"
+  | "cancelled";
 
 /** Persist SMB upload lifecycle (separate from AMS handoff state). */
 export async function setVorgangUploadState(
@@ -195,37 +206,20 @@ export type VorgangUploadRetryOptions = {
   includedExtraCount?: number;
 };
 
-/** `pending` | `failed` — counts toward Historie badge / bulk candidates. */
-export function isRetryableUploadState(state: string | null | undefined): boolean {
-  const s = (state ?? "").trim().toLowerCase();
-  return s === "pending" || s === "failed";
-}
-
-/** Whether Historie may offer “Upload nachholen” for this row. */
-export function canRetryVorgangUpload(
-  entry: VorgangEntry,
-  uploadToServer: boolean,
-): boolean {
-  if (!uploadToServer) return false;
-  if (!entry.correlation_id?.trim()) return false;
-  if (!entry.base_output_dir?.trim()) return false;
-  return isRetryableUploadState(entry.upload_state);
-}
-
-/** Count badge / reconnect toast: pending + failed retryable rows. */
+/** Count badge / reconnect toast: pending + failed only. */
 export function countPendingUploads(
   entries: VorgangEntry[],
   uploadToServer: boolean,
 ): number {
   if (!uploadToServer) return 0;
   return entries.reduce(
-    (n, e) => n + (canRetryVorgangUpload(e, true) ? 1 : 0),
+    (n, e) => n + (isOutstandingVorgangUpload(e, true) ? 1 : 0),
     0,
   );
 }
 
 /**
- * Bulk candidates: retryable rows, oldest first (`created_at` ASC, then id).
+ * Bulk candidates: outstanding rows, oldest first (`created_at` ASC, then id).
  */
 export function pendingUploadCandidates(
   entries: VorgangEntry[],
@@ -233,7 +227,7 @@ export function pendingUploadCandidates(
 ): VorgangEntry[] {
   if (!uploadToServer) return [];
   return entries
-    .filter((e) => canRetryVorgangUpload(e, true))
+    .filter((e) => isOutstandingVorgangUpload(e, true))
     .slice()
     .sort((a, b) => {
       const ta = Date.parse(

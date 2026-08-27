@@ -120,6 +120,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 32: SMB Quiet-Poll (Parity mit AMS-Health; 45 s + visibility; kein Auto-Upload)
 - ✅ Phase 33: Label Historie → Vorgänge (i18n: DE Vorgänge / EN Jobs / ES Trabajos; kein Component-Rename)
 - ✅ Phase 31.7: DJI Foto-Timelapse Suffix-Pairing (`001_NNNN` ↔ `DJI_*_NNNN.MP4`) + Clear inkl. `.LRF`
+- ✅ Phase 31.8: Manueller Upload-Abbruch → `upload_state=cancelled` (nachholbar, kein Badge/Bulk)
 - ✅ Phase 34: SD-Server-Backup über SMB (`sd_server_backup_url`, lokal zuerst + async Mirror; kein Mount-`fs::copy`)
 - ✅ Phase 34.1: Server-Backup-Popover (Chip-Details Bar/%/MB/Speed + Soft-Confirm-Abbruch nur aktueller Job)
 - ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
