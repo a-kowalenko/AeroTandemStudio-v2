@@ -810,9 +810,7 @@
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
       "ready": "Bereit",
-      "starting": "Start…",
-      "serverBackupPercent": "Server-Backup {{percent}}%",
-      "serverBackupDone": "Server-Backup fertig"
+      "starting": "Start…"
     },
     "update": {
       "alreadyInstalling": "Installation läuft bereits…",
@@ -1406,6 +1404,8 @@
       "amsNotChecked": "{{title}}: nicht geprüft",
       "retryOrSettings": "Klicken: erneut prüfen · Rechtsklick: Einstellungen",
       "retry": "Klicken zum erneuten Prüfen",
+      "backupFailedHint": "Klicken: Hinweis schließen & erneut prüfen · Rechtsklick: Backup-URL",
+      "backupSettingsHint": "Rechtsklick: Backup-URL in den Einstellungen",
       "connectionTitle": "Verbindung",
       "titleAllOk": "Alles verbunden",
       "titlePartial": "Teilweise",
@@ -1417,7 +1417,19 @@
       "serverOkLocal": "Erreichbar (lokal)",
       "serverOkRemote": "Verbunden",
       "amsOk": "Verbunden",
-      "titleAmsOkNamed": "{{name}} verbunden"
+      "titleAmsOkNamed": "{{name}} verbunden",
+      "chipUpload": "Upload",
+      "chipServerBackup": "Server-Backup",
+      "chipServerBackupDone": "Server-Backup fertig",
+      "chipServerBackupFailed": "Server-Backup fehlgeschlagen",
+      "percent": "{{percent}}%",
+      "serverBackupRunning": "Server-Backup: {{percent}}%",
+      "serverBackupWithDetail": "Server-Backup: {{percent}}% · {{detail}}",
+      "serverBackupFiles": "{{current}}/{{total}}",
+      "parallelServerBackup": "Parallel: Server-Backup {{percent}}%",
+      "parallelUpload": "Parallel: Upload {{percent}}%",
+      "liveUpload": "Upload {{percent}} Prozent",
+      "liveServerBackup": "Server-Backup {{percent}} Prozent"
     }
   },
   "qr": {

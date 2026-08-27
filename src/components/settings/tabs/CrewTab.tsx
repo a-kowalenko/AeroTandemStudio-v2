@@ -8,12 +8,14 @@ import { Combobox } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
 import type { CrewMember } from "@/lib/tauri";
 import {
+  clearCrewRemovedName,
   crewAllNames,
   crewKeepComboboxValue,
   crewKeepPinnedOptions,
   crewNamesEqual,
   crewNamesForRole,
   findCrewMember,
+  markCrewRemovedName,
   parseCrewKeepComboboxValue,
   upsertCrewMember,
 } from "@/lib/tauri";
@@ -88,6 +90,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
               crew_list: prev.crew_list.filter(
                 (c) => !crewNamesEqual(c.name, opName),
               ),
+              crew_removed_names: markCrewRemovedName(
+                prev.crew_removed_names,
+                opName,
+              ),
             }
           : prev,
       );
@@ -98,6 +104,10 @@ export function CrewTab({ draft, setDraft, crewEditor }: Props) {
         ? {
             ...prev,
             crew_list: upsertCrewMember(prev.crew_list, opName, next),
+            crew_removed_names: clearCrewRemovedName(
+              prev.crew_removed_names,
+              opName,
+            ),
           }
         : prev,
     );

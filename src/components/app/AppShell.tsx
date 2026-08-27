@@ -9,7 +9,6 @@ import { SettingsCluster } from "../SettingsCluster";
 import { LogConsole } from "../LogConsole";
 import { Button } from "../ui/button";
 import { useConfigStore } from "../../store/configStore";
-import { useSdStore } from "../../store/sdStore";
 import { useAppendStore } from "../../store/appendStore";
 import { usePhotoStore } from "../../store/photoStore";
 import { useVideoStore } from "../../store/videoStore";
@@ -104,7 +103,6 @@ export function AppShell({
   const config = useConfigStore((s) => s.config);
   const uploadToServer = Boolean(config?.upload_to_server);
   const pendingUploadCount = useHistoryStore((s) => s.pendingUploadCount);
-  const secondaryBackup = useSdStore((s) => s.secondaryBackup);
   const appendActive = useAppendStore((s) => s.active);
   const videoImporting = useVideoStore((s) => s.importing);
   const photoImporting = usePhotoStore((s) => s.importing);
@@ -225,7 +223,6 @@ export function AppShell({
           appVersion={appVersion}
           ready={ready}
           hwLabel={hwLabel}
-          secondaryBackup={secondaryBackup}
         />
       </AppChrome>
 

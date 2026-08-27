@@ -1,8 +1,9 @@
-import { Loader2, Server } from "lucide-react";
-import { useEffect, useState, type MouseEvent } from "react";
+import { Check, Loader2, Server, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useConfigStore } from "../store/configStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
+import { useSdStore } from "../store/sdStore";
 import { useServerStore } from "../store/serverStore";
 import { useUiStore } from "../store/uiStore";
 import { isAmsBridgeConfigured } from "../lib/amsLookup";
@@ -13,10 +14,7 @@ import {
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
 import { cn } from "../lib/utils";
-import {
-  formatUploadProgressSnapshot,
-  formatUploadProgressTooltip,
-} from "../lib/uploadProgress";
+import { formatUploadProgressTooltip } from "../lib/uploadProgress";
 
 type Props = {
   className?: string;
@@ -57,6 +55,27 @@ function useDelayedSpinner(active: boolean, immediate: boolean): boolean {
   return show;
 }
 
+/** Announce transfer progress sparsely (state change or every ~5%). */
+function useSparseLiveMessage(message: string | null, percentText: string | null) {
+  const [live, setLive] = useState("");
+  const lastKey = useRef("");
+
+  useEffect(() => {
+    if (!message) {
+      lastKey.current = "";
+      return;
+    }
+    const pctMatch = percentText?.match(/(\d+)/);
+    const bucket = pctMatch ? Math.floor(Number(pctMatch[1]) / 5) : -1;
+    const key = `${message}|${bucket}`;
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    setLive(message);
+  }, [message, percentText]);
+
+  return live;
+}
+
 export function ServerStatusIndicator({ className }: Props) {
   const { t } = useTranslation();
   const [retrying, setRetrying] = useState(false);
@@ -66,6 +85,9 @@ export function ServerStatusIndicator({ className }: Props) {
   const smbRefreshing = useServerStore((s) => s.refreshing);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const checkConnection = useServerStore((s) => s.checkConnection);
+
+  const secondaryBackup = useSdStore((s) => s.secondaryBackup);
+  const setSecondaryBackup = useSdStore((s) => s.setSecondaryBackup);
 
   const amsPhase = useAmsBridgeStore((s) => s.phase);
   const amsConnected = useAmsBridgeStore((s) => s.connected);
@@ -100,6 +122,7 @@ export function ServerStatusIndicator({ className }: Props) {
     uploadPercent:
       smbPhase === "uploading" ? (uploadProgress?.percent ?? 0) : null,
     uploadDetail,
+    secondaryBackup,
     amsConfigured,
     amsPhase,
     amsConnected,
@@ -118,26 +141,29 @@ export function ServerStatusIndicator({ className }: Props) {
   const quietRefreshing =
     !loudChecking &&
     (smbRefreshing || (amsConfigured && amsRefreshing));
-  const showSpinner = useDelayedSpinner(
+  const delayedSpinner = useDelayedSpinner(
     loudChecking || quietRefreshing,
     loudChecking,
   );
+  const showSpinner = !view.percentText && delayedSpinner;
+
+  const liveMessage = useSparseLiveMessage(view.liveMessage, view.percentText);
 
   if (!view.visible) {
     return null;
   }
 
-  const displayLabel =
-    smbPhase === "uploading" && uploadProgress
-      ? formatUploadProgressSnapshot(uploadProgress).label
-      : loudChecking
-        ? t("errors.server.checking")
-        : view.label;
+  const displayLabel = loudChecking && !view.transferKind
+    ? t("errors.server.checking")
+    : view.label;
 
   const canClick = view.canRetry && !retrying;
 
   async function onRetry() {
     if (!canClick) return;
+    if (secondaryBackup?.state === "failed") {
+      setSecondaryBackup(null);
+    }
     setRetrying(true);
     try {
       const [smbResult, amsResult] = await Promise.all([
@@ -187,18 +213,31 @@ export function ServerStatusIndicator({ className }: Props) {
 
   const classNames = cn(
     "flex items-center gap-2 rounded-lg border border-border bg-card/80 px-2.5 py-1.5 text-xs shadow-sm",
-    loudChecking ? "text-warning" : view.toneClass,
+    loudChecking && !view.transferKind ? "text-warning" : view.toneClass,
     canClick &&
       "cursor-pointer transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
     retrying && "cursor-wait opacity-90",
     className,
   );
 
+  const LeftIcon =
+    view.leftIcon === "upload"
+      ? Upload
+      : view.leftIcon === "check"
+        ? Check
+        : Server;
+
   const body = (
     <>
       <span className="flex items-center gap-1.5">
-        <Server className="h-3.5 w-3.5" />
-        {view.amsDot ? (
+        <LeftIcon
+          className={cn(
+            "h-3.5 w-3.5",
+            view.transferBusy && "ats-upload-icon-active",
+          )}
+          aria-hidden
+        />
+        {view.amsDot && view.leftIcon === "server" ? (
           <span className="flex flex-col gap-0.5" aria-hidden>
             <StatusDot
               tone={
@@ -218,29 +257,46 @@ export function ServerStatusIndicator({ className }: Props) {
         ) : null}
       </span>
       <span className="relative inline-grid max-w-[14rem] text-left">
-        {/* Keep width stable across Prüfe… / Verbunden / Teilweise verbunden. */}
-        <span
-          className="invisible col-start-1 row-start-1 whitespace-nowrap"
-          aria-hidden
-        >
-          {t("header.connection.titlePartial")}
-        </span>
-        <span
-          className="invisible col-start-1 row-start-1 whitespace-nowrap"
-          aria-hidden
-        >
-          {t("header.connection.titleFailed")}
-        </span>
+        {/* Stable width across Prüfe… / Verbunden / Teilweise — not transfer labels. */}
+        {!view.transferKind ? (
+          <>
+            <span
+              className="invisible col-start-1 row-start-1 whitespace-nowrap"
+              aria-hidden
+            >
+              {t("header.connection.titlePartial")}
+            </span>
+            <span
+              className="invisible col-start-1 row-start-1 whitespace-nowrap"
+              aria-hidden
+            >
+              {t("header.connection.titleFailed")}
+            </span>
+          </>
+        ) : null}
         <span className="col-start-1 row-start-1 truncate">{displayLabel}</span>
       </span>
-      {/* Fixed slot so the spinner never widens the chip when it appears. */}
+      {/* Fixed slot: percent during transfer, else spinner for checks. */}
       <span
-        className="inline-flex h-3 w-3 shrink-0 items-center justify-center"
+        className="inline-flex h-3 min-w-3 shrink-0 items-center justify-center"
         aria-hidden
       >
-        {showSpinner ? (
+        {view.percentText ? (
+          <span className="relative inline-grid text-right tabular-nums">
+            <span
+              className="invisible col-start-1 row-start-1 whitespace-nowrap"
+              aria-hidden
+            >
+              {t("header.connection.percent", { percent: 100 })}
+            </span>
+            <span className="col-start-1 row-start-1">{view.percentText}</span>
+          </span>
+        ) : showSpinner ? (
           <Loader2 className="h-3 w-3 animate-spin opacity-80" />
         ) : null}
+      </span>
+      <span className="sr-only" aria-live="polite">
+        {liveMessage}
       </span>
     </>
   );
@@ -252,7 +308,9 @@ export function ServerStatusIndicator({ className }: Props) {
         className={classNames}
         title={view.title}
         disabled={retrying}
-        aria-busy={loudChecking || quietRefreshing || undefined}
+        aria-busy={
+          view.transferBusy || loudChecking || quietRefreshing || undefined
+        }
         onClick={() => void onRetry()}
         onContextMenu={onContextMenu}
       >
@@ -265,7 +323,10 @@ export function ServerStatusIndicator({ className }: Props) {
     <div
       className={classNames}
       title={view.title}
-      aria-busy={loudChecking || quietRefreshing || undefined}
+      aria-busy={
+        view.transferBusy || loudChecking || quietRefreshing || undefined
+      }
+      onContextMenu={onContextMenu}
     >
       {body}
     </div>

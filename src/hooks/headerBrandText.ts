@@ -3,30 +3,13 @@ import type { HeaderSubtitleLevel } from "./useHeaderBrandCollapse";
 export type HeaderSubtitleSource = {
   ready: boolean;
   hwLabel: string | null;
-  secondaryBackup: {
-    state: string;
-    percent: number;
-    file_name?: string | null;
-  } | null;
 };
 
 function buildSubtitleFull(
   t: (key: string, opts?: Record<string, unknown>) => string,
   source: HeaderSubtitleSource,
 ): string {
-  const { ready, hwLabel, secondaryBackup } = source;
-  if (
-    secondaryBackup &&
-    (secondaryBackup.state === "started" || secondaryBackup.state === "progress")
-  ) {
-    const base = t("app.chrome.serverBackupPercent", {
-      percent: Math.round(secondaryBackup.percent),
-    });
-    return secondaryBackup.file_name ? `${base} · ${secondaryBackup.file_name}` : base;
-  }
-  if (secondaryBackup?.state === "done") {
-    return t("app.chrome.serverBackupDone");
-  }
+  const { ready, hwLabel } = source;
   if (hwLabel) {
     return t("app.chrome.encoder", { label: hwLabel });
   }
@@ -37,18 +20,7 @@ function buildSubtitleCompact(
   t: (key: string, opts?: Record<string, unknown>) => string,
   source: HeaderSubtitleSource,
 ): string {
-  const { ready, hwLabel, secondaryBackup } = source;
-  if (
-    secondaryBackup &&
-    (secondaryBackup.state === "started" || secondaryBackup.state === "progress")
-  ) {
-    return t("app.chrome.serverBackupPercent", {
-      percent: Math.round(secondaryBackup.percent),
-    });
-  }
-  if (secondaryBackup?.state === "done") {
-    return t("app.chrome.serverBackupDone");
-  }
+  const { ready, hwLabel } = source;
   if (hwLabel) {
     return hwLabel;
   }

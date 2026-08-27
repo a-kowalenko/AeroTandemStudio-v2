@@ -147,6 +147,9 @@ pub struct AppConfig {
     /// Editable crew roster; roles control which form comboboxes suggest a name.
     #[serde(default = "default_crew_list")]
     pub crew_list: Vec<CrewMember>,
+    /// Intentionally removed crew names (tombstones). Add-only default merge skips these.
+    #[serde(default)]
+    pub crew_removed_names: Vec<String>,
     #[serde(default)]
     pub upload_to_server: bool,
     /// Saved SMB profiles; active entry is mirrored in the flat `server_*` fields.
@@ -287,6 +290,55 @@ fn default_ort() -> String {
     "Calden".into()
 }
 
+/// Trim + lowercase key for case-insensitive crew name matching (parity with `crewNamesEqual`).
+fn crew_name_key(name: &str) -> String {
+    name.trim().to_lowercase()
+}
+
+fn crew_list_contains(list: &[CrewMember], name: &str) -> bool {
+    let key = crew_name_key(name);
+    !key.is_empty() && list.iter().any(|c| crew_name_key(&c.name) == key)
+}
+
+fn crew_removed_contains(removed: &[String], name: &str) -> bool {
+    let key = crew_name_key(name);
+    !key.is_empty() && removed.iter().any(|n| crew_name_key(n) == key)
+}
+
+/// Add-only merge of app defaults into an existing crew list.
+///
+/// - Missing default members are appended (canonical name + roles from defaults).
+/// - Names already in `crew_list` are left untouched (roles never overwritten).
+/// - Names in `crew_removed_names` are skipped (intentional deletions).
+/// - On change, sorts by lowercase name (same order as `default_crew_list`).
+///
+/// Returns `true` when `crew_list` changed.
+pub fn merge_default_crew(cfg: &mut AppConfig) -> bool {
+    let defaults = default_crew_list();
+    let mut added_names: Vec<String> = Vec::new();
+    for d in defaults {
+        if crew_list_contains(&cfg.crew_list, &d.name) {
+            continue;
+        }
+        if crew_removed_contains(&cfg.crew_removed_names, &d.name) {
+            continue;
+        }
+        added_names.push(d.name.clone());
+        cfg.crew_list.push(d);
+    }
+    if added_names.is_empty() {
+        return false;
+    }
+    cfg.crew_list
+        .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    for name in &added_names {
+        crate::storage::logging::log_info(&format!(
+            "Crew: „{name}“ aus App-Default übernommen"
+        ));
+    }
+    true
+}
+
 fn default_crew_list() -> Vec<CrewMember> {
     // Roles mirror the production crew roster (videospringer flags from live config).
     let mut list = vec![
@@ -354,6 +406,11 @@ fn default_crew_list() -> Vec<CrewMember> {
             name: "Max".into(),
             tandemmaster: true,
             videospringer: false,
+        },
+        CrewMember {
+            name: "Mathi".into(),
+            tandemmaster: false,
+            videospringer: true,
         },
         CrewMember {
             name: "Mayo".into(),
@@ -845,6 +902,7 @@ impl Default for AppConfig {
             videospringer: String::new(),
             operator_name: String::new(),
             crew_list: default_crew_list(),
+            crew_removed_names: Vec::new(),
             upload_to_server: false,
             server_profiles: default_server_profiles(),
             active_server_profile_id: default_active_server_profile_id(),
@@ -917,7 +975,20 @@ fn legacy_json_path(dir: &Path) -> PathBuf {
 }
 
 /// Merge unknown/missing keys from defaults (legacy load_settings behaviour).
+/// Also add-only-merges `default_crew_list()` (Phase 36).
+#[allow(dead_code)] // public helper; load path uses `merge_with_defaults_ex` for save-if-dirty
 pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
+    Ok(merge_with_defaults_ex(partial)?.0)
+}
+
+/// Like [`merge_with_defaults`], plus whether crew defaults were appended.
+pub fn merge_with_defaults_ex(partial: Value) -> Result<(AppConfig, bool), ConfigError> {
+    let mut cfg = merge_with_defaults_core(partial)?;
+    let crew_dirty = merge_default_crew(&mut cfg);
+    Ok((cfg, crew_dirty))
+}
+
+fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     let obj = partial.as_object();
     let had_entry_mode = obj
         .map(|o| o.contains_key("manual_entry_mode"))
@@ -1022,17 +1093,21 @@ impl ConfigStore {
 
         if let Some(json) = existing {
             let value: Value = serde_json::from_str(&json)?;
-            return merge_with_defaults(value);
+            let (cfg, crew_dirty) = merge_with_defaults_ex(value)?;
+            if crew_dirty {
+                self.save_with_conn(&conn, &cfg)?;
+            }
+            return Ok(cfg);
         }
 
         // First run: import legacy config.json if present.
         let legacy = legacy_json_path(dir);
-        let cfg = if legacy.is_file() {
+        let (cfg, _) = if legacy.is_file() {
             let raw = fs::read_to_string(&legacy)?;
             let value: Value = serde_json::from_str(&raw)?;
-            merge_with_defaults(value)?
+            merge_with_defaults_ex(value)?
         } else {
-            AppConfig::default()
+            (AppConfig::default(), false)
         };
         self.save_with_conn(&conn, &cfg)?;
         Ok(cfg)
@@ -1050,7 +1125,11 @@ impl ConfigStore {
                 serde_json::to_string(&AppConfig::default()).unwrap_or_else(|_| "{}".into())
             });
         let value: Value = serde_json::from_str(&json)?;
-        merge_with_defaults(value)
+        let (cfg, crew_dirty) = merge_with_defaults_ex(value)?;
+        if crew_dirty {
+            self.save_with_conn(&conn, &cfg)?;
+        }
+        Ok(cfg)
     }
 
     pub fn save(&self, cfg: &AppConfig) -> Result<(), ConfigError> {
@@ -1105,6 +1184,7 @@ mod tests {
         assert!(!loaded.setup_completed);
         assert!(!loaded.intro_enabled);
         assert_eq!(loaded.crew_list, defaults.crew_list);
+        assert!(loaded.crew_removed_names.is_empty());
     }
 
     #[test]
@@ -1331,17 +1411,145 @@ mod tests {
                 videospringer: true,
             },
         ];
+        // Tombstone every default so load does not re-add roster names (Phase 36).
+        cfg.crew_removed_names = default_crew_list()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
         let dir = tempdir().unwrap();
         let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
         store.save(&cfg).unwrap();
         let loaded = store.load().unwrap();
         assert_eq!(loaded.crew_list, cfg.crew_list);
+        assert_eq!(loaded.crew_removed_names, cfg.crew_removed_names);
+    }
+
+    #[test]
+    fn merge_default_crew_adds_missing_mathi() {
+        let mut cfg = AppConfig::default();
+        cfg.crew_list = default_crew_list()
+            .into_iter()
+            .filter(|c| c.name != "Mathi")
+            .collect();
+        assert!(merge_default_crew(&mut cfg));
+        let mathi = cfg
+            .crew_list
+            .iter()
+            .find(|c| c.name == "Mathi")
+            .expect("Mathi merged");
+        assert!(!mathi.tandemmaster);
+        assert!(mathi.videospringer);
+        assert!(!merge_default_crew(&mut cfg)); // idempotent
+    }
+
+    #[test]
+    fn merge_default_crew_skips_tombstoned_names() {
+        let mut cfg = AppConfig::default();
+        cfg.crew_list = default_crew_list()
+            .into_iter()
+            .filter(|c| c.name != "Mathi")
+            .collect();
+        cfg.crew_removed_names = vec!["mathi".into()]; // case-insensitive
+        assert!(!merge_default_crew(&mut cfg));
+        assert!(!cfg
+            .crew_list
+            .iter()
+            .any(|c| crew_name_key(&c.name) == "mathi"));
+    }
+
+    #[test]
+    fn merge_default_crew_preserves_existing_roles() {
+        let mut cfg = AppConfig::default();
+        cfg.crew_list = default_crew_list()
+            .into_iter()
+            .filter(|c| c.name != "Mathi")
+            .map(|mut c| {
+                if c.name == "Andy" {
+                    c.tandemmaster = false;
+                    c.videospringer = false;
+                }
+                c
+            })
+            .collect();
+        assert!(merge_default_crew(&mut cfg));
+        let andy = cfg
+            .crew_list
+            .iter()
+            .find(|c| c.name == "Andy")
+            .expect("Andy");
+        assert!(!andy.tandemmaster);
+        assert!(!andy.videospringer);
+        assert!(cfg.crew_list.iter().any(|c| c.name == "Mathi"));
+    }
+
+    #[test]
+    fn merge_default_crew_case_variants_match() {
+        let mut cfg = AppConfig::default();
+        cfg.crew_list = vec![CrewMember {
+            name: "MATHI".into(),
+            tandemmaster: true,
+            videospringer: false,
+        }];
+        cfg.crew_removed_names = default_crew_list()
+            .into_iter()
+            .filter(|c| c.name != "Mathi")
+            .map(|c| c.name)
+            .collect();
+        assert!(!merge_default_crew(&mut cfg));
+        assert_eq!(cfg.crew_list.len(), 1);
+        assert_eq!(cfg.crew_list[0].name, "MATHI");
+        assert!(cfg.crew_list[0].tandemmaster);
+    }
+
+    #[test]
+    fn factory_reset_clears_crew_tombstones() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut custom = AppConfig::default();
+        custom.crew_list = vec![CrewMember {
+            name: "OnlyMe".into(),
+            tandemmaster: true,
+            videospringer: false,
+        }];
+        custom.crew_removed_names = vec!["Mathi".into(), "Andy".into()];
+        store.save(&custom).unwrap();
+
+        let defaults = AppConfig::default();
+        store.save(&defaults).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.crew_list, default_crew_list());
+        assert!(loaded.crew_removed_names.is_empty());
+    }
+
+    #[test]
+    fn crew_removed_names_default_empty_when_missing() {
+        let cfg = merge_with_defaults(serde_json::json!({ "ort": "Gera" })).unwrap();
+        assert!(cfg.crew_removed_names.is_empty());
+    }
+
+    #[test]
+    fn load_persists_merged_default_crew() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.crew_list = default_crew_list()
+            .into_iter()
+            .filter(|c| c.name != "Mathi")
+            .collect();
+        cfg.crew_removed_names.clear();
+        store.save(&cfg).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert!(loaded.crew_list.iter().any(|c| c.name == "Mathi"));
+        let reloaded = store.load().unwrap();
+        assert_eq!(reloaded.crew_list, loaded.crew_list);
+        assert!(reloaded.crew_list.iter().any(|c| c.name == "Mathi"));
     }
 
     #[test]
     fn default_crew_list_has_expected_tandemmasters() {
         let list = default_crew_list();
-        assert_eq!(list.len(), 27);
+        assert_eq!(list.len(), 28);
         assert_eq!(list.first().unwrap().name, "Alberto");
         assert_eq!(list.last().unwrap().name, "Torsten");
         let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
@@ -1351,7 +1559,7 @@ mod tests {
         for name in ["Jan", "Pascal", "Rene"] {
             assert!(list.iter().any(|c| c.name == name && c.tandemmaster && !c.videospringer));
         }
-        for name in ["Jojo", "Kai", "Käthe", "Robert", "Robin", "Sabrina"] {
+        for name in ["Jojo", "Kai", "Käthe", "Mathi", "Robert", "Robin", "Sabrina"] {
             assert!(list.iter().any(|c| c.name == name && !c.tandemmaster && c.videospringer));
         }
         let vs: Vec<_> = list
@@ -1362,8 +1570,8 @@ mod tests {
         assert_eq!(
             vs,
             [
-                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Mayo", "Ralph",
-                "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
+                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Mathi", "Mayo",
+                "Ralph", "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
             ]
         );
     }

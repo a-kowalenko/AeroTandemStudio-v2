@@ -343,6 +343,23 @@
   animation: ats-ams-chip-success 0.52s cubic-bezier(0.22, 1, 0.36, 1) 1;
 }
 
+/* Header connection chip — subtle upward nudge while SMB transfer is active */
+@keyframes ats-upload-icon-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.82;
+  }
+  50% {
+    transform: translateY(-1.5px);
+    opacity: 1;
+  }
+}
+
+.ats-upload-icon-active {
+  animation: ats-upload-icon-float 1.2s ease-in-out infinite;
+}
+
 /* Soft Apple-like attention: single ripple + gentle lift/glow */
 @keyframes ats-create-ready-ripple {
   0% {
@@ -511,6 +528,12 @@ input[type="password"]::-ms-clear {
     box-shadow:
       0 0 0 2px color-mix(in srgb, var(--ats-primary) 28%, transparent),
       0 6px 18px color-mix(in srgb, var(--ats-primary) 22%, transparent);
+  }
+
+  .ats-upload-icon-active {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 
   .ats-input-shake {

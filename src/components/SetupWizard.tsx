@@ -12,6 +12,7 @@ import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
 import { composeSdPcName, isAutoSdPcName, resolveSdPcName } from "@/lib/sdPcName";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
+  clearCrewRemovedName,
   crewAllNames,
   findCrewMember,
   getAppInfo,
@@ -512,6 +513,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       setOperatorRoles(nextRoles);
 
       let crew_list = prev.crew_list;
+      let crew_removed_names = prev.crew_removed_names ?? [];
       const trimmed = name.trim();
       const idx = crew_list.findIndex(
         (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase(),
@@ -521,6 +523,7 @@ export function SetupWizard({ open, onComplete }: Props) {
           tandemmaster: nextRoles.tandemmaster,
           videospringer: nextRoles.videospringer,
         });
+        crew_removed_names = clearCrewRemovedName(crew_removed_names, trimmed);
       } else if (idx >= 0) {
         crew_list = crew_list.map((entry, entryIdx) =>
           entryIdx === idx
@@ -536,6 +539,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       return {
         ...prev,
         crew_list,
+        crew_removed_names,
         keep_tandemmaster_on_session_reset:
           nextRoles.tandemmaster && !nextRoles.videospringer,
         tandemmaster:

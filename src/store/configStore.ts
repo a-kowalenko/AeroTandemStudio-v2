@@ -7,6 +7,9 @@ import { parseLogLevelFilter } from "./logStore";
 function normalizeConfig(config: AppConfig): AppConfig {
   return {
     ...config,
+    crew_removed_names: Array.isArray(config.crew_removed_names)
+      ? config.crew_removed_names
+      : [],
     ui_language: normalizeUiLanguage(config.ui_language),
     log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
   };

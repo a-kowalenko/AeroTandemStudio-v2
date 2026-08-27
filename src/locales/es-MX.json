@@ -810,9 +810,7 @@
       "encoder": "Codificador: {{label}}",
       "softwareSuffix": " (Software)",
       "ready": "Listo",
-      "starting": "Iniciando…",
-      "serverBackupPercent": "Respaldo de servidor {{percent}}%",
-      "serverBackupDone": "Respaldo de servidor listo"
+      "starting": "Iniciando…"
     },
     "update": {
       "alreadyInstalling": "La instalación ya está en curso…",
@@ -1406,6 +1404,8 @@
       "amsNotChecked": "{{title}}: no verificado",
       "retryOrSettings": "Clic: reintentar · clic derecho: configuración",
       "retry": "Clic para volver a comprobar",
+      "backupFailedHint": "Clic: cerrar aviso y comprobar · clic derecho: URL de respaldo",
+      "backupSettingsHint": "Clic derecho: URL de respaldo en configuración",
       "connectionTitle": "Conexión",
       "titleAllOk": "Todo conectado",
       "titlePartial": "Parcial",
@@ -1417,7 +1417,19 @@
       "serverOkLocal": "Accesible (local)",
       "serverOkRemote": "Conectado",
       "amsOk": "Conectado",
-      "titleAmsOkNamed": "{{name}} conectada"
+      "titleAmsOkNamed": "{{name}} conectada",
+      "chipUpload": "Subida",
+      "chipServerBackup": "Respaldo servidor",
+      "chipServerBackupDone": "Respaldo servidor listo",
+      "chipServerBackupFailed": "Respaldo servidor falló",
+      "percent": "{{percent}}%",
+      "serverBackupRunning": "Respaldo servidor: {{percent}}%",
+      "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}",
+      "serverBackupFiles": "{{current}}/{{total}}",
+      "parallelServerBackup": "También: respaldo servidor {{percent}}%",
+      "parallelUpload": "También: subida {{percent}}%",
+      "liveUpload": "Subida {{percent}} por ciento",
+      "liveServerBackup": "Respaldo de servidor {{percent}} por ciento"
     }
   },
   "qr": {

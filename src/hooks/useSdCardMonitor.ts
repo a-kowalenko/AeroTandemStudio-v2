@@ -342,7 +342,7 @@ export function useSdCardMonitor(opts?: {
               if (cur?.job_id === p.job_id && cur.state === "done") {
                 setSecondaryBackup(null);
               }
-            }, 4000);
+            }, 2500);
           }
         }),
       );

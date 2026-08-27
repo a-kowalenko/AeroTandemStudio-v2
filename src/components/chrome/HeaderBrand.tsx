@@ -20,17 +20,10 @@ const TITLE_CLASS =
 const VERSION_CLASS = "shrink-0 text-[11px] leading-none text-muted whitespace-nowrap";
 const ROW2_CLASS = "min-w-0 max-w-full text-[10px] leading-none text-muted whitespace-nowrap overflow-hidden";
 
-type SecondaryBackup = {
-  state: string;
-  percent: number;
-  file_name?: string | null;
-} | null;
-
 type Props = {
   appVersion: string;
   ready: boolean;
   hwLabel: string | null;
-  secondaryBackup: SecondaryBackup;
   className?: string;
 };
 
@@ -48,7 +41,6 @@ export function HeaderBrand({
   appVersion,
   ready,
   hwLabel,
-  secondaryBackup,
   className,
 }: Props) {
   const { t } = useTranslation();
@@ -59,8 +51,8 @@ export function HeaderBrand({
   const probeRow2Ref = useRef<HTMLParagraphElement>(null);
 
   const subtitleSource = useMemo(
-    () => ({ ready, hwLabel, secondaryBackup }),
-    [ready, hwLabel, secondaryBackup],
+    () => ({ ready, hwLabel }),
+    [ready, hwLabel],
   );
 
   const subtitleFull = useMemo(

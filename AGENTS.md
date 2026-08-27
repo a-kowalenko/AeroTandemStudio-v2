@@ -122,6 +122,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 31.7: DJI Foto-Timelapse Suffix-Pairing (`001_NNNN` ↔ `DJI_*_NNNN.MP4`) + Clear inkl. `.LRF`
 - ✅ Phase 34: SD-Server-Backup über SMB (`sd_server_backup_url`, lokal zuerst + async Mirror; kein Mount-`fs::copy`)
 - ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
+- ✅ Phase 36: Crew-Defaults beim Update mergen (Add-only + `crew_removed_names` Tombstones)
 
 **Nächster Schritt:** Phase 23.2h / 23.3 / 31.5  
 *(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*

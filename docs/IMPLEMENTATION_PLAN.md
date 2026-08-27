@@ -57,7 +57,9 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 35 — AMS Path Hints](#phase-35--ams-path-hints-bridge--smb) · [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
+**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …
+*(Phase 36 Crew-Defaults mergen erledigt.)*  
+*(Phase 35 AMS Path Hints erledigt.)*  
 *(Phase 34 SD-Server-Backup über SMB erledigt.)*  
 *(Phase 33 Label Historie → Vorgänge erledigt.)*  
 *(Phase 32 SMB Quiet-Poll erledigt.)*  
@@ -2630,6 +2632,117 @@ Danach cargo test && npm run check.
 
 ---
 
+### Phase 36 — Crew-Defaults beim Update mergen (Add-only + Tombstones)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 5 (Config/Crew), Phase 19 (Operator / Crew-Editor)  
+**Ziel:** Neue Einträge aus `default_crew_list()` nach App-Update in bestehende User-Configs übernehmen — nur Add, ohne absichtliche Löschungen rückgängig zu machen und ohne bestehende Rollen zu überschreiben.
+
+#### Problem
+
+`crew_list` hat `#[serde(default = "default_crew_list")]` — Defaults gelten nur, wenn das Feld **fehlt**. Nach dem ersten Speichern bleibt die Liste unverändert; neue Roster-Namen (z. B. „Mathi“) erscheinen bei bestehenden Installationen nicht.
+
+#### Produktentscheidungen (fest)
+
+| # | Entscheidung |
+|---|--------------|
+| 1 | **Add-only:** fehlende Default-Mitglieder anhängen; nie Default-Namen aus der User-Liste entfernen |
+| 2 | **Tombstones:** absichtlich gelöschte Namen werden nicht wieder eingefügt |
+| 3 | **Rollen bestehender Einträge nie überschreiben** (auch nicht „VS nachziehen“) |
+| 4 | Neue Einträge: Rollen **exakt** aus `default_crew_list()` |
+| 5 | Namensgleichheit: trim + case-insensitive (wie `crewNamesEqual` / Rust-Äquivalent) |
+| 6 | Anzeige-Name bei Insert: kanonischer Name aus dem Default |
+| 7 | Kein Confirm-Dialog; optional einmalig Log-Zeile |
+| 8 | Kein Soft-Prompt „X hinzufügen?“ |
+
+#### Datenmodell
+
+- Neu: `crew_removed_names: Vec<String>` (Default `[]`)
+  - Persistiert in Config (SQLite JSON wie üblich)
+  - Speichert bewusst entfernte Namen (kanonisch / normalisiert für Match)
+- Unverändert: `crew_list: Vec<CrewMember>`
+- Optional (kein Muss): `crew_defaults_seeded_version` / Hash — Merge darf auch **idempotent bei jedem Load** laufen („wenn nötig mergen + speichern“)
+
+#### Merge-Algorithmus (bei Load / nach `merge_with_defaults`)
+
+Für jeden Eintrag `d` in `default_crew_list()`:
+
+1. Wenn Name (ci) schon in `crew_list` → **skip** (User-Rollen bleiben)
+2. Wenn Name (ci) in `crew_removed_names` → **skip**
+3. Sonst → `CrewMember` aus Default anhängen
+4. Liste nach `de`-Locale sortieren (wie Frontend)
+5. Nur bei Änderung: Config speichern
+
+#### Tombstone-Lifecycle
+
+| Event | Aktion |
+|-------|--------|
+| User löscht Crew-Eintrag (Settings / Editor) | Name → `crew_removed_names` (ci-dedupe) |
+| User fügt denselben Namen manuell wieder hinzu | Name aus `crew_removed_names` entfernen |
+| Factory-Reset / Werkseinstellungen | `crew_list` = Default **und** `crew_removed_names` = `[]` |
+| Setup-Wizard „neu anlegen“ über Default | Tombstone räumen analog zu manuellem Add |
+
+#### Nicht-Ziele
+
+- Default-Rollen bei bestehenden Mitgliedern aktualisieren
+- Entfernte Defaults aus User-Listen löschen
+- UI für Tombstone-Liste (kein „Papierkorb“-Screen)
+- Sync mit externem AMS/Server-Roster
+
+#### Aufgaben
+
+- [x] Config: `crew_removed_names` + Serde-Default `[]` + TS-Typ in `tauri.ts`
+- [x] Rust: `fn merge_default_crew(cfg: &mut AppConfig) -> bool` (+ Unit-Tests)
+- [x] Aufruf in Load-Pfad (`merge_with_defaults` / nach Load, vor Save-if-dirty)
+- [x] `useCrewEditor` / Lösch-Confirm: Tombstone setzen
+- [x] `upsertCrewMember` / manuelles Add / Wizard: Tombstone clearen
+- [x] Factory-Reset: Tombstones leeren
+- [x] Optional: Log `Crew: „{name}“ aus App-Default übernommen`
+- [x] Tracker + Config-Schema-Hinweis in diesem Plan; `AGENTS.md` „Nächster Schritt“ optional
+
+#### Referenzen
+
+```
+src-tauri/src/storage/config.rs      # default_crew_list, merge, load
+src/lib/tauri.ts                     # AppConfig, DEFAULT_CREW_LIST, crew helpers
+src/components/settings/hooks/useCrewEditor.ts
+src/components/settings/tabs/CrewTab.tsx
+src/components/SetupWizard.tsx
+src/components/settings/hooks/useSettingsDraft.ts
+```
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 36 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 36: Add-only-Merge von default_crew_list in bestehende crew_list,
+Tombstones in crew_removed_names, keine Rollen-Overwrite, Factory-Reset räumt Tombstones.
+Unit-Tests für Merge/Tombstone/Reset. Danach cargo test && npm run check.
+```
+
+#### Akzeptanz
+
+| # | Kriterium |
+|---|-----------|
+| 1 | Bestehende Config ohne „Mathi“ + Default enthält Mathi → nach Load/Update ist Mathi (VS) in der Liste |
+| 2 | User löscht Mathi → nach erneutem Load/Update bleibt Mathi weg |
+| 3 | User legt Mathi manuell wieder an → Tombstone weg; bleibt in Liste |
+| 4 | Eintrag „Andy“ mit abweichenden Rollen → Rollen unverändert nach Merge |
+| 5 | Factory-Reset → volle Default-Liste, leere Tombstones |
+| 6 | Case-Varianten („mathi“ / „Mathi“) werden als derselbe Name behandelt |
+| 7 | Frische Installation / fehlendes `crew_list` → unverändert volle Defaults |
+
+##### Umsetzungsreihenfolge
+
+1. Config-Feld + Types  
+2. Pure Merge-Funktion + Tests  
+3. Load-Hook + Save-if-dirty  
+4. Editor/Wizard Tombstone set/clear + Factory-Reset  
+5. Optional Log; Docs/Tracker  
+
+---
+
 ## 9. Config-Schema
 
 Portieren aus `config.py` → SQLite. Alle Keys:
@@ -2666,11 +2779,15 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "sd_size_limit_enabled": false,
   "sd_size_limit_mb": 2000,
   "usb_camera_import_enabled": false,
-  "setup_completed": false
+  "setup_completed": false,
+  "crew_list": [],
+  "crew_removed_names": []
 }
 ```
 
 `usb_camera_import_enabled` (Phase 23): MTP/WPD-Import für allowlistete Action-Cams (GoPro/DJI/Insta360); default `false` bis Windows-Abnahme, danach ggf. `true`.
+
+`crew_removed_names` (Phase 36): Tombstones für absichtlich gelöschte Crew-Namen. Beim Load: fehlende Einträge aus `default_crew_list()` add-only mergen, außer Name steht in `crew_removed_names`. Rollen bestehender Einträge nie überschreiben. Factory-Reset leert Tombstones.
 
 Config-Pfad:
 - Windows: `%LOCALAPPDATA%\AeroTandemStudio\`
@@ -2743,6 +2860,7 @@ cargo test
 | 32 | SMB Quiet-Poll: Status ~45 s + Tab-Focus; kein Flackern; Skip während Upload; Header-Retry laut |
 | 33 | Header/Dialog „Vorgänge“ (de) / Jobs / Trabajos; Hints ohne „Historie“; Medien-Confirm unverändert |
 | 35 | Bridge `paths-v1`: Suggest bei Default-URL; Backup-Profil; Credentials-Matrix; kein Auto-Overwrite |
+| 36 | Update: neuer Default-Name erscheint; gelöschter Name bleibt weg; Rollen bestehender Einträge unverändert |
 
 ### End-to-End (Phase 11)
 
@@ -2834,6 +2952,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
 | 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
 | 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |
+| 36 | Crew-Defaults beim Update mergen (Add-only + Tombstones) | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -2858,6 +2977,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 35:** Prompt im Phasenabschnitt (AMS Path Hints); Spec AMS `docs/HANDOFF.md` §9.3.
 
+**Phase 36:** Prompt im Phasenabschnitt (Crew-Defaults mergen / Tombstones).
+
 ---
 
-*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 35 Docs (AMS Path Hints) eingetragen*
+*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 36 Crew-Defaults mergen erledigt*

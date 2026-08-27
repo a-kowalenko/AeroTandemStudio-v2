@@ -90,6 +90,11 @@ export type AppConfig = {
   operator_name: string;
   /** Editable crew roster; roles filter form combobox suggestions. */
   crew_list: CrewMember[];
+  /**
+   * Intentionally removed crew names (tombstones).
+   * Default-roster merge skips these so deletions survive app updates.
+   */
+  crew_removed_names: string[];
   upload_to_server: boolean;
   /** Saved SMB profiles; active entry mirrors flat server_* fields. */
   server_profiles: ServerProfile[];
@@ -253,6 +258,7 @@ export const DEFAULT_CREW_LIST: CrewMember[] = [
   { name: "Kai", tandemmaster: false, videospringer: true },
   { name: "Käthe", tandemmaster: false, videospringer: true },
   { name: "Max", tandemmaster: true, videospringer: false },
+  { name: "Mathi", tandemmaster: false, videospringer: true },
   { name: "Mayo", tandemmaster: true, videospringer: true },
   { name: "Pascal", tandemmaster: true, videospringer: false },
   { name: "Ralph", tandemmaster: true, videospringer: true },
@@ -406,6 +412,45 @@ export function upsertCrewMember(
       videospringer: roles.videospringer,
     },
   ].sort((a, b) => a.name.localeCompare(b.name, "de"));
+}
+
+/** Record an intentional crew deletion so default-merge will not re-add the name. */
+export function markCrewRemovedName(
+  removed: string[] | undefined | null,
+  name: string,
+): string[] {
+  const trimmed = name.trim();
+  const list = [...(removed ?? [])];
+  if (!trimmed) return list;
+  if (list.some((n) => crewNamesEqual(n, trimmed))) return list;
+  list.push(trimmed);
+  return list;
+}
+
+/** Clear a tombstone when the user re-adds the name manually. */
+export function clearCrewRemovedName(
+  removed: string[] | undefined | null,
+  name: string,
+): string[] {
+  const trimmed = name.trim();
+  const list = [...(removed ?? [])];
+  if (!trimmed || list.length === 0) return list;
+  return list.filter((n) => !crewNamesEqual(n, trimmed));
+}
+
+/**
+ * Drop tombstones for every name currently present in the crew list
+ * (safety net after upsert / ensure / wizard).
+ */
+export function syncCrewRemovedNames(
+  removed: string[] | undefined | null,
+  list: CrewMember[],
+): string[] {
+  const tombstones = [...(removed ?? [])];
+  if (tombstones.length === 0) return tombstones;
+  return tombstones.filter(
+    (n) => !list.some((c) => crewNamesEqual(c.name, n)),
+  );
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   ensureCrewRole,
   findCrewMember,
   getAppInfo,
+  syncCrewRemovedNames,
 } from "@/lib/tauri";
 import { useConfigStore } from "@/store/configStore";
 import { useServerStore } from "@/store/serverStore";
@@ -115,6 +116,10 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       return false;
     }
     crew_list.sort((a, b) => a.name.localeCompare(b.name, "de"));
+    const crew_removed_names = syncCrewRemovedNames(
+      draft.crew_removed_names,
+      crew_list,
+    );
 
     let sd_pc_name = draft.sd_pc_name.trim();
     try {
@@ -133,6 +138,7 @@ export function useSettingsDraft(open: boolean, config: AppConfig | null) {
       /** Keep flat field in sync for Rust SD mirror (source of truth = profile). */
       sd_server_backup_url: activeBackupUrl,
       crew_list,
+      crew_removed_names,
     });
 
     const prev = config;

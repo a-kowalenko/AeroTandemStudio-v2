@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppConfig, CrewMember } from "@/lib/tauri";
-import { syncOperatorName } from "@/lib/tauri";
+import {
+  clearCrewRemovedName,
+  crewNamesEqual,
+  markCrewRemovedName,
+  syncOperatorName,
+} from "@/lib/tauri";
 import { useUiStore } from "@/store/uiStore";
 import type { SettingsTabBaseProps } from "../types";
 
@@ -82,15 +87,19 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
       prevName,
       name,
     );
-    setDraft((prev) =>
-      prev
-        ? {
-            ...prev,
-            crew_list: list,
-            operator_name: nextOperator,
-          }
-        : prev,
-    );
+    setDraft((prev) => {
+      if (!prev) return prev;
+      let removed = clearCrewRemovedName(prev.crew_removed_names, name);
+      if (prevName && !crewNamesEqual(prevName, name)) {
+        removed = markCrewRemovedName(removed, prevName);
+      }
+      return {
+        ...prev,
+        crew_list: list,
+        crew_removed_names: removed,
+        operator_name: nextOperator,
+      };
+    });
     resetCrewForm();
   }
 
@@ -128,6 +137,10 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
         ? {
             ...prev,
             crew_list: crewList.filter((_, i) => i !== index),
+            crew_removed_names: markCrewRemovedName(
+              prev.crew_removed_names,
+              member.name,
+            ),
             operator_name: nextOperator,
           }
         : prev,

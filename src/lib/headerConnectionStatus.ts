@@ -23,16 +23,73 @@ import {
 
 export type ConnectionDot = "ok" | "error" | "checking" | "idle";
 
+/** Left icon in the header connection chip. */
+export type HeaderConnectionIcon = "server" | "upload" | "check";
+
+/** Active / sticky transfer shown in the chip (priority: upload > backup). */
+export type HeaderTransferKind =
+  | "upload"
+  | "serverBackup"
+  | "serverBackupDone"
+  | "serverBackupFailed";
+
+export type HeaderSecondaryBackupInput = {
+  state: string;
+  percent: number;
+  current?: number;
+  total?: number;
+  file_name?: string | null;
+  message?: string | null;
+} | null;
+
 export type HeaderConnectionView = {
   visible: boolean;
   label: string;
+  /** Right-side percent, e.g. `"42%"` — null when idle / checking / done flash. */
+  percentText: string | null;
   toneClass: string;
+  leftIcon: HeaderConnectionIcon;
+  /** Animate upload icon (active transfer only). */
+  transferBusy: boolean;
+  transferKind: HeaderTransferKind | null;
+  /** Sparse live region text for screen readers. */
+  liveMessage: string | null;
   smbDot: ConnectionDot;
   amsDot: ConnectionDot | null;
   title: string;
   canRetry: boolean;
   contextMenuFocus: SettingsFocusTarget | null;
 };
+
+function isBackupActive(state: string): boolean {
+  return state === "started" || state === "progress";
+}
+
+function formatPercentText(percent: number): string {
+  return tr("header.connection.percent", {
+    percent: Math.round(percent),
+  });
+}
+
+function backupTooltipDetail(backup: NonNullable<HeaderSecondaryBackupInput>): string {
+  const parts: string[] = [];
+  if (backup.file_name?.trim()) {
+    parts.push(backup.file_name.trim());
+  }
+  if (
+    typeof backup.current === "number" &&
+    typeof backup.total === "number" &&
+    backup.total > 0
+  ) {
+    parts.push(
+      tr("header.connection.serverBackupFiles", {
+        current: backup.current,
+        total: backup.total,
+      }),
+    );
+  }
+  return parts.join(" · ");
+}
 
 function smbDot(phase: ServerPhase, connected: boolean): ConnectionDot {
   if (phase === "checking") return "checking";
@@ -99,6 +156,8 @@ export function presentHeaderConnection(input: {
   uploadPercent: number | null;
   /** Extra upload tooltip lines (bytes / files done); no single filename. */
   uploadDetail: string | null;
+  /** SD server-backup (secondary SMB mirror) progress. */
+  secondaryBackup?: HeaderSecondaryBackupInput;
   amsConfigured: boolean;
   amsPhase: AmsBridgePhase;
   amsConnected: boolean;
@@ -112,9 +171,16 @@ export function presentHeaderConnection(input: {
   login: string;
   password: string;
 }): HeaderConnectionView {
+  const backup = input.secondaryBackup ?? null;
+  const backupActive = Boolean(backup && isBackupActive(backup.state));
+  const backupDone = backup?.state === "done";
+  const backupFailed = backup?.state === "failed";
+  const uploading = input.smbPhase === "uploading";
+
   const smbVisible = !(input.smbPhase === "idle" && !input.smbConnected);
   const amsVisible = input.amsConfigured && input.amsPhase !== "idle";
-  const visible = smbVisible || amsVisible;
+  const backupVisible = backupActive || backupDone || backupFailed;
+  const visible = smbVisible || amsVisible || backupVisible;
 
   const smbChecking = input.smbPhase === "checking";
   const amsChecking = input.amsConfigured && input.amsPhase === "checking";
@@ -128,11 +194,54 @@ export function presentHeaderConnection(input: {
 
   let label = tr("app.server.title");
   let toneClass = "text-muted";
+  let percentText: string | null = null;
+  let leftIcon: HeaderConnectionIcon = "server";
+  let transferBusy = false;
+  let transferKind: HeaderTransferKind | null = null;
+  let liveMessage: string | null = null;
 
-  if (input.smbPhase === "uploading") {
-    const pct = input.uploadPercent ?? 0;
-    label = tr("app.upload.percent", { percent: pct.toFixed(0) });
+  // Priority: Server-Backup > Vorgang-Upload > Checking > Connected/Error
+  // (Upload is usually already visible in the progress panel.)
+  if (backupActive && backup) {
+    const pct = backup.percent;
+    transferKind = "serverBackup";
+    leftIcon = "upload";
+    transferBusy = true;
+    label = tr("header.connection.chipServerBackup");
+    percentText = formatPercentText(pct);
     toneClass = "text-primary";
+    liveMessage = tr("header.connection.liveServerBackup", {
+      percent: Math.round(pct),
+    });
+  } else if (backupDone) {
+    transferKind = "serverBackupDone";
+    leftIcon = "check";
+    transferBusy = false;
+    label = tr("header.connection.chipServerBackupDone");
+    percentText = null;
+    toneClass = "text-success";
+    liveMessage = tr("header.connection.chipServerBackupDone");
+  } else if (backupFailed) {
+    transferKind = "serverBackupFailed";
+    leftIcon = "server";
+    transferBusy = false;
+    label = tr("header.connection.chipServerBackupFailed");
+    percentText = null;
+    toneClass = "text-destructive";
+    liveMessage = backup?.message?.trim()
+      ? backup.message.trim()
+      : tr("header.connection.chipServerBackupFailed");
+  } else if (uploading) {
+    const pct = input.uploadPercent ?? 0;
+    transferKind = "upload";
+    leftIcon = "upload";
+    transferBusy = true;
+    label = tr("header.connection.chipUpload");
+    percentText = formatPercentText(pct);
+    toneClass = "text-primary";
+    liveMessage = tr("header.connection.liveUpload", {
+      percent: Math.round(pct),
+    });
   } else if (smbChecking || amsChecking) {
     // Loud checks only — quiet refresh keeps the last label (spinner in UI).
     label = tr("common.actions.checking");
@@ -157,16 +266,21 @@ export function presentHeaderConnection(input: {
     toneClass = "text-success";
   }
 
+  // Active transfer / done flash: no reconnect click. Failed stays clickable.
+  const transferBlocksRetry = uploading || backupActive || backupDone;
+
   const canRetry =
     visible &&
-    input.smbPhase !== "uploading" &&
+    !transferBlocksRetry &&
     !smbChecking &&
     !amsChecking &&
     !smbRefreshing &&
     !amsRefreshing;
 
   let contextMenuFocus: SettingsFocusTarget | null = null;
-  if (smbError) {
+  if (backupFailed || backupActive || backupDone) {
+    contextMenuFocus = "server-backup-url";
+  } else if (smbError) {
     contextMenuFocus =
       presentServerConnectionError({
         rawMessage: input.smbMessage,
@@ -205,21 +319,55 @@ export function presentHeaderConnection(input: {
       ),
     );
   }
-  if (input.smbPhase === "uploading" && input.uploadDetail) {
+  if (backupActive && backup) {
+    const detail = backupTooltipDetail(backup);
+    lines.push(
+      detail
+        ? tr("header.connection.serverBackupWithDetail", {
+            percent: Math.round(backup.percent),
+            detail,
+          })
+        : tr("header.connection.serverBackupRunning", {
+            percent: Math.round(backup.percent),
+          }),
+    );
+    if (uploading) {
+      lines.push(
+        tr("header.connection.parallelUpload", {
+          percent: Math.round(input.uploadPercent ?? 0),
+        }),
+      );
+    }
+  } else if (backupDone) {
+    lines.push(tr("header.connection.chipServerBackupDone"));
+  } else if (backupFailed) {
+    const failMsg =
+      backup?.message?.trim() || tr("header.connection.chipServerBackupFailed");
+    lines.push(failMsg);
+  } else if (uploading && input.uploadDetail) {
     lines.push(input.uploadDetail);
   }
   if (canRetry) {
     lines.push(
-      contextMenuFocus
-        ? tr("header.connection.retryOrSettings")
-        : tr("header.connection.retry"),
+      backupFailed
+        ? tr("header.connection.backupFailedHint")
+        : contextMenuFocus
+          ? tr("header.connection.retryOrSettings")
+          : tr("header.connection.retry"),
     );
+  } else if (contextMenuFocus && (backupActive || backupDone)) {
+    lines.push(tr("header.connection.backupSettingsHint"));
   }
 
   return {
     visible,
     label,
+    percentText,
     toneClass,
+    leftIcon,
+    transferBusy,
+    transferKind,
+    liveMessage,
     smbDot: smbDot(input.smbPhase, input.smbConnected),
     amsDot: input.amsConfigured
       ? amsDot(input.amsPhase, input.amsConnected)

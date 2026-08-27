@@ -10,7 +10,7 @@ import {
 /** Title row: full name → ATS (+ version) → ATS only → hidden. */
 export type HeaderTitleLevel = 0 | 1 | 2 | 3;
 
-/** Subtitle row: full → compact (no encoder label / backup filename) → hidden. */
+/** Subtitle row: full encoder → compact encoder → hidden. */
 export type HeaderSubtitleLevel = 0 | 1 | 2;
 
 export type HeaderBrandCollapse = {
