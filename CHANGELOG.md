@@ -34,6 +34,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einrichtungsassistent: nach Übernahme der Pfade von der Buchungssuche direkt die Server-Profile prüfen und anpassen
 - Einrichtungsassistent (Upload): Checkbox „Backup auf Server sichern“ unter dem Upload-Schalter
 - Unter SD: Server-Backup-URL nur Anzeige — Bearbeitung über Einstellungen → Server am Profil
+- Pfad-Vorschläge und Abweichungs-Hinweise: Primär und Backup übersichtlicher — aktueller und vorgeschlagener Pfad nebeneinander
+- Einrichtungsassistent: einheitliche Bezeichnung „Server“ statt „AMS“ bei Suche und Verbindung
+- Einrichtungsassistent: „Ich bin“ ist Pflicht; mit aktivem Upload muss vor dem Fortfahren eine Server-Verbindung stehen — der Verbinden-Button wird hervorgehoben
 
 
 
