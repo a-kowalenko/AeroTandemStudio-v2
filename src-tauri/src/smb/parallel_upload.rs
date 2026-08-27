@@ -29,7 +29,7 @@ pub const LARGE_MEDIA_MIN_BYTES: u64 = 16 * 1024 * 1024;
 const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 /// Brief wait for interruptible write + bounded abort (~1s) before force-killing
 /// tasks so the upload session can be dropped for cleanup.
-const COOPERATIVE_CANCEL_TIMEOUT: Duration = Duration::from_secs(2);
+const COOPERATIVE_CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "m4v", "avi", "webm"];
 

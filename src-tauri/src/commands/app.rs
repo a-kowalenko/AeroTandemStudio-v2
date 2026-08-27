@@ -156,14 +156,7 @@ pub fn run_startup_checks(
 
     // Deferred SMB staging GC (best-effort; does not block splash on network).
     if let Ok((_store, cfg)) = crate::storage::ConfigStore::open_default() {
-        let login = cfg.server_login.clone();
-        let password = cfg.server_password.clone();
-        tauri::async_runtime::spawn(async move {
-            let n = crate::smb::drain_smb_staging_gc(&login, &password).await;
-            if n > 0 {
-                logging::info("smb", format!("Startup Staging-GC: {n} Ordner entfernt"));
-            }
-        });
+        crate::smb::spawn_smb_staging_gc(&cfg.server_login, &cfg.server_password);
     }
 
     log_info("Startup checks: Linux media (GStreamer)…");

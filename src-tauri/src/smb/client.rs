@@ -33,8 +33,13 @@ const WRITE_CANCEL_POLL: Duration = Duration::from_millis(50);
 /// Max time to wait for `FileWriter::abort()` before dropping the writer
 /// (session teardown releases locks; hanging abort blocked cleanup for 15s+).
 const WRITER_ABORT_TIMEOUT: Duration = Duration::from_secs(1);
-/// Pause after dropping the upload session so the NAS releases exclusive locks.
-const SESSION_TEARDOWN_PAUSE: Duration = Duration::from_millis(800);
+/// Pause after hard-dropping the upload TCP session so Samba releases exclusive locks.
+const SESSION_TEARDOWN_PAUSE: Duration = Duration::from_secs(2);
+/// How long background staging GC waits after enqueue before the first delete.
+const STAGING_GC_INITIAL_DELAY: Duration = Duration::from_secs(3);
+/// Background GC delete rounds after a cancel (each round = one fresh connection).
+const STAGING_GC_BG_ROUNDS: u32 = 4;
+const STAGING_GC_BG_ROUND_GAP: Duration = Duration::from_secs(2);
 
 /// Result of `normalize_server_path` (mirrors legacy tuple).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -911,8 +916,11 @@ fn upload_local<F: FnMut(UploadProgress)>(
     }
 }
 
-/// Drop the shared SMB upload session, then pause on cancel so remote cleanup
-/// does not hit STATUS_SHARING_VIOLATION on still-open writers.
+/// Hard-drop the upload SMB session (disconnect share + drop TCP), then pause on cancel.
+///
+/// Cancelled parallel writers often skip CLOSE; Samba keeps exclusive locks until the
+/// **TCP session** dies. A plain `drop(Arc)` can race Arc clones from aborted tasks —
+/// we wait for unique ownership, call `disconnect_share`, then drop the client.
 async fn release_smb_session_for_cleanup<F>(
     result: UploadResult,
     cancel: UploadCancelPolicy,
@@ -926,15 +934,135 @@ where
     let cancelled =
         result.message.trim() == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
     drop(progress);
-    drop(tree);
-    drop(client);
+
+    // Aborted JoinSet tasks may still hold Connection Arc clones briefly.
+    for _ in 0..40 {
+        if Arc::strong_count(&client) == 1 && Arc::strong_count(&tree) == 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    if Arc::strong_count(&client) > 1 {
+        crate::storage::logging::warn(
+            "smb",
+            format!(
+                "SMB-Client noch geteilt (Arc={}) — erzwinge Drop (Cancel-Lock-Risiko)",
+                Arc::strong_count(&client)
+            ),
+        );
+    }
+
+    let tree_for_disconnect = (*tree).clone();
+    match Arc::try_unwrap(client) {
+        Ok(mut client) => {
+            drop(tree);
+            let _ = tokio::time::timeout(
+                Duration::from_secs(1),
+                client.disconnect_share(&tree_for_disconnect),
+            )
+            .await;
+            drop(client);
+        }
+        Err(client) => {
+            drop(tree);
+            drop(client);
+        }
+    }
+
     if cancelled {
         tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
     }
     result
 }
 
-/// After a failed/cancelled staged upload: hard-drop session, enqueue GC, best-effort delete.
+/// Enqueue staging GC and schedule a non-blocking background delete (does not stall Cancel-UX).
+fn schedule_staging_gc(
+    host: &str,
+    port: u16,
+    share: &str,
+    staging_root: &str,
+    login: &str,
+    password: &str,
+) {
+    enqueue_new_staging_gc(host, port, share, staging_root);
+    let host = host.to_string();
+    let share = share.to_string();
+    let staging_root = staging_root.to_string();
+    let login = login.to_string();
+    let password = password.to_string();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(STAGING_GC_INITIAL_DELAY).await;
+        for round in 1..=STAGING_GC_BG_ROUNDS {
+            match cleanup_smb_remote_tree(
+                &host,
+                port,
+                &share,
+                &login,
+                &password,
+                &staging_root,
+                true,
+                1,
+            )
+            .await
+            {
+                Ok(()) => {
+                    dequeue_staging_gc(&host, port, &share, &staging_root);
+                    crate::storage::logging::info(
+                        "smb",
+                        format!("Staging-GC OK: {staging_root}"),
+                    );
+                    return;
+                }
+                Err(e) => {
+                    let sharing = smb_sharing_violation(&e);
+                    if round < STAGING_GC_BG_ROUNDS && sharing {
+                        tokio::time::sleep(STAGING_GC_BG_ROUND_GAP * round).await;
+                        continue;
+                    }
+                    record_gc_attempt(&host, port, &share, &staging_root, false);
+                    crate::storage::logging::warn(
+                        "smb",
+                        format!(
+                            "Staging-GC später (.ats_staging…): {}",
+                            shorten_smb_err(&e)
+                        ),
+                    );
+                    return;
+                }
+            }
+        }
+    });
+}
+
+fn shorten_smb_err(err: &str) -> String {
+    let e = err.to_ascii_lowercase();
+    if e.contains("sharing_violation") {
+        "STATUS_SHARING_VIOLATION (Handle noch offen)".into()
+    } else if e.contains("directory_not_empty") {
+        "STATUS_DIRECTORY_NOT_EMPTY".into()
+    } else if err.len() > 160 {
+        format!("{}…", &err[..160])
+    } else {
+        err.to_string()
+    }
+}
+
+/// Fire-and-forget drain of due staging GC entries (startup / idle).
+pub fn spawn_smb_staging_gc(login: &str, password: &str) {
+    let login = login.to_string();
+    let password = password.to_string();
+    tauri::async_runtime::spawn(async move {
+        let n = drain_smb_staging_gc(&login, &password).await;
+        if n > 0 {
+            crate::storage::logging::info(
+                "smb",
+                format!("Staging-GC: {n} Ordner entfernt"),
+            );
+        }
+    });
+}
+
+/// After a failed/cancelled staged upload: hard-drop session, enqueue + background GC.
 async fn abandon_smb_staging<F>(
     result: UploadResult,
     cancel: UploadCancelPolicy,
@@ -952,22 +1080,7 @@ where
     F: FnMut(UploadProgress) + Send + 'static,
 {
     let result = release_smb_session_for_cleanup(result, cancel, progress, tree, client).await;
-    enqueue_new_staging_gc(host, port, share, staging_root);
-    match cleanup_smb_remote_tree(host, port, share, login, password, staging_root, true).await {
-        Ok(()) => {
-            dequeue_staging_gc(host, port, share, staging_root);
-            crate::storage::logging::info(
-                "smb",
-                format!("Staging sofort aufgeräumt: {staging_root}"),
-            );
-        }
-        Err(e) => {
-            crate::storage::logging::warn(
-                "smb",
-                format!("Staging-GC später: {staging_root} ({e})"),
-            );
-        }
-    }
+    schedule_staging_gc(host, port, share, staging_root, login, password);
     result.with_staging(Some(staging_root.to_string()))
 }
 
@@ -984,8 +1097,8 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     cancel: UploadCancelPolicy,
     progress: UploadProgressGate<F>,
 ) -> UploadResult {
-    // Opportunistic drain of leftover staging folders from prior cancels.
-    let _ = drain_smb_staging_gc(login, password).await;
+    // Never block a new upload on leftover GC — run in background.
+    spawn_smb_staging_gc(login, password);
 
     let mut client = match connect_smb(host, port, login, password).await {
         Ok(c) => c,
@@ -1015,9 +1128,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
             drop(tree);
             drop(client);
-            enqueue_new_staging_gc(host, port, share, &staging_root);
-            let _ = cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
-                .await;
+            schedule_staging_gc(host, port, share, &staging_root, login, password);
             return cancelled.with_staging(Some(staging_root));
         }
         let remote_rel = join_smb_path(&write_root, &file.relative);
@@ -1030,10 +1141,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
                 {
                     drop(tree);
                     drop(client);
-                    enqueue_new_staging_gc(host, port, share, &staging_root);
-                    let _ =
-                        cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
-                            .await;
+                    schedule_staging_gc(host, port, share, &staging_root, login, password);
                     return UploadResult::fail(e).with_staging(Some(staging_root));
                 }
             }
@@ -1231,7 +1339,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         Ok(c) => c,
         Err(_) => {
             drop(tree);
-            enqueue_new_staging_gc(host, port, share, &staging_root);
+            schedule_staging_gc(host, port, share, &staging_root, login, password);
             return UploadResult::fail(
                 "Upload-Session konnte für Promote nicht exklusiv übernommen werden",
             )
@@ -1242,7 +1350,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         Ok(t) => t,
         Err(_) => {
             drop(client);
-            enqueue_new_staging_gc(host, port, share, &staging_root);
+            schedule_staging_gc(host, port, share, &staging_root, login, password);
             return UploadResult::fail(
                 "Upload-Tree konnte für Promote nicht exklusiv übernommen werden",
             )
@@ -1254,9 +1362,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         let msg = e.to_string();
         drop(tree);
         drop(client);
-        enqueue_new_staging_gc(host, port, share, &staging_root);
-        let _ = cleanup_smb_remote_tree(host, port, share, login, password, &staging_root, true)
-            .await;
+        schedule_staging_gc(host, port, share, &staging_root, login, password);
         return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {msg}"))
             .with_staging(Some(staging_root));
     }
@@ -1616,6 +1722,7 @@ pub async fn cleanup_staging_path(
                 password,
                 staging_root,
                 true,
+                1,
             )
             .await?;
             dequeue_staging_gc(&host, port, &share, staging_root);
@@ -1703,13 +1810,15 @@ async fn cleanup_smb_job_root(
     job_name: &str,
 ) -> Result<(), String> {
     let job_root = join_smb_path(subpath, job_name);
-    cleanup_smb_remote_tree(host, port, share, login, password, &job_root, false).await
+    // Final job cleanup: few quick attempts (legacy / promote race). Staging uses schedule_staging_gc.
+    cleanup_smb_remote_tree(host, port, share, login, password, &job_root, false, 2).await
 }
 
 /// Delete an arbitrary share-relative path (job root or `.ats_staging/<id>`).
 ///
 /// When `already_paused` is true, skips the initial session-teardown sleep
 /// (caller already waited after dropping the upload session).
+/// `max_attempts` caps reconnect/delete rounds (use 1 on hot paths).
 async fn cleanup_smb_remote_tree(
     host: &str,
     port: u16,
@@ -1718,6 +1827,7 @@ async fn cleanup_smb_remote_tree(
     password: &str,
     remote_root: &str,
     already_paused: bool,
+    max_attempts: u32,
 ) -> Result<(), String> {
     if remote_root.is_empty() {
         return Err("Leerer Cleanup-Pfad".into());
@@ -1727,9 +1837,9 @@ async fn cleanup_smb_remote_tree(
         tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
     }
 
-    const ATTEMPTS: u32 = 8;
+    let attempts = max_attempts.max(1);
     let mut last_err: Option<String> = None;
-    for attempt in 1..=ATTEMPTS {
+    for attempt in 1..=attempts {
         let mut client = connect_smb(host, port, login, password).await?;
         let mut tree = client
             .connect_share(share)
@@ -1752,7 +1862,7 @@ async fn cleanup_smb_remote_tree(
         let retry_sharing = last_err.as_deref().is_some_and(smb_sharing_violation);
         drop(tree);
         drop(client);
-        if attempt < ATTEMPTS {
+        if attempt < attempts {
             let backoff_ms = if retry_sharing {
                 400 * u64::from(attempt)
             } else {
@@ -1765,6 +1875,8 @@ async fn cleanup_smb_remote_tree(
 }
 
 /// Process due deferred staging GC entries (fresh connections, credentials from caller).
+///
+/// One attempt per due entry — failures stay queued with backoff (see `record_gc_attempt`).
 pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
     let due = list_due_staging_gc();
     if due.is_empty() {
@@ -1780,6 +1892,7 @@ pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
             password,
             &entry.staging_root,
             true,
+            1,
         )
         .await
         {
@@ -1807,7 +1920,11 @@ pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
                 );
                 crate::storage::logging::warn(
                     "smb",
-                    format!("Staging-GC Versuch fehlgeschlagen ({}): {e}", entry.staging_root),
+                    format!(
+                        "Staging-GC Versuch fehlgeschlagen ({}): {}",
+                        entry.staging_root,
+                        shorten_smb_err(&e)
+                    ),
                 );
             }
         }
