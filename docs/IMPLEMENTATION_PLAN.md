@@ -852,6 +852,7 @@ scripts/download-ffmpeg.mjs
 - [x] `SetupWizard.tsx`: Theme, Speicherort/Ort, Backup/PC-Name, Server, Zusammenfassung
 - [x] Dezenter Skip; Abschluss setzt `setup_completed`
 - [x] Boot-Gate nach Splash; Factory-Reset öffnet Wizard erneut
+- [x] Upload-Step: AMS Discover (auto + Button), Token/Profilname, Pfade übernehmen; sonst Default-Profile Calden/Gera (kein Profil-Listen-Editor)
 - [x] Unit-Tests für Setup-Migration
 
 #### Referenzen

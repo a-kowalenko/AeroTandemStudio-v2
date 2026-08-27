@@ -1828,7 +1828,26 @@
       "finish": "Finish"
     },
     "upload": {
-      "disabledHint": "Upload stays off. You can set up the server later in settings at any time."
+      "disabledHint": "Upload stays off. You can set up the server later in settings at any time.",
+      "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
+      "amsHint": "We search automatically for the booking bridge. You can apply discovered paths, or set up the server manually.",
+      "searchNetwork": "Search network",
+      "searchAgain": "Search AMS",
+      "searching": "Searching…",
+      "searchingHint": "Scanning the network…",
+      "noneFound": "No bridge found. Search again or set up the server manually.",
+      "setupManually": "Set up manually",
+      "tokenRequired": "Please enter the AMS token or key.",
+      "tokenPlaceholder": "Token / key",
+      "tokenHint": "Often the same password as for the SMB server.",
+      "profileName": "Profile name",
+      "connectAndApply": "Connect and apply paths",
+      "skipAms": "Continue without AMS",
+      "pathsApplied": "Paths applied: {{primary}}",
+      "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
+      "manualHint": "Pick a default profile or enter SMB address and credentials.",
+      "presetCaldenHint": "Default URL for Calden",
+      "presetGeraHint": "Gera profile — enter URL yourself"
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",

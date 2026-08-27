@@ -22,23 +22,16 @@ import {
 import { UI_LANGUAGE_OPTIONS, uiLanguageLabel } from "@/lib/uiLanguageOptions";
 import { useConfigStore } from "@/store/configStore";
 import { useLocaleStore } from "@/store/localeStore";
-import { useServerStore } from "@/store/serverStore";
 import { useThemeStore, type ThemeMode } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
-import {
-  presentServerConnectionError,
-  serverConnectionStatusLabel,
-} from "@/lib/serverStatus";
 import {
   activeServerProfileSummary,
   DEFAULT_SERVER_PROFILE_ID,
   ensureWizardServerProfiles,
   switchServerProfile,
 } from "@/lib/serverProfile";
-import { ServerProfileEditor } from "@/components/ServerProfileEditor";
-import { AmsPathHintsSuggestBanner } from "@/components/AmsPathHintsSuggestBanner";
-import { AmsPathHintsDriftBanner } from "@/components/AmsPathHintsDriftBanner";
+import { WizardUploadServerStep } from "@/components/WizardUploadServerStep";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
 
@@ -297,9 +290,6 @@ export function SetupWizard({ open, onComplete }: Props) {
   const setLanguage = useLocaleStore((s) => s.setLanguage);
   const themeMode = useThemeStore((s) => s.mode);
   const setThemeMode = useThemeStore((s) => s.setMode);
-  const checkConnection = useServerStore((s) => s.checkConnection);
-  const serverPhase = useServerStore((s) => s.phase);
-  const serverMessage = useServerStore((s) => s.message);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -307,7 +297,6 @@ export function SetupWizard({ open, onComplete }: Props) {
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [skippedSteps, setSkippedSteps] = useState<Set<number>>(() => new Set());
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [testingServer, setTestingServer] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [mediaDirsProposal, setMediaDirsProposal] =
     useState<DefaultMediaDirsProposal | null>(null);
@@ -710,31 +699,6 @@ export function SetupWizard({ open, onComplete }: Props) {
     void finish(true);
   }
 
-  async function onTestServer() {
-    if (!draft) return;
-    setTestingServer(true);
-    try {
-      const result = await checkConnection({
-        server_url: draft.server_url,
-        server_login: draft.server_login,
-        server_password: draft.server_password,
-      });
-      if (result.ok) showSuccess(result.message, t("app.server.title"));
-      else {
-        const presented = presentServerConnectionError({
-          rawMessage: result.message,
-          serverUrl: draft.server_url,
-          login: draft.server_login,
-          password: draft.server_password,
-          omitSettingsAction: true,
-        });
-        showError(presented.message, t("app.server.title"));
-      }
-    } finally {
-      setTestingServer(false);
-    }
-  }
-
   const busy = saving || finishing;
 
   const canSkipStep = SKIPPABLE_STEPS.has(step);
@@ -1098,6 +1062,9 @@ export function SetupWizard({ open, onComplete }: Props) {
               <p className="text-sm text-muted">
                 {t("setupWizard.intro.upload")}
               </p>
+              <p className="text-xs leading-snug text-muted/90">
+                {t("setupWizard.upload.optionalNote")}
+              </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1113,78 +1080,15 @@ export function SetupWizard({ open, onComplete }: Props) {
                 <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
                   {t("setupWizard.upload.disabledHint")}
                 </div>
-              ) : null}
-              <div
-                className={cn(
-                  "space-y-3 rounded-lg border border-border bg-background/60 p-3",
-                  !draft.upload_to_server && "pointer-events-none opacity-50",
-                )}
-              >
-                <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                  {t("setupWizard.sections.server")}
-                </p>
-                <AmsPathHintsSuggestBanner
+              ) : (
+                <WizardUploadServerStep
                   draft={draft}
-                  setDraft={setDraft}
+                  setDraft={(next) => setDraft(next)}
                   disabled={!draft.upload_to_server}
                   onError={(message, title) => showError(message, title)}
-                  errorTitle={t("app.server.title")}
-                  diffFromDraft
+                  onSuccess={(message, title) => showSuccess(message, title)}
                 />
-                <AmsPathHintsDriftBanner
-                  draft={draft}
-                  setDraft={setDraft}
-                  disabled={!draft.upload_to_server}
-                  onError={(message, title) => showError(message, title)}
-                  errorTitle={t("app.server.title")}
-                  diffFromDraft
-                />
-                <ServerProfileEditor
-                  draft={draft}
-                  setDraft={setDraft}
-                  variant="wizard"
-                  disabled={!draft.upload_to_server}
-                  onError={(message) => showError(message, t("app.server.title"))}
-                  errorTitle={t("app.server.title")}
-                  footer={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        disabled={testingServer || !draft.upload_to_server}
-                        onClick={() => void onTestServer()}
-                      >
-                        {testingServer
-                          ? t("common.actions.checking")
-                          : t("common.actions.testConnection")}
-                      </Button>
-                      {!testingServer &&
-                      serverPhase !== "checking" &&
-                      serverPhase !== "idle" ? (
-                        <button
-                          type="button"
-                          className="cursor-pointer rounded text-xs text-muted underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          title={
-                            serverPhase === "error" && serverMessage
-                              ? t(
-                                  "settings.server.smb.recheckTitleWithMessage",
-                                  { message: serverMessage },
-                                )
-                              : t("settings.server.smb.recheckTitle")
-                          }
-                          onClick={() => void onTestServer()}
-                        >
-                          {serverConnectionStatusLabel(
-                            serverPhase,
-                            serverMessage,
-                          )}
-                        </button>
-                      ) : null}
-                    </div>
-                  }
-                />
-              </div>
+              )}
             </>
           ) : null}
 
@@ -1283,6 +1187,12 @@ export function SetupWizard({ open, onComplete }: Props) {
                         : t("setupWizard.summary.disabled")
                   }
                 />
+                {draft.upload_to_server && draft.ams_bridge_display_name.trim() ? (
+                  <SummaryRow
+                    label={t("settings.server.ams.title")}
+                    value={draft.ams_bridge_display_name}
+                  />
+                ) : null}
                 <SummaryRow
                   label={t("settings.server.smb.login")}
                   value={draft.server_login ? draft.server_login : "—"}

@@ -1828,7 +1828,26 @@
       "finish": "Fertig"
     },
     "upload": {
-      "disabledHint": "Upload bleibt aus. Du kannst den Server jederzeit später in den Einstellungen einrichten."
+      "disabledHint": "Upload bleibt aus. Du kannst den Server jederzeit später in den Einstellungen einrichten.",
+      "optionalNote": "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.",
+      "amsHint": "Wir suchen automatisch nach der Buchungs-Bridge. Gefundene Pfade kannst du übernehmen; sonst richtest du den Server manuell ein.",
+      "searchNetwork": "Im Netzwerk suchen",
+      "searchAgain": "AMS suchen",
+      "searching": "Suche…",
+      "searchingHint": "Netzwerk wird durchsucht…",
+      "noneFound": "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.",
+      "setupManually": "Manuell einrichten",
+      "tokenRequired": "Bitte AMS-Token oder Schlüssel eingeben.",
+      "tokenPlaceholder": "Token / Schlüssel",
+      "tokenHint": "Oft dasselbe Passwort wie für den SMB-Server.",
+      "profileName": "Profilname",
+      "connectAndApply": "Verbinden und Pfade übernehmen",
+      "skipAms": "Ohne AMS fortfahren",
+      "pathsApplied": "Pfade übernommen: {{primary}}",
+      "connectedNoPaths": "AMS verbunden — keine Pfadvorschläge. Bitte Server manuell eintragen.",
+      "manualHint": "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.",
+      "presetCaldenHint": "Standard-URL für Calden",
+      "presetGeraHint": "Profil für Gera — URL selbst eintragen"
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternative: {{path}}",

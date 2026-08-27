@@ -1828,7 +1828,26 @@
       "finish": "Listo"
     },
     "upload": {
-      "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento."
+      "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento.",
+      "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
+      "amsHint": "Buscamos automáticamente el puente de reservas. Puedes aplicar las rutas encontradas o configurar el servidor manualmente.",
+      "searchNetwork": "Buscar en la red",
+      "searchAgain": "Buscar AMS",
+      "searching": "Buscando…",
+      "searchingHint": "Explorando la red…",
+      "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
+      "setupManually": "Configurar manualmente",
+      "tokenRequired": "Introduce el token o clave de AMS.",
+      "tokenPlaceholder": "Token / clave",
+      "tokenHint": "A menudo es la misma contraseña que para el servidor SMB.",
+      "profileName": "Nombre del perfil",
+      "connectAndApply": "Conectar y aplicar rutas",
+      "skipAms": "Continuar sin AMS",
+      "pathsApplied": "Rutas aplicadas: {{primary}}",
+      "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
+      "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
+      "presetCaldenHint": "URL predeterminada para Calden",
+      "presetGeraHint": "Perfil Gera — introduce la URL tú mismo"
     },
     "defaultMediaDir": {
       "alternateChoice": "Alternativa: {{path}}",
