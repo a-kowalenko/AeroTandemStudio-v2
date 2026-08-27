@@ -76,16 +76,70 @@ export function createVideoStageLabel(): string {
   return tr("progress.createVideoStage");
 }
 
-/** Phases without meaningful % — use indeterminate bar (probe / folder prep). */
-export function isEncodeProbeIndeterminate(
+/**
+ * Phases without meaningful % — activity bar only (probe / folder prep / handoff /
+ * dialog wait / short frontend placeholders). Match DE raw + EN/ES UI labels.
+ */
+export function isActivityOnlyProgress(
   status: string | null | undefined,
 ): boolean {
   const s = (status ?? "").trim().toLowerCase();
   if (!s) return false;
   if (s === "probing" || s === "preview-analyse") return true;
-  return /analysiere videos|analysiere intro\/?video|analyzing videos|analyzing intro\/?video|analizando videos|analizando intro\/?video|analysiere für vorschau|analyzing for preview|analizando para vista previa|generiere ausgabe|generating output (dir|directory|folder)|generando directorio/.test(
-    s,
-  );
+
+  // Analyse / folder prep (existing)
+  if (
+    /analysiere videos|analysiere intro\/?video|analyzing videos|analyzing intro\/?video|analizando videos|analizando intro\/?video|analysiere für vorschau|analyzing for preview|analizando para vista previa|generiere ausgabe|generating output (dir|directory|folder)|generando directorio/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  // Handoff / marker (create + append) — fake fixed %
+  if (
+    /schreibe ams-manifest|writing ams manifest|escribiendo manifiesto ams|schreibe _fertig|writing _fertig|escribiendo _fertig|überspringe _fertig|skipping _fertig|omitiendo _fertig/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  // Append folder prep
+  if (
+    /lege nachreich-ordner|creating append (folder|dir)|creating append folder|creando (carpeta|directorio) de (reenv[ií]o|anexo|append)/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  // Re-encode / mux / fast-path dialog wait
+  if (
+    /warte auf bestätigung|waiting for confirmation|esperando confirmaci[oó]n|warte auf entscheidung|bitte entscheidung|please choose|elige una opci[oó]n/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  // Frontend start placeholders (create / append)
+  if (
+    /vorgang wird erstellt|creating job|creando trabajo|starte nachreichung|starting append|iniciando reenv[ií]o/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/** @deprecated Prefer {@link isActivityOnlyProgress}. */
+export function isEncodeProbeIndeterminate(
+  status: string | null | undefined,
+): boolean {
+  return isActivityOnlyProgress(status);
 }
 
 /** Parent stage for nested create_video progress inside create_job. */

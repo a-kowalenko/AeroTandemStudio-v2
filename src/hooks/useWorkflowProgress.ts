@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BackupProgress, WorkflowProgress } from "../lib/sdCard";
 import {
   formatOverallProgressLabel,
-  isEncodeProbeIndeterminate,
+  isActivityOnlyProgress,
   taskProgressLabel,
 } from "../lib/progressLabels";
 import {
@@ -531,15 +531,15 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   // --- Session snapshot (never upload progress) ---
   let sessionSnapshot: WorkflowProgressSnapshot | null = null;
   if (input.encodeBusy || input.appendActive) {
-    const probeIndeterminate = isEncodeProbeIndeterminate(input.status);
+    const activityOnly = isActivityOnlyProgress(input.status);
     sessionSnapshot = {
       percent: input.percent,
       label: formatOverallProgressLabel(
         input.status,
         tr("common.status.inProgress"),
       ),
-      indeterminate: probeIndeterminate,
-      hidePercent: probeIndeterminate,
+      indeterminate: activityOnly,
+      hidePercent: activityOnly,
     };
   } else if (showSdProgress && sdProgress) {
     sessionSnapshot = sdProgress;
