@@ -114,8 +114,10 @@ export function WorkflowLayout({
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
   const uploadActiveId = useUploadQueueStore((s) => s.active?.id ?? null);
-  const uploadGuestLabel = useUploadQueueStore(
-    (s) => s.active?.guestLabel ?? null,
+  const uploadActive = useUploadQueueStore((s) => s.active);
+  const uploadActiveJob = useMemo(
+    () => (uploadActive ? toUploadQueueJobPreview(uploadActive) : null),
+    [uploadActive],
   );
   const uploadQueue = useUploadQueueStore((s) => s.queue);
   const uploadQueueLen = uploadQueue.length;
@@ -200,7 +202,7 @@ export function WorkflowLayout({
     appendGuest,
     appendUploading: false,
     backgroundUploadActive: uploadSlotHasWork,
-    uploadGuestLabel,
+    uploadActiveJob,
     uploadQueueCount: uploadQueueLen,
     uploadQueueJobs,
     uploadCancelPhase,

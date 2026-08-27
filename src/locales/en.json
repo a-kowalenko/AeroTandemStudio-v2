@@ -1158,8 +1158,8 @@
       "manualImport": "Media is being copied to the working folder — cancel discards the import",
       "manualQr": "QR search — cancel stops the search",
       "encodeBusy": "Current job — cancel stops FFmpeg.",
-      "createUploading": "Current job — cancel stops the upload.",
-      "createUploadingFor": "{{guest}} — cancel stops the upload.",
+      "createUploading": "Current job",
+      "createUploadingFor": "{{guest}}",
       "cancelling": "Cancel requested — finishing the current step"
     },
     "upload": {

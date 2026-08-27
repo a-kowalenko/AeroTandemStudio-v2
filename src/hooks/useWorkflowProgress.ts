@@ -27,7 +27,11 @@ import {
   type UploadCompactParts,
 } from "../lib/uploadProgress";
 import type { UploadProgressEvent } from "../lib/tauri";
-import type { UploadSlotResult, UploadQueueJobPreview } from "../lib/uploadQueue";
+import {
+  formatUploadJobLine,
+  type UploadSlotResult,
+  type UploadQueueJobPreview,
+} from "../lib/uploadQueue";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -106,8 +110,8 @@ type Input = {
   appendUploading: boolean;
   /** Slot/queue has work (independent of session busy). */
   backgroundUploadActive?: boolean;
-  /** Active upload guest / customer label for subtitle. */
-  uploadGuestLabel?: string | null;
+  /** Active upload job preview for subtitle (guest + crew). */
+  uploadActiveJob?: UploadQueueJobPreview | null;
   uploadQueueCount?: number;
   /** Waiting jobs (FIFO) for Compact-Bar collapsible. */
   uploadQueueJobs?: UploadQueueJobPreview[];
@@ -389,7 +393,6 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     manualQr: showManualQr,
   });
 
-  const uploadGuest = input.uploadGuestLabel?.trim() || null;
   const uploadSubtitle = failedHold
     ? tr("workflow.upload.failedHold")
     : input.uploadCancelPhase === "cleanup"
@@ -397,8 +400,12 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       : input.uploadCancelPhase === "cancelling" ||
           Boolean(input.uploadCancelRequested)
         ? tr("workflow.stage.cancelling")
-        : uploadGuest
-          ? tr("workflow.stage.createUploadingFor", { guest: uploadGuest })
+        : input.uploadActiveJob
+          ? formatUploadJobLine(
+              input.uploadActiveJob,
+              tr,
+              "workflow.stage.createUploading",
+            )
           : tr("workflow.stage.createUploading");
 
   // Session pipeline: encode / append / completion (not background-upload-only).

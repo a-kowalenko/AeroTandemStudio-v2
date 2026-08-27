@@ -1158,8 +1158,8 @@
       "manualImport": "Los medios se copian a la carpeta de trabajo — cancelar descarta la importación",
       "manualQr": "Búsqueda QR — cancelar detiene la búsqueda",
       "encodeBusy": "Trabajo actual — cancelar detiene FFmpeg.",
-      "createUploading": "Trabajo actual — cancelar detiene la subida.",
-      "createUploadingFor": "{{guest}} — cancelar detiene la subida.",
+      "createUploading": "Trabajo actual",
+      "createUploadingFor": "{{guest}}",
       "cancelling": "Cancelación solicitada — se termina el paso actual"
     },
     "upload": {

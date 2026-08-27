@@ -6,6 +6,7 @@ import {
   clearQueuedUploadJobs,
   createEmptyUploadQueue,
   enqueueUploadJob,
+  formatUploadJobLine,
   promoteNextUploadJob,
   uploadQueueWorkCount,
 } from "../src/lib/uploadQueue.ts";
@@ -136,5 +137,76 @@ describe("uploadQueue FIFO", () => {
     assert.equal(s.active?.id, "a1");
     assert.equal(s.active?.source, "append");
     assert.deepEqual(s.queue, []);
+  });
+});
+
+describe("formatUploadJobLine", () => {
+  const t = (key, opts) => {
+    if (key === "history.ta") return `TA: ${opts.name}`;
+    if (key === "history.vs") return `V: ${opts.name}`;
+    if (key === "workflow.upload.queueUntitled") return "Upload";
+    if (key === "workflow.stage.createUploading") return "Aktueller Vorgang";
+    return key;
+  };
+
+  it("guest only", () => {
+    assert.equal(
+      formatUploadJobLine(
+        {
+          guestLabel: "Andreas Kowalenko",
+          folderName: null,
+          tandemmaster: null,
+          videospringer: null,
+        },
+        t,
+      ),
+      "Andreas Kowalenko",
+    );
+  });
+
+  it("guest with TA and VS like queue", () => {
+    assert.equal(
+      formatUploadJobLine(
+        {
+          guestLabel: "Andreas Kowalenko",
+          folderName: "folder",
+          tandemmaster: "Max",
+          videospringer: "Ana",
+        },
+        t,
+      ),
+      "Andreas Kowalenko — TA: Max · V: Ana",
+    );
+  });
+
+  it("guest with TA only", () => {
+    assert.equal(
+      formatUploadJobLine(
+        {
+          guestLabel: "Guest",
+          folderName: null,
+          tandemmaster: "Max",
+          videospringer: null,
+        },
+        t,
+      ),
+      "Guest — TA: Max",
+    );
+  });
+
+  it("untitled fallback for active subtitle", () => {
+    assert.equal(
+      formatUploadJobLine(
+        {
+          guestLabel: null,
+          folderName: null,
+          tandemmaster: "Max",
+          videospringer: null,
+        },
+        t,
+        "workflow.stage.createUploading",
+      ),
+      "Aktueller Vorgang — TA: Max",
+    );
   });
 });

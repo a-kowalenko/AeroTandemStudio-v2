@@ -23,7 +23,10 @@ import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
-import type { UploadQueueJobPreview } from "../lib/uploadQueue";
+import {
+  formatUploadJobLine,
+  type UploadQueueJobPreview,
+} from "../lib/uploadQueue";
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 
 type Props = {
@@ -55,24 +58,6 @@ function stageIcon(stage: WorkflowProgressStage): LucideIcon {
     default:
       return Clapperboard;
   }
-}
-
-function formatQueueJobLine(
-  job: UploadQueueJobPreview,
-  t: (key: string, options?: { name?: string }) => string,
-): string {
-  const guest =
-    job.guestLabel?.trim() ||
-    job.folderName?.trim() ||
-    t("workflow.upload.queueUntitled");
-  const crew: string[] = [];
-  if (job.tandemmaster) {
-    crew.push(t("history.ta", { name: job.tandemmaster }));
-  }
-  if (job.videospringer) {
-    crew.push(t("history.vs", { name: job.videospringer }));
-  }
-  return crew.length > 0 ? `${guest} — ${crew.join(" · ")}` : guest;
 }
 
 function UploadQueueCollapsible({
@@ -108,15 +93,18 @@ function UploadQueueCollapsible({
       </button>
       {open ? (
         <ul className="space-y-0.5 border-l border-border/60 pl-3">
-          {jobs.map((job) => (
-            <li
-              key={job.id}
-              className="truncate text-xs text-muted"
-              title={formatQueueJobLine(job, t)}
-            >
-              {formatQueueJobLine(job, t)}
-            </li>
-          ))}
+          {jobs.map((job) => {
+            const line = formatUploadJobLine(job, t);
+            return (
+              <li
+                key={job.id}
+                className="truncate text-xs text-muted"
+                title={line}
+              >
+                {line}
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </div>

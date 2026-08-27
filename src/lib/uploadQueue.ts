@@ -42,6 +42,32 @@ export function toUploadQueueJobPreview(
   };
 }
 
+type UploadJobLineTranslate = (
+  key: string,
+  options?: { name?: string },
+) => string;
+
+/** Guest (+ optional TA/V) line for Compact-Bar active subtitle and queue rows. */
+export function formatUploadJobLine(
+  job: Pick<
+    UploadQueueJobPreview,
+    "guestLabel" | "folderName" | "tandemmaster" | "videospringer"
+  >,
+  t: UploadJobLineTranslate,
+  untitledKey = "workflow.upload.queueUntitled",
+): string {
+  const guest =
+    job.guestLabel?.trim() || job.folderName?.trim() || t(untitledKey);
+  const crew: string[] = [];
+  if (job.tandemmaster) {
+    crew.push(t("history.ta", { name: job.tandemmaster }));
+  }
+  if (job.videospringer) {
+    crew.push(t("history.vs", { name: job.videospringer }));
+  }
+  return crew.length > 0 ? `${guest} — ${crew.join(" · ")}` : guest;
+}
+
 export type UploadQueueSnapshot = {
   active: UploadQueueJob | null;
   queue: UploadQueueJob[];
