@@ -17,6 +17,13 @@
     <string>Aero Tandem Studio speichert Vorgänge und Medien in Dokumenten-Ordnern, wenn ausgewählt.</string>
     <key>NSNetworkVolumesUsageDescription</key>
     <string>Aero Tandem Studio kann auf Netzwerkfreigaben zugreifen, wenn der Speicherort dort liegt.</string>
+    <!-- macOS 15+ Local Network / mDNS (AMS Bridge discovery `_ams-bridge._tcp`) -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Aero Tandem Studio sucht die Buchungs-Bridge und Server im lokalen Netzwerk (mDNS) und verbindet sich zu AMS und SMB-Freigaben.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_ams-bridge._tcp</string>
+    </array>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.video</string>
 </dict>

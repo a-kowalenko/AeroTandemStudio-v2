@@ -38,16 +38,33 @@ npm run build:mac
 
 Same as CI for the host arch: static FFmpeg sidecar, Cargo release, `.app` only.
 Without `TAURI_SIGNING_PRIVATE_KEY`, uses `tauri.conf.ci.json` (no updater artifacts).
-Opens the bundle folder in Finder when done.
 
-| Host | FFmpeg | Target | Output |
-|------|--------|--------|--------|
+After the build the script:
+
+1. Ad-hoc codesigns with `Entitlements.plist` (stable TCC identity)
+2. Installs to `/Applications/Aero Tandem Studio.app` (replaces existing)
+3. Opens the installed app
+
+Do **not** test from `target/.../bundle/macos/` — macOS Local Network / mDNS
+treats that path as a different app than `/Applications`, so Bridge discovery
+and SMB often fail while `tauri dev` and the Release install work.
+
+| Host | FFmpeg | Target | Bundle output (then copied) |
+|------|--------|--------|-------------------------------|
 | Intel | `x86_64` | `x86_64-apple-darwin` | `src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app` |
 | Apple Silicon | `arm64` | `aarch64-apple-darwin` | `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app` |
 
-Override: `MAC_BUILD_ARCH=x86_64 npm run build:mac` (or `arm64`).
+Overrides:
+
+- `MAC_BUILD_ARCH=x86_64` (or `arm64`)
+- `MAC_INSTALL_DIR=$HOME/Applications` — alternate install location
+- `MAC_SKIP_INSTALL=1` — leave app only under `target/…` (not recommended)
 
 RustRover: Run configuration **Build macOS** → npm script `build:mac`.
+
+**Local Network:** `Info.plist` declares `NSLocalNetworkUsageDescription` and
+`NSBonjourServices` (`_ams-bridge._tcp`). On first Bridge search, allow access in
+System Settings → Privacy & Security → Local Network if prompted.
 
 ### Explicit architecture (CI / Intel)
 
@@ -80,7 +97,7 @@ Artifacts are named with `aarch64` / `x64` so the in-app updater can pick the ma
 | File | Purpose |
 |------|---------|
 | `src-tauri/Entitlements.plist` | Hardened Runtime: JIT for WKWebView, disable library validation for FFmpeg sidecar. **No App Sandbox** (SD `/Volumes`, arbitrary folders, SMB). |
-| `src-tauri/Info.plist` | Usage strings for removable / network volumes and Documents/Downloads. Merged by Tauri into the bundle. |
+| `src-tauri/Info.plist` | Usage strings for removable / network volumes, Documents/Downloads, **Local Network** + Bonjour `_ams-bridge._tcp`. Merged by Tauri into the bundle. |
 
 Configured in `tauri.conf.json` → `bundle.macOS.entitlements`.
 
