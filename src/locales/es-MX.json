@@ -1270,6 +1270,8 @@
     "appendTitleLokal": "Solo en trabajos en línea, no locales",
     "appendTitleWait": "Solo cuando termine la subida",
     "appendTitleBusy": "Ya hay un reenvío en curso",
+    "appendTitleUploadOff": "Carga a la nube desactivada — actívala en ajustes para reenviar medios",
+    "appendTitleCloudOffline": "Sin conexión al servidor — reenvío a la nube cuando haya conexión",
     "appendTitleOk": "Agregar más medios a la misma carpeta del cliente",
     "files": "Archivos",
     "appended": "Reenviado",

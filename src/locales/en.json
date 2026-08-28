@@ -1270,6 +1270,8 @@
     "appendTitleLokal": "Only for online jobs, not local",
     "appendTitleWait": "Only after upload has finished",
     "appendTitleBusy": "An append is already running",
+    "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media",
+    "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
     "appendTitleOk": "Add more media to the same customer folder",
     "files": "Files",
     "appended": "Appended",

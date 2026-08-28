@@ -1270,6 +1270,8 @@
     "appendTitleLokal": "Nur bei Online-Vorgängen, nicht bei Lokal",
     "appendTitleWait": "Erst wenn der Upload abgeschlossen ist",
     "appendTitleBusy": "Eine Nachreichung läuft bereits",
+    "appendTitleUploadOff": "Cloud-Upload ist deaktiviert — in den Einstellungen aktivieren, um nachzureichen",
+    "appendTitleCloudOffline": "Keine Serververbindung — Nachreichen in die Cloud, sobald die Verbindung steht",
     "appendTitleOk": "Weitere Medien in denselben Kundenordner legen",
     "files": "Dateien",
     "appended": "Nachgereicht",

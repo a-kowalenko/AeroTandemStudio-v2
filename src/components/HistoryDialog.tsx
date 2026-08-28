@@ -1684,7 +1684,9 @@ function VorgaengePanel({
     Boolean(selected?.correlation_id?.trim()) &&
     (selected?.ams_state ?? "").trim().toLowerCase() === "completed" &&
     !lastAppendBusy &&
-    !appendJobActive;
+    !appendJobActive &&
+    uploadToServer &&
+    serverConnected;
   const selectedFolderProblem = selected
     ? isFolderMissingProblem(selected, folderMissingById)
     : false;
@@ -2303,7 +2305,11 @@ function VorgaengePanel({
                               ? t("history.appendTitleWait")
                               : lastAppendBusy || appendJobActive
                                 ? t("history.appendTitleBusy")
-                                : t("history.appendTitleOk")
+                                : !uploadToServer
+                                  ? t("history.appendTitleUploadOff")
+                                  : !serverConnected
+                                    ? t("history.appendTitleCloudOffline")
+                                    : t("history.appendTitleOk")
                         }
                         onClick={() => onOpenAppend(selected)}
                       >
