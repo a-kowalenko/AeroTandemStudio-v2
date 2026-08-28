@@ -1262,29 +1262,6 @@ pub async fn create_job(
                     );
                 }
             }
-            // Optional AMS Bridge wake after Manifest + _fertig.txt (P3). Soft when down.
-            // When upload_to_server is enabled, handoff/ready is sent after successful SMB upload.
-            if !res.correlation_id.trim().is_empty() && !config_for_ready.upload_to_server {
-                match crate::bridge::maybe_notify_handoff_ready(
-                    &config_for_ready,
-                    &res.correlation_id,
-                    Some(&res.base_filename),
-                )
-                .await
-                {
-                    Ok(Some(_)) => {
-                        logging::info(
-                            "bridge",
-                            format!(
-                                "AMS handoff/ready gesendet (correlation_id={})",
-                                res.correlation_id
-                            ),
-                        );
-                    }
-                    Ok(None) => {}
-                    Err(e) => logging::warn("bridge", format!("handoff/ready: {e}")),
-                }
-            }
             Ok(res)
         }
         Err(e) => {

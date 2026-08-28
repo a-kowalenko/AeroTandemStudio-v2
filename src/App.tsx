@@ -55,6 +55,7 @@ import {
   clearWorkingSession,
   createJob,
   cleanupCache,
+  focusMainWindowAfterUpdate,
   getAppInfo,
   getUpdaterInstallHint,
   cancelUpdateInstall,
@@ -1201,6 +1202,7 @@ function App() {
         if (!cancelled) {
           setReady(true);
           setSplashOpen(false);
+          void focusMainWindowAfterUpdate().catch(() => undefined);
         }
 
         void runUpdateCheck(
@@ -1215,6 +1217,7 @@ function App() {
         showError(msg, t("app.start.title"));
         setReady(true);
         setSplashOpen(false);
+        void focusMainWindowAfterUpdate().catch(() => undefined);
       }
     }
 

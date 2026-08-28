@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, RefreshCw } from "lucide-react";
+import { Eye } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +37,8 @@ import {
   resyncVorgangDeliveryList,
   deleteVorgangExtraFiles,
   canRetryVorgangUpload,
+  canStartVorgangUpload,
+  canUploadLocalVorgang,
   pendingUploadCandidates,
   scanBulkUploadCandidates,
   bulkSummaryItemFromScanEntry,
@@ -96,7 +98,6 @@ import { useHistoryStore } from "@/store/historyStore";
 import {
   applyAppendStatusToEntry,
   applyHandoffToEntry,
-  isAmsStatusStale,
 } from "@/lib/amsHandoffPatch";
 import {
   folderMissingMapFromProbe,
@@ -106,8 +107,10 @@ import {
 import {
   effectiveAmsListState,
   isFolderMissingProblem,
+  isLocalOnlyVorgang,
   isPostUploadFolderCleanup,
   resolveListStatusDisplay,
+  shouldReverifyCompletedHandoff,
 } from "@/lib/vorgangLifecycle";
 import { useHandoffSync } from "@/hooks/useHandoffSync";
 import { useUiStore } from "@/store/uiStore";
@@ -119,6 +122,7 @@ import { VorgangAmsChip } from "@/components/history/VorgangAmsChip";
 import { VorgangArchivedChip } from "@/components/history/VorgangArchivedChip";
 import { VorgangCompleteChip } from "@/components/history/VorgangCompleteChip";
 import { VorgangFolderChip } from "@/components/history/VorgangFolderChip";
+import { VorgangLocalChip } from "@/components/history/VorgangLocalChip";
 import { VorgangAmsStepper } from "@/components/history/VorgangAmsStepper";
 import { VorgangProductChip } from "@/components/history/VorgangProductChip";
 import { VorgangUploadChip } from "@/components/history/VorgangUploadChip";
@@ -148,8 +152,6 @@ type TypeFilter = "all" | "video" | "photo";
 type PeriodFilter = "all" | "today" | "7d" | "30d" | "365d";
 
 const AMS_STATUS_FILTERS: AmsStatusFilter[] = ["all", "open", "done", "error"];
-
-const HANDOFF_REFRESH_MIN_MS = 400;
 
 type PendingConfirm = {
   title: string;
@@ -1243,7 +1245,6 @@ function VorgaengePanel({
   const [showShadow, setShowShadow] = useState(true);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus | null>(null);
   const [handoffReady, setHandoffReady] = useState(false);
-  const [handoffRefreshBusy, setHandoffRefreshBusy] = useState(false);
   const [appendStatus, setAppendStatus] = useState<HandoffStatus | null>(null);
   const [appends, setAppends] = useState<VorgangAppendEntry[]>(
     () => seedVorgaengePanel().appends,
@@ -1419,6 +1420,14 @@ function VorgaengePanel({
       return;
     }
     if (isFolderMissingProblem(selected, folderMissingById)) {
+      setHandoffStatus(null);
+      setHandoffReady(true);
+      return;
+    }
+    if (
+      isLocalOnlyVorgang(selected) &&
+      !shouldReverifyCompletedHandoff(selected)
+    ) {
       setHandoffStatus(null);
       setHandoffReady(true);
       return;
@@ -1676,9 +1685,26 @@ function VorgaengePanel({
     (selected?.ams_state ?? "").trim().toLowerCase() === "completed" &&
     !lastAppendBusy &&
     !appendJobActive;
+  const selectedFolderProblem = selected
+    ? isFolderMissingProblem(selected, folderMissingById)
+    : false;
+  const selectedFolderCleanedUp = selected
+    ? isPostUploadFolderCleanup(selected, folderMissingById)
+    : false;
   const canRetry = selected
-    ? !isFolderMissingProblem(selected, folderMissingById) &&
+    ? !selectedFolderProblem &&
       canRetryVorgangUpload(selected, uploadToServer)
+    : false;
+  const canUploadLocal = selected
+    ? !selectedFolderProblem &&
+      canUploadLocalVorgang(selected, uploadToServer, selectedFolderProblem)
+    : false;
+  const canStartUpload = selected
+    ? !selectedFolderProblem &&
+      canStartVorgangUpload(selected, uploadToServer, selectedFolderProblem)
+    : false;
+  const selectedLocalOnly = selected
+    ? isLocalOnlyVorgang(selected) && !selectedFolderProblem
     : false;
   const bulkCandidates = useMemo(
     () =>
@@ -1687,60 +1713,6 @@ function VorgaengePanel({
       ),
     [entries, uploadToServer, folderMissingById],
   );
-  const selectedFolderProblem = selected
-    ? isFolderMissingProblem(selected, folderMissingById)
-    : false;
-  const selectedFolderCleanedUp = selected
-    ? isPostUploadFolderCleanup(selected, folderMissingById)
-    : false;
-  const handoffStale = Boolean(
-    !selectedFolderProblem &&
-      selected?.correlation_id?.trim() &&
-      isAmsStatusStale(
-        handoffStatus?.verified_at || selected.ams_verified_at,
-        handoffStatus?.state || selected.ams_state,
-        { offline: handoffStatus?.offline },
-      ),
-  );
-  const refreshHandoffStatus = useCallback(async () => {
-    if (!selected?.correlation_id?.trim()) return;
-    if (selectedFolderProblem) {
-      showWarning(
-        t("history.status.hint.folderMissing"),
-        t("history.status.folderMissing"),
-      );
-      return;
-    }
-    setHandoffRefreshBusy(true);
-    const started = Date.now();
-    try {
-      const status = await getHandoffStatus(
-        selected.correlation_id,
-        selected.base_output_dir,
-        selected.id,
-      );
-      if (status) {
-        setHandoffStatus(status);
-        patchEntry(selected.id, (row) => applyHandoffToEntry(row, status));
-      } else {
-        showWarning(
-          t("history.status.refreshNoChange"),
-          t("history.status.refreshStatus"),
-        );
-      }
-    } catch {
-      showWarning(
-        t("history.status.refreshFailed"),
-        t("history.status.refreshStatus"),
-      );
-    } finally {
-      const wait = HANDOFF_REFRESH_MIN_MS - (Date.now() - started);
-      if (wait > 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, wait));
-      }
-      setHandoffRefreshBusy(false);
-    }
-  }, [selected, selectedFolderProblem, showWarning, t]);
   const qrPreview = selected?.qr_preview?.path?.trim()
     ? selected.qr_preview
     : null;
@@ -2041,6 +2013,9 @@ function VorgaengePanel({
                         {listStatus === "upload_done" ? (
                           <VorgangCompleteChip />
                         ) : null}
+                        {listStatus === "local_only" ? (
+                          <VorgangLocalChip />
+                        ) : null}
                         {listStatus === "ams_terminal" && amsViewOffline ? (
                           <VorgangAmsChip
                             view={amsViewOffline}
@@ -2181,7 +2156,55 @@ function VorgaengePanel({
                     <span>{t("history.status.hint.folderCleanedUp")}</span>
                   </div>
                 ) : null}
-                {selected.correlation_id?.trim() && !selectedFolderProblem ? (
+                {selectedLocalOnly ? (
+                  <div className="pt-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <VorgangLocalChip />
+                      <span className="text-[11px] text-muted-foreground">
+                        {t("history.status.hint.localOnly")}
+                      </span>
+                    </div>
+                    {canStartUpload ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="default"
+                        className="h-7"
+                        disabled={
+                          retryPreflightBusy ||
+                          appendJobActive ||
+                          !serverConnected
+                        }
+                        title={
+                          !serverConnected
+                            ? t("history.upload.retryOffline")
+                            : canUploadLocal
+                              ? t("history.upload.uploadTitleOk")
+                              : t("history.upload.retryTitleOk")
+                        }
+                        onClick={() => {
+                          if (!serverConnected) {
+                            showWarning(
+                              t("history.upload.retryOffline"),
+                              canUploadLocal
+                                ? t("history.upload.uploadTitle")
+                                : t("history.upload.retryTitle"),
+                            );
+                            return;
+                          }
+                          onRequestRetryUpload(selected);
+                        }}
+                      >
+                        {canUploadLocal
+                          ? t("history.upload.uploadBtn")
+                          : t("history.upload.retryBtn")}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selected.correlation_id?.trim() &&
+                !selectedFolderProblem &&
+                !selectedLocalOnly ? (
                   <div className="pt-1">
                     {!handoffReady && !handoffStatus ? (
                       <div className="text-muted">{t("history.statusLoading")}</div>
@@ -2196,30 +2219,6 @@ function VorgaengePanel({
                         }
                       />
                     )}
-                    {handoffStale ? (
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-[10px] text-amber-800 dark:text-amber-200">
-                          {t("history.status.hint.amsStale")}
-                        </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-6 gap-1 px-2 text-[10px]"
-                          disabled={handoffRefreshBusy}
-                          onClick={() => void refreshHandoffStatus()}
-                        >
-                          <RefreshCw
-                            className={cn(
-                              "size-3",
-                              handoffRefreshBusy && "animate-spin",
-                            )}
-                            aria-hidden
-                          />
-                          {t("history.status.refreshStatus")}
-                        </Button>
-                      </div>
-                    ) : null}
                     <div
                       className="mt-0.5 truncate text-[10px] text-muted-foreground/80"
                       title={selected.correlation_id}

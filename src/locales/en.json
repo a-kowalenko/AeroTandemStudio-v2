@@ -1244,6 +1244,7 @@
       "folderMissing": "Folder missing",
       "folderMissingRemove": "Remove from history",
       "folderCleanedUp": "Local removed",
+      "localOnly": "Local only",
       "refreshNoChange": "No new cloud status available (cache or bridge offline).",
       "refreshFailed": "Could not fetch cloud status.",
       "hint": {
@@ -1252,6 +1253,7 @@
         "amsStale": "Status outdated — tap to refresh",
         "folderMissing": "Output folder was removed or moved. Upload and cloud status are unavailable.",
         "folderCleanedUp": "Output folder removed after upload — normal. Cloud status syncs via AMS.",
+        "localOnly": "No server upload planned — files are local only",
         "jobComplete": "Server and cloud upload finished"
       },
       "step": {
@@ -1343,6 +1345,9 @@
       "catOutsideVideo": "Outside video",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
+      "hintNew": "Not booked — product is created with this append; optional preview can be included.",
+      "hintOpen": "Open — optionally include a watermarked preview.",
+      "hintPaid": "Paid — append originals only; no preview needed.",
       "modeOriginal": "Original",
       "modeOriginalPreview": "Original + preview",
       "noPhotos": "No supported photos found.",
@@ -1394,6 +1399,9 @@
       "reconnectToastBody": "{{count}} uploads pending — retry from Jobs.",
       "reconnectToastTitle": "Server back online",
       "retryBtn": "Retry upload",
+      "uploadBtn": "Upload to server",
+      "uploadTitle": "Upload to server",
+      "uploadTitleOk": "Copy this local job to the server now",
       "retryCancelled": "Upload cancelled.",
       "retryDone": "Upload completed successfully.",
       "retryOffline": "Server offline — upload only when the connection is back",

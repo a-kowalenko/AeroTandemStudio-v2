@@ -1244,6 +1244,7 @@
       "folderMissing": "Carpeta no encontrada",
       "folderMissingRemove": "Quitar del historial",
       "folderCleanedUp": "Local eliminado",
+      "localOnly": "Solo local",
       "refreshNoChange": "No hay estado nuevo en la nube (caché o puente sin conexión).",
       "refreshFailed": "No se pudo consultar el estado en la nube.",
       "hint": {
@@ -1252,6 +1253,7 @@
         "amsStale": "Estado desactualizado — toca para actualizar",
         "folderMissing": "Se eliminó o movió la carpeta de salida. Subida y estado en la nube no disponibles.",
         "folderCleanedUp": "Carpeta local eliminada tras la subida — normal. El estado en la nube se sincroniza vía AMS.",
+        "localOnly": "Sin subida al servidor planificada — los archivos están solo en local",
         "jobComplete": "Subida al servidor y a la nube completada"
       },
       "step": {
@@ -1343,6 +1345,9 @@
       "catOutsideVideo": "Video Outside",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
+      "hintNew": "Sin reservar — el producto se crea con este reenvío; opcionalmente incluye vista previa.",
+      "hintOpen": "Abierto — opcionalmente incluye vista previa con marca de agua.",
+      "hintPaid": "Pagado — solo reenviar originales; no hace falta vista previa.",
       "modeOriginal": "Original",
       "modeOriginalPreview": "Original + vista previa",
       "noPhotos": "No se encontraron fotos compatibles.",
@@ -1394,6 +1399,9 @@
       "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos.",
       "reconnectToastTitle": "Servidor de nuevo en línea",
       "retryBtn": "Reintentar subida",
+      "uploadBtn": "Subir al servidor",
+      "uploadTitle": "Subir al servidor",
+      "uploadTitleOk": "Copiar este trabajo local al servidor ahora",
       "retryCancelled": "Subida cancelada.",
       "retryDone": "Subida completada correctamente.",
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",

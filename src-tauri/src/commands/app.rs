@@ -247,3 +247,9 @@ pub fn cleanup_cache(
     log_info(&format!("cleanup_cache: {}", result.summary));
     Ok(result)
 }
+
+/// After an auto-update restart, bring the main window to the foreground.
+#[tauri::command]
+pub fn focus_main_window_after_update(app: AppHandle) -> bool {
+    crate::util::window_focus::focus_main_window_if_update_restart(&app)
+}

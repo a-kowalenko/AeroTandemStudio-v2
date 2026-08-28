@@ -17,7 +17,10 @@ import {
 
 export {
   canRetryVorgangUpload,
+  canStartVorgangUpload,
+  canUploadLocalVorgang,
   isListUploadStatus,
+  isLocalOnlyUploadState,
   isOutstandingUploadState,
   isOutstandingVorgangUpload,
   isRetryableUploadState,

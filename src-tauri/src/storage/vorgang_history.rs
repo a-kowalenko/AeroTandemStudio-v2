@@ -555,12 +555,14 @@ impl VorgangHistoryStore {
         let correlation_id = result.correlation_id.trim().to_string();
         let (ams_state, ams_updated_at, ams_source) = if correlation_id.is_empty() {
             (String::new(), String::new(), String::new())
-        } else {
+        } else if upload_to_server {
             (
                 "pending".to_string(),
                 created_at.clone(),
                 "local".to_string(),
             )
+        } else {
+            (String::new(), String::new(), "local".to_string())
         };
         let upload_state = initial_upload_state(upload_to_server, &correlation_id);
 
@@ -1931,10 +1933,9 @@ mod tests {
         let id_off = store
             .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, false)
             .unwrap();
-        assert_eq!(
-            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
-            "none"
-        );
+        let off_row = store.list_vorgaenge(10, None).unwrap()[0].clone();
+        assert_eq!(off_row.upload_state, "none");
+        assert!(off_row.ams_state.is_empty());
 
         let mut local = sample_result();
         local.correlation_id.clear();

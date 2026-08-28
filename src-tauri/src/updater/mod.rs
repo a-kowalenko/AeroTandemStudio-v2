@@ -410,6 +410,9 @@ async fn download_and_install_update<R: Runtime>(
         },
     );
 
+    crate::util::window_focus::mark_focus_after_update()
+        .map_err(|e| format!("Update-Vorbereitung fehlgeschlagen: {e}"))?;
+
     update
         .install(bytes)
         .map_err(|e| format!("Update-Installation fehlgeschlagen: {e}"))?;

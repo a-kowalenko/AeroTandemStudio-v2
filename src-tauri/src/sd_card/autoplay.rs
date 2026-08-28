@@ -13,6 +13,7 @@ use tauri::{AppHandle, Manager};
 #[cfg(windows)]
 use crate::sd_card::eject::windows_drive_letter;
 use crate::storage::logging;
+use crate::util::window_focus::focus_main_window;
 
 static INSTALLED_HWND: AtomicIsize = AtomicIsize::new(0);
 static QUERY_CANCEL_MSG: AtomicU32 = AtomicU32::new(0);
@@ -65,15 +66,6 @@ pub fn on_sd_inserted(app: &AppHandle, drive: &str) {
     {
         let _ = drive;
     }
-}
-
-fn focus_main_window(app: &AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    let _ = window.unminimize();
-    let _ = window.show();
-    let _ = window.set_focus();
 }
 
 #[cfg(windows)]

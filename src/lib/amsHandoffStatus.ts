@@ -1,6 +1,7 @@
 /** AMS handoff status helpers for Historie UI (ATS ↔ AMS Outbox / Bridge). */
 
 import { tr } from "@/i18n";
+import { normalizeUploadState } from "@/lib/uploadState";
 
 export type AmsHandoffState =
   | "pending"
@@ -198,10 +199,12 @@ export function amsFilterBucket(
     correlation_id?: string;
     ams_state?: string;
     ams_error_code?: string;
+    upload_state?: string;
   },
 ): AmsStatusFilter | "none" {
   const cid = entry.correlation_id?.trim() ?? "";
   if (!cid) return "none";
+  if (normalizeUploadState(entry.upload_state) === "none") return "none";
   const view = viewFromVorgangEntry(entry);
   if (!view) return "none";
   if (isAmsCancelled(view)) return "error";
@@ -216,6 +219,7 @@ export function matchesAmsStatusFilter(
     correlation_id?: string;
     ams_state?: string;
     ams_error_code?: string;
+    upload_state?: string;
   },
   filter: AmsStatusFilter,
 ): boolean {

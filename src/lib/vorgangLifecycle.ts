@@ -14,6 +14,7 @@ import {
 import type { VorgangEntry } from "@/lib/vorgangHistory";
 import {
   isListUploadStatus,
+  isLocalOnlyUploadState,
   isRetryableUploadState,
   normalizeUploadState,
 } from "@/lib/uploadState";
@@ -54,6 +55,11 @@ export function shouldReverifyCompletedHandoff(entry: VorgangLike): boolean {
   const cid = entry.correlation_id?.trim() ?? "";
   if (!cid) return false;
   return effectiveAmsListState(entry, entry.ams_state).toLowerCase() === "completed";
+}
+
+/** Job was created without server upload intent. */
+export function isLocalOnlyVorgang(entry: Pick<VorgangLike, "upload_state">): boolean {
+  return isLocalOnlyUploadState(entry.upload_state);
 }
 
 /** Disk probe: output folder path is empty or not a directory. */
@@ -103,6 +109,7 @@ export function shouldSyncAmsHandoff(
   if (shouldReverifyCompletedHandoff(entry)) return true;
   const cid = entry.correlation_id?.trim() ?? "";
   if (!cid) return false;
+  if (isLocalOnlyVorgang(entry)) return false;
   if (
     isAmsHandoffSettled({
       ams_state: entry.ams_state,
@@ -128,6 +135,7 @@ export function shouldShowAmsListChip(
 ): boolean {
   const cid = entry.correlation_id?.trim() ?? "";
   if (!cid) return false;
+  if (isLocalOnlyVorgang(entry)) return false;
   return !isAmsHandoffTerminal(effectiveAmsListState(entry, amsState));
 }
 
@@ -190,8 +198,9 @@ export function resolveListStatusDisplay(
 ):
   | "folder_problem"
   | "upload"
-  | "ams"
   | "upload_done"
+  | "local_only"
+  | "ams"
   | "ams_terminal"
   | "folder_cleaned_up"
   | "none" {
@@ -202,11 +211,14 @@ export function resolveListStatusDisplay(
   if (isListUploadStatus(upload)) {
     return "upload";
   }
-  if (shouldShowAmsListChip(entry, amsState)) {
-    return "ams";
-  }
   if (isUploadSuccessfullyComplete(entry, amsState)) {
     return "upload_done";
+  }
+  if (isLocalOnlyVorgang(entry)) {
+    return "local_only";
+  }
+  if (shouldShowAmsListChip(entry, amsState)) {
+    return "ams";
   }
   if (isAmsTerminalProblemListChip(entry, amsState)) {
     return "ams_terminal";

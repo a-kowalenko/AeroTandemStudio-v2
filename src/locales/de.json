@@ -1244,6 +1244,7 @@
       "folderMissing": "Ordner fehlt",
       "folderMissingRemove": "Aus Historie entfernen",
       "folderCleanedUp": "Lokal entfernt",
+      "localOnly": "Nur lokal",
       "refreshNoChange": "Kein neuer Cloud-Status verfügbar (Cache oder Bridge offline).",
       "refreshFailed": "Cloud-Status konnte nicht abgefragt werden.",
       "hint": {
@@ -1252,6 +1253,7 @@
         "amsStale": "Status veraltet — tippe zum Aktualisieren",
         "folderMissing": "Ausgabeordner wurde entfernt oder verschoben. Upload und Cloud-Status sind nicht verfügbar.",
         "folderCleanedUp": "Ausgabeordner nach Upload entfernt — üblich. Cloud-Status wird über AMS synchronisiert.",
+        "localOnly": "Kein Server-Upload geplant — Ordner liegt nur lokal",
         "jobComplete": "Server- und Cloud-Upload abgeschlossen"
       },
       "step": {
@@ -1343,6 +1345,9 @@
       "catOutsideVideo": "Outside Video",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
+      "hintNew": "Nicht gebucht — Produkt wird mit Nachreichung angelegt; optional Preview mitsenden.",
+      "hintOpen": "Offen — optional Preview mit Wasserzeichen mitsenden.",
+      "hintPaid": "Bezahlt — nur Originaldateien nachreichen, kein Preview nötig.",
       "modeOriginal": "Original",
       "modeOriginalPreview": "Original + Preview",
       "noPhotos": "Keine unterstützten Fotos gefunden.",
@@ -1394,6 +1399,9 @@
       "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen.",
       "reconnectToastTitle": "Server wieder online",
       "retryBtn": "Upload nachholen",
+      "uploadBtn": "Auf Server hochladen",
+      "uploadTitle": "Auf Server hochladen",
+      "uploadTitleOk": "Lokalen Vorgang jetzt auf den Server kopieren",
       "retryCancelled": "Upload abgebrochen.",
       "retryDone": "Upload erfolgreich nachgeholt.",
       "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",

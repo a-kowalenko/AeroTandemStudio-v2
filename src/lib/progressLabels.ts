@@ -96,6 +96,13 @@ export function isActivityOnlyProgress(
     return true;
   }
 
+  // Body stage opener — brief 0% marker before concat/encode details
+  if (
+    /bereite videoclips|preparing video clips|preparando clips de video/.test(s)
+  ) {
+    return true;
+  }
+
   // Handoff / marker (create + append) — fake fixed %
   if (
     /schreibe ams-manifest|writing ams manifest|escribiendo manifiesto ams|schreibe _fertig|writing _fertig|escribiendo _fertig|überspringe _fertig|skipping _fertig|omitiendo _fertig/.test(

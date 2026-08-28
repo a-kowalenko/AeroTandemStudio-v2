@@ -12,8 +12,8 @@ mod video;
 mod bridge;
 
 use commands::app::{
-    cleanup_cache, clear_log_buffer, get_app_info, get_log_min_level, get_recent_logs,
-    run_startup_checks, set_log_min_level,
+    cleanup_cache, clear_log_buffer, focus_main_window_after_update, get_app_info, get_log_min_level,
+    get_recent_logs, run_startup_checks, set_log_min_level,
 };
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
@@ -151,6 +151,7 @@ pub fn run() {
                     }
                     crate::util::window_fit::fit_main_window(&window);
                 }
+                crate::util::window_focus::schedule_focus_after_update_backup(app.handle().clone());
             }
 
             Ok(())
@@ -268,6 +269,7 @@ pub fn run() {
             clear_log_buffer,
             run_startup_checks,
             cleanup_cache,
+            focus_main_window_after_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

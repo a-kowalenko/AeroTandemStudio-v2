@@ -13,6 +13,13 @@ export function normalizeUploadState(
   return (state ?? "").trim().toLowerCase();
 }
 
+/** Created without server upload intent (`upload_state=none`). */
+export function isLocalOnlyUploadState(
+  state: string | null | undefined,
+): boolean {
+  return normalizeUploadState(state) === "none";
+}
+
 /**
  * List chip states that need operator attention (not `none` / `done`).
  * Prefer this over AMS handoff in the Vorgänge status column.
@@ -62,6 +69,30 @@ export function canRetryVorgangUpload(
   if (!uploadToServer) return false;
   if (!entryHasUploadTarget(entry)) return false;
   return isRetryableUploadState(entry.upload_state);
+}
+
+/** Local-only row with manifest — may start first server upload from Historie. */
+export function canUploadLocalVorgang(
+  entry: UploadStateLike,
+  uploadToServer: boolean,
+  folderMissing: boolean,
+): boolean {
+  if (!uploadToServer) return false;
+  if (folderMissing) return false;
+  if (!entryHasUploadTarget(entry)) return false;
+  return isLocalOnlyUploadState(entry.upload_state);
+}
+
+/** Retry outstanding upload or upload a local-only job when folder still exists. */
+export function canStartVorgangUpload(
+  entry: UploadStateLike,
+  uploadToServer: boolean,
+  folderMissing: boolean,
+): boolean {
+  return (
+    canRetryVorgangUpload(entry, uploadToServer) ||
+    canUploadLocalVorgang(entry, uploadToServer, folderMissing)
+  );
 }
 
 /** Whether this row counts toward badge / reconnect / bulk. */

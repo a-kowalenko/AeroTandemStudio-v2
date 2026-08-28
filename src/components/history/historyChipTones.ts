@@ -60,3 +60,7 @@ export function stepperTerminalTone(cancelled: boolean): string {
 export function completeChipTone(): string {
   return "bg-emerald-500/12 text-emerald-900 ring-emerald-500/30 dark:text-emerald-100";
 }
+
+export function localChipTone(): string {
+  return "bg-muted/35 text-muted-foreground ring-border/60";
+}

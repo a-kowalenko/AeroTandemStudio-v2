@@ -1476,3 +1476,8 @@ export async function cleanupCache(
     args: args ?? null,
   });
 }
+
+/** Bring main window to foreground after an auto-update restart (no-op otherwise). */
+export async function focusMainWindowAfterUpdate(): Promise<boolean> {
+  return invoke<boolean>("focus_main_window_after_update");
+}

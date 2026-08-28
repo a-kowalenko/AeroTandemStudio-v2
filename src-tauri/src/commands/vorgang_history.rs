@@ -454,6 +454,9 @@ fn should_sync_handoff_entry(entry: &VorgangEntry) -> bool {
     {
         return true;
     }
+    if entry.upload_state.trim().eq_ignore_ascii_case("none") {
+        return false;
+    }
     if is_ams_handoff_settled(entry) {
         return false;
     }
@@ -739,7 +742,6 @@ pub async fn create_append_job(
     let resource_dir = app.path().resource_dir().ok();
     let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())?;
     let config = read_config(&state)?;
-    let config_for_ready = config.clone();
     let app_for_cb = app.clone();
     let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
         let _ = app_for_cb.emit("encode-progress", &p);
@@ -792,28 +794,6 @@ pub async fn create_append_job(
                 "append",
                 format!("Nachreichung-Dateien nicht in Historie gespeichert: {e}"),
             );
-        }
-    }
-
-    // When upload_to_server is on, handoff/ready is sent after successful SMB
-    // (same parity as create_job). Offline / local-only: notify immediately.
-    if !result.correlation_id.trim().is_empty() && !config_for_ready.upload_to_server {
-        match crate::bridge::maybe_notify_handoff_ready(
-            &config_for_ready,
-            &result.correlation_id,
-            Some(&result.folder_name),
-        )
-        .await
-        {
-            Ok(Some(_)) => logging::info(
-                "bridge",
-                format!(
-                    "AMS handoff/ready (append) correlation_id={}",
-                    result.correlation_id
-                ),
-            ),
-            Ok(None) => {}
-            Err(e) => logging::warn("bridge", format!("handoff/ready append: {e}")),
         }
     }
 
@@ -900,6 +880,11 @@ mod tests {
         assert!(should_sync_handoff_entry(&entry));
         entry.ams_state = "cancelled".into();
         assert!(!should_sync_handoff_entry(&entry));
+        entry.upload_state = "none".into();
+        entry.ams_state = "pending".into();
+        assert!(!should_sync_handoff_entry(&entry));
+        entry.ams_state = "completed".into();
+        assert!(should_sync_handoff_entry(&entry));
     }
 
     #[test]
