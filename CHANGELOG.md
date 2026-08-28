@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-08-28
+
 ### Neu
 
 - Vorgang lokal erstellen, wenn der Server nicht erreichbar ist — Upload bleibt ausstehend und kann später nachgeholt werden
