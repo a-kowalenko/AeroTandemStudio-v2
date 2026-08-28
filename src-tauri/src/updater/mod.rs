@@ -285,8 +285,9 @@ async fn check_for_updates_via_releases_api(
     })
 }
 
+/// Release is ready only after CI merged `latest.json` (all platform artifacts).
 fn is_installable_release(release: &AvailableRelease) -> bool {
-    release.updater_json_url.is_some() || release.installer_url.is_some()
+    release.updater_json_url.is_some()
 }
 
 /// Newest installable release newer than `current`. `releases` must be sorted desc.
@@ -521,11 +522,11 @@ async fn fetch_available_releases() -> Result<Vec<AvailableRelease>, String> {
         if !version_at_least(&tag, MIN_SWITCHABLE_VERSION) {
             continue;
         }
-        let installer_url = pick_installer_url(&release.assets);
         let updater_json_url = pick_updater_json_url(&release.assets);
-        if installer_url.is_none() && updater_json_url.is_none() {
+        if updater_json_url.is_none() {
             continue;
         }
+        let installer_url = pick_installer_url(&release.assets);
         releases.push(AvailableRelease {
             tag_name: tag.clone(),
             published_at: release.published_at.unwrap_or_default(),
@@ -1083,5 +1084,21 @@ mod tests {
             prerelease: false,
         }];
         assert!(resolve_best_update(&releases, "0.1.0", true).is_none());
+    }
+
+    #[test]
+    fn resolve_best_update_skips_installer_only_while_ci_running() {
+        let releases = vec![AvailableRelease {
+            tag_name: "0.4.0-beta.3".into(),
+            published_at: String::new(),
+            body: String::new(),
+            installer_url: Some(
+                "https://github.com/a-kowalenko/aero-tandem-studio-releases/releases/download/v0.4.0-beta.3/setup.exe"
+                    .into(),
+            ),
+            updater_json_url: None,
+            prerelease: true,
+        }];
+        assert!(resolve_best_update(&releases, "0.4.0-beta.2", true).is_none());
     }
 }
