@@ -18,6 +18,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Verbessert
 
+- Mac: Nach einem App-Update Hinweis, wenn die Server-Verbindung fehlschlägt — Neustart des Mac behebt das oft (macOS blockiert manchmal Netzwerk nach Updates)
 - Unter Vorgänge: Liste übersichtlicher — Status-Spalte breiter, volle Erstellzeit im Detail statt abgeschnitten in der Tabelle
 - Unter Vorgänge: einheitliche Status-Chips (gleiche Höhe, klare Icons)
 - Unter Vorgänge: klare Bezeichnungen für Server-Kopie und Cloud-Upload — auf einen Blick erkennbar, welcher Schritt gerade läuft
@@ -33,6 +34,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Behoben
 
+- Update-Hinweis erscheint erst, wenn das Release vollständig bereitsteht — nicht mehr zu früh, wenn die Installationsdateien noch fehlen
 - Nachreichen in die Cloud war bei deaktiviertem Upload oder ohne Serververbindung irreführend — Button ist gesperrt mit erklärendem Tooltip
 - Cloud-Status blieb nach dem Upload auf „wartet“ oder „bestätigt“ hängen — aktualisiert sich jetzt ohne App-Neustart
 - Nach Absturz während eines Uploads blieb der Status dauerhaft auf „Wird kopiert…“ — Nachholen ist wieder möglich
