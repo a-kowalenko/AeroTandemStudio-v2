@@ -131,6 +131,17 @@ export function nextBetaVersion(version, kind = "patch") {
 }
 
 /**
+ * From prerelease: bump core, start fresh beta line.
+ * - 0.3.9-beta.2 + minor → 0.4.0-beta.1
+ * @param {string} version
+ * @param {"major"|"minor"|"patch"} kind
+ */
+export function nextBetaLineVersion(version, kind) {
+  const core = bumpCore(version, kind);
+  return `${core}-beta.1`;
+}
+
+/**
  * Strip prerelease → stable core (0.3.9-beta.2 → 0.3.9).
  * @param {string} version
  */

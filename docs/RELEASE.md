@@ -118,6 +118,13 @@ npm run release
 
 - `beta` → `0.3.9-beta.2`
 - `stable` → `0.3.9` (Suffix weg, Unreleased → finale Notes)
+- `neue Beta-Linie` → Core bump + `beta.1` (ohne Stable dazwischen):
+
+| Bump | Ergebnis (Beispiel von `0.3.9-beta.2`) |
+|------|----------------------------------------|
+| patch | `0.3.10-beta.1` |
+| minor | `0.4.0-beta.1` |
+| major | `1.0.0-beta.1` |
 
 Das Skript setzt die Version in `package.json`, Locks, `tauri.conf.json`, `Cargo.toml`, committed `release: …`, taggt `v…` und pusht Branch + Tag.
 
@@ -145,6 +152,8 @@ Beispiel-Timeline:
   → v0.3.9-beta.1 (prerelease)
   → v0.3.9-beta.2 (prerelease)
   → v0.3.9 (stable) → CI setzt Latest
+
+0.3.9-beta.2 → v0.4.0-beta.1 (neue Beta-Linie, minor — ohne 0.3.9 stable)
 ```
 
 Normale Commits auf `master` starten **keinen** App-Build. Volle Bundles nur bei Version-Tags (`release.yml`). PRs: leichter Check in `test.yml`.
