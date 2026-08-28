@@ -10,6 +10,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Vorgänge ohne geplanten Server-Upload: Status „Nur lokal“ in der Liste — auf einen Blick erkennbar
+- Unter Vorgänge: lokal erstellte Vorgänge später mit „Auf Server hochladen“ auf den Server kopieren
+
 ### Verbessert
 
 - Unter Vorgänge: Liste übersichtlicher — Status-Spalte breiter, volle Erstellzeit im Detail statt abgeschnitten in der Tabelle
@@ -21,9 +26,12 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Veralteter Cloud-Status: Hinweis und Button „Status aktualisieren“ im Detail
 - Ausgabeordner fehlt oder wurde absichtlich entfernt: eigener Status („Ordner fehlt“ / „Lokal entfernt“) statt hängendem Upload
 - Unter Vorgänge → Medien: Datumsspalten kompakter und lesbarer
+- Unter Vorgänge: Tooltips am Nachreichen-Button erklären, warum Nachreichen gerade nicht möglich ist (lokal, Upload läuft, Server offline, Upload deaktiviert)
+- Nach App-Update: Fenster kommt automatisch wieder in den Vordergrund
 
 ### Behoben
 
+- Nachreichen in die Cloud war bei deaktiviertem Upload oder ohne Serververbindung irreführend — Button ist gesperrt mit erklärendem Tooltip
 - Cloud-Status blieb nach dem Upload auf „wartet“ oder „bestätigt“ hängen — aktualisiert sich jetzt ohne App-Neustart
 - Nach Absturz während eines Uploads blieb der Status dauerhaft auf „Wird kopiert…“ — Nachholen ist wieder möglich
 
