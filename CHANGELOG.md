@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-28
+
 ### Neu
 
 - Vorgänge ohne geplanten Server-Upload: Status „Nur lokal“ in der Liste — auf einen Blick erkennbar
@@ -38,10 +40,6 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Nachreichen in die Cloud war bei deaktiviertem Upload oder ohne Serververbindung irreführend — Button ist gesperrt mit erklärendem Tooltip
 - Cloud-Status blieb nach dem Upload auf „wartet“ oder „bestätigt“ hängen — aktualisiert sich jetzt ohne App-Neustart
 - Nach Absturz während eines Uploads blieb der Status dauerhaft auf „Wird kopiert…“ — Nachholen ist wieder möglich
-
-
-
-
 
 ## [0.4.0-beta.5] - 2026-08-28
 
