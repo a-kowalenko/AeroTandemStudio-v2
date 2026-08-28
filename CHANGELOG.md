@@ -40,6 +40,35 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 
 
+## [0.4.0-beta.4] - 2026-08-28
+
+### Neu
+
+- Vorgänge ohne geplanten Server-Upload: Status „Nur lokal“ in der Liste — auf einen Blick erkennbar
+- Unter Vorgänge: lokal erstellte Vorgänge später mit „Auf Server hochladen“ auf den Server kopieren
+- Einstellungen → System → Danger Zone: lokale Vorgänge- und Backup-Ordner leeren — Einträge unter Vorgänge bleiben erhalten, Speicherplatz wird freigegeben
+
+### Verbessert
+
+- Unter Vorgänge: Liste übersichtlicher — Status-Spalte breiter, volle Erstellzeit im Detail statt abgeschnitten in der Tabelle
+- Unter Vorgänge: einheitliche Status-Chips (gleiche Höhe, klare Icons)
+- Unter Vorgänge: klare Bezeichnungen für Server-Kopie und Cloud-Upload — auf einen Blick erkennbar, welcher Schritt gerade läuft
+- Unter Vorgänge: Tooltips und Detail-Stepper erklären die einzelnen Schritte (Server → Freigabe → Cloud)
+- Cloud-Status aktualisiert sich im Hintergrund — auch wenn der Vorgänge-Dialog geschlossen ist
+- Nach erfolgreichem Server-Upload wird der Cloud-Status automatisch nachgezogen
+- Veralteter Cloud-Status: Hinweis und Button „Status aktualisieren“ im Detail
+- Ausgabeordner fehlt oder wurde absichtlich entfernt: eigener Status („Ordner fehlt“ / „Lokal entfernt“) statt hängendem Upload
+- Unter Vorgänge → Medien: Datumsspalten kompakter und lesbarer
+- Unter Vorgänge: Tooltips am Nachreichen-Button erklären, warum Nachreichen gerade nicht möglich ist (lokal, Upload läuft, Server offline, Upload deaktiviert)
+- Nach App-Update: Fenster kommt automatisch wieder in den Vordergrund
+- Video-Clip-Liste zeigt mehr Einträge ohne Scrollen (ca. 12 Zeilen)
+
+### Behoben
+
+- Nachreichen in die Cloud war bei deaktiviertem Upload oder ohne Serververbindung irreführend — Button ist gesperrt mit erklärendem Tooltip
+- Cloud-Status blieb nach dem Upload auf „wartet“ oder „bestätigt“ hängen — aktualisiert sich jetzt ohne App-Neustart
+- Nach Absturz während eines Uploads blieb der Status dauerhaft auf „Wird kopiert…“ — Nachholen ist wieder möglich
+
 ## [0.4.0-beta.3] - 2026-08-28
 
 ### Neu
