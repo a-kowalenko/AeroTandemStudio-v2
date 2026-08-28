@@ -234,7 +234,7 @@ pub struct AppConfig {
     #[serde(default = "default_sd_size_limit", deserialize_with = "de_u32_flexible")]
     pub sd_size_limit_mb: u32,
     /// Allowlisted USB action cams (GoPro/DJI/Insta360) via MTP/WPD.
-    /// Default: on for macOS (already shipped), off for Windows until WPD acceptance.
+    /// Default: on for all platforms (macOS ICA, Windows WPD; Linux volume/SD until libmtp).
     #[serde(default = "default_usb_camera_import_enabled")]
     pub usb_camera_import_enabled: bool,
     /// USB import path: `"auto"` (whitelist) | `"volume_only"` | `"mtp_preferred"`.
@@ -573,8 +573,7 @@ fn default_sd_backup_mode() -> String {
 }
 
 fn default_usb_camera_import_enabled() -> bool {
-    // macOS ICA path already shipped; Windows WPD stays opt-in until acceptance.
-    cfg!(target_os = "macos")
+    true
 }
 fn default_usb_import_mode() -> String {
     "auto".into()

@@ -17,14 +17,13 @@ export function AppPathHintsDriftBanner() {
   }
 
   return (
-    <div className="shrink-0 border-b border-border px-3 py-2 sm:px-4">
-      <AmsPathHintsDriftBanner
-        draft={config}
-        setDraft={updateLocal}
-        persist={persist}
-        onError={showError}
-        errorTitle={t("settings.tabs.server")}
-      />
-    </div>
+    <AmsPathHintsDriftBanner
+      draft={config}
+      setDraft={updateLocal}
+      persist={persist}
+      onError={showError}
+      errorTitle={t("settings.tabs.server")}
+      frameClassName="shrink-0 border-b border-border px-3 py-2 sm:px-4"
+    />
   );
 }

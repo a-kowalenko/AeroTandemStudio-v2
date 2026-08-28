@@ -135,6 +135,12 @@
         "toastTitle": "Caché",
         "cleaning": "Limpiando…",
         "clear": "Vaciar caché",
+        "confirmTitle": "¿Vaciar caché?",
+        "confirmBody": "Hay una sesión de medios activa (videos/fotos en la carpeta de trabajo).\n\nVaciar la caché elimina la sesión y los archivos temporales/de vista previa. La lista de medios se vaciará.",
+        "currentSize": "Ocupado:",
+        "measuring": "Calculando tamaño…",
+        "measureFailed": "Tamaño no disponible",
+        "refresh": "Actualizar tamaño",
         "cleanupErrors": "No se pudieron eliminar {{count}} elemento(s).",
         "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}})."
       },
@@ -163,6 +169,30 @@
         "versionHeading": "Versión {{version}}",
         "noNotes": "Sin notas de la versión.",
         "releasesUnavailable": "Lista de versiones no disponible — revisa tu conexión a internet."
+      },
+      "danger": {
+        "title": "Zona de peligro",
+        "description": "Elimina carpetas y archivos locales de forma irreversible. Las entradas de trabajos e historial de medios se conservan, pero los archivos de medios desaparecen.",
+        "includeOrphans": "También eliminar carpetas desconocidas en la ubicación de almacenamiento",
+        "clearJobs": "Eliminar carpetas de trabajos",
+        "clearBackups": "Eliminar carpetas de respaldo",
+        "busyHint": "No disponible mientras hay un trabajo, carga o respaldo de SD en curso.",
+        "pathHint": "Configura la ubicación de almacenamiento y la carpeta de respaldo.",
+        "nothingToDelete": "Nada que eliminar.",
+        "toastTitle": "Carpetas locales",
+        "clearing": "Eliminando…",
+        "currentSize": "Ocupado:",
+        "measuring": "Calculando tamaño…",
+        "measureFailed": "Tamaño no disponible",
+        "refresh": "Actualizar tamaño",
+        "usageSummary": "{{size}} · {{folders}} carpetas · {{files}} archivos",
+        "confirmJobsTitle": "¿Eliminar carpetas de trabajos?",
+        "confirmJobsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
+        "confirmUploadWarn": "{{count}} trabajo(s) aún tienen una carga pendiente — después faltará la carpeta local.",
+        "confirmBackupsTitle": "¿Eliminar carpetas de respaldo?",
+        "confirmBackupsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
+        "openFolder": "Ir a la carpeta",
+        "confirmProceed": "Eliminar"
       }
     },
     "folder": {

@@ -96,6 +96,7 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 9: Player & Cutter (HTML5 VideoPlayer, VideoCutter, cut/split, Pending Cuts)
 - ✅ Phase 10: SMB-Upload & Auto-Update (smb2 client, Server-Status, Updater-Stub)
 - ✅ Phase 11: App-Shell, Splash, Cache-Cleanup, Logging, Session-Reset
+- ✅ Phase 11.1: Cache-Größe in Settings (System → Cache & Temp)
 - ✅ Phase 12: Vorgang Erstellen & Legacy-Export (Ordner, Marker, WM, Upload)
 - ✅ Phase 13: macOS Build & Plattform-Tests (FFmpeg mac, VideoToolbox/SD/SMB Fixes, CI, Entitlements, Signing-Docs)
 - ✅ Import Working-Folder: Medien werden beim Import in `aero_studio_preview_*` kopiert; Cuts treffen nur Kopien
@@ -129,8 +130,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 36: Crew-Defaults beim Update mergen (Add-only + `crew_removed_names` Tombstones)
 - ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
 - ✅ Phase 38: Vorgänge-Dialog UX (38.1–38.5: Layout, `components/history/*`, `history.status.*`, AMS-Poll + `ams_verified_at`, Medien-Tab; Plan `@docs/VORGAENGE_DIALOG_PLAN.md`)
+- ✅ Phase 39: Settings Danger Zone — lokale Vorgänge- & Backup-Ordner leeren (Historie bleibt; System-Tab: Update → Cache → Reset → Danger Zone)
 
-**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3  
+**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3 
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
 
 ### Performance-Backlog

@@ -35,6 +35,11 @@ type Props = {
   diffFromDraft?: boolean;
   /** Hide while the server-profile editor is open (create/edit). */
   hidden?: boolean;
+  /**
+   * Optional outer chrome (e.g. shell strip under the header).
+   * Only rendered when the banner is visible — avoids an empty gap.
+   */
+  frameClassName?: string;
 };
 
 export function AmsPathHintsDriftBanner({
@@ -46,6 +51,7 @@ export function AmsPathHintsDriftBanner({
   disabled = false,
   diffFromDraft = false,
   hidden = false,
+  frameClassName,
 }: Props) {
   const { t } = useTranslation();
   const pathHints = useAmsBridgeStore((s) => s.pathHints);
@@ -158,7 +164,7 @@ export function AmsPathHintsDriftBanner({
         }
       : null;
 
-  return (
+  const banner = (
     <div
       className={cn(
         "flex items-start gap-2.5 rounded-lg border border-amber-400/40 bg-amber-500/[0.08] px-3 py-2.5 dark:border-amber-400/35 dark:bg-amber-400/[0.08]",
@@ -215,4 +221,9 @@ export function AmsPathHintsDriftBanner({
       </div>
     </div>
   );
+
+  if (frameClassName) {
+    return <div className={frameClassName}>{banner}</div>;
+  }
+  return banner;
 }

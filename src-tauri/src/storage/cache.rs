@@ -38,6 +38,14 @@ pub struct CacheCleanupResult {
     pub summary: String,
 }
 
+/// Measured cache/temp footprint (Phase 11.1 — no deletes).
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct CacheUsageResult {
+    pub bytes: u64,
+    pub dirs: u32,
+    pub files: u32,
+}
+
 impl CacheCleanupResult {
     pub fn finish(mut self) -> Self {
         self.summary = self.summary_message();
@@ -118,7 +126,7 @@ pub fn collect_work_base_paths(
     bases
 }
 
-fn normalize_key(path: &Path) -> String {
+pub(crate) fn normalize_key(path: &Path) -> String {
     let resolved = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let s = resolved.to_string_lossy();
     #[cfg(windows)]
@@ -136,8 +144,12 @@ fn normalize_key(path: &Path) -> String {
 /// Delete orphaned preview / concat / temp work dirs and known temp files (startup-safe).
 pub fn cleanup_orphans_only(exclude_temp_dir: Option<&Path>) -> CacheCleanupResult {
     let mut result = CacheCleanupResult::default();
-    delete_orphan_temp_dirs(&mut result, exclude_temp_dir);
-    delete_known_temp_files(&mut result);
+    for path in collect_orphan_temp_dirs(exclude_temp_dir) {
+        rmtree(&path, &mut result);
+    }
+    for path in collect_known_temp_files() {
+        remove_file(&path, &mut result);
+    }
     result.finish()
 }
 
@@ -148,23 +160,122 @@ pub fn cleanup_all(
     include_hw_cache: bool,
 ) -> CacheCleanupResult {
     let mut result = CacheCleanupResult::default();
-    delete_orphan_temp_dirs(&mut result, exclude_temp_dir);
-    delete_known_temp_files(&mut result);
+    for path in collect_orphan_temp_dirs(exclude_temp_dir) {
+        rmtree(&path, &mut result);
+    }
+    for path in collect_known_temp_files() {
+        remove_file(&path, &mut result);
+    }
     if let Some(bases) = base_paths_for_work {
-        delete_work_dirs(&mut result, bases);
-        delete_cut_temp_siblings(&mut result, bases);
+        for path in collect_work_dirs(bases) {
+            rmtree(&path, &mut result);
+        }
+        for path in collect_cut_temp_siblings(bases) {
+            remove_file(&path, &mut result);
+        }
     }
     // Always sweep cut leftovers inside the active working folder (if kept via exclude).
     if let Some(work) = exclude_temp_dir {
-        delete_cut_temp_siblings(&mut result, &[work.to_path_buf()]);
+        for path in collect_cut_temp_siblings(&[work.to_path_buf()]) {
+            remove_file(&path, &mut result);
+        }
     } else if let Some(work) = working_session::get_working_dir() {
-        delete_cut_temp_siblings(&mut result, &[work]);
+        for path in collect_cut_temp_siblings(&[work]) {
+            remove_file(&path, &mut result);
+        }
     }
     if include_hw_cache {
-        delete_hw_cache(&mut result);
+        if let Some(path) = collect_hw_cache_file() {
+            remove_file(&path, &mut result);
+        }
         clear_hw_cache();
     }
     result.finish()
+}
+
+/// Sum cache/temp footprint matching full cleanup discovery (no deletes).
+///
+/// `exclude_temp_dir` (typically the active working session) is excluded from the
+/// orphan sweep but **its size is still included** — Clear removes the session first.
+pub fn measure_cache_usage(
+    exclude_temp_dir: Option<&Path>,
+    base_paths_for_work: Option<&[PathBuf]>,
+    include_hw_cache: bool,
+) -> Result<CacheUsageResult, String> {
+    // Hard fail only when TEMP itself is unreadable (prefix scan impossible).
+    fs::read_dir(std::env::temp_dir()).map_err(|e| {
+        format!(
+            "temp dir unreadable ({}): {e}",
+            std::env::temp_dir().display()
+        )
+    })?;
+
+    let mut usage = CacheUsageResult::default();
+    let mut seen = std::collections::HashSet::new();
+
+    let add_dir = |path: &Path, usage: &mut CacheUsageResult, seen: &mut std::collections::HashSet<String>| {
+        let key = normalize_key(path);
+        if !seen.insert(key) {
+            return;
+        }
+        if !path.is_dir() {
+            return;
+        }
+        usage.bytes = usage.bytes.saturating_add(path_size(path));
+        usage.dirs = usage.dirs.saturating_add(1);
+    };
+    let add_file = |path: &Path, usage: &mut CacheUsageResult, seen: &mut std::collections::HashSet<String>| {
+        let key = normalize_key(path);
+        if !seen.insert(key) {
+            return;
+        }
+        if !path.is_file() {
+            return;
+        }
+        let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        usage.bytes = usage.bytes.saturating_add(size);
+        usage.files = usage.files.saturating_add(1);
+    };
+
+    for path in collect_orphan_temp_dirs(exclude_temp_dir) {
+        add_dir(&path, &mut usage, &mut seen);
+    }
+    for path in collect_known_temp_files() {
+        add_file(&path, &mut usage, &mut seen);
+    }
+    if let Some(bases) = base_paths_for_work {
+        for path in collect_work_dirs(bases) {
+            add_dir(&path, &mut usage, &mut seen);
+        }
+        for path in collect_cut_temp_siblings(bases) {
+            add_file(&path, &mut usage, &mut seen);
+        }
+    }
+    // Working session (excluded from orphan list) still counts as cache.
+    if let Some(work) = exclude_temp_dir {
+        add_dir(work, &mut usage, &mut seen);
+    } else if let Some(work) = working_session::get_working_dir() {
+        // Orphan sweep already counted it when exclude is None; cut siblings inside
+        // would double-count — only add cut leftovers when the dir was not an orphan.
+        if !work
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(is_orphan_temp_dir_name)
+        {
+            add_dir(&work, &mut usage, &mut seen);
+            for path in collect_cut_temp_siblings(&[work]) {
+                add_file(&path, &mut usage, &mut seen);
+            }
+        }
+    }
+    // When exclude is set, cut leftovers inside that folder are covered by add_dir(work).
+    if include_hw_cache {
+        if let Some(path) = collect_hw_cache_file() {
+            add_file(&path, &mut usage, &mut seen);
+        }
+    }
+
+    Ok(usage)
 }
 
 /// App exit / window close: drop session working folder, then orphan sweep (no excludes).
@@ -186,12 +297,13 @@ pub fn is_cut_temp_sibling_name(name: &str) -> bool {
     name.contains(TEMP_CUT_MARKER) || name.contains(TEMP_PART1_MARKER)
 }
 
-fn delete_orphan_temp_dirs(result: &mut CacheCleanupResult, exclude: Option<&Path>) {
+fn collect_orphan_temp_dirs(exclude: Option<&Path>) -> Vec<PathBuf> {
     let temp_root = std::env::temp_dir();
     let exclude_norm = exclude.map(|p| normalize_key(p));
+    let mut out = Vec::new();
 
     let Ok(entries) = fs::read_dir(&temp_root) else {
-        return;
+        return out;
     };
 
     for entry in entries.flatten() {
@@ -211,18 +323,21 @@ fn delete_orphan_temp_dirs(result: &mut CacheCleanupResult, exclude: Option<&Pat
         {
             continue;
         }
-        rmtree(&path, result);
+        out.push(path);
     }
+    out
 }
 
-fn delete_known_temp_files(result: &mut CacheCleanupResult) {
+fn collect_known_temp_files() -> Vec<PathBuf> {
     let temp_root = std::env::temp_dir();
-    for name in KNOWN_TEMP_FILES {
-        remove_file(&temp_root.join(name), result);
-    }
+    KNOWN_TEMP_FILES
+        .iter()
+        .map(|name| temp_root.join(name))
+        .filter(|p| p.is_file())
+        .collect()
 }
 
-fn delete_work_dirs(result: &mut CacheCleanupResult, base_paths: &[PathBuf]) {
+fn collect_work_dirs(base_paths: &[PathBuf]) -> Vec<PathBuf> {
     let mut work_dirs: Vec<PathBuf> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -237,7 +352,7 @@ fn delete_work_dirs(result: &mut CacheCleanupResult, base_paths: &[PathBuf]) {
 
         let legacy = base.join(AEROTANDEM_WORK_DIRNAME);
         let key = normalize_key(&legacy);
-        if seen.insert(key) {
+        if seen.insert(key) && legacy.is_dir() {
             work_dirs.push(legacy);
         }
 
@@ -261,17 +376,13 @@ fn delete_work_dirs(result: &mut CacheCleanupResult, base_paths: &[PathBuf]) {
         }
     }
 
-    for work_dir in work_dirs {
-        if work_dir.is_dir() {
-            rmtree(&work_dir, result);
-        }
-    }
+    work_dirs
 }
 
-/// Remove aborted cut/split temp files (`name.__temp_cut__.ext`) under base dirs
-/// (non-recursive for flat working folders; recursive one level into `photos/`).
-fn delete_cut_temp_siblings(result: &mut CacheCleanupResult, base_paths: &[PathBuf]) {
-    let mut seen = std::collections::HashSet::new();
+/// Aborted cut/split temp files under base dirs (flat + one level into `photos/`).
+fn collect_cut_temp_siblings(base_paths: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut seen_bases = std::collections::HashSet::new();
     for base in base_paths {
         let base = if base.is_file() {
             base.parent()
@@ -284,19 +395,19 @@ fn delete_cut_temp_siblings(result: &mut CacheCleanupResult, base_paths: &[PathB
             continue;
         }
         let key = normalize_key(&base);
-        if !seen.insert(key) {
+        if !seen_bases.insert(key) {
             continue;
         }
-        delete_cut_temps_in_dir(result, &base);
-        // Working-session photos live in `{temp}/photos/`
+        collect_cut_temps_in_dir(&base, &mut out);
         let photos = base.join("photos");
         if photos.is_dir() {
-            delete_cut_temps_in_dir(result, &photos);
+            collect_cut_temps_in_dir(&photos, &mut out);
         }
     }
+    out
 }
 
-fn delete_cut_temps_in_dir(result: &mut CacheCleanupResult, dir: &Path) {
+fn collect_cut_temps_in_dir(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
@@ -309,18 +420,18 @@ fn delete_cut_temps_in_dir(result: &mut CacheCleanupResult, dir: &Path) {
             continue;
         };
         if is_cut_temp_sibling_name(name) {
-            remove_file(&path, result);
+            out.push(path);
         }
     }
 }
 
-fn delete_hw_cache(result: &mut CacheCleanupResult) {
-    if let Ok(dir) = app_config_dir() {
-        remove_file(&dir.join(HW_CACHE_FILE_NAME), result);
-    }
+fn collect_hw_cache_file() -> Option<PathBuf> {
+    let dir = app_config_dir().ok()?;
+    let path = dir.join(HW_CACHE_FILE_NAME);
+    path.is_file().then_some(path)
 }
 
-fn rmtree(path: &Path, result: &mut CacheCleanupResult) {
+pub(crate) fn rmtree(path: &Path, result: &mut CacheCleanupResult) {
     if !path.exists() {
         return;
     }
@@ -338,7 +449,7 @@ fn rmtree(path: &Path, result: &mut CacheCleanupResult) {
     }
 }
 
-fn remove_file(path: &Path, result: &mut CacheCleanupResult) {
+pub(crate) fn remove_file(path: &Path, result: &mut CacheCleanupResult) {
     if !path.is_file() {
         return;
     }
@@ -356,7 +467,7 @@ fn remove_file(path: &Path, result: &mut CacheCleanupResult) {
     }
 }
 
-fn path_size(path: &Path) -> u64 {
+pub(crate) fn path_size(path: &Path) -> u64 {
     if path.is_file() {
         return fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     }
@@ -616,5 +727,87 @@ mod tests {
         let _ = cleanup_on_app_exit();
         assert!(working_session::get_working_dir().is_none());
         assert!(!dest.is_file());
+    }
+
+    #[test]
+    fn measure_cache_usage_returns_ok() {
+        let _guard = temp_sweep_lock();
+        let tmp = std::env::temp_dir().join(format!(
+            "ats_cache_measure_empty_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).unwrap();
+        let usage = measure_cache_usage(None, Some(&[tmp.clone()]), false).unwrap();
+        // Global TEMP may contain other ATS orphans; just ensure the scan succeeds.
+        let _ = (usage.bytes, usage.dirs, usage.files);
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn measure_cache_usage_counts_fixture_orphan_and_cut() {
+        let _guard = temp_sweep_lock();
+        let temp = std::env::temp_dir();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let orphan = temp.join(format!(
+            "{PREVIEW_DIR_PREFIX}measure_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+        let base = temp.join(format!(
+            "ats_cache_measure_base_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+        let _ = fs::remove_dir_all(&orphan);
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&orphan).unwrap();
+        fs::create_dir_all(&base).unwrap();
+        fs::write(orphan.join("a.bin"), vec![0u8; 100]).unwrap();
+        let cut = base.join("clip.__temp_cut__.mp4");
+        fs::write(&cut, vec![1u8; 50]).unwrap();
+
+        let usage = measure_cache_usage(None, Some(&[base.clone()]), false).unwrap();
+        assert!(
+            usage.bytes >= 150,
+            "expected at least fixture bytes, got {}",
+            usage.bytes
+        );
+        assert!(usage.dirs >= 1, "orphan dir should count");
+        assert!(usage.files >= 1, "cut temp file should count");
+
+        let _ = fs::remove_dir_all(&orphan);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn measure_includes_excluded_working_session_dir() {
+        let _guard = temp_sweep_lock();
+        let temp = std::env::temp_dir();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let session = temp.join(format!(
+            "{PREVIEW_DIR_PREFIX}session_measure_{}_{}",
+            std::process::id(),
+            stamp
+        ));
+        let _ = fs::remove_dir_all(&session);
+        fs::create_dir_all(&session).unwrap();
+        fs::write(session.join("clip.mp4"), vec![2u8; 80]).unwrap();
+
+        let with_exclude = measure_cache_usage(Some(&session), None, false).unwrap();
+        assert!(
+            with_exclude.bytes >= 80,
+            "excluded session must still count: {}",
+            with_exclude.bytes
+        );
+        assert!(with_exclude.dirs >= 1);
+
+        let _ = fs::remove_dir_all(&session);
     }
 }

@@ -135,6 +135,12 @@
         "toastTitle": "Cache",
         "cleaning": "Cleaning…",
         "clear": "Clear cache",
+        "confirmTitle": "Clear cache?",
+        "confirmBody": "A media session is active (videos/photos in the working folder).\n\nClearing the cache removes the session and temp/preview files. The media list will be emptied.",
+        "currentSize": "In use:",
+        "measuring": "Calculating size…",
+        "measureFailed": "Size unavailable",
+        "refresh": "Refresh size",
         "cleanupErrors": "{{count}} item(s) could not be deleted.",
         "cleanupSummary": "Deleted {{dirs}} folders and {{files}} files ({{size}})."
       },
@@ -163,6 +169,30 @@
         "versionHeading": "Version {{version}}",
         "noNotes": "No release notes.",
         "releasesUnavailable": "Version list unavailable — please check your internet connection."
+      },
+      "danger": {
+        "title": "Danger Zone",
+        "description": "Permanently deletes local folders and files. Job and media history entries are kept, but the media files themselves are gone.",
+        "includeOrphans": "Also delete unknown folders in the storage location",
+        "clearJobs": "Delete job folders",
+        "clearBackups": "Delete backup folders",
+        "busyHint": "Not available while a job, upload, or SD backup is running.",
+        "pathHint": "Set storage location and backup folder in settings.",
+        "nothingToDelete": "Nothing to delete.",
+        "toastTitle": "Local folders",
+        "clearing": "Deleting…",
+        "currentSize": "In use:",
+        "measuring": "Calculating size…",
+        "measureFailed": "Size unavailable",
+        "refresh": "Refresh size",
+        "usageSummary": "{{size}} · {{folders}} folders · {{files}} files",
+        "confirmJobsTitle": "Delete job folders?",
+        "confirmJobsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
+        "confirmUploadWarn": "{{count}} job(s) still have a pending upload — the local folder will be missing afterward.",
+        "confirmBackupsTitle": "Delete backup folders?",
+        "confirmBackupsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
+        "openFolder": "Open folder",
+        "confirmProceed": "Delete"
       }
     },
     "folder": {

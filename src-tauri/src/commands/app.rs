@@ -7,9 +7,17 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::commands::config::ConfigState;
 use crate::storage::cache::{
-    cleanup_all, cleanup_orphans_only, collect_work_base_paths, CacheCleanupResult,
+    cleanup_all, cleanup_orphans_only, collect_work_base_paths, measure_cache_usage,
+    CacheCleanupResult, CacheUsageResult,
+};
+use crate::storage::local_folders::{
+    clear_local_backup_folders as clear_backup_folders_impl,
+    clear_local_job_folders as clear_job_folders_impl,
+    probe_clear_local_backup_folders as probe_backup_folders_impl,
+    probe_clear_local_job_folders as probe_job_folders_impl, LocalFolderClearProbe,
 };
 use crate::storage::logging::{self, log_error, log_info, log_warn, LogEntry};
+use crate::storage::vorgang_history::VorgangHistoryStore;
 use crate::video::ffmpeg::find_ffmpeg_with_resource_dir;
 use crate::video::hw_accel::{detect_hardware, HwAccelInfo};
 
@@ -245,6 +253,158 @@ pub fn cleanup_cache(
     let include_hw = args.include_hw_cache.unwrap_or(false);
     let result = cleanup_all(exclude.as_deref(), Some(&bases), include_hw);
     log_info(&format!("cleanup_cache: {}", result.summary));
+    Ok(result)
+}
+
+/// Measure cache/temp footprint (same discovery as full cleanup; no deletes).
+#[tauri::command]
+pub fn measure_cache(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<CleanupCacheArgs>,
+) -> Result<CacheUsageResult, String> {
+    let args = args.unwrap_or(CleanupCacheArgs {
+        speicherort: None,
+        import_paths: None,
+        exclude_temp_dir: None,
+        include_hw_cache: Some(false),
+        orphans_only: Some(false),
+    });
+
+    let exclude = args
+        .exclude_temp_dir
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(crate::storage::working_session::get_working_dir);
+
+    let speicherort = args.speicherort.or_else(|| {
+        state
+            .cache
+            .lock()
+            .ok()
+            .map(|g| g.speicherort.clone())
+            .filter(|s| !s.is_empty())
+    });
+
+    let import_paths = args.import_paths.unwrap_or_default();
+    let bases = collect_work_base_paths(
+        speicherort.as_deref(),
+        if import_paths.is_empty() {
+            None
+        } else {
+            Some(&import_paths)
+        },
+    );
+
+    // Parity with Settings Clear button (include_hw_cache: false).
+    let include_hw = args.include_hw_cache.unwrap_or(false);
+    measure_cache_usage(exclude.as_deref(), Some(&bases), include_hw)
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ClearLocalJobFoldersArgs {
+    pub speicherort: Option<String>,
+    pub include_orphans: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct ClearLocalBackupFoldersArgs {
+    pub sd_backup_folder: Option<String>,
+}
+
+fn resolve_speicherort(
+    state: &ConfigState,
+    override_path: Option<String>,
+) -> String {
+    override_path
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            state
+                .cache
+                .lock()
+                .ok()
+                .map(|g| g.speicherort.clone())
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_default()
+}
+
+fn resolve_sd_backup_folder(
+    state: &ConfigState,
+    override_path: Option<String>,
+) -> String {
+    override_path
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            state
+                .cache
+                .lock()
+                .ok()
+                .map(|g| g.sd_backup_folder.clone())
+                .filter(|s| !s.trim().is_empty())
+        })
+        .unwrap_or_default()
+}
+
+/// Probe local Vorgang folders under speicherort (history kept; disk only).
+#[tauri::command]
+pub fn probe_clear_local_job_folders(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<ClearLocalJobFoldersArgs>,
+) -> Result<LocalFolderClearProbe, String> {
+    let args = args.unwrap_or(ClearLocalJobFoldersArgs {
+        speicherort: None,
+        include_orphans: Some(false),
+    });
+    let speicherort = resolve_speicherort(&state, args.speicherort);
+    let include_orphans = args.include_orphans.unwrap_or(false);
+    let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
+    probe_job_folders_impl(&speicherort, &store, include_orphans)
+}
+
+/// Delete local Vorgang folders under speicherort; `vorgang_history` unchanged.
+#[tauri::command]
+pub fn clear_local_job_folders(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<ClearLocalJobFoldersArgs>,
+) -> Result<CacheCleanupResult, String> {
+    let args = args.unwrap_or(ClearLocalJobFoldersArgs {
+        speicherort: None,
+        include_orphans: Some(false),
+    });
+    let speicherort = resolve_speicherort(&state, args.speicherort);
+    let include_orphans = args.include_orphans.unwrap_or(false);
+    let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
+    let result = clear_job_folders_impl(&speicherort, &store, include_orphans)?;
+    log_info(&format!("clear_local_job_folders: {}", result.summary));
+    Ok(result)
+}
+
+/// Probe direct child folders under `sd_backup_folder`.
+#[tauri::command]
+pub fn probe_clear_local_backup_folders(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<ClearLocalBackupFoldersArgs>,
+) -> Result<LocalFolderClearProbe, String> {
+    let args = args.unwrap_or(ClearLocalBackupFoldersArgs {
+        sd_backup_folder: None,
+    });
+    let root = resolve_sd_backup_folder(&state, args.sd_backup_folder);
+    Ok(probe_backup_folders_impl(&root))
+}
+
+/// Delete direct child folders under `sd_backup_folder`; media-history hashes kept.
+#[tauri::command]
+pub fn clear_local_backup_folders(
+    state: tauri::State<'_, ConfigState>,
+    args: Option<ClearLocalBackupFoldersArgs>,
+) -> Result<CacheCleanupResult, String> {
+    let args = args.unwrap_or(ClearLocalBackupFoldersArgs {
+        sd_backup_folder: None,
+    });
+    let root = resolve_sd_backup_folder(&state, args.sd_backup_folder);
+    let result = clear_backup_folders_impl(&root);
+    log_info(&format!("clear_local_backup_folders: {}", result.summary));
     Ok(result)
 }
 

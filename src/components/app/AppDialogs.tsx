@@ -145,6 +145,7 @@ export type AppDialogsProps = {
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
+  sessionBusy?: boolean;
 };
 
 function DialogChunk({ children }: { children: React.ReactNode }) {
@@ -227,6 +228,7 @@ export function AppDialogs(props: AppDialogsProps) {
     loading,
     sdWorkflowUiActive,
     loadingMessage,
+    sessionBusy = false,
   } = props;
 
   return (
@@ -245,6 +247,7 @@ export function AppDialogs(props: AppDialogsProps) {
             platformHint={updaterPlatformHint}
             onAfterFactoryReset={onAfterFactoryReset}
             suppressDismiss={updateDialogOpen || updateInstalling}
+            sessionBusy={sessionBusy}
           />
         </DialogChunk>
       ) : null}

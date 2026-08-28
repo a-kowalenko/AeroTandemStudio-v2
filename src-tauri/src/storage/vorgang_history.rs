@@ -194,6 +194,16 @@ pub struct VorgangAppendEntry {
     pub ams_error_message: String,
 }
 
+/// Lightweight path ref for disk-only clear (Phase 39).
+#[derive(Debug, Clone)]
+pub struct DiskFolderRef {
+    pub vorgang_id: i64,
+    pub path: String,
+    pub upload_state: String,
+    /// True for `base_output_dir` rows (used for retryable-upload counting).
+    pub is_base: bool,
+}
+
 pub struct VorgangHistoryStore {
     db_path: PathBuf,
 }
@@ -1031,6 +1041,48 @@ impl VorgangHistoryStore {
             Some(row) => Ok(Some(row?)),
             None => Ok(None),
         }
+    }
+
+    /// Disk paths for Phase 39 clear (base + append folders). DB rows are not modified.
+    pub fn list_disk_folder_refs(&self) -> Result<Vec<DiskFolderRef>, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let mut out = Vec::new();
+
+        {
+            let mut stmt = conn.prepare(
+                "SELECT id, base_output_dir, IFNULL(upload_state, 'none') FROM vorgaenge",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(DiskFolderRef {
+                    vorgang_id: row.get(0)?,
+                    path: row.get(1)?,
+                    upload_state: row.get(2)?,
+                    is_base: true,
+                })
+            })?;
+            for row in rows {
+                out.push(row?);
+            }
+        }
+
+        {
+            let mut stmt = conn.prepare(
+                "SELECT vorgang_id, folder_path FROM vorgang_appends WHERE IFNULL(folder_path, '') != ''",
+            )?;
+            let rows = stmt.query_map([], |row| {
+                Ok(DiskFolderRef {
+                    vorgang_id: row.get(0)?,
+                    path: row.get(1)?,
+                    upload_state: String::new(),
+                    is_base: false,
+                })
+            })?;
+            for row in rows {
+                out.push(row?);
+            }
+        }
+
+        Ok(out)
     }
 
     pub fn record_append(

@@ -12,8 +12,10 @@ mod video;
 mod bridge;
 
 use commands::app::{
-    cleanup_cache, clear_log_buffer, focus_main_window_after_update, get_app_info, get_log_min_level,
-    get_recent_logs, run_startup_checks, set_log_min_level,
+    cleanup_cache, clear_local_backup_folders, clear_local_job_folders, clear_log_buffer,
+    focus_main_window_after_update, get_app_info, get_log_min_level, get_recent_logs,
+    measure_cache, probe_clear_local_backup_folders, probe_clear_local_job_folders,
+    run_startup_checks, set_log_min_level,
 };
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
@@ -269,6 +271,11 @@ pub fn run() {
             clear_log_buffer,
             run_startup_checks,
             cleanup_cache,
+            measure_cache,
+            probe_clear_local_job_folders,
+            clear_local_job_folders,
+            probe_clear_local_backup_folders,
+            clear_local_backup_folders,
             focus_main_window_after_update,
         ])
         .build(tauri::generate_context!())

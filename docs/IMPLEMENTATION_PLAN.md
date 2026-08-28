@@ -58,6 +58,8 @@
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
 **Nächste Phase:** [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
+*(Phase 11.1 ✅ Cache-Größe unter System → Cache & Temp.)*  
+*(Phase 39 ✅ Settings Danger Zone: lokale Vorgänge-/Backup-Ordner leeren, Historie bleibt.)*  
 *(Phase 38 ✅ — `@docs/VORGAENGE_DIALOG_PLAN.md` 38.1–38.5; AMS-Bridge-Historie-Merge: **AeroMediaService-v2**, AMS neu starten.)*  
 *(Phase 37.1–37.4 ✅ Background-SMB-Upload (Slot/Queue, Compact-Bar, Append/Historie/Bulk, Dual-Panel-Stack).)*
 *(Phase 34.1 ✅ Server-Backup Popover + eigener Cancel-Kanal.)*
@@ -700,6 +702,61 @@ Unit-Tests für Command-Generierung. Nur Phase 1.
 @C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\gui\app.py
 @C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\gui\splash_screen.py
 @C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\cache_cleanup.py
+```
+
+---
+
+### Phase 11.1 — Cache-Größe in Settings (System-Tab)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 11 (`storage/cache.rs`, `cleanup_cache`, `SystemTab`)  
+**Ziel:** Unter **Einstellungen → System → Cache & Temp** die aktuell belegte Cache-/Temp-Größe anzeigen; während der Messung nur den Zahlenplatz mit Spinner ersetzen.
+
+> Eine Agent-Session = nur Phase 11.1. Kein Cleanup-Verhalten ändern, keine Danger Zone (Phase 39), kein Startup-Measure.
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Placement | Eine Zeile: links Label „Belegt:“ + Größe/Spinner (+ optional Refresh); rechts Button „Cache leeren“ |
+| 2 | Wann messen | Beim Öffnen / Mount des **System-Tabs** (nicht App-Start). Nach erfolgreichem Clear erneut messen. Optional: Refresh-Icon |
+| 3 | Spinner | Nur Zahlenplatz: `Loader2` `size-3.5 animate-spin`. Clear-Button nur während `cleaningCache` disabled |
+| 4 | Anzeige | Gesamtsumme via `@/lib/formatBytes`. **`0 B` explizit** nach erfolgreichem Scan mit 0 Bytes |
+| 5 | Breakdown | v1: nur Gesamtsumme (kein Tooltip) |
+| 6 | Fehler | Scan-Fehler → `—` + muted Hint. **Kein** Error-Toast |
+| 7 | Scope | Dieselbe Zielmenge wie Full-Cleanup (`cleanup_all`-Discovery); Prefix-Filter wie Cleanup; nicht ganz `%TEMP%` |
+| 8 | Working-Session | Mitzählen (Clear löscht Session + Cache) |
+| 9 | `hw_cache` | v1 **nicht** (Clear: `include_hw_cache: false`) |
+| 10 | Perf | Best-Effort; Command blockiert UI nicht unnötig; Race: neuere Messung überschreibt |
+| 11 | i18n | de / en / es-MX: `currentSize`, `measuring`, `measureFailed`, `refresh` |
+| 12 | Phase 39 | Unberührt („kein Cache-Verhalten ändern“); 11.1 ist Anzeige + Measure |
+
+#### Out of Scope
+
+- Cleanup-Logik / Prefix-Liste ändern (außer shared Discovery für Measure)
+- Größenmessung beim Splash / Startup
+- Breakdown-UI
+- `hw_cache.json` in der Summe
+- Danger Zone (Phase 39)
+- Legacy-Projekt
+
+#### Scope
+
+- [x] Rust: `measure_cache_usage` — Discovery wie Cleanup, nur summieren
+- [x] `CacheUsageResult { bytes, dirs, files }`
+- [x] Tauri-Command + `tauri.ts`
+- [x] Unit-Tests: leerer Scan → Ok; Fixture → Bytes; Session exclude zählt
+- [x] `SystemTab`: Measure on mount; Spinner am Wert; `0 B`; Fehler `—`; nach Clear re-measure; Refresh
+- [x] i18n de / en / es-MX
+- [ ] Manuell: Tab → Spinner → Zahl; Clear → `0 B`; Fail → `—` ohne Toast
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 11.1 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Cache-Größenanzeige in Settings System-Tab.
+Danach cargo test && npm run check.
 ```
 
 ---
@@ -2499,6 +2556,112 @@ Nur Tab Vorgänge Layout. Danach npm run check.
 
 ---
 
+### Phase 39 — Lokale Vorgänge- & Backup-Ordner leeren (Settings)
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 11 (Cache/System-Tab), Phase 12 (`speicherort` / `base_output_dir`), Phase 7 (`sd_backup_folder`), Phase 38 Lifecycle (`folderMissing` / `needsLocalJobFolder`)  
+**Ziel:** In **Einstellungen → System** Speicherplatz freigeben: lokale Vorgangs- und Backup-**Ordner/Dateien** löschen, **Historie/Meta behalten**, mit Probe + Soft-Confirm + Busy-Gate. GitHub-artige **Danger Zone** ganz unten im System-Tab.
+
+> Eine Agent-Session = nur Phase 39. Kein Factory-Reset-Umbau, kein Server-/SMB-Löschen, keine Historie-Purge, kein Cache-Verhalten ändern.
+
+#### System-Tab-Reihenfolge (UI)
+
+```
+1. Update
+2. Cache & Temp
+3. Zurücksetzen          ← eigene Section, unverändert (Config)
+4. Danger Zone           ← NEU, ganz unten (GitHub-Style)
+     Lokale Vorgänge- & Backup-Ordner leeren
+```
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Placement | System-Tab umsortieren: **Update → Cache & Temp → Zurücksetzen → Danger Zone** |
+| 2 | Danger Zone | GitHub-Style am Tab-Ende (`border-destructive`, Titel „Danger Zone“ / i18n); **nur** lokale Ordner-Clear — Reset bleibt **außerhalb** |
+| 3 | Vorgänge | History-geführt: Ordner zu `base_output_dir` (+ Append-`folder_path` unter Root) löschen; **`vorgang_history` DB unverändert** |
+| 4 | Orphans | Checkbox nur Vorgänge, Default **aus**: direkte Kinder von `speicherort` ohne Historie-Treffer |
+| 5 | Backups | Alle direkten Kind-Ordner unter `sd_backup_folder` löschen; **Media-History behalten** (Dedup-Hashes bleiben) |
+| 6 | Gemeinsam | Nur Dateisystem; Root selbst nie löschen; nur Pfade unter kanonisiertem Config-Root (Containment) |
+| 7 | Gate | Clear **disabled**, solange Vorgang aktiv (`busy` Create/Encode/Export; Append analog). Zusätzlich: Upload-Slot / SD-Primary-/Secondary-Backup aktiv → ebenfalls blocken |
+| 8 | Historie-UX danach | Erwartet: „Ordner fehlt“; bei retryable Upload → Problem-Chip — Confirm warnt mit Count |
+| 9 | Trennung Historie-Dialog | „Aus Vorgängen entfernen“ = nur DB (unverändert); Settings Danger Zone = nur Disk |
+| 10 | Progress | Best-effort Sequenz; Summary wie Cache (`dirs`/`files`/`bytes`/`errors`); Cancel optional (nice-to-have, nicht Pflicht v1) |
+| 11 | Leere Roots | Button disabled + Hint wenn `speicherort` bzw. `sd_backup_folder` leer/fehlt |
+| 12 | i18n | de / en / es-MX; Danger-Zone-Titel; kein „Manifest“/interne DB-Namen in UI |
+
+#### Out of Scope
+
+- `delete_by_ids` / `purge_all` auf Vorgänge- oder Media-History
+- Factory-Reset-Logik ändern
+- SMB Server-Backup / Upload-Share löschen
+- Altersfilter („älter als N Tage“)
+- Bulk-Löschen aus dem Vorgänge-Dialog
+- Cache-/Working-Session-Logik ändern
+- Cache-Größenanzeige (Phase 11.1 — separat)
+- Legacy-Projekt
+
+#### UX-Flow
+
+```
+Settings → System
+  → Danger Zone
+       [Vorgänge-Ordner löschen]  (disabled wenn busy / kein speicherort)
+            → probe_clear_local_job_folders(include_orphans)
+            → Soft-Confirm (Counts, Pfad, Upload-Warnung, „Historie bleibt“)
+            → clear_local_job_folders
+            → Toast Summary; folderMissing refreshen falls Historie geladen
+       [Backup-Ordner löschen]
+            → probe / confirm / clear analog unter sd_backup_folder
+```
+
+**Danger-Zone-Inhalt (eine Section):**
+
+- Titel + Kurzbeschreibung (unwiderruflich lokal; Historie bleibt)
+- Speicherort-Pfad (muted) + Checkbox „Auch unbekannte Ordner“ + Button „Vorgänge-Ordner löschen“ (`destructive`)
+- Backup-Pfad + Button „Backup-Ordner löschen“ (`destructive`)
+- Busy-/Pfad-Hint unter den Buttons
+
+**Confirm:** Soft-Dialog wie Reset in `SettingsDialog` (Primär **Zurück**, Proceed destruktiv).
+
+#### Scope
+
+- [x] Rust: `probe_clear_local_job_folders` / `clear_local_job_folders` (History-Pfade + optional Orphans; Containment-Tests)
+- [x] Rust: `probe_clear_local_backup_folders` / `clear_local_backup_folders` (Root-Kinder; Containment-Tests)
+- [x] Shared Result-Typ analog `CacheCleanupResult` (Reuse ok)
+- [x] Tauri-Commands + `src/lib/tauri.ts` Wrappers
+- [x] `SystemTab`: Sections umsortieren (Update → Cache → Reset → Danger Zone)
+- [x] Danger-Zone-Section (GitHub-Style Rahmen/Titel) + Clear-UI + Orphans-Checkbox + Guards
+- [x] Soft-Confirm-Dialog(e) in `SettingsDialog` (Reset-Pattern)
+- [x] Nach Clear: `folderMissingById` aktualisieren wenn Historie geladen
+- [x] i18n de / en / es-MX
+- [x] Unit-Tests: Path-Escape abgelehnt; Root unangetastet; Historie-Zeilen bleiben; Orphan-Toggle
+- [ ] Manuell: Clear während Create → disabled; nach Clear „Ordner fehlt“; Backup-Ordner weg, Dedup-Hashes noch da
+
+#### Referenzen
+
+```
+src/components/settings/tabs/SystemTab.tsx
+src/components/settings/SettingsDialog.tsx
+src/components/settings/SettingsSection.tsx
+src/lib/vorgangLifecycle.ts
+src/lib/cacheCleanupMessages.ts
+src-tauri/src/storage/cache.rs
+src-tauri/src/storage/vorgang_history.rs
+src-tauri/src/storage/media_history.rs
+```
+
+#### Agent-Prompt
+
+```
+Implementiere Phase 39 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Phase 39. Danach cargo test && npm run check.
+```
+
+---
+
 ### Phase 34 — SD-Server-Backup über SMB (statt Mount-Pfad)
 
 **Status:** ✅ Erledigt  
@@ -3134,14 +3297,14 @@ Portieren aus `config.py` → SQLite. Alle Keys:
   "sd_skip_processed": false,
   "sd_size_limit_enabled": false,
   "sd_size_limit_mb": 2000,
-  "usb_camera_import_enabled": false,
+  "usb_camera_import_enabled": true,
   "setup_completed": false,
   "crew_list": [],
   "crew_removed_names": []
 }
 ```
 
-`usb_camera_import_enabled` (Phase 23): MTP/WPD-Import für allowlistete Action-Cams (GoPro/DJI/Insta360); default `false` bis Windows-Abnahme, danach ggf. `true`.
+`usb_camera_import_enabled` (Phase 23): MTP/WPD-Import für allowlistete Action-Cams (GoPro/DJI/Insta360); default `true` auf allen Plattformen.
 
 `crew_removed_names` (Phase 36): Tombstones für absichtlich gelöschte Crew-Namen. Beim Load: fehlende Einträge aus `default_crew_list()` add-only mergen, außer Name steht in `crew_removed_names`. Rollen bestehender Einträge nie überschreiben. Factory-Reset leert Tombstones.
 
@@ -3325,6 +3488,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 38.3 | Operator-Labels `history.status.*` | ✅ |
 | 38.4 | AMS/SMB Status-Robustheit + `ams_verified_at` | ✅ |
 | 38.5 | Medien-Tab Layout | ✅ |
+| 39 | Lokale Vorgänge- & Backup-Ordner leeren (Settings Danger Zone) | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -3355,6 +3519,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 38:** `@docs/VORGAENGE_DIALOG_PLAN.md` — ✅ 38.1–38.5 erledigt (AMS-Bridge-Fix: AeroMediaService-v2).
 
+**Phase 39:** Prompt im Phasenabschnitt (Settings Danger Zone — lokale Vorgänge-/Backup-Ordner leeren).
+
 ---
 
-*Letzte Aktualisierung: 2026-08-28 · Phase 38 Vorgänge-Dialog UX ✅*
+*Letzte Aktualisierung: 2026-08-28 · Phase 39 erledigt (Settings Danger Zone)*

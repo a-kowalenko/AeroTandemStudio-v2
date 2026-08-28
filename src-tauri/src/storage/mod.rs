@@ -2,6 +2,7 @@ pub mod cache;
 pub mod config;
 pub mod file_link;
 pub mod default_media_dirs;
+pub mod local_folders;
 pub mod logging;
 pub mod media_history;
 pub mod vorgang_history;

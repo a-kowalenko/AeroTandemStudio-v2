@@ -1421,6 +1421,32 @@ export type CacheCleanupResult = {
   summary: string;
 };
 
+export type CacheUsageResult = {
+  bytes: number;
+  dirs: number;
+  files: number;
+};
+
+export type LocalFolderClearProbe = {
+  root: string;
+  root_exists: boolean;
+  folder_count: number;
+  file_count: number;
+  history_folder_count: number;
+  orphan_folder_count: number;
+  bytes: number;
+  retryable_upload_count: number;
+};
+
+export type ClearLocalJobFoldersArgs = {
+  speicherort?: string | null;
+  include_orphans?: boolean | null;
+};
+
+export type ClearLocalBackupFoldersArgs = {
+  sd_backup_folder?: string | null;
+};
+
 export type StartupCheckResult = {
   ok: boolean;
   ffmpeg_path: string | null;
@@ -1473,6 +1499,51 @@ export async function cleanupCache(
   args?: CleanupCacheArgs,
 ): Promise<CacheCleanupResult> {
   return invoke<CacheCleanupResult>("cleanup_cache", {
+    args: args ?? null,
+  });
+}
+
+/** Measure cache/temp footprint (same targets as full cleanup; no deletes). */
+export async function measureCache(
+  args?: CleanupCacheArgs,
+): Promise<CacheUsageResult> {
+  return invoke<CacheUsageResult>("measure_cache", {
+    args: args ?? null,
+  });
+}
+
+/** Probe local Vorgang folders under speicherort (history kept). */
+export async function probeClearLocalJobFolders(
+  args?: ClearLocalJobFoldersArgs,
+): Promise<LocalFolderClearProbe> {
+  return invoke<LocalFolderClearProbe>("probe_clear_local_job_folders", {
+    args: args ?? null,
+  });
+}
+
+/** Delete local Vorgang folders; vorgang_history DB unchanged. */
+export async function clearLocalJobFolders(
+  args?: ClearLocalJobFoldersArgs,
+): Promise<CacheCleanupResult> {
+  return invoke<CacheCleanupResult>("clear_local_job_folders", {
+    args: args ?? null,
+  });
+}
+
+/** Probe direct child folders under sd_backup_folder. */
+export async function probeClearLocalBackupFolders(
+  args?: ClearLocalBackupFoldersArgs,
+): Promise<LocalFolderClearProbe> {
+  return invoke<LocalFolderClearProbe>("probe_clear_local_backup_folders", {
+    args: args ?? null,
+  });
+}
+
+/** Delete direct child backup folders; media-history hashes kept. */
+export async function clearLocalBackupFolders(
+  args?: ClearLocalBackupFoldersArgs,
+): Promise<CacheCleanupResult> {
+  return invoke<CacheCleanupResult>("clear_local_backup_folders", {
     args: args ?? null,
   });
 }

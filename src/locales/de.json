@@ -135,6 +135,12 @@
         "toastTitle": "Cache",
         "cleaning": "Räume auf…",
         "clear": "Cache leeren",
+        "confirmTitle": "Cache leeren?",
+        "confirmBody": "Die aktuelle Medien-Session ist aktiv (Videos/Fotos im Working-Folder).\n\nCache leeren entfernt die Session und die Temp-/Preview-Dateien. Die Medienliste wird geleert.",
+        "currentSize": "Belegt:",
+        "measuring": "Größe wird ermittelt…",
+        "measureFailed": "Größe nicht verfügbar",
+        "refresh": "Größe aktualisieren",
         "cleanupErrors": "{{count}} Element(e) konnten nicht gelöscht werden.",
         "cleanupSummary": "{{dirs}} Ordner und {{files}} Dateien gelöscht ({{size}})."
       },
@@ -163,6 +169,30 @@
         "versionHeading": "Version {{version}}",
         "noNotes": "Keine Release Notes.",
         "releasesUnavailable": "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen."
+      },
+      "danger": {
+        "title": "Danger Zone",
+        "description": "Löscht lokale Ordner und Dateien unwiderruflich. Einträge in Vorgänge und Medien-Historie bleiben erhalten, die Mediendateien selbst sind danach weg.",
+        "includeOrphans": "Auch unbekannte Ordner im Speicherort löschen",
+        "clearJobs": "Vorgänge-Ordner löschen",
+        "clearBackups": "Backup-Ordner löschen",
+        "busyHint": "Nicht möglich während Vorgang, Upload oder SD-Backup.",
+        "pathHint": "Speicherort bzw. Backup-Ordner in den Einstellungen setzen.",
+        "nothingToDelete": "Nichts zu löschen.",
+        "toastTitle": "Lokale Ordner",
+        "clearing": "Lösche…",
+        "currentSize": "Belegt:",
+        "measuring": "Größe wird ermittelt…",
+        "measureFailed": "Größe nicht verfügbar",
+        "refresh": "Größe aktualisieren",
+        "usageSummary": "{{size}} · {{folders}} Ordner · {{files}} Dateien",
+        "confirmJobsTitle": "Vorgänge-Ordner löschen?",
+        "confirmJobsBody": "{{folders}} Ordner und {{files}} Dateien werden gelöscht ({{size}}).",
+        "confirmUploadWarn": "{{count}} Vorgang/Vorgänge haben noch einen ausstehenden Upload — nach dem Löschen fehlt der lokale Ordner.",
+        "confirmBackupsTitle": "Backup-Ordner löschen?",
+        "confirmBackupsBody": "{{folders}} Ordner und {{files}} Dateien werden gelöscht ({{size}}).",
+        "openFolder": "Zum Ordner",
+        "confirmProceed": "Löschen"
       }
     },
     "folder": {

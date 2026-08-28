@@ -2544,6 +2544,7 @@ function App() {
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}
+        sessionBusy={busy}
       />
 
       <QuitUploadConfirmDialog
