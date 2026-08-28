@@ -14,6 +14,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Vorgänge ohne geplanten Server-Upload: Status „Nur lokal“ in der Liste — auf einen Blick erkennbar
 - Unter Vorgänge: lokal erstellte Vorgänge später mit „Auf Server hochladen“ auf den Server kopieren
+- Einstellungen → System → Danger Zone: lokale Vorgänge- und Backup-Ordner leeren — Einträge unter Vorgänge bleiben erhalten, Speicherplatz wird freigegeben
 
 ### Verbessert
 
@@ -28,6 +29,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Unter Vorgänge → Medien: Datumsspalten kompakter und lesbarer
 - Unter Vorgänge: Tooltips am Nachreichen-Button erklären, warum Nachreichen gerade nicht möglich ist (lokal, Upload läuft, Server offline, Upload deaktiviert)
 - Nach App-Update: Fenster kommt automatisch wieder in den Vordergrund
+- Video-Clip-Liste zeigt mehr Einträge ohne Scrollen (ca. 12 Zeilen)
 
 ### Behoben
 
