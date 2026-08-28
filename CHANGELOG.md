@@ -43,8 +43,10 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Crew-Liste: neue Standard-Namen aus App-Updates erscheinen automatisch — selbst entfernte Namen bleiben weg
 - Manuell abgebrochene Uploads zählen nicht mehr als ausstehend (kein Badge, kein Sammel-Nachholen) — unter Vorgänge weiterhin nachholbar
 - Upload-Leiste: Warteschlange aufklappbar — wartende Vorgänge mit Gast und Crew sichtbar
+- Upload-Leiste: laufender Upload zeigt Gast und Crew (wie die Warteschlange)
 - Unter Vorgänge: Upload-Status kürzer und mit Tooltip (Ausstehend, Abgebrochen, Fehlgeschlagen, Upload)
-- Upload-Abbruch räumt unvollständige Server-Ordner zuverlässiger auf
+- Unter Vorgänge: Status-Chips besser lesbar
+- Upload-Abbruch räumt unvollständige Server-Ordner zuverlässiger auf — auch Reste nach Absturz beim nächsten Start
 
 ## [0.3.9-beta.5] - 2026-08-27
 
