@@ -291,7 +291,8 @@ export function MediaListPanel({
         </h3>
         <p className="text-[11px] text-muted">{t("media.list.hintVideos")}</p>
       </div>
-      <div className="max-h-[18rem] overflow-auto rounded-lg border border-border bg-card">
+      {/* ~header + 12 two-line rows; scroll only beyond that */}
+      <div className="max-h-[min(42rem,75vh)] overflow-auto rounded-lg border border-border bg-card">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
