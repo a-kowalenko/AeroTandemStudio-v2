@@ -284,6 +284,12 @@ pub struct AppConfig {
     /// Stable UUID of the connected AMS server (from health / mDNS).
     #[serde(default)]
     pub ams_bridge_server_instance_id: String,
+    /// macOS post-update hint: set before `update.install()`, cleared on „Verstanden“.
+    #[serde(default)]
+    pub post_update_hint_pending_version: String,
+    /// macOS post-update connection hint acknowledged for this app version.
+    #[serde(default)]
+    pub post_update_hint_ack_version: String,
 }
 
 fn default_ort() -> String {
@@ -952,8 +958,17 @@ impl Default for AppConfig {
             ams_bridge_last_ok_url: String::new(),
             ams_bridge_display_name: String::new(),
             ams_bridge_server_instance_id: String::new(),
+            post_update_hint_pending_version: String::new(),
+            post_update_hint_ack_version: String::new(),
         }
     }
+}
+
+/// Persist macOS post-update hint pending flag (survives relaunch + manual restart).
+pub fn set_post_update_hint_pending_version(version: &str) -> Result<(), String> {
+    let (store, mut cfg) = ConfigStore::open_default().map_err(|e| e.to_string())?;
+    cfg.post_update_hint_pending_version = version.trim().to_string();
+    store.save(&cfg).map_err(|e| e.to_string())
 }
 
 /// Resolve `%LOCALAPPDATA%\AeroTandemStudio` (Windows) or
@@ -1717,5 +1732,17 @@ mod tests {
         assert!(sd_server_backup_url_looks_like_mount_path("/Volumes/NAS/backups"));
         assert!(!sd_server_backup_url_looks_like_mount_path("smb://nas/sd-backups"));
         assert!(!sd_server_backup_url_looks_like_mount_path(r"\\nas\sd-backups"));
+    }
+
+    #[test]
+    fn post_update_hint_pending_persists() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.post_update_hint_pending_version = "0.4.0-beta.5".into();
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.post_update_hint_pending_version, "0.4.0-beta.5");
+        assert!(loaded.post_update_hint_ack_version.is_empty());
     }
 }

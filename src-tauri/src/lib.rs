@@ -13,9 +13,9 @@ mod bridge;
 
 use commands::app::{
     cleanup_cache, clear_local_backup_folders, clear_local_job_folders, clear_log_buffer,
-    focus_main_window_after_update, get_app_info, get_log_min_level, get_recent_logs,
-    measure_cache, probe_clear_local_backup_folders, probe_clear_local_job_folders,
-    run_startup_checks, set_log_min_level,
+    consume_post_update_restart, focus_main_window_after_update, get_app_info, get_log_min_level,
+    get_recent_logs, measure_cache, peek_post_update_restart, probe_clear_local_backup_folders,
+    probe_clear_local_job_folders, run_startup_checks, set_log_min_level,
 };
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
@@ -277,6 +277,8 @@ pub fn run() {
             probe_clear_local_backup_folders,
             clear_local_backup_folders,
             focus_main_window_after_update,
+            peek_post_update_restart,
+            consume_post_update_restart,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

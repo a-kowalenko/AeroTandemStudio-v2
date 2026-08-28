@@ -30,9 +30,14 @@ import {
   type CancelSecondaryBackupConfirmChoice,
 } from "./CancelSecondaryBackupConfirmDialog";
 import { SecondaryBackupPopover } from "./SecondaryBackupPopover";
+import { PostUpdateConnectionHintPopover } from "./PostUpdateConnectionHintPopover";
+import { usePostUpdateConnectionHint } from "../hooks/usePostUpdateConnectionHint";
 
 type Props = {
   className?: string;
+  /** macOS post-update hint when SMB + AMS stay unreachable after a version change. */
+  postUpdateHintEnabled?: boolean;
+  appVersion?: string;
 };
 
 function StatusDot({ tone }: { tone: ConnectionDot }) {
@@ -91,7 +96,11 @@ function useSparseLiveMessage(message: string | null, percentText: string | null
   return live;
 }
 
-export function ServerStatusIndicator({ className }: Props) {
+export function ServerStatusIndicator({
+  className,
+  postUpdateHintEnabled = false,
+  appVersion = "",
+}: Props) {
   const { t } = useTranslation();
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -230,6 +239,13 @@ export function ServerStatusIndicator({ className }: Props) {
   const canClickRetry = view.canRetry && !retrying;
   const canClickPopover = view.canOpenBackupPopover;
   const interactive = canClickRetry || canClickPopover || retrying;
+
+  const backupPopoverActive = popoverOpen && Boolean(secondaryBackup);
+  const postUpdateHint = usePostUpdateConnectionHint({
+    enabled: postUpdateHintEnabled,
+    appVersion,
+    backupPopoverActive,
+  });
 
   const backupCompact = formatSecondaryBackupCompactParts(
     secondaryBackup
@@ -454,7 +470,7 @@ export function ServerStatusIndicator({ className }: Props) {
 
       <div id={popoverId}>
         <SecondaryBackupPopover
-          open={popoverOpen && Boolean(secondaryBackup)}
+          open={backupPopoverActive}
           compact={backupCompact}
           state={secondaryBackup?.state ?? ""}
           filesLabel={filesLabel}
@@ -467,6 +483,10 @@ export function ServerStatusIndicator({ className }: Props) {
           cancelling={cancelling}
           onCancelRequest={onCancelRequest}
           onDismiss={onDismissBackup}
+        />
+        <PostUpdateConnectionHintPopover
+          open={postUpdateHint.open}
+          onAcknowledge={() => void postUpdateHint.acknowledge()}
         />
       </div>
 

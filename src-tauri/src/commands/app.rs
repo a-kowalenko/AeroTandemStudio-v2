@@ -413,3 +413,29 @@ pub fn clear_local_backup_folders(
 pub fn focus_main_window_after_update(app: AppHandle) -> bool {
     crate::util::window_focus::focus_main_window_if_update_restart(&app)
 }
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostUpdateRestartInfo {
+    pub active: bool,
+    pub version: String,
+}
+
+#[tauri::command]
+pub fn peek_post_update_restart() -> PostUpdateRestartInfo {
+    match crate::util::window_focus::peek_post_update_marker() {
+        Some(marker) => PostUpdateRestartInfo {
+            active: true,
+            version: marker.version,
+        },
+        None => PostUpdateRestartInfo {
+            active: false,
+            version: String::new(),
+        },
+    }
+}
+
+#[tauri::command]
+pub fn consume_post_update_restart() {
+    let _ = crate::util::window_focus::clear_post_update_marker();
+}

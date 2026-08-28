@@ -5,9 +5,16 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, UserAttentionType};
 
 const FOCUS_AFTER_UPDATE_MARKER: &str = ".focus_after_update";
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PostUpdateMarker {
+    #[serde(default)]
+    pub version: String,
+}
 
 fn marker_path_in(dir: &Path) -> PathBuf {
     dir.join(FOCUS_AFTER_UPDATE_MARKER)
@@ -19,26 +26,68 @@ pub fn focus_after_update_marker_path() -> Result<PathBuf, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Write marker before `update.install()` — survives process exit on Windows NSIS restart.
-pub fn mark_focus_after_update() -> Result<(), String> {
-    let path = focus_after_update_marker_path()?;
-    mark_focus_after_update_at(path.parent().unwrap_or(Path::new("")))
+fn read_marker_at(dir: &Path) -> Option<PostUpdateMarker> {
+    let path = marker_path_in(dir);
+    let raw = fs::read_to_string(path).ok()?;
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed == "1" {
+        return Some(PostUpdateMarker {
+            version: String::new(),
+        });
+    }
+    serde_json::from_str(trimmed).ok().or_else(|| {
+        Some(PostUpdateMarker {
+            version: trimmed.to_string(),
+        })
+    })
 }
 
-fn mark_focus_after_update_at(dir: &Path) -> Result<(), String> {
+fn write_marker_at(dir: &Path, marker: &PostUpdateMarker) -> Result<(), String> {
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    fs::write(marker_path_in(dir), b"1").map_err(|e| e.to_string())
+    let body = serde_json::to_string(marker).map_err(|e| e.to_string())?;
+    fs::write(marker_path_in(dir), body).map_err(|e| e.to_string())
 }
 
-/// Returns true if marker existed (and removes it).
-pub fn consume_focus_after_update_marker() -> bool {
+/// Write marker before `update.install()` — survives process exit on restart.
+pub fn mark_post_update_restart(version: &str) -> Result<(), String> {
+    let path = focus_after_update_marker_path()?;
+    mark_post_update_restart_at(
+        path.parent().unwrap_or(Path::new("")),
+        version.trim(),
+    )
+}
+
+fn mark_post_update_restart_at(dir: &Path, version: &str) -> Result<(), String> {
+    write_marker_at(
+        dir,
+        &PostUpdateMarker {
+            version: version.to_string(),
+        },
+    )
+}
+
+/// Legacy name used before JSON marker (updater still calls through wrapper).
+pub fn mark_focus_after_update() -> Result<(), String> {
+    mark_post_update_restart("")
+}
+
+pub fn peek_post_update_marker() -> Option<PostUpdateMarker> {
+    focus_after_update_marker_path()
+        .ok()
+        .and_then(|path| read_marker_at(path.parent().unwrap_or(Path::new(""))))
+}
+
+pub fn clear_post_update_marker() -> bool {
     match focus_after_update_marker_path() {
-        Ok(path) => consume_focus_after_update_marker_at(path.parent().unwrap_or(Path::new(""))),
+        Ok(path) => clear_post_update_marker_at(path.parent().unwrap_or(Path::new(""))),
         Err(_) => false,
     }
 }
 
-fn consume_focus_after_update_marker_at(dir: &Path) -> bool {
+fn clear_post_update_marker_at(dir: &Path) -> bool {
     let path = marker_path_in(dir);
     if path.is_file() {
         let _ = fs::remove_file(path);
@@ -46,6 +95,11 @@ fn consume_focus_after_update_marker_at(dir: &Path) -> bool {
     } else {
         false
     }
+}
+
+/// Returns true if marker existed (and removes it). Prefer `clear_post_update_marker`.
+pub fn consume_focus_after_update_marker() -> bool {
+    clear_post_update_marker()
 }
 
 pub fn focus_main_window(app: &AppHandle) {
@@ -59,9 +113,9 @@ pub fn focus_main_window(app: &AppHandle) {
     }
 }
 
-/// If update marker present: consume and focus main window.
+/// If post-update marker present: focus main window (marker stays for UI hint).
 pub fn focus_main_window_if_update_restart(app: &AppHandle) -> bool {
-    if !consume_focus_after_update_marker() {
+    if peek_post_update_marker().is_none() {
         return false;
     }
     focus_main_window(app);
@@ -70,15 +124,14 @@ pub fn focus_main_window_if_update_restart(app: &AppHandle) -> bool {
 
 /// Fallback when the frontend has not focused yet (e.g. slow WebView init).
 pub fn schedule_focus_after_update_backup(app: AppHandle) {
-    if !focus_after_update_marker_path()
-        .map(|p| p.is_file())
-        .unwrap_or(false)
-    {
+    if peek_post_update_marker().is_none() {
         return;
     }
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(2000));
-        let _ = focus_main_window_if_update_restart(&app);
+        if peek_post_update_marker().is_some() {
+            focus_main_window(&app);
+        }
     });
 }
 
@@ -94,14 +147,27 @@ mod tests {
     }
 
     #[test]
-    fn mark_and_consume_focus_marker() {
+    fn mark_peek_and_clear_json_marker() {
         let _guard = test_lock();
         let dir = tempfile::tempdir().expect("tempdir");
-        assert!(!consume_focus_after_update_marker_at(dir.path()));
-        mark_focus_after_update_at(dir.path()).expect("mark");
-        assert!(marker_path_in(dir.path()).is_file());
-        assert!(consume_focus_after_update_marker_at(dir.path()));
-        assert!(!marker_path_in(dir.path()).exists());
-        assert!(!consume_focus_after_update_marker_at(dir.path()));
+        assert!(peek_post_update_marker_at(dir.path()).is_none());
+        mark_post_update_restart_at(dir.path(), "0.4.0-beta.4").expect("mark");
+        let peeked = peek_post_update_marker_at(dir.path()).expect("peek");
+        assert_eq!(peeked.version, "0.4.0-beta.4");
+        assert!(clear_post_update_marker_at(dir.path()));
+        assert!(peek_post_update_marker_at(dir.path()).is_none());
+    }
+
+    #[test]
+    fn legacy_byte_marker_still_peeks() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(marker_path_in(dir.path()), b"1").expect("write");
+        let peeked = peek_post_update_marker_at(dir.path()).expect("peek");
+        assert!(peeked.version.is_empty());
+    }
+
+    fn peek_post_update_marker_at(dir: &Path) -> Option<PostUpdateMarker> {
+        read_marker_at(dir)
     }
 }

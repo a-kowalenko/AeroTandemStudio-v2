@@ -167,6 +167,10 @@ export type AppConfig = {
   ams_bridge_display_name: string;
   /** Stable UUID of the connected AMS server. */
   ams_bridge_server_instance_id: string;
+  /** macOS post-update hint pending until acknowledged (set before install). */
+  post_update_hint_pending_version: string;
+  /** macOS post-update connection hint acknowledged for this app version. */
+  post_update_hint_ack_version: string;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox.
@@ -1551,4 +1555,17 @@ export async function clearLocalBackupFolders(
 /** Bring main window to foreground after an auto-update restart (no-op otherwise). */
 export async function focusMainWindowAfterUpdate(): Promise<boolean> {
   return invoke<boolean>("focus_main_window_after_update");
+}
+
+export type PostUpdateRestartInfo = {
+  active: boolean;
+  version: string;
+};
+
+export async function peekPostUpdateRestart(): Promise<PostUpdateRestartInfo> {
+  return invoke<PostUpdateRestartInfo>("peek_post_update_restart");
+}
+
+export async function consumePostUpdateRestart(): Promise<void> {
+  return invoke<void>("consume_post_update_restart");
 }

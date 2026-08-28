@@ -411,7 +411,9 @@ async fn download_and_install_update<R: Runtime>(
         },
     );
 
-    crate::util::window_focus::mark_focus_after_update()
+    crate::storage::config::set_post_update_hint_pending_version(&version)
+        .map_err(|e| format!("Update-Vorbereitung fehlgeschlagen: {e}"))?;
+    crate::util::window_focus::mark_post_update_restart(&version)
         .map_err(|e| format!("Update-Vorbereitung fehlgeschlagen: {e}"))?;
 
     update

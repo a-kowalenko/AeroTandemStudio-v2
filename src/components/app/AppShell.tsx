@@ -33,6 +33,7 @@ type PhotoEdits = ReturnType<typeof usePhotoEditApply>;
 export type AppShellProps = {
   ready: boolean;
   appVersion: string;
+  postUpdateHintEnabled?: boolean;
   hwInfo: HwAccelInfo | null;
   busy: boolean;
   sdWorkflowUiActive: boolean;
@@ -70,6 +71,7 @@ export type AppShellProps = {
 export function AppShell({
   ready,
   appVersion,
+  postUpdateHintEnabled = false,
   hwInfo,
   busy,
   sdWorkflowUiActive,
@@ -156,7 +158,10 @@ export function AppShell({
               visible={Boolean(config?.sd_auto_backup)}
               disabled={uiLocked}
             />
-            <ServerStatusIndicator />
+            <ServerStatusIndicator
+              postUpdateHintEnabled={postUpdateHintEnabled}
+              appVersion={appVersion}
+            />
             <Button
               type="button"
               variant="secondary"

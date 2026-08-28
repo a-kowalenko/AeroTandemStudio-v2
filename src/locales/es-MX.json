@@ -1552,7 +1552,12 @@
       "percent": "{{percent}}%",
       "serverBackupFiles": "{{current}}/{{total}}",
       "serverBackupRunning": "Respaldo servidor: {{percent}}%",
-      "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}"
+      "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}",
+      "postUpdateHint": {
+        "title": "Conexión tras actualización",
+        "body": "Tras una actualización, macOS a veces bloquea la conexión de la app. Reinicia el Mac para solucionarlo.",
+        "ok": "Entendido"
+      }
     },
     "backupPopover": {
       "cancelledLocalRemains": "El respaldo local se conserva."

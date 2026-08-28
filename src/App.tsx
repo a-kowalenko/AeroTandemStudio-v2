@@ -2341,6 +2341,7 @@ function App() {
       <AppShell
         ready={ready}
         appVersion={appVersion}
+        postUpdateHintEnabled={ready && !splashOpen && !setupWizardOpen}
         hwInfo={hwInfo}
         busy={busy}
         sdWorkflowUiActive={sdWorkflowUiActive}
