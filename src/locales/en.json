@@ -1166,9 +1166,6 @@
       "expand": "Show upload details",
       "collapse": "Hide upload details",
       "queueWaiting": "{{count}} more waiting in queue",
-      "queueExpand": "Show upload queue",
-      "queueCollapse": "Hide upload queue",
-      "queueUntitled": "Upload",
       "failedHold": "Upload failed — retry from Jobs",
       "cleaningUp": "Finishing upload…"
     },
@@ -1203,6 +1200,7 @@
     "filters": {
       "all": "All",
       "open": "Open",
+      "openHint": "Not yet complete (server or cloud)",
       "done": "Done",
       "error": "Error"
     },
@@ -1231,6 +1229,40 @@
     "customer": "Customer: {{id}}",
     "booking": "Booking: {{id}}",
     "statusLoading": "Status…",
+    "status": {
+      "smbPending": "Server upload pending",
+      "smbUploading": "Copying…",
+      "amsPending": "Cloud: waiting",
+      "amsAccepted": "Cloud: confirmed",
+      "amsQueued": "Cloud: queued",
+      "amsUploading": "Uploading to cloud…",
+      "amsCompleted": "Completed",
+      "jobComplete": "Complete",
+      "amsRejected": "Cloud: rejected",
+      "amsCancelled": "Cloud: cancelled",
+      "refreshStatus": "Refresh status",
+      "folderMissing": "Folder missing",
+      "folderMissingRemove": "Remove from history",
+      "folderCleanedUp": "Local removed",
+      "refreshNoChange": "No new cloud status available (cache or bridge offline).",
+      "refreshFailed": "Could not fetch cloud status.",
+      "hint": {
+        "smbPending": "Ready locally — copy to the server is still pending",
+        "amsPending": "Media is on the server — cloud upload still pending",
+        "amsStale": "Status outdated — tap to refresh",
+        "folderMissing": "Output folder was removed or moved. Upload and cloud status are unavailable.",
+        "folderCleanedUp": "Output folder removed after upload — normal. Cloud status syncs via AMS.",
+        "jobComplete": "Server and cloud upload finished"
+      },
+      "step": {
+        "smb": "Server",
+        "amsPending": "Release",
+        "amsAccepted": "Confirmed",
+        "amsQueued": "Queue",
+        "amsUploading": "Cloud",
+        "amsCompleted": "Done"
+      }
+    },
     "append": "Append",
     "appendBtn": "Append…",
     "appendTitleLokal": "Only for online jobs, not local",
@@ -1354,8 +1386,8 @@
       "failed": "Failed",
       "failedHint": "Upload failed — retry from Jobs",
       "partialSuccess": "Upload finished. {{count}} file(s) were omitted.",
-      "pending": "Pending",
-      "pendingHint": "Ready locally — upload still pending",
+      "pending": "Server upload pending",
+      "pendingHint": "Ready locally — copy to the server is still pending",
       "cancelled": "Cancelled",
       "cancelledHint": "Upload cancelled — retry from Jobs",
       "pendingBadgeTooltip": "{{count}} uploads pending",
@@ -1367,7 +1399,7 @@
       "retryOffline": "Server offline — upload only when the connection is back",
       "retryTitle": "Retry upload",
       "retryTitleOk": "Start the pending upload now",
-      "uploading": "Upload",
+      "uploading": "Copying…",
       "uploadingHint": "Files are being copied to the server"
     }
   },

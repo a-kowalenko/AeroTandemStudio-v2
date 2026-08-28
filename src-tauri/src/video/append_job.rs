@@ -487,6 +487,7 @@ mod tests {
             correlation_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
             ams_state: "completed".into(),
             ams_updated_at: String::new(),
+            ams_verified_at: String::new(),
             ams_error_code: String::new(),
             ams_error_message: String::new(),
             ams_archive: "erfolg".into(),

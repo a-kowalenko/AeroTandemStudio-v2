@@ -2,6 +2,12 @@ import { invoke } from "@tauri-apps/api/core";
 import type { QrPreview } from "./tauri";
 import { useHistoryStore } from "@/store/historyStore";
 import {
+  folderMissingMapFromProbe,
+  probeItemsFromVorgaenge,
+  probeVorgangFolders,
+} from "@/lib/vorgangFolderProbe";
+import { isFolderMissingProblem } from "@/lib/vorgangLifecycle";
+import {
   classifyBulkPreflight,
   primaryPreflightReasonCode,
 } from "./uploadPreflight";
@@ -59,6 +65,8 @@ export type VorgangEntry = {
   /** Last-known AMS outbox state (`pending` until AMS writes). */
   ams_state: string;
   ams_updated_at: string;
+  /** When ATS last successfully read Bridge/Outbox (not AMS event time). */
+  ams_verified_at: string;
   ams_error_code: string;
   ams_error_message: string;
   ams_archive: string;
@@ -90,6 +98,8 @@ export type HandoffStatus = {
   correlation_id: string;
   state: string;
   updated_at: string;
+  /** When ATS last successfully read Bridge/Outbox for this payload. */
+  verified_at?: string;
   error: { code: string; message: string } | null;
   ams: { history_id: string | null; archive: string | null };
   /** `bridge` | `outbox` | `cached` | `local` */
@@ -150,6 +160,20 @@ export async function setVorgangUploadState(
     correlationId: opts?.correlationId ?? null,
     uploadState,
   });
+}
+
+/** Reset stale `uploading` rows to `pending` when no slot job is active for them. */
+export async function reconcileStaleUploads(
+  activeVorgangIds: number[] = [],
+): Promise<number> {
+  return invoke<number>("reconcile_stale_uploads", {
+    activeVorgangIds,
+  });
+}
+
+/** Batch AMS handoff sync from bridge/outbox (incl. post-upload / no local folder). */
+export async function syncOpenHandoffs(limit = 500): Promise<number> {
+  return invoke<number>("sync_open_handoffs", { limit });
 }
 
 export type UploadPreflightIssue = {
@@ -338,10 +362,23 @@ export async function refreshPendingUploadCount(
 ): Promise<number> {
   if (!uploadToServer) {
     useHistoryStore.getState().setPendingUploadCount(0);
+    useHistoryStore.getState().setFolderMissingById({});
     return 0;
   }
   const rows = await listVorgaenge(500);
-  const n = countPendingUploads(rows, true);
+  let folderMissing: Record<number, boolean> = {};
+  try {
+    folderMissing = folderMissingMapFromProbe(
+      await probeVorgangFolders(probeItemsFromVorgaenge(rows)),
+    );
+    useHistoryStore.getState().setFolderMissingById(folderMissing);
+  } catch {
+    folderMissing = useHistoryStore.getState().folderMissingById;
+  }
+  const n = rows.reduce((count, e) => {
+    if (isFolderMissingProblem(e, folderMissing)) return count;
+    return count + (isOutstandingVorgangUpload(e, true) ? 1 : 0);
+  }, 0);
   useHistoryStore.getState().setPendingUploadCount(n);
   return n;
 }

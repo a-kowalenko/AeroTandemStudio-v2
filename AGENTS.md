@@ -2,14 +2,16 @@
 
 ## Hauptdokument
 
-**Implementierungsplan:** `@docs/IMPLEMENTATION_PLAN.md`  
-**Performance-Backlog:** `@docs/optimization_plan.md`  
+**Implementierungsplan:** `@docs/IMPLEMENTATION_PLAN.md` 
+**Vorgänge-Dialog UX:** `@docs/VORGAENGE_DIALOG_PLAN.md` (Phase 38, nur Tab Vorgänge)
+**Performance-Backlog:** `@docs/optimization_plan.md`
 **Architektur:** `@docs/ARCHITECTURE.md`  
 **Migration-Mapping:** `@docs/MIGRATION.md`  
 **macOS Build:** `@docs/MACOS_BUILD.md`  
 **Linux Build:** `@docs/LINUX_BUILD.md`
 
-In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren.  
+In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren. 
+Vorgänge-Dialog-Verbesserungen: `@docs/VORGAENGE_DIALOG_PLAN.md` — **nur eine Unterphase 38.x** pro Session (Chips/Labels nur im Dialog, Rest der App unverändert).
 Performance-Optimierungen separat: `@docs/optimization_plan.md` — **nur ein OPT-Paket** pro Session.
 
 ---
@@ -126,9 +128,10 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
 - ✅ Phase 36: Crew-Defaults beim Update mergen (Add-only + `crew_removed_names` Tombstones)
 - ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
+- ✅ Phase 38: Vorgänge-Dialog UX (38.1–38.5: Layout, `components/history/*`, `history.status.*`, AMS-Poll + `ams_verified_at`, Medien-Tab; Plan `@docs/VORGAENGE_DIALOG_PLAN.md`)
 
-**Nächster Schritt:** Phase 23.2h / 23.3 / 31.5 
-*(optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam; SMB-Upload-Stopwatch 200+ Fotos nach OPT-15)*
+**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3  
+*(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
 
 ### Performance-Backlog
 

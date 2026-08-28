@@ -47,6 +47,7 @@ import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
 import { useServerHealthPoll } from "./hooks/useServerHealthPoll";
+import { useAmsHandoffPoll } from "./hooks/useAmsHandoffPoll";
 import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
@@ -133,7 +134,9 @@ import { isImportCancellation, rollbackImportBatch } from "./lib/importRollback"
 import {
   preflightVorgangUpload,
   refreshPendingUploadCount,
+  reconcileStaleUploads,
   setVorgangUploadState,
+  getHandoffStatus,
   bulkSummaryItemFromScanEntry,
   createEmptyBulkUploadSummary,
   type BulkPhase2Session,
@@ -160,6 +163,7 @@ import {
 import type { UploadQueueJob } from "./lib/uploadQueue";
 import { useHistoryStore } from "./store/historyStore";
 import { useUploadQueueStore } from "./store/uploadQueueStore";
+import { applyHandoffToEntry } from "./lib/amsHandoffPatch";
 import type { EncodeProgress } from "./components/app/types";
 import { QuitUploadConfirmDialog } from "./components/QuitUploadConfirmDialog";
 import {
@@ -1245,6 +1249,27 @@ function App() {
     config?.upload_to_server,
   ]);
 
+  /** Crash recovery: `uploading` without an active slot job → `pending`. */
+  useEffect(() => {
+    if (!ready || splashOpen || setupWizardOpen) return;
+    if (!config?.upload_to_server) return;
+    const activeId = useUploadQueueStore.getState().active?.vorgangId ?? null;
+    void reconcileStaleUploads(activeId != null ? [activeId] : [])
+      .then((n) => {
+        if (n <= 0) return;
+        useHistoryStore.setState((s) => ({
+          vorgaenge: s.vorgaenge.map((row) =>
+            row.upload_state === "uploading" &&
+            (activeId == null || row.id !== activeId)
+              ? { ...row, upload_state: "pending" }
+              : row,
+          ),
+        }));
+        void refreshPendingUploadCount(true).catch(() => {});
+      })
+      .catch(() => {});
+  }, [ready, splashOpen, setupWizardOpen, config?.upload_to_server]);
+
   /** Optional once-per-reconnect toast when uploads are pending (no auto-drain). */
   useEffect(() => {
     if (!ready || splashOpen || setupWizardOpen) {
@@ -1303,6 +1328,7 @@ function App() {
   ]);
 
   useServerHealthPoll(ready && !splashOpen && !setupWizardOpen);
+  useAmsHandoffPoll(ready && !splashOpen && !setupWizardOpen);
 
   useEffect(() => {
     if (!config || defaultsApplied.current) return;
@@ -1541,6 +1567,22 @@ function App() {
         return "cancelled";
       }
       await persistUploadState("done");
+      if (job.vorgangId != null && job.correlationId?.trim()) {
+        void getHandoffStatus(
+          job.correlationId,
+          job.localDir,
+          job.vorgangId,
+        )
+          .then((status) => {
+            if (!status || job.vorgangId == null) return;
+            useHistoryStore
+              .getState()
+              .patchVorgang(job.vorgangId, (row) =>
+                applyHandoffToEntry(row, status),
+              );
+          })
+          .catch(() => {});
+      }
       setServerPhase("connected");
       if (!job.quietSuccess) {
         showBackgroundUploadDoneToast({

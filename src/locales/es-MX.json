@@ -1166,9 +1166,6 @@
       "expand": "Mostrar detalles de la subida",
       "collapse": "Ocultar detalles de la subida",
       "queueWaiting": "{{count}} más en cola",
-      "queueExpand": "Mostrar cola de subida",
-      "queueCollapse": "Ocultar cola de subida",
-      "queueUntitled": "Subida",
       "failedHold": "Subida fallida — reintentar en Trabajos",
       "cleaningUp": "Finalizando la subida…"
     },
@@ -1203,6 +1200,7 @@
     "filters": {
       "all": "Todos",
       "open": "Abiertos",
+      "openHint": "Aún no completado (servidor o nube)",
       "done": "Listos",
       "error": "Error"
     },
@@ -1231,6 +1229,40 @@
     "customer": "Cliente: {{id}}",
     "booking": "Reserva: {{id}}",
     "statusLoading": "Estado…",
+    "status": {
+      "smbPending": "Subida al servidor pendiente",
+      "smbUploading": "Copiando…",
+      "amsPending": "Nube: en espera",
+      "amsAccepted": "Nube: confirmada",
+      "amsQueued": "Nube: en cola",
+      "amsUploading": "Subiendo a la nube…",
+      "amsCompleted": "Completado",
+      "jobComplete": "Listo",
+      "amsRejected": "Nube: rechazada",
+      "amsCancelled": "Nube: cancelada",
+      "refreshStatus": "Actualizar estado",
+      "folderMissing": "Carpeta no encontrada",
+      "folderMissingRemove": "Quitar del historial",
+      "folderCleanedUp": "Local eliminado",
+      "refreshNoChange": "No hay estado nuevo en la nube (caché o puente sin conexión).",
+      "refreshFailed": "No se pudo consultar el estado en la nube.",
+      "hint": {
+        "smbPending": "Listo en local — falta copiar al servidor",
+        "amsPending": "Los medios están en el servidor — falta subirlos a la nube",
+        "amsStale": "Estado desactualizado — toca para actualizar",
+        "folderMissing": "Se eliminó o movió la carpeta de salida. Subida y estado en la nube no disponibles.",
+        "folderCleanedUp": "Carpeta local eliminada tras la subida — normal. El estado en la nube se sincroniza vía AMS.",
+        "jobComplete": "Subida al servidor y a la nube completada"
+      },
+      "step": {
+        "smb": "Servidor",
+        "amsPending": "Liberación",
+        "amsAccepted": "Confirmado",
+        "amsQueued": "Cola",
+        "amsUploading": "Nube",
+        "amsCompleted": "Listo"
+      }
+    },
     "append": "Reenvío",
     "appendBtn": "Reenviar…",
     "appendTitleLokal": "Solo en trabajos en línea, no locales",
@@ -1354,8 +1386,8 @@
       "failed": "Fallida",
       "failedHint": "Subida fallida — reintentar desde Trabajos",
       "partialSuccess": "Subida lista. Se omitieron {{count}} archivo(s).",
-      "pending": "Pendiente",
-      "pendingHint": "Listo en local — subida aún pendiente",
+      "pending": "Subida al servidor pendiente",
+      "pendingHint": "Listo en local — falta copiar al servidor",
       "cancelled": "Cancelada",
       "cancelledHint": "Subida cancelada — reintentar desde Trabajos",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
@@ -1367,7 +1399,7 @@
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
       "retryTitle": "Reintentar subida",
       "retryTitleOk": "Iniciar ahora la subida pendiente",
-      "uploading": "Subida",
+      "uploading": "Copiando…",
       "uploadingHint": "Se están copiando los archivos al servidor"
     }
   },

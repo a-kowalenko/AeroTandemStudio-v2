@@ -54,7 +54,8 @@ use commands::video::{
 use commands::vorgang_history::{
     create_append_job, delete_vorgaenge, get_handoff_status, list_vorgang_appends,
     delete_vorgang_extra_files, list_vorgang_dateien, list_vorgaenge, preflight_vorgang_upload,
-    resync_vorgang_delivery_list, set_vorgang_upload_state,
+    probe_vorgang_folders, reconcile_stale_uploads, resync_vorgang_delivery_list,
+    set_vorgang_upload_state, sync_open_handoffs,
 };
 use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
@@ -245,6 +246,9 @@ pub fn run() {
             get_handoff_status,
             delete_vorgaenge,
             set_vorgang_upload_state,
+            probe_vorgang_folders,
+            sync_open_handoffs,
+            reconcile_stale_uploads,
             preflight_vorgang_upload,
             resync_vorgang_delivery_list,
             delete_vorgang_extra_files,

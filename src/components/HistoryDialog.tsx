@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Eye, Loader2, Upload } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +37,6 @@ import {
   resyncVorgangDeliveryList,
   deleteVorgangExtraFiles,
   canRetryVorgangUpload,
-  isListUploadStatus,
   pendingUploadCandidates,
   scanBulkUploadCandidates,
   bulkSummaryItemFromScanEntry,
@@ -94,15 +93,35 @@ import {
 } from "@/components/AppendMediaDialog";
 import { useAppendStore } from "@/store/appendStore";
 import { useHistoryStore } from "@/store/historyStore";
+import {
+  applyAppendStatusToEntry,
+  applyHandoffToEntry,
+  isAmsStatusStale,
+} from "@/lib/amsHandoffPatch";
+import {
+  folderMissingMapFromProbe,
+  probeItemsFromVorgaenge,
+  probeVorgangFolders,
+} from "@/lib/vorgangFolderProbe";
+import {
+  effectiveAmsListState,
+  isFolderMissingProblem,
+  isPostUploadFolderCleanup,
+  resolveListStatusDisplay,
+} from "@/lib/vorgangLifecycle";
+import { useHandoffSync } from "@/hooks/useHandoffSync";
 import { useUiStore } from "@/store/uiStore";
 import { presentAmsUserMessage } from "@/lib/amsBridgeStatus";
 import { tr } from "@/i18n";
-import { formatLocaleDateTime } from "@/lib/locale";
+import { formatLocaleDateTime, formatLocaleDateTimeCompact, formatLocaleTime } from "@/lib/locale";
 import { cn, isCancellationError } from "@/lib/utils";
-import {
-  AmsHandoffStatusChip,
-  AmsHandoffStepper,
-} from "@/components/AmsHandoffStatus";
+import { VorgangAmsChip } from "@/components/history/VorgangAmsChip";
+import { VorgangArchivedChip } from "@/components/history/VorgangArchivedChip";
+import { VorgangCompleteChip } from "@/components/history/VorgangCompleteChip";
+import { VorgangFolderChip } from "@/components/history/VorgangFolderChip";
+import { VorgangAmsStepper } from "@/components/history/VorgangAmsStepper";
+import { VorgangProductChip } from "@/components/history/VorgangProductChip";
+import { VorgangUploadChip } from "@/components/history/VorgangUploadChip";
 import { QrHitMeta } from "@/components/QrHitMeta";
 import {
   QR_PREVIEW_FRAME_AR,
@@ -129,6 +148,8 @@ type TypeFilter = "all" | "video" | "photo";
 type PeriodFilter = "all" | "today" | "7d" | "30d" | "365d";
 
 const AMS_STATUS_FILTERS: AmsStatusFilter[] = ["all", "open", "done", "error"];
+
+const HANDOFF_REFRESH_MIN_MS = 400;
 
 type PendingConfirm = {
   title: string;
@@ -206,104 +227,6 @@ function productBadges(v: VorgangEntry): ProductBadge[] {
     });
   }
   return badges;
-}
-
-function ProductStatusChip({ badge }: { badge: ProductBadge }) {
-  const { t } = useTranslation();
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium leading-tight ring-1 ring-inset",
-        badge.paid
-          ? "bg-emerald-500/12 text-emerald-900 ring-emerald-500/30 dark:text-emerald-100"
-          : "bg-muted/30 text-muted-foreground ring-border/60",
-      )}
-      title={badge.paid ? t("history.paidTitle", { label: badge.label }) : badge.label}
-    >
-      {badge.label}
-      {badge.paid ? (
-        <Check className="size-3 shrink-0" strokeWidth={2.5} aria-hidden />
-      ) : null}
-    </span>
-  );
-}
-
-/** SMB upload chip (Phase 31.1 / 31.8); retry action in detail panel (31.2). */
-function UploadStateChip({ state }: { state: string }) {
-  const { t } = useTranslation();
-  const s = state.trim().toLowerCase();
-  if (!isListUploadStatus(s)) {
-    return null;
-  }
-  const label =
-    s === "failed"
-      ? t("history.upload.failed")
-      : s === "uploading"
-        ? t("history.upload.uploading")
-        : s === "cancelled"
-          ? t("history.upload.cancelled")
-          : t("history.upload.pending");
-  const tip =
-    s === "failed"
-      ? t("history.upload.failedHint")
-      : s === "uploading"
-        ? t("history.upload.uploadingHint")
-        : s === "cancelled"
-          ? t("history.upload.cancelledHint")
-          : t("history.upload.pendingHint");
-  return (
-    <span
-      className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-medium leading-tight ring-1 ring-inset",
-        s === "failed"
-          ? "bg-destructive/10 text-destructive ring-destructive/35"
-          : s === "uploading"
-            ? "bg-primary/10 text-primary ring-primary/30 ams-chip-active"
-            : s === "cancelled"
-              ? "bg-muted/40 text-muted-foreground ring-border/60"
-              : "bg-warning/10 text-warning ring-warning/30",
-      )}
-      title={tip}
-    >
-      {s === "uploading" ? (
-        <Upload className="size-3 shrink-0 animate-pulse" aria-hidden />
-      ) : null}
-      {s === "pending" ? (
-        <Loader2
-          className="size-3 shrink-0 animate-spin [animation-duration:1.4s]"
-          aria-hidden
-        />
-      ) : null}
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
-function applyHandoffToEntry(entry: VorgangEntry, status: HandoffStatus): VorgangEntry {
-  return {
-    ...entry,
-    ams_state: status.state,
-    ams_updated_at: status.updated_at || entry.ams_updated_at,
-    ams_error_code: status.error?.code ?? "",
-    ams_error_message: status.error?.message ?? "",
-    ams_archive: status.ams.archive ?? "",
-    ams_source: status.source ?? entry.ams_source,
-  };
-}
-
-function applyAppendStatusToEntry(
-  entry: VorgangEntry,
-  status: HandoffStatus,
-): VorgangEntry {
-  if (entry.last_append_correlation_id.trim() !== status.correlation_id.trim()) {
-    return entry;
-  }
-  return {
-    ...entry,
-    last_append_ams_state: status.state,
-    last_append_ams_error_code: status.error?.code ?? "",
-    last_append_ams_error_message: status.error?.message ?? "",
-  };
 }
 
 function appendHandoffStatusFromRecord(
@@ -390,6 +313,18 @@ function formatCreatedAt(iso: string): string {
   const parsed = parseHistoryIso(iso);
   if (Number.isNaN(parsed)) return iso;
   return formatLocaleDateTime(parsed);
+}
+
+function formatCreatedAtTime(iso: string): string | null {
+  const parsed = parseHistoryIso(iso);
+  if (Number.isNaN(parsed)) return null;
+  return formatLocaleTime(parsed);
+}
+
+function formatCreatedAtCompact(iso: string): string {
+  const parsed = parseHistoryIso(iso);
+  if (Number.isNaN(parsed)) return iso;
+  return formatLocaleDateTimeCompact(parsed);
 }
 
 function entryModeLabel(formMode: string, manualEntryMode: string): string | null {
@@ -1285,6 +1220,7 @@ function VorgaengePanel({
   const uploadToServer = useConfigStore((s) =>
     Boolean(s.config?.upload_to_server),
   );
+  const folderMissingById = useHistoryStore((s) => s.folderMissingById);
   const serverConnected = useServerStore((s) => s.connected);
   const showWarning = useUiStore((s) => s.showWarning);
   const [entries, setEntries] = useState<VorgangEntry[]>(
@@ -1307,6 +1243,7 @@ function VorgaengePanel({
   const [showShadow, setShowShadow] = useState(true);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus | null>(null);
   const [handoffReady, setHandoffReady] = useState(false);
+  const [handoffRefreshBusy, setHandoffRefreshBusy] = useState(false);
   const [appendStatus, setAppendStatus] = useState<HandoffStatus | null>(null);
   const [appends, setAppends] = useState<VorgangAppendEntry[]>(
     () => seedVorgaengePanel().appends,
@@ -1323,9 +1260,26 @@ function VorgaengePanel({
   const searchSkipRef = useRef(true);
   const appendJobActive = useAppendStore((s) => s.active);
 
+  useHandoffSync(dialogOpen && ready, { eager: true });
+
   function patchEntry(id: number, fn: (row: VorgangEntry) => VorgangEntry) {
     setEntries((prev) => prev.map((e) => (e.id === id ? fn(e) : e)));
     useHistoryStore.getState().patchVorgang(id, fn);
+  }
+
+  async function probeFolderIntegrity(rows: VorgangEntry[]) {
+    if (rows.length === 0) {
+      useHistoryStore.getState().setFolderMissingById({});
+      return;
+    }
+    try {
+      const results = await probeVorgangFolders(probeItemsFromVorgaenge(rows));
+      useHistoryStore
+        .getState()
+        .setFolderMissingById(folderMissingMapFromProbe(results));
+    } catch {
+      /* keep prior probe cache */
+    }
   }
 
   async function reload(q?: string, opts?: { silent?: boolean }) {
@@ -1348,6 +1302,7 @@ function VorgaengePanel({
         useHistoryStore.getState().setSelectedId(next);
         return next;
       });
+      void probeFolderIntegrity(rows);
     } catch {
       if (!silent) {
         setEntries([]);
@@ -1366,6 +1321,17 @@ function VorgaengePanel({
       silent: cached && !searchRef.current.trim(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    if (!dialogOpen) return;
+    return useHistoryStore.subscribe((state, prev) => {
+      if (state.vorgaenge === prev.vorgaenge) return;
+      setEntries((current) => {
+        const byId = new Map(state.vorgaenge.map((row) => [row.id, row]));
+        return current.map((row) => byId.get(row.id) ?? row);
+      });
+    });
   }, [dialogOpen]);
 
   useEffect(() => {
@@ -1452,6 +1418,11 @@ function VorgaengePanel({
       setHandoffReady(true);
       return;
     }
+    if (isFolderMissingProblem(selected, folderMissingById)) {
+      setHandoffStatus(null);
+      setHandoffReady(true);
+      return;
+    }
     const cid = selected.correlation_id?.trim() ?? "";
     const vorgangId = selected.id;
     const baseDir = selected.base_output_dir;
@@ -1483,6 +1454,7 @@ function VorgaengePanel({
                 correlation_id: cid,
                 state: cached.state,
                 updated_at: row?.ams_updated_at ?? "",
+                verified_at: row?.ams_verified_at ?? "",
                 error: cached.errorCode
                   ? {
                       code: cached.errorCode,
@@ -1511,6 +1483,7 @@ function VorgaengePanel({
         correlation_id: cid,
         state: seed.state,
         updated_at: selected.ams_updated_at,
+        verified_at: selected.ams_verified_at,
         error: seed.errorCode
           ? { code: seed.errorCode, message: seed.errorMessage ?? "" }
           : null,
@@ -1524,17 +1497,21 @@ function VorgaengePanel({
     }
 
     load(true);
+    const completedCached =
+      (cachedState ?? "").trim().toLowerCase() === "completed";
     if (
       isAmsHandoffSettled({
         ams_state: cachedState,
         ams_error_code: selected.ams_error_code,
-      })
+      }) &&
+      !completedCached
     ) {
       return () => {
         cancelled = true;
       };
     }
-    const interval = window.setInterval(() => load(false), 5000);
+    const intervalMs = completedCached ? 30_000 : 5_000;
+    const interval = window.setInterval(() => load(false), intervalMs);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -1548,6 +1525,7 @@ function VorgaengePanel({
     selected?.base_output_dir,
     selected?.ams_state,
     selected?.ams_error_code,
+    folderMissingById,
   ]);
 
   useEffect(() => {
@@ -1676,91 +1654,6 @@ function VorgaengePanel({
     selected?.last_append_ams_error_message,
   ]);
 
-  // Background refresh for visible non-terminal AMS handoffs (list chips).
-  useEffect(() => {
-    if (!dialogOpen || !ready) return;
-    let cancelled = false;
-    const refresh = () => {
-      const pending = entriesRef.current.filter((e) => {
-        if (e.id === selectedIdRef.current) return false;
-        const mainOpen =
-          e.correlation_id?.trim() &&
-          !isAmsHandoffSettled({
-            ams_state: e.ams_state,
-            ams_error_code: e.ams_error_code,
-          });
-        const appendOpen =
-          e.last_append_correlation_id?.trim() &&
-          !isAmsHandoffSettled({
-            ams_state: e.last_append_ams_state,
-            ams_error_code: e.last_append_ams_error_code,
-          });
-        return mainOpen || appendOpen;
-      });
-      if (pending.length === 0) return;
-      void Promise.all(
-        pending.slice(0, 15).flatMap((e) => {
-          const jobs: Promise<void>[] = [];
-          if (
-            e.correlation_id?.trim() &&
-            !isAmsHandoffSettled({
-              ams_state: e.ams_state,
-              ams_error_code: e.ams_error_code,
-            }) &&
-            e.id !== selectedIdRef.current
-          ) {
-            jobs.push(
-              getHandoffStatus(e.correlation_id, e.base_output_dir, e.id)
-                .then((status) => {
-                  if (!cancelled && status) {
-                    patchEntry(e.id, (row) => applyHandoffToEntry(row, status));
-                  }
-                })
-                .catch(() => {
-                  /* keep cached list fields */
-                }),
-            );
-          }
-          const appendCid = e.last_append_correlation_id?.trim() ?? "";
-          if (
-            appendCid &&
-            !isAmsHandoffSettled({
-              ams_state: e.last_append_ams_state,
-              ams_error_code: e.last_append_ams_error_code,
-            }) &&
-            e.id !== selectedIdRef.current
-          ) {
-            jobs.push(
-              getHandoffStatus(
-                appendCid,
-                e.last_append_folder_path?.trim() || e.base_output_dir,
-                e.id,
-              )
-                .then((status) => {
-                  if (!cancelled && status) {
-                    patchEntry(e.id, (row) =>
-                      applyAppendStatusToEntry(row, status),
-                    );
-                  }
-                })
-                .catch(() => {
-                  /* keep cached list fields */
-                }),
-            );
-          }
-          return jobs;
-        }),
-      );
-    };
-    const start = window.setTimeout(refresh, 1500);
-    const interval = window.setInterval(refresh, 20000);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(start);
-      window.clearInterval(interval);
-    };
-  }, [dialogOpen, ready]);
-
   const selectedMode = selected
     ? entryModeLabel(selected.form_mode, selected.manual_entry_mode)
     : null;
@@ -1784,12 +1677,70 @@ function VorgaengePanel({
     !lastAppendBusy &&
     !appendJobActive;
   const canRetry = selected
-    ? canRetryVorgangUpload(selected, uploadToServer)
+    ? !isFolderMissingProblem(selected, folderMissingById) &&
+      canRetryVorgangUpload(selected, uploadToServer)
     : false;
   const bulkCandidates = useMemo(
-    () => pendingUploadCandidates(entries, uploadToServer),
-    [entries, uploadToServer],
+    () =>
+      pendingUploadCandidates(entries, uploadToServer).filter(
+        (e) => !isFolderMissingProblem(e, folderMissingById),
+      ),
+    [entries, uploadToServer, folderMissingById],
   );
+  const selectedFolderProblem = selected
+    ? isFolderMissingProblem(selected, folderMissingById)
+    : false;
+  const selectedFolderCleanedUp = selected
+    ? isPostUploadFolderCleanup(selected, folderMissingById)
+    : false;
+  const handoffStale = Boolean(
+    !selectedFolderProblem &&
+      selected?.correlation_id?.trim() &&
+      isAmsStatusStale(
+        handoffStatus?.verified_at || selected.ams_verified_at,
+        handoffStatus?.state || selected.ams_state,
+        { offline: handoffStatus?.offline },
+      ),
+  );
+  const refreshHandoffStatus = useCallback(async () => {
+    if (!selected?.correlation_id?.trim()) return;
+    if (selectedFolderProblem) {
+      showWarning(
+        t("history.status.hint.folderMissing"),
+        t("history.status.folderMissing"),
+      );
+      return;
+    }
+    setHandoffRefreshBusy(true);
+    const started = Date.now();
+    try {
+      const status = await getHandoffStatus(
+        selected.correlation_id,
+        selected.base_output_dir,
+        selected.id,
+      );
+      if (status) {
+        setHandoffStatus(status);
+        patchEntry(selected.id, (row) => applyHandoffToEntry(row, status));
+      } else {
+        showWarning(
+          t("history.status.refreshNoChange"),
+          t("history.status.refreshStatus"),
+        );
+      }
+    } catch {
+      showWarning(
+        t("history.status.refreshFailed"),
+        t("history.status.refreshStatus"),
+      );
+    } finally {
+      const wait = HANDOFF_REFRESH_MIN_MS - (Date.now() - started);
+      if (wait > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, wait));
+      }
+      setHandoffRefreshBusy(false);
+    }
+  }, [selected, selectedFolderProblem, showWarning, t]);
   const qrPreview = selected?.qr_preview?.path?.trim()
     ? selected.qr_preview
     : null;
@@ -1850,6 +1801,25 @@ function VorgaengePanel({
     });
   }
 
+  function requestRemoveEntry(entry: VorgangEntry) {
+    onRequestConfirm({
+      title: t("history.confirm.removeJobOne"),
+      description: t("history.confirm.removeJobOneBody"),
+      actionLabel: t("common.actions.remove"),
+      run: async () => {
+        await deleteVorgaenge([entry.id]);
+        useHistoryStore.getState().removeVorgaenge([entry.id]);
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        setChecked((prev) => {
+          const next = new Set(prev);
+          next.delete(entry.id);
+          return next;
+        });
+        await reload(search, { silent: true });
+      },
+    });
+  }
+
   function requestBulkRetry() {
     if (bulkCandidates.length === 0 || retryPreflightBusy) return;
     if (!serverConnected) {
@@ -1889,6 +1859,7 @@ function VorgaengePanel({
                   : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40",
               )}
               aria-pressed={amsFilter === id}
+              title={id === "open" ? t("history.filters.openHint") : undefined}
               onClick={() => setAmsFilter(id)}
             >
               {t(`history.filters.${id}`)}
@@ -1936,46 +1907,65 @@ function VorgaengePanel({
         </Button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <div className="min-h-0 overflow-y-auto overflow-x-hidden rounded-md border border-border/60">
           <table className="w-full table-fixed text-left text-xs">
             <colgroup>
-              <col className="w-8" />
-              <col className="w-[24%]" />
-              <col className="w-[12%]" />
-              <col className="w-[18%]" />
-              <col className="w-[27%]" />
-              <col className="w-[12%]" />
+              <col style={{ width: "1.5rem" }} />
+              <col className="w-[30%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col />
             </colgroup>
             <thead className="sticky top-0 bg-card">
               <tr className="border-b border-border/60">
-                <th className="p-2" />
+                <th className="p-0" />
                 <th className="p-2">{t("history.col.guest")}</th>
                 <th className="p-2">{t("history.col.date")}</th>
                 <th className="p-2">{t("history.col.products")}</th>
                 <th className="p-2">{t("history.col.status")}</th>
-                <th className="p-2">{t("history.col.created")}</th>
               </tr>
             </thead>
             <tbody>
               {filteredEntries.map((e) => {
                 const badges = productBadges(e);
                 const baseView = viewFromVorgangEntry(e);
+                const effectiveState = effectiveAmsListState(
+                  e,
+                  baseView?.state ?? e.ams_state,
+                );
                 const amsView =
-                  baseView &&
+                  baseView != null
+                    ? {
+                        ...baseView,
+                        state: effectiveState,
+                        ...(effectiveState.toLowerCase() === "cancelled" &&
+                        !isAmsCancelled(baseView)
+                          ? {
+                              errorCode: "cancelled",
+                              errorMessage: "Abgebrochen",
+                            }
+                          : {}),
+                      }
+                    : null;
+                const amsViewOffline =
+                  amsView &&
                   handoffStatus?.correlation_id === e.correlation_id &&
                   handoffStatus.offline
-                    ? { ...baseView, offline: true }
-                    : baseView;
+                    ? { ...amsView, offline: true }
+                    : amsView;
                 const uploadState = e.upload_state ?? "";
-                const showUploadChip = isListUploadStatus(uploadState);
-                // One primary chip in the list: SMB attention wins over AMS handoff.
-                const showAmsChip = Boolean(amsView) && !showUploadChip;
+                const listStatus = resolveListStatusDisplay(
+                  e,
+                  folderMissingById,
+                  effectiveState,
+                );
                 const amsProblem =
-                  amsView != null &&
-                  (isAmsCancelled(amsView) ||
-                    amsView.state === "rejected" ||
-                    amsView.state === "failed");
+                  amsViewOffline != null &&
+                  (isAmsCancelled(amsViewOffline) ||
+                    amsViewOffline.state === "rejected" ||
+                    amsViewOffline.state === "failed");
+                const createdTime = formatCreatedAtTime(e.created_at);
                 return (
                   <tr
                     key={e.id}
@@ -1986,7 +1976,10 @@ function VorgaengePanel({
                     )}
                     onClick={() => setSelectedId(e.id)}
                   >
-                    <td className="p-2" onClick={(ev) => ev.stopPropagation()}>
+                    <td
+                      className="p-0 pl-1 align-middle"
+                      onClick={(ev) => ev.stopPropagation()}
+                    >
                       <Checkbox
                         checked={checked.has(e.id)}
                         onCheckedChange={() => toggleCheck(e.id)}
@@ -1995,8 +1988,22 @@ function VorgaengePanel({
                     <td className="truncate p-2 font-medium" title={e.gast}>
                       {e.gast}
                     </td>
-                    <td className="truncate p-2" title={e.datum || undefined}>
-                      {e.datum || "—"}
+                    <td
+                      className="p-2 leading-tight"
+                      title={
+                        e.datum
+                          ? createdTime
+                            ? `${e.datum} · ${formatCreatedAt(e.created_at)}`
+                            : e.datum
+                          : formatCreatedAt(e.created_at)
+                      }
+                    >
+                      <div className="truncate">{e.datum || "—"}</div>
+                      {createdTime ? (
+                        <div className="truncate text-[10px] tabular-nums text-muted">
+                          {createdTime}
+                        </div>
+                      ) : null}
                     </td>
                     <td className="p-2">
                       {badges.length === 0 ? (
@@ -2004,16 +2011,19 @@ function VorgaengePanel({
                       ) : (
                         <span className="flex flex-wrap gap-1">
                           {badges.map((b) => (
-                            <ProductStatusChip key={b.key} badge={b} />
+                            <VorgangProductChip key={b.key} badge={b} />
                           ))}
                         </span>
                       )}
                     </td>
                     <td className="p-2">
                       <span className="flex flex-wrap items-center gap-1">
-                        {showAmsChip && amsView ? (
-                          <AmsHandoffStatusChip
-                            view={amsView}
+                        {listStatus === "folder_problem" ? (
+                          <VorgangFolderChip />
+                        ) : null}
+                        {listStatus === "ams" && amsViewOffline ? (
+                          <VorgangAmsChip
+                            view={amsViewOffline}
                             compact
                             onClick={
                               amsProblem
@@ -2025,26 +2035,36 @@ function VorgaengePanel({
                             }
                           />
                         ) : null}
-                        {showUploadChip ? (
-                          <UploadStateChip state={uploadState} />
+                        {listStatus === "upload" ? (
+                          <VorgangUploadChip state={uploadState} />
                         ) : null}
-                        {!showAmsChip && !showUploadChip ? (
+                        {listStatus === "upload_done" ? (
+                          <VorgangCompleteChip />
+                        ) : null}
+                        {listStatus === "ams_terminal" && amsViewOffline ? (
+                          <VorgangAmsChip
+                            view={amsViewOffline}
+                            compact
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setSelectedId(e.id);
+                            }}
+                          />
+                        ) : null}
+                        {listStatus === "folder_cleaned_up" ? (
+                          <VorgangArchivedChip />
+                        ) : null}
+                        {listStatus === "none" ? (
                           <span className="text-muted">—</span>
                         ) : null}
                       </span>
-                    </td>
-                    <td
-                      className="truncate p-2 text-muted"
-                      title={formatCreatedAt(e.created_at)}
-                    >
-                      {formatCreatedAt(e.created_at)}
                     </td>
                   </tr>
                 );
               })}
               {showEmptyList && (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-muted">
+                  <td colSpan={5} className="p-4 text-center text-muted">
                     {amsFilter !== "all" && entries.length > 0
                       ? t("history.emptyFilter")
                       : t("history.emptyJobs")}
@@ -2054,7 +2074,7 @@ function VorgaengePanel({
               {!ready && filteredEntries.length === 0 &&
                 Array.from({ length: 8 }, (_, i) => (
                   <tr key={`sk-${i}`}>
-                    <td colSpan={6} className="p-2">
+                    <td colSpan={5} className="p-2">
                       <div className="h-4 animate-pulse rounded bg-muted/50" />
                     </td>
                   </tr>
@@ -2102,10 +2122,21 @@ function VorgaengePanel({
                     .filter(Boolean)
                     .join(" · ") || "—"}
                 </div>
-                <div className="truncate text-muted" title={selected.base_output_dir}>
+                <div
+                  className="truncate text-muted"
+                  title={[selected.base_filename, selected.base_output_dir]
+                    .filter(Boolean)
+                    .join(" · ")}
+                >
                   {selected.base_filename}
                   {selected.encoder ? ` · ${selected.encoder}` : ""}
                   {selected.reused_preview ? ` · ${t("history.previewReuse")}` : ""}
+                </div>
+                <div
+                  className="text-muted"
+                  title={formatCreatedAt(selected.created_at)}
+                >
+                  {t("history.col.created")}: {formatCreatedAt(selected.created_at)}
                 </div>
                 {(selected.kunden_id || selected.booking_id) && (
                   <div className="text-muted">
@@ -2119,12 +2150,43 @@ function VorgaengePanel({
                       .join(" · ")}
                   </div>
                 )}
-                {selected.correlation_id?.trim() ? (
+                {selectedFolderProblem ? (
+                  <div className="mt-1 space-y-2 rounded-md border border-amber-500/35 bg-amber-500/10 p-2">
+                    <div className="flex flex-wrap items-start gap-2">
+                      <VorgangFolderChip />
+                      <p className="min-w-0 flex-1 text-[11px] leading-snug text-amber-950 dark:text-amber-100">
+                        {t("history.status.hint.folderMissing")}
+                      </p>
+                    </div>
+                    <p
+                      className="truncate text-[10px] text-muted-foreground"
+                      title={selected.base_output_dir}
+                    >
+                      {selected.base_output_dir}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7"
+                      onClick={() => requestRemoveEntry(selected)}
+                    >
+                      {t("history.status.folderMissingRemove")}
+                    </Button>
+                  </div>
+                ) : null}
+                {selectedFolderCleanedUp ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                    <VorgangArchivedChip />
+                    <span>{t("history.status.hint.folderCleanedUp")}</span>
+                  </div>
+                ) : null}
+                {selected.correlation_id?.trim() && !selectedFolderProblem ? (
                   <div className="pt-1">
                     {!handoffReady && !handoffStatus ? (
                       <div className="text-muted">{t("history.statusLoading")}</div>
                     ) : (
-                      <AmsHandoffStepper
+                      <VorgangAmsStepper
                         view={
                           handoffStatus
                             ? viewFromHandoffStatus(handoffStatus)
@@ -2134,6 +2196,30 @@ function VorgaengePanel({
                         }
                       />
                     )}
+                    {handoffStale ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] text-amber-800 dark:text-amber-200">
+                          {t("history.status.hint.amsStale")}
+                        </span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 gap-1 px-2 text-[10px]"
+                          disabled={handoffRefreshBusy}
+                          onClick={() => void refreshHandoffStatus()}
+                        >
+                          <RefreshCw
+                            className={cn(
+                              "size-3",
+                              handoffRefreshBusy && "animate-spin",
+                            )}
+                            aria-hidden
+                          />
+                          {t("history.status.refreshStatus")}
+                        </Button>
+                      </div>
+                    ) : null}
                     <div
                       className="mt-0.5 truncate text-[10px] text-muted-foreground/80"
                       title={selected.correlation_id}
@@ -2149,7 +2235,7 @@ function VorgaengePanel({
                             ? ` ${appends.length || selected.append_count}`
                             : ""}
                         </div>
-                        <AmsHandoffStepper
+                        <VorgangAmsStepper
                           view={
                             appendStatus
                               ? viewFromHandoffStatus(appendStatus)
@@ -2236,7 +2322,14 @@ function VorgaengePanel({
                     <span className="tabular-nums">{files.length}</span>
                   ) : null}
                 </div>
-                <table className="w-full text-left text-xs">
+                <table className="w-full table-fixed text-left text-xs">
+                  <colgroup>
+                    <col />
+                    <col className="w-[4.5rem]" />
+                    <col className="w-[5.5rem]" />
+                    <col className="w-[5.5rem]" />
+                    <col className="w-[4.5rem]" />
+                  </colgroup>
                   <thead className="sticky top-0 z-[1] bg-card">
                     <tr className="border-b border-border/60">
                       <th className="p-2">{t("history.col.name")}</th>
@@ -2250,13 +2343,17 @@ function VorgaengePanel({
                     {files.map((f) => (
                       <tr key={f.id} className="border-b border-border/40">
                         <td
-                          className="max-w-[220px] truncate p-2"
+                          className="min-w-0 truncate p-2"
                           title={f.path ?? f.filename}
                         >
                           {f.filename}
                         </td>
-                        <td className="p-2">{f.media_type}</td>
-                        <td className="p-2">{roleLabel(f.role)}</td>
+                        <td className="truncate p-2" title={f.media_type}>
+                          {f.media_type}
+                        </td>
+                        <td className="truncate p-2" title={roleLabel(f.role)}>
+                          {roleLabel(f.role)}
+                        </td>
                         <td className="p-2">
                           {f.append_id != null ? (
                             <span
@@ -2583,11 +2680,17 @@ function MedienPanel({
                 </td>
                 <td className="truncate p-2">{e.media_type}</td>
                 <td className="truncate p-2">{formatBytes(e.size_bytes)}</td>
-                <td className="truncate p-2">
-                  {e.imported_at ? formatCreatedAt(e.imported_at) : "—"}
+                <td
+                  className="truncate p-2 tabular-nums"
+                  title={e.imported_at ? formatCreatedAt(e.imported_at) : undefined}
+                >
+                  {e.imported_at ? formatCreatedAtCompact(e.imported_at) : "—"}
                 </td>
-                <td className="truncate p-2">
-                  {e.backed_up_at ? formatCreatedAt(e.backed_up_at) : "—"}
+                <td
+                  className="truncate p-2 tabular-nums"
+                  title={e.backed_up_at ? formatCreatedAt(e.backed_up_at) : undefined}
+                >
+                  {e.backed_up_at ? formatCreatedAtCompact(e.backed_up_at) : "—"}
                 </td>
               </tr>
             ))}

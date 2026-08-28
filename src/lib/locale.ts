@@ -19,6 +19,7 @@ export function formatLocaleDateTime(value: Date | number): string {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -28,6 +29,26 @@ export function formatLocaleDate(value: Date | number): string {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+  });
+}
+
+export function formatLocaleTime(value: Date | number): string {
+  const d = typeof value === "number" ? new Date(value) : value;
+  return d.toLocaleTimeString(activeIntlLocale(), {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/** Compact list cells: `DD.MM., HH:mm` (no year; Medien-Tab / enge Spalten). */
+export function formatLocaleDateTimeCompact(value: Date | number): string {
+  const d = typeof value === "number" ? new Date(value) : value;
+  return d.toLocaleString(activeIntlLocale(), {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 

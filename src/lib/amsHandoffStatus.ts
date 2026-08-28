@@ -47,7 +47,15 @@ export function isAmsHandoffTerminal(state: string | null | undefined): boolean 
 export function isAmsCancelled(view: AmsHandoffView): boolean {
   const code = (view.errorCode ?? "").trim().toLowerCase();
   if (code === "cancelled" || code === "canceled") return true;
-  return view.state.trim().toLowerCase() === "cancelled";
+  const s = view.state.trim().toLowerCase();
+  return s === "cancelled" || s === "canceled";
+}
+
+/** AMS archive path under an "Abgebrochen" folder — job was cancelled after partial success. */
+export function isAmsArchiveCancelled(
+  archive: string | null | undefined,
+): boolean {
+  return (archive ?? "").toLowerCase().includes("abgebrochen");
 }
 
 /** True when Historie should stop polling this handoff (terminal or cancelled). */

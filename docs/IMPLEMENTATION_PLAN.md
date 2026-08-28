@@ -57,7 +57,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · …  
+**Nächste Phase:** [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
+*(Phase 38 ✅ — `@docs/VORGAENGE_DIALOG_PLAN.md` 38.1–38.5; AMS-Bridge-Historie-Merge: **AeroMediaService-v2**, AMS neu starten.)*  
 *(Phase 37.1–37.4 ✅ Background-SMB-Upload (Slot/Queue, Compact-Bar, Append/Historie/Bulk, Dual-Panel-Stack).)*
 *(Phase 34.1 ✅ Server-Backup Popover + eigener Cancel-Kanal.)*
 *(Phase 36 Crew-Defaults mergen erledigt.)*  
@@ -2471,6 +2472,33 @@ Danach manuell: Header, Dialog, Offline-Hint, Sprachwechsel de/en/es prüfen.
 
 ---
 
+### Phase 38 — Vorgänge-Dialog UX
+
+**Status:** ✅ Erledigt (38.1–38.5)  
+**Abhängigkeiten:** Phase 31 (Upload-State), Phase 33 (Label Vorgänge), Phase 37 (Background-Upload)  
+**Ziel:** Tab **Vorgänge** im History-Dialog: lesbares Layout, einheitliche Chips (nur im Dialog), klare Server-vs.-Cloud-Labels, robuste AMS/SMB-Status-Anzeige.
+
+> **Vollständiger Plan:** `@docs/VORGAENGE_DIALOG_PLAN.md`  
+> **AMS-Bridge:** Stale-Outbox-Fix (Historie „Abgebrochen“) in **AeroMediaService-v2** — nicht ATS; AMS nach Deploy neu starten.
+
+| Unterphase | Inhalt | Status |
+|------------|--------|--------|
+| 38.1 | Tabellenlayout Liste + Detail-Dateien | ✅ |
+| 38.2 | `components/history/*` — einheitliche Chip-Basis | ✅ |
+| 38.3 | `history.status.*` i18n (de/en/es) | ✅ |
+| 38.4 | AMS Background-Poll, `ams_verified_at`, Refresh nach Upload, Reconcile | ✅ |
+| 38.5 | Medien-Tab Datums-Spalten | ✅ |
+
+#### Agent-Prompt (Einstieg)
+
+```
+Implementiere Phase 38.1 aus @docs/VORGAENGE_DIALOG_PLAN.md
+Regeln: @AGENTS.md
+Nur Tab Vorgänge Layout. Danach npm run check.
+```
+
+---
+
 ### Phase 34 — SD-Server-Backup über SMB (statt Mount-Pfad)
 
 **Status:** ✅ Erledigt  
@@ -3275,10 +3303,13 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 31.1 | Soft-Block Create + `upload_state` | ✅ |
 | 31.2 | Prefight + Upload nachholen (pro Vorgang) | ✅ |
 | 31.3 | Alle bereiten abarbeiten (Bulk + Summary) | ✅ |
-| 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
-| 33 | Label Historie → Vorgänge (i18n) | ✅ |
+| 31.4 | Upload mit fehlenden Dateien (Partial Retry) | ✅ |
+| 31.5 | Extra-Dateien: Lieferliste angleichen + optional löschen | ⬜ |
+| 31.6 | Bulk zweistufig (Vorab-Scan + problematische einzeln) | ✅ |
 | 31.7 | DJI Timelapse Suffix-Pairing + Clear | ✅ |
 | 31.8 | Manueller Upload-Abbruch → `cancelled` | ✅ |
+| 32 | SMB Quiet-Poll (Parity mit AMS-Health) | ✅ |
+| 33 | Label Historie → Vorgänge (i18n) | ✅ |
 | 34 | SD-Server-Backup über SMB (statt Mount-Pfad) | ✅ |
 | 34.1 | Server-Backup Popover (Details + Abbruch) | ✅ |
 | 35 | AMS Path Hints (Bridge → SMB) | ✅ 35.a–35.d |
@@ -3288,6 +3319,12 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 37.2 | Compact Upload-Bar, Auto-Shrink, Quit-Confirm | ✅ |
 | 37.3 | Append / Historie / Bulk über denselben Slot | ✅ |
 | 37.4 | Dual Progress-Panel (Session über Upload) | ✅ |
+| 38 | Vorgänge-Dialog UX (Layout, Chips, Labels, Status) | ✅ |
+| 38.1 | Tab Vorgänge — Tabellenlayout | ✅ |
+| 38.2 | History-Chips (`components/history/`) | ✅ |
+| 38.3 | Operator-Labels `history.status.*` | ✅ |
+| 38.4 | AMS/SMB Status-Robustheit + `ams_verified_at` | ✅ |
+| 38.5 | Medien-Tab Layout | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -3316,6 +3353,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 37:** Prompt im Phasenabschnitt (Background-SMB-Upload); Unterphasen 37.1 → 37.2 → 37.3 → 37.4.
 
+**Phase 38:** `@docs/VORGAENGE_DIALOG_PLAN.md` — ✅ 38.1–38.5 erledigt (AMS-Bridge-Fix: AeroMediaService-v2).
+
 ---
 
-*Letzte Aktualisierung: 2026-08-27 · Projekt: Aero Tandem Studio v2 · Phase 34.1 Server-Backup-Popover ✅*
+*Letzte Aktualisierung: 2026-08-28 · Phase 38 Vorgänge-Dialog UX ✅*

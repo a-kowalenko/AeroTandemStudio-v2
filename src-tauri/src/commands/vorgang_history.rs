@@ -45,6 +45,8 @@ pub struct HandoffStatusDto {
     pub correlation_id: String,
     pub state: String,
     pub updated_at: String,
+    /// When ATS last successfully read Bridge/Outbox for this response.
+    pub verified_at: String,
     pub error: Option<OutboxError>,
     pub ams: OutboxAmsMeta,
     /// `bridge` | `outbox` | `cached` | `local` — where the status was resolved from.
@@ -54,11 +56,17 @@ pub struct HandoffStatusDto {
 }
 
 impl HandoffStatusDto {
-    fn from_outbox(v: StatusOutboxV1, source: &str, offline: bool) -> Self {
+    fn from_outbox(
+        v: StatusOutboxV1,
+        source: &str,
+        offline: bool,
+        verified_at: String,
+    ) -> Self {
         Self {
             correlation_id: v.correlation_id,
             state: v.state,
             updated_at: v.updated_at,
+            verified_at,
             error: v.error,
             ams: v.ams,
             source: source.to_string(),
@@ -80,6 +88,7 @@ impl HandoffStatusDto {
             correlation_id: correlation_id.to_string(),
             state: cached.state,
             updated_at: cached.updated_at,
+            verified_at: cached.verified_at,
             error,
             ams: OutboxAmsMeta {
                 history_id: None,
@@ -103,6 +112,7 @@ impl HandoffStatusDto {
             correlation_id: correlation_id.to_string(),
             state: "pending".into(),
             updated_at: String::new(),
+            verified_at: String::new(),
             error: None,
             ams: OutboxAmsMeta::default(),
             source: "local".into(),
@@ -118,6 +128,66 @@ fn is_ams_cancelled_update(update: &AmsHandoffStatusUpdate) -> bool {
         || state == "canceled"
         || code == "cancelled"
         || code == "canceled"
+}
+
+fn is_live_terminal_problem(state: &str, error_code: &str) -> bool {
+    let state = state.trim().to_ascii_lowercase();
+    let code = error_code.trim().to_ascii_lowercase();
+    state == "cancelled"
+        || state == "canceled"
+        || state == "rejected"
+        || state == "failed"
+        || code == "cancelled"
+        || code == "canceled"
+}
+
+/// When AMS Historie says „Abgebrochen“ but the share outbox still says `completed`, ATS must see cancel.
+fn normalize_cancelled_outbox_state(job: &mut StatusOutboxV1) {
+    let code = job
+        .error
+        .as_ref()
+        .map(|e| e.code.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if code == "cancelled" || code == "canceled" {
+        job.state = "cancelled".into();
+    }
+}
+
+/// AMS may move a job to an "Abgebrochen" archive while outbox `state` still says completed.
+fn apply_archive_cancelled_hint(job: &mut StatusOutboxV1) {
+    let state = job.state.trim().to_ascii_lowercase();
+    if is_live_terminal_problem(&state, "") {
+        return;
+    }
+    let code = job
+        .error
+        .as_ref()
+        .map(|e| e.code.as_str())
+        .unwrap_or("");
+    if is_live_terminal_problem("", code) {
+        return;
+    }
+    let archive = job
+        .ams
+        .archive
+        .as_deref()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !archive.contains("abgebrochen") {
+        return;
+    }
+    job.state = "cancelled".into();
+    let needs_error = job
+        .error
+        .as_ref()
+        .map(|e| e.code.trim().is_empty() && e.message.trim().is_empty())
+        .unwrap_or(true);
+    if needs_error {
+        job.error = Some(OutboxError {
+            code: "cancelled".into(),
+            message: "Abgebrochen".into(),
+        });
+    }
 }
 
 fn live_state_reopens_cancelled(live_state: &str, live_error_code: &str) -> bool {
@@ -158,9 +228,11 @@ fn prefer_cached_cancelled(
 fn resolve_live_or_cached_cancelled(
     store: &VorgangHistoryStore,
     vorgang_id: Option<i64>,
-    job: StatusOutboxV1,
+    mut job: StatusOutboxV1,
     source: &str,
 ) -> HandoffStatusDto {
+    apply_archive_cancelled_hint(&mut job);
+    normalize_cancelled_outbox_state(&mut job);
     let live_code = job
         .error
         .as_ref()
@@ -179,8 +251,8 @@ fn resolve_live_or_cached_cancelled(
         );
         return cached;
     }
-    persist_live_status(store, vorgang_id, &job, source);
-    HandoffStatusDto::from_outbox(job, source, false)
+    let verified_at = persist_live_status(store, vorgang_id, &job, source);
+    HandoffStatusDto::from_outbox(job, source, false, verified_at)
 }
 
 fn persist_live_status(
@@ -188,10 +260,12 @@ fn persist_live_status(
     vorgang_id: Option<i64>,
     job: &StatusOutboxV1,
     source: &str,
-) {
+) -> String {
+    let verified_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let update = AmsHandoffStatusUpdate {
         state: job.state.clone(),
         updated_at: job.updated_at.clone(),
+        verified_at: verified_at.clone(),
         error_code: job
             .error
             .as_ref()
@@ -211,6 +285,7 @@ fn persist_live_status(
             format!("AMS-Status konnte nicht persistiert werden: {e}"),
         );
     }
+    verified_at
 }
 
 fn cached_or_pending(
@@ -280,19 +355,17 @@ pub async fn list_vorgang_dateien(vorgang_id: i64) -> Result<Vec<VorgangFileEntr
 
 /// Read AMS status: Bridge `GET /v1/jobs/{id}` first, else Outbox file (P1b).
 /// Persists last-known status when `vorgang_id` is set; falls back to cache if live is unavailable.
-#[tauri::command]
-pub async fn get_handoff_status(
-    state: State<'_, ConfigState>,
-    correlation_id: String,
-    base_output_dir: String,
+async fn resolve_handoff_status(
+    store: &VorgangHistoryStore,
+    config: &crate::storage::config::AppConfig,
+    correlation_id: &str,
+    base_output_dir: &str,
     vorgang_id: Option<i64>,
 ) -> Result<Option<HandoffStatusDto>, String> {
-    let cid = correlation_id.trim().to_string();
+    let cid = correlation_id.trim();
     if cid.is_empty() {
         return Ok(None);
     }
-    let store = open_store()?;
-    let config = read_config(&state)?;
     let job_dir = Path::new(base_output_dir.trim());
     let mut share_roots = handoff_share_roots(job_dir, &config.speicherort);
     if let Some(id) = vorgang_id {
@@ -307,22 +380,22 @@ pub async fn get_handoff_status(
             }
         }
     }
-    let offline_hint = share_roots.is_empty() && !crate::bridge::bridge_configured(&config);
+    let offline_hint = share_roots.is_empty() && !crate::bridge::bridge_configured(config);
 
-    if crate::bridge::bridge_configured(&config) {
-        if let Ok(base) = crate::bridge::resolve_bridge_base_url(&config) {
-            let identity = crate::bridge::build_ats_bridge_identity(&config);
+    if crate::bridge::bridge_configured(config) {
+        if let Ok(base) = crate::bridge::resolve_bridge_base_url(config) {
+            let identity = crate::bridge::build_ats_bridge_identity(config);
             match crate::bridge::fetch_job_status(
                 &base,
                 &config.ams_bridge_token,
-                &cid,
+                cid,
                 &identity,
             )
             .await
             {
                 Ok(Some(job)) => {
                     return Ok(Some(resolve_live_or_cached_cancelled(
-                        &store, vorgang_id, job, "bridge",
+                        store, vorgang_id, job, "bridge",
                     )));
                 }
                 Ok(None) => {}
@@ -337,24 +410,134 @@ pub async fn get_handoff_status(
         }
     }
 
-    match read_status_outbox_any(&share_roots, &cid) {
+    match read_status_outbox_any(&share_roots, cid) {
         Ok(Some(job)) => Ok(Some(resolve_live_or_cached_cancelled(
-            &store, vorgang_id, job, "outbox",
+            store, vorgang_id, job, "outbox",
         ))),
-        Ok(None) => Ok(cached_or_pending(
-            &store,
-            vorgang_id,
-            &cid,
-            offline_hint,
-        )),
+        Ok(None) => Ok(cached_or_pending(store, vorgang_id, cid, offline_hint)),
         Err(e) => {
             logging::warn(
                 "vorgang_history",
                 format!("AMS-Outbox lesen fehlgeschlagen, Cache: {e}"),
             );
-            Ok(cached_or_pending(&store, vorgang_id, &cid, true))
+            Ok(cached_or_pending(store, vorgang_id, cid, true))
         }
     }
+}
+
+fn is_ams_handoff_settled(entry: &VorgangEntry) -> bool {
+    let state = entry.ams_state.trim().to_ascii_lowercase();
+    if matches!(
+        state.as_str(),
+        "completed" | "rejected" | "failed" | "cancelled" | "canceled"
+    ) {
+        return true;
+    }
+    let code = entry.ams_error_code.trim().to_ascii_lowercase();
+    code == "cancelled" || code == "canceled"
+}
+
+fn job_folder_missing(base_output_dir: &str) -> bool {
+    let path = base_output_dir.trim();
+    path.is_empty() || !Path::new(path).is_dir()
+}
+
+fn should_sync_handoff_entry(entry: &VorgangEntry) -> bool {
+    if entry.correlation_id.trim().is_empty() {
+        return false;
+    }
+    // Re-verify completed — AMS may cancel or re-archive after ATS recorded success.
+    if entry
+        .ams_state
+        .trim()
+        .eq_ignore_ascii_case("completed")
+    {
+        return true;
+    }
+    if is_ams_handoff_settled(entry) {
+        return false;
+    }
+    if job_folder_missing(&entry.base_output_dir) {
+        return entry.upload_state.trim().eq_ignore_ascii_case("done");
+    }
+    true
+}
+
+fn handoff_dto_changed(entry: &VorgangEntry, dto: &HandoffStatusDto) -> bool {
+    if dto.state.trim() != entry.ams_state.trim() {
+        return true;
+    }
+    let live_code = dto
+        .error
+        .as_ref()
+        .map(|e| e.code.as_str())
+        .unwrap_or("");
+    if live_code.trim() != entry.ams_error_code.trim() {
+        return true;
+    }
+    let live_archive = dto.ams.archive.as_deref().unwrap_or("");
+    live_archive.trim() != entry.ams_archive.trim()
+}
+
+#[tauri::command]
+pub async fn get_handoff_status(
+    state: State<'_, ConfigState>,
+    correlation_id: String,
+    base_output_dir: String,
+    vorgang_id: Option<i64>,
+) -> Result<Option<HandoffStatusDto>, String> {
+    let store = open_store()?;
+    let config = read_config(&state)?;
+    resolve_handoff_status(
+        &store,
+        &config,
+        &correlation_id,
+        &base_output_dir,
+        vorgang_id,
+    )
+    .await
+}
+
+/// Batch-sync unsettled AMS handoffs (bridge/outbox); works when local folders were removed post-upload.
+#[tauri::command]
+pub async fn sync_open_handoffs(
+    state: State<'_, ConfigState>,
+    limit: Option<u32>,
+) -> Result<u32, String> {
+    let store = open_store()?;
+    let config = read_config(&state)?;
+    let entries = store
+        .list_vorgaenge(limit.unwrap_or(500) as usize, None)
+        .map_err(|e| e.to_string())?;
+    let mut updated = 0u32;
+    for entry in entries {
+        if !should_sync_handoff_entry(&entry) {
+            continue;
+        }
+        match resolve_handoff_status(
+            &store,
+            &config,
+            &entry.correlation_id,
+            &entry.base_output_dir,
+            Some(entry.id),
+        )
+        .await
+        {
+            Ok(Some(dto)) if handoff_dto_changed(&entry, &dto) => updated += 1,
+            Ok(_) => {}
+            Err(e) => logging::warn(
+                "vorgang_history",
+                format!("sync_open_handoffs id={}: {e}", entry.id),
+            ),
+        }
+    }
+    if updated > 0 {
+        logging::info(
+            "vorgang_history",
+            format!("sync_open_handoffs: {updated} AMS-Status aktualisiert"),
+        );
+    }
+    Ok(updated)
 }
 
 #[tauri::command]
@@ -373,6 +556,41 @@ pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
         msg
     })?;
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct VorgangFolderProbeItem {
+    pub vorgang_id: i64,
+    pub base_output_dir: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VorgangFolderProbeResult {
+    pub vorgang_id: i64,
+    pub folder_missing: bool,
+}
+
+/// Batch probe: is each Vorgang's `base_output_dir` still present on disk?
+#[tauri::command]
+pub fn probe_vorgang_folders(
+    items: Vec<VorgangFolderProbeItem>,
+) -> Result<Vec<VorgangFolderProbeResult>, String> {
+    Ok(items
+        .into_iter()
+        .map(|item| VorgangFolderProbeResult {
+            vorgang_id: item.vorgang_id,
+            folder_missing: job_folder_missing(&item.base_output_dir),
+        })
+        .collect())
+}
+
+/// Reset stale `uploading` rows to `pending` when no upload-slot job covers them.
+#[tauri::command]
+pub fn reconcile_stale_uploads(active_vorgang_ids: Vec<i64>) -> Result<u32, String> {
+    let store = open_store()?;
+    store
+        .reconcile_stale_uploads(&active_vorgang_ids)
+        .map_err(|e| e.to_string())
 }
 
 /// Update SMB upload lifecycle
@@ -600,4 +818,138 @@ pub async fn create_append_job(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_archive_cancelled_hint, job_folder_missing, probe_vorgang_folders,
+        should_sync_handoff_entry, VorgangFolderProbeItem,
+    };
+    use crate::storage::vorgang_history::VorgangEntry;
+    use crate::video::handoff_manifest::{OutboxAmsMeta, StatusOutboxV1};
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn handoff_test_entry(
+        upload_state: &str,
+        ams_state: &str,
+        base_output_dir: &str,
+    ) -> VorgangEntry {
+        VorgangEntry {
+            id: 1,
+            created_at: String::new(),
+            gast: String::new(),
+            vorname: None,
+            nachname: None,
+            kunden_id: None,
+            booking_id: None,
+            kunden_id_hash: None,
+            booking_id_hash: None,
+            datum: String::new(),
+            ort: String::new(),
+            tandemmaster: String::new(),
+            videospringer: String::new(),
+            video_mode: String::new(),
+            form_mode: String::new(),
+            manual_entry_mode: String::new(),
+            handcam_foto: false,
+            handcam_video: false,
+            outside_foto: false,
+            outside_video: false,
+            ist_bezahlt_handcam_foto: false,
+            ist_bezahlt_handcam_video: false,
+            ist_bezahlt_outside_foto: false,
+            ist_bezahlt_outside_video: false,
+            base_output_dir: base_output_dir.into(),
+            base_filename: String::new(),
+            encoder: String::new(),
+            intro_created: false,
+            body_clips: 0,
+            photos_copied: 0,
+            watermark_photos: 0,
+            marker_path: String::new(),
+            reused_preview: false,
+            qr_preview: None,
+            file_count: 0,
+            correlation_id: "abc".into(),
+            ams_state: ams_state.into(),
+            ams_updated_at: String::new(),
+            ams_verified_at: String::new(),
+            ams_error_code: String::new(),
+            ams_error_message: String::new(),
+            ams_archive: String::new(),
+            ams_source: String::new(),
+            upload_state: upload_state.into(),
+            append_count: 0,
+            last_append_correlation_id: String::new(),
+            last_append_ams_state: String::new(),
+            last_append_ams_error_code: String::new(),
+            last_append_ams_error_message: String::new(),
+            last_append_folder_path: String::new(),
+        }
+    }
+
+    #[test]
+    fn should_sync_handoff_entry_rules() {
+        let mut entry = handoff_test_entry("done", "pending", "/nonexistent/job");
+        assert!(should_sync_handoff_entry(&entry));
+        entry.upload_state = "pending".into();
+        assert!(!should_sync_handoff_entry(&entry));
+        entry.ams_state = "completed".into();
+        assert!(should_sync_handoff_entry(&entry));
+        entry.ams_state = "cancelled".into();
+        assert!(!should_sync_handoff_entry(&entry));
+    }
+
+    #[test]
+    fn apply_archive_cancelled_hint_from_abgebrochen_path() {
+        let mut job = StatusOutboxV1 {
+            schema: 1,
+            correlation_id: "abc".into(),
+            updated_at: String::new(),
+            state: "completed".into(),
+            error: None,
+            ams: OutboxAmsMeta {
+                history_id: None,
+                archive: Some(
+                    r"C:\Archiv\2 Abgebrochen\20260826_Andreas_Kowalenko".into(),
+                ),
+            },
+            extensions: serde_json::json!({}),
+        };
+        apply_archive_cancelled_hint(&mut job);
+        assert_eq!(job.state, "cancelled");
+        assert_eq!(
+            job.error.as_ref().map(|e| e.code.as_str()),
+            Some("cancelled")
+        );
+    }
+
+    #[test]
+    fn probe_vorgang_folders_detects_missing_and_present() {
+        let dir = tempdir().unwrap();
+        let present = dir.path().join("job");
+        fs::create_dir(&present).unwrap();
+        let rows = probe_vorgang_folders(vec![
+            VorgangFolderProbeItem {
+                vorgang_id: 1,
+                base_output_dir: present.to_string_lossy().into_owned(),
+            },
+            VorgangFolderProbeItem {
+                vorgang_id: 2,
+                base_output_dir: dir.path().join("gone").to_string_lossy().into_owned(),
+            },
+            VorgangFolderProbeItem {
+                vorgang_id: 3,
+                base_output_dir: String::new(),
+            },
+        ])
+        .unwrap();
+        assert!(!rows[0].folder_missing);
+        assert!(rows[1].folder_missing);
+        assert!(rows[2].folder_missing);
+        assert!(job_folder_missing(""));
+        assert!(job_folder_missing("/path/that/does/not/exist/for/ats"));
+    }
 }

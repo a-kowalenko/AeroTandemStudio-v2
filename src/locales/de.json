@@ -1166,9 +1166,6 @@
       "expand": "Upload-Details einblenden",
       "collapse": "Upload-Details ausblenden",
       "queueWaiting": "{{count}} weitere in der Warteschlange",
-      "queueExpand": "Warteschlange anzeigen",
-      "queueCollapse": "Warteschlange ausblenden",
-      "queueUntitled": "Upload",
       "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge",
       "cleaningUp": "Upload wird beendet…"
     },
@@ -1203,6 +1200,7 @@
     "filters": {
       "all": "Alle",
       "open": "Offen",
+      "openHint": "Noch nicht abgeschlossen (Server oder Cloud)",
       "done": "Fertig",
       "error": "Fehler"
     },
@@ -1231,6 +1229,40 @@
     "customer": "Kunde: {{id}}",
     "booking": "Booking: {{id}}",
     "statusLoading": "Status…",
+    "status": {
+      "smbPending": "Server-Upload offen",
+      "smbUploading": "Wird kopiert…",
+      "amsPending": "Cloud: wartet",
+      "amsAccepted": "Cloud: bestätigt",
+      "amsQueued": "Cloud: in Warteschlange",
+      "amsUploading": "Wird in Cloud geladen…",
+      "amsCompleted": "Abgeschlossen",
+      "jobComplete": "Fertig",
+      "amsRejected": "Cloud: abgelehnt",
+      "amsCancelled": "Cloud: abgebrochen",
+      "refreshStatus": "Status aktualisieren",
+      "folderMissing": "Ordner fehlt",
+      "folderMissingRemove": "Aus Historie entfernen",
+      "folderCleanedUp": "Lokal entfernt",
+      "refreshNoChange": "Kein neuer Cloud-Status verfügbar (Cache oder Bridge offline).",
+      "refreshFailed": "Cloud-Status konnte nicht abgefragt werden.",
+      "hint": {
+        "smbPending": "Lokal fertig — Kopie auf den Server steht noch aus",
+        "amsPending": "Medien sind auf dem Server — Upload in die Cloud steht noch aus",
+        "amsStale": "Status veraltet — tippe zum Aktualisieren",
+        "folderMissing": "Ausgabeordner wurde entfernt oder verschoben. Upload und Cloud-Status sind nicht verfügbar.",
+        "folderCleanedUp": "Ausgabeordner nach Upload entfernt — üblich. Cloud-Status wird über AMS synchronisiert.",
+        "jobComplete": "Server- und Cloud-Upload abgeschlossen"
+      },
+      "step": {
+        "smb": "Server",
+        "amsPending": "Freigabe",
+        "amsAccepted": "Bestätigt",
+        "amsQueued": "Warteschlange",
+        "amsUploading": "Cloud",
+        "amsCompleted": "Fertig"
+      }
+    },
     "append": "Nachreichung",
     "appendBtn": "Nachreichen…",
     "appendTitleLokal": "Nur bei Online-Vorgängen, nicht bei Lokal",
@@ -1354,8 +1386,8 @@
       "failed": "Fehlgeschlagen",
       "failedHint": "Upload fehlgeschlagen — unter Vorgänge nachholbar",
       "partialSuccess": "Upload fertig. {{count}} Datei(en) wurden ausgelassen.",
-      "pending": "Ausstehend",
-      "pendingHint": "Lokal fertig — Upload noch ausstehend",
+      "pending": "Server-Upload offen",
+      "pendingHint": "Lokal fertig — Kopie auf den Server steht noch aus",
       "cancelled": "Abgebrochen",
       "cancelledHint": "Upload abgebrochen — unter Vorgänge nachholbar",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
@@ -1367,7 +1399,7 @@
       "retryOffline": "Server offline — Upload erst möglich, wenn die Verbindung steht",
       "retryTitle": "Upload nachholen",
       "retryTitleOk": "Ausstehenden Upload jetzt starten",
-      "uploading": "Upload",
+      "uploading": "Wird kopiert…",
       "uploadingHint": "Dateien werden auf den Server kopiert"
     }
   },

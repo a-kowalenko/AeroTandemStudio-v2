@@ -4,6 +4,7 @@ import type {
   VorgangEntry,
   VorgangFileEntry,
 } from "@/lib/vorgangHistory";
+import { isFolderMissingProblem } from "@/lib/vorgangLifecycle";
 import { isOutstandingUploadState } from "@/lib/uploadState";
 import type { ProcessedFileEntry } from "@/lib/sdCard";
 
@@ -12,6 +13,8 @@ type HistoryState = {
   vorgaengeLoaded: boolean;
   /** Historie-button badge: `pending` + `failed` only (not `cancelled`). */
   pendingUploadCount: number;
+  /** Output folder missing on disk (probe cache; not persisted). */
+  folderMissingById: Record<number, boolean>;
   selectedId: number | null;
   files: VorgangFileEntry[];
   filesVorgangId: number | null;
@@ -22,6 +25,8 @@ type HistoryState = {
   medienQuery: string;
   setVorgaenge: (rows: VorgangEntry[]) => void;
   setPendingUploadCount: (n: number) => void;
+  setFolderMissingById: (map: Record<number, boolean>) => void;
+  isFolderMissing: (id: number) => boolean;
   patchVorgang: (id: number, fn: (row: VorgangEntry) => VorgangEntry) => void;
   setSelectedId: (id: number | null) => void;
   setFiles: (vorgangId: number, files: VorgangFileEntry[]) => void;
@@ -32,18 +37,22 @@ type HistoryState = {
   clearMedien: () => void;
 };
 
-function countRetryableUploads(rows: VorgangEntry[]): number {
+function countRetryableUploads(
+  rows: VorgangEntry[],
+  folderMissingById: Record<number, boolean> = {},
+): number {
   return rows.reduce((n, e) => {
+    if (isFolderMissingProblem(e, folderMissingById)) return n;
     if (!e.correlation_id?.trim() || !e.base_output_dir?.trim()) return n;
-    // Badge: outstanding only (not manually cancelled).
     return n + (isOutstandingUploadState(e.upload_state) ? 1 : 0);
   }, 0);
 }
 
-export const useHistoryStore = create<HistoryState>((set) => ({
+export const useHistoryStore = create<HistoryState>((set, get) => ({
   vorgaenge: [],
   vorgaengeLoaded: false,
   pendingUploadCount: 0,
+  folderMissingById: {},
   selectedId: null,
   files: [],
   filesVorgangId: null,
@@ -62,18 +71,26 @@ export const useHistoryStore = create<HistoryState>((set) => ({
         vorgaenge: rows,
         vorgaengeLoaded: true,
         selectedId,
-        pendingUploadCount: countRetryableUploads(rows),
+        pendingUploadCount: countRetryableUploads(rows, s.folderMissingById),
       };
     }),
   setPendingUploadCount: (n) =>
     set({ pendingUploadCount: Math.max(0, Math.floor(n)) }),
+  setFolderMissingById: (folderMissingById) =>
+    set((s) => ({
+      folderMissingById,
+      pendingUploadCount: s.vorgaengeLoaded
+        ? countRetryableUploads(s.vorgaenge, folderMissingById)
+        : s.pendingUploadCount,
+    })),
+  isFolderMissing: (id) => get().folderMissingById[id] === true,
   patchVorgang: (id, fn) =>
     set((s) => {
       const vorgaenge = s.vorgaenge.map((row) => (row.id === id ? fn(row) : row));
       return {
         vorgaenge,
         pendingUploadCount: s.vorgaengeLoaded
-          ? countRetryableUploads(vorgaenge)
+          ? countRetryableUploads(vorgaenge, s.folderMissingById)
           : s.pendingUploadCount,
       };
     }),
@@ -92,11 +109,17 @@ export const useHistoryStore = create<HistoryState>((set) => ({
         s.selectedId != null && vorgaenge.some((r) => r.id === s.selectedId)
           ? s.selectedId
           : (vorgaenge[0]?.id ?? null);
+      const folderMissingById = Object.fromEntries(
+        Object.entries(s.folderMissingById).filter(
+          ([id]) => !drop.has(Number(id)),
+        ),
+      );
       return {
         vorgaenge,
         selectedId,
+        folderMissingById,
         pendingUploadCount: s.vorgaengeLoaded
-          ? countRetryableUploads(vorgaenge)
+          ? countRetryableUploads(vorgaenge, folderMissingById)
           : s.pendingUploadCount,
         files: drop.has(s.filesVorgangId ?? -1) ? [] : s.files,
         filesVorgangId: drop.has(s.filesVorgangId ?? -1)

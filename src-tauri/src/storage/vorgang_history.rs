@@ -36,6 +36,7 @@ const VORGAENGE_SELECT: &str = "SELECT v.id, v.created_at, v.gast, v.vorname, v.
                         v.qr_spotlight_x, v.qr_spotlight_y, v.qr_spotlight_size,
                         v.correlation_id,
                         IFNULL(v.ams_state,''), IFNULL(v.ams_updated_at,''),
+                        IFNULL(v.ams_verified_at,''),
                         IFNULL(v.ams_error_code,''), IFNULL(v.ams_error_message,''),
                         IFNULL(v.ams_archive,''), IFNULL(v.ams_source,''),
                         IFNULL(v.upload_state,'none'),
@@ -123,6 +124,8 @@ pub struct VorgangEntry {
     /// Last-known AMS outbox state (`pending` locally until AMS writes).
     pub ams_state: String,
     pub ams_updated_at: String,
+    /// When ATS last successfully read Bridge/Outbox (not AMS event time).
+    pub ams_verified_at: String,
     pub ams_error_code: String,
     pub ams_error_message: String,
     pub ams_archive: String,
@@ -144,6 +147,7 @@ pub struct VorgangEntry {
 pub struct AmsHandoffStatusUpdate {
     pub state: String,
     pub updated_at: String,
+    pub verified_at: String,
     pub error_code: String,
     pub error_message: String,
     pub archive: String,
@@ -363,6 +367,12 @@ impl VorgangHistoryStore {
             "vorgaenge",
             "ams_updated_at",
             "ALTER TABLE vorgaenge ADD COLUMN ams_updated_at TEXT NOT NULL DEFAULT ''",
+        )?;
+        ensure_column(
+            &conn,
+            "vorgaenge",
+            "ams_verified_at",
+            "ALTER TABLE vorgaenge ADD COLUMN ams_verified_at TEXT NOT NULL DEFAULT ''",
         )?;
         ensure_column(
             &conn,
@@ -710,6 +720,43 @@ impl VorgangHistoryStore {
         Ok(())
     }
 
+    /// Reset stale `uploading` rows to `pending` when no upload-slot job is active.
+    /// Preserves rows whose ids are in `active_vorgang_ids` (in-flight slot job).
+    pub fn reconcile_stale_uploads(
+        &self,
+        active_vorgang_ids: &[i64],
+    ) -> Result<u32, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let n = if active_vorgang_ids.is_empty() {
+            conn.execute(
+                "UPDATE vorgaenge SET upload_state = 'pending' WHERE upload_state = 'uploading'",
+                [],
+            )?
+        } else {
+            let placeholders = active_vorgang_ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sql = format!(
+                "UPDATE vorgaenge SET upload_state = 'pending' \
+                 WHERE upload_state = 'uploading' AND id NOT IN ({placeholders})"
+            );
+            let params: Vec<&dyn rusqlite::ToSql> = active_vorgang_ids
+                .iter()
+                .map(|id| id as &dyn rusqlite::ToSql)
+                .collect();
+            conn.execute(&sql, params.as_slice())?
+        };
+        if n > 0 {
+            logging::info(
+                "vorgang_history",
+                format!("upload_state reconcile: {n} uploading → pending"),
+            );
+        }
+        Ok(n as u32)
+    }
+
     /// Mark a handoff as cancelled locally (upload abort / ATS cancel).
     ///
     /// Updates the Vorgang and any append row with the same `correlation_id`.
@@ -728,6 +775,7 @@ impl VorgangHistoryStore {
             &AmsHandoffStatusUpdate {
                 state: "cancelled".into(),
                 updated_at: utc_now_iso(),
+                verified_at: utc_now_iso(),
                 error_code: "cancelled".into(),
                 error_message: message.trim().to_string(),
                 archive: String::new(),
@@ -757,8 +805,9 @@ impl VorgangHistoryStore {
                         ams_error_code = ?3,
                         ams_error_message = ?4,
                         ams_archive = ?5,
-                        ams_source = ?6
-                     WHERE id = ?7",
+                        ams_source = ?6,
+                        ams_verified_at = COALESCE(NULLIF(?7, ''), ams_verified_at)
+                     WHERE id = ?8",
                     params![
                         update.state.trim(),
                         update.updated_at.trim(),
@@ -766,6 +815,7 @@ impl VorgangHistoryStore {
                         update.error_message.trim(),
                         update.archive.trim(),
                         update.source.trim(),
+                        update.verified_at.trim(),
                         id
                     ],
                 )?
@@ -777,8 +827,9 @@ impl VorgangHistoryStore {
                         ams_error_code = ?3,
                         ams_error_message = ?4,
                         ams_archive = ?5,
-                        ams_source = ?6
-                     WHERE id = ?7 AND correlation_id = ?8",
+                        ams_source = ?6,
+                        ams_verified_at = COALESCE(NULLIF(?7, ''), ams_verified_at)
+                     WHERE id = ?8 AND correlation_id = ?9",
                     params![
                         update.state.trim(),
                         update.updated_at.trim(),
@@ -786,6 +837,7 @@ impl VorgangHistoryStore {
                         update.error_message.trim(),
                         update.archive.trim(),
                         update.source.trim(),
+                        update.verified_at.trim(),
                         id,
                         cid
                     ],
@@ -799,8 +851,9 @@ impl VorgangHistoryStore {
                     ams_error_code = ?3,
                     ams_error_message = ?4,
                     ams_archive = ?5,
-                    ams_source = ?6
-                 WHERE correlation_id = ?7",
+                    ams_source = ?6,
+                    ams_verified_at = COALESCE(NULLIF(?7, ''), ams_verified_at)
+                 WHERE correlation_id = ?8",
                 params![
                     update.state.trim(),
                     update.updated_at.trim(),
@@ -808,6 +861,7 @@ impl VorgangHistoryStore {
                     update.error_message.trim(),
                     update.archive.trim(),
                     update.source.trim(),
+                    update.verified_at.trim(),
                     cid
                 ],
             )?
@@ -884,6 +938,7 @@ impl VorgangHistoryStore {
                         return Ok(Some(AmsHandoffStatusUpdate {
                             state,
                             updated_at,
+                            verified_at: String::new(),
                             error_code,
                             error_message,
                             archive: String::new(),
@@ -900,7 +955,7 @@ impl VorgangHistoryStore {
         }
         let row = if let Some(id) = vorgang_id {
             conn.query_row(
-                "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message,
+                "SELECT ams_state, ams_updated_at, ams_verified_at, ams_error_code, ams_error_message,
                         ams_archive, ams_source, correlation_id
                  FROM vorgaenge WHERE id = ?1",
                 params![id],
@@ -913,12 +968,13 @@ impl VorgangHistoryStore {
                         r.get::<_, String>(4)?,
                         r.get::<_, String>(5)?,
                         r.get::<_, String>(6)?,
+                        r.get::<_, String>(7)?,
                     ))
                 },
             )
         } else if !cid.is_empty() {
             conn.query_row(
-                "SELECT ams_state, ams_updated_at, ams_error_code, ams_error_message,
+                "SELECT ams_state, ams_updated_at, ams_verified_at, ams_error_code, ams_error_message,
                         ams_archive, ams_source, correlation_id
                  FROM vorgaenge WHERE correlation_id = ?1
                  ORDER BY id DESC LIMIT 1",
@@ -932,6 +988,7 @@ impl VorgangHistoryStore {
                         r.get::<_, String>(4)?,
                         r.get::<_, String>(5)?,
                         r.get::<_, String>(6)?,
+                        r.get::<_, String>(7)?,
                     ))
                 },
             )
@@ -939,13 +996,14 @@ impl VorgangHistoryStore {
             return Ok(None);
         };
         match row {
-            Ok((state, updated_at, error_code, error_message, archive, source, _)) => {
+            Ok((state, updated_at, verified_at, error_code, error_message, archive, source, _)) => {
                 if state.trim().is_empty() {
                     Ok(None)
                 } else {
                     Ok(Some(AmsHandoffStatusUpdate {
                         state,
                         updated_at,
+                        verified_at,
                         error_code,
                         error_message,
                         archive,
@@ -1311,20 +1369,21 @@ fn map_vorgang_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangEntry> {
         correlation_id: row.get::<_, String>(39).unwrap_or_default(),
         ams_state: row.get::<_, String>(40).unwrap_or_default(),
         ams_updated_at: row.get::<_, String>(41).unwrap_or_default(),
-        ams_error_code: row.get::<_, String>(42).unwrap_or_default(),
-        ams_error_message: row.get::<_, String>(43).unwrap_or_default(),
-        ams_archive: row.get::<_, String>(44).unwrap_or_default(),
-        ams_source: row.get::<_, String>(45).unwrap_or_default(),
+        ams_verified_at: row.get::<_, String>(42).unwrap_or_default(),
+        ams_error_code: row.get::<_, String>(43).unwrap_or_default(),
+        ams_error_message: row.get::<_, String>(44).unwrap_or_default(),
+        ams_archive: row.get::<_, String>(45).unwrap_or_default(),
+        ams_source: row.get::<_, String>(46).unwrap_or_default(),
         upload_state: normalize_upload_state_loose(
-            &row.get::<_, String>(46).unwrap_or_else(|_| "none".into()),
+            &row.get::<_, String>(47).unwrap_or_else(|_| "none".into()),
         ),
-        file_count: row.get(47)?,
-        append_count: row.get::<_, i64>(48).unwrap_or(0),
-        last_append_correlation_id: row.get::<_, String>(49).unwrap_or_default(),
-        last_append_ams_state: row.get::<_, String>(50).unwrap_or_default(),
-        last_append_ams_error_code: row.get::<_, String>(51).unwrap_or_default(),
-        last_append_ams_error_message: row.get::<_, String>(52).unwrap_or_default(),
-        last_append_folder_path: row.get::<_, String>(53).unwrap_or_default(),
+        file_count: row.get(48)?,
+        append_count: row.get::<_, i64>(49).unwrap_or(0),
+        last_append_correlation_id: row.get::<_, String>(50).unwrap_or_default(),
+        last_append_ams_state: row.get::<_, String>(51).unwrap_or_default(),
+        last_append_ams_error_code: row.get::<_, String>(52).unwrap_or_default(),
+        last_append_ams_error_message: row.get::<_, String>(53).unwrap_or_default(),
+        last_append_folder_path: row.get::<_, String>(54).unwrap_or_default(),
     })
 }
 
@@ -1498,6 +1557,7 @@ mod tests {
                 &AmsHandoffStatusUpdate {
                     state: "uploading".into(),
                     updated_at: "2026-08-16T10:00:00Z".into(),
+                    verified_at: "2026-08-16T10:00:01Z".into(),
                     error_code: String::new(),
                     error_message: String::new(),
                     archive: String::new(),
@@ -1650,6 +1710,7 @@ mod tests {
                 &AmsHandoffStatusUpdate {
                     state: "completed".into(),
                     updated_at: "2026-08-17T10:00:00Z".into(),
+                    verified_at: "2026-08-17T10:00:01Z".into(),
                     error_code: String::new(),
                     error_message: String::new(),
                     archive: "erfolg".into(),
@@ -1678,6 +1739,7 @@ mod tests {
                 &AmsHandoffStatusUpdate {
                     state: "uploading".into(),
                     updated_at: "2026-08-17T11:00:00Z".into(),
+                    verified_at: "2026-08-17T11:00:01Z".into(),
                     error_code: String::new(),
                     error_message: String::new(),
                     archive: String::new(),
@@ -1699,6 +1761,7 @@ mod tests {
                 &AmsHandoffStatusUpdate {
                     state: "failed".into(),
                     updated_at: "2026-08-17T12:00:00Z".into(),
+                    verified_at: "2026-08-17T12:00:01Z".into(),
                     error_code: "upload_error".into(),
                     error_message: "Dropbox timeout".into(),
                     archive: String::new(),
@@ -1840,6 +1903,7 @@ mod tests {
                 &AmsHandoffStatusUpdate {
                     state: "uploading".into(),
                     updated_at: "2026-08-18T12:00:00Z".into(),
+                    verified_at: "2026-08-18T12:00:01Z".into(),
                     error_code: String::new(),
                     error_message: String::new(),
                     archive: String::new(),
@@ -1944,6 +2008,40 @@ mod tests {
         );
 
         assert!(store.update_upload_state(Some(id), "", "bogus").is_err());
+    }
+
+    #[test]
+    fn reconcile_stale_uploads_resets_uploading_to_pending() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .unwrap();
+        store
+            .update_upload_state(Some(id), "", "uploading")
+            .unwrap();
+        assert_eq!(
+            store.reconcile_stale_uploads(&[]).unwrap(),
+            1,
+            "all uploading → pending when no active slot"
+        );
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "pending"
+        );
+
+        store
+            .update_upload_state(Some(id), "", "uploading")
+            .unwrap();
+        assert_eq!(
+            store.reconcile_stale_uploads(&[id]).unwrap(),
+            0,
+            "preserve active slot vorgang"
+        );
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "uploading"
+        );
     }
 
     #[test]
