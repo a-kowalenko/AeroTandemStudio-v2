@@ -1,8 +1,11 @@
-# Aero Tandem Studio v2 — Implementierungsplan
+fast a# Aero Tandem Studio v2 — Implementierungsplan
 
-> **Zweck:** Dieses Dokument ist der zentrale Leitfaden für die Neuentwicklung.
+> **Zweck:** Dieses Dokument ist der zentrale Leitfaden für v2.
 > In jedem neuen Cursor-/Agent-Kontextfenster mit `@docs/IMPLEMENTATION_PLAN.md` referenzieren.
 > Pro Session **nur eine Phase** implementieren.
+>
+> **Source of Truth:** v2-Code + Phase-Specs in diesem Plan. Legacy-Python ist Archiv
+> (§5) — nicht an Agent-Kontext anhängen. Offene Phasen nennen v2-Referenzen unter „Referenzen“ / „Scope“.
 
 ---
 
@@ -12,7 +15,7 @@
 2. [Aktueller Stand](#2-aktueller-stand)
 3. [Tech-Stack](#3-tech-stack)
 4. [Entwicklungsumgebung](#4-entwicklungsumgebung)
-5. [Legacy-Referenz](#5-legacy-referenz)
+5. [Legacy-Archiv](#5-legacy-archiv)
 6. [Vollständiges Datei-Mapping](#6-vollständiges-datei-mapping)
 7. [Architektur](#7-architektur)
 8. [Phasenplan](#8-phasenplan)
@@ -39,8 +42,8 @@
 
 | | Pfad |
 |---|------|
-| **Neues Projekt (v2)** | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio-v2` |
-| **Legacy (NUR LESEN)** | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` |
+| **v2 (editieren)** | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio-v2` |
+| **Legacy (Archiv, optional)** | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` — nicht an Agent-Kontext anhängen |
 
 ---
 
@@ -57,7 +60,8 @@
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h — USB-Geräte-Overrides](#phase-23--usb-action-cams-mtp-erkennen--importieren) · [Phase 23.3 — Linux libmtp](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
+**Nächste Phase:** [Phase 40 — Compatible Body-Concat](#phase-40--compatible-body-concat-qt-sicher) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h / 23.3](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
+*(Phase 40 geplant: QT-sicherer Stream-Copy-Pfad, unabhängig vom Fast Path; Default bleibt `fast`.)*  
 *(Phase 11.1 ✅ Cache-Größe unter System → Cache & Temp.)*  
 *(Phase 39 ✅ Settings Danger Zone: lokale Vorgänge-/Backup-Ordner leeren, Historie bleibt.)*  
 *(Phase 38 ✅ — `@docs/VORGAENGE_DIALOG_PLAN.md` 38.1–38.5; AMS-Bridge-Historie-Merge: **AeroMediaService-v2**, AMS neu starten.)*  
@@ -103,7 +107,8 @@
 
 ### Agent-Regeln (immer gültig)
 
-- **NIEMALS** Dateien im Legacy-Projekt ändern
+- **v2 ist Source of Truth** — Phase-Referenzen und bestehenden v2-Code als Basis nutzen
+- **Legacy nicht an Agent-Kontext anhängen** (Archiv: §5)
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust
 - Hardware-Encoding: **NVENC** (Windows + Linux), **VideoToolbox** (macOS), Fallback **libx264** (VAAPI optional später)
 - FFmpeg-Command-Generierung braucht **Rust Unit-Tests**
@@ -116,8 +121,8 @@
 
 ### IDE
 
-- **RustRover** (oder IntelliJ Ultimate) — Hauptprojekt: `AeroTandemStudio-v2`
-- Legacy-Projekt **nicht attachieren** — stattdessen Pfade aus [Abschnitt 5](#5-legacy-referenz) im Prompt verwenden
+- **RustRover** (oder IntelliJ Ultimate) — nur `AeroTandemStudio-v2` öffnen
+- Legacy-Projekt **nicht attachieren** — bei Bedarf einzelne Datei manuell (Archiv: [§5](#5-legacy-archiv))
 - **Cursor Agent** via ACP in JetBrains AI Chat
 
 ### Befehle
@@ -144,30 +149,16 @@ Download Windows: https://www.gyan.dev/ffmpeg/builds/ → „release essentials"
 
 ---
 
-## 5. Legacy-Referenz
+## 5. Legacy-Archiv
 
-### Basis-Pfad
+> Migration abgeschlossen. Dieser Abschnitt + [§6](#6-vollständiges-datei-mapping) sind **historische Referenz**.
+> Agent-Sessions: v2-Dateien aus der jeweiligen Phase (Referenzen / Scope) — **kein** Legacy anhängen.
+> Erledigte Phasen können noch `Legacy:`-Zeilen in Agent-Prompts enthalten; diese ignorieren.
+
+### Basis-Pfad (optional, manuell)
 
 ```
 C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio
-```
-
-### Wichtigste Dateien (Copy-Paste für Agent-Prompts)
-
-```
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\hardware_acceleration.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\processor.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\concat_utils.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\parallel_processor.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\qr_analyser.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\cutter_service.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\sd_card_monitor.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\config.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\file_utils.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\gui\components\sd_file_selector_dialog.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\gui\components\drag_drop.py
-@C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\constants.py
 ```
 
 ### Was NICHT aus Legacy kopieren
@@ -369,7 +360,8 @@ src/
 ## 8. Phasenplan
 
 > **Anleitung:** Kopiere den Prompt der jeweiligen Phase in ein neues Agent-Fenster.
-> Hänge `@docs/IMPLEMENTATION_PLAN.md` und die genannten Legacy-Dateien an.
+> Hänge `@docs/IMPLEMENTATION_PLAN.md` und die **v2-Referenzen** der Phase an (Abschnitt „Referenzen“ / „Scope“).
+> Legacy-Zeilen in erledigten Phasen sind historisch — nicht anhängen.
 
 ---
 
@@ -2556,6 +2548,186 @@ Nur Tab Vorgänge Layout. Danach npm run check.
 
 ---
 
+### Phase 40 — Compatible Body-Concat (QT-sicher)
+
+**Status:** ⬜ Geplant (40.1 → 40.2 → 40.3)  
+**Abhängigkeiten:** Phase 1 (`concat.rs`), OPT-9 / Encoding-Settings (`body_concat_mode`), Phase 27 (Reencode-Confirm bei hartem Mismatch)  
+**Ziel:** Einen **dritten**, vom Fast Path **unabhängigen** Multi-Clip-Body-Pfad `compatible`: verlustfrei (`-c copy`), aber mit Probe-Gate, Bitstream-/Container-Hygiene und Orientierungs-Policy — gegen QuickTime-Blackscreen und 180°-Metadaten-Kollisionen (GoPro/DJI). **Default bleibt `fast`.**
+
+> Eine Agent-Session = **nur eine** Unterphase 40.x. Fast-Path- und Legacy-Pipelines nicht umbauen, außer Dispatch/Normalize/Settings für den neuen Mode.
+
+#### Ausgangslage (Ist)
+
+| Mode | Verhalten | Problem |
+|------|-----------|---------|
+| `fast` (Default) | Ein Pass `-f concat -c copy` (`concat_stream_copy_fast`) | Kein AUD/Tag-Rewrite; Extradata vom 1. Clip; Soft-Rotation oft nur vom 1. Clip → QT schwarz / 180° |
+| `legacy` | Normalize → (HEVC AUD+`hev1`) → MPEG-TS → Remux | Robust, aber langsamer (mehr I/O); Alias `robust` → `legacy` |
+| — | Kein QT-/Orientierungs-Gate | Fast scheitert oft erst zur Laufzeit oder „erfolgreich“ mit kaputtem QT-File |
+
+Hinweis: Settings-Text „Fast ≈ Avidemux Copy“ ist irreführend — Avidemux-ähnliche Stabilität gehört zu **Compatible** (bzw. Legacy), nicht zum naiven Fast Path.
+
+#### Mode-Modell (unverändert + neu)
+
+```
+body_concat_mode:
+  "fast"         → Default; unverändert (naive concat demuxer)
+  "compatible"   → NEU; vorbereiteter Stream-Copy (diese Phase)
+  "legacy"       → unverändert (MPEG-TS-Pipeline)
+```
+
+Normalize (`normalize_body_concat_mode`):
+
+| Input-Alias | Canonical |
+|-------------|-----------|
+| `fast`, `fast_path`, `fast-path`, *(leer/unbekannt)* | `fast` |
+| `compatible`, `compat`, `qt_safe`, `prepared` | `compatible` |
+| `legacy`, `mpegts` | `legacy` |
+| `robust` | **weiter `legacy`** (bestehende Configs nicht still umbiegen) |
+| `avidemux` | **`compatible`** (nicht mehr Fast; Semantik-Korrektur) |
+
+Dispatch in `concat_videos_stream_copy_only_with_mode`:
+
+```
+if !stream_copy_ok → NeedsReencode (wie heute)
+match mode:
+  fast        → concat_stream_copy_fast; on fail → BodyConcat-Ask → legacy | abort
+  compatible  → concat_stream_copy_compatible (NEU); on fail → Ask legacy | abort
+                (nicht Fast versuchen; nicht silent auf Fast fallen)
+  legacy      → concat_stream_copy (MPEG-TS) wie heute
+```
+
+Preview ohne Ask-Callback: Compatible-Fail → silent Legacy (Parity zu Fast→Legacy heute).
+
+#### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Default | **`fast` bleibt Default** — keine Änderung an `default_body_concat_mode` |
+| 2 | Unabhängigkeit | Compatible ist **eigener Codepfad** (`concat_stream_copy_compatible` + eigene Builder); Fast-Funktionen unangetastet lassen |
+| 3 | Qualität | Weiterhin **kein Re-Encode** im Erfolgsfall; nur Remux + Bitstream-Filter |
+| 4 | HEVC-Tag | Compatible forciert **`hev1`** + `hevc_metadata=aud=insert` (wie Legacy-Prep) |
+| 5 | H.264 | `h264_metadata=aud=insert`, Tag **`avc1`**; bei nachweislich kaputtem Extradata → Gate fail → Legacy/Reencode |
+| 6 | Merge-Technik | Nach Per-Clip-Prep: **MPEG-TS-Concat → MP4** (Reuse Legacy-Builder wo möglich) — nicht naives Listen-Concat |
+| 7 | Probe-Gate | Vor Prep: Codec, Tag-Familie, BxH, `pix_fmt`, Profile/Level (best-effort), Audio-Präsenz; SPS/Extradata-Fingerprint wenn einfach ermittelbar |
+| 8 | Rotation | Soft-Rotation pro Clip proben; **alle gleich** → kanonisch strippen (`rotate=0` / displaymatrix neutral) nach Prep; **ungleich** → kein Compatible-Erfolg → `NeedsReencode` mit klarem Reason (Pixel-Unterschiede ohne Encode nicht heilbar) |
+| 9 | Edit lists | Prep-Inputs: bei Bedarf `-ignore_editlist 1` (nur im Compatible-Prep, nicht global Fast) |
+| 10 | Fallback-UI | Bestehenden `BodyConcatFallbackDialog` wiederverwenden (Abort / Legacy); Reason-Text mode-spezifisch („Compatible Path fehlgeschlagen…“) |
+| 11 | Settings | Drittes Select-Item in Encoding-Tab; Hint-Texte korrigieren (Fast = schnell/riskant; Compatible = QT-sicher/Copy; Legacy = MPEG-TS) |
+| 12 | Outcome | `ConcatOutcome.method`: `"stream-copy-compatible"` |
+| 13 | Performance | Erwartung: ~2–3× I/O vs. Fast, weiterhin ≪ Re-Encode; kein HW-Encoder |
+
+#### Out of Scope
+
+- Fast-Path-Algorithmus ändern oder Default auf Compatible umstellen
+- Intro-Mux (`intro_mux_mode`) umbauen
+- Metadata-only User-Rotate in der App (bleibt Phase-20 Pixel-`transpose`)
+- Automatischer QuickTime-Smoke-Test in CI (manuelle Abnahme)
+- Partial-Reencode nur mismatched Clips (Phase-27-Backlog)
+- Legacy umbenennen oder `robust`-Alias auf Compatible mappen
+
+#### Pipeline (Compatible)
+
+```
+Probe gate (alle Clips)
+  ├─ hard fail (Codec/Größe/pix_fmt/…) → NeedsReencode
+  └─ rotation mismatch → NeedsReencode (Reason: Orientierung)
+Per-Clip Prep (-c copy, parallel ok):
+  genpts + avoid_negative_ts + optional ignore_editlist
+  AUD insert + tag hev1|avc1
+  metadata rotate=0 / display rotation neutral
+Merge:
+  MP4→MPEG-TS (annexb BSF) → concat: → MP4 Remux (AUD/tag/aac_adtstoasc/faststart)
+Outcome method=stream-copy-compatible
+```
+
+#### Unterphasen
+
+##### Phase 40.1 — Mode + Probe-Gate + Compatible-Core
+
+**Ziel:** `compatible` verdrahten; Prep+TS-Merge; Unit-Tests für Normalize/Builder/Dispatch. Noch **keine** Settings-UI (Mode per Config/Test setzbar). Rotation-Gate: nur „alle gleich oder alle 0“ — Strip in Prep; Mismatch → NeedsReencode.
+
+- [ ] `normalize_body_concat_mode` / `sync_body_concat_mode`: `compatible` + Aliases; `avidemux`→`compatible`; `robust`→`legacy` beibehalten; Default weiter `fast`
+- [ ] `is_compatible_body_concat_mode` (analog `is_fast_body_concat_mode`); Fast-Alias-Liste: **`avidemux` entfernen**
+- [ ] Probe-Hilfen (ffprobe/ffmpeg stderr oder bestehende `probe`): Rotation + Vergleichskey (codec, w/h, pix_fmt, …)
+- [ ] `build_*_compatible_*` Args-Builder + Tests (oder klar benannte Wrapper um bestehende Prep/TS-Builder)
+- [ ] `concat_stream_copy_compatible` + Dispatch in `concat_videos_stream_copy_only_with_mode`
+- [ ] Fail → Ask Legacy | Abort (Parity Fast); Preview silent Legacy
+- [ ] `cargo test` (Command-Generierung + Normalize)
+
+##### Phase 40.2 — Orientierungs-Policy härten
+
+**Ziel:** Zuverlässige Rotation-Erkennung (displaymatrix / `tags.rotate` / side_data); dokumentierte Reason-Strings; Prep strippt Soft-Rotation konsistent; bei Mismatch kein „erfolgreiches“ schiefes File.
+
+- [ ] Einheitliche `probe_video_rotation_degrees` (0/90/180/270; unbekannt → konservativ behandeln)
+- [ ] Gate: mismatch → `NeedsReencode { reason }` mit i18n-fähigem technische Reason (UI-Mapping in 40.3 ok)
+- [ ] Prep: Soft-Rotation neutralisieren ohne Pixel-Encode
+- [ ] Unit-Tests für Normalize/Vergleich; manuelle Checkliste GoPro/DJI gemischt 0°/180°
+
+##### Phase 40.3 — Settings, i18n, Fallback-Copy
+
+**Ziel:** Operator kann Compatible wählen; Texte ehrlich; Types/Config-TS.
+
+- [ ] `EncodingTab`: Select `fast` \| `compatible` \| `legacy` (Default-Anzeige `fast`)
+- [ ] i18n de/en/es-MX: Labels + korrigierter `concatHint` (Fast ≠ Avidemux-Stabilität)
+- [ ] `tauri.ts` / Config-Types: `"compatible"` in Union
+- [ ] Fallback-/Progress-Strings für Compatible (optional eigene Keys)
+- [ ] Kurz-Hinweis in Config-Schema §9 dieses Plans
+- [ ] Manuell: 2× gleiche Cam-Clips Compatible → QT Bild+Ton; Fast unverändert Default
+
+#### Akzeptanzkriterien (Phase 40 gesamt)
+
+1. Frische Config / Factory: `body_concat_mode === "fast"`.
+2. Mode `compatible` erzeugt `method: stream-copy-compatible` bei Erfolg; kein Aufruf von `concat_stream_copy_fast`.
+3. Mode `fast` Byte-für-Byte gleiches Verhalten wie vor der Phase (außer Alias `avidemux`).
+4. Identische Action-Cam-Clips (H.264 oder HEVC): Compatible-Output in **QuickTime** mit Bild (nicht nur Ton) — manuelle Abnahme macOS.
+5. Clips mit unterschiedlicher Soft-Rotation: Compatible startet **nicht** erfolgreich; User landet bei Reencode-Confirm oder klarem Fehler.
+6. Compatible-FFmpeg-Fail: Dialog Abort/Legacy; kein stilles Fast.
+7. `cargo test` grün; `npm run check` grün nach 40.3.
+
+#### Referenzen
+
+```
+src-tauri/src/video/concat.rs
+src-tauri/src/video/body_concat_fallback.rs
+src-tauri/src/video/processor.rs          # body_concat_mode durchreichen
+src-tauri/src/video/probe.rs              # ggf. Rotation/Metadaten
+src-tauri/src/storage/config.rs           # normalize_body_concat_mode
+src/components/settings/tabs/EncodingTab.tsx
+src/components/BodyConcatFallbackDialog.tsx
+src/lib/tauri.ts
+src/locales/de.json | en.json | es-MX.json
+```
+
+#### Agent-Prompt (40.1)
+
+```
+Implementiere Phase 40.1 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur 40.1 (compatible Mode + Probe-Gate + Core-Pipeline).
+Fast Path Default und Algorithmus unverändert lassen.
+Danach cargo test.
+```
+
+#### Agent-Prompt (40.2)
+
+```
+Implementiere Phase 40.2 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Orientierungs-Policy für Compatible-Pfad.
+Danach cargo test.
+```
+
+#### Agent-Prompt (40.3)
+
+```
+Implementiere Phase 40.3 aus @docs/IMPLEMENTATION_PLAN.md
+Regeln: @AGENTS.md
+Nur Settings/i18n/Types für body_concat_mode=compatible.
+Danach cargo test && npm run check.
+```
+
+---
+
 ### Phase 39 — Lokale Vorgänge- & Backup-Ordner leeren (Settings)
 
 **Status:** ✅ Erledigt  
@@ -3308,6 +3480,8 @@ Portieren aus `config.py` → SQLite. Alle Keys:
 
 `crew_removed_names` (Phase 36): Tombstones für absichtlich gelöschte Crew-Namen. Beim Load: fehlende Einträge aus `default_crew_list()` add-only mergen, außer Name steht in `crew_removed_names`. Rollen bestehender Einträge nie überschreiben. Factory-Reset leert Tombstones.
 
+`body_concat_mode` (Phase 40): `"fast"` (Default, naives Concat) \| `"compatible"` (vorbereiteter Stream-Copy, QT-sicher) \| `"legacy"` (MPEG-TS). Alias `robust` → `legacy` (Bestand); `avidemux` → `compatible`.
+
 Config-Pfad:
 - Windows: `%LOCALAPPDATA%\AeroTandemStudio\`
 - macOS: `~/Library/Application Support/AeroTandemStudio/`
@@ -3489,6 +3663,10 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 38.4 | AMS/SMB Status-Robustheit + `ams_verified_at` | ✅ |
 | 38.5 | Medien-Tab Layout | ✅ |
 | 39 | Lokale Vorgänge- & Backup-Ordner leeren (Settings Danger Zone) | ✅ |
+| 40 | Compatible Body-Concat (QT-sicher, unabhängig vom Fast Path) | ⬜ |
+| 40.1 | Mode + Probe-Gate + Compatible-Core | ⬜ |
+| 40.2 | Orientierungs-Policy härten | ⬜ |
+| 40.3 | Settings / i18n / Fallback-Copy | ⬜ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -3499,7 +3677,7 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 ```
 Implementiere Phase X aus @docs/IMPLEMENTATION_PLAN.md
 Regeln: @AGENTS.md
-Legacy-Dateien: [siehe Phase X im Plan]
+Referenzen: [v2-Dateien aus Phase X — Abschnitt „Referenzen“ / „Scope“]
 Nur Phase X. Danach cargo test && npm run tauri dev.
 ```
 
@@ -3521,6 +3699,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 39:** Prompt im Phasenabschnitt (Settings Danger Zone — lokale Vorgänge-/Backup-Ordner leeren).
 
+**Phase 40:** Prompt im Phasenabschnitt (Compatible Body-Concat); Unterphasen 40.1 → 40.2 → 40.3. Default bleibt `fast`.
+
 ---
 
-*Letzte Aktualisierung: 2026-08-28 · Phase 39 erledigt (Settings Danger Zone)*
+*Letzte Aktualisierung: 2026-08-31 · Phase 40 geplant (Compatible Body-Concat)*

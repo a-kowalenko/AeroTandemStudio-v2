@@ -6,7 +6,7 @@
 **Vorgänge-Dialog UX:** `@docs/VORGAENGE_DIALOG_PLAN.md` (Phase 38, nur Tab Vorgänge)
 **Performance-Backlog:** `@docs/optimization_plan.md`
 **Architektur:** `@docs/ARCHITECTURE.md`  
-**Migration-Mapping:** `@docs/MIGRATION.md`  
+**Legacy-Mapping (Archiv):** `@docs/MIGRATION.md` — nur bei gezieltem Nachschlagen  
 **macOS Build:** `@docs/MACOS_BUILD.md`  
 **Linux Build:** `@docs/LINUX_BUILD.md`
 
@@ -26,57 +26,34 @@ Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 
 
 ## Regeln
 
-- **NIEMALS** Dateien im Legacy-Projekt ändern (nur lesen)
+- **v2 ist Source of Truth** — bestehenden v2-Code und die Phase-Referenzen im Plan als Basis nutzen
+- **Legacy nicht an Agent-Kontext anhängen** — optional manuell bei konkreten Edge-Cases (siehe Archiv unten)
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust — kein MoviePy, kein Python
 - Hardware-Encoding: NVENC (Windows + Linux), VideoToolbox (macOS), Fallback libx264
 - FFmpeg-Command-Generierung braucht **Rust Unit-Tests**
 - Nach Änderungen: `cargo test` und `npm run tauri dev`
 - **Eine Phase pro Session** — Scope nicht erweitern
-- Verhalten aus Legacy portieren, nicht 1:1 copy-pasten
+- Produktverhalten an v2-UX und Phase-Spec halten; kein blindes Portieren aus Python
 - Plattformen: **Windows + macOS + Linux** (AppImage; siehe `docs/LINUX_BUILD.md`)
 
 ---
 
-## Projektpfade
+## Projektpfad
 
 | | Pfad |
 |---|------|
 | v2 (editieren) | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio-v2` |
-| Legacy (NUR LESEN) | `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` |
 
 ---
 
-## Legacy-Referenz (NUR LESEN)
+## Legacy-Archiv (optional, nicht anhängen)
 
-Basis: `C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio`
+Migration abgeschlossen (Phase 0–39 ✅). Das Python-Legacy unter
+`C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` ist **nur noch Archiv** —
+nicht ins Workspace attachieren, nicht in Agent-Prompts referenzieren.
 
-### Kern-Dateien
-
-| Legacy | v2 Modul | Phase |
-|--------|----------|-------|
-| `src/utils/hardware_acceleration.py` | `src-tauri/src/video/hw_accel.rs` | 0 |
-| `src/video/concat_utils.py` | `src-tauri/src/video/concat.rs` | 1 |
-| `src/video/processor.py` | `src-tauri/src/video/processor.rs` | 3 |
-| `src/video/parallel_processor.py` | `src-tauri/src/video/parallel.rs` | 4 |
-| `src/video/qr_analyser.py` | `src-tauri/src/qr/analyser.rs` | 6 |
-| `src/utils/sd_card_monitor.py` | `src-tauri/src/sd_card/monitor.rs` | 7 |
-| `src/utils/config.py` | `src-tauri/src/storage/config.rs` | 5 |
-| `src/model/kunde.py` | `src-tauri/src/model/kunde.rs` | 5 |
-| `src/gui/components/sd_file_selector_dialog.py` | `src/components/SdFileSelector.tsx` | 7 |
-| `src/gui/components/drag_drop.py` | `src/components/VideoDropZone.tsx` | 2 |
-
-Vollständiges Mapping: `@docs/MIGRATION.md`
-
-### Legacy-Pfade für @-Referenzen
-
-```
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\hardware_acceleration.py
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\processor.py
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\video\concat_utils.py
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\sd_card_monitor.py
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\utils\config.py
-C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
-```
+Bei Bedarf (Ordnerstruktur, Marker, DJI-Edge-Case): **eine** Legacy-Datei manuell öffnen.
+Mapping: `@docs/MIGRATION.md` · Detail: `@docs/IMPLEMENTATION_PLAN.md` §5–6.
 
 ---
 
@@ -131,8 +108,9 @@ C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio\src\model\kunde.py
 - ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
 - ✅ Phase 38: Vorgänge-Dialog UX (38.1–38.5: Layout, `components/history/*`, `history.status.*`, AMS-Poll + `ams_verified_at`, Medien-Tab; Plan `@docs/VORGAENGE_DIALOG_PLAN.md`)
 - ✅ Phase 39: Settings Danger Zone — lokale Vorgänge- & Backup-Ordner leeren (Historie bleibt; System-Tab: Update → Cache → Reset → Danger Zone)
+- ⬜ Phase 40: Compatible Body-Concat — QT-sicherer Stream-Copy (`compatible`), unabhängig vom Fast Path; Default bleibt `fast` (40.1–40.3 geplant)
 
-**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3 
+**Nächster Schritt:** Phase 40.1 (Compatible Body-Concat Core) · Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
 
 ### Performance-Backlog
@@ -165,7 +143,7 @@ Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 ```
 Implementiere Phase X aus @docs/IMPLEMENTATION_PLAN.md
 Regeln: @AGENTS.md
-Legacy: [Pfade aus Phase X im Plan]
+Referenzen: [v2-Dateien aus Phase X — Abschnitt „Referenzen“ / „Scope“]
 Nur Phase X. Danach cargo test && npm run tauri dev.
 ```
 

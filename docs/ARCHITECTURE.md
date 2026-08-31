@@ -72,13 +72,13 @@ FFmpeg Pipeline
 React UI (Fortschrittsbalken)
 ```
 
-## Legacy-Referenz
+## Legacy-Archiv
 
 ```
 C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio
 ```
 
-Nur lesen — niemals editieren. Siehe `AGENTS.md` und `MIGRATION.md`.
+Migration abgeschlossen — v2 ist Source of Truth. Legacy nur bei gezieltem Nachschlagen manuell öffnen; nicht an Agent-Kontext anhängen. Siehe `AGENTS.md` und `MIGRATION.md`.
 
 ## Hardware-Encoding
 

@@ -1,8 +1,10 @@
 # Legacy → v2 Migration Mapping
 
-> Kurzreferenz. Vollständiger Plan: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
+> **Archiv.** Migration ist abgeschlossen — v2 ist Source of Truth.  
+> Dieses Dokument nur bei gezieltem Nachschlagen (welche Legacy-Datei wofür war).  
+> **Nicht** in Agent-Prompts anhängen. Vollständiger Plan: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
 
-## Legacy-Basis-Pfad
+## Legacy-Basis-Pfad (Archiv, optional)
 
 ```
 C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio
