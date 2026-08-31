@@ -60,8 +60,8 @@ fast a# Aero Tandem Studio v2 — Implementierungsplan
 | CI (Win + Mac + Linux) | ✅ `.github/workflows/release.yml` |
 | Linux Build | ✅ Phase 15 (`docs/LINUX_BUILD.md`) |
 
-**Nächste Phase:** [Phase 40 — Compatible Body-Concat](#phase-40--compatible-body-concat-qt-sicher) · [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h / 23.3](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
-*(Phase 40 geplant: QT-sicherer Stream-Copy-Pfad, unabhängig vom Fast Path; Default bleibt `fast`.)*  
+**Nächste Phase:** [Phase 31.5 — Extra-Dateien](#phase-31--offline-create--upload-nachholen) · [Phase 23.2h / 23.3](#phase-23--usb-action-cams-mtp-erkennen--importieren) · …  
+*(Phase 40 ✅ Compatible Body-Concat; Default bleibt `fast`. Manuelle QT-Abnahme optional.)*  
 *(Phase 11.1 ✅ Cache-Größe unter System → Cache & Temp.)*  
 *(Phase 39 ✅ Settings Danger Zone: lokale Vorgänge-/Backup-Ordner leeren, Historie bleibt.)*  
 *(Phase 38 ✅ — `@docs/VORGAENGE_DIALOG_PLAN.md` 38.1–38.5; AMS-Bridge-Historie-Merge: **AeroMediaService-v2**, AMS neu starten.)*  
@@ -2550,7 +2550,7 @@ Nur Tab Vorgänge Layout. Danach npm run check.
 
 ### Phase 40 — Compatible Body-Concat (QT-sicher)
 
-**Status:** ⬜ Geplant (40.1 → 40.2 → 40.3)  
+**Status:** ✅ 40.1–40.3  
 **Abhängigkeiten:** Phase 1 (`concat.rs`), OPT-9 / Encoding-Settings (`body_concat_mode`), Phase 27 (Reencode-Confirm bei hartem Mismatch)  
 **Ziel:** Einen **dritten**, vom Fast Path **unabhängigen** Multi-Clip-Body-Pfad `compatible`: verlustfrei (`-c copy`), aber mit Probe-Gate, Bitstream-/Container-Hygiene und Orientierungs-Policy — gegen QuickTime-Blackscreen und 180°-Metadaten-Kollisionen (GoPro/DJI). **Default bleibt `fast`.**
 
@@ -2646,32 +2646,32 @@ Outcome method=stream-copy-compatible
 
 **Ziel:** `compatible` verdrahten; Prep+TS-Merge; Unit-Tests für Normalize/Builder/Dispatch. Noch **keine** Settings-UI (Mode per Config/Test setzbar). Rotation-Gate: nur „alle gleich oder alle 0“ — Strip in Prep; Mismatch → NeedsReencode.
 
-- [ ] `normalize_body_concat_mode` / `sync_body_concat_mode`: `compatible` + Aliases; `avidemux`→`compatible`; `robust`→`legacy` beibehalten; Default weiter `fast`
-- [ ] `is_compatible_body_concat_mode` (analog `is_fast_body_concat_mode`); Fast-Alias-Liste: **`avidemux` entfernen**
-- [ ] Probe-Hilfen (ffprobe/ffmpeg stderr oder bestehende `probe`): Rotation + Vergleichskey (codec, w/h, pix_fmt, …)
-- [ ] `build_*_compatible_*` Args-Builder + Tests (oder klar benannte Wrapper um bestehende Prep/TS-Builder)
-- [ ] `concat_stream_copy_compatible` + Dispatch in `concat_videos_stream_copy_only_with_mode`
-- [ ] Fail → Ask Legacy | Abort (Parity Fast); Preview silent Legacy
-- [ ] `cargo test` (Command-Generierung + Normalize)
+- [x] `normalize_body_concat_mode` / `sync_body_concat_mode`: `compatible` + Aliases; `avidemux`→`compatible`; `robust`→`legacy` beibehalten; Default weiter `fast`
+- [x] `is_compatible_body_concat_mode` (analog `is_fast_body_concat_mode`); Fast-Alias-Liste: **`avidemux` entfernen**
+- [x] Probe-Hilfen (ffprobe/ffmpeg stderr oder bestehende `probe`): Rotation + Vergleichskey (codec, w/h, pix_fmt, …)
+- [x] `build_*_compatible_*` Args-Builder + Tests (oder klar benannte Wrapper um bestehende Prep/TS-Builder)
+- [x] `concat_stream_copy_compatible` + Dispatch in `concat_videos_stream_copy_only_with_mode`
+- [x] Fail → Ask Legacy | Abort (Parity Fast); Preview silent Legacy
+- [x] `cargo test` (Command-Generierung + Normalize)
 
 ##### Phase 40.2 — Orientierungs-Policy härten
 
 **Ziel:** Zuverlässige Rotation-Erkennung (displaymatrix / `tags.rotate` / side_data); dokumentierte Reason-Strings; Prep strippt Soft-Rotation konsistent; bei Mismatch kein „erfolgreiches“ schiefes File.
 
-- [ ] Einheitliche `probe_video_rotation_degrees` (0/90/180/270; unbekannt → konservativ behandeln)
-- [ ] Gate: mismatch → `NeedsReencode { reason }` mit i18n-fähigem technische Reason (UI-Mapping in 40.3 ok)
-- [ ] Prep: Soft-Rotation neutralisieren ohne Pixel-Encode
-- [ ] Unit-Tests für Normalize/Vergleich; manuelle Checkliste GoPro/DJI gemischt 0°/180°
+- [x] Einheitliche `probe_video_rotation_degrees` (0/90/180/270; unbekannt → konservativ behandeln)
+- [x] Gate: mismatch → `NeedsReencode { reason }` mit i18n-fähigem technische Reason (UI-Mapping in 40.3 ok)
+- [x] Prep: Soft-Rotation neutralisieren ohne Pixel-Encode
+- [x] Unit-Tests für Normalize/Vergleich; manuelle Checkliste GoPro/DJI gemischt 0°/180°
 
 ##### Phase 40.3 — Settings, i18n, Fallback-Copy
 
 **Ziel:** Operator kann Compatible wählen; Texte ehrlich; Types/Config-TS.
 
-- [ ] `EncodingTab`: Select `fast` \| `compatible` \| `legacy` (Default-Anzeige `fast`)
-- [ ] i18n de/en/es-MX: Labels + korrigierter `concatHint` (Fast ≠ Avidemux-Stabilität)
-- [ ] `tauri.ts` / Config-Types: `"compatible"` in Union
-- [ ] Fallback-/Progress-Strings für Compatible (optional eigene Keys)
-- [ ] Kurz-Hinweis in Config-Schema §9 dieses Plans
+- [x] `EncodingTab`: Select `fast` \| `compatible` \| `legacy` (Default-Anzeige `fast`)
+- [x] i18n de/en/es-MX: Labels + korrigierter `concatHint` (Fast ≠ Avidemux-Stabilität)
+- [x] `tauri.ts` / Config-Types: `"compatible"` in Union
+- [x] Fallback-/Progress-Strings für Compatible (optional eigene Keys)
+- [x] Kurz-Hinweis in Config-Schema §9 dieses Plans
 - [ ] Manuell: 2× gleiche Cam-Clips Compatible → QT Bild+Ton; Fast unverändert Default
 
 #### Akzeptanzkriterien (Phase 40 gesamt)
@@ -3663,10 +3663,10 @@ SemVer in `src-tauri/tauri.conf.json` + `src-tauri/Cargo.toml`.
 | 38.4 | AMS/SMB Status-Robustheit + `ams_verified_at` | ✅ |
 | 38.5 | Medien-Tab Layout | ✅ |
 | 39 | Lokale Vorgänge- & Backup-Ordner leeren (Settings Danger Zone) | ✅ |
-| 40 | Compatible Body-Concat (QT-sicher, unabhängig vom Fast Path) | ⬜ |
-| 40.1 | Mode + Probe-Gate + Compatible-Core | ⬜ |
-| 40.2 | Orientierungs-Policy härten | ⬜ |
-| 40.3 | Settings / i18n / Fallback-Copy | ⬜ |
+| 40 | Compatible Body-Concat (QT-sicher, unabhängig vom Fast Path) | ✅ |
+| 40.1 | Mode + Probe-Gate + Compatible-Core | ✅ |
+| 40.2 | Orientierungs-Policy härten | ✅ |
+| 40.3 | Settings / i18n / Fallback-Copy | ✅ |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -3699,8 +3699,8 @@ Nur Phase X. Danach cargo test && npm run tauri dev.
 
 **Phase 39:** Prompt im Phasenabschnitt (Settings Danger Zone — lokale Vorgänge-/Backup-Ordner leeren).
 
-**Phase 40:** Prompt im Phasenabschnitt (Compatible Body-Concat); Unterphasen 40.1 → 40.2 → 40.3. Default bleibt `fast`.
+**Phase 40:** ✅ Compatible Body-Concat (40.1–40.3); Default bleibt `fast`. Manuelle QT-Abnahme optional.
 
 ---
 
-*Letzte Aktualisierung: 2026-08-31 · Phase 40 geplant (Compatible Body-Concat)*
+*Letzte Aktualisierung: 2026-08-31 · Phase 40.3 ✅ (Settings/i18n Compatible Body-Concat)*

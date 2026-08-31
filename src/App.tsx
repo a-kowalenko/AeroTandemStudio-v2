@@ -1418,7 +1418,11 @@ function App() {
       setBodyConcatFallback({
         reason: p.reason ?? "",
       });
-      setStatus(t("progress.status.fastPathWaiting"));
+      setStatus(
+        /compatible\s*path/i.test(p.reason ?? "")
+          ? t("progress.status.compatiblePathWaiting")
+          : t("progress.status.fastPathWaiting"),
+      );
     }).then((fn) => {
       unlisten = fn;
     });

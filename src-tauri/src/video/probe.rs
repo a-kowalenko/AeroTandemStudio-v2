@@ -25,6 +25,29 @@ static VIDEO_META_RE: Lazy<Regex> = Lazy::new(|| {
 static FPS_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)(?:,|\s)(\d+(?:\.\d+)?)\s*fps").unwrap());
 
+static PIX_FMT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+[^,]*,\s*([a-z0-9]+)").unwrap());
+
+static VIDEO_TAG_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)Video:\s+\w+.*?\((\w+)\s*/\s*0x[0-9a-f]+\)").unwrap()
+});
+
+static PROFILE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)Video:\s+\w+\s+\(([^)/]+)\)").unwrap()
+});
+
+/// `rotate : 180` / `rotate: 90` container or stream metadata tags.
+static ROTATE_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?im)^\s*rotate\s*:\s*(-?\d+(?:\.\d+)?)\s*$").unwrap());
+
+/// `displaymatrix: rotation of -90.00 degrees` (stream side data).
+static DISPLAYMATRIX_ROT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)displaymatrix:\s*rotation\s+of\s+(-?\d+(?:\.\d+)?)\s+degrees").unwrap()
+});
+
+/// Tolerance when snapping probe angles to quarter turns (degrees).
+const ROTATION_SNAP_TOLERANCE_DEG: f64 = 1.0;
+
 /// Container metadata keys written by many cameras (MP4/MOV).
 /// Prefer explicit make/model; ignore `encoder` (usually Lavf / app software).
 static CAMERA_TAG_RE: Lazy<Regex> = Lazy::new(|| {
@@ -148,6 +171,46 @@ pub struct ParsedStreamMeta {
     pub fps: f64,
 }
 
+/// Comparison key for Compatible body-concat probe gate (Phase 40.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompatibleStreamKey {
+    pub codec: String,
+    pub width: u32,
+    pub height: u32,
+    pub pix_fmt: String,
+    /// Container fourcc when present (`avc1`, `hev1`, `hvc1`, …); empty if unknown.
+    pub tag: String,
+    /// Best-effort profile label (`High`, `Main`, …); empty if unknown.
+    pub profile: String,
+    pub has_audio: bool,
+    /// Soft-rotation probe result (displaymatrix / `rotate` tag / side data).
+    pub rotation: VideoRotationProbe,
+}
+
+/// Result of probing soft rotation from FFmpeg stderr (Phase 40.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoRotationProbe {
+    /// No rotation metadata or explicit 0° — treat as upright.
+    Known(u32),
+    /// Non-orthogonal or unparseable angle — gate must fail conservatively.
+    Unknown { raw_deg: i32 },
+    /// `displaymatrix` and `rotate` tag disagree after normalization.
+    Conflict {
+        displaymatrix_deg: u32,
+        tag_deg: u32,
+    },
+}
+
+impl VideoRotationProbe {
+    /// Canonical degrees when known; `None` when probe is unreliable.
+    pub fn known_degrees(self) -> Option<u32> {
+        match self {
+            Self::Known(deg) => Some(deg),
+            Self::Unknown { .. } | Self::Conflict { .. } => None,
+        }
+    }
+}
+
 /// Parse codec + resolution (+ optional fps) from FFmpeg probe stderr.
 pub fn parse_video_metadata_from_probe(stderr: &str) -> Option<ParsedStreamMeta> {
     let caps = VIDEO_META_RE.captures(stderr)?;
@@ -166,6 +229,161 @@ pub fn parse_video_metadata_from_probe(stderr: &str) -> Option<ParsedStreamMeta>
         height,
         fps,
     })
+}
+
+/// Pixel format from the first video stream line (`yuv420p`, …).
+pub fn parse_pix_fmt_from_probe(stderr: &str) -> Option<String> {
+    PIX_FMT_RE
+        .captures(stderr)
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_lowercase()))
+}
+
+/// Unified soft-rotation probe for Compatible path (Phase 40.2).
+///
+/// Prefers `displaymatrix` side-data over the `rotate` metadata tag.
+/// Missing metadata → `Known(0)`. Non-quarter angles → `Unknown` (conservative).
+pub fn probe_video_rotation_degrees(stderr: &str) -> VideoRotationProbe {
+    let dm_raw = parse_displaymatrix_rotation_raw(stderr);
+    let tag_raw = parse_rotate_tag_raw(stderr);
+
+    let dm = dm_raw.and_then(snap_rotation_degrees_f64);
+    let tag = tag_raw.and_then(snap_rotation_degrees_f64);
+
+    if let Some(raw) = dm_raw {
+        if dm.is_none() {
+            return VideoRotationProbe::Unknown {
+                raw_deg: raw.round() as i32,
+            };
+        }
+    }
+    if let Some(raw) = tag_raw {
+        if tag.is_none() {
+            return VideoRotationProbe::Unknown {
+                raw_deg: raw.round() as i32,
+            };
+        }
+    }
+
+    match (dm, tag) {
+        (Some(d), Some(t)) if d != t => VideoRotationProbe::Conflict {
+            displaymatrix_deg: d,
+            tag_deg: t,
+        },
+        (Some(d), _) => VideoRotationProbe::Known(d),
+        (None, Some(t)) => VideoRotationProbe::Known(t),
+        (None, None) => VideoRotationProbe::Known(0),
+    }
+}
+
+/// Soft-rotation in degrees when reliably known (`{0,90,180,270}`).
+///
+/// Returns `None` when metadata is absent, ambiguous, or conflicting.
+pub fn parse_video_rotation_degrees(stderr: &str) -> Option<u32> {
+    probe_video_rotation_degrees(stderr).known_degrees()
+}
+
+fn parse_displaymatrix_rotation_raw(stderr: &str) -> Option<f64> {
+    DISPLAYMATRIX_ROT_RE
+        .captures(stderr)
+        .and_then(|caps| caps.get(1)?.as_str().parse().ok())
+}
+
+fn parse_rotate_tag_raw(stderr: &str) -> Option<f64> {
+    ROTATE_TAG_RE
+        .captures(stderr)
+        .and_then(|caps| caps.get(1)?.as_str().parse().ok())
+}
+
+fn snap_rotation_degrees_f64(raw: f64) -> Option<u32> {
+    let mut deg = raw.round() as i32 % 360;
+    if deg < 0 {
+        deg += 360;
+    }
+    for &candidate in &[0u32, 90, 180, 270] {
+        let diff = (deg - candidate as i32).unsigned_abs();
+        let diff = diff.min(360 - diff);
+        if f64::from(diff) <= ROTATION_SNAP_TOLERANCE_DEG {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// i18n-ready technical reason when a clip's orientation cannot be trusted.
+pub fn compatible_orientation_unreliable_reason(probe: VideoRotationProbe, clip_index: usize) -> Option<String> {
+    match probe {
+        VideoRotationProbe::Known(_) => None,
+        VideoRotationProbe::Unknown { raw_deg } => Some(format!(
+            "compatible.orientation_unknown:raw={raw_deg}:clip={clip_index}"
+        )),
+        VideoRotationProbe::Conflict {
+            displaymatrix_deg,
+            tag_deg,
+        } => Some(format!(
+            "compatible.orientation_conflict:displaymatrix={displaymatrix_deg}:tag={tag_deg}:clip={clip_index}"
+        )),
+    }
+}
+
+/// i18n-ready technical reason when clips disagree on soft rotation.
+pub fn compatible_orientation_mismatch_reason(
+    deg_a: u32,
+    clip_b_index: usize,
+    deg_b: u32,
+) -> String {
+    format!("compatible.orientation_mismatch:{deg_a}:{deg_b}:clip1:clip{clip_b_index}")
+}
+
+/// Build a Compatible probe key from one clip's FFmpeg `-i` stderr.
+pub fn compatible_stream_key_from_probe(stderr: &str, has_audio: bool) -> Option<CompatibleStreamKey> {
+    let meta = parse_video_metadata_from_probe(stderr)?;
+    let pix_fmt = parse_pix_fmt_from_probe(stderr).unwrap_or_default();
+    let tag = VIDEO_TAG_RE
+        .captures(stderr)
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_lowercase()))
+        .unwrap_or_default();
+    let profile = PROFILE_RE
+        .captures(stderr)
+        .and_then(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+        .unwrap_or_default();
+    let rotation = probe_video_rotation_degrees(stderr);
+    Some(CompatibleStreamKey {
+        codec: meta.codec,
+        width: meta.width,
+        height: meta.height,
+        pix_fmt,
+        tag,
+        profile,
+        has_audio,
+        rotation,
+    })
+}
+
+/// True when two clips are Compatible-mergeable (same geometry/codec/pix_fmt/audio/rotation).
+///
+/// Tag/profile are best-effort and ignored when either side is empty so older probes still pass.
+/// Rotation must be reliably known and equal on both sides.
+pub fn compatible_stream_keys_match(a: &CompatibleStreamKey, b: &CompatibleStreamKey) -> bool {
+    let rot_a = a.rotation.known_degrees();
+    let rot_b = b.rotation.known_degrees();
+    if a.codec != b.codec
+        || a.width != b.width
+        || a.height != b.height
+        || a.pix_fmt != b.pix_fmt
+        || a.has_audio != b.has_audio
+        || rot_a.is_none()
+        || rot_b.is_none()
+        || rot_a != rot_b
+    {
+        return false;
+    }
+    if !a.tag.is_empty() && !b.tag.is_empty() && a.tag != b.tag {
+        return false;
+    }
+    if !a.profile.is_empty() && !b.profile.is_empty() && a.profile != b.profile {
+        return false;
+    }
+    true
 }
 
 /// Worker count for parallel import probe (CPU-only, 2–4 when multiple files).
@@ -288,6 +506,133 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
         assert_eq!(meta.width, 832);
         assert_eq!(meta.height, 464);
         assert!((meta.fps - 30.01).abs() < 0.01);
+    }
+
+    #[test]
+    fn probe_rotation_from_displaymatrix_and_tag() {
+        let dm = "      Side data:\n        displaymatrix: rotation of -90.00 degrees\n";
+        assert_eq!(
+            probe_video_rotation_degrees(dm),
+            VideoRotationProbe::Known(270)
+        );
+        assert_eq!(parse_video_rotation_degrees(dm), Some(270));
+
+        let tag = "  Metadata:\n    rotate          : 180\n";
+        assert_eq!(
+            probe_video_rotation_degrees(tag),
+            VideoRotationProbe::Known(180)
+        );
+
+        assert_eq!(
+            probe_video_rotation_degrees("no rotation here"),
+            VideoRotationProbe::Known(0)
+        );
+    }
+
+    #[test]
+    fn probe_rotation_uses_displaymatrix_when_tag_absent() {
+        let stderr = r#"
+      Side data:
+        displaymatrix: rotation of -90.00 degrees
+"#;
+        assert_eq!(
+            probe_video_rotation_degrees(stderr),
+            VideoRotationProbe::Known(270)
+        );
+    }
+
+    #[test]
+    fn probe_rotation_conflict_is_conservative() {
+        let stderr = r#"
+      Side data:
+        displaymatrix: rotation of 90.00 degrees
+  Metadata:
+    rotate          : 180
+"#;
+        assert_eq!(
+            probe_video_rotation_degrees(stderr),
+            VideoRotationProbe::Conflict {
+                displaymatrix_deg: 90,
+                tag_deg: 180,
+            }
+        );
+        assert_eq!(parse_video_rotation_degrees(stderr), None);
+    }
+
+    #[test]
+    fn probe_rotation_unknown_non_quarter_angle() {
+        let stderr = "  Metadata:\n    rotate          : 45\n";
+        assert_eq!(
+            probe_video_rotation_degrees(stderr),
+            VideoRotationProbe::Unknown { raw_deg: 45 }
+        );
+    }
+
+    #[test]
+    fn compatible_orientation_reason_strings() {
+        assert_eq!(
+            compatible_orientation_mismatch_reason(0, 2, 180).as_str(),
+            "compatible.orientation_mismatch:0:180:clip1:clip2"
+        );
+        assert_eq!(
+            compatible_orientation_unreliable_reason(
+                VideoRotationProbe::Unknown { raw_deg: 45 },
+                1
+            )
+            .as_deref(),
+            Some("compatible.orientation_unknown:raw=45:clip=1")
+        );
+        assert_eq!(
+            compatible_orientation_unreliable_reason(
+                VideoRotationProbe::Conflict {
+                    displaymatrix_deg: 90,
+                    tag_deg: 180,
+                },
+                3
+            )
+            .as_deref(),
+            Some("compatible.orientation_conflict:displaymatrix=90:tag=180:clip=3")
+        );
+    }
+
+    #[test]
+    fn compatible_stream_key_matches_and_rejects_mismatch() {
+        let stderr_a = r#"
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+  Metadata:
+    rotate          : 0
+"#;
+        let stderr_b = r#"
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+"#;
+        let a = compatible_stream_key_from_probe(stderr_a, true).unwrap();
+        let b = compatible_stream_key_from_probe(stderr_b, true).unwrap();
+        assert_eq!(a.rotation, VideoRotationProbe::Known(0));
+        assert_eq!(b.rotation, VideoRotationProbe::Known(0));
+        assert!(compatible_stream_keys_match(&a, &b));
+
+        let stderr_rot = r#"
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+  Metadata:
+    rotate          : 180
+"#;
+        let c = compatible_stream_key_from_probe(stderr_rot, true).unwrap();
+        assert_eq!(c.rotation, VideoRotationProbe::Known(180));
+        assert!(!compatible_stream_keys_match(&a, &c));
+
+        let stderr_unknown = r#"
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+  Metadata:
+    rotate          : 45
+"#;
+        let u = compatible_stream_key_from_probe(stderr_unknown, true).unwrap();
+        assert!(!compatible_stream_keys_match(&a, &u));
+
+        let stderr_sz = r#"
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1280x720, 30 fps
+"#;
+        let d = compatible_stream_key_from_probe(stderr_sz, true).unwrap();
+        assert!(!compatible_stream_keys_match(&a, &d));
     }
 
     #[test]

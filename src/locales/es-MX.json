@@ -254,8 +254,9 @@
       "parallel": "Procesamiento de video en paralelo",
       "concat": "Unir clips",
       "concatFast": "Ruta rápida",
+      "concatCompatible": "Compatible (seguro QT)",
       "concatLegacy": "Legacy (robusto)",
-      "concatHint": "La ruta rápida une clips en una pasada (similar a Avidemux Copy). Si falla, puedes cancelar o usar Legacy. Legacy usa la canalización MPEG-TS.",
+      "concatHint": "Ruta rápida: una pasada de copia ingenua — rápida, pero arriesgada (p. ej. QuickTime). Compatible: copia de stream preparada con comprobación — sin pérdida y segura para QT/orientación. Legacy: canalización MPEG-TS probada (más lenta). Si falla Fast/Compatible: cancelar o usar Legacy.",
       "advanced": "Avanzado",
       "introEnabled": "Usar intro al crear (experimental)",
       "introDuration": "Duración del intro (s)",
@@ -575,8 +576,12 @@
       "reencodeCut": "Corte (preciso)…",
       "streamCopyCut": "Corte…",
       "fastConcat": "Uniendo clips (fast path)…",
+      "compatibleProbe": "Compatible: comprobando clips…",
+      "compatibleConcat": "Compatible: uniendo clips…",
+      "compatibleMkvFallback": "Compatible: respaldo MKV…",
       "legacyConcat": "Unión legacy…",
       "fastPathWaiting": "Fast path falló — elige una opción…",
+      "compatiblePathWaiting": "Compatible path falló — elige una opción…",
       "replaceOriginal": "Reemplazando original…",
       "splitPart1": "Dividiendo clip (parte 1)…",
       "splitPart2": "Dividiendo clip (parte 2)…",
@@ -664,6 +669,8 @@
     "bodyConcat": {
       "title": "Fast path falló",
       "body": "No se pudieron unir los clips en un solo paso rápido. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
+      "titleCompatible": "Compatible path falló",
+      "bodyCompatible": "No se pudieron unir los clips por la ruta Compatible preparada. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
       "useLegacy": "Usar legacy"
     },
     "introMux": {

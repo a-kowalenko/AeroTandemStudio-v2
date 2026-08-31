@@ -254,8 +254,9 @@
       "parallel": "Paralleles Video-Processing",
       "concat": "Clips zusammenfügen",
       "concatFast": "Fast Path (schnell)",
+      "concatCompatible": "Compatible (QT-sicher)",
       "concatLegacy": "Legacy (robust)",
-      "concatHint": "Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy. Legacy nutzt die bewährte MPEG-TS-Pipeline.",
+      "concatHint": "Fast Path: ein naiver Copy-Pass — schnell, aber riskant (z. B. QuickTime). Compatible: vorbereiteter Stream-Copy mit Probe-Gate — verlustfrei und QT-/orientierungssicher. Legacy: bewährte MPEG-TS-Pipeline (langsamer). Bei Fast-/Compatible-Fehlern: Abbrechen oder Legacy.",
       "advanced": "Erweitert",
       "introEnabled": "Intro beim Erstellen verwenden (experimentell)",
       "introDuration": "Intro-Dauer (Sek.)",
@@ -575,8 +576,12 @@
       "reencodeCut": "Schnitt (präzise)…",
       "streamCopyCut": "Schnitt…",
       "fastConcat": "Füge Clips zusammen (Fast Path)…",
+      "compatibleProbe": "Compatible: Clips prüfen…",
+      "compatibleConcat": "Compatible: Clips zusammenfügen…",
+      "compatibleMkvFallback": "Compatible: MKV-Fallback…",
       "legacyConcat": "Legacy-Zusammenfügen…",
       "fastPathWaiting": "Fast Path fehlgeschlagen — bitte Entscheidung…",
+      "compatiblePathWaiting": "Compatible Path fehlgeschlagen — bitte Entscheidung…",
       "replaceOriginal": "Ersetze Original…",
       "splitPart1": "Teile Clip (Teil 1)…",
       "splitPart2": "Teile Clip (Teil 2)…",
@@ -664,6 +669,8 @@
     "bodyConcat": {
       "title": "Fast Path fehlgeschlagen",
       "body": "Die Clips konnten nicht im schnellen Single-Pass zusammengefügt werden. Du kannst abbrechen oder den robusteren Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
+      "titleCompatible": "Compatible Path fehlgeschlagen",
+      "bodyCompatible": "Die Clips konnten nicht im vorbereiteten Compatible-Pfad zusammengefügt werden. Du kannst abbrechen oder den robusteren Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
       "useLegacy": "Legacy verwenden"
     },
     "introMux": {

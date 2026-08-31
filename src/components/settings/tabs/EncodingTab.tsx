@@ -13,8 +13,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import type { BodyConcatMode } from "@/lib/tauri";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
+
+/** Display-normalize aliases to the three Settings select values (parity with Rust). */
+function normalizeBodyConcatMode(mode: string | undefined): BodyConcatMode {
+  const m = (mode ?? "").trim().toLowerCase();
+  if (m === "legacy" || m === "mpegts" || m === "robust") return "legacy";
+  if (
+    m === "compatible" ||
+    m === "compat" ||
+    m === "qt_safe" ||
+    m === "prepared" ||
+    m === "avidemux"
+  ) {
+    return "compatible";
+  }
+  return "fast";
+}
 
 export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
   const { t } = useTranslation();
@@ -88,9 +105,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
         <div className="space-y-1.5">
           <Label>{t("settings.encoding.concat")}</Label>
           <Select
-            value={
-              draft.body_concat_mode === "legacy" ? "legacy" : "fast"
-            }
+            value={normalizeBodyConcatMode(draft.body_concat_mode)}
             onValueChange={(v) => patch("body_concat_mode", v)}
           >
             <SelectTrigger>
@@ -98,6 +113,9 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+              <SelectItem value="compatible">
+                {t("settings.encoding.concatCompatible")}
+              </SelectItem>
               <SelectItem value="legacy">
                 {t("settings.encoding.concatLegacy")}
               </SelectItem>

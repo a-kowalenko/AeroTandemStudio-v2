@@ -561,10 +561,11 @@ pub fn normalize_intro_mux_mode(mode: &str) -> String {
     }
 }
 
-/// Normalize body concat mode to `fast` | `legacy` (default `fast`).
+/// Normalize body concat mode to `fast` | `compatible` | `legacy` (default `fast`).
 pub fn normalize_body_concat_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "legacy" | "mpegts" | "robust" => "legacy".into(),
+        "compatible" | "compat" | "qt_safe" | "prepared" | "avidemux" => "compatible".into(),
         _ => "fast".into(),
     }
 }
@@ -665,7 +666,7 @@ impl AppConfig {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
 
-    /// Canonicalize `body_concat_mode` to `fast` | `legacy`.
+    /// Canonicalize `body_concat_mode` to `fast` | `compatible` | `legacy`.
     pub fn sync_body_concat_mode(&mut self) {
         self.body_concat_mode = normalize_body_concat_mode(&self.body_concat_mode);
     }
@@ -1261,6 +1262,12 @@ mod tests {
         assert_eq!(normalize_body_concat_mode("fast-path"), "fast");
         assert_eq!(normalize_body_concat_mode("legacy"), "legacy");
         assert_eq!(normalize_body_concat_mode("mpegts"), "legacy");
+        assert_eq!(normalize_body_concat_mode("robust"), "legacy");
+        assert_eq!(normalize_body_concat_mode("compatible"), "compatible");
+        assert_eq!(normalize_body_concat_mode("compat"), "compatible");
+        assert_eq!(normalize_body_concat_mode("qt_safe"), "compatible");
+        assert_eq!(normalize_body_concat_mode("prepared"), "compatible");
+        assert_eq!(normalize_body_concat_mode("avidemux"), "compatible");
         assert_eq!(normalize_body_concat_mode(""), "fast");
         assert_eq!(normalize_body_concat_mode("bogus"), "fast");
     }

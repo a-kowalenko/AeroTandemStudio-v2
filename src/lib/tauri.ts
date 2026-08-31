@@ -74,6 +74,9 @@ export type ServerProfile = {
   backup_password: string;
 };
 
+/** Multi-clip body concat mode (canonical values after normalize). */
+export type BodyConcatMode = "fast" | "compatible" | "legacy";
+
 export type AppConfig = {
   speicherort: string;
   ort: string;
@@ -109,8 +112,8 @@ export type AppConfig = {
   reencode_matching_clips: boolean;
   /** Intro+Body mux: "reencode" (default) | "stream_copy". */
   intro_mux_mode: "stream_copy" | "reencode" | string;
-  /** Multi-clip body concat: "fast" (default) | "legacy". */
-  body_concat_mode: "legacy" | "fast" | string;
+  /** Multi-clip body concat: "fast" (default) | "compatible" | "legacy". */
+  body_concat_mode: BodyConcatMode | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;
   photo_qr_check_enabled: boolean;
@@ -527,8 +530,8 @@ export type CreateVideoOptions = {
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
   intro_mux_mode?: "stream_copy" | "reencode" | string;
-  /** Multi-clip body concat: "legacy" | "fast". */
-  body_concat_mode?: "legacy" | "fast" | string;
+  /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
+  body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
 };
@@ -550,8 +553,8 @@ export type CreateJobOptions = {
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
   intro_mux_mode?: "stream_copy" | "reencode" | string;
-  /** Multi-clip body concat: "legacy" | "fast". */
-  body_concat_mode?: "legacy" | "fast" | string;
+  /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
+  body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
   /** Path from last matching `generate_preview` (backend verifies fingerprint). */

@@ -108,9 +108,9 @@ Mapping: `@docs/MIGRATION.md` · Detail: `@docs/IMPLEMENTATION_PLAN.md` §5–6.
 - ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
 - ✅ Phase 38: Vorgänge-Dialog UX (38.1–38.5: Layout, `components/history/*`, `history.status.*`, AMS-Poll + `ams_verified_at`, Medien-Tab; Plan `@docs/VORGAENGE_DIALOG_PLAN.md`)
 - ✅ Phase 39: Settings Danger Zone — lokale Vorgänge- & Backup-Ordner leeren (Historie bleibt; System-Tab: Update → Cache → Reset → Danger Zone)
-- ⬜ Phase 40: Compatible Body-Concat — QT-sicherer Stream-Copy (`compatible`), unabhängig vom Fast Path; Default bleibt `fast` (40.1–40.3 geplant)
+- ✅ Phase 40: Compatible Body-Concat — Mode + Probe-Gate + Orientierungs-Policy + Settings/i18n (`fast` Default)
 
-**Nächster Schritt:** Phase 40.1 (Compatible Body-Concat Core) · Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3  
+**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3 
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
 
 ### Performance-Backlog

@@ -22,9 +22,17 @@ const RAW_TO_I18N: Record<string, string> = {
   "re-encode cut": "progress.status.reencodeCut",
   "stream-copy cut": "progress.status.streamCopyCut",
   "fast-concat": "progress.status.fastConcat",
+  "compatible-probe": "progress.status.compatibleProbe",
+  "compatible-concat": "progress.status.compatibleConcat",
+  "compatible-mkv-fallback": "progress.status.compatibleMkvFallback",
+  "compatible-mpegts-concat": "progress.status.compatibleConcat",
+  "compatible-hevc-merge": "progress.status.compatibleConcat",
+  "compatible-hevc-mkv-fallback": "progress.status.compatibleMkvFallback",
   "Legacy-Zusammenfügen (MPEG-TS)…": "progress.rust.legacyMpegTs",
   "Fast Path fehlgeschlagen — warte auf Entscheidung…":
     "progress.status.fastPathWaiting",
+  "Compatible Path fehlgeschlagen — warte auf Entscheidung…":
+    "progress.status.compatiblePathWaiting",
   "replacing original": "progress.status.replaceOriginal",
   "split part 1": "progress.status.splitPart1",
   "split part 2": "progress.status.splitPart2",
@@ -159,7 +167,7 @@ const CREATE_JOB_MAJOR_STAGE =
   /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle video|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
 
 const CREATE_VIDEO_DETAIL =
-  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|legacy-zusammenfügen|probing|prepare/i;
+  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|compatible|legacy-zusammenfügen|probing|prepare/i;
 
 const MAX_DETAIL_LEN = 42;
 
