@@ -16,6 +16,8 @@
 #   APPLE_API_KEY                      — App Store Connect API Key ID
 #   APPLE_API_KEY_CONTENT              — full AuthKey_*.p8 PEM body
 #
+# macOS jobs import the .p12, codesign resources/ffmpeg/mac/**/ffmpeg
+# (scripts/sign-macos-ffmpeg.sh), then tauri-action signs + notarizes the .app.
 # Stable tags: after merge-updater-manifest, promote-latest sets GitHub Latest.
 # Prerelease tags (vX.Y.Z-beta.N / -rc.N): marked prerelease, never Latest.
 #
@@ -270,8 +272,9 @@ jobs:
           FFMPEG_MAC_ARCH: ${{ matrix.ffmpeg_arch }}
         run: npm run download-ffmpeg
 
-      # Tauri imports APPLE_CERTIFICATE into a temp keychain; notarization needs a
-      # on-disk AuthKey_*.p8 (APPLE_API_KEY_PATH). See docs/MACOS_BUILD.md.
+      # Import Developer ID into a CI keychain, write AuthKey_*.p8, and codesign
+      # FFmpeg sidecars (Resources Mach-Os are not nested-signed by Tauri).
+      # See docs/MACOS_BUILD.md.
       - name: Prepare Apple signing credentials
         if: matrix.platform == 'macos-latest'
         env:
@@ -300,6 +303,7 @@ jobs:
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
+
           mkdir -p private_keys
           KEY_PATH="${PWD}/private_keys/AuthKey_${APPLE_API_KEY}.p8"
           # Preserve PEM newlines from the secret body.
@@ -307,6 +311,27 @@ jobs:
           chmod 600 "$KEY_PATH"
           echo "APPLE_API_KEY_PATH=${KEY_PATH}" >> "$GITHUB_ENV"
           echo "Apple API key ready for notarization ($(basename "$KEY_PATH"))."
+
+          # Temp keychain so codesign can reach the Developer ID before tauri-action
+          # imports APPLE_CERTIFICATE into its own keychain for the .app.
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/aero-signing.keychain-db"
+          CERT_PATH="${RUNNER_TEMP}/apple-certificate.p12"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          # Prepend our keychain without dropping the runner default search list.
+          EXISTING_KEYCHAINS="$(security list-keychains -d user | sed -E 's/^[[:space:]]*"//;s/"$//' | tr '\n' ' ')"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          chmod +x scripts/sign-macos-ffmpeg.sh
+          APPLE_SIGNING_IDENTITY="$APPLE_SIGNING_IDENTITY" ./scripts/sign-macos-ffmpeg.sh
 
       - name: Build and upload to existing release
         uses: tauri-apps/tauri-action@v1

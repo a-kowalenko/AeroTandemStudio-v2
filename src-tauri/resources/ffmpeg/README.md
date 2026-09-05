@@ -79,6 +79,10 @@ Installs to `linux/x86_64/ffmpeg` and `linux/ffmpeg`. Verify:
 on Windows, both Mac targets (`aarch64-apple-darwin`, `x86_64-apple-darwin`), and
 Ubuntu (`AppImage`). Mac legs set `FFMPEG_MAC_ARCH` per matrix entry.
 
+On macOS release jobs, `scripts/sign-macos-ffmpeg.sh` codesigns every
+`mac/**/ffmpeg` binary (Developer ID + Hardened Runtime + timestamp) **before**
+bundling so Apple notarization accepts the sidecars under `Contents/Resources`.
+
 ## License note
 
 Distribute FFmpeg under the license of the build you ship (LGPL vs GPL). Prefer builds

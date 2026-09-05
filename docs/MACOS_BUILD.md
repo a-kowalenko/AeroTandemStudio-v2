@@ -163,9 +163,18 @@ macOS matrix jobs require these secrets on the **private** source repo:
 | `APPLE_API_KEY` | App Store Connect Key ID |
 | `APPLE_API_KEY_CONTENT` | Full `AuthKey_*.p8` PEM body |
 
-The workflow writes `AuthKey_<KEY_ID>.p8` on the runner and sets `APPLE_API_KEY_PATH`.
-Tauri imports `APPLE_CERTIFICATE` and notarizes during `tauri build`. Missing Apple
-secrets **fail** the macOS jobs (Windows/Linux are unaffected).
+The workflow writes `AuthKey_<KEY_ID>.p8`, imports the `.p12` into a CI keychain,
+codesigns FFmpeg under `resources/ffmpeg/mac/` (`scripts/sign-macos-ffmpeg.sh` —
+Hardened Runtime + timestamp; Tauri does not sign Mach-Os in `Contents/Resources`),
+then `tauri build` signs the `.app` and notarizes. Missing Apple secrets **fail** the
+macOS jobs (Windows/Linux are unaffected).
+
+Local / CI helper:
+
+```bash
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)"
+./scripts/sign-macos-ffmpeg.sh
+```
 
 ### Local builds without Apple credentials
 
@@ -194,6 +203,7 @@ npm run tauri build -- --config src-tauri/tauri.conf.ci.json
 
 - [ ] `npm run download-ffmpeg` — or `FFMPEG_MAC_ARCH=x86_64` for Intel cross-build
 - [ ] `chmod +x` on mac FFmpeg; clear quarantine (`xattr`)
+- [ ] If distributing: `APPLE_SIGNING_IDENTITY=… ./scripts/sign-macos-ffmpeg.sh`
 - [ ] `cargo test` / `npm run test:rust`
 - [ ] `npm run tauri build -- --bundles app,dmg` (optional `--target …-apple-darwin`)
 - [ ] Open `.app`, confirm VideoToolbox in Settings / HW info (`h264_videotoolbox`)
