@@ -150,11 +150,36 @@ npm run tauri build -- --bundles dmg
 # npm run tauri build -- --bundles dmg --skip-stapling
 ```
 
-### Stub when secrets are missing
+### GitHub Actions (release.yml)
 
-CI and local machines without Apple credentials still produce a `.dmg` (unsigned or
-ad-hoc). Signing / notarization steps are skipped; see GitHub Actions logs for
-`APPLE_*` / `TAURI_SIGNING_*` notices.
+macOS matrix jobs require these secrets on the **private** source repo:
+
+| Secret | Value |
+|--------|--------|
+| `APPLE_CERTIFICATE` | `openssl base64 -A -in cert.p12 -out -` |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Name (TEAMID)` |
+| `APPLE_API_ISSUER` | App Store Connect Issuer UUID |
+| `APPLE_API_KEY` | App Store Connect Key ID |
+| `APPLE_API_KEY_CONTENT` | Full `AuthKey_*.p8` PEM body |
+
+The workflow writes `AuthKey_<KEY_ID>.p8`, imports the `.p12` into a CI keychain,
+codesigns FFmpeg under `resources/ffmpeg/mac/` (`scripts/sign-macos-ffmpeg.sh` —
+Hardened Runtime + timestamp; Tauri does not sign Mach-Os in `Contents/Resources`),
+then `tauri build` signs the `.app` and notarizes. Missing Apple secrets **fail** the
+macOS jobs (Windows/Linux are unaffected).
+
+Local / CI helper:
+
+```bash
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Name (TEAMID)"
+./scripts/sign-macos-ffmpeg.sh
+```
+
+### Local builds without Apple credentials
+
+Local machines without Apple credentials still produce a `.dmg` (unsigned or
+ad-hoc). Signing / notarization steps are skipped.
 
 ## Updater artifacts
 
@@ -178,6 +203,7 @@ npm run tauri build -- --config src-tauri/tauri.conf.ci.json
 
 - [ ] `npm run download-ffmpeg` — or `FFMPEG_MAC_ARCH=x86_64` for Intel cross-build
 - [ ] `chmod +x` on mac FFmpeg; clear quarantine (`xattr`)
+- [ ] If distributing: `APPLE_SIGNING_IDENTITY=… ./scripts/sign-macos-ffmpeg.sh`
 - [ ] `cargo test` / `npm run test:rust`
 - [ ] `npm run tauri build -- --bundles app,dmg` (optional `--target …-apple-darwin`)
 - [ ] Open `.app`, confirm VideoToolbox in Settings / HW info (`h264_videotoolbox`)

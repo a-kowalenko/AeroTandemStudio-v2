@@ -1,6 +1,6 @@
 [package]
 name = "aero-tandem-studio"
-version = "0.4.0"
+version = "0.4.1-beta.2"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

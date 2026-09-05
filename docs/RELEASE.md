@@ -21,7 +21,15 @@ Quelle der Body: Abschnitt in `CHANGELOG.md` zur Version.
 | `RELEASES_GITHUB_TOKEN` | ja — PAT, Contents R/W auf Releases-Repo |
 | `TAURI_SIGNING_PRIVATE_KEY` | ja |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | ja (Key ist verschlüsselt; optional wenn Key ohne Passwort) |
-| Apple / Windows Authenticode | nein (optional, kostet) |
+| `APPLE_CERTIFICATE` | ja (macOS) — Base64 der Developer-ID-`.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | ja (macOS) — `.p12`-Exportpasswort |
+| `APPLE_SIGNING_IDENTITY` | ja (macOS) — z.B. `Developer ID Application: Name (TEAMID)` |
+| `APPLE_API_ISSUER` | ja (macOS) — App Store Connect API Issuer UUID |
+| `APPLE_API_KEY` | ja (macOS) — App Store Connect API Key ID |
+| `APPLE_API_KEY_CONTENT` | ja (macOS) — voller `AuthKey_*.p8`-PEM-Inhalt |
+| Windows Authenticode | nein (optional) |
+
+Setup: `@docs/MACOS_BUILD.md` (Code signing + Notarization + CI).
 
 ## Release-Notes (`CHANGELOG.md`)
 
@@ -187,7 +195,7 @@ Linux: **AppImage** (`…_amd64.AppImage` o. ä.) — Details: `docs/LINUX_BUILD
 ## Hinweise
 
 - Das öffentliche Releases-Repo braucht **mindestens einen Commit** auf dem Default-Branch (z. B. README). Sonst schlägt das Anlegen von Tags/Releases fehl.
-- macOS-Builds sind ohne Apple Developer Account **nicht** notarisiert (Gatekeeper-Warnung möglich).
+- Release-CI signiert und notarisiert macOS mit den `APPLE_*`-Secrets (siehe Secrets-Tabelle). Lokale Builds ohne Credentials bleiben ad-hoc/unsigned.
 - Windows ohne Authenticode: ggf. SmartScreen-Warnung.
 - Auto-Update in der App nutzt die Tauri-Updater-Signatur (Pubkey), unabhängig von OS-Code-Signing.
 - SemVer: `0.3.9-beta.1` &lt; `0.3.9` — Beta-Nutzer erhalten die finale Stable als Update.
