@@ -8,13 +8,21 @@
 #   TAURI_SIGNING_PRIVATE_KEY          — updater private key
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD — key password
 #
+# Required for macOS matrix jobs (Developer ID + notarization):
+#   APPLE_CERTIFICATE                  — base64 .p12 (Developer ID Application)
+#   APPLE_CERTIFICATE_PASSWORD         — .p12 export password
+#   APPLE_SIGNING_IDENTITY             — e.g. Developer ID Application: Name (TEAMID)
+#   APPLE_API_ISSUER                   — App Store Connect API Issuer UUID
+#   APPLE_API_KEY                      — App Store Connect API Key ID
+#   APPLE_API_KEY_CONTENT              — full AuthKey_*.p8 PEM body
+#
 # Stable tags: after merge-updater-manifest, promote-latest sets GitHub Latest.
 # Prerelease tags (vX.Y.Z-beta.N / -rc.N): marked prerelease, never Latest.
 #
 # The public releases repo must have at least one commit on its default branch
 # (e.g. README). Tags for releases are created there pointing at that branch tip.
 #
-# Optional later: APPLE_* / Windows Authenticode (not required for unsigned shipping).
+# Optional later: Windows Authenticode.
 # Rust unit tests are intentionally not run here; use `npm run test:rust` locally.
 
 name: release
@@ -262,12 +270,56 @@ jobs:
           FFMPEG_MAC_ARCH: ${{ matrix.ffmpeg_arch }}
         run: npm run download-ffmpeg
 
+      # Tauri imports APPLE_CERTIFICATE into a temp keychain; notarization needs a
+      # on-disk AuthKey_*.p8 (APPLE_API_KEY_PATH). See docs/MACOS_BUILD.md.
+      - name: Prepare Apple signing credentials
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY_CONTENT }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_API_ISSUER \
+            APPLE_API_KEY \
+            APPLE_API_KEY_CONTENT; do
+            if [ -z "${!name}" ]; then
+              echo "Missing secret ${name} (required for macOS Developer ID + notarization)" >&2
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          mkdir -p private_keys
+          KEY_PATH="${PWD}/private_keys/AuthKey_${APPLE_API_KEY}.p8"
+          # Preserve PEM newlines from the secret body.
+          printf '%s\n' "$APPLE_API_KEY_CONTENT" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=${KEY_PATH}" >> "$GITHUB_ENV"
+          echo "Apple API key ready for notarization ($(basename "$KEY_PATH"))."
+
       - name: Build and upload to existing release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASES_GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
         with:
           owner: ${{ env.RELEASES_OWNER }}
           repo: ${{ env.RELEASES_REPO }}

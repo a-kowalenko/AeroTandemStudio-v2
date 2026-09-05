@@ -150,11 +150,27 @@ npm run tauri build -- --bundles dmg
 # npm run tauri build -- --bundles dmg --skip-stapling
 ```
 
-### Stub when secrets are missing
+### GitHub Actions (release.yml)
 
-CI and local machines without Apple credentials still produce a `.dmg` (unsigned or
-ad-hoc). Signing / notarization steps are skipped; see GitHub Actions logs for
-`APPLE_*` / `TAURI_SIGNING_*` notices.
+macOS matrix jobs require these secrets on the **private** source repo:
+
+| Secret | Value |
+|--------|--------|
+| `APPLE_CERTIFICATE` | `openssl base64 -A -in cert.p12 -out -` |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` export password |
+| `APPLE_SIGNING_IDENTITY` | `Developer ID Application: Name (TEAMID)` |
+| `APPLE_API_ISSUER` | App Store Connect Issuer UUID |
+| `APPLE_API_KEY` | App Store Connect Key ID |
+| `APPLE_API_KEY_CONTENT` | Full `AuthKey_*.p8` PEM body |
+
+The workflow writes `AuthKey_<KEY_ID>.p8` on the runner and sets `APPLE_API_KEY_PATH`.
+Tauri imports `APPLE_CERTIFICATE` and notarizes during `tauri build`. Missing Apple
+secrets **fail** the macOS jobs (Windows/Linux are unaffected).
+
+### Local builds without Apple credentials
+
+Local machines without Apple credentials still produce a `.dmg` (unsigned or
+ad-hoc). Signing / notarization steps are skipped.
 
 ## Updater artifacts
 
