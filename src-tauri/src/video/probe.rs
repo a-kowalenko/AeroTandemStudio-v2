@@ -57,6 +57,10 @@ static CAMERA_TAG_RE: Lazy<Regex> = Lazy::new(|| {
     .unwrap()
 });
 
+static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:").unwrap()
+});
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VideoMetadata {
     pub path: String,
@@ -74,7 +78,14 @@ pub struct VideoMetadata {
     pub camera_model: String,
 }
 
+/// True when FFmpeg stderr lists at least one audio stream.
+pub fn has_audio_stream_from_probe(stderr: &str) -> bool {
+    AUDIO_STREAM_RE.is_match(stderr)
+}
+
 /// Probe a single video file for duration, resolution, and codec.
+///
+/// Also fills the process-local Compatible probe cache (OPT-16) from the same stderr.
 pub fn probe_video(ffmpeg: &Path, input: &str) -> Result<VideoMetadata, FfmpegError> {
     let path = Path::new(input);
     if !path.is_file() {
@@ -94,6 +105,9 @@ pub fn probe_video(ffmpeg: &Path, input: &str) -> Result<VideoMetadata, FfmpegEr
         .unwrap_or(input)
         .to_string();
     let (camera_make, camera_model) = parse_camera_from_probe(&stderr);
+
+    // OPT-16: same stderr → CompatibleStreamKey cache (no second ffmpeg -i).
+    let _ = super::probe_cache::put_from_stderr(input, &stderr);
 
     Ok(VideoMetadata {
         path: input.to_string(),

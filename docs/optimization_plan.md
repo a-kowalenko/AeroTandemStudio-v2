@@ -55,8 +55,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-13 | Player/Cutter: libmpv statt HTML5 | — | — | — | **entfernt** (JPEG-IPC laggy; Keyframe-Cuts → HTML5 only) |
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | hoch | M | mittel | Phase 6 |
 | OPT-15 | SMB-Upload: Parallel + Marker-Barrier | hoch | M | mittel | Phase 10 |
+| OPT-16 | Compatible-Probe-Cache + Create ohne „Clips prüfen“ | mittel | M | niedrig | Phase 40, OPT-2 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-12 → **OPT-14** (QR-Zuverlässigkeit/Speed) → **OPT-15** ✅ → Rest-Follow-ups / Feature-Phasen — OPT-13 zurückgenommen (HTML5 only).
+**Empfohlene Reihenfolge:** OPT-0 … OPT-16 ✅ — weitere Follow-ups / Feature-Phasen; OPT-13 zurückgenommen (HTML5 only).
 
 ---
 
@@ -80,6 +81,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-13 | ✅ implementiert → **entfernt** (HTML5 only) |
 | OPT-14 | ✅ |
 | OPT-15 | ✅ |
+| OPT-16 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -986,6 +988,96 @@ Messung kurz notieren: Upload 200+ Fotos + 1 Video (Dauer Vorher/Nachher falls m
 
 ---
 
+### OPT-16: Compatible-Probe-Cache — Create ohne „Clips prüfen“
+
+**Ziel:** Den Compatible-Gate-Check **vor** Create (Import / Edit) erledigen bzw. cachen, sodass beim Erstellen der Fortschrittsschritt **„Compatible: Clips prüfen…“** (`compatible-probe`) **meist entfällt** und keine erneuten sequentiellen `ffmpeg -i`-Probes nötig sind.
+
+**Impact:** mittel (Create-Start bei `body_concat_mode=compatible` + Multi-Clip; weniger gefühlter Stillstand vor Prep)  
+**Aufwand:** M  
+**Risiko:** niedrig (Gate-Semantik unverändert; nur Zeitpunkt/Caching; Invalidierung bei Cut/Rotate/Split)  
+**Abhängigkeiten:** Phase 40 (`CompatibleStreamKey`, `concat_stream_copy_compatible`); OPT-2 (`probe_videos_parallel` / Import-Probe)
+
+#### Kontext
+
+- Heute (Phase 40): Beim Create, Mode `compatible`, probiert `concat_videos_stream_copy_only_with_mode` **jeden** Clip sequentiell (`probe_clip_for_concat`), danach `emit(…, "compatible-probe")` + `compatible_probe_gate_keys`.
+- Der Gate selbst ist billig (Key-Vergleich). Teuer und spät: wiederholte `ffmpeg -i`-Starts **nach** „Erstellen“, obwohl Import schon `probe_video` parallel läuft — aber nur grobes `VideoMetadata` (codec/w/h/duration), **ohne** `pix_fmt` / Tag / Profile / Soft-Rotation / Audio-Präsenz.
+- Non-Compatible-Pfad: oft **3×** `ffmpeg -i` pro Clip (`probe_vcodec` + `probe_has_audio` + `probe_duration_secs`). Zusätzlich kann `body_codecs_compatible` nochmals proben.
+- Prep/Merge bleiben Create-Arbeit (I/O) — **nicht** vorziehen. Nur Gate + Probe-I/O früher / deduplizieren.
+- Fortschritts-Label: `progress.status.compatibleProbe` / Status `compatible-probe` in `progressLabels.ts`.
+
+#### Entscheidungen (Plan)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| 1 | Was cachen | `CompatibleStreamKey` + `vcodec` + `has_audio` + `duration_secs` (= Inhalt von `ClipConcatProbe`), keyed by **working path + size_bytes + mtime** (oder size allein wenn mtime unzuverlässig — dokumentieren) |
+| 2 | Wann füllen | Beim Video-Import (derselbe `ffmpeg -i`-stderr wie OPT-2, angereichert) und nach Cut/Split/Rotate wenn neuer Pfad/Meta entsteht |
+| 3 | Create-Hit | Cache für alle Create-Pfade gültig → Gate **ohne** neuen Probe; **kein** `compatible-probe`-Progress (direkt Prep / Concat) |
+| 4 | Create-Miss | Parallel proben (`probe_videos_parallel`-Muster / 2–4 Worker), dann Gate; Progress `probing` ok, `compatible-probe` nur wenn Gate wirklich erst jetzt läuft und >1 Clip |
+| 5 | Gate-Fail | Semantik unverändert: `NeedsReencode { reason }` (Orientierung/Codec/Größe/…); kein stiller Fast-Fallback |
+| 6 | Alle Modes | Ein Probe-Pass pro Clip in der Concat-Dispatch-Schleife (auch `fast`/`legacy`) — Triple-`ffmpeg -i` entfernen |
+| 7 | UI-Chip | **Out of scope** dieses OPT (Follow-up): Session-Badge „Clips kompatibel“ vor Create |
+
+#### Betroffene Dateien
+
+- `src-tauri/src/video/probe.rs` — Key/Parsing bereits da; ggf. Cache-Typ / `VideoMetadata` erweitern oder parallele Struktur
+- `src-tauri/src/video/concat.rs` — `probe_clip_for_concat`, `concat_videos_stream_copy_only_with_mode`, `concat_stream_copy_compatible` (Progress `compatible-probe`)
+- `src-tauri/src/video/processor.rs` — `body_codecs_compatible` / `probe_body_codecs` an Cache anbinden falls Create denselben State hat
+- `src-tauri/src/commands/video.rs` — `import_videos`, Cut/Split/Rotate-Commands: Cache befüllen / invalidieren
+- Optional: `src-tauri/src/video/probe_cache.rs` (Process-lokal, Session-Lebensdauer; kein Persist auf Disk nötig)
+- Frontend nur wenn Meta-Felder in `VideoMetadata` / `tauri.ts` erweitert werden (kein Pflicht-UI)
+- Unit-Tests: Key-Match, Cache-Hit überspringt Probe, Invalidierung nach Meta-Änderung, Progress-Contract
+
+#### Scope
+
+**In scope:**
+
+- [x] Process-lokaler Probe-Cache für Concat/`CompatibleStreamKey` (TTL = App-Session; Key inkl. Datei-Identität)
+- [x] Import-Probe anreichern: aus demselben stderr `ClipConcatProbe` / Key ableiten und cachen (kein zweiter `ffmpeg -i` pro Datei beim Import)
+- [x] Nach Cut / Split / Rotate / Replace: Cache-Eintrag für alte Pfade droppen; neue Pfade einmal proben/cachen
+- [x] Create / `concat_videos_stream_copy_only_with_mode`: Cache-Hit → keine sequentiellen Probes; Gate mit gecachten Keys
+- [x] Bei `compatible` + Cache-Hit für alle Clips: **`compatible-probe` nicht emittieren** (Schritt entfällt in der Progress-UI)
+- [x] Cache-Miss: paralleles Probing (2–4 Worker), dann Gate wie heute
+- [x] Non-Compatible: ein Probe-Pass statt dreier Einzelcalls pro Clip
+- [x] Unit-Tests für Cache-Hit/Miss, Invalidierung, Gate-Reasons unverändert; `cargo test`
+
+**Out of scope:**
+
+- Session-UI-Chip / Soft-Confirm vor Create-Button (eigenes UX-Follow-up)
+- Compatible-Prep oder MPEG-TS-Merge vorziehen / parallel zum Idle vor Create
+- Default von `fast` auf `compatible` umstellen
+- Partial-Reencode nur mismatched Clips (Phase-27-Backlog)
+- Persistenter Disk-Cache über App-Neustart
+- Intro-Mux-Probe-Optimierung (`intro_mux_mode`)
+
+#### Akzeptanzkriterien
+
+- [x] Mode `compatible`, ≥2 unveränderte Import-Clips: Create zeigt **kein** `compatible-probe` / „Compatible: Clips prüfen…“ (Log/Progress); Gate-Ergebnis identisch zu Frisch-Probe
+- [x] Nach Cut oder Rotate eines Clips: Create bleibt korrekt (Re-Probe nur Betroffene); Mismatch weiter `NeedsReencode` mit bestehenden Reason-Strings
+- [x] Cache-Miss (leerer Cache): Verhalten wie Phase 40, aber Probes parallel statt streng sequentiell
+- [x] Mode `fast`/`legacy`: keine Verhaltensregression; weniger oder gleiche Anzahl `ffmpeg -i` (kein Triple-Probe)
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [ ] Manuell: `npm run tauri dev` — Import 3+ Clips, Mode Compatible, Create; einmal mit Cut dazwischen
+
+#### Messnotiz (nach Implementierung ausfüllen)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| Create Compatible, 4 Clips, Cache warm | Zeit Start→Prep / Anzahl `ffmpeg -i` | sequentiell N Probes + `compatible-probe` | **0 Create-Probes**, kein `compatible-probe` | Import füllt `probe_cache`; Gate silent |
+| Create Compatible, Cache kalt | Probe-Phase | sequentiell | parallel 2–4 | `resolve_clips_parallel` |
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-16 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-16 (Compatible-Probe-Cache; Create ohne compatible-probe bei Cache-Hit;
+kein Session-UI-Chip, kein Prep vorziehen, kein Default-Mode-Wechsel).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung kurz notieren: Create Compatible 3–4 Clips — ffmpeg -i-Anzahl / ob compatible-probe entfällt.
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -995,6 +1087,7 @@ Messung kurz notieren: Upload 200+ Fotos + 1 Video (Dauer Vorher/Nachher falls m
 | QR zweiter Decoder (quirc) / Fisheye-Undistort | Follow-up nach OPT-14, nur bei Rest-Misses |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB Foto-Ordner-Dedup (Handcam+Outside) | Produkt/AMS — Follow-up nach OPT-15 |
+| Compatible Session-UI-Chip vor Create | UX-Follow-up nach OPT-16 (Cache vorausgesetzt) |
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |

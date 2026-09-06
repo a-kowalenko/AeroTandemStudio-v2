@@ -302,6 +302,8 @@ pub fn cut_video(
             if let Some(b) = backup {
                 super::cut_undo::commit_trim_undo(input, b);
             }
+            // OPT-16: refresh Compatible probe cache for edited working copy.
+            super::probe_cache::refresh_path(ffmpeg, &res.output);
             Ok(res)
         }
         Err(e) => {
@@ -430,6 +432,10 @@ pub fn split_video(
                     b,
                 );
             }
+            // OPT-16: drop stale input identity; warm both split parts.
+            super::probe_cache::invalidate_path(input);
+            super::probe_cache::refresh_path(ffmpeg, &res.part1_path);
+            super::probe_cache::refresh_path(ffmpeg, &res.part2_path);
             Ok(res)
         }
         Err(e) => {

@@ -575,13 +575,14 @@
       "replaceFile": "Reemplazando archivo…",
       "reencodeCut": "Corte (preciso)…",
       "streamCopyCut": "Corte…",
-      "fastConcat": "Uniendo clips (fast path)…",
-      "compatibleProbe": "Compatible: comprobando clips…",
-      "compatibleConcat": "Compatible: uniendo clips…",
-      "compatibleMkvFallback": "Compatible: respaldo MKV…",
-      "legacyConcat": "Unión legacy…",
-      "fastPathWaiting": "Fast path falló — elige una opción…",
-      "compatiblePathWaiting": "Compatible path falló — elige una opción…",
+      "fastConcat": "Uniendo clips…",
+      "compatibleProbe": "Comprobando clips…",
+      "compatiblePrep": "Preparando clips…",
+      "compatibleConcat": "Uniendo clips…",
+      "compatibleMkvFallback": "Respaldo MKV…",
+      "legacyConcat": "Uniendo clips…",
+      "fastPathWaiting": "Unión falló — elige una opción…",
+      "compatiblePathWaiting": "Unión falló — elige una opción…",
       "replaceOriginal": "Reemplazando original…",
       "splitPart1": "Dividiendo clip (parte 1)…",
       "splitPart2": "Dividiendo clip (parte 2)…",
@@ -622,7 +623,7 @@
       "analyseIntroVideo": "Analizando intro/video…",
       "streamCopyFailedWaiting": "Copia de stream falló — elige una opción…",
       "exportWithoutIntro": "Exportando video sin intro…",
-      "legacyMpegTs": "Unión legacy (MPEG-TS)…",
+      "legacyMpegTs": "Uniendo clips (MPEG-TS)…",
       "sdClearing": "Limpiando SD…",
       "backupFinishing": "Finalizando respaldo…",
       "reencodeWaiting": "Recodificación — esperando confirmación…"
@@ -1180,6 +1181,16 @@
     }
   },
   "workflow": {
+    "bodyConcat": {
+      "labelFast": "Ruta rápida",
+      "labelCompatible": "Compatible (seguro QT)",
+      "labelLegacy": "Legacy (robusto)",
+      "shortFast": "Rápido",
+      "shortCompatible": "Compat",
+      "shortLegacy": "Legacy",
+      "hint": "Ruta rápida: una pasada de copia ingenua — rápida, pero arriesgada (p. ej. QuickTime). Compatible: copia de stream preparada con comprobación — sin pérdida y segura para QT/orientación. Legacy: canalización MPEG-TS probada (más lenta).",
+      "aria": "Modo de unión de clips: {{mode}}"
+    },
     "progress": "Progreso",
     "stage": {
       "preview": "Se está generando la vista previa",

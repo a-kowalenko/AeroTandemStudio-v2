@@ -1906,6 +1906,7 @@ function App() {
         uploadToServer: Boolean(config?.upload_to_server),
         manualEntryMode: config?.manual_entry_mode,
         reusePreview: canReusePreview,
+        bodyConcatMode: config?.body_concat_mode ?? "fast",
       }),
     );
     setCreateFailed(false);

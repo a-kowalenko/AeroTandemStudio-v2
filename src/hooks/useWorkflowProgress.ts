@@ -11,6 +11,7 @@ import {
   type CreateJobPlan,
   type CreateJobPipelineView,
 } from "../lib/createJobPlan";
+import type { BodyConcatMode } from "../lib/tauri";
 import {
   formatWorkflowDetail,
   formatWorkflowLabel,
@@ -59,6 +60,8 @@ export type WorkflowProgressView = {
   reserveSpace: boolean;
   /** Create-job pipeline chips (null when not creating). */
   createPipeline: CreateJobPipelineView | null;
+  /** Frozen body-concat mode badge (null when not encoding video). */
+  bodyConcatMode: BodyConcatMode | null;
   /** Hide overall % bar; stepper + detail/tasks only. */
   hideOverallBar: boolean;
   /** Phase 37.2: compact upload bar with expand/collapse. */
@@ -666,6 +669,9 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     cancelling: sessionCancelling,
     reserveSpace: sessionVisible && !sessionEffectiveCollapsed,
     createPipeline: sessionPipeline,
+    bodyConcatMode: sessionPipeline
+      ? (input.createJobPlan?.bodyConcatMode ?? null)
+      : null,
     hideOverallBar: false,
     backgroundUpload: false,
     uploadQueueCount: 0,
@@ -689,6 +695,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     cancelling: uploadCancelling,
     reserveSpace: showUploadChrome,
     createPipeline: uploadPipeline,
+    bodyConcatMode: null,
     hideOverallBar: false,
     backgroundUpload: true,
     uploadQueueCount,

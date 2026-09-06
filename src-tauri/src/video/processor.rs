@@ -905,6 +905,18 @@ fn emit_stage(on_progress: &ProgressCallback, stage: f64, stages: f64, label: &s
     on_progress(progress_from_times(pct_secs, 100.0, label));
 }
 
+/// Body Fast/Compatible/Legacy concat may emit per-clip prep `task_id`s.
+/// Keep overall status only so the floating progress panel does not grow (OPT-16 UX).
+/// Parallel mixed-codec re-encode still uses the raw `on_progress` (clip bars wanted).
+fn body_concat_overall_progress(on_progress: ProgressCallback) -> ProgressCallback {
+    Arc::new(move |p: crate::video::progress::EncodeProgress| {
+        if p.task_id.is_some() {
+            return;
+        }
+        on_progress(p);
+    })
+}
+
 /// Build FFmpeg args for a single body-clip encode (match resolution/fps of `v_params`).
 pub fn build_body_clip_encode_args(
     input: &str,
@@ -1072,12 +1084,18 @@ fn body_codecs_compatible(ffmpeg: &Path, paths: &[String]) -> bool {
 }
 
 /// Probe each path's video codec (best-effort; missing → skipped).
+/// Prefers OPT-16 process-local probe cache when warm.
 fn probe_body_codecs(ffmpeg: &Path, paths: &[String]) -> Vec<VideoCodec> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {
+        if let Some(cached) = super::probe_cache::get(p) {
+            out.push(concat::normalize_vcodec_name(&cached.codec));
+            continue;
+        }
         let Ok(stderr) = ffmpeg_probe_stderr(ffmpeg, p) else {
             continue;
         };
+        let _ = super::probe_cache::put_from_stderr(p, &stderr);
         let meta = probe::parse_video_metadata_from_probe(&stderr);
         let codec = meta
             .as_ref()
@@ -1234,7 +1252,7 @@ pub fn create_video(
             Arc::clone(&on_progress),
         )?;
 
-        let cb = Arc::clone(&on_progress);
+        let cb = body_concat_overall_progress(Arc::clone(&on_progress));
         on_progress(progress_from_times(5.0, 100.0, "Füge kodierte Clips zusammen…"));
         concat::concat_videos_with_opts(
             ffmpeg,
@@ -1250,20 +1268,9 @@ pub fn create_video(
         encoder_used = v_params.vcodec.clone();
         body_target
     } else {
-        if options.parallel_enabled {
-            let pool = ParallelVideoProcessor::new(hw_accel_enabled && hw.available);
-            on_progress(progress_from_times_with_task(
-                0.0,
-                100.0,
-                &format!(
-                    "Füge {} Clips zusammen ({} Worker)…",
-                    video_paths.len(),
-                    pool.max_workers,
-                ),
-                None,
-            ));
-        }
-        let cb = Arc::clone(&on_progress);
+        // Neutral overall status — worker count is misleading for Fast/Compatible.
+        on_progress(progress_from_times(0.0, 100.0, "Füge Clips zusammen…"));
+        let cb = body_concat_overall_progress(Arc::clone(&on_progress));
         concat::concat_videos_with_opts(
             ffmpeg,
             video_paths,

@@ -28,6 +28,12 @@ import {
   type UploadQueueJobPreview,
 } from "../lib/uploadQueue";
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
+import {
+  bodyConcatModeLabelKey,
+  bodyConcatModeShortLabelKey,
+  bodyConcatModeToneClass,
+} from "../lib/bodyConcatMode";
+import type { BodyConcatMode } from "../lib/tauri";
 
 type Props = {
   view: WorkflowProgressView;
@@ -108,6 +114,34 @@ function UploadQueueCollapsible({
         </ul>
       ) : null}
     </div>
+  );
+}
+
+function BodyConcatModeBadge({
+  mode,
+  compact = false,
+}: {
+  mode: BodyConcatMode;
+  compact?: boolean;
+}) {
+  const { t } = useTranslation();
+  const label = t(
+    compact
+      ? bodyConcatModeShortLabelKey(mode)
+      : bodyConcatModeLabelKey(mode),
+  );
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 font-medium leading-tight",
+        compact ? "text-[10px]" : "text-[11px]",
+        bodyConcatModeToneClass(mode),
+      )}
+      title={t("workflow.bodyConcat.hint")}
+      aria-label={t("workflow.bodyConcat.aria", { mode: label })}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -330,6 +364,9 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         <p className="min-w-0 flex-1 truncate text-sm text-foreground" title={label}>
           {label}
         </p>
+        {view.bodyConcatMode ? (
+          <BodyConcatModeBadge mode={view.bodyConcatMode} compact />
+        ) : null}
       </div>
     );
   }
@@ -345,11 +382,14 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
     >
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
             <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
               {t("workflow.progress")}
             </h2>
+            {view.bodyConcatMode ? (
+              <BodyConcatModeBadge mode={view.bodyConcatMode} />
+            ) : null}
           </div>
           <p className="mt-1 text-xs text-muted" aria-live="polite">
             {subtitle}

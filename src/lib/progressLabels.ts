@@ -13,6 +13,7 @@ const RAW_TO_I18N: Record<string, string> = {
   prepare: "progress.status.prepare",
   "prepare-done": "progress.status.prepareDone",
   "mpegts-concat": "progress.status.mpegtsConcat",
+  "Füge Clips zusammen…": "progress.status.mpegtsConcat",
   "hevc-mkv-fallback": "progress.status.hevcFallback",
   "re-encode": "progress.status.reencode",
   "re-encode trim": "progress.status.reencodeTrim",
@@ -23,6 +24,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "stream-copy cut": "progress.status.streamCopyCut",
   "fast-concat": "progress.status.fastConcat",
   "compatible-probe": "progress.status.compatibleProbe",
+  "compatible-prep": "progress.status.compatiblePrep",
   "compatible-concat": "progress.status.compatibleConcat",
   "compatible-mkv-fallback": "progress.status.compatibleMkvFallback",
   "compatible-mpegts-concat": "progress.status.compatibleConcat",
@@ -93,11 +95,27 @@ export function isActivityOnlyProgress(
 ): boolean {
   const s = (status ?? "").trim().toLowerCase();
   if (!s) return false;
-  if (s === "probing" || s === "preview-analyse") return true;
+  if (
+    s === "probing" ||
+    s === "preview-analyse" ||
+    s === "compatible-prep" ||
+    s === "compatible-probe"
+  ) {
+    return true;
+  }
 
   // Analyse / folder prep (existing)
   if (
     /analysiere videos|analysiere intro\/?video|analyzing videos|analyzing intro\/?video|analizando videos|analizando intro\/?video|analysiere für vorschau|analyzing for preview|analizando para vista previa|generiere ausgabe|generating output (dir|directory|folder)|generando directorio/.test(
+      s,
+    )
+  ) {
+    return true;
+  }
+
+  // Body concat prep / probe (before real merge %)
+  if (
+    /compatible:\s*clips (prüfen|vorbereiten)|compatible:\s*(checking|preparing) clips|compatible:\s*(comprobando|preparando) clips|compatible-prep|compatible-probe|clips prüfen|clips vorbereiten|checking clips|preparing clips|comprobando clips|preparando clips/.test(
       s,
     )
   ) {

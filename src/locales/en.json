@@ -575,13 +575,14 @@
       "replaceFile": "Replacing file…",
       "reencodeCut": "Cut (precise)…",
       "streamCopyCut": "Cut…",
-      "fastConcat": "Joining clips (fast path)…",
-      "compatibleProbe": "Compatible: checking clips…",
-      "compatibleConcat": "Compatible: joining clips…",
-      "compatibleMkvFallback": "Compatible: MKV fallback…",
-      "legacyConcat": "Legacy join…",
-      "fastPathWaiting": "Fast path failed — please choose…",
-      "compatiblePathWaiting": "Compatible path failed — please choose…",
+      "fastConcat": "Joining clips…",
+      "compatibleProbe": "Checking clips…",
+      "compatiblePrep": "Preparing clips…",
+      "compatibleConcat": "Joining clips…",
+      "compatibleMkvFallback": "MKV fallback…",
+      "legacyConcat": "Joining clips…",
+      "fastPathWaiting": "Join failed — please choose…",
+      "compatiblePathWaiting": "Join failed — please choose…",
       "replaceOriginal": "Replacing original…",
       "splitPart1": "Splitting clip (part 1)…",
       "splitPart2": "Splitting clip (part 2)…",
@@ -622,7 +623,7 @@
       "analyseIntroVideo": "Analyzing intro/video…",
       "streamCopyFailedWaiting": "Stream copy failed — please choose…",
       "exportWithoutIntro": "Exporting video without intro…",
-      "legacyMpegTs": "Legacy join (MPEG-TS)…",
+      "legacyMpegTs": "Joining clips (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
       "backupFinishing": "Finishing backup…",
       "reencodeWaiting": "Re-encoding — waiting for confirmation…"
@@ -1180,6 +1181,16 @@
     }
   },
   "workflow": {
+    "bodyConcat": {
+      "labelFast": "Fast path (quick)",
+      "labelCompatible": "Compatible (QT-safe)",
+      "labelLegacy": "Legacy (robust)",
+      "shortFast": "Fast",
+      "shortCompatible": "Compat",
+      "shortLegacy": "Legacy",
+      "hint": "Fast path: one naive copy pass — quick but risky (e.g. QuickTime). Compatible: prepared stream-copy with a probe gate — lossless and QT-/orientation-safe. Legacy: proven MPEG-TS pipeline (slower).",
+      "aria": "Clip join mode: {{mode}}"
+    },
     "progress": "Progress",
     "stage": {
       "preview": "Preview is being generated",

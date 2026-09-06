@@ -19,6 +19,7 @@ pub mod parallel;
 pub mod preview_encode;
 pub mod preview_reuse;
 pub mod probe;
+pub mod probe_cache;
 pub mod processor;
 pub mod progress;
 pub mod reencode_confirm;

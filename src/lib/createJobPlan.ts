@@ -1,6 +1,7 @@
 /** Dynamic create-job pipeline steps for the Workflow Progress Panel. */
 
-import type { Kunde } from "./tauri";
+import { normalizeBodyConcatMode } from "./bodyConcatMode";
+import type { BodyConcatMode, Kunde } from "./tauri";
 
 export type CreateJobStepId =
   | "folder"
@@ -21,6 +22,11 @@ export type CreateJobStepDef = {
 
 export type CreateJobPlan = {
   steps: CreateJobStepDef[];
+  /**
+   * Frozen body-concat mode when this run will encode/join video clips.
+   * Null for photo-only, preview-reuse, or no video product.
+   */
+  bodyConcatMode: BodyConcatMode | null;
 };
 
 export type CreateJobPipelineView = {
@@ -87,6 +93,8 @@ export type BuildCreateJobPlanInput = {
   manualEntryMode?: string;
   /** OPT-9: preview will be reused as final video. */
   reusePreview?: boolean;
+  /** Config: body concat path (frozen into the plan when video is encoded). */
+  bodyConcatMode?: string | null;
 };
 
 /**
@@ -97,6 +105,7 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
   const ids: CreateJobStepId[] = ["folder"];
 
   const doVideo = needsVideoProduct(input.kunde) && input.videoCount > 0;
+  const encodeVideo = doVideo && !input.reusePreview;
   if (doVideo) {
     ids.push(input.reusePreview ? "preview-reuse" : "video");
   }
@@ -128,7 +137,12 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
 
   ids.push("done");
 
-  return { steps: ids.map((id) => STEP_DEFS[id]) };
+  return {
+    steps: ids.map((id) => STEP_DEFS[id]),
+    bodyConcatMode: encodeVideo
+      ? normalizeBodyConcatMode(input.bodyConcatMode)
+      : null,
+  };
 }
 
 /**

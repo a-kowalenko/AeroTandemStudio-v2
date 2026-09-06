@@ -21,8 +21,9 @@ use super::ffmpeg::{
 };
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
-use super::progress::{parse_duration, progress_from_times_with_task, EncodeProgress};
-use super::probe::{compatible_stream_key_from_probe, CompatibleStreamKey};
+use super::progress::{progress_from_times_with_task, EncodeProgress};
+use super::probe::CompatibleStreamKey;
+use super::probe_cache::{self, CachedClipProbe};
 use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 use crate::storage::logging;
 
@@ -812,13 +813,21 @@ fn format_secs(secs: f64) -> String {
 // ---------------------------------------------------------------------------
 
 pub fn probe_vcodec(ffmpeg: &Path, input: &str) -> Result<VideoCodec, ConcatError> {
+    if let Some(cached) = probe_cache::get(input) {
+        return Ok(normalize_vcodec_name(&cached.codec));
+    }
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
+    let _ = probe_cache::put_from_stderr(input, &stderr);
     parse_vcodec_from_probe(&stderr)
         .ok_or_else(|| ConcatError::Message(format!("no video stream in: {input}")))
 }
 
 pub fn probe_has_audio(ffmpeg: &Path, input: &str) -> Result<bool, ConcatError> {
+    if let Some(cached) = probe_cache::get(input) {
+        return Ok(cached.has_audio);
+    }
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
+    let _ = probe_cache::put_from_stderr(input, &stderr);
     Ok(AUDIO_STREAM_RE.is_match(&stderr))
 }
 
@@ -831,14 +840,26 @@ pub struct ClipConcatProbe {
     pub compatible_key: CompatibleStreamKey,
 }
 
+impl ClipConcatProbe {
+    pub fn from_cached(cached: &CachedClipProbe) -> Self {
+        Self {
+            vcodec: normalize_vcodec_name(&cached.codec),
+            has_audio: cached.has_audio,
+            duration_secs: cached.duration_secs,
+            compatible_key: cached.compatible_key.clone(),
+        }
+    }
+}
+
 pub fn probe_clip_for_concat(ffmpeg: &Path, path: &str) -> Result<ClipConcatProbe, ConcatError> {
+    if let Some(cached) = probe_cache::get(path) {
+        return Ok(ClipConcatProbe::from_cached(&cached));
+    }
     let stderr = ffmpeg_probe_stderr(ffmpeg, path).map_err(ConcatError::Ffmpeg)?;
-    let vcodec = parse_vcodec_from_probe(&stderr).ok_or_else(|| {
-        ConcatError::Message(format!("no video stream in: {path}"))
-    })?;
-    let has_audio = AUDIO_STREAM_RE.is_match(&stderr);
-    let duration_secs = parse_duration(&stderr).unwrap_or(0.0);
-    let compatible_key = compatible_stream_key_from_probe(&stderr, has_audio).ok_or_else(|| {
+    if parse_vcodec_from_probe(&stderr).is_none() {
+        return Err(ConcatError::Message(format!("no video stream in: {path}")));
+    }
+    let cached = probe_cache::put_from_stderr(path, &stderr).ok_or_else(|| {
         ConcatError::NeedsReencode {
             reason: format!(
                 "Compatible Path: Video-Stream nicht lesbar ({})",
@@ -849,12 +870,7 @@ pub fn probe_clip_for_concat(ffmpeg: &Path, path: &str) -> Result<ClipConcatProb
             ),
         }
     })?;
-    Ok(ClipConcatProbe {
-        vcodec,
-        has_audio,
-        duration_secs,
-        compatible_key,
-    })
+    Ok(ClipConcatProbe::from_cached(&cached))
 }
 
 /// Returns `(codec, sample_rate_hz)` when an audio stream is present.
@@ -1222,31 +1238,41 @@ pub fn concat_videos_stream_copy_only_with_mode(
         }
     }
 
-    emit(&on_progress, 2.0, "probing");
-
     let compatible_mode = is_compatible_body_concat_mode(body_concat_mode);
-    let mut codecs = Vec::with_capacity(paths.len());
-    let mut has_audio_flags = Vec::with_capacity(paths.len());
-    let mut total_secs = 0.0_f64;
-    let mut compatible_probes: Option<Vec<ClipConcatProbe>> = if compatible_mode {
-        Some(Vec::with_capacity(paths.len()))
+
+    // OPT-16: skip "Analysiere Videos…" when every clip is already cached.
+    let all_cached_peek = paths.iter().all(|p| probe_cache::get(p).is_some());
+    if should_emit_probing_progress(all_cached_peek) {
+        emit(&on_progress, 2.0, "probing");
+    }
+
+    // One probe pass for all modes (cache hit or parallel miss).
+    let (cached_probes, all_from_cache) =
+        probe_cache::resolve_clips_parallel(ffmpeg, paths, |done, total, name| {
+            let _ = (done, total, name);
+        })
+        .map_err(|e| match e {
+            super::parallel::ParallelError::Cancelled => {
+                ConcatError::Ffmpeg(FfmpegError::Cancelled)
+            }
+            super::parallel::ParallelError::Message(m) => ConcatError::Message(m),
+        })?;
+
+    let clip_probes: Vec<ClipConcatProbe> = cached_probes
+        .iter()
+        .map(ClipConcatProbe::from_cached)
+        .collect();
+    let codecs: Vec<VideoCodec> = clip_probes.iter().map(|p| p.vcodec).collect();
+    let has_audio_flags: Vec<bool> = clip_probes.iter().map(|p| p.has_audio).collect();
+    let total_secs: f64 = clip_probes.iter().map(|p| p.duration_secs).sum();
+    let compatible_probes: Option<Vec<ClipConcatProbe>> = if compatible_mode {
+        Some(clip_probes.clone())
     } else {
         None
     };
-
-    for p in paths {
-        if compatible_mode {
-            let probe = probe_clip_for_concat(ffmpeg, p)?;
-            codecs.push(probe.vcodec);
-            has_audio_flags.push(probe.has_audio);
-            total_secs += probe.duration_secs;
-            compatible_probes.as_mut().unwrap().push(probe);
-        } else {
-            codecs.push(probe_vcodec(ffmpeg, p)?);
-            has_audio_flags.push(probe_has_audio(ffmpeg, p)?);
-            total_secs += probe_duration_secs(ffmpeg, p).unwrap_or(0.0);
-        }
-    }
+    // Emit compatible-probe only when gate runs now (cache miss) and multi-clip.
+    let emit_compatible_probe_progress =
+        should_emit_compatible_probe_progress(compatible_mode, all_from_cache, paths.len());
 
     let all_same = codecs.windows(2).all(|w| w[0] == w[1]);
     let vcodec = codecs[0];
@@ -1307,6 +1333,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
                 total_secs,
                 &on_progress,
                 compatible_probes.as_ref().expect("compatible probes"),
+                emit_compatible_probe_progress,
             ) {
                 Ok(()) => {
                     emit(&on_progress, 100.0, "end");
@@ -1425,6 +1452,24 @@ pub fn is_compatible_body_concat_mode(mode: &str) -> bool {
         mode.trim().to_ascii_lowercase().as_str(),
         "compatible" | "compat" | "qt_safe" | "prepared" | "avidemux"
     )
+}
+
+/// Whether Create should emit the generic `probing` / „Analysiere Videos…“ step (OPT-16).
+///
+/// Skipped when a peek shows every clip is already in the process-local probe cache.
+pub fn should_emit_probing_progress(all_from_cache: bool) -> bool {
+    !all_from_cache
+}
+
+/// Whether Create should emit the `compatible-probe` progress step (OPT-16).
+///
+/// Skipped when every clip was a process-local cache hit (gate still runs silently).
+pub fn should_emit_compatible_probe_progress(
+    compatible_mode: bool,
+    all_from_cache: bool,
+    clip_count: usize,
+) -> bool {
+    compatible_mode && !all_from_cache && clip_count > 1
 }
 
 /// Single-pass concat demuxer + stream-copy (naive Fast Path).
@@ -1572,7 +1617,7 @@ fn compatible_merge_from_prep(
     write_concat_file_list(&refs, &list_path)?;
     let list_str = path_str(&list_path);
 
-    emit(on_progress, 70.0, "compatible-concat");
+    emit(on_progress, 0.0, "compatible-concat");
     let concat_args =
         build_compatible_prep_mp4_concat_args(&list_str, output, vcodec, has_audio);
     let result = run_ffmpeg(ffmpeg, &concat_args, total_secs, on_progress.clone());
@@ -1582,7 +1627,7 @@ fn compatible_merge_from_prep(
         Err(e) if is_disk_full_error(&e) => Err(ConcatError::Ffmpeg(disk_full_error())),
         Err(e) => {
             log_compatible_merge_failure("Compatible", ffmpeg, &concat_args, &e);
-            emit(on_progress, 75.0, "compatible-mkv-fallback");
+            emit(on_progress, 0.0, "compatible-mkv-fallback");
             compatible_mkv_merge_from_prep(
                 ffmpeg,
                 work,
@@ -1607,17 +1652,25 @@ fn concat_stream_copy_compatible(
     total_secs: f64,
     on_progress: &ProgressCallback,
     clip_probes: &[ClipConcatProbe],
+    emit_probe_progress: bool,
 ) -> Result<(), ConcatError> {
     if is_cancelled() {
         return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
     }
 
-    emit(on_progress, 5.0, "compatible-probe");
+    // OPT-16: skip "compatible-probe" UI step when all clips were cache hits.
+    if emit_probe_progress {
+        emit(on_progress, 0.0, "compatible-probe");
+    }
     let keys: Vec<CompatibleStreamKey> = clip_probes
         .iter()
         .map(|p| p.compatible_key.clone())
         .collect();
     compatible_probe_gate_keys(&keys, has_audio)?;
+
+    // Prep: activity-only overall status (no fake %). Per-clip task_id events are
+    // filtered by create_video's body_concat_overall_progress — panel stays flat.
+    emit(on_progress, 0.0, "compatible-prep");
 
     let work = make_work_dir("concat_compatible")?;
     let n = paths.len();
@@ -1659,6 +1712,7 @@ fn concat_stream_copy_compatible(
         prep_paths.push(result?);
     }
 
+    // Merge: real 0→100% from FFmpeg (starts after indeterminate prep).
     compatible_merge_from_prep(
         ffmpeg,
         &work,
@@ -1706,16 +1760,20 @@ pub fn concat_videos_reencode(
             "concat_videos requires at least 2 input paths".into(),
         ));
     }
-    let mut total_secs = 0.0_f64;
-    let mut codecs = Vec::with_capacity(paths.len());
     for p in paths {
         if !Path::new(p).is_file() {
             return Err(ConcatError::Message(format!("input file not found: {p}")));
         }
-        codecs.push(probe_vcodec(ffmpeg, p)?);
-        total_secs += probe_duration_secs(ffmpeg, p).unwrap_or(0.0);
     }
-    let vcodec = codecs[0];
+    let (cached_probes, _) = probe_cache::resolve_clips_parallel(ffmpeg, paths, |_, _, _| {})
+        .map_err(|e| match e {
+            super::parallel::ParallelError::Cancelled => {
+                ConcatError::Ffmpeg(FfmpegError::Cancelled)
+            }
+            super::parallel::ParallelError::Message(m) => ConcatError::Message(m),
+        })?;
+    let total_secs: f64 = cached_probes.iter().map(|p| p.duration_secs).sum();
+    let vcodec = normalize_vcodec_name(&cached_probes[0].codec);
     let encoder = concat_reencode(
         ffmpeg,
         paths,
@@ -2406,6 +2464,40 @@ pts_time:4.000000 type:I
         assert!(!is_compatible_body_concat_mode("fast"));
         assert!(!is_compatible_body_concat_mode("legacy"));
         assert!(!is_compatible_body_concat_mode(""));
+    }
+
+    #[test]
+    fn probing_progress_skipped_on_cache_hit() {
+        assert!(!should_emit_probing_progress(true));
+        assert!(should_emit_probing_progress(false));
+    }
+
+    #[test]
+    fn compatible_probe_progress_skipped_on_cache_hit() {
+        assert!(!should_emit_compatible_probe_progress(true, true, 4));
+        assert!(should_emit_compatible_probe_progress(true, false, 4));
+        assert!(!should_emit_compatible_probe_progress(true, false, 1));
+        assert!(!should_emit_compatible_probe_progress(false, false, 4));
+    }
+
+    #[test]
+    fn clip_concat_probe_from_cache_matches_gate_keys() {
+        let stderr = r#"
+Input #0, mov, from 'a.mp4':
+  Duration: 00:00:08.00, start: 0.000000, bitrate: 8000 kb/s
+  Stream #0:0(eng): Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo
+"#;
+        let cached = probe_cache::cached_probe_from_stderr(stderr).unwrap();
+        let probe = ClipConcatProbe::from_cached(&cached);
+        assert_eq!(probe.vcodec, VideoCodec::H264);
+        assert!(probe.has_audio);
+        assert!((probe.duration_secs - 8.0).abs() < 0.01);
+        compatible_probe_gate_keys(
+            &[probe.compatible_key.clone(), probe.compatible_key.clone()],
+            true,
+        )
+        .unwrap();
     }
 
     #[test]

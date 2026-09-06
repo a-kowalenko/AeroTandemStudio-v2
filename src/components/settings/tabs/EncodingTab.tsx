@@ -13,25 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { BodyConcatMode } from "@/lib/tauri";
+import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
-
-/** Display-normalize aliases to the three Settings select values (parity with Rust). */
-function normalizeBodyConcatMode(mode: string | undefined): BodyConcatMode {
-  const m = (mode ?? "").trim().toLowerCase();
-  if (m === "legacy" || m === "mpegts" || m === "robust") return "legacy";
-  if (
-    m === "compatible" ||
-    m === "compat" ||
-    m === "qt_safe" ||
-    m === "prepared" ||
-    m === "avidemux"
-  ) {
-    return "compatible";
-  }
-  return "fast";
-}
 
 export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
   const { t } = useTranslation();
