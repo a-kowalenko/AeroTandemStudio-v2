@@ -134,6 +134,7 @@ Mapping: `@docs/MIGRATION.md` · Detail: `@docs/IMPLEMENTATION_PLAN.md` §5–6.
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ✅ |
 | OPT-15 | SMB-Upload Parallel + Marker-Barrier | ✅ |
 | OPT-16 | Compatible-Probe-Cache (Create ohne „Clips prüfen“) | ✅ |
+| OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

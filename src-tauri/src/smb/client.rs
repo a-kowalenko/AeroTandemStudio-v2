@@ -24,6 +24,7 @@ use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
     staging_prefix,
 };
+use super::windows_mapping::{resolve_mapped_local_path, unc_from_smb_parts};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
@@ -217,6 +218,43 @@ pub fn parse_server_target(server_url: &str) -> Result<ServerTarget, String> {
     })
 }
 
+/// Like [`parse_server_target`], but on Windows remaps `Smb` → `Local` when the
+/// UNC already has a connected drive mapping (OPT-17). Dead/unreachable maps
+/// fall back to `Smb` (smb2). Non-Windows: identical to parse.
+pub fn resolve_server_target(server_url: &str) -> Result<ServerTarget, String> {
+    let target = parse_server_target(server_url)?;
+    Ok(apply_windows_drive_mapping(target))
+}
+
+fn apply_windows_drive_mapping(target: ServerTarget) -> ServerTarget {
+    let ServerTarget::Smb {
+        host,
+        share,
+        subpath,
+        ..
+    } = &target
+    else {
+        return target;
+    };
+
+    let config_unc = unc_from_smb_parts(host, share, subpath);
+    match resolve_mapped_local_path(&config_unc) {
+        Some(path) => {
+            // Strip trailing separator for cleaner display; Local join still works.
+            let display = path
+                .to_string_lossy()
+                .trim_end_matches(['\\', '/'])
+                .to_string();
+            crate::storage::logging::info(
+                "smb",
+                format!("SMB via mapped drive {display} ({config_unc})"),
+            );
+            ServerTarget::Local { path }
+        }
+        None => target,
+    }
+}
+
 fn split_host_port(host: &str) -> (String, u16) {
     // IPv6 in brackets: [2001:db8::1]:445
     if let Some(rest) = host.strip_prefix('[') {
@@ -344,7 +382,7 @@ pub async fn test_connection(
     login: &str,
     password: &str,
 ) -> ConnectionTestResult {
-    let target = match parse_server_target(server_url) {
+    let target = match resolve_server_target(server_url) {
         Ok(t) => t,
         Err(e) => {
             return ConnectionTestResult {
@@ -660,7 +698,7 @@ where
         return cancelled;
     }
 
-    let target = match parse_server_target(server_url) {
+    let target = match resolve_server_target(server_url) {
         Ok(t) => t,
         Err(e) => {
             return UploadResult {
@@ -1697,7 +1735,7 @@ pub async fn cleanup_staging_path(
     password: &str,
     staging_root: &str,
 ) -> Result<(), String> {
-    let target = parse_server_target(server_url)?;
+    let target = resolve_server_target(server_url)?;
     match target {
         ServerTarget::Local { path } => {
             let top = path.join(staging_root.replace('/', std::path::MAIN_SEPARATOR_STR));
@@ -1745,7 +1783,7 @@ pub async fn cleanup_remote_upload_folder(
     login: &str,
     password: &str,
 ) -> Result<(), String> {
-    let target = parse_server_target(server_url)?;
+    let target = resolve_server_target(server_url)?;
     let job_name = local_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -2136,6 +2174,25 @@ mod tests {
             ServerTarget::Local { path } => assert_eq!(path, PathBuf::from("/tmp/out")),
             _ => panic!("expected local"),
         }
+    }
+
+    /// Without a matching Windows map (CI / non-Windows / no net use), resolve == parse.
+    #[test]
+    fn resolve_without_map_stays_smb() {
+        let url = "smb://opt17-no-such-host.invalid/share/sub";
+        let parsed = parse_server_target(url).unwrap();
+        let resolved = resolve_server_target(url).unwrap();
+        // Live maps to this fake host are extremely unlikely; equal to parse.
+        assert_eq!(resolved, parsed);
+        assert!(matches!(resolved, ServerTarget::Smb { .. }));
+    }
+
+    #[test]
+    fn apply_mapping_leaves_explicit_local() {
+        let local = ServerTarget::Local {
+            path: PathBuf::from(r"D:\out"),
+        };
+        assert_eq!(apply_windows_drive_mapping(local.clone()), local);
     }
 
     #[test]

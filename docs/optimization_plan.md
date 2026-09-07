@@ -56,8 +56,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-14 | QR: Cascade-Decode + Sharpness-Gate | hoch | M | mittel | Phase 6 |
 | OPT-15 | SMB-Upload: Parallel + Marker-Barrier | hoch | M | mittel | Phase 10 |
 | OPT-16 | Compatible-Probe-Cache + Create ohne „Clips prüfen“ | mittel | M | niedrig | Phase 40, OPT-2 |
+| OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | hoch | S | niedrig | Phase 10, Phase 32 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-16 ✅ — weitere Follow-ups / Feature-Phasen; OPT-13 zurückgenommen (HTML5 only).
+**Empfohlene Reihenfolge:** OPT-0 … OPT-17 ✅ — Performance-Backlog aktuell leer (Follow-ups in §5).
 
 ---
 
@@ -82,6 +83,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-14 | ✅ |
 | OPT-15 | ✅ |
 | OPT-16 | ✅ |
+| OPT-17 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -1078,6 +1080,102 @@ Messung kurz notieren: Create Compatible 3–4 Clips — ffmpeg -i-Anzahl / ob c
 
 ---
 
+### OPT-17: SMB — Windows-Map → Local-Pfad (keine Doppel-Session)
+
+**Ziel:** Wenn die konfigurierte Server-URL (`smb://…` / UNC) bereits als **Windows-Netzlaufwerk** gemappt ist, Health-Check und Upload über den **gemappten lokalen Pfad** (`ServerTarget::Local`) führen — **keine zweite** SMB-Session über den Rust-`smb2`-Client. Config bleibt `smb://…`; Buchstabe pro Client egal (Match über Remote-UNC).
+
+**Impact:** hoch (vermeidet `STATUS_REQUEST_NOT_ACCEPTED` / Session-Limit auf Win10/11-Filehosts; halbiert Sessions wenn Map + App parallel)  
+**Aufwand:** S  
+**Risiko:** niedrig (Fallback unverändert `smb2`; Local-Pfad existiert schon; nur Windows)  
+**Abhängigkeiten:** Phase 10 (`parse_server_target`, `test_connection`, Upload); Phase 32 (Quiet-Poll nutzt denselben Test)
+
+#### Kontext
+
+- Beobachtung: Nach Sleep/Standby schlägt App-Retry mit  
+  `Protocol error: STATUS_REQUEST_NOT_ACCEPTED during SessionSetup` fehl, obwohl  
+  `net use` → `Z: \\169.254.169.254\aktuell` Status OK und Explorer/`Z:` erreichbar sind.
+- Ursache: Windows-Map hält **eine** SMB-Session; App öffnet eine **zweite** via `smb2`. Viele Desktop-Windows-Hosts (LanmanServer / ~20er-SKU-Limit) lehnen weitere Sessions ab — besonders wenn Map + App + Geister-Sessions nach Wake.
+- Workarounds heute: Config auf `Z:\…` umbiegen **oder** Map löschen. Beides skaliert schlecht (Buchstaben pro Client unterschiedlich; Config oft überall `smb://169.254.169.254/aktuell`).
+- `ServerTarget::Local` + `path.exists()` / FS-Copy sind bereits implementiert — fehlt nur die Auflösung Map→Pfad vor dem SMB-Connect.
+
+#### Entscheidungen (Plan)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| 1 | Plattform | **Nur Windows** in OPT-17. macOS (`/Volumes/…`) / Linux (gvfs/`/mnt`) = Follow-up |
+| 2 | Match-Schlüssel | Kanonische UNC aus Config (`normalize_server_path` → `\\host\share[\sub…]`) vs. Remote-Pfad der SMB-Mapping (case-insensitive, `/`↔`\`) |
+| 3 | Subpfad | Map auf Share-Root `\\host\share`, Config mit Subpfad → Local = `{letter}:\{sub…}`; Map tiefer als Config → nur wenn Config-Präfix passt |
+| 4 | Wann auflösen | Einmal zentral vor `test_connection` / Upload / Cleanup / SD-Server-Backup-SMB (alle Einstiege die `parse_server_target` + SMB nutzen) |
+| 5 | Map-Status | Nur nutzbar wenn Mapping vorhanden und Local-Root erreichbar (`exists` / lesbar). Sonst Fallback `smb2` (kein hartes Fail nur wegen Map) |
+| 6 | Credentials | Local-Pfad nutzt **Windows-Map-Creds**; App-Login wird für diesen Pfad nicht erneut angewandt (wie heutiger Local-Pfad). Kein Credential-UI-Change |
+| 7 | Config / UI | Keine neue Setting-Checkbox; stiller Fast-Path. Optional Log-Zeile: `SMB via mapped drive X: (\\host\share)` |
+| 8 | Quiet-Poll | Profitiert automatisch (gleicher `test_connection`-Pfad) |
+| 9 | `user@host` in URL | Wie heute strippen; Match auf Host\Share |
+
+#### Betroffene Dateien
+
+- `src-tauri/src/smb/client.rs` — zentrale Auflösung nach `parse_server_target` (oder Wrapper `resolve_server_target`); Unit-Tests für UNC-Vergleich / Subpfad
+- Neu oder `smb/windows_mapping.rs` (cfg windows): Enumerate mappings (Win32 `WNet*` / äquivalent), Remote→Local
+- Stub auf non-Windows: `None` → unverändert SMB
+- Aufrufer unverändert lassen, wenn Auflösung **in** `test_connection` / Upload-Einstieg sitzt (`handoff_upload`, SD-Backup-SMB, Staging-GC) — möglichst eine Hook-Stelle
+- Frontend: **kein** Pflicht-UI; optional Log sichtbar in bestehender Log-Konsole
+- Unit-Tests: Normalisierung, Präfix-Match, kein Match → SMB; Windows-API hinter Trait/Mock wo sinnvoll
+
+#### Scope
+
+**In scope:**
+
+- [x] Windows: SMB-Mappings abfragen und mit Config-UNC matchen
+- [x] Bei Treffer + erreichbarem Local-Root: Target als `Local { path }` behandeln (Health + Upload + verwandte SMB-Transfers derselben URL)
+- [x] Bei keinem Treffer / unerreichbar: unverändert `smb2`
+- [x] Subpfad-Join Share-Root-Map + Config-Subpath
+- [x] Debug/Info-Log bei Map-Hit (ohne UI-Toggle)
+- [x] Unit-Tests (Normalisierung/Match/Fallback); `cargo test`
+- [x] Kurz in Messnotiz: Session-Verhalten mit Map vs. ohne
+
+**Out of scope:**
+
+- macOS Finder-Mount / Linux gvfs-Erkennung (eigenes Follow-up)
+- Automatisches `net use` / Map anlegen
+- Config-Migration `smb://` → `Z:\…` persistieren
+- LanmanServer-Registry / Server-Limits ändern
+- Parallele Upload-Worker-Sessions (OPT-15) umbauen
+- Neue Settings-UI / i18n-Pflichtstrings (außer ggf. Log bleibt deutsch/technisch wie bestehende SMB-Logs)
+
+#### Akzeptanzkriterien
+
+- [x] Windows: `net use Z: \\169.254.169.254\aktuell` + Config `smb://169.254.169.254/aktuell` → Server-Test **ohne** neue `smb2`-SessionSetup; Log zeigt Map-Hit; Dot grün wenn `Z:` ok
+- [x] Gleicher Setup: Upload schreibt über Local-Pfad; auf dem Filehost **keine** zweite Session nur wegen App-Health (Map-Session bleibt die eine)
+- [x] Ohne Map / Map gelöscht: Verhalten wie heute (`smb2`, gleiche Fehlerpfade)
+- [x] Map vorhanden aber Pfad tot → Fallback `smb2` (oder klarer Local-Fail nur wenn Local gewählt und `exists` false — dokumentieren; bevorzugt Fallback)
+- [x] Config mit Subpfad `smb://host/share/sub` + Map auf `\\host\share` → nutzt `Z:\sub` (bzw. Buchstabe)
+- [x] macOS/Linux: Compile + Verhalten unverändert (kein Map-Pfad)
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [ ] Manuell: `npm run tauri dev` — mit Map / ohne Map / nach `net use /delete`
+
+#### Messnotiz (nach Implementierung)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| Map + App Health | SMB-Sessions auf Host (`Get-SmbSession`) | oft 2 (Map + smb2) | **1** (nur Map) | Resolve → `Local`; Log `SMB via mapped drive Z: (\\host\share)` |
+| Map + Sleep/Wake + Retry | App-Meldung | `STATUS_REQUEST_NOT_ACCEPTED` | ok via Local | kein zweites SessionSetup |
+| Keine Map | Connect-Pfad | smb2 | smb2 | `resolve_server_target` == `parse` |
+
+Implementierung: `smb/windows_mapping.rs` (`WNetGetConnectionW` A–Z), Hook `resolve_server_target` in `test_connection` / `upload_path` / Cleanup.
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-17 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-17 (Windows SMB-Map → Local-Pfad bei UNC-Match;
+kein macOS/Linux-Mount-Resolve, kein net use anlegen, keine Config-Migration).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung: mit gemapptem Z: + smb://-Config — Get-SmbSession / Log Map-Hit; ohne Map unverändert smb2.
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -1088,6 +1186,7 @@ Messung kurz notieren: Create Compatible 3–4 Clips — ffmpeg -i-Anzahl / ob c
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB Foto-Ordner-Dedup (Handcam+Outside) | Produkt/AMS — Follow-up nach OPT-15 |
 | Compatible Session-UI-Chip vor Create | UX-Follow-up nach OPT-16 (Cache vorausgesetzt) |
+| SMB macOS/Linux OS-Mount → Local | Follow-up nach OPT-17 (Win-first) |
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |

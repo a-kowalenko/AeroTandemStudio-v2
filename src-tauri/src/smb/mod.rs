@@ -4,6 +4,7 @@ pub mod client;
 pub mod handoff_upload;
 pub mod parallel_upload;
 pub mod staging_gc;
+pub mod windows_mapping;
 
 pub use client::{
     cleanup_remote_upload_folder, drain_smb_staging_gc, spawn_smb_staging_gc, test_connection,
