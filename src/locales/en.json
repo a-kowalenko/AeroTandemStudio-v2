@@ -253,10 +253,10 @@
       "hwAccel": "Hardware acceleration",
       "parallel": "Parallel video processing",
       "concat": "Join clips",
-      "concatFast": "Fast path (quick)",
-      "concatCompatible": "Compatible (QT-safe)",
-      "concatLegacy": "Legacy (robust)",
-      "concatHint": "Fast path: one naive copy pass — quick but risky (e.g. QuickTime). Compatible: prepared stream-copy with a probe gate — lossless and QT-/orientation-safe. Legacy: proven MPEG-TS pipeline (slower). On Fast/Compatible failure: cancel or use Legacy.",
+      "concatFast": "Fast Path",
+      "concatCompatible": "Compatible",
+      "concatLegacy": "Legacy",
+      "concatHint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: prepared stream-copy with a probe gate — lossless and orientation-safe. Legacy: proven MPEG-TS pipeline (slower). On Fast/Compatible failure: cancel or use Legacy.",
       "advanced": "Advanced",
       "introEnabled": "Use intro when creating (experimental)",
       "introDuration": "Intro duration (sec.)",
@@ -389,7 +389,9 @@
       },
       "upload": {
         "title": "Upload",
-        "afterCreate": "Upload to server after creation"
+        "afterCreate": "Upload to server after creation",
+        "autoMount": "Connect SMB automatically (OS mount)",
+        "autoMountHint": "Creates a temporary drive mapping when needed and disconnects it only on app quit. Off = existing mounts only, or smb2."
       },
       "ams": {
         "title": "Booking lookup (optional)",
@@ -1182,13 +1184,13 @@
   },
   "workflow": {
     "bodyConcat": {
-      "labelFast": "Fast path (quick)",
-      "labelCompatible": "Compatible (QT-safe)",
-      "labelLegacy": "Legacy (robust)",
+      "labelFast": "Fast Path",
+      "labelCompatible": "Compatible",
+      "labelLegacy": "Legacy",
       "shortFast": "Fast",
-      "shortCompatible": "Compat",
+      "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Fast path: one naive copy pass — quick but risky (e.g. QuickTime). Compatible: prepared stream-copy with a probe gate — lossless and QT-/orientation-safe. Legacy: proven MPEG-TS pipeline (slower).",
+      "hint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: prepared stream-copy with a probe gate — lossless and orientation-safe. Legacy: proven MPEG-TS pipeline (slower).",
       "aria": "Clip join mode: {{mode}}"
     },
     "progress": "Progress",

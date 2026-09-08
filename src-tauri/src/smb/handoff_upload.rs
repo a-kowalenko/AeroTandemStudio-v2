@@ -72,7 +72,14 @@ pub async fn abort_handoff_upload(
 
     // Final job name usually does not exist (staging); one quick attempt is enough.
     if let Err(e) =
-        cleanup_remote_upload_folder(local_path, server_url, login, password).await
+        cleanup_remote_upload_folder(
+            local_path,
+            server_url,
+            login,
+            password,
+            config.smb_auto_mount_enabled,
+        )
+        .await
     {
         let low = e.to_ascii_lowercase();
         if !(low.contains("not_found")

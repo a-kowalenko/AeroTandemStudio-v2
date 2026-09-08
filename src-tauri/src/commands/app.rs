@@ -167,6 +167,9 @@ pub fn run_startup_checks(
         crate::smb::spawn_smb_staging_gc(&cfg.server_login, &cfg.server_password);
     }
 
+    // OPT-19: drop stale App-owned mount registry rows (crash leftovers).
+    crate::smb::auto_mount::startup_sweep_owned_registry();
+
     log_info("Startup checks: Linux media (GStreamer)…");
     let media_warning = match crate::media::linux_gst::check_linux_media_playback() {
         crate::media::linux_gst::LinuxMediaStatus::Ok => {

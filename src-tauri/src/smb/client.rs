@@ -19,6 +19,7 @@ use smb2::{ClientConfig, FileWriter, SmbClient};
 
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
+use super::auto_mount::{ensure_os_smb_mount, AutoMountParams};
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
 use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
@@ -218,15 +219,23 @@ pub fn parse_server_target(server_url: &str) -> Result<ServerTarget, String> {
     })
 }
 
-/// Like [`parse_server_target`], but on Windows remaps `Smb` → `Local` when the
-/// UNC already has a connected drive mapping (OPT-17). Dead/unreachable maps
-/// fall back to `Smb` (smb2). Non-Windows: identical to parse.
-pub fn resolve_server_target(server_url: &str) -> Result<ServerTarget, String> {
+/// Like [`parse_server_target`], but remaps `Smb` → `Local` when the UNC is
+/// already available as an OS mapping: Windows drive map (OPT-17) or
+/// macOS/Linux SMB mount (OPT-18). With [`AutoMountParams::enabled`], may
+/// create an App-owned OS mount (OPT-19) before remapping. Dead/unreachable
+/// maps and mount failures fall back to `Smb` (smb2).
+pub fn resolve_server_target(
+    server_url: &str,
+    auto_mount: Option<AutoMountParams<'_>>,
+) -> Result<ServerTarget, String> {
     let target = parse_server_target(server_url)?;
-    Ok(apply_windows_drive_mapping(target))
+    Ok(apply_os_smb_mapping(target, auto_mount))
 }
 
-fn apply_windows_drive_mapping(target: ServerTarget) -> ServerTarget {
+fn apply_os_smb_mapping(
+    target: ServerTarget,
+    auto_mount: Option<AutoMountParams<'_>>,
+) -> ServerTarget {
     let ServerTarget::Smb {
         host,
         share,
@@ -238,21 +247,40 @@ fn apply_windows_drive_mapping(target: ServerTarget) -> ServerTarget {
     };
 
     let config_unc = unc_from_smb_parts(host, share, subpath);
-    match resolve_mapped_local_path(&config_unc) {
-        Some(path) => {
-            // Strip trailing separator for cleaner display; Local join still works.
-            let display = path
-                .to_string_lossy()
-                .trim_end_matches(['\\', '/'])
-                .to_string();
-            crate::storage::logging::info(
-                "smb",
-                format!("SMB via mapped drive {display} ({config_unc})"),
-            );
-            ServerTarget::Local { path }
-        }
-        None => target,
+    if let Some(path) = resolve_mapped_local_path(&config_unc) {
+        return local_via_os_map(path, &config_unc);
     }
+
+    if let Some(params) = auto_mount.filter(|p| p.enabled) {
+        match ensure_os_smb_mount(host, share, subpath, params) {
+            Ok(Some(path)) => {
+                return local_via_os_map(path, &config_unc);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                crate::storage::logging::warn(
+                    "smb",
+                    format!("SMB auto-mount error ({config_unc}): {e}; using smb2"),
+                );
+            }
+        }
+    }
+
+    target
+}
+
+fn local_via_os_map(path: PathBuf, config_unc: &str) -> ServerTarget {
+    let display = path
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .to_string();
+    let via = if cfg!(windows) {
+        "mapped drive"
+    } else {
+        "OS mount"
+    };
+    crate::storage::logging::info("smb", format!("SMB via {via} {display} ({config_unc})"));
+    ServerTarget::Local { path }
 }
 
 fn split_host_port(host: &str) -> (String, u16) {
@@ -381,8 +409,16 @@ pub async fn test_connection(
     server_url: &str,
     login: &str,
     password: &str,
+    auto_mount_enabled: bool,
 ) -> ConnectionTestResult {
-    let target = match resolve_server_target(server_url) {
+    let target = match resolve_server_target(
+        server_url,
+        Some(AutoMountParams {
+            enabled: auto_mount_enabled,
+            login,
+            password,
+        }),
+    ) {
         Ok(t) => t,
         Err(e) => {
             return ConnectionTestResult {
@@ -688,6 +724,7 @@ pub async fn upload_path<F>(
     server_url: &str,
     login: &str,
     password: &str,
+    auto_mount_enabled: bool,
     cancel: UploadCancelPolicy,
     on_progress: F,
 ) -> UploadResult
@@ -698,7 +735,14 @@ where
         return cancelled;
     }
 
-    let target = match resolve_server_target(server_url) {
+    let target = match resolve_server_target(
+        server_url,
+        Some(AutoMountParams {
+            enabled: auto_mount_enabled,
+            login,
+            password,
+        }),
+    ) {
         Ok(t) => t,
         Err(e) => {
             return UploadResult {
@@ -1733,9 +1777,17 @@ pub async fn cleanup_staging_path(
     server_url: &str,
     login: &str,
     password: &str,
+    auto_mount_enabled: bool,
     staging_root: &str,
 ) -> Result<(), String> {
-    let target = resolve_server_target(server_url)?;
+    let target = resolve_server_target(
+        server_url,
+        Some(AutoMountParams {
+            enabled: auto_mount_enabled,
+            login,
+            password,
+        }),
+    )?;
     match target {
         ServerTarget::Local { path } => {
             let top = path.join(staging_root.replace('/', std::path::MAIN_SEPARATOR_STR));
@@ -1782,8 +1834,16 @@ pub async fn cleanup_remote_upload_folder(
     server_url: &str,
     login: &str,
     password: &str,
+    auto_mount_enabled: bool,
 ) -> Result<(), String> {
-    let target = resolve_server_target(server_url)?;
+    let target = resolve_server_target(
+        server_url,
+        Some(AutoMountParams {
+            enabled: auto_mount_enabled,
+            login,
+            password,
+        }),
+    )?;
     let job_name = local_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -2176,12 +2236,12 @@ mod tests {
         }
     }
 
-    /// Without a matching Windows map (CI / non-Windows / no net use), resolve == parse.
+    /// Without a matching OS map/mount (CI / no net use / no Finder mount), resolve == parse.
     #[test]
     fn resolve_without_map_stays_smb() {
         let url = "smb://opt17-no-such-host.invalid/share/sub";
         let parsed = parse_server_target(url).unwrap();
-        let resolved = resolve_server_target(url).unwrap();
+        let resolved = resolve_server_target(url, None).unwrap();
         // Live maps to this fake host are extremely unlikely; equal to parse.
         assert_eq!(resolved, parsed);
         assert!(matches!(resolved, ServerTarget::Smb { .. }));
@@ -2192,7 +2252,22 @@ mod tests {
         let local = ServerTarget::Local {
             path: PathBuf::from(r"D:\out"),
         };
-        assert_eq!(apply_windows_drive_mapping(local.clone()), local);
+        assert_eq!(apply_os_smb_mapping(local.clone(), None), local);
+    }
+
+    #[test]
+    fn resolve_auto_mount_disabled_stays_smb() {
+        let url = "smb://opt19-no-such-host.invalid/share";
+        let resolved = resolve_server_target(
+            url,
+            Some(AutoMountParams {
+                enabled: false,
+                login: "u",
+                password: "p",
+            }),
+        )
+        .unwrap();
+        assert!(matches!(resolved, ServerTarget::Smb { .. }));
     }
 
     #[test]

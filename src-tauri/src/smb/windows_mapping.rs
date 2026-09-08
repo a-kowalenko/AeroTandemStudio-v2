@@ -1,18 +1,22 @@
-//! OPT-17: Resolve Windows SMB drive mappings to a local path.
+//! OPT-17 / OPT-18: Resolve OS SMB mappings to a local path.
 //!
-//! When config is `smb://host/share[/sub]` and Windows already has a mapped
-//! drive to the same UNC (or a prefix), prefer `ServerTarget::Local` so the
-//! app does not open a second `smb2` session against hosts with tight
-//! session limits.
+//! When config is `smb://host/share[/sub]` and the OS already has a mapped
+//! drive (Windows) or SMB mount (macOS/Linux) to the same UNC (or a prefix),
+//! prefer `ServerTarget::Local` so the app does not open a second `smb2`
+//! session against hosts with tight session limits.
 //!
-//! Non-Windows: always `None` (stub). No automatic `net use` / map creation.
+//! - Windows (OPT-17): `WNetGetConnectionW` drive letters
+//! - Unix (OPT-18): see [`super::unix_mapping`]
+//!
+//! No automatic `net use` / mount creation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// One connected disk mapping (`Z:` → `\\host\share[\…]`).
+/// One connected disk mapping (`Z:` → `\\host\share[\…]`) or Unix mount
+/// (`/Volumes/…` / gvfs / CIFS → same UNC form).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DriveMapping {
-    /// Local name including colon, e.g. `Z:`.
+    /// Local root: Windows `Z:` or Unix absolute mount path.
     pub local_name: String,
     /// Remote UNC, normalized (`\\host\share…`, backslashes).
     pub remote_unc: String,
@@ -47,7 +51,7 @@ pub fn unc_from_smb_parts(host: &str, share: &str, subpath: &str) -> String {
 }
 
 /// If `config_unc` matches a mapping (equal or map is a prefix of config),
-/// return the local filesystem path under that drive.
+/// return the local filesystem path under that drive / mount.
 ///
 /// Map deeper than config → no match (cannot write to parent of mapped root).
 pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> Option<PathBuf> {
@@ -63,9 +67,8 @@ pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> 
         if remote == r"\\" {
             continue;
         }
-        let local_root_name = m.local_name.clone();
-        // Validate local name early (same rules as join).
-        if mapping_drive_letter(&local_root_name).is_none() {
+        let local_root_name = m.local_name.trim();
+        if local_root_name.is_empty() || !is_usable_local_root(local_root_name) {
             continue;
         }
 
@@ -86,7 +89,7 @@ pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> 
 
         // Prefer the longest matching remote prefix (most specific map).
         let score = remote.len();
-        let path = join_under_drive(&local_root_name, &rest);
+        let path = join_under_local_root(local_root_name, &rest);
         match &best {
             Some((best_score, _)) if *best_score >= score => {}
             _ => best = Some((score, path)),
@@ -94,6 +97,28 @@ pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> 
     }
 
     best.map(|(_, p)| p)
+}
+
+/// Windows drive letter (`Z:`) or Unix absolute path (`/Volumes/…`).
+fn is_usable_local_root(local_name: &str) -> bool {
+    let t = local_name.trim().trim_end_matches(['\\', '/']);
+    if t.is_empty() {
+        return false;
+    }
+    if is_windows_drive_root(t) {
+        return true;
+    }
+    // Unix absolute mount / explicit local path (also allows `Z:\subdir` style).
+    Path::new(t).is_absolute() || t.contains(['/', '\\'])
+}
+
+fn is_windows_drive_root(local_name: &str) -> bool {
+    let t = local_name.trim().trim_end_matches(['\\', '/']);
+    if t.ends_with(':') {
+        let letter = &t[..t.len() - 1];
+        return letter.len() == 1 && letter.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+    }
+    t.len() == 1 && t.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
 }
 
 /// `Z:` / `Z:\` → `Z:`
@@ -107,23 +132,27 @@ fn mapping_drive_letter(local_name: &str) -> Option<String> {
     } else if t.len() == 1 && t.chars().next()?.is_ascii_alphabetic() {
         Some(format!("{t}:"))
     } else {
-        // Already something like `Z:`-prefixed path — treat full string as root name.
-        Some(t.to_string())
+        None
     }
 }
 
-/// Local FS path under a mapped drive. Uses `Z:\` (root) so `.exists()` checks the
-/// volume root on Windows, not the process CWD on that drive.
-fn join_under_drive(local_name: &str, remainder: &str) -> PathBuf {
-    let letter = mapping_drive_letter(local_name).unwrap_or_else(|| local_name.to_string());
-    let mut path = PathBuf::from(format!(r"{letter}\"));
+/// Local FS path under a mapped drive or Unix mount root.
+///
+/// Windows drive roots use `Z:\` so `.exists()` checks the volume root, not the
+/// process CWD on that drive.
+fn join_under_local_root(local_name: &str, remainder: &str) -> PathBuf {
+    let mut path = if let Some(letter) = mapping_drive_letter(local_name) {
+        PathBuf::from(format!(r"{letter}\"))
+    } else {
+        PathBuf::from(local_name.trim().trim_end_matches(['\\', '/']))
+    };
     for part in remainder.split(['\\', '/']).filter(|p| !p.is_empty()) {
         path.push(part);
     }
     path
 }
 
-/// List connected SMB/disk mappings. Empty on non-Windows or on API failure.
+/// List connected SMB mappings: Windows drive maps (OPT-17) or Unix OS mounts (OPT-18).
 pub fn list_smb_drive_mappings() -> Vec<DriveMapping> {
     #[cfg(windows)]
     {
@@ -131,7 +160,7 @@ pub fn list_smb_drive_mappings() -> Vec<DriveMapping> {
     }
     #[cfg(not(windows))]
     {
-        Vec::new()
+        super::unix_mapping::list_os_smb_mounts()
     }
 }
 
@@ -312,5 +341,15 @@ mod tests {
     #[test]
     fn empty_mappings_no_match() {
         assert!(match_unc_to_mapped_path(r"\\host\share", &[]).is_none());
+    }
+
+    #[test]
+    fn match_unix_absolute_mount_root() {
+        let maps = [DriveMapping {
+            local_name: "/Volumes/aktuell".into(),
+            remote_unc: r"\\host\share".into(),
+        }];
+        let p = match_unc_to_mapped_path(r"\\host\share\sub", &maps).unwrap();
+        assert_eq!(p, PathBuf::from("/Volumes/aktuell").join("sub"));
     }
 }

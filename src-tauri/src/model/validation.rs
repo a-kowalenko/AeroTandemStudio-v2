@@ -12,7 +12,7 @@ pub struct ValidationResult {
 
 /// Validate customer/session form data before video creation / preview.
 ///
-/// `require_api_ids` — manual ID mode: both IDs mandatory (≥4 digits).
+/// `require_api_ids` — manual ID mode: both IDs mandatory (non-empty digits).
 /// `video_paths` are checked for `.mp4` existence when non-empty.
 pub fn validate_kunde(
     kunde: &Kunde,
@@ -36,7 +36,8 @@ pub fn validate_kunde(
     }
 
     if kunde.form_mode == "manual" {
-        const MIN_DIGITS: usize = 4;
+        // AMS IDs are sequential integers (1, 2, …) — no zero-padding / min length floor.
+        const MIN_DIGITS: usize = 1;
         for (label, raw) in [
             ("Kunden-ID", kunde.kunden_id.as_deref()),
             ("Booking-ID", kunde.booking_id.as_deref()),
@@ -50,9 +51,7 @@ pub fn validate_kunde(
                 continue;
             }
             if id.chars().count() < MIN_DIGITS || !id.chars().all(|c| c.is_ascii_digit()) {
-                errors.push(format!(
-                    "{label} muss mindestens {MIN_DIGITS} Ziffern haben"
-                ));
+                errors.push(format!("{label} muss aus Ziffern bestehen"));
             }
         }
     }
@@ -177,11 +176,11 @@ mod tests {
     }
 
     #[test]
-    fn manual_ids_must_be_at_least_four_digits() {
+    fn manual_ids_must_be_digits_only() {
         let mut k = base_kunde();
         k.form_mode = "manual".into();
-        k.kunden_id = Some("123".into());
-        k.booking_id = Some("99".into());
+        k.kunden_id = Some("12ab".into());
+        k.booking_id = Some("x9".into());
         let r = validate_kunde(&k, &[], false, false);
         assert!(!r.valid);
         assert!(r.errors.iter().any(|e| e.contains("Kunden-ID")));
@@ -189,11 +188,11 @@ mod tests {
     }
 
     #[test]
-    fn manual_ids_of_four_digits_ok() {
+    fn manual_ids_accept_short_sequential_numbers() {
         let mut k = base_kunde();
         k.form_mode = "manual".into();
-        k.kunden_id = Some("1234".into());
-        k.booking_id = Some("5678".into());
+        k.kunden_id = Some("7".into());
+        k.booking_id = Some("42".into());
         let r = validate_kunde(&k, &[], false, false);
         assert!(r.valid);
     }
@@ -212,8 +211,8 @@ mod tests {
     fn id_mode_accepts_valid_ids() {
         let mut k = base_kunde();
         k.form_mode = "manual".into();
-        k.kunden_id = Some("1234".into());
-        k.booking_id = Some("5678".into());
+        k.kunden_id = Some("7".into());
+        k.booking_id = Some("42".into());
         let r = validate_kunde(&k, &[], false, true);
         assert!(r.valid);
     }

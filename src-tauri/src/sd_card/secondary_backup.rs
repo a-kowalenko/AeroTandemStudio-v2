@@ -47,6 +47,7 @@ pub struct SecondaryBackupJob {
     pub login: String,
     pub password: String,
     pub backup_dir_name: String,
+    pub auto_mount_enabled: bool,
 }
 
 type EventCb = Arc<dyn Fn(SecondaryBackupEvent) + Send + Sync>;
@@ -146,6 +147,7 @@ impl SecondaryBackupQueue {
             &job.server_url,
             &job.login,
             &job.password,
+            job.auto_mount_enabled,
             move |p: UploadProgress| {
                 let Some(cb) = on_event.as_ref() else {
                     return;
@@ -277,6 +279,7 @@ pub fn mirror_backup_to_smb<F>(
     server_url: &str,
     login: &str,
     password: &str,
+    auto_mount_enabled: bool,
     on_progress: F,
 ) -> Result<String, String>
 where
@@ -298,6 +301,7 @@ where
         url,
         login,
         password,
+        auto_mount_enabled,
         UploadCancelPolicy::BackupOnly,
         on_progress,
     ));
@@ -353,7 +357,7 @@ mod tests {
     fn mirror_soft_fails_empty_url() {
         let primary = tempdir().unwrap();
         fs::write(primary.path().join("a.mp4"), b"v").unwrap();
-        let err = mirror_backup_to_smb(primary.path(), "  ", "", "", |_| {}).unwrap_err();
+        let err = mirror_backup_to_smb(primary.path(), "  ", "", "", false, |_| {}).unwrap_err();
         assert!(err.contains("URL"), "{err}");
     }
 
@@ -361,7 +365,7 @@ mod tests {
     fn mirror_soft_fails_bad_smb_url() {
         let primary = tempdir().unwrap();
         fs::write(primary.path().join("a.mp4"), b"v").unwrap();
-        let err = mirror_backup_to_smb(primary.path(), "smb://", "", "", |_| {}).unwrap_err();
+        let err = mirror_backup_to_smb(primary.path(), "smb://", "", "", false, |_| {}).unwrap_err();
         assert!(!err.is_empty());
     }
 
@@ -387,6 +391,7 @@ mod tests {
             dest_root.path().to_str().unwrap(),
             "",
             "",
+            false,
             |_| {},
         )
         .unwrap();
@@ -410,6 +415,7 @@ mod tests {
                 login: String::new(),
                 password: String::new(),
                 backup_dir_name: "SD_Backup_q".into(),
+                auto_mount_enabled: false,
             };
             SECONDARY_BACKUP.enqueue(job);
             assert!(SECONDARY_BACKUP.wait_idle(Duration::from_secs(5)));

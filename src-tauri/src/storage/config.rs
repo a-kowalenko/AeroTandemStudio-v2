@@ -163,6 +163,9 @@ pub struct AppConfig {
     pub server_login: String,
     #[serde(default)]
     pub server_password: String,
+    /// OPT-19: create a temporary OS SMB map/mount when none exists (default on).
+    #[serde(default = "default_true")]
+    pub smb_auto_mount_enabled: bool,
     #[serde(default)]
     pub hardware_acceleration_enabled: bool,
     #[serde(default = "default_true")]
@@ -915,6 +918,7 @@ impl Default for AppConfig {
             server_url: default_server_url(),
             server_login: String::new(),
             server_password: String::new(),
+            smb_auto_mount_enabled: true,
             hardware_acceleration_enabled: false,
             parallel_processing_enabled: true,
             video_codec: default_codec(),
@@ -1225,6 +1229,7 @@ mod tests {
         assert_eq!(cfg.intro_mux_mode, "reencode");
         assert_eq!(cfg.body_concat_mode, "fast");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
+        assert!(cfg.smb_auto_mount_enabled);
         assert!(!cfg.hardware_acceleration_enabled);
         assert!(!cfg.oldschool_mode);
         assert_eq!(cfg.manual_entry_mode, "id");

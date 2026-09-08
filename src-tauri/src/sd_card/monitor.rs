@@ -433,6 +433,7 @@ struct SecondaryMirrorPlan {
     url: String,
     login: String,
     password: String,
+    auto_mount_enabled: bool,
     /// Soft warning (e.g. deprecated mode) that does not disable the mirror.
     soft_warning: Option<String>,
     /// Hard soft-fail that disables the mirror (bad/empty URL).
@@ -460,6 +461,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
             url: String::new(),
             login: String::new(),
             password: String::new(),
+            auto_mount_enabled: cfg.smb_auto_mount_enabled,
             soft_warning: None,
             disable_warning: None,
         };
@@ -473,6 +475,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
             url,
             login: String::new(),
             password: String::new(),
+            auto_mount_enabled: cfg.smb_auto_mount_enabled,
             soft_warning,
             disable_warning: Some(
                 "Server-Backup-URL fehlt (Primär bleibt erfolgreich) — bitte smb://… im Server-Profil setzen."
@@ -488,6 +491,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
             url,
             login: String::new(),
             password: String::new(),
+            auto_mount_enabled: cfg.smb_auto_mount_enabled,
             soft_warning,
             disable_warning: Some(format!(
                 "Server-Backup-URL ungültig (Primär bleibt erfolgreich): {e}"
@@ -503,6 +507,7 @@ fn resolve_secondary_mirror(cfg: &AppConfig) -> SecondaryMirrorPlan {
         url,
         login,
         password,
+        auto_mount_enabled: cfg.smb_auto_mount_enabled,
         soft_warning,
         disable_warning: None,
     }
@@ -541,6 +546,7 @@ fn finish_secondary_mirror(
             login: plan.login.clone(),
             password: plan.password.clone(),
             backup_dir_name: backup_dir_name.to_string(),
+            auto_mount_enabled: plan.auto_mount_enabled,
         });
         emit_status(
             "secondary_backup_queued",
@@ -557,6 +563,7 @@ fn finish_secondary_mirror(
         &plan.url,
         &plan.login,
         &plan.password,
+        plan.auto_mount_enabled,
         |_| {},
     ) {
         Ok(remote) => (Some(remote), warning, false),

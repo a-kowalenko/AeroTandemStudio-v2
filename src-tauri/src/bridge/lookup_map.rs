@@ -58,7 +58,8 @@ pub fn lookup_marker_types(_video_mode: &str) -> Vec<&'static str> {
     vec!["Handcam", "Outside"]
 }
 
-pub const MIN_LOOKUP_ID_DIGITS: usize = 4;
+/// AMS IDs are sequential integers (1, 2, …) — no zero-padding / min length floor.
+pub const MIN_LOOKUP_ID_DIGITS: usize = 1;
 
 pub fn is_lookup_id_ready(id: &str) -> bool {
     let t = id.trim();
@@ -181,9 +182,10 @@ mod tests {
     }
 
     #[test]
-    fn lookup_id_ready_requires_four_digits() {
+    fn lookup_id_ready_accepts_any_digit_run() {
         assert!(!is_lookup_id_ready(""));
-        assert!(!is_lookup_id_ready("123"));
+        assert!(is_lookup_id_ready("1"));
+        assert!(is_lookup_id_ready("42"));
         assert!(is_lookup_id_ready("1234"));
         assert!(is_lookup_id_ready("012345"));
         assert!(!is_lookup_id_ready("12ab"));

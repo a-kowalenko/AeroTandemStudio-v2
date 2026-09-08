@@ -463,6 +463,19 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           />
           {t("settings.server.upload.afterCreate")}
         </label>
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox
+            className="mt-0.5"
+            checked={draft.smb_auto_mount_enabled}
+            onCheckedChange={(v) => patch("smb_auto_mount_enabled", v === true)}
+          />
+          <span>
+            <span className="block">{t("settings.server.upload.autoMount")}</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              {t("settings.server.upload.autoMountHint")}
+            </span>
+          </span>
+        </label>
       </SettingsSection>
 
       <SettingsSection

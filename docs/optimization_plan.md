@@ -57,8 +57,10 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-15 | SMB-Upload: Parallel + Marker-Barrier | hoch | M | mittel | Phase 10 |
 | OPT-16 | Compatible-Probe-Cache + Create ohne „Clips prüfen“ | mittel | M | niedrig | Phase 40, OPT-2 |
 | OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | hoch | S | niedrig | Phase 10, Phase 32 |
+| OPT-18 | SMB: macOS/Linux OS-Mount → Local-Pfad | mittel | M | mittel | OPT-17 |
+| OPT-19 | SMB: Auto-Mount (OS-Map anlegen, App-owned) | hoch | L | mittel | OPT-17, OPT-18 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-17 ✅ — Performance-Backlog aktuell leer (Follow-ups in §5).
+**Empfohlene Reihenfolge:** OPT-0 … OPT-19 ✅ — weitere Follow-ups in §5.
 
 ---
 
@@ -84,6 +86,8 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-15 | ✅ |
 | OPT-16 | ✅ |
 | OPT-17 | ✅ |
+| OPT-18 | ✅ |
+| OPT-19 | ✅ |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -1102,7 +1106,7 @@ Messung kurz notieren: Create Compatible 3–4 Clips — ffmpeg -i-Anzahl / ob c
 
 | # | Thema | Entscheidung |
 |---|--------|--------------|
-| 1 | Plattform | **Nur Windows** in OPT-17. macOS (`/Volumes/…`) / Linux (gvfs/`/mnt`) = Follow-up |
+| 1 | Plattform | **Nur Windows** in OPT-17. macOS (`/Volumes/…`) / Linux (gvfs/`/mnt`) → **OPT-18** |
 | 2 | Match-Schlüssel | Kanonische UNC aus Config (`normalize_server_path` → `\\host\share[\sub…]`) vs. Remote-Pfad der SMB-Mapping (case-insensitive, `/`↔`\`) |
 | 3 | Subpfad | Map auf Share-Root `\\host\share`, Config mit Subpfad → Local = `{letter}:\{sub…}`; Map tiefer als Config → nur wenn Config-Präfix passt |
 | 4 | Wann auflösen | Einmal zentral vor `test_connection` / Upload / Cleanup / SD-Server-Backup-SMB (alle Einstiege die `parse_server_target` + SMB nutzen) |
@@ -1135,8 +1139,8 @@ Messung kurz notieren: Create Compatible 3–4 Clips — ffmpeg -i-Anzahl / ob c
 
 **Out of scope:**
 
-- macOS Finder-Mount / Linux gvfs-Erkennung (eigenes Follow-up)
-- Automatisches `net use` / Map anlegen
+- macOS Finder-Mount / Linux gvfs-Erkennung (→ **OPT-18**)
+- Automatisches `net use` / Map anlegen → **OPT-19**
 - Config-Migration `smb://` → `Z:\…` persistieren
 - LanmanServer-Registry / Server-Limits ändern
 - Parallele Upload-Worker-Sessions (OPT-15) umbauen
@@ -1176,6 +1180,253 @@ Messung: mit gemapptem Z: + smb://-Config — Get-SmbSession / Log Map-Hit; ohne
 
 ---
 
+### OPT-18: SMB — macOS/Linux OS-Mount → Local-Pfad
+
+**Ziel:** Wenn die konfigurierte Server-URL (`smb://…` / UNC) bereits als **OS-SMB-Mount** gemountet ist, Health-Check und Upload über den **lokalen Mount-Pfad** (`ServerTarget::Local`) führen — **keine zweite** SMB-Session über den Rust-`smb2`-Client. Config bleibt `smb://…`; Mount-Pfad pro Client egal (Match über Host+Share[+Subpfad]).
+
+**Impact:** mittel (gleiche Session-Limit-/Doppel-Connect-Problematik wie OPT-17, seltener auf Desktop-Unix; relevant wenn Finder/gvfs/CIFS parallel zur App offen)  
+**Aufwand:** M  
+**Risiko:** mittel (Mount-Pfade/APIs plattformspezifisch und flüchtig; gvfs-URI-Parsing; False-Match auf Share-Namen)  
+**Abhängigkeiten:** OPT-17 (`resolve_server_target`, `unc_from_smb_parts` / Match-Hilfen, Local-Fallback-Semantik)
+
+#### Kontext
+
+- OPT-17 löst das Problem nur unter Windows (`WNetGetConnectionW` → Drive-Letter).
+- Auf macOS mountet Finder oft unter `/Volumes/<ShareName>`; auf Linux gvfs unter  
+  `/run/user/<uid>/gvfs/smb-share:server=…,share=…` oder CIFS unter `/mnt` / `/media`.
+- Dieselbe Config `smb://169.254.169.254/aktuell` + offener Finder-/gvfs-Mount → App öffnet weiterhin `smb2` → potenziell zweite Session / Fehler nach Sleep.
+- Hook `resolve_server_target` existiert bereits; non-Windows-Stub liefert heute leere Mappings → immer `smb2`.
+
+#### Entscheidungen (Plan)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| 1 | Plattform | **macOS + Linux** in OPT-18. Windows unverändert OPT-17 (`windows_mapping.rs`) |
+| 2 | API-Oberfläche | Bestehende `list_smb_drive_mappings` / `DriveMapping` erweitern **oder** `list_os_smb_mounts()` + gemeinsamer Match über kanonische UNC (`unc_from_smb_parts` / `match_unc_to_mapped_path` wo möglich) |
+| 3 | macOS Enum | `getfsstat` / `mount` (smbfs/cifs): Local=`/Volumes/…`, Remote-UNC aus Mount-Options (`server=`, `share=` / `//host/share`) ableiten; Share-Name-only nur wenn eindeutig |
+| 4 | Linux Enum | Primär: `/proc/mounts` für `cifs`/`smb3`; Sekundär: gvfs-Pfade unter `$XDG_RUNTIME_DIR/gvfs/` (URI-Query `server`/`share` parsen) |
+| 5 | Match-Schlüssel | Wie OPT-17: Host + Share (+ Subpfad-Präfix); case-insensitive; Host-Vergleich IP ↔ Hostname **nicht** auflösen (kein DNS-Guess) — nur String-Gleichheit der Config-Host-Form |
+| 6 | Subpfad | Mount auf Share-Root + Config-Subpfad → `{mount}/{sub…}`; Mount tiefer als Config → kein Match (wie OPT-17) |
+| 7 | Erreichbarkeit | Nur wenn Mount-Root `exists` / lesbar; sonst Fallback `smb2` |
+| 8 | Credentials | Local nutzt OS-Mount-Creds; App-Login nicht erneut (wie Local/OPT-17) |
+| 9 | Config / UI | Kein neuer Toggle; Log analog: `SMB via OS mount /Volumes/… (\\host\share)` |
+| 10 | Quiet-Poll | Automatisch über denselben `resolve_server_target`-Pfad |
+| 11 | Windows | Keine Verhaltensänderung; keine doppelte Resolve-Logik |
+
+#### Betroffene Dateien
+
+- `src-tauri/src/smb/windows_mapping.rs` — umbenennen/teilen in z. B. `os_mapping.rs` **oder** neue `smb/unix_mapping.rs` (`cfg(unix)`) + Stub auf Windows
+- `src-tauri/src/smb/client.rs` — `apply_windows_drive_mapping` generalisieren zu OS-Map-Resolve (eine Hook-Stelle behalten)
+- Unit-Tests: gvfs-URI-Parse, `/proc/mounts`-Zeile, macOS-Options-Parse, Subpfad-Join, kein Match → SMB; Fixture-Strings ohne Live-Mount
+- Frontend: kein Pflicht-UI
+- Docs: Messnotiz macOS und/oder Linux
+
+#### Scope
+
+**In scope:**
+
+- [x] macOS: SMB/smbfs-Mounts enumerieren und mit Config-UNC matchen
+- [x] Linux: CIFS (`/proc/mounts`) + gvfs-SMB-Pfade matchen
+- [x] Bei Treffer + erreichbarem Mount-Root: `ServerTarget::Local` (Health + Upload + Cleanup derselben URL)
+- [x] Bei keinem Treffer / tot: unverändert `smb2`
+- [x] Subpfad-Join analog OPT-17
+- [x] Info-Log bei Mount-Hit
+- [x] Unit-Tests (Parse/Match/Fallback) ohne Live-Share; `cargo test` auf der Entwicklerplattform
+- [x] Windows-Regression: OPT-17-Pfad unverändert
+
+**Out of scope:**
+
+- Automatisches Mounten (`mount_smbfs` / `gio mount` / `net use`) → **OPT-19**
+- Config-Migration `smb://` → `/Volumes/…` persistieren
+- DNS/mDNS-Auflösung Host ↔ IP für Match
+- Windows-Änderungen über OPT-17 hinaus
+- Neue Settings-UI / i18n-Pflichtstrings
+- OPT-15 Parallel-Upload-Umbau
+
+#### Akzeptanzkriterien
+
+- [x] macOS: Finder-Mount `/Volumes/…` + Config `smb://host/share` → Server-Test/Upload über Local; Log Mount-Hit; ohne Mount → `smb2` (Code-Pfad; manuelle Live-Abnahme)
+- [x] Linux: gvfs- oder CIFS-Mount + gleiche Config → Local; ohne Mount → `smb2` (Code-Pfad; manuelle Live-Abnahme)
+- [x] Mount tot / ausgehängt → Fallback `smb2` (kein hartes Fail nur wegen stale Mount)
+- [x] Config-Subpfad + Share-Root-Mount → `{mount}/sub`
+- [x] Windows: Verhalten wie nach OPT-17 (keine Regression)
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [ ] Manuell: `npm run tauri dev` — mit Mount / ohne Mount (mind. eine Unix-Plattform)
+
+#### Messnotiz (nach Implementierung)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| macOS Finder-Mount + Health | Connect-Pfad / Sessions | smb2 (+ Finder) | Local via `/Volumes/…` | Log `SMB via OS mount /Volumes/… (\\host\share)` |
+| Linux gvfs/CIFS + Health | Connect-Pfad | smb2 | Local | `/proc/mounts` + `$XDG_RUNTIME_DIR/gvfs` |
+| Kein Mount | Connect-Pfad | smb2 | smb2 | `resolve_server_target` == `parse` |
+| Windows Map | wie OPT-17 | Local | Local | unverändert (`windows_mapping.rs`) |
+
+Implementierung: `smb/unix_mapping.rs` (getfsstat / `/proc/mounts` / gvfs); gemeinsamer Match in `windows_mapping.rs`; Hook bleibt `resolve_server_target`.
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-18 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-18 (macOS/Linux OS-SMB-Mount → Local-Pfad bei UNC-Match;
+kein autom. Mounten, keine Config-Migration, Windows-OPT-17 unverändert).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung: mit Finder-/gvfs-/CIFS-Mount + smb://-Config — Log Mount-Hit / Local-Pfad; ohne Mount unverändert smb2.
+```
+
+---
+
+### OPT-19: SMB — Auto-Mount (OS-Map anlegen, App-owned)
+
+**Ziel:** Wenn Config `smb://…` / UNC ist und **noch kein** passender OS-Mount/Map existiert, legt die App bei Bedarf selbst einen **systemweiten SMB-Mount** an (Windows Map / macOS `/Volumes` / Linux gvfs|CIFS-User-Mount). Danach greifen OPT-17/18 → Health/Upload über `ServerTarget::Local` — **keine** zweite `smb2`-Session. Manuelles Finder „Mit Server verbinden“ / `net use` / `gio mount` ist für den App-Workflow **nicht mehr nötig** (solange Auto-Mount an ist).
+
+**Impact:** hoch (schließt die Lücke hinter OPT-17/18: Field-PCs ohne vorab gemapptes Laufwerk; Sleep/Wake-Session-Limits)  
+**Aufwand:** L  
+**Risiko:** mittel (plattformspezifische Mount-APIs, Creds/Keychain, Rechte, Quit-Cleanup, Race mit User-Mounts)  
+**Abhängigkeiten:** OPT-17, OPT-18 (`resolve_server_target`, Mapping-Enum, Local-Fallback)
+
+#### Produktentscheidungen (fest)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| P1 | Opt-in-UI | Settings-Toggle **`smb_auto_mount_enabled`** |
+| P2 | Default | **AN** (neue Installs + fehlender Key → `true` via serde default) |
+| P3 | Lebensdauer | Mount bleibt während App-Lauf; beim **Quit** nur **App-owned** Mounts trennen |
+| P4 | Fremde Mounts | Finder/`net use`/User-CIFS **niemals** unmounten |
+| P5 | Mount-Fail | Still Fallback **`smb2`** (kein hartes Blockieren von Health/Upload nur wegen Mount) |
+| P6 | Config-URL | Bleibt `smb://…`; **keine** Persistenz als Local-Pfad |
+
+#### Kontext
+
+- OPT-17/18 nutzen nur **bereits vorhandene** Maps/Mounts.
+- Ohne vorab verbundenen Share öffnet die App weiterhin `smb2` → Session-Limits / Sleep-Wake-Fehler bleiben auf „nackten“ Clients.
+- Auto-Mount ersetzt den manuellen Finder-/`net use`-Schritt **für die App**, wenn der Toggle an ist; paralleles manuelles Mounten bleibt erlaubt und hat Vorrang (Resolve vor Create).
+
+```mermaid
+flowchart TD
+  start[resolve_server_target]
+  parse[parse Smb oder Local]
+  existing{OPT-17/18 Match und exists?}
+  toggle{smb_auto_mount_enabled?}
+  mount[ensure_os_smb_mount]
+  owned[Track App-owned mount]
+  local[ServerTarget Local]
+  smb2[ServerTarget Smb smb2]
+  fail{Mount ok und exists?}
+
+  start --> parse
+  parse --> existing
+  existing -->|ja| local
+  existing -->|nein| toggle
+  toggle -->|aus| smb2
+  toggle -->|an| mount
+  mount --> fail
+  fail -->|ja| owned
+  owned --> local
+  fail -->|nein| smb2
+```
+
+#### Entscheidungen (Plan)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| 1 | Wann | Einmal zentral vor `test_connection` / Upload / Cleanup / SD-Server-Backup-SMB — **nach** OPT-17/18-Lookup, **nur** wenn noch kein Local-Hit und Target `Smb` |
+| 2 | Idempotenz | Existiert bereits Matching-Mount → kein zweites Anlegen; nur Log Map/Mount-Hit |
+| 3 | Credentials | `server_login` / `server_password` (bzw. Backup-URL-Creds für SD-Mirror); Guest wenn leer (wie smb2) |
+| 4 | Windows | `WNetAddConnection2W` (oder äquivalent): freien Drive-Letter wählen **oder** Letter-less Redirected; Remote = kanonische UNC Share-Root (+ Subpfad nur wenn API es braucht). Prefer Letter für Explorer-Parität |
+| 5 | macOS | User-Mount ala `mount_smbfs` / NetFS (`NetFSMountURLSync` o. Ä.) → typisch `/Volumes/<Share>`; Auth aus Config; **kein** interaktiver Finder-Dialog wenn Creds gesetzt |
+| 6 | Linux | Primär **gvfs** (`gio mount smb://host/share`) im User-Session; Fallback dokumentieren wenn gvfs fehlt → smb2 (kein root-`mount.cifs` in v1) |
+| 7 | Subpfad | Mount auf **Share-Root**; Config-Subpfad weiter über OPT-17/18-Join (`{mount}/sub`) |
+| 8 | App-owned Tracking | Persistente Liste (z. B. in App-Data JSON): `{ unc, local_path, created_at, platform }`. Nur Einträge dieser Liste beim Quit unmounten |
+| 9 | Quit / Crash | Normal-Quit: App-owned unmount. Crash: Mount kann bleiben → **Startup-Sweep**: App-owned Einträge prüfen; unerreichbar → Liste bereinigen; erreichbar + Toggle an → behalten bis Quit; optional „orphan cleanup“ nur für klar App-owned Marker |
+| 10 | Quiet-Poll | Profitiert automatisch (gleicher Resolve-Pfad); Mount-Versuch nicht bei jedem 45‑s-Tick wiederholen — Cache „attempted this session / last failure“ mit Backoff |
+| 11 | UI | Settings (Server-Bereich): Toggle + kurzer Hilfetext; i18n de/en/es-MX. Log: `SMB auto-mounted …` / `SMB auto-mount failed …; using smb2` |
+| 12 | Unmount-API | Plattform: Windows `WNetCancelConnection2`; macOS `unmount`/`diskutil unmount`; Linux `gio mount -u` auf gvfs-URI |
+
+#### Betroffene Dateien (erwartet)
+
+- Neu: `src-tauri/src/smb/auto_mount.rs` (ensure / unmount / owned-registry)
+- [`src-tauri/src/smb/client.rs`](src-tauri/src/smb/client.rs) — Hook in `resolve_server_target` / `apply_os_smb_mapping` (ensure vor Local-Resolve-Retry)
+- [`src-tauri/src/smb/windows_mapping.rs`](src-tauri/src/smb/windows_mapping.rs) / [`unix_mapping.rs`](src-tauri/src/smb/unix_mapping.rs) — unverändert Enum; Auto-Mount speist dieselben Match-Hilfen
+- [`src-tauri/src/storage/config.rs`](src-tauri/src/storage/config.rs) — `smb_auto_mount_enabled: bool` (default `true`)
+- App-Quit-Pfad (Tauri close / cleanup) — owned unmount
+- Frontend Settings + i18n
+- Unit-Tests: Toggle aus → kein Mount-Call; Idempotenz; Owned vs. fremd; Fail → smb2; Subpfad-Join nach Mount
+
+#### Scope
+
+**In scope:**
+
+- [x] Config-Flag `smb_auto_mount_enabled` (Default **true**) + Settings-Toggle + i18n
+- [x] `ensure_os_smb_mount(url, creds)` für Windows + macOS + Linux (gvfs)
+- [x] Integration in Resolve-Pfad: nach Negativ-Match OPT-17/18 → ensure → erneut matchen → Local oder smb2
+- [x] App-owned Registry + Quit-Unmount nur owned
+- [x] Startup orphan/stale cleanup der Registry
+- [x] Session-Backoff: kein Mount-Sturm im Quiet-Poll
+- [x] Logs Mount-OK / Mount-Fail+smb2
+- [x] Unit-Tests (Mock/Fixture wo möglich); `cargo test`
+- [ ] Manuell: Win + mind. eine Unix-Plattform
+
+**Out of scope:**
+
+- DNS/mDNS Host↔IP für Match (weiter String-Gleichheit)
+- Config-Migration `smb://` → `Z:\` / `/Volumes/…` persistieren
+- Root-`mount.cifs` / fstab / System-Daemon
+- Interaktiver Cred-Dialog wenn Passwort fehlt (v1: Guest/smb2-Fallback; optional Soft-Hint in Settings)
+- Erzwungenes Unmount fremder Mounts
+- OPT-15 Parallel-Upload-Umbau
+- Automatisches Remount nach Sleep als eigener Scheduler (Resolve bei nächstem Health reicht)
+
+#### Akzeptanzkriterien
+
+- [x] Toggle **AN**, kein vorab Mount: erster Server-Test legt OS-Mount an → Log Auto-Mount → danach Local (OPT-17/18); **kein** zusätzliches smb2-SessionSetup wenn Mount ok
+- [x] Toggle **AUS**: Verhalten wie nach OPT-18 (nur vorhandene Maps; sonst smb2)
+- [x] Bereits Finder/`net use`-Mount: kein zweites Anlegen; Local über OPT-17/18; Quit unmountet diesen Mount **nicht**
+- [x] App-owned Mount: Quit trennt ihn; fremder Mount bleibt
+- [x] Mount-Fail (Netz/Creds): Health/Upload weiter über smb2; klarer Log; App nicht „hängend“ blockiert
+- [x] Config-Subpfad: Mount Share-Root + Local `{mount}/sub`
+- [x] Default für neue Config / fehlender Key: Auto-Mount **an**
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml` grün
+- [ ] Manuell: `npm run tauri dev` — Toggle an/aus, mit/ohne vorab Mount, Quit-Cleanup
+
+#### Risiken & Mitigation
+
+| Risiko | Mitigation |
+|--------|------------|
+| macOS Keychain / TCC-Prompts | Creds aus Config durchreichen; Fail → smb2; Hilfetext in Settings |
+| Linux ohne gvfs | Fail → smb2; Log „gvfs unavailable“ |
+| Drive-Letter-Kollision (Windows) | Freien Letter suchen; bei keinem frei → smb2 |
+| Quiet-Poll mountet alle 45 s neu | In-Memory „mounted / last_error_at“ Backoff |
+| Quit kill -9 | Startup Registry-Sweep |
+| Falsches Unmount fremder Shares | Strict App-owned Liste; nie „alle UNC X unmounten“ |
+
+#### Messnotiz (nach Implementierung ausfüllen)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| Frischer Client, Toggle an | Connect-Pfad | smb2 | Local via Auto-Mount | Log `SMB auto-mounted …` / `SMB via mapped drive` |
+| Toggle aus | Connect-Pfad | smb2 | smb2 | kein ensure |
+| Vorab Finder-Mount | Unmount bei Quit | — | Mount bleibt | nicht App-owned |
+| App-owned + Quit | Mount-Status | — | getrennt | Registry geleert |
+| Mount-Fail | Upload | Fehler oder smb2 | smb2 Fallback | Log `auto-mount failed …; using smb2` |
+
+Implementierung: `smb/auto_mount.rs`; Hook in `resolve_server_target`; Config `smb_auto_mount_enabled` (default true); Quit `unmount_all_owned`.
+
+#### Agent-Prompt
+
+```
+Implementiere OPT-19 aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur OPT-19 (SMB Auto-Mount: Toggle Default AN; ensure vor Resolve;
+App-owned Quit-Unmount; Fail → smb2; kein DNS-Guess, kein fremdes Unmount).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run tauri dev.
+Messung: ohne vorab Mount + Toggle an — Log Auto-Mount / Local;
+Toggle aus — smb2; Quit — nur App-owned getrennt.
+```
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -1186,7 +1437,6 @@ Messung: mit gemapptem Z: + smb://-Config — Get-SmbSession / Log Map-Hit; ohne
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
 | SMB Foto-Ordner-Dedup (Handcam+Outside) | Produkt/AMS — Follow-up nach OPT-15 |
 | Compatible Session-UI-Chip vor Create | UX-Follow-up nach OPT-16 (Cache vorausgesetzt) |
-| SMB macOS/Linux OS-Mount → Local | Follow-up nach OPT-17 (Win-first) |
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |

@@ -71,7 +71,7 @@ pub async fn test_server_connection(
     state: State<'_, ConfigState>,
     overrides: Option<ServerOverrides>,
 ) -> Result<ConnectionTestResult, String> {
-    let (url, login, password) = {
+    let (url, login, password, auto_mount) = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
         let o = overrides.unwrap_or_default();
         (
@@ -80,13 +80,14 @@ pub async fn test_server_connection(
                 .unwrap_or_else(|| cache.server_login.clone()),
             o.server_password
                 .unwrap_or_else(|| cache.server_password.clone()),
+            cache.smb_auto_mount_enabled,
         )
     };
     logging::info(
         "smb",
         format!("Server-Test: url={}", url.trim()),
     );
-    let result = test_connection(&url, &login, &password).await;
+    let result = test_connection(&url, &login, &password, auto_mount).await;
     if result.ok {
         logging::info("smb", format!("Server-Test OK: {}", result.message));
     } else {
@@ -112,7 +113,7 @@ pub async fn upload_to_server(
         return Err(format!("Lokaler Pfad existiert nicht: {local_path}"));
     }
 
-    let (config, url, login, password) = {
+    let (config, url, login, password, auto_mount) = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
         let o = overrides.unwrap_or_default();
         (
@@ -122,6 +123,7 @@ pub async fn upload_to_server(
                 .unwrap_or_else(|| cache.server_login.clone()),
             o.server_password
                 .unwrap_or_else(|| cache.server_password.clone()),
+            cache.smb_auto_mount_enabled,
         )
     };
 
@@ -144,6 +146,7 @@ pub async fn upload_to_server(
         &url,
         &login,
         &password,
+        auto_mount,
         UploadCancelPolicy::SlotOnly,
         move |progress| {
             let event = UploadProgressEvent::from(progress);

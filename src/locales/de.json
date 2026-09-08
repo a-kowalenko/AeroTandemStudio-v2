@@ -253,10 +253,10 @@
       "hwAccel": "Hardware-Beschleunigung",
       "parallel": "Paralleles Video-Processing",
       "concat": "Clips zusammenfügen",
-      "concatFast": "Fast Path (schnell)",
-      "concatCompatible": "Compatible (QT-sicher)",
-      "concatLegacy": "Legacy (robust)",
-      "concatHint": "Fast Path: ein naiver Copy-Pass — schnell, aber riskant (z. B. QuickTime). Compatible: vorbereiteter Stream-Copy mit Probe-Gate — verlustfrei und QT-/orientierungssicher. Legacy: bewährte MPEG-TS-Pipeline (langsamer). Bei Fast-/Compatible-Fehlern: Abbrechen oder Legacy.",
+      "concatFast": "Fast Path",
+      "concatCompatible": "Compatible",
+      "concatLegacy": "Legacy",
+      "concatHint": "Fast Path: ein naiver Copy-Pass — schnell, aber riskant bei manchen Playern. Compatible: vorbereiteter Stream-Copy mit Probe-Gate — verlustfrei und orientierungssicher. Legacy: bewährte MPEG-TS-Pipeline (langsamer). Bei Fast-/Compatible-Fehlern: Abbrechen oder Legacy.",
       "advanced": "Erweitert",
       "introEnabled": "Intro beim Erstellen verwenden (experimentell)",
       "introDuration": "Intro-Dauer (Sek.)",
@@ -389,7 +389,9 @@
       },
       "upload": {
         "title": "Upload",
-        "afterCreate": "Nach Erstellung auf Server hochladen"
+        "afterCreate": "Nach Erstellung auf Server hochladen",
+        "autoMount": "SMB automatisch verbinden (OS-Mount)",
+        "autoMountHint": "Legt bei Bedarf eine temporäre Laufwerkszuordnung an und trennt sie nur beim Beenden der App. Aus = nur vorhandene Mounts oder smb2."
       },
       "ams": {
         "title": "Buchungssuche (optional)",
@@ -1182,13 +1184,13 @@
   },
   "workflow": {
     "bodyConcat": {
-      "labelFast": "Fast Path (schnell)",
-      "labelCompatible": "Compatible (QT-sicher)",
-      "labelLegacy": "Legacy (robust)",
+      "labelFast": "Fast Path",
+      "labelCompatible": "Compatible",
+      "labelLegacy": "Legacy",
       "shortFast": "Fast",
-      "shortCompatible": "Compat",
+      "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Fast Path: ein naiver Copy-Pass — schnell, aber riskant (z. B. QuickTime). Compatible: vorbereiteter Stream-Copy mit Probe-Gate — verlustfrei und QT-/orientierungssicher. Legacy: bewährte MPEG-TS-Pipeline (langsamer).",
+      "hint": "Fast Path: ein naiver Copy-Pass — schnell, aber riskant bei manchen Playern. Compatible: vorbereiteter Stream-Copy mit Probe-Gate — verlustfrei und orientierungssicher. Legacy: bewährte MPEG-TS-Pipeline (langsamer).",
       "aria": "Clip-Zusammenfügen: {{mode}}"
     },
     "progress": "Fortschritt",

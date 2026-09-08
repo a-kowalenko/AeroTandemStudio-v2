@@ -48,7 +48,7 @@ export function bodyConcatModeToneClass(mode: BodyConcatMode): string {
     case "legacy":
       return "border-border/50 bg-transparent text-muted-foreground";
     default:
-      // Fast path — slightly more visible (QT risk).
+      // Fast path — slightly more visible (player risk).
       return "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100";
   }
 }

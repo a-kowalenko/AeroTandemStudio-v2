@@ -135,6 +135,8 @@ Mapping: `@docs/MIGRATION.md` · Detail: `@docs/IMPLEMENTATION_PLAN.md` §5–6.
 | OPT-15 | SMB-Upload Parallel + Marker-Barrier | ✅ |
 | OPT-16 | Compatible-Probe-Cache (Create ohne „Clips prüfen“) | ✅ |
 | OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | ✅ |
+| OPT-18 | SMB: macOS/Linux OS-Mount → Local-Pfad | ✅ |
+| OPT-19 | SMB: Auto-Mount (OS-Map anlegen, App-owned) | ✅ |
 
 Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
 

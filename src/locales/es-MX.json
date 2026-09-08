@@ -253,10 +253,10 @@
       "hwAccel": "Aceleración por hardware",
       "parallel": "Procesamiento de video en paralelo",
       "concat": "Unir clips",
-      "concatFast": "Ruta rápida",
-      "concatCompatible": "Compatible (seguro QT)",
-      "concatLegacy": "Legacy (robusto)",
-      "concatHint": "Ruta rápida: una pasada de copia ingenua — rápida, pero arriesgada (p. ej. QuickTime). Compatible: copia de stream preparada con comprobación — sin pérdida y segura para QT/orientación. Legacy: canalización MPEG-TS probada (más lenta). Si falla Fast/Compatible: cancelar o usar Legacy.",
+      "concatFast": "Fast Path",
+      "concatCompatible": "Compatible",
+      "concatLegacy": "Legacy",
+      "concatHint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: copia de stream preparada con comprobación — sin pérdida y segura para la orientación. Legacy: canalización MPEG-TS probada (más lenta). Si falla Fast/Compatible: cancelar o usar Legacy.",
       "advanced": "Avanzado",
       "introEnabled": "Usar intro al crear (experimental)",
       "introDuration": "Duración del intro (s)",
@@ -389,7 +389,9 @@
       },
       "upload": {
         "title": "Subida",
-        "afterCreate": "Subir al servidor tras crear"
+        "afterCreate": "Subir al servidor tras crear",
+        "autoMount": "Conectar SMB automáticamente (montaje del SO)",
+        "autoMountHint": "Crea un mapeo temporal si hace falta y solo lo desconecta al cerrar la app. Desactivado = solo montajes existentes o smb2."
       },
       "ams": {
         "title": "Búsqueda de reserva (opcional)",
@@ -1182,13 +1184,13 @@
   },
   "workflow": {
     "bodyConcat": {
-      "labelFast": "Ruta rápida",
-      "labelCompatible": "Compatible (seguro QT)",
-      "labelLegacy": "Legacy (robusto)",
-      "shortFast": "Rápido",
-      "shortCompatible": "Compat",
+      "labelFast": "Fast Path",
+      "labelCompatible": "Compatible",
+      "labelLegacy": "Legacy",
+      "shortFast": "Fast",
+      "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Ruta rápida: una pasada de copia ingenua — rápida, pero arriesgada (p. ej. QuickTime). Compatible: copia de stream preparada con comprobación — sin pérdida y segura para QT/orientación. Legacy: canalización MPEG-TS probada (más lenta).",
+      "hint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: copia de stream preparada con comprobación — sin pérdida y segura para la orientación. Legacy: canalización MPEG-TS probada (más lenta).",
       "aria": "Modo de unión de clips: {{mode}}"
     },
     "progress": "Progreso",

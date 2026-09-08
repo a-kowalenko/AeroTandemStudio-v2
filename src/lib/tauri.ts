@@ -105,6 +105,8 @@ export type AppConfig = {
   server_url: string;
   server_login: string;
   server_password: string;
+  /** OPT-19: OS SMB auto-mount when no map/mount exists (default true). */
+  smb_auto_mount_enabled: boolean;
   hardware_acceleration_enabled: boolean;
   parallel_processing_enabled: boolean;
   video_codec: string;

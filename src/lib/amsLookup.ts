@@ -7,7 +7,8 @@ import { kundeDisplayName } from "@/lib/qrSuccess";
 export type { AmsBridgeCustomer };
 
 export const AMS_LOOKUP_DEBOUNCE_MS = 500;
-export const AMS_LOOKUP_MIN_ID_DIGITS = 4;
+/** AMS IDs are sequential integers — ready as soon as any digit is present. */
+export const AMS_LOOKUP_MIN_ID_DIGITS = 1;
 
 export type AmsMarkerType = "Handcam" | "Outside";
 
