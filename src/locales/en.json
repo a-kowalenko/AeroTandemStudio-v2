@@ -170,6 +170,27 @@
         "noNotes": "No release notes.",
         "releasesUnavailable": "Version list unavailable — please check your internet connection."
       },
+      "autoCleanup": {
+        "title": "Automatic cleanup",
+        "description": "Deletes local job and backup folders after a retention period. History entries are kept (shown as “folder missing”).",
+        "jobsSwitch": "Automatically clean up job folders",
+        "backupsSwitch": "Automatically clean up backup folders",
+        "retentionLabel": "Retention period",
+        "hint": "Only local folders older than the selected period. Pending uploads are skipped. History and dedup stay intact.",
+        "enableWarn": "Local folders older than the retention period will be permanently deleted. History entries are kept. Continue?",
+        "toastTitle": "Automatic cleanup",
+        "summaryJobs": "Jobs: {{summary}}",
+        "summaryBackups": "Backups: {{summary}}",
+        "summarySkipped": "{{count}} job(s) skipped due to pending upload.",
+        "retention": {
+          "7": "1 week",
+          "14": "2 weeks",
+          "30": "1 month",
+          "90": "3 months",
+          "180": "6 months",
+          "365": "1 year"
+        }
+      },
       "danger": {
         "title": "Danger Zone",
         "description": "Permanently deletes local folders and files. Job and media history entries are kept, but the media files themselves are gone.",

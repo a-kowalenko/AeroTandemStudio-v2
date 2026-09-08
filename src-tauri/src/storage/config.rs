@@ -296,6 +296,27 @@ pub struct AppConfig {
     /// macOS post-update connection hint acknowledged for this app version.
     #[serde(default)]
     pub post_update_hint_ack_version: String,
+    /// Phase 42: auto-delete local Vorgang folders older than retention.
+    #[serde(default)]
+    pub auto_cleanup_jobs_enabled: bool,
+    /// Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 14).
+    #[serde(
+        default = "default_auto_cleanup_jobs_retention_days",
+        deserialize_with = "de_u32_flexible"
+    )]
+    pub auto_cleanup_jobs_retention_days: u32,
+    /// Phase 42: auto-delete local SD backup folders older than retention.
+    #[serde(default)]
+    pub auto_cleanup_backups_enabled: bool,
+    /// Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 30).
+    #[serde(
+        default = "default_auto_cleanup_backups_retention_days",
+        deserialize_with = "de_u32_flexible"
+    )]
+    pub auto_cleanup_backups_retention_days: u32,
+    /// Local calendar date `YYYY-MM-DD` of last successful auto-cleanup attempt.
+    #[serde(default)]
+    pub last_auto_cleanup_date: String,
 }
 
 fn default_ort() -> String {
@@ -585,6 +606,28 @@ fn default_sd_backup_mode() -> String {
     "confirm".into()
 }
 
+fn default_auto_cleanup_jobs_retention_days() -> u32 {
+    14
+}
+
+fn default_auto_cleanup_backups_retention_days() -> u32 {
+    30
+}
+
+/// Allowed Phase 42 retention presets (days).
+pub const AUTO_CLEANUP_RETENTION_PRESETS: &[u32] = &[7, 14, 30, 90, 180, 365];
+
+/// Map unknown retention values onto the nearest whitelist preset.
+pub fn clamp_auto_cleanup_retention_days(days: u32) -> u32 {
+    if AUTO_CLEANUP_RETENTION_PRESETS.contains(&days) {
+        return days;
+    }
+    *AUTO_CLEANUP_RETENTION_PRESETS
+        .iter()
+        .min_by_key(|&&p| (p as i64 - days as i64).unsigned_abs())
+        .unwrap_or(&14)
+}
+
 fn default_usb_camera_import_enabled() -> bool {
     true
 }
@@ -696,6 +739,14 @@ impl AppConfig {
     pub fn sync_sd_server_backup_mode(&mut self) {
         self.sd_server_backup_mode =
             normalize_sd_server_backup_mode(&self.sd_server_backup_mode);
+    }
+
+    /// Clamp auto-cleanup retention days onto whitelist presets.
+    pub fn sync_auto_cleanup_retention(&mut self) {
+        self.auto_cleanup_jobs_retention_days =
+            clamp_auto_cleanup_retention_days(self.auto_cleanup_jobs_retention_days);
+        self.auto_cleanup_backups_retention_days =
+            clamp_auto_cleanup_retention_days(self.auto_cleanup_backups_retention_days);
     }
 
     /// Lokal skips `_fertig.txt` / AMS manifest only in **manual** form mode.
@@ -969,6 +1020,11 @@ impl Default for AppConfig {
             ams_bridge_server_instance_id: String::new(),
             post_update_hint_pending_version: String::new(),
             post_update_hint_ack_version: String::new(),
+            auto_cleanup_jobs_enabled: false,
+            auto_cleanup_jobs_retention_days: default_auto_cleanup_jobs_retention_days(),
+            auto_cleanup_backups_enabled: false,
+            auto_cleanup_backups_retention_days: default_auto_cleanup_backups_retention_days(),
+            last_auto_cleanup_date: String::new(),
         }
     }
 }
@@ -1065,6 +1121,7 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_ui_language();
     cfg.sync_log_min_level();
     cfg.sync_sd_server_backup_mode();
+    cfg.sync_auto_cleanup_retention();
     cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
@@ -1734,6 +1791,26 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.sd_server_backup_url, "smb://nas/sd-backups");
         assert_eq!(cfg.sd_server_backup_mode, "local_then_server_async");
+    }
+
+    #[test]
+    fn auto_cleanup_retention_clamps_to_presets() {
+        assert_eq!(clamp_auto_cleanup_retention_days(14), 14);
+        assert_eq!(clamp_auto_cleanup_retention_days(30), 30);
+        assert_eq!(clamp_auto_cleanup_retention_days(10), 7);
+        assert_eq!(clamp_auto_cleanup_retention_days(20), 14);
+        assert_eq!(clamp_auto_cleanup_retention_days(100), 90);
+        let cfg = merge_with_defaults(serde_json::json!({
+            "auto_cleanup_jobs_enabled": true,
+            "auto_cleanup_jobs_retention_days": 11,
+            "auto_cleanup_backups_retention_days": 200
+        }))
+        .unwrap();
+        assert!(cfg.auto_cleanup_jobs_enabled);
+        assert_eq!(cfg.auto_cleanup_jobs_retention_days, 14);
+        assert_eq!(cfg.auto_cleanup_backups_retention_days, 180);
+        assert!(!cfg.auto_cleanup_backups_enabled);
+        assert_eq!(cfg.last_auto_cleanup_date, "");
     }
 
     #[test]

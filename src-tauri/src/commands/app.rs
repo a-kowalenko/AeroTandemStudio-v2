@@ -14,7 +14,8 @@ use crate::storage::local_folders::{
     clear_local_backup_folders as clear_backup_folders_impl,
     clear_local_job_folders as clear_job_folders_impl,
     probe_clear_local_backup_folders as probe_backup_folders_impl,
-    probe_clear_local_job_folders as probe_job_folders_impl, LocalFolderClearProbe,
+    probe_clear_local_job_folders as probe_job_folders_impl, run_auto_cleanup as run_auto_cleanup_impl,
+    AutoCleanupResult, LocalFolderClearProbe,
 };
 use crate::storage::logging::{self, log_error, log_info, log_warn, LogEntry};
 use crate::storage::vorgang_history::VorgangHistoryStore;
@@ -408,6 +409,38 @@ pub fn clear_local_backup_folders(
     let root = resolve_sd_backup_folder(&state, args.sd_backup_folder);
     let result = clear_backup_folders_impl(&root);
     log_info(&format!("clear_local_backup_folders: {}", result.summary));
+    Ok(result)
+}
+
+/// Phase 42: age-filtered auto cleanup (max 1×/local calendar day). Busy gate is frontend-side.
+#[tauri::command]
+pub fn run_auto_cleanup(
+    state: tauri::State<'_, ConfigState>,
+) -> Result<AutoCleanupResult, String> {
+    let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
+    let mut cfg = {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        cache.clone()
+    };
+    let result = run_auto_cleanup_impl(&mut cfg, &store)?;
+    if result.ran {
+        {
+            let store_cfg = state.store.lock().map_err(|e| e.to_string())?;
+            store_cfg.save(&cfg).map_err(|e| e.to_string())?;
+        }
+        {
+            let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+            *cache = cfg;
+        }
+        log_info(&format!(
+            "run_auto_cleanup: jobs dirs={} files={} skipped_retryable={} | backups dirs={} files={}",
+            result.jobs.deleted_dirs.len(),
+            result.jobs.deleted_files.len(),
+            result.jobs_skipped_retryable,
+            result.backups.deleted_dirs.len(),
+            result.backups.deleted_files.len(),
+        ));
+    }
     Ok(result)
 }
 

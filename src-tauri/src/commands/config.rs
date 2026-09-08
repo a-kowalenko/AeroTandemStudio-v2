@@ -103,6 +103,7 @@ pub fn get_config(state: State<'_, ConfigState>) -> Result<AppConfig, String> {
 #[tauri::command]
 pub fn save_config(state: State<'_, ConfigState>, mut config: AppConfig) -> Result<AppConfig, String> {
     preserve_ams_bridge_identity(&state, &mut config)?;
+    config.sync_auto_cleanup_retention();
     {
         let store = state.store.lock().map_err(|e| e.to_string())?;
         store.save(&config).map_err(|e| e.to_string())?;

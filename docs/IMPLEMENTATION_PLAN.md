@@ -88,6 +88,7 @@ Details: `@AGENTS.md`
 | 32–37 | SMB Quiet-Poll … Background-Upload | ✅ | ARCHIVE |
 | 38 | Vorgänge-Dialog UX | ✅ | [VORGAENGE_DIALOG_PLAN](VORGAENGE_DIALOG_PLAN.md) |
 | 39–41 | Danger Zone … Eject-Ton | ✅ | ARCHIVE |
+| 42 | Auto-Bereinigung Aufbewahrungsdauer | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

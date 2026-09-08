@@ -170,6 +170,27 @@
         "noNotes": "Sin notas de la versión.",
         "releasesUnavailable": "Lista de versiones no disponible — revisa tu conexión a internet."
       },
+      "autoCleanup": {
+        "title": "Limpieza automática",
+        "description": "Elimina carpetas locales de trabajos y respaldos tras un periodo de retención. El historial se conserva (se muestra como “carpeta ausente”).",
+        "jobsSwitch": "Limpiar automáticamente carpetas de trabajos",
+        "backupsSwitch": "Limpiar automáticamente carpetas de respaldo",
+        "retentionLabel": "Periodo de retención",
+        "hint": "Solo carpetas locales más antiguas que el periodo elegido. Las cargas pendientes se omiten. El historial y la deduplicación permanecen.",
+        "enableWarn": "Las carpetas locales más antiguas que el periodo de retención se eliminarán de forma irreversible. Las entradas del historial se conservan. ¿Continuar?",
+        "toastTitle": "Limpieza automática",
+        "summaryJobs": "Trabajos: {{summary}}",
+        "summaryBackups": "Respaldos: {{summary}}",
+        "summarySkipped": "{{count}} trabajo(s) omitido(s) por carga pendiente.",
+        "retention": {
+          "7": "1 semana",
+          "14": "2 semanas",
+          "30": "1 mes",
+          "90": "3 meses",
+          "180": "6 meses",
+          "365": "1 año"
+        }
+      },
       "danger": {
         "title": "Zona de peligro",
         "description": "Elimina carpetas y archivos locales de forma irreversible. Las entradas de trabajos e historial de medios se conservan, pero los archivos de medios desaparecen.",

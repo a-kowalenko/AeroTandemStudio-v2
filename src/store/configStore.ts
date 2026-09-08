@@ -5,6 +5,14 @@ import { normalizeUiLanguage } from "../i18n/types";
 import { parseLogLevelFilter } from "./logStore";
 
 function normalizeConfig(config: AppConfig): AppConfig {
+  const retention = (n: number | undefined, fallback: number) => {
+    const presets = [7, 14, 30, 90, 180, 365];
+    const v = typeof n === "number" && Number.isFinite(n) ? Math.round(n) : fallback;
+    if (presets.includes(v)) return v;
+    return presets.reduce((best, p) =>
+      Math.abs(p - v) < Math.abs(best - v) ? p : best,
+    );
+  };
   return {
     ...config,
     crew_removed_names: Array.isArray(config.crew_removed_names)
@@ -12,6 +20,17 @@ function normalizeConfig(config: AppConfig): AppConfig {
       : [],
     ui_language: normalizeUiLanguage(config.ui_language),
     log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
+    auto_cleanup_jobs_enabled: Boolean(config.auto_cleanup_jobs_enabled),
+    auto_cleanup_jobs_retention_days: retention(
+      config.auto_cleanup_jobs_retention_days,
+      14,
+    ),
+    auto_cleanup_backups_enabled: Boolean(config.auto_cleanup_backups_enabled),
+    auto_cleanup_backups_retention_days: retention(
+      config.auto_cleanup_backups_retention_days,
+      30,
+    ),
+    last_auto_cleanup_date: config.last_auto_cleanup_date ?? "",
   };
 }
 

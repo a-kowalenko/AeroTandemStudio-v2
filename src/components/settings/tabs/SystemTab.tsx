@@ -4,6 +4,7 @@ import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { ReleaseNotes } from "@/components/ReleaseNotes";
 import {
+  AUTO_CLEANUP_RETENTION_PRESETS,
   measureCache,
   probeClearLocalBackupFolders,
   probeClearLocalJobFolders,
@@ -425,6 +427,29 @@ export function SystemTab({
       files: probe.file_count,
     });
 
+  const retentionLabel = (days: number) => {
+    const key = `settings.system.autoCleanup.retention.${days}` as const;
+    return t(key);
+  };
+
+  const enableJobsCleanup = (next: boolean) => {
+    if (next && !draft.auto_cleanup_jobs_enabled) {
+      if (!window.confirm(t("settings.system.autoCleanup.enableWarn"))) {
+        return;
+      }
+    }
+    patch("auto_cleanup_jobs_enabled", next);
+  };
+
+  const enableBackupsCleanup = (next: boolean) => {
+    if (next && !draft.auto_cleanup_backups_enabled) {
+      if (!window.confirm(t("settings.system.autoCleanup.enableWarn"))) {
+        return;
+      }
+    }
+    patch("auto_cleanup_backups_enabled", next);
+  };
+
   return (
     <div className="space-y-4">
       <SettingsSection
@@ -630,6 +655,81 @@ export function SystemTab({
         >
           {t("settings.system.reset.button")}
         </Button>
+      </SettingsSection>
+
+      <SettingsSection
+        title={t("settings.system.autoCleanup.title")}
+        description={t("settings.system.autoCleanup.description")}
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>{t("settings.system.autoCleanup.jobsSwitch")}</span>
+              <Switch
+                checked={Boolean(draft.auto_cleanup_jobs_enabled)}
+                onCheckedChange={(v) => enableJobsCleanup(v === true)}
+                aria-label={t("settings.system.autoCleanup.jobsSwitch")}
+              />
+            </label>
+            <div className="space-y-1.5">
+              <Label>{t("settings.system.autoCleanup.retentionLabel")}</Label>
+              <Select
+                value={String(draft.auto_cleanup_jobs_retention_days || 14)}
+                onValueChange={(v) =>
+                  patch("auto_cleanup_jobs_retention_days", Number(v) || 14)
+                }
+                disabled={!draft.auto_cleanup_jobs_enabled}
+              >
+                <SelectTrigger className="min-w-[12rem]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUTO_CLEANUP_RETENTION_PRESETS.map((days) => (
+                    <SelectItem key={days} value={String(days)}>
+                      {retentionLabel(days)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2 border-t border-border/60 pt-3">
+            <label className="flex items-center justify-between gap-3 text-sm">
+              <span>{t("settings.system.autoCleanup.backupsSwitch")}</span>
+              <Switch
+                checked={Boolean(draft.auto_cleanup_backups_enabled)}
+                onCheckedChange={(v) => enableBackupsCleanup(v === true)}
+                aria-label={t("settings.system.autoCleanup.backupsSwitch")}
+              />
+            </label>
+            <div className="space-y-1.5">
+              <Label>{t("settings.system.autoCleanup.retentionLabel")}</Label>
+              <Select
+                value={String(draft.auto_cleanup_backups_retention_days || 30)}
+                onValueChange={(v) =>
+                  patch("auto_cleanup_backups_retention_days", Number(v) || 30)
+                }
+                disabled={!draft.auto_cleanup_backups_enabled}
+              >
+                <SelectTrigger className="min-w-[12rem]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUTO_CLEANUP_RETENTION_PRESETS.map((days) => (
+                    <SelectItem key={days} value={String(days)}>
+                      {retentionLabel(days)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <p className="text-xs text-muted">
+            {t("settings.system.autoCleanup.hint")}
+          </p>
+        </div>
       </SettingsSection>
 
       <SettingsSection

@@ -194,7 +194,7 @@ pub struct VorgangAppendEntry {
     pub ams_error_message: String,
 }
 
-/// Lightweight path ref for disk-only clear (Phase 39).
+/// Lightweight path ref for disk-only clear (Phase 39 / 42).
 #[derive(Debug, Clone)]
 pub struct DiskFolderRef {
     pub vorgang_id: i64,
@@ -202,6 +202,8 @@ pub struct DiskFolderRef {
     pub upload_state: String,
     /// True for `base_output_dir` rows (used for retryable-upload counting).
     pub is_base: bool,
+    /// Parent Vorgang `created_at` (ISO UTC) — age basis for Phase 42.
+    pub created_at: String,
 }
 
 pub struct VorgangHistoryStore {
@@ -1043,14 +1045,14 @@ impl VorgangHistoryStore {
         }
     }
 
-    /// Disk paths for Phase 39 clear (base + append folders). DB rows are not modified.
+    /// Disk paths for Phase 39/42 clear (base + append folders). DB rows are not modified.
     pub fn list_disk_folder_refs(&self) -> Result<Vec<DiskFolderRef>, VorgangHistoryError> {
         let conn = self.connect()?;
         let mut out = Vec::new();
 
         {
             let mut stmt = conn.prepare(
-                "SELECT id, base_output_dir, IFNULL(upload_state, 'none') FROM vorgaenge",
+                "SELECT id, base_output_dir, IFNULL(upload_state, 'none'), created_at FROM vorgaenge",
             )?;
             let rows = stmt.query_map([], |row| {
                 Ok(DiskFolderRef {
@@ -1058,6 +1060,7 @@ impl VorgangHistoryStore {
                     path: row.get(1)?,
                     upload_state: row.get(2)?,
                     is_base: true,
+                    created_at: row.get(3)?,
                 })
             })?;
             for row in rows {
@@ -1067,14 +1070,18 @@ impl VorgangHistoryStore {
 
         {
             let mut stmt = conn.prepare(
-                "SELECT vorgang_id, folder_path FROM vorgang_appends WHERE IFNULL(folder_path, '') != ''",
+                "SELECT a.vorgang_id, a.folder_path, IFNULL(v.upload_state, 'none'), v.created_at
+                 FROM vorgang_appends a
+                 INNER JOIN vorgaenge v ON v.id = a.vorgang_id
+                 WHERE IFNULL(a.folder_path, '') != ''",
             )?;
             let rows = stmt.query_map([], |row| {
                 Ok(DiskFolderRef {
                     vorgang_id: row.get(0)?,
                     path: row.get(1)?,
-                    upload_state: String::new(),
+                    upload_state: row.get(2)?,
                     is_base: false,
+                    created_at: row.get(3)?,
                 })
             })?;
             for row in rows {

@@ -178,6 +178,16 @@ export type AppConfig = {
   post_update_hint_pending_version: string;
   /** macOS post-update connection hint acknowledged for this app version. */
   post_update_hint_ack_version: string;
+  /** Phase 42: auto-delete local Vorgang folders older than retention. */
+  auto_cleanup_jobs_enabled: boolean;
+  /** Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 14). */
+  auto_cleanup_jobs_retention_days: number;
+  /** Phase 42: auto-delete local SD backup folders older than retention. */
+  auto_cleanup_backups_enabled: boolean;
+  /** Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 30). */
+  auto_cleanup_backups_retention_days: number;
+  /** Local calendar date YYYY-MM-DD of last auto-cleanup attempt. */
+  last_auto_cleanup_date: string;
 };
 
 /** Fixed Ort presets; free text remains allowed in the combobox.
@@ -1449,6 +1459,20 @@ export type LocalFolderClearProbe = {
   retryable_upload_count: number;
 };
 
+export type AutoCleanupResult = {
+  ran: boolean;
+  skip_reason: string;
+  jobs: CacheCleanupResult;
+  backups: CacheCleanupResult;
+  jobs_skipped_retryable: number;
+  last_auto_cleanup_date: string;
+};
+
+/** Phase 42 retention presets (days). */
+export const AUTO_CLEANUP_RETENTION_PRESETS = [
+  7, 14, 30, 90, 180, 365,
+] as const;
+
 export type ClearLocalJobFoldersArgs = {
   speicherort?: string | null;
   include_orphans?: boolean | null;
@@ -1557,6 +1581,11 @@ export async function clearLocalBackupFolders(
   return invoke<CacheCleanupResult>("clear_local_backup_folders", {
     args: args ?? null,
   });
+}
+
+/** Phase 42: age-filtered auto cleanup (at most once per local calendar day). */
+export async function runAutoCleanup(): Promise<AutoCleanupResult> {
+  return invoke<AutoCleanupResult>("run_auto_cleanup");
 }
 
 /** Bring main window to foreground after an auto-update restart (no-op otherwise). */

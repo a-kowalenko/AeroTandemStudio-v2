@@ -48,6 +48,7 @@ import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
 import { useServerHealthPoll } from "./hooks/useServerHealthPoll";
 import { useAmsHandoffPoll } from "./hooks/useAmsHandoffPoll";
+import { useAutoCleanupRetention } from "./hooks/useAutoCleanupRetention";
 import { useLogStore } from "./store/logStore";
 import {
   checkForUpdates,
@@ -1332,6 +1333,12 @@ function App() {
 
   useServerHealthPoll(ready && !splashOpen && !setupWizardOpen);
   useAmsHandoffPoll(ready && !splashOpen && !setupWizardOpen);
+  useAutoCleanupRetention({
+    ready,
+    splashOpen,
+    setupWizardOpen,
+    sessionBusy: busy,
+  });
 
   useEffect(() => {
     if (!config || defaultsApplied.current) return;

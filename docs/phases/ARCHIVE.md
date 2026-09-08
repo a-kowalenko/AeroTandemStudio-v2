@@ -3172,3 +3172,56 @@ src-tauri/src/lib.rs                 # CloseRequested / exit hook
 
 ---
 
+---
+
+### Phase 42 — Auto-Bereinigung: Aufbewahrungsdauer für Vorgänge & Backups
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 39 (`local_folders.rs` / `clear_local_*` / Danger Zone), Phase 12 (`vorgang_history` / `created_at`), Phase 7 (`sd_backup_folder`, Backup-Ordnernamen)  
+**Ziel:** Einstellbare **automatische** Löschung lokaler Vorgangs- und Backup-**Ordner** nach einer **Aufbewahrungsdauer** — Historie/Meta bleiben (wie Danger Zone → „Ordner fehlt“).
+
+> Eine Agent-Session = nur Phase 42. Kein Historie-DB-Purge, kein SMB/Server-Löschen, kein Größen-basiertes Cleanup, Danger-Zone-Verhalten nicht umbauen (nur wiederverwenden/erweitern).
+
+##### Entscheidungen (42)
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Scope | **Nur Dateisystem** (Variante A) — wie Phase 39; Einträge bleiben mit „Ordner fehlt“ |
+| 2 | Begriff | UI: **Aufbewahrungsdauer**; Schalter: **Automatisch bereinigen** (getrennt Vorgänge / Backups) |
+| 3 | Defaults | Feature-Schalter je Domain **aus**. Wenn an: Vorgänge **14 Tage**, Backups **30 Tage** |
+| 4 | Presets | Nur Auswahl: **7 / 14 / 30 / 90 / 180 / 365** Tage |
+| 5 | Altersbasis Vorgänge | `vorgaenge.created_at`; Append-Ordner mitlöschen, wenn Parent fällig |
+| 6 | Altersbasis Backups | Timestamp aus Ordnernamen `SD_Backup_{timestamp}…`; Fallback Ordner-`mtime` |
+| 7 | Upload-Schutz | `pending` / `uploading` / retryable **überspringen** |
+| 8 | Orphans | Auto: **nie**; Danger Zone unverändert |
+| 9 | Trigger | App-Start nach Splash + Idle; höchstens 1×/Kalendertag (`last_auto_cleanup_date`) |
+| 10 | Busy-Gate | Wie Phase 39 (Frontend) |
+| 11 | Lokal only | Containment wie `local_folders.rs`; Roots nie löschen |
+| 12 | Feedback | Toast nur wenn etwas gelöscht wurde |
+| 13 | Placement | Settings → System, Section **oberhalb** Danger Zone |
+| 14 | Aktivieren | Soft-Warnung beim ersten Einschalten eines Schalters |
+
+##### Scope
+
+- [x] Config-Felder + Defaults + Serde-Migration/Clamp Presets
+- [x] Rust: Age-Filter Vorgänge (`created_at` + Append-Pfade; Upload-Schutz; keine Orphans)
+- [x] Rust: Age-Filter Backups (Name-Timestamp, Fallback `mtime`)
+- [x] Rust: Runner `run_auto_cleanup` + Last-run-Gate 1×/Tag
+- [x] Frontend: Startup-Trigger (+ Idle) nach Busy-frei; Summary-Toast
+- [x] `SystemTab`: Section Aufbewahrung / Auto-Bereinigung oberhalb Danger Zone
+- [x] Soft-Warnung beim Aktivieren eines Schalters
+- [x] Nach Cleanup: `folderMissingById` aktualisieren wenn Historie geladen
+- [x] i18n de / en / es-MX
+- [x] Unit-Tests: Altersgrenze; Upload-Skip; Path-Escape; Root unangetastet; Backup-Timestamp-Parse; Clamp Presets
+
+##### Referenzen
+
+```
+src-tauri/src/storage/local_folders.rs
+src-tauri/src/storage/vorgang_history.rs
+src-tauri/src/storage/config.rs
+src-tauri/src/commands/app.rs
+src/components/settings/tabs/SystemTab.tsx
+src/hooks/useAutoCleanupRetention.ts
+src/locales/de.json | en.json | es-MX.json
+```

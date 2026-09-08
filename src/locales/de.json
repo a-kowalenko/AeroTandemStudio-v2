@@ -170,6 +170,27 @@
         "noNotes": "Keine Release Notes.",
         "releasesUnavailable": "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen."
       },
+      "autoCleanup": {
+        "title": "Automatische Bereinigung",
+        "description": "Löscht lokale Vorgangs- und Backup-Ordner nach einer Aufbewahrungsdauer. Die Historie bleibt erhalten (Anzeige „Ordner fehlt“).",
+        "jobsSwitch": "Vorgangsordner automatisch bereinigen",
+        "backupsSwitch": "Backup-Ordner automatisch bereinigen",
+        "retentionLabel": "Aufbewahrungsdauer",
+        "hint": "Nur lokale Ordner älter als die gewählte Dauer. Ausstehende Uploads werden übersprungen. Historie und Dedup bleiben.",
+        "enableWarn": "Lokale Ordner älter als die Aufbewahrungsdauer werden unwiderruflich gelöscht. Einträge in der Historie bleiben erhalten. Fortfahren?",
+        "toastTitle": "Automatische Bereinigung",
+        "summaryJobs": "Vorgänge: {{summary}}",
+        "summaryBackups": "Backups: {{summary}}",
+        "summarySkipped": "{{count}} Vorgang/Vorgänge wegen ausstehendem Upload übersprungen.",
+        "retention": {
+          "7": "1 Woche",
+          "14": "2 Wochen",
+          "30": "1 Monat",
+          "90": "3 Monate",
+          "180": "6 Monate",
+          "365": "1 Jahr"
+        }
+      },
       "danger": {
         "title": "Danger Zone",
         "description": "Löscht lokale Ordner und Dateien unwiderruflich. Einträge in Vorgänge und Medien-Historie bleiben erhalten, die Mediendateien selbst sind danach weg.",
