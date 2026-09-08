@@ -10,12 +10,27 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (Fast Path bleibt Standard)
+- Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
+
+### Verbessert
+
+- Beim Erstellen im Modus Compatible entfällt oft der Schritt „Clips prüfen…“ — die Prüfung läuft bereits beim Import mit
+- Server-Upload und -Status nutzen vorhandene Laufwerksbuchstaben (Windows) bzw. gemountete Freigaben (Mac & Linux) — stabilere Verbindung, weniger Doppel-Anmeldungen
 
 ## [0.5.0-beta.1] - 2026-09-08
 
-### Hinweis
+### Neu
 
-- Vorabversion zum Testen
+- Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (Fast Path bleibt Standard)
+- Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
+
+### Verbessert
+
+- Beim Erstellen im Modus Compatible entfällt oft der Schritt „Clips prüfen…“ — die Prüfung läuft bereits beim Import mit
+- Server-Upload und -Status nutzen vorhandene Laufwerksbuchstaben (Windows) bzw. gemountete Freigaben (Mac & Linux) — stabilere Verbindung, weniger Doppel-Anmeldungen
 
 ## [0.4.1-beta.2] - 2026-09-05
 
