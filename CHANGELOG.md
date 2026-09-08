@@ -29,6 +29,28 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Windows: USB-GoPro zeigt Medien im Import wieder — leere Liste behoben
 
+
+## [0.5.0-beta.2] - 2026-09-09
+
+### Neu
+
+- Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (Fast Path bleibt Standard)
+- Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
+- Einstellungen → System: Automatische Bereinigung — lokale Vorgangs- und Backup-Ordner nach wählbarer Aufbewahrungsdauer löschen; Einträge unter Vorgänge bleiben (Anzeige „Ordner fehlt“)
+- Einstellungen → SD: Ton bei erfolgreichem Auswerfen von SD-Karte oder USB-Cam
+
+### Verbessert
+
+- Beim Erstellen im Modus Compatible entfällt oft der Schritt „Clips prüfen…“ — die Prüfung läuft bereits beim Import mit
+- Server-Upload und -Status nutzen vorhandene Laufwerksbuchstaben (Windows) bzw. gemountete Freigaben (Mac & Linux) — stabilere Verbindung, weniger Doppel-Anmeldungen
+- Nach Ruhezustand: Server-Verbindung kommt schneller wieder — die Oberfläche hängt nicht mehr lange beim Verbindungscheck
+- Mac: SMB automatisch verbinden funktioniert zuverlässiger — Mount unter dem App-Ordner statt unter Systempfaden mit Rechteproblemen
+- USB-Action-Cams: Erkennung unterscheidet Geräte-Namen und echte Mediendateien zuverlässiger
+
+### Behoben
+
+- Windows: USB-GoPro zeigt Medien im Import wieder — leere Liste behoben
+
 ## [0.5.0-beta.1] - 2026-09-08
 
 ### Neu
