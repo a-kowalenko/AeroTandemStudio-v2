@@ -1,9 +1,12 @@
-//! OPT-19: App-owned OS SMB auto-mount (Windows map / macOS smbfs / Linux gvfs).
+//! OPT-19 / OPT-20A: App-owned OS SMB auto-mount (Windows map / macOS smbfs / Linux gvfs).
 //!
 //! When config is `smb://…` and no OPT-17/18 match exists, optionally create a
 //! temporary OS mount so Health/Upload can use `ServerTarget::Local`.
 //! Failures fall back to smb2. Quit unmounts **only** mounts tracked in the
 //! App-owned registry — never Finder/`net use`/user mounts.
+//!
+//! OPT-20A (macOS): mount under `{app_local_data}/smb-mounts/…` — never
+//! `mkdir /Volumes/…` (Permission denied for non-root).
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,10 +20,13 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
 use super::windows_mapping::{
-    canonicalize_unc, resolve_mapped_local_path, unc_from_smb_parts,
+    canonicalize_unc, lookup_mapped_local_path, unc_from_smb_parts,
 };
 
 const REGISTRY_FILE: &str = "smb_app_mounts.json";
+/// Subdir under [`crate::storage::app_config_dir`] for macOS `mount_smbfs` points (OPT-20A).
+#[cfg(any(test, target_os = "macos"))]
+const SMB_MOUNTS_SUBDIR: &str = "smb-mounts";
 const FAILURE_BACKOFF: Duration = Duration::from_secs(60);
 const MOUNT_SETTLE_POLL: Duration = Duration::from_millis(200);
 const MOUNT_SETTLE_MAX: Duration = Duration::from_secs(8);
@@ -78,8 +84,12 @@ pub fn ensure_os_smb_mount(
     }
 
     let config_unc = unc_from_smb_parts(host, share, subpath);
-    if let Some(existing) = resolve_mapped_local_path(&config_unc) {
-        return Ok(Some(existing));
+    // OPT-20B: listed map (even if asleep) — do not create a second mount.
+    if let Some(existing) = lookup_mapped_local_path(&config_unc) {
+        if super::reconnect::prefer_local_now(&existing) {
+            return Ok(Some(existing));
+        }
+        return Ok(None);
     }
 
     let share_unc = unc_from_smb_parts(host, share, "");
@@ -88,11 +98,16 @@ pub fn ensure_os_smb_mount(
     }
 
     // Idempotent: share-root already mapped (subpath join failed above only if dead).
-    if let Some(existing) = resolve_mapped_local_path(&share_unc) {
-        if let Some(full) = resolve_mapped_local_path(&config_unc) {
-            return Ok(Some(full));
+    if let Some(existing) = lookup_mapped_local_path(&share_unc) {
+        if super::reconnect::prefer_local_now(&existing) {
+            if let Some(full) = lookup_mapped_local_path(&config_unc) {
+                if super::reconnect::prefer_local_now(&full) {
+                    return Ok(Some(full));
+                }
+            }
+            return Ok(Some(join_subpath(&existing, subpath)));
         }
-        return Ok(Some(join_subpath(&existing, subpath)));
+        return Ok(None);
     }
 
     match mount_share_root(host, share, &share_unc, params.login, params.password) {
@@ -107,8 +122,10 @@ pub fn ensure_os_smb_mount(
                     share_unc
                 ),
             );
-            if let Some(full) = resolve_mapped_local_path(&config_unc) {
-                return Ok(Some(full));
+            if let Some(full) = lookup_mapped_local_path(&config_unc) {
+                if super::reconnect::prefer_local_now(&full) {
+                    return Ok(Some(full));
+                }
             }
             let full = join_subpath(&local_root, subpath);
             if full.exists() || local_root.exists() {
@@ -134,7 +151,7 @@ pub fn startup_sweep_owned_registry() {
     let before = reg.mounts.len();
     reg.mounts.retain(|m| {
         let p = PathBuf::from(&m.local_path);
-        let ok = path_reachable(&p);
+        let ok = path_reachable_registry(&p);
         if !ok {
             crate::storage::logging::info(
                 "smb",
@@ -350,9 +367,15 @@ fn mount_macos(host: &str, share: &str, login: &str, password: &str) -> Result<P
     let (user, pass, domain) = split_creds(login, password);
     let auth = format_smb_auth(&user, &pass, &domain);
     let remote = format!("//{auth}{host}/{share}");
-    let mount_point = unique_volumes_path(share);
 
-    // Create mount point if missing (mount_smbfs requires it).
+    // OPT-20A: writable user path — never mkdir under /Volumes (EACCES).
+    let mounts_root = smb_mounts_root()?;
+    fs::create_dir_all(&mounts_root).map_err(|e| {
+        format!("smb-mounts root {}: {e}", mounts_root.display())
+    })?;
+    let mount_point = pick_user_mount_point(&mounts_root, share);
+
+    // Create mount point if missing (mount_smbfs requires an existing directory).
     if !mount_point.exists() {
         fs::create_dir_all(&mount_point).map_err(|e| {
             format!("mount point {}: {e}", mount_point.display())
@@ -382,23 +405,43 @@ fn mount_macos(host: &str, share: &str, login: &str, password: &str) -> Result<P
     Ok(mount_point)
 }
 
-#[cfg(target_os = "macos")]
-fn unique_volumes_path(share: &str) -> PathBuf {
+/// `{app_local_data}/smb-mounts` — macOS auto-mount root (OPT-20A).
+#[cfg(any(test, target_os = "macos"))]
+fn smb_mounts_root() -> Result<PathBuf, String> {
+    let dir = crate::storage::app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join(SMB_MOUNTS_SUBDIR))
+}
+
+/// Choose a mount-point directory under `mounts_root` for `share`.
+/// Prefers missing or empty dirs; avoids colliding with a live share tree.
+#[cfg(any(test, target_os = "macos"))]
+fn pick_user_mount_point(mounts_root: &Path, share: &str) -> PathBuf {
     let safe = sanitize_mount_name(share);
-    let base = PathBuf::from("/Volumes").join(&safe);
-    if !base.exists() {
+    let base = mounts_root.join(&safe);
+    if is_reusable_mount_point(&base) {
         return base;
     }
     for i in 1..50 {
-        let candidate = PathBuf::from("/Volumes").join(format!("{safe}-{i}"));
-        if !candidate.exists() {
+        let candidate = mounts_root.join(format!("{safe}-{i}"));
+        if is_reusable_mount_point(&candidate) {
             return candidate;
         }
     }
-    PathBuf::from("/Volumes").join(format!(
-        "{safe}-ats-{}",
-        now_unix_secs()
-    ))
+    mounts_root.join(format!("{safe}-ats-{}", now_unix_secs()))
+}
+
+#[cfg(any(test, target_os = "macos"))]
+fn is_reusable_mount_point(path: &Path) -> bool {
+    if !path.exists() {
+        return true;
+    }
+    if !path.is_dir() {
+        return false;
+    }
+    match fs::read_dir(path) {
+        Ok(mut entries) => entries.next().is_none(),
+        Err(_) => false,
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -530,10 +573,23 @@ fn unmount_macos(local_path: &str) -> Result<(), String> {
         })
         .map_err(|e| format!("unmount failed: {e}"))?;
     if output.status.success() {
+        maybe_remove_app_mount_dir(Path::new(local_path));
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
     }
+}
+
+/// After unmount, remove empty App-owned mount dirs under `smb-mounts/` (not `/Volumes`).
+#[cfg(any(test, target_os = "macos"))]
+fn maybe_remove_app_mount_dir(local_path: &Path) {
+    let Ok(root) = smb_mounts_root() else {
+        return;
+    };
+    if !local_path.starts_with(&root) {
+        return;
+    }
+    let _ = fs::remove_dir(local_path);
 }
 
 #[cfg(target_os = "linux")]
@@ -654,7 +710,14 @@ fn display_local(path: &Path) -> String {
 }
 
 fn path_reachable(path: &Path) -> bool {
+    // Fresh mounts / settle polls — direct exists (path should be local & live).
     path.exists()
+}
+
+fn path_reachable_registry(path: &Path) -> bool {
+    // OPT-20B: registry sweep must not hang on a sleeping mapped drive.
+    super::reconnect::path_reachable_timed(path, super::reconnect::LOCAL_PROBE_TIMEOUT)
+        .is_reachable()
 }
 
 fn wait_until_reachable(path: &Path) -> Result<(), String> {
@@ -831,9 +894,69 @@ mod tests {
     }
 
     #[test]
+    fn join_subpath_under_user_mount() {
+        let root = Path::new("/tmp/AeroTandemStudio/smb-mounts/aktuell");
+        let p = join_subpath(root, "jobs/a");
+        assert_eq!(
+            p,
+            PathBuf::from("/tmp/AeroTandemStudio/smb-mounts/aktuell/jobs/a")
+        );
+    }
+
+    #[test]
     fn sanitize_mount_name_strips() {
         assert_eq!(sanitize_mount_name("my share"), "my_share");
         assert_eq!(sanitize_mount_name(""), "ats-smb");
+        assert_eq!(sanitize_mount_name("aktuell"), "aktuell");
+        assert_eq!(sanitize_mount_name("a/b\\c"), "a_b_c");
+    }
+
+    #[test]
+    fn pick_user_mount_point_prefers_free_share_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(SMB_MOUNTS_SUBDIR);
+        fs::create_dir_all(&root).unwrap();
+        let p = pick_user_mount_point(&root, "aktuell");
+        assert_eq!(p, root.join("aktuell"));
+        assert!(!p.starts_with("/Volumes"));
+    }
+
+    #[test]
+    fn pick_user_mount_point_skips_nonempty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(SMB_MOUNTS_SUBDIR);
+        let occupied = root.join("aktuell");
+        fs::create_dir_all(&occupied).unwrap();
+        fs::write(occupied.join("marker.txt"), b"x").unwrap();
+        let p = pick_user_mount_point(&root, "aktuell");
+        assert_eq!(p, root.join("aktuell-1"));
+    }
+
+    #[test]
+    fn pick_user_mount_point_reuses_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(SMB_MOUNTS_SUBDIR);
+        let empty = root.join("aktuell");
+        fs::create_dir_all(&empty).unwrap();
+        let p = pick_user_mount_point(&root, "aktuell");
+        assert_eq!(p, empty);
+    }
+
+    #[test]
+    fn smb_mounts_root_uses_app_data_subdir() {
+        let root = smb_mounts_root().unwrap();
+        assert!(root.ends_with(SMB_MOUNTS_SUBDIR));
+        assert!(!root.starts_with("/Volumes"));
+    }
+
+    #[test]
+    fn maybe_remove_only_under_smb_mounts() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Outside app smb-mounts → no-op even if empty (path won't match root).
+        let foreign = tmp.path().join("foreign-empty");
+        fs::create_dir_all(&foreign).unwrap();
+        maybe_remove_app_mount_dir(&foreign);
+        assert!(foreign.exists());
     }
 
     #[test]

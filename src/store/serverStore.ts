@@ -82,8 +82,13 @@ export const useServerStore = create<ServerState>((set) => ({
       });
     }
     try {
-      const result = await testServerConnection(overrides);
+      const result = await testServerConnection(overrides, quiet);
       if (seq !== connectionRequestSeq) return result;
+      // OPT-20B Quiet-Poll: map still waking — keep last phase/label.
+      if (quiet && result.soft_hold) {
+        set({ refreshing: false });
+        return result;
+      }
       set({
         connected: result.ok,
         message: result.message,
@@ -95,6 +100,11 @@ export const useServerStore = create<ServerState>((set) => ({
       const message = String(e);
       if (seq !== connectionRequestSeq) {
         return { ok: false, message };
+      }
+      // Quiet: do not flip to red on invoke errors during reconnect window.
+      if (quiet) {
+        set({ refreshing: false });
+        return { ok: false, message, soft_hold: true };
       }
       set({ connected: false, message, phase: "error", refreshing: false });
       return { ok: false, message };

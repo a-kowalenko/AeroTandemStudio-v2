@@ -68,7 +68,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ### Performance-Backlog
 
-OPT-0 … OPT-19 ✅ (OPT-13 entfernt). Details: `@docs/optimization_plan.md` — **nur ein OPT-Paket** pro Session.
+OPT-0 … OPT-19 ✅ (OPT-13 entfernt). **OPT-20** ✅ (Slice A macOS User-Pfad + Slice B Windows Prefer-Local/smb2-Brücke). Details: `@docs/optimization_plan.md`.
 
 ---
 
@@ -95,4 +95,4 @@ Nur 23.2h.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md`  
-**Performance (OPT-X):** `@docs/optimization_plan.md` — nur OPT-X
+**Performance (OPT-X):** `@docs/optimization_plan.md` — nur **ein** OPT-Paket (OPT-0…20 ✅)

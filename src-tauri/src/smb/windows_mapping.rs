@@ -8,7 +8,10 @@
 //! - Windows (OPT-17): `WNetGetConnectionW` drive letters
 //! - Unix (OPT-18): see [`super::unix_mapping`]
 //!
-//! No automatic `net use` / mount creation.
+//! Reachability uses a **timed** Local-Probe (OPT-20B) — never unbounded
+//! `Path::exists()` on a sleeping Windows redirector.
+//!
+//! No automatic `net use` / mount creation (→ OPT-19).
 
 use std::path::{Path, PathBuf};
 
@@ -164,12 +167,22 @@ pub fn list_smb_drive_mappings() -> Vec<DriveMapping> {
     }
 }
 
-/// Resolve config UNC against live mappings; require local root reachable.
-pub fn resolve_mapped_local_path(config_unc: &str) -> Option<PathBuf> {
+/// Match config UNC to a mapped local path **without** FS reachability checks.
+///
+/// Use this when Prefer-Local / smb2-bridge logic needs to know a map is listed
+/// even if `Z:` is still waking (OPT-20B).
+pub fn lookup_mapped_local_path(config_unc: &str) -> Option<PathBuf> {
     let mappings = list_smb_drive_mappings();
-    let path = match_unc_to_mapped_path(config_unc, &mappings)?;
+    match_unc_to_mapped_path(config_unc, &mappings)
+}
+
+/// Resolve config UNC against live mappings; require local root reachable
+/// via timed probe (OPT-20B — no unbounded `exists()`).
+#[allow(dead_code)] // public helper for callers outside Prefer-Local bridge path
+pub fn resolve_mapped_local_path(config_unc: &str) -> Option<PathBuf> {
+    let path = lookup_mapped_local_path(config_unc)?;
     // Prefer smb2 fallback when the map exists but the letter is dead/offline.
-    if path.exists() {
+    if super::reconnect::prefer_local_now(&path) {
         Some(path)
     } else {
         None
@@ -351,5 +364,16 @@ mod tests {
         }];
         let p = match_unc_to_mapped_path(r"\\host\share\sub", &maps).unwrap();
         assert_eq!(p, PathBuf::from("/Volumes/aktuell").join("sub"));
+    }
+
+    #[test]
+    fn lookup_mapped_without_exists_check() {
+        let maps = [DriveMapping {
+            local_name: "Z:".into(),
+            remote_unc: r"\\host\share".into(),
+        }];
+        // match helper only — lookup uses live OS maps; here we assert join logic.
+        let p = match_unc_to_mapped_path(r"\\host\share\sub", &maps).unwrap();
+        assert_eq!(slash(&p), r"Z:\sub");
     }
 }

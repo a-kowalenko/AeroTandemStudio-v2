@@ -4,6 +4,7 @@ pub mod auto_mount;
 pub mod client;
 pub mod handoff_upload;
 pub mod parallel_upload;
+pub mod reconnect;
 pub mod staging_gc;
 pub mod unix_mapping;
 pub mod windows_mapping;

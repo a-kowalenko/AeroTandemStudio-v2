@@ -70,6 +70,8 @@ pub struct ServerOverrides {
 pub async fn test_server_connection(
     state: State<'_, ConfigState>,
     overrides: Option<ServerOverrides>,
+    // Quiet-Poll (OPT-20B): short Local probe; soft_hold on bridge fail.
+    quiet: Option<bool>,
 ) -> Result<ConnectionTestResult, String> {
     let (url, login, password, auto_mount) = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
@@ -87,9 +89,14 @@ pub async fn test_server_connection(
         "smb",
         format!("Server-Test: url={}", url.trim()),
     );
-    let result = test_connection(&url, &login, &password, auto_mount).await;
+    let result = test_connection(&url, &login, &password, auto_mount, quiet.unwrap_or(false)).await;
     if result.ok {
         logging::info("smb", format!("Server-Test OK: {}", result.message));
+    } else if result.soft_hold {
+        logging::info(
+            "smb",
+            format!("Server-Test soft-hold (status unchanged): {}", result.message),
+        );
     } else {
         logging::warn("smb", format!("Server-Test fehlgeschlagen: {}", result.message));
     }

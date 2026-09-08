@@ -1135,6 +1135,8 @@ export async function getFileSizes(paths: string[]): Promise<FileSizeEntry[]> {
 export type ConnectionTestResult = {
   ok: boolean;
   message: string;
+  /** Quiet-Poll: keep previous UI status (map waking / smb2 bridge). */
+  soft_hold?: boolean;
 };
 
 export type UploadResult = {
@@ -1202,9 +1204,11 @@ export type AvailableRelease = {
 
 export async function testServerConnection(
   overrides?: ServerOverrides,
+  quiet = false,
 ): Promise<ConnectionTestResult> {
   return invoke<ConnectionTestResult>("test_server_connection", {
     overrides: overrides ?? null,
+    quiet,
   });
 }
 

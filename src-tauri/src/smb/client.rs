@@ -21,11 +21,15 @@ use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CAN
 
 use super::auto_mount::{ensure_os_smb_mount, AutoMountParams};
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
+use super::reconnect::{
+    self, is_recently_bridging, note_smb2_bridge, probe_local, start_prefer_local_promote,
+    LOCAL_PROBE_TIMEOUT,
+};
 use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
     staging_prefix,
 };
-use super::windows_mapping::{resolve_mapped_local_path, unc_from_smb_parts};
+use super::windows_mapping::{lookup_mapped_local_path, unc_from_smb_parts};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
@@ -68,6 +72,10 @@ pub enum ServerTarget {
 pub struct ConnectionTestResult {
     pub ok: bool,
     pub message: String,
+    /// Quiet-Poll (OPT-20B): Local map still waking and smb2 failed — UI should
+    /// keep the previous phase instead of flipping to red.
+    #[serde(default)]
+    pub soft_hold: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -247,8 +255,20 @@ fn apply_os_smb_mapping(
     };
 
     let config_unc = unc_from_smb_parts(host, share, subpath);
-    if let Some(path) = resolve_mapped_local_path(&config_unc) {
-        return local_via_os_map(path, &config_unc);
+
+    // OPT-17/18 + OPT-20B: map listed → timed Local probe; asleep → smb2 bridge
+    // (do not auto-mount a second letter for the same UNC).
+    if let Some(path) = lookup_mapped_local_path(&config_unc) {
+        let outcome = probe_local(&path, LOCAL_PROBE_TIMEOUT);
+        if outcome.is_reachable() {
+            return local_via_os_map(path, &config_unc);
+        }
+        if matches!(outcome, reconnect::ProbeOutcome::TimedOut) {
+            reconnect::note_map_needs_reconnect(&config_unc);
+        }
+        note_smb2_bridge(&config_unc, &path);
+        start_prefer_local_promote(config_unc, path);
+        return target;
     }
 
     if let Some(params) = auto_mount.filter(|p| p.enabled) {
@@ -405,12 +425,37 @@ fn display_remote(target: &ServerTarget, relative: &str) -> String {
 }
 
 /// Test reachability of the configured server (local path or SMB share).
+///
+/// `quiet`: Quiet-Poll mode (OPT-20B) — short Local probe, and on map-bridge
+/// failure return `soft_hold` so the UI keeps the last good status.
 pub async fn test_connection(
     server_url: &str,
     login: &str,
     password: &str,
     auto_mount_enabled: bool,
+    quiet: bool,
 ) -> ConnectionTestResult {
+    let parsed = match parse_server_target(server_url) {
+        Ok(t) => t,
+        Err(e) => {
+            return ConnectionTestResult {
+                ok: false,
+                message: e,
+                soft_hold: false,
+            }
+        }
+    };
+
+    let bridge_unc = match &parsed {
+        ServerTarget::Smb {
+            host,
+            share,
+            subpath,
+            ..
+        } => Some(unc_from_smb_parts(host, share, subpath)),
+        ServerTarget::Local { .. } => None,
+    };
+
     let target = match resolve_server_target(
         server_url,
         Some(AutoMountParams {
@@ -424,21 +469,35 @@ pub async fn test_connection(
             return ConnectionTestResult {
                 ok: false,
                 message: e,
+                soft_hold: false,
             }
         }
     };
 
     match target {
         ServerTarget::Local { path } => {
-            if path.exists() {
+            // OPT-20B B8: prefer shared probe cache from resolve; never unbounded exists.
+            let outcome = probe_local(&path, LOCAL_PROBE_TIMEOUT);
+            if outcome.is_reachable() {
                 ConnectionTestResult {
                     ok: true,
                     message: format!("Lokaler Pfad erreichbar: {}", path.display()),
+                    soft_hold: false,
+                }
+            } else if quiet {
+                ConnectionTestResult {
+                    ok: false,
+                    message: format!(
+                        "Lokaler Pfad noch nicht bereit (Reconnect…): {}",
+                        path.display()
+                    ),
+                    soft_hold: true,
                 }
             } else {
                 ConnectionTestResult {
                     ok: false,
                     message: format!("Lokaler Pfad nicht gefunden: {}", path.display()),
+                    soft_hold: false,
                 }
             }
         }
@@ -447,53 +506,85 @@ pub async fn test_connection(
             port,
             share,
             subpath,
-        } => match connect_smb(&host, port, login, password).await {
-            Ok(mut client) => match client.connect_share(&share).await {
-                Ok(mut tree) => {
-                    let list_path = if subpath.is_empty() {
-                        ""
-                    } else {
-                        subpath.as_str()
-                    };
-                    match client.list_directory(&mut tree, list_path).await {
-                        Ok(_) => ConnectionTestResult {
-                            ok: true,
-                            message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
-                        },
-                        Err(e) => {
-                            // Share connected but subpath list failed — still count as reachable
-                            // if subpath empty failed hard; for non-empty try fs_info as fallback
-                            if subpath.is_empty() {
-                                ConnectionTestResult {
+        } => {
+            let result = test_smb_connection(&host, port, &share, &subpath, login, password).await;
+            if result.ok {
+                result
+            } else if quiet
+                && bridge_unc
+                    .as_ref()
+                    .is_some_and(|u| is_recently_bridging(u))
+            {
+                ConnectionTestResult {
+                    ok: false,
+                    message: format!("{} (Reconnect…)", result.message),
+                    soft_hold: true,
+                }
+            } else {
+                result
+            }
+        }
+    }
+}
+
+async fn test_smb_connection(
+    host: &str,
+    port: u16,
+    share: &str,
+    subpath: &str,
+    login: &str,
+    password: &str,
+) -> ConnectionTestResult {
+    match connect_smb(host, port, login, password).await {
+        Ok(mut client) => match client.connect_share(share).await {
+            Ok(mut tree) => {
+                let list_path = if subpath.is_empty() {
+                    ""
+                } else {
+                    subpath
+                };
+                match client.list_directory(&mut tree, list_path).await {
+                    Ok(_) => ConnectionTestResult {
+                        ok: true,
+                        message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
+                        soft_hold: false,
+                    },
+                    Err(e) => {
+                        if subpath.is_empty() {
+                            ConnectionTestResult {
+                                ok: false,
+                                message: format!("Share erreichbar, Listing fehlgeschlagen: {e}"),
+                                soft_hold: false,
+                            }
+                        } else {
+                            match client.fs_info(&mut tree).await {
+                                Ok(_) => ConnectionTestResult {
+                                    ok: true,
+                                    message: format!(
+                                        "Verbindung zum Server erfolgreich (//{host}/{share})"
+                                    ),
+                                    soft_hold: false,
+                                },
+                                Err(e2) => ConnectionTestResult {
                                     ok: false,
-                                    message: format!("Share erreichbar, Listing fehlgeschlagen: {e}"),
-                                }
-                            } else {
-                                match client.fs_info(&mut tree).await {
-                                    Ok(_) => ConnectionTestResult {
-                                        ok: true,
-                                        message: format!(
-                                            "Verbindung zum Server erfolgreich (//{host}/{share})"
-                                        ),
-                                    },
-                                    Err(e2) => ConnectionTestResult {
-                                        ok: false,
-                                        message: format!("Verbindung fehlgeschlagen: {e2}"),
-                                    },
-                                }
+                                    message: format!("Verbindung fehlgeschlagen: {e2}"),
+                                    soft_hold: false,
+                                },
                             }
                         }
                     }
                 }
-                Err(e) => ConnectionTestResult {
-                    ok: false,
-                    message: map_smb_error(&e.to_string(), &share),
-                },
-            },
+            }
             Err(e) => ConnectionTestResult {
                 ok: false,
-                message: e,
+                message: map_smb_error(&e.to_string(), share),
+                soft_hold: false,
             },
+        },
+        Err(e) => ConnectionTestResult {
+            ok: false,
+            message: e,
+            soft_hold: false,
         },
     }
 }

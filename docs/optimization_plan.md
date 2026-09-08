@@ -59,8 +59,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | hoch | S | niedrig | Phase 10, Phase 32 |
 | OPT-18 | SMB: macOS/Linux OS-Mount → Local-Pfad | mittel | M | mittel | OPT-17 |
 | OPT-19 | SMB: Auto-Mount (OS-Map anlegen, App-owned) | hoch | L | mittel | OPT-17, OPT-18 |
+| OPT-20 | SMB: macOS User-Pfad-Mount + Windows Prefer-Local (Sleep) | hoch | M | mittel | OPT-17–19 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-19 ✅ — weitere Follow-ups in §5.
+**Empfohlene Reihenfolge:** OPT-0 … OPT-19 ✅; **OPT-20** Slice A ✅ / Slice B ✅.
 
 ---
 
@@ -88,6 +89,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-17 | ✅ |
 | OPT-18 | ✅ |
 | OPT-19 | ✅ |
+| OPT-20 | ✅ Slice A + Slice B — siehe Paket |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -1427,6 +1429,214 @@ Toggle aus — smb2; Quit — nur App-owned getrennt.
 
 ---
 
+### OPT-20: SMB — macOS User-Pfad-Mount + Windows Prefer-Local (Sleep/Reconnect)
+
+**Ziel:**  
+1. **macOS:** Auto-Mount ohne Finder und ohne `mkdir /Volumes/…` (Permission denied) — Mount unter App-Support-User-Pfad → Local wie Finder-Mount.  
+2. **Windows:** Nach Standby schnell **irgendeine** nutzbare Verbindung (smb2-Brücke), sobald möglich auf **gemapptes Laufwerk (Local)** umschalten — nicht 60 s blockieren und nicht dauerhaft auf smb2 kleben.
+
+**Impact:** hoch (Mac: Auto-Mount heute oft tot; Win: Sleep-Reconnect + Session-Limits)  
+**Aufwand:** M (zwei Slices)  
+**Risiko:** mittel (Reconnect-Races, Quiet-Poll, Creds/WNet 86 unverändert getrennt behandeln)  
+**Abhängigkeiten:** OPT-17, OPT-18, OPT-19
+
+> **Session-Regel:** Eine Agent-Session = **nur Slice A** *oder* **nur Slice B**. Nicht beide in einem Rutsch.
+
+#### Produktentscheidungen (fest)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| P1 | Prefer Local | Endzustand immer Local/OS-Mount wenn erreichbar |
+| P2 | Schnelle Verbindung | Solange Local wacht/hängt: **smb2 als Brücke** nutzen (Health + Upload) |
+| P3 | Kein Dauer-smb2 | Sobald Local ok → auf Local umschalten; smb2-Session beenden wo sinnvoll |
+| P4 | macOS Mount-Ort | **User-Pfad** unter App-Data (nicht NetFS, nicht `/Volumes` mkdir) |
+| P5 | NetFS | **Out of scope** (Follow-up nur wenn User-Pfad nicht reicht) |
+| P6 | Linux | Unverändert (gvfs OPT-19); kein Pflicht-Change in OPT-20 |
+| P7 | UI-Toggle | Kein neuer Toggle; `smb_auto_mount_enabled` bleibt |
+| P8 | Config-URL | Bleibt `smb://…` |
+
+#### Kontext / Live-Befunde (2026-09)
+
+| Plattform | Symptom | Ursache |
+|-----------|---------|---------|
+| macOS ATS → Linux AMS | `SMB auto-mount failed … /Volumes/aktuell: Permission denied (os error 13); using smb2` | OPT-19 `mount_macos` macht `create_dir_all("/Volumes/…")` — User darf das nicht |
+| macOS + Finder-Mount | Local super (`SMB via OS mount`) | OPT-18 ok |
+| Windows | `WNetAddConnection2W` **86** (invalid password), danach oft smb2 OK | Creds/Session-Konflikt; **nicht** Kern von OPT-20 (nur dokumentieren) |
+| Windows nach Standby | Server-Test ~**60 s**, dann `SMB via mapped drive Z:` + Local OK | Synchrones `path.exists()` auf schlafendem Netzlaufwerk blockiert |
+
+```mermaid
+flowchart TD
+  start[resolve / test / upload]
+  map{Map oder Mount gelistet?}
+  probe[Local-Probe mit Timeout]
+  localOk{Local erreichbar?}
+  local[ServerTarget Local]
+  bridge[smb2 Brücke parallel oder nach kurzem Local-Timeout]
+  smbOk{smb2 ok?}
+  useSmb[ServerTarget Smb nutzen]
+  bg[Hintergrund: Local weiter anstupsen]
+  promote[Local ok → Prefer Local umschalten]
+  fail[Fehler / rot]
+
+  start --> map
+  map -->|nein| bridge
+  map -->|ja| probe
+  probe --> localOk
+  localOk -->|ja| local
+  localOk -->|noch nicht| bridge
+  bridge --> smbOk
+  smbOk -->|ja| useSmb
+  useSmb --> bg
+  bg --> promote
+  smbOk -->|nein| fail
+  promote --> local
+```
+
+---
+
+#### Slice A — macOS: User-Pfad Auto-Mount
+
+**Ziel:** Ohne Finder Auto-Mount → Local; Fail → smb2 (wie heute).
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| A1 | Mount-Root | z. B. `{app_local_data}/smb-mounts/<sanitized-share>/` (schreibbar) |
+| A2 | API | weiter `mount_smbfs -N` + Creds in URL (wie jetzt); **kein** NetFS in v1 |
+| A3 | Enum | OPT-18 `getfsstat` findet jeden `smbfs`-Mount (nicht nur `/Volumes`) — Verify |
+| A4 | Registry | App-owned wie OPT-19; Quit-Unmount nur owned User-Pfad-Mounts |
+| A5 | Kollision | Share-Name schon unter `/Volumes` (Finder) → Resolve trifft OPT-18 zuerst, **kein** zweites Mount |
+| A6 | Log | `SMB auto-mounted {path} ({unc})` / Fail + `using smb2` |
+
+##### Scope Slice A
+
+**In scope:**
+
+- [x] `mount_macos` / `unique_volumes_path` → User-Pfad unter App-Data
+- [x] Sicherstellen: `ensure` + `resolve_mapped_local_path` finden den Mount
+- [x] Quit/Startup-Registry unverändert semantisch (Pfad ändert sich)
+- [x] Unit-Tests: Pfad-Sanitize, Join Subpath; `cargo test`
+- [ ] Manuell macOS: ohne Finder → Local; mit Finder → kein Doppel-Mount; Fail → smb2
+
+**Out of scope Slice A:**
+
+- NetFS / `/Volumes`-Parität erzwingen
+- Windows Sleep-Bridge (→ Slice B)
+- WNet 86 / Cred-Härtung
+- Linux gvfs-Änderungen
+
+##### Akzeptanz Slice A
+
+- [x] Ohne Finder, Toggle an: kein `Permission denied` auf `/Volumes`; Log Auto-Mount unter App-Data; UI „Erreichbar (lokal)“ / Local-Pfad *(Code-Pfad; Live-Abnahme macOS)*
+- [x] Mit Finder-Mount: Local über `/Volumes/…`; Quit trennt Finder-Mount **nicht** *(OPT-18 Match vor ensure)*
+- [x] Mount-Fail: smb2; App nicht blockiert
+- [x] `cargo test` grün
+
+##### Agent-Prompt Slice A
+
+```
+Implementiere OPT-20 Slice A aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur Slice A (macOS User-Pfad Auto-Mount; kein NetFS; kein Windows Sleep-Bridge).
+Danach cargo test --manifest-path src-tauri/Cargo.toml.
+```
+
+---
+
+#### Slice B — Windows: Prefer-Local + smb2-Brücke (Sleep)
+
+**Ziel:** Nach Standby schnell verbunden (smb2 wenn nötig), sobald `Z:` wach → Local; Quiet-Poll nicht 60 s einfrieren.
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| B1 | Probe | `exists`/FS-Zugriff auf Map **nicht** unbegrenzt auf dem Aufrufer-Thread blockieren |
+| B2 | Laut (Retry / erster Check nach Resume) | Local + smb2 **parallel** (oder Local mit kurzem ersten Timeout, dann smb2, Local im Hintergrund weiter) |
+| B3 | Erstes OK | UI/Health = verbunden (smb2 oder Local) |
+| B4 | Prefer Local | Wenn Local später ok → umschalten; Log `SMB via mapped drive …` |
+| B5 | Reconnect-Fenster | Local im Hintergrund bis ~60–90 s anstupsen (Poll 0,5–1 s) |
+| B6 | Quiet-Poll | Kurzer Dual-/Local-Probe (1–2 s); Timeout → Status halten + optional „reconnect…“; **kein** 60 s Freeze; kein vorzeitiges Rot wenn zuletzt ok |
+| B7 | Resume | Ideal: Power-Resume-Hook setzt „Map needs reconnect“; sonst Heuristik beim ersten langsamen Probe |
+| B8 | Doppel-`exists` | Resolve und `test_connection` teilen **eine** Probe (kein zweites teures exists) |
+| B9 | Upload | Gleiche Prefer-Local-/Brücken-Politik wie Health |
+| B10 | smb2-Ende | Nach Promote auf Local: keine neue smb2-Session für denselben Check; laufende Upload-Jobs nicht hart abbrechen nur wegen Promote |
+| B11 | WNet 86 | **Nicht** in Slice B fixen (eigenes Follow-up); Fail-Pfad bleibt smb2 |
+
+##### Scope Slice B
+
+**In scope:**
+
+- [x] Timed / threaded Local-Probe für Map-Roots (Windows zuerst; API so, dass macOS später mitkann)
+- [x] Parallel- oder Soft-Failover-Brücke smb2 bei langsamem/toter Map-Probe
+- [x] Hintergrund-Promote Local → Prefer Local + Log
+- [x] Quiet-Poll: kurzes Timeout, kein UI-Freeze
+- [x] Optional: Windows Resume-Event → Reconnect-Flag *(Heuristik bei TimedOut-Probe; kein HWND-Hook)*
+- [x] Unit-Tests wo sinnvoll (Timeout-Semantik, Promote-Reihenfolge); `cargo test`
+- [ ] Manuell Win: Sleep → schneller Dot grün (smb2 oder Local); danach Log Map-Hit wenn `Z:` wach
+
+**Out of scope Slice B:**
+
+- macOS User-Pfad (→ Slice A)
+- WNet ERROR_86 Cred-Fix
+- Letter-less UNC ohne Drive-Letter enumerieren
+- DNS Host↔IP Match
+- Linux-spezifische Sleep-Bridge (nice-to-have später)
+
+##### Akzeptanz Slice B
+
+- [x] Nach Standby: Server-Check liefert nutzbare Verbindung deutlich unter ~60 s **wenn smb2 erreichbar**, auch wenn `Z:` noch schläft *(Code-Pfad: timed probe 1,5 s → smb2-Brücke)*
+- [x] Sobald Map wach: Log `SMB via mapped drive …`; weitere Checks/Uploads Prefer Local *(Hintergrund-Promote)*
+- [x] Quiet-Poll blockiert UI nicht ~60 s *(soft_hold hält Status)*
+- [x] Ohne Map: Verhalten wie heute (smb2 / Auto-Mount)
+- [x] `cargo test` grün
+- [ ] Manuell Win: Sleep → schneller Dot grün (smb2 oder Local); danach Log Map-Hit wenn `Z:` wach
+
+##### Agent-Prompt Slice B
+
+```
+Implementiere OPT-20 Slice B aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur Slice B (Windows Prefer-Local + smb2-Brücke nach Sleep;
+kein macOS User-Pfad, kein WNet-86-Fix).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run check.
+```
+
+---
+
+#### Betroffene Dateien (erwartet)
+
+| Slice | Dateien |
+|-------|---------|
+| A | `src-tauri/src/smb/auto_mount.rs` (`mount_macos`, Mount-Pfad); ggf. App-Data-Pfad-Helper |
+| B | `windows_mapping.rs` / neuer `smb/reconnect.rs`; `client.rs` (`resolve_server_target`, `test_connection`, Upload-Einstiege); Quiet-Poll / Server-Store nur wenn Status-Text nötig |
+| Beide | Logs; Unit-Tests; Messnotiz unten |
+
+#### Risiken & Mitigation
+
+| Risiko | Mitigation |
+|--------|------------|
+| smb2-Brücke + wache Map = zwei Sessions kurz | Promote schnell; Brücke nur solange Local nicht ok |
+| Quiet-Poll + lange Local-Probe | Slice B: Quiet kurz timeouten |
+| User-Pfad unsichtbar im Finder | OK; Log + „Erreichbar (lokal)“ zeigen Pfad |
+| Upload wechselt Mid-Job Local↔smb2 | Promote nur zwischen Jobs / vor Job-Start; laufenden Job nicht umbiegen |
+| Resume-Hook fehlt | Heuristik reicht für v1; Hook optional |
+
+#### Messnotiz (nach Implementierung)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| macOS ohne Finder, Toggle an | Connect-Pfad | smb2 (+ `/Volumes` fail) | Local via `{app_data}/smb-mounts/…` | Slice A: `mount_macos` → User-Pfad; getfsstat findet smbfs |
+| Win Sleep → Server-Test | Zeit bis verbunden | ~60 s Local-block | ≪60 s via smb2-Brücke | Slice B: `reconnect::path_reachable_timed` 1,5 s → smb2 |
+| Win Sleep → später | Endpfad | Local nach 60 s | Local nach Promote | Log `SMB via mapped drive` (Hintergrund ≤90 s) |
+| Quiet-Poll nach Sleep | UI-Freeze | ja (~60 s) | nein | Slice B: soft_hold + kurze Local-Probe |
+
+Implementierung Slice A: `smb/auto_mount.rs` — `pick_user_mount_point` unter `smb-mounts/`; kein `/Volumes` mkdir.  
+Implementierung Slice B: `smb/reconnect.rs` — timed Local-Probe, smb2-Brücke, Prefer-Local-Promote; Hook in `apply_os_smb_mapping` / `test_connection`; Quiet `soft_hold`.
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -1440,6 +1650,9 @@ Toggle aus — smb2; Quit — nur App-owned getrennt.
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |
+| macOS NetFS (`NetFSMountURLSync`) statt User-Pfad | Follow-up nur wenn OPT-20A nicht reicht |
+| Windows WNet ERROR_86 / Cred-Session-Härtung | Follow-up nach OPT-20B; getrennt von Sleep-Bridge |
+| Letter-less UNC ohne Drive-Letter | Follow-up; OPT-17 enumeriert nur A–Z |
 
 ---
 
