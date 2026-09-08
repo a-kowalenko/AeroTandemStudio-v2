@@ -10,6 +10,13 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+
+## [0.5.0-beta.1] - 2026-09-08
+
+### Hinweis
+
+- Vorabversion zum Testen
+
 ## [0.4.1-beta.2] - 2026-09-05
 
 ### Hinweis
