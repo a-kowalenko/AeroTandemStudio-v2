@@ -14,6 +14,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (Fast Path bleibt Standard)
 - Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
+- Einstellungen → System: Automatische Bereinigung — lokale Vorgangs- und Backup-Ordner nach wählbarer Aufbewahrungsdauer löschen; Einträge unter Vorgänge bleiben (Anzeige „Ordner fehlt“)
 
 ### Verbessert
 
