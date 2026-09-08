@@ -9,6 +9,9 @@ import { useServerStore } from "@/store/serverStore";
 
 const OPEN_DELAY_MS = 500;
 
+/** Hidden for now — confused operators more than it helped. Keep wiring for later. */
+const POST_UPDATE_HINT_UI_ENABLED = false;
+
 export function usePostUpdateConnectionHint(opts: {
   enabled: boolean;
   appVersion: string;
@@ -42,6 +45,7 @@ export function usePostUpdateConnectionHint(opts: {
 
   useEffect(() => {
     if (
+      !POST_UPDATE_HINT_UI_ENABLED ||
       !enabled ||
       !isMacOsHost() ||
       !hintEligible ||
