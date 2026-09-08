@@ -3,7 +3,7 @@
 > **Zweck:** UX- und Robustheits-Verbesserungen am Dialog **Vorgänge** (Tab „Vorgänge“: Liste + Detail).
 > Pro Agent-Session **nur eine Unterphase** (38.1 … 38.4) implementieren.
 >
-> **Regeln:** `@AGENTS.md` · **Hauptplan:** `@docs/IMPLEMENTATION_PLAN.md`
+> **Regeln:** `@AGENTS.md` · **Index:** `@docs/IMPLEMENTATION_PLAN.md` · Archiv: `@docs/phases/ARCHIVE.md`
 
 ---
 

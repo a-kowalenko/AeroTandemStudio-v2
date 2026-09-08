@@ -4,7 +4,7 @@ Phase 15 guide for shipping Aero Tandem Studio as a fully functional Linux deskt
 app (feature parity with Windows / macOS). Local builds and CI produce an
 **AppImage** (optional `.deb`); Flatpak/Snap are out of scope for v1.
 
-Plan checklist: `docs/IMPLEMENTATION_PLAN.md` → Phase 15.
+Plan checklist: `docs/phases/ARCHIVE.md` → Phase 15 (Index: `docs/IMPLEMENTATION_PLAN.md`).
 
 ---
 
@@ -311,7 +311,7 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 
 ## Related
 
-- Plan: `docs/IMPLEMENTATION_PLAN.md` Phase 15  
+- Plan: `docs/phases/ARCHIVE.md` Phase 15 (Index: `docs/IMPLEMENTATION_PLAN.md`)
 - macOS mirror: `docs/MACOS_BUILD.md`  
 - FFmpeg layout: `src-tauri/resources/ffmpeg/README.md`  
 - Release / updater: `docs/RELEASE.md`, `.github/workflows/release.yml`  
@@ -322,7 +322,7 @@ Code + CI prepared; remaining items need a Linux VM or green Ubuntu release run.
 ## Agent prompt (copy into a new context window)
 
 ```
-Implementiere Phase 15 — Linux Build & Plattform-Parity aus @docs/IMPLEMENTATION_PLAN.md
+Implementiere Phase 15 — Linux Build & Plattform-Parity aus @docs/phases/ARCHIVE.md (Abschnitt Phase 15) / @docs/LINUX_BUILD.md
 vollständig und sauber (Feature-Parity Win/Mac).
 
 Regeln: @AGENTS.md

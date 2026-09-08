@@ -323,6 +323,18 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
+            checked={draft.sd_eject_sound_enabled}
+            onCheckedChange={(v) =>
+              patch("sd_eject_sound_enabled", v === true)
+            }
+          />
+          {t("settings.sd.import.ejectSound")}
+        </label>
+        <p className="text-[11px] leading-snug text-muted">
+          {t("settings.sd.import.ejectSoundHint")}
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
             checked={draft.sd_skip_processed}
             onCheckedChange={(v) => patch("sd_skip_processed", v === true)}
           />

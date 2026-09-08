@@ -252,15 +252,38 @@ pub fn object_name_matches_action_cam_signature(name: &str, vendor: ActionCamVen
 
 fn name_looks_like_gopro(name: &str) -> bool {
     let u = name.to_ascii_uppercase();
-    if u.contains("GOPRO") {
+    // DCIM chapter folders (100GOPRO, 101GOPRO, …) — not device labels like "GoPro HERO12".
+    if is_gopro_chapter_folder(&u) {
         return true;
     }
+    // File stems: GX/GH masters, GOPR#### stills, GPFR/GPBK chapter media.
+    // Do not use bare "GOPR" — it is a prefix of "GOPRO" (device labels).
     u.starts_with("GX")
         || u.starts_with("GH")
-        || u.starts_with("GOPR")
         || u.starts_with("GPFR")
         || u.starts_with("GPBK")
-        || (u.starts_with("GP") && u.len() > 2 && u.as_bytes()[2].is_ascii_digit())
+        || (u.starts_with("GOPR") && u.len() > 4 && u.as_bytes()[4].is_ascii_digit())
+        || (u.starts_with("GP")
+            && !u.starts_with("GOPRO")
+            && u.len() > 2
+            && u.as_bytes()[2].is_ascii_digit())
+}
+
+/// `100GOPRO`-style chapter folder (optional extension / path suffix ignored).
+fn is_gopro_chapter_folder(upper_name: &str) -> bool {
+    let base = upper_name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(upper_name)
+        .split('.')
+        .next()
+        .unwrap_or(upper_name);
+    let bytes = base.as_bytes();
+    bytes.len() >= 7
+        && bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2].is_ascii_digit()
+        && base[3..].starts_with("GOPRO")
 }
 
 fn name_looks_like_dji(name: &str) -> bool {
@@ -567,6 +590,18 @@ mod tests {
         ));
         assert!(!content_names_look_like_action_cam(
             ["IMG_0001.JPG", "DCIM"],
+            ActionCamVendor::GoPro
+        ));
+        assert!(!content_names_look_like_action_cam(
+            ["GoPro HERO12 Black", "GoPro MTP"],
+            ActionCamVendor::GoPro
+        ));
+        assert!(object_name_matches_action_cam_signature(
+            "100GOPRO",
+            ActionCamVendor::GoPro
+        ));
+        assert!(!object_name_matches_action_cam_signature(
+            "GoPro HERO12 Black",
             ActionCamVendor::GoPro
         ));
         assert!(content_names_look_like_action_cam(

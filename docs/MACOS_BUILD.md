@@ -218,4 +218,4 @@ npm run tauri build -- --config src-tauri/tauri.conf.ci.json
 - CI checks (PR): `.github/workflows/test.yml`
 - Release / updater: `docs/RELEASE.md`, `.github/workflows/release.yml`
 - CI config overlay: `src-tauri/tauri.conf.ci.json`
-- Plan: `docs/IMPLEMENTATION_PLAN.md` Phase 13
+- Plan: `docs/phases/ARCHIVE.md` Phase 13 (Index: `docs/IMPLEMENTATION_PLAN.md`)

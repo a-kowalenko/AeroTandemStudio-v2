@@ -1,33 +1,35 @@
 # Aero Tandem Studio v2 — Agent Rules
 
-## Hauptdokument
+## Hauptdokumente
 
-**Implementierungsplan:** `@docs/IMPLEMENTATION_PLAN.md` 
-**Vorgänge-Dialog UX:** `@docs/VORGAENGE_DIALOG_PLAN.md` (Phase 38, nur Tab Vorgänge)
-**Performance-Backlog:** `@docs/optimization_plan.md`
-**Architektur:** `@docs/ARCHITECTURE.md`  
-**Legacy-Mapping (Archiv):** `@docs/MIGRATION.md` — nur bei gezieltem Nachschlagen  
-**macOS Build:** `@docs/MACOS_BUILD.md`  
-**Linux Build:** `@docs/LINUX_BUILD.md`
+| Dokument | Wann anhängen |
+|----------|----------------|
+| `@AGENTS.md` | Immer (dieses File) |
+| `@docs/IMPLEMENTATION_PLAN.md` | Index / Tracker (schlank) |
+| `@docs/phases/open/…` | **Die eine offene Phase-Spec** |
+| `@docs/phases/ARCHIVE.md` | Nur Regression / erledigte Spec |
+| `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt) |
+| `@docs/optimization_plan.md` | Nur **ein** OPT-Paket |
+| `@docs/ARCHITECTURE.md` | Bei Architekturfragen |
+| `@docs/MIGRATION.md` | Legacy-Mapping, gezielt |
+| `@docs/LINUX_BUILD.md` / `@docs/MACOS_BUILD.md` | Plattform-Build |
 
-In jedem neuen Kontextfenster `@docs/IMPLEMENTATION_PLAN.md` referenzieren und **nur eine Phase** implementieren. 
-Vorgänge-Dialog-Verbesserungen: `@docs/VORGAENGE_DIALOG_PLAN.md` — **nur eine Unterphase 38.x** pro Session (Chips/Labels nur im Dialog, Rest der App unverändert).
-Performance-Optimierungen separat: `@docs/optimization_plan.md` — **nur ein OPT-Paket** pro Session.
+**Context-Regel:** Nicht `ARCHIVE.md` und nicht den alten Monolithen anhängen.  
+Pro Session **eine** Phase aus `docs/phases/open/` (oder ein OPT-Paket).
 
 ---
 
 ## Stack
 
-Tauri 2 + Rust + React 19 + TypeScript + FFmpeg sidecar
-
-Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 + Loopback-HTTP.
+Tauri 2 + Rust + React 19 + TypeScript + FFmpeg sidecar  
+Tailwind + shadcn/ui, Zustand, SQLite · Player: HTML5 + Loopback-HTTP · Win + macOS + Linux
 
 ---
 
 ## Regeln
 
-- **v2 ist Source of Truth** — bestehenden v2-Code und die Phase-Referenzen im Plan als Basis nutzen
-- **Legacy nicht an Agent-Kontext anhängen** — optional manuell bei konkreten Edge-Cases (siehe Archiv unten)
+- **v2 ist Source of Truth** — bestehenden v2-Code und die offene Phase-Spec als Basis nutzen
+- **Legacy nicht an Agent-Kontext anhängen** — optional manuell bei Edge-Cases
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust — kein MoviePy, kein Python
 - Hardware-Encoding: NVENC (Windows + Linux), VideoToolbox (macOS), Fallback libx264
 - FFmpeg-Command-Generierung braucht **Rust Unit-Tests**
@@ -48,115 +50,49 @@ Tailwind + shadcn/ui, Zustand, SQLite — eingeführt ab Phase 5. Player: HTML5 
 
 ## Legacy-Archiv (optional, nicht anhängen)
 
-Migration abgeschlossen (Phase 0–39 ✅). Das Python-Legacy unter
-`C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` ist **nur noch Archiv** —
-nicht ins Workspace attachieren, nicht in Agent-Prompts referenzieren.
-
-Bei Bedarf (Ordnerstruktur, Marker, DJI-Edge-Case): **eine** Legacy-Datei manuell öffnen.
-Mapping: `@docs/MIGRATION.md` · Detail: `@docs/IMPLEMENTATION_PLAN.md` §5–6.
+Migration abgeschlossen (Phase 0–41 weitgehend ✅). Python-Legacy unter  
+`C:\Users\Kowalenko\PycharmProjects\AeroTandemStudio` — **nicht** attachen.  
+Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ---
 
-## Aktueller Stand
+## Aktueller Stand (Kurz)
 
-- ✅ Tauri 2 Scaffold (React + TypeScript)
-- ✅ `npm run tauri dev` funktioniert
-- ✅ Phase 0: FFmpeg-Grundgerüst
-- ✅ Phase 1: Concat & Trim
-- ✅ Phase 2: Video-Liste & Drag & Drop
-- ✅ Phase 3: Intro-Pipeline & Encoding
-- ✅ Phase 4: Paralleles Encoding & Fortschritt
-- ✅ Phase 5: Config, Kundenmodell & Basis-UI
-- ✅ Phase 6: QR-Code-Erkennung
-- ✅ Phase 7: SD-Karten Monitor & Dateiauswahl
-- ✅ Phase 8: Video-Vorschau (Preview-Encode, VideoPreview, PhotoPreview)
-- ✅ Phase 9: Player & Cutter (HTML5 VideoPlayer, VideoCutter, cut/split, Pending Cuts)
-- ✅ Phase 10: SMB-Upload & Auto-Update (smb2 client, Server-Status, Updater-Stub)
-- ✅ Phase 11: App-Shell, Splash, Cache-Cleanup, Logging, Session-Reset
-- ✅ Phase 11.1: Cache-Größe in Settings (System → Cache & Temp)
-- ✅ Phase 12: Vorgang Erstellen & Legacy-Export (Ordner, Marker, WM, Upload)
-- ✅ Phase 13: macOS Build & Plattform-Tests (FFmpeg mac, VideoToolbox/SD/SMB Fixes, CI, Entitlements, Signing-Docs)
-- ✅ Import Working-Folder: Medien werden beim Import in `aero_studio_preview_*` kopiert; Cuts treffen nur Kopien
-- ✅ Phase 15: Linux Build & Plattform-Parity (static FFmpeg, fontfile, NVENC, SD-Heuristik, AppImage-Updater, Ubuntu CI)
-- ✅ Phase 16: First-Run Setup-Wizard (`setup_completed`, Theme/Pfade/Backup/Server, Skip, Reset → Wizard; Intro default aus)
-- ✅ Phase 17: QR-Treffer-Preview (Spotlight im SuccessDialog; rxing-Punkte + Hit-Frame)
-- ✅ Phase 18: Standard-Medienordner anlegen (nur Wizard; `Erstellt` / `SD-Backups` je Klick)
-- ✅ Phase 19: Operator-Identität (`operator_name`, Favorit-Pin, TM↔VS-Ausschluss)
-- ✅ Phase 20: Medien-Bearbeitung Drehen (Video/Foto, Bearbeiten-Dialog, Undo, Batch-Fotos)
-- ✅ Phase 21: Foto-Zuschnitt (Crop-Overlay, Working-Copy, Undo)
-- ✅ Phase 21.1: Crop-Settle UX (1.4s Idle, Overlay am Settled-Rand, Shadow-Reveal)
-- ✅ Phase 22: macOS Titlebar-Align (Traffic Lights ↔ Logo center) & Dialog-Zentrierung (Update-Dialog)
-- 🔄 Phase 23: USB-Action-Cams — … 23.2f Volume/MTP-Dedup ✅; 23.2g MTP-Modell-Whitelist ✅; als Nächstes 23.2h oder 23.3 Linux libmtp
-- ✅ Phase 24: AMS-Nachreichen (Historie → Dateien + Kategorie + Preview/Voll)
-- ✅ Phase 25: AMS-Lookup Autofill (Manuell/ID → Name/Medien, sperren wie QR; keine Hashes)
-- ✅ Phase 26: Mehrsprachige UI (de / en / es-MX, `ui_language` in Config, react-i18next)
-- ✅ Phase 27: Encode-Profil & Reencode-Confirm UX
-- ✅ Phase 28: Fotos-Tab Master–Detail (Übersicht/Review + Detail rechts; kein doppeltes MediaListPanel)
-- ✅ Phase 29: Low-Media Confirm vor Erstellen (Soft Confirm, produktbezogen, vor setBusy; Append übersprungen)
-- ✅ Phase 30: Ausgabeordner-Konflikt Soft Confirm (Probe + Replace; keine stillen Restmedien beim Upload)
-- ✅ Phase 31: Offline-Create & Upload nachholen (Soft-Block + `upload_state`; Prefight + Nachholen; Bulk sequentiell + Summary + Historie-Badge; 31.4 Partial bei fehlenden Dateien)
-- 🔄 Phase 31.5: Extra-Dateien — Lieferliste angleichen oder optional löschen (Switch-UX; geplant)
-- ✅ Phase 31.6: Bulk zweistufig — Vorab-Scan, bereite zuerst, problematische einzeln
-- ✅ Phase 32: SMB Quiet-Poll (Parity mit AMS-Health; 45 s + visibility; kein Auto-Upload)
-- ✅ Phase 33: Label Historie → Vorgänge (i18n: DE Vorgänge / EN Jobs / ES Trabajos; kein Component-Rename)
-- ✅ Phase 31.7: DJI Foto-Timelapse Suffix-Pairing (`001_NNNN` ↔ `DJI_*_NNNN.MP4`) + Clear inkl. `.LRF`
-- ✅ Phase 31.8: Manueller Upload-Abbruch → `upload_state=cancelled` (nachholbar, kein Badge/Bulk)
-- ✅ Phase 34: SD-Server-Backup über SMB (`sd_server_backup_url`, lokal zuerst + async Mirror; kein Mount-`fs::copy`)
-- ✅ Phase 34.1: Server-Backup-Popover (Chip-Details Bar/%/MB/Speed + Soft-Confirm-Abbruch nur aktueller Job)
-- ✅ Phase 35: AMS Path Hints (Bridge → SMB Suggest/Profil/Drift; 35.a–35.d ✅)
-- ✅ Phase 36: Crew-Defaults beim Update mergen (Add-only + `crew_removed_names` Tombstones)
-- ✅ Phase 37: Background-SMB-Upload nach Create (Session frei; Slot/Queue, Compact-Bar, Quit-Confirm; Append/Historie/Bulk; Dual-Panel Session über Upload)
-- ✅ Phase 38: Vorgänge-Dialog UX (38.1–38.5: Layout, `components/history/*`, `history.status.*`, AMS-Poll + `ams_verified_at`, Medien-Tab; Plan `@docs/VORGAENGE_DIALOG_PLAN.md`)
-- ✅ Phase 39: Settings Danger Zone — lokale Vorgänge- & Backup-Ordner leeren (Historie bleibt; System-Tab: Update → Cache → Reset → Danger Zone)
-- ✅ Phase 40: Compatible Body-Concat — Mode + Probe-Gate + Orientierungs-Policy + Settings/i18n (`fast` Default)
+- ✅ Phase 0–22, 24–31.4, 31.6–41 (Details: `@docs/IMPLEMENTATION_PLAN.md` Tracker)
+- 🔄 **Phase 23** USB-MTP — 23.2g Whitelist / WPD-Descend ✅; als Nächstes **23.2h** oder **23.3** Linux · Spec: `@docs/phases/open/23-usb-mtp.md`
+- ⬜ **Phase 31.5** Extra-Dateien (Resync / optional löschen) · Spec: `@docs/phases/open/31.5-extra-files.md`
+- ⬜ **Phase 14** ML Foto-Klassifikation (Backlog) · Spec: `@docs/phases/open/14-ml-photo.md`
 
-**Nächster Schritt:** Phase 31.5 (Extra-Dateien) · Phase 23.2h / 23.3 
-*(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional: Linux-VM-Abnahme laut `docs/LINUX_BUILD.md`; Windows-WPD-Abnahme mit echter Cam)*
+**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
+*(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
 
 ### Performance-Backlog
 
-| ID | Titel | Status |
-|----|-------|--------|
-| OPT-0 | Performance-Baseline | ✅ |
-| OPT-1 | Foto-Preview Thumbnails | ✅ |
-| OPT-2 | Import paralleles ffprobe | ✅ |
-| OPT-3 | Copy-Buffer / Hardlink | ✅ |
-| OPT-4 | Thumbnails HTTP statt Base64 | ✅ |
-| OPT-5 | App.tsx Split + lazy | ✅ |
-| OPT-6 | Log-Konsole virtualisieren | ✅ |
-| OPT-7 | Filmstrip-Prefetch | ✅ |
-| OPT-8 | Startup Cache-Sweep im Splash | ✅ |
-| OPT-9 | Stream-Copy / Preview-Reuse UX | ✅ |
-| OPT-10 | Thumbnail-Warming staffeln | ✅ |
-| OPT-11 | Foto-Import: QR vor Thumbs | ✅ |
-| OPT-12 | Foto-Import: paralleles EXIF-Sort + Copy | ✅ |
-| OPT-13 | Player/Cutter: libmpv (entfernt; HTML5 only) | ✅ entfernt |
-| OPT-14 | QR: Cascade-Decode + Sharpness-Gate | ✅ |
-| OPT-15 | SMB-Upload Parallel + Marker-Barrier | ✅ |
-| OPT-16 | Compatible-Probe-Cache (Create ohne „Clips prüfen“) | ✅ |
-| OPT-17 | SMB: Windows-Map → Local-Pfad (keine Doppel-Session) | ✅ |
-| OPT-18 | SMB: macOS/Linux OS-Mount → Local-Pfad | ✅ |
-| OPT-19 | SMB: Auto-Mount (OS-Map anlegen, App-owned) | ✅ |
-
-Details, Agent-Prompts, Akzeptanzkriterien: `@docs/optimization_plan.md`
+OPT-0 … OPT-19 ✅ (OPT-13 entfernt). Details: `@docs/optimization_plan.md` — **nur ein OPT-Paket** pro Session.
 
 ---
 
 ## Schnell-Prompt für Agent
 
 ```
-Implementiere Phase X aus @docs/IMPLEMENTATION_PLAN.md
+Implementiere Phase X aus @docs/phases/open/<datei>.md
 Regeln: @AGENTS.md
-Referenzen: [v2-Dateien aus Phase X — Abschnitt „Referenzen“ / „Scope“]
-Nur Phase X. Danach cargo test && npm run tauri dev.
+Nur Phase X. Danach cargo test && npm run check && npm run tauri dev.
 ```
 
-**Phase 15 (Linux):** Prompt in `@docs/LINUX_BUILD.md` (Abschnitt „Agent prompt“) verwenden.
-
-**Performance (OPT-X):**
+**Aktuell offen:**
 
 ```
-Implementiere OPT-X aus @docs/optimization_plan.md
+Implementiere Phase 31.5 aus @docs/phases/open/31.5-extra-files.md
 Regeln: @AGENTS.md
-Nur OPT-X. Danach cargo test && npm run tauri dev.
+Nur 31.5.
 ```
+
+```
+Implementiere Phase 23.2h aus @docs/phases/open/23-usb-mtp.md
+Regeln: @AGENTS.md
+Nur 23.2h.
+```
+
+**Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md`  
+**Performance (OPT-X):** `@docs/optimization_plan.md` — nur OPT-X

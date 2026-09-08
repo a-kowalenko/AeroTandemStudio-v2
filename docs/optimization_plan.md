@@ -1,6 +1,6 @@
 # Aero Tandem Studio v2 — Performance-Optimierungsplan
 
-> **Zweck:** Backlog für gezielte Performance-Verbesserungen, **getrennt** vom Feature-Phasenplan (`IMPLEMENTATION_PLAN.md`).
+> **Zweck:** Backlog für gezielte Performance-Verbesserungen, **getrennt** vom Feature-Phasenplan (`IMPLEMENTATION_PLAN.md` / `phases/`).
 > In jedem Agent-Kontext mit `@docs/optimization_plan.md` referenzieren und **nur ein OPT-Paket** implementieren.
 
 ---
@@ -18,7 +18,7 @@
 ## 1. Regeln
 
 - **NIEMALS** Dateien im Legacy-Projekt ändern (nur lesen)
-- **Kein Feature-Scope:** Keine neuen Phasen aus `IMPLEMENTATION_PLAN.md` anfassen (z. B. Phase 23.1 WPD, Phase 14 ML)
+- **Kein Feature-Scope:** Keine neuen Phasen aus `phases/open/` / ARCHIVE anfassen (z. B. Phase 23 MTP, Phase 14 ML)
 - **Ein OPT pro Session** — Scope nicht erweitern
 - Video-Verarbeitung **NUR** über FFmpeg CLI in Rust
 - Nach Rust-Änderungen: `cargo test --manifest-path src-tauri/Cargo.toml`
@@ -1431,7 +1431,7 @@ Toggle aus — smb2; Quit — nur App-owned getrennt.
 
 | Thema | Grund |
 |-------|--------|
-| Phase 23.1 Windows WPD/MTP | Feature-Phase, siehe `IMPLEMENTATION_PLAN.md` |
+| Phase 23.1 Windows WPD/MTP | Feature-Phase, siehe `phases/open/23-usb-mtp.md` / ARCHIVE |
 | Phase 14 ML Foto-Klassifikation | Eigenes Backlog |
 | QR zweiter Decoder (quirc) / Fisheye-Undistort | Follow-up nach OPT-14, nur bei Rest-Misses |
 | NVENC-Worker >4 | Hardware-Limit Consumer-GPUs |
@@ -1447,6 +1447,6 @@ Toggle aus — smb2; Quit — nur App-owned getrennt.
 
 - **Performance-Baseline (OPT-0):** `@docs/PERF_BASELINE.md`
 - Architektur: `@docs/ARCHITECTURE.md`
-- Feature-Phasen: `@docs/IMPLEMENTATION_PLAN.md`
+- Feature-Phasen: `@docs/phases/open/…` (offen) bzw. `@docs/IMPLEMENTATION_PLAN.md` (Index)
 - Agent-Regeln: `@AGENTS.md`
 - Bereits optimierte Bereiche: `qr/parallel.rs`, `sdThumbnailLoader.ts`, `SdFileSelector.tsx` (Virtualisierung), `preview_reuse.rs`, `video/parallel.rs`

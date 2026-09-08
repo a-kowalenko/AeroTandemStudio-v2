@@ -1,6 +1,10 @@
 //! Windows Portable Devices (WPD/MTP) for allowlisted action cams (Phase 23.1).
 //!
 //! Detect → catalog → stage-to-backup. Never run FFmpeg against MTP paths.
+//!
+//! Catalog walks must descend into `FUNCTIONAL_OBJECT` / album containers (not only
+//! `FOLDER`) — GoPro HERO MTP storage is typically a functional object; folder-only
+//! walks yield an empty selector while Explorer still shows DCIM.
 
 #![cfg(target_os = "windows")]
 
@@ -544,7 +548,8 @@ fn collect_object_names_for_signature(
                         return Ok(names);
                     }
                 }
-                if depth < MAX_DEPTH && is_folder_object(&props, &id_str) {
+                // GoPro storage is often FUNCTIONAL_OBJECT, not FOLDER — must descend.
+                if depth < MAX_DEPTH && should_descend_wpd_object(&props, &id_str, &name) {
                     queue.push_back((id_str, depth + 1));
                 }
                 if visited >= MAX_VISIT {
@@ -602,30 +607,29 @@ fn collect_media_catalog(
                 let id_str = unsafe { oid.to_string().unwrap_or_default() };
                 unsafe { CoTaskMemFree(Some(oid.0 as *const _)) };
 
-                if is_folder_object(&props, &id_str) {
-                    if depth < MAX_DEPTH {
-                        queue.push_back((id_str, depth + 1));
+                let name = object_original_name(&props, &id_str)
+                    .or_else(|| object_name(&props, &id_str))
+                    .unwrap_or_default();
+
+                // Prefer listable media even when content-type is wrong/unspecified.
+                if !name.is_empty() && is_listable_media_path(Path::new(&name)) {
+                    let size = object_size(&props, &id_str).unwrap_or(0);
+                    files.push(CameraCatalogFile {
+                        name,
+                        size,
+                        mtime: 0.0,
+                    });
+                    if let Some(ref mut cb) = on_tick {
+                        if files.len() >= last_tick + 8 {
+                            last_tick = files.len();
+                            cb(files.clone());
+                        }
                     }
                     continue;
                 }
 
-                let name = object_original_name(&props, &id_str)
-                    .or_else(|| object_name(&props, &id_str))
-                    .unwrap_or_default();
-                if name.is_empty() || !is_listable_media_path(Path::new(&name)) {
-                    continue;
-                }
-                let size = object_size(&props, &id_str).unwrap_or(0);
-                files.push(CameraCatalogFile {
-                    name,
-                    size,
-                    mtime: 0.0,
-                });
-                if let Some(ref mut cb) = on_tick {
-                    if files.len() >= last_tick + 8 {
-                        last_tick = files.len();
-                        cb(files.clone());
-                    }
+                if depth < MAX_DEPTH && should_descend_wpd_object(&props, &id_str, &name) {
+                    queue.push_back((id_str, depth + 1));
                 }
             }
         }
@@ -668,12 +672,6 @@ fn find_objects_by_filename(
                 let id_str = unsafe { oid.to_string().unwrap_or_default() };
                 unsafe { CoTaskMemFree(Some(oid.0 as *const _)) };
 
-                if is_folder_object(&props, &id_str) {
-                    if depth < MAX_DEPTH {
-                        queue.push_back((id_str, depth + 1));
-                    }
-                    continue;
-                }
                 let name = object_original_name(&props, &id_str)
                     .or_else(|| object_name(&props, &id_str))
                     .unwrap_or_default();
@@ -685,6 +683,10 @@ fn find_objects_by_filename(
                         name,
                         size,
                     });
+                    continue;
+                }
+                if depth < MAX_DEPTH && should_descend_wpd_object(&props, &id_str, &name) {
+                    queue.push_back((id_str, depth + 1));
                 }
             }
         }
@@ -711,24 +713,57 @@ fn object_size(props: &IPortableDeviceProperties, object_id: &str) -> Option<u64
     unsafe { values.GetUnsignedLargeIntegerValue(&WPD_OBJECT_SIZE).ok() }
 }
 
-fn is_folder_object(props: &IPortableDeviceProperties, object_id: &str) -> bool {
-    let keys: IPortableDeviceKeyCollection = match unsafe {
-        CoCreateInstance(&PortableDeviceKeyCollection, None, CLSCTX_INPROC_SERVER)
-    } {
-        Ok(k) => k,
-        Err(_) => return false,
-    };
-    if unsafe { keys.Add(&WPD_OBJECT_CONTENT_TYPE) }.is_err() {
-        return false;
+fn object_content_type(
+    props: &IPortableDeviceProperties,
+    object_id: &str,
+) -> Option<windows::core::GUID> {
+    let keys: IPortableDeviceKeyCollection =
+        unsafe { CoCreateInstance(&PortableDeviceKeyCollection, None, CLSCTX_INPROC_SERVER).ok()? };
+    unsafe {
+        keys.Add(&WPD_OBJECT_CONTENT_TYPE).ok()?;
     }
     let id_w = to_wide(object_id);
-    let values = match unsafe { props.GetValues(PCWSTR(id_w.as_ptr()), &keys) } {
-        Ok(v) => v,
-        Err(_) => return false,
-    };
-    match unsafe { values.GetGuidValue(&WPD_OBJECT_CONTENT_TYPE) } {
-        Ok(g) => g == WPD_CONTENT_TYPE_FOLDER,
-        Err(_) => false,
+    let values = unsafe { props.GetValues(PCWSTR(id_w.as_ptr()), &keys).ok()? };
+    unsafe { values.GetGuidValue(&WPD_OBJECT_CONTENT_TYPE).ok() }
+}
+
+/// Containers Explorer walks into (GoPro MTP storage is typically FUNCTIONAL_OBJECT).
+fn is_wpd_container_content_type(g: windows::core::GUID) -> bool {
+    g == WPD_CONTENT_TYPE_FOLDER
+        || g == WPD_CONTENT_TYPE_FUNCTIONAL_OBJECT
+        || g == WPD_CONTENT_TYPE_UNSPECIFIED
+        || g == WPD_CONTENT_TYPE_IMAGE_ALBUM
+        || g == WPD_CONTENT_TYPE_VIDEO_ALBUM
+        || g == WPD_CONTENT_TYPE_AUDIO_ALBUM
+        || g == WPD_CONTENT_TYPE_MIXED_CONTENT_ALBUM
+        || g == WPD_CONTENT_TYPE_PLAYLIST
+        || g == WPD_CONTENT_TYPE_SECTION
+        || g == WPD_CONTENT_TYPE_MEDIA_CAST
+}
+
+fn is_wpd_leaf_media_content_type(g: windows::core::GUID) -> bool {
+    g == WPD_CONTENT_TYPE_IMAGE
+        || g == WPD_CONTENT_TYPE_VIDEO
+        || g == WPD_CONTENT_TYPE_AUDIO
+        || g == WPD_CONTENT_TYPE_DOCUMENT
+        || g == WPD_CONTENT_TYPE_GENERIC_FILE
+}
+
+/// Descend into storage/folder containers; never into known leaf media types.
+fn should_descend_wpd_object(
+    props: &IPortableDeviceProperties,
+    object_id: &str,
+    name: &str,
+) -> bool {
+    if !name.is_empty() && is_listable_media_path(Path::new(name)) {
+        return false;
+    }
+    match object_content_type(props, object_id) {
+        Some(g) if is_wpd_leaf_media_content_type(g) => false,
+        Some(g) if is_wpd_container_content_type(g) => true,
+        // Missing type: try EnumObjects (empty on true leaves; needed for odd firmware).
+        None => true,
+        Some(_) => false,
     }
 }
 
@@ -883,5 +918,27 @@ mod tests {
             friendly_name: "Pixel".into(),
         };
         assert!(match_usb_identity(&hint).is_none());
+    }
+
+    #[test]
+    fn container_types_include_functional_storage() {
+        assert!(is_wpd_container_content_type(WPD_CONTENT_TYPE_FOLDER));
+        assert!(is_wpd_container_content_type(
+            WPD_CONTENT_TYPE_FUNCTIONAL_OBJECT
+        ));
+        assert!(is_wpd_container_content_type(WPD_CONTENT_TYPE_UNSPECIFIED));
+        assert!(is_wpd_container_content_type(WPD_CONTENT_TYPE_VIDEO_ALBUM));
+        assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_VIDEO));
+        assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_IMAGE));
+        assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_GENERIC_FILE));
+    }
+
+    #[test]
+    fn leaf_media_types_are_not_containers() {
+        assert!(is_wpd_leaf_media_content_type(WPD_CONTENT_TYPE_VIDEO));
+        assert!(is_wpd_leaf_media_content_type(WPD_CONTENT_TYPE_IMAGE));
+        assert!(!is_wpd_leaf_media_content_type(
+            WPD_CONTENT_TYPE_FUNCTIONAL_OBJECT
+        ));
     }
 }

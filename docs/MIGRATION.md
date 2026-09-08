@@ -2,7 +2,7 @@
 
 > **Archiv.** Migration ist abgeschlossen — v2 ist Source of Truth.  
 > Dieses Dokument nur bei gezieltem Nachschlagen (welche Legacy-Datei wofür war).  
-> **Nicht** in Agent-Prompts anhängen. Vollständiger Plan: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
+> **Nicht** in Agent-Prompts anhängen. Index: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) · Specs: [phases/ARCHIVE.md](./phases/ARCHIVE.md)
 
 ## Legacy-Basis-Pfad (Archiv, optional)
 

@@ -1,6 +1,6 @@
 # Aero Tandem Studio v2 — Architektur
 
-> Kurzübersicht. Details: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
+> Kurzübersicht. Index: [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) · erledigte Specs: [phases/ARCHIVE.md](./phases/ARCHIVE.md)
 
 ## Stack
 
@@ -47,7 +47,8 @@ AeroTandemStudio-v2/
 │       ├── ffmpeg/win/         # ffmpeg.exe
 │       └── assets/               # hintergrund.png, logo.png
 ├── docs/
-│   ├── IMPLEMENTATION_PLAN.md  # ← Hauptdokument
+│   ├── IMPLEMENTATION_PLAN.md  # Index / Tracker (schlank)
+│   └── phases/                 # open/ + ARCHIVE.md
 │   ├── ARCHITECTURE.md         # ← Dieses Dokument
 │   └── MIGRATION.md
 └── AGENTS.md

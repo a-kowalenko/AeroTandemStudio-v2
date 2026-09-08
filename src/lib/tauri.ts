@@ -137,6 +137,8 @@ export type AppConfig = {
   sd_clear_after_backup: boolean;
   /** Eject after backup (before import/QR), or after import when no backup ran. */
   sd_eject_after_workflow: boolean;
+  /** Play SFX after successful SD/MTP eject (default on). */
+  sd_eject_sound_enabled: boolean;
   sd_auto_import: boolean;
   sd_skip_processed: boolean;
   sd_size_limit_enabled: boolean;

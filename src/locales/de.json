@@ -330,6 +330,8 @@
         "eject": "SD automatisch auswerfen",
         "ejectTitle": "Nach Backup sofort auswerfen (Import/QR danach von Kopien). Ohne Backup: nach dem Import.",
         "ejectHint": "Mit Backup direkt danach; ohne Backup erst nach dem Import.",
+        "ejectSound": "Ton bei erfolgreichem Auswerfen",
+        "ejectSoundHint": "Kurzer Signalton, wenn SD oder USB-Cam sicher ausgeworfen wurde — auch wenn das Fenster nicht im Fokus ist.",
         "skipProcessed": "Bereits verarbeitete Dateien überspringen",
         "usbCameras": "USB-Action-Cams (GoPro / DJI / Insta360)",
         "usbCamerasHint": "Erkennt Kameras per USB (MTP/WPD), kopiert Medien lokal und importiert wie von der SD-Karte. Handys und normale Sticks bleiben außen vor.",

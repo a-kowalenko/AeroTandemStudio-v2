@@ -228,6 +228,9 @@ pub struct AppConfig {
     /// Eject after successful backup (before import/QR), or after import when no backup ran.
     #[serde(default)]
     pub sd_eject_after_workflow: bool,
+    /// Play a short SFX after successful SD/MTP eject (default on).
+    #[serde(default = "default_true")]
+    pub sd_eject_sound_enabled: bool,
     #[serde(default = "default_true")]
     pub sd_auto_import: bool,
     #[serde(default)]
@@ -942,6 +945,7 @@ impl Default for AppConfig {
             sd_pc_name: String::new(),
             sd_clear_after_backup: false,
             sd_eject_after_workflow: false,
+            sd_eject_sound_enabled: true,
             sd_auto_import: true,
             sd_skip_processed: false,
             sd_size_limit_enabled: true,
@@ -1238,6 +1242,7 @@ mod tests {
         assert_eq!(cfg.sd_backup_mode, "confirm");
         assert!(!cfg.sd_clear_after_backup);
         assert!(!cfg.sd_eject_after_workflow);
+        assert!(cfg.sd_eject_sound_enabled);
         assert!(!cfg.sd_server_backup_enabled);
         assert!(cfg.sd_server_backup_url.is_empty());
         assert_eq!(cfg.sd_server_backup_mode, "local_then_server_async");

@@ -1,6 +1,7 @@
 import toast from "react-hot-toast";
 import { tr } from "@/i18n";
 import { SdEjectToastCard } from "../components/SdEjectToastCard";
+import { playEjectSound } from "./ejectSound";
 import { listDriveLabel, compactDriveLabel } from "./sdDriveLabel";
 import { useSdStore } from "../store/sdStore";
 
@@ -29,6 +30,10 @@ export function showSdEjectToast(opts: {
   const usbCamera = opts.drive.startsWith("mtp:");
   const hint = resolveSdEjectHint(opts.drive);
   const durationMs = opts.ok ? (usbCamera ? 6500 : 4500) : 6000;
+
+  if (opts.ok) {
+    playEjectSound();
+  }
 
   toast.custom(
     (t) => (
