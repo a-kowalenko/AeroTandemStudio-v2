@@ -1649,6 +1649,11 @@
       "unitPhotos": "Fotos",
       "unitVideos": "Videos"
     },
+    "dual": {
+      "cancelled": "Typwahl abgebrochen — Scan verworfen",
+      "offlineHint": "Handcam und Outside sind im QR hinterlegt.\nAMS-Produktdaten nicht verfügbar — bitte Typ wählen und Produkte prüfen.",
+      "productsCheck": "Produkte bitte prüfen"
+    },
     "confirm": {
       "currentCustomer": "Aktueller Kunde",
       "ignoredQr": "QR ignoriert",

@@ -754,6 +754,7 @@ export function VideoPreview({
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
+          dualFamily: result.dual_family,
           sourcePath: result.source_path ?? clip.path,
           preview: result.preview,
           runCleanup: () =>

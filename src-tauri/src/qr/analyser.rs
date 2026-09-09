@@ -91,6 +91,14 @@ pub enum CleanupDirection {
     Backward,
 }
 
+/// Parsed QR payload: customer fields plus dual-family marker (`hc_ou` / `ou_hc`).
+#[derive(Debug, Clone)]
+pub struct ParsedQrKunde {
+    pub kunde: Kunde,
+    /// Both Handcam and Outside present; product flags are left empty for AMS resolve.
+    pub dual_family: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct QrScanResult {
     pub found: bool,
@@ -101,10 +109,18 @@ pub struct QrScanResult {
     pub preview: Option<QrPreview>,
     /// Which way to walk the photo series after a hit (from parallel worker direction).
     pub cleanup_direction: CleanupDirection,
+    /// QR media was dual-family (`hc_ou` / `ou_hc`); not persisted to SQLite.
+    #[serde(default)]
+    pub dual_family: bool,
 }
 
 impl QrScanResult {
-    pub fn hit(kunde: Kunde, source_path: impl Into<String>, preview: Option<QrPreview>) -> Self {
+    pub fn hit(
+        kunde: Kunde,
+        source_path: impl Into<String>,
+        preview: Option<QrPreview>,
+        dual_family: bool,
+    ) -> Self {
         let source_path = source_path.into();
         Self {
             found: true,
@@ -114,6 +130,7 @@ impl QrScanResult {
             message: format!("QR-Code gefunden: {source_path}"),
             preview,
             cleanup_direction: CleanupDirection::Forward,
+            dual_family,
         }
     }
 
@@ -131,6 +148,7 @@ impl QrScanResult {
             message: message.into(),
             preview: None,
             cleanup_direction: CleanupDirection::Forward,
+            dual_family: false,
         }
     }
 
@@ -143,6 +161,7 @@ impl QrScanResult {
             message: "QR-Scan abgebrochen.".into(),
             preview: None,
             cleanup_direction: CleanupDirection::Forward,
+            dual_family: false,
         }
     }
 }
@@ -447,8 +466,17 @@ pub fn midpoint_ordered_frames(indices: &[u32]) -> Vec<u32> {
         .collect()
 }
 
+/// Known QR media codes (single family or dual).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ParsedQrMedia {
+    None,
+    Handcam { foto: bool, video: bool },
+    Outside { foto: bool, video: bool },
+    DualFamily,
+}
+
 /// Parse QR payload into `Kunde` (URL fragment after `#` or raw JSON).
-pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<Kunde, QrScanError> {
+pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, QrScanError> {
     let mut payload = qr_daten_str.trim();
     if let Some((_, after)) = payload.split_once('#') {
         payload = after;
@@ -469,9 +497,18 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<Kunde, QrScanErr
         }
     };
 
-    let (handcam_foto, handcam_video, outside_foto, outside_video) =
-        media_flags_from_code(&media_code)
-            .ok_or_else(|| QrScanError::Parse(format!("unknown media code: {media_code}")))?;
+    let media = parse_media_code(&media_code).ok_or_else(|| {
+        QrScanError::Parse(format!(
+            "unknown media code: {media_code} (expected none, hc_f, hc_v, hc_fv, ou_f, ou_v, ou_fv, hc_ou, ou_hc)"
+        ))
+    })?;
+
+    let (handcam_foto, handcam_video, outside_foto, outside_video, dual_family) = match media {
+        ParsedQrMedia::None => (false, false, false, false, false),
+        ParsedQrMedia::Handcam { foto, video } => (foto, video, false, false, false),
+        ParsedQrMedia::Outside { foto, video } => (false, false, foto, video, false),
+        ParsedQrMedia::DualFamily => (false, false, false, false, true),
+    };
 
     let kunde_id = daten
         .get("Customer_ID")
@@ -496,7 +533,9 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<Kunde, QrScanErr
         .ok_or_else(|| QrScanError::Parse("missing nachname".into()))?;
 
     let gast = format!("{vorname} {nachname}").trim().to_string();
-    let video_mode = if handcam_foto || handcam_video {
+    let video_mode = if dual_family {
+        String::new()
+    } else if handcam_foto || handcam_video {
         "handcam".to_string()
     } else if outside_foto || outside_video {
         "outside".to_string()
@@ -504,42 +543,64 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<Kunde, QrScanErr
         String::new()
     };
 
-    Ok(Kunde {
-        kunden_id: None,
-        kunden_id_hash: Some(kunde_id),
-        booking_id: None,
-        booking_id_hash: booking_id,
-        email: None,
-        vorname: Some(vorname),
-        nachname: Some(nachname),
-        telefon: None,
-        gast,
-        tandemmaster: String::new(),
-        videospringer: String::new(),
-        datum: String::new(),
-        ort: String::new(),
-        video_mode,
-        form_mode: "kunde".into(),
-        handcam_foto,
-        handcam_video,
-        outside_foto,
-        outside_video,
-        ist_bezahlt_handcam_foto: handcam_foto,
-        ist_bezahlt_handcam_video: handcam_video,
-        ist_bezahlt_outside_foto: outside_foto,
-        ist_bezahlt_outside_video: outside_video,
+    Ok(ParsedQrKunde {
+        kunde: Kunde {
+            kunden_id: None,
+            kunden_id_hash: Some(kunde_id),
+            booking_id: None,
+            booking_id_hash: booking_id,
+            email: None,
+            vorname: Some(vorname),
+            nachname: Some(nachname),
+            telefon: None,
+            gast,
+            tandemmaster: String::new(),
+            videospringer: String::new(),
+            datum: String::new(),
+            ort: String::new(),
+            video_mode,
+            form_mode: "kunde".into(),
+            handcam_foto,
+            handcam_video,
+            outside_foto,
+            outside_video,
+            ist_bezahlt_handcam_foto: handcam_foto,
+            ist_bezahlt_handcam_video: handcam_video,
+            ist_bezahlt_outside_foto: outside_foto,
+            ist_bezahlt_outside_video: outside_video,
+        },
+        dual_family,
     })
 }
 
-fn media_flags_from_code(code: &str) -> Option<(bool, bool, bool, bool)> {
+fn parse_media_code(code: &str) -> Option<ParsedQrMedia> {
     match code {
-        "none" => Some((false, false, false, false)),
-        "hc_f" => Some((true, false, false, false)),
-        "hc_v" => Some((false, true, false, false)),
-        "hc_fv" => Some((true, true, false, false)),
-        "ou_f" => Some((false, false, true, false)),
-        "ou_v" => Some((false, false, false, true)),
-        "ou_fv" => Some((false, false, true, true)),
+        "none" => Some(ParsedQrMedia::None),
+        "hc_f" => Some(ParsedQrMedia::Handcam {
+            foto: true,
+            video: false,
+        }),
+        "hc_v" => Some(ParsedQrMedia::Handcam {
+            foto: false,
+            video: true,
+        }),
+        "hc_fv" => Some(ParsedQrMedia::Handcam {
+            foto: true,
+            video: true,
+        }),
+        "ou_f" => Some(ParsedQrMedia::Outside {
+            foto: true,
+            video: false,
+        }),
+        "ou_v" => Some(ParsedQrMedia::Outside {
+            foto: false,
+            video: true,
+        }),
+        "ou_fv" => Some(ParsedQrMedia::Outside {
+            foto: true,
+            video: true,
+        }),
+        "hc_ou" | "ou_hc" => Some(ParsedQrMedia::DualFamily),
         _ => None,
     }
 }
@@ -927,7 +988,7 @@ fn open_jpeg_scaled(path: &Path, max_width: u32) -> Result<DynamicImage, QrScanE
 pub fn decode_kunde_from_image_path(
     path: &Path,
     max_width: u32,
-) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview, bool)>, QrScanError> {
     decode_kunde_from_image_path_ex(path, max_width, true, true)
 }
 
@@ -936,7 +997,7 @@ fn decode_kunde_from_image_path_ex(
     max_width: u32,
     persist_preview: bool,
     allow_try_harder: bool,
-) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview, bool)>, QrScanError> {
     let img = open_image_for_qr(path, max_width)?;
     decode_kunde_from_dynamic_image(img, max_width, persist_preview, allow_try_harder)
 }
@@ -951,7 +1012,7 @@ fn decode_kunde_from_dynamic_image(
     max_width: u32,
     persist_preview: bool,
     allow_escalate: bool,
-) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview, bool)>, QrScanError> {
     let (orig_w, _orig_h) = img.dimensions();
     let mode = if allow_escalate {
         QrCascadeMode::Full
@@ -996,28 +1057,30 @@ fn decode_kunde_from_dynamic_image(
     let preview_img = hit_img.unwrap_or_else(|| img.clone());
 
     match parse_kunde_from_qr_string(&hit.text) {
-        Ok(kunde) => {
+        Ok(parsed) => {
             if !persist_preview {
                 return Ok(Some((
-                    kunde,
+                    parsed.kunde,
                     QrPreview {
                         path: String::new(),
                         width,
                         height,
                         spotlight: None,
                     },
+                    parsed.dual_family,
                 )));
             }
             let preview_path = persist_qr_preview_image(&preview_img)?;
             let spotlight = spotlight_from_points(&hit.points, width, height);
             Ok(Some((
-                kunde,
+                parsed.kunde,
                 QrPreview {
                     path: preview_path.to_string_lossy().to_string(),
                     width,
                     height,
                     spotlight,
                 },
+                parsed.dual_family,
             )))
         }
         Err(e) => {
@@ -1048,7 +1111,9 @@ pub fn scan_photo(
         true,
         options.photo_try_harder,
     )? {
-        Some((kunde, preview)) => Ok(QrScanResult::hit(kunde, path, Some(preview))),
+        Some((kunde, preview, dual_family)) => {
+            Ok(QrScanResult::hit(kunde, path, Some(preview), dual_family))
+        }
         None => Ok(QrScanResult::miss(format!(
             "Kein gültiger QR-Code im Foto: {path}"
         ))),
@@ -1062,7 +1127,7 @@ fn decode_kunde_from_gray_frame(
     height: u32,
     persist_preview: bool,
     allow_escalate: bool,
-) -> Result<Option<(Kunde, QrPreview)>, QrScanError> {
+) -> Result<Option<(Kunde, QrPreview, bool)>, QrScanError> {
     let needed = (width as usize).saturating_mul(height as usize);
     if gray.len() < needed {
         return Err(QrScanError::Image(format!(
@@ -1086,28 +1151,30 @@ fn decode_kunde_from_gray_frame(
     let img = DynamicImage::ImageLuma8(buf);
 
     match parse_kunde_from_qr_string(&hit.text) {
-        Ok(kunde) => {
+        Ok(parsed) => {
             if !persist_preview {
                 return Ok(Some((
-                    kunde,
+                    parsed.kunde,
                     QrPreview {
                         path: String::new(),
                         width,
                         height,
                         spotlight: None,
                     },
+                    parsed.dual_family,
                 )));
             }
             let preview_path = persist_qr_preview_image(&img)?;
             let spotlight = spotlight_from_points(&hit.points, width, height);
             Ok(Some((
-                kunde,
+                parsed.kunde,
                 QrPreview {
                     path: preview_path.to_string_lossy().to_string(),
                     width,
                     height,
                     spotlight,
                 },
+                parsed.dual_family,
             )))
         }
         Err(e) => {
@@ -1291,7 +1358,9 @@ fn try_quick_anchor_pass(
             continue;
         }
 
-        if let Some((kunde, preview)) = decode_kunde_from_image_path(&frame_path, max_width)? {
+        if let Some((kunde, preview, dual_family)) =
+            decode_kunde_from_image_path(&frame_path, max_width)?
+        {
             logging::info(
                 "qr",
                 format!(
@@ -1300,7 +1369,7 @@ fn try_quick_anchor_pass(
                 ),
             );
             return Ok((
-                Some(QrScanResult::hit(kunde, path, Some(preview))),
+                Some(QrScanResult::hit(kunde, path, Some(preview), dual_family)),
                 tried,
             ));
         }
@@ -1355,7 +1424,7 @@ fn scan_video_pipe_pass(
      -> Result<Option<QrScanResult>, QrScanError> {
         let src_frame = indices.get(slot).copied().unwrap_or(0);
         match decode_kunde_from_gray_frame(gray, out_w, out_h, true, true) {
-            Ok(Some((kunde, preview))) => {
+            Ok(Some((kunde, preview, dual_family))) => {
                 logging::info(
                     "qr",
                     format!(
@@ -1363,7 +1432,7 @@ fn scan_video_pipe_pass(
                         clip_file_name(path)
                     ),
                 );
-                Ok(Some(QrScanResult::hit(kunde, path, Some(preview))))
+                Ok(Some(QrScanResult::hit(kunde, path, Some(preview), dual_family)))
             }
             Ok(None) => Ok(None),
             Err(e) => {
@@ -1534,7 +1603,7 @@ fn scan_video_clip_seek_fallback(
         frames_read += 1;
         notify("thorough", (i as u32).saturating_add(1), frames_total);
 
-        if let Some((kunde, preview)) =
+        if let Some((kunde, preview, dual_family)) =
             decode_kunde_from_image_path(&frame_path, options.max_video_width)?
         {
             logging::info(
@@ -1546,7 +1615,7 @@ fn scan_video_clip_seek_fallback(
                     clip_file_name(path)
                 ),
             );
-            return Ok(QrScanResult::hit(kunde, path, Some(preview)));
+            return Ok(QrScanResult::hit(kunde, path, Some(preview), dual_family));
         }
     }
 
@@ -1575,7 +1644,7 @@ fn scan_video_clip_seek_fallback(
                 continue;
             }
             notify("thorough", (i as u32).saturating_add(1), seq_total);
-            if let Some((kunde, preview)) =
+            if let Some((kunde, preview, dual_family)) =
                 decode_kunde_from_image_path(&frame_path, options.max_video_width)?
             {
                 logging::info(
@@ -1587,7 +1656,7 @@ fn scan_video_clip_seek_fallback(
                         clip_file_name(path)
                     ),
                 );
-                return Ok(QrScanResult::hit(kunde, path, Some(preview)));
+                return Ok(QrScanResult::hit(kunde, path, Some(preview), dual_family));
             }
         }
     }
@@ -1763,7 +1832,9 @@ mod tests {
     #[test]
     fn parse_kunde_url_fragment_json() {
         let payload = r#"https://example.com/app#{"Customer_ID":"abc123","Booking_ID":"b1","vorname":"Max","nachname":"Mustermann","media":"hc_fv"}"#;
-        let k = parse_kunde_from_qr_string(payload).unwrap();
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert!(!parsed.dual_family);
         assert_eq!(k.kunden_id_hash.as_deref(), Some("abc123"));
         assert_eq!(k.booking_id_hash.as_deref(), Some("b1"));
         assert_eq!(k.vorname.as_deref(), Some("Max"));
@@ -1778,15 +1849,41 @@ mod tests {
     #[test]
     fn parse_kunde_raw_json_outside() {
         let payload = r#"{"customer_id":"x","vorname":"Anna","nachname":"S","media":"ou_v"}"#;
-        let k = parse_kunde_from_qr_string(payload).unwrap();
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert!(!parsed.dual_family);
         assert!(k.outside_video && !k.outside_foto);
         assert_eq!(k.video_mode, "outside");
     }
 
     #[test]
+    fn parse_kunde_dual_family_hc_ou() {
+        let payload = r#"{"Customer_ID":"h1","Booking_ID":"b2","vorname":"Max","nachname":"M","media":"hc_ou"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        assert!(parsed.dual_family);
+        let k = &parsed.kunde;
+        assert!(!k.handcam_foto && !k.handcam_video);
+        assert!(!k.outside_foto && !k.outside_video);
+        assert_eq!(k.video_mode, "");
+        assert_eq!(k.form_mode, "kunde");
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("h1"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("b2"));
+    }
+
+    #[test]
+    fn parse_kunde_dual_family_ou_hc_alias() {
+        let payload = r#"{"Customer_ID":"h1","vorname":"A","nachname":"B","media":"ou_hc"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        assert!(parsed.dual_family);
+        assert_eq!(parsed.kunde.video_mode, "");
+    }
+
+    #[test]
     fn parse_kunde_unknown_media() {
         let payload = r#"{"Customer_ID":"x","vorname":"A","nachname":"B","media":"nope"}"#;
-        assert!(parse_kunde_from_qr_string(payload).is_err());
+        let err = parse_kunde_from_qr_string(payload).unwrap_err().to_string();
+        assert!(err.contains("unknown media code: nope"));
+        assert!(err.contains("hc_ou"));
     }
 
     #[test]
@@ -1798,7 +1895,9 @@ mod tests {
     #[test]
     fn parse_kunde_empty_media_defaults_none() {
         let payload = r#"{"hashid":"h1","vorname":"A","nachname":"B","media":""}"#;
-        let k = parse_kunde_from_qr_string(payload).unwrap();
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert!(!parsed.dual_family);
         assert!(!k.handcam_foto && !k.handcam_video);
         assert_eq!(k.video_mode, "");
     }

@@ -3,6 +3,7 @@
 import type { AmsBridgeCustomer, Kunde } from "@/lib/tauri";
 import { tr } from "@/i18n";
 import { kundeDisplayName } from "@/lib/qrSuccess";
+import { useUiStore } from "@/store/uiStore";
 
 export type { AmsBridgeCustomer };
 
@@ -114,6 +115,47 @@ export function formatTypeChoiceDetail(
   ].filter(Boolean);
   const media = kinds.length ? kinds.join(" · ") : family === "handcam" ? tr("history.appendPanel.groupHandcam") : tr("history.appendPanel.groupOutside");
   return name ? `${name} · ${media}` : media;
+}
+
+/** Dual-family type choice (AMS ID-lookup + QR hash-lookup). */
+export function askAmsTypeChoice(opts: {
+  handcamDetail?: string | null;
+  outsideDetail?: string | null;
+  body?: string;
+}): Promise<"handcam" | "outside" | "cancel"> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (choice: "handcam" | "outside" | "cancel") => {
+      if (settled) return;
+      settled = true;
+      useUiStore.getState().closeDialog();
+      resolve(choice);
+    };
+    useUiStore.getState().showSuccess(
+      opts.body ?? tr("ams.lookup.typeChoiceBody"),
+      tr("ams.lookup.typeChoiceTitle"),
+      {
+        autoCloseSecs: 0,
+        choices: {
+          options: [
+            {
+              id: "handcam",
+              label: tr("history.appendPanel.groupHandcam"),
+              detail: opts.handcamDetail?.trim() || undefined,
+            },
+            {
+              id: "outside",
+              label: tr("history.appendPanel.groupOutside"),
+              detail: opts.outsideDetail?.trim() || undefined,
+            },
+          ],
+          cancelLabel: tr("common.actions.cancel"),
+          onPick: (id) => finish(id === "outside" ? "outside" : "handcam"),
+          onCancel: () => finish("cancel"),
+        },
+      },
+    );
+  });
 }
 
 /** Derived name/media from AMS — IDs, crew, contact stay. */

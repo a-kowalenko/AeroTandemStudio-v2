@@ -93,8 +93,9 @@ Details: `@AGENTS.md`
 | 43.1–43.5 | Progress … Settings-Copy / Abnahme | ✅ | ARCHIVE |
 | 44 | Fotos aus Videoclip (Frame-Extraktion) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 44.1 | Fotos-Cutter Polish (Range-Handles, Nudge-Icons) | ✅ | ARCHIVE |
+| 45 | QR Dual-Family (`hc_ou`) + AMS Hash-Lookup | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 
-**Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
+**Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
 ---
 
@@ -125,4 +126,4 @@ Nur 23.2h.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-09.*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-09 (Phase 45 ✅).*

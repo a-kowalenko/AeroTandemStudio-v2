@@ -469,6 +469,7 @@ export function MediaDropZone({
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
+          dualFamily: result.dual_family,
           sourcePath: result.source_path,
           preview: result.preview,
           runCleanup: () =>
@@ -508,6 +509,7 @@ export function MediaDropZone({
       } else if (result.found && result.kunde) {
         await presentQrHit({
           kunde: result.kunde,
+          dualFamily: result.dual_family,
           sourcePath: result.source_path,
           preview: result.preview,
           runCleanup: () => maybeRemoveQrPhoto(result.source_path),
@@ -557,6 +559,7 @@ export function MediaDropZone({
           kind === "video" ? t("common.labels.video") : t("common.labels.photo");
         await presentQrHit({
           kunde: result.kunde,
+          dualFamily: result.dual_family,
           sourcePath: selected,
           preview: result.preview,
           notes: [t("media.drop.externalNote", { type: typeLabel })],

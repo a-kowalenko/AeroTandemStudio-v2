@@ -1649,6 +1649,11 @@
       "unitPhotos": "Photos",
       "unitVideos": "Videos"
     },
+    "dual": {
+      "cancelled": "Type choice cancelled — scan discarded",
+      "offlineHint": "The QR includes both Handcam and Outside.\nAMS product data is unavailable — please choose a type and verify products.",
+      "productsCheck": "Please verify products"
+    },
     "confirm": {
       "currentCustomer": "Current customer",
       "ignoredQr": "QR ignored",

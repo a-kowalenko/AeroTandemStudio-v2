@@ -157,6 +157,7 @@ export async function runAutoQrAfterImport(
     if (result.found && result.kunde) {
       const presented = await presentQrHit({
         kunde: result.kunde,
+        dualFamily: result.dual_family,
         sourcePath: result.source_path,
         preview: result.preview,
         showDialog: false,
@@ -199,6 +200,7 @@ export async function runAutoQrAfterImport(
     if (result.found && result.kunde) {
       const presented = await presentQrHit({
         kunde: result.kunde,
+        dualFamily: result.dual_family,
         sourcePath: result.source_path,
         preview: result.preview,
         showDialog: false,

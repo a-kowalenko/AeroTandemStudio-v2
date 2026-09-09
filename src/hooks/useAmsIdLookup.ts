@@ -7,6 +7,7 @@ import {
   amsLookupFoundTitle,
   amsLookupStatusNotFound,
   amsLookupStatusSearching,
+  askAmsTypeChoice,
   canRunAmsIdLookup,
   classifyTypedHits,
   formatAmsLookupFoundLine,
@@ -149,46 +150,6 @@ function askAmsOverride(opts: {
   });
 }
 
-function askAmsTypeChoice(opts: {
-  handcam: AmsBridgeCustomer;
-  outside: AmsBridgeCustomer;
-}): Promise<"handcam" | "outside" | "cancel"> {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (choice: "handcam" | "outside" | "cancel") => {
-      if (settled) return;
-      settled = true;
-      useUiStore.getState().closeDialog();
-      resolve(choice);
-    };
-    useUiStore.getState().showSuccess(
-      tr("ams.lookup.typeChoiceBody"),
-      tr("ams.lookup.typeChoiceTitle"),
-      {
-        autoCloseSecs: 0,
-        choices: {
-          options: [
-            {
-              id: "handcam",
-              label: tr("history.appendPanel.groupHandcam"),
-              detail: formatTypeChoiceDetail(opts.handcam, "handcam"),
-            },
-            {
-              id: "outside",
-              label: tr("history.appendPanel.groupOutside"),
-              detail: formatTypeChoiceDetail(opts.outside, "outside"),
-            },
-          ],
-          cancelLabel: tr("common.actions.cancel"),
-          onPick: (id) =>
-            finish(id === "outside" ? "outside" : "handcam"),
-          onCancel: () => finish("cancel"),
-        },
-      },
-    );
-  });
-}
-
 async function confirmAndApply(
   customer: AmsBridgeCustomer,
   videoMode: "handcam" | "outside",
@@ -312,8 +273,8 @@ export function useAmsIdLookup(opts: {
         };
         if (combined.kind === "choice") {
           const typeChoice = await askAmsTypeChoice({
-            handcam: combined.handcam,
-            outside: combined.outside,
+            handcamDetail: formatTypeChoiceDetail(combined.handcam, "handcam"),
+            outsideDetail: formatTypeChoiceDetail(combined.outside, "outside"),
           });
           if (requestIdRef.current !== requestId) return;
           if (typeChoice === "cancel") {

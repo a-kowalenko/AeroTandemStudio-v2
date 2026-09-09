@@ -6,6 +6,7 @@ import {
   type QrCleanupResult,
 } from "@/lib/qrCleanup";
 import { discardQrPreviewBestEffort } from "@/lib/qrPreviewSession";
+import { resolveQrDualFamily } from "@/lib/qrDualResolve";
 import {
   formatQrSuccess,
   kundeDisplayName,
@@ -20,6 +21,7 @@ import {
 
 export type PresentQrHitInput = {
   kunde: Kunde;
+  dualFamily?: boolean | null;
   sourcePath?: string | null;
   preview?: QrPreview | null;
   notes?: string[];
@@ -275,13 +277,43 @@ function askManualOverride(opts: {
 /**
  * Apply QR kundedata (with switch / manual-override confirm when needed),
  * run cleanup, optionally show the success dialog.
+ * Dual-family QR resolves AMS hash-lookup + type choice first (Phase 45).
  */
 export async function presentQrHit(
   input: PresentQrHitInput,
 ): Promise<PresentQrHitResult> {
   const showDialog = input.showDialog !== false;
+
+  const dual = await resolveQrDualFamily(input.kunde, input.dualFamily);
+  if (dual.kind === "cancelled") {
+    discardQrPreviewBestEffort(input.preview?.path);
+    return {
+      applied: false,
+      keptExisting: false,
+      switchConfirmShown: false,
+      kundeName: "",
+      cleanup: emptyCleanup(),
+      successTitle: qrSuccessTitle(),
+      successOptions: {
+        variant: "qr",
+        highlight: tr("qr.confirm.keepExistingSummary"),
+        autoCloseSecs: 5,
+        actions: [
+          {
+            kind: "qr",
+            label: tr("qr.confirm.label"),
+            tone: "skipped",
+            summary: tr("common.actions.cancel"),
+            detail: tr("qr.dual.cancelled"),
+          },
+        ],
+      },
+      message: "",
+    };
+  }
+
   const current = useKundeStore.getState().kunde;
-  const scanned = input.kunde;
+  const scanned = dual.kind === "resolved" ? dual.kunde : input.kunde;
   const nextName = kundeDisplayName(scanned);
 
   let confirmShown = false;

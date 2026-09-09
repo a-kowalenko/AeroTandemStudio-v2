@@ -286,6 +286,12 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       video_mode = "handcam";
     } else if (scanned.outside_foto || scanned.outside_video) {
       video_mode = "outside";
+    } else if (
+      scanned.video_mode === "handcam" ||
+      scanned.video_mode === "outside"
+    ) {
+      // Dual offline fallback: mode chosen, product flags empty.
+      video_mode = scanned.video_mode;
     }
 
     const next: Kunde = {

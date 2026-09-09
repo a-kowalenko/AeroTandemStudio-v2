@@ -646,6 +646,8 @@ export type QrScanResult = {
   preview: QrPreview | null;
   /** From parallel worker: reverse quarter → backward series cleanup. */
   cleanup_direction?: CleanupDirection | null;
+  /** Dual-family QR (`hc_ou` / `ou_hc`); not persisted. */
+  dual_family?: boolean | null;
 };
 
 export async function importVideos(paths: string[]): Promise<VideoMetadata[]> {

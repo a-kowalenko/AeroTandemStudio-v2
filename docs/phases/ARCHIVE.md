@@ -3518,3 +3518,46 @@ Danach cargo test && npm run check.
 
 - Seek/Parallelität (bereits 44 Follow-up)
 - Multi-Clip, Soft-Cap, ML
+
+---
+
+# Phase 45 — QR Dual-Family (`hc_ou`) + AMS Hash-Lookup
+
+> **Agent-Attach:** Archiv / Regression. Regeln: `@AGENTS.md`
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 6 (QR-Parse), Phase 25 (AMS ID-Lookup / Type-Choice), Bridge `mode=hash`  
+**Ziel:** QR-Payloads mit Handcam und Outside (`media: "hc_ou"` / Alias `ou_hc`) per AMS Hash-Lookup beider Types, Typwahl-Dialog, dann nur die gewählte Familie in den Vorgang übernehmen.
+
+### Umgesetzt
+
+- [x] Rust: Dual-Media parsen; Single-Codes unverändert; unknown weiterhin Err (klare Meldung)
+- [x] Scan-Result / DTO: `dual_family` ans Frontend (nicht in SQLite)
+- [x] `src/lib/qrDualResolve.tsx`: Hash-Lookup Handcam+Outside + `classifyTypedHits` + Choice / Offline-Fallback
+- [x] Integration in `presentQrHit` vor Switch-/Manual-Confirm und `applyFromQr`
+- [x] Apply bleibt `form_mode: "kunde"` + Hashes; Medien aus AMS (oder leer im Offline-Fallback)
+- [x] i18n de / en / es-MX (`qr.dual.*`; Choice reuse)
+- [x] Unit-Tests Parse (`hc_ou` / `ou_hc` / unknown); Node-Helfer Classify/Apply
+- [ ] Manuell: QR `hc_ou` + AMS → Choice; Cancel; AMS aus → Fallback
+
+### Entscheidungen (Kurz)
+
+1. Dual = beide Familien; Vorgang bearbeitet nur eine
+2. Alias `ou_hc` = gleiche Semantik
+3. Parse liefert Basis-Kunde + `dual_family` ohne Produktflags
+4. AMS live → paralleler Hash-Lookup; Choice wie ID-Suche
+5. Offline/not_found/error → Choice ohne Details; Mode setzen, Flags leer + Toast
+6. Cancel Type-Choice → Scan verwerfen (kein Apply, Preview discard)
+
+### Referenzen
+
+```
+src-tauri/src/qr/analyser.rs
+src-tauri/src/commands/qr.rs
+src/lib/qrDualResolve.tsx
+src/lib/qrPresent.ts
+src/lib/amsLookup.ts
+src/hooks/useAmsIdLookup.ts
+src/store/kundeStore.ts
+scripts/qrDualResolve.test.mjs
+```
