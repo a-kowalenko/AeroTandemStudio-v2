@@ -1098,7 +1098,9 @@
       "outsidePhoto": "Outside Foto",
       "outsideVideo": "Outside Video",
       "paid": "Bezahlt",
+      "unpaid": "Unbezahlt",
       "paidAria": "{{label}} bezahlt",
+      "unpaidAria": "{{label}} unbezahlt",
       "lockedAms": "Produkte aus der Buchung sind gesperrt — „Bearbeiten“ zum Freigeben.",
       "lockedQr": "Produkte aus dem QR sind gesperrt — „Bearbeiten“ zum Freigeben."
     }

@@ -1098,7 +1098,9 @@
       "outsidePhoto": "Foto Outside",
       "outsideVideo": "Video Outside",
       "paid": "Pagado",
+      "unpaid": "No pagado",
       "paidAria": "{{label}} pagado",
+      "unpaidAria": "{{label}} no pagado",
       "lockedAms": "Los productos de la reserva están bloqueados — usa “Editar” para desbloquear.",
       "lockedQr": "Los productos del QR están bloqueados — usa “Editar” para desbloquear."
     }

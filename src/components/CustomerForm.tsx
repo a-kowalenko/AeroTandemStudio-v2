@@ -5,7 +5,6 @@ import { Eye, Hash, QrCode, UserRound, PencilLine } from "lucide-react";
 import { Spinner } from "@/components/Spinner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { DateField } from "@/components/ui/date-field";
@@ -24,7 +23,9 @@ import {
 } from "@/components/QrSpotlightPreview";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
+import { usePhotoStore } from "@/store/photoStore";
 import { useUiStore } from "@/store/uiStore";
+import { useVideoStore } from "@/store/videoStore";
 import { syncProductsFromMedia } from "@/lib/syncProductsFromMedia";
 import { useAmsIdLookup } from "@/hooks/useAmsIdLookup";
 import { lookupIdLengthHint, AMS_LOOKUP_MIN_ID_DIGITS } from "@/lib/amsLookup";
@@ -185,56 +186,88 @@ function Field({
   );
 }
 
+type MediaOptionTone = "muted" | "info" | "warning" | "success";
+
 type MediaOptionCellProps = {
   label: string;
-  checked: boolean;
+  /** Product flag from booking / sync (QR/AMS may be active without local media). */
+  active: boolean;
   paid: boolean;
-  onChecked: (v: boolean) => void;
+  /** Local media present — required to toggle payment. */
+  hasMedia: boolean;
   onPaid: (v: boolean) => void;
+  /** Busy or productsLocked — locks the switch only; colors stay visible. */
   disabled?: boolean;
 };
 
+function mediaOptionTone(active: boolean, hasMedia: boolean, paid: boolean): MediaOptionTone {
+  if (hasMedia && paid) return "success";
+  if (hasMedia && !paid) return "warning";
+  if (active && !hasMedia) return "info";
+  return "muted";
+}
+
 function MediaOptionCell({
   label,
-  checked,
+  active,
   paid,
-  onChecked,
+  hasMedia,
   onPaid,
   disabled,
 }: MediaOptionCellProps) {
   const { t } = useTranslation();
+  const switchDisabled = Boolean(disabled) || !hasMedia;
+  const tone = mediaOptionTone(active, hasMedia, paid);
+  const statusLabel = paid ? t("form.media.paid") : t("form.media.unpaid");
   return (
     <div
       className={cn(
         "flex flex-col gap-2 rounded-lg border px-2.5 py-2 transition-colors",
-        checked
-          ? "border-primary/35 bg-primary-soft/40"
-          : "border-border bg-card-elevated/80",
+        tone === "muted" && "border-border bg-card-elevated/80",
+        tone === "info" && "border-primary/30 bg-primary-soft/50 text-foreground",
+        tone === "warning" && "border-warning/45 bg-warning/10 text-foreground",
+        tone === "success" && "border-success/40 bg-success/10 text-foreground",
       )}
     >
-      <label className="flex min-w-0 items-center gap-2 text-sm font-medium">
-        <Checkbox
-          checked={checked}
-          onCheckedChange={(v) => {
-            const on = v === true;
-            onChecked(on);
-            if (!on) onPaid(false);
-          }}
-          disabled={disabled}
+      <div className="flex min-w-0 items-center gap-2 text-sm font-medium">
+        <span
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            tone === "muted" && "bg-muted-foreground/35",
+            tone === "info" && "bg-primary",
+            tone === "warning" && "bg-warning",
+            tone === "success" && "bg-success",
+          )}
+          aria-hidden
         />
         <span className="truncate">{label}</span>
-      </label>
-      <label className="flex items-center justify-between gap-2 text-[11px] text-muted">
-        <span>{t("form.media.paid")}</span>
+      </div>
+      <label
+        className={cn(
+          "flex items-center justify-between gap-2",
+          switchDisabled && "cursor-not-allowed opacity-70",
+        )}
+      >
+        <span
+          className={cn(
+            "text-[11px] font-medium",
+            tone === "muted" && "text-muted",
+            tone === "info" && "text-primary",
+            tone === "warning" && "text-warning",
+            tone === "success" && "text-success",
+          )}
+        >
+          {statusLabel}
+        </span>
         <Switch
           checked={paid}
-          onCheckedChange={(v) => {
-            const on = v === true;
-            onPaid(on);
-            if (on) onChecked(true);
-          }}
-          disabled={disabled}
-          aria-label={t("form.media.paidAria", { label })}
+          onCheckedChange={(v) => onPaid(v === true)}
+          disabled={switchDisabled}
+          aria-label={
+            paid
+              ? t("form.media.paidAria", { label })
+              : t("form.media.unpaidAria", { label })
+          }
         />
       </label>
     </div>
@@ -575,6 +608,8 @@ export function CustomerForm({
   const dialogVariant = useUiStore((s) => s.dialogVariant);
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const loading = useUiStore((s) => s.loading);
+  const hasPhotos = usePhotoStore((s) => s.photoList.length > 0);
+  const hasVideos = useVideoStore((s) => s.videoList.length > 0);
   const config = useConfigStore((s) => s.config);
   const entryMode = normalizeManualEntryMode(
     config?.manual_entry_mode,
@@ -1133,17 +1168,17 @@ export function CustomerForm({
           <div className="mt-2 grid grid-cols-2 gap-2">
             <MediaOptionCell
               label={t("form.media.handcamPhoto")}
-              checked={kunde.handcam_foto}
+              active={kunde.handcam_foto}
               paid={kunde.ist_bezahlt_handcam_foto}
-              onChecked={(v) => setField("handcam_foto", v)}
+              hasMedia={hasPhotos}
               onPaid={(v) => setField("ist_bezahlt_handcam_foto", v)}
               disabled={busy || productsLocked}
             />
             <MediaOptionCell
               label={t("form.media.handcamVideo")}
-              checked={kunde.handcam_video}
+              active={kunde.handcam_video}
               paid={kunde.ist_bezahlt_handcam_video}
-              onChecked={(v) => setField("handcam_video", v)}
+              hasMedia={hasVideos}
               onPaid={(v) => setField("ist_bezahlt_handcam_video", v)}
               disabled={busy || productsLocked}
             />
@@ -1154,17 +1189,17 @@ export function CustomerForm({
           <div className="mt-2 grid grid-cols-2 gap-2">
             <MediaOptionCell
               label={t("form.media.outsidePhoto")}
-              checked={kunde.outside_foto}
+              active={kunde.outside_foto}
               paid={kunde.ist_bezahlt_outside_foto}
-              onChecked={(v) => setField("outside_foto", v)}
+              hasMedia={hasPhotos}
               onPaid={(v) => setField("ist_bezahlt_outside_foto", v)}
               disabled={busy || productsLocked}
             />
             <MediaOptionCell
               label={t("form.media.outsideVideo")}
-              checked={kunde.outside_video}
+              active={kunde.outside_video}
               paid={kunde.ist_bezahlt_outside_video}
-              onChecked={(v) => setField("outside_video", v)}
+              hasMedia={hasVideos}
               onPaid={(v) => setField("ist_bezahlt_outside_video", v)}
               disabled={busy || productsLocked}
             />

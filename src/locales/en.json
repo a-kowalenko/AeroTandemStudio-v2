@@ -1098,7 +1098,9 @@
       "outsidePhoto": "Outside photo",
       "outsideVideo": "Outside video",
       "paid": "Paid",
+      "unpaid": "Unpaid",
       "paidAria": "{{label}} paid",
+      "unpaidAria": "{{label}} unpaid",
       "lockedAms": "Products from the booking are locked — use “Edit” to unlock.",
       "lockedQr": "Products from the QR are locked — use “Edit” to unlock."
     }
