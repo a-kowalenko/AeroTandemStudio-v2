@@ -179,7 +179,7 @@ pub struct AppConfig {
     /// Intro+Body mux: `"reencode"` (default, compatible) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
-    /// Multi-clip body concat: `"fast"` (default, concat demuxer) | `"legacy"` (MPEG-TS).
+    /// Multi-clip body concat: `"compatible"` (default) | `"fast"` | `"legacy"`.
     #[serde(default = "default_body_concat_mode")]
     pub body_concat_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
@@ -317,6 +317,10 @@ pub struct AppConfig {
     /// Local calendar date `YYYY-MM-DD` of last successful auto-cleanup attempt.
     #[serde(default)]
     pub last_auto_cleanup_date: String,
+    /// One-shot fleet preset applied (USB cams / import / concat / SMB auto-mount).
+    /// Missing key on load → migration runs once; fresh defaults already have this set.
+    #[serde(default)]
+    pub settings_fleet_preset_v1_applied: bool,
 }
 
 fn default_ort() -> String {
@@ -572,7 +576,7 @@ fn default_intro_mux_mode() -> String {
     "reencode".into()
 }
 fn default_body_concat_mode() -> String {
-    "fast".into()
+    "compatible".into()
 }
 fn default_preview_crf() -> u8 {
     18
@@ -588,12 +592,13 @@ pub fn normalize_intro_mux_mode(mode: &str) -> String {
     }
 }
 
-/// Normalize body concat mode to `fast` | `compatible` | `legacy` (default `fast`).
+/// Normalize body concat mode to `fast` | `compatible` | `legacy` (default `compatible`).
 pub fn normalize_body_concat_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "legacy" | "mpegts" | "robust" => "legacy".into(),
+        "fast" | "fast_path" | "fast-path" => "fast".into(),
         "compatible" | "compat" | "qt_safe" | "prepared" | "avidemux" => "compatible".into(),
-        _ => "fast".into(),
+        _ => "compatible".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -1025,6 +1030,8 @@ impl Default for AppConfig {
             auto_cleanup_backups_enabled: false,
             auto_cleanup_backups_retention_days: default_auto_cleanup_backups_retention_days(),
             last_auto_cleanup_date: String::new(),
+            // Fresh installs already match the fleet target — skip one-shot.
+            settings_fleet_preset_v1_applied: true,
         }
     }
 }
@@ -1060,11 +1067,12 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
     Ok(merge_with_defaults_ex(partial)?.0)
 }
 
-/// Like [`merge_with_defaults`], plus whether crew defaults were appended.
+/// Like [`merge_with_defaults`], plus whether persisted config should be rewritten.
 pub fn merge_with_defaults_ex(partial: Value) -> Result<(AppConfig, bool), ConfigError> {
     let mut cfg = merge_with_defaults_core(partial)?;
     let crew_dirty = merge_default_crew(&mut cfg);
-    Ok((cfg, crew_dirty))
+    let preset_dirty = apply_fleet_settings_preset_v1(&mut cfg);
+    Ok((cfg, crew_dirty || preset_dirty))
 }
 
 fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
@@ -1077,6 +1085,9 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
         .unwrap_or(false);
     let had_server_profiles = obj
         .map(|o| o.contains_key("server_profiles"))
+        .unwrap_or(false);
+    let had_fleet_preset = obj
+        .map(|o| o.contains_key("settings_fleet_preset_v1_applied"))
         .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
     if let (Value::Object(base), Value::Object(mut overlay)) = (&mut defaults, partial) {
@@ -1114,6 +1125,10 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     if !had_server_profiles {
         cfg.migrate_server_profiles_from_flat();
     }
+    if !had_fleet_preset {
+        // Existing installs lack the key; defaults JSON would otherwise mark applied.
+        cfg.settings_fleet_preset_v1_applied = false;
+    }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
     cfg.sync_usb_import_mode();
@@ -1125,6 +1140,21 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
+}
+
+/// One-shot: USB cams on, import auto, concat compatible, SMB auto-mount on.
+fn apply_fleet_settings_preset_v1(cfg: &mut AppConfig) -> bool {
+    if cfg.settings_fleet_preset_v1_applied {
+        return false;
+    }
+    cfg.usb_camera_import_enabled = true;
+    cfg.usb_import_mode = "auto".into();
+    cfg.body_concat_mode = "compatible".into();
+    cfg.smb_auto_mount_enabled = true;
+    cfg.settings_fleet_preset_v1_applied = true;
+    cfg.sync_usb_import_mode();
+    cfg.sync_body_concat_mode();
+    true
 }
 
 pub struct ConfigStore {
@@ -1288,7 +1318,10 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
-        assert_eq!(cfg.body_concat_mode, "fast");
+        assert_eq!(cfg.body_concat_mode, "compatible");
+        assert!(cfg.settings_fleet_preset_v1_applied);
+        assert!(cfg.usb_camera_import_enabled);
+        assert_eq!(cfg.usb_import_mode, "auto");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
         assert!(cfg.smb_auto_mount_enabled);
         assert!(!cfg.hardware_acceleration_enabled);
@@ -1335,8 +1368,40 @@ mod tests {
         assert_eq!(normalize_body_concat_mode("qt_safe"), "compatible");
         assert_eq!(normalize_body_concat_mode("prepared"), "compatible");
         assert_eq!(normalize_body_concat_mode("avidemux"), "compatible");
-        assert_eq!(normalize_body_concat_mode(""), "fast");
-        assert_eq!(normalize_body_concat_mode("bogus"), "fast");
+        assert_eq!(normalize_body_concat_mode(""), "compatible");
+        assert_eq!(normalize_body_concat_mode("bogus"), "compatible");
+    }
+
+    #[test]
+    fn fleet_settings_preset_v1_applies_once() {
+        let (cfg, dirty) = merge_with_defaults_ex(serde_json::json!({
+            "usb_camera_import_enabled": false,
+            "usb_import_mode": "volume_only",
+            "body_concat_mode": "legacy",
+            "smb_auto_mount_enabled": false,
+        }))
+        .unwrap();
+        assert!(dirty);
+        assert!(cfg.settings_fleet_preset_v1_applied);
+        assert!(cfg.usb_camera_import_enabled);
+        assert_eq!(cfg.usb_import_mode, "auto");
+        assert_eq!(cfg.body_concat_mode, "compatible");
+        assert!(cfg.smb_auto_mount_enabled);
+
+        let (again, dirty2) = merge_with_defaults_ex(serde_json::json!({
+            "settings_fleet_preset_v1_applied": true,
+            "usb_camera_import_enabled": false,
+            "usb_import_mode": "mtp_preferred",
+            "body_concat_mode": "fast",
+            "smb_auto_mount_enabled": false,
+        }))
+        .unwrap();
+        assert!(!dirty2);
+        assert!(!again.usb_camera_import_enabled);
+        assert_eq!(again.usb_import_mode, "mtp_preferred");
+        assert_eq!(again.body_concat_mode, "fast");
+        assert!(!again.smb_auto_mount_enabled);
+        assert!(again.settings_fleet_preset_v1_applied);
     }
 
     #[test]

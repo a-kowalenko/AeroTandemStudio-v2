@@ -4,6 +4,7 @@ import type { BodyConcatMode } from "./tauri";
 export function normalizeBodyConcatMode(mode: string | undefined | null): BodyConcatMode {
   const m = (mode ?? "").trim().toLowerCase();
   if (m === "legacy" || m === "mpegts" || m === "robust") return "legacy";
+  if (m === "fast" || m === "fast_path" || m === "fast-path") return "fast";
   if (
     m === "compatible" ||
     m === "compat" ||
@@ -13,7 +14,7 @@ export function normalizeBodyConcatMode(mode: string | undefined | null): BodyCo
   ) {
     return "compatible";
   }
-  return "fast";
+  return "compatible";
 }
 
 /** Full label for progress-panel badge. */

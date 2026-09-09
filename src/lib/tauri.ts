@@ -114,7 +114,7 @@ export type AppConfig = {
   reencode_matching_clips: boolean;
   /** Intro+Body mux: "reencode" (default) | "stream_copy". */
   intro_mux_mode: "stream_copy" | "reencode" | string;
-  /** Multi-clip body concat: "fast" (default) | "compatible" | "legacy". */
+  /** Multi-clip body concat: "compatible" (default) | "fast" | "legacy". */
   body_concat_mode: BodyConcatMode | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;
@@ -178,6 +178,8 @@ export type AppConfig = {
   post_update_hint_pending_version: string;
   /** macOS post-update connection hint acknowledged for this app version. */
   post_update_hint_ack_version: string;
+  /** One-shot fleet settings preset (USB / concat / SMB) already applied. */
+  settings_fleet_preset_v1_applied: boolean;
   /** Phase 42: auto-delete local Vorgang folders older than retention. */
   auto_cleanup_jobs_enabled: boolean;
   /** Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 14). */

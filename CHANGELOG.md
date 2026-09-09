@@ -12,7 +12,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Neu
 
-- Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (Fast Path bleibt Standard)
+- Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (jetzt Standard)
 - Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
 - Einstellungen → System: Automatische Bereinigung — lokale Vorgangs- und Backup-Ordner nach wählbarer Aufbewahrungsdauer löschen; Einträge unter Vorgänge bleiben (Anzeige „Ordner fehlt“)
 - Einstellungen → SD: Ton bei erfolgreichem Auswerfen von SD-Karte oder USB-Cam
@@ -21,6 +21,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ### Verbessert
 
+- Beim nächsten Start einmalig: USB-Action-Cams an, Import „Automatisch (Whitelist)“, Clips zusammenfügen „Compatible“, SMB automatisch verbinden an (danach wieder frei änderbar)
 - Beim Erstellen im Modus Compatible entfällt oft der Schritt „Clips prüfen…“ — die Prüfung läuft bereits beim Import mit
 - Modus Compatible erstellt Videos spürbar schneller — typische Clips oft in einem Durchgang statt vieler Vorbereitungsschritte
 - Fortschritt beim Erstellen: aktuelle Schritte klarer (z. B. „Clips zusammenfügen…“) und Fortschrittsbalken springt nicht mehr zurück

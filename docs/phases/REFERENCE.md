@@ -265,7 +265,7 @@ Portieren aus `config.py` → SQLite. Alle Keys:
 
 `crew_removed_names` (Phase 36): Tombstones für absichtlich gelöschte Crew-Namen. Beim Load: fehlende Einträge aus `default_crew_list()` add-only mergen, außer Name steht in `crew_removed_names`. Rollen bestehender Einträge nie überschreiben. Factory-Reset leert Tombstones.
 
-`body_concat_mode` (Phase 40): `"fast"` (Default, naives Concat) \| `"compatible"` (vorbereiteter Stream-Copy, QT-sicher) \| `"legacy"` (MPEG-TS). Alias `robust` → `legacy` (Bestand); `avidemux` → `compatible`.
+`body_concat_mode` (Phase 40): `"compatible"` (Default) \| `"fast"` (naives Concat) \| `"legacy"` (MPEG-TS). Alias `robust` → `legacy` (Bestand); `avidemux` → `compatible`. One-shot fleet preset may force `compatible` once on upgrade.
 
 Config-Pfad:
 - Windows: `%LOCALAPPDATA%\AeroTandemStudio\`
