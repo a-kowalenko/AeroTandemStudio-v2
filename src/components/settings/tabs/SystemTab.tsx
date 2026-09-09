@@ -643,21 +643,6 @@ export function SystemTab({
       </SettingsSection>
 
       <SettingsSection
-        title={t("settings.system.reset.title")}
-        description={t("settings.system.reset.description")}
-      >
-        <Button
-          type="button"
-          variant="destructive"
-          size="sm"
-          disabled={saving}
-          onClick={onRequestReset}
-        >
-          {t("settings.system.reset.button")}
-        </Button>
-      </SettingsSection>
-
-      <SettingsSection
         title={t("settings.system.autoCleanup.title")}
         description={t("settings.system.autoCleanup.description")}
       >
@@ -882,6 +867,26 @@ export function SystemTab({
           {busyHint ? (
             <p className="text-xs text-muted">{busyHint}</p>
           ) : null}
+
+          <div className="space-y-2 border-t border-border/60 pt-3">
+            <div>
+              <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+                {t("settings.system.reset.title")}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                {t("settings.system.reset.description")}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={saving}
+              onClick={onRequestReset}
+            >
+              {t("settings.system.reset.button")}
+            </Button>
+          </div>
         </div>
       </SettingsSection>
     </div>
