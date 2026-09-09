@@ -3,13 +3,15 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::media::datetime::get_photo_import_metadata;
 use crate::media::dji_paths::{expand_import_paths, is_photo_ext};
+use crate::media::frame_extract::{self, ExtractedFrame};
 use crate::media::http_server::{ensure_media_file, MediaServerState};
 use crate::storage::logging::{self, file_name};
 use crate::storage::working_session;
+use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
 use crate::video::probe::format_camera_label;
 
 /// Expand file/folder paths into a flat list of media files (videos + photos).
@@ -479,4 +481,171 @@ pub fn discard_photo_edit_undo_for_path(path: String) {
         return;
     }
     crate::media::photo_edit_undo::discard_edit_undo_for_path(&path);
+}
+
+pub const EVENT_FRAME_EXTRACT_PROGRESS: &str = "frame-extract-progress";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FrameExtractProgressEvent {
+    pub done: u64,
+    pub total: u64,
+    pub time_secs: f64,
+}
+
+fn resolve_ffmpeg(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())
+}
+
+/// Preview timestamps for an interval extract (no FFmpeg).
+#[tauri::command]
+pub fn preview_frame_extract_times(
+    start_secs: f64,
+    end_secs: f64,
+    interval_secs: f64,
+) -> Vec<f64> {
+    frame_extract::interval_timestamps(start_secs, end_secs, interval_secs)
+}
+
+/// Batch-extract full-resolution JPEGs at the given timestamps (decode-accurate seek).
+/// Emits [`EVENT_FRAME_EXTRACT_PROGRESS`]. Cancel via `cancel_encode`.
+#[tauri::command]
+pub async fn extract_video_frames(
+    app: AppHandle,
+    path: String,
+    times_secs: Vec<f64>,
+) -> Result<Vec<ExtractedFrame>, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    if !Path::new(&path).is_file() {
+        return Err(format!("input file not found: {path}"));
+    }
+    if times_secs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    reset_cancel_flag();
+    let app_progress = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        logging::info(
+            "edit",
+            format!(
+                "Frame-Extract: {} @ {} Zeitpunkten",
+                file_name(&path),
+                times_secs.len()
+            ),
+        );
+        frame_extract::extract_frames_at_times(
+            Path::new(&path),
+            &times_secs,
+            Some(&ffmpeg),
+            frame_extract::FrameSeekMode::Fast,
+            |done, total, time_secs| {
+                let _ = app_progress.emit(
+                    EVENT_FRAME_EXTRACT_PROGRESS,
+                    FrameExtractProgressEvent {
+                        done,
+                        total,
+                        time_secs,
+                    },
+                );
+            },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Extract one full-resolution JPEG at `time_secs` (playhead / single mode).
+#[tauri::command]
+pub async fn extract_video_frame_at(
+    app: AppHandle,
+    path: String,
+    time_secs: f64,
+) -> Result<ExtractedFrame, String> {
+    if path.trim().is_empty() {
+        return Err("path is required".into());
+    }
+    if !Path::new(&path).is_file() {
+        return Err(format!("input file not found: {path}"));
+    }
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    reset_cancel_flag();
+    tauri::async_runtime::spawn_blocking(move || {
+        frame_extract::extract_frame_at(Path::new(&path), time_secs, Some(&ffmpeg))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Copy already-named photo files into a user-chosen folder (additional export).
+#[tauri::command]
+pub async fn copy_files_to_directory(
+    paths: Vec<String>,
+    dest_dir: String,
+) -> Result<Vec<String>, String> {
+    if dest_dir.trim().is_empty() {
+        return Err("destination folder is required".into());
+    }
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    reset_cancel_flag();
+    tauri::async_runtime::spawn_blocking(move || {
+        frame_extract::copy_files_preserving_names(&paths, Path::new(&dest_dir))
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Export temp/source photos into `dest_dir` with Chrono `Foto_…` names (no session import).
+#[tauri::command]
+pub async fn export_photos_with_chrono_names(
+    paths: Vec<String>,
+    dest_dir: String,
+) -> Result<Vec<String>, String> {
+    if dest_dir.trim().is_empty() {
+        return Err("destination folder is required".into());
+    }
+    if paths.is_empty() {
+        return Ok(Vec::new());
+    }
+    reset_cancel_flag();
+    tauri::async_runtime::spawn_blocking(move || {
+        use crate::media::datetime::{
+            build_chrono_photo_filename_sequenced_with_instant, collect_used_filenames_in,
+            resolve_photo_capture_instant,
+        };
+        use std::fs;
+        let dest = Path::new(&dest_dir);
+        fs::create_dir_all(dest).map_err(|e| e.to_string())?;
+        let mut used = collect_used_filenames_in(dest);
+        let mut written = Vec::new();
+        for (i, src) in paths.iter().enumerate() {
+            if crate::video::ffmpeg::is_cancelled() {
+                return Err(crate::video::ffmpeg::WORKFLOW_CANCELLED.to_string());
+            }
+            let src_path = Path::new(src);
+            if !src_path.is_file() {
+                return Err(format!("file not found: {src}"));
+            }
+            let instant = resolve_photo_capture_instant(src_path);
+            let name = build_chrono_photo_filename_sequenced_with_instant(
+                src_path,
+                &instant,
+                (i as u32) + 1,
+                &mut used,
+            );
+            let out = dest.join(&name);
+            fs::copy(src_path, &out).map_err(|e| e.to_string())?;
+            written.push(out.to_string_lossy().into_owned());
+        }
+        Ok(written)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

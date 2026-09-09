@@ -1696,6 +1696,7 @@
         "undo": "Rückgängig fehlgeschlagen"
       },
       "mode": {
+        "photos": "Fotos",
         "rotate": "Drehen",
         "split": "Teilen",
         "trim": "Zuschnitt"
@@ -1772,7 +1773,33 @@
         "noRotation": "Keine Drehung ausgewählt."
       },
       "playhead": "Playhead {{time}}",
-      "splitHint": "Beide Teile ≥ 10 s — dann Fertig"
+      "splitHint": "Beide Teile ≥ 10 s — dann Fertig",
+      "photos": {
+        "title": "Fotos",
+        "apply": "Übernehmen",
+        "sub": {
+          "interval": "Intervall",
+          "single": "Einzel"
+        },
+        "interval": "Intervall",
+        "estimate": "≈ {{count}} Fotos",
+        "generate": "Frames erzeugen",
+        "addFrame": "Frame hinzufügen",
+        "nudgeBack": "Einen Frame zurück",
+        "nudgeFwd": "Einen Frame vor",
+        "importToSession": "In Vorgang übernehmen",
+        "alsoExport": "Zusätzlich exportieren…",
+        "pickExportFolder": "Export-Ordner wählen",
+        "progress": "{{done}} / {{total}}",
+        "selectedCount": "{{selected}} von {{total}} ausgewählt",
+        "needSelection": "Mindestens ein Foto auswählen und Ziel (Vorgang oder Export) setzen.",
+        "extractFailed": "Frames konnten nicht erzeugt werden",
+        "noFrames": "Keine Frames für diesen Bereich.",
+        "appliedOne": "1 Foto übernommen",
+        "appliedMany": "{{count}} Fotos übernommen",
+        "exportedOne": "1 Foto exportiert",
+        "exportedMany": "{{count}} Fotos exportiert"
+      }
     },
     "player": {
       "volumeAria": "Lautstärke",

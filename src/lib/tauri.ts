@@ -657,6 +657,68 @@ export async function importPhotos(paths: string[]): Promise<PhotoMetadata[]> {
   return invoke<PhotoMetadata[]>("import_photos", { paths });
 }
 
+export type ExtractedFrame = {
+  path: string;
+  time_secs: number;
+};
+
+export type FrameExtractProgress = {
+  done: number;
+  total: number;
+  time_secs: number;
+};
+
+/** Interval timestamps preview (no FFmpeg). */
+export async function previewFrameExtractTimes(
+  startSecs: number,
+  endSecs: number,
+  intervalSecs: number,
+): Promise<number[]> {
+  return invoke<number[]>("preview_frame_extract_times", {
+    startSecs,
+    endSecs,
+    intervalSecs,
+  });
+}
+
+/** Batch-extract full-resolution JPEGs; listen to `frame-extract-progress`. */
+export async function extractVideoFrames(
+  path: string,
+  timesSecs: number[],
+): Promise<ExtractedFrame[]> {
+  return invoke<ExtractedFrame[]>("extract_video_frames", {
+    path,
+    timesSecs,
+  });
+}
+
+/** Extract one full-resolution JPEG at playhead time. */
+export async function extractVideoFrameAt(
+  path: string,
+  timeSecs: number,
+): Promise<ExtractedFrame> {
+  return invoke<ExtractedFrame>("extract_video_frame_at", {
+    path,
+    timeSecs,
+  });
+}
+
+/** Copy named files into a user folder (additional export after import). */
+export async function copyFilesToDirectory(
+  paths: string[],
+  destDir: string,
+): Promise<string[]> {
+  return invoke<string[]>("copy_files_to_directory", { paths, destDir });
+}
+
+/** Export sources with Chrono `Foto_…` names (no session import). */
+export async function exportPhotosWithChronoNames(
+  paths: string[],
+  destDir: string,
+): Promise<string[]> {
+  return invoke<string[]>("export_photos_with_chrono_names", { paths, destDir });
+}
+
 export async function getWorkingDir(): Promise<string | null> {
   return invoke<string | null>("get_working_dir");
 }

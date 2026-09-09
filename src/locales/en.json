@@ -1696,6 +1696,7 @@
         "undo": "Undo failed"
       },
       "mode": {
+        "photos": "Photos",
         "rotate": "Rotate",
         "split": "Split",
         "trim": "Trim"
@@ -1772,7 +1773,33 @@
         "noRotation": "No rotation selected."
       },
       "playhead": "Playhead {{time}}",
-      "splitHint": "Both parts >= 10s — then Done"
+      "splitHint": "Both parts >= 10s — then Done",
+      "photos": {
+        "title": "Photos",
+        "apply": "Apply",
+        "sub": {
+          "interval": "Interval",
+          "single": "Single"
+        },
+        "interval": "Interval",
+        "estimate": "≈ {{count}} photos",
+        "generate": "Generate frames",
+        "addFrame": "Add frame",
+        "nudgeBack": "One frame back",
+        "nudgeFwd": "One frame forward",
+        "importToSession": "Add to session",
+        "alsoExport": "Also export…",
+        "pickExportFolder": "Choose export folder",
+        "progress": "{{done}} / {{total}}",
+        "selectedCount": "{{selected}} of {{total}} selected",
+        "needSelection": "Select at least one photo and a destination (session or export).",
+        "extractFailed": "Could not create frames",
+        "noFrames": "No frames for this range.",
+        "appliedOne": "1 photo added",
+        "appliedMany": "{{count}} photos added",
+        "exportedOne": "1 photo exported",
+        "exportedMany": "{{count}} photos exported"
+      }
     },
     "player": {
       "volumeAria": "Volume",

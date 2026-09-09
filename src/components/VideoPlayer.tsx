@@ -105,6 +105,11 @@ type VideoPlayerProps = {
   fillAvailable?: boolean;
   /** Emphasize playhead / draw a vertical “cut here” guide (split mode). */
   emphasizePlayhead?: boolean;
+  /**
+   * Color system for range caps + filmstrip playhead.
+   * `trim` = Apple yellow; `photos` = brand teal (Foto-Bereich).
+   */
+  rangeHandleTheme?: "trim" | "photos";
   /** Optional seek snap (e.g. nearest keyframe in split mode). */
   snapSeekMs?: (ms: number) => number;
   disabled?: boolean;
@@ -172,9 +177,37 @@ const WEBKIT_FIRST_FRAME_SEEK_SEC = 0.001;
 const TRIM_CAP = "#FFD60A";
 const TRIM_CAP_ACTIVE = "#FFE566";
 const TRIM_BORDER = "#FFD60A";
+/** Brand teal — photo extract range (matches --ats-primary). */
+const PHOTOS_CAP = "#009d8b";
+const PHOTOS_CAP_ACTIVE = "#2dd4bf";
+const PHOTOS_BORDER = "#14b8a6";
 /** Visual cap width (px); half is reserved as side gutter so 0%/100% caps aren’t clipped. */
 const TRIM_CAP_W = 14;
 const TRIM_CAP_GUTTER = TRIM_CAP_W / 2;
+
+type RangeHandleColors = {
+  cap: string;
+  capActive: string;
+  border: string;
+  playhead: string;
+};
+
+function rangeHandleColors(theme: "trim" | "photos"): RangeHandleColors {
+  if (theme === "photos") {
+    return {
+      cap: PHOTOS_CAP,
+      capActive: PHOTOS_CAP_ACTIVE,
+      border: PHOTOS_BORDER,
+      playhead: PHOTOS_CAP_ACTIVE,
+    };
+  }
+  return {
+    cap: TRIM_CAP,
+    capActive: TRIM_CAP_ACTIVE,
+    border: TRIM_BORDER,
+    playhead: "#ffffff",
+  };
+}
 
 /**
  * HTML5 video player for Cutter / clip preview (loopback HTTP media server).
@@ -199,6 +232,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       previewRotateTransition = true,
       fillAvailable = false,
       emphasizePlayhead = false,
+      rangeHandleTheme = "trim",
       snapSeekMs,
       disabled,
     },
@@ -549,6 +583,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const keepStart = keepRange?.start ?? 0;
     const keepEnd = keepRange?.end ?? 1;
     const trimEditable = Boolean(keepRange && onTrimChange);
+    const rangeColors = rangeHandleColors(rangeHandleTheme);
     const resolvedChrome: Exclude<VideoChrome, "auto"> =
       chrome === "auto" ? (trimEditable ? "trim" : "playback") : chrome;
     const isTrimChrome = resolvedChrome === "trim";
@@ -1127,7 +1162,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                         width: `${Math.max(0, keepEnd - keepStart) * 100}%`,
                         top: 0,
                         bottom: 0,
-                        borderColor: TRIM_BORDER,
+                        borderColor: rangeColors.border,
                       }}
                     />
 
@@ -1153,7 +1188,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       style={{
                         width: TRIM_CAP_W,
                         backgroundColor:
-                          dragHandle === "start" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                          dragHandle === "start"
+                            ? rangeColors.capActive
+                            : rangeColors.cap,
                       }}
                     >
                       <span className="flex gap-[3px]">
@@ -1181,7 +1218,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       style={{
                         width: TRIM_CAP_W,
                         backgroundColor:
-                          dragHandle === "end" ? TRIM_CAP_ACTIVE : TRIM_CAP,
+                          dragHandle === "end"
+                            ? rangeColors.capActive
+                            : rangeColors.cap,
                       }}
                     >
                       <span className="flex gap-[3px]">
@@ -1205,8 +1244,14 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       transform: "translateX(-50%)",
                     }}
                   >
-                    <div className="mx-auto h-2.5 w-2.5 rounded-full bg-white shadow" />
-                    <div className="mx-auto h-[calc(100%-10px)] w-[2px] bg-white shadow" />
+                    <div
+                      className="mx-auto h-2.5 w-2.5 rounded-full shadow"
+                      style={{ backgroundColor: rangeColors.playhead }}
+                    />
+                    <div
+                      className="mx-auto h-[calc(100%-10px)] w-[2px] shadow"
+                      style={{ backgroundColor: rangeColors.playhead }}
+                    />
                   </div>
                 </>
               ) : (
@@ -1260,23 +1305,23 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                       }`,
                     }}
                   >
-                    <div
-                      className="mx-auto h-2.5 w-2.5 rounded-full shadow"
-                      style={{
-                        backgroundColor: emphasizePlayhead
-                          ? TRIM_CAP
-                          : "#ffffff",
-                      }}
-                    />
-                    <div
-                      className="mx-auto w-[2px] shadow"
-                      style={{
-                        height: "calc(100% - 10px)",
-                        backgroundColor: emphasizePlayhead
-                          ? TRIM_CAP
-                          : "#ffffff",
-                      }}
-                    />
+                      <div
+                        className="mx-auto h-2.5 w-2.5 rounded-full shadow"
+                        style={{
+                          backgroundColor: emphasizePlayhead
+                            ? rangeColors.cap
+                            : "#ffffff",
+                        }}
+                      />
+                      <div
+                        className="mx-auto w-[2px] shadow"
+                        style={{
+                          height: "calc(100% - 10px)",
+                          backgroundColor: emphasizePlayhead
+                            ? rangeColors.cap
+                            : "#ffffff",
+                        }}
+                      />
                     {dragging && dragHandle == null ? (
                       <div className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 font-mono text-[11px] text-white shadow-lg">
                         {formatMs(currentMs)}

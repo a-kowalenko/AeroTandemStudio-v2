@@ -3327,3 +3327,194 @@ docs/optimization_plan.md              # OPT-16
 ```
 
 **Phase 43 abgeschlossen** (2026-09-09).
+
+---
+
+# Phase 44 — Fotos aus Videoclip (Frame-Extraktion)
+
+> **Agent-Attach:** Diese Datei (nicht Archiv/ganzen Plan).
+> Regeln: `@AGENTS.md` · Index: `@docs/IMPLEMENTATION_PLAN.md`
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 9/20 (`VideoCutter` / `MediaEditShell`), Phase 8 (`photoStore` / `import_photos`), `media/filmstrip.rs`, `media/datetime.rs`  
+**Ziel:** Aus dem **aktuellen Working-Clip** Frames als Fotos ziehen — Intervall oder einzeln am Playhead — Preview mit Abwählen — Default **in den Vorgang** (wie normale Fotos), optional **zusätzlich exportieren**.
+
+> Eine Agent-Session = nur Phase 44. Kein ML, kein Sharpness-Filter, kein Multi-Clip-Batch.
+
+---
+
+##### Ausgangslage
+
+- Video-Bearbeiten: Trim / Drehen / Teilen in `VideoCutter` + `MediaEditShell`
+- Filmstrip-Frames: `media/filmstrip.rs` (FFmpeg Seek → JPEG, Cache)
+- Foto-Import: `import_photos` → Working-Session `photos/` mit Chrono-Namen `Foto_YYYYMMDDHHMMSSmmm_NNNN.ext`
+- Export: Fotos nach `Handcam_Foto` / `Outside_Foto` je nach Kunden-Produkten (`export_job::copy_photos`)
+- Produkte: `syncProductsFromMedia` aktiviert Foto-Flags zum aktuellen Medien-Modus
+
+---
+
+##### Out of Scope (44)
+
+- „N Frames gleichmäßig“-Modus
+- Mengen-Warnung / Soft-Cap (viele Frames sind erlaubt)
+- Unschärfe-/Dunkelheits-Filter
+- Batch über mehrere Clips in einem Durchlauf
+- Video-Crop / Frame aus finalem Concat-Film
+- EXIF-Kamera-Fake (Make/Model der Actioncam) — nur Capture-Zeit für Chrono-Namen
+- Phase 14 ML
+
+---
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Quelle | **Aktuelle Working-Copy** des Clips (nach Trim/Rotate), Timecode = Player-Zeit dieses Clips |
+| 2 | Modi | **Intervall** (Default **0,5 s**) und **Einzel** (Playhead → Menge) |
+| 3 | Intervall-Range | Default = **aktueller Trim-Range**, falls im Cutter gesetzt; sonst ganzer Clip `[0, duration]` |
+| 4 | Einzel-Modus | Button **„Frame hinzufügen“**: Frame am Playhead → sofort in die **Foto-Menge** (Thumbnail-Strip). Beliebig wiederholen. Kein separates Marker-Vormerken |
+| 5 | Preview / Commit | Menge anzeigen, einzelne **abwählen/entfernen**, dann **Übernehmen** |
+| 6 | Auflösung | **Original** (volle Frame-Größe des Clips), JPEG |
+| 7 | Ziel primär | **In Vorgang übernehmen** (Default **an**) → gleiche Pipeline wie `import_photos` / `photoStore.addPhotos` |
+| 8 | Ziel sekundär | **Zusätzlich exportieren…** (optional, Ordner wählen); gleiche sichtbare Dateinamen wie im Vorgang |
+| 9 | Kundensicht | Kunde soll **nicht** erkennen, dass Fotos aus Video stammen — **keine** `clip_t12s`-Namen, UI-Toast ohne „extrahiert“-Kundenwortlaut |
+| 10 | Dateinamen | Wie normale Imports: Temp-JPEG mit Capture-Zeit → `build_chrono_photo_filename_*` → `Foto_…_NNNN.jpg` |
+| 11 | Capture-Zeit | Clip-Aufnahmezeit (bzw. Datei-mtime-Fallback) **+ Frame-Timecode**; bei Intervall aufsteigend, damit Sortierung stimmt |
+| 12 | Handcam / Outside | Vom **Quellclip / `video_mode`** ableiten: passendes Foto-Produkt mitaktivieren (`syncProductsFromMedia` / Modus); Export-Routing wie bestehende Fotos des Vorgangs |
+| 13 | Mengen-Limit | **Kein** Warn-Dialog, **kein** hartes Cap |
+| 14 | Duplikate (Einzel) | Erneutes Hinzufügen am gleichen Frame (±1 Frame Snap) → ignorieren |
+| 15 | Einstieg UI | Neuer Modus **Fotos** im Video-Bearbeiten-Dialog (neben Trim / Drehen / Teilen) |
+| 16 | Progress | Fortschritt + **Cancel** bei Batch-Extract; Grid bei vielen Einträgen virtualisieren |
+
+---
+
+##### UX-Flow
+
+**Intervall**
+
+```
+Video bearbeiten → Modus „Fotos“ → Untermodus Intervall
+  Range = Trim-Range (oder ganzer Clip)
+  Intervall = 0,5 s (editierbar)
+  Live-Hinweis: ≈ N Fotos (nur Info, keine Warnung)
+  → [Vorschau / Erzeugen] → Menge (Grid/Strip), abwählen
+  ☑ In Vorgang übernehmen (an)
+  ☐ Zusätzlich exportieren…
+  → [Übernehmen]
+```
+
+**Einzel**
+
+```
+Video bearbeiten → Modus „Fotos“ → Untermodus Einzel
+  Playhead setzen (+ optional ±1-Frame-Nudge)
+  → [Frame hinzufügen] → Thumbnail in Menge
+  → wiederholen / einzelne entfernen
+  ☑ In Vorgang …  ☐ Zusätzlich exportieren…
+  → [Übernehmen] (enabled wenn Menge ≥ 1)
+```
+
+Nach Übernehmen: Fotos in `photoStore` wie Import; optional Fokus/Toast operator-seitig („12 Fotos übernommen“).
+
+---
+
+##### Technik (Skizze)
+
+```
+UI (VideoCutter mode "photos")
+  → extract_video_frames / extract_video_frame_at
+       FFmpeg: -ss <t> -i <working> -frames:v 1 -q:v … → temp JPEG (Originalgröße)
+       Capture-Zeit in Datei/Metadaten setzen (für Chrono-Rename)
+  → Preview-Menge (paths)
+  → import_photos(selected) → photoStore
+  → optional: Kopie der final benannten Dateien in Export-Ordner
+  → syncProductsFromMedia({ hasPhotos: true })
+```
+
+- FFmpeg-Args: **Rust Unit-Tests** (wie Filmstrip/QR)
+- Seek frame-genau (decode), nicht Keyframe-only — User erwartet Playhead-Zeit
+- Wiederverwendung wo sinnvoll: Seek-Parallelität analog `filmstrip.rs`; **nicht** Filmstrip-Cache als Endprodukt (zu klein / andere Höhe)
+
+---
+
+##### Scope
+
+**Rust**
+
+- [x] `media/frame_extract.rs` (oder `video/frame_extract.rs`): Args-Builder + Extract für Timestamp-Liste / Intervall-Range
+- [x] Capture-Instant für Chrono-Namen (Clip-Zeit + Offset); Unit-Tests
+- [x] Tauri-Commands: Batch-Extract + optional Einzel-Extract; Progress-Event; Cancel
+- [x] Optional-Export: benannte Dateien nach Import in User-Ordner kopieren (oder Command „copy paths“)
+- [x] Unit-Tests FFmpeg-Command-Generierung
+
+**React**
+
+- [x] `VideoCutter`: Modus `photos` (Intervall | Einzel), Range/Intervall-Controls, „Frame hinzufügen“, Mengen-Strip/Grid mit Remove
+- [x] Checkboxen Import (Default an) + Zusatz-Export (Ordner-Dialog)
+- [x] Übernehmen → `import_photos` / Store; `syncProductsFromMedia`
+- [x] i18n de / en / es-MX (Operator-Sprache; keine kundenorientierte „aus Video“-Formulierung in Toasts die der Kunde sieht — Operator-UI darf „Frame“/„Fotos“ sagen)
+- [x] Progress + Cancel bei langen Intervallen
+
+**Abnahme**
+
+- [x] Intervall 0,5 s auf Trim-Range → N JPEGs Originalauflösung → Vorgang, Namen `Foto_…`
+- [x] Einzel: mehrere Playhead-Adds → Menge → Deselect → Import
+- [x] Zusatz-Export: gleiche Dateinamen im gewählten Ordner
+- [x] `video_mode` handcam/outside → Foto-Produkt greift wie bei normalen Fotos
+- [x] `cargo test` + `npm run check`
+
+---
+
+##### Referenzen
+
+```
+src/components/VideoCutter.tsx
+src/components/MediaEditShell.tsx
+src/components/VideoPlayer.tsx
+src/store/photoStore.ts
+src/lib/syncProductsFromMedia.ts
+src/lib/tauri.ts
+src-tauri/src/media/filmstrip.rs
+src-tauri/src/media/datetime.rs
+src-tauri/src/storage/working_session.rs   # import_photos_by_capture_time
+src-tauri/src/commands/media.rs            # import_photos
+src-tauri/src/video/export_job.rs          # copy_photos / Handcam_Foto|Outside_Foto
+src-tauri/src/video/export_paths.rs
+```
+
+---
+
+##### Agent-Prompt
+
+```
+Implementiere Phase 44 aus @docs/phases/open/44-video-frame-photos.md
+Regeln: @AGENTS.md
+Nur Phase 44 (Fotos aus Working-Clip: Intervall 0,5s + Einzel am Playhead,
+Preview-Menge, Import default, optional Export, Chrono-Namen wie normale Fotos).
+FFmpeg nur CLI in Rust + Unit-Tests. i18n de/en/es-MX.
+Danach cargo test && npm run check.
+```
+
+---
+
+---
+
+# Phase 44.1 — Fotos-Cutter Polish
+
+> **Agent-Attach:** Diese Datei. Regeln: `@AGENTS.md`
+
+**Status:** ✅ Erledigt  
+**Abhängigkeiten:** Phase 44  
+**Ziel:** Filmstrip-Range im Fotos-Modus ziehbar; Frame-Nudge-Icons.
+
+### Scope
+
+- [x] Fotos: `chrome=trim` + Handles auf `startMs`/`endMs`, **kein** Keyframe-Snap
+- [x] Nach Range-Commit / Reset: Preview-Menge invalidieren
+- [x] Reset-Bereich in Intervall-Controls
+- [x] ±1 Frame: Lucide `StepBack` / `StepForward`
+
+### Out of Scope
+
+- Seek/Parallelität (bereits 44 Follow-up)
+- Multi-Clip, Soft-Cap, ML

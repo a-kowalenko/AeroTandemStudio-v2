@@ -91,6 +91,8 @@ Details: `@AGENTS.md`
 | 42 | Auto-Bereinigung Aufbewahrungsdauer | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 43 | Compatible ≈ Avidemux (robust + schnell) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 43.1–43.5 | Progress … Settings-Copy / Abnahme | ✅ | ARCHIVE |
+| 44 | Fotos aus Videoclip (Frame-Extraktion) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
+| 44.1 | Fotos-Cutter Polish (Range-Handles, Nudge-Icons) | ✅ | ARCHIVE |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 

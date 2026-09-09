@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Crop,
+  Image as ImageIcon,
   RotateCw,
   SplitSquareHorizontal,
 } from "lucide-react";
@@ -13,6 +14,11 @@ import {
 } from "./VideoPlayer";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
 import { MediaEditRotateBar } from "./MediaEditRotateBar";
+import {
+  VideoCutterPhotosControls,
+  VideoCutterPhotosStrip,
+  type FramePreviewItem,
+} from "./VideoCutterPhotosPanel";
 import { filmstripPrefetch, type FilmstripPrefetchPartial } from "../lib/filmstripPrefetch";
 import { useUiStore } from "../store/uiStore";
 import { useVideoStore } from "../store/videoStore";
@@ -29,9 +35,15 @@ export type VideoCutterResult =
   | { action: "cancel" }
   | { action: "apply_trim"; startMs: number; endMs: number }
   | { action: "apply_split"; splitMs: number }
-  | { action: "apply_rotate"; degrees: number };
+  | { action: "apply_rotate"; degrees: number }
+  | {
+      action: "apply_photos";
+      paths: string[];
+      importToSession: boolean;
+      exportFolder: string | null;
+    };
 
-type VideoEditMode = "trim" | "rotate" | "split";
+type VideoEditMode = "trim" | "rotate" | "split" | "photos";
 
 type VideoCutterProps = {
   open: boolean;
@@ -56,6 +68,11 @@ const VIDEO_MODE_DEFS: { id: VideoEditMode; labelKey: string; icon: ReactNode }[
     id: "split",
     labelKey: "video.edit.mode.split",
     icon: <SplitSquareHorizontal className="h-4 w-4" strokeWidth={2} />,
+  },
+  {
+    id: "photos",
+    labelKey: "video.edit.mode.photos",
+    icon: <ImageIcon className="h-4 w-4" strokeWidth={2} />,
   },
 ];
 
@@ -88,6 +105,13 @@ export function VideoCutter({
   const mediaRevision = useVideoStore((s) =>
     videoPath ? s.getMediaRevision(videoPath) : 0,
   );
+  const videoFps = useVideoStore((s) => {
+    if (!videoPath) return 30;
+    const item = s.videoList.find(
+      (v) => v.path.replace(/\\/g, "/").toLowerCase() === videoPath.replace(/\\/g, "/").toLowerCase(),
+    );
+    return item?.fps && item.fps > 1 ? item.fps : 30;
+  });
   const [mode, setMode] = useState<VideoEditMode>("trim");
   const [startMs, setStartMs] = useState(0);
   const [endMs, setEndMs] = useState(0);
@@ -103,6 +127,11 @@ export function VideoCutter({
   const endMsRef = useRef(endMs);
   startMsRef.current = startMs;
   endMsRef.current = endMs;
+
+  const [photoItems, setPhotoItems] = useState<FramePreviewItem[]>([]);
+  const [importToSession, setImportToSession] = useState(true);
+  const [exportFolder, setExportFolder] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
 
   const rotatePending = hasNetPreviewRotate(pendingRotateDeg);
 
@@ -126,12 +155,24 @@ export function VideoCutter({
     return at >= MIN_SPLIT_PART_MS && at <= total - MIN_SPLIT_PART_MS;
   }, [playheadMs, durationMs, keyframesSecs]);
 
+  const selectedPhotoPaths = useMemo(
+    () => photoItems.filter((i) => i.selected).map((i) => i.path),
+    [photoItems],
+  );
+
+  const photosDoneEnabled =
+    selectedPhotoPaths.length >= 1 &&
+    (importToSession || exportFolder != null) &&
+    !extracting;
+
   const doneEnabled =
     mode === "trim"
       ? trimDirty
       : mode === "rotate"
         ? rotatePending
-        : splitValid;
+        : mode === "split"
+          ? splitValid
+          : photosDoneEnabled;
 
   useEffect(() => {
     if (!open) {
@@ -141,6 +182,10 @@ export function VideoCutter({
       setPendingRotateDeg(0);
       setPlayheadMs(0);
       setMode("trim");
+      setPhotoItems([]);
+      setImportToSession(true);
+      setExportFolder(null);
+      setExtracting(false);
       return;
     }
     committedRef.current = false;
@@ -154,6 +199,10 @@ export function VideoCutter({
     }
     setPendingRotateDeg(0);
     setMode("trim");
+    setPhotoItems([]);
+    setImportToSession(true);
+    setExportFolder(null);
+    setExtracting(false);
   }, [open, videoPath, durationSecsHint]);
 
   useEffect(() => {
@@ -206,6 +255,7 @@ export function VideoCutter({
   }
 
   function cancel() {
+    if (extracting) return;
     if (committedRef.current) {
       onClose();
       return;
@@ -217,13 +267,14 @@ export function VideoCutter({
   }
 
   function switchMode(next: VideoEditMode) {
-    if (next === mode) return;
+    if (next === mode || extracting) return;
     // Leaving a mode drops its pending preview state (Photos discards uncommitted tool tweaks).
     if (mode === "rotate") setPendingRotateDeg(0);
-    if (mode === "trim") {
-      const dur = playerRef.current?.getDurationMs() || durationMs;
-      setStartMs(0);
-      setEndMs(dur);
+    // Keep start/end across modes so photos interval can use the current trim range.
+    if (mode === "photos" && next !== "photos") {
+      setPhotoItems([]);
+      setExportFolder(null);
+      setImportToSession(true);
     }
     setMode(next);
   }
@@ -270,11 +321,43 @@ export function VideoCutter({
     playerRef.current?.seekMs(handle === "start" ? nextStart : nextEnd);
   }
 
+  /** Photos extract range: no keyframe snap; clears generated preview on commit. */
+  function handlePhotoRangeCommit(handle: TrimHandle, ms: number) {
+    const dur = playerRef.current?.getDurationMs() || durationMs;
+    let nextStart = startMsRef.current;
+    let nextEnd = endMsRef.current > 0 ? endMsRef.current : dur;
+
+    if (handle === "start") {
+      nextStart = ms;
+      if (nextStart >= nextEnd - 100) {
+        nextEnd = Math.min(dur, nextStart + 100);
+      }
+    } else {
+      nextEnd = ms;
+      if (nextEnd <= nextStart + 100) {
+        nextStart = Math.max(0, nextEnd - 100);
+      }
+    }
+
+    nextStart = Math.max(0, Math.min(nextStart, (dur || nextEnd) - 100));
+    nextEnd = Math.min(dur || nextEnd, Math.max(nextEnd, nextStart + 100));
+
+    setStartMs(nextStart);
+    setEndMs(nextEnd);
+    playerRef.current?.seekMs(handle === "start" ? nextStart : nextEnd);
+    setPhotoItems([]);
+  }
+
   function resetRange() {
     const dur = playerRef.current?.getDurationMs() || durationMs;
     setStartMs(0);
     setEndMs(dur);
     playerRef.current?.seekMs(0);
+  }
+
+  function resetPhotoRange() {
+    resetRange();
+    setPhotoItems([]);
   }
 
   function applyTrim() {
@@ -322,10 +405,27 @@ export function VideoCutter({
     finish({ action: "apply_rotate", degrees: deg });
   }
 
+  function applyPhotos() {
+    if (!photosDoneEnabled) {
+      showWarning(
+        t("video.cutter.photos.needSelection"),
+        t("video.cutter.warning.noChangeTitle"),
+      );
+      return;
+    }
+    finish({
+      action: "apply_photos",
+      paths: selectedPhotoPaths,
+      importToSession,
+      exportFolder,
+    });
+  }
+
   function handleDone() {
     if (mode === "trim") applyTrim();
     else if (mode === "rotate") applyRotate();
-    else applySplit();
+    else if (mode === "split") applySplit();
+    else applyPhotos();
   }
 
   const keepRange =
@@ -345,6 +445,7 @@ export function VideoCutter({
 
   const trimActive = mode === "trim";
   const rotateActive = mode === "rotate";
+  const photosActive = mode === "photos";
 
   const controls =
     mode === "trim" ? (
@@ -368,6 +469,26 @@ export function VideoCutter({
         onRotateCcw={() => setPendingRotateDeg((d) => d - 90)}
         onReset={() => setPendingRotateDeg(0)}
       />
+    ) : mode === "photos" && videoPath ? (
+      <VideoCutterPhotosControls
+        videoPath={videoPath}
+        playheadMs={playheadMs}
+        durationMs={durationMs}
+        rangeStartMs={startMs}
+        rangeEndMs={endMs > 0 ? endMs : durationMs}
+        fpsHint={videoFps}
+        items={photoItems}
+        onItemsChange={setPhotoItems}
+        importToSession={importToSession}
+        onImportToSessionChange={setImportToSession}
+        exportFolder={exportFolder}
+        onExportFolderChange={setExportFolder}
+        extracting={extracting}
+        onExtractingChange={setExtracting}
+        onError={(message, title) => showWarning(message, title)}
+        seekMs={(ms) => playerRef.current?.seekMs(ms)}
+        onResetRange={resetPhotoRange}
+      />
     ) : (
       <div className="flex flex-col items-center gap-1 text-center">
         <p className="font-mono text-[12px] tabular-nums text-muted">
@@ -390,15 +511,20 @@ export function VideoCutter({
       onCancel={cancel}
       onDone={handleDone}
       doneEnabled={doneEnabled}
+      doneLabel={photosActive ? t("video.cutter.photos.apply") : undefined}
       controls={controls}
+      controlsClassName={
+        photosActive ? "min-h-[6.25rem] h-auto max-h-[12rem] py-1" : undefined
+      }
     >
       <div className="flex h-full min-h-0 w-full flex-col">
         <VideoPlayer
           ref={playerRef}
           fillAvailable
           className="min-h-0 flex-1"
-          chrome={trimActive ? "trim" : "playback"}
-          emphasizePlayhead={mode === "split"}
+          chrome={trimActive || photosActive ? "trim" : "playback"}
+          emphasizePlayhead={mode === "split" || photosActive}
+          rangeHandleTheme={photosActive ? "photos" : "trim"}
           snapSeekMs={
             mode === "split" && keyframesSecs.length > 0
               ? (ms) => {
@@ -411,19 +537,31 @@ export function VideoCutter({
           // Revision only — do not include durationMs (player reports duration after
           // boot and would remount → Kein Video / Thumbnail flicker).
           cacheKey={videoPath ? String(mediaRevision) : null}
-          keepRange={trimActive ? keepRange : undefined}
+          keepRange={trimActive || photosActive ? keepRange : undefined}
           keyframeMarks={
-            trimActive || mode === "split" ? keyframeMarks : undefined
+            trimActive || mode === "split" || photosActive
+              ? keyframeMarks
+              : undefined
           }
           filmstripFrames={
-            trimActive || mode === "split" ? filmstripFrames : undefined
+            trimActive || mode === "split" || photosActive
+              ? filmstripFrames
+              : undefined
           }
           // Always pass a number (0 outside rotate) so absolute centering stays
           // mounted — toggling null↔layout + transition-transform slides the video.
           previewRotateDeg={pendingRotateDeg}
           previewRotateTransition={rotateActive}
-          onTrimChange={trimActive ? handleTrimChange : undefined}
-          onTrimCommit={trimActive ? handleTrimCommit : undefined}
+          onTrimChange={
+            trimActive || photosActive ? handleTrimChange : undefined
+          }
+          onTrimCommit={
+            trimActive
+              ? handleTrimCommit
+              : photosActive
+                ? handlePhotoRangeCommit
+                : undefined
+          }
           onTimeUpdate={(c, d) => {
             setPlayheadMs(c);
             if (d <= 0) return;
@@ -437,6 +575,21 @@ export function VideoCutter({
             }
           }}
         />
+        {photosActive ? (
+          <VideoCutterPhotosStrip
+            items={photoItems}
+            onToggle={(id) =>
+              setPhotoItems((prev) =>
+                prev.map((it) =>
+                  it.id === id ? { ...it, selected: !it.selected } : it,
+                ),
+              )
+            }
+            onRemove={(id) =>
+              setPhotoItems((prev) => prev.filter((it) => it.id !== id))
+            }
+          />
+        ) : null}
       </div>
     </MediaEditShell>
   );

@@ -25,6 +25,8 @@ type MediaEditShellProps<T extends string> = {
   children: ReactNode;
   /** Mode-specific controls between canvas and tool rail. */
   controls?: ReactNode;
+  /** Override default fixed controls height (e.g. taller photos tools). */
+  controlsClassName?: string;
 };
 
 /**
@@ -47,6 +49,7 @@ export function MediaEditShell<T extends string>({
   doneLabel,
   children,
   controls,
+  controlsClassName,
 }: MediaEditShellProps<T>) {
   const { t } = useTranslation();
   const resolvedDoneLabel = doneLabel ?? t("media.edit.doneDefault");
@@ -109,7 +112,12 @@ export function MediaEditShell<T extends string>({
         </div>
 
         {/* Mode tools — fixed height keeps canvas size stable across modes */}
-        <div className="flex h-[6.25rem] shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4">
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4",
+            controlsClassName ?? "h-[6.25rem]",
+          )}
+        >
           {controls}
         </div>
 

@@ -1696,6 +1696,7 @@
         "undo": "Falló deshacer"
       },
       "mode": {
+        "photos": "Fotos",
         "rotate": "Rotar",
         "split": "Dividir",
         "trim": "Recorte"
@@ -1772,7 +1773,33 @@
         "noRotation": "No hay rotación seleccionada."
       },
       "playhead": "Cabezal {{time}}",
-      "splitHint": "Ambas partes >= 10 s — luego Listo"
+      "splitHint": "Ambas partes >= 10 s — luego Listo",
+      "photos": {
+        "title": "Fotos",
+        "apply": "Aplicar",
+        "sub": {
+          "interval": "Intervalo",
+          "single": "Individual"
+        },
+        "interval": "Intervalo",
+        "estimate": "≈ {{count}} fotos",
+        "generate": "Generar frames",
+        "addFrame": "Añadir frame",
+        "nudgeBack": "Un frame atrás",
+        "nudgeFwd": "Un frame adelante",
+        "importToSession": "Añadir al pedido",
+        "alsoExport": "Exportar también…",
+        "pickExportFolder": "Elegir carpeta de exportación",
+        "progress": "{{done}} / {{total}}",
+        "selectedCount": "{{selected}} de {{total}} seleccionadas",
+        "needSelection": "Selecciona al menos una foto y un destino (pedido o exportación).",
+        "extractFailed": "No se pudieron crear los frames",
+        "noFrames": "No hay frames para este rango.",
+        "appliedOne": "1 foto añadida",
+        "appliedMany": "{{count}} fotos añadidas",
+        "exportedOne": "1 foto exportada",
+        "exportedMany": "{{count}} fotos exportadas"
+      }
     },
     "player": {
       "volumeAria": "Volumen",

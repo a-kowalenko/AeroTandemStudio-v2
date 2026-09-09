@@ -62,6 +62,8 @@ import {
   cancelUpdateInstall,
   cancelEncode,
   cancelUploadSlot,
+  copyFilesToDirectory,
+  exportPhotosWithChronoNames,
   installSpecificVersion,
   installUpdate,
   resolveBodyConcatFallback,
@@ -2501,6 +2503,78 @@ function App() {
               onProgressReset: resetProgress,
               onStatus: setStatus,
             });
+          } else if (result.action === "apply_photos") {
+            void (async () => {
+              try {
+                setBusy(true);
+                const before = new Set(
+                  usePhotoStore.getState().photoList.map((p) =>
+                    p.path.replace(/\\/g, "/").toLowerCase(),
+                  ),
+                );
+                let importedCount = 0;
+                let exportCount = 0;
+                if (result.importToSession) {
+                  await addPhotos(result.paths);
+                  const after = usePhotoStore.getState().photoList;
+                  const fresh = after.filter(
+                    (p) => !before.has(p.path.replace(/\\/g, "/").toLowerCase()),
+                  );
+                  importedCount = fresh.length;
+                  if (result.exportFolder && fresh.length > 0) {
+                    const copied = await copyFilesToDirectory(
+                      fresh.map((p) => p.path),
+                      result.exportFolder,
+                    );
+                    exportCount = copied.length;
+                  }
+                } else if (result.exportFolder) {
+                  const copied = await exportPhotosWithChronoNames(
+                    result.paths,
+                    result.exportFolder,
+                  );
+                  exportCount = copied.length;
+                }
+                const parts: string[] = [];
+                if (importedCount > 0) {
+                  parts.push(
+                    importedCount === 1
+                      ? t("video.cutter.photos.appliedOne")
+                      : t("video.cutter.photos.appliedMany", {
+                          count: importedCount,
+                        }),
+                  );
+                }
+                if (exportCount > 0 && !result.importToSession) {
+                  parts.push(
+                    exportCount === 1
+                      ? t("video.cutter.photos.exportedOne")
+                      : t("video.cutter.photos.exportedMany", {
+                          count: exportCount,
+                        }),
+                  );
+                }
+                if (parts.length > 0) {
+                  showSuccess(parts.join(" · "), t("video.cutter.photos.title"));
+                }
+              } catch (e) {
+                if (!isCancellationError(e)) {
+                  showError(
+                    e instanceof Error ? e.message : String(e),
+                    t("video.cutter.photos.extractFailed"),
+                  );
+                }
+              } finally {
+                setBusy(false);
+                // import_photos emits sd-workflow-progress; clear stuck manual-import bar
+                // (same as MediaDropZone.clearManualImportProgress).
+                const { workflowActive, workflowProgress, setWorkflowProgress } =
+                  useSdStore.getState();
+                if (!workflowActive && workflowProgress?.stage === "import") {
+                  setWorkflowProgress(null);
+                }
+              }
+            })();
           }
         }}
         photoEditorOpen={photoEditorOpen}
