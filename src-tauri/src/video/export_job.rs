@@ -123,8 +123,10 @@ fn map_stage_progress(
         } else {
             let mut q = p;
             q.percent = lo + (q.percent.clamp(0.0, 100.0) / 100.0) * span;
+            // Keep FFmpeg continue/end transient so the UI retains the last concrete
+            // sub-status (e.g. compatible-finalize) instead of flashing the parent stage.
             if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                q.status = stage_label.into();
+                q.status = "continue".into();
             }
             // New overall stage — reset clip averages
             if let Ok(mut map) = task_pcts.lock() {

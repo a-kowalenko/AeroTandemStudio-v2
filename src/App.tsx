@@ -122,6 +122,7 @@ import {
   formatOverallProgressLabel,
   resolveProgressLabel,
   shouldClearTaskProgress,
+  shouldResetOverallProgressPercent,
 } from "./lib/progressLabels";
 import { translateValidationHint } from "./lib/createReadyHints";
 import {
@@ -1386,7 +1387,11 @@ function App() {
           return formatOverallProgressLabel(p.status, prev);
         });
       } else {
-        setPercent((prev) => applyMonotonicPercent(prev, p.percent));
+        setPercent((prev) =>
+          shouldResetOverallProgressPercent(p.status)
+            ? Math.max(0, Math.min(100, p.percent))
+            : applyMonotonicPercent(prev, p.percent),
+        );
         const label = resolveProgressLabel(p.status, undefined);
         setStatus((prev) => formatOverallProgressLabel(p.status, prev));
         if (shouldClearTaskProgress(p.status) || shouldClearTaskProgress(label)) {

@@ -181,19 +181,22 @@ export function isEncodeProbeIndeterminate(
   return isActivityOnlyProgress(status);
 }
 
-/** Parent stage for nested create_video progress inside create_job. */
+/** Parent stage label from create_job before concrete encode sub-statuses arrive. */
 export const CREATE_VIDEO_STAGE = "Erstelle Video…";
 
 const CLEAR_TASK_BARS =
   /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video|schreibe ams-manifest|nachreichung bereit|compatible-concat|compatible-finalize|compatible-validate|compatible-mkv|container finalisieren|finalizing container|finalizando contenedor/i;
 
+/** create_job phase boundaries that may restart the overall percent bar. */
+const PROGRESS_PERCENT_RESET_STAGE =
+  /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
+
 const CREATE_JOB_MAJOR_STAGE =
   /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle video|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
 
+/** Concrete encode steps — shown as the main overall label (not nested under the parent stage). */
 const CREATE_VIDEO_DETAIL =
-  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen fertig|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|compatible|legacy-zusammenfügen|probing|prepare/i;
-
-const MAX_DETAIL_LEN = 42;
+  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|compatible|legacy-zusammenfügen|probing|prepare|clips prüfen|checking clips|comprobando clips|clips vorbereiten|preparing clips|preparando clips|clips zusammenfügen|joining clips|uniendo clips|container finalisieren|finalizing container|finalizando contenedor|zusammenfügung prüfen|checking join|comprobando unión|mkv-fallback|mkv fallback|respaldo mkv/i;
 
 function inProgressLabel(): string {
   return tr("progress.default.inProgress");
@@ -211,12 +214,24 @@ export function shouldClearTaskProgress(status: string | undefined | null): bool
   return CLEAR_TASK_BARS.test(s);
 }
 
+/**
+ * True for create_job major phases that intentionally restart overall %
+ * (watermark / photos / fertig). Not for "Erstelle Video…" itself — that stays
+ * monotonic across compatible concat → finalize.
+ */
+export function shouldResetOverallProgressPercent(
+  status: string | undefined | null,
+): boolean {
+  const s = (status ?? "").trim();
+  if (!s) return false;
+  return PROGRESS_PERCENT_RESET_STAGE.test(s);
+}
+
+/** Never decrease; treat 0 as "no update" so status-only kicks do not flash the bar. */
 export function applyMonotonicPercent(previous: number, next: number): number {
   const n = Math.max(0, Math.min(100, next));
-  if (n <= 0) return 0;
-  if (n + 0.05 >= previous) return n;
-  if (previous - n < 1.5) return previous;
-  return n;
+  if (n <= 0) return previous;
+  return Math.max(previous, n);
 }
 
 export function resolveProgressLabel(
@@ -259,12 +274,6 @@ function isCreateJobMajorStage(label: string): boolean {
   return CREATE_JOB_MAJOR_STAGE.test(label.trim());
 }
 
-function isInCreateVideoStage(previous: string | undefined): boolean {
-  const p = (previous ?? "").trim();
-  const stage = createVideoStageLabel();
-  return p === stage || p.startsWith(`${stage} (`);
-}
-
 function extractCreateVideoDetail(previous: string | undefined): string | null {
   const p = (previous ?? "").trim();
   const stage = createVideoStageLabel();
@@ -285,13 +294,11 @@ function isCreateVideoDetail(label: string): boolean {
   return CREATE_VIDEO_DETAIL.test(s);
 }
 
-function shortenDetail(detail: string): string {
-  let d = detail.trim();
-  if (d.endsWith("…")) d = d.slice(0, -1).trimEnd();
-  if (d.length <= MAX_DETAIL_LEN) return d;
-  return `${d.slice(0, MAX_DETAIL_LEN - 1).trimEnd()}…`;
-}
-
+/**
+ * Overall progress label: concrete encode steps are primary.
+ * Parent stage "Erstelle Video…" is only a placeholder until a sub-status arrives;
+ * FFmpeg continue ticks must not wipe the last concrete step.
+ */
 export function formatOverallProgressLabel(
   raw: string | undefined | null,
   previous?: string,
@@ -304,16 +311,20 @@ export function formatOverallProgressLabel(
   const label = resolveProgressLabel(raw, previous);
   const stage = createVideoStageLabel();
 
-  if (label === stage || label.startsWith(`${stage} (`)) {
-    const detail = extractCreateVideoDetail(previous);
-    if (detail && label === stage) {
-      return `${stage} (${detail})`;
-    }
-    return label === stage ? stage : label;
+  // Legacy nested form → detail as primary
+  if (label.startsWith(`${stage} (`)) {
+    return extractCreateVideoDetail(label) ?? label;
   }
 
-  if (isCreateVideoDetail(label) && isInCreateVideoStage(previous)) {
-    return `${stage} (${shortenDetail(label)})`;
+  if (label === stage) {
+    const fromPrev = extractCreateVideoDetail(previous);
+    if (fromPrev) return fromPrev;
+    if (previous && isCreateVideoDetail(previous)) return previous;
+    return stage;
+  }
+
+  if (isCreateVideoDetail(label)) {
+    return label;
   }
 
   return label;

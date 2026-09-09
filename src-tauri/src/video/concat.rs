@@ -1966,6 +1966,9 @@ fn compatible_merge_from_prep(
 }
 
 /// Phase 43.1: second progress pass — `+faststart` remux with status `compatible-finalize`.
+///
+/// Status-only kickoff uses percent 0; the UI keeps the prior overall % (monotonic)
+/// so this remux does not restart the bar after concat.
 fn compatible_finalize_faststart(
     ffmpeg: &Path,
     input: &str,
@@ -1975,8 +1978,18 @@ fn compatible_finalize_faststart(
     on_progress: &ProgressCallback,
 ) -> Result<(), ConcatError> {
     emit(on_progress, 0.0, "compatible-finalize");
+    let outer = on_progress.clone();
+    // Remux out_time restarts at 0 — keep status on finalize and let UI monotonic
+    // clamp ignore regressing percents (no second 0→100 flash).
+    let finalize_cb: ProgressCallback = Arc::new(move |p: EncodeProgress| {
+        let mut q = p;
+        if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+            q.status = "compatible-finalize".into();
+        }
+        outer(q);
+    });
     let args = build_compatible_finalize_faststart_args(input, output, has_audio);
-    match run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone()) {
+    match run_ffmpeg(ffmpeg, &args, total_secs, finalize_cb) {
         Err(e) if is_disk_full_error(&e) => Err(ConcatError::Ffmpeg(disk_full_error())),
         Err(e) => Err(ConcatError::Ffmpeg(e)),
         Ok(()) => Ok(()),
@@ -2212,7 +2225,7 @@ fn concat_compatible_ts_prep(
         prep_paths.push(result?);
     }
 
-    // Merge 0→100%, then finalize (faststart) again 0→100%.
+    // Merge reports its own 0→100%; finalize keeps status without restarting the UI bar.
     compatible_merge_from_prep(
         ffmpeg,
         &work,
