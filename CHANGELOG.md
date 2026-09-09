@@ -16,6 +16,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen → Server: SMB automatisch verbinden — die App richtet die Server-Freigabe bei Bedarf selbst ein und trennt sie nur beim Beenden
 - Einstellungen → System: Automatische Bereinigung — lokale Vorgangs- und Backup-Ordner nach wählbarer Aufbewahrungsdauer löschen; Einträge unter Vorgänge bleiben (Anzeige „Ordner fehlt“)
 - Einstellungen → SD: Ton bei erfolgreichem Auswerfen von SD-Karte oder USB-Cam
+- Video bearbeiten → Fotos: Frames aus dem Clip als Fotos übernehmen — im Intervall oder einzeln an der aktuellen Position; Standard in den Vorgang, optional zusätzlich exportieren
+- QR mit Handcam und Outside: nach dem Scan Typ wählen — nur die gewählte Familie kommt in den Vorgang; ohne Buchungsdaten Typwahl mit Hinweis, Produkte prüfen
 
 ### Verbessert
 
@@ -27,6 +29,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Nach Ruhezustand: Server-Verbindung kommt schneller wieder — die Oberfläche hängt nicht mehr lange beim Verbindungscheck
 - Mac: SMB automatisch verbinden funktioniert zuverlässiger — Mount unter dem App-Ordner statt unter Systempfaden mit Rechteproblemen
 - USB-Action-Cams: Erkennung unterscheidet Geräte-Namen und echte Mediendateien zuverlässiger
+- Kundenformular: Medien-Produkte zeigen „Bezahlt“ / „Unbezahlt“ farbig; Bezahlung nur umschaltbar, wenn passende Medien in der Liste sind
 
 ### Behoben
 
