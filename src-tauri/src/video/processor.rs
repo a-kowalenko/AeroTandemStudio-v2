@@ -905,8 +905,9 @@ fn emit_stage(on_progress: &ProgressCallback, stage: f64, stages: f64, label: &s
     on_progress(progress_from_times(pct_secs, 100.0, label));
 }
 
-/// Body Fast/Compatible/Legacy concat may emit per-clip prep `task_id`s.
-/// Keep overall status only so the floating progress panel does not grow (OPT-16 UX).
+/// Body Fast/Compatible/Legacy concat may emit per-clip prep `task_id`s (Legacy
+/// MPEG-TS). Keep overall status only so the floating progress panel does not grow.
+/// Compatible prep (Phase 43.1) emits aggregate overall events without `task_id`.
 /// Parallel mixed-codec re-encode still uses the raw `on_progress` (clip bars wanted).
 fn body_concat_overall_progress(on_progress: ProgressCallback) -> ProgressCallback {
     Arc::new(move |p: crate::video::progress::EncodeProgress| {

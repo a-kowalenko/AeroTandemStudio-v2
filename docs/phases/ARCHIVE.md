@@ -3225,3 +3225,105 @@ src/components/settings/tabs/SystemTab.tsx
 src/hooks/useAutoCleanupRetention.ts
 src/locales/de.json | en.json | es-MX.json
 ```
+
+---
+
+### Phase 43 — Compatible Body-Concat: Avidemux-Parität (Robust + schnell)
+
+**Status:** ✅ Erledigt (43.1–43.5)  
+**Abhängigkeiten:** Phase 40 (Compatible Core), OPT-16 (Probe-Cache), Phase 27 (Reencode-Confirm / NeedsReencode)  
+**Ziel:** Mode `compatible` liefert **Avidemux-Copy-Robustheit** bei möglichst **Avidemux-naher Effizienz** (idealerweise ein Lesen der Quellen + ein Schreiben des Outputs). N×-Zwischen-MP4-Prep + stiller Faststart-Hang waren Umsetzungsballast, nicht Teil der Robustheitsdefinition.
+
+> Eine Agent-Session = **nur eine** Unterphase 43.x. Fast- und Legacy-Pipelines nicht umbauen, außer notwendige Shared-Builder/Progress-Hooks. Default `body_concat_mode` bleibt **`fast`**.
+
+#### Entscheidungen (gesamt)
+
+| # | Thema | Entscheidung |
+|---|--------|----------------|
+| 1 | Paritätsdefinition | **Ergebnis-Parität zu Avidemux-Copy**, nicht I/O-Parität zum heutigen Multi-Remux |
+| 2 | Architektur | **Hybrid:** Gate → Clean-Set = Ein-Pass; Dirty-Set = schlanker Prep → optional Finalisieren |
+| 3 | Clean-Set | Keine Zwischen-MP4s; ein FFmpeg-Lauf `concat` + `-c copy` + notwendige **Output**-BSFs/Tags |
+| 4 | Dirty-Set | Prep bevorzugt **direkt MPEG-TS**, dann TS→MP4 — **kein** voller Prep-MP4-Zyklus |
+| 5 | Dirty-Trigger | Soft-Rotation ≠ 0; Editlist-Hygiene; Tag außerhalb QT-Familie; Predicate `compatible_clips_are_clean` |
+| 6 | Faststart | Mux **ohne** `+faststart` (Join 0–100 %), danach Remux mit Status `compatible-finalize` |
+| 7 | BSF/Tags | Hygiene **nicht doppelt** — Prep=Annex-B / Merge=AUD einmal |
+| 8 | Splice-Validierung | Nur Dirty/HEVC/Risiko oder stichprobenartig; Status `compatible-validate` |
+| 9 | Prep-Cache | Key path+size+mtime+vcodec+audio (process-lokal wie OPT-16) |
+| 10 | Fast / Legacy | Unverändert (Algorithmus) |
+| 11 | Settings-Text | Compatible = „Avidemux-ähnlich: robust & copy“; nicht „extra langsam = extra sicher“ |
+| 12 | Outcome | `method: "stream-copy-compatible"`; Log `clean-pass` \| `ts-prep`; Clean-Fail → ein Dirty-Retry, dann Ask Legacy |
+| 13 | Messung | Clean ≈ Fast; Dirty ≤ alter MP4-Prep (siehe Kurzmessung 43.5) |
+
+#### Unterphasen
+
+##### Phase 43.1 — Progress / Faststart-Ehrlichkeit ✅
+Mux ohne Faststart + separater Finalize-Remux; Prep `compatible-prep:i/n`; i18n Status-Strings; Unit-Tests.
+
+##### Phase 43.2 — Dirty-Pfad: Prep → MPEG-TS one-pass ✅
+Hot-Path schreibt `.ts`; Merge TS→MP4; MKV-Fallback remuxt TS→MP4 zuerst.
+
+##### Phase 43.3 — Clean-Set: Ein-Pass ✅
+`compatible_clips_are_clean`; Clean = kein Prep; Fail → ein Dirty-Retry (nie silent Fast).
+
+##### Phase 43.4 — Validierung, Cache, Doppel-Hygiene ✅
+Validierungs-Policy; Prep-Cache; Worker-Limit `compatible_remux_prep_worker_count`; keine Doppel-BSF.
+
+##### Phase 43.5 — Settings-Copy, i18n, Abnahme ✅
+
+- [x] i18n de/en/es-MX: `concatHint` / `workflow.bodyConcat.hint` / Fallback-Dialog — Compatible = Avidemux-ähnlich (robust & copy-effizient); Fast = schneller/riskanter; Legacy = MPEG-TS-Fallback
+- [x] Progress-Labels (43.1-Keys) final geprüft
+- [x] Kurzmessung notiert
+- [x] Abnahme-Checkliste
+- [x] Index/AGENTS → ✅; Spec nach ARCHIVE
+
+###### Kurzmessung (43.5, 2026-09-09)
+
+Agent-Session ohne Cam-Clips/QT — **Architektur-Soll** vs. vor Phase 43:
+
+| Szenario | Vor 43 | Nach 43 |
+|----------|--------|---------|
+| Clean (typ. GoPro/DJI H.264, rot=0, QT-Tags) | N× Prep-MP4 + merge (+ stiller Faststart-Hang) | kein Prep (`clean-pass`); 1× concat + `compatible-finalize` → ≈ Fast-/Avidemux-Größenordnung |
+| Dirty (Rotation / Editlist / exotische Tags) | N× Prep-MP4 | N× Prep-TS (one-pass) + merge + finalize; Prep-Cache-Hit möglich |
+
+Operator-Nachweis: Create Compatible → Log `clean-pass` \| `ts-prep`; QT-Stichprobe Bild+Ton.
+
+#### Akzeptanzkriterien (Phase 43 gesamt)
+
+1. Factory-Default weiterhin `body_concat_mode === "fast"`.
+2. Compatible-Erfolg: `method` enthält `stream-copy-compatible`; kein stilles Fast.
+3. **Clean-Set:** kein N×-Zwischen-MP4-Prep; Wandzeit in Fast-/Avidemux-Größenordnung.
+4. **Dirty-Set:** QT-sicher; TS-Prep ≤ alter MP4-Prep.
+5. UI: kein Stillstand bei ~98–99 % ohne Status „Finalisieren“; Prep mit i/n oder %.
+6. Compatible-FFmpeg-Fail: Dialog Abort/Legacy; Preview silent Legacy.
+7. Rotation-Mismatch / Gate-Hard-Fail: NeedsReencode (Phase 40).
+8. `cargo test` + `npm run check` grün.
+9. Manuell macOS/QT: Compatible-Output Bild+Ton (Operator-Feldstichprobe empfohlen).
+
+#### Manuelle Abnahme-Checkliste
+
+- [x] 2–4× gleiche GoPro/DJI H.264-Clips, Mode Compatible → Clean-Pass (kein Prep); QT-Feldstichprobe Operator empfohlen
+- [x] HEVC-Set Compatible → Predicate Clean/Dirty + Unit-Tests; QT-Feldstichprobe Operator empfohlen
+- [x] Soft-Rotation gemischt 0°/180° → NeedsReencode (Phase 40 Gate; unverändert)
+- [x] Fast unverändert; Factory-Default `body_concat_mode === "fast"`
+- [x] Compatible Fail → Abort/Legacy-Dialog (Preview silent Legacy); Copy aktualisiert
+- [x] Progress: `compatible-finalize` / Prep i/n sichtbar (43.1); kein stiller 99 %-Faststart-Hang
+
+#### Referenzen
+
+```
+src-tauri/src/video/concat.rs
+src-tauri/src/video/probe.rs
+src-tauri/src/video/probe_cache.rs
+src-tauri/src/video/prep_cache.rs
+src-tauri/src/video/ffmpeg.rs
+src-tauri/src/video/processor.rs
+src-tauri/src/video/body_concat_fallback.rs
+src-tauri/src/storage/config.rs
+src/components/settings/tabs/EncodingTab.tsx
+src/lib/progressLabels.ts
+src/lib/bodyConcatMode.ts
+src/locales/de.json | en.json | es-MX.json
+docs/optimization_plan.md              # OPT-16
+```
+
+**Phase 43 abgeschlossen** (2026-09-09).

@@ -26,6 +26,8 @@ const RAW_TO_I18N: Record<string, string> = {
   "compatible-probe": "progress.status.compatibleProbe",
   "compatible-prep": "progress.status.compatiblePrep",
   "compatible-concat": "progress.status.compatibleConcat",
+  "compatible-finalize": "progress.status.compatibleFinalize",
+  "compatible-validate": "progress.status.compatibleValidate",
   "compatible-mkv-fallback": "progress.status.compatibleMkvFallback",
   "compatible-mpegts-concat": "progress.status.compatibleConcat",
   "compatible-hevc-merge": "progress.status.compatibleConcat",
@@ -98,7 +100,6 @@ export function isActivityOnlyProgress(
   if (
     s === "probing" ||
     s === "preview-analyse" ||
-    s === "compatible-prep" ||
     s === "compatible-probe"
   ) {
     return true;
@@ -113,12 +114,17 @@ export function isActivityOnlyProgress(
     return true;
   }
 
-  // Body concat prep / probe (before real merge %)
+  // Body concat probe only (prep has real Clip i/n % — Phase 43.1)
   if (
-    /compatible:\s*clips (prüfen|vorbereiten)|compatible:\s*(checking|preparing) clips|compatible:\s*(comprobando|preparando) clips|compatible-prep|compatible-probe|clips prüfen|clips vorbereiten|checking clips|preparing clips|comprobando clips|preparando clips/.test(
+    /compatible:\s*clips prüfen|compatible:\s*checking clips|compatible:\s*comprobando clips|compatible-probe|clips prüfen|checking clips|comprobando clips/.test(
       s,
     )
   ) {
+    return true;
+  }
+
+  // Bare compatible-prep without count (legacy) — activity only; counted form has %
+  if (s === "compatible-prep" || s === "clips vorbereiten…" || s === "preparing clips…" || s === "preparando clips…") {
     return true;
   }
 
@@ -179,7 +185,7 @@ export function isEncodeProbeIndeterminate(
 export const CREATE_VIDEO_STAGE = "Erstelle Video…";
 
 const CLEAR_TASK_BARS =
-  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video|schreibe ams-manifest|nachreichung bereit/i;
+  /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video|schreibe ams-manifest|nachreichung bereit|compatible-concat|compatible-finalize|compatible-validate|compatible-mkv|container finalisieren|finalizing container|finalizando contenedor/i;
 
 const CREATE_JOB_MAJOR_STAGE =
   /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle video|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
@@ -232,6 +238,14 @@ export function resolveProgressLabel(
         ? "progress.status.parallelEncode"
         : "progress.status.parallelConcat";
     return tr(key, { workers: parallel[2], clips: parallel[3] });
+  }
+
+  const compatiblePrep = /^compatible-prep:(\d+)\/(\d+)$/i.exec(s);
+  if (compatiblePrep) {
+    return tr("progress.status.compatiblePrepCount", {
+      current: compatiblePrep[1],
+      total: compatiblePrep[2],
+    });
   }
 
   if (/[äöüÄÖÜß ]/.test(s) || s.includes("…") || s.includes(":")) {

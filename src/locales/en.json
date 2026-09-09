@@ -277,7 +277,7 @@
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
       "concatLegacy": "Legacy",
-      "concatHint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: prepared stream-copy with a probe gate — lossless and orientation-safe. Legacy: proven MPEG-TS pipeline (slower). On Fast/Compatible failure: cancel or use Legacy.",
+      "concatHint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: Avidemux-like — robust and copy-efficient (lossless, orientation-safe). Legacy: proven MPEG-TS pipeline (fallback, slower). On Fast/Compatible failure: cancel or use Legacy.",
       "advanced": "Advanced",
       "introEnabled": "Use intro when creating (experimental)",
       "introDuration": "Intro duration (sec.)",
@@ -603,7 +603,10 @@
       "fastConcat": "Joining clips…",
       "compatibleProbe": "Checking clips…",
       "compatiblePrep": "Preparing clips…",
+      "compatiblePrepCount": "Preparing clips ({{current}}/{{total}})…",
       "compatibleConcat": "Joining clips…",
+      "compatibleFinalize": "Finalizing container…",
+      "compatibleValidate": "Checking join…",
       "compatibleMkvFallback": "MKV fallback…",
       "legacyConcat": "Joining clips…",
       "fastPathWaiting": "Join failed — please choose…",
@@ -696,7 +699,7 @@
       "title": "Fast path failed",
       "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
       "titleCompatible": "Compatible path failed",
-      "bodyCompatible": "The clips could not be joined via the prepared Compatible path. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
+      "bodyCompatible": "The clips could not be joined via the Compatible path (Avidemux-like). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
       "useLegacy": "Use legacy"
     },
     "introMux": {
@@ -1213,7 +1216,7 @@
       "shortFast": "Fast",
       "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: prepared stream-copy with a probe gate — lossless and orientation-safe. Legacy: proven MPEG-TS pipeline (slower).",
+      "hint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: Avidemux-like — robust and copy-efficient (lossless, orientation-safe). Legacy: proven MPEG-TS pipeline (fallback, slower).",
       "aria": "Clip join mode: {{mode}}"
     },
     "progress": "Progress",

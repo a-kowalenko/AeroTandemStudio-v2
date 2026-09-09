@@ -279,12 +279,13 @@ fn restore_entry(entry: CutUndoEntry) -> Result<UndoCutResult, CutUndoError> {
 
     remove_backup_file(&entry.backup_path);
 
-    // OPT-16: drop probe-cache entries for restored / removed working paths.
+    // OPT-16 / 43.4: drop probe- and prep-cache entries for restored / removed working paths.
     for p in removed_paths
         .iter()
         .chain(std::iter::once(&entry.restore_path))
     {
         super::probe_cache::invalidate_path(p);
+        super::prep_cache::invalidate_path(p);
     }
 
     Ok(UndoCutResult {

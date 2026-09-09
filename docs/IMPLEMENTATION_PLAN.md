@@ -89,6 +89,8 @@ Details: `@AGENTS.md`
 | 38 | Vorgänge-Dialog UX | ✅ | [VORGAENGE_DIALOG_PLAN](VORGAENGE_DIALOG_PLAN.md) |
 | 39–41 | Danger Zone … Eject-Ton | ✅ | ARCHIVE |
 | 42 | Auto-Bereinigung Aufbewahrungsdauer | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
+| 43 | Compatible ≈ Avidemux (robust + schnell) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
+| 43.1–43.5 | Progress … Settings-Copy / Abnahme | ✅ | ARCHIVE |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt
 
@@ -121,4 +123,4 @@ Nur 23.2h.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-08.*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-09.*

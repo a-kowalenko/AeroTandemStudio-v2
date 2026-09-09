@@ -45,8 +45,21 @@ static DISPLAYMATRIX_ROT_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)displaymatrix:\s*rotation\s+of\s+(-?\d+(?:\.\d+)?)\s+degrees").unwrap()
 });
 
+/// Explicit edit-list mentions in FFmpeg `-i` stderr (rare but decisive).
+static EDITLIST_HINT_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)\b(?:edit\s*lists?|elst)\b").unwrap()
+});
+
+/// `Duration: …, start: 0.021333, bitrate: …` — non-zero start often implies elst.
+static CONTAINER_START_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)Duration:\s*[0-9:.]+,\s*start:\s*(-?\d+(?:\.\d+)?)").unwrap()
+});
+
 /// Tolerance when snapping probe angles to quarter turns (degrees).
 const ROTATION_SNAP_TOLERANCE_DEG: f64 = 1.0;
+
+/// |start| above this → treat as edit-list hygiene candidate (Phase 43.3).
+const EDITLIST_START_EPSILON_SECS: f64 = 0.001;
 
 /// Container metadata keys written by many cameras (MP4/MOV).
 /// Prefer explicit make/model; ignore `encoder` (usually Lavf / app software).
@@ -199,6 +212,8 @@ pub struct CompatibleStreamKey {
     pub has_audio: bool,
     /// Soft-rotation probe result (displaymatrix / `rotate` tag / side data).
     pub rotation: VideoRotationProbe,
+    /// True when probe hints that `-ignore_editlist` hygiene is needed (Phase 43.3).
+    pub needs_editlist_hygiene: bool,
 }
 
 /// Result of probing soft rotation from FFmpeg stderr (Phase 40.2).
@@ -296,6 +311,25 @@ pub fn parse_video_rotation_degrees(stderr: &str) -> Option<u32> {
     probe_video_rotation_degrees(stderr).known_degrees()
 }
 
+/// Best-effort: edit-list hygiene needed for Compatible Dirty-Prep (Phase 43.3).
+///
+/// Triggers on explicit `edit list`/`elst` text or a non-zero container `start:` time.
+/// Misses are acceptable — Clean-Fail retries Dirty once.
+pub fn probe_needs_editlist_hygiene(stderr: &str) -> bool {
+    if EDITLIST_HINT_RE.is_match(stderr) {
+        return true;
+    }
+    parse_container_start_secs(stderr)
+        .map(|s| s.abs() > EDITLIST_START_EPSILON_SECS)
+        .unwrap_or(false)
+}
+
+fn parse_container_start_secs(stderr: &str) -> Option<f64> {
+    CONTAINER_START_RE
+        .captures(stderr)
+        .and_then(|c| c.get(1)?.as_str().parse().ok())
+}
+
 fn parse_displaymatrix_rotation_raw(stderr: &str) -> Option<f64> {
     DISPLAYMATRIX_ROT_RE
         .captures(stderr)
@@ -361,6 +395,7 @@ pub fn compatible_stream_key_from_probe(stderr: &str, has_audio: bool) -> Option
         .and_then(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
         .unwrap_or_default();
     let rotation = probe_video_rotation_degrees(stderr);
+    let needs_editlist_hygiene = probe_needs_editlist_hygiene(stderr);
     Some(CompatibleStreamKey {
         codec: meta.codec,
         width: meta.width,
@@ -370,6 +405,7 @@ pub fn compatible_stream_key_from_probe(stderr: &str, has_audio: bool) -> Option
         profile,
         has_audio,
         rotation,
+        needs_editlist_hygiene,
     })
 }
 
@@ -523,6 +559,20 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
     }
 
     #[test]
+    fn probe_editlist_hygiene_from_start_and_hint() {
+        assert!(!probe_needs_editlist_hygiene(
+            "  Duration: 00:00:08.00, start: 0.000000, bitrate: 8000 kb/s"
+        ));
+        assert!(probe_needs_editlist_hygiene(
+            "  Duration: 00:00:08.00, start: 0.021333, bitrate: 8000 kb/s"
+        ));
+        assert!(probe_needs_editlist_hygiene(
+            "Input #0: something about an edit list in the track"
+        ));
+        assert!(probe_needs_editlist_hygiene("side data: elst present"));
+    }
+
+    #[test]
     fn probe_rotation_from_displaymatrix_and_tag() {
         let dm = "      Side data:\n        displaymatrix: rotation of -90.00 degrees\n";
         assert_eq!(
@@ -623,6 +673,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
         let b = compatible_stream_key_from_probe(stderr_b, true).unwrap();
         assert_eq!(a.rotation, VideoRotationProbe::Known(0));
         assert_eq!(b.rotation, VideoRotationProbe::Known(0));
+        assert!(!a.needs_editlist_hygiene);
         assert!(compatible_stream_keys_match(&a, &b));
 
         let stderr_rot = r#"

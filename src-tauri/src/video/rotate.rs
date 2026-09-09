@@ -229,8 +229,9 @@ pub fn rotate_video(
             if let Some(b) = backup {
                 super::cut_undo::commit_trim_undo(input, b);
             }
-            // OPT-16: refresh Compatible probe cache after rotation rewrite.
+            // OPT-16 / 43.4: refresh probe cache; drop stale Dirty TS-prep segments.
             super::probe_cache::refresh_path(ffmpeg, &res.output);
+            super::prep_cache::invalidate_path(&res.output);
             Ok(res)
         }
         Err(e) => {

@@ -18,6 +18,7 @@ pub mod marker;
 pub mod parallel;
 pub mod preview_encode;
 pub mod preview_reuse;
+pub mod prep_cache;
 pub mod probe;
 pub mod probe_cache;
 pub mod processor;

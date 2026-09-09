@@ -277,7 +277,7 @@
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
       "concatLegacy": "Legacy",
-      "concatHint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: copia de stream preparada con comprobación — sin pérdida y segura para la orientación. Legacy: canalización MPEG-TS probada (más lenta). Si falla Fast/Compatible: cancelar o usar Legacy.",
+      "concatHint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: similar a Avidemux — robusto y eficiente en copia (sin pérdida, orientación segura). Legacy: canalización MPEG-TS probada (respaldo, más lenta). Si falla Fast/Compatible: cancelar o usar Legacy.",
       "advanced": "Avanzado",
       "introEnabled": "Usar intro al crear (experimental)",
       "introDuration": "Duración del intro (s)",
@@ -603,7 +603,10 @@
       "fastConcat": "Uniendo clips…",
       "compatibleProbe": "Comprobando clips…",
       "compatiblePrep": "Preparando clips…",
+      "compatiblePrepCount": "Preparando clips ({{current}}/{{total}})…",
       "compatibleConcat": "Uniendo clips…",
+      "compatibleFinalize": "Finalizando contenedor…",
+      "compatibleValidate": "Comprobando unión…",
       "compatibleMkvFallback": "Respaldo MKV…",
       "legacyConcat": "Uniendo clips…",
       "fastPathWaiting": "Unión falló — elige una opción…",
@@ -696,7 +699,7 @@
       "title": "Fast path falló",
       "body": "No se pudieron unir los clips en un solo paso rápido. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
       "titleCompatible": "Compatible path falló",
-      "bodyCompatible": "No se pudieron unir los clips por la ruta Compatible preparada. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
+      "bodyCompatible": "No se pudieron unir los clips por la ruta Compatible (similar a Avidemux). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
       "useLegacy": "Usar legacy"
     },
     "introMux": {
@@ -1213,7 +1216,7 @@
       "shortFast": "Fast",
       "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: copia de stream preparada con comprobación — sin pérdida y segura para la orientación. Legacy: canalización MPEG-TS probada (más lenta).",
+      "hint": "Fast Path: una pasada de copia ingenua — rápida, pero arriesgada en algunos reproductores. Compatible: similar a Avidemux — robusto y eficiente en copia (sin pérdida, orientación segura). Legacy: canalización MPEG-TS probada (respaldo, más lenta).",
       "aria": "Modo de unión de clips: {{mode}}"
     },
     "progress": "Progreso",
