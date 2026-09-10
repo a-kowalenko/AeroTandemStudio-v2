@@ -258,6 +258,7 @@ export function PhotoPreview({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: result.source_path ?? photo.path,
           preview: result.preview,
           runCleanup: () => maybeRemoveQrPhoto(result.source_path ?? photo.path),

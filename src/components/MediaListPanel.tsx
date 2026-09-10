@@ -246,6 +246,7 @@ export function MediaListPanel({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: result.source_path ?? path,
           preview: result.preview,
           runCleanup: () =>

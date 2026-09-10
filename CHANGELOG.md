@@ -18,6 +18,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen → SD: Ton bei erfolgreichem Auswerfen von SD-Karte oder USB-Cam
 - Video bearbeiten → Fotos: Frames aus dem Clip als Fotos übernehmen — im Intervall oder einzeln an der aktuellen Position; Standard in den Vorgang, optional zusätzlich exportieren
 - QR mit Handcam und Outside: nach dem Scan Typ wählen — nur die gewählte Familie kommt in den Vorgang; ohne Buchungsdaten Typwahl mit Hinweis, Produkte prüfen
+- QR-Scan: kompakte Codes mit Kunden- und Buchungs-ID im Link werden erkannt — bisherige Langformate bleiben gültig
 
 ### Verbessert
 

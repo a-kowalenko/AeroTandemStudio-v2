@@ -755,6 +755,7 @@ export function VideoPreview({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: result.source_path ?? clip.path,
           preview: result.preview,
           runCleanup: () =>

@@ -109,6 +109,14 @@ type KundeState = {
     outside_video?: boolean;
   }) => void;
   applyFromQr: (scanned: Kunde, opts?: ApplyFromQrOpts) => void;
+  /**
+   * Numeric URL-only QR → manual ID mode (optional AMS fill already on `scanned`).
+   * Does not enter `form_mode: kunde`.
+   */
+  applyFromNumericQr: (
+    scanned: Kunde,
+    opts?: ApplyFromQrOpts & { fromAms?: boolean },
+  ) => void;
   applyFromAmsLookup: (hit: AmsBridgeCustomer, opts?: { videoMode?: "handcam" | "outside" }) => void;
   unlockAmsLookup: () => void;
   relockAmsLookup: () => void;
@@ -346,6 +354,50 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       kunde: next,
     });
     // Lazy: vermeidet zirkulären Import mit video/photo stores.
+    void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
+      syncProductsFromMedia();
+    });
+  },
+
+  applyFromNumericQr: (scanned, opts) => {
+    const prev = get().kunde;
+    const fromAms = Boolean(opts?.fromAms);
+    const next: Kunde = {
+      ...prev,
+      ...scanned,
+      form_mode: "manual",
+      kunden_id_hash: null,
+      booking_id_hash: null,
+      ort: prev.ort,
+      datum: prev.datum,
+      tandemmaster: prev.tandemmaster,
+      videospringer: prev.videospringer,
+    };
+    const kunden_id = (next.kunden_id ?? "").trim();
+    const booking_id = (next.booking_id ?? "").trim();
+    const preview =
+      opts === undefined
+        ? get().qrPreview
+        : takeQrPreview(get().qrPreview, opts.preview ?? null);
+    const sourcePath =
+      opts === undefined
+        ? get().qrPreviewSource
+        : opts.sourcePath?.trim() || null;
+
+    set({
+      qrRevision: get().qrRevision + 1,
+      crewAttentionAfterQr: true,
+      qrSnapshot: null,
+      qrPreview: preview,
+      qrPreviewSource: sourcePath,
+      amsLookupLocked: fromAms,
+      amsLookupRevision: fromAms ? get().amsLookupRevision + 1 : 0,
+      amsLookupIds: fromAms ? { kunden_id, booking_id } : null,
+      amsLookupSettled: true,
+      kundenIdFocusPending: !fromAms,
+      sessionTouched: true,
+      kunde: next,
+    });
     void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
       syncProductsFromMedia();
     });

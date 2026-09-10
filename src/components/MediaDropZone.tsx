@@ -470,6 +470,7 @@ export function MediaDropZone({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: result.source_path,
           preview: result.preview,
           runCleanup: () =>
@@ -510,6 +511,7 @@ export function MediaDropZone({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: result.source_path,
           preview: result.preview,
           runCleanup: () => maybeRemoveQrPhoto(result.source_path),
@@ -560,6 +562,7 @@ export function MediaDropZone({
         await presentQrHit({
           kunde: result.kunde,
           dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
           sourcePath: selected,
           preview: result.preview,
           notes: [t("media.drop.externalNote", { type: typeLabel })],

@@ -7,6 +7,7 @@ import {
 } from "@/lib/qrCleanup";
 import { discardQrPreviewBestEffort } from "@/lib/qrPreviewSession";
 import { resolveQrDualFamily } from "@/lib/qrDualResolve";
+import { resolveQrNumericIds } from "@/lib/qrNumericResolve";
 import {
   formatQrSuccess,
   kundeDisplayName,
@@ -22,6 +23,8 @@ import {
 export type PresentQrHitInput = {
   kunde: Kunde;
   dualFamily?: boolean | null;
+  /** URL-only numeric IDs → AMS `mode=id` (not hash QR). */
+  numericIds?: boolean | null;
   sourcePath?: string | null;
   preview?: QrPreview | null;
   notes?: string[];
@@ -121,6 +124,18 @@ export function isSameQrKunde(
   return false;
 }
 
+/** True when both sides share the same plain numeric ID pair. */
+export function isSameNumericKunde(
+  current: Pick<Kunde, "kunden_id" | "booking_id">,
+  scanned: Pick<Kunde, "kunden_id" | "booking_id">,
+): boolean {
+  const curK = trimField(current.kunden_id);
+  const newK = trimField(scanned.kunden_id);
+  const curB = trimField(current.booking_id);
+  const newB = trimField(scanned.booking_id);
+  return Boolean(curK && newK && curB && newB && curK === newK && curB === newB);
+}
+
 /** Active QR session + scanned payload is a different customer. */
 export function needsQrSwitchConfirm(
   current: Kunde,
@@ -131,8 +146,13 @@ export function needsQrSwitchConfirm(
 }
 
 /** Manual session with typed kundedata — QR would discard those fields. */
-export function needsManualOverrideConfirm(current: Kunde): boolean {
-  return hasMeaningfulManualKunde(current);
+export function needsManualOverrideConfirm(
+  current: Kunde,
+  scanned?: Kunde,
+): boolean {
+  if (!hasMeaningfulManualKunde(current)) return false;
+  if (scanned && isSameNumericKunde(current, scanned)) return false;
+  return true;
 }
 
 function buildAppliedResult(
@@ -278,43 +298,81 @@ function askManualOverride(opts: {
  * Apply QR kundedata (with switch / manual-override confirm when needed),
  * run cleanup, optionally show the success dialog.
  * Dual-family QR resolves AMS hash-lookup + type choice first (Phase 45).
+ * Numeric URL-only QR resolves AMS `mode=id` lookup into manual form.
  */
 export async function presentQrHit(
   input: PresentQrHitInput,
 ): Promise<PresentQrHitResult> {
   const showDialog = input.showDialog !== false;
 
-  const dual = await resolveQrDualFamily(input.kunde, input.dualFamily);
-  if (dual.kind === "cancelled") {
-    discardQrPreviewBestEffort(input.preview?.path);
-    return {
-      applied: false,
-      keptExisting: false,
-      switchConfirmShown: false,
-      kundeName: "",
-      cleanup: emptyCleanup(),
-      successTitle: qrSuccessTitle(),
-      successOptions: {
-        variant: "qr",
-        highlight: tr("qr.confirm.keepExistingSummary"),
-        autoCloseSecs: 5,
-        actions: [
-          {
-            kind: "qr",
-            label: tr("qr.confirm.label"),
-            tone: "skipped",
-            summary: tr("common.actions.cancel"),
-            detail: tr("qr.dual.cancelled"),
-          },
-        ],
-      },
-      message: "",
-    };
+  let fromAms = false;
+  let scanned: Kunde = input.kunde;
+
+  if (input.numericIds) {
+    const numeric = await resolveQrNumericIds(input.kunde, true);
+    if (numeric.kind === "cancelled") {
+      discardQrPreviewBestEffort(input.preview?.path);
+      return {
+        applied: false,
+        keptExisting: false,
+        switchConfirmShown: false,
+        kundeName: "",
+        cleanup: emptyCleanup(),
+        successTitle: qrSuccessTitle(),
+        successOptions: {
+          variant: "qr",
+          highlight: tr("qr.confirm.keepExistingSummary"),
+          autoCloseSecs: 5,
+          actions: [
+            {
+              kind: "qr",
+              label: tr("qr.confirm.label"),
+              tone: "skipped",
+              summary: tr("common.actions.cancel"),
+              detail: tr("qr.dual.cancelled"),
+            },
+          ],
+        },
+        message: "",
+      };
+    }
+    if (numeric.kind === "resolved") {
+      scanned = numeric.kunde;
+      fromAms = numeric.fromAms;
+    }
+  } else {
+    const dual = await resolveQrDualFamily(input.kunde, input.dualFamily);
+    if (dual.kind === "cancelled") {
+      discardQrPreviewBestEffort(input.preview?.path);
+      return {
+        applied: false,
+        keptExisting: false,
+        switchConfirmShown: false,
+        kundeName: "",
+        cleanup: emptyCleanup(),
+        successTitle: qrSuccessTitle(),
+        successOptions: {
+          variant: "qr",
+          highlight: tr("qr.confirm.keepExistingSummary"),
+          autoCloseSecs: 5,
+          actions: [
+            {
+              kind: "qr",
+              label: tr("qr.confirm.label"),
+              tone: "skipped",
+              summary: tr("common.actions.cancel"),
+              detail: tr("qr.dual.cancelled"),
+            },
+          ],
+        },
+        message: "",
+      };
+    }
+    scanned = dual.kind === "resolved" ? dual.kunde : input.kunde;
   }
 
   const current = useKundeStore.getState().kunde;
-  const scanned = dual.kind === "resolved" ? dual.kunde : input.kunde;
-  const nextName = kundeDisplayName(scanned);
+  const nextName = kundeDisplayName(scanned) || manualKundeLabel(scanned);
 
   let confirmShown = false;
 
@@ -338,7 +396,7 @@ export async function presentQrHit(
           : tr("qr.confirm.ignoredScan"),
       });
     }
-  } else if (needsManualOverrideConfirm(current)) {
+  } else if (needsManualOverrideConfirm(current, scanned)) {
     const previousLabel = manualKundeLabel(current);
     const choice = await askManualOverride({
       previousLabel,
@@ -360,10 +418,18 @@ export async function presentQrHit(
     }
   }
 
-  useKundeStore.getState().applyFromQr(scanned, {
-    preview: input.preview,
-    sourcePath: input.sourcePath,
-  });
+  if (input.numericIds) {
+    useKundeStore.getState().applyFromNumericQr(scanned, {
+      preview: input.preview,
+      sourcePath: input.sourcePath,
+      fromAms,
+    });
+  } else {
+    useKundeStore.getState().applyFromQr(scanned, {
+      preview: input.preview,
+      sourcePath: input.sourcePath,
+    });
+  }
   const cleanup = await input.runCleanup();
   const result = buildAppliedResult(
     scanned,

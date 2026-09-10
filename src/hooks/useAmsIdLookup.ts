@@ -2,121 +2,31 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  AMS_ID_LOOKUP_TYPES,
   AMS_LOOKUP_DEBOUNCE_MS,
   amsLookupFoundTitle,
   amsLookupStatusNotFound,
   amsLookupStatusSearching,
   askAmsTypeChoice,
   canRunAmsIdLookup,
-  classifyTypedHits,
   formatAmsLookupFoundLine,
   formatTypeChoiceDetail,
   isAmsBridgeConfigured,
   isLookupIdPairReady,
-  isLookupNotFound,
-  isLookupUnreachable,
   needsAmsLookupOverrideConfirm,
   type AmsBridgeCustomer,
   type AmsLookupStatus,
-  type AmsMarkerType,
 } from "@/lib/amsLookup";
+import { runAmsIdPairLookup } from "@/lib/amsIdLookupCore";
 import { tr } from "@/i18n";
-import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
-import { amsBridgeCustomerLookup, type AppConfig } from "@/lib/tauri";
+import { type AppConfig } from "@/lib/tauri";
 import { showAmsLookupFoundToast } from "@/lib/amsLookupToast";
 import { kundeDisplayName } from "@/lib/qrSuccess";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useKundeStore } from "@/store/kundeStore";
 import { useUiStore } from "@/store/uiStore";
 
-type LookupAttempt =
-  | { kind: "hit"; markerType: AmsMarkerType; customer: AmsBridgeCustomer }
-  | { kind: "not_found"; markerType: AmsMarkerType }
-  | { kind: "error"; markerType: AmsMarkerType; message: string }
-  | { kind: "unreachable"; markerType: AmsMarkerType };
-
 function lookupKey(customerId: string, bookingId: string): string {
   return `${customerId}\0${bookingId}`;
-}
-
-async function lookupOne(
-  customerId: string,
-  bookingId: string,
-  markerType: AmsMarkerType,
-): Promise<LookupAttempt> {
-  try {
-    const resp = await amsBridgeCustomerLookup({
-      customerId,
-      bookingId,
-      markerType,
-      mode: "id",
-    });
-    if (resp.ok && resp.customer) {
-      return { kind: "hit", markerType, customer: resp.customer };
-    }
-    const code = resp.error?.code;
-    const message = resp.error?.message ?? "";
-    if (isLookupNotFound(code, message)) {
-      return { kind: "not_found", markerType };
-    }
-    return {
-      kind: "error",
-      markerType,
-      message: presentAmsLookupError(message),
-    };
-  } catch (e) {
-    const message = String(e);
-    if (isLookupUnreachable(message)) {
-      return { kind: "unreachable", markerType };
-    }
-    return {
-      kind: "error",
-      markerType,
-      message: presentAmsLookupError(message),
-    };
-  }
-}
-
-function combineAttempts(attempts: LookupAttempt[]):
-  | { kind: "hit"; customer: AmsBridgeCustomer; videoMode: "handcam" | "outside" }
-  | {
-      kind: "choice";
-      handcam: AmsBridgeCustomer;
-      outside: AmsBridgeCustomer;
-    }
-  | { kind: "not_found" }
-  | { kind: "error"; message: string }
-  | { kind: "unreachable" } {
-  const handcamHit = attempts.find(
-    (a): a is Extract<LookupAttempt, { kind: "hit" }> =>
-      a.kind === "hit" && a.markerType === "Handcam",
-  );
-  const outsideHit = attempts.find(
-    (a): a is Extract<LookupAttempt, { kind: "hit" }> =>
-      a.kind === "hit" && a.markerType === "Outside",
-  );
-  const classified = classifyTypedHits({
-    handcam: handcamHit?.customer ?? null,
-    outside: outsideHit?.customer ?? null,
-  });
-  if (classified.kind === "choice") return classified;
-  if (classified.kind === "one") {
-    return {
-      kind: "hit",
-      customer: classified.customer,
-      videoMode: classified.videoMode,
-    };
-  }
-
-  const error = attempts.find((a) => a.kind === "error");
-  if (error && error.kind === "error") return error;
-
-  if (attempts.some((a) => a.kind === "unreachable")) {
-    return { kind: "unreachable" };
-  }
-
-  return { kind: "not_found" };
 }
 
 function askAmsOverride(opts: {
@@ -239,14 +149,9 @@ export function useAmsIdLookup(opts: {
       void (async () => {
         if (requestIdRef.current !== requestId) return;
         setStatus(amsLookupStatusSearching());
-        const attempts = await Promise.all(
-          AMS_ID_LOOKUP_TYPES.map((markerType) =>
-            lookupOne(customerId, bookingId, markerType),
-          ),
-        );
+        const combined = await runAmsIdPairLookup(customerId, bookingId);
         if (requestIdRef.current !== requestId) return;
 
-        const combined = combineAttempts(attempts);
         const attemptKey = `${bridgeKey}\0${key}`;
         if (combined.kind === "unreachable") {
           attemptedKeyRef.current = attemptKey;

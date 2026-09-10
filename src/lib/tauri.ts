@@ -650,6 +650,8 @@ export type QrScanResult = {
   cleanup_direction?: CleanupDirection | null;
   /** Dual-family QR (`hc_ou` / `ou_hc`); not persisted. */
   dual_family?: boolean | null;
+  /** URL-only numeric IDs; AMS `mode=id` — not hash QR mode. */
+  numeric_ids?: boolean | null;
 };
 
 export async function importVideos(paths: string[]): Promise<VideoMetadata[]> {

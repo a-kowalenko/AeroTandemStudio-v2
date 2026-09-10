@@ -1,5 +1,6 @@
 /** Auto QR scan after media import (videos and/or photos). */
 
+import { isLookupIdPairReady } from "@/lib/amsLookup";
 import { useConfigStore } from "@/store/configStore";
 import { useKundeStore } from "@/store/kundeStore";
 import {
@@ -79,9 +80,18 @@ function setQrStage(
   }
 }
 
-/** Session already filled from a successful QR scan (`form_mode === "kunde"`). */
+/** Session already has customer identity from hash-QR or numeric-QR / AMS IDs. */
 export function sessionHasQrKunde(): boolean {
-  return useKundeStore.getState().kunde.form_mode === "kunde";
+  const s = useKundeStore.getState();
+  if (s.kunde.form_mode === "kunde") return true;
+  if (s.amsLookupLocked) return true;
+  if (
+    s.qrRevision > 0 &&
+    isLookupIdPairReady(s.kunde.kunden_id, s.kunde.booking_id)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -158,6 +168,7 @@ export async function runAutoQrAfterImport(
       const presented = await presentQrHit({
         kunde: result.kunde,
         dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
         sourcePath: result.source_path,
         preview: result.preview,
         showDialog: false,
@@ -201,6 +212,7 @@ export async function runAutoQrAfterImport(
       const presented = await presentQrHit({
         kunde: result.kunde,
         dualFamily: result.dual_family,
+          numericIds: result.numeric_ids,
         sourcePath: result.source_path,
         preview: result.preview,
         showDialog: false,

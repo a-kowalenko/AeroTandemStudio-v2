@@ -67,6 +67,7 @@ pub struct QrScanResultDto {
     pub preview: Option<QrPreviewDto>,
     pub cleanup_direction: CleanupDirection,
     pub dual_family: bool,
+    pub numeric_ids: bool,
 }
 
 /// Per-file QR scan progress for the media grid UI.
@@ -106,6 +107,7 @@ impl From<CoreResult> for QrScanResultDto {
             preview: r.preview.map(Into::into),
             cleanup_direction: r.cleanup_direction,
             dual_family: r.dual_family,
+            numeric_ids: r.numeric_ids,
         }
     }
 }
