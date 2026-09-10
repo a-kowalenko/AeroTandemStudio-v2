@@ -476,26 +476,30 @@ enum ParsedQrMedia {
 }
 
 /// Parse QR payload into `Kunde` (URL fragment after `#` or raw JSON).
+///
+/// Supports **legacy** long keys and **compact** short keys + IDs from the URL:
+/// - Legacy: `Customer_ID`, `Booking_ID`, `vorname`, `nachname`, `media`
+/// - Compact: `c`/`b`/`v`/`n`/`m`, or customer from `/qr/{id}` and booking from `?b=` / `?booking_id=`
 pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, QrScanError> {
-    let mut payload = qr_daten_str.trim();
-    if let Some((_, after)) = payload.split_once('#') {
-        payload = after;
-    }
+    let trimmed = qr_daten_str.trim();
+    let (url_part, json_part) = match trimmed.split_once('#') {
+        Some((before, after)) => (Some(before), after),
+        None => (None, trimmed),
+    };
 
-    let daten: serde_json::Value = serde_json::from_str(payload)
+    let daten: serde_json::Value = serde_json::from_str(json_part)
         .map_err(|e| QrScanError::Parse(format!("invalid JSON: {e}")))?;
 
-    let media_code = match daten.get("media") {
-        None | Some(serde_json::Value::Null) => "none".to_string(),
-        Some(v) => {
-            let s = v.as_str().map(str::trim).unwrap_or("").to_string();
-            if s.is_empty() {
-                "none".into()
+    let media_code = json_field_string(&daten, &["media", "m"])
+        .map(|s| {
+            let t = s.trim();
+            if t.is_empty() {
+                "none".to_string()
             } else {
-                s
+                t.to_string()
             }
-        }
-    };
+        })
+        .unwrap_or_else(|| "none".to_string());
 
     let media = parse_media_code(&media_code).ok_or_else(|| {
         QrScanError::Parse(format!(
@@ -510,26 +514,20 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, Q
         ParsedQrMedia::DualFamily => (false, false, false, false, true),
     };
 
-    let kunde_id = daten
-        .get("Customer_ID")
-        .or_else(|| daten.get("customer_id"))
-        .or_else(|| daten.get("hashid"))
-        .and_then(|v| value_as_string(v))
+    let kunde_id = json_field_string(&daten, &["Customer_ID", "customer_id", "hashid", "c"])
         .filter(|s| !s.is_empty())
+        .or_else(|| url_part.and_then(extract_qr_customer_id_from_url))
         .ok_or_else(|| QrScanError::Parse("missing Customer_ID".into()))?;
 
-    let booking_id = daten
-        .get("Booking_ID")
-        .or_else(|| daten.get("booking_id"))
-        .and_then(value_as_string);
+    let booking_id = json_field_string(&daten, &["Booking_ID", "booking_id", "b"])
+        .filter(|s| !s.is_empty())
+        .or_else(|| url_part.and_then(extract_qr_booking_id_from_url));
 
-    let vorname = daten
-        .get("vorname")
-        .and_then(value_as_string)
+    let vorname = json_field_string(&daten, &["vorname", "v"])
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| QrScanError::Parse("missing vorname".into()))?;
-    let nachname = daten
-        .get("nachname")
-        .and_then(value_as_string)
+    let nachname = json_field_string(&daten, &["nachname", "n"])
+        .filter(|s| !s.is_empty())
         .ok_or_else(|| QrScanError::Parse("missing nachname".into()))?;
 
     let gast = format!("{vorname} {nachname}").trim().to_string();
@@ -571,6 +569,99 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, Q
         },
         dual_family,
     })
+}
+
+/// First non-null string/number/bool field among `keys` (legacy names before compact aliases).
+fn json_field_string(daten: &serde_json::Value, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(v) = daten.get(*key) {
+            if v.is_null() {
+                continue;
+            }
+            if let Some(s) = value_as_string(v) {
+                return Some(s);
+            }
+        }
+    }
+    None
+}
+
+/// Customer hash from `/qr/{id}` path segment (compact payloads omit JSON id).
+fn extract_qr_customer_id_from_url(url: &str) -> Option<String> {
+    let lower = url.to_ascii_lowercase();
+    let idx = lower.find("/qr/")?;
+    let rest = &url[idx + "/qr/".len()..];
+    let segment = rest
+        .split(['?', '#', '/'])
+        .next()
+        .unwrap_or("")
+        .trim();
+    if segment.is_empty() {
+        None
+    } else {
+        Some(segment.to_string())
+    }
+}
+
+/// Booking hash from `b` or `booking_id` query (compact prefers `b=`).
+fn extract_qr_booking_id_from_url(url: &str) -> Option<String> {
+    let query = url.split_once('?')?.1;
+    let query = query.split('#').next().unwrap_or(query);
+    let mut booking_id_long: Option<String> = None;
+    for pair in query.split('&') {
+        let (raw_k, raw_v) = match pair.split_once('=') {
+            Some((k, v)) => (k, v),
+            None => continue,
+        };
+        let k = raw_k.trim();
+        let v = percent_decode_query_value(raw_v.trim());
+        if v.is_empty() {
+            continue;
+        }
+        if k.eq_ignore_ascii_case("b") {
+            return Some(v);
+        }
+        if k.eq_ignore_ascii_case("booking_id") {
+            booking_id_long = Some(v);
+        }
+    }
+    booking_id_long
+}
+
+fn percent_decode_query_value(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                let h = |c: u8| -> Option<u8> {
+                    match c {
+                        b'0'..=b'9' => Some(c - b'0'),
+                        b'a'..=b'f' => Some(c - b'a' + 10),
+                        b'A'..=b'F' => Some(c - b'A' + 10),
+                        _ => None,
+                    }
+                };
+                if let (Some(hi), Some(lo)) = (h(bytes[i + 1]), h(bytes[i + 2])) {
+                    out.push((hi << 4) | lo);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            c => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn parse_media_code(code: &str) -> Option<ParsedQrMedia> {
@@ -1900,6 +1991,88 @@ mod tests {
         assert!(!parsed.dual_family);
         assert!(!k.handcam_foto && !k.handcam_video);
         assert_eq!(k.video_mode, "");
+    }
+
+    #[test]
+    fn parse_kunde_compact_url_ids_and_short_keys() {
+        let payload = r#"https://www.skydive-kassel.de/qr/Aq1UcXLKnrTg18VJ?b=xkJWr3o4cuiYVZIA#{"v":"Test","n":"Mensch","m":"hc_ou"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        assert!(parsed.dual_family);
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("Aq1UcXLKnrTg18VJ"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("xkJWr3o4cuiYVZIA"));
+        assert_eq!(k.vorname.as_deref(), Some("Test"));
+        assert_eq!(k.nachname.as_deref(), Some("Mensch"));
+        assert_eq!(k.gast, "Test Mensch");
+        assert_eq!(k.video_mode, "");
+        assert!(!k.handcam_foto && !k.handcam_video);
+        assert!(!k.outside_foto && !k.outside_video);
+    }
+
+    #[test]
+    fn parse_kunde_compact_booking_id_query_alias() {
+        let payload = r#"https://www.skydive-kassel.de/qr/cid1?booking_id=book99#{"v":"A","n":"B","m":"hc_v"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("cid1"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("book99"));
+        assert!(k.handcam_video && !k.handcam_foto);
+        assert_eq!(k.video_mode, "handcam");
+    }
+
+    #[test]
+    fn parse_kunde_compact_ids_in_json_without_url() {
+        let payload = r#"{"c":"h1","b":"b2","v":"Max","n":"M","m":"ou_f"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("h1"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("b2"));
+        assert!(k.outside_foto && !k.outside_video);
+        assert_eq!(k.video_mode, "outside");
+    }
+
+    #[test]
+    fn parse_kunde_legacy_keys_preferred_over_compact_aliases() {
+        let payload = r#"{"Customer_ID":"legacy","c":"compact","Booking_ID":"L1","b":"C1","vorname":"Max","v":"X","nachname":"M","n":"Y","media":"hc_f","m":"ou_v"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("legacy"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("L1"));
+        assert_eq!(k.vorname.as_deref(), Some("Max"));
+        assert_eq!(k.nachname.as_deref(), Some("M"));
+        assert!(k.handcam_foto && !k.handcam_video);
+    }
+
+    #[test]
+    fn parse_kunde_json_id_overrides_url_id() {
+        let payload = r#"https://example.com/qr/from-url?b=from-url#{"c":"from-json","b":"json-book","v":"A","n":"B","m":"none"}"#;
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id_hash.as_deref(), Some("from-json"));
+        assert_eq!(k.booking_id_hash.as_deref(), Some("json-book"));
+    }
+
+    #[test]
+    fn extract_qr_ids_from_url_helpers() {
+        assert_eq!(
+            extract_qr_customer_id_from_url(
+                "https://www.skydive-kassel.de/qr/Aq1UcXLKnrTg18VJ?b=xk"
+            )
+            .as_deref(),
+            Some("Aq1UcXLKnrTg18VJ")
+        );
+        assert_eq!(
+            extract_qr_booking_id_from_url(
+                "https://www.skydive-kassel.de/qr/Aq1UcXLKnrTg18VJ?b=xkJWr3o4cuiYVZIA"
+            )
+            .as_deref(),
+            Some("xkJWr3o4cuiYVZIA")
+        );
+        assert_eq!(
+            extract_qr_booking_id_from_url("https://x/qr/y?booking_id=long&other=1").as_deref(),
+            Some("long")
+        );
+        assert!(extract_qr_customer_id_from_url("https://example.com/app").is_none());
     }
 
     #[test]
