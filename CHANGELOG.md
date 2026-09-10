@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-10
+
 ### Neu
 
 - Einstellungen → Encoding: Modus „Compatible“ zum Zusammenfügen von Clips — verlustfrei und zuverlässiger in Playern wie QuickTime (jetzt Standard)
@@ -45,9 +47,6 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Windows: USB-GoPro zeigt Medien im Import wieder — leere Liste behoben
 - Mac: Hinweis nach App-Update zur Server-Verbindung erscheint nicht mehr — er hat mehr verwirrt als geholfen
-
-
-
 
 ## [0.5.0-beta.4] - 2026-09-09
 
