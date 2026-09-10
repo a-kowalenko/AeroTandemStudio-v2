@@ -26,6 +26,7 @@ import {
   detailsRowHeight,
   filterAndSortFiles,
   formatBytes,
+  formatSelectedSize,
   GRID_PAD,
   gridColumnCount,
   MARQUEE_THRESHOLD_PX,
@@ -555,9 +556,10 @@ export function SdFileSelector({
     filtered.length > 0 && selectedInFilteredCount === filtered.length;
   const allNewSelected =
     newInFiltered.length > 0 &&
-    newInFiltered.every((f) => selected.has(f.path)) &&
-    selected.size === newInFiltered.length;
-  const noneSelected = selected.size === 0;
+    selectedInFilteredCount === newInFiltered.length &&
+    newInFiltered.every((f) => selected.has(f.path));
+  /** No selection within the current filter (other filters may still be selected). */
+  const noneSelectedInFiltered = selectedInFilteredCount === 0;
 
   const showNewBadges = useMemo(() => {
     let hasKnown = false;
@@ -710,26 +712,49 @@ export function SdFileSelector({
   }, []);
 
   function selectAllFiltered() {
-    setSelected(new Set(filtered.map((f) => f.path)));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const f of filtered) next.add(f.path);
+      return next;
+    });
     anchorPathRef.current =
       filtered.length > 0 ? filtered[filtered.length - 1].path : null;
   }
 
   function selectOnlyNew() {
-    const paths = newInFiltered.map((f) => f.path);
-    setSelected(new Set(paths));
+    const newPaths = new Set(newInFiltered.map((f) => f.path));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const f of filtered) next.delete(f.path);
+      for (const p of newPaths) next.add(p);
+      return next;
+    });
     anchorPathRef.current =
-      paths.length > 0 ? paths[paths.length - 1] : null;
+      newInFiltered.length > 0
+        ? newInFiltered[newInFiltered.length - 1].path
+        : null;
   }
 
+  /** Clear selection only for the current filter; keep other media types. */
   function clearSelection() {
-    setSelected(new Set());
+    const filteredPaths = new Set(filtered.map((f) => f.path));
+    setSelected((prev) => {
+      const next = new Set<string>();
+      for (const p of prev) {
+        if (!filteredPaths.has(p)) next.add(p);
+      }
+      return next;
+    });
     anchorPathRef.current = null;
   }
 
   function invertSelection() {
+    const filteredPaths = new Set(filtered.map((f) => f.path));
     setSelected((prev) => {
       const next = new Set<string>();
+      for (const p of prev) {
+        if (!filteredPaths.has(p)) next.add(p);
+      }
       for (const f of filtered) {
         if (!prev.has(f.path)) next.add(f.path);
       }
@@ -915,6 +940,28 @@ export function SdFileSelector({
     : catalogEmpty
       ? !actions.eject
       : selected.size === 0 || !anyAction;
+
+  const selectionActionLabels = useMemo(() => {
+    if (mediaFilter === "video") {
+      return {
+        all: t("sd.selector.selectAllVideos"),
+        neu: t("sd.selector.selectNewVideos"),
+        clear: t("sd.selector.clearSelectionVideos"),
+      };
+    }
+    if (mediaFilter === "photo") {
+      return {
+        all: t("sd.selector.selectAllPhotos"),
+        neu: t("sd.selector.selectNewPhotos"),
+        clear: t("sd.selector.clearSelectionPhotos"),
+      };
+    }
+    return {
+      all: t("sd.selector.selectAllVisible"),
+      neu: t("sd.selector.selectNewOnly"),
+      clear: t("sd.selector.clearSelection"),
+    };
+  }, [mediaFilter, t]);
 
   const loader = loaderRef.current;
 
@@ -1111,44 +1158,44 @@ export function SdFileSelector({
           <span className="text-xs font-semibold tracking-wide text-foreground uppercase">
             {t("sd.selector.selectionLabel")}
           </span>
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
             <Button
               type="button"
               size="sm"
               variant={allFilteredSelected ? "default" : "secondary"}
               className={cn(
-                "h-8 min-w-[4.5rem] px-3 text-xs font-semibold",
+                "h-8 px-3 text-xs font-semibold",
                 !allFilteredSelected && "border-border bg-card shadow-sm",
               )}
               aria-pressed={allFilteredSelected}
               disabled={filtered.length === 0}
               onClick={selectAllFiltered}
             >
-              {t("sd.selector.selectAllVisible")}
+              {selectionActionLabels.all}
             </Button>
             <Button
               type="button"
               size="sm"
               variant={allNewSelected ? "default" : "secondary"}
               className={cn(
-                "h-8 min-w-[4.5rem] px-3 text-xs font-semibold",
+                "h-8 px-3 text-xs font-semibold",
                 !allNewSelected && "border-border bg-card shadow-sm",
               )}
               aria-pressed={allNewSelected}
               disabled={newInFiltered.length === 0}
               onClick={selectOnlyNew}
             >
-              {t("sd.selector.selectNewOnly")}
+              {selectionActionLabels.neu}
             </Button>
             <Button
               type="button"
               size="sm"
               variant="secondary"
-              className="h-8 min-w-[4.5rem] border-border bg-card px-3 text-xs font-semibold shadow-sm"
-              disabled={noneSelected}
+              className="h-8 border-border bg-card px-3 text-xs font-semibold shadow-sm"
+              disabled={noneSelectedInFiltered}
               onClick={clearSelection}
             >
-              {t("sd.selector.clearSelection")}
+              {selectionActionLabels.clear}
             </Button>
           </div>
           <div className="relative" ref={moreRef}>
@@ -1184,24 +1231,56 @@ export function SdFileSelector({
             ) : null}
           </div>
           {selectedStats.total > 0 ? (
-            <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-card px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">
-              {t("sd.selector.footerSelected", {
+            <div
+              className="ml-auto flex flex-wrap items-center justify-end gap-1.5"
+              aria-label={t("sd.selector.footerSelectedAria", {
                 count: selectedStats.total,
-                sizeMb: selectedStats.sizeMb.toFixed(1),
+                size: formatSelectedSize(selectedStats.sizeMb),
+                videos: selectedStats.videos,
+                photos: selectedStats.photos,
               })}
-              {selectedStats.videos > 0 ? (
-                <span className="inline-flex items-center gap-0.5 text-primary/90">
-                  <Film className="h-3 w-3" aria-hidden />
-                  {selectedStats.videos}
+            >
+              <div className="inline-flex h-8 items-center gap-2 rounded-md border border-primary/35 bg-card px-2.5 shadow-sm">
+                <span className="text-xs font-semibold tabular-nums text-foreground">
+                  {selectedStats.total}
                 </span>
+                <span className="text-[11px] text-muted">
+                  {selectedStats.total === 1
+                    ? t("sd.selector.selectedFile")
+                    : t("sd.selector.selectedFiles")}
+                </span>
+                <span className="h-3.5 w-px shrink-0 bg-border" aria-hidden />
+                <span className="text-xs font-medium tabular-nums text-foreground">
+                  {formatSelectedSize(selectedStats.sizeMb)}
+                </span>
+              </div>
+              {selectedStats.videos > 0 ? (
+                <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 shadow-sm">
+                  <Film className="h-3.5 w-3.5 text-primary" aria-hidden />
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    {selectedStats.videos}
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    {selectedStats.videos === 1
+                      ? t("sd.selector.selectedVideo")
+                      : t("sd.selector.selectedVideos")}
+                  </span>
+                </div>
               ) : null}
               {selectedStats.photos > 0 ? (
-                <span className="inline-flex items-center gap-0.5 text-primary/90">
-                  <ImageIcon className="h-3 w-3" aria-hidden />
-                  {selectedStats.photos}
-                </span>
+                <div className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border/70 bg-card px-2 shadow-sm">
+                  <ImageIcon className="h-3.5 w-3.5 text-primary" aria-hidden />
+                  <span className="text-xs font-semibold tabular-nums text-foreground">
+                    {selectedStats.photos}
+                  </span>
+                  <span className="text-[11px] text-muted">
+                    {selectedStats.photos === 1
+                      ? t("sd.selector.selectedPhoto")
+                      : t("sd.selector.selectedPhotos")}
+                  </span>
+                </div>
               ) : null}
-            </span>
+            </div>
           ) : (
             <span className="ml-auto text-[11px] text-muted">
               {t("sd.selector.footerNoneSelected")}

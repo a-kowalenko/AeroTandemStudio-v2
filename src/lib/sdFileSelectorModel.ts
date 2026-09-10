@@ -274,3 +274,12 @@ export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/** Human size for selection summary (MB input). */
+export function formatSelectedSize(sizeMb: number): string {
+  if (sizeMb >= 1024) return `${(sizeMb / 1024).toFixed(1)} GB`;
+  if (sizeMb >= 10) return `${sizeMb.toFixed(0)} MB`;
+  if (sizeMb >= 1) return `${sizeMb.toFixed(1)} MB`;
+  if (sizeMb <= 0) return "0 MB";
+  return `${Math.max(1, Math.round(sizeMb * 1024))} KB`;
+}
