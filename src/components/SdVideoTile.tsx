@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+  type SyntheticEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
@@ -10,10 +16,13 @@ import {
   VolumeX,
 } from "lucide-react";
 import { videoFileSrc } from "../lib/mediaUrl";
-import type { ThumbQuality } from "../lib/sdCard";
+import { useSdThumb } from "../hooks/useSdThumb";
+import type { SdThumbnailLoader } from "../lib/sdThumbnailLoader";
+import type { Density } from "../lib/sdFileSelectorModel";
 import { cn, isLinuxHost } from "../lib/utils";
 import { Checkbox } from "./ui/checkbox";
 import { SdTilePreview } from "./SdTilePreview";
+import { FileStatusBadge } from "./SdPhotoTile";
 
 const HOVER_PLAY_DELAY_MS = 180;
 const LINUX_HOVER_PLAY_DELAY_MS = 280;
@@ -53,23 +62,25 @@ type Props = {
   sizeLabel: string;
   /** Compact capture time shown right-aligned next to file size. */
   captureLabel?: string;
-  thumbUrl?: string;
-  thumbQuality?: ThumbQuality;
   selected: boolean;
   alreadyProcessed?: boolean;
   /** When true and file is not known, show a Neu badge (mixed known+new list). */
   showNewBadge?: boolean;
   /** Another tile (or this one) owns the single active session. */
   isActive: boolean;
-  onActivate: () => void;
-  onDeactivate: () => void;
+  onActivate: (path: string) => void;
+  onDeactivate: (path: string) => void;
   /** Toggle or Shift-range; parent owns selection state. */
-  onSelect: (e: { shiftKey: boolean }) => void;
+  onSelect: (path: string, shiftKey: boolean) => void;
   /** True while marquee drag is active — blocks hover preview. */
   selectionLocked?: boolean;
+  /** True while the grid is scrolling — blocks hover preview. */
+  scrollLocked?: boolean;
   /** Hover/play preview needs a real file on disk (not ICA catalog virtual paths). */
   previewEnabled?: boolean;
-  tileRef?: (el: HTMLElement | null) => void;
+  density?: Density;
+  loader: SdThumbnailLoader;
+  tileRef?: (path: string, el: HTMLElement | null) => void;
 };
 
 function formatClock(secs: number): string {
@@ -90,13 +101,11 @@ function formatClock(secs: number): string {
  * Fullscreen uses a body-portaled overlay (not the Fullscreen API) so hit-testing
  * works above Radix dialogs / Tauri WebView.
  */
-export function SdVideoTile({
+export const SdVideoTile = memo(function SdVideoTile({
   path,
   filename,
   sizeLabel,
   captureLabel,
-  thumbUrl,
-  thumbQuality,
   selected,
   alreadyProcessed,
   showNewBadge = false,
@@ -105,10 +114,18 @@ export function SdVideoTile({
   onDeactivate,
   onSelect,
   selectionLocked = false,
+  scrollLocked = false,
   previewEnabled = true,
+  density = "comfortable",
+  loader,
   tileRef,
 }: Props) {
   const { t } = useTranslation();
+  const thumb = useSdThumb(loader, path);
+  const thumbUrl = thumb?.url;
+  const thumbQuality = thumb?.quality;
+  const compact = density === "compact";
+  const previewBlocked = selectionLocked || scrollLocked || !previewEnabled;
   const videoRef = useRef<HTMLVideoElement>(null);
   const immersiveVideoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -188,9 +205,9 @@ export function SdVideoTile({
     setSrc(null);
   }, [isActive]);
 
-  // Marquee drag: freeze hover preview so tiles under the box don't autoplay.
+  // Marquee drag / scroll: freeze hover preview so tiles under the box don't autoplay.
   useEffect(() => {
-    if (!selectionLocked) return;
+    if (!previewBlocked) return;
     clearHoverTimers();
     setHovering(false);
     setShowVolume(false);
@@ -206,9 +223,9 @@ export function SdVideoTile({
         /* ignore */
       }
     }
-    if (isActive) onDeactivate();
+    if (isActive) onDeactivate(path);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to lock edge
-  }, [selectionLocked]);
+  }, [previewBlocked]);
 
   useEffect(() => {
     const apply = (v: HTMLVideoElement | null) => {
@@ -260,7 +277,7 @@ export function SdVideoTile({
       return;
     }
     claimImmersive(path);
-    onActivate();
+    onActivate(path);
 
     const frozen: { el: HTMLElement; pe: string }[] = [];
     const freeze = (el: Element | null) => {
@@ -376,7 +393,7 @@ export function SdVideoTile({
   }, [immersive]);
 
   function onMediaEnter() {
-    if (!previewEnabled || selectionLocked || isImmersiveBlocked(path) || immersive) return;
+    if (previewBlocked || isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
     clearHoverTimers();
     const playDelay = linuxMediaGuards
@@ -386,16 +403,16 @@ export function SdVideoTile({
       ? LINUX_HOVER_PIN_DELAY_MS
       : HOVER_PIN_DELAY_MS;
     hoverTimerRef.current = window.setTimeout(() => {
-      if (selectionLocked || isImmersiveBlocked(path)) return;
+      if (previewBlocked || isImmersiveBlocked(path)) return;
       setWantPreview(true);
-      onActivate();
+      onActivate(path);
     }, playDelay);
     // Sustained hover ≈ play click: keep playing after mouse leave.
     pinTimerRef.current = window.setTimeout(() => {
-      if (selectionLocked || isImmersiveBlocked(path)) return;
+      if (previewBlocked || isImmersiveBlocked(path)) return;
       setWantPreview(true);
       setPinned(true);
-      onActivate();
+      onActivate(path);
     }, pinDelay);
   }
 
@@ -416,7 +433,7 @@ export function SdVideoTile({
         /* ignore */
       }
     }
-    if (isActive) onDeactivate();
+    if (isActive) onDeactivate(path);
   }
 
   function togglePlay(e: SyntheticEvent) {
@@ -425,14 +442,14 @@ export function SdVideoTile({
     if (!v && !src) {
       setPinned(true);
       setWantPreview(true);
-      onActivate();
+      onActivate(path);
       return;
     }
     if (!v) return;
     if (v.paused) {
       setPinned(true);
       setWantPreview(true);
-      onActivate();
+      onActivate(path);
       void v.play().catch(() => undefined);
     } else {
       v.pause();
@@ -462,7 +479,7 @@ export function SdVideoTile({
     releaseImmersive(path);
     setPinned(true);
     setWantPreview(true);
-    onActivate();
+    onActivate(path);
     requestAnimationFrame(() => {
       const v = videoRef.current;
       if (!v) return;
@@ -480,7 +497,7 @@ export function SdVideoTile({
     e.preventDefault();
     setPinned(true);
     setWantPreview(true);
-    onActivate();
+    onActivate(path);
 
     if (immersive) {
       exitExpanded();
@@ -604,7 +621,7 @@ export function SdVideoTile({
               setDragging(true);
               setPinned(true);
               setWantPreview(true);
-              onActivate();
+              onActivate(path);
               markLinuxUserSeek();
               (ev.currentTarget as HTMLElement).setPointerCapture?.(ev.pointerId);
               seekFromClientX(ev.clientX, barRef.current, videoRef.current);
@@ -645,10 +662,10 @@ export function SdVideoTile({
     <div
       data-tile
       data-thumb-path={path}
-      ref={tileRef}
+      ref={(el) => tileRef?.(path, el)}
       className={cn(
         // border-2 always — avoids 1px→2px layout jump on select
-        "relative flex flex-col overflow-hidden rounded-md border-2 text-left transition-colors",
+        "relative flex h-full flex-col overflow-hidden rounded-md border-2 text-left transition-colors",
         selected
           ? "border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
           : "border-border/70",
@@ -668,7 +685,7 @@ export function SdVideoTile({
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-controls]")) return;
           if (immersive || isImmersiveBlocked(path)) return;
-          onSelect({ shiftKey: e.shiftKey });
+          onSelect(path, e.shiftKey);
         }}
       >
         <div
@@ -685,35 +702,25 @@ export function SdVideoTile({
               e.preventDefault();
               e.stopPropagation();
               shiftCheckboxRef.current = true;
-              onSelect({ shiftKey: true });
+              onSelect(path, true);
             }}
             onCheckedChange={() => {
               if (shiftCheckboxRef.current) {
                 shiftCheckboxRef.current = false;
                 return;
               }
-              onSelect({ shiftKey: false });
+              onSelect(path, false);
             }}
             aria-label={t("common.actions.selectNamed", { name: filename })}
             className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
           />
         </div>
 
-        {alreadyProcessed ? (
-          <span
-            className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-amber-400/80 bg-amber-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-950 shadow-md shadow-black/35"
-            aria-label={t("common.actions.knownProcessed")}
-          >
-            {t("sd.selector.known")}
-          </span>
-        ) : showNewBadge ? (
-          <span
-            className="pointer-events-none absolute top-1.5 right-1.5 z-10 rounded-md border border-sky-300/90 bg-sky-500 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-sky-950 shadow-md shadow-black/35"
-            aria-label={t("sd.selector.new")}
-          >
-            {t("sd.selector.new")}
-          </span>
-        ) : null}
+        <FileStatusBadge
+          alreadyProcessed={Boolean(alreadyProcessed)}
+          showNewBadge={showNewBadge}
+          className="pointer-events-none absolute top-1.5 right-1.5 z-10"
+        />
 
         {showVideo && src && !loadError && !immersive ? (
           <video
@@ -732,7 +739,7 @@ export function SdVideoTile({
               setPlaying(false);
               setPinned(false);
               setWantPreview(false);
-              if (isActive) onDeactivate();
+              if (isActive) onDeactivate(path);
             }}
             onLoadedMetadata={(e) => {
               setDuration(e.currentTarget.duration);
@@ -760,25 +767,28 @@ export function SdVideoTile({
       <button
         type="button"
         data-marquee-ok=""
-        className="truncate px-2 py-1 text-left text-[11px] hover:bg-black/5"
-        onClick={(e) => onSelect({ shiftKey: e.shiftKey })}
+        className={cn(
+          "truncate px-2 text-left hover:bg-black/5",
+          compact ? "py-0.5 text-[10px]" : "py-1 text-[11px]",
+        )}
+        onClick={(e) => onSelect(path, e.shiftKey)}
         title={filename}
       >
         {filename}
       </button>
-      <button
-        type="button"
-        data-marquee-ok=""
-        className="flex w-full items-baseline justify-between gap-2 px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
-        onClick={(e) => onSelect({ shiftKey: e.shiftKey })}
-      >
-        <span className="min-w-0 truncate">
-          {sizeLabel}
-        </span>
-        {captureLabel ? (
-          <span className="shrink-0 tabular-nums">{captureLabel}</span>
-        ) : null}
-      </button>
+      {!compact ? (
+        <button
+          type="button"
+          data-marquee-ok=""
+          className="flex w-full items-baseline justify-between gap-2 px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
+          onClick={(e) => onSelect(path, e.shiftKey)}
+        >
+          <span className="min-w-0 truncate">{sizeLabel}</span>
+          {captureLabel ? (
+            <span className="shrink-0 tabular-nums">{captureLabel}</span>
+          ) : null}
+        </button>
+      ) : null}
 
       {immersive &&
         typeof document !== "undefined" &&
@@ -1017,4 +1027,4 @@ export function SdVideoTile({
         )}
     </div>
   );
-}
+});

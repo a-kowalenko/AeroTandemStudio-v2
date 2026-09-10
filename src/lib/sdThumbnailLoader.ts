@@ -55,10 +55,29 @@ export class SdThumbnailLoader {
   private active = 0;
   private stopped = false;
   private listener: Listener | null = null;
+  private pathListeners = new Map<string, Set<() => void>>();
   private generation = 0;
 
   setListener(fn: Listener | null) {
     this.listener = fn;
+  }
+
+  /** Per-path subscription for `useSyncExternalStore` (avoids parent thumb state). */
+  subscribe(path: string, onStoreChange: () => void): () => void {
+    let set = this.pathListeners.get(path);
+    if (!set) {
+      set = new Set();
+      this.pathListeners.set(path, set);
+    }
+    set.add(onStoreChange);
+    return () => {
+      set!.delete(onStoreChange);
+      if (set!.size === 0) this.pathListeners.delete(path);
+    };
+  }
+
+  getBest(path: string): ThumbState | undefined {
+    return bestCached(path);
   }
 
   /** Snapshot of best-known thumbs for initial React state. */
@@ -243,13 +262,15 @@ export class SdThumbnailLoader {
 
   private flush() {
     this.flushTimer = null;
-    if (!this.listener || this.flushBuffer.size === 0) {
-      this.flushBuffer.clear();
-      return;
-    }
+    if (this.flushBuffer.size === 0) return;
     const batch = new Map(this.flushBuffer);
     this.flushBuffer.clear();
-    this.listener(batch);
+    this.listener?.(batch);
+    for (const path of batch.keys()) {
+      const subs = this.pathListeners.get(path);
+      if (!subs) continue;
+      for (const cb of subs) cb();
+    }
   }
 }
 

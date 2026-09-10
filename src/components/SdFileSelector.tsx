@@ -1,17 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
-import { Label } from "./ui/label";
-import { Switch } from "./ui/switch";
+import { Input } from "./ui/input";
 import {
   Select,
   SelectContent,
@@ -22,19 +19,42 @@ import {
 import type { SdWorkflowActions } from "../lib/sdCard";
 import { emptyCatalogLabel, isMtpDrive } from "../lib/sdCard";
 import { tr } from "@/i18n";
+import { createSdThumbnailLoader } from "../lib/sdThumbnailLoader";
 import {
-  createSdThumbnailLoader,
-  type ThumbState,
-} from "../lib/sdThumbnailLoader";
-import { isSidecarPath } from "../lib/media";
+  buildGridLayout,
+  collectMarqueeHitsFromLayout,
+  detailsRowHeight,
+  filterAndSortFiles,
+  formatBytes,
+  GRID_PAD,
+  gridColumnCount,
+  MARQUEE_THRESHOLD_PX,
+  OVERSCAN_ROWS,
+  visibleGridEntries,
+  type Density,
+  type MediaFilter,
+  type SortKey,
+  type ViewMode,
+} from "../lib/sdFileSelectorModel";
 import { formatLocaleDateTime } from "@/lib/locale";
 import { cn } from "../lib/utils";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useSdStore } from "../store/sdStore";
 import { SdVideoTile } from "./SdVideoTile";
-import { SdTilePreview } from "./SdTilePreview";
-import { Check, Film, HardDrive, ImageIcon, Loader2, RefreshCw, X } from "lucide-react";
+import { DateGroupHeader, SdDetailsRow, SdPhotoTile } from "./SdPhotoTile";
+import {
+  Check,
+  Film,
+  HardDrive,
+  ImageIcon,
+  LayoutGrid,
+  List,
+  Loader2,
+  MoreHorizontal,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 
 type Props = {
   /** Defaults for action checkboxes (from settings). */
@@ -45,95 +65,17 @@ type Props = {
   onRefresh?: () => void;
 };
 
-type FilterType = "all" | "video" | "photo" | "new";
-type SortKey = "date" | "name" | "size";
-type ViewMode = "thumbnail" | "details";
 type SelectMode = "toggle" | "range";
 type MarqueeMod = "replace" | "add" | "remove";
 
-const MARQUEE_THRESHOLD_PX = 7;
-const GRID_GAP = 8;
-const GRID_PAD = 8;
-const TILE_META_H = 42;
-const DETAILS_ROW_H = 44;
-const OVERSCAN_ROWS = 3;
-
-function gridColumnCount(width: number): number {
-  if (width >= 768) return 4;
-  if (width >= 512) return 3;
-  return 2;
-}
-
-const statusBadgeBase =
-  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide shadow-md shadow-black/35";
-
-/** Overlay / row badge for files already known from prior SD runs. */
-function KnownBadge({ className }: { className?: string }) {
-  const { t } = useTranslation();
-  return (
-    <span
-      className={cn(
-        statusBadgeBase,
-        "border border-amber-400/80 bg-amber-500 text-amber-950",
-        className,
-      )}
-    >
-      {t("sd.selector.known")}
-    </span>
-  );
-}
-
-/** Shown on new files only when the dialog also contains known files. */
-function NewBadge({ className }: { className?: string }) {
-  const { t } = useTranslation();
-  return (
-    <span
-      className={cn(
-        statusBadgeBase,
-        "border border-sky-300/90 bg-sky-500 text-sky-950",
-        className,
-      )}
-    >
-      {t("sd.selector.new")}
-    </span>
-  );
-}
-
-function FileStatusBadge({
-  alreadyProcessed,
-  showNewBadge,
-  className,
-}: {
-  alreadyProcessed: boolean;
-  showNewBadge: boolean;
-  className?: string;
-}) {
-  if (alreadyProcessed) {
-    return <KnownBadge className={className} />;
-  }
-  if (showNewBadge) {
-    return <NewBadge className={className} />;
-  }
-  return null;
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function formatEpoch(epoch: number): string {
   if (!epoch) return "—";
-  const d = new Date(epoch * 1000);
-  return formatLocaleDateTime(d);
+  return formatLocaleDateTime(new Date(epoch * 1000));
 }
 
-/** Compact capture time for the tile meta row (next to file size). */
 function formatCaptureTime(epoch: number): string {
   if (!epoch) return "";
-  const d = new Date(epoch * 1000);
-  return formatLocaleDateTime(d);
+  return formatLocaleDateTime(new Date(epoch * 1000));
 }
 
 function confirmLabel(actions: SdWorkflowActions, count: number): string {
@@ -146,24 +88,71 @@ function confirmLabel(actions: SdWorkflowActions, count: number): string {
   return `${parts.join(" · ")} (${count})`;
 }
 
+function ActionToggle({
+  pressed,
+  disabled,
+  title,
+  onPressedChange,
+  children,
+}: {
+  pressed: boolean;
+  disabled?: boolean;
+  title?: string;
+  onPressedChange: (next: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={pressed}
+      disabled={disabled}
+      title={title}
+      onClick={() => onPressedChange(!pressed)}
+      className={cn(
+        "inline-flex h-8 min-w-[5.5rem] items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium transition",
+        pressed
+          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+          : "border-border/70 bg-card text-muted hover:border-border hover:bg-card-elevated hover:text-foreground",
+        disabled && "pointer-events-none opacity-45",
+      )}
+    >
+      <span
+        className={cn(
+          "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+          pressed
+            ? "border-primary-foreground/80 bg-primary-foreground/20"
+            : "border-muted-foreground/40",
+        )}
+        aria-hidden
+      >
+        {pressed ? <Check className="h-2.5 w-2.5" /> : null}
+      </span>
+      {children}
+    </button>
+  );
+}
+
 function CatalogStatusOverlay({
   listing,
   empty,
+  filterEmpty,
   drive,
   reason,
   onRefresh,
 }: {
   listing: boolean;
   empty: boolean;
+  /** Catalog has files, but current filter/search matches none. */
+  filterEmpty?: boolean;
   drive: string | null;
   reason: import("../lib/sdCard").ListEmptyReason | null;
   onRefresh?: () => void;
 }) {
   const { t } = useTranslation();
-  if (!empty) return null;
-  if (listing) {
+  if (listing && empty) {
     return (
-      <div className="pointer-events-none absolute inset-0 z-10 flex min-h-[16rem] items-center justify-center px-6 py-8">
+      <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 py-8">
         <span className="inline-flex max-w-md items-center gap-2 text-center text-sm text-muted">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
           {t("app.sd.readingFiles")}
@@ -171,27 +160,39 @@ function CatalogStatusOverlay({
       </div>
     );
   }
-  return (
-    <div className="absolute inset-0 z-10 flex min-h-[16rem] items-center justify-center px-6 py-8">
-      <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
-        <p className="text-sm leading-relaxed text-muted">
-          {emptyCatalogLabel(drive, reason)}
-        </p>
-        {onRefresh ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="gap-1.5"
-            onClick={onRefresh}
-          >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-            {t("sd.selector.refresh")}
-          </Button>
-        ) : null}
+  if (empty) {
+    return (
+      <div className="absolute inset-0 z-10 flex items-center justify-center px-6 py-8">
+        <div className="flex w-full max-w-md flex-col items-center gap-3 text-center">
+          <p className="text-sm leading-relaxed text-muted">
+            {emptyCatalogLabel(drive, reason)}
+          </p>
+          {onRefresh ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="gap-1.5"
+              onClick={onRefresh}
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+              {t("sd.selector.refresh")}
+            </Button>
+          ) : null}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+  if (filterEmpty) {
+    return (
+      <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 py-8">
+        <p className="max-w-md text-center text-sm text-muted">
+          {t("sd.selector.filterEmpty")}
+        </p>
+      </div>
+    );
+  }
+  return null;
 }
 
 export function SdFileSelector({
@@ -202,7 +203,6 @@ export function SdFileSelector({
   onRefresh,
 }: Props) {
   const { t } = useTranslation();
-  // Catalog lives in sdStore so App.tsx does not re-render on every MTP tick.
   const open = useSdStore((s) => s.selectorOpen);
   const drive = useSdStore((s) => s.selectorDrive);
   const files = useSdStore((s) => s.selectorFiles);
@@ -213,12 +213,17 @@ export function SdFileSelector({
   const locationLabel = drive
     ? t("common.labels.drive", { name: drive })
     : t("common.labels.sdCard");
+
   const [viewMode, setViewMode] = useState<ViewMode>("thumbnail");
-  const [filterType, setFilterType] = useState<FilterType>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("name");
-  const [sortAsc, setSortAsc] = useState(true);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [thumbs, setThumbs] = useState<Record<string, ThumbState>>({});
+  const [density, setDensity] = useState<Density>("comfortable");
+  const [mediaFilter, setMediaFilter] = useState<MediaFilter>("all");
+  const [newOnly, setNewOnly] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortAsc, setSortAsc] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [actions, setActions] = useState<SdWorkflowActions>({
     backup: true,
     import: true,
@@ -228,17 +233,9 @@ export function SdFileSelector({
   });
   const config = useConfigStore((s) => s.config);
   const formMode = useKundeStore((s) => s.kunde.form_mode);
-  const [dragBox, setDragBox] = useState<{
-    x0: number;
-    y0: number;
-    x1: number;
-    y1: number;
-  } | null>(null);
-  /** True while marquee is past the movement threshold. */
   const [selectionDragging, setSelectionDragging] = useState(false);
-  /** At most one video tile may be actively previewing / playing. */
+  const [scrollLocked, setScrollLocked] = useState(false);
   const [activeVideoPath, setActiveVideoPath] = useState<string | null>(null);
-  /** Grid element state — Radix Presence mounts dialog content one frame late; ref-only misses IO setup. */
   const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
   const [detailsEl, setDetailsEl] = useState<HTMLDivElement | null>(null);
   const [gridMetrics, setGridMetrics] = useState({
@@ -250,10 +247,12 @@ export function SdFileSelector({
     scrollTop: 0,
     height: 0,
   });
+
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const tileRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const marqueeOverlayRef = useRef<HTMLDivElement | null>(null);
+  const observedElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const ioRef = useRef<IntersectionObserver | null>(null);
   const loaderRef = useRef(createSdThumbnailLoader());
-  /** Last non-range select path — Shift-range is resolved against `filtered`. */
   const anchorPathRef = useRef<string | null>(null);
   const pendingMarqueeRef = useRef<{
     pointerId: number;
@@ -264,12 +263,19 @@ export function SdFileSelector({
     mod: MarqueeMod;
   } | null>(null);
   const marqueeModRef = useRef<MarqueeMod>("replace");
-  /** Suppress tile click after a completed marquee gesture. */
   const suppressClickRef = useRef(false);
-  const dragBoxRef = useRef<typeof dragBox>(null);
-  /** Skip the following checkbox onCheckedChange after Shift-range via pointer. */
+  const dragBoxRef = useRef<{
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+  } | null>(null);
   const shiftCheckboxRef = useRef(false);
   const wasEmptyCatalogRef = useRef(false);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const layoutTilesRef = useRef<
+    ReturnType<typeof buildGridLayout>["tiles"]
+  >([]);
 
   const attachGridRef = useCallback((el: HTMLDivElement | null) => {
     gridRef.current = el;
@@ -279,6 +285,23 @@ export function SdFileSelector({
   const attachDetailsRef = useCallback((el: HTMLDivElement | null) => {
     setDetailsEl((prev) => (prev === el ? prev : el));
   }, []);
+
+  const paintMarqueeOverlay = useCallback(
+    (box: { x0: number; y0: number; x1: number; y1: number } | null) => {
+      const el = marqueeOverlayRef.current;
+      if (!el) return;
+      if (!box) {
+        el.style.display = "none";
+        return;
+      }
+      el.style.display = "block";
+      el.style.left = `${Math.min(box.x0, box.x1)}px`;
+      el.style.top = `${Math.min(box.y0, box.y1)}px`;
+      el.style.width = `${Math.abs(box.x1 - box.x0)}px`;
+      el.style.height = `${Math.abs(box.y1 - box.y0)}px`;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!gridEl) return;
@@ -291,6 +314,14 @@ export function SdFileSelector({
       });
     };
     const onScroll = () => {
+      setScrollLocked(true);
+      if (scrollIdleTimerRef.current != null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
+      scrollIdleTimerRef.current = window.setTimeout(() => {
+        scrollIdleTimerRef.current = null;
+        setScrollLocked(false);
+      }, 140);
       if (raf) return;
       raf = window.requestAnimationFrame(() => {
         raf = 0;
@@ -303,6 +334,9 @@ export function SdFileSelector({
     gridEl.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       if (raf) window.cancelAnimationFrame(raf);
+      if (scrollIdleTimerRef.current != null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
       ro.disconnect();
       gridEl.removeEventListener("scroll", onScroll);
     };
@@ -335,18 +369,29 @@ export function SdFileSelector({
     };
   }, [detailsEl]);
 
-  // Path set only — enrich must not reset selection / thumbs.
-  const filePathsKey = files.map((f) => f.path).join("\0");
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (!open) setMoreOpen(false);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     wasEmptyCatalogRef.current = false;
     setSelected(new Set());
     setActiveVideoPath(null);
+    setSearchQuery("");
     anchorPathRef.current = null;
     pendingMarqueeRef.current = null;
     dragBoxRef.current = null;
-    setDragBox(null);
+    paintMarqueeOverlay(null);
     setSelectionDragging(false);
     const isQrMode = formMode === "kunde";
     const settingsQrOn =
@@ -355,14 +400,10 @@ export function SdFileSelector({
     setActions({
       backup: defaultActions?.backup ?? true,
       import: defaultActions?.import ?? true,
-      // Clear only with backup
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
       eject: Boolean(defaultActions?.eject),
-      // QR mode already on → skip auto-scan by default; else follow settings.
       scanQr: isQrMode ? false : settingsQrOn,
     });
-    // Reset only when the dialog opens or the drive changes — streaming MTP
-    // catalogs must not wipe an in-progress selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, drive]);
 
@@ -404,16 +445,6 @@ export function SdFileSelector({
   ]);
 
   useEffect(() => {
-    if (!open) return;
-    setThumbs((prev) => {
-      const snap = loaderRef.current.snapshotFor(files.map((f) => f.path));
-      return { ...snap, ...prev };
-    });
-  }, [open, filePathsKey]);
-
-  // Loader lifetime must follow `open` only — stopping on unrelated re-renders
-  // cancels in-flight FFmpeg thumbs before they finish.
-  useEffect(() => {
     const loader = loaderRef.current;
     if (!open) {
       loader.stop();
@@ -423,95 +454,78 @@ export function SdFileSelector({
     return () => loader.stop();
   }, [open]);
 
-  useEffect(() => {
-    const loader = loaderRef.current;
-    loader.setListener((batch) => {
-      setThumbs((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        for (const [path, state] of batch) {
-          const cur = next[path];
-          if (cur?.quality === "hq" && state.quality === "lq") continue;
-          if (cur?.url === state.url && cur?.quality === state.quality) continue;
-          next[path] = state;
-          changed = true;
-        }
-        return changed ? next : prev;
-      });
-    });
-    return () => loader.setListener(null);
-  }, []);
-
-  const filtered = useMemo(() => {
-    let list = files.filter(
-      (f) => !isSidecarPath(f.filename) && !isSidecarPath(f.path),
-    );
-    if (filterType === "video") list = list.filter((f) => f.is_video);
-    else if (filterType === "photo") list = list.filter((f) => !f.is_video);
-    else if (filterType === "new") list = list.filter((f) => !f.already_processed);
-    list.sort((a, b) => {
-      let cmp = 0;
-      if (sortKey === "date") {
-        cmp = a.display_epoch - b.display_epoch;
-        if (cmp === 0) {
-          cmp = a.filename.localeCompare(b.filename, undefined, { numeric: true });
-        }
-      } else if (sortKey === "name") {
-        cmp = a.filename.localeCompare(b.filename, undefined, { numeric: true });
-      } else {
-        cmp = a.size_bytes - b.size_bytes;
-      }
-      return sortAsc ? cmp : -cmp;
-    });
-    return list;
-  }, [files, filterType, sortKey, sortAsc]);
+  const filtered = useMemo(
+    () =>
+      filterAndSortFiles(
+        files,
+        mediaFilter,
+        newOnly,
+        sortKey,
+        sortAsc,
+        searchQuery,
+      ),
+    [files, mediaFilter, newOnly, sortKey, sortAsc, searchQuery],
+  );
 
   const icaVirtual = isMtpDrive(drive);
-  const gridCols = gridColumnCount(gridMetrics.width);
-  const gridInnerW = Math.max(0, gridMetrics.width - GRID_PAD * 2);
-  const tileW =
-    gridCols > 0
-      ? (gridInnerW - GRID_GAP * (gridCols - 1)) / gridCols
-      : 160;
-  const gridRowH = Math.max(120, tileW * (9 / 16) + TILE_META_H);
-  const gridRowCount = Math.ceil(filtered.length / Math.max(1, gridCols));
-  const gridStartRow = Math.max(
-    0,
-    Math.floor(gridMetrics.scrollTop / gridRowH) - OVERSCAN_ROWS,
+  const groupByDate = sortKey === "date";
+  const gridCols = gridColumnCount(gridMetrics.width, density);
+  const gridLayout = useMemo(
+    () =>
+      buildGridLayout(filtered, {
+        width: gridMetrics.width || 640,
+        cols: gridCols,
+        density,
+        groupByDate,
+      }),
+    [filtered, gridMetrics.width, gridCols, density, groupByDate],
   );
-  const gridEndRow = Math.min(
-    gridRowCount,
-    Math.ceil((gridMetrics.scrollTop + gridMetrics.height) / gridRowH) +
-      OVERSCAN_ROWS,
-  );
-  const gridStart = gridStartRow * gridCols;
-  const gridEnd = Math.min(filtered.length, gridEndRow * gridCols);
-  const visibleTiles = filtered.slice(gridStart, gridEnd);
-  const gridPadTop = gridStartRow * gridRowH;
-  const gridTotalH = gridRowCount * gridRowH;
+  layoutTilesRef.current = gridLayout.tiles;
 
+  const visibleEntries = useMemo(
+    () =>
+      visibleGridEntries(
+        gridLayout,
+        gridMetrics.scrollTop,
+        gridMetrics.height || 400,
+      ),
+    [gridLayout, gridMetrics.scrollTop, gridMetrics.height],
+  );
+
+  const rowH = detailsRowHeight(density);
+  const DETAILS_HEADER_H = 32;
+  const detailsScrollInList = Math.max(
+    0,
+    detailsMetrics.scrollTop - DETAILS_HEADER_H,
+  );
   const detailsStart = Math.max(
     0,
-    Math.floor(detailsMetrics.scrollTop / DETAILS_ROW_H) - 8,
+    Math.floor(detailsScrollInList / rowH) - OVERSCAN_ROWS * 2,
   );
   const detailsEnd = Math.min(
     filtered.length,
-    Math.ceil((detailsMetrics.scrollTop + detailsMetrics.height) / DETAILS_ROW_H) +
-      8,
+    Math.ceil((detailsScrollInList + detailsMetrics.height) / rowH) +
+      OVERSCAN_ROWS * 2,
   );
   const visibleDetails = filtered.slice(detailsStart, detailsEnd);
-  const detailsPadTop = detailsStart * DETAILS_ROW_H;
-  const detailsPadBottom = Math.max(
-    0,
-    (filtered.length - detailsEnd) * DETAILS_ROW_H,
-  );
+  const detailsTotalH = filtered.length * rowH;
 
-  const selectedSizeMb = useMemo(() => {
-    let sum = 0;
+  const selectedStats = useMemo(() => {
+    let videos = 0;
+    let photos = 0;
+    let bytes = 0;
     for (const f of files) {
-      if (selected.has(f.path)) sum += f.size_bytes;
+      if (!selected.has(f.path)) continue;
+      bytes += f.size_bytes;
+      if (f.is_video) videos += 1;
+      else photos += 1;
     }
-    return sum / (1024 * 1024);
+    return {
+      videos,
+      photos,
+      total: videos + photos,
+      sizeMb: bytes / (1024 * 1024),
+    };
   }, [files, selected]);
 
   const mediaCounts = useMemo(() => {
@@ -524,29 +538,27 @@ export function SdFileSelector({
     return { videos, photos };
   }, [files]);
 
-  const selectedCounts = useMemo(() => {
-    let videos = 0;
-    let photos = 0;
-    for (const f of files) {
-      if (!selected.has(f.path)) continue;
-      if (f.is_video) videos += 1;
-      else photos += 1;
-    }
-    return { videos, photos, total: videos + photos };
-  }, [files, selected]);
-
-  const allFilteredSelected =
-    filtered.length > 0 && filtered.every((f) => selected.has(f.path));
   const newInFiltered = useMemo(
     () => filtered.filter((f) => !f.already_processed),
     [filtered],
   );
+
+  const selectedInFilteredCount = useMemo(() => {
+    let n = 0;
+    for (const f of filtered) {
+      if (selected.has(f.path)) n += 1;
+    }
+    return n;
+  }, [filtered, selected]);
+
+  const allFilteredSelected =
+    filtered.length > 0 && selectedInFilteredCount === filtered.length;
   const allNewSelected =
     newInFiltered.length > 0 &&
     newInFiltered.every((f) => selected.has(f.path)) &&
     selected.size === newInFiltered.length;
   const noneSelected = selected.size === 0;
-  /** Mixed known+new → show Neu badges; all-new → no status badges. */
+
   const showNewBadges = useMemo(() => {
     let hasKnown = false;
     let hasNew = false;
@@ -563,19 +575,29 @@ export function SdFileSelector({
     [filtered],
   );
 
-  // Eager first page + IntersectionObserver for the rest (thumbnail grid + details rows).
-  // Depend on scroll-root state so setup runs after Radix Presence mounts the root.
+  const registerThumbEl = useCallback((path: string, el: HTMLElement | null) => {
+    const prev = observedElsRef.current.get(path);
+    const io = ioRef.current;
+    if (prev && prev !== el && io) {
+      io.unobserve(prev);
+    }
+    if (el) {
+      observedElsRef.current.set(path, el);
+      io?.observe(el);
+    } else {
+      observedElsRef.current.delete(path);
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) return;
-    // MTP listing shares the ICA main-thread session — wait until the catalog is done.
     if (listing && isMtpDrive(drive)) return;
     const root = viewMode === "thumbnail" ? gridEl : detailsEl;
     if (!root) return;
 
     const loader = loaderRef.current;
-    const icaVirtual = isMtpDrive(drive);
-    const upgradeToHq = viewMode === "thumbnail" && !icaVirtual;
-    const eagerCount = icaVirtual
+    const upgradeToHq = viewMode === "thumbnail" && !isMtpDrive(drive);
+    const eagerCount = isMtpDrive(drive)
       ? 12
       : viewMode === "thumbnail"
         ? 32
@@ -598,81 +620,94 @@ export function SdFileSelector({
         threshold: 0,
       },
     );
-
-    const observed = new WeakSet<Element>();
-    const observeAll = () => {
-      root.querySelectorAll<HTMLElement>("[data-thumb-path]").forEach((el) => {
-        if (observed.has(el)) return;
-        observed.add(el);
-        io.observe(el);
-      });
-    };
-    observeAll();
-    const mo = new MutationObserver(() => observeAll());
-    mo.observe(root, { childList: true, subtree: true });
-    const t = window.setTimeout(observeAll, 0);
+    ioRef.current = io;
+    for (const el of observedElsRef.current.values()) {
+      io.observe(el);
+    }
 
     return () => {
-      window.clearTimeout(t);
-      mo.disconnect();
       io.disconnect();
+      if (ioRef.current === io) ioRef.current = null;
       loader.releaseAllVisible();
     };
   }, [open, viewMode, gridEl, detailsEl, drive, listing, filteredPathsKey]);
 
-  function selectPath(path: string, mode: SelectMode) {
-    if (suppressClickRef.current) return;
+  const selectPath = useCallback(
+    (path: string, mode: SelectMode) => {
+      if (suppressClickRef.current) return;
 
-    if (mode === "range") {
-      const anchor = anchorPathRef.current;
-      const startIdx =
-        anchor != null ? filtered.findIndex((f) => f.path === anchor) : -1;
-      const endIdx = filtered.findIndex((f) => f.path === path);
-      if (startIdx < 0 || endIdx < 0) {
+      if (mode === "range") {
+        const anchor = anchorPathRef.current;
+        const startIdx =
+          anchor != null ? filtered.findIndex((f) => f.path === anchor) : -1;
+        const endIdx = filtered.findIndex((f) => f.path === path);
+        if (startIdx < 0 || endIdx < 0) {
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(path)) next.delete(path);
+            else next.add(path);
+            return next;
+          });
+          anchorPathRef.current = path;
+          return;
+        }
+        const lo = Math.min(startIdx, endIdx);
+        const hi = Math.max(startIdx, endIdx);
         setSelected((prev) => {
           const next = new Set(prev);
-          if (next.has(path)) next.delete(path);
-          else next.add(path);
+          for (let i = lo; i <= hi; i++) next.add(filtered[i].path);
           return next;
         });
-        anchorPathRef.current = path;
         return;
       }
-      const lo = Math.min(startIdx, endIdx);
-      const hi = Math.max(startIdx, endIdx);
+
       setSelected((prev) => {
         const next = new Set(prev);
-        for (let i = lo; i <= hi; i++) next.add(filtered[i].path);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
         return next;
       });
-      return;
-    }
+      anchorPathRef.current = path;
+    },
+    [filtered],
+  );
 
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-    anchorPathRef.current = path;
-  }
+  const onTileSelect = useCallback(
+    (path: string, shiftKey: boolean) => {
+      selectPath(path, shiftKey ? "range" : "toggle");
+    },
+    [selectPath],
+  );
 
-  /** Checkbox: Shift-range on pointerdown; plain click / Space via onCheckedChange. */
-  function onCheckboxPointerDown(path: string, e: React.PointerEvent) {
-    if (!e.shiftKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    shiftCheckboxRef.current = true;
-    selectPath(path, "range");
-  }
+  const onCheckboxPointerDown = useCallback(
+    (path: string, e: React.PointerEvent) => {
+      if (!e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      shiftCheckboxRef.current = true;
+      selectPath(path, "range");
+    },
+    [selectPath],
+  );
 
-  function onCheckboxCheckedChange(path: string) {
-    if (shiftCheckboxRef.current) {
-      shiftCheckboxRef.current = false;
-      return;
-    }
-    selectPath(path, "toggle");
-  }
+  const onCheckboxCheckedChange = useCallback(
+    (path: string) => {
+      if (shiftCheckboxRef.current) {
+        shiftCheckboxRef.current = false;
+        return;
+      }
+      selectPath(path, "toggle");
+    },
+    [selectPath],
+  );
+
+  const onActivateVideo = useCallback((path: string) => {
+    setActiveVideoPath(path);
+  }, []);
+
+  const onDeactivateVideo = useCallback((path: string) => {
+    setActiveVideoPath((prev) => (prev === path ? null : prev));
+  }, []);
 
   function selectAllFiltered() {
     setSelected(new Set(filtered.map((f) => f.path)));
@@ -692,10 +727,33 @@ export function SdFileSelector({
     anchorPathRef.current = null;
   }
 
+  function invertSelection() {
+    setSelected((prev) => {
+      const next = new Set<string>();
+      for (const f of filtered) {
+        if (!prev.has(f.path)) next.add(f.path);
+      }
+      return next;
+    });
+  }
+
+  function toggleGroupSelection(paths: string[]) {
+    setSelected((prev) => {
+      const allOn = paths.length > 0 && paths.every((p) => prev.has(p));
+      const next = new Set(prev);
+      if (allOn) {
+        for (const p of paths) next.delete(p);
+      } else {
+        for (const p of paths) next.add(p);
+      }
+      return next;
+    });
+    anchorPathRef.current = paths[paths.length - 1] ?? null;
+  }
+
   function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
     setActions((prev) => {
       if (key === "backup" && !value) {
-        // Clear is only allowed together with backup.
         return { ...prev, backup: false, clear: false };
       }
       if (key === "clear" && value && !prev.backup) {
@@ -739,33 +797,6 @@ export function SdFileSelector({
     return "replace";
   }
 
-  function collectMarqueeHits(box: {
-    x0: number;
-    y0: number;
-    x1: number;
-    y1: number;
-  }): string[] {
-    const left = Math.min(box.x0, box.x1);
-    const right = Math.max(box.x0, box.x1);
-    const top = Math.min(box.y0, box.y1);
-    const bottom = Math.max(box.y0, box.y1);
-    if (right - left <= 4 || bottom - top <= 4) return [];
-
-    const colW = tileW + GRID_GAP;
-    const rowH = gridRowH;
-    const hits: string[] = [];
-    for (let i = 0; i < filtered.length; i++) {
-      const col = i % gridCols;
-      const row = Math.floor(i / gridCols);
-      const tx = GRID_PAD + col * colW;
-      const ty = GRID_PAD + row * rowH;
-      const overlaps =
-        tx < right && tx + tileW > left && ty < bottom && ty + rowH > top;
-      if (overlaps) hits.push(filtered[i].path);
-    }
-    return hits;
-  }
-
   function commitMarquee(mod: MarqueeMod, hits: string[]) {
     if (hits.length === 0) return;
     setSelected((prev) => {
@@ -792,7 +823,7 @@ export function SdFileSelector({
 
     const onMarqueeOk = target.closest("[data-marquee-ok]");
     const onTile = target.closest("[data-tile]");
-    // Empty chrome always; tiles only via data-marquee-ok (photo / video caption).
+    // Empty chrome / group headers always; tiles only via data-marquee-ok.
     if (onTile && !onMarqueeOk) return;
 
     const pt = gridLocalPoint(e);
@@ -826,7 +857,7 @@ export function SdFileSelector({
         };
         dragBoxRef.current = next;
         setSelectionDragging(true);
-        setDragBox(next);
+        paintMarqueeOverlay(next);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }
       return;
@@ -837,23 +868,26 @@ export function SdFileSelector({
     if (!pt) return;
     const next = { ...dragBoxRef.current, x1: pt.x, y1: pt.y };
     dragBoxRef.current = next;
-    setDragBox(next);
+    paintMarqueeOverlay(next);
   }
 
-  function endMarqueeGesture(activeBox: typeof dragBox) {
+  function endMarqueeGesture(activeBox: typeof dragBoxRef.current) {
     pendingMarqueeRef.current = null;
     dragBoxRef.current = null;
+    paintMarqueeOverlay(null);
     if (activeBox) {
-      const hits = collectMarqueeHits(activeBox);
+      const hits = collectMarqueeHitsFromLayout(
+        layoutTilesRef.current,
+        activeBox,
+      );
       commitMarquee(marqueeModRef.current, hits);
-      setDragBox(null);
       setSelectionDragging(false);
-      // Keep suppress until after the synthetic click from the originating element.
       window.setTimeout(() => {
         suppressClickRef.current = false;
       }, 0);
       return;
     }
+    setSelectionDragging(false);
     suppressClickRef.current = false;
   }
 
@@ -864,7 +898,7 @@ export function SdFileSelector({
   function onGridPointerCancel() {
     pendingMarqueeRef.current = null;
     dragBoxRef.current = null;
-    setDragBox(null);
+    paintMarqueeOverlay(null);
     setSelectionDragging(false);
     suppressClickRef.current = false;
   }
@@ -882,6 +916,8 @@ export function SdFileSelector({
       ? !actions.eject
       : selected.size === 0 || !anyAction;
 
+  const loader = loaderRef.current;
+
   return (
     <Dialog
       open={open}
@@ -889,43 +925,26 @@ export function SdFileSelector({
         if (!v) onClose();
       }}
     >
-      <DialogContent
-        className="flex max-h-[90vh] w-[min(1100px,95vw)] max-w-none flex-col gap-3 overflow-hidden"
-      >
-        <DialogHeader className="space-y-2.5 pr-8">
+      <DialogContent className="flex h-[min(90vh,880px)] max-h-[90vh] w-[min(1100px,95vw)] max-w-none flex-col gap-2.5 overflow-hidden">
+        <DialogHeader className="space-y-2 pr-8">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
             {locationLabel}
             {`, ${t("common.labels.filesCount", { count: files.length })}, ${totalSizeMb.toFixed(1)} MB`}
-            {mediaCounts.videos > 0
-              ? t("sd.selector.summaryVideos", { count: mediaCounts.videos })
-              : ""}
-            {mediaCounts.photos > 0
-              ? t("sd.selector.summaryPhotos", { count: mediaCounts.photos })
-              : ""}
-            {selectedCounts.total > 0
-              ? t("sd.selector.summarySelected", {
-                  count: selectedCounts.total,
-                  sizeMb: selectedSizeMb.toFixed(1),
-                })
-              : ""}
           </DialogDescription>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/60 bg-card-elevated/80 px-3 py-2.5">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-soft text-primary ring-1 ring-primary/20">
-                <HardDrive className="h-4 w-4" aria-hidden />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border/60 bg-card-elevated/80 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary ring-1 ring-primary/20">
+                <HardDrive className="h-3.5 w-3.5" aria-hidden />
               </div>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold tracking-tight text-foreground">
                   {locationLabel}
                 </p>
-                <p className="text-xs tabular-nums text-muted">
+                <p className="text-[11px] tabular-nums text-muted">
                   {listing ? (
                     <span className="inline-flex items-center gap-1.5">
-                      <Loader2
-                        className="h-3 w-3 animate-spin"
-                        aria-hidden
-                      />
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
                       {t("sd.selector.readingInline", { count: files.length })}
                     </span>
                   ) : (
@@ -937,240 +956,264 @@ export function SdFileSelector({
                 </p>
               </div>
             </div>
-
             <div className="flex flex-wrap items-center gap-1.5">
               {mediaCounts.videos > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">
                   <Film className="h-3 w-3" aria-hidden />
-                  {mediaCounts.videos}{" "}
-                  {mediaCounts.videos === 1
-                    ? t("common.labels.video")
-                    : t("common.labels.videos")}
+                  {mediaCounts.videos}
                 </span>
               ) : null}
               {mediaCounts.photos > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary-soft px-2.5 py-0.5 text-xs font-medium text-primary">
+                <span className="inline-flex items-center gap-1 rounded-md bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">
                   <ImageIcon className="h-3 w-3" aria-hidden />
-                  {mediaCounts.photos}{" "}
-                  {mediaCounts.photos === 1
-                    ? t("common.labels.photo")
-                    : t("common.labels.photos")}
-                </span>
-              ) : null}
-              {selectedCounts.total > 0 ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-card px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">
-                  <span>
-                    gewählt: {selectedCounts.total} · {selectedSizeMb.toFixed(1)}{" "}
-                    MB
-                  </span>
-                  {selectedCounts.videos > 0 ? (
-                    <span className="inline-flex items-center gap-0.5 text-primary/90">
-                      <Film className="h-3 w-3" aria-hidden />
-                      {selectedCounts.videos}
-                    </span>
-                  ) : null}
-                  {selectedCounts.photos > 0 ? (
-                    <span className="inline-flex items-center gap-0.5 text-primary/90">
-                      <ImageIcon className="h-3 w-3" aria-hidden />
-                      {selectedCounts.photos}
-                    </span>
-                  ) : null}
+                  {mediaCounts.photos}
                 </span>
               ) : null}
             </div>
           </div>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex gap-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex gap-0.5 rounded-md border border-border/60 p-0.5">
             <Button
               type="button"
               size="sm"
-              variant={viewMode === "thumbnail" ? "default" : "secondary"}
+              variant={viewMode === "thumbnail" ? "default" : "ghost"}
+              className="h-7 gap-1 px-2 text-xs"
               onClick={() => setViewMode("thumbnail")}
             >
+              <LayoutGrid className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {t("sd.selector.viewTiles")}
             </Button>
             <Button
               type="button"
               size="sm"
-              variant={viewMode === "details" ? "default" : "secondary"}
+              variant={viewMode === "details" ? "default" : "ghost"}
+              className="h-7 gap-1 px-2 text-xs"
               onClick={() => setViewMode("details")}
             >
+              <List className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {t("sd.selector.viewDetails")}
             </Button>
           </div>
-          <Select
-            value={filterType}
-            onValueChange={(v) => setFilterType(v as FilterType)}
-          >
-            <SelectTrigger className="h-8 w-[128px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("common.labels.all")}</SelectItem>
-              <SelectItem value="video">{t("common.labels.videos")}</SelectItem>
-              <SelectItem value="photo">{t("common.labels.photos")}</SelectItem>
-              <SelectItem value="new">{t("common.filter.newOnly")}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select
-            value={sortKey}
-            onValueChange={(v) => setSortKey(v as SortKey)}
-          >
-            <SelectTrigger className="h-8 w-[120px] text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="date">{t("common.labels.date")}</SelectItem>
-              <SelectItem value="name">{t("common.labels.name")}</SelectItem>
-              <SelectItem value="size">{t("common.labels.size")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex gap-0.5 rounded-md border border-border/60 p-0.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={density === "comfortable" ? "default" : "ghost"}
+              className="h-7 px-2 text-xs"
+              aria-pressed={density === "comfortable"}
+              onClick={() => setDensity("comfortable")}
+            >
+              {t("sd.selector.densityComfortable")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={density === "compact" ? "default" : "ghost"}
+              className="h-7 px-2 text-xs"
+              aria-pressed={density === "compact"}
+              onClick={() => setDensity("compact")}
+            >
+              {t("sd.selector.densityCompact")}
+            </Button>
+          </div>
+          <div className="relative min-w-[10rem] flex-1 basis-[10rem]">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-2 h-3.5 w-3.5 -translate-y-1/2 text-muted"
+              aria-hidden
+            />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("sd.selector.searchPlaceholder")}
+              className="h-7 pl-7 text-xs"
+            />
+          </div>
+          <div className="flex gap-0.5 rounded-md border border-border/60 p-0.5">
+            {(
+              [
+                ["all", t("common.labels.all")],
+                ["video", t("common.labels.videos")],
+                ["photo", t("common.labels.photos")],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                type="button"
+                size="sm"
+                variant={mediaFilter === value ? "default" : "ghost"}
+                className="h-7 px-2 text-xs"
+                aria-pressed={mediaFilter === value}
+                onClick={() => setMediaFilter(value)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
           <Button
             type="button"
             size="sm"
-            variant="secondary"
-            onClick={() => setSortAsc((v) => !v)}
+            variant={newOnly ? "default" : "secondary"}
+            className="h-7 gap-1 px-2 text-xs"
+            aria-pressed={newOnly}
+            title={t("sd.selector.newOnlyHint")}
+            onClick={() => setNewOnly((v) => !v)}
           >
-            {sortAsc ? t("common.labels.sortAsc") : t("common.labels.sortDesc")}
-          </Button>
-          <span
-            className="mx-1 h-6 w-px shrink-0 bg-border"
-            aria-hidden
-          />
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className={cn(
-              "gap-1.5",
-              allFilteredSelected &&
-                "border-primary/30 bg-primary-soft text-primary hover:bg-primary-soft",
-            )}
-            onClick={selectAllFiltered}
-          >
-            {allFilteredSelected ? (
-              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            ) : null}
-            {t("sd.selector.selectAll")}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            disabled={newInFiltered.length === 0}
-            className={cn(
-              "gap-1.5",
-              allNewSelected &&
-                "border-primary/30 bg-primary-soft text-primary hover:bg-primary-soft",
-            )}
-            onClick={selectOnlyNew}
-          >
-            {allNewSelected ? (
-              <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            ) : null}
+            <span
+              className={cn(
+                "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm border",
+                newOnly
+                  ? "border-primary-foreground/80 bg-primary-foreground/20"
+                  : "border-muted-foreground/40",
+              )}
+              aria-hidden
+            >
+              {newOnly ? <Check className="h-2.5 w-2.5" /> : null}
+            </span>
             {t("common.filter.newOnly")}
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className={cn("gap-1.5", noneSelected && "text-muted")}
-            onClick={clearSelection}
+          <Select
+            value={`${sortKey}:${sortAsc ? "asc" : "desc"}`}
+            onValueChange={(v) => {
+              const [key, dir] = v.split(":") as [SortKey, "asc" | "desc"];
+              setSortKey(key);
+              setSortAsc(dir === "asc");
+            }}
           >
-            <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            {t("common.labels.none")}
-          </Button>
+            <SelectTrigger className="h-7 w-[13.5rem] shrink-0 overflow-hidden text-xs [&>span]:min-w-0 [&>span]:truncate [&>span]:whitespace-nowrap">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date:desc" className="whitespace-nowrap">
+                {t("sd.selector.sortDateNewest")}
+              </SelectItem>
+              <SelectItem value="date:asc" className="whitespace-nowrap">
+                {t("sd.selector.sortDateOldest")}
+              </SelectItem>
+              <SelectItem value="name:asc" className="whitespace-nowrap">
+                {t("sd.selector.sortNameAsc")}
+              </SelectItem>
+              <SelectItem value="name:desc" className="whitespace-nowrap">
+                {t("sd.selector.sortNameDesc")}
+              </SelectItem>
+              <SelectItem value="size:desc" className="whitespace-nowrap">
+                {t("sd.selector.sortSizeLargest")}
+              </SelectItem>
+              <SelectItem value="size:asc" className="whitespace-nowrap">
+                {t("sd.selector.sortSizeSmallest")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 rounded-md border border-border/60 bg-card-elevated px-3 py-2 text-sm">
-          <span className="text-xs font-medium text-muted">{t("common.labels.actions")}:</span>
-          <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
-            <Checkbox
-              checked={actions.backup}
-              disabled={catalogEmpty}
-              onCheckedChange={(v) => patchAction("backup", v === true)}
-            />
-            {t("app.sd.backupLabel")}
-          </label>
-          <label className={cn("flex items-center gap-2", catalogEmpty && "opacity-50")}>
-            <Checkbox
-              checked={actions.import}
-              disabled={catalogEmpty}
-              onCheckedChange={(v) => patchAction("import", v === true)}
-            />
-            {t("app.import.label")}
-          </label>
-          <label
-            className={cn(
-              "flex items-center gap-2",
-              (!actions.backup || catalogEmpty) && "opacity-50",
-            )}
-            title={
-              catalogEmpty
-                ? t("sd.selector.clearNoFiles")
-                : actions.backup
-                  ? t("sd.selector.clearAfterBackup")
-                  : t("sd.selector.clearNeedsBackup")
-            }
-          >
-            <Checkbox
-              checked={actions.clear}
-              disabled={!actions.backup || catalogEmpty}
-              onCheckedChange={(v) => patchAction("clear", v === true)}
-            />
-            {t("sd.selector.clearSd")}
-          </label>
-          <label
-            className="flex items-center gap-2"
-            title={t("sd.selector.ejectAfterBackupTitle")}
-          >
-            <Checkbox
-              checked={actions.eject}
-              onCheckedChange={(v) => patchAction("eject", v === true)}
-            />
-            {t("app.sd.ejectLabel")}
-          </label>
-          {!actions.backup ? (
-            <span className="text-[11px] text-muted">
-              {t("sd.selector.clearOnlyAfterBackupHint")}
-            </span>
-          ) : null}
-          <div
-            className={cn(
-              "ml-auto flex items-center gap-2",
-              !actions.import && "opacity-50",
-            )}
-            title={
-              actions.import
-                ? t("sd.selector.scanImportedQr")
-                : t("sd.selector.scanNeedsImport")
-            }
-          >
-            <Switch
-              id="sd-scan-qr"
-              checked={Boolean(actions.scanQr)}
-              disabled={!actions.import || catalogEmpty}
-              onCheckedChange={(v) => patchAction("scanQr", v === true)}
-            />
-            <Label
-              htmlFor="sd-scan-qr"
+        <div className="flex flex-wrap items-center gap-2.5 rounded-md border border-primary/25 bg-primary-soft/40 px-3 py-2 shadow-sm shadow-black/5">
+          <span className="text-xs font-semibold tracking-wide text-foreground uppercase">
+            {t("sd.selector.selectionLabel")}
+          </span>
+          <div className="flex gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={allFilteredSelected ? "default" : "secondary"}
               className={cn(
-                "cursor-pointer text-sm font-normal",
-                !actions.import && "pointer-events-none",
+                "h-8 min-w-[4.5rem] px-3 text-xs font-semibold",
+                !allFilteredSelected && "border-border bg-card shadow-sm",
               )}
+              aria-pressed={allFilteredSelected}
+              disabled={filtered.length === 0}
+              onClick={selectAllFiltered}
             >
-              {t("media.list.scanQr")}
-            </Label>
+              {t("sd.selector.selectAllVisible")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={allNewSelected ? "default" : "secondary"}
+              className={cn(
+                "h-8 min-w-[4.5rem] px-3 text-xs font-semibold",
+                !allNewSelected && "border-border bg-card shadow-sm",
+              )}
+              aria-pressed={allNewSelected}
+              disabled={newInFiltered.length === 0}
+              onClick={selectOnlyNew}
+            >
+              {t("sd.selector.selectNewOnly")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-8 min-w-[4.5rem] border-border bg-card px-3 text-xs font-semibold shadow-sm"
+              disabled={noneSelected}
+              onClick={clearSelection}
+            >
+              {t("sd.selector.clearSelection")}
+            </Button>
           </div>
+          <div className="relative" ref={moreRef}>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="h-8 border-border bg-card px-2 shadow-sm"
+              aria-label={t("sd.selector.moreActions")}
+              aria-expanded={moreOpen}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden />
+            </Button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                className="absolute top-full left-0 z-20 mt-1 min-w-[160px] rounded-md border border-border bg-card py-1 shadow-md"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-1.5 text-left text-xs hover:bg-black/5 disabled:opacity-50"
+                  disabled={filtered.length === 0}
+                  onClick={() => {
+                    invertSelection();
+                    setMoreOpen(false);
+                  }}
+                >
+                  {t("sd.selector.invertSelection")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          {selectedStats.total > 0 ? (
+            <span className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-card px-2.5 py-0.5 text-xs font-medium text-primary tabular-nums">
+              {t("sd.selector.footerSelected", {
+                count: selectedStats.total,
+                sizeMb: selectedStats.sizeMb.toFixed(1),
+              })}
+              {selectedStats.videos > 0 ? (
+                <span className="inline-flex items-center gap-0.5 text-primary/90">
+                  <Film className="h-3 w-3" aria-hidden />
+                  {selectedStats.videos}
+                </span>
+              ) : null}
+              {selectedStats.photos > 0 ? (
+                <span className="inline-flex items-center gap-0.5 text-primary/90">
+                  <ImageIcon className="h-3 w-3" aria-hidden />
+                  {selectedStats.photos}
+                </span>
+              ) : null}
+            </span>
+          ) : (
+            <span className="ml-auto text-[11px] text-muted">
+              {t("sd.selector.footerNoneSelected")}
+            </span>
+          )}
         </div>
 
         {viewMode === "thumbnail" ? (
           <div
             ref={attachGridRef}
             className={cn(
-              "relative min-h-[16rem] flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated p-2 pr-3 [scrollbar-gutter:stable]",
+              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated [scrollbar-gutter:stable]",
               selectionDragging && "select-none",
             )}
             onPointerDown={onGridPointerDown}
@@ -1180,247 +1223,191 @@ export function SdFileSelector({
           >
             <div
               className="relative"
-              style={{ height: Math.max(gridTotalH, 1) }}
+              style={{ height: Math.max(gridLayout.totalH, 1) }}
             >
+              {/* Full-bleed gaps + dedicated side rails for marquee start. */}
               <div
-                className="grid gap-2"
-                style={{
-                  position: "absolute",
-                  top: gridPadTop,
-                  left: 0,
-                  right: 0,
-                  gridTemplateColumns: `repeat(${Math.max(gridCols, 1)}, minmax(0, 1fr))`,
-                }}
-              >
-              {visibleTiles.map((file) => {
+                data-marquee-ok=""
+                aria-hidden
+                className="absolute inset-0 z-0"
+              />
+              <div
+                data-marquee-ok=""
+                aria-hidden
+                className="absolute top-0 bottom-0 left-0 z-[2]"
+                style={{ width: GRID_PAD }}
+              />
+              <div
+                data-marquee-ok=""
+                aria-hidden
+                className="absolute top-0 right-0 bottom-0 z-[2]"
+                style={{ width: GRID_PAD }}
+              />
+              {visibleEntries.map((entry) => {
+                if (entry.kind === "header") {
+                  const allOn =
+                    entry.paths.length > 0 &&
+                    entry.paths.every((p) => selected.has(p));
+                  return (
+                    <div
+                      key={`h:${entry.key}`}
+                      className="absolute right-0 left-0 z-[1]"
+                      style={{
+                        top: entry.y,
+                        height: entry.height,
+                        paddingLeft: GRID_PAD,
+                        paddingRight: GRID_PAD,
+                      }}
+                    >
+                      <DateGroupHeader
+                        label={entry.label}
+                        count={entry.count}
+                        allSelected={allOn}
+                        onSelectGroup={() => toggleGroupSelection(entry.paths)}
+                        style={{ height: "100%" }}
+                      />
+                    </div>
+                  );
+                }
+
+                const file = entry.file;
                 const isSel = selected.has(file.path);
                 const captureLabel = formatCaptureTime(file.display_epoch);
-                const setTileEl = (el: HTMLElement | null) => {
-                  if (el) tileRefs.current.set(file.path, el);
-                  else tileRefs.current.delete(file.path);
+                const style = {
+                  position: "absolute" as const,
+                  left: entry.x,
+                  top: entry.y,
+                  width: entry.width,
+                  height: entry.height,
+                  zIndex: 1,
                 };
 
                 if (file.is_video && !icaVirtual) {
                   return (
-                    <SdVideoTile
-                      key={file.path}
-                      path={file.path}
-                      filename={file.filename}
-                      sizeLabel={formatBytes(file.size_bytes)}
-                      captureLabel={captureLabel}
-                      thumbUrl={thumbs[file.path]?.url}
-                      thumbQuality={thumbs[file.path]?.quality}
-                      selected={isSel}
-                      alreadyProcessed={file.already_processed}
-                      showNewBadge={showNewBadges}
-                      isActive={activeVideoPath === file.path}
-                      selectionLocked={selectionDragging}
-                      previewEnabled={!icaVirtual}
-                      onActivate={() => setActiveVideoPath(file.path)}
-                      onDeactivate={() =>
-                        setActiveVideoPath((prev) => (prev === file.path ? null : prev))
-                      }
-                      onSelect={(ev) =>
-                        selectPath(file.path, ev.shiftKey ? "range" : "toggle")
-                      }
-                      tileRef={setTileEl}
-                    />
+                    <div key={file.path} style={style}>
+                      <SdVideoTile
+                        path={file.path}
+                        filename={file.filename}
+                        sizeLabel={formatBytes(file.size_bytes)}
+                        captureLabel={captureLabel}
+                        selected={isSel}
+                        alreadyProcessed={file.already_processed}
+                        showNewBadge={showNewBadges}
+                        isActive={activeVideoPath === file.path}
+                        selectionLocked={selectionDragging}
+                        scrollLocked={scrollLocked}
+                        previewEnabled={!icaVirtual}
+                        density={density}
+                        loader={loader}
+                        onActivate={onActivateVideo}
+                        onDeactivate={onDeactivateVideo}
+                        onSelect={onTileSelect}
+                        tileRef={registerThumbEl}
+                      />
+                    </div>
                   );
                 }
 
                 return (
-                  <div
-                    key={file.path}
-                    data-tile
-                    data-thumb-path={file.path}
-                    ref={setTileEl}
-                    className={cn(
-                      "relative flex flex-col overflow-hidden rounded-md text-left transition",
-                      isSel
-                        ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
-                        : "border border-border/70",
-                    )}
-                  >
-                    <SdTilePreview
-                      thumbUrl={thumbs[file.path]?.url}
-                      thumbQuality={thumbs[file.path]?.quality}
-                      placeholder="pulse"
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).closest("[data-no-marquee]")) {
-                          return;
-                        }
-                        selectPath(file.path, e.shiftKey ? "range" : "toggle");
-                      }}
-                    >
-                      <div
-                        className="absolute top-1.5 left-1.5 z-10"
-                        data-no-marquee=""
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                      >
-                        <Checkbox
-                          checked={isSel}
-                          onPointerDown={(e) =>
-                            onCheckboxPointerDown(file.path, e)
-                          }
-                          onCheckedChange={() =>
-                            onCheckboxCheckedChange(file.path)
-                          }
-                          aria-label={t("common.actions.selectNamed", { name: file.filename })}
-                          className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
-                        />
-                      </div>
-                      <FileStatusBadge
-                        alreadyProcessed={file.already_processed}
-                        showNewBadge={showNewBadges}
-                        className="absolute top-1.5 right-1.5 z-10"
-                      />
-                      {file.is_video ? (
-                        <Film
-                          className="pointer-events-none absolute bottom-1.5 left-1.5 z-10 h-3.5 w-3.5 text-white/90 drop-shadow"
-                          aria-hidden
-                        />
-                      ) : null}
-                    </SdTilePreview>
-                    <button
-                      type="button"
-                      data-marquee-ok=""
-                      className="truncate px-2 py-1 text-left text-[11px] hover:bg-black/5"
-                      onClick={(e) =>
-                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
-                      }
-                    >
-                      {file.filename}
-                    </button>
-                    <button
-                      type="button"
-                      data-marquee-ok=""
-                      className="flex w-full items-baseline justify-between gap-2 px-2 pb-1 text-left text-[10px] text-muted hover:bg-black/5"
-                      onClick={(e) =>
-                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
-                      }
-                    >
-                      <span className="min-w-0 truncate">
-                        {formatBytes(file.size_bytes)}
-                      </span>
-                      {captureLabel ? (
-                        <span className="shrink-0 tabular-nums">{captureLabel}</span>
-                      ) : null}
-                    </button>
+                  <div key={file.path} style={style}>
+                    <SdPhotoTile
+                      path={file.path}
+                      filename={file.filename}
+                      sizeLabel={formatBytes(file.size_bytes)}
+                      captureLabel={captureLabel}
+                      isVideo={file.is_video}
+                      selected={isSel}
+                      alreadyProcessed={file.already_processed}
+                      showNewBadge={showNewBadges}
+                      density={density}
+                      loader={loader}
+                      onSelect={onTileSelect}
+                      onCheckboxPointerDown={onCheckboxPointerDown}
+                      onCheckboxCheckedChange={onCheckboxCheckedChange}
+                      registerEl={registerThumbEl}
+                    />
                   </div>
                 );
               })}
-              </div>
+              <div
+                ref={marqueeOverlayRef}
+                className="pointer-events-none absolute z-50 border border-primary bg-primary/25"
+                style={{ display: "none" }}
+              />
             </div>
             <CatalogStatusOverlay
               listing={listing}
               empty={files.length === 0}
+              filterEmpty={files.length > 0 && filtered.length === 0}
               drive={drive}
               reason={emptyReason}
               onRefresh={onRefresh}
             />
-            {dragBox && (
-              <div
-                className="pointer-events-none absolute border border-primary bg-primary-soft"
-                style={{
-                  left: Math.min(dragBox.x0, dragBox.x1),
-                  top: Math.min(dragBox.y0, dragBox.y1),
-                  width: Math.abs(dragBox.x1 - dragBox.x0),
-                  height: Math.abs(dragBox.y1 - dragBox.y0),
-                }}
-              />
-            )}
           </div>
         ) : (
           <div
             ref={attachDetailsRef}
-            className="relative min-h-[16rem] flex-1 overflow-auto rounded-md border border-border/60"
+            className="relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60"
           >
-            <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 z-[1] bg-card">
-                <tr className="border-b border-border/60">
-                  <th className="w-8 p-2" />
-                  <th className="w-14 p-2">{t("common.labels.preview")}</th>
-                  <th className="p-2">{t("common.labels.name")}</th>
-                  <th className="p-2">{t("common.labels.type")}</th>
-                  <th className="p-2">{t("common.labels.size")}</th>
-                  <th className="p-2">{t("common.labels.date")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {detailsPadTop > 0 ? (
-                  <tr aria-hidden>
-                    <td colSpan={6} style={{ height: detailsPadTop, padding: 0 }} />
-                  </tr>
-                ) : null}
-                {visibleDetails.map((file) => {
-                  const thumb = thumbs[file.path];
-                  return (
-                    <tr
-                      key={file.path}
-                      className={cn(
-                        "border-b border-border/40 hover:bg-black/5",
-                        selected.has(file.path) && "bg-primary-soft",
-                      )}
-                      onClick={(e) =>
-                        selectPath(file.path, e.shiftKey ? "range" : "toggle")
+            <div
+              className="sticky top-0 z-[1] grid items-center gap-2 border-b border-border/60 bg-card px-2 text-[11px] font-medium text-muted"
+              style={{
+                height: DETAILS_HEADER_H,
+                gridTemplateColumns:
+                  density === "compact"
+                    ? "28px minmax(0,1fr) 64px 72px 120px"
+                    : "32px 56px minmax(0,1fr) 72px 80px 140px",
+              }}
+            >
+              <span />
+              {density === "comfortable" ? (
+                <span>{t("common.labels.preview")}</span>
+              ) : null}
+              <span>{t("common.labels.name")}</span>
+              <span>{t("common.labels.type")}</span>
+              <span>{t("common.labels.size")}</span>
+              <span>{t("common.labels.date")}</span>
+            </div>
+            <div
+              className="relative"
+              style={{ height: Math.max(detailsTotalH, 1) }}
+            >
+              {visibleDetails.map((file, i) => {
+                const idx = detailsStart + i;
+                return (
+                  <div
+                    key={file.path}
+                    className="absolute left-0 right-0"
+                    style={{ top: idx * rowH, height: rowH }}
+                  >
+                    <SdDetailsRow
+                      path={file.path}
+                      filename={file.filename}
+                      sizeLabel={formatBytes(file.size_bytes)}
+                      dateLabel={formatEpoch(file.display_epoch)}
+                      typeLabel={
+                        file.is_video
+                          ? t("common.labels.video")
+                          : t("common.labels.photo")
                       }
-                    >
-                      <td
-                        className="p-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onPointerDown={(e) => e.stopPropagation()}
-                      >
-                        <Checkbox
-                          checked={selected.has(file.path)}
-                          onPointerDown={(e) =>
-                            onCheckboxPointerDown(file.path, e)
-                          }
-                          onCheckedChange={() =>
-                            onCheckboxCheckedChange(file.path)
-                          }
-                        />
-                      </td>
-                      <td className="p-1.5">
-                        <SdTilePreview
-                          thumbPath={file.path}
-                          thumbUrl={thumb?.url}
-                          thumbQuality={thumb?.quality}
-                          placeholder="pulse"
-                          suppressLqEnhance
-                          layout="inline"
-                          className="h-9 w-14 shrink-0 rounded"
-                        />
-                      </td>
-                      <td className="max-w-[280px] p-2">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate">{file.filename}</span>
-                          <FileStatusBadge
-                            alreadyProcessed={file.already_processed}
-                            showNewBadge={showNewBadges}
-                            className="shrink-0 shadow-sm"
-                          />
-                        </div>
-                      </td>
-                      <td className="p-2">{file.is_video ? t("common.labels.video") : t("common.labels.photo")}</td>
-                      <td className="p-2">{formatBytes(file.size_bytes)}</td>
-                      <td className="p-2">{formatEpoch(file.display_epoch)}</td>
-                    </tr>
-                  );
-                })}
-                {detailsPadBottom > 0 ? (
-                  <tr aria-hidden>
-                    <td
-                      colSpan={6}
-                      style={{ height: detailsPadBottom, padding: 0 }}
+                      selected={selected.has(file.path)}
+                      alreadyProcessed={file.already_processed}
+                      showNewBadge={showNewBadges}
+                      density={density}
+                      loader={loader}
+                      onSelect={onTileSelect}
+                      onCheckboxPointerDown={onCheckboxPointerDown}
+                      onCheckboxCheckedChange={onCheckboxCheckedChange}
+                      registerEl={registerThumbEl}
                     />
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                  </div>
+                );
+              })}
+            </div>
             <CatalogStatusOverlay
               listing={listing}
               empty={files.length === 0}
+              filterEmpty={files.length > 0 && filtered.length === 0}
               drive={drive}
               reason={emptyReason}
               onRefresh={onRefresh}
@@ -1428,42 +1415,97 @@ export function SdFileSelector({
           </div>
         )}
 
-        <DialogFooter>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            {t("common.actions.cancel")}
-          </Button>
-          {mode === "size_limit" && onProceedAll && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-card-elevated px-3 py-2">
+          <span className="text-xs font-medium text-muted">
+            {t("common.labels.actions")}:
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ActionToggle
+              pressed={actions.backup}
+              disabled={catalogEmpty}
+              onPressedChange={(v) => patchAction("backup", v)}
+            >
+              {t("app.sd.backupLabel")}
+            </ActionToggle>
+            <ActionToggle
+              pressed={actions.import}
+              disabled={catalogEmpty}
+              onPressedChange={(v) => patchAction("import", v)}
+            >
+              {t("app.import.label")}
+            </ActionToggle>
+            <ActionToggle
+              pressed={actions.clear}
+              disabled={!actions.backup || catalogEmpty}
+              title={
+                catalogEmpty
+                  ? t("sd.selector.clearNoFiles")
+                  : actions.backup
+                    ? t("sd.selector.clearAfterBackup")
+                    : t("sd.selector.clearNeedsBackup")
+              }
+              onPressedChange={(v) => patchAction("clear", v)}
+            >
+              {t("sd.selector.clearSd")}
+            </ActionToggle>
+            <ActionToggle
+              pressed={actions.eject}
+              title={t("sd.selector.ejectAfterBackupTitle")}
+              onPressedChange={(v) => patchAction("eject", v)}
+            >
+              {t("app.sd.ejectLabel")}
+            </ActionToggle>
+            <ActionToggle
+              pressed={Boolean(actions.scanQr)}
+              disabled={!actions.import || catalogEmpty}
+              title={
+                actions.import
+                  ? t("sd.selector.scanImportedQr")
+                  : t("sd.selector.scanNeedsImport")
+              }
+              onPressedChange={(v) => patchAction("scanQr", v)}
+            >
+              {t("media.list.scanQr")}
+            </ActionToggle>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {mode === "size_limit" && onProceedAll ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-8"
+                disabled={!anyAction || listing}
+                onClick={() => onProceedAll(actions)}
+              >
+                {t("sd.selector.proceedDespiteLimit")}
+              </Button>
+            ) : null}
             <Button
               type="button"
-              variant="secondary"
-              disabled={!anyAction || listing}
-              onClick={() => onProceedAll(actions)}
+              size="sm"
+              className="h-8 min-w-[8rem]"
+              disabled={confirmDisabled}
+              onClick={() => {
+                if (catalogEmpty) {
+                  onConfirm([], {
+                    backup: false,
+                    import: false,
+                    clear: false,
+                    eject: true,
+                    scanQr: false,
+                  });
+                  return;
+                }
+                onConfirm([...selected], actions);
+              }}
             >
-              {t("sd.selector.proceedDespiteLimit")}
+              {catalogEmpty && actions.eject
+                ? t("app.sd.ejectLabel")
+                : confirmLabel(actions, selected.size)}
             </Button>
-          )}
-          <Button
-            type="button"
-            disabled={confirmDisabled}
-            onClick={() => {
-              if (catalogEmpty) {
-                onConfirm([], {
-                  backup: false,
-                  import: false,
-                  clear: false,
-                  eject: true,
-                  scanQr: false,
-                });
-                return;
-              }
-              onConfirm([...selected], actions);
-            }}
-          >
-            {catalogEmpty && actions.eject
-              ? t("app.sd.ejectLabel")
-              : confirmLabel(actions, selected.size)}
-          </Button>
-        </DialogFooter>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );
