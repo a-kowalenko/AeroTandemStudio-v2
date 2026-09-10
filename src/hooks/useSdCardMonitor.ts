@@ -6,6 +6,7 @@ import {
   scanSdDrives,
   startSdMonitor,
   type BackupProgress,
+  type SdFileEnrichProgress,
   type SdFileInfo,
   type SdInsertedPayload,
   type SdWorkflowActions,
@@ -274,6 +275,17 @@ export function useSdCardMonitor(opts?: {
           setPhase("backing_up");
           setWorkflowProgress(null);
           setBackupProgress(event.payload);
+        }),
+      );
+
+      unlisteners.push(
+        await listen<SdFileEnrichProgress>("sd-file-enrich-progress", (event) => {
+          const { drive, generation, updates } = event.payload;
+          const st = useSdStore.getState();
+          if (generation !== st.selectorEnrichGen) return;
+          if (!st.selectorOpen || st.selectorDrive !== drive) return;
+          if (!updates?.length) return;
+          st.patchSelectorFiles(updates);
         }),
       );
 

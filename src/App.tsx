@@ -249,7 +249,6 @@ function App() {
   const [mediaTab, setMediaTab] = useState<"video" | "foto">("video");
   const photoList = usePhotoStore((s) => s.photoList);
   const defaultsApplied = useRef(false);
-  const sdEnrichGenRef = useRef(0);
   const [cutterOpen, setCutterOpen] = useState(false);
   const [cutterPath, setCutterPath] = useState<string | null>(null);
   const [cutterDuration, setCutterDuration] = useState(0);
@@ -579,12 +578,13 @@ function App() {
         return;
       }
       // EXIF / "bekannt" in background — dialog already open with mtime dates.
-      const gen = ++sdEnrichGenRef.current;
+      // Progressive `sd-file-enrich-progress` patches apply via useSdCardMonitor.
+      const gen = useSdStore.getState().beginSelectorEnrich();
       const paths = listed.files.map((f) => f.path);
-      void enrichSdFiles(drive, paths)
+      void enrichSdFiles(drive, paths, gen)
         .then((updates) => {
-          if (gen !== sdEnrichGenRef.current) return;
           const cur = useSdStore.getState();
+          if (gen !== cur.selectorEnrichGen) return;
           if (!cur.selectorOpen || cur.selectorDrive !== drive) return;
           patchSelectorFiles(updates);
         })
@@ -2460,7 +2460,6 @@ function App() {
         onBulkUploadSummaryClose={() => setBulkUploadSummary(null)}
         settingsSdActions={settingsSdActions}
         onSdSelectorClose={() => {
-          sdEnrichGenRef.current += 1;
           closeSelector();
           scheduleSdQueueDrain();
         }}

@@ -33,6 +33,12 @@ export type SdFileEnrichment = {
   already_processed: boolean;
 };
 
+export type SdFileEnrichProgress = {
+  drive: string;
+  generation: number;
+  updates: SdFileEnrichment[];
+};
+
 export type ListEmptyReason = "no_media" | "filtered_only";
 
 export type ListSdFilesResult = {
@@ -214,10 +220,12 @@ export async function listSdFiles(drive: string): Promise<ListSdFilesResult> {
 export async function enrichSdFiles(
   drive: string,
   paths?: string[] | null,
+  generation?: number | null,
 ): Promise<SdFileEnrichment[]> {
   return invoke<SdFileEnrichment[]>("enrich_sd_files", {
     drive,
     paths: paths ?? null,
+    generation: generation ?? null,
   });
 }
 

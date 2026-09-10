@@ -12,8 +12,9 @@ use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, is_cancelled, WORKFLOW
 use crate::sd_card::autoplay;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
-    SdFileEnrichment, SdInsertedPayload, WorkflowProgress, EVENT_BACKUP_PROGRESS,
-    EVENT_BACKUP_STATUS, EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
+    SdFileEnrichProgress, SdFileEnrichment, SdInsertedPayload, WorkflowProgress,
+    EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_FILE_ENRICH_PROGRESS, EVENT_SD_INSERTED,
+    EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
 use crate::sd_card::secondary_backup::{SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP};
 use crate::storage::logging;
@@ -210,16 +211,29 @@ pub async fn list_sd_files(drive: String) -> Result<ListSdFilesResult, String> {
 
 #[tauri::command]
 pub async fn enrich_sd_files(
+    app: AppHandle,
     drive: String,
     paths: Option<Vec<String>>,
+    generation: Option<u64>,
 ) -> Result<Vec<SdFileEnrichment>, String> {
     let count = paths.as_ref().map(|v| v.len()).unwrap_or(0);
+    let generation = generation.unwrap_or(0);
     logging::debug(
         "sd",
-        format!("SD-Enrich start: drive={drive}, paths={count}"),
+        format!("SD-Enrich start: drive={drive}, paths={count}, gen={generation}"),
     );
     let result = tauri::async_runtime::spawn_blocking(move || {
-        SD_MONITOR.enrich_files(&drive, paths)
+        let drive_for_emit = drive.clone();
+        SD_MONITOR.enrich_files_with_progress(&drive, paths, Some(|chunk: &[SdFileEnrichment]| {
+            let _ = app.emit(
+                EVENT_FILE_ENRICH_PROGRESS,
+                SdFileEnrichProgress {
+                    drive: drive_for_emit.clone(),
+                    generation,
+                    updates: chunk.to_vec(),
+                },
+            );
+        }))
     })
     .await
     .map_err(|e| e.to_string())?;

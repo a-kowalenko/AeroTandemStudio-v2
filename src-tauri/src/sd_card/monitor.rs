@@ -1,7 +1,7 @@
 //! SD card monitoring, DCIM detection, and backup coordination
 //! (port of legacy `sd_card_monitor.py`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -38,6 +38,7 @@ pub const EVENT_SD_REMOVED: &str = "sd-card-removed";
 pub const EVENT_BACKUP_PROGRESS: &str = "sd-backup-progress";
 pub const EVENT_BACKUP_STATUS: &str = "sd-backup-status";
 pub const EVENT_WORKFLOW_PROGRESS: &str = "sd-workflow-progress";
+pub const EVENT_FILE_ENRICH_PROGRESS: &str = "sd-file-enrich-progress";
 #[allow(dead_code)]
 pub const EVENT_BACKUP_CONFIRM: &str = "sd-backup-confirmation-required";
 #[allow(dead_code)]
@@ -216,6 +217,15 @@ pub struct SdFileEnrichment {
     pub path: String,
     pub display_epoch: f64,
     pub already_processed: bool,
+}
+
+/// Progressive enrich patches for the confirm dialog (`sd-file-enrich-progress`).
+#[derive(Debug, Clone, Serialize)]
+pub struct SdFileEnrichProgress {
+    pub drive: String,
+    /// Frontend generation token — ignore stale events after close/reopen.
+    pub generation: u64,
+    pub updates: Vec<SdFileEnrichment>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -616,6 +626,9 @@ struct DcimListCache {
 }
 
 const DCIM_LIST_CACHE_TTL: Duration = Duration::from_secs(45);
+const IDENTITY_CACHE_MAX: usize = 2048;
+const ENRICH_HASH_WORKERS: usize = 3;
+const ENRICH_EMIT_CHUNK: usize = 12;
 
 pub struct SdCardMonitor {
     monitoring: AtomicBool,
@@ -630,6 +643,8 @@ pub struct SdCardMonitor {
     backup_in_progress: AtomicBool,
     history: Mutex<MediaHistoryStore>,
     list_cache: Mutex<Option<DcimListCache>>,
+    /// `(path, size, mtime_ms) → identity_hash` to avoid re-reading 4MB on re-enrich / skip.
+    identity_cache: Mutex<HashMap<(String, u64, u64), String>>,
     config_provider: Mutex<Box<dyn Fn() -> AppConfig + Send>>,
     on_progress: Mutex<Option<ProgressCb>>,
     on_workflow: Mutex<Option<WorkflowCb>>,
@@ -661,6 +676,7 @@ impl SdCardMonitor {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(history),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new(config_provider)),
             on_progress: Mutex::new(None),
             on_workflow: Mutex::new(None),
@@ -1095,48 +1111,289 @@ impl SdCardMonitor {
         })
     }
 
-    /// Fill EXIF display dates + history flags after a fast [`Self::list_files`].
+    /// Fill history flags quickly, then EXIF display dates (optional progress chunks).
     pub fn enrich_files(
         &self,
         drive: &str,
         paths: Option<Vec<String>>,
     ) -> Result<Vec<SdFileEnrichment>, SdError> {
+        self.enrich_files_with_progress(drive, paths, None::<fn(&[SdFileEnrichment])>)
+    }
+
+    /// Like [`Self::enrich_files`], emitting progressive patches via `on_chunk`.
+    pub fn enrich_files_with_progress<F>(
+        &self,
+        drive: &str,
+        paths: Option<Vec<String>>,
+        mut on_chunk: Option<F>,
+    ) -> Result<Vec<SdFileEnrichment>, SdError>
+    where
+        F: FnMut(&[SdFileEnrichment]),
+    {
         let paths = match paths {
             Some(p) if !p.is_empty() => p,
             _ => self.scan_drive_media(drive)?.0,
         };
 
-        let mut identities: Vec<(String, Option<String>)> = Vec::with_capacity(paths.len());
-        let mut enrichments = Vec::with_capacity(paths.len());
+        struct Pending {
+            path: String,
+            filename: String,
+            size: u64,
+            mtime: f64,
+            display_epoch: f64,
+            already_processed: bool,
+        }
 
+        let mut pending: Vec<Pending> = Vec::with_capacity(paths.len());
         for path in &paths {
             let pb = Path::new(path);
             if !pb.is_file() {
                 continue;
             }
+            let meta = match fs::metadata(pb) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let size = meta.len();
             let mtime = get_mtime_timestamp(pb).unwrap_or(0.0);
-            let display_epoch = resolve_video_display_epoch(pb, Some(mtime), None);
-            let hash = MediaHistoryStore::compute_identity(pb).ok().map(|(h, _)| h);
-            identities.push((path.clone(), hash));
-            enrichments.push(SdFileEnrichment {
+            let filename = pb
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            if filename.is_empty() {
+                continue;
+            }
+            pending.push(Pending {
                 path: path.clone(),
-                display_epoch,
+                filename,
+                size,
+                mtime,
+                display_epoch: mtime,
                 already_processed: false,
             });
         }
 
-        let hashes: Vec<String> = identities.iter().filter_map(|(_, h)| h.clone()).collect();
-        let known = {
-            let history = self.history.lock().unwrap();
-            history.known_hashes(&hashes).unwrap_or_default()
+        let mut emit = |chunk: &[SdFileEnrichment]| {
+            if chunk.is_empty() {
+                return;
+            }
+            if let Some(cb) = on_chunk.as_mut() {
+                cb(chunk);
+            }
         };
-        for (i, (_, hash)) in identities.iter().enumerate() {
-            if let Some(h) = hash {
-                enrichments[i].already_processed = known.contains(h);
+
+        // Phase 1: name+size prefilter — non-hits are definitely new (no SD read).
+        let pairs: Vec<(String, u64)> = pending
+            .iter()
+            .map(|p| (p.filename.clone(), p.size))
+            .collect();
+        let name_hits = {
+            let history = self.history.lock().unwrap();
+            history.matching_name_sizes(&pairs).unwrap_or_default()
+        };
+
+        let mut candidate_idx: Vec<usize> = Vec::new();
+        let mut fresh_chunk: Vec<SdFileEnrichment> = Vec::new();
+        for (i, p) in pending.iter().enumerate() {
+            if name_hits.contains(&(p.filename.clone(), p.size)) {
+                candidate_idx.push(i);
+            } else {
+                fresh_chunk.push(SdFileEnrichment {
+                    path: p.path.clone(),
+                    display_epoch: p.display_epoch,
+                    already_processed: false,
+                });
+                if fresh_chunk.len() >= ENRICH_EMIT_CHUNK {
+                    emit(&fresh_chunk);
+                    fresh_chunk.clear();
+                }
+            }
+        }
+        emit(&fresh_chunk);
+
+        // Phase 2: hash only name+size candidates (parallel + session cache).
+        let cand_paths: Vec<PathBuf> = candidate_idx
+            .iter()
+            .map(|&i| PathBuf::from(&pending[i].path))
+            .collect();
+        let mut hashes: Vec<Option<String>> = vec![None; candidate_idx.len()];
+        let mut need_hash_local: Vec<usize> = Vec::new();
+        let mut need_hash_paths: Vec<PathBuf> = Vec::new();
+
+        for (local, &pend_i) in candidate_idx.iter().enumerate() {
+            let p = &pending[pend_i];
+            if let Some(h) = self.identity_cache_get(&p.path, p.size, p.mtime) {
+                hashes[local] = Some(h);
+            } else {
+                need_hash_local.push(local);
+                need_hash_paths.push(cand_paths[local].clone());
             }
         }
 
-        Ok(enrichments)
+        let computed =
+            MediaHistoryStore::compute_identities_parallel(&need_hash_paths, ENRICH_HASH_WORKERS);
+        for (j, local) in need_hash_local.into_iter().enumerate() {
+            if let Some((hash, size)) = computed.get(j).and_then(|o| o.clone()) {
+                let pend_i = candidate_idx[local];
+                let p = &pending[pend_i];
+                self.identity_cache_put(&p.path, size, p.mtime, &hash);
+                hashes[local] = Some(hash);
+            }
+        }
+
+        let hash_list: Vec<String> = hashes.iter().filter_map(|h| h.clone()).collect();
+        let known = {
+            let history = self.history.lock().unwrap();
+            history.known_hashes(&hash_list).unwrap_or_default()
+        };
+
+        let mut flag_chunk: Vec<SdFileEnrichment> = Vec::new();
+        for (local, &pend_i) in candidate_idx.iter().enumerate() {
+            let processed = hashes[local]
+                .as_ref()
+                .map(|h| known.contains(h))
+                .unwrap_or(false);
+            pending[pend_i].already_processed = processed;
+            flag_chunk.push(SdFileEnrichment {
+                path: pending[pend_i].path.clone(),
+                display_epoch: pending[pend_i].display_epoch,
+                already_processed: processed,
+            });
+            if flag_chunk.len() >= ENRICH_EMIT_CHUNK {
+                emit(&flag_chunk);
+                flag_chunk.clear();
+            }
+        }
+        emit(&flag_chunk);
+
+        // Phase 3: EXIF display epochs (after flags so "bekannt" appears sooner).
+        let mut exif_chunk: Vec<SdFileEnrichment> = Vec::new();
+        for p in &mut pending {
+            let epoch = resolve_video_display_epoch(Path::new(&p.path), Some(p.mtime), None);
+            if (epoch - p.display_epoch).abs() > f64::EPSILON {
+                p.display_epoch = epoch;
+                exif_chunk.push(SdFileEnrichment {
+                    path: p.path.clone(),
+                    display_epoch: p.display_epoch,
+                    already_processed: p.already_processed,
+                });
+                if exif_chunk.len() >= ENRICH_EMIT_CHUNK {
+                    emit(&exif_chunk);
+                    exif_chunk.clear();
+                }
+            }
+        }
+        emit(&exif_chunk);
+
+        Ok(pending
+            .into_iter()
+            .map(|p| SdFileEnrichment {
+                path: p.path,
+                display_epoch: p.display_epoch,
+                already_processed: p.already_processed,
+            })
+            .collect())
+    }
+
+    fn identity_cache_key(path: &str, size: u64, mtime: f64) -> (String, u64, u64) {
+        (path.to_string(), size, (mtime * 1000.0).round() as u64)
+    }
+
+    fn identity_cache_get(&self, path: &str, size: u64, mtime: f64) -> Option<String> {
+        let key = Self::identity_cache_key(path, size, mtime);
+        self.identity_cache.lock().unwrap().get(&key).cloned()
+    }
+
+    fn identity_cache_put(&self, path: &str, size: u64, mtime: f64, hash: &str) {
+        let mut cache = self.identity_cache.lock().unwrap();
+        if cache.len() >= IDENTITY_CACHE_MAX {
+            cache.clear();
+        }
+        cache.insert(Self::identity_cache_key(path, size, mtime), hash.to_string());
+    }
+
+    /// Drop known (hash-confirmed) paths when `sd_skip_processed` is on.
+    /// Uses name+size prefilter so brand-new files never read 4MB from the SD.
+    fn filter_skip_processed_paths(
+        &self,
+        media_files: &[String],
+    ) -> Result<(Vec<String>, usize), SdError> {
+        let mut pairs: Vec<(String, u64)> = Vec::with_capacity(media_files.len());
+        let mut metas: Vec<(String, String, u64, f64)> = Vec::with_capacity(media_files.len());
+        for src in media_files {
+            let pb = Path::new(src);
+            let Ok(meta) = fs::metadata(pb) else {
+                continue;
+            };
+            let size = meta.len();
+            let mtime = get_mtime_timestamp(pb).unwrap_or(0.0);
+            let filename = pb
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            if filename.is_empty() {
+                continue;
+            }
+            pairs.push((filename.clone(), size));
+            metas.push((src.clone(), filename, size, mtime));
+        }
+
+        let name_hits = {
+            let history = self.history.lock().unwrap();
+            history.matching_name_sizes(&pairs).unwrap_or_default()
+        };
+
+        let mut kept = Vec::new();
+        let mut skipped = 0usize;
+        let mut candidate_paths: Vec<PathBuf> = Vec::new();
+        let mut candidate_meta: Vec<(String, u64, f64)> = Vec::new();
+
+        for (src, filename, size, mtime) in &metas {
+            if !name_hits.contains(&(filename.clone(), *size)) {
+                kept.push(src.clone());
+                continue;
+            }
+            if let Some(hash) = self.identity_cache_get(src, *size, *mtime) {
+                let known = {
+                    let history = self.history.lock().unwrap();
+                    history.contains(&hash).unwrap_or(false)
+                };
+                if known {
+                    skipped += 1;
+                } else {
+                    kept.push(src.clone());
+                }
+                continue;
+            }
+            candidate_paths.push(PathBuf::from(src));
+            candidate_meta.push((src.clone(), *size, *mtime));
+        }
+
+        let computed =
+            MediaHistoryStore::compute_identities_parallel(&candidate_paths, ENRICH_HASH_WORKERS);
+        let hash_list: Vec<String> = computed
+            .iter()
+            .filter_map(|o| o.as_ref().map(|(h, _)| h.clone()))
+            .collect();
+        let known = {
+            let history = self.history.lock().unwrap();
+            history.known_hashes(&hash_list).unwrap_or_default()
+        };
+        for (i, (src, size, mtime)) in candidate_meta.into_iter().enumerate() {
+            if let Some((hash, _)) = computed.get(i).and_then(|o| o.clone()) {
+                self.identity_cache_put(&src, size, mtime, &hash);
+                if known.contains(&hash) {
+                    skipped += 1;
+                } else {
+                    kept.push(src);
+                }
+            } else {
+                kept.push(src);
+            }
+        }
+        Ok((kept, skipped))
     }
 
     fn invalidate_list_cache_for(&self, drives: &[String]) {
@@ -1435,22 +1692,15 @@ impl SdCardMonitor {
             ));
         }
 
-        let history = self.history.lock().unwrap();
-        let mut filtered = Vec::new();
+        let filtered;
         let mut skipped_count = 0usize;
         if cfg.sd_skip_processed {
-            for src in &media_files {
-                match MediaHistoryStore::compute_identity(Path::new(src)) {
-                    Ok((hash, _)) if history.contains(&hash).unwrap_or(false) => {
-                        skipped_count += 1;
-                    }
-                    _ => filtered.push(src.clone()),
-                }
-            }
+            let (kept, skipped) = self.filter_skip_processed_paths(&media_files)?;
+            filtered = kept;
+            skipped_count = skipped;
         } else {
             filtered = media_files;
         }
-        drop(history);
 
         if filtered.is_empty() {
             return Ok(BackupResult::fail(
@@ -2903,6 +3153,7 @@ mod tests {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new({
                 let bp = backup_path.clone();
                 move || {
@@ -2962,6 +3213,7 @@ mod tests {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new({
                 let p = primary_root.path().to_path_buf();
                 let s = secondary_root.path().to_path_buf();
@@ -3026,6 +3278,7 @@ mod tests {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new({
                 let p = primary_root.path().to_path_buf();
                 move || {
@@ -3081,6 +3334,7 @@ mod tests {
                 backup_in_progress: AtomicBool::new(false),
                 history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
                 list_cache: Mutex::new(None),
+                identity_cache: Mutex::new(HashMap::new()),
                 config_provider: Mutex::new(Box::new({
                     let p = primary_root.path().to_path_buf();
                     let s = secondary_root.path().to_path_buf();
@@ -3179,6 +3433,7 @@ mod tests {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new(AppConfig::default)),
             on_progress: Mutex::new(None),
             on_workflow: Mutex::new(None),
@@ -3207,6 +3462,51 @@ mod tests {
             assert!(!e.already_processed);
             assert!(e.display_epoch > 0.0 || e.display_epoch == 0.0);
         }
+
+        // Mark one file known — enrich should flag only that path (hash-confirmed).
+        let mp4 = listed
+            .files
+            .iter()
+            .find(|f| f.filename.ends_with(".mp4"))
+            .unwrap();
+        monitor
+            .history
+            .lock()
+            .unwrap()
+            .mark_backed_up(Path::new(&mp4.path))
+            .unwrap();
+
+        let mut chunks = 0usize;
+        let mut saw_known = false;
+        let enriched2 = monitor
+            .enrich_files_with_progress(&drive, None, Some(|chunk: &[SdFileEnrichment]| {
+                chunks += 1;
+                if chunk.iter().any(|e| e.already_processed) {
+                    saw_known = true;
+                }
+            }))
+            .unwrap();
+        assert!(chunks >= 1);
+        assert!(saw_known);
+        let known = enriched2.iter().find(|e| e.path == mp4.path).unwrap();
+        let other = enriched2.iter().find(|e| e.path != mp4.path).unwrap();
+        assert!(known.already_processed);
+        assert!(!other.already_processed);
+
+        // Name+size hit with different bytes must not flag as known.
+        let spoof = dcim.join("b.mp4");
+        fs::write(&spoof, vec![1u8; 4096]).unwrap(); // same size, different content
+        monitor.list_cache.lock().unwrap().take(); // force re-scan
+        monitor.identity_cache.lock().unwrap().clear();
+        let enriched3 = monitor.enrich_files(&drive, None).unwrap();
+        let spoofed = enriched3
+            .iter()
+            .find(|e| e.path.ends_with("b.mp4"))
+            .unwrap();
+        assert!(
+            !spoofed.already_processed,
+            "same name+size but different content must not be known"
+        );
     }
 
     #[test]
@@ -3244,6 +3544,7 @@ mod tests {
             backup_in_progress: AtomicBool::new(false),
             history: Mutex::new(MediaHistoryStore::open_at(hist.path().join("h.db")).unwrap()),
             list_cache: Mutex::new(None),
+            identity_cache: Mutex::new(HashMap::new()),
             config_provider: Mutex::new(Box::new(AppConfig::default)),
             on_progress: Mutex::new(None),
             on_workflow: Mutex::new(None),

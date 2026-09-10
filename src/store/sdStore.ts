@@ -59,6 +59,8 @@ type SdState = {
   selectorListing: boolean;
   /** Why the confirm list is empty after listing finished. */
   selectorEmptyReason: import("../lib/sdCard").ListEmptyReason | null;
+  /** Bumped on each enrich start / selector close — ignore stale enrich events. */
+  selectorEnrichGen: number;
   processedOpen: boolean;
   setMonitoring: (v: boolean) => void;
   setDrives: (drives: SdDriveInfo[]) => void;
@@ -100,6 +102,8 @@ type SdState = {
       already_processed: boolean;
     }>,
   ) => void;
+  /** Start a new enrich generation; returns the id to pass to `enrichSdFiles`. */
+  beginSelectorEnrich: () => number;
   closeSelector: () => void;
   setProcessedOpen: (open: boolean) => void;
 };
@@ -135,6 +139,7 @@ export const useSdStore = create<SdState>((set, get) => ({
   selectorMode: "import",
   selectorListing: false,
   selectorEmptyReason: null,
+  selectorEnrichGen: 0,
   processedOpen: false,
 
   setMonitoring: (monitoring) =>
@@ -258,14 +263,20 @@ export const useSdStore = create<SdState>((set, get) => ({
       });
       return changed ? { selectorFiles } : state;
     }),
+  beginSelectorEnrich: () => {
+    const selectorEnrichGen = get().selectorEnrichGen + 1;
+    set({ selectorEnrichGen });
+    return selectorEnrichGen;
+  },
   closeSelector: () =>
-    set({
+    set((s) => ({
       selectorOpen: false,
       selectorDrive: null,
       selectorFiles: [],
       selectorTotalMb: 0,
       selectorListing: false,
       selectorEmptyReason: null,
-    }),
+      selectorEnrichGen: s.selectorEnrichGen + 1,
+    })),
   setProcessedOpen: (processedOpen) => set({ processedOpen }),
 }));

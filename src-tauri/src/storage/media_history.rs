@@ -86,7 +86,8 @@ impl MediaHistoryStore {
                 created_at TEXT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_processed_files_hash ON processed_files(identity_hash);
-            CREATE INDEX IF NOT EXISTS idx_processed_files_media_type ON processed_files(media_type);",
+            CREATE INDEX IF NOT EXISTS idx_processed_files_media_type ON processed_files(media_type);
+            CREATE INDEX IF NOT EXISTS idx_processed_files_name_size ON processed_files(filename, size_bytes);",
         )?;
         Ok(())
     }
@@ -102,6 +103,76 @@ impl MediaHistoryStore {
         let n = file.read(&mut buf)?;
         hasher.update(&buf[..n]);
         Ok((format!("{:x}", hasher.finalize()), size))
+    }
+
+    /// Parallel partial-hash for many paths (2–4 workers). Order matches `paths`.
+    pub fn compute_identities_parallel(
+        paths: &[PathBuf],
+        workers: usize,
+    ) -> Vec<Option<(String, u64)>> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Mutex;
+
+        let n = paths.len();
+        if n == 0 {
+            return Vec::new();
+        }
+        let workers = workers.clamp(1, 4).min(n);
+        let results = Mutex::new(vec![None; n]);
+        let next = AtomicUsize::new(0);
+        thread::scope(|scope| {
+            for _ in 0..workers {
+                scope.spawn(|| {
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        if i >= n {
+                            break;
+                        }
+                        let got = Self::compute_identity(&paths[i]).ok();
+                        results.lock().unwrap()[i] = got;
+                    }
+                });
+            }
+        });
+        results.into_inner().unwrap_or_default()
+    }
+
+    /// Subset of `(filename, size_bytes)` that already exist in history (cheap prefilter).
+    /// A hit only means "maybe known" — confirm with [`Self::compute_identity`] + [`Self::known_hashes`].
+    pub fn matching_name_sizes(
+        &self,
+        pairs: &[(String, u64)],
+    ) -> Result<HashSet<(String, u64)>, MediaHistoryError> {
+        let wanted: HashSet<(String, u64)> = pairs.iter().cloned().collect();
+        if wanted.is_empty() {
+            return Ok(HashSet::new());
+        }
+        let names: Vec<String> = wanted
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let mut hits = HashSet::new();
+        let conn = self.connect()?;
+        const CHUNK: usize = 400;
+        for chunk in names.chunks(CHUNK) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT filename, size_bytes FROM processed_files WHERE filename IN ({placeholders})"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_from_iter(chunk.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+            })?;
+            for row in rows {
+                let pair = row?;
+                if wanted.contains(&pair) {
+                    hits.insert(pair);
+                }
+            }
+        }
+        Ok(hits)
     }
 
     pub fn contains(&self, identity_hash: &str) -> Result<bool, MediaHistoryError> {
@@ -504,5 +575,42 @@ mod tests {
             map.get("hashed.bin"),
             Some(&MediaHistoryStore::compute_identity(&p).unwrap())
         );
+    }
+
+    #[test]
+    fn matching_name_sizes_prefilter() {
+        let dir = tempdir().unwrap();
+        let store = MediaHistoryStore::open_at(dir.path().join("h.db")).unwrap();
+        store
+            .mark_backed_up_identities(&[
+                ("GX010001.MP4".into(), "aa".repeat(20), 1_000),
+                ("GOPR0001.JPG".into(), "bb".repeat(20), 500),
+            ])
+            .unwrap();
+        let hits = store
+            .matching_name_sizes(&[
+                ("GX010001.MP4".into(), 1_000),
+                ("GX010001.MP4".into(), 999), // same name, different size
+                ("NEW.MP4".into(), 1_000),
+            ])
+            .unwrap();
+        assert!(hits.contains(&("GX010001.MP4".into(), 1_000)));
+        assert!(!hits.contains(&("GX010001.MP4".into(), 999)));
+        assert!(!hits.contains(&("NEW.MP4".into(), 1_000)));
+    }
+
+    #[test]
+    fn compute_identities_parallel_matches_serial() {
+        let dir = tempdir().unwrap();
+        let p1 = dir.path().join("a.bin");
+        let p2 = dir.path().join("b.bin");
+        std::fs::write(&p1, b"aaaa").unwrap();
+        std::fs::write(&p2, b"bbbb").unwrap();
+        let paths = vec![p1.clone(), p2.clone()];
+        let parallel = MediaHistoryStore::compute_identities_parallel(&paths, 2);
+        let s1 = MediaHistoryStore::compute_identity(&p1).unwrap();
+        let s2 = MediaHistoryStore::compute_identity(&p2).unwrap();
+        assert_eq!(parallel[0].as_ref().unwrap(), &s1);
+        assert_eq!(parallel[1].as_ref().unwrap(), &s2);
     }
 }
