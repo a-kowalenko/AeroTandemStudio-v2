@@ -1,6 +1,13 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { cn } from "../lib/utils";
 
 export type MediaEditModeOption<T extends string> = {
@@ -19,22 +26,24 @@ type MediaEditShellProps<T extends string> = {
   onModeChange: (mode: T) => void;
   onCancel: () => void;
   onDone: () => void;
-  /** Apple: Done is enabled only when there is something to commit. */
+  /** Primary action enabled only when there is something to commit. */
   doneEnabled: boolean;
   doneLabel?: string;
+  /** Short hint while primary is disabled (e.g. no changes yet). */
+  doneHint?: string | null;
+  /** Hide primary row (e.g. mode that commits via its own controls). */
+  hideDone?: boolean;
   children: ReactNode;
-  /** Mode-specific controls between canvas and tool rail. */
+  /** Mode-specific controls between canvas and primary row. */
   controls?: ReactNode;
   /** Override default fixed controls height (e.g. taller photos tools). */
   controlsClassName?: string;
 };
 
 /**
- * Apple Photos–style edit chrome:
- * top Cancel | title | Done · canvas · mode tools · bottom mode rail.
- *
- * Stacks under AppChrome (z-110) like Splash/Wizard so window controls stay usable;
- * top inset keeps the panel clear of the sticky titlebar.
+ * ATS edit dialog chrome:
+ * title · canvas · mode tools · primary Apply · mode rail.
+ * Dismiss via X / Esc / overlay (onCancel). No separate Cancel button.
  */
 export function MediaEditShell<T extends string>({
   open,
@@ -47,12 +56,16 @@ export function MediaEditShell<T extends string>({
   onDone,
   doneEnabled,
   doneLabel,
+  doneHint,
+  hideDone = false,
   children,
   controls,
   controlsClassName,
 }: MediaEditShellProps<T>) {
   const { t } = useTranslation();
-  const resolvedDoneLabel = doneLabel ?? t("media.edit.doneDefault");
+  const resolvedDoneLabel = doneLabel ?? t("common.actions.apply");
+  const showHint = !doneEnabled && Boolean(doneHint);
+
   return (
     <Dialog
       open={open}
@@ -61,7 +74,6 @@ export function MediaEditShell<T extends string>({
       }}
     >
       <DialogContent
-        hideCloseButton
         overlayClassName="z-[100] bg-black/40 backdrop-blur-[3px] dark:bg-black/60"
         containerClassName="z-[100] items-start justify-center pt-14 pb-3 sm:pt-16 sm:pb-4"
         className={cn(
@@ -70,39 +82,14 @@ export function MediaEditShell<T extends string>({
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogTitle className="sr-only">{title}</DialogTitle>
-        {description ? (
-          <DialogDescription className="sr-only">{description}</DialogDescription>
-        ) : (
-          <DialogDescription className="sr-only">{title}</DialogDescription>
-        )}
-
-        {/* Top bar — Cancel / title / Done */}
-        <header className="grid shrink-0 grid-cols-[minmax(4.5rem,1fr)_auto_minmax(4.5rem,1fr)] items-center gap-2 px-3 pb-2 pt-3 sm:px-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="justify-self-start rounded-md px-1.5 py-1 text-[15px] font-normal text-muted transition hover:text-foreground"
-          >
-            {t("common.actions.cancel")}
-          </button>
-          <h2 className="text-center text-[15px] font-semibold tracking-tight text-foreground">
-            {title}
-          </h2>
-          <button
-            type="button"
-            disabled={!doneEnabled}
-            onClick={onDone}
-            className={cn(
-              "justify-self-end rounded-md px-1.5 py-1 text-[15px] font-semibold transition",
-              doneEnabled
-                ? "text-primary hover:brightness-110"
-                : "cursor-not-allowed text-muted/40",
-            )}
-          >
-            {resolvedDoneLabel}
-          </button>
-        </header>
+        <DialogHeader className="shrink-0 space-y-0 px-3 pb-2 pt-3 pr-10 sm:px-4 sm:pr-12">
+          <DialogTitle className="text-base sm:text-lg">{title}</DialogTitle>
+          {description ? (
+            <DialogDescription className="sr-only">{description}</DialogDescription>
+          ) : (
+            <DialogDescription className="sr-only">{title}</DialogDescription>
+          )}
+        </DialogHeader>
 
         {/* Canvas — fixed flex share so mode changes don't resize the stage */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 sm:px-4">
@@ -121,9 +108,27 @@ export function MediaEditShell<T extends string>({
           {controls}
         </div>
 
+        {/* Primary — above mode rail (action belongs to current tools) */}
+        {!hideDone ? (
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2.5 sm:px-4">
+            <p
+              className={cn(
+                "min-h-5 min-w-0 flex-1 truncate text-left text-xs text-muted",
+                !showHint && "invisible",
+              )}
+              aria-hidden={!showHint}
+            >
+              {showHint ? doneHint : "\u00a0"}
+            </p>
+            <Button type="button" disabled={!doneEnabled} onClick={onDone}>
+              {resolvedDoneLabel}
+            </Button>
+          </div>
+        ) : null}
+
         {/* Mode rail */}
         <nav
-          className="shrink-0 border-t border-border px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+          className="shrink-0 border-t border-border px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
           aria-label={t("media.edit.modeAria")}
         >
           <ul className="mx-auto flex max-w-md items-stretch justify-center gap-1 sm:gap-2">
@@ -145,7 +150,9 @@ export function MediaEditShell<T extends string>({
                     <span
                       className={cn(
                         "flex h-9 w-9 items-center justify-center rounded-full transition",
-                        active ? "bg-primary text-primary-foreground" : "bg-black/8 dark:bg-white/10",
+                        active
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-black/8 dark:bg-white/10",
                       )}
                     >
                       {m.icon}

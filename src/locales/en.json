@@ -1206,8 +1206,8 @@
       "undoEdit": "Undo edit"
     },
     "edit": {
-      "doneDefault": "Done",
-      "modeAria": "Edit mode"
+      "modeAria": "Edit mode",
+      "noChanges": "No changes"
     }
   },
   "workflow": {
@@ -1780,10 +1780,11 @@
         "noRotation": "No rotation selected."
       },
       "playhead": "Playhead {{time}}",
-      "splitHint": "Both parts >= 10s — then Done",
+      "splitHint": "Both parts >= 10s — then Apply",
       "photos": {
         "title": "Photos",
         "apply": "Apply",
+        "applyCount": "Apply {{count}}",
         "sub": {
           "interval": "Interval",
           "single": "Single"

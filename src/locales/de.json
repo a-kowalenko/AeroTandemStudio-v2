@@ -1206,8 +1206,8 @@
       "undoEdit": "Bearbeitung rückgängig"
     },
     "edit": {
-      "doneDefault": "Fertig",
-      "modeAria": "Bearbeitungsmodus"
+      "modeAria": "Bearbeitungsmodus",
+      "noChanges": "Keine Änderungen"
     }
   },
   "workflow": {
@@ -1780,10 +1780,11 @@
         "noRotation": "Keine Drehung ausgewählt."
       },
       "playhead": "Playhead {{time}}",
-      "splitHint": "Beide Teile ≥ 10 s — dann Fertig",
+      "splitHint": "Beide Teile ≥ 10 s — dann Übernehmen",
       "photos": {
         "title": "Fotos",
         "apply": "Übernehmen",
+        "applyCount": "{{count}} übernehmen",
         "sub": {
           "interval": "Intervall",
           "single": "Einzel"

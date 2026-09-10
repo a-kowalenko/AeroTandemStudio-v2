@@ -23,9 +23,17 @@ import {
   normalizePreviewRotateDeg,
   previewRotateMediaStyleInFrame,
 } from "../lib/mediaPreviewRotate";
+import {
+  mapCropThroughRotation,
+  orientedNaturalSize,
+  previewContentSize,
+  resolvePhotoEditOrder,
+  type PhotoEditOrder,
+} from "../lib/photoEditCompose";
 import { cn } from "../lib/utils";
 
-export type PhotoEditOrder = "crop-first" | "rotate-first";
+export type { PhotoEditOrder } from "../lib/photoEditCompose";
+export { mapCropThroughRotation } from "../lib/photoEditCompose";
 
 export type PhotoEditorResult =
   | { action: "cancel" }
@@ -82,64 +90,12 @@ function containSize(
   return { w: stageH * imgAspect, h: stageH };
 }
 
-/** Map crop rect through CW quarter-turns of the image. */
-export function mapCropThroughRotation(
-  rect: NormCropRect,
-  degreesCw: number,
-): NormCropRect {
-  const turns = ((Math.round(degreesCw / 90) % 4) + 4) % 4;
-  let next = rect;
-  for (let i = 0; i < turns; i += 1) {
-    next = {
-      x: next.y,
-      y: 1 - next.x - next.w,
-      w: next.h,
-      h: next.w,
-    };
-  }
-  return next;
-}
-
 /**
- * Layout size of the pending preview (natural pixels before contain-fit).
- * Settled / rotate-mode uses the crop window; otherwise the full image.
- */
-function previewContentSize(
-  natural: { w: number; h: number },
-  crop: NormCropRect,
-  order: PhotoEditOrder | null,
-  degrees: number,
-  showCropped: boolean,
-  showRotate: boolean,
-): { w: number; h: number } {
-  if (!showCropped) {
-    if (showRotate && isQuarterTurnSwap(degrees)) {
-      return { w: natural.h, h: natural.w };
-    }
-    return { w: natural.w, h: natural.h };
-  }
-
-  if (order === "rotate-first" && showRotate) {
-    const rw = isQuarterTurnSwap(degrees) ? natural.h : natural.w;
-    const rh = isQuarterTurnSwap(degrees) ? natural.w : natural.h;
-    return { w: rw * crop.w, h: rh * crop.h };
-  }
-
-  // crop-first (or crop only): crop in source space, then optional rotate
-  let w = natural.w * crop.w;
-  let h = natural.h * crop.h;
-  if (showRotate && isQuarterTurnSwap(degrees)) {
-    return { w: h, h: w };
-  }
-  return { w, h };
-}
-
-/**
- * Crop + rotate pendings survive mode switches; Fertig commits both in edit order.
+ * Soft-bake photo editor: crop + rotate share one visual draft across modes.
+ * Working copy is written only on Übernehmen (`apply_edits`).
  *
- * After idle, crop visually settles to the new size (iOS-style) without
- * writing the file — overlay chrome stays on the crop edge; drag unsettles
- * and reveals outside pixels under the shadow.
+ * When rotation is pending, crop lives in oriented (rotate-first) space so
+ * Zuschneiden shows the same preview as Drehen.
  */
 export function PhotoEditor({
   open,
@@ -236,20 +192,20 @@ export function PhotoEditor({
 
   const rotatePending = hasNetPreviewRotate(pendingRotateDeg);
   const cropPending = isCropDirty(cropRect);
-  const order =
-    editOrder ??
-    (cropPending ? "crop-first" : rotatePending ? "rotate-first" : null);
+  const order = resolvePhotoEditOrder({
+    editOrder,
+    cropPending,
+    rotatePending,
+  });
+
+  // Soft-bake: pending rotation is always part of the visible draft.
+  const showRotatePreview = rotatePending || mode === "rotate";
 
   // Settled crop viewport after idle, or immediately in rotate mode.
   const showCroppedViewport =
     cropPending && (cropSettled || mode === "rotate");
 
-  const showRotatePreview =
-    (rotatePending || mode === "rotate") &&
-    !(order === "crop-first" && mode === "crop" && !showCroppedViewport);
-
-  /** Crop-mode uses unified full→crop layout (overlay always on real rect). */
-  const useUnifiedCropLayout = mode === "crop";
+  const cropMode = mode === "crop";
 
   // After 270°→360° (or −270→−360), keep rotate(±360) for the short-path
   // animation, then snap to 0 without transitioning so the next ±90° is short.
@@ -265,6 +221,7 @@ export function PhotoEditor({
     }, ms);
     return () => window.clearTimeout(id);
   }, [pendingRotateDeg, rotateTransition]);
+
   const content = naturalSize
     ? previewContentSize(
         naturalSize,
@@ -272,7 +229,7 @@ export function PhotoEditor({
         order,
         pendingRotateDeg,
         showCroppedViewport,
-        useUnifiedCropLayout ? false : showRotatePreview,
+        showRotatePreview,
       )
     : { w: 0, h: 0 };
 
@@ -314,9 +271,9 @@ export function PhotoEditor({
   function updateCrop(next: NormCropRect) {
     setCropRect(next);
     if (isCropDirty(next)) {
-      ensureOrder("crop-first");
+      // Soft-bake: with pending rotation, crop lives in oriented space.
+      ensureOrder(rotatePending ? "rotate-first" : "crop-first");
       if (!gesturingRef.current) {
-        // Preset / reset path: flash unsettled then settle.
         unsettleCrop();
         scheduleSettle();
       }
@@ -356,18 +313,14 @@ export function PhotoEditor({
   function bumpRotate(delta: number) {
     const stepTurns = Math.round(delta / 90);
     setPendingRotateDeg((d) => d + delta);
-    const ord = editOrderRef.current;
     const rect = cropRectRef.current;
-    if (isCropDirty(rect) && (ord === "rotate-first" || ord == null)) {
+    // Soft-bake: always keep crop in the visible oriented space.
+    if (isCropDirty(rect)) {
       setCropRect(mapCropThroughRotation(rect, stepTurns * 90));
-      ensureOrder("rotate-first");
-    } else if (isCropDirty(rect) && ord === "crop-first") {
-      ensureOrder("crop-first");
+      setEditOrder("rotate-first");
+      setCropSettled(true);
     } else {
       ensureOrder("rotate-first");
-    }
-    if (isCropDirty(cropRectRef.current) || isCropDirty(rect)) {
-      setCropSettled(true);
     }
   }
 
@@ -376,7 +329,11 @@ export function PhotoEditor({
     const rect = cropRectRef.current;
     const deg = normalizePreviewRotateDeg(pendingRotateDeg);
     let nextRect = rect;
-    if (ord === "rotate-first" && isCropDirty(rect) && deg !== 0) {
+    if (
+      (ord === "rotate-first" || rotatePending) &&
+      isCropDirty(rect) &&
+      deg !== 0
+    ) {
       nextRect = mapCropThroughRotation(rect, (360 - deg) % 360);
       setCropRect(nextRect);
     }
@@ -434,18 +391,22 @@ export function PhotoEditor({
 
   const doneEnabled = cropPending || rotatePending;
 
+  const displayNatural = naturalSize
+    ? orientedNaturalSize(naturalSize, pendingRotateDeg, showRotatePreview)
+    : null;
+
   const aspectNorm =
-    naturalSize && aspectPreset !== "free"
-      ? aspectNormFromPreset(aspectPreset, naturalSize.w, naturalSize.h)
+    displayNatural && aspectPreset !== "free"
+      ? aspectNormFromPreset(aspectPreset, displayNatural.w, displayNatural.h)
       : null;
 
   function applyAspectPreset(preset: CropAspectPreset) {
     setAspectPreset(preset);
-    if (!naturalSize) {
+    if (!displayNatural) {
       if (preset === "free") updateCrop(FULL_CROP);
       return;
     }
-    updateCrop(rectForAspectPreset(preset, naturalSize.w, naturalSize.h));
+    updateCrop(rectForAspectPreset(preset, displayNatural.w, displayNatural.h));
   }
 
   const controls =
@@ -495,18 +456,14 @@ export function PhotoEditor({
   // transitions take the short path instead of remounting layout.
   const showFullWithRotate = mode === "rotate" && !showCroppedViewport;
 
-  const rotateMediaStyle = previewRotateMediaStyleInFrame(
-    pendingRotateDeg,
-    framePx?.w ?? 1,
-    framePx?.h ?? 1,
-  );
-  if (!rotateTransition) {
-    rotateMediaStyle.transition = "none";
-  } else {
-    rotateMediaStyle.transition = "transform 200ms ease";
-  }
+  const transformTransition = rotateTransition
+    ? "transform 200ms ease"
+    : "none";
 
-  const settledCrop = useUnifiedCropLayout && showCroppedViewport;
+  const settledCrop = cropMode && showCroppedViewport;
+  const useOrientedCropCanvas = cropMode && showRotatePreview;
+
+  /** Inner layer: full oriented canvas; settles by zooming crop to the frame. */
   const innerStyle = settledCrop
     ? {
         width: `${100 / cropRect.w}%`,
@@ -523,6 +480,89 @@ export function PhotoEditor({
         transition: CROP_LAYOUT_TRANSITION,
       };
 
+  function onImgLoad(e: SyntheticEvent<HTMLImageElement>) {
+    const img = e.currentTarget;
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setNaturalSize({
+        w: img.naturalWidth,
+        h: img.naturalHeight,
+      });
+    }
+  }
+
+  function renderOrientedCropStage() {
+    if (!framePx || !src) return null;
+    // Inner box pixel size = oriented full canvas (unsettled: = frame; settled: larger).
+    const innerW = settledCrop ? framePx.w / cropRect.w : framePx.w;
+    const innerH = settledCrop ? framePx.h / cropRect.h : framePx.h;
+    const mediaStyle = previewRotateMediaStyleInFrame(
+      pendingRotateDeg,
+      innerW,
+      innerH,
+    );
+    mediaStyle.transition = transformTransition;
+
+    return (
+      <>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute" style={innerStyle}>
+            <img
+              src={src}
+              alt={t("common.labels.photo")}
+              className="block"
+              draggable={false}
+              style={mediaStyle}
+              onLoad={onImgLoad}
+            />
+          </div>
+        </div>
+        <div className="absolute" style={innerStyle}>
+          <PhotoCropOverlay
+            value={cropRect}
+            onChange={updateCrop}
+            aspectNorm={aspectNorm}
+            onGestureStart={beginCropGesture}
+            onGestureEnd={endCropGesture}
+            shadowOpacity={settledCrop ? 0 : 0.55}
+            showGrid={gesturing && !settledCrop}
+            settled={settledCrop}
+          />
+        </div>
+      </>
+    );
+  }
+
+  function renderPlainCropStage() {
+    if (!framePx || !src) return null;
+    return (
+      <>
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute" style={innerStyle}>
+            <img
+              src={src}
+              alt={t("common.labels.photo")}
+              className="block h-full w-full object-fill"
+              draggable={false}
+              onLoad={onImgLoad}
+            />
+          </div>
+        </div>
+        <div className="absolute" style={innerStyle}>
+          <PhotoCropOverlay
+            value={cropRect}
+            onChange={updateCrop}
+            aspectNorm={aspectNorm}
+            onGestureStart={beginCropGesture}
+            onGestureEnd={endCropGesture}
+            shadowOpacity={settledCrop ? 0 : 0.55}
+            showGrid={gesturing && !settledCrop}
+            settled={settledCrop}
+          />
+        </div>
+      </>
+    );
+  }
+
   return (
     <MediaEditShell
       open={open}
@@ -534,6 +574,7 @@ export function PhotoEditor({
       onCancel={cancel}
       onDone={handleDone}
       doneEnabled={doneEnabled}
+      doneHint={t("media.edit.noChanges")}
       controls={controls}
     >
       <div className="box-border h-full min-h-0 w-full overflow-hidden p-3.5">
@@ -555,52 +596,21 @@ export function PhotoEditor({
                   : { width: "100%", height: "100%" }
               }
             >
-              {useUnifiedCropLayout && framePx ? (
-                <>
-                  {/* Clip only the photo; overlay chrome may overhang into the stage. */}
-                  <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                    <div className="absolute" style={innerStyle}>
-                      <img
-                        src={src}
-                        alt={t("common.labels.photo")}
-                        className="block h-full w-full object-fill"
-                        draggable={false}
-                        onLoad={(e) => {
-                          const img = e.currentTarget;
-                          if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                            setNaturalSize({
-                              w: img.naturalWidth,
-                              h: img.naturalHeight,
-                            });
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="absolute" style={innerStyle}>
-                    <PhotoCropOverlay
-                      value={cropRect}
-                      onChange={updateCrop}
-                      aspectNorm={aspectNorm}
-                      onGestureStart={beginCropGesture}
-                      onGestureEnd={endCropGesture}
-                      shadowOpacity={settledCrop ? 0 : 0.55}
-                      showGrid={gesturing && !settledCrop}
-                      settled={settledCrop}
-                    />
-                  </div>
-                </>
+              {cropMode && framePx ? (
+                useOrientedCropCanvas ? (
+                  renderOrientedCropStage()
+                ) : (
+                  renderPlainCropStage()
+                )
               ) : showCroppedViewport && framePx ? (
                 <div className="absolute inset-0 overflow-hidden rounded-[1px]">
                   <PendingCropPreview
                     src={src}
                     crop={cropRect}
-                    degrees={
-                      mode === "rotate" || showRotatePreview
-                        ? pendingRotateDeg
-                        : 0
+                    degrees={showRotatePreview ? pendingRotateDeg : 0}
+                    order={
+                      order === "rotate-first" ? "rotate-first" : "crop-first"
                     }
-                    order={order === "rotate-first" ? "rotate-first" : "crop-first"}
                     frame={framePx}
                     rotateTransition={rotateTransition}
                     onLoadSize={(w, h) => setNaturalSize({ w, h })}
@@ -609,22 +619,26 @@ export function PhotoEditor({
               ) : (
                 <img
                   src={src}
-                  alt="Foto"
+                  alt={t("common.labels.photo")}
                   className={cn(
                     showFullWithRotate
                       ? "block"
                       : "block h-full w-full object-fill",
                   )}
-                  style={showFullWithRotate ? rotateMediaStyle : undefined}
-                  onLoad={(e) => {
-                    const img = e.currentTarget;
-                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                      setNaturalSize({
-                        w: img.naturalWidth,
-                        h: img.naturalHeight,
-                      });
-                    }
-                  }}
+                  style={
+                    showFullWithRotate
+                      ? (() => {
+                          const s = previewRotateMediaStyleInFrame(
+                            pendingRotateDeg,
+                            framePx?.w ?? 1,
+                            framePx?.h ?? 1,
+                          );
+                          s.transition = transformTransition;
+                          return s;
+                        })()
+                      : undefined
+                  }
+                  onLoad={onImgLoad}
                 />
               )}
             </div>

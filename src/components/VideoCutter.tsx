@@ -174,6 +174,24 @@ export function VideoCutter({
           ? splitValid
           : photosDoneEnabled;
 
+  const doneHint =
+    mode === "trim"
+      ? t("media.edit.noChanges")
+      : mode === "rotate"
+        ? t("video.cutter.warning.noRotation")
+        : mode === "split"
+          ? t("video.cutter.splitHint")
+          : t("video.cutter.photos.needSelection");
+
+  const doneLabel =
+    mode === "photos"
+      ? selectedPhotoPaths.length > 0
+        ? t("video.cutter.photos.applyCount", {
+            count: selectedPhotoPaths.length,
+          })
+        : t("video.cutter.photos.apply")
+      : undefined;
+
   useEffect(() => {
     if (!open) {
       rangeInitializedRef.current = false;
@@ -511,7 +529,8 @@ export function VideoCutter({
       onCancel={cancel}
       onDone={handleDone}
       doneEnabled={doneEnabled}
-      doneLabel={photosActive ? t("video.cutter.photos.apply") : undefined}
+      doneHint={doneHint}
+      doneLabel={doneLabel}
       controls={controls}
       controlsClassName={
         photosActive ? "min-h-[6.25rem] h-auto max-h-[12rem] py-1" : undefined

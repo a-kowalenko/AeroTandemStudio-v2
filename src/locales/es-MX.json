@@ -1206,8 +1206,8 @@
       "undoEdit": "Deshacer edición"
     },
     "edit": {
-      "doneDefault": "Listo",
-      "modeAria": "Modo de edición"
+      "modeAria": "Modo de edición",
+      "noChanges": "Sin cambios"
     }
   },
   "workflow": {
@@ -1780,10 +1780,11 @@
         "noRotation": "No hay rotación seleccionada."
       },
       "playhead": "Cabezal {{time}}",
-      "splitHint": "Ambas partes >= 10 s — luego Listo",
+      "splitHint": "Ambas partes >= 10 s — luego Aplicar",
       "photos": {
         "title": "Fotos",
         "apply": "Aplicar",
+        "applyCount": "Aplicar {{count}}",
         "sub": {
           "interval": "Intervalo",
           "single": "Individual"
