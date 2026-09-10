@@ -1781,6 +1781,7 @@
       },
       "playhead": "Playhead {{time}}",
       "splitHint": "Both parts >= 10s — then Apply",
+      "resetRange": "Reset range",
       "photos": {
         "title": "Photos",
         "apply": "Apply",
@@ -1849,7 +1850,8 @@
       "mode": {
         "crop": "Crop",
         "rotate": "Rotate"
-      }
+      },
+      "resetCrop": "Reset crop"
     },
     "preview": {
       "title": "Photo preview",
@@ -1897,7 +1899,7 @@
     "rotate": {
       "ccw": "90° counter-clockwise",
       "cw": "90° clockwise",
-      "reset": "Reset"
+      "reset": "Reset rotation"
     }
   },
   "sd": {

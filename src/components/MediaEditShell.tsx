@@ -29,8 +29,6 @@ type MediaEditShellProps<T extends string> = {
   /** Primary action enabled only when there is something to commit. */
   doneEnabled: boolean;
   doneLabel?: string;
-  /** Short hint while primary is disabled (e.g. no changes yet). */
-  doneHint?: string | null;
   /** Hide primary row (e.g. mode that commits via its own controls). */
   hideDone?: boolean;
   children: ReactNode;
@@ -42,7 +40,7 @@ type MediaEditShellProps<T extends string> = {
 
 /**
  * ATS edit dialog chrome:
- * title · canvas · mode tools · primary Apply · mode rail.
+ * title · mode rail · canvas · mode tools · primary Apply.
  * Dismiss via X / Esc / overlay (onCancel). No separate Cancel button.
  */
 export function MediaEditShell<T extends string>({
@@ -56,7 +54,6 @@ export function MediaEditShell<T extends string>({
   onDone,
   doneEnabled,
   doneLabel,
-  doneHint,
   hideDone = false,
   children,
   controls,
@@ -64,7 +61,6 @@ export function MediaEditShell<T extends string>({
 }: MediaEditShellProps<T>) {
   const { t } = useTranslation();
   const resolvedDoneLabel = doneLabel ?? t("common.actions.apply");
-  const showHint = !doneEnabled && Boolean(doneHint);
 
   return (
     <Dialog
@@ -91,44 +87,9 @@ export function MediaEditShell<T extends string>({
           )}
         </DialogHeader>
 
-        {/* Canvas — fixed flex share so mode changes don't resize the stage */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 sm:px-4">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[var(--ats-preview-stage)]">
-            {children}
-          </div>
-        </div>
-
-        {/* Mode tools — fixed height keeps canvas size stable across modes */}
-        <div
-          className={cn(
-            "flex shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4",
-            controlsClassName ?? "h-[6.25rem]",
-          )}
-        >
-          {controls}
-        </div>
-
-        {/* Primary — above mode rail (action belongs to current tools) */}
-        {!hideDone ? (
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2.5 sm:px-4">
-            <p
-              className={cn(
-                "min-h-5 min-w-0 flex-1 truncate text-left text-xs text-muted",
-                !showHint && "invisible",
-              )}
-              aria-hidden={!showHint}
-            >
-              {showHint ? doneHint : "\u00a0"}
-            </p>
-            <Button type="button" disabled={!doneEnabled} onClick={onDone}>
-              {resolvedDoneLabel}
-            </Button>
-          </div>
-        ) : null}
-
-        {/* Mode rail */}
+        {/* Mode rail — under title, same chrome as before */}
         <nav
-          className="shrink-0 border-t border-border px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          className="shrink-0 border-b border-border px-2 pb-2"
           aria-label={t("media.edit.modeAria")}
         >
           <ul className="mx-auto flex max-w-md items-stretch justify-center gap-1 sm:gap-2">
@@ -166,6 +127,31 @@ export function MediaEditShell<T extends string>({
             })}
           </ul>
         </nav>
+
+        {/* Canvas — fixed flex share so mode changes don't resize the stage */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pt-3 sm:px-4">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[var(--ats-preview-stage)]">
+            {children}
+          </div>
+        </div>
+
+        {/* Mode tools — fixed height keeps canvas size stable across modes */}
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-center overflow-hidden px-3 sm:px-4",
+            controlsClassName ?? "h-[6.25rem]",
+          )}
+        >
+          {controls}
+        </div>
+
+        {!hideDone ? (
+          <div className="flex shrink-0 justify-end border-t border-border px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
+            <Button type="button" disabled={!doneEnabled} onClick={onDone}>
+              {resolvedDoneLabel}
+            </Button>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

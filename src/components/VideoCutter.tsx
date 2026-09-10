@@ -13,7 +13,7 @@ import {
   type VideoPlayerHandle,
 } from "./VideoPlayer";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
-import { MediaEditRotateBar } from "./MediaEditRotateBar";
+import { MediaEditControlsRow, MediaEditRotateBar, MediaEditToolReset } from "./MediaEditRotateBar";
 import {
   VideoCutterPhotosControls,
   VideoCutterPhotosStrip,
@@ -173,15 +173,6 @@ export function VideoCutter({
         : mode === "split"
           ? splitValid
           : photosDoneEnabled;
-
-  const doneHint =
-    mode === "trim"
-      ? t("media.edit.noChanges")
-      : mode === "rotate"
-        ? t("video.cutter.warning.noRotation")
-        : mode === "split"
-          ? t("video.cutter.splitHint")
-          : t("video.cutter.photos.needSelection");
 
   const doneLabel =
     mode === "photos"
@@ -467,19 +458,20 @@ export function VideoCutter({
 
   const controls =
     mode === "trim" ? (
-      <div className="flex flex-col items-center gap-1 text-center">
+      <MediaEditControlsRow
+        reset={
+          <MediaEditToolReset
+            label={t("video.cutter.resetRange")}
+            disabled={!trimDirty}
+            onClick={resetRange}
+          />
+        }
+      >
         <p className="font-mono text-[12px] tabular-nums text-muted">
           {formatPlayerTimeMs(startMs)} –{" "}
           {formatPlayerTimeMs(endMs > 0 ? endMs : durationMs)}
         </p>
-        <button
-          type="button"
-          onClick={resetRange}
-          className="text-[13px] font-medium text-accent transition hover:text-foreground"
-        >
-          {t("common.actions.reset")}
-        </button>
-      </div>
+      </MediaEditControlsRow>
     ) : mode === "rotate" ? (
       <MediaEditRotateBar
         degrees={pendingRotateDeg}
@@ -529,7 +521,6 @@ export function VideoCutter({
       onCancel={cancel}
       onDone={handleDone}
       doneEnabled={doneEnabled}
-      doneHint={doneHint}
       doneLabel={doneLabel}
       controls={controls}
       controlsClassName={

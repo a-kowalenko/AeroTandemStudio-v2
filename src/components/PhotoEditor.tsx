@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Crop, RotateCw } from "lucide-react";
 import { MediaEditShell, type MediaEditModeOption } from "./MediaEditShell";
-import { MediaEditRotateBar } from "./MediaEditRotateBar";
+import { MediaEditControlsRow, MediaEditRotateBar, MediaEditToolReset } from "./MediaEditRotateBar";
 import {
   FULL_CROP,
   PhotoCropOverlay,
@@ -411,7 +411,18 @@ export function PhotoEditor({
 
   const controls =
     mode === "crop" ? (
-      <div className="flex w-full flex-col items-center gap-2">
+      <MediaEditControlsRow
+        reset={
+          <MediaEditToolReset
+            label={t("photo.edit.resetCrop")}
+            disabled={!cropPending && aspectPreset === "free"}
+            onClick={() => {
+              setAspectPreset("free");
+              updateCrop(FULL_CROP);
+            }}
+          />
+        }
+      >
         <div className="flex max-w-full flex-wrap items-center justify-center gap-1">
           {CROP_ASPECT_PRESETS.map((p) => (
             <button
@@ -429,20 +440,7 @@ export function PhotoEditor({
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setAspectPreset("free");
-            updateCrop(FULL_CROP);
-          }}
-          className={cn(
-            "h-5 text-[13px] font-medium text-accent transition hover:text-foreground",
-            !cropPending && aspectPreset === "free" && "invisible",
-          )}
-        >
-          {t("common.actions.reset")}
-        </button>
-      </div>
+      </MediaEditControlsRow>
     ) : (
       <MediaEditRotateBar
         degrees={pendingRotateDeg}
@@ -574,7 +572,6 @@ export function PhotoEditor({
       onCancel={cancel}
       onDone={handleDone}
       doneEnabled={doneEnabled}
-      doneHint={t("media.edit.noChanges")}
       controls={controls}
     >
       <div className="box-border h-full min-h-0 w-full overflow-hidden p-3.5">

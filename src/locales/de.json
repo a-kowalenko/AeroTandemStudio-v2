@@ -1781,6 +1781,7 @@
       },
       "playhead": "Playhead {{time}}",
       "splitHint": "Beide Teile ≥ 10 s — dann Übernehmen",
+      "resetRange": "Bereich zurücksetzen",
       "photos": {
         "title": "Fotos",
         "apply": "Übernehmen",
@@ -1849,7 +1850,8 @@
       "mode": {
         "crop": "Zuschnitt",
         "rotate": "Drehen"
-      }
+      },
+      "resetCrop": "Zuschnitt zurücksetzen"
     },
     "preview": {
       "title": "Foto-Vorschau",
@@ -1897,7 +1899,7 @@
     "rotate": {
       "ccw": "90° gegen den Uhrzeigersinn",
       "cw": "90° im Uhrzeigersinn",
-      "reset": "Zurücksetzen"
+      "reset": "Drehung zurücksetzen"
     }
   },
   "sd": {

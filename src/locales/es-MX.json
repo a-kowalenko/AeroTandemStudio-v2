@@ -1781,6 +1781,7 @@
       },
       "playhead": "Cabezal {{time}}",
       "splitHint": "Ambas partes >= 10 s — luego Aplicar",
+      "resetRange": "Restablecer rango",
       "photos": {
         "title": "Fotos",
         "apply": "Aplicar",
@@ -1849,7 +1850,8 @@
       "mode": {
         "crop": "Recorte",
         "rotate": "Rotar"
-      }
+      },
+      "resetCrop": "Restablecer recorte"
     },
     "preview": {
       "title": "Vista previa de foto",
@@ -1897,7 +1899,7 @@
     "rotate": {
       "ccw": "90° en sentido antihorario",
       "cw": "90° en sentido horario",
-      "reset": "Restablecer"
+      "reset": "Restablecer rotación"
     }
   },
   "sd": {

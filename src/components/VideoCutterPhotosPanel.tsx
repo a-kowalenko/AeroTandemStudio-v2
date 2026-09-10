@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ImagePlus, StepBack, StepForward, X } from "lucide-react";
 import { formatPlayerTimeMs } from "./VideoPlayer";
+import { MediaEditControlsRow, MediaEditToolReset } from "./MediaEditRotateBar";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { videoFileSrc } from "../lib/mediaUrl";
@@ -274,46 +275,51 @@ export function VideoCutterPhotosControls({
       </div>
 
       {subMode === "interval" ? (
-        <div className="flex flex-wrap items-center justify-center gap-2 text-[12px]">
-          <label className="flex items-center gap-1.5 text-muted">
-            <span>{t("video.cutter.photos.interval")}</span>
-            <input
-              type="number"
-              min={0.1}
-              step={0.1}
-              value={intervalSec}
-              disabled={extracting}
-              onChange={(e) => {
-                const v = Number(e.target.value);
-                if (Number.isFinite(v) && v > 0) setIntervalSec(v);
-              }}
-              className="w-16 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[12px] tabular-nums"
+        <MediaEditControlsRow
+          reset={
+            <MediaEditToolReset
+              label={t("video.cutter.resetRange")}
+              disabled={
+                extracting ||
+                (rangeStart <= 0 && rangeEnd >= Math.max(0, durationMs - 1))
+              }
+              onClick={onResetRange}
             />
-            <span>s</span>
-          </label>
-          <span className="text-muted/80">
-            {t("video.cutter.photos.estimate", { count: estimate })}
-          </span>
-          <span className="font-mono text-[11px] tabular-nums text-muted/70">
-            {formatPlayerTimeMs(rangeStart)}–{formatPlayerTimeMs(rangeEnd)}
-          </span>
-          <button
-            type="button"
-            disabled={extracting}
-            onClick={onResetRange}
-            className="text-[12px] font-medium text-accent transition hover:text-foreground disabled:opacity-40"
-          >
-            {t("common.actions.reset")}
-          </button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={extracting || estimate < 1}
-            onClick={() => void runIntervalGenerate()}
-          >
-            {t("video.cutter.photos.generate")}
-          </Button>
-        </div>
+          }
+        >
+          <div className="flex flex-wrap items-center justify-center gap-2 text-[12px]">
+            <label className="flex items-center gap-1.5 text-muted">
+              <span>{t("video.cutter.photos.interval")}</span>
+              <input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={intervalSec}
+                disabled={extracting}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (Number.isFinite(v) && v > 0) setIntervalSec(v);
+                }}
+                className="w-16 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[12px] tabular-nums"
+              />
+              <span>s</span>
+            </label>
+            <span className="text-muted/80">
+              {t("video.cutter.photos.estimate", { count: estimate })}
+            </span>
+            <span className="font-mono text-[11px] tabular-nums text-muted/70">
+              {formatPlayerTimeMs(rangeStart)}–{formatPlayerTimeMs(rangeEnd)}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              disabled={extracting || estimate < 1}
+              onClick={() => void runIntervalGenerate()}
+            >
+              {t("video.cutter.photos.generate")}
+            </Button>
+          </div>
+        </MediaEditControlsRow>
       ) : (
         <div className="flex flex-wrap items-center justify-center gap-2 text-[12px]">
           <Button
