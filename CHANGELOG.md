@@ -37,6 +37,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Video bearbeiten → Fotos: kompaktere Vorschaubilder, Übernehmen mit Anzahl, gewählter Export-Ordner sichtbar
 - Medien nachreichen: Dialog übersichtlicher, Senden zeigt die Anzahl
 - SD-/USB-Import: Suche, Sortierung, Kompaktansicht, Filter „nur neue“, Auswahl nach Tag; Videos und Fotos getrennt auswählen oder abwählen, Auswahlzähler mit Größe und Medienart
+- SD-/USB-Import: Markierung „bereits bekannt“ erscheint stufenweise und deutlich schneller — große Karten fühlen sich weniger blockiert an
 
 ### Behoben
 
