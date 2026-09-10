@@ -1446,6 +1446,7 @@
       "productTitle": "Produkt",
       "removeItemAria": "{{name}} entfernen",
       "send": "Senden",
+      "sendCount": "{{count}} senden",
       "statusNew": "Nicht gebucht",
       "statusOpen": "Offen",
       "statusPaid": "Bezahlt",

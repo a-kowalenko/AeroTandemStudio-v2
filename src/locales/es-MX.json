@@ -1446,6 +1446,7 @@
       "productTitle": "Producto",
       "removeItemAria": "Quitar {{name}}",
       "send": "Enviar",
+      "sendCount": "Enviar {{count}}",
       "statusNew": "Sin reservar",
       "statusOpen": "Abierto",
       "statusPaid": "Pagado",

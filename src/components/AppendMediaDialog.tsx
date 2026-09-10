@@ -22,6 +22,14 @@ import {
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { cn } from "@/lib/utils";
 import {
   type AppendCategoryId,
@@ -511,37 +519,34 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
 
     return (
       <div className="relative flex h-full min-h-0 flex-col bg-card">
-        <header className="grid shrink-0 grid-cols-[minmax(5.5rem,1fr)_auto_minmax(5.5rem,1fr)] items-center border-b border-border/60 px-2 py-1.5 sm:px-3">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={requestBack}
-            className="inline-flex items-center justify-self-start rounded-md py-1 pr-2 text-[15px] font-normal text-primary transition hover:brightness-110 disabled:opacity-40"
-          >
-            <ChevronLeft className="size-5 shrink-0" strokeWidth={2.25} />
-            {t("history.title")}
-          </button>
-          <div className="min-w-0 text-center">
-            <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">
-              {t("history.appendDialogTitle")}
-            </h2>
-            <p className="truncate text-[11px] leading-tight text-muted">
-              {vorgang.gast}
-            </p>
+        <header className="shrink-0 border-b border-border px-3 py-2.5 sm:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={requestBack}
+              className="h-9 shrink-0 gap-1 px-2.5"
+            >
+              <ChevronLeft className="size-4 shrink-0" strokeWidth={2.25} />
+              <span className="text-[13px] font-medium">
+                {t("history.title")}
+              </span>
+            </Button>
+            <div
+              className="hidden h-8 w-px shrink-0 bg-border sm:block"
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1">
+              <h2 className="truncate text-base font-semibold leading-tight tracking-tight text-foreground sm:text-lg">
+                {t("history.appendDialogTitle")}
+              </h2>
+              <p className="truncate text-[13px] leading-snug text-muted">
+                {vorgang.gast}
+              </p>
+            </div>
           </div>
-          <button
-            type="button"
-            disabled={!canSend}
-            onClick={() => submit()}
-            className={cn(
-              "justify-self-end rounded-md px-1.5 py-1 text-[15px] font-semibold transition",
-              canSend
-                ? "text-primary hover:brightness-110"
-                : "cursor-not-allowed text-muted/40",
-            )}
-          >
-            {t("history.appendPanel.send")}
-          </button>
         </header>
 
         {capWarning ? (
@@ -852,49 +857,60 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
           </section>
         </div>
 
-        {discardOpen ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/25 p-4 backdrop-blur-[2px] dark:bg-black/45">
-            <div
-              role="alertdialog"
-              aria-labelledby="append-discard-title"
-              aria-describedby="append-discard-desc"
-              className="w-[19.5rem] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-2xl"
-            >
-              <div className="px-5 pb-3 pt-5 text-center">
-                <p
-                  id="append-discard-title"
-                  className="text-[17px] font-semibold tracking-tight"
-                >
-                  {t("history.appendPanel.discardTitle")}
-                </p>
-                <p
-                  id="append-discard-desc"
-                  className="mt-1.5 text-[13px] leading-5 text-muted"
-                >
-                  {items.length === 1
-                    ? t("history.appendPanel.discardOne")
-                    : t("history.appendPanel.discardMany", { count: items.length })}
-                </p>
-              </div>
-              <div className="flex flex-col border-t border-border/60">
-                <button
-                  type="button"
-                  className="px-4 py-3 text-[17px] font-semibold text-destructive transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                  onClick={onBack}
-                >
-                  {t("history.appendPanel.discard")}
-                </button>
-                <button
-                  type="button"
-                  className="border-t border-border/60 px-4 py-3 text-[17px] font-normal text-primary transition hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
-                  onClick={() => setDiscardOpen(false)}
-                >
-                  {t("history.appendPanel.continueEditing")}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <div className="flex shrink-0 justify-end border-t border-border px-3 py-3 sm:px-4">
+          <Button
+            type="button"
+            disabled={!canSend}
+            onClick={() => submit()}
+          >
+            {items.length > 0
+              ? t("history.appendPanel.sendCount", { count: items.length })
+              : t("history.appendPanel.send")}
+          </Button>
+        </div>
+
+        <Dialog
+          open={discardOpen}
+          onOpenChange={(open) => {
+            if (!open) setDiscardOpen(false);
+          }}
+        >
+          <DialogContent
+            className="z-[70] max-w-md border-l-4 border-l-destructive"
+            overlayClassName="z-[70]"
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onEscapeKeyDown={(e) => {
+              // HistoryDialog Esc already routes to requestBack → closes this.
+              e.preventDefault();
+              setDiscardOpen(false);
+            }}
+          >
+            <DialogHeader className="min-w-0">
+              <DialogTitle className="text-destructive">
+                {t("history.appendPanel.discardTitle")}
+              </DialogTitle>
+              <DialogDescription className="text-foreground">
+                {items.length === 1
+                  ? t("history.appendPanel.discardOne")
+                  : t("history.appendPanel.discardMany", {
+                      count: items.length,
+                    })}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setDiscardOpen(false)}
+              >
+                {t("history.appendPanel.continueEditing")}
+              </Button>
+              <Button type="button" variant="destructive" onClick={onBack}>
+                {t("history.appendPanel.discard")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
     },
