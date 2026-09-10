@@ -523,9 +523,6 @@ export function VideoCutter({
       doneEnabled={doneEnabled}
       doneLabel={doneLabel}
       controls={controls}
-      controlsClassName={
-        photosActive ? "min-h-[6.25rem] h-auto max-h-[12rem] py-1" : undefined
-      }
     >
       <div className="flex h-full min-h-0 w-full flex-col">
         <VideoPlayer
@@ -533,7 +530,8 @@ export function VideoCutter({
           fillAvailable
           className="min-h-0 flex-1"
           chrome={trimActive || photosActive ? "trim" : "playback"}
-          emphasizePlayhead={mode === "split" || photosActive}
+          // Rotate keeps the filmstrip (split-style) so stage height matches trim/split.
+          emphasizePlayhead={mode === "split" || mode === "rotate"}
           rangeHandleTheme={photosActive ? "photos" : "trim"}
           snapSeekMs={
             mode === "split" && keyframesSecs.length > 0
@@ -548,16 +546,8 @@ export function VideoCutter({
           // boot and would remount → Kein Video / Thumbnail flicker).
           cacheKey={videoPath ? String(mediaRevision) : null}
           keepRange={trimActive || photosActive ? keepRange : undefined}
-          keyframeMarks={
-            trimActive || mode === "split" || photosActive
-              ? keyframeMarks
-              : undefined
-          }
-          filmstripFrames={
-            trimActive || mode === "split" || photosActive
-              ? filmstripFrames
-              : undefined
-          }
+          keyframeMarks={keyframesSecs.length > 0 ? keyframeMarks : undefined}
+          filmstripFrames={filmstripFrames}
           // Always pass a number (0 outside rotate) so absolute centering stays
           // mounted — toggling null↔layout + transition-transform slides the video.
           previewRotateDeg={pendingRotateDeg}
@@ -585,20 +575,23 @@ export function VideoCutter({
             }
           }}
         />
-        {photosActive ? (
-          <VideoCutterPhotosStrip
-            items={photoItems}
-            onToggle={(id) =>
-              setPhotoItems((prev) =>
-                prev.map((it) =>
-                  it.id === id ? { ...it, selected: !it.selected } : it,
-                ),
-              )
-            }
-            onRemove={(id) =>
-              setPhotoItems((prev) => prev.filter((it) => it.id !== id))
-            }
-          />
+        {photosActive && photoItems.length > 0 ? (
+          <div className="shrink-0 border-t border-white/10 bg-black/20 px-2 py-1.5">
+            <VideoCutterPhotosStrip
+              items={photoItems}
+              onToggle={(id) =>
+                setPhotoItems((prev) =>
+                  prev.map((it) =>
+                    it.id === id ? { ...it, selected: !it.selected } : it,
+                  ),
+                )
+              }
+              onRemove={(id) =>
+                setPhotoItems((prev) => prev.filter((it) => it.id !== id))
+              }
+              compact
+            />
+          </div>
         ) : null}
       </div>
     </MediaEditShell>

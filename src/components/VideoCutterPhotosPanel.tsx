@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ImagePlus, StepBack, StepForward, X } from "lucide-react";
 import { formatPlayerTimeMs } from "./VideoPlayer";
-import { MediaEditControlsRow, MediaEditToolReset } from "./MediaEditRotateBar";
+import { MediaEditToolReset } from "./MediaEditRotateBar";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { videoFileSrc } from "../lib/mediaUrl";
@@ -63,6 +63,13 @@ function frameSnapToleranceSecs(fps: number): number {
 }
 
 const THUMB_URL_CONCURRENCY = 8;
+
+/** Cap visible label length (e.g. keep Export:… as short as „Zusätzlich exportieren…“). */
+function clipLabel(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (maxChars <= 1) return "…";
+  return `${text.slice(0, maxChars - 1)}…`;
+}
 
 /** Resolve media URLs in parallel; patch items as each URL arrives. */
 async function hydrateThumbUrls(
@@ -247,157 +254,205 @@ export function VideoCutterPhotosControls({
     await cancelEncode();
   }
 
-  return (
-    <div className="flex w-full max-w-3xl flex-col items-stretch gap-2 py-1">
-      <div className="flex items-center justify-center gap-1">
-        {(
-          [
-            ["interval", t("video.cutter.photos.sub.interval")],
-            ["single", t("video.cutter.photos.sub.single")],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            disabled={extracting}
-            aria-pressed={subMode === id}
-            onClick={() => setSubMode(id)}
-            className={cn(
-              "rounded-lg px-3 py-1 text-[12px] font-medium transition",
-              subMode === id
-                ? "bg-primary text-primary-foreground"
-                : "bg-black/5 text-muted hover:text-foreground dark:bg-white/10",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+  const folderName = exportFolder
+    ? exportFolder.replace(/\\/g, "/").split("/").pop() || exportFolder
+    : null;
 
-      {subMode === "interval" ? (
-        <MediaEditControlsRow
-          reset={
-            <MediaEditToolReset
-              label={t("video.cutter.resetRange")}
-              disabled={
-                extracting ||
-                (rangeStart <= 0 && rangeEnd >= Math.max(0, durationMs - 1))
-              }
-              onClick={onResetRange}
-            />
+  const alsoExportLabel = t("video.cutter.photos.alsoExport");
+  const exportLabel = folderName
+    ? clipLabel(
+        t("video.cutter.photos.exportTo", { folder: folderName }),
+        alsoExportLabel.length - 3, // -3 um die ... auch abzuziehen
+      )
+    : alsoExportLabel;
+
+  const destinations = (
+    <div className="flex shrink-0 flex-col justify-center gap-1 text-[12px]">
+      <label className="inline-flex min-w-0 items-center gap-1.5 text-muted">
+        <Switch
+          checked={importToSession}
+          disabled={extracting}
+          onCheckedChange={onImportToSessionChange}
+          aria-label={t("video.cutter.photos.importToSession")}
+        />
+        <span className="whitespace-nowrap">
+          {t("video.cutter.photos.importToSession")}
+        </span>
+      </label>
+      <label className="inline-flex min-w-0 items-center gap-1.5 text-muted">
+        <Switch
+          checked={exportFolder != null}
+          disabled={extracting}
+          onCheckedChange={(on) => {
+            if (on) void pickExportFolder();
+            else onExportFolderChange(null);
+          }}
+          aria-label={
+            folderName
+              ? t("video.cutter.photos.pickExportFolder")
+              : alsoExportLabel
           }
+        />
+        <span
+          className={cn(
+            "whitespace-nowrap",
+            folderName && "cursor-pointer text-accent hover:underline",
+          )}
+          title={exportFolder ?? undefined}
+          onClick={(e) => {
+            if (!folderName || extracting) return;
+            e.preventDefault();
+            e.stopPropagation();
+            void pickExportFolder();
+          }}
         >
-          <div className="flex flex-wrap items-center justify-center gap-2 text-[12px]">
+          {exportLabel}
+        </span>
+      </label>
+    </div>
+  );
+
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <div className="flex w-full items-center gap-2 sm:gap-3">
+        <div
+          className="flex shrink-0 items-center gap-0.5 rounded-lg bg-black/5 p-0.5 dark:bg-white/10"
+          role="tablist"
+          aria-label={t("video.cutter.photos.title")}
+        >
+          {(
+            [
+              ["interval", t("video.cutter.photos.sub.interval")],
+              ["single", t("video.cutter.photos.sub.single")],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              disabled={extracting}
+              aria-selected={subMode === id}
+              onClick={() => setSubMode(id)}
+              className={cn(
+                "rounded-md px-2.5 py-1 text-[12px] font-medium transition",
+                subMode === id
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Mode actions — stacked so Interval ↔ Single does not reflow */}
+        <div className="grid min-w-0 flex-1 grid-cols-1 justify-items-center">
+          <div
+            className={cn(
+              "col-start-1 row-start-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px]",
+              subMode !== "interval" && "invisible pointer-events-none",
+            )}
+            aria-hidden={subMode !== "interval"}
+          >
             <label className="flex items-center gap-1.5 text-muted">
-              <span>{t("video.cutter.photos.interval")}</span>
+              <span className="hidden lg:inline">
+                {t("video.cutter.photos.interval")}
+              </span>
               <input
                 type="number"
                 min={0.1}
                 step={0.1}
                 value={intervalSec}
-                disabled={extracting}
+                disabled={extracting || subMode !== "interval"}
+                tabIndex={subMode === "interval" ? 0 : -1}
                 onChange={(e) => {
                   const v = Number(e.target.value);
                   if (Number.isFinite(v) && v > 0) setIntervalSec(v);
                 }}
-                className="w-16 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[12px] tabular-nums"
+                className="w-14 rounded-md border border-border bg-background px-1.5 py-0.5 font-mono text-[12px] tabular-nums"
               />
               <span>s</span>
             </label>
-            <span className="text-muted/80">
+            <span className="min-w-[4.5rem] text-center text-muted/80 tabular-nums">
               {t("video.cutter.photos.estimate", { count: estimate })}
-            </span>
-            <span className="font-mono text-[11px] tabular-nums text-muted/70">
-              {formatPlayerTimeMs(rangeStart)}–{formatPlayerTimeMs(rangeEnd)}
             </span>
             <Button
               type="button"
               size="sm"
-              disabled={extracting || estimate < 1}
+              disabled={extracting || estimate < 1 || subMode !== "interval"}
+              tabIndex={subMode === "interval" ? 0 : -1}
               onClick={() => void runIntervalGenerate()}
             >
               {t("video.cutter.photos.generate")}
             </Button>
           </div>
-        </MediaEditControlsRow>
-      ) : (
-        <div className="flex flex-wrap items-center justify-center gap-2 text-[12px]">
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            className="h-8 w-8"
-            disabled={extracting}
-            onClick={() => nudge(-1)}
-            title={t("video.cutter.photos.nudgeBack")}
-            aria-label={t("video.cutter.photos.nudgeBack")}
-          >
-            <StepBack className="h-4 w-4" strokeWidth={2} />
-          </Button>
-          <span className="font-mono tabular-nums text-muted">
-            {formatPlayerTimeMs(playheadMs)}
-          </span>
-          <Button
-            type="button"
-            size="icon"
-            variant="outline"
-            className="h-8 w-8"
-            disabled={extracting}
-            onClick={() => nudge(1)}
-            title={t("video.cutter.photos.nudgeFwd")}
-            aria-label={t("video.cutter.photos.nudgeFwd")}
-          >
-            <StepForward className="h-4 w-4" strokeWidth={2} />
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={extracting}
-            onClick={() => void addFrameAtPlayhead()}
-          >
-            <ImagePlus className="h-3.5 w-3.5" strokeWidth={2} />
-            {t("video.cutter.photos.addFrame")}
-          </Button>
-        </div>
-      )}
 
-      <div className="flex flex-wrap items-center justify-center gap-4 text-[12px]">
-        <label className="inline-flex items-center gap-2 text-muted">
-          <Switch
-            checked={importToSession}
-            disabled={extracting}
-            onCheckedChange={onImportToSessionChange}
-            aria-label={t("video.cutter.photos.importToSession")}
-          />
-          <span>{t("video.cutter.photos.importToSession")}</span>
-        </label>
-        <label className="inline-flex items-center gap-2 text-muted">
-          <Switch
-            checked={exportFolder != null}
-            disabled={extracting}
-            onCheckedChange={(on) => {
-              if (on) void pickExportFolder();
-              else onExportFolderChange(null);
-            }}
-            aria-label={t("video.cutter.photos.alsoExport")}
-          />
-          <span>{t("video.cutter.photos.alsoExport")}</span>
-        </label>
-        {exportFolder ? (
-          <button
-            type="button"
-            disabled={extracting}
-            onClick={() => void pickExportFolder()}
-            className="max-w-[12rem] truncate text-[11px] text-accent hover:underline"
-            title={exportFolder}
+          <div
+            className={cn(
+              "col-start-1 row-start-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[12px]",
+              subMode !== "single" && "invisible pointer-events-none",
+            )}
+            aria-hidden={subMode !== "single"}
           >
-            {exportFolder.replace(/\\/g, "/").split("/").pop() || exportFolder}
-          </button>
-        ) : null}
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-8 w-8"
+              disabled={extracting || subMode !== "single"}
+              tabIndex={subMode === "single" ? 0 : -1}
+              onClick={() => nudge(-1)}
+              title={t("video.cutter.photos.nudgeBack")}
+              aria-label={t("video.cutter.photos.nudgeBack")}
+            >
+              <StepBack className="h-4 w-4" strokeWidth={2} />
+            </Button>
+            <span className="min-w-[4.25rem] text-center font-mono tabular-nums text-muted">
+              {formatPlayerTimeMs(playheadMs)}
+            </span>
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="h-8 w-8"
+              disabled={extracting || subMode !== "single"}
+              tabIndex={subMode === "single" ? 0 : -1}
+              onClick={() => nudge(1)}
+              title={t("video.cutter.photos.nudgeFwd")}
+              aria-label={t("video.cutter.photos.nudgeFwd")}
+            >
+              <StepForward className="h-4 w-4" strokeWidth={2} />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={extracting || subMode !== "single"}
+              tabIndex={subMode === "single" ? 0 : -1}
+              onClick={() => void addFrameAtPlayhead()}
+            >
+              <ImagePlus className="h-3.5 w-3.5" strokeWidth={2} />
+              <span className="hidden lg:inline">
+                {t("video.cutter.photos.addFrame")}
+              </span>
+            </Button>
+          </div>
+        </div>
+
+        {destinations}
+
+        <MediaEditToolReset
+          label={t("video.cutter.resetRange")}
+          disabled={
+            extracting ||
+            (rangeStart <= 0 && rangeEnd >= Math.max(0, durationMs - 1))
+          }
+          onClick={onResetRange}
+          className="shrink-0"
+        />
       </div>
 
       {extracting && progress ? (
-        <div className="flex items-center justify-center gap-2 text-[11px] text-muted">
+        <div className="flex shrink-0 items-center justify-center gap-2 text-[11px] text-muted">
           <span>
             {t("video.cutter.photos.progress", {
               done: progress.done,
@@ -425,16 +480,23 @@ type FrameStripProps = {
   items: FramePreviewItem[];
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  /** Smaller thumbs for the edit-shell controls band. */
+  compact?: boolean;
 };
 
 /** Horizontal virtualized-ish strip: only mounts ~visible thumbs + buffer. */
-export function VideoCutterPhotosStrip({ items, onToggle, onRemove }: FrameStripProps) {
+export function VideoCutterPhotosStrip({
+  items,
+  onToggle,
+  onRemove,
+  compact = false,
+}: FrameStripProps) {
   const { t } = useTranslation();
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
   const [viewW, setViewW] = useState(0);
-  const THUMB = 72;
-  const GAP = 8;
+  const THUMB = compact ? 48 : 72;
+  const GAP = compact ? 6 : 8;
   const stride = THUMB + GAP;
 
   useLayoutEffect(() => {
@@ -445,7 +507,7 @@ export function VideoCutterPhotosStrip({ items, onToggle, onRemove }: FrameStrip
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [items.length]);
+  }, [items.length, THUMB]);
 
   const start = Math.max(0, Math.floor(scrollLeft / stride) - 2);
   const visible = Math.max(1, Math.ceil((viewW || 400) / stride) + 4);
@@ -456,8 +518,18 @@ export function VideoCutterPhotosStrip({ items, onToggle, onRemove }: FrameStrip
   if (items.length === 0) return null;
 
   return (
-    <div className="shrink-0 border-t border-border/60 bg-black/20 px-2 py-2">
-      <div className="mb-1 flex items-center justify-between px-1 text-[11px] text-muted">
+    <div
+      className={cn(
+        "flex w-full min-w-0 flex-col",
+        compact ? "gap-0.5 pt-0.5" : "min-h-0 flex-1 px-2 py-2",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center justify-between text-[11px] text-muted",
+          compact ? "px-0.5" : "mb-1 px-1",
+        )}
+      >
         <span>
           {t("video.cutter.photos.selectedCount", {
             selected: items.filter((i) => i.selected).length,
@@ -467,21 +539,22 @@ export function VideoCutterPhotosStrip({ items, onToggle, onRemove }: FrameStrip
       </div>
       <div
         ref={scrollerRef}
-        className="ats-photos-strip-scroll flex overflow-x-auto pb-0.5"
+        className="ats-photos-strip-scroll flex min-w-0 overflow-x-auto pb-0.5"
         onScroll={(e) => setScrollLeft(e.currentTarget.scrollLeft)}
       >
         <div aria-hidden className="shrink-0" style={{ width: padLeft }} />
         {items.slice(start, end).map((item) => (
           <div
             key={item.id}
-            className="relative mr-2 shrink-0"
-            style={{ width: THUMB }}
+            className="relative shrink-0"
+            style={{ width: THUMB, marginRight: GAP }}
           >
             <button
               type="button"
               onClick={() => onToggle(item.id)}
               className={cn(
-                "block h-[72px] w-[72px] overflow-hidden rounded-md border-2 bg-black/40",
+                "block overflow-hidden rounded-md border-2 bg-black/40",
+                compact ? "h-12 w-12" : "h-[72px] w-[72px]",
                 item.selected ? "border-primary" : "border-transparent opacity-50",
               )}
               title={formatPlayerTimeMs(item.timeSecs * 1000)}
@@ -502,10 +575,18 @@ export function VideoCutterPhotosStrip({ items, onToggle, onRemove }: FrameStrip
             <button
               type="button"
               onClick={() => onRemove(item.id)}
-              className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/80 text-white hover:bg-black"
+              className={cn(
+                "absolute flex items-center justify-center rounded-full bg-black/80 text-white hover:bg-black",
+                compact
+                  ? "-right-0.5 -top-0.5 h-4 w-4"
+                  : "-right-1 -top-1 h-5 w-5",
+              )}
               aria-label={t("common.actions.remove")}
             >
-              <X className="h-3 w-3" strokeWidth={2.5} />
+              <X
+                className={compact ? "h-2.5 w-2.5" : "h-3 w-3"}
+                strokeWidth={2.5}
+              />
             </button>
           </div>
         ))}

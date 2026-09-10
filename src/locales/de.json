@@ -1798,6 +1798,7 @@
         "nudgeFwd": "Einen Frame vor",
         "importToSession": "In Vorgang übernehmen",
         "alsoExport": "Zusätzlich exportieren…",
+        "exportTo": "Export: {{folder}}",
         "pickExportFolder": "Export-Ordner wählen",
         "progress": "{{done}} / {{total}}",
         "selectedCount": "{{selected}} von {{total}} ausgewählt",

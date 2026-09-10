@@ -588,10 +588,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       chrome === "auto" ? (trimEditable ? "trim" : "playback") : chrome;
     const isTrimChrome = resolvedChrome === "trim";
     const isPlaybackChrome = resolvedChrome === "playback";
-    const showSplitFilmstrip =
-      isPlaybackChrome &&
-      emphasizePlayhead &&
-      Boolean(filmstripFrames && filmstripFrames.length > 0);
+    const showSplitFilmstrip = isPlaybackChrome && emphasizePlayhead;
     /** Trim + split: filmstrip below, no in-player scrub/transport. */
     const minimalStageChrome = isTrimChrome || emphasizePlayhead;
     const showOverlayTransport = isPlaybackChrome && !emphasizePlayhead;
@@ -760,7 +757,8 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         ref={rootRef}
         tabIndex={0}
         className={cn(
-          "flex flex-col gap-2 outline-none",
+          "flex flex-col outline-none",
+          fillAvailable ? "gap-0" : "gap-2",
           fillAvailable && "h-full min-h-0",
           className,
         )}
@@ -1061,18 +1059,17 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
           ) : null}
         </div>
 
-        {/* Trim / split filmstrip — fillAvailable always reserves the same height */}
+        {/* Trim / split filmstrip */}
         {showTimelineSlot ? (
           <div
             className={cn(
               "relative shrink-0 overflow-visible",
-              fillAvailable
-                ? "mt-5"
-                : isTrimChrome && trimEditable
+              !fillAvailable &&
+                (isTrimChrome && trimEditable
                   ? "mt-7"
                   : showSplitFilmstrip
                     ? "mt-7"
-                    : null,
+                    : null),
             )}
             style={
               isTrimChrome && trimEditable

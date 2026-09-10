@@ -1798,6 +1798,7 @@
         "nudgeFwd": "Un frame adelante",
         "importToSession": "Añadir al pedido",
         "alsoExport": "Exportar también…",
+        "exportTo": "Exportar: {{folder}}",
         "pickExportFolder": "Elegir carpeta de exportación",
         "progress": "{{done}} / {{total}}",
         "selectedCount": "{{selected}} de {{total}} seleccionadas",

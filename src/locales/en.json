@@ -1798,6 +1798,7 @@
         "nudgeFwd": "One frame forward",
         "importToSession": "Add to session",
         "alsoExport": "Also export…",
+        "exportTo": "Export: {{folder}}",
         "pickExportFolder": "Choose export folder",
         "progress": "{{done}} / {{total}}",
         "selectedCount": "{{selected}} of {{total}} selected",
