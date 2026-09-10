@@ -44,7 +44,7 @@ function activeProfileBackupTarget(draft: SettingsTabBaseProps["draft"]) {
   return { profile, url, login, password };
 }
 
-export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
+export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -57,7 +57,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
 
   async function pickFolder(key: "sd_backup_folder") {
     const selected = await openDialog({ directory: true, multiple: false });
-    if (typeof selected === "string") patch(key, selected);
+    if (typeof selected === "string") patchNow(key, selected);
   }
 
   async function onTestBackupUrl() {
@@ -113,7 +113,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
           <Label>{t("settings.sd.backup.mode")}</Label>
           <Select
             value={draft.sd_backup_mode}
-            onValueChange={(v) => patch("sd_backup_mode", v)}
+            onValueChange={(v) => patchNow("sd_backup_mode", v)}
           >
             <SelectTrigger>
               <SelectValue />
@@ -135,7 +135,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             checked={draft.sd_auto_backup}
             onCheckedChange={(v) => {
               const on = v === true;
-              setDraft((prev) =>
+              commitNow((prev) =>
                 prev
                   ? {
                       ...prev,
@@ -191,7 +191,9 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
             <Checkbox
               checked={draft.sd_clear_after_backup && draft.sd_auto_backup}
               disabled={!draft.sd_auto_backup}
-              onCheckedChange={(v) => patch("sd_clear_after_backup", v === true)}
+              onCheckedChange={(v) =>
+                patchNow("sd_clear_after_backup", v === true)
+              }
             />
             {t("settings.sd.backup.clearAfter")}
           </label>
@@ -200,7 +202,9 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_server_backup_enabled}
-            onCheckedChange={(v) => patch("sd_server_backup_enabled", v === true)}
+            onCheckedChange={(v) =>
+              patchNow("sd_server_backup_enabled", v === true)
+            }
           />
           {t("settings.sd.backup.secondPath")}
         </label>
@@ -272,7 +276,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
               <Label>{t("settings.sd.backup.copyStrategy")}</Label>
               <Select
                 value={modeValue}
-                onValueChange={(v) => patch("sd_server_backup_mode", v)}
+                onValueChange={(v) => patchNow("sd_server_backup_mode", v)}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -301,7 +305,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_auto_import}
-            onCheckedChange={(v) => patch("sd_auto_import", v === true)}
+            onCheckedChange={(v) => patchNow("sd_auto_import", v === true)}
           />
           {t("settings.sd.import.auto")}
         </label>
@@ -314,7 +318,9 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         >
           <Checkbox
             checked={draft.sd_eject_after_workflow}
-            onCheckedChange={(v) => patch("sd_eject_after_workflow", v === true)}
+            onCheckedChange={(v) =>
+              patchNow("sd_eject_after_workflow", v === true)
+            }
           />
           {t("settings.sd.import.eject")}
         </label>
@@ -325,7 +331,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.sd_eject_sound_enabled}
             onCheckedChange={(v) =>
-              patch("sd_eject_sound_enabled", v === true)
+              patchNow("sd_eject_sound_enabled", v === true)
             }
           />
           {t("settings.sd.import.ejectSound")}
@@ -336,7 +342,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_skip_processed}
-            onCheckedChange={(v) => patch("sd_skip_processed", v === true)}
+            onCheckedChange={(v) => patchNow("sd_skip_processed", v === true)}
           />
           {t("settings.sd.import.skipProcessed")}
         </label>
@@ -344,7 +350,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.usb_camera_import_enabled}
             onCheckedChange={(v) =>
-              patch("usb_camera_import_enabled", v === true)
+              patchNow("usb_camera_import_enabled", v === true)
             }
           />
           {t("settings.sd.import.usbCameras")}
@@ -368,7 +374,7 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
                   : "auto"
             }
             disabled={!draft.usb_camera_import_enabled}
-            onValueChange={(v) => patch("usb_import_mode", v)}
+            onValueChange={(v) => patchNow("usb_import_mode", v)}
           >
             <SelectTrigger>
               <SelectValue />
@@ -398,7 +404,9 @@ export function SdTab({ draft, patch, setDraft }: SettingsTabBaseProps) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_size_limit_enabled}
-            onCheckedChange={(v) => patch("sd_size_limit_enabled", v === true)}
+            onCheckedChange={(v) =>
+              patchNow("sd_size_limit_enabled", v === true)
+            }
           />
           {t("settings.sd.size.enable")}
         </label>

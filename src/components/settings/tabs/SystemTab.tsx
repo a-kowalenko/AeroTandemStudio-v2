@@ -136,7 +136,7 @@ function UsageActionRow({
 
 export function SystemTab({
   draft,
-  patch,
+  patchNow,
   saving,
   sessionBusy = false,
   dangerClearedNonce = 0,
@@ -438,7 +438,7 @@ export function SystemTab({
         return;
       }
     }
-    patch("auto_cleanup_jobs_enabled", next);
+    patchNow("auto_cleanup_jobs_enabled", next);
   };
 
   const enableBackupsCleanup = (next: boolean) => {
@@ -447,7 +447,7 @@ export function SystemTab({
         return;
       }
     }
-    patch("auto_cleanup_backups_enabled", next);
+    patchNow("auto_cleanup_backups_enabled", next);
   };
 
   return (
@@ -487,7 +487,7 @@ export function SystemTab({
             <Checkbox
               checked={draft.beta_updates_enabled}
               onCheckedChange={(v) =>
-                patch("beta_updates_enabled", v === true)
+                patchNow("beta_updates_enabled", v === true)
               }
             />
             {t("settings.system.update.betaTester")}
@@ -661,7 +661,7 @@ export function SystemTab({
               <Select
                 value={String(draft.auto_cleanup_jobs_retention_days || 14)}
                 onValueChange={(v) =>
-                  patch("auto_cleanup_jobs_retention_days", Number(v) || 14)
+                  patchNow("auto_cleanup_jobs_retention_days", Number(v) || 14)
                 }
                 disabled={!draft.auto_cleanup_jobs_enabled}
               >
@@ -693,7 +693,7 @@ export function SystemTab({
               <Select
                 value={String(draft.auto_cleanup_backups_retention_days || 30)}
                 onValueChange={(v) =>
-                  patch("auto_cleanup_backups_retention_days", Number(v) || 30)
+                  patchNow("auto_cleanup_backups_retention_days", Number(v) || 30)
                 }
                 disabled={!draft.auto_cleanup_backups_enabled}
               >

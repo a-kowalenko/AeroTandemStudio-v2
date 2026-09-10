@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-export function QrTab({ draft, patch }: SettingsTabBaseProps) {
+export function QrTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
   const { t } = useTranslation();
 
   return (
@@ -17,14 +17,16 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.qr_check_enabled}
-            onCheckedChange={(v) => patch("qr_check_enabled", v === true)}
+            onCheckedChange={(v) => patchNow("qr_check_enabled", v === true)}
           />
           {t("settings.qr.autoScan.videos")}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.photo_qr_check_enabled}
-            onCheckedChange={(v) => patch("photo_qr_check_enabled", v === true)}
+            onCheckedChange={(v) =>
+              patchNow("photo_qr_check_enabled", v === true)
+            }
           />
           {t("settings.qr.autoScan.photos")}
         </label>
@@ -56,7 +58,7 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.qr_remove_photo_after_scan}
             onCheckedChange={(v) =>
-              patch("qr_remove_photo_after_scan", v === true)
+              patchNow("qr_remove_photo_after_scan", v === true)
             }
           />
           {t("settings.qr.after.removePhoto")}
@@ -68,7 +70,7 @@ export function QrTab({ draft, patch }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.qr_remove_video_after_scan}
             onCheckedChange={(v) =>
-              patch("qr_remove_video_after_scan", v === true)
+              patchNow("qr_remove_video_after_scan", v === true)
             }
           />
           {t("settings.qr.after.removeVideo")}

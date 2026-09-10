@@ -34,7 +34,13 @@ type Props = SettingsTabBaseProps & {
   flashFocus: SettingsFocusTarget | null;
 };
 
-export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
+export function ServerTab({
+  draft,
+  patch,
+  patchNow,
+  setDraft,
+  flashFocus,
+}: Props) {
   const { t } = useTranslation();
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
@@ -459,7 +465,7 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.upload_to_server}
-            onCheckedChange={(v) => patch("upload_to_server", v === true)}
+            onCheckedChange={(v) => patchNow("upload_to_server", v === true)}
           />
           {t("settings.server.upload.afterCreate")}
         </label>
@@ -467,7 +473,9 @@ export function ServerTab({ draft, patch, setDraft, flashFocus }: Props) {
           <Checkbox
             className="mt-0.5"
             checked={draft.smb_auto_mount_enabled}
-            onCheckedChange={(v) => patch("smb_auto_mount_enabled", v === true)}
+            onCheckedChange={(v) =>
+              patchNow("smb_auto_mount_enabled", v === true)
+            }
           />
           <span>
             <span className="block">{t("settings.server.upload.autoMount")}</span>

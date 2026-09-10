@@ -13,7 +13,7 @@ import { FolderPathField } from "../FolderPathField";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-export function GeneralTab({ draft, patch }: SettingsTabBaseProps) {
+export function GeneralTab({ draft, patchNow }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const themeMode = useThemeStore((s) => s.mode);
@@ -22,13 +22,13 @@ export function GeneralTab({ draft, patch }: SettingsTabBaseProps) {
 
   async function pickFolder() {
     const selected = await openDialog({ directory: true, multiple: false });
-    if (typeof selected === "string") patch("speicherort", selected);
+    if (typeof selected === "string") patchNow("speicherort", selected);
   }
 
   async function onLanguageChange(lang: string) {
     if (!UI_LANGUAGES.includes(lang as UiLanguage)) return;
     const uiLang = lang as UiLanguage;
-    patch("ui_language", uiLang);
+    patchNow("ui_language", uiLang);
     await setLanguage(uiLang);
   }
 
@@ -102,7 +102,7 @@ export function GeneralTab({ draft, patch }: SettingsTabBaseProps) {
         <Combobox
           label={t("settings.general.storage.defaultDropzone")}
           value={draft.ort}
-          onChange={(v) => patch("ort", v)}
+          onChange={(v) => patchNow("ort", v)}
           options={ORT_OPTIONS}
           placeholder={t("common.labels.dropzonePlaceholder")}
           listZIndex={200}

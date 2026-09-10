@@ -17,7 +17,7 @@ import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
+export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
@@ -31,7 +31,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Label>{t("settings.encoding.codec")}</Label>
           <Select
             value={draft.video_codec}
-            onValueChange={(v) => patch("video_codec", v)}
+            onValueChange={(v) => patchNow("video_codec", v)}
           >
             <SelectTrigger>
               <SelectValue />
@@ -50,7 +50,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Label>{t("settings.encoding.strategy")}</Label>
           <Select
             value={draft.encoding_strategy}
-            onValueChange={(v) => patch("encoding_strategy", v)}
+            onValueChange={(v) => patchNow("encoding_strategy", v)}
           >
             <SelectTrigger>
               <SelectValue />
@@ -70,7 +70,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.hardware_acceleration_enabled}
             onCheckedChange={(v) =>
-              patch("hardware_acceleration_enabled", v === true)
+              patchNow("hardware_acceleration_enabled", v === true)
             }
           />
           {t("settings.encoding.hwAccel")}
@@ -80,7 +80,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Checkbox
             checked={draft.parallel_processing_enabled}
             onCheckedChange={(v) =>
-              patch("parallel_processing_enabled", v === true)
+              patchNow("parallel_processing_enabled", v === true)
             }
           />
           {t("settings.encoding.parallel")}
@@ -90,7 +90,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
           <Label>{t("settings.encoding.concat")}</Label>
           <Select
             value={normalizeBodyConcatMode(draft.body_concat_mode)}
-            onValueChange={(v) => patch("body_concat_mode", v)}
+            onValueChange={(v) => patchNow("body_concat_mode", v)}
           >
             <SelectTrigger>
               <SelectValue />
@@ -133,7 +133,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
                 checked={draft.intro_enabled}
-                onCheckedChange={(v) => patch("intro_enabled", v === true)}
+                onCheckedChange={(v) => patchNow("intro_enabled", v === true)}
               />
               {t("settings.encoding.introEnabled")}
             </label>
@@ -141,7 +141,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <Label>{t("settings.encoding.introDuration")}</Label>
               <Select
                 value={String(draft.dauer)}
-                onValueChange={(v) => patch("dauer", Number(v))}
+                onValueChange={(v) => patchNow("dauer", Number(v))}
                 disabled={!draft.intro_enabled}
               >
                 <SelectTrigger>
@@ -164,7 +164,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
                     ? "stream_copy"
                     : "reencode"
                 }
-                onValueChange={(v) => patch("intro_mux_mode", v)}
+                onValueChange={(v) => patchNow("intro_mux_mode", v)}
                 disabled={!draft.intro_enabled}
               >
                 <SelectTrigger>
@@ -191,7 +191,7 @@ export function EncodingTab({ draft, patch }: SettingsTabBaseProps) {
               <Checkbox
                 checked={draft.reencode_matching_clips}
                 onCheckedChange={(v) =>
-                  patch("reencode_matching_clips", v === true)
+                  patchNow("reencode_matching_clips", v === true)
                 }
               />
               {t("settings.encoding.reencodeMatching")}

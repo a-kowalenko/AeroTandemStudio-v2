@@ -12,11 +12,15 @@ import type { SettingsTabBaseProps } from "../types";
 
 type Props = {
   draft: AppConfig | null;
-  patch: SettingsTabBaseProps["patch"];
-  setDraft: SettingsTabBaseProps["setDraft"];
+  patchNow: SettingsTabBaseProps["patchNow"];
+  commitNow: SettingsTabBaseProps["commitNow"];
 };
 
-export function useCrewEditor({ draft, patch, setDraft }: Props) {
+export function useCrewEditor({
+  draft,
+  patchNow,
+  commitNow,
+}: Props) {
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -87,7 +91,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
       prevName,
       name,
     );
-    setDraft((prev) => {
+    commitNow((prev) => {
       if (!prev) return prev;
       let removed = clearCrewRemovedName(prev.crew_removed_names, name);
       if (prevName && !crewNamesEqual(prevName, name)) {
@@ -117,7 +121,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
       showError(t("settings.crew.errors.roleRequired"), t("settings.tabs.crew"));
       return;
     }
-    patch("crew_list", list);
+    patchNow("crew_list", list);
   }
 
   function deleteCrewMember(index: number) {
@@ -132,7 +136,7 @@ export function useCrewEditor({ draft, patch, setDraft }: Props) {
     );
     const clearedOperator =
       nextOperator !== draft.operator_name && !nextOperator.trim();
-    setDraft((prev) =>
+    commitNow((prev) =>
       prev
         ? {
             ...prev,

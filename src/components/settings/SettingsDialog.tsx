@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
@@ -105,17 +105,19 @@ export function SettingsDialog({
   const {
     draft,
     setDraft,
+    commitNow,
     patch,
-    save,
+    patchNow,
+    flush,
     resetToFactory,
     saving,
-    hasUnsavedChanges,
+    persistState,
   } = useSettingsDraft(open, config);
   const releaseList = useReleaseList(open, draft?.beta_updates_enabled ?? false);
   const crewEditor = useCrewEditor({
     draft: draft ?? config,
-    patch,
-    setDraft,
+    patchNow,
+    commitNow,
   });
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -128,9 +130,19 @@ export function SettingsDialog({
   const [dangerClearing, setDangerClearing] = useState(false);
   const [dangerClearedNonce, setDangerClearedNonce] = useState(0);
   const [flashFocus, setFlashFocus] = useState<SettingsFocusTarget | null>(null);
+  const [showPersistSpinner, setShowPersistSpinner] = useState(false);
 
   const softConfirmOpen =
     resetConfirmOpen || cacheConfirmOpen || dangerConfirm !== null;
+
+  useEffect(() => {
+    if (persistState !== "saving") {
+      setShowPersistSpinner(false);
+      return;
+    }
+    const id = window.setTimeout(() => setShowPersistSpinner(true), 400);
+    return () => window.clearTimeout(id);
+  }, [persistState]);
 
   useEffect(() => {
     if (open) {
@@ -165,21 +177,6 @@ export function SettingsDialog({
     setSettingsTab,
     settingsTab,
   ]);
-
-  function requestClose() {
-    if (
-      hasUnsavedChanges &&
-      !window.confirm(t("common.unsavedChangesDiscard"))
-    ) {
-      return;
-    }
-    onOpenChange(false);
-  }
-
-  async function onSave() {
-    const saved = await save();
-    if (saved) onOpenChange(false);
-  }
 
   async function onResetDefaults() {
     setResetConfirmOpen(false);
@@ -284,7 +281,7 @@ export function SettingsDialog({
 
   if (!draft) return null;
 
-  const tabProps = { draft, patch, setDraft };
+  const tabProps = { draft, patch, patchNow, setDraft, commitNow };
 
   const dangerFolderPath =
     dangerConfirm == null
@@ -338,22 +335,22 @@ export function SettingsDialog({
         open={open}
         onOpenChange={(v) => {
           if (!v) {
-            if (hasUnsavedChanges) {
-              if (
-                !window.confirm(t("common.unsavedChangesDiscard"))
-              ) {
-                return;
-              }
-            }
-            setResetConfirmOpen(false);
-            setCacheConfirmOpen(false);
-            setDangerConfirm(null);
+            void (async () => {
+              const ok = await flush();
+              if (!ok) return;
+              setResetConfirmOpen(false);
+              setCacheConfirmOpen(false);
+              setDangerConfirm(null);
+              onOpenChange(false);
+            })();
+            return;
           }
           onOpenChange(v);
         }}
       >
         <DialogContent
           className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-visible"
+          aria-busy={showPersistSpinner || undefined}
           onPointerDownOutside={(e) => {
             const el = e.target as HTMLElement | null;
             if (
@@ -389,7 +386,15 @@ export function SettingsDialog({
           }}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle>{t("settings.dialog.title")}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {t("settings.dialog.title")}
+              {showPersistSpinner ? (
+                <Loader2
+                  className="h-3.5 w-3.5 animate-spin text-muted"
+                  aria-hidden
+                />
+              ) : null}
+            </DialogTitle>
             <DialogDescription className="sr-only">
               {t("settings.dialog.description")}
             </DialogDescription>
@@ -448,7 +453,7 @@ export function SettingsDialog({
             </div>
           </Tabs>
 
-          <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="shrink-0">
             <p className="text-center text-xs text-muted sm:text-left">
               {t("settings.dialog.footer", {
                 version: releaseList.appVersion
@@ -456,21 +461,6 @@ export function SettingsDialog({
                   : "",
               })}
             </p>
-            <DialogFooter className="gap-2 sm:justify-end">
-              <Button
-                variant="secondary"
-                onClick={requestClose}
-                disabled={saving || suppressDismiss || dangerClearing || cacheClearing}
-              >
-                {t("common.actions.cancel")}
-              </Button>
-              <Button
-                onClick={() => void onSave()}
-                disabled={saving || suppressDismiss || dangerClearing || cacheClearing}
-              >
-                {saving ? t("common.actions.saving") : t("common.actions.save")}
-              </Button>
-            </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
