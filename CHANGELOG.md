@@ -22,6 +22,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 ### Verbessert
 
 - Beim nächsten Start einmalig: USB-Action-Cams an, Import „Automatisch (Whitelist)“, Clips zusammenfügen „Compatible“, SMB automatisch verbinden an (danach wieder frei änderbar)
+- Einstellungen speichern sofort beim Ändern — ohne separates Speichern-Toast
 - Beim Erstellen im Modus Compatible entfällt oft der Schritt „Clips prüfen…“ — die Prüfung läuft bereits beim Import mit
 - Modus Compatible erstellt Videos spürbar schneller — typische Clips oft in einem Durchgang statt vieler Vorbereitungsschritte
 - Fortschritt beim Erstellen: aktuelle Schritte klarer (z. B. „Clips zusammenfügen…“) und Fortschrittsbalken springt nicht mehr zurück
@@ -31,6 +32,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Mac: SMB automatisch verbinden funktioniert zuverlässiger — Mount unter dem App-Ordner statt unter Systempfaden mit Rechteproblemen
 - USB-Action-Cams: Erkennung unterscheidet Geräte-Namen und echte Mediendateien zuverlässiger
 - Kundenformular: Medien-Produkte zeigen „Bezahlt“ / „Unbezahlt“ farbig; Bezahlung nur umschaltbar, wenn passende Medien in der Liste sind
+- Foto bearbeiten: Zuschnitt und Drehung greifen ineinander — die Vorschau folgt der Drehung
+- Video/Foto bearbeiten: Zurücksetzen getrennt für Bereich, Zuschnitt und Drehung
+- Video bearbeiten → Fotos: kompaktere Vorschaubilder, Übernehmen mit Anzahl, gewählter Export-Ordner sichtbar
+- Medien nachreichen: Dialog übersichtlicher, Senden zeigt die Anzahl
+- SD-/USB-Import: Suche, Sortierung, Kompaktansicht, Filter „nur neue“, Auswahl nach Tag und weitere Auswahlaktionen
 
 ### Behoben
 
