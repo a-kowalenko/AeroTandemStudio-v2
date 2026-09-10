@@ -36,7 +36,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Video/Foto bearbeiten: Zurücksetzen getrennt für Bereich, Zuschnitt und Drehung
 - Video bearbeiten → Fotos: kompaktere Vorschaubilder, Übernehmen mit Anzahl, gewählter Export-Ordner sichtbar
 - Medien nachreichen: Dialog übersichtlicher, Senden zeigt die Anzahl
-- SD-/USB-Import: Suche, Sortierung, Kompaktansicht, Filter „nur neue“, Auswahl nach Tag und weitere Auswahlaktionen
+- SD-/USB-Import: Suche, Sortierung, Kompaktansicht, Filter „nur neue“, Auswahl nach Tag; Videos und Fotos getrennt auswählen oder abwählen, Auswahlzähler mit Größe und Medienart
 
 ### Behoben
 
