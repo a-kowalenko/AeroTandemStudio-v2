@@ -96,7 +96,7 @@ export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
           />
           <span className="min-w-0">
             <span className="block">{t("settings.encoding.speculativeCreate")}</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
+            <span className="mt-0.5 block text-[11px] leading-snug text-muted">
               {t("settings.encoding.speculativeCreateHint")}
             </span>
           </span>
@@ -121,7 +121,7 @@ export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
               </SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
+          <p className="whitespace-pre-line text-[11px] leading-snug text-muted">
             {t("settings.encoding.concatHint")}
           </p>
         </div>
@@ -195,10 +195,10 @@ export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] leading-snug text-muted">
                 {t("settings.encoding.introMuxHint")}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] leading-snug text-muted">
                 {t("settings.encoding.previewReuseHint")}
               </p>
             </div>

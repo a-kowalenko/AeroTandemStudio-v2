@@ -279,7 +279,7 @@
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
       "concatLegacy": "Legacy",
-      "concatHint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: Avidemux-like — robust and copy-efficient (lossless, orientation-safe). Legacy: proven MPEG-TS pipeline (fallback, slower). On Fast/Compatible failure: cancel or use Legacy.",
+      "concatHint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.\nOn failure: cancel or use Legacy.",
       "advanced": "Advanced",
       "introEnabled": "Use intro when creating (experimental)",
       "introDuration": "Intro duration (sec.)",
@@ -1224,7 +1224,7 @@
       "shortFast": "Fast",
       "shortCompatible": "Compatible",
       "shortLegacy": "Legacy",
-      "hint": "Fast Path: one naive copy pass — quick but risky on some players. Compatible: Avidemux-like — robust and copy-efficient (lossless, orientation-safe). Legacy: proven MPEG-TS pipeline (fallback, slower).",
+      "hint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
       "aria": "Clip join mode: {{mode}}"
     },
     "progress": "Progress",
