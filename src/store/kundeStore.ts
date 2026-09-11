@@ -69,7 +69,9 @@ type KundeState = {
   crewAttentionAfterQr: boolean;
   /**
    * AMS ID-lookup lock (Phase 25). Independent of QR snapshot/revision.
-   * Name, IDs and media are locked while true; crew stays editable.
+   * Name/IDs (and manual product toggles in the form) are locked while true;
+   * crew stays editable. Import may still auto-enable unpaid products when
+   * media arrives (`autoCheckProducts`) so Nachverkauf works.
    */
   amsLookupLocked: boolean;
   amsLookupRevision: number;
@@ -235,8 +237,13 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     }
   },
 
+  /**
+   * Enable products for media present in the current mode.
+   * Runs even under `amsLookupLocked`: AMS/QR "not booked" only means unpaid,
+   * not "exclude from Vorgang". Newly enabled products stay unpaid; existing
+   * paid flags from AMS are left untouched.
+   */
   autoCheckProducts: (hasVideos, hasPhotos) => {
-    if (get().amsLookupLocked) return;
     const k = get().kunde;
     const mode = k.video_mode;
     if (mode !== "handcam" && mode !== "outside") return;

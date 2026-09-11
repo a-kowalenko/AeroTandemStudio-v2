@@ -2423,6 +2423,25 @@ fn cleanup_after_failed_commit(artifacts: &StagingArtifacts, layout: &OutputLayo
     *guard = None;
 }
 
+/// Put artifacts back on the slot after a refused attach, or delete staging if the slot moved on.
+fn restore_artifacts_or_cleanup(artifacts: StagingArtifacts) {
+    let slot = {
+        let guard = SLOT.lock().unwrap_or_else(|e| e.into_inner());
+        guard.clone()
+    };
+    if let Some(slot) = slot {
+        let mut inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if inner.staging_id == artifacts.staging_id {
+            inner.artifacts = Some(artifacts);
+            inner.attached = false;
+            inner.phase = SpeculativePhase::Ready;
+            slot.cv.notify_all();
+            return;
+        }
+    }
+    remove_staging_dir(&artifacts.staging_dir);
+}
+
 /// Try speculative hit/attach then commit; `Ok(None)` means caller should full-create.
 pub fn try_promote_into_create_job(
     ffmpeg: &Path,
@@ -2456,6 +2475,25 @@ pub fn try_promote_into_create_job(
     let Some(artifacts) = wait_for_matching(ffmpeg, &body_fp, &photos_fp, &on_progress)? else {
         return Ok(None);
     };
+
+    // Safety: never commit a photo-only staging hit when a body video is required.
+    // (e.g. clips present but product was off during staging — fall back to full create.)
+    if needs_video_product(kunde) && !video_paths.is_empty() && artifacts.video_rel.is_none() {
+        log_event(
+            "speculative_miss_gate",
+            "attach_missing_body_video",
+        );
+        restore_artifacts_or_cleanup(artifacts);
+        return Ok(None);
+    }
+    if needs_foto_product(kunde) && !photo_paths.is_empty() && artifacts.photos_copied == 0 {
+        log_event(
+            "speculative_miss_gate",
+            "attach_missing_photos",
+        );
+        restore_artifacts_or_cleanup(artifacts);
+        return Ok(None);
+    }
 
     // Fast-forward body/photo stages for hit UX.
     on_progress(EncodeProgress {

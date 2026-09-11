@@ -92,7 +92,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       });
       get().ensureDefaultWatermarkClip();
       if (fresh.length > 0) {
-        syncProductsFromMedia({ hasVideos: true, hasPhotos: false });
+        syncProductsFromMedia({ hasVideos: true });
         // Stagger FFmpeg poster warm (OPT-10) — first clip first, max 2 concurrent.
         previewThumbnailQueue.scheduleWarmAfterImport(
           fresh.map((v) => v.path),

@@ -157,7 +157,7 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       void get().refreshSizes(
         fresh.filter((p) => p.sizeBytes == null).map((p) => p.path),
       );
-      syncProductsFromMedia({ hasVideos: false, hasPhotos: true });
+      syncProductsFromMedia({ hasPhotos: true });
       // LQ warm window (EXIF-fast); continues during Auto-QR.
       photoThumbnailQueue.scheduleWarmAfterImport(
         fresh.map((p) => p.path),
