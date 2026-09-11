@@ -4,7 +4,6 @@
 |------|--------|
 | `open/` | **Offene** Phase-Specs — diese an Agents anhängen |
 | `open/31.5-extra-files.md` | Phase 31.5 |
-| `open/46-speculative-create-staging.md` | Phase 46 |
 | `open/23-usb-mtp.md` | Phase 23.x |
 | `open/14-ml-photo.md` | Phase 14 (Backlog) |
 | `ARCHIVE.md` | Erledigte Phase-Specs (nicht standardmäßig anhängen) |

@@ -3561,3 +3561,49 @@ src/hooks/useAmsIdLookup.ts
 src/store/kundeStore.ts
 scripts/qrDualResolve.test.mjs
 ```
+
+---
+
+# Phase 46 — Speculative Create Staging (Compatible, Intro aus)
+
+> **Agent-Attach:** Archiv / Regression. Regeln: `@AGENTS.md`
+
+**Status:** ✅ Erledigt (manuelle Abnahme 2026-09-11)  
+**Abhängigkeiten:** Phase 12 (`create_job`), Phase 40/43 (Compatible Clean/Dirty), OPT-16 (Probe-Cache), Phase 31.1 (Offline Soft Confirm)  
+**Ziel:** Unter engen Preconditions Body + Fotos heimlich im Staging vorbereiten; beim Klick auf Erstellen Attach (laufend) oder Commit (fertig). Kein AMS-/Historie-/Marker-Touch vor dem Klick.
+
+### Umgesetzt
+
+- [x] Rust: `speculative_create.rs` — Slot, Fingerprint (body/photos/wm), incremental rebuild, defer/drain, cleanup
+- [x] Staging unter Temp/Cache (kein finaler Kundenordner); Compatible ohne Intro/Marker/Manifest
+- [x] `create_job`: Attach / Promote-from-staging; Fallback Full-Create
+- [x] FE: `useSpeculativeCreate` (Settle 1000 ms + Debounce 400 ms), Chip „Vorbereitung…“/„Bereit“, Soft-Confirms unverändert
+- [x] Setting `speculative_create_enabled`; i18n de/en/es-MX
+- [x] Unit-Tests + `cargo test` / `npm run check`
+- [x] Manuelle Abnahme (14 Fälle inkl. Cut-Invalidate, Attach, Intro-Gate, AMS-Lock-Nachverkauf, Offline Soft Confirm)
+
+### Entscheidungen (Kurz)
+
+1. Start bei Session settled + Medien/Produkte + QR|ID-Lookup — **nicht** an volles `createReady` gebunden
+2. Nur Compatible + Intro aus; `NeedsReencode` → Staging abbrechen
+3. Ein Slot; Running + gleicher `body_fp` → `speculative_defer` (kein Cancel-Sturm)
+4. Foto-WM-Marks starten kein Staging (Commit); Clip-WM incremental
+5. Soft-Confirms / finaler Ordnername erst beim Klick
+
+### Preconditions
+
+```
+speculative_create_enabled && intro_enabled == false && compatible
+&& kunde_recognized_via_qr_or_id_lookup && media_products_ok
+&& sessionSettled && !canReusePreview && Disk-Preflight ok
+```
+
+### Referenzen
+
+```
+src-tauri/src/video/speculative_create.rs
+src-tauri/src/video/export_job.rs
+src/hooks/useSpeculativeCreate.ts
+src/lib/speculativeMediaReady.ts
+src/App.tsx
+```

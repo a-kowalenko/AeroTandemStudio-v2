@@ -58,7 +58,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ## Aktueller Stand (Kurz)
 
-- ✅ Phase 0–22, 24–31.4, 31.6–46 (Details: `@docs/IMPLEMENTATION_PLAN.md` Tracker)
+- ✅ Phase 0–22, 24–31.4, 31.6–46 (Details: `@docs/IMPLEMENTATION_PLAN.md` Tracker; Phase 46 in `@docs/phases/ARCHIVE.md`)
 - 🔄 **Phase 23** USB-MTP — 23.2g Whitelist / WPD-Descend ✅; als Nächstes **23.2h** oder **23.3** Linux · Spec: `@docs/phases/open/23-usb-mtp.md`
 - ⬜ **Phase 31.5** Extra-Dateien (Resync / optional löschen) · Spec: `@docs/phases/open/31.5-extra-files.md`
 - ⬜ **Phase 14** ML Foto-Klassifikation (Backlog) · Spec: `@docs/phases/open/14-ml-photo.md`
