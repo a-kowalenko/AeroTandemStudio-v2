@@ -127,11 +127,11 @@ export function HeaderBrand({
       )}
       title={collapsedToLogoOnly ? brandTooltip : undefined}
     >
-      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg bg-primary-soft ring-1 ring-primary/20">
+      <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-gradient-to-br from-primary-soft to-primary/10 ring-1 ring-primary/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
         <img
           src="/logo.png"
           alt=""
-          className="h-[22px] w-[22px] object-contain"
+          className="h-[22px] w-[22px] object-contain drop-shadow-sm"
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = "none";
           }}

@@ -1948,6 +1948,7 @@
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
+      "import": "Importar",
       "open": "Abrir",
       "pickWithTooltip": "{{tip}} — elegir tarjeta SD / selector de archivos"
     },

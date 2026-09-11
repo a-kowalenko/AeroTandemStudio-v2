@@ -350,7 +350,7 @@ export function ServerStatusIndicator({
   }
 
   const classNames = cn(
-    "flex items-center gap-2 rounded-lg border border-border bg-card/80 px-2.5 py-1.5 text-xs shadow-sm",
+    "flex h-8 max-w-[12rem] items-center gap-1.5 rounded-md border border-border bg-card/80 px-2.5 text-xs shadow-sm",
     loudChecking && !view.transferKind ? "text-warning" : view.toneClass,
     interactive &&
       "cursor-pointer transition-colors hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -394,7 +394,7 @@ export function ServerStatusIndicator({
           </span>
         ) : null}
       </span>
-      <span className="relative inline-grid max-w-[14rem] text-left">
+      <span className="relative inline-grid min-w-0 max-w-[8.5rem] text-left">
         {!view.transferKind ? (
           <>
             <span

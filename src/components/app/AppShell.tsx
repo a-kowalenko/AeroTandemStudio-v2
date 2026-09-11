@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Check, FolderClock, Loader2, RotateCcw } from "lucide-react";
 import { AppChrome } from "../chrome/AppChrome";
 import { HeaderBrand } from "../chrome/HeaderBrand";
+import { HeaderDivider, HeaderGroup, HEADER_BTN } from "../chrome/HeaderToolbar";
 import { ServerStatusIndicator } from "../ServerStatusIndicator";
 import { SdModeSelector } from "../SdModeSelector";
 import { SdDriveSelector } from "../SdDriveSelector";
@@ -178,82 +179,90 @@ export function AppShell({
       <AppChrome
         actions={
           <>
-            <SdDriveSelector
-              disabled={uiLocked || !ready}
-              onOpenDrive={onOpenSdDrive}
-              onPrimaryAction={onSdPrimaryAction}
-            />
-            <SdModeSelector
-              visible={Boolean(config?.sd_auto_backup)}
-              disabled={uiLocked}
-            />
-            <ServerStatusIndicator
-              postUpdateHintEnabled={postUpdateHintEnabled}
-              appVersion={appVersion}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={onOpenHistory}
-              disabled={busy || !ready}
-              title={
-                uploadToServer && pendingUploadCount > 0
-                  ? t("history.upload.pendingBadgeTooltip", {
-                      count: pendingUploadCount,
-                    })
-                  : t("app.chrome.historyTitle")
-              }
-              className="relative"
-            >
-              <FolderClock className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("common.actions.history")}</span>
-              {uploadToServer && pendingUploadCount > 0 ? (
-                <span
-                  className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-semibold leading-none text-white tabular-nums"
-                  aria-hidden
-                >
-                  {pendingUploadCount > 99 ? "99+" : pendingUploadCount}
+            <HeaderGroup>
+              <SdDriveSelector
+                disabled={uiLocked || !ready}
+                onOpenDrive={onOpenSdDrive}
+                onPrimaryAction={onSdPrimaryAction}
+              />
+              <SdModeSelector
+                visible={Boolean(config?.sd_auto_backup)}
+                disabled={uiLocked}
+              />
+            </HeaderGroup>
+
+            <HeaderDivider />
+
+            <HeaderGroup>
+              <ServerStatusIndicator
+                postUpdateHintEnabled={postUpdateHintEnabled}
+                appVersion={appVersion}
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={onOpenHistory}
+                disabled={busy || !ready}
+                title={
+                  uploadToServer && pendingUploadCount > 0
+                    ? t("history.upload.pendingBadgeTooltip", {
+                        count: pendingUploadCount,
+                      })
+                    : t("app.chrome.historyTitle")
+                }
+                className={cn("relative", HEADER_BTN)}
+              >
+                <FolderClock className="h-3.5 w-3.5" aria-hidden />
+                <span>{t("common.actions.history")}</span>
+                {uploadToServer && pendingUploadCount > 0 ? (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-warning px-1 text-[10px] font-semibold leading-none text-white tabular-nums"
+                    aria-hidden
+                  >
+                    {pendingUploadCount > 99 ? "99+" : pendingUploadCount}
+                  </span>
+                ) : null}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  void runReset(() => onSessionReset());
+                }}
+                disabled={uiLocked || !ready || resetPhase !== "idle"}
+                title={t("app.chrome.resetTitle")}
+                aria-busy={resetPhase === "loading"}
+                className={cn(
+                  HEADER_BTN,
+                  resetPhase === "done"
+                    ? "border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success"
+                    : resetPhase === "loading"
+                      ? "border-border bg-card text-muted"
+                      : "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
+                )}
+              >
+                {resetPhase === "loading" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : resetPhase === "done" ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+                )}
+                <span>
+                  {resetPhase === "loading"
+                    ? t("app.session.resetting")
+                    : resetPhase === "done"
+                      ? t("app.session.resetFlash")
+                      : t("common.actions.reset")}
                 </span>
-              ) : null}
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                void runReset(() => onSessionReset());
-              }}
-              disabled={uiLocked || !ready || resetPhase !== "idle"}
-              title={t("app.chrome.resetTitle")}
-              aria-busy={resetPhase === "loading"}
-              className={cn(
-                resetPhase === "done"
-                  ? "border-success/30 bg-success/10 text-success hover:bg-success/10 hover:text-success"
-                  : resetPhase === "loading"
-                    ? "border-border bg-card text-muted"
-                    : "border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive",
-              )}
-            >
-              {resetPhase === "loading" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : resetPhase === "done" ? (
-                <Check className="h-3.5 w-3.5" aria-hidden />
-              ) : (
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-              )}
-              <span className="hidden sm:inline">
-                {resetPhase === "loading"
-                  ? t("app.session.resetting")
-                  : resetPhase === "done"
-                    ? t("app.session.resetFlash")
-                    : t("common.actions.reset")}
-              </span>
-            </Button>
-            <SettingsCluster
-              disabled={!ready}
-              onOpenSettings={onOpenSettings}
-            />
+              </Button>
+              <SettingsCluster
+                disabled={!ready}
+                onOpenSettings={onOpenSettings}
+              />
+            </HeaderGroup>
           </>
         }
       >

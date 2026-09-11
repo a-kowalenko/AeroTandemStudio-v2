@@ -8,6 +8,10 @@ import {
 } from "./ui/select";
 import { useConfigStore } from "../store/configStore";
 import { cn } from "../lib/utils";
+import {
+  HEADER_SD_MODE_W,
+  HEADER_SELECT_TRIGGER,
+} from "./chrome/HeaderToolbar";
 
 const MODE_OPTIONS = [
   {
@@ -52,30 +56,28 @@ export function SdModeSelector({
   const tip = selectedMode ? t(selectedMode.tipKey) : undefined;
 
   return (
-    <div className={cn("flex items-center gap-2 text-xs", className)} title={tip}>
-      <Select
-        value={mode}
-        disabled={disabled}
-        onValueChange={(v) => {
-          updateLocal({ sd_backup_mode: v });
-          void persist({ ...config, sd_backup_mode: v });
-        }}
+    <Select
+      value={mode}
+      disabled={disabled}
+      onValueChange={(v) => {
+        updateLocal({ sd_backup_mode: v });
+        void persist({ ...config, sd_backup_mode: v });
+      }}
+    >
+      <SelectTrigger
+        className={cn(HEADER_SELECT_TRIGGER, HEADER_SD_MODE_W, className)}
+        aria-label={t("settings.sd.backup.mode")}
+        title={tip}
       >
-        <SelectTrigger
-          className="h-8 w-[160px] text-xs"
-          aria-label={t("settings.sd.backup.mode")}
-          title={tip}
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {MODE_OPTIONS.map((m) => (
-            <SelectItem key={m.key} value={m.key}>
-              {t(m.labelKey)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {MODE_OPTIONS.map((m) => (
+          <SelectItem key={m.key} value={m.key}>
+            {t(m.labelKey)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

@@ -1948,6 +1948,7 @@
       "none": "Keine SD",
       "ejectTitle": "„{{label}}“ auswerfen",
       "ejectAria": "SD-Karte {{label}} auswerfen",
+      "import": "Importieren",
       "open": "Öffnen",
       "pickWithTooltip": "{{tip}} — SD-Karte wählen / Dateiauswahl"
     },

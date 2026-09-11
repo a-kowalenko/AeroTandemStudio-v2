@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FolderOpen, HardDrive } from "lucide-react";
+import { HardDrive, Import } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -23,6 +23,12 @@ import {
   usefulVolumeName,
 } from "../lib/sdDriveLabel";
 import { cn } from "../lib/utils";
+import {
+  HEADER_CTRL_H,
+  HEADER_ICON_BTN,
+  HEADER_SD_TRIGGER_W,
+  HEADER_SELECT_TRIGGER,
+} from "./chrome/HeaderToolbar";
 
 /** Classic macOS / SF Symbol eject glyph (triangle over bar). */
 function EjectIcon({ className }: { className?: string }) {
@@ -139,7 +145,13 @@ export function SdDriveSelector({
   })();
 
   return (
-    <div className={cn("flex items-center gap-1.5 text-xs", className)}>
+    <div
+      className={cn(
+        "flex items-stretch overflow-hidden rounded-md border border-border bg-card text-xs shadow-sm",
+        HEADER_CTRL_H,
+        className,
+      )}
+    >
       <Select
         value={selected || undefined}
         open={open}
@@ -166,11 +178,15 @@ export function SdDriveSelector({
         }}
       >
         <SelectTrigger
-          className="h-8 min-w-[5.5rem] max-w-[11rem] text-xs"
+          className={cn(
+            HEADER_SELECT_TRIGGER,
+            HEADER_SD_TRIGGER_W,
+            "rounded-none border-0 bg-transparent shadow-none hover:bg-card-elevated",
+          )}
           title={triggerTitle}
           aria-label={t("sd.drive.aria")}
         >
-          <span className="flex min-w-0 items-center gap-1">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
             <span className="relative shrink-0">
               <HardDrive
                 className={cn(
@@ -188,7 +204,7 @@ export function SdDriveSelector({
             </span>
             {/* Compact trigger; list items use the richer label via ItemText. */}
             {selectedInfo ? (
-              <span className="truncate">
+              <span className="truncate font-medium tabular-nums">
                 {compactDriveLabel(selectedInfo.drive)}
               </span>
             ) : (
@@ -250,11 +266,16 @@ export function SdDriveSelector({
           })}
         </SelectContent>
       </Select>
+      <div className="w-px shrink-0 self-stretch bg-border/80" aria-hidden />
       <Button
         type="button"
-        size="sm"
-        variant="secondary"
-        className="h-8 gap-1.5 px-2.5 text-xs"
+        size="icon"
+        variant="ghost"
+        className={cn(
+          HEADER_ICON_BTN,
+          "rounded-none text-primary hover:bg-primary-soft hover:text-primary",
+          hasDrive && !controlsDisabled && "bg-primary-soft/60",
+        )}
         disabled={controlsDisabled || !hasDrive}
         title={ctaTitle}
         aria-label={ctaTitle}
@@ -262,8 +283,8 @@ export function SdDriveSelector({
           if (selected) onPrimaryAction(selected);
         }}
       >
-        <FolderOpen className="h-3.5 w-3.5" />
-        {t("sd.drive.open")}
+        <Import className="h-3.5 w-3.5" aria-hidden />
+        <span className="sr-only">{t("sd.drive.import")}</span>
       </Button>
     </div>
   );

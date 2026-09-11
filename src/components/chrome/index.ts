@@ -1,5 +1,6 @@
 export { AppChrome } from "./AppChrome";
 export { HeaderBrand } from "./HeaderBrand";
+export { HeaderDivider, HeaderGroup, HEADER_BTN, HEADER_CTRL_H, HEADER_ICON_BTN } from "./HeaderToolbar";
 export { TitleBarControls } from "./TitleBarControls";
 export { useWindowChrome } from "./useWindowChrome";
 export { resolveChromeMode, type ChromeMode } from "./chromeMode";

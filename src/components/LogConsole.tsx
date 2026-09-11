@@ -469,7 +469,7 @@ export function LogConsoleToggleButton({
       aria-pressed={open}
       title={t("logConsole.toggleTitle")}
     >
-      <Terminal className="h-4 w-4" />
+      <Terminal className="h-3.5 w-3.5" />
       {unreadErrors > 0 && !open ? (
         <span
           className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-card"

@@ -13,6 +13,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogConsoleToggleButton } from "@/components/LogConsole";
 import { useLogStore } from "@/store/logStore";
 import { cn } from "@/lib/utils";
+import { HEADER_ICON_BTN } from "@/components/chrome/HeaderToolbar";
 
 const CLOSE_DELAY_MS = 100;
 
@@ -119,7 +120,7 @@ export function SettingsCluster({
         type="button"
         variant="secondary"
         size="icon"
-        className="relative"
+        className={cn("relative", HEADER_ICON_BTN)}
         onClick={handleSettingsClick}
         aria-label={t("common.actions.settings")}
         aria-expanded={open}
@@ -129,11 +130,11 @@ export function SettingsCluster({
       >
         <span
           className={cn(
-            "inline-flex h-4 w-4 shrink-0 items-center justify-center transition-transform duration-[320ms] ease-[cubic-bezier(0.2,0.9,0.2,1)] motion-reduce:transition-none",
+            "inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center transition-transform duration-[320ms] ease-[cubic-bezier(0.2,0.9,0.2,1)] motion-reduce:transition-none",
             open ? "-rotate-90" : "rotate-0",
           )}
         >
-          <Settings className="h-4 w-4" aria-hidden />
+          <Settings className="h-3.5 w-3.5" aria-hidden />
         </span>
         {showClusterBadge ? (
           <span
@@ -159,13 +160,16 @@ export function SettingsCluster({
           className="ats-settings-cluster-item"
           style={{ ["--ats-cluster-i" as string]: 0 }}
         >
-          <ThemeToggle className="shadow-md" />
+          <ThemeToggle className={cn(HEADER_ICON_BTN, "shadow-md")} />
         </div>
         <div
           className="ats-settings-cluster-item"
           style={{ ["--ats-cluster-i" as string]: 1 }}
         >
-          <LogConsoleToggleButton disabled={disabled} className="shadow-md" />
+          <LogConsoleToggleButton
+            disabled={disabled}
+            className={cn(HEADER_ICON_BTN, "shadow-md")}
+          />
         </div>
       </div>
     </div>
