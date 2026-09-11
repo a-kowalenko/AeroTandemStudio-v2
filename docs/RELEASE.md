@@ -189,7 +189,7 @@ Linux: **AppImage** (`…_amd64.AppImage` o. ä.) — Details: `docs/LINUX_BUILD
 | OS | Bundle |
 |----|--------|
 | Windows | NSIS `-setup.exe` (+ Updater-Signatur); kein MSI — CI setzt `--bundles nsis` (WiX/`‑beta.N`) |
-| macOS | `.dmg` (aarch64 + x64) + `.app.tar.gz` (+ `.sig`) für Auto-Update; CI lädt Updater-Bundles explizit hoch |
+| macOS | `.dmg` (aarch64 + x64) + `.app.tar.gz` (+ `.sig`) für Auto-Update — Upload über `tauri-action` (arch-suffixed) |
 | Linux | `.AppImage` (amd64) |
 
 ## Hinweise
