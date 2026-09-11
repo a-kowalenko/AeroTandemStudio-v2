@@ -170,6 +170,9 @@ pub struct AppConfig {
     pub hardware_acceleration_enabled: bool,
     #[serde(default = "default_true")]
     pub parallel_processing_enabled: bool,
+    /// Phase 46: prepare Compatible create (Intro off) in the background before Erstellen.
+    #[serde(default = "default_true")]
+    pub speculative_create_enabled: bool,
     #[serde(default = "default_codec")]
     pub video_codec: String,
     #[serde(default = "default_encoding_strategy")]
@@ -980,6 +983,7 @@ impl Default for AppConfig {
             smb_auto_mount_enabled: true,
             hardware_acceleration_enabled: false,
             parallel_processing_enabled: true,
+            speculative_create_enabled: true,
             video_codec: default_codec(),
             encoding_strategy: default_encoding_strategy(),
             reencode_matching_clips: false,
@@ -1318,6 +1322,7 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
+        assert!(cfg.speculative_create_enabled);
         assert_eq!(cfg.body_concat_mode, "compatible");
         assert!(cfg.settings_fleet_preset_v1_applied);
         assert!(cfg.usb_camera_import_enabled);

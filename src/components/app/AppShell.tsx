@@ -16,6 +16,7 @@ import { useUiStore } from "../../store/uiStore";
 import { useQrScanStore } from "../../store/qrScanStore";
 import { useHistoryStore } from "../../store/historyStore";
 import { useCreateValidation } from "../../hooks/useCreateValidation";
+import { useSpeculativeCreate } from "../../hooks/useSpeculativeCreate";
 import { useButtonActionPhase } from "../../hooks/useTimedFlash";
 import type { HwAccelInfo } from "../../lib/tauri";
 import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
@@ -26,6 +27,12 @@ import { AppPathHintsDriftBanner } from "./AppPathHintsDriftBanner";
 import type { TaskProgressState } from "./types";
 import type { CreateJobPlan } from "../../lib/createJobPlan";
 import { cn } from "../../lib/utils";
+import { useKundeStore } from "../../store/kundeStore";
+import {
+  getPreviewReusePlan,
+  previewEncodingSignature,
+  usePreviewCacheStore,
+} from "../../store/previewCacheStore";
 
 type VideoCuts = ReturnType<typeof useVideoCutApply>;
 type PhotoEdits = ReturnType<typeof usePhotoEditApply>;
@@ -138,6 +145,28 @@ export function AppShell({
     uiLocked,
   });
 
+  const kunde = useKundeStore((s) => s.kunde);
+  const videoList = useVideoStore((s) => s.videoList);
+  const encodingSig = previewEncodingSignature(
+    Boolean(config?.intro_enabled ?? false),
+    config?.dauer ?? 5,
+    config?.intro_mux_mode ?? "reencode",
+  );
+  const canReusePreview = getPreviewReusePlan(
+    videoList,
+    kunde,
+    encodingSig,
+  ).canReuse;
+  // Keep preview path subscription so reuse plan stays current.
+  usePreviewCacheStore((s) => s.previewPath);
+
+  const speculative = useSpeculativeCreate({
+    busy,
+    pipelineActive,
+    sdWorkflowUiActive,
+    canReusePreview,
+  });
+
   const { phase: resetPhase, run: runReset } = useButtonActionPhase();
 
   const hwLabel = hwInfo
@@ -246,6 +275,13 @@ export function AppShell({
             onStartCreate={onStartCreate}
             setMediaTab={setMediaTab}
             createValidation={createValidation}
+            speculativeChip={
+              speculative.chipVisible
+                ? speculative.phase === "ready"
+                  ? "ready"
+                  : "preparing"
+                : null
+            }
             onEnsureSpeicherort={onEnsureSpeicherort}
             onOpenSpeicherortFolder={onOpenSpeicherortFolder}
           />

@@ -273,6 +273,8 @@
       "strategyCombined": "Combinado",
       "hwAccel": "Aceleración por hardware",
       "parallel": "Procesamiento de video en paralelo",
+      "speculativeCreate": "Preparar en segundo plano",
+      "speculativeCreateHint": "Cuando Crear está listo (Compatible, sin intro, cliente por QR/lookup), video y fotos se preparan antes del clic. Desactivado: flujo clásico.",
       "concat": "Unir clips",
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
@@ -546,6 +548,10 @@
       "creating": "Creando trabajo…",
       "done": "Trabajo terminado",
       "cancelled": "Trabajo cancelado."
+    },
+    "speculative": {
+      "preparing": "Preparando…",
+      "ready": "Listo"
     },
     "append": {
       "pickFile": "Elige al menos un archivo para reenviar.",

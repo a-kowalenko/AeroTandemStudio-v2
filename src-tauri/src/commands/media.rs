@@ -322,6 +322,7 @@ pub async fn clear_working_session() -> Result<(), String> {
             logging::info("import", "Kein Arbeitsordner zum Löschen");
         }
         working_session::clear_working_session();
+        crate::video::speculative_create::cleanup_all();
     })
     .await
     .map_err(|e| e.to_string())

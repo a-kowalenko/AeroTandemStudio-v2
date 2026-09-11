@@ -41,6 +41,7 @@ import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
 import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
+import { buildMediaRevisionTag } from "./hooks/useSpeculativeCreate";
 import { buildCreateJobPlan, type CreateJobPlan } from "./lib/createJobPlan";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
@@ -1896,6 +1897,12 @@ function App() {
     const photos = photoList.map((p) => p.path);
     const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
     const replaceExistingDir = replaceExistingDirRef.current;
+    const mediaRevisionTag = buildMediaRevisionTag(
+      paths,
+      photos,
+      useVideoStore.getState().mediaRevision,
+      usePhotoStore.getState().mediaRevision,
+    );
 
     setBusy(true);
     sessionCancelRequestedRef.current = false;
@@ -1948,6 +1955,10 @@ function App() {
             ? cachedPreviewFingerprint
             : null,
           replace_existing_dir: replaceExistingDir,
+          media_revision_tag: mediaRevisionTag,
+          use_speculative_staging: Boolean(
+            config?.speculative_create_enabled !== false,
+          ),
         },
         kunde.form_mode === "kunde" ? qrPreview : null,
       );

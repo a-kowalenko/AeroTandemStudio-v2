@@ -46,13 +46,15 @@ use commands::sd_card::{
 };
 use commands::smb::{test_server_connection, upload_to_server};
 use commands::video::{
-    cancel_encode, cancel_secondary_backup, cancel_upload_slot, clear_video_cut_undo, concat_videos,
-    create_job, create_video, cut_video, discard_video_cut_undo_for_path, encode_video,
-    generate_preview, get_hw_info, get_video_filmstrip, has_video_cut_undo, import_videos,
-    list_video_cut_marks, list_video_keyframes, probe_create_output_folder, probe_video,
-    reset_upload_slot_cancel, reset_workflow_cancel, resolve_body_concat_fallback,
-    resolve_intro_mux_fallback, resolve_reencode_confirm, rotate_video, split_video, trim_video,
-    undo_all_video_cuts, undo_last_video_cut, undo_video_cut_for_path, validate_create_job,
+    cancel_encode, cancel_secondary_backup, cancel_speculative_create, cancel_upload_slot,
+    clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
+    discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
+    get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
+    list_video_keyframes, probe_create_output_folder, probe_video, reset_upload_slot_cancel,
+    reset_workflow_cancel, resolve_body_concat_fallback, resolve_intro_mux_fallback,
+    resolve_reencode_confirm, rotate_video, speculative_create_status, split_video,
+    start_speculative_create, trim_video, undo_all_video_cuts, undo_last_video_cut,
+    undo_video_cut_for_path, validate_create_job,
 };
 use commands::vorgang_history::{
     create_append_job, delete_vorgaenge, get_handoff_status, list_vorgang_appends,
@@ -185,6 +187,9 @@ pub fn run() {
             import_videos,
             create_video,
             create_job,
+            start_speculative_create,
+            speculative_create_status,
+            cancel_speculative_create,
             resolve_intro_mux_fallback,
             resolve_body_concat_fallback,
             resolve_reencode_confirm,

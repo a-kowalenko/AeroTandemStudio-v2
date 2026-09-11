@@ -1174,10 +1174,19 @@ pub async fn create_job(
     let opts = options.unwrap_or_default();
 
     // Optional AMS Bridge customer preflight (P2). Soft when bridge unreachable.
+    let preflight_started = std::time::Instant::now();
+    logging::info("create", "AMS Preflight…");
     if let Err(e) = crate::bridge::preflight_customer_lookup(&config, &kunde).await {
         logging::warn("create", format!("AMS Preflight abgebrochen: {e}"));
         return Err(e);
     }
+    logging::info(
+        "create",
+        format!(
+            "AMS Preflight fertig ({} ms)",
+            preflight_started.elapsed().as_millis()
+        ),
+    );
 
     let kunde_for_history = kunde.clone();
     let videos_for_history = video_paths.clone();
@@ -1269,4 +1278,48 @@ pub async fn create_job(
             Err(e)
         }
     }
+}
+
+/// Phase 46: start speculative create staging (Compatible + Intro off).
+#[tauri::command]
+pub async fn start_speculative_create(
+    app: AppHandle,
+    kunde: Kunde,
+    video_paths: Vec<String>,
+    photo_paths: Vec<String>,
+    request: Option<crate::video::speculative_create::SpeculativeStartRequest>,
+) -> Result<crate::video::speculative_create::SpeculativeStatus, String> {
+    let ffmpeg = resolve_ffmpeg(&app)?;
+    let resource_dir = app.path().resource_dir().ok();
+    let req = request.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::video::speculative_create::start_staging(
+            &ffmpeg,
+            &kunde,
+            &video_paths,
+            &photo_paths,
+            &req,
+            resource_dir.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Phase 46: poll speculative staging status.
+#[tauri::command]
+pub fn speculative_create_status() -> crate::video::speculative_create::SpeculativeStatus {
+    crate::video::speculative_create::status()
+}
+
+/// Phase 46: cancel speculative staging (silent; no Vorgang).
+/// Runs on a blocking pool so `remove_dir_all` does not stall the UI thread.
+#[tauri::command]
+pub async fn cancel_speculative_create() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::video::speculative_create::cancel_and_cleanup("user_or_invalidate");
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }

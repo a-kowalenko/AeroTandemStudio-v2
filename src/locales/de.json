@@ -273,6 +273,8 @@
       "strategyCombined": "Kombiniert",
       "hwAccel": "Hardware-Beschleunigung",
       "parallel": "Paralleles Video-Processing",
+      "speculativeCreate": "Vorbereitung im Hintergrund",
+      "speculativeCreateHint": "Sobald Erstellen bereit ist (Compatible, ohne Intro, Kunde per QR/Lookup), werden Video und Fotos schon vor dem Klick vorbereitet. Bei aus: klassischer Create-Flow.",
       "concat": "Clips zusammenfügen",
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
@@ -546,6 +548,10 @@
       "creating": "Vorgang wird erstellt…",
       "done": "Vorgang fertig",
       "cancelled": "Vorgang abgebrochen."
+    },
+    "speculative": {
+      "preparing": "Vorbereitung…",
+      "ready": "Bereit"
     },
     "append": {
       "pickFile": "Bitte mindestens eine Datei zum Nachreichen wählen.",

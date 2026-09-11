@@ -20,6 +20,7 @@ import { useQrScanStore } from "../../store/qrScanStore";
 import { focusCreateReadyTarget } from "../../lib/createReadyHints";
 import { cn } from "../../lib/utils";
 import type { useCreateValidation } from "../../hooks/useCreateValidation";
+import { SpeculativeStatusIcon } from "./SpeculativeStatusIcon";
 
 type CreateValidation = ReturnType<typeof useCreateValidation>;
 
@@ -31,6 +32,8 @@ type Props = {
   onStartCreate: () => void;
   setMediaTab: (tab: "video" | "foto") => void;
   createValidation: CreateValidation;
+  /** Phase 46 speculative create chip under Erstellen. */
+  speculativeChip?: "preparing" | "ready" | null;
   onEnsureSpeicherort: (forcePick?: boolean) => Promise<string | null>;
   onOpenSpeicherortFolder: () => void;
 };
@@ -43,6 +46,7 @@ export function CustomerSidebar({
   onStartCreate,
   setMediaTab,
   createValidation,
+  speculativeChip = null,
   onEnsureSpeicherort,
   onOpenSpeicherortFolder,
 }: Props) {
@@ -108,9 +112,14 @@ export function CustomerSidebar({
 
       <div className="flex flex-col border-t border-border bg-gradient-to-t from-card/90 to-card/40 p-3.5 backdrop-blur-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
-            {t("app.job.section")}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-[11px] font-semibold tracking-[0.08em] text-muted uppercase">
+              {t("app.job.section")}
+            </p>
+            {speculativeChip ? (
+              <SpeculativeStatusIcon state={speculativeChip} />
+            ) : null}
+          </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
             <label
               htmlFor="vorgang-upload"

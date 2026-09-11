@@ -86,6 +86,22 @@ export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
           {t("settings.encoding.parallel")}
         </label>
 
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox
+            className="mt-0.5"
+            checked={draft.speculative_create_enabled !== false}
+            onCheckedChange={(v) =>
+              patchNow("speculative_create_enabled", v === true)
+            }
+          />
+          <span className="min-w-0">
+            <span className="block">{t("settings.encoding.speculativeCreate")}</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {t("settings.encoding.speculativeCreateHint")}
+            </span>
+          </span>
+        </label>
+
         <div className="space-y-1.5">
           <Label>{t("settings.encoding.concat")}</Label>
           <Select

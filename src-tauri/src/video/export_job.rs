@@ -34,7 +34,7 @@ use crate::video::watermark::{
     create_photo_with_watermark, create_video_with_watermark, resolve_stamp,
 };
 
-#[derive(Debug, Clone, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct CreateJobOptions {
     #[serde(default)]
     pub watermark_clip_index: Option<usize>,
@@ -49,8 +49,33 @@ pub struct CreateJobOptions {
     /// After soft folder-conflict confirm: wipe the job folder before writing.
     #[serde(default)]
     pub replace_existing_dir: bool,
+    /// Phase 46: frontend cut/media revision tag for speculative fingerprint match.
+    #[serde(default)]
+    pub media_revision_tag: String,
+    /// Phase 46: attempt attach/commit from speculative staging when fingerprint matches.
+    #[serde(default = "default_true_speculative")]
+    pub use_speculative_staging: bool,
     #[serde(default, flatten)]
     pub video: CreateVideoOptions,
+}
+
+fn default_true_speculative() -> bool {
+    true
+}
+
+impl Default for CreateJobOptions {
+    fn default() -> Self {
+        Self {
+            watermark_clip_index: None,
+            watermark_photo_indices: Vec::new(),
+            reuse_preview_path: None,
+            reuse_preview_fingerprint: None,
+            replace_existing_dir: false,
+            media_revision_tag: String::new(),
+            use_speculative_staging: true,
+            video: CreateVideoOptions::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,7 +216,7 @@ pub fn validate_create_job(
     errors
 }
 
-fn build_photo_rename_map(photo_paths: &[String]) -> HashMap<String, String> {
+pub(crate) fn build_photo_rename_map(photo_paths: &[String]) -> HashMap<String, String> {
     let mut used = std::collections::HashSet::new();
     let mut mapping = HashMap::new();
 
@@ -217,7 +242,7 @@ fn build_photo_rename_map(photo_paths: &[String]) -> HashMap<String, String> {
     mapping
 }
 
-fn copy_photos(
+pub(crate) fn copy_photos(
     photo_paths: &[String],
     layout: &OutputLayout,
     kunde: &Kunde,
@@ -288,7 +313,7 @@ fn copy_photos(
     Ok(copied)
 }
 
-fn pick_watermark_clip(
+pub(crate) fn pick_watermark_clip(
     ffmpeg: &Path,
     video_paths: &[String],
     index: Option<usize>,
@@ -342,6 +367,25 @@ pub fn create_job(
             "Speicherort ist nicht gesetzt. Bitte Ordner wählen.".into(),
         ));
     }
+
+    // Phase 46: attach/commit speculative staging when fingerprint matches.
+    if options.use_speculative_staging && config.speculative_create_enabled {
+        if let Some(res) = crate::video::speculative_create::try_promote_into_create_job(
+            ffmpeg,
+            kunde,
+            video_paths,
+            photo_paths,
+            config,
+            options,
+            resource_dir,
+            &options.media_revision_tag,
+            Arc::clone(&on_progress),
+        )? {
+            return Ok(res);
+        }
+    }
+    // No usable staging (miss / gate / idle) — drop any leftover slot.
+    crate::video::speculative_create::cancel_and_cleanup("create_fallback_full");
 
     let outside_mode = kunde.is_outside_video() || kunde.video_mode == "outside";
     let gast = kunde.resolve_gast();

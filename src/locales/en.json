@@ -273,6 +273,8 @@
       "strategyCombined": "Combined",
       "hwAccel": "Hardware acceleration",
       "parallel": "Parallel video processing",
+      "speculativeCreate": "Prepare in the background",
+      "speculativeCreateHint": "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow.",
       "concat": "Join clips",
       "concatFast": "Fast Path",
       "concatCompatible": "Compatible",
@@ -546,6 +548,10 @@
       "creating": "Creating job…",
       "done": "Job complete",
       "cancelled": "Job cancelled."
+    },
+    "speculative": {
+      "preparing": "Preparing…",
+      "ready": "Ready"
     },
     "append": {
       "pickFile": "Choose at least one file to append.",

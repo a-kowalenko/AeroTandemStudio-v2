@@ -385,6 +385,55 @@
   animation: ats-upload-icon-float 1.2s ease-in-out infinite;
 }
 
+/* Phase 46 — speculative status: overlapping crossfade morph */
+.ats-speculative-morph {
+  transition:
+    opacity 480ms cubic-bezier(0.4, 0, 0.2, 1),
+    transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.ats-speculative-morph--spinner-in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ats-speculative-morph--spinner-out {
+  opacity: 0;
+  transform: scale(0.72);
+  transition-duration: 360ms, 400ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1),
+    cubic-bezier(0.4, 0, 1, 1);
+  pointer-events: none;
+}
+
+.ats-speculative-morph--check-out {
+  opacity: 0;
+  transform: scale(0.82);
+  pointer-events: none;
+}
+
+.ats-speculative-morph--check-in {
+  opacity: 1;
+  transform: scale(1);
+  /* Start slightly after spinner begins fading → overlap / dissolve */
+  transition-delay: 90ms, 90ms;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ats-speculative-morph {
+    transition: opacity 160ms ease;
+  }
+  .ats-speculative-morph--spinner-out,
+  .ats-speculative-morph--check-out,
+  .ats-speculative-morph--check-in,
+  .ats-speculative-morph--spinner-in {
+    transform: none;
+    transition-delay: 0ms;
+  }
+}
+
 /* Soft Apple-like attention: single ripple + gentle lift/glow */
 @keyframes ats-create-ready-ripple {
   0% {

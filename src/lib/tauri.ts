@@ -109,6 +109,8 @@ export type AppConfig = {
   smb_auto_mount_enabled: boolean;
   hardware_acceleration_enabled: boolean;
   parallel_processing_enabled: boolean;
+  /** Phase 46: background Compatible staging before Erstellen (default true). */
+  speculative_create_enabled: boolean;
   video_codec: string;
   encoding_strategy: string;
   reencode_matching_clips: boolean;
@@ -578,6 +580,10 @@ export type CreateJobOptions = {
   reuse_preview_fingerprint?: string | null;
   /** After folder-conflict confirm: wipe job folder before writing. */
   replace_existing_dir?: boolean;
+  /** Phase 46: cut/media revision tag for speculative fingerprint match. */
+  media_revision_tag?: string;
+  /** Phase 46: attach/commit speculative staging when available (default true). */
+  use_speculative_staging?: boolean;
 };
 
 export type CreateJobResult = {
@@ -844,6 +850,49 @@ export async function createJob(
     options: options ?? null,
     qrPreview: qrPreview ?? null,
   });
+}
+
+export type SpeculativePhase = "idle" | "running" | "ready" | "failed";
+
+export type SpeculativeStatus = {
+  phase: SpeculativePhase;
+  fingerprint: string | null;
+  staging_id: string | null;
+  percent: number;
+  status: string;
+  video_ready: boolean;
+  photos_ready: boolean;
+  wm_ready: boolean;
+  attached: boolean;
+};
+
+export type SpeculativeStartRequest = {
+  watermark_clip_index?: number | null;
+  watermark_photo_indices?: number[];
+  media_revision_tag?: string;
+  video?: CreateVideoOptions;
+};
+
+export async function startSpeculativeCreate(
+  kunde: Kunde,
+  videoPaths: string[],
+  photoPaths: string[],
+  request?: SpeculativeStartRequest,
+): Promise<SpeculativeStatus> {
+  return invoke<SpeculativeStatus>("start_speculative_create", {
+    kunde,
+    videoPaths,
+    photoPaths,
+    request: request ?? null,
+  });
+}
+
+export async function speculativeCreateStatus(): Promise<SpeculativeStatus> {
+  return invoke<SpeculativeStatus>("speculative_create_status");
+}
+
+export async function cancelSpeculativeCreate(): Promise<void> {
+  return invoke("cancel_speculative_create");
 }
 
 /** Resolve Intro+Body stream-copy fallback dialog (`without_intro` | `with_intro_encode`). */

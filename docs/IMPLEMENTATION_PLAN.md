@@ -15,6 +15,7 @@
 |----------|----------------|
 | `@AGENTS.md` | Immer |
 | `@docs/phases/open/31.5-extra-files.md` | Phase 31.5 |
+| `@docs/phases/open/46-speculative-create-staging.md` | Phase 46 |
 | `@docs/phases/open/23-usb-mtp.md` | Phase 23.x |
 | `@docs/phases/open/14-ml-photo.md` | Phase 14 (Backlog) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
@@ -94,6 +95,7 @@ Details: `@AGENTS.md`
 | 44 | Fotos aus Videoclip (Frame-Extraktion) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 44.1 | Fotos-Cutter Polish (Range-Handles, Nudge-Icons) | ✅ | ARCHIVE |
 | 45 | QR Dual-Family (`hc_ou`) + AMS Hash-Lookup | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
+| 46 | Speculative Create Staging (Compatible, Intro aus) | ✅ | [open/46](phases/open/46-speculative-create-staging.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -121,9 +123,15 @@ Regeln: @AGENTS.md
 Nur 23.2h.
 ```
 
+```
+Implementiere Phase 46 aus @docs/phases/open/46-speculative-create-staging.md
+Regeln: @AGENTS.md
+Nur Phase 46.
+```
+
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
 **Performance (OPT-X):** nur ein Paket aus `@docs/optimization_plan.md`
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-09 (Phase 45 ✅).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-10 (Phase 46 Spec ⬜).*

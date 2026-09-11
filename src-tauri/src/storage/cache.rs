@@ -16,6 +16,7 @@ pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
 pub const ATS_CONCAT_DIR_PREFIX: &str = "ats_concat_";
 pub const AEROTANDEM_WORK_DIRNAME: &str = ".aerotandem_work";
 pub const ATS_WORK_DIR_PREFIX: &str = ".ats_work_";
+pub const ATS_SPECULATIVE_DIR_PREFIX: &str = "aero_studio_speculative_";
 pub const HW_CACHE_FILE_NAME: &str = "hw_cache.json";
 
 /// Cutter leftovers next to clip files (overwrite cut/split).
@@ -281,6 +282,7 @@ pub fn measure_cache_usage(
 /// App exit / window close: drop session working folder, then orphan sweep (no excludes).
 pub fn cleanup_on_app_exit() -> CacheCleanupResult {
     working_session::clear_working_session();
+    crate::video::speculative_create::cleanup_all();
     cleanup_orphans_only(None)
 }
 
@@ -290,6 +292,7 @@ pub fn is_orphan_temp_dir_name(name: &str) -> bool {
         || name.starts_with(QR_PREVIEW_DIR_PREFIX)
         || name.starts_with(ATS_CONCAT_DIR_PREFIX)
         || name.starts_with(ATS_WORK_DIR_PREFIX)
+        || name.starts_with(ATS_SPECULATIVE_DIR_PREFIX)
 }
 
 /// True when a file name is a cutter temp sibling.
@@ -550,6 +553,7 @@ mod tests {
         assert!(is_orphan_temp_dir_name("ats_concat_1234_99"));
         assert!(is_orphan_temp_dir_name("ats_concat_re_1234_99"));
         assert!(is_orphan_temp_dir_name(".ats_work_123"));
+        assert!(is_orphan_temp_dir_name("aero_studio_speculative_1_2"));
         assert!(!is_orphan_temp_dir_name("ats_cache_test_bases_1"));
         assert!(!is_orphan_temp_dir_name("unrelated"));
         assert!(is_cut_temp_sibling_name("DJI.__temp_cut__.mp4"));
