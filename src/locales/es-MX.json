@@ -1635,6 +1635,7 @@
       "extraHitsMany": "{{count}} coincidencias adicionales",
       "extraHitsOne": "1 coincidencia adicional",
       "fastSpots": "Revisando puntos del clip…",
+      "fastPhoto": "Revisión rápida de foto…",
       "filesDone": "{{finished}} de {{total}} {{unit}} listos",
       "foundFile": "encontrado: {{name}}",
       "hitFound": "Coincidencia encontrada",
@@ -1654,6 +1655,7 @@
       "scanVideos": "Buscando código QR en videos…",
       "thorough": "Revisando código QR a fondo…",
       "thoroughSpots": "Revisando puntos con más detalle…",
+      "thoroughPhoto": "Revisión detallada de foto…",
       "unitFiles": "Archivos",
       "unitPhotos": "Fotos",
       "unitVideos": "Videos"

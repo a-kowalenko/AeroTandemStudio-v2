@@ -49,10 +49,10 @@ export function useQrScanProgressListener() {
         if (phase === "extract") {
           const prev =
             useQrScanStore.getState().clipProgress[normalizeMediaPath(path)];
-          // After the first Schnellprüfung tick, ignore further extract noise
-          // so the counter does not flip back to "lesen" / 0.
-          if (prev?.mode === "fast" || prev?.mode === "thorough") return;
-          setClipProgress(path, 0, t, "prepare");
+          // After gründlich started, ignore extract noise. Ranking extract may
+          // follow Schnellprüfung (quick anchors) and should still update.
+          if (prev?.mode === "thorough") return;
+          setClipProgress(path, f, t, "prepare");
           return;
         }
         const mode = phase === "thorough" ? "thorough" : "fast";

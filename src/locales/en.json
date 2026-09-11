@@ -1635,6 +1635,7 @@
       "extraHitsMany": "{{count}} additional hits",
       "extraHitsOne": "1 additional hit",
       "fastSpots": "Checking spots in clip…",
+      "fastPhoto": "Quick photo check…",
       "filesDone": "{{finished}} of {{total}} {{unit}} done",
       "foundFile": "found: {{name}}",
       "hitFound": "Hit found",
@@ -1654,6 +1655,7 @@
       "scanVideos": "Searching for QR code in videos…",
       "thorough": "Checking QR code thoroughly…",
       "thoroughSpots": "Checking spots more closely…",
+      "thoroughPhoto": "Thorough photo check…",
       "unitFiles": "Files",
       "unitPhotos": "Photos",
       "unitVideos": "Videos"

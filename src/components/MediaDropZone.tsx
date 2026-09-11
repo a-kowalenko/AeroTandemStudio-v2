@@ -28,7 +28,7 @@ import { useConfigStore } from "../store/configStore";
 import { useUiStore } from "../store/uiStore";
 import { useSdStore } from "../store/sdStore";
 import { useAppendStore } from "../store/appendStore";
-import { photoEdgeScanPaths, withQrScanProgress } from "../store/qrScanStore";
+import { photoEdgeScanPaths, videoEdgeScanPaths, withQrScanProgress } from "../store/qrScanStore";
 import {
   isImportCancellation,
   rollbackImportBatch,
@@ -463,7 +463,13 @@ export function MediaDropZone({
     }
     setQrBusy(true);
     try {
-      const result = await withQrScanProgress(paths, () => scanQrVideos(paths));
+      const edge = videoEdgeScanPaths(paths);
+      const result = await withQrScanProgress(
+        edge.paths,
+        () => scanQrVideos(paths),
+        "scanning_videos",
+        { videoEdgeLimited: edge.limited },
+      );
       if (result.cancelled) {
         showWarning(result.message, t("media.drop.qrScanTitle"), { autoCloseSecs: 5 });
       } else if (result.found && result.kunde) {

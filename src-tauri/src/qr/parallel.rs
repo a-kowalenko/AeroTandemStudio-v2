@@ -2,8 +2,9 @@
 //!
 //! Typical QR placement: first clip (often), last clip (sometimes), middle (rare).
 //! Strategy:
-//! 1. Videos — hot path: scan index 0 and n−1 with at most 2 workers, then remainder
-//!    outside-in with limited workers (2, or up to config when n ≥ 6).
+//! 1. Videos — scan at most 2 files from each list end (first, second, second-last,
+//!    last; max 4). Hot path probes index 0 and n−1 first, then the rest of that
+//!    edge set with limited workers.
 //! 2. Photos — skip the hot-path barrier; scan at most 20 files from each
 //!    list end (max 40). All workers start immediately on that queue.
 //!
@@ -18,8 +19,8 @@ use std::thread;
 use crate::video::ffmpeg;
 
 use super::analyser::{
-    scan_photo, scan_video_clip_with_progress, CleanupDirection, QrScanError, QrScanOptions,
-    QrScanProgressCb, QrScanResult,
+    scan_photo_with_progress, scan_video_clip_with_progress, CleanupDirection, QrScanError,
+    QrScanOptions, QrScanProgressCb, QrScanResult,
 };
 
 /// Max workers while probing the list ends (first + last).
@@ -28,6 +29,8 @@ pub const HOT_PATH_WORKERS: usize = 2;
 pub const PHASE_B_WIDE_MIN_N: usize = 6;
 /// Photo batch: scan at most this many files from each list end (max 40).
 pub const PHOTO_EDGE_SCAN_PER_SIDE: usize = 20;
+/// Video batch: scan at most this many clips from each list end (max 4).
+pub const VIDEO_EDGE_SCAN_PER_SIDE: usize = 2;
 
 /// One scan job: list index + cleanup hint when that clip hits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,7 +134,7 @@ fn cancelled(cancel: Option<&AtomicBool>) -> bool {
 /// Phases: `start` | `done` | `hit` | `frame`.
 pub type QrFileProgressCb<'a> = QrScanProgressCb<'a>;
 
-/// Parallel ends-first scan over the full video list.
+/// Parallel ends-first scan over video list edges (first/last two clips).
 #[allow(dead_code)]
 pub fn scan_videos_hybrid(
     ffmpeg_bin: &Path,
@@ -159,6 +162,7 @@ pub fn scan_videos_hybrid_with_progress(
         return Ok(QrScanResult::cancelled());
     }
 
+    let n = paths.len();
     let result = run_ends_first(
         paths,
         |path, stop| {
@@ -168,17 +172,24 @@ pub fn scan_videos_hybrid_with_progress(
         cancel,
         on_file,
         false,
-        None,
+        Some(VIDEO_EDGE_SCAN_PER_SIDE),
     )?;
 
     if result.found || result.cancelled {
         return Ok(result);
     }
 
-    Ok(QrScanResult::miss(format!(
-        "Kein gültiger QR-Code in {} Clip(s) gefunden.",
-        paths.len()
-    )))
+    let cap = VIDEO_EDGE_SCAN_PER_SIDE.saturating_mul(2);
+    if n > cap {
+        Ok(QrScanResult::miss(format!(
+            "Kein gültiger QR-Code an den Listenenden gefunden (je {VIDEO_EDGE_SCAN_PER_SIDE} Clips geprüft)."
+        )))
+    } else {
+        Ok(QrScanResult::miss(format!(
+            "Kein gültiger QR-Code in {} Clip(s) gefunden.",
+            n
+        )))
+    }
 }
 
 /// Parallel ends-first scan over the full photo list.
@@ -212,7 +223,9 @@ pub fn scan_photos_hybrid_with_progress(
     let n = paths.len();
     let result = run_ends_first(
         paths,
-        |path, stop| scan_photo(ffmpeg_bin, path, options, Some(stop)),
+        |path, stop| {
+            scan_photo_with_progress(ffmpeg_bin, path, options, Some(stop), on_file)
+        },
         parallel_workers,
         cancel,
         on_file,
@@ -494,6 +507,28 @@ mod tests {
         assert_eq!(ends_first_edge_jobs(12, 20).len(), 12);
         assert_eq!(ends_first_edge_jobs(40, 20).len(), 40);
         assert_eq!(ends_first_edge_jobs(41, 20).len(), 40);
+    }
+
+    #[test]
+    fn video_edge_jobs_caps_at_four() {
+        let jobs = ends_first_edge_jobs(20, VIDEO_EDGE_SCAN_PER_SIDE);
+        assert_eq!(jobs.len(), 4);
+        assert_eq!(
+            jobs.iter().map(|j| j.index).collect::<Vec<_>>(),
+            vec![0, 19, 1, 18]
+        );
+        assert_eq!(jobs[0].cleanup, Forward);
+        assert_eq!(jobs[1].cleanup, Backward);
+        assert_eq!(jobs[2].cleanup, Forward);
+        assert_eq!(jobs[3].cleanup, Backward);
+    }
+
+    #[test]
+    fn video_edge_jobs_small_list_unchanged() {
+        assert_eq!(ends_first_edge_jobs(1, 2).len(), 1);
+        assert_eq!(ends_first_edge_jobs(3, 2).len(), 3);
+        assert_eq!(ends_first_edge_jobs(4, 2).len(), 4);
+        assert_eq!(ends_first_edge_jobs(5, 2).len(), 4);
     }
 
     #[test]

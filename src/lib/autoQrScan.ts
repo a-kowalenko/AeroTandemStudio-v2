@@ -6,6 +6,7 @@ import { useKundeStore } from "@/store/kundeStore";
 import {
   useQrScanStore,
   photoEdgeScanPaths,
+  videoEdgeScanPaths,
   type QrScanJobStage,
 } from "@/store/qrScanStore";
 import {
@@ -70,7 +71,7 @@ function emptyOutcome(): AutoQrScanOutcome {
 function setQrStage(
   stage: QrScanJobStage,
   paths?: string[],
-  options?: { photoEdgeLimited?: boolean },
+  options?: { photoEdgeLimited?: boolean; videoEdgeLimited?: boolean },
 ) {
   const store = useQrScanStore.getState();
   if (paths) {
@@ -154,7 +155,10 @@ export async function runAutoQrAfterImport(
   }
 
   if (scanVideos) {
-    setQrStage("scanning_videos", videoPaths);
+    const edge = videoEdgeScanPaths(videoPaths);
+    setQrStage("scanning_videos", edge.paths, {
+      videoEdgeLimited: edge.limited,
+    });
     const result = await scanQrVideos(videoPaths);
     if (result.cancelled) {
       return {

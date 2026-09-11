@@ -90,6 +90,7 @@ export function resolveSdWorkflowProgress(opts: {
   qrClipProgress?: Record<string, QrClipFrameProgress>;
   qrScanOrder?: string[];
   qrPhotoEdgeLimited?: boolean;
+  qrVideoEdgeLimited?: boolean;
 }): WorkflowProgressSnapshot | null {
   if (!opts.active) return null;
 
@@ -163,6 +164,7 @@ export function resolveSdWorkflowProgress(opts: {
       opts.qrClipProgress,
       opts.qrScanOrder,
       opts.qrPhotoEdgeLimited,
+      opts.qrVideoEdgeLimited,
     );
     return {
       percent: summary.percent,

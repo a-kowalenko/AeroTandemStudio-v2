@@ -13,7 +13,7 @@ use crate::qr::analyser::{
 use crate::qr::followup::scan_series_followup_hits;
 use crate::qr::parallel::{
     ends_first_edge_jobs, scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
-    PHOTO_EDGE_SCAN_PER_SIDE,
+    PHOTO_EDGE_SCAN_PER_SIDE, VIDEO_EDGE_SCAN_PER_SIDE,
 };
 use crate::storage::config::AppConfig;
 use crate::storage::logging::{self, file_name};
@@ -260,11 +260,21 @@ pub async fn scan_qr_videos(
     let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
     logging::info(
         "qr",
-        format!(
-            "Video-Batch-Scan start: {} Datei(en), workers={workers}, strategy=ends-first, window={:.0}s",
-            paths.len(),
-            opts.scan_seconds
-        ),
+        {
+            let n = paths.len();
+            let scan_n = ends_first_edge_jobs(n, VIDEO_EDGE_SCAN_PER_SIDE).len();
+            if n > scan_n {
+                format!(
+                    "Video-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {VIDEO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, window={:.0}s",
+                    opts.scan_seconds
+                )
+            } else {
+                format!(
+                    "Video-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, window={:.0}s",
+                    opts.scan_seconds
+                )
+            }
+        },
     );
     let on_progress = make_progress_cb(app.clone());
 
@@ -331,12 +341,12 @@ pub async fn scan_qr_photos(
             let scan_n = ends_first_edge_jobs(n, PHOTO_EDGE_SCAN_PER_SIDE).len();
             if n > scan_n {
                 format!(
-                    "Foto-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {PHOTO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, decode={}px fast",
+                    "Foto-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {PHOTO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, decode={}px fast→gründlich",
                     opts.max_photo_width
                 )
             } else {
                 format!(
-                    "Foto-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast",
+                    "Foto-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast→gründlich",
                     opts.max_photo_width
                 )
             }

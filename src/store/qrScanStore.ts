@@ -34,7 +34,7 @@ export type QrClipScanPace = "prepare" | "fast" | "thorough";
 export type QrClipFrameProgress = {
   frame: number;
   framesTotal: number;
-  /** prepare = reading clip; fast = Schnellprüfung; thorough = gründliche Prüfung */
+  /** prepare = ranking extract; fast = Schnellprüfung; thorough = HQ Top-K */
   mode?: QrClipScanPace;
 };
 
@@ -53,6 +53,8 @@ type QrScanState = {
   followup: QrFollowupStatus | null;
   /** True when photo stripes are only list-end candidates (N=20 per side). */
   photoEdgeLimited: boolean;
+  /** True when video stripes are only list-end candidates (N=2 per side). */
+  videoEdgeLimited: boolean;
   begin: (
     paths: string[],
     stage?: QrScanJobStage,
@@ -100,14 +102,34 @@ export function normalizeMediaPath(path: string): string {
 /** Photo batch: scan at most this many files from each list end (max 40). */
 export const PHOTO_QR_EDGE_SCAN_PER_SIDE = 20;
 
+/** Video batch: scan at most this many clips from each list end (max 4). */
+export const VIDEO_QR_EDGE_SCAN_PER_SIDE = 2;
+
 /** Head + tail paths for photo QR stripes (list order, middle omitted). */
 export function photoEdgeScanPaths(paths: string[]): {
   paths: string[];
   limited: boolean;
 } {
+  return edgeScanPaths(paths, PHOTO_QR_EDGE_SCAN_PER_SIDE);
+}
+
+/** Head + tail paths for video QR stripes (first/last two when list is longer). */
+export function videoEdgeScanPaths(paths: string[]): {
+  paths: string[];
+  limited: boolean;
+} {
+  return edgeScanPaths(paths, VIDEO_QR_EDGE_SCAN_PER_SIDE);
+}
+
+function edgeScanPaths(
+  paths: string[],
+  per: number,
+): {
+  paths: string[];
+  limited: boolean;
+} {
   const cleaned = paths.map((p) => p.trim()).filter(Boolean);
   const n = cleaned.length;
-  const per = PHOTO_QR_EDGE_SCAN_PER_SIDE;
   if (n <= per * 2) {
     return { paths: cleaned, limited: false };
   }
@@ -119,6 +141,7 @@ export function photoEdgeScanPaths(paths: string[]): {
 
 export type QrScanBeginOptions = {
   photoEdgeLimited?: boolean;
+  videoEdgeLimited?: boolean;
 };
 
 export type QrFileSegment = {
@@ -241,6 +264,7 @@ export function summarizeQrScanProgress(
   clipProgress: Record<string, QrClipFrameProgress> = {},
   scanOrder: string[] = [],
   photoEdgeLimited = false,
+  videoEdgeLimited = false,
 ): QrScanProgressSummary {
   const entries = Object.entries(byPath);
   // Stripes follow the media list order; ends-first only affects which paths go active.
@@ -349,14 +373,25 @@ export function summarizeQrScanProgress(
   if (stage === "scanning_photos" && photoEdgeLimited) {
     parts.push(tr("qr.progress.edgesLimited", { count: PHOTO_QR_EDGE_SCAN_PER_SIDE }));
   }
+  if (stage === "scanning_videos" && videoEdgeLimited) {
+    parts.push(tr("qr.progress.edgesLimited", { count: VIDEO_QR_EDGE_SCAN_PER_SIDE }));
+  }
   if (hit) {
     parts.push(tr("qr.progress.hitFound"));
   } else if (frames?.mode === "prepare") {
     parts.push(tr("qr.progress.preparingClip"));
   } else if (frames?.mode === "thorough") {
-    parts.push(tr("qr.progress.thoroughSpots"));
+    parts.push(
+      stage === "scanning_photos"
+        ? tr("qr.progress.thoroughPhoto")
+        : tr("qr.progress.thoroughSpots"),
+    );
   } else if (frames?.mode === "fast") {
-    parts.push(tr("qr.progress.fastSpots"));
+    parts.push(
+      stage === "scanning_photos"
+        ? tr("qr.progress.fastPhoto")
+        : tr("qr.progress.fastSpots"),
+    );
   } else if (activeCount > 1) {
     parts.push(tr("qr.progress.parallelCount", { count: activeCount }));
   } else if (activeCount === 1 && !frames) {
@@ -373,9 +408,11 @@ export function summarizeQrScanProgress(
     hidePercent: true,
     metric,
     metricLabel,
-    // Pace legend only for video scan (photos have no Schnell/Gründlich).
+    // Pace legend for video + photo (Schnell/Gründlich stripes).
     legend:
-      stage === "scanning_videos" && fileProgress && fileProgress.total > 0
+      (stage === "scanning_videos" || stage === "scanning_photos") &&
+      fileProgress &&
+      fileProgress.total > 0
         ? "pace"
         : undefined,
     fileProgress,
@@ -390,6 +427,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   clipProgress: {},
   followup: null,
   photoEdgeLimited: false,
+  videoEdgeLimited: false,
 
   begin: (paths, stage = "scanning", options) => {
     const unique = dedupeNormalizedPaths(paths);
@@ -405,6 +443,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       clipProgress: {},
       followup: stage === "followup" ? emptyFollowup() : null,
       photoEdgeLimited: Boolean(options?.photoEdgeLimited),
+      videoEdgeLimited: Boolean(options?.videoEdgeLimited),
     });
   },
 
@@ -426,6 +465,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       clipProgress: {},
       followup: emptyFollowup(),
       photoEdgeLimited: false,
+      videoEdgeLimited: false,
     });
   },
 
@@ -525,6 +565,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       clipProgress: {},
       followup: null,
       photoEdgeLimited: false,
+      videoEdgeLimited: false,
     }),
 
   phaseFor: (path) => get().byPath[normalizeMediaPath(path)] ?? null,

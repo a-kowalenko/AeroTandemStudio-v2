@@ -105,6 +105,7 @@ type Input = {
   qrClipProgress: Record<string, QrClipFrameProgress>;
   qrScanOrder: string[];
   qrPhotoEdgeLimited: boolean;
+  qrVideoEdgeLimited: boolean;
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
@@ -179,6 +180,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
         qrClipProgress: input.qrClipProgress,
         qrScanOrder: input.qrScanOrder,
         qrPhotoEdgeLimited: input.qrPhotoEdgeLimited,
+        qrVideoEdgeLimited: input.qrVideoEdgeLimited,
       }),
     [
       input.sdWorkflowActive,
@@ -193,6 +195,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrClipProgress,
       input.qrScanOrder,
       input.qrPhotoEdgeLimited,
+      input.qrVideoEdgeLimited,
     ],
   );
 
@@ -233,6 +236,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrClipProgress,
       input.qrScanOrder,
       input.qrPhotoEdgeLimited,
+      input.qrVideoEdgeLimited,
     );
   }, [
     input.qrScanBusy,
@@ -243,6 +247,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.qrClipProgress,
     input.qrScanOrder,
     input.qrPhotoEdgeLimited,
+    input.qrVideoEdgeLimited,
   ]);
 
   const showSdProgress = Boolean(input.sdWorkflowActive && sdProgress);

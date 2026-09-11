@@ -110,6 +110,7 @@ export function WorkflowLayout({
   const qrClipProgress = useQrScanStore((s) => s.clipProgress);
   const qrScanOrder = useQrScanStore((s) => s.scanOrder);
   const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
+  const qrVideoEdgeLimited = useQrScanStore((s) => s.videoEdgeLimited);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
@@ -195,6 +196,7 @@ export function WorkflowLayout({
     qrClipProgress,
     qrScanOrder,
     qrPhotoEdgeLimited,
+    qrVideoEdgeLimited,
     videoImporting,
     photoImporting,
     encodeBusy: busy,

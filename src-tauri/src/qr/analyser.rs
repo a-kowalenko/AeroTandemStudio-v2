@@ -38,11 +38,23 @@ pub const QR_CASCADE_CHEAP_WIDTH: u32 = 640;
 pub const QR_CASCADE_NORMAL_WIDTH: u32 = 960;
 /// Cascade pass 4 — escalate width after preprocess miss.
 pub const QR_CASCADE_ESCALATE_WIDTH: u32 = 1280;
-/// Laplacian-variance below this → skip expensive rxing (video pipe).
+/// Laplacian-variance below this → skip expensive rxing (legacy gate / tests).
 pub const QR_SHARPNESS_GATE_THRESHOLD: f64 = 20.0;
 /// Always try at least this many sharpest buffered frames even when below threshold.
 pub const QR_SHARPNESS_GATE_MIN_KEEP: usize = 3;
-/// Midpoint anchors tried via cheap PNG before the full pipe (0, last, mid…).
+/// Max fast HQ QR decodes per clip after sharpness ranking.
+pub const QR_VIDEO_DECODE_TOP_K: usize = 4;
+/// Accurate-seek HQ retries after a fast Top-K miss (sharpest only).
+pub const QR_VIDEO_ACCURATE_TOP_K: usize = 2;
+/// Low-res width for the ranking pipe (sharpness only, no Full decode).
+pub const QR_VIDEO_RANK_WIDTH: u32 = 480;
+/// Candidate frame step for the ranking pipe.
+pub const QR_VIDEO_RANK_FRAME_STEP: u32 = 5;
+/// Denser ranking step when the first pass looks globally blurry.
+pub const QR_VIDEO_RANK_BLUR_STEP: u32 = 3;
+/// If best ranked score is below this, re-rank with [`QR_VIDEO_RANK_BLUR_STEP`].
+pub const QR_VIDEO_BLUR_RETRY_MAX_SCORE: f64 = 20.0;
+/// Midpoint anchors tried via cheap PNG before ranking (0, last, mid…).
 pub const QR_QUICK_ANCHOR_COUNT: usize = 3;
 /// Temp dirs for hit-frame previews shown in SuccessDialog.
 pub const QR_PREVIEW_DIR_PREFIX: &str = "aero_studio_qr_preview_";
@@ -259,7 +271,8 @@ pub struct QrScanOptions {
     pub frame_step: u32,
     pub max_video_width: u32,
     pub max_photo_width: u32,
-    /// Second rxing pass (`TryHarder`) after a cheap miss. Off for photo batches.
+    /// When true, photo decode uses the full cascade (preprocess + escalate).
+    /// Batch/auto starts fast and escalates via [`scan_photo_with_progress`].
     pub photo_try_harder: bool,
 }
 
@@ -283,8 +296,56 @@ pub fn build_extract_frame_args(
     output_png: &str,
     max_width: u32,
 ) -> Vec<String> {
+    build_extract_frame_args_with_flags(input, seek_secs, output_png, max_width, "fast_bilinear")
+}
+
+/// HQ single-frame extract (lanczos) for Top-K decode after ranking.
+pub fn build_extract_frame_args_hq(
+    input: &str,
+    seek_secs: f64,
+    output_png: &str,
+    max_width: u32,
+) -> Vec<String> {
+    build_extract_frame_args_with_flags(input, seek_secs, output_png, max_width, "lanczos")
+}
+
+/// HQ + accurate seek (`-i` then `-ss`) — frame-accurate, slower, better for soft QR.
+pub fn build_extract_frame_args_hq_accurate(
+    input: &str,
+    seek_secs: f64,
+    output_png: &str,
+    max_width: u32,
+) -> Vec<String> {
     let seek = format!("{:.3}", seek_secs.max(0.0));
-    let vf = format!("scale='min({max_width},iw)':-2:flags=fast_bilinear");
+    let vf = format!("scale='min({max_width},iw)':-2:flags=lanczos");
+    vec![
+        "-hide_banner".into(),
+        "-loglevel".into(),
+        "error".into(),
+        "-i".into(),
+        input.to_string(),
+        "-ss".into(),
+        seek,
+        "-frames:v".into(),
+        "1".into(),
+        "-an".into(),
+        "-sn".into(),
+        "-vf".into(),
+        vf,
+        "-y".into(),
+        output_png.to_string(),
+    ]
+}
+
+fn build_extract_frame_args_with_flags(
+    input: &str,
+    seek_secs: f64,
+    output_png: &str,
+    max_width: u32,
+    scale_flags: &str,
+) -> Vec<String> {
+    let seek = format!("{:.3}", seek_secs.max(0.0));
+    let vf = format!("scale='min({max_width},iw)':-2:flags={scale_flags}");
     vec![
         "-hide_banner".into(),
         "-loglevel".into(),
@@ -893,6 +954,62 @@ pub fn sharpness_gate_allowed_slots(
     allowed
 }
 
+/// Sharpest slots first (ties → lower slot index). Caps at `top_k`.
+pub fn sharpness_ranked_slots(frame_lumas: &[(usize, f64)], top_k: usize) -> Vec<usize> {
+    if frame_lumas.is_empty() || top_k == 0 {
+        return Vec::new();
+    }
+    let mut ranked = frame_lumas.to_vec();
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    ranked
+        .into_iter()
+        .take(top_k)
+        .map(|(slot, _)| slot)
+        .collect()
+}
+
+/// Effective frame step for video ranking (denser of config vs rank default).
+pub fn video_rank_frame_step(configured: u32) -> u32 {
+    configured.max(1).min(QR_VIDEO_RANK_FRAME_STEP).max(1)
+}
+
+/// Scan window: short clips (≤10s) are covered entirely; longer clips use config capped by duration.
+pub fn video_scan_window_secs(configured: f64, duration_secs: f64) -> f64 {
+    let configured = configured.max(0.5);
+    if duration_secs > 0.0 && duration_secs <= 10.0 {
+        duration_secs
+    } else if duration_secs > 0.0 {
+        configured.min(duration_secs)
+    } else {
+        configured
+    }
+}
+
+/// Midpoint-ordered dense frames for optional deep passes, skipping already-tried ones.
+#[cfg(test)]
+pub fn emergency_hq_frame_indices(
+    fps: f64,
+    scan_seconds: f64,
+    step: u32,
+    budget: usize,
+    skip: &HashSet<u32>,
+) -> Vec<u32> {
+    if budget == 0 {
+        return Vec::new();
+    }
+    let indices = target_frame_indices(fps, scan_seconds, step.max(1));
+    let ordered = midpoint_ordered_frames(&indices);
+    ordered
+        .into_iter()
+        .filter(|f| !skip.contains(f))
+        .take(budget)
+        .collect()
+}
+
 fn apply_qr_preprocess(luma: &[u8], width: u32, height: u32, kind: QrPreprocess) -> Vec<u8> {
     match kind {
         QrPreprocess::Contrast => contrast_stretch_luma(luma),
@@ -1264,6 +1381,20 @@ pub fn scan_photo(
     options: &QrScanOptions,
     cancel: Option<&AtomicBool>,
 ) -> Result<QrScanResult, QrScanError> {
+    scan_photo_with_progress(ffmpeg, path, options, cancel, None)
+}
+
+/// Photo scan with Schnell → Gründlich escalate (same idea as video Top-K thorough).
+///
+/// 1. Fast cascade at [`QrScanOptions::max_photo_width`]
+/// 2. On miss: full cascade + wider decode (up to [`QR_CASCADE_ESCALATE_WIDTH`])
+pub fn scan_photo_with_progress(
+    ffmpeg: &Path,
+    path: &str,
+    options: &QrScanOptions,
+    cancel: Option<&AtomicBool>,
+    on_progress: Option<&QrScanProgressCb<'_>>,
+) -> Result<QrScanResult, QrScanError> {
     let _ = ffmpeg; // photo decode uses image crate; ffmpeg kept for API symmetry
     if is_stop(cancel) {
         return Ok(QrScanResult::cancelled());
@@ -1272,15 +1403,62 @@ pub fn scan_photo(
         return Err(QrScanError::NotFound(path.to_string()));
     }
 
-    match decode_kunde_from_image_path_ex(
-        Path::new(path),
-        options.max_photo_width,
-        true,
-        options.photo_try_harder,
-    )? {
-        Some((parsed, preview)) => {
-            Ok(QrScanResult::hit(parsed, path, Some(preview)))
+    let notify = |phase: &str, frame: u32, total: u32| {
+        if let Some(cb) = on_progress {
+            cb(path, phase, frame, total);
         }
+    };
+
+    // Caller already wants full cascade (manual single scan) — one thorough pass.
+    if options.photo_try_harder {
+        notify("thorough", 1, 1);
+        return decode_photo_at(
+            path,
+            options
+                .max_photo_width
+                .max(QR_CASCADE_ESCALATE_WIDTH)
+                .min(MAX_QR_DECODE_WIDTH),
+            true,
+        );
+    }
+
+    notify("fast", 1, 2);
+    let fast = decode_photo_at(path, options.max_photo_width, false)?;
+    if fast.found || fast.cancelled {
+        return Ok(fast);
+    }
+    if is_stop(cancel) {
+        return Ok(QrScanResult::cancelled());
+    }
+
+    notify("thorough", 2, 2);
+    logging::debug(
+        "qr",
+        format!(
+            "Foto Fast-Miss → gründlich file={}",
+            Path::new(path)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or(path)
+        ),
+    );
+    decode_photo_at(
+        path,
+        options
+            .max_photo_width
+            .max(QR_CASCADE_ESCALATE_WIDTH)
+            .min(MAX_QR_DECODE_WIDTH),
+        true,
+    )
+}
+
+fn decode_photo_at(
+    path: &str,
+    max_width: u32,
+    try_harder: bool,
+) -> Result<QrScanResult, QrScanError> {
+    match decode_kunde_from_image_path_ex(Path::new(path), max_width, true, try_harder)? {
+        Some((parsed, preview)) => Ok(QrScanResult::hit(parsed, path, Some(preview))),
         None => Ok(QrScanResult::miss(format!(
             "Kein gültiger QR-Code im Foto: {path}"
         ))),
@@ -1351,9 +1529,9 @@ fn decode_kunde_from_gray_frame(
 
 /// Optional progress: `(path, phase, frame, frames_total)`.
 /// Phases: `start` | `done` | `hit` | `extract` | `fast` | `thorough`.
-/// - `extract`: one-shot pipe is buffering samples (no Prüfpunkt counter)
-/// - `fast`: midpoint decode on buffered pipe frames (Schnellprüfung)
-/// - `thorough`: per-frame seek/PNG fallback (gründliche Prüfung)
+/// - `extract`: low-res ranking pipe buffering
+/// - `fast`: quick midpoint anchors (Schnellprüfung)
+/// - `thorough`: accurate HQ retry (sharpest few only)
 pub type QrScanProgressCb<'a> = dyn Fn(&str, &str, u32, u32) + Sync + 'a;
 
 /// Scan the first `scan_seconds` of a video clip for a customer QR code.
@@ -1368,8 +1546,10 @@ pub fn scan_video_clip(
 
 /// Like [`scan_video_clip`], with optional progress (`extract` / `fast` / `thorough`).
 ///
-/// Fast path: cheap PNG midpoint anchors (0 / last / mid), then one FFmpeg pipe
-/// with `fast_bilinear` extract + midpoint decode. Seek/PNG fallback last.
+/// 1. Quick PNG anchors (0 / last / mid) — early exit on easy hits
+/// 2. Low-res dense pipe — sharpness ranking only (optional denser blur-retry)
+/// 3. Fast HQ Top-K ([`QR_VIDEO_DECODE_TOP_K`]) — lanczos, keyframe seek
+/// 4. On miss: accurate HQ only for the sharpest [`QR_VIDEO_ACCURATE_TOP_K`]
 pub fn scan_video_clip_with_progress(
     ffmpeg: &Path,
     path: &str,
@@ -1384,25 +1564,24 @@ pub fn scan_video_clip_with_progress(
         return Err(QrScanError::NotFound(path.to_string()));
     }
 
-    // Early UI signal before probe/FFmpeg spawn so the stripe leaves "idle" sooner.
     if let Some(cb) = on_progress {
         cb(path, "extract", 0, 1);
     }
 
     let meta = probe::probe_video(ffmpeg, path)?;
     let fps = if meta.fps > 0.0 { meta.fps } else { 30.0 };
-    let full_secs = options.scan_seconds.max(0.5);
-    let full_step = options.frame_step.max(1);
-    let indices = target_frame_indices(fps, full_secs, full_step);
-    let frames_total = (indices.len() as u32).max(1);
+    let configured = options.scan_seconds.max(0.5);
+    // Short clips: cover the whole file (config window alone can miss a late QR).
+    let full_secs = video_scan_window_secs(configured, meta.duration_secs);
+    let rank_step = video_rank_frame_step(options.frame_step);
+    let quick_indices = target_frame_indices(fps, full_secs, rank_step);
 
-    // 1) Quick PNG anchors (typically frame 0, last, mid) — fastest path to first hit.
-    let (quick_hit, tried_slots) = try_quick_anchor_pass(
+    // 1) Quick PNG anchors — UI total = anchor count (not full candidate pool).
+    let (quick_hit, _tried) = try_quick_anchor_pass(
         ffmpeg,
         path,
-        &indices,
+        &quick_indices,
         fps,
-        frames_total,
         QR_FAST_DETECT_WIDTH.min(options.max_video_width.max(2)),
         cancel,
         on_progress,
@@ -1414,50 +1593,138 @@ pub fn scan_video_clip_with_progress(
         return Ok(QrScanResult::cancelled());
     }
 
-    let out_size = scaled_gray_frame_size(meta.width, meta.height, options.max_video_width);
+    // 2) Low-res ranking pipe (sharpness only).
+    let rank_size = scaled_gray_frame_size(meta.width, meta.height, QR_VIDEO_RANK_WIDTH);
+    let mut top_frames = Vec::new();
+    let mut max_score = 0.0_f64;
 
-    if let Some((out_w, out_h)) = out_size {
-        match scan_video_pipe_pass(
+    if let Some((rank_w, rank_h)) = rank_size {
+        match scan_video_rank_pipe(
             ffmpeg,
             path,
             full_secs,
-            full_step,
+            rank_step,
             fps,
-            out_w,
-            out_h,
-            &tried_slots,
+            rank_w,
+            rank_h,
+            QR_VIDEO_DECODE_TOP_K,
             cancel,
             on_progress,
         )? {
-            PipePassOutcome::Hit(res) | PipePassOutcome::Cancelled(res) => return Ok(res),
-            PipePassOutcome::Miss { frames_read } => {
+            RankPassOutcome::Cancelled(res) => return Ok(res),
+            RankPassOutcome::Failed => {
                 logging::info(
                     "qr",
                     format!(
-                        "Pipe midpoint miss frames={frames_read} → Seek/PNG-Fallback file={}",
+                        "Rank-Pipe failed → Seek/PNG-Fallback file={}",
                         clip_file_name(path)
                     ),
                 );
             }
-            PipePassOutcome::PipeFailed => {
-                logging::info(
-                    "qr",
-                    format!(
-                        "Pipe failed → Seek/PNG-Fallback file={}",
-                        clip_file_name(path)
-                    ),
-                );
+            RankPassOutcome::Ranked {
+                frames_read,
+                top_frame_indices,
+                max_score: score,
+            } => {
+                top_frames = top_frame_indices;
+                max_score = score;
+                if frames_read == 0 {
+                    logging::info(
+                        "qr",
+                        format!(
+                            "Rank-Pipe frames=0 → Seek/PNG-Fallback file={}",
+                            clip_file_name(path)
+                        ),
+                    );
+                } else if max_score < QR_VIDEO_BLUR_RETRY_MAX_SCORE
+                    && rank_step > QR_VIDEO_RANK_BLUR_STEP
+                {
+                    logging::info(
+                        "qr",
+                        format!(
+                            "Rank blur-retry max_score={max_score:.1} step {}→{} file={}",
+                            rank_step,
+                            QR_VIDEO_RANK_BLUR_STEP,
+                            clip_file_name(path)
+                        ),
+                    );
+                    match scan_video_rank_pipe(
+                        ffmpeg,
+                        path,
+                        full_secs,
+                        QR_VIDEO_RANK_BLUR_STEP,
+                        fps,
+                        rank_w,
+                        rank_h,
+                        QR_VIDEO_DECODE_TOP_K,
+                        cancel,
+                        on_progress,
+                    )? {
+                        RankPassOutcome::Cancelled(res) => return Ok(res),
+                        RankPassOutcome::Ranked {
+                            top_frame_indices,
+                            max_score: score2,
+                            ..
+                        } if !top_frame_indices.is_empty() => {
+                            top_frames = top_frame_indices;
+                            max_score = score2;
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
 
         if is_stop(cancel) {
             return Ok(QrScanResult::cancelled());
         }
+
+        // 3) Fast HQ Top-K, then 4) accurate only on the sharpest few.
+        if !top_frames.is_empty() {
+            let hq = scan_video_topk_hq_pass(
+                ffmpeg,
+                path,
+                options,
+                fps,
+                &top_frames,
+                false, // fast seek
+                "fast",
+                cancel,
+                on_progress,
+            )?;
+            if hq.found || hq.cancelled {
+                return Ok(hq);
+            }
+
+            let accurate_n = QR_VIDEO_ACCURATE_TOP_K.min(top_frames.len());
+            if accurate_n == 0 {
+                return Ok(hq);
+            }
+            let accurate_frames = &top_frames[..accurate_n];
+            logging::debug(
+                "qr",
+                format!(
+                    "Fast Top-K miss → accurate HQ n={accurate_n} max_score={max_score:.1} file={}",
+                    clip_file_name(path)
+                ),
+            );
+            return scan_video_topk_hq_pass(
+                ffmpeg,
+                path,
+                options,
+                fps,
+                accurate_frames,
+                true, // accurate seek
+                "thorough",
+                cancel,
+                on_progress,
+            );
+        }
     } else {
         logging::debug(
             "qr",
             format!(
-                "Keine Pipe-Größe (Probe {}x{}) → Seek/PNG file={}",
+                "Keine Rank-Größe (Probe {}x{}) → Seek/PNG file={}",
                 meta.width,
                 meta.height,
                 clip_file_name(path)
@@ -1465,7 +1732,6 @@ pub fn scan_video_clip_with_progress(
         );
     }
 
-    // Legacy fallback: per-frame seek extract (PNG on disk) — also after a clean pipe miss.
     scan_video_clip_seek_fallback(ffmpeg, path, options, cancel, fps, on_progress)
 }
 
@@ -1476,7 +1742,6 @@ fn try_quick_anchor_pass(
     path: &str,
     indices: &[u32],
     fps: f64,
-    frames_total: u32,
     max_width: u32,
     cancel: Option<&AtomicBool>,
     on_progress: Option<&QrScanProgressCb<'_>>,
@@ -1490,6 +1755,7 @@ fn try_quick_anchor_pass(
     if quick_n == 0 {
         return Ok((None, tried));
     }
+    let frames_total = quick_n as u32;
 
     let notify = |phase: &str, frame: u32, total: u32| {
         if let Some(cb) = on_progress {
@@ -1543,14 +1809,19 @@ fn try_quick_anchor_pass(
     Ok((None, tried))
 }
 
-enum PipePassOutcome {
-    Hit(QrScanResult),
+enum RankPassOutcome {
     Cancelled(QrScanResult),
-    Miss { frames_read: usize },
-    PipeFailed,
+    /// Sharpness ranking finished; `top_frame_indices` are source frame numbers.
+    Ranked {
+        frames_read: usize,
+        top_frame_indices: Vec<u32>,
+        max_score: f64,
+    },
+    Failed,
 }
 
-fn scan_video_pipe_pass(
+/// Low-res pipe: buffer gray frames and rank by Laplacian sharpness (no Full decode).
+fn scan_video_rank_pipe(
     ffmpeg: &Path,
     path: &str,
     scan_seconds: f64,
@@ -1558,15 +1829,18 @@ fn scan_video_pipe_pass(
     fps: f64,
     out_w: u32,
     out_h: u32,
-    skip_slots: &HashSet<usize>,
+    top_k: usize,
     cancel: Option<&AtomicBool>,
     on_progress: Option<&QrScanProgressCb<'_>>,
-) -> Result<PipePassOutcome, QrScanError> {
+) -> Result<RankPassOutcome, QrScanError> {
     let indices = target_frame_indices(fps, scan_seconds, frame_step);
     if indices.is_empty() {
-        return Ok(PipePassOutcome::Miss { frames_read: 0 });
+        return Ok(RankPassOutcome::Ranked {
+            frames_read: 0,
+            top_frame_indices: Vec::new(),
+            max_score: 0.0,
+        });
     }
-    let order = midpoint_decode_order(indices.len());
     let frames_total = (indices.len() as u32).max(1);
     let args = build_extract_frames_pipe_args(path, scan_seconds, frame_step, out_w, out_h);
     let frame_nbytes = (out_w as usize).saturating_mul(out_h as usize);
@@ -1579,78 +1853,34 @@ fn scan_video_pipe_pass(
 
     let mut frames: Vec<Option<Vec<u8>>> = vec![None; indices.len()];
     let mut write_i = 0usize;
-    let mut early: Option<QrScanResult> = None;
-    let mut slot0_tried = false;
-
-    let try_decode_slot = |slot: usize,
-                           gray: &[u8],
-                           attempt: u32,
-                           pass_label: &str|
-     -> Result<Option<QrScanResult>, QrScanError> {
-        let src_frame = indices.get(slot).copied().unwrap_or(0);
-        match decode_kunde_from_gray_frame(gray, out_w, out_h, true, true) {
-            Ok(Some((parsed, preview))) => {
-                logging::info(
-                    "qr",
-                    format!(
-                        "Clip-Treffer via={pass_label} frame={attempt}/{frames_total} src_frame={src_frame} size={out_w}x{out_h} file={}",
-                        clip_file_name(path)
-                    ),
-                );
-                Ok(Some(QrScanResult::hit(parsed, path, Some(preview))))
-            }
-            Ok(None) => Ok(None),
-            Err(e) => {
-                eprintln!("QR frame decode error ({path}): {e}");
-                Ok(None)
-            }
-        }
-    };
+    let mut cancelled = false;
 
     let pipe_result = run_ffmpeg_raw_stdout_frames(ffmpeg, &args, frame_nbytes, |frame| {
         if is_stop(cancel) {
-            early = Some(QrScanResult::cancelled());
+            cancelled = true;
             return false;
         }
         if write_i >= frames.len() {
             return true;
         }
         frames[write_i] = Some(frame.to_vec());
-        if write_i == 0 {
-            notify("extract", 0, frames_total);
-        } else if write_i + 1 == frames.len() || (write_i + 1) % 4 == 0 {
-            notify("extract", 0, frames_total);
+        if write_i == 0 || write_i + 1 == frames.len() || (write_i + 1) % 8 == 0 {
+            // Progress: how far the rank extract has buffered (not decode count).
+            notify(
+                "extract",
+                (write_i as u32).saturating_add(1),
+                frames_total,
+            );
         }
-
-        // Fast path: first pipe frame is slot 0 — decode immediately unless quick pass already did.
-        if write_i == 0 {
-            slot0_tried = true;
-            if !skip_slots.contains(&0) {
-                notify("fast", 1, frames_total);
-                if let Ok(Some(res)) = try_decode_slot(0, frame, 1, "pipe_midpoint") {
-                    early = Some(res);
-                    return false;
-                }
-            }
-        }
-
         write_i = write_i.saturating_add(1);
         true
     });
 
     match pipe_result {
         Ok(frames_read) => {
-            if let Some(res) = early {
-                if res.cancelled {
-                    return Ok(PipePassOutcome::Cancelled(res));
-                }
-                return Ok(PipePassOutcome::Hit(res));
+            if cancelled || is_stop(cancel) {
+                return Ok(RankPassOutcome::Cancelled(QrScanResult::cancelled()));
             }
-            if is_stop(cancel) {
-                return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
-            }
-
-            // Sharpness gate: skip blurry frames but keep anchors + top-N sharpest.
             let sharpness_scored: Vec<(usize, f64)> = frames
                 .iter()
                 .enumerate()
@@ -1659,81 +1889,51 @@ fn scan_video_pipe_pass(
                     Some((slot, laplacian_variance(gray, out_w, out_h)))
                 })
                 .collect();
-            let gate_allowed = sharpness_gate_allowed_slots(
-                &sharpness_scored,
-                QR_SHARPNESS_GATE_THRESHOLD,
-                QR_SHARPNESS_GATE_MIN_KEEP,
-            );
-            let gated_skip = sharpness_scored
+            let max_score = sharpness_scored
                 .iter()
-                .filter(|(slot, score)| {
-                    !gate_allowed.contains(slot) && *score < QR_SHARPNESS_GATE_THRESHOLD
-                })
-                .count();
-            if gated_skip > 0 {
-                logging::debug(
-                    "qr",
-                    format!(
-                        "Sharpness-Gate skip={gated_skip}/{} threshold={} file={}",
-                        sharpness_scored.len(),
-                        QR_SHARPNESS_GATE_THRESHOLD,
-                        clip_file_name(path)
-                    ),
-                );
-            }
-
-            let mut attempt = skip_slots.len() as u32;
-            if slot0_tried && !skip_slots.contains(&0) {
-                attempt = attempt.saturating_add(1);
-            }
-            for &slot in &order {
-                if skip_slots.contains(&slot) {
-                    continue;
-                }
-                if slot == 0 && slot0_tried {
-                    continue;
-                }
-                if !gate_allowed.contains(&slot) {
-                    continue;
-                }
-                if is_stop(cancel) {
-                    return Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled()));
-                }
-                let Some(gray) = frames.get(slot).and_then(|f| f.as_deref()) else {
-                    continue;
-                };
-                attempt = attempt.saturating_add(1);
-                notify("fast", attempt, frames_total);
-                if let Ok(Some(res)) = try_decode_slot(slot, gray, attempt, "pipe_midpoint") {
-                    return Ok(PipePassOutcome::Hit(res));
-                }
-            }
-
-            Ok(PipePassOutcome::Miss {
+                .map(|(_, s)| *s)
+                .fold(0.0_f64, f64::max);
+            let ranked = sharpness_ranked_slots(&sharpness_scored, top_k);
+            let top_frame_indices: Vec<u32> = ranked
+                .iter()
+                .filter_map(|slot| indices.get(*slot).copied())
+                .collect();
+            logging::debug(
+                "qr",
+                format!(
+                    "Rank-Pipe scored={} top_k={} max_score={max_score:.1} step={frame_step} size={out_w}x{out_h} file={}",
+                    sharpness_scored.len(),
+                    top_frame_indices.len(),
+                    clip_file_name(path)
+                ),
+            );
+            Ok(RankPassOutcome::Ranked {
                 frames_read: frames_read.max(write_i),
+                top_frame_indices,
+                max_score,
             })
         }
-        Err(FfmpegError::Cancelled) => Ok(PipePassOutcome::Cancelled(QrScanResult::cancelled())),
+        Err(FfmpegError::Cancelled) => Ok(RankPassOutcome::Cancelled(QrScanResult::cancelled())),
         Err(e) => {
-            eprintln!("QR batch pipe failed ({path}): {e}");
-            Ok(PipePassOutcome::PipeFailed)
+            eprintln!("QR rank pipe failed ({path}): {e}");
+            Ok(RankPassOutcome::Failed)
         }
     }
 }
 
-/// Per-frame FFmpeg seek extract (PNG). Used when the batch pipe path yields 0 frames.
-fn scan_video_clip_seek_fallback(
+/// HQ pass: lanczos PNG + Full cascade. `accurate` selects frame-accurate seek.
+fn scan_video_topk_hq_pass(
     ffmpeg: &Path,
     path: &str,
     options: &QrScanOptions,
-    cancel: Option<&AtomicBool>,
     fps: f64,
+    frame_indices: &[u32],
+    accurate: bool,
+    progress_phase: &str,
+    cancel: Option<&AtomicBool>,
     on_progress: Option<&QrScanProgressCb<'_>>,
 ) -> Result<QrScanResult, QrScanError> {
-    let indices = target_frame_indices(fps, options.scan_seconds, options.frame_step);
-    let ordered = midpoint_ordered_frames(&indices);
-    let frames_total = (ordered.len() as u32).max(1);
-
+    let frames_total = (frame_indices.len() as u32).max(1);
     let notify = |phase: &str, frame: u32, frames_total: u32| {
         if let Some(cb) = on_progress {
             cb(path, phase, frame, frames_total);
@@ -1744,18 +1944,107 @@ fn scan_video_clip_seek_fallback(
     let frame_path: PathBuf = tmp_dir.path().join("qr_frame.png");
     let frame_str = frame_path.to_string_lossy().to_string();
 
-    // Signal pass change before the first thorough attempt (UI resets counter with new mode).
-    notify("thorough", 0, frames_total);
+    notify(progress_phase, 0, frames_total);
 
-    let mut frames_read = 0u32;
-    for (i, frame_index) in ordered.iter().enumerate() {
+    let hq_w = options
+        .max_video_width
+        .max(QR_CASCADE_ESCALATE_WIDTH)
+        .min(MAX_QR_DECODE_WIDTH);
+
+    for (i, frame_index) in frame_indices.iter().enumerate() {
         if is_stop(cancel) {
             return Ok(QrScanResult::cancelled());
         }
 
         let seek_secs = *frame_index as f64 / fps;
-        let args =
-            build_extract_frame_args(path, seek_secs, &frame_str, options.max_video_width);
+        let args = if accurate {
+            build_extract_frame_args_hq_accurate(path, seek_secs, &frame_str, hq_w)
+        } else {
+            build_extract_frame_args_hq(path, seek_secs, &frame_str, hq_w)
+        };
+        match run_ffmpeg_checked(ffmpeg, &args) {
+            Ok(()) => {}
+            Err(FfmpegError::Cancelled) => return Ok(QrScanResult::cancelled()),
+            Err(_) => continue,
+        }
+
+        if !frame_path.is_file() {
+            continue;
+        }
+        notify(
+            progress_phase,
+            (i as u32).saturating_add(1),
+            frames_total,
+        );
+
+        if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
+            let via = if accurate {
+                "topk_hq_accurate"
+            } else {
+                "topk_hq_fast"
+            };
+            logging::info(
+                "qr",
+                format!(
+                    "Clip-Treffer via={via} frame={}/{} seek={seek_secs:.3}s src_frame={frame_index} file={}",
+                    (i as u32).saturating_add(1),
+                    frames_total,
+                    clip_file_name(path)
+                ),
+            );
+            return Ok(QrScanResult::hit(parsed, path, Some(preview)));
+        }
+    }
+
+    Ok(QrScanResult::miss(format!(
+        "Kein gültiger QR-Code in den ersten {:.0}s: {path}",
+        options.scan_seconds
+    )))
+}
+
+/// Per-frame FFmpeg seek extract (PNG). Used when the ranking pipe yields 0 frames.
+/// Budget-capped to midpoint-ordered Top-K.
+fn scan_video_clip_seek_fallback(
+    ffmpeg: &Path,
+    path: &str,
+    options: &QrScanOptions,
+    cancel: Option<&AtomicBool>,
+    fps: f64,
+    on_progress: Option<&QrScanProgressCb<'_>>,
+) -> Result<QrScanResult, QrScanError> {
+    let step = video_rank_frame_step(options.frame_step);
+    let indices = target_frame_indices(fps, options.scan_seconds, step);
+    let ordered = midpoint_ordered_frames(&indices);
+    let budget: Vec<u32> = ordered
+        .into_iter()
+        .take(QR_VIDEO_DECODE_TOP_K)
+        .collect();
+    let frames_total = (budget.len() as u32).max(1);
+
+    let notify = |phase: &str, frame: u32, frames_total: u32| {
+        if let Some(cb) = on_progress {
+            cb(path, phase, frame, frames_total);
+        }
+    };
+
+    let tmp_dir = tempfile::tempdir().map_err(|e| QrScanError::Message(e.to_string()))?;
+    let frame_path: PathBuf = tmp_dir.path().join("qr_frame.png");
+    let frame_str = frame_path.to_string_lossy().to_string();
+    let hq_w = options
+        .max_video_width
+        .max(QR_CASCADE_ESCALATE_WIDTH)
+        .min(MAX_QR_DECODE_WIDTH);
+
+    notify("thorough", 0, frames_total);
+
+    let mut frames_read = 0u32;
+    for (i, frame_index) in budget.iter().enumerate() {
+        if is_stop(cancel) {
+            return Ok(QrScanResult::cancelled());
+        }
+
+        let seek_secs = *frame_index as f64 / fps;
+        let args = build_extract_frame_args_hq(path, seek_secs, &frame_str, hq_w);
         match run_ffmpeg_checked(ffmpeg, &args) {
             Ok(()) => {}
             Err(FfmpegError::Cancelled) => return Ok(QrScanResult::cancelled()),
@@ -1768,9 +2057,7 @@ fn scan_video_clip_seek_fallback(
         frames_read += 1;
         notify("thorough", (i as u32).saturating_add(1), frames_total);
 
-        if let Some((parsed, preview)) =
-            decode_kunde_from_image_path(&frame_path, options.max_video_width)?
-        {
+        if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
             logging::info(
                 "qr",
                 format!(
@@ -1784,24 +2071,21 @@ fn scan_video_clip_seek_fallback(
         }
     }
 
-    // Accurate-seek fallback: same midpoint order when fast seek produced nothing.
     if frames_read == 0 {
         let frames_limit = ((fps * options.scan_seconds.max(0.5)) as u32).max(1);
-        let step = options.frame_step.max(1);
         let seq: Vec<u32> = (0..frames_limit).step_by(step as usize).collect();
         let ordered_seq = midpoint_ordered_frames(&seq);
-        let seq_total = (ordered_seq.len() as u32).max(1);
-        for (i, frame_index) in ordered_seq.iter().enumerate() {
+        let budget_seq: Vec<u32> = ordered_seq
+            .into_iter()
+            .take(QR_VIDEO_DECODE_TOP_K)
+            .collect();
+        let seq_total = (budget_seq.len() as u32).max(1);
+        for (i, frame_index) in budget_seq.iter().enumerate() {
             if is_stop(cancel) {
                 return Ok(QrScanResult::cancelled());
             }
             let seek_secs = *frame_index as f64 / fps;
-            let args = build_extract_frame_args_accurate(
-                path,
-                seek_secs,
-                &frame_str,
-                options.max_video_width,
-            );
+            let args = build_extract_frame_args_hq_accurate(path, seek_secs, &frame_str, hq_w);
             if run_ffmpeg_checked(ffmpeg, &args).is_err() {
                 continue;
             }
@@ -1809,9 +2093,7 @@ fn scan_video_clip_seek_fallback(
                 continue;
             }
             notify("thorough", (i as u32).saturating_add(1), seq_total);
-            if let Some((parsed, preview)) =
-                decode_kunde_from_image_path(&frame_path, options.max_video_width)?
-            {
+            if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
                 logging::info(
                     "qr",
                     format!(
@@ -2320,6 +2602,72 @@ mod tests {
         let allowed = sharpness_gate_allowed_slots(&scores, 50.0, 3);
         assert_eq!(allowed.len(), 3);
         assert!(!allowed.contains(&8));
+    }
+
+    #[test]
+    fn sharpness_ranked_slots_sharpest_first() {
+        let scores = vec![(0, 5.0), (1, 100.0), (2, 80.0), (3, 1.0), (4, 90.0)];
+        assert_eq!(
+            sharpness_ranked_slots(&scores, 3),
+            vec![1, 4, 2]
+        );
+        assert!(sharpness_ranked_slots(&scores, 0).is_empty());
+        assert_eq!(sharpness_ranked_slots(&scores, 8).len(), 5);
+    }
+
+    #[test]
+    fn video_rank_frame_step_caps_density() {
+        assert_eq!(video_rank_frame_step(10), QR_VIDEO_RANK_FRAME_STEP);
+        assert_eq!(video_rank_frame_step(2), 2);
+        assert_eq!(video_rank_frame_step(0), 1);
+    }
+
+    #[test]
+    fn video_scan_window_covers_short_clips_fully() {
+        assert!((video_scan_window_secs(5.0, 7.8) - 7.8).abs() < 1e-9);
+        assert!((video_scan_window_secs(5.0, 5.0) - 5.0).abs() < 1e-9);
+        assert!((video_scan_window_secs(5.0, 30.0) - 5.0).abs() < 1e-9);
+        assert!((video_scan_window_secs(5.0, 0.0) - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn build_extract_frame_args_hq_uses_lanczos() {
+        let args = build_extract_frame_args_hq("in.mp4", 1.5, "out.png", 1280);
+        assert!(args.iter().any(|a| a.contains("flags=lanczos")));
+        let ss = args.iter().position(|a| a == "-ss").unwrap();
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        assert!(ss < i, "fast seek should be before -i");
+    }
+
+    #[test]
+    fn build_extract_frame_args_hq_accurate_seek_after_input() {
+        let args = build_extract_frame_args_hq_accurate("in.mp4", 1.5, "out.png", 1280);
+        assert!(args.iter().any(|a| a.contains("flags=lanczos")));
+        let ss = args.iter().position(|a| a == "-ss").unwrap();
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        assert!(i < ss, "accurate seek should be after -i");
+        assert!(args.contains(&"1.500".to_string()));
+    }
+
+    #[test]
+    fn emergency_hq_frame_indices_skips_tried_and_caps_budget() {
+        let mut skip = HashSet::new();
+        skip.insert(0);
+        skip.insert(10);
+        let frames = emergency_hq_frame_indices(30.0, 5.0, 2, 5, &skip);
+        assert_eq!(frames.len(), 5);
+        assert!(!frames.contains(&0));
+        assert!(!frames.contains(&10));
+        let all = emergency_hq_frame_indices(30.0, 5.0, 2, 1000, &HashSet::new());
+        assert!(all.len() <= target_frame_indices(30.0, 5.0, 2).len());
+        assert!(emergency_hq_frame_indices(30.0, 5.0, 2, 0, &skip).is_empty());
+    }
+
+    #[test]
+    fn video_hq_budgets_are_tight() {
+        assert!(QR_VIDEO_ACCURATE_TOP_K <= QR_VIDEO_DECODE_TOP_K);
+        assert_eq!(QR_VIDEO_DECODE_TOP_K, 4);
+        assert_eq!(QR_VIDEO_ACCURATE_TOP_K, 2);
     }
 
     #[test]
