@@ -22,6 +22,21 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Kopfzeile kompakter und einheitlicher; SD-Aktion als Icon „Importieren“ statt Text „Öffnen“
 - Einstellungen → Encoding: Hinweise zu Clip-Modi kürzer und besser lesbar
 
+
+## [0.5.1-beta.1] - 2026-09-11
+
+### Neu
+
+- Einstellungen → Encoding: „Vorbereitung im Hintergrund“ — sobald Erstellen bereit ist (Compatible, ohne Intro, Kunde per QR/Lookup), werden Video und Fotos schon vor dem Klick vorbereitet; Status „Vorbereitung…“ / „Bereit“ (Standard an)
+
+### Verbessert
+
+- QR-Scan in Videos: schärfste Stellen zuerst — schneller und treffsicherer
+- QR-Scan in Fotos: zuerst schnelle Prüfung, bei Bedarf gründlich — Fortschritt klarer getrennt
+- Bei vielen Clips: QR-Scan prüft zuerst die ersten und letzten Dateien in der Liste
+- Kopfzeile kompakter und einheitlicher; SD-Aktion als Icon „Importieren“ statt Text „Öffnen“
+- Einstellungen → Encoding: Hinweise zu Clip-Modi kürzer und besser lesbar
+
 ## [0.5.0] - 2026-09-10
 
 ### Neu
