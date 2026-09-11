@@ -58,6 +58,10 @@ pub fn build_watermark_video_args(
         "-movflags".into(),
         "+faststart".into(),
         "-an".into(),
+        // Required so run_ffmpeg can parse out_time from stdout (attach/create UI %).
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
         output.to_string(),
     ]);
     (encoder, args)
@@ -173,6 +177,8 @@ mod tests {
         assert_eq!(enc, "libx264");
         assert!(args.iter().any(|a| a.contains("overlay")));
         assert!(args.contains(&"-an".to_string()));
+        assert!(args.contains(&"-progress".to_string()));
+        assert!(args.contains(&"pipe:1".to_string()));
         assert_eq!(args.last().unwrap(), "out.mp4");
     }
 }

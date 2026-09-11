@@ -142,6 +142,10 @@ struct SlotInner {
     fail_reason: Option<String>,
     /// Coalesced desire while a job is Running (body_fp must match).
     pending: Option<PendingStaging>,
+    /// Paths + rev used to build fingerprints (attach without re-stat when FFmpeg locks inputs).
+    video_paths: Vec<String>,
+    photo_paths: Vec<String>,
+    media_revision_tag: String,
 }
 
 /// Latest desired staging content deferred until the running job finishes.
@@ -194,6 +198,7 @@ pub fn build_fingerprint(
         watermark_clip_index,
         watermark_photo_indices,
         resource_dir,
+        None,
     )?;
     Ok(combine_fingerprints(&body, &photos, &wm))
 }
@@ -269,26 +274,35 @@ fn stamp_identity(resource_dir: Option<&Path>) -> String {
 }
 
 /// WM-video half (clip selection + unpaid video + stamp). Stable when only photo WM changes.
+///
+/// When `resolved_wm_clip` is set (path of the clip that will actually be watermarked),
+/// fingerprint that file only — deleting unrelated clips (and FE index remap) does not
+/// invalidate WM video. Do not include `clip_idx` in that case: the same file at a new
+/// list index must keep the same fingerprint.
 pub fn build_wm_video_fingerprint(
     kunde: &Kunde,
     video_paths: &[String],
     watermark_clip_index: Option<usize>,
     resource_dir: Option<&Path>,
+    resolved_wm_clip: Option<&str>,
 ) -> Result<String, String> {
     let mut payload = String::with_capacity(256);
     let need_wm_video = video_unpaid(kunde) && !video_paths.is_empty();
     payload.push_str(&format!("need:v={}\n", need_wm_video as u8));
     if need_wm_video {
         payload.push_str(&format!("stamp:{}\n", stamp_identity(resource_dir)));
-        payload.push_str(&format!("clip_idx:{watermark_clip_index:?}\n"));
-        if let Some(i) = watermark_clip_index {
+        if let Some(path) = resolved_wm_clip {
+            append_file_identity(&mut payload, "wm_clip", path)?;
+        } else if let Some(i) = watermark_clip_index {
+            payload.push_str(&format!("clip_idx:{watermark_clip_index:?}\n"));
             if i < video_paths.len() {
                 append_file_identity(&mut payload, "wm_clip", &video_paths[i])?;
             } else {
                 payload.push_str("wm_clip:oob\n");
             }
         } else {
-            // Default pick uses longest clip — fingerprint all candidates' identities.
+            // No resolved pick yet — fingerprint all candidates (default = longest).
+            payload.push_str("clip_idx:None\n");
             for path in video_paths {
                 append_file_identity(&mut payload, "wm_clip_cand", path)?;
             }
@@ -342,6 +356,9 @@ fn combine_wm_halves(wm_video_fp: &str, wm_photos_fp: &str) -> String {
 }
 
 /// Watermark-only fingerprint (paid flags, clip/photo selection, stamp path).
+///
+/// Pass `resolved_wm_clip` (same as staging) so commit can match staged `wm_fp` /
+/// `wm_video_fp` after FE index remaps.
 pub fn build_wm_fingerprint(
     kunde: &Kunde,
     video_paths: &[String],
@@ -349,8 +366,15 @@ pub fn build_wm_fingerprint(
     watermark_clip_index: Option<usize>,
     watermark_photo_indices: &[usize],
     resource_dir: Option<&Path>,
+    resolved_wm_clip: Option<&str>,
 ) -> Result<String, String> {
-    let v = build_wm_video_fingerprint(kunde, video_paths, watermark_clip_index, resource_dir)?;
+    let v = build_wm_video_fingerprint(
+        kunde,
+        video_paths,
+        watermark_clip_index,
+        resource_dir,
+        resolved_wm_clip,
+    )?;
     let p = build_wm_photos_fingerprint(
         kunde,
         photo_paths,
@@ -615,11 +639,17 @@ pub fn start_staging(
     )?;
     let photos_fp =
         build_photos_fingerprint(kunde, photo_paths, &request.media_revision_tag)?;
+    let resolved_wm_clip = if video_unpaid(kunde) && !video_paths.is_empty() {
+        export_job::pick_watermark_clip(ffmpeg, video_paths, request.watermark_clip_index)
+    } else {
+        None
+    };
     let wm_video_fp = build_wm_video_fingerprint(
         kunde,
         video_paths,
         request.watermark_clip_index,
         resource_dir,
+        resolved_wm_clip.as_deref(),
     )?;
     let wm_photos_fp = build_wm_photos_fingerprint(
         kunde,
@@ -751,6 +781,16 @@ pub fn start_staging(
                             .artifacts
                             .as_ref()
                             .map(|a| (a.photos_copied, a.rename_map.clone()));
+                        let keep_wm_video = if inner.wm_video_fp == wm_video_fp {
+                            inner
+                                .artifacts
+                                .as_ref()
+                                .and_then(|a| a.wm_video_rel.as_ref())
+                                .filter(|rel| inner.staging_dir.join(rel).is_file())
+                                .cloned()
+                        } else {
+                            None
+                        };
                         drop(inner);
                         drop(guard);
                         return rebuild_body_incremental(
@@ -769,6 +809,7 @@ pub fn start_staging(
                             wm_video_fp,
                             wm_photos_fp,
                             keep_photos,
+                            keep_wm_video,
                         );
                     }
                 }
@@ -812,6 +853,7 @@ pub fn start_staging(
         wm_fp,
         wm_video_fp,
         wm_photos_fp,
+        None,
         None,
     )
 }
@@ -970,6 +1012,9 @@ fn refresh_wm_incremental(
         } else {
             "Wasserzeichen…".into()
         };
+        inner.video_paths = video_paths.to_vec();
+        inner.photo_paths = photo_paths.to_vec();
+        inner.media_revision_tag = request.media_revision_tag.clone();
         let rename_map = inner
             .artifacts
             .as_ref()
@@ -1136,6 +1181,9 @@ fn refresh_photos_incremental(
         inner.wm_ready = false;
         inner.percent = 75.0;
         inner.status = "Kopiere Fotos…".into();
+        inner.video_paths = video_paths.to_vec();
+        inner.photo_paths = photo_paths.to_vec();
+        inner.media_revision_tag = request.media_revision_tag.clone();
         reuse
     };
     slot.cv.notify_all();
@@ -1324,6 +1372,7 @@ fn rebuild_body_incremental(
     wm_video_fp: String,
     wm_photos_fp: String,
     keep_photos: Option<(usize, std::collections::HashMap<String, String>)>,
+    keep_wm_video: Option<PathBuf>,
 ) -> Result<SpeculativeStatus, String> {
     let needed = estimate_staging_bytes(video_paths, &[]);
     if !disk_preflight_ok(staging_dir.parent().unwrap_or(staging_dir.as_path()), needed) {
@@ -1334,15 +1383,24 @@ fn rebuild_body_incremental(
         return Ok(SpeculativeStatus::default());
     }
 
-    // Drop old slot entry but keep the staging directory (photos stay on disk).
+    // Drop old slot entry but keep the staging directory (photos / WM video may stay).
     {
         let mut guard = SLOT.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
     }
-    clear_wm_dirs(&staging_dir);
+    if keep_wm_video.is_some() {
+        // Body clips changed but WM source clip is stable — keep Preview video.
+        clear_wm_photo_dir(&staging_dir);
+    } else {
+        clear_wm_dirs(&staging_dir);
+    }
     log_event(
         "speculative_start",
-        format!("incremental body id={staging_id} videos={}", video_paths.len()),
+        format!(
+            "incremental body id={staging_id} videos={} reuse_wm_video={}",
+            video_paths.len(),
+            keep_wm_video.is_some()
+        ),
     );
     spawn_full_staging_job(
         ffmpeg,
@@ -1360,6 +1418,7 @@ fn rebuild_body_incremental(
         wm_video_fp,
         wm_photos_fp,
         keep_photos,
+        keep_wm_video,
     )
 }
 
@@ -1461,9 +1520,11 @@ fn stage_watermarks(
             video_rel = Some(rel);
             reused_video = true;
         } else {
+            // Match create_job: start WM phase at 0% so attach UI can climb with FFmpeg
+            // (a fixed 85% + monotonic FE bar freezes the progress panel).
             on_progress(EncodeProgress {
-                percent: 85.0,
-                current_secs: 85.0,
+                percent: 0.0,
+                current_secs: 0.0,
                 total_secs: 100.0,
                 status: "Erstelle Wasserzeichen-Video…".into(),
                 task_id: None,
@@ -1475,12 +1536,33 @@ fn stage_watermarks(
             ) {
                 let wm_path = watermark_video_path(layout).map_err(ProcessorError::Message)?;
                 let wm_str = wm_path.to_string_lossy().to_string();
+                let on_wm: ProgressCallback = {
+                    let on_progress = Arc::clone(on_progress);
+                    Arc::new(move |p: EncodeProgress| {
+                        // Keep the WM stage label while FFmpeg emits "continue".
+                        let status = if p.status == "continue"
+                            || p.status.is_empty()
+                            || p.status == "end"
+                        {
+                            "Erstelle Wasserzeichen-Video…".into()
+                        } else {
+                            p.status
+                        };
+                        on_progress(EncodeProgress {
+                            percent: p.percent,
+                            current_secs: p.current_secs,
+                            total_secs: p.total_secs,
+                            status,
+                            task_id: p.task_id,
+                        });
+                    })
+                };
                 encoder = create_video_with_watermark(
                     ffmpeg,
                     &clip,
                     &wm_str,
                     resource_dir,
-                    Arc::clone(on_progress),
+                    on_wm,
                 )?;
                 video_rel = Some(
                     wm_path
@@ -1562,9 +1644,12 @@ fn spawn_full_staging_job(
     wm_photos_fp: String,
     // When set, skip photo copy and reuse existing rename map / count (body rebuild).
     reuse_photos: Option<(usize, std::collections::HashMap<String, String>)>,
+    // When set, skip WM-video encode and keep existing Preview clip (body rebuild).
+    reuse_wm_video: Option<PathBuf>,
 ) -> Result<SpeculativeStatus, String> {
     let cancel = Arc::new(AtomicBool::new(false));
     let reuse_photos_flag = reuse_photos.is_some();
+    let reuse_wm_flag = reuse_wm_video.is_some();
     let slot = Arc::new(Slot {
         inner: Mutex::new(SlotInner {
             phase: SpeculativePhase::Running,
@@ -1586,6 +1671,9 @@ fn spawn_full_staging_job(
             artifacts: None,
             fail_reason: None,
             pending: None,
+            video_paths: video_paths.to_vec(),
+            photo_paths: photo_paths.to_vec(),
+            media_revision_tag: request.media_revision_tag.clone(),
         }),
         cv: Condvar::new(),
     });
@@ -1598,7 +1686,7 @@ fn spawn_full_staging_job(
     log_event(
         "speculative_start",
         format!(
-            "id={staging_id} videos={} photos={} fp={} reuse_photos={reuse_photos_flag}",
+            "id={staging_id} videos={} photos={} fp={} reuse_photos={reuse_photos_flag} reuse_wm_video={reuse_wm_flag}",
             video_paths.len(),
             photo_paths.len(),
             &fp[..8.min(fp.len())]
@@ -1637,6 +1725,7 @@ fn spawn_full_staging_job(
                 &wm_video_fp_w,
                 &wm_photos_fp_w,
                 reuse_photos,
+                reuse_wm_video,
             );
             match outcome {
                 Ok(artifacts) => {
@@ -1752,6 +1841,7 @@ fn run_staging_job(
     wm_video_fp: &str,
     wm_photos_fp: &str,
     reuse_photos: Option<(usize, std::collections::HashMap<String, String>)>,
+    reuse_wm_video: Option<PathBuf>,
 ) -> Result<StagingArtifacts, ProcessorError> {
     let (staging_dir, staging_id) = {
         let inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -1847,7 +1937,12 @@ fn run_staging_job(
         return Err(ProcessorError::Ffmpeg(crate::video::ffmpeg::FfmpegError::Cancelled));
     }
 
-    clear_wm_dirs(&staging_dir);
+    if reuse_wm_video.is_none() {
+        clear_wm_dirs(&staging_dir);
+    } else {
+        // Keep Preview video on disk; refresh photo WMs only if needed below.
+        clear_wm_photo_dir(&staging_dir);
+    }
     let wm = stage_watermarks(
         ffmpeg,
         kunde,
@@ -1858,10 +1953,13 @@ fn run_staging_job(
         &layout,
         &rename_map,
         &on_progress,
-        None,
+        reuse_wm_video,
     )?;
     if !wm.encoder.is_empty() && encoder.is_empty() {
         encoder = wm.encoder.clone();
+    }
+    if wm.reused_video {
+        log_event("speculative_hit", "body_rebuild_reused_wm_video");
     }
     {
         let mut inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
@@ -1916,8 +2014,12 @@ fn pending_needs_photos(inner: &SlotInner, photos_fp: &str) -> bool {
 
 /// Wait for a matching running/ready slot (body + photos).
 ///
-/// Once photos match, artifacts are handed off even if a WM-only pending remains —
-/// commit regenerates WM if needed. That avoids blocking Erstellen on long WM encodes.
+/// Once Ready and photos match, artifacts are handed off even if a WM-only pending
+/// remains — commit regenerates WM if needed.
+///
+/// While Running after attach: do **not** cancel an in-flight WM encode. Body/Fotos
+/// steps are announced as soon as those halves exist; live FFmpeg % for WM is
+/// forwarded until Ready, then commit reuses the finished Preview video.
 pub(crate) fn wait_for_matching(
     ffmpeg: &Path,
     body_fp: &str,
@@ -1970,9 +2072,12 @@ pub(crate) fn wait_for_matching(
         }
     }
 
-    // Poll until photos ready/failed while forwarding progress.
+    // Poll until Ready (body+photos; WM encode may still be finishing — do not cancel it).
+    // While attached, advance create pipeline for finished halves and forward live WM %.
     let deadline = Instant::now() + Duration::from_secs(60 * 60);
     let mut empty_spin: u32 = 0;
+    let mut announced_body_photos = false;
+    let mut announced_waiting_wm = false;
     loop {
         if Instant::now() > deadline {
             return Err(ProcessorError::Message(
@@ -2051,11 +2156,45 @@ pub(crate) fn wait_for_matching(
                 }
                 SpeculativePhase::Running => {
                     empty_spin = 0;
+                    let video_ready = inner.video_ready;
+                    let photos_ready = inner.photos_ready;
+                    let photos_match = inner.photos_fp == photos_fp;
+                    let pct = inner.percent;
+                    let status = inner.status.clone();
+                    let staging_id = inner.staging_id.clone();
+                    drop(inner);
+
+                    // Body+photos already on disk — mark create steps done while WM FFmpeg continues.
+                    if video_ready && photos_ready && photos_match && !announced_body_photos {
+                        announced_body_photos = true;
+                        on_progress(EncodeProgress {
+                            percent: 100.0,
+                            current_secs: 100.0,
+                            total_secs: 100.0,
+                            status: "Video fertig".into(),
+                            task_id: None,
+                        });
+                        on_progress(EncodeProgress {
+                            percent: 100.0,
+                            current_secs: 100.0,
+                            total_secs: 100.0,
+                            status: "Fotos kopiert".into(),
+                            task_id: None,
+                        });
+                        if !announced_waiting_wm {
+                            announced_waiting_wm = true;
+                            log_event(
+                                "speculative_attach",
+                                format!("waiting_wm_encode id={staging_id}"),
+                            );
+                        }
+                    }
+
                     on_progress(EncodeProgress {
-                        percent: inner.percent,
-                        current_secs: inner.percent,
+                        percent: pct,
+                        current_secs: pct,
                         total_secs: 100.0,
-                        status: inner.status.clone(),
+                        status,
                         task_id: None,
                     });
                 }
@@ -2212,16 +2351,34 @@ pub(crate) fn commit_from_staging(
     // Also promote any other leftover product dirs (e.g. video subdir empties).
     let _ = video_subdir_name(kunde);
 
-    let want_wm = build_wm_fingerprint(
+    // Match staging: fingerprint the resolved WM source clip so commit can promote
+    // reused Preview video instead of re-encoding (FE index remap must not miss).
+    let resolved_wm_clip = if video_unpaid(kunde) && !video_paths.is_empty() {
+        export_job::pick_watermark_clip(ffmpeg, video_paths, options.watermark_clip_index)
+    } else {
+        None
+    };
+    let want_wm_video = build_wm_video_fingerprint(
         kunde,
         video_paths,
-        photo_paths,
         options.watermark_clip_index,
+        resource_dir,
+        resolved_wm_clip.as_deref(),
+    )
+    .unwrap_or_default();
+    let want_wm_photos = build_wm_photos_fingerprint(
+        kunde,
+        photo_paths,
         &options.watermark_photo_indices,
         resource_dir,
     )
     .unwrap_or_default();
-    let reuse_wm = artifacts.wm_ready && artifacts.wm_fp == want_wm;
+    let reuse_wm_video = artifacts.wm_video_fp == want_wm_video
+        && artifacts
+            .wm_video_rel
+            .as_ref()
+            .is_some_and(|rel| artifacts.staging_dir.join(rel).is_file());
+    let reuse_wm_photos = artifacts.wm_photos_fp == want_wm_photos && artifacts.wm_photos > 0;
 
     let mut wm_video: Option<String> = None;
     let do_wm_video = video_unpaid(kunde) && !video_paths.is_empty();
@@ -2232,22 +2389,21 @@ pub(crate) fn commit_from_staging(
                 crate::video::ffmpeg::FfmpegError::Cancelled,
             ));
         }
-        if reuse_wm {
+        if reuse_wm_video {
             if let Some(rel) = &artifacts.wm_video_rel {
                 let src = artifacts.staging_dir.join(rel);
-                if src.is_file() {
-                    on_progress(EncodeProgress {
-                        percent: 100.0,
-                        current_secs: 100.0,
-                        total_secs: 100.0,
-                        status: "Wasserzeichen-Video übernommen".into(),
-                        task_id: None,
-                    });
-                    let dest =
-                        watermark_video_path(&layout).map_err(ProcessorError::Message)?;
-                    promote_file(&src, &dest).map_err(ProcessorError::Message)?;
-                    wm_video = Some(dest.to_string_lossy().to_string());
-                }
+                on_progress(EncodeProgress {
+                    percent: 100.0,
+                    current_secs: 100.0,
+                    total_secs: 100.0,
+                    status: "Wasserzeichen-Video übernommen".into(),
+                    task_id: None,
+                });
+                let dest =
+                    watermark_video_path(&layout).map_err(ProcessorError::Message)?;
+                promote_file(&src, &dest).map_err(ProcessorError::Message)?;
+                wm_video = Some(dest.to_string_lossy().to_string());
+                log_event("speculative_hit", "commit_reused_wm_video");
             }
         }
         if wm_video.is_none() {
@@ -2258,9 +2414,9 @@ pub(crate) fn commit_from_staging(
                 status: "Erstelle Wasserzeichen-Video…".into(),
                 task_id: None,
             });
-            if let Some(clip) =
+            if let Some(clip) = resolved_wm_clip.clone().or_else(|| {
                 export_job::pick_watermark_clip(ffmpeg, video_paths, options.watermark_clip_index)
-            {
+            }) {
                 let wm_path = watermark_video_path(&layout).map_err(ProcessorError::Message)?;
                 let wm_str = wm_path.to_string_lossy().to_string();
                 let enc = create_video_with_watermark(
@@ -2286,7 +2442,7 @@ pub(crate) fn commit_from_staging(
                 crate::video::ffmpeg::FfmpegError::Cancelled,
             ));
         }
-        if reuse_wm && artifacts.wm_photos > 0 {
+        if reuse_wm_photos {
             let src = artifacts.staging_dir.join(SUBDIR_PREVIEW_FOTO);
             if src.is_dir() {
                 on_progress(EncodeProgress {
@@ -2442,6 +2598,74 @@ fn restore_artifacts_or_cleanup(artifacts: StagingArtifacts) {
     remove_staging_dir(&artifacts.staging_dir);
 }
 
+fn path_key(path: &str) -> String {
+    path.replace('\\', "/").to_lowercase()
+}
+
+fn media_paths_match(a: &[String], b: &[String]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .all(|(x, y)| path_key(x) == path_key(y))
+}
+
+/// When FFmpeg holds concat inputs open, Windows `metadata`/`exists` can fail with
+/// sharing violation — reuse the running slot's fingerprints if paths + rev match.
+fn slot_fingerprints_if_paths_match(
+    video_paths: &[String],
+    photo_paths: &[String],
+    media_revision_tag: &str,
+) -> Option<(String, String)> {
+    let guard = SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    let slot = guard.as_ref()?;
+    let inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
+    if !matches!(
+        inner.phase,
+        SpeculativePhase::Running | SpeculativePhase::Ready
+    ) {
+        return None;
+    }
+    if inner.media_revision_tag != media_revision_tag {
+        return None;
+    }
+    if !media_paths_match(&inner.video_paths, video_paths)
+        || !media_paths_match(&inner.photo_paths, photo_paths)
+    {
+        return None;
+    }
+    Some((inner.body_fp.clone(), inner.photos_fp.clone()))
+}
+
+fn resolve_attach_fingerprints(
+    kunde: &Kunde,
+    video_paths: &[String],
+    photo_paths: &[String],
+    video_opts: &CreateVideoOptions,
+    media_revision_tag: &str,
+) -> Option<(String, String)> {
+    let body = build_body_fingerprint(kunde, video_paths, video_opts, media_revision_tag);
+    let photos = build_photos_fingerprint(kunde, photo_paths, media_revision_tag);
+    match (body, photos) {
+        (Ok(b), Ok(p)) => Some((b, p)),
+        (Err(e), _) | (_, Err(e)) => {
+            let reused = slot_fingerprints_if_paths_match(
+                video_paths,
+                photo_paths,
+                media_revision_tag,
+            );
+            if reused.is_some() {
+                log_event(
+                    "speculative_attach",
+                    format!("fingerprint_via_slot_paths ({e})"),
+                );
+            }
+            reused
+        }
+    }
+}
+
 /// Try speculative hit/attach then commit; `Ok(None)` means caller should full-create.
 pub fn try_promote_into_create_job(
     ffmpeg: &Path,
@@ -2461,16 +2685,15 @@ pub fn try_promote_into_create_job(
         return Ok(None);
     }
 
-    let body_fp = build_body_fingerprint(
+    let Some((body_fp, photos_fp)) = resolve_attach_fingerprints(
         kunde,
         video_paths,
+        photo_paths,
         &options.video,
         media_revision_tag,
-    )
-    .map_err(ProcessorError::Message)?;
-    let photos_fp =
-        build_photos_fingerprint(kunde, photo_paths, media_revision_tag)
-            .map_err(ProcessorError::Message)?;
+    ) else {
+        return Ok(None);
+    };
 
     let Some(artifacts) = wait_for_matching(ffmpeg, &body_fp, &photos_fp, &on_progress)? else {
         return Ok(None);
@@ -2668,8 +2891,8 @@ mod tests {
             p1.path().to_string_lossy().into(),
             p2.path().to_string_lossy().into(),
         ];
-        let a = build_wm_fingerprint(&k, &[vp.clone()], &photos, None, &[], None).unwrap();
-        let b = build_wm_fingerprint(&k, &[vp], &photos, None, &[0], None).unwrap();
+        let a = build_wm_fingerprint(&k, &[vp.clone()], &photos, None, &[], None, None).unwrap();
+        let b = build_wm_fingerprint(&k, &[vp], &photos, None, &[0], None, None).unwrap();
         assert_ne!(a, b);
         let body = build_body_fingerprint(&k, &[v.path().to_string_lossy().into()], &opts(), "").unwrap();
         let photos_fp = build_photos_fingerprint(&k, &photos, "").unwrap();
@@ -2694,8 +2917,9 @@ mod tests {
             p2.path().to_string_lossy().into(),
         ];
         let video_a =
-            build_wm_video_fingerprint(&k, &[vp.clone()], None, None).unwrap();
-        let video_b = build_wm_video_fingerprint(&k, &[vp.clone()], None, None).unwrap();
+            build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap();
+        let video_b =
+            build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap();
         assert_eq!(video_a, video_b);
         let photos_a =
             build_wm_photos_fingerprint(&k, &photos, &[0], None).unwrap();
@@ -2704,12 +2928,48 @@ mod tests {
         assert_ne!(photos_a, photos_b);
         assert_eq!(
             combine_wm_halves(&video_a, &photos_a),
-            build_wm_fingerprint(&k, &[vp.clone()], &photos, None, &[0], None).unwrap()
+            combine_wm_halves(
+                &build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap(),
+                &photos_a
+            )
         );
         assert_ne!(
             combine_wm_halves(&video_a, &photos_a),
             combine_wm_halves(&video_b, &photos_b)
         );
+    }
+
+    #[test]
+    fn wm_video_fp_stable_when_unrelated_clip_removed() {
+        let v_wm = write_temp(b"wm-source-clip");
+        let v_other = write_temp(b"other-clip-bytes");
+        let mut k = base_kunde();
+        k.ist_bezahlt_handcam_video = false;
+        let wm = v_wm.path().to_string_lossy().to_string();
+        let other = v_other.path().to_string_lossy().to_string();
+        // Same resolved file; FE remaps index after deleting an earlier clip (1 → 0).
+        let with_both =
+            build_wm_video_fingerprint(&k, &[other, wm.clone()], Some(1), None, Some(&wm))
+                .unwrap();
+        let wm_only =
+            build_wm_video_fingerprint(&k, &[wm.clone()], Some(0), None, Some(&wm)).unwrap();
+        assert_eq!(with_both, wm_only);
+    }
+
+    #[test]
+    fn wm_video_fp_changes_when_resolved_clip_changes() {
+        let v_a = write_temp(b"clip-a-bytes");
+        let v_b = write_temp(b"clip-b-bytes");
+        let mut k = base_kunde();
+        k.ist_bezahlt_handcam_video = false;
+        let a = v_a.path().to_string_lossy().to_string();
+        let b = v_b.path().to_string_lossy().to_string();
+        let fp_a =
+            build_wm_video_fingerprint(&k, &[a.clone(), b.clone()], Some(0), None, Some(&a))
+                .unwrap();
+        let fp_b =
+            build_wm_video_fingerprint(&k, &[a, b.clone()], Some(1), None, Some(&b)).unwrap();
+        assert_ne!(fp_a, fp_b);
     }
 
     #[test]
@@ -2794,6 +3054,15 @@ mod tests {
     }
 
     #[test]
+    fn media_paths_match_ignores_slash_case() {
+        assert!(media_paths_match(
+            &["C:\\A\\b.MP4".into()],
+            &["c:/a/b.mp4".into()]
+        ));
+        assert!(!media_paths_match(&["a.mp4".into()], &["b.mp4".into()]));
+    }
+
+    #[test]
     fn slot_matches_core_accepts_pending_photos() {
         let inner = SlotInner {
             phase: SpeculativePhase::Running,
@@ -2814,6 +3083,9 @@ mod tests {
             cancel: Arc::new(AtomicBool::new(false)),
             artifacts: None,
             fail_reason: None,
+            video_paths: vec![],
+            photo_paths: vec![],
+            media_revision_tag: String::new(),
             pending: Some(PendingStaging {
                 fingerprint: "b".into(),
                 body_fp: "body1".into(),

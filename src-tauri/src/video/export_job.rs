@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -194,13 +195,15 @@ pub fn validate_create_job(
         errors.push("Sie haben ein Foto-Produkt ausgewählt, aber keine Fotos hinzugefügt.".into());
     }
 
-    // Existing .mp4 checks only when we will encode video
+    // Existing .mp4 checks only when we will encode video.
+    // On Windows, FFmpeg may lock concat inputs — treat sharing violations as present
+    // so Create can attach to speculative staging instead of failing falsely.
     if video_prod {
         for path in video_paths {
             let lower = path.to_lowercase();
             if !lower.ends_with(".mp4") {
                 errors.push(format!("'{path}' ist keine .mp4 Datei"));
-            } else if !Path::new(path).exists() {
+            } else if !media_path_likely_present(Path::new(path)) {
                 errors.push(format!("Datei '{path}' existiert nicht"));
             }
         }
@@ -214,6 +217,31 @@ pub fn validate_create_job(
     }
 
     errors
+}
+
+/// True when the path is readable or only locked (Windows ERROR_SHARING_VIOLATION).
+///
+/// Speculative Compatible clean-pass holds inputs open; `Path::exists` can then
+/// report false even though the working copies are still there.
+pub(crate) fn media_path_likely_present(path: &Path) -> bool {
+    match fs::metadata(path) {
+        Ok(_) => true,
+        Err(e) => media_path_lock_error(&e),
+    }
+}
+
+fn media_path_lock_error(e: &io::Error) -> bool {
+    #[cfg(windows)]
+    {
+        // ERROR_SHARING_VIOLATION
+        if e.raw_os_error() == Some(32) {
+            return true;
+        }
+    }
+    matches!(
+        e.kind(),
+        io::ErrorKind::PermissionDenied | io::ErrorKind::TimedOut
+    )
 }
 
 pub(crate) fn build_photo_rename_map(photo_paths: &[String]) -> HashMap<String, String> {
@@ -349,6 +377,15 @@ pub fn create_job(
     on_body_concat_fallback: Option<BodyConcatAskFn>,
     on_reencode: Option<ReencodeAskFn>,
 ) -> Result<CreateJobResult, ProcessorError> {
+    let speicherort = config.speicherort.trim();
+    if speicherort.is_empty() {
+        return Err(ProcessorError::Message(
+            "Speicherort ist nicht gesetzt. Bitte Ordner wählen.".into(),
+        ));
+    }
+
+    // Form / product checks first. File presence uses a lock-tolerant probe so a
+    // running speculative concat does not block Erstellen (Windows sharing).
     let validation = validate_create_job(
         kunde,
         video_paths,
@@ -361,14 +398,8 @@ pub fn create_job(
         return Err(ProcessorError::Message(validation.join("\n")));
     }
 
-    let speicherort = config.speicherort.trim();
-    if speicherort.is_empty() {
-        return Err(ProcessorError::Message(
-            "Speicherort ist nicht gesetzt. Bitte Ordner wählen.".into(),
-        ));
-    }
-
     // Phase 46: attach/commit speculative staging when fingerprint matches.
+    // Must run before canceling the slot — Create during clean-pass is the common case.
     if options.use_speculative_staging && config.speculative_create_enabled {
         if let Some(res) = crate::video::speculative_create::try_promote_into_create_job(
             ffmpeg,
@@ -715,6 +746,16 @@ pub fn create_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn media_path_likely_present_for_real_file() {
+        let f = NamedTempFile::new().unwrap();
+        assert!(media_path_likely_present(f.path()));
+        assert!(!media_path_likely_present(Path::new(
+            "C:\\this\\path\\should\\not\\exist\\ats_missing.mp4"
+        )));
+    }
 
     #[test]
     fn validate_requires_product() {
