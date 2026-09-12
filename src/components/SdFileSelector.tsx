@@ -1361,7 +1361,7 @@ export function SdFileSelector({
                   zIndex: 1,
                 };
 
-                if (file.is_video && !icaVirtual) {
+                if (file.is_video) {
                   return (
                     <div key={file.path} style={style}>
                       <SdVideoTile
@@ -1375,7 +1375,8 @@ export function SdFileSelector({
                         isActive={activeVideoPath === file.path}
                         selectionLocked={selectionDragging}
                         scrollLocked={scrollLocked}
-                        previewEnabled={!icaVirtual}
+                        previewEnabled
+                        hoverPreviewEnabled={!icaVirtual}
                         density={density}
                         loader={loader}
                         onActivate={onActivateVideo}

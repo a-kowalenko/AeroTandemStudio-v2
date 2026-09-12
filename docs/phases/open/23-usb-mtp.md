@@ -64,6 +64,7 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 - [x] WPD-Enumeration + Hotplug/Polling; nur Allowlist + Signatur
 - [x] **Fix:** Katalog/Download-Walk steigt in `FUNCTIONAL_OBJECT` / Alben / `UNSPECIFIED` ab (nicht nur `FOLDER`) — sonst GoPro erkannt, Selector leer trotz Explorer-Medien; Signatur ohne Geräte-Label „GoPro …“
 - [x] **Fix:** Erkennung HERO12 Composite (`MI_02` / PID `0x0059`): FriendlyName `HERO12 Black` ohne „GoPro“-Prefix; Signatur-Walk nutzt `ORIGINAL_FILE_NAME`; GoPro nach erfolgreichem WPD-Open auch ohne Inhalts-Signatur; Diagnose-Logs `usb`
+- [x] **Fix:** WPD Clear mit Write-Open (`0x80070005`); WPD-Thumbnails + Confirm-Video-Vorschau (On-demand-Staging)
 - [x] Events `sd-card-inserted` / `sd-card-removed` mit `source_id` (rückwärtskompatibel)
 - [x] List + Staging-Backup mit Progress; Import ab lokalem FS
 - [x] Config `usb_camera_import_enabled` + Settings-Toggle

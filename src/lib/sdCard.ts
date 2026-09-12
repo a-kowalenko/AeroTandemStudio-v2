@@ -27,6 +27,20 @@ export function isMtpDrive(drive: string | null | undefined): boolean {
   return Boolean(drive?.startsWith("mtp:"));
 }
 
+/** Virtual catalog path under temp ICA/WPD cache (file may not exist until staged). */
+export function isMtpVirtualMediaPath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return (
+    path.includes("aero_tandem_ica") || path.includes("aero_tandem_mtp")
+  );
+}
+
+/** Download one MTP catalog file to disk for Confirm video preview. */
+export async function ensureMtpPreviewFile(path: string): Promise<string> {
+  if (!isMtpVirtualMediaPath(path)) return path;
+  return invoke<string>("ensure_mtp_preview_file", { path });
+}
+
 export type SdFileEnrichment = {
   path: string;
   display_epoch: number;

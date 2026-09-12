@@ -24,8 +24,10 @@ const FLUSH_MS = 80;
 const ICA_RETRY_MS = 250;
 const ICA_MAX_RETRIES = 2;
 
-function isIcaVirtualPath(path: string): boolean {
-  return path.includes("aero_tandem_ica");
+function isMtpVirtualPath(path: string): boolean {
+  return (
+    path.includes("aero_tandem_ica") || path.includes("aero_tandem_mtp")
+  );
 }
 
 /** Process-wide memory cache (survives dialog close). */
@@ -192,7 +194,7 @@ export class SdThumbnailLoader {
         }
       }
       if (!best || !bestKey) break;
-      const ica = isIcaVirtualPath(best.path);
+      const ica = isMtpVirtualPath(best.path);
       const limit = ica ? ICA_CONCURRENCY : CONCURRENCY;
       if (this.active >= limit) break;
       this.pending.delete(bestKey);
@@ -223,10 +225,10 @@ export class SdThumbnailLoader {
         this.publish(item.path, state);
       }
     } catch {
-      // Missing SD/MTP thumbs are expected (icons stay); retry ICA while the
-      // catalog session is still coming up.
+      // Missing SD/MTP thumbs are expected (icons stay); retry while the
+      // catalog session / WPD device is still coming up.
       if (
-        isIcaVirtualPath(item.path) &&
+        isMtpVirtualPath(item.path) &&
         item.retries < ICA_MAX_RETRIES &&
         !this.stopped &&
         gen === this.generation

@@ -16,6 +16,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { videoFileSrc } from "../lib/mediaUrl";
+import { ensureMtpPreviewFile, isMtpVirtualMediaPath } from "../lib/sdCard";
 import { useSdThumb } from "../hooks/useSdThumb";
 import type { SdThumbnailLoader } from "../lib/sdThumbnailLoader";
 import type { Density } from "../lib/sdFileSelectorModel";
@@ -78,6 +79,11 @@ type Props = {
   scrollLocked?: boolean;
   /** Hover/play preview needs a real file on disk (not ICA catalog virtual paths). */
   previewEnabled?: boolean;
+  /**
+   * Hover autoplay. Off for MTP (on-demand stage is heavy) — click/pin still works.
+   * Defaults to `previewEnabled`.
+   */
+  hoverPreviewEnabled?: boolean;
   density?: Density;
   loader: SdThumbnailLoader;
   tileRef?: (path: string, el: HTMLElement | null) => void;
@@ -116,6 +122,7 @@ export const SdVideoTile = memo(function SdVideoTile({
   selectionLocked = false,
   scrollLocked = false,
   previewEnabled = true,
+  hoverPreviewEnabled,
   density = "comfortable",
   loader,
   tileRef,
@@ -125,7 +132,9 @@ export const SdVideoTile = memo(function SdVideoTile({
   const thumbUrl = thumb?.url;
   const thumbQuality = thumb?.quality;
   const compact = density === "compact";
+  const hoverOk = hoverPreviewEnabled ?? previewEnabled;
   const previewBlocked = selectionLocked || scrollLocked || !previewEnabled;
+  const needsMtpStage = isMtpVirtualMediaPath(path);
   const videoRef = useRef<HTMLVideoElement>(null);
   const immersiveVideoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -165,7 +174,7 @@ export const SdVideoTile = memo(function SdVideoTile({
    */
   const showControls = hovering || (pinned && !playing);
 
-  // Resolve media URL when preview is wanted.
+  // Resolve media URL when preview is wanted (stage MTP catalog files first).
   useEffect(() => {
     if (!previewEnabled || !showVideo) {
       setSrc(null);
@@ -174,20 +183,25 @@ export const SdVideoTile = memo(function SdVideoTile({
     }
     let cancelled = false;
     setLoadError(false);
-    void videoFileSrc(path)
-      .then((url) => {
+    void (async () => {
+      try {
+        const playable = needsMtpStage
+          ? await ensureMtpPreviewFile(path)
+          : path;
+        if (cancelled) return;
+        const url = await videoFileSrc(playable);
         if (!cancelled) setSrc(url);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setSrc(null);
           setLoadError(true);
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [showVideo, path, previewEnabled]);
+  }, [showVideo, path, previewEnabled, needsMtpStage]);
 
   // Another tile took over → unpin and stop (but never kill immersive overlay).
   useEffect(() => {
@@ -395,6 +409,8 @@ export const SdVideoTile = memo(function SdVideoTile({
   function onMediaEnter() {
     if (previewBlocked || isImmersiveBlocked(path) || immersive) return;
     setHovering(true);
+    // MTP: no hover autoplay (full-file stage); click/pin still downloads + plays.
+    if (!hoverOk) return;
     clearHoverTimers();
     const playDelay = linuxMediaGuards
       ? LINUX_HOVER_PLAY_DELAY_MS

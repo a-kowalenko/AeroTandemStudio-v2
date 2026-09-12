@@ -403,36 +403,106 @@ pub async fn get_media_thumbnail(
                 }
             }
         } else {
+            use crate::media::thumbnail::jpeg_bytes_to_data_url;
+            use crate::sd_card::mtp::catalog::{
+                is_mtp_virtual_media_path, parse_mtp_virtual_media_path,
+            };
+
+            if !is_mtp_virtual_media_path(p) {
+                return Err("not found".into());
+            }
+            let Some((source_id, name)) = parse_mtp_virtual_media_path(p) else {
+                return Err("not found".into());
+            };
+            let cache = p
+                .parent()
+                .unwrap_or(p)
+                .join(".thumbs")
+                .join(format!("{name}.jpg"));
+
             #[cfg(target_os = "macos")]
             {
-                use crate::media::thumbnail::jpeg_bytes_to_data_url;
-                use crate::sd_card::mtp::macos_ica::{
-                    camera_thumbnail_jpeg, is_ica_cache_media_path,
-                };
-                if is_ica_cache_media_path(p) {
-                    if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
-                        let cache = p
-                            .parent()
-                            .unwrap_or(p)
-                            .join(".thumbs")
-                            .join(format!("{name}.jpg"));
-                        match camera_thumbnail_jpeg(name, &cache, q.max_size()) {
-                            Ok(bytes) => {
-                                if cache.is_file() {
-                                    return thumbnail_result_from_cache(&path, &media_server, cache);
-                                }
-                                return Ok(ThumbnailResult {
-                                    path,
-                                    url: None,
-                                    data_url: Some(jpeg_bytes_to_data_url(&bytes)),
-                                });
-                            }
-                            Err(_) => return Err("no camera thumbnail".into()),
+                use crate::sd_card::mtp::macos_ica::camera_thumbnail_jpeg;
+                match camera_thumbnail_jpeg(&name, &cache, q.max_size()) {
+                    Ok(bytes) => {
+                        if cache.is_file() {
+                            return thumbnail_result_from_cache(&path, &media_server, cache);
                         }
+                        return Ok(ThumbnailResult {
+                            path,
+                            url: None,
+                            data_url: Some(jpeg_bytes_to_data_url(&bytes)),
+                        });
+                    }
+                    Err(_) => return Err("no camera thumbnail".into()),
+                }
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                use crate::sd_card::mtp::windows_wpd::camera_thumbnail_jpeg;
+                match camera_thumbnail_jpeg(&source_id, &name, &cache, q.max_size()) {
+                    Ok(bytes) => {
+                        if cache.is_file() {
+                            return thumbnail_result_from_cache(&path, &media_server, cache);
+                        }
+                        return Ok(ThumbnailResult {
+                            path,
+                            url: None,
+                            data_url: Some(jpeg_bytes_to_data_url(&bytes)),
+                        });
+                    }
+                    Err(e) => {
+                        logging::warn(
+                            "thumb",
+                            format!("WPD-Thumbnail fehlgeschlagen ({name}): {e}"),
+                        );
+                        return Err("no camera thumbnail".into());
                     }
                 }
             }
-            Err("not found".into())
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            {
+                let _ = (source_id, name, cache, jpeg_bytes_to_data_url);
+                Err("not found".into())
+            }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Stage one MTP/ICA catalog file to disk for Confirm video preview (no-op if already present).
+#[tauri::command]
+pub async fn ensure_mtp_preview_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        use crate::sd_card::mtp::catalog::is_mtp_virtual_media_path;
+        let p = std::path::Path::new(&path);
+        if p.is_file() {
+            return Ok(path);
+        }
+        if !is_mtp_virtual_media_path(p) {
+            return Err("not an MTP preview path".into());
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::sd_card::mtp::macos_ica::ensure_preview_file;
+            let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
+            return Ok(staged.to_string_lossy().into_owned());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use crate::sd_card::mtp::windows_wpd::ensure_preview_file;
+            let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
+            return Ok(staged.to_string_lossy().into_owned());
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Err("MTP-Vorschau auf dieser Plattform nicht verfügbar.".into())
         }
     })
     .await

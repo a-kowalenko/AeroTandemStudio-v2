@@ -504,10 +504,41 @@ pub fn delete_camera_files_named(
 
 /// True when `path` is a catalog virtual file under the ICA temp cache.
 pub fn is_ica_cache_media_path(path: &Path) -> bool {
-    path.components().any(|c| {
-        c.as_os_str()
-            .to_str()
-            .is_some_and(|s| s == "aero_tandem_ica")
+    super::catalog::is_mtp_virtual_media_path(path)
+}
+
+/// Ensure a single catalog file exists on disk (on-demand stage for Confirm preview).
+pub fn ensure_preview_file(virtual_path: &Path) -> Result<PathBuf, IcaError> {
+    use super::catalog::parse_mtp_virtual_media_path;
+
+    if virtual_path.is_file() {
+        if let Ok(meta) = std::fs::metadata(virtual_path) {
+            if meta.len() > 0 {
+                return Ok(virtual_path.to_path_buf());
+            }
+        }
+    }
+    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path).ok_or_else(|| {
+        IcaError::Message("Kein MTP-Vorschau-Pfad.".into())
+    })?;
+    let dest_dir = virtual_path
+        .parent()
+        .ok_or_else(|| IcaError::Message("Ungültiger Vorschau-Pfad.".into()))?;
+    let label = source_id.clone();
+    let paths = download_camera_files(&source_id, &label, dest_dir, &[filename], None)?;
+    let staged = paths.into_iter().next().ok_or_else(|| {
+        IcaError::Message("Vorschau-Download lieferte keine Datei.".into())
+    })?;
+    if staged != virtual_path && !virtual_path.is_file() {
+        let _ = std::fs::rename(&staged, virtual_path);
+        if virtual_path.is_file() {
+            return Ok(virtual_path.to_path_buf());
+        }
+    }
+    Ok(if virtual_path.is_file() {
+        virtual_path.to_path_buf()
+    } else {
+        staged
     })
 }
 

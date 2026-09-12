@@ -315,9 +315,10 @@ pub fn download_camera_files(
     for (idx, obj) in objects.iter().enumerate() {
         let file_index = (idx + 1) as u32;
         let dest = unique_path(dest_dir, &obj.name);
-        let written = copy_object_to_file(
+        let written = copy_object_resource_to_file(
             &resources,
             &obj.object_id,
+            &WPD_RESOURCE_DEFAULT,
             &dest,
             obj.size,
             |done_in_file| {
@@ -361,7 +362,7 @@ pub fn delete_camera_files_named(
         return Ok(0);
     }
     let pnp = resolve_pnp(source_id)?;
-    let device = open_device(&pnp)?;
+    let device = open_device_for_write(&pnp)?;
     let wanted: HashSet<String> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
     let objects = find_objects_by_filename(&device, &wanted)?;
     let total = objects.len().max(1) as u32;
@@ -400,6 +401,95 @@ pub fn delete_camera_files_named(
         }
     }
     Ok(deleted)
+}
+
+/// JPEG thumbnail from WPD (`WPD_RESOURCE_THUMBNAIL`), cached next to the virtual path.
+pub fn camera_thumbnail_jpeg(
+    source_id: &str,
+    filename: &str,
+    dest_jpeg: &Path,
+    _max_edge: u32,
+) -> Result<Vec<u8>, WpdError> {
+    if dest_jpeg.is_file() {
+        if let Ok(bytes) = fs::read(dest_jpeg) {
+            if bytes.len() > 32 {
+                return Ok(bytes);
+            }
+        }
+    }
+    if let Some(parent) = dest_jpeg.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let _com = ComGuard::enter();
+    let pnp = resolve_pnp(source_id)?;
+    let device = open_device(&pnp)?;
+    let wanted: HashSet<String> = {
+        let mut s = HashSet::new();
+        s.insert(filename.to_ascii_lowercase());
+        s
+    };
+    let objects = find_objects_by_filename(&device, &wanted)?;
+    let obj = objects.first().ok_or_else(|| {
+        WpdError::Message(format!("Datei nicht auf der Kamera: {filename}"))
+    })?;
+
+    let content = unsafe { device.Content()? };
+    let resources = unsafe { content.Transfer()? };
+    // Prefer dedicated thumbnail; fall back to icon resource.
+    let written = copy_object_resource_to_file(
+        &resources,
+        &obj.object_id,
+        &WPD_RESOURCE_THUMBNAIL,
+        dest_jpeg,
+        0,
+        |_| {},
+    )
+    .or_else(|_| {
+        copy_object_resource_to_file(
+            &resources,
+            &obj.object_id,
+            &WPD_RESOURCE_ICON,
+            dest_jpeg,
+            0,
+            |_| {},
+        )
+    })?;
+    if written < 32 {
+        return Err(WpdError::Message("Thumbnail leer.".into()));
+    }
+    fs::read(dest_jpeg).map_err(|e| WpdError::Message(e.to_string()))
+}
+
+/// Ensure a single catalog file exists on disk (on-demand stage for Confirm preview).
+pub fn ensure_preview_file(virtual_path: &Path) -> Result<PathBuf, WpdError> {
+    use super::catalog::parse_mtp_virtual_media_path;
+
+    if virtual_path.is_file() {
+        if let Ok(meta) = fs::metadata(virtual_path) {
+            if meta.len() > 0 {
+                return Ok(virtual_path.to_path_buf());
+            }
+        }
+    }
+    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path).ok_or_else(|| {
+        WpdError::Message("Kein MTP-Vorschau-Pfad.".into())
+    })?;
+    if let Some(parent) = virtual_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let paths = download_camera_files(&source_id, "", virtual_path.parent().unwrap_or(virtual_path), &[filename], None)?;
+    let staged = paths.into_iter().next().ok_or_else(|| {
+        WpdError::Message("Vorschau-Download lieferte keine Datei.".into())
+    })?;
+    // download may use unique_path if name collided; prefer the virtual path name.
+    if staged != virtual_path && virtual_path.file_name() == staged.file_name() {
+        let _ = fs::rename(&staged, virtual_path);
+        if virtual_path.is_file() {
+            return Ok(virtual_path.to_path_buf());
+        }
+    }
+    Ok(staged)
 }
 
 fn resolve_pnp(source_id: &str) -> Result<String, WpdError> {
@@ -519,6 +609,16 @@ fn open_device(pnp: &str) -> Result<IPortableDevice, WpdError> {
     open_device_with_access(pnp, GENERIC_READ.0).or_else(|e_read| {
         open_device_with_access(pnp, GENERIC_READ.0 | GENERIC_WRITE.0).map_err(|e_write| {
             WpdError::Message(format!("Open read={e_read}; read+write={e_write}"))
+        })
+    })
+}
+
+/// Open with write access (required for Delete — read-only Open succeeds but Delete → 0x80070005).
+fn open_device_for_write(pnp: &str) -> Result<IPortableDevice, WpdError> {
+    open_device_with_access(pnp, GENERIC_READ.0 | GENERIC_WRITE.0).or_else(|e_rw| {
+        // Some stacks only accept GENERIC_WRITE alone.
+        open_device_with_access(pnp, GENERIC_WRITE.0).map_err(|e_w| {
+            WpdError::Message(format!("Open read+write={e_rw}; write={e_w}"))
         })
     })
 }
@@ -854,9 +954,10 @@ fn read_string_prop(
         .filter(|v| !v.is_empty())
 }
 
-fn copy_object_to_file(
+fn copy_object_resource_to_file(
     resources: &IPortableDeviceResources,
     object_id: &str,
+    resource_key: &PROPERTYKEY,
     dest: &Path,
     expected_size: u64,
     mut on_bytes: impl FnMut(u64),
@@ -867,7 +968,7 @@ fn copy_object_to_file(
     unsafe {
         resources.GetStream(
             PCWSTR(id_w.as_ptr()),
-            &WPD_RESOURCE_DEFAULT,
+            resource_key,
             STGM_READ.0,
             &mut optimal,
             &mut stream,
