@@ -18,7 +18,7 @@ use once_cell::sync::Lazy;
 use windows::core::PCWSTR;
 use windows::core::PWSTR;
 use windows::Win32::Devices::PortableDevices::*;
-use windows::Win32::Foundation::{PROPERTYKEY, GENERIC_READ};
+use windows::Win32::Foundation::{PROPERTYKEY, GENERIC_READ, GENERIC_WRITE};
 use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IStream, CLSCTX_INPROC_SERVER,
@@ -32,6 +32,7 @@ use crate::sd_card::mtp::allowlist::{
 };
 use crate::sd_card::mtp::catalog::{cache_dir_for, CameraCatalogFile};
 use crate::sd_card::mtp::usb_enumerate::DetectedUsbCamera;
+use crate::storage::logging;
 
 #[derive(Debug)]
 pub enum WpdError {
@@ -114,7 +115,10 @@ pub fn list_allowlisted_wpd_cameras() -> Vec<DetectedUsbCamera> {
     let _com = ComGuard::enter();
     match list_allowlisted_wpd_cameras_inner() {
         Ok(v) => v,
-        Err(_) => Vec::new(),
+        Err(e) => {
+            logging::warn("usb", format!("WPD-Enumeration fehlgeschlagen: {e}"));
+            Vec::new()
+        }
     }
 }
 
@@ -157,16 +161,59 @@ fn list_allowlisted_wpd_cameras_inner() -> Result<Vec<DetectedUsbCamera>, WpdErr
             continue;
         };
 
-        let Ok(device) = open_device(pnp) else {
-            continue;
+        let device = match open_device(pnp) {
+            Ok(d) => d,
+            Err(e) => {
+                logging::warn(
+                    "usb",
+                    format!(
+                        "WPD Open fehlgeschlagen: {friendly_name} vid={vid:?} pid={pid:?} ({e})"
+                    ),
+                );
+                continue;
+            }
         };
         let serial = device_serial(&device).unwrap_or_default();
         let names = match collect_object_names_for_signature(&device, matched.vendor) {
             Ok(n) => n,
-            Err(_) => continue,
+            Err(e) => {
+                logging::warn(
+                    "usb",
+                    format!("WPD-Signatur-Walk fehlgeschlagen: {friendly_name} ({e})"),
+                );
+                // GoPro VID/product on WPD is enough — signature walk is best-effort
+                // (OBJECT_NAME often lacks GX*/100GOPRO; Explorer still shows media).
+                if matched.vendor == ActionCamVendor::GoPro {
+                    Vec::new()
+                } else {
+                    continue;
+                }
+            }
         };
-        if !content_names_look_like_action_cam(names.iter().map(|s| s.as_str()), matched.vendor) {
+        let signature_ok =
+            content_names_look_like_action_cam(names.iter().map(|s| s.as_str()), matched.vendor);
+        // GoPro USB VID is exclusive; WPD presence means MTP (not webcam). Accept even
+        // when the shallow name walk misses DCIM chapter folders on composite MI_xx devices.
+        let accept = signature_ok
+            || matched.vendor == ActionCamVendor::GoPro;
+        if !accept {
+            logging::warn(
+                "usb",
+                format!(
+                    "WPD Signatur negativ: {friendly_name} vendor={} names={}",
+                    matched.vendor.slug(),
+                    names.len()
+                ),
+            );
             continue;
+        }
+        if !signature_ok {
+            logging::info(
+                "usb",
+                format!(
+                    "WPD GoPro ohne Inhalts-Signatur akzeptiert: {friendly_name} (vid={vid:?})"
+                ),
+            );
         }
 
         let key = if !serial.is_empty() {
@@ -194,6 +241,11 @@ fn list_allowlisted_wpd_cameras_inner() -> Result<Vec<DetectedUsbCamera>, WpdErr
         } else {
             format!("{} (USB)", matched.model_label)
         };
+
+        logging::info(
+            "usb",
+            format!("WPD erkannt: {label} → {source_id}"),
+        );
 
         out.push(DetectedUsbCamera {
             source_id,
@@ -463,6 +515,15 @@ fn to_wide(s: &str) -> Vec<u16> {
 }
 
 fn open_device(pnp: &str) -> Result<IPortableDevice, WpdError> {
+    // Prefer read-only; some composite MTP interfaces (GoPro MI_02) need write bit set.
+    open_device_with_access(pnp, GENERIC_READ.0).or_else(|e_read| {
+        open_device_with_access(pnp, GENERIC_READ.0 | GENERIC_WRITE.0).map_err(|e_write| {
+            WpdError::Message(format!("Open read={e_read}; read+write={e_write}"))
+        })
+    })
+}
+
+fn open_device_with_access(pnp: &str, desired_access: u32) -> Result<IPortableDevice, WpdError> {
     let client: IPortableDeviceValues =
         unsafe { CoCreateInstance(&PortableDeviceValues, None, CLSCTX_INPROC_SERVER)? };
     unsafe {
@@ -472,7 +533,7 @@ fn open_device(pnp: &str) -> Result<IPortableDevice, WpdError> {
         client.SetUnsignedIntegerValue(&WPD_CLIENT_REVISION, 0)?;
         // SECURITY_IMPERSONATION
         client.SetUnsignedIntegerValue(&WPD_CLIENT_SECURITY_QUALITY_OF_SERVICE, 0x00000002)?;
-        client.SetUnsignedIntegerValue(&WPD_CLIENT_DESIRED_ACCESS, GENERIC_READ.0)?;
+        client.SetUnsignedIntegerValue(&WPD_CLIENT_DESIRED_ACCESS, desired_access)?;
     }
     let device: IPortableDevice =
         unsafe { CoCreateInstance(&PortableDeviceFTM, None, CLSCTX_INPROC_SERVER)? };
@@ -515,8 +576,9 @@ fn collect_object_names_for_signature(
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     queue.push_back(("DEVICE".into(), 0));
     let mut visited = 0usize;
-    const MAX_VISIT: usize = 400;
-    const MAX_DEPTH: u32 = 5;
+    // Match catalog limits more closely — composite GoPro trees are deeper than 5.
+    const MAX_VISIT: usize = 800;
+    const MAX_DEPTH: u32 = 8;
 
     while let Some((parent, depth)) = queue.pop_front() {
         if visited >= MAX_VISIT {
@@ -541,7 +603,11 @@ fn collect_object_names_for_signature(
                 let id_str = unsafe { oid.to_string().unwrap_or_default() };
                 unsafe { CoTaskMemFree(Some(oid.0 as *const _)) };
 
-                let name = object_name(&props, &id_str).unwrap_or_default();
+                // Prefer ORIGINAL_FILE_NAME like the catalog walk — GoPro often leaves
+                // WPD_OBJECT_NAME empty/generic while ORIGINAL has GX*/100GOPRO.
+                let name = object_original_name(&props, &id_str)
+                    .or_else(|| object_name(&props, &id_str))
+                    .unwrap_or_default();
                 if !name.is_empty() {
                     names.push(name.clone());
                     if object_name_matches_action_cam_signature(&name, vendor) {
@@ -906,6 +972,24 @@ mod tests {
         let (vid, pid) = parse_vid_pid_from_pnp(pnp);
         assert_eq!(vid, Some(0x2672));
         assert_eq!(pid, Some(0x0049));
+    }
+
+    #[test]
+    fn parse_vid_pid_from_composite_mi_pnp() {
+        // HERO12 Black: USB\VID_2672&PID_0059&MI_02\…
+        let pnp =
+            r"\\?\usb#vid_2672&pid_0059&mi_02#7&1bb32f3f&0&0002#{6ac27878-a6bc-11d0-96b8-00a0c91fadcf}";
+        let (vid, pid) = parse_vid_pid_from_pnp(pnp);
+        assert_eq!(vid, Some(0x2672));
+        assert_eq!(pid, Some(0x0059));
+        let hint = UsbDeviceHint {
+            vid,
+            pid,
+            friendly_name: "HERO12 Black".into(),
+        };
+        let m = match_usb_identity(&hint).expect("HERO12 composite identity");
+        assert_eq!(m.vendor, ActionCamVendor::GoPro);
+        assert!(m.model_label.to_ascii_uppercase().contains("HERO12"));
     }
 
     #[test]

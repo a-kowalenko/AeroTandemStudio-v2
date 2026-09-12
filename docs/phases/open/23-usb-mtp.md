@@ -3,7 +3,7 @@
 > **Agent-Attach:** Diese Datei (nicht Archiv/ganzen Plan).
 > Regeln: `@AGENTS.md` · Index: `@docs/IMPLEMENTATION_PLAN.md`
 
-**Status:** 🔄 In Arbeit (23.0 ✅ · … · 23.2f Volume-Dedup ✅ · **23.2g MTP-Whitelist ✅** · 23.2h Geräte-Overrides ⬜ · 23.3 Linux ⬜)  
+**Status:** 🔄 In Arbeit (23.0 ✅ · … · 23.2g MTP-Whitelist ✅ · **23.2g+ Windows WPD GoPro-Detect** ✅ · 23.2h Geräte-Overrides ⬜ · 23.3 Linux ⬜)  
 **Abhängigkeiten:** Phase 7 (SD-Pipeline), Phase 5 (Config)  
 **Ziel:** GoPro-, DJI- und Insta360-Kameras per USB (MTP/WPD) erkennen und in denselben Backup-/Import-Workflow bringen wie SD-Karten — **ohne** zusätzliche False Positives bei normalen Datenträgern oder Handys.
 
@@ -63,6 +63,7 @@ Match-Regel: `(VID in Allowlist OR Friendly-Name-Hint) AND content_signature` �
 **23.1 — Windows (WPD/MTP) — MVP**
 - [x] WPD-Enumeration + Hotplug/Polling; nur Allowlist + Signatur
 - [x] **Fix:** Katalog/Download-Walk steigt in `FUNCTIONAL_OBJECT` / Alben / `UNSPECIFIED` ab (nicht nur `FOLDER`) — sonst GoPro erkannt, Selector leer trotz Explorer-Medien; Signatur ohne Geräte-Label „GoPro …“
+- [x] **Fix:** Erkennung HERO12 Composite (`MI_02` / PID `0x0059`): FriendlyName `HERO12 Black` ohne „GoPro“-Prefix; Signatur-Walk nutzt `ORIGINAL_FILE_NAME`; GoPro nach erfolgreichem WPD-Open auch ohne Inhalts-Signatur; Diagnose-Logs `usb`
 - [x] Events `sd-card-inserted` / `sd-card-removed` mit `source_id` (rückwärtskompatibel)
 - [x] List + Staging-Backup mit Progress; Import ab lokalem FS
 - [x] Config `usb_camera_import_enabled` + Settings-Toggle

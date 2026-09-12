@@ -72,14 +72,18 @@ pub fn is_mtp_whitelisted(hint: &UsbDeviceHint) -> bool {
     if !mtp_platform_enabled() {
         return false;
     }
-    if hint.vid != Some(GOPRO_VID) {
-        return false;
-    }
     let name = hint.friendly_name.trim();
     if name.is_empty() {
         return false;
     }
     let upper = name.to_ascii_uppercase();
+    // VID preferred; Windows WPD sometimes omits vid_ in soft-IDs while FriendlyName is "HERO12 Black".
+    let looks_gopro = hint.vid == Some(GOPRO_VID)
+        || upper.contains("GOPRO")
+        || gopro_hero5_plus_mtp_product(&upper);
+    if !looks_gopro {
+        return false;
+    }
     if upper.contains("MAX") || upper.contains("FUSION") {
         return true;
     }
@@ -106,6 +110,11 @@ mod tests {
             pid: None,
             friendly_name: name.into(),
         }
+    }
+
+    #[test]
+    fn gopro_hero12_whitelisted_by_name_without_vid() {
+        assert!(is_mtp_whitelisted(&hint(None, "HERO12 Black")));
     }
 
     #[test]

@@ -89,10 +89,10 @@ const GOPRO_PIDS: &[(u16, &str)] = &[
     (0x004B, "MAX"),
     (0x004D, "HERO9 Black"),
     (0x0056, "HERO10 Black"),
-    // 0x0059 is reused by HERO11 Black *and* HERO13 Black — do not trust alone.
+    // 0x0059 is reused by HERO11 / HERO12 / HERO13 — do not trust alone; prefer product name.
     (0x0059, "HERO11 Black"),
     (0x005A, "HERO11 Black Mini"),
-    // HERO12+ : prefer USB product / profiler name; add confirmed unique PIDs when known.
+    // Newer Heroes: prefer USB product / profiler name; add confirmed unique PIDs when known.
 ];
 
 /// PIDs GoPro has recycled across generations — prefer friendly name over this table.
@@ -127,6 +127,10 @@ fn vendor_from_friendly_name(name: &str) -> Option<ActionCamVendor> {
     if n.contains("gopro") {
         return Some(ActionCamVendor::GoPro);
     }
+    // Windows WPD often reports only "HERO12 Black" (no "GoPro" prefix).
+    if looks_like_gopro_hero_model(&n) {
+        return Some(ActionCamVendor::GoPro);
+    }
     // "dji" as token / prefix — avoid matching unrelated strings.
     if n.contains("dji") || n.contains("osmo") {
         return Some(ActionCamVendor::Dji);
@@ -137,11 +141,21 @@ fn vendor_from_friendly_name(name: &str) -> Option<ActionCamVendor> {
     None
 }
 
+/// `HERO12 Black`, `hero 9`, `HERO8 BLACK` — product strings without a "GoPro" prefix.
+fn looks_like_gopro_hero_model(lower_name: &str) -> bool {
+    let Some(idx) = lower_name.find("hero") else {
+        return false;
+    };
+    let rest = &lower_name[idx + 4..];
+    let rest = rest.strip_prefix(' ').unwrap_or(rest);
+    rest.chars().next().is_some_and(|c| c.is_ascii_digit())
+}
+
 fn model_label_for(vendor: ActionCamVendor, pid: Option<u16>, friendly: &str) -> String {
     let trimmed = friendly.trim();
 
     // Prefer a specific USB / system_profiler product name (e.g. "HERO13 Black").
-    // GoPro reuses PIDs across generations (HERO11 and HERO13 both use 0x0059).
+    // GoPro reuses PIDs across generations (HERO11/12/13 share 0x0059).
     if let Some(specific) = specific_model_from_friendly_name(vendor, trimmed) {
         return specific;
     }
@@ -455,6 +469,14 @@ mod tests {
             Some(ActionCamVendor::GoPro)
         );
         assert_eq!(
+            vendor_from_friendly_name("HERO12 Black"),
+            Some(ActionCamVendor::GoPro)
+        );
+        assert_eq!(
+            vendor_from_friendly_name("HERO9 BLACK"),
+            Some(ActionCamVendor::GoPro)
+        );
+        assert_eq!(
             vendor_from_friendly_name("DJI Osmo Action"),
             Some(ActionCamVendor::Dji)
         );
@@ -464,6 +486,19 @@ mod tests {
         );
         assert_eq!(vendor_from_friendly_name("Samsung Galaxy"), None);
         assert_eq!(vendor_from_friendly_name("iPhone"), None);
+        assert_eq!(vendor_from_friendly_name("Hero sandwich"), None);
+    }
+
+    #[test]
+    fn gopro_hero12_name_only_identity() {
+        let hint = UsbDeviceHint {
+            vid: None,
+            pid: Some(0x0059),
+            friendly_name: "HERO12 Black".into(),
+        };
+        let m = match_usb_identity(&hint).expect("HERO12 by product string");
+        assert_eq!(m.vendor, ActionCamVendor::GoPro);
+        assert!(m.model_label.contains("HERO12"));
     }
 
     #[test]
