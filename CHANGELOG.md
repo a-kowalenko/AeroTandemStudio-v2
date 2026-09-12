@@ -10,14 +10,14 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-12
+
 ### Behoben
 
 - Windows: GoPro HERO (z. B. HERO12 per USB/MTP) wird wieder erkannt — Explorer sah die Cam, der Import startete nicht
 - Windows: USB-Kamera bereinigen nach Backup (Zugriff verweigert) — Löschen mit Schreibrechten
 - Windows: Thumbnails und Video-Vorschau im USB-Import-Dialog (Video per Klick, Staging von der Cam)
 - Erfolgsdialog (z. B. nach Backup-Import): lange Pfade lassen den Dialog nicht mehr aus dem Fenster wachsen — OK bleibt sichtbar und klickbar
-
-
 
 ## [0.5.2-beta.2] - 2026-09-12
 
