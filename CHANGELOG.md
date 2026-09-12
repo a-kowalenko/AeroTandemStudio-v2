@@ -14,6 +14,13 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Windows: GoPro HERO (z. B. HERO12 per USB/MTP) wird wieder erkannt — Explorer sah die Cam, der Import startete nicht
 
+
+## [0.5.2-beta.1] - 2026-09-12
+
+### Behoben
+
+- Windows: GoPro HERO (z. B. HERO12 per USB/MTP) wird wieder erkannt — Explorer sah die Cam, der Import startete nicht
+
 ## [0.5.1] - 2026-09-11
 
 ### Neu
