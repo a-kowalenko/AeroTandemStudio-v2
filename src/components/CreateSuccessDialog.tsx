@@ -317,32 +317,34 @@ export function CreateSuccessDialog({
           </div>
         )}
 
-        <DialogFooter className="sm:justify-between">
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+        <DialogFooter className="w-full min-w-0 gap-2 sm:flex-wrap sm:justify-end">
+          <Button
+            type="button"
+            variant="secondary"
+            className="w-full shrink-0 sm:w-auto"
+            disabled={!outputDir}
+            onClick={() => void openOutputDir()}
+          >
+            <FolderOpen className="h-4 w-4 shrink-0" />
+            {t("create.success.openLocation")}
+          </Button>
+          {videoPath ? (
             <Button
               type="button"
               variant="secondary"
-              className="w-full sm:w-auto"
-              disabled={!outputDir}
-              onClick={() => void openOutputDir()}
+              className="w-full shrink-0 border-success/35 bg-success/10 text-success hover:bg-success/20 sm:w-auto"
+              onClick={() => void playVideo()}
+              title={basename(videoPath)}
             >
-              <FolderOpen className="h-4 w-4 shrink-0" />
-              {t("create.success.openLocation")}
+              <Play className="h-4 w-4 shrink-0" />
+              {t("create.success.play")}
             </Button>
-            {videoPath && (
-              <Button
-                type="button"
-                variant="secondary"
-                className="w-full border-success/35 bg-success/10 text-success hover:bg-success/20 sm:w-auto"
-                onClick={() => void playVideo()}
-                title={basename(videoPath)}
-              >
-                <Play className="h-4 w-4 shrink-0" />
-                {t("create.success.play")}
-              </Button>
-            )}
-          </div>
-          <Button type="button" className="w-full sm:w-auto" onClick={close}>
+          ) : null}
+          <Button
+            type="button"
+            className="w-full shrink-0 sm:ml-auto sm:w-auto"
+            onClick={close}
+          >
             {t("common.actions.ok")}
             {timeoutSecs && remaining > 0
               ? t("dialogs.countdownSuffix", { seconds: remaining })

@@ -147,9 +147,9 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
       >
         {actionKindIcon(action.kind)}
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="break-words text-sm font-medium text-foreground">
+          <p className="min-w-0 break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]">
             {action.label}
           </p>
           <span className="flex shrink-0 items-center gap-1" title={toneText}>
@@ -157,12 +157,12 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
             {toneStatusIcon(action.tone)}
           </span>
         </div>
-        <p className="mt-0.5 break-words text-sm text-foreground/90">
+        <p className="mt-0.5 break-words text-sm text-foreground/90 [overflow-wrap:anywhere]">
           {action.summary}
         </p>
         {action.detail?.trim() ? (
           <p
-            className="mt-1 break-words text-xs text-muted"
+            className="mt-1 whitespace-pre-wrap break-all text-xs text-muted [overflow-wrap:anywhere]"
             title={action.detail}
           >
             {action.detail}
@@ -327,7 +327,10 @@ export function SuccessDialog({
       <DialogContent
         className={cn(
           "z-[100] pb-7",
-          hasPreview ? "max-w-3xl" : "max-w-md",
+          // Keep viewport clamp when widening for QR preview (twMerge would drop the base max-w).
+          hasPreview
+            ? "max-w-[min(48rem,calc(100vw-2rem))]"
+            : "max-w-[min(28rem,calc(100vw-2rem))]",
           accent === "success" && "border-l-4 border-l-success",
           accent === "warning" && "border-l-4 border-l-warning",
         )}
@@ -380,7 +383,7 @@ export function SuccessDialog({
           {isQr && highlightText ? (
             <p
               className={cn(
-                "pt-1.5 text-2xl font-semibold tracking-tight",
+                "min-w-0 break-words pt-1.5 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]",
                 accent === "success" ? "text-primary" : "text-warning",
               )}
             >
@@ -473,7 +476,10 @@ export function SuccessDialog({
         </div>
 
         <DialogFooter
-          className={cn(choices && "flex-col sm:flex-col sm:items-stretch")}
+          className={cn(
+            "w-full min-w-0",
+            choices && "flex-col sm:flex-col sm:items-stretch",
+          )}
         >
           {choices ? (
             <>

@@ -59,7 +59,9 @@ export const DialogContent = React.forwardRef<
         <DialogPrimitive.Content
           ref={ref}
           className={cn(
-            "pointer-events-auto relative grid w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
+            // minmax(0,1fr): long unbroken paths must not inflate the column past max-width
+            // (default grid min-content would clip footers / OK via overflow-x-hidden).
+            "pointer-events-auto relative grid w-full min-w-0 max-w-[min(32rem,calc(100vw-2rem))] max-h-[min(90vh,calc(100dvh-2rem))] grid-cols-[minmax(0,1fr)] gap-4 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-6 shadow-lg",
             className,
           )}
           {...props}
