@@ -42,6 +42,7 @@ import {
   pendingUploadCandidates,
   scanBulkUploadCandidates,
   bulkSummaryItemFromScanEntry,
+  bulkOkItemFromEntry,
   type BulkPhase2Session,
   type BulkScanEntry,
   type BulkUploadScanResult,
@@ -68,6 +69,11 @@ import {
   UploadPartialConfirmDialog,
   type UploadPartialConfirmChoice,
 } from "@/components/UploadPartialConfirmDialog";
+import {
+  ReconnectUploadOfferDialog,
+  type ReconnectUploadOfferChoice,
+} from "@/components/ReconnectUploadOfferDialog";
+import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
 import type {
   UploadExtraFilesConfirmState,
   UploadMissingFilesState,
@@ -364,6 +370,8 @@ export function HistoryDialog({
   const { t } = useTranslation();
   const [tab, setTab] = useState<"vorgaenge" | "medien">("vorgaenge");
   const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
+  const [bulkUploadOffer, setBulkUploadOffer] =
+    useState<ReconnectUploadOfferState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
   const [appendVorgang, setAppendVorgang] = useState<VorgangEntry | null>(null);
@@ -402,6 +410,7 @@ export function HistoryDialog({
   const confirmOpen = pendingConfirm != null;
   const nestedOpen =
     confirmOpen ||
+    bulkUploadOffer != null ||
     qrScanOpen ||
     appendOpen ||
     appendPickingFiles ||
@@ -440,8 +449,15 @@ export function HistoryDialog({
 
     if (result === "ok") {
       summary.decided += 1;
+      summary.decidedItems.push(bulkOkItemFromEntry(entry));
     } else if (result === "failed") {
       summary.failed += 1;
+      summary.failedItems.push({
+        guest:
+          entry.gast?.trim() || entry.base_filename?.trim() || `#${entry.id}`,
+        vorgangId: entry.id,
+        reasonCode: reasonCode ?? "upload_failed",
+      });
     } else if (result === "skipped") {
       summary.skipped += 1;
       summary.skippedItems.push({
@@ -598,24 +614,25 @@ export function HistoryDialog({
 
   async function handleRequestBulkRetry(entries: VorgangEntry[]) {
     if (retryPreflightBusy || entries.length === 0) return;
+    setBulkUploadOffer({ open: true, entries });
+  }
+
+  async function onBulkUploadOfferChoice(choice: ReconnectUploadOfferChoice) {
+    const entries = bulkUploadOffer?.entries ?? [];
+    setBulkUploadOffer(null);
+    if (choice === "later" || entries.length === 0) return;
+    if (!useServerStore.getState().connected) {
+      showWarning(
+        t("history.upload.bulkOffline"),
+        t("history.upload.bulkTitle"),
+      );
+      return;
+    }
     setRetryPreflightBusy(true);
     try {
       const scan = await scanBulkUploadCandidates(entries);
-      const total = entries.length;
-      setPendingConfirm({
-        title: t("history.upload.bulkConfirmTitle"),
-        description: t("history.upload.bulkConfirmBodyScan", {
-          total,
-          ready: scan.ready.length,
-          needs: scan.needsDecision.length,
-          blocked: scan.blocked.length,
-        }),
-        actionLabel: t("history.upload.bulkBtn"),
-        actionVariant: "default",
-        run: async () => {
-          startBulkRetryUploads(scan);
-        },
-      });
+      // Soft-confirm already authorized — no second scan confirm.
+      startBulkRetryUploads(scan);
     } catch (e) {
       showError(String(e), t("history.upload.bulkTitle"));
     } finally {
@@ -874,6 +891,7 @@ export function HistoryDialog({
               finishBulkPhase2();
             }
             setPendingConfirm(null);
+            setBulkUploadOffer(null);
             setQrScanOpen(false);
             setExtraFilesConfirm(null);
             setPreflightHardFail(null);
@@ -1070,6 +1088,13 @@ export function HistoryDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ReconnectUploadOfferDialog
+        offer={bulkUploadOffer}
+        variant="history"
+        elevated
+        onChoose={(choice) => void onBulkUploadOfferChoice(choice)}
+      />
 
       <UploadExtraFilesConfirmDialog
         open={extraFilesConfirm != null}

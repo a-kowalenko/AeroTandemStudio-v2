@@ -10,6 +10,18 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Nach Server-Reconnect: Dialog „Server wieder online“ mit Kurzlist ausstehender Uploads — „Jetzt nachholen“ oder „Später“ (statt nur Toast)
+
+### Verbessert
+
+- Abschluss nach Massen-Upload übersichtlicher: Erfolge, Fehler und blockierte Vorgänge klarer getrennt
+
+### Behoben
+
+- Produkt-Haken, die nur wegen vorhandener Medien gesetzt wurden, werden zurückgenommen, wenn Fotos oder Videos geleert werden (bezahlte bzw. aus der Buchung übernommene bleiben)
+
 ## [0.5.2] - 2026-09-12
 
 ### Behoben

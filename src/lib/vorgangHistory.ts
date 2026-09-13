@@ -14,6 +14,10 @@ import {
 import {
   isOutstandingVorgangUpload,
 } from "./uploadState";
+import {
+  pendingUploadPreviewLine,
+  type PendingUploadMediaKey,
+} from "./reconnectUploadOffer";
 
 export {
   canRetryVorgangUpload,
@@ -281,6 +285,15 @@ export type BulkUploadSummaryItem = {
   reasonCode: string;
 };
 
+/** Successful bulk upload row (same guest/crew/media shape as reconnect preview). */
+export type BulkUploadOkItem = {
+  guest: string;
+  vorgangId: number;
+  mediaKeys: PendingUploadMediaKey[];
+  tandemmaster: string | null;
+  videospringer: string | null;
+};
+
 export type BulkScanEntry = VorgangEntry & { reasonCodes: string[] };
 
 export type BulkUploadScanResult = {
@@ -304,8 +317,11 @@ export type BulkUploadSummary = {
   /** Remaining candidates not attempted (cancel or server down mid-bulk). */
   aborted: boolean;
   remaining: number;
+  okItems: BulkUploadOkItem[];
+  decidedItems: BulkUploadOkItem[];
   blockedItems: BulkUploadSummaryItem[];
   skippedItems: BulkUploadSummaryItem[];
+  failedItems: BulkUploadSummaryItem[];
 };
 
 export function createEmptyBulkUploadSummary(): BulkUploadSummary {
@@ -317,9 +333,17 @@ export function createEmptyBulkUploadSummary(): BulkUploadSummary {
     blocked: 0,
     aborted: false,
     remaining: 0,
+    okItems: [],
+    decidedItems: [],
     blockedItems: [],
     skippedItems: [],
+    failedItems: [],
   };
+}
+
+/** Guest / crew / media row for successful bulk uploads. */
+export function bulkOkItemFromEntry(entry: VorgangEntry): BulkUploadOkItem {
+  return { ...pendingUploadPreviewLine(entry), vorgangId: entry.id };
 }
 
 /** Preflight all bulk candidates once before confirm (Phase 31.6). */

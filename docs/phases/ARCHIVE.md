@@ -1557,7 +1557,7 @@ src/locales/de.json | en.json | es-MX.json
 
 ### Phase 31 — Offline-Create & Upload nachholen
 
-**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅ · 31.4 ✅ · 31.6 ✅ · 31.7 ✅ · 31.8 ✅) · 🔄 31.5 geplant  
+**Status:** ✅ Erledigt (31.1 ✅ · 31.2 ✅ · 31.3 ✅ · 31.4 ✅ · 31.6 ✅ · 31.7 ✅ · 31.8 ✅ · 31.9 ✅) · 🔄 31.5 geplant  
 **Abhängigkeiten:** Phase 10 (SMB-Upload + Marker-Barrier OPT-15), Phase 12 (Create/Historie), Phase 24 (Historie-UI / Append-Muster), Phase 29/30 (Soft-Confirm-Muster)  
 **Ziel:** Bei aktivem Upload und offline Server trotzdem **lokal erstellen**; Upload bewusst **nachholen** (pro Vorgang + alle bereiten) — ohne persistente Auto-Queue und ohne stillen Background-Drain.
 
@@ -1574,7 +1574,7 @@ src/locales/de.json | en.json | es-MX.json
 #### Out of Scope (gesamte Phase 31)
 
 - Keine persistente Job-Queue / Worker / App-Restart Auto-Drain
-- Kein stiller Auto-Upload bei Reconnect (höchstens Badge + manueller Start)
+- Kein stiller Auto-Upload bei Reconnect (höchstens Soft-Confirm-Offer 31.9 + Badge + manueller Start)
 - Kein Hash-Integrity-Check (Size wie Manifest reicht)
 - Kein Auto-Repair / fehlende Dateien aus SD-Sources nachbauen
 - Kein Manifest neu generieren aus Disk, wenn Manifest fehlt
@@ -2139,7 +2139,7 @@ Danach cargo test && npm run check && npm run test:scripts.
 - [x] `common.actions.history` → DE Vorgänge / EN Jobs / ES Trabajos
 - [x] `history.title` gleich wie Button
 - [x] `history.description` schärfen (ohne „Historie“ als Dachbegriff, wenn Button „Vorgänge“ heißt)
-- [x] Verweise auf den Einstieg anpassen: `success.uploadPendingHint`, `create.offlineCreate.hint`, `history.upload.reconnectToastBody`, `history.appendSuccess`
+- [x] Verweise auf den Einstieg anpassen: `success.uploadPendingHint`, `create.offlineCreate.hint`, `dialogs.reconnectUpload.*`, `history.appendSuccess`
 - [x] Job-Confirms `history.confirm.removeJob*`: „aus der Historie“ → „aus den Vorgängen“ / „from Jobs“; Medien-Confirms mit „Medien-Historie“ belassen
 - [x] `app.chrome.historyTitle` Tooltip anpassen (z. B. „Vorgänge und Medien“ / „Jobs and media“)
 - [x] `docs/RELEASE.md`: Glossar-Beispiel `Historie` → `Vorgänge`

@@ -791,13 +791,17 @@
       "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline).",
       "blocked": "{{count}} nicht möglich",
       "blockedList": "Nicht möglich",
+      "codes": {
+        "upload_failed": "Upload fehlgeschlagen"
+      },
       "decided": "{{count}} nach Rückfrage hochgeladen",
       "failed": "{{count}} Upload-Fehler",
+      "failedList": "Fehler",
       "ok": "{{count}} erfolgreich",
       "reason": "{{reason}}",
       "skipped": "{{count}} übersprungen",
       "skippedList": "Übersprungen",
-      "title": "Upload-Abarbeitung fertig"
+      "title": "Uploads fertig"
     },
     "folderConflict": {
       "body": "Der Ordner „{{name}}“ enthält bereits Dateien. Ohne Ersetzen würden alte Medien (z. B. Fotos) mit dem neuen Vorgang hochgeladen.",
@@ -817,6 +821,14 @@
       "hint": "Später unter Vorgänge nachholen (wenn der Server wieder da ist).",
       "proceed": "Trotzdem lokal erstellen",
       "title": "Server nicht erreichbar"
+    },
+    "reconnectUpload": {
+      "andMore": "und {{count}} weitere",
+      "body": "{{count}} Uploads ausstehend — jetzt nachholen?",
+      "later": "Später",
+      "now": "Jetzt nachholen",
+      "scanning": "Ausstehende Uploads prüfen…",
+      "title": "Server wieder online"
     },
     "uploadExtraFiles": {
       "body": "Im Ordner von „{{guest}}“ liegen Dateien, die nicht zum ursprünglichen Vorgang gehörten:",
@@ -1483,8 +1495,6 @@
       "cancelled": "Abgebrochen",
       "cancelledHint": "Upload abgebrochen — unter Vorgänge nachholbar",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
-      "reconnectToastBody": "{{count}} Uploads ausstehend — unter Vorgänge nachholen.",
-      "reconnectToastTitle": "Server wieder online",
       "retryBtn": "Upload nachholen",
       "uploadBtn": "Auf Server hochladen",
       "uploadTitle": "Auf Server hochladen",

@@ -201,6 +201,7 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
       void discardPhotoEditUndoForPath(p);
       void deleteWorkingCopy(p);
     }
+    if (next.length === 0) syncProductsFromMedia();
   },
 
   setCurrentIndex: (index: number) => {
@@ -258,6 +259,7 @@ export const usePhotoStore = create<PhotoListState>((set, get) => ({
     if (deleteFiles && paths.length > 0) {
       void deleteWorkingCopies(paths);
     }
+    if (paths.length > 0) syncProductsFromMedia();
   },
 
   toggleWatermark: (index) => {

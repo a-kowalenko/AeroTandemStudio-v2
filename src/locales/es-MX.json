@@ -791,13 +791,17 @@
       "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea).",
       "blocked": "{{count}} no posibles",
       "blockedList": "No posibles",
+      "codes": {
+        "upload_failed": "Error al subir"
+      },
       "decided": "{{count}} subidas tras confirmación",
       "failed": "{{count}} errores de subida",
+      "failedList": "Errores",
       "ok": "{{count}} correctas",
       "reason": "{{reason}}",
       "skipped": "{{count}} omitidas",
       "skippedList": "Omitidas",
-      "title": "Proceso de subidas terminado"
+      "title": "Subidas terminadas"
     },
     "folderConflict": {
       "body": "La carpeta “{{name}}” ya contiene archivos. Sin reemplazarla, medios antiguos (p. ej. fotos) se subirían con el nuevo trabajo.",
@@ -817,6 +821,14 @@
       "hint": "Más tarde puedes completar la subida desde Trabajos cuando el servidor vuelva.",
       "proceed": "Crear localmente de todos modos",
       "title": "Servidor no disponible"
+    },
+    "reconnectUpload": {
+      "andMore": "y {{count}} más",
+      "body": "{{count}} subidas pendientes — ¿subir ahora?",
+      "later": "Más tarde",
+      "now": "Subir ahora",
+      "scanning": "Comprobando subidas pendientes…",
+      "title": "Servidor de nuevo en línea"
     },
     "uploadExtraFiles": {
       "body": "La carpeta de “{{guest}}” contiene archivos que no formaban parte del trabajo original:",
@@ -1483,8 +1495,6 @@
       "cancelled": "Cancelada",
       "cancelledHint": "Subida cancelada — reintentar desde Trabajos",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
-      "reconnectToastBody": "{{count}} subidas pendientes — reintentar desde Trabajos.",
-      "reconnectToastTitle": "Servidor de nuevo en línea",
       "retryBtn": "Reintentar subida",
       "uploadBtn": "Subir al servidor",
       "uploadTitle": "Subir al servidor",

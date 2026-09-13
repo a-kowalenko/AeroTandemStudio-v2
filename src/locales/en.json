@@ -791,13 +791,17 @@
       "aborted": "{{count}} not started (cancelled or server offline).",
       "blocked": "{{count}} not possible",
       "blockedList": "Not possible",
+      "codes": {
+        "upload_failed": "Upload failed"
+      },
       "decided": "{{count}} uploaded after confirmation",
       "failed": "{{count}} upload errors",
+      "failedList": "Failed",
       "ok": "{{count}} succeeded",
       "reason": "{{reason}}",
       "skipped": "{{count}} skipped",
       "skippedList": "Skipped",
-      "title": "Bulk upload finished"
+      "title": "Uploads finished"
     },
     "folderConflict": {
       "body": "The folder “{{name}}” already contains files. Without replacing, old media (e.g. photos) would be uploaded with the new job.",
@@ -817,6 +821,14 @@
       "hint": "Retry later from Jobs when the server is back.",
       "proceed": "Create locally anyway",
       "title": "Server unreachable"
+    },
+    "reconnectUpload": {
+      "andMore": "and {{count}} more",
+      "body": "{{count}} uploads pending — upload now?",
+      "later": "Later",
+      "now": "Upload now",
+      "scanning": "Checking pending uploads…",
+      "title": "Server back online"
     },
     "uploadExtraFiles": {
       "body": "The folder for “{{guest}}” contains files that were not part of the original job:",
@@ -1483,8 +1495,6 @@
       "cancelled": "Cancelled",
       "cancelledHint": "Upload cancelled — retry from Jobs",
       "pendingBadgeTooltip": "{{count}} uploads pending",
-      "reconnectToastBody": "{{count}} uploads pending — retry from Jobs.",
-      "reconnectToastTitle": "Server back online",
       "retryBtn": "Retry upload",
       "uploadBtn": "Upload to server",
       "uploadTitle": "Upload to server",

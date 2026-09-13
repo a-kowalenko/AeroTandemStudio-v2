@@ -3,9 +3,10 @@ import { useVideoStore } from "../store/videoStore";
 import { usePhotoStore } from "../store/photoStore";
 
 /**
- * Aktiviert Foto-/Video-Optionen zum aktuellen Medien-Modus anhand vorhandener Medien.
- * Neu aktivierte Optionen bleiben unbezahlt; bestehende bezahlte Haken (QR/AMS) bleiben.
- * Läuft auch unter AMS-Lock (Nachverkauf: Medien → Produkt an, unbezahlt).
+ * Sync Foto-/Video-Optionen zum aktuellen Medien-Modus anhand vorhandener Medien.
+ * Neu aktivierte Optionen bleiben unbezahlt und sind als media-auto markiert;
+ * beim Leeren werden nur diese (unbezahlten) Flags zurückgenommen.
+ * Bezahlte / QR-/AMS-Buchungen bleiben. Läuft auch unter AMS-Lock (Nachverkauf).
  *
  * Optional flags only force a side to true (OR with live list). Never pass
  * `false` to mean "ignore the other media type" — omit the flag instead.

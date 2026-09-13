@@ -10,6 +10,8 @@ import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog
 import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
 import type { OfflineCreateConfirmChoice } from "../OfflineCreateConfirmDialog";
 import type { OfflineCreateConfirmState } from "@/lib/offlineCreateConfirm";
+import type { ReconnectUploadOfferChoice } from "../ReconnectUploadOfferDialog";
+import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
 import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
 import { BulkUploadSummaryDialog } from "../BulkUploadSummaryDialog";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
@@ -29,6 +31,7 @@ import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
 import { FolderConflictConfirmDialog } from "../FolderConflictConfirmDialog";
 import { OfflineCreateConfirmDialog } from "../OfflineCreateConfirmDialog";
+import { ReconnectUploadOfferDialog } from "../ReconnectUploadOfferDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
 import { UpdateDialog } from "../UpdateDialog";
@@ -142,6 +145,8 @@ export type AppDialogsProps = {
   onFolderConflictChoice: (choice: FolderConflictConfirmChoice) => void;
   offlineCreateConfirm: OfflineCreateConfirmState | null;
   onOfflineCreateChoice: (choice: OfflineCreateConfirmChoice) => void;
+  reconnectUploadOffer: ReconnectUploadOfferState | null;
+  onReconnectUploadOfferChoice: (choice: ReconnectUploadOfferChoice) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -225,6 +230,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onFolderConflictChoice,
     offlineCreateConfirm,
     onOfflineCreateChoice,
+    reconnectUploadOffer,
+    onReconnectUploadOfferChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -415,6 +422,11 @@ export function AppDialogs(props: AppDialogsProps) {
       <OfflineCreateConfirmDialog
         open={offlineCreateConfirm !== null}
         onChoose={onOfflineCreateChoice}
+      />
+      <ReconnectUploadOfferDialog
+        offer={reconnectUploadOffer}
+        variant="reconnect"
+        onChoose={onReconnectUploadOfferChoice}
       />
       <BulkUploadSummaryDialog
         open={bulkUploadSummary !== null}

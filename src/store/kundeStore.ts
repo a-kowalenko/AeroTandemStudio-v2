@@ -17,6 +17,19 @@ function todayDe(): string {
   return `${dd}.${mm}.${yyyy}`;
 }
 
+/** Product keys turned on by media import (not QR/AMS). Cleared on booking/mode/reset. */
+type MediaProductKey =
+  | "handcam_foto"
+  | "handcam_video"
+  | "outside_foto"
+  | "outside_video";
+
+const mediaAutoEnabled = new Set<MediaProductKey>();
+
+function clearMediaAutoEnabled() {
+  mediaAutoEnabled.clear();
+}
+
 export function emptyKunde(partial?: Partial<Kunde>): Kunde {
   return {
     kunden_id: null,
@@ -99,8 +112,10 @@ type KundeState = {
   patch: (partial: Partial<Kunde>) => void;
   setVideoMode: (mode: "" | "handcam" | "outside") => void;
   /**
-   * Aktiviert Foto-/Video-Produkte zum aktuellen Modus, wenn Medien vorhanden sind.
-   * Setzt neu aktivierte Optionen auf „nicht bezahlt“; bestehende Haken bleiben.
+   * Sync Foto-/Video-Produkte zum aktuellen Modus anhand vorhandener Medien.
+   * Aktiviert fehlende Optionen (unbezahlt, als media-auto markiert).
+   * Deaktiviert nur media-auto + unbezahlte Optionen, wenn Medien fehlen.
+   * Bezahlte / QR-/AMS-Buchungen bleiben.
    */
   autoCheckProducts: (hasVideos: boolean, hasPhotos: boolean) => void;
   applyDefaultsFromConfig: (opts: {
@@ -161,6 +176,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     const touch = key !== "gast" && key !== "kunden_id" && key !== "booking_id";
     if (key === "kunden_id" || key === "booking_id") {
       const hadLookup = get().amsLookupRevision > 0;
+      if (hadLookup) clearMediaAutoEnabled();
       set({
         kunde: hadLookup
           ? clearAmsLookupDerived({ ...prev, [key]: value })
@@ -170,6 +186,13 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         amsLookupIds: hadLookup ? null : get().amsLookupIds,
         amsLookupSettled: false,
       });
+      if (hadLookup) {
+        void import("../lib/syncProductsFromMedia").then(
+          ({ syncProductsFromMedia }) => {
+            syncProductsFromMedia();
+          },
+        );
+      }
       return;
     }
     set({
@@ -193,6 +216,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     if (get().amsLookupLocked) return;
     const k = get().kunde;
     if (k.video_mode === mode) return;
+    clearMediaAutoEnabled();
     if (mode === "handcam") {
       set({
         sessionTouched: true,
@@ -238,10 +262,11 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   },
 
   /**
-   * Enable products for media present in the current mode.
+   * Sync products for media present in the current mode.
    * Runs even under `amsLookupLocked`: AMS/QR "not booked" only means unpaid,
    * not "exclude from Vorgang". Newly enabled products stay unpaid; existing
-   * paid flags from AMS are left untouched.
+   * paid flags from AMS are left untouched. Media-auto unpaid flags are cleared
+   * when that media type is empty (Fotos/Videos leeren).
    */
   autoCheckProducts: (hasVideos, hasPhotos) => {
     const k = get().kunde;
@@ -249,24 +274,36 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     if (mode !== "handcam" && mode !== "outside") return;
 
     const patch: Partial<Kunde> = {};
+
+    const syncSide = (
+      key: MediaProductKey,
+      paidKey:
+        | "ist_bezahlt_handcam_foto"
+        | "ist_bezahlt_handcam_video"
+        | "ist_bezahlt_outside_foto"
+        | "ist_bezahlt_outside_video",
+      present: boolean,
+    ) => {
+      if (present) {
+        if (!k[key]) {
+          patch[key] = true;
+          patch[paidKey] = false;
+          mediaAutoEnabled.add(key);
+        }
+        return;
+      }
+      if (k[key] && !k[paidKey] && mediaAutoEnabled.has(key)) {
+        patch[key] = false;
+        mediaAutoEnabled.delete(key);
+      }
+    };
+
     if (mode === "handcam") {
-      if (hasVideos && !k.handcam_video) {
-        patch.handcam_video = true;
-        patch.ist_bezahlt_handcam_video = false;
-      }
-      if (hasPhotos && !k.handcam_foto) {
-        patch.handcam_foto = true;
-        patch.ist_bezahlt_handcam_foto = false;
-      }
+      syncSide("handcam_video", "ist_bezahlt_handcam_video", hasVideos);
+      syncSide("handcam_foto", "ist_bezahlt_handcam_foto", hasPhotos);
     } else {
-      if (hasVideos && !k.outside_video) {
-        patch.outside_video = true;
-        patch.ist_bezahlt_outside_video = false;
-      }
-      if (hasPhotos && !k.outside_foto) {
-        patch.outside_foto = true;
-        patch.ist_bezahlt_outside_foto = false;
-      }
+      syncSide("outside_video", "ist_bezahlt_outside_video", hasVideos);
+      syncSide("outside_foto", "ist_bezahlt_outside_foto", hasPhotos);
     }
 
     if (Object.keys(patch).length === 0) return;
@@ -347,6 +384,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         ? get().qrPreviewSource
         : opts.sourcePath?.trim() || null;
 
+    clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
       crewAttentionAfterQr: true,
@@ -391,6 +429,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
         ? get().qrPreviewSource
         : opts.sourcePath?.trim() || null;
 
+    clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
       crewAttentionAfterQr: true,
@@ -412,6 +451,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
 
   applyFromAmsLookup: (hit, opts) => {
     const next = applyBridgeCustomerToKunde(get().kunde, hit, opts);
+    clearMediaAutoEnabled();
     set({
       amsLookupLocked: true,
       amsLookupRevision: get().amsLookupRevision + 1,
@@ -423,6 +463,10 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       crewAttentionAfterQr: true,
       kundenIdFocusPending: false,
       kunde: next,
+    });
+    // Re-enable unpaid products for media already present (Nachverkauf).
+    void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
+      syncProductsFromMedia();
     });
   },
 
@@ -490,6 +534,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       tandemmaster: kunde.tandemmaster,
       videospringer: kunde.videospringer,
     };
+    clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
       amsLookupLocked: false,
@@ -510,6 +555,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     const prev = get().kunde;
     const oldPreview = get().qrPreview;
     discardQrPreviewBestEffort(oldPreview?.path);
+    clearMediaAutoEnabled();
     set({
       qrRevision: 0,
       crewAttentionAfterQr: false,

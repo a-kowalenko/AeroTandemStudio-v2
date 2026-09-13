@@ -124,6 +124,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     const { [k]: _r, ...mediaRevision } = get().mediaRevision;
     set({ videoList: next, watermarkClipIndex: wm, cutMarks, mediaRevision });
     void deleteWorkingCopy(path);
+    if (next.length === 0) syncProductsFromMedia();
   },
 
   reorderVideos: (activePath: string, overPath: string) => {
@@ -264,6 +265,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     if (deleteFiles && paths.length > 0) {
       void deleteWorkingCopies(paths);
     }
+    if (paths.length > 0) syncProductsFromMedia();
   },
 
   clearError: () => set({ importError: null }),

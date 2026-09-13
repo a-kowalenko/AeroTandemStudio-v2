@@ -144,7 +144,11 @@ import {
   setVorgangUploadState,
   getHandoffStatus,
   bulkSummaryItemFromScanEntry,
+  bulkOkItemFromEntry,
   createEmptyBulkUploadSummary,
+  listVorgaenge,
+  pendingUploadCandidates,
+  scanBulkUploadCandidates,
   type BulkPhase2Session,
   type BulkUploadScanResult,
   type BulkUploadSummary,
@@ -155,7 +159,12 @@ import {
   classifyBulkPreflight,
   primaryPreflightReasonCode,
 } from "./lib/uploadPreflight";
-import { showPendingUploadsToast } from "./lib/pendingUploadToast";
+import {
+  RECONNECT_UPLOAD_OFFER_OPEN_DELAY_MS,
+  RECONNECT_UPLOAD_OFFER_STABLE_MS,
+  type ReconnectUploadOfferState,
+} from "./lib/reconnectUploadOffer";
+import type { ReconnectUploadOfferChoice } from "./components/ReconnectUploadOfferDialog";
 import {
   showBackgroundUploadDoneToast,
   showBackgroundUploadFailToast,
@@ -301,6 +310,8 @@ function App() {
     useState<FolderConflictConfirmState | null>(null);
   const [offlineCreateConfirm, setOfflineCreateConfirm] =
     useState<OfflineCreateConfirmState | null>(null);
+  const [reconnectUploadOffer, setReconnectUploadOffer] =
+    useState<ReconnectUploadOfferState | null>(null);
   const [bulkUploadSummary, setBulkUploadSummary] =
     useState<BulkUploadSummary | null>(null);
   const [bulkPhase2Session, setBulkPhase2Session] =
@@ -312,9 +323,13 @@ function App() {
   /** Soft-ack: create locally while upload is on but server offline (Phase 31.1). */
   const offlineCreateAckRef = useRef(false);
   const replaceExistingDirRef = useRef(false);
-  /** Track SMB connected edge for optional reconnect toast (Phase 31.3). */
+  /** Track SMB connected edge for reconnect upload offer (Phase 31.9). */
   const serverWasConnectedRef = useRef(false);
-  const pendingUploadToastArmedRef = useRef(false);
+  const reconnectUploadOfferArmedRef = useRef(false);
+  const reconnectUploadOfferDeferredRef = useRef(false);
+  const reconnectUploadStableTimerRef = useRef<number | null>(null);
+  const reconnectUploadOpenDelayTimerRef = useRef<number | null>(null);
+  const reconnectUploadOfferBusyRef = useRef(false);
   /** SD workflow (Auto + Confirm after submit): floating progress + UI lock. */
   const [sdWorkflowUiActive, setSdWorkflowUiActive] = useState(false);
   const sdDrainLockRef = useRef(false);
@@ -1278,32 +1293,178 @@ function App() {
       .catch(() => {});
   }, [ready, splashOpen, setupWizardOpen, config?.upload_to_server]);
 
-  /** Optional once-per-reconnect toast when uploads are pending (no auto-drain). */
+  const clearReconnectUploadStableTimer = () => {
+    if (reconnectUploadStableTimerRef.current != null) {
+      window.clearTimeout(reconnectUploadStableTimerRef.current);
+      reconnectUploadStableTimerRef.current = null;
+    }
+  };
+
+  const clearReconnectUploadOpenDelayTimer = () => {
+    if (reconnectUploadOpenDelayTimerRef.current != null) {
+      window.clearTimeout(reconnectUploadOpenDelayTimerRef.current);
+      reconnectUploadOpenDelayTimerRef.current = null;
+    }
+  };
+
+  const clearReconnectUploadTimers = () => {
+    clearReconnectUploadStableTimer();
+    clearReconnectUploadOpenDelayTimer();
+  };
+
+  /**
+   * UI/session gates for the reconnect offer.
+   * Do NOT include in-flight `busyRef` here — that caused a self-deadlock after
+   * await (busy=true → blocked → never open → finally busy=false → no re-render).
+   */
+  const reconnectOfferUiBlocked = (): boolean => {
+    if (!ready || splashOpen || setupWizardOpen) return true;
+    if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy) {
+      return true;
+    }
+    if (uploadSlotHasWork || serverPhase === "uploading") return true;
+    if (offlineCreateConfirm != null) return true;
+    if (lowMediaConfirm != null) return true;
+    if (folderConflictConfirm != null) return true;
+    if (reencodeConfirm != null) return true;
+    if (introMuxFallback != null) return true;
+    if (bodyConcatFallback != null) return true;
+    if (createSuccess != null) return true;
+    if (bulkUploadSummary != null) return true;
+    if (bulkPhase2Session != null) return true;
+    if (quitUploadConfirm.open) return true;
+    if (dialogKind != null) return true;
+    if (settingsOpen || processedOpen) return true;
+    return false;
+  };
+
+  const tryShowReconnectUploadOffer = async () => {
+    if (!Boolean(config?.upload_to_server)) return;
+    if (!useServerStore.getState().connected) return;
+    if (
+      !reconnectUploadOfferArmedRef.current &&
+      !reconnectUploadOfferDeferredRef.current
+    ) {
+      return;
+    }
+    // Already visible or scheduled — keep armed until explicit Später/Jetzt.
+    if (reconnectUploadOffer != null) return;
+    if (reconnectUploadOpenDelayTimerRef.current != null) return;
+    // Re-entry guard (not a UI gate).
+    if (reconnectUploadOfferBusyRef.current) {
+      reconnectUploadOfferDeferredRef.current = true;
+      return;
+    }
+
+    if (reconnectOfferUiBlocked()) {
+      reconnectUploadOfferDeferredRef.current = true;
+      return;
+    }
+
+    reconnectUploadOfferBusyRef.current = true;
+    try {
+      await refreshPendingUploadCount(true);
+      const rows = await listVorgaenge(500);
+      const entries = pendingUploadCandidates(rows, true);
+      if (entries.length === 0) {
+        reconnectUploadOfferArmedRef.current = false;
+        reconnectUploadOfferDeferredRef.current = false;
+        return;
+      }
+      if (!useServerStore.getState().connected || reconnectOfferUiBlocked()) {
+        reconnectUploadOfferDeferredRef.current = true;
+        return;
+      }
+
+      // Defer mount so Settings/success teardown cannot instantly dismiss us.
+      reconnectUploadOfferDeferredRef.current = false;
+      clearReconnectUploadOpenDelayTimer();
+      reconnectUploadOpenDelayTimerRef.current = window.setTimeout(() => {
+        reconnectUploadOpenDelayTimerRef.current = null;
+        if (!useServerStore.getState().connected) {
+          reconnectUploadOfferArmedRef.current = true;
+          return;
+        }
+        if (!reconnectUploadOfferArmedRef.current) return;
+        if (reconnectOfferUiBlocked()) {
+          reconnectUploadOfferDeferredRef.current = true;
+          return;
+        }
+        setReconnectUploadOffer({ open: true, entries });
+      }, RECONNECT_UPLOAD_OFFER_OPEN_DELAY_MS);
+    } catch {
+      reconnectUploadOfferDeferredRef.current = true;
+    } finally {
+      reconnectUploadOfferBusyRef.current = false;
+      // busyRef is not React state — if we deferred during/after await, retry once
+      // the UI is clear without waiting for an unrelated re-render.
+      if (
+        reconnectUploadOfferDeferredRef.current &&
+        reconnectUploadOfferArmedRef.current &&
+        useServerStore.getState().connected &&
+        !reconnectOfferUiBlocked()
+      ) {
+        window.setTimeout(() => {
+          void tryShowReconnectUploadOfferRef.current();
+        }, 0);
+      }
+    }
+  };
+
+  const tryShowReconnectUploadOfferRef = useRef(tryShowReconnectUploadOffer);
+  tryShowReconnectUploadOfferRef.current = tryShowReconnectUploadOffer;
+
+  /** Phase 31.9: stable reconnect → soft-confirm offer (no auto-drain). */
   useEffect(() => {
     if (!ready || splashOpen || setupWizardOpen) {
       serverWasConnectedRef.current = serverConnected;
+      clearReconnectUploadTimers();
       return;
     }
     const uploadOn = Boolean(config?.upload_to_server);
     const was = serverWasConnectedRef.current;
     serverWasConnectedRef.current = serverConnected;
+
     if (!uploadOn) {
-      pendingUploadToastArmedRef.current = false;
+      reconnectUploadOfferArmedRef.current = false;
+      reconnectUploadOfferDeferredRef.current = false;
+      reconnectUploadOfferBusyRef.current = false;
+      clearReconnectUploadTimers();
+      setReconnectUploadOffer(null);
       return;
     }
+
     if (!serverConnected) {
-      pendingUploadToastArmedRef.current = true;
+      reconnectUploadOfferArmedRef.current = true;
+      reconnectUploadOfferDeferredRef.current = false;
+      reconnectUploadOfferBusyRef.current = false;
+      clearReconnectUploadTimers();
+      setReconnectUploadOffer(null);
       return;
     }
-    if (!was && serverConnected && pendingUploadToastArmedRef.current) {
-      pendingUploadToastArmedRef.current = false;
-      const count = useHistoryStore.getState().pendingUploadCount;
-      if (count > 0) {
-        showPendingUploadsToast(
-          t("history.upload.reconnectToastTitle"),
-          t("history.upload.reconnectToastBody", { count }),
-        );
-      }
+
+    if (!was && serverConnected && reconnectUploadOfferArmedRef.current) {
+      clearReconnectUploadStableTimer();
+      reconnectUploadStableTimerRef.current = window.setTimeout(() => {
+        reconnectUploadStableTimerRef.current = null;
+        if (!useServerStore.getState().connected) {
+          reconnectUploadOfferArmedRef.current = true;
+          return;
+        }
+        void tryShowReconnectUploadOfferRef.current();
+      }, RECONNECT_UPLOAD_OFFER_STABLE_MS);
+      return;
+    }
+
+    if (
+      serverConnected &&
+      reconnectUploadOfferDeferredRef.current &&
+      reconnectUploadOffer == null &&
+      reconnectUploadOpenDelayTimerRef.current == null &&
+      !reconnectUploadOfferBusyRef.current &&
+      !reconnectOfferUiBlocked()
+    ) {
+      void tryShowReconnectUploadOfferRef.current();
     }
   }, [
     ready,
@@ -1311,8 +1472,32 @@ function App() {
     setupWizardOpen,
     serverConnected,
     config?.upload_to_server,
-    t,
+    busy,
+    appendActive,
+    sdWorkflowUiActive,
+    loading,
+    qrScanBusy,
+    uploadSlotHasWork,
+    serverPhase,
+    reconnectUploadOffer,
+    offlineCreateConfirm,
+    lowMediaConfirm,
+    folderConflictConfirm,
+    reencodeConfirm,
+    introMuxFallback,
+    bodyConcatFallback,
+    createSuccess,
+    bulkUploadSummary,
+    bulkPhase2Session,
+    quitUploadConfirm.open,
+    dialogKind,
+    settingsOpen,
+    processedOpen,
   ]);
+
+  useEffect(() => {
+    return () => clearReconnectUploadTimers();
+  }, []);
 
   useEffect(() => {
     if (!ready || splashOpen || setupWizardOpen || !config || !serverConnected) return;
@@ -1785,6 +1970,38 @@ function App() {
     void startCreate();
   }
 
+  function onReconnectUploadOfferChoice(choice: ReconnectUploadOfferChoice) {
+    const entries = reconnectUploadOffer?.entries ?? [];
+    setReconnectUploadOffer(null);
+    // Consume this reconnect edge only on explicit Später / Jetzt.
+    reconnectUploadOfferArmedRef.current = false;
+    reconnectUploadOfferDeferredRef.current = false;
+    clearReconnectUploadOpenDelayTimer();
+    if (choice === "later" || entries.length === 0) return;
+    void (async () => {
+      if (!useServerStore.getState().connected) {
+        showWarning(
+          t("history.upload.bulkOffline"),
+          t("history.upload.bulkTitle"),
+        );
+        return;
+      }
+      setLoading(true, t("dialogs.reconnectUpload.scanning"));
+      try {
+        const scan = await scanBulkUploadCandidates(entries);
+        // Soft-confirm already authorized the run — no second bulk confirm.
+        void retryVorgangUploadsBulk(scan);
+      } catch (e) {
+        showError(
+          e instanceof Error ? e.message : String(e),
+          t("history.upload.bulkTitle"),
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }
+
   /** After folder replace ack: low-media soft confirm, then create. */
   async function continueCreateAfterFolderConflict() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
@@ -2184,6 +2401,7 @@ function App() {
     uploadCancelRequestedRef.current = false;
 
     const pendingResults: Promise<"ok" | "failed" | "cancelled">[] = [];
+    const enqueuedEntries: VorgangEntry[] = [];
     let enqueued = 0;
 
     for (let i = 0; i < readyEntries.length; i++) {
@@ -2224,6 +2442,7 @@ function App() {
       }
 
       enqueued += 1;
+      enqueuedEntries.push(entry);
       pendingResults.push(
         runVorgangUploadAttempt(entry, { quietSuccess: true }),
       );
@@ -2231,13 +2450,24 @@ function App() {
 
     if (pendingResults.length > 0) {
       const results = await Promise.all(pendingResults);
-      for (const result of results) {
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]!;
+        const entry = enqueuedEntries[i]!;
         if (result === "ok") {
           summary.ok += 1;
+          summary.okItems.push(bulkOkItemFromEntry(entry));
         } else if (result === "cancelled") {
           summary.aborted = true;
         } else {
           summary.failed += 1;
+          summary.failedItems.push({
+            guest:
+              entry.gast?.trim() ||
+              entry.base_filename?.trim() ||
+              `#${entry.id}`,
+            vorgangId: entry.id,
+            reasonCode: "upload_failed",
+          });
         }
       }
       if (summary.aborted || !useServerStore.getState().connected) {
@@ -2352,6 +2582,7 @@ function App() {
     setFolderConflictConfirm(null);
     offlineCreateAckRef.current = false;
     setOfflineCreateConfirm(null);
+    setReconnectUploadOffer(null);
     showSessionResetToast(
       t("common.actions.reset"),
       t("app.session.resetDone"),
@@ -2643,6 +2874,8 @@ function App() {
         onFolderConflictChoice={onFolderConflictChoice}
         offlineCreateConfirm={offlineCreateConfirm}
         onOfflineCreateChoice={onOfflineCreateChoice}
+        reconnectUploadOffer={reconnectUploadOffer}
+        onReconnectUploadOfferChoice={onReconnectUploadOfferChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}
