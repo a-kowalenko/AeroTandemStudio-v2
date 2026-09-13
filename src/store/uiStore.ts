@@ -1,6 +1,13 @@
 import { create } from "zustand";
 import type { QrPreview } from "@/lib/tauri";
 import { tr } from "@/i18n";
+import {
+  resolveSettingsArea,
+  type SettingsFocusTarget,
+  type SettingsTab,
+} from "@/lib/settingsUi";
+
+export type { SettingsArea, SettingsFocusTarget, SettingsTab } from "@/lib/settingsUi";
 
 export type DialogKind = "error" | "success" | "warning" | null;
 
@@ -80,22 +87,6 @@ export type DialogConfirmOptions = {
   onSecondary: () => void;
   onPrimary: () => void;
 };
-
-export type SettingsTab =
-  | "allgemein"
-  | "crew"
-  | "qr"
-  | "encoding"
-  | "sd"
-  | "server"
-  | "system";
-
-export type SettingsFocusTarget =
-  | "server-url"
-  | "server-credentials"
-  | "server-backup-url"
-  | "ams-bridge-url"
-  | "ams-bridge-token";
 
 /** Phase 28: Fotos-Tab browse mode (session preference; null = auto by count). */
 export type PhotoBrowseMode = "overview" | "review";
@@ -187,7 +178,7 @@ export const useUiStore = create<UiState>((set) => ({
   loading: false,
   loadingMessage: "",
   settingsOpen: false,
-  settingsTab: "allgemein",
+  settingsTab: "workplace",
   settingsFocus: null,
   settingsFocusNonce: 0,
   createReadyPulsePending: false,
@@ -250,13 +241,13 @@ export const useUiStore = create<UiState>((set) => ({
   openSettings: (opts) =>
     set((state) => ({
       settingsOpen: true,
-      settingsTab: opts?.tab ?? "allgemein",
+      settingsTab: resolveSettingsArea(opts?.tab),
       settingsFocus: opts?.focus ?? null,
       settingsFocusNonce: opts?.focus
         ? state.settingsFocusNonce + 1
         : state.settingsFocusNonce,
     })),
-  setSettingsTab: (tab) => set({ settingsTab: tab }),
+  setSettingsTab: (tab) => set({ settingsTab: resolveSettingsArea(tab) }),
   clearSettingsFocus: () => set({ settingsFocus: null }),
   requestCreateReadyPulse: () => set({ createReadyPulsePending: true }),
   clearCreateReadyPulse: () => set({ createReadyPulsePending: false }),

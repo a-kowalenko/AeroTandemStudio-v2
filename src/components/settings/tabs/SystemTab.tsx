@@ -29,6 +29,8 @@ import { useAppendStore } from "@/store/appendStore";
 import { useUploadQueueStore } from "@/store/uploadQueueStore";
 import { useSdStore } from "@/store/sdStore";
 import type { useReleaseList } from "../hooks/useReleaseList";
+import { showAdvanced } from "@/lib/settingsUi";
+import { SettingsAccordion } from "../SettingsAccordion";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 import { presentUpdaterInstallHint } from "@/lib/updaterInstallHint";
@@ -137,6 +139,7 @@ function UsageActionRow({
 export function SystemTab({
   draft,
   patchNow,
+  disclosure,
   saving,
   sessionBusy = false,
   dangerClearedNonce = 0,
@@ -152,6 +155,7 @@ export function SystemTab({
   platformHint = null,
 }: Props) {
   const { t } = useTranslation();
+  const advanced = showAdvanced(disclosure);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const videoList = useVideoStore((s) => s.videoList);
@@ -483,7 +487,8 @@ export function SystemTab({
           >
             {t("settings.system.update.check")}
           </Button>
-          <label className="flex items-center gap-2 text-sm">
+          {advanced ? (
+          <label className="flex items-center gap-2 text-sm" title={t("settings.system.update.betaTesterDescription")}>
             <Checkbox
               checked={draft.beta_updates_enabled}
               onCheckedChange={(v) =>
@@ -492,10 +497,13 @@ export function SystemTab({
             />
             {t("settings.system.update.betaTester")}
           </label>
+          ) : null}
         </div>
+        {advanced ? (
         <p className="text-xs text-muted">
           {t("settings.system.update.betaTesterDescription")}
         </p>
+        ) : null}
 
         <div className="space-y-1.5">
           <Label>{t("settings.system.update.availableVersions")}</Label>
@@ -642,6 +650,10 @@ export function SystemTab({
         />
       </SettingsSection>
 
+      <OptionalAccordion
+        wrap={!advanced}
+        title={t("settings.complexity.advanced")}
+      >
       <SettingsSection
         title={t("settings.system.autoCleanup.title")}
         description={t("settings.system.autoCleanup.description")}
@@ -889,6 +901,20 @@ export function SystemTab({
           </div>
         </div>
       </SettingsSection>
+      </OptionalAccordion>
     </div>
   );
+}
+
+function OptionalAccordion({
+  wrap,
+  title,
+  children,
+}: {
+  wrap: boolean;
+  title: string;
+  children: ReactNode;
+}) {
+  if (!wrap) return <>{children}</>;
+  return <SettingsAccordion title={title}>{children}</SettingsAccordion>;
 }

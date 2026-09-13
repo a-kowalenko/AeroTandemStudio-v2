@@ -19,6 +19,7 @@ import {
   parseCrewKeepComboboxValue,
   upsertCrewMember,
 } from "@/lib/tauri";
+import { showAdvanced } from "@/lib/settingsUi";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
@@ -43,8 +44,9 @@ type Props = SettingsTabBaseProps & {
   crewEditor: CrewEditor;
 };
 
-export function CrewTab({ draft, setDraft, commitNow, crewEditor }: Props) {
+export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: Props) {
   const { t } = useTranslation();
+  const advanced = showAdvanced(disclosure);
   const tandemmasterOptions = crewNamesForRole(draft.crew_list, "tandemmaster");
   const videospringerOptions = crewNamesForRole(draft.crew_list, "videospringer");
   const allCrewNames = crewAllNames(draft.crew_list);
@@ -163,6 +165,7 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor }: Props) {
         ) : null}
       </SettingsSection>
 
+      {advanced ? (
       <SettingsSection
         title={t("settings.crew.session.title")}
         description={t("settings.crew.session.description")}
@@ -224,6 +227,7 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor }: Props) {
           listZIndex={200}
         />
       </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title={t("settings.crew.list.title")}

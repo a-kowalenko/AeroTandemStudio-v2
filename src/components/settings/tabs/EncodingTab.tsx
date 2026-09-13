@@ -1,10 +1,7 @@
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -12,14 +9,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
+import { showAdvanced } from "@/lib/settingsUi";
+import { SettingsAccordion } from "../SettingsAccordion";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
+type Props = SettingsTabBaseProps & {
+  /** Wizard custom path: codec/strategy/HW + intro/concat accordion. */
+  layout?: "settings" | "wizard";
+};
+
+export function EncodingTab({
+  draft,
+  patch,
+  patchNow,
+  disclosure,
+  layout = "settings",
+}: Props) {
   const { t } = useTranslation();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const wizard = layout === "wizard";
+  const advanced = wizard || showAdvanced(disclosure);
 
   return (
     <div className="space-y-4">
@@ -76,158 +86,175 @@ export function EncodingTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
           {t("settings.encoding.hwAccel")}
         </label>
 
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={draft.parallel_processing_enabled}
-            onCheckedChange={(v) =>
-              patchNow("parallel_processing_enabled", v === true)
-            }
-          />
-          {t("settings.encoding.parallel")}
-        </label>
+        {advanced && !wizard ? (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.parallel_processing_enabled}
+                onCheckedChange={(v) =>
+                  patchNow("parallel_processing_enabled", v === true)
+                }
+              />
+              {t("settings.encoding.parallel")}
+            </label>
 
-        <label className="flex items-start gap-2 text-sm">
-          <Checkbox
-            className="mt-0.5"
-            checked={draft.speculative_create_enabled !== false}
-            onCheckedChange={(v) =>
-              patchNow("speculative_create_enabled", v === true)
-            }
-          />
-          <span className="min-w-0">
-            <span className="block">{t("settings.encoding.speculativeCreate")}</span>
-            <span className="mt-0.5 block text-[11px] leading-snug text-muted">
-              {t("settings.encoding.speculativeCreateHint")}
-            </span>
-          </span>
-        </label>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={draft.speculative_create_enabled !== false}
+                onCheckedChange={(v) =>
+                  patchNow("speculative_create_enabled", v === true)
+                }
+              />
+              <span className="min-w-0" title={t("settings.encoding.speculativeCreateHint")}>
+                <span className="block">{t("settings.encoding.speculativeCreate")}</span>
+              </span>
+            </label>
 
-        <div className="space-y-1.5">
-          <Label>{t("settings.encoding.concat")}</Label>
-          <Select
-            value={normalizeBodyConcatMode(draft.body_concat_mode)}
-            onValueChange={(v) => patchNow("body_concat_mode", v)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
-              <SelectItem value="compatible">
-                {t("settings.encoding.concatCompatible")}
-              </SelectItem>
-              <SelectItem value="legacy">
-                {t("settings.encoding.concatLegacy")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <p className="whitespace-pre-line text-[11px] leading-snug text-muted">
-            {t("settings.encoding.concatHint")}
-          </p>
-        </div>
+            <div className="space-y-1.5">
+              <Label>{t("settings.encoding.concat")}</Label>
+              <Select
+                value={normalizeBodyConcatMode(draft.body_concat_mode)}
+                onValueChange={(v) => patchNow("body_concat_mode", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+                  <SelectItem value="compatible">
+                    {t("settings.encoding.concatCompatible")}
+                  </SelectItem>
+                  <SelectItem value="legacy">
+                    {t("settings.encoding.concatLegacy")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p
+                className="whitespace-pre-line text-[11px] leading-snug text-muted"
+                title={t("settings.encoding.concatHint")}
+              >
+                {t("settings.encoding.concatHint")}
+              </p>
+            </div>
+          </>
+        ) : null}
       </SettingsSection>
 
-      <div className="rounded-lg border border-border bg-background/60">
-        <Button
-          type="button"
-          variant="ghost"
-          className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-semibold tracking-wide text-muted uppercase hover:bg-muted/30"
-          onClick={() => setAdvancedOpen((v) => !v)}
-          aria-expanded={advancedOpen}
-        >
-          {t("settings.encoding.advanced")}
-          <ChevronDown
-            className={cn(
-              "h-4 w-4 transition-transform",
-              advancedOpen && "rotate-180",
-            )}
-            aria-hidden
-          />
-        </Button>
-        {advancedOpen ? (
-          <div className="space-y-4 border-t border-border px-3 pt-3 pb-3">
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.intro_enabled}
-                onCheckedChange={(v) => patchNow("intro_enabled", v === true)}
-              />
-              {t("settings.encoding.introEnabled")}
-            </label>
-            <div className="space-y-1.5">
-              <Label>{t("settings.encoding.introDuration")}</Label>
-              <Select
-                value={String(draft.dauer)}
-                onValueChange={(v) => patchNow("dauer", Number(v))}
-                disabled={!draft.intro_enabled}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t("settings.encoding.introMux")}</Label>
-              <Select
-                value={
-                  draft.intro_mux_mode === "stream_copy"
-                    ? "stream_copy"
-                    : "reencode"
-                }
-                onValueChange={(v) => patchNow("intro_mux_mode", v)}
-                disabled={!draft.intro_enabled}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="reencode">
-                    {t("settings.encoding.introMuxReencode")}
+      {advanced ? (
+        <SettingsAccordion title={t("settings.encoding.advanced")}>
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox
+              checked={draft.intro_enabled}
+              onCheckedChange={(v) => patchNow("intro_enabled", v === true)}
+            />
+            {t("settings.encoding.introEnabled")}
+          </label>
+          <div className="space-y-1.5">
+            <Label>{t("settings.encoding.introDuration")}</Label>
+            <Select
+              value={String(draft.dauer)}
+              onValueChange={(v) => patchNow("dauer", Number(v))}
+              disabled={!draft.intro_enabled}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
                   </SelectItem>
-                  <SelectItem value="stream_copy">
-                    {t("settings.encoding.introMuxCopy")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] leading-snug text-muted">
-                {t("settings.encoding.introMuxHint")}
-              </p>
-              <p className="text-[11px] leading-snug text-muted">
-                {t("settings.encoding.previewReuseHint")}
-              </p>
-            </div>
-
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={draft.reencode_matching_clips}
-                onCheckedChange={(v) =>
-                  patchNow("reencode_matching_clips", v === true)
-                }
-              />
-              {t("settings.encoding.reencodeMatching")}
-            </label>
-
-            <div className="space-y-1.5">
-              <Label>{t("settings.encoding.previewCrf")}</Label>
-              <Input
-                type="number"
-                min={0}
-                max={51}
-                value={draft.preview_encode_crf}
-                onChange={(e) =>
-                  patch("preview_encode_crf", Number(e.target.value) || 18)
-                }
-              />
-            </div>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        ) : null}
-      </div>
+          <div className="space-y-1.5">
+            <Label>{t("settings.encoding.introMux")}</Label>
+            <Select
+              value={
+                draft.intro_mux_mode === "stream_copy"
+                  ? "stream_copy"
+                  : "reencode"
+              }
+              onValueChange={(v) => patchNow("intro_mux_mode", v)}
+              disabled={!draft.intro_enabled}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="reencode">
+                  {t("settings.encoding.introMuxReencode")}
+                </SelectItem>
+                <SelectItem value="stream_copy">
+                  {t("settings.encoding.introMuxCopy")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p
+              className="text-[11px] leading-snug text-muted"
+              title={t("settings.encoding.introMuxHint")}
+            >
+              {t("settings.encoding.introMuxHint")}
+            </p>
+            <p
+              className="text-[11px] leading-snug text-muted"
+              title={t("settings.encoding.previewReuseHint")}
+            >
+              {t("settings.encoding.previewReuseHint")}
+            </p>
+          </div>
+
+          {wizard ? (
+            <div className="space-y-1.5">
+              <Label>{t("settings.encoding.concat")}</Label>
+              <Select
+                value={normalizeBodyConcatMode(draft.body_concat_mode)}
+                onValueChange={(v) => patchNow("body_concat_mode", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+                  <SelectItem value="compatible">
+                    {t("settings.encoding.concatCompatible")}
+                  </SelectItem>
+                  <SelectItem value="legacy">
+                    {t("settings.encoding.concatLegacy")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.reencode_matching_clips}
+                  onCheckedChange={(v) =>
+                    patchNow("reencode_matching_clips", v === true)
+                  }
+                />
+                {t("settings.encoding.reencodeMatching")}
+              </label>
+
+              <div className="space-y-1.5">
+                <Label>{t("settings.encoding.previewCrf")}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={51}
+                  value={draft.preview_encode_crf}
+                  onChange={(e) =>
+                    patch("preview_encode_crf", Number(e.target.value) || 18)
+                  }
+                />
+              </div>
+            </>
+          )}
+        </SettingsAccordion>
+      ) : null}
     </div>
   );
 }

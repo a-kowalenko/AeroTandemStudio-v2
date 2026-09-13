@@ -27,6 +27,7 @@ import {
 } from "@/lib/headerConnectionStatus";
 import { amsBridgeDiscover, amsBridgeHealth, getConfig } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
+import { showAdvanced } from "@/lib/settingsUi";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
@@ -40,8 +41,10 @@ export function ServerTab({
   patchNow,
   setDraft,
   flashFocus,
+  disclosure,
 }: Props) {
   const { t } = useTranslation();
+  const advanced = showAdvanced(disclosure);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showError = useUiStore((s) => s.showError);
   const closeDialog = useUiStore((s) => s.closeDialog);
@@ -390,6 +393,8 @@ export function ServerTab({
         title={t("settings.server.smb.title")}
         description={t("settings.server.smb.description")}
       >
+        {advanced ? (
+          <>
         <AmsPathHintsSuggestBanner
           draft={draft}
           setDraft={(next) => setDraft(next)}
@@ -408,6 +413,8 @@ export function ServerTab({
           diffFromDraft
           hidden={profileEditing}
         />
+          </>
+        ) : null}
         <ServerProfileEditor
           draft={draft}
           setDraft={(next) => setDraft(next)}
@@ -469,7 +476,8 @@ export function ServerTab({
           />
           {t("settings.server.upload.afterCreate")}
         </label>
-        <label className="flex items-start gap-2 text-sm">
+        {advanced ? (
+        <label className="flex items-start gap-2 text-sm" title={t("settings.server.upload.autoMountHint")}>
           <Checkbox
             className="mt-0.5"
             checked={draft.smb_auto_mount_enabled}
@@ -479,11 +487,9 @@ export function ServerTab({
           />
           <span>
             <span className="block">{t("settings.server.upload.autoMount")}</span>
-            <span className="mt-0.5 block text-xs text-muted">
-              {t("settings.server.upload.autoMountHint")}
-            </span>
           </span>
         </label>
+        ) : null}
       </SettingsSection>
 
       <SettingsSection
@@ -537,6 +543,7 @@ export function ServerTab({
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">
+          {advanced ? (
           <Button
             type="button"
             variant="secondary"
@@ -548,6 +555,7 @@ export function ServerTab({
               ? t("settings.server.ams.searching")
               : t("settings.server.ams.searchNetwork")}
           </Button>
+          ) : null}
           <Button
             type="button"
             variant="secondary"

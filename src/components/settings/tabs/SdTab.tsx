@@ -20,19 +20,10 @@ import {
   getActiveServerProfile,
 } from "@/lib/serverProfile";
 import { cn } from "@/lib/utils";
+import { showAdvanced } from "@/lib/settingsUi";
 import { FolderPathField } from "../FolderPathField";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
-
-function looksLikeMountPath(url: string): boolean {
-  const t = url.trim();
-  if (!t) return false;
-  const lower = t.toLowerCase();
-  if (lower.startsWith("smb://")) return false;
-  if (t.startsWith("\\\\") || t.startsWith("//")) return false;
-  if (t.length >= 2 && /^[a-zA-Z]:/.test(t)) return true;
-  return t.startsWith("/");
-}
 
 function activeProfileBackupTarget(draft: SettingsTabBaseProps["draft"]) {
   const profile = getActiveServerProfile(draft);
@@ -44,8 +35,9 @@ function activeProfileBackupTarget(draft: SettingsTabBaseProps["draft"]) {
   return { profile, url, login, password };
 }
 
-export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProps) {
+export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: SettingsTabBaseProps) {
   const { t } = useTranslation();
+  const advanced = showAdvanced(disclosure);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const openSettings = useUiStore((s) => s.openSettings);
@@ -99,9 +91,6 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
     draft.sd_server_backup_mode === "local_then_server"
       ? "local_then_server"
       : "local_then_server_async";
-
-  const showMountHint =
-    draft.sd_server_backup_enabled && looksLikeMountPath(profileBackupUrl);
 
   return (
     <div className="space-y-4">
@@ -163,6 +152,8 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
               showError(message, t("settings.folder.toastTitle"))
             }
           />
+          {advanced ? (
+          <>
           <div className="space-y-1.5">
             <Label>{t("settings.sd.backup.pcName")}</Label>
             <Input
@@ -197,6 +188,8 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
             />
             {t("settings.sd.backup.clearAfter")}
           </label>
+          </>
+          ) : null}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -266,12 +259,8 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
                   </Button>
                 </div>
               )}
-              {showMountHint ? (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {t("settings.sd.backup.serverUrlMountWarn")}
-                </p>
-              ) : null}
             </div>
+            {advanced ? (
             <div className="space-y-1.5">
               <Label>{t("settings.sd.backup.copyStrategy")}</Label>
               <Select
@@ -290,10 +279,11 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted">
+              <p className="text-xs text-muted" title={t("settings.sd.backup.copyHint")}>
                 {t("settings.sd.backup.copyHint")}
               </p>
             </div>
+            ) : null}
           </div>
         ) : null}
       </SettingsSection>
@@ -302,19 +292,16 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
         title={t("settings.sd.import.title")}
         description={t("settings.sd.import.description")}
       >
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.autoHint")}>
           <Checkbox
             checked={draft.sd_auto_import}
             onCheckedChange={(v) => patchNow("sd_auto_import", v === true)}
           />
           {t("settings.sd.import.auto")}
         </label>
-        <p className="text-[11px] leading-snug text-muted">
-          {t("settings.sd.import.autoHint")}
-        </p>
         <label
           className="flex items-center gap-2 text-sm"
-          title={t("settings.sd.import.ejectTitle")}
+          title={t("settings.sd.import.ejectHint")}
         >
           <Checkbox
             checked={draft.sd_eject_after_workflow}
@@ -324,10 +311,9 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
           />
           {t("settings.sd.import.eject")}
         </label>
-        <p className="text-[11px] leading-snug text-muted">
-          {t("settings.sd.import.ejectHint")}
-        </p>
-        <label className="flex items-center gap-2 text-sm">
+        {advanced ? (
+        <>
+        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.ejectSoundHint")}>
           <Checkbox
             checked={draft.sd_eject_sound_enabled}
             onCheckedChange={(v) =>
@@ -336,9 +322,6 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
           />
           {t("settings.sd.import.ejectSound")}
         </label>
-        <p className="text-[11px] leading-snug text-muted">
-          {t("settings.sd.import.ejectSoundHint")}
-        </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_skip_processed}
@@ -346,7 +329,7 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
           />
           {t("settings.sd.import.skipProcessed")}
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.usbCamerasHint")}>
           <Checkbox
             checked={draft.usb_camera_import_enabled}
             onCheckedChange={(v) =>
@@ -355,9 +338,6 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
           />
           {t("settings.sd.import.usbCameras")}
         </label>
-        <p className="text-[11px] leading-snug text-muted">
-          {t("settings.sd.import.usbCamerasHint")}
-        </p>
         <div
           className={cn(
             "space-y-1.5 pl-1",
@@ -391,12 +371,15 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
               </SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-[11px] leading-snug text-muted">
+          <p className="text-[11px] leading-snug text-muted" title={t("settings.sd.import.usbImportModeHint")}>
             {t("settings.sd.import.usbImportModeHint")}
           </p>
         </div>
+        </>
+        ) : null}
       </SettingsSection>
 
+      {advanced ? (
       <SettingsSection
         title={t("settings.sd.size.title")}
         description={t("settings.sd.size.description")}
@@ -428,8 +411,11 @@ export function SdTab({ draft, patch, patchNow, commitNow }: SettingsTabBaseProp
           />
         </div>
       </SettingsSection>
+      ) : null}
 
+      {advanced ? (
       <p className="text-xs text-muted">{t("settings.sd.footer")}</p>
+      ) : null}
     </div>
   );
 }

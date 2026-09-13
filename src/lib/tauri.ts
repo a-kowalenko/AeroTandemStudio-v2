@@ -158,6 +158,8 @@ export type AppConfig = {
   auto_clear_files_after_creation: boolean;
   /** First-run setup wizard finished or skipped. */
   setup_completed: boolean;
+  /** Settings/Wizard complexity: "simple" | "advanced". */
+  settings_ui_mode: "simple" | "advanced" | string;
   /** UI language: "de" | "en" | "es-MX". */
   ui_language: string;
   /** Include GitHub prerelease (beta) builds in auto-update checks. */

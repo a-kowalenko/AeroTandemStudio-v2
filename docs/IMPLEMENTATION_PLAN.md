@@ -18,6 +18,7 @@
 | `@docs/phases/open/31.10-reconnect-upload-select.md` | Phase 31.10 |
 | `@docs/phases/open/23-usb-mtp.md` | Phase 23.x |
 | `@docs/phases/open/14-ml-photo.md` | Phase 14 (Backlog) |
+| `@docs/phases/open/47-settings-wizard-ux.md` | Phase 47 (Settings + Wizard UX) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/optimization_plan.md` | Nur ein OPT-Paket |
 | `@docs/phases/ARCHIVE.md` | Regression / erledigte Spec |
@@ -98,6 +99,7 @@ Details: `@AGENTS.md`
 | 44.1 | Fotos-Cutter Polish (Range-Handles, Nudge-Icons) | ✅ | ARCHIVE |
 | 45 | QR Dual-Family (`hc_ou`) + AMS Hash-Lookup | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 46 | Speculative Create Staging (Compatible, Intro aus) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
+| 47 | Settings + Setup-Wizard UX Rebuild | ✅ | [open/47](phases/open/47-settings-wizard-ux.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -136,4 +138,4 @@ Nur 23.2h.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-11 (Phase 46 → ARCHIVE).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-13 (Phase 47 erledigt).*

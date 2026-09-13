@@ -107,6 +107,19 @@
       "server": "Servidor",
       "system": "Sistema"
     },
+    "areas": {
+      "workplace": "Espacio de trabajo",
+      "media": "Medios",
+      "connection": "Conexión",
+      "output": "Salida",
+      "maintenance": "Mantenimiento"
+    },
+    "complexity": {
+      "simple": "Simple",
+      "advanced": "Avanzado",
+      "advancedField": "Campo avanzado"
+    },
+    "moreOptions": "Más opciones",
     "general": {
       "appearance": {
         "title": "Apariencia",
@@ -335,7 +348,6 @@
         "serverUrlHint": "Mismo envío SMB que al crear; destino independiente de «aktuell». Usa las credenciales del servidor de subida.",
         "serverUrlTest": "Probar",
         "serverUrlTesting": "Probando…",
-        "serverUrlMountWarn": "Se detectó una ruta de montaje antigua — configura una URL smb:// (sin montaje del Finder).",
         "copyStrategy": "Espejo en servidor",
         "copyAsync": "Segundo plano: local listo → servidor en paralelo",
         "copyMirror": "Espejo: primero local, luego esperar → servidor",
@@ -2068,7 +2080,10 @@
       "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
       "qr": "Las opciones de escaneo QR se pueden configurar después.",
       "server": "El acceso al servidor se puede configurar después.",
-      "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
+      "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
+      "workplace": "Puedes cambiar la apariencia, la zona de salto y el operador después en cualquier momento.",
+      "media": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
+      "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados."
     },
     "crew": {
       "operatorHintMissingRole": "Elige al menos un rol — entonces el nombre se agregará al equipo.",
@@ -2100,8 +2115,11 @@
       "on": "Activado",
       "qrScan": "Escaneo QR",
       "serverMissing": "— falta servidor —",
-      "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración."
+      "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración.",
+      "mode": "Modo",
+      "mediaDefaults": "Valores activos (respaldo, importación, expulsión, QR)"
     },
+    "finishHint": "El ajuste fino está en Configuración.",
     "finish": "Finalizar configuración",
     "skipAll": "Omitir toda la configuración",
     "complete": "Configuración completada.",
@@ -2112,10 +2130,21 @@
       "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
-      "appearance": "Bienvenido a Aero Tandem Studio. En pocos pasos puedes definir idioma, apariencia, almacenamiento y comportamiento de importación. Todo lo demás se puede ajustar después en la configuración.",
+      "appearance": "Bienvenido a Aero Tandem Studio. Define apariencia, zona de salto y operador. Todo lo demás se puede ajustar después en la configuración.",
       "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
-      "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento. Aquí también puedes definir la zona de entrega predeterminada.",
-      "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después."
+      "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
+      "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después.",
+      "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
+      "media": "Define respaldo, importación automática, expulsión y escaneo QR. Más detalles se pueden ajustar después.",
+      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones.",
+      "workplaceSimple": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
+      "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después."
+    },
+    "mode": {
+      "simpleTitle": "Simple",
+      "simpleBody": "Configuración rápida con valores recomendados.",
+      "customTitle": "Personalizado",
+      "customBody": "Define todas las opciones tú mismo."
     },
     "operatorHint": "Tu nombre se usará como favorito Yo en los menús del equipo.",
     "operatorMultiRole": "Si hay varios roles o ninguno, no se conservará nada automáticamente al restablecer la sesión.",
@@ -2132,19 +2161,27 @@
     "standardFolderTitle": "Carpeta predeterminada",
     "steps": {
       "appearance": "Bienvenida",
+      "mode": "Modo de configuración",
+      "workplace": "Espacio de trabajo",
       "storage": "Almacenamiento",
       "import": "Importación",
+      "media": "Medios",
       "upload": "Subida",
+      "connection": "Conexión",
+      "output": "Salida",
       "finish": "Listo"
     },
     "upload": {
       "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento.",
       "amsHint": "Buscamos automáticamente el puente de reservas. Puedes aplicar las rutas encontradas o configurar el servidor manualmente.",
+      "amsHintSimple": "Toca un servidor encontrado, introduce el token y conéctate.",
       "connectAndApply": "Conectar con el servidor",
       "connectRequired": "Conéctate primero al servidor.",
       "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
+      "connectedSimple": "Conectado. Puedes continuar.",
       "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
       "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
+      "noneFoundSimple": "No se encontró servidor. Busca de nuevo u omite este paso — puedes conectar después en ajustes.",
       "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
       "pathsApplied": "Rutas aplicadas: {{primary}}",
       "presetCaldenHint": "URL predeterminada para Calden",

@@ -10,14 +10,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useConfigStore } from "@/store/configStore";
 import {
   useUiStore,
   type SettingsFocusTarget,
-  type SettingsTab,
 } from "@/store/uiStore";
+import {
+  FOCUS_TARGET_AREA,
+  normalizeSettingsUiMode,
+  resolveSettingsArea,
+  type SettingsArea,
+  type SettingsDisclosure,
+} from "@/lib/settingsUi";
+import { ComplexityToggle } from "./ComplexityToggle";
+import { SettingsNav } from "./SettingsNav";
 import { useHistoryStore } from "@/store/historyStore";
 import { useCrewEditor } from "./hooks/useCrewEditor";
 import { useReleaseList } from "./hooks/useReleaseList";
@@ -70,16 +77,6 @@ type Props = {
   /** Create / encode / export in progress (App local busy). */
   sessionBusy?: boolean;
 };
-
-const TAB_ITEMS: { value: SettingsTab; labelKey: string }[] = [
-  { value: "allgemein", labelKey: "settings.tabs.general" },
-  { value: "crew", labelKey: "settings.tabs.crew" },
-  { value: "qr", labelKey: "settings.tabs.qr" },
-  { value: "encoding", labelKey: "settings.tabs.encoding" },
-  { value: "sd", labelKey: "settings.tabs.sd" },
-  { value: "server", labelKey: "settings.tabs.server" },
-  { value: "system", labelKey: "settings.tabs.system" },
-];
 
 export function SettingsDialog({
   open,
@@ -153,8 +150,9 @@ export function SettingsDialog({
   useEffect(() => {
     if (!open || !settingsFocus || !draft) return;
 
-    if (settingsTab !== "server") {
-      setSettingsTab("server");
+    const focusArea = FOCUS_TARGET_AREA[settingsFocus];
+    if (resolveSettingsArea(settingsTab) !== focusArea) {
+      setSettingsTab(focusArea);
     }
 
     const target = settingsFocus;
@@ -349,7 +347,7 @@ export function SettingsDialog({
         }}
       >
         <DialogContent
-          className="flex h-[min(85vh,42rem)] max-w-2xl flex-col gap-4 overflow-visible"
+          className="flex h-[min(90vh,48rem)] max-w-4xl flex-col gap-4 overflow-visible"
           aria-busy={showPersistSpinner || undefined}
           onPointerDownOutside={(e) => {
             const el = e.target as HTMLElement | null;
@@ -386,72 +384,84 @@ export function SettingsDialog({
           }}
         >
           <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              {t("settings.dialog.title")}
-              {showPersistSpinner ? (
-                <Loader2
-                  className="h-3.5 w-3.5 animate-spin text-muted"
-                  aria-hidden
-                />
-              ) : null}
+            <DialogTitle className="flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                {t("settings.dialog.title")}
+                {showPersistSpinner ? (
+                  <Loader2
+                    className="h-3.5 w-3.5 animate-spin text-muted"
+                    aria-hidden
+                  />
+                ) : null}
+              </span>
+              <ComplexityToggle
+                value={normalizeSettingsUiMode(draft.settings_ui_mode)}
+                onChange={(mode) => patchNow("settings_ui_mode", mode)}
+                simpleLabel={t("settings.complexity.simple")}
+                advancedLabel={t("settings.complexity.advanced")}
+              />
             </DialogTitle>
             <DialogDescription className="sr-only">
               {t("settings.dialog.description")}
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs
-            value={settingsTab}
-            onValueChange={(v) => setSettingsTab(v as SettingsTab)}
-            className="flex min-h-0 flex-1 flex-col overflow-hidden"
-          >
-            <TabsList className="flex h-auto shrink-0 flex-wrap gap-1">
-              {TAB_ITEMS.map(({ value, labelKey }) => (
-                <TabsTrigger key={value} value={value}>
-                  {t(labelKey)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
+          {(() => {
+            const area = resolveSettingsArea(settingsTab);
+            const disclosure: SettingsDisclosure = {
+              uiMode: normalizeSettingsUiMode(draft.settings_ui_mode),
+              revealedFocus: flashFocus,
+            };
+            const areaProps = { ...tabProps, disclosure };
+            return (
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <SettingsNav
+              value={area}
+              onChange={(next: SettingsArea) => setSettingsTab(next)}
+            />
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-1 pr-5 [scrollbar-gutter:stable]">
-              <TabsContent value="allgemein" className="mt-4">
-                <GeneralTab {...tabProps} />
-              </TabsContent>
-              <TabsContent value="crew" className="mt-4">
-                <CrewTab {...tabProps} crewEditor={crewEditor} />
-              </TabsContent>
-              <TabsContent value="qr" className="mt-4">
-                <QrTab {...tabProps} />
-              </TabsContent>
-              <TabsContent value="encoding" className="mt-4">
-                <EncodingTab {...tabProps} />
-              </TabsContent>
-              <TabsContent value="sd" className="mt-4">
-                <SdTab {...tabProps} />
-              </TabsContent>
-              <TabsContent value="server" className="mt-4">
-                <ServerTab {...tabProps} flashFocus={flashFocus} />
-              </TabsContent>
-              <TabsContent value="system" className="mt-4">
-                <SystemTab
-                  {...tabProps}
-                  saving={saving}
-                  sessionBusy={sessionBusy}
-                  dangerClearedNonce={dangerClearedNonce}
-                  cacheClearedNonce={cacheClearedNonce}
-                  cacheClearing={cacheClearing}
-                  onRequestUpdateCheck={onRequestUpdateCheck}
-                  onRequestReset={() => setResetConfirmOpen(true)}
-                  onRequestCacheClear={onRequestCacheClear}
-                  onRequestDangerConfirm={setDangerConfirm}
-                  releaseList={releaseList}
-                  onRequestVersionSwitch={onRequestVersionSwitch}
-                  installBlockedReason={installBlockedReason}
-                  platformHint={platformHint}
-                />
-              </TabsContent>
+              <div className="mt-2 space-y-4">
+                {area === "workplace" ? (
+                  <>
+                    <GeneralTab {...areaProps} />
+                    <CrewTab {...areaProps} crewEditor={crewEditor} />
+                  </>
+                ) : null}
+                {area === "media" ? (
+                  <>
+                    <SdTab {...areaProps} />
+                    <QrTab {...areaProps} />
+                  </>
+                ) : null}
+                {area === "connection" ? (
+                  <ServerTab {...areaProps} flashFocus={flashFocus} />
+                ) : null}
+                {area === "output" ? (
+                  <EncodingTab {...areaProps} />
+                ) : null}
+                {area === "maintenance" ? (
+                  <SystemTab
+                    {...areaProps}
+                    saving={saving}
+                    sessionBusy={sessionBusy}
+                    dangerClearedNonce={dangerClearedNonce}
+                    cacheClearedNonce={cacheClearedNonce}
+                    cacheClearing={cacheClearing}
+                    onRequestUpdateCheck={onRequestUpdateCheck}
+                    onRequestReset={() => setResetConfirmOpen(true)}
+                    onRequestCacheClear={onRequestCacheClear}
+                    onRequestDangerConfirm={setDangerConfirm}
+                    releaseList={releaseList}
+                    onRequestVersionSwitch={onRequestVersionSwitch}
+                    installBlockedReason={installBlockedReason}
+                    platformHint={platformHint}
+                  />
+                ) : null}
+              </div>
             </div>
-          </Tabs>
+          </div>
+            );
+          })()}
 
           <div className="shrink-0">
             <p className="text-center text-xs text-muted sm:text-left">

@@ -102,3 +102,33 @@ export async function applyDefaultMediaDir(
 
   return { ensured, usedAlternate, computerName };
 }
+
+export type SilentDefaultMediaDirsResult = {
+  speicherort: string;
+  sd_backup_folder: string;
+  computerName: string;
+};
+
+/**
+ * Create/adopt both standard folders without confirm dialogs.
+ * Uses the proposed default root (no alternate-volume prompt).
+ */
+export async function applyDefaultMediaDirsSilent(): Promise<SilentDefaultMediaDirsResult> {
+  const proposal = await proposeDefaultMediaDirs();
+  const root = proposal.root?.trim() ? proposal.root : null;
+  const [jobs, backup] = await Promise.all([
+    ensureDefaultMediaDir("speicherort", root),
+    ensureDefaultMediaDir("sd_backup_folder", root),
+  ]);
+  let computerName = "";
+  try {
+    computerName = (await getAppInfo()).computer_name || "";
+  } catch {
+    computerName = "";
+  }
+  return {
+    speicherort: jobs.path,
+    sd_backup_folder: backup.path,
+    computerName,
+  };
+}

@@ -266,6 +266,9 @@ pub struct AppConfig {
     /// First-run setup wizard finished (or skipped). Reset clears this.
     #[serde(default)]
     pub setup_completed: bool,
+    /// Settings/Wizard complexity: `"simple"` | `"advanced"`.
+    #[serde(default = "default_settings_ui_mode")]
+    pub settings_ui_mode: String,
     /// UI language: `"de"` | `"en"` | `"es-MX"`.
     #[serde(default = "default_ui_language")]
     pub ui_language: String,
@@ -697,6 +700,10 @@ fn default_log_min_level() -> String {
     crate::storage::logging::default_min_level_name()
 }
 
+fn default_settings_ui_mode() -> String {
+    "simple".into()
+}
+
 impl AppConfig {
     /// Canonicalize `manual_entry_mode` and keep `oldschool_mode` in sync.
     pub fn sync_manual_entry_mode(&mut self) {
@@ -741,6 +748,16 @@ impl AppConfig {
     pub fn sync_log_min_level(&mut self) {
         self.log_min_level =
             crate::storage::logging::normalize_min_level_name(&self.log_min_level);
+    }
+
+    /// Canonicalize `settings_ui_mode` to `simple` | `advanced`.
+    pub fn sync_settings_ui_mode(&mut self) {
+        self.settings_ui_mode = if self.settings_ui_mode.trim().eq_ignore_ascii_case("advanced")
+        {
+            "advanced".into()
+        } else {
+            "simple".into()
+        };
     }
 
     /// Canonicalize `sd_server_backup_mode` (maps deprecated `direct_dual_write`).
@@ -1018,6 +1035,7 @@ impl Default for AppConfig {
             keep_videospringer_on_session_reset: false,
             auto_clear_files_after_creation: false,
             setup_completed: false,
+            settings_ui_mode: default_settings_ui_mode(),
             ui_language: default_ui_language(),
             beta_updates_enabled: false,
             log_min_level: default_log_min_level(),
@@ -1073,10 +1091,17 @@ pub fn merge_with_defaults(partial: Value) -> Result<AppConfig, ConfigError> {
 
 /// Like [`merge_with_defaults`], plus whether persisted config should be rewritten.
 pub fn merge_with_defaults_ex(partial: Value) -> Result<(AppConfig, bool), ConfigError> {
+    let had_settings_ui_mode = partial
+        .as_object()
+        .map(|o| o.contains_key("settings_ui_mode"))
+        .unwrap_or(false);
     let mut cfg = merge_with_defaults_core(partial)?;
     let crew_dirty = merge_default_crew(&mut cfg);
     let preset_dirty = apply_fleet_settings_preset_v1(&mut cfg);
-    Ok((cfg, crew_dirty || preset_dirty))
+    // Rewrite only when migration leaves a non-default mode (legacy completed → advanced).
+    let ui_mode_dirty =
+        !had_settings_ui_mode && cfg.settings_ui_mode != default_settings_ui_mode();
+    Ok((cfg, crew_dirty || preset_dirty || ui_mode_dirty))
 }
 
 fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
@@ -1092,6 +1117,9 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
         .unwrap_or(false);
     let had_fleet_preset = obj
         .map(|o| o.contains_key("settings_fleet_preset_v1_applied"))
+        .unwrap_or(false);
+    let had_settings_ui_mode = obj
+        .map(|o| o.contains_key("settings_ui_mode"))
         .unwrap_or(false);
     let mut defaults = serde_json::to_value(AppConfig::default())?;
     if let (Value::Object(base), Value::Object(mut overlay)) = (&mut defaults, partial) {
@@ -1133,12 +1161,21 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
         // Existing installs lack the key; defaults JSON would otherwise mark applied.
         cfg.settings_fleet_preset_v1_applied = false;
     }
+    if !had_settings_ui_mode {
+        // Legacy operators keep the full Settings surface; first-run starts simple.
+        cfg.settings_ui_mode = if cfg.setup_completed {
+            "advanced".into()
+        } else {
+            "simple".into()
+        };
+    }
     cfg.sync_manual_entry_mode();
     cfg.sync_intro_mux_mode();
     cfg.sync_usb_import_mode();
     cfg.sync_body_concat_mode();
     cfg.sync_ui_language();
     cfg.sync_log_min_level();
+    cfg.sync_settings_ui_mode();
     cfg.sync_sd_server_backup_mode();
     cfg.sync_auto_cleanup_retention();
     cfg.sync_server_profiles();
@@ -1254,6 +1291,7 @@ impl ConfigStore {
         normalized.sync_body_concat_mode();
         normalized.sync_ui_language();
         normalized.sync_log_min_level();
+        normalized.sync_settings_ui_mode();
         normalized.sync_sd_server_backup_mode();
         normalized.push_active_profile_from_flat();
         normalized.sync_server_profiles();
@@ -1320,6 +1358,7 @@ mod tests {
         assert_eq!(cfg.dauer, 7);
         assert!(!cfg.intro_enabled);
         assert!(!cfg.setup_completed);
+        assert_eq!(cfg.settings_ui_mode, "simple");
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "reencode");
         assert!(cfg.speculative_create_enabled);
@@ -1498,6 +1537,57 @@ mod tests {
         }))
         .unwrap();
         assert!(!explicit.setup_completed);
+    }
+
+    #[test]
+    fn settings_ui_mode_default_is_simple() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.settings_ui_mode, "simple");
+        assert!(!cfg.setup_completed);
+    }
+
+    #[test]
+    fn settings_ui_mode_first_run_is_simple() {
+        let cfg = merge_with_defaults(serde_json::json!({ "ort": "Calden" })).unwrap();
+        assert!(!cfg.setup_completed);
+        assert_eq!(cfg.settings_ui_mode, "simple");
+    }
+
+    #[test]
+    fn settings_ui_mode_legacy_completed_becomes_advanced() {
+        let cfg = merge_with_defaults(serde_json::json!({
+            "setup_completed": true,
+            "speicherort": "D:/Jobs"
+        }))
+        .unwrap();
+        assert_eq!(cfg.settings_ui_mode, "advanced");
+    }
+
+    #[test]
+    fn settings_ui_mode_inferred_setup_completed_is_advanced() {
+        let cfg = merge_with_defaults(serde_json::json!({
+            "speicherort": "D:/Jobs"
+        }))
+        .unwrap();
+        assert!(cfg.setup_completed);
+        assert_eq!(cfg.settings_ui_mode, "advanced");
+    }
+
+    #[test]
+    fn settings_ui_mode_explicit_value_is_preserved() {
+        let simple = merge_with_defaults(serde_json::json!({
+            "setup_completed": true,
+            "settings_ui_mode": "simple"
+        }))
+        .unwrap();
+        assert_eq!(simple.settings_ui_mode, "simple");
+
+        let advanced = merge_with_defaults(serde_json::json!({
+            "setup_completed": false,
+            "settings_ui_mode": "advanced"
+        }))
+        .unwrap();
+        assert_eq!(advanced.settings_ui_mode, "advanced");
     }
 
     #[test]

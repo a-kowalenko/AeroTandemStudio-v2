@@ -8,7 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/ui/combobox";
 import { Switch } from "@/components/ui/switch";
-import { applyDefaultMediaDir } from "@/lib/defaultMediaDirs";
+import {
+  applyDefaultMediaDir,
+  applyDefaultMediaDirsSilent,
+} from "@/lib/defaultMediaDirs";
 import { composeSdPcName, isAutoSdPcName, resolveSdPcName } from "@/lib/sdPcName";
 import type { AppConfig, DefaultMediaDirKind, DefaultMediaDirsProposal } from "@/lib/tauri";
 import {
@@ -34,6 +37,24 @@ import {
   switchServerProfile,
 } from "@/lib/serverProfile";
 import { WizardUploadServerStep } from "@/components/WizardUploadServerStep";
+import { EncodingTab } from "@/components/settings/tabs/EncodingTab";
+import { SettingsAccordion } from "@/components/settings/SettingsAccordion";
+import {
+  applySimpleWizardMediaDefaults,
+  isWizardStepSkippable,
+  normalizeSettingsUiMode,
+  wizardStepsForMode,
+  WIZARD_STEP_HINT_KEY,
+  WIZARD_STEP_TITLE_KEY,
+  type WizardStepId,
+} from "@/lib/settingsUi";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
 
@@ -41,6 +62,17 @@ function pathsEqual(a: string, b: string): boolean {
   const norm = (p: string) =>
     p.trim().replace(/[/\\]+$/, "").replace(/\\/g, "/").toLowerCase();
   return Boolean(a.trim()) && norm(a) === norm(b);
+}
+
+function adoptSilentDirResult(
+  cfg: AppConfig,
+  result: { speicherort: string; sd_backup_folder: string },
+): AppConfig {
+  return {
+    ...cfg,
+    speicherort: cfg.speicherort.trim() || result.speicherort,
+    sd_backup_folder: cfg.sd_backup_folder.trim() || result.sd_backup_folder,
+  };
 }
 
 function StandardDirButton({
@@ -247,23 +279,7 @@ function FolderDirField({
   );
 }
 
-const STEPS = [
-  "setupWizard.steps.appearance",
-  "setupWizard.steps.storage",
-  "setupWizard.steps.import",
-  "setupWizard.steps.upload",
-  "setupWizard.steps.finish",
-] as const;
-
 /** Steps that can be skipped individually (not Fertig). */
-const SKIPPABLE_STEPS = new Set([0, 1, 2, 3]);
-
-const STEP_SKIP_HINT: Record<number, string> = {
-  0: "setupWizard.stepHint.appearance",
-  1: "setupWizard.stepHint.storage",
-  2: "setupWizard.stepHint.import",
-  3: "setupWizard.stepHint.server",
-};
 
 type Props = {
   open: boolean;
@@ -300,7 +316,9 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<AppConfig | null>(null);
-  const [skippedSteps, setSkippedSteps] = useState<Set<number>>(() => new Set());
+  const [skippedSteps, setSkippedSteps] = useState<Set<WizardStepId>>(
+    () => new Set(),
+  );
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [uploadConnectNudge, setUploadConnectNudge] = useState(0);
   const [finishing, setFinishing] = useState(false);
@@ -317,15 +335,10 @@ export function SetupWizard({ open, onComplete }: Props) {
   useEffect(() => {
     if (!open || !config) return;
     let cancelled = false;
-    // Wizard defaults: QR auto-scan for videos & photos on.
     const next = switchServerProfile(
-      ensureWizardServerProfiles({
-        ...config,
-        qr_check_enabled: true,
-        photo_qr_check_enabled: true,
-        sd_eject_after_workflow: true,
-        upload_to_server: true,
-      }),
+      ensureWizardServerProfiles(
+        applySimpleWizardMediaDefaults({ ...config }),
+      ),
       DEFAULT_SERVER_PROFILE_ID,
     );
     const member = next.operator_name.trim()
@@ -385,6 +398,23 @@ export function SetupWizard({ open, onComplete }: Props) {
       .catch(() => {
         if (!cancelled) setMediaDirsProposal(null);
       });
+    if (normalizeSettingsUiMode(next.settings_ui_mode) === "simple") {
+      void applyDefaultMediaDirsSilent()
+        .then((result) => {
+          if (cancelled) return;
+          setDraft((prev) => (prev ? adoptSilentDirResult(prev, result) : prev));
+          if (result.computerName) {
+            setComputerName((host) => host || result.computerName);
+          }
+          setDefaultDirDone({
+            speicherort: true,
+            sd_backup_folder: true,
+          });
+        })
+        .catch(() => {
+          /* paths stay empty; finish retries */
+        });
+    }
 
     return () => {
       cancelled = true;
@@ -620,21 +650,27 @@ export function SetupWizard({ open, onComplete }: Props) {
     setDefaultDirDone((prev) => ({ ...prev, [kind]: true }));
   }
 
-  function collectFieldErrors(index: number): FieldErrors {
+  function collectFieldErrors(id: WizardStepId): FieldErrors {
     const errors: FieldErrors = {};
     if (!draft) return errors;
-    if (index === 0 && !draft.operator_name.trim()) {
+    if (id === "workplace" && !draft.operator_name.trim()) {
       errors.operator_name = t("setupWizard.operatorRequired");
     }
-    if (index === 1 && !draft.speicherort.trim()) {
+    if (id === "storage" && !draft.speicherort.trim()) {
       errors.speicherort = t("setupWizard.storage.pickFolderError");
     }
-    if (index === 2 && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
+    if (id === "media" && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
       errors.sd_backup_folder =
         t("setupWizard.sd.pickFolderOrDisableAutoBackup");
     }
-    if (index === 3 && draft.upload_to_server && !serverConnected) {
-      errors.server_connection = t("setupWizard.upload.connectRequired");
+    if (id === "connection" && draft.upload_to_server) {
+      const simple =
+        normalizeSettingsUiMode(draft.settings_ui_mode) === "simple";
+      const amsLinked = Boolean(draft.ams_bridge_last_ok_url.trim());
+      const ready = serverConnected || (simple && amsLinked);
+      if (!ready) {
+        errors.server_connection = t("setupWizard.upload.connectRequired");
+      }
     }
     return errors;
   }
@@ -643,27 +679,31 @@ export function SetupWizard({ open, onComplete }: Props) {
     return Object.keys(errors).length > 0;
   }
 
-  function applyValidationErrors(errors: FieldErrors, index: number) {
+  function applyValidationErrors(errors: FieldErrors, id: WizardStepId) {
     setFieldErrors(errors);
-    if (errors.server_connection && index === 3) {
+    if (errors.server_connection && id === "connection") {
       setUploadConnectNudge((n) => n + 1);
     }
   }
 
   function goNext() {
-    const errors = collectFieldErrors(step);
+    if (!draft) return;
+    const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
+    const steps = wizardStepsForMode(uiMode);
+    const stepId = steps[step] ?? "mode";
+    const errors = collectFieldErrors(stepId);
     if (hasFieldErrors(errors)) {
-      applyValidationErrors(errors, step);
+      applyValidationErrors(errors, stepId);
       return;
     }
     setFieldErrors({});
     setSkippedSteps((prev) => {
-      if (!prev.has(step)) return prev;
+      if (!prev.has(stepId)) return prev;
       const next = new Set(prev);
-      next.delete(step);
+      next.delete(stepId);
       return next;
     });
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    setStep((s) => Math.min(s + 1, steps.length - 1));
   }
 
   function goBack() {
@@ -673,9 +713,13 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   /** Advance without validation; clear incomplete optional state for this step. */
   function skipCurrentStep() {
-    if (!SKIPPABLE_STEPS.has(step) || saving || finishing) return;
+    if (!draft || saving || finishing) return;
+    const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
+    const steps = wizardStepsForMode(uiMode);
+    const stepId = steps[step] ?? "mode";
+    if (!isWizardStepSkippable(stepId)) return;
 
-    if (step === 2) {
+    if (stepId === "media") {
       setDraft((prev) => {
         if (!prev) return prev;
         if (!prev.sd_auto_backup || prev.sd_backup_folder.trim()) return prev;
@@ -688,8 +732,8 @@ export function SetupWizard({ open, onComplete }: Props) {
     }
 
     setFieldErrors({});
-    setSkippedSteps((prev) => new Set(prev).add(step));
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
+    setSkippedSteps((prev) => new Set(prev).add(stepId));
+    setStep((s) => Math.min(s + 1, steps.length - 1));
   }
 
   function prepareForSave(markCompleted: boolean): AppConfig | null {
@@ -709,8 +753,19 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (!draft || finishing) return;
     setFinishing(true);
     try {
-      const toSave = prepareForSave(markCompleted);
+      let toSave = prepareForSave(markCompleted);
       if (!toSave) return;
+      if (normalizeSettingsUiMode(toSave.settings_ui_mode) === "simple") {
+        toSave = applySimpleWizardMediaDefaults(toSave);
+        if (!toSave.speicherort.trim() || !toSave.sd_backup_folder.trim()) {
+          try {
+            const result = await applyDefaultMediaDirsSilent();
+            toSave = adoptSilentDirResult(toSave, result);
+          } catch {
+            /* keep empty paths — settings can fill them later */
+          }
+        }
+      }
       const saved = await persist(toSave);
       if (!saved) {
         showError(t("setupWizard.saveFailed"), t("setupWizard.steps.finish"));
@@ -739,12 +794,18 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   function finishFromSummary() {
-    const checks = [0, 1, 2, 3].filter((i) => !skippedSteps.has(i));
-    for (const i of checks) {
-      const errors = collectFieldErrors(i);
+    if (!draft) return;
+    const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
+    const steps = wizardStepsForMode(uiMode);
+    const checks = steps.filter(
+      (id) => isWizardStepSkippable(id) && !skippedSteps.has(id),
+    );
+    for (const id of checks) {
+      const errors = collectFieldErrors(id);
       if (hasFieldErrors(errors)) {
-        applyValidationErrors(errors, i);
-        setStep(i);
+        applyValidationErrors(errors, id);
+        const idx = steps.indexOf(id);
+        if (idx >= 0) setStep(idx);
         return;
       }
     }
@@ -752,9 +813,11 @@ export function SetupWizard({ open, onComplete }: Props) {
   }
 
   const busy = saving || finishing;
-
-  const canSkipStep = SKIPPABLE_STEPS.has(step);
-  const skipHint = STEP_SKIP_HINT[step];
+  const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
+  const steps = wizardStepsForMode(uiMode);
+  const stepId = steps[Math.min(step, steps.length - 1)] ?? "mode";
+  const canSkipStep = isWizardStepSkippable(stepId);
+  const skipHint = WIZARD_STEP_HINT_KEY[stepId];
 
   return (
     <div
@@ -772,36 +835,36 @@ export function SetupWizard({ open, onComplete }: Props) {
           <p className="text-xs uppercase tracking-wide text-muted">
             {t("setupWizard.progress", {
               current: step + 1,
-              total: STEPS.length,
+              total: steps.length,
             })}
           </p>
           <h2
             id="setup-wizard-title"
             className="mt-1 font-display text-xl font-bold tracking-tight text-primary"
           >
-            {t(STEPS[step])}
+            {t(WIZARD_STEP_TITLE_KEY[stepId])}
           </h2>
           <div
             className="mt-3 flex h-2 items-center gap-1.5"
             role="progressbar"
             aria-valuemin={1}
-            aria-valuemax={STEPS.length}
+            aria-valuemax={steps.length}
             aria-valuenow={step + 1}
             aria-label={t("setupWizard.progressAria", {
               current: step + 1,
-              total: STEPS.length,
+              total: steps.length,
             })}
           >
-            {STEPS.map((name, i) => (
+            {steps.map((id, i) => (
               <span
-                key={name}
-                title={t(name)}
+                key={id}
+                title={t(WIZARD_STEP_TITLE_KEY[id])}
                 aria-current={i === step ? "step" : undefined}
                 className={cn(
                   "flex-1 self-center rounded-full transition-[height,background-color,box-shadow] duration-300 ease-out",
                   i === step
                     ? "h-2 bg-primary shadow-[inset_0_0_0_1px] shadow-primary/40"
-                    : skippedSteps.has(i)
+                    : skippedSteps.has(id)
                       ? "h-1.5 bg-primary/30"
                       : i < step
                         ? "h-1.5 bg-primary/55"
@@ -816,11 +879,8 @@ export function SetupWizard({ open, onComplete }: Props) {
           ref={stepContentRef}
           className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5"
         >
-          {step === 0 ? (
+          {stepId === "mode" ? (
             <>
-              <p className="text-sm text-foreground">
-                {t("setupWizard.intro.appearance")}
-              </p>
               <div className="space-y-2">
                 <Label>{t("common.labels.language")}</Label>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -845,6 +905,84 @@ export function SetupWizard({ open, onComplete }: Props) {
                   ))}
                 </div>
               </div>
+              <p className="text-sm text-foreground">
+                {t("setupWizard.intro.mode")}
+              </p>
+              <div className="grid grid-cols-2 items-stretch gap-3">
+                {(
+                  [
+                    {
+                      mode: "simple" as const,
+                      titleKey: "setupWizard.mode.simpleTitle",
+                      bodyKey: "setupWizard.mode.simpleBody",
+                    },
+                    {
+                      mode: "advanced" as const,
+                      titleKey: "setupWizard.mode.customTitle",
+                      bodyKey: "setupWizard.mode.customBody",
+                    },
+                  ] as const
+                ).map(({ mode, titleKey, bodyKey }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      setDraft((prev) => {
+                        if (!prev) return prev;
+                        const next = { ...prev, settings_ui_mode: mode };
+                        return mode === "simple"
+                          ? applySimpleWizardMediaDefaults(next)
+                          : next;
+                      });
+                      if (mode === "simple") {
+                        void applyDefaultMediaDirsSilent()
+                          .then((result) => {
+                            setDraft((prev) =>
+                              prev ? adoptSilentDirResult(prev, result) : prev,
+                            );
+                            if (result.computerName) {
+                              setComputerName(
+                                (host) => host || result.computerName,
+                              );
+                            }
+                            setDefaultDirDone({
+                              speicherort: true,
+                              sd_backup_folder: true,
+                            });
+                          })
+                          .catch(() => {
+                            /* finish retries */
+                          });
+                      }
+                    }}
+                    className={cn(
+                      "flex h-full flex-col rounded-lg border px-4 py-4 text-left transition-colors",
+                      uiMode === mode
+                        ? "border-primary bg-primary-soft text-primary"
+                        : "border-border bg-background text-foreground hover:bg-muted/30",
+                    )}
+                  >
+                    <p className="min-h-[2.5rem] text-sm font-semibold leading-5">
+                      {t(titleKey)}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted">
+                      {t(bodyKey)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {stepId === "workplace" ? (
+            <>
+              <p className="text-sm text-foreground">
+                {t(
+                  uiMode === "simple"
+                    ? "setupWizard.intro.workplaceSimple"
+                    : "setupWizard.intro.appearance",
+                )}
+              </p>
               <div className="space-y-2">
                 <Label>{t("settings.general.appearance.title")}</Label>
                 <div className="grid grid-cols-2 gap-2">
@@ -879,6 +1017,14 @@ export function SetupWizard({ open, onComplete }: Props) {
                   ))}
                 </div>
               </div>
+              <Combobox
+                label={t("settings.general.storage.defaultDropzone")}
+                value={draft.ort}
+                onChange={(v) => patch("ort", v)}
+                options={ORT_OPTIONS}
+                placeholder={t("common.labels.dropzonePlaceholder")}
+                listZIndex={200}
+              />
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <Combobox
                   label={t("settings.crew.who.label")}
@@ -924,7 +1070,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             </>
           ) : null}
 
-          {step === 1 ? (
+          {stepId === "storage" ? (
             <>
               <p className="text-sm text-muted">
                 {t("setupWizard.intro.storage")}
@@ -951,22 +1097,14 @@ export function SetupWizard({ open, onComplete }: Props) {
                   onUseStandard={() => onUseExistingStandardDir("speicherort")}
                   error={fieldErrors.speicherort}
                 />
-                <Combobox
-                  label={t("settings.general.storage.defaultDropzone")}
-                  value={draft.ort}
-                  onChange={(v) => patch("ort", v)}
-                  options={ORT_OPTIONS}
-                  placeholder={t("common.labels.dropzonePlaceholder")}
-                  listZIndex={200}
-                />
               </div>
             </>
           ) : null}
 
-          {step === 2 ? (
+          {stepId === "media" ? (
             <>
               <p className="text-sm text-muted">
-                {t("setupWizard.intro.import")}
+                {t("setupWizard.intro.media")}
               </p>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
@@ -1027,39 +1165,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                     }
                     error={fieldErrors.sd_backup_folder}
                   />
-                  <label
-                    className={cn(
-                      "flex items-center gap-2 text-sm",
-                      !draft.sd_auto_backup && "pointer-events-none",
-                    )}
-                    title={
-                      draft.sd_auto_backup
-                        ? t("settings.sd.backup.clearAfterTitleOn")
-                        : t("settings.sd.backup.clearAfterTitleOff")
-                    }
-                  >
-                    <Checkbox
-                      checked={
-                        draft.sd_clear_after_backup && draft.sd_auto_backup
-                      }
-                      disabled={!draft.sd_auto_backup}
-                      onCheckedChange={(v) =>
-                        patch("sd_clear_after_backup", v === true)
-                      }
-                    />
-                    {t("settings.sd.backup.clearAfter")}
-                  </label>
-                  {draft.sd_auto_backup && computerName ? (
-                    <p className="text-[11px] leading-snug text-muted">
-                      {t("setupWizard.import.backupPcNameHint", {
-                        name: resolveSdPcName(
-                          draft.sd_pc_name,
-                          computerName,
-                          draft.operator_name,
-                        ),
-                      })}
-                    </p>
-                  ) : null}
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1110,63 +1215,251 @@ export function SetupWizard({ open, onComplete }: Props) {
                   {t("setupWizard.import.qrHint")}
                 </p>
               </div>
-            </>
-          ) : null}
-
-          {step === 3 ? (
-            <>
-              <p className="text-sm text-muted">
-                {t("setupWizard.intro.upload")}
-              </p>
-              <p className="text-xs leading-snug text-muted/90">
-                {t("setupWizard.upload.optionalNote")}
-              </p>
-              <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.upload_to_server}
-                    onCheckedChange={(v) =>
-                      patch("upload_to_server", v === true)
+              {uiMode === "advanced" ? (
+                <SettingsAccordion title={t("settings.moreOptions")}>
+                  <label
+                    className={cn(
+                      "flex items-center gap-2 text-sm",
+                      !draft.sd_auto_backup && "pointer-events-none",
+                    )}
+                    title={
+                      draft.sd_auto_backup
+                        ? t("settings.sd.backup.clearAfterTitleOn")
+                        : t("settings.sd.backup.clearAfterTitleOff")
                     }
-                  />
-                  {t("settings.server.upload.afterCreate")}
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={draft.sd_server_backup_enabled}
-                    onCheckedChange={(v) =>
-                      patch("sd_server_backup_enabled", v === true)
-                    }
-                  />
-                  {t("settings.sd.backup.secondPath")}
-                </label>
-              </div>
-              {!draft.upload_to_server ? (
-                <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
-                  {t("setupWizard.upload.disabledHint")}
-                </div>
-              ) : (
-                <WizardUploadServerStep
-                  draft={draft}
-                  setDraft={(next) => setDraft(next)}
-                  disabled={!draft.upload_to_server}
-                  connectNudge={uploadConnectNudge}
-                  onError={(message, title) => showError(message, title)}
-                  onSuccess={(message, title) => showSuccess(message, title)}
-                />
-              )}
-              {fieldErrors.server_connection ? (
-                <p className="text-[11px] leading-snug text-destructive" role="alert">
-                  {fieldErrors.server_connection}
-                </p>
+                  >
+                    <Checkbox
+                      checked={
+                        draft.sd_clear_after_backup && draft.sd_auto_backup
+                      }
+                      disabled={!draft.sd_auto_backup}
+                      onCheckedChange={(v) =>
+                        patch("sd_clear_after_backup", v === true)
+                      }
+                    />
+                    {t("settings.sd.backup.clearAfter")}
+                  </label>
+                  {draft.sd_auto_backup && computerName ? (
+                    <p className="text-[11px] leading-snug text-muted">
+                      {t("setupWizard.import.backupPcNameHint", {
+                        name: resolveSdPcName(
+                          draft.sd_pc_name,
+                          computerName,
+                          draft.operator_name,
+                        ),
+                      })}
+                    </p>
+                  ) : null}
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.usb_camera_import_enabled}
+                      onCheckedChange={(v) =>
+                        patch("usb_camera_import_enabled", v === true)
+                      }
+                    />
+                    {t("settings.sd.import.usbCameras")}
+                  </label>
+                  <div
+                    className={cn(
+                      "space-y-1.5",
+                      !draft.usb_camera_import_enabled &&
+                        "pointer-events-none opacity-50",
+                    )}
+                  >
+                    <Label>{t("settings.sd.import.usbImportMode")}</Label>
+                    <Select
+                      value={
+                        draft.usb_import_mode === "volume_only"
+                          ? "volume_only"
+                          : draft.usb_import_mode === "mtp_preferred"
+                            ? "mtp_preferred"
+                            : "auto"
+                      }
+                      disabled={!draft.usb_camera_import_enabled}
+                      onValueChange={(v) => patch("usb_import_mode", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="auto">
+                          {t("settings.sd.import.usbImportModeAuto")}
+                        </SelectItem>
+                        <SelectItem value="volume_only">
+                          {t("settings.sd.import.usbImportModeVolume")}
+                        </SelectItem>
+                        <SelectItem value="mtp_preferred">
+                          {t("settings.sd.import.usbImportModeMtp")}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.sd_size_limit_enabled}
+                      onCheckedChange={(v) =>
+                        patch("sd_size_limit_enabled", v === true)
+                      }
+                    />
+                    {t("settings.sd.size.enable")}
+                  </label>
+                  <div
+                    className={cn(
+                      "space-y-1.5",
+                      !draft.sd_size_limit_enabled &&
+                        "pointer-events-none opacity-50",
+                    )}
+                  >
+                    <Label>{t("settings.sd.size.limitMb")}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={draft.sd_size_limit_mb}
+                      disabled={!draft.sd_size_limit_enabled}
+                      onChange={(e) =>
+                        patch("sd_size_limit_mb", Number(e.target.value) || 3000)
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>{t("settings.qr.params.videoSeconds")}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={draft.qr_video_scan_seconds}
+                      onChange={(e) =>
+                        patch(
+                          "qr_video_scan_seconds",
+                          Math.max(1, Number(e.target.value) || 5),
+                        )
+                      }
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.qr_remove_photo_after_scan}
+                      onCheckedChange={(v) =>
+                        patch("qr_remove_photo_after_scan", v === true)
+                      }
+                    />
+                    {t("settings.qr.after.removePhoto")}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.qr_remove_video_after_scan}
+                      onCheckedChange={(v) =>
+                        patch("qr_remove_video_after_scan", v === true)
+                      }
+                    />
+                    {t("settings.qr.after.removeVideo")}
+                  </label>
+                </SettingsAccordion>
               ) : null}
             </>
           ) : null}
 
-          {step === 4 ? (
+          {stepId === "connection" ? (
+            uiMode === "simple" ? (
+              <>
+                <p className="text-sm text-foreground">
+                  {t("setupWizard.intro.connectionSimple")}
+                </p>
+                <WizardUploadServerStep
+                  variant="simple"
+                  draft={draft}
+                  setDraft={(next) => setDraft(next)}
+                  connectNudge={uploadConnectNudge}
+                  onError={(message, title) => showError(message, title)}
+                  onSuccess={(message, title) => showSuccess(message, title)}
+                />
+                {fieldErrors.server_connection ? (
+                  <p className="text-[11px] leading-snug text-destructive" role="alert">
+                    {fieldErrors.server_connection}
+                  </p>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted">
+                  {t("setupWizard.intro.upload")}
+                </p>
+                <p className="text-xs leading-snug text-muted/90">
+                  {t("setupWizard.upload.optionalNote")}
+                </p>
+                <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.upload_to_server}
+                      onCheckedChange={(v) =>
+                        patch("upload_to_server", v === true)
+                      }
+                    />
+                    {t("settings.server.upload.afterCreate")}
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={draft.sd_server_backup_enabled}
+                      onCheckedChange={(v) =>
+                        patch("sd_server_backup_enabled", v === true)
+                      }
+                    />
+                    {t("settings.sd.backup.secondPath")}
+                  </label>
+                </div>
+                {!draft.upload_to_server ? (
+                  <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
+                    {t("setupWizard.upload.disabledHint")}
+                  </div>
+                ) : (
+                  <WizardUploadServerStep
+                    draft={draft}
+                    setDraft={(next) => setDraft(next)}
+                    disabled={!draft.upload_to_server}
+                    connectNudge={uploadConnectNudge}
+                    onError={(message, title) => showError(message, title)}
+                    onSuccess={(message, title) => showSuccess(message, title)}
+                  />
+                )}
+                {fieldErrors.server_connection ? (
+                  <p className="text-[11px] leading-snug text-destructive" role="alert">
+                    {fieldErrors.server_connection}
+                  </p>
+                ) : null}
+              </>
+            )
+          ) : null}
+
+          {stepId === "output" ? (
+            <>
+              <p className="text-sm text-muted">{t("setupWizard.intro.output")}</p>
+              <EncodingTab
+                draft={draft}
+                patch={patch}
+                patchNow={patch}
+                setDraft={setDraft}
+                commitNow={(update) => {
+                  setDraft((prev) =>
+                    typeof update === "function" ? update(prev) : update,
+                  );
+                }}
+                layout="wizard"
+              />
+            </>
+          ) : null}
+
+          {stepId === "finish" ? (
             <>
               <p className="text-sm text-muted">{t("setupWizard.summary.description")}</p>
               <dl className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3 text-sm">
+                <SummaryRow
+                  label={t("setupWizard.summary.mode")}
+                  value={
+                    uiMode === "advanced"
+                      ? t("setupWizard.mode.customTitle")
+                      : t("setupWizard.mode.simpleTitle")
+                  }
+                />
                 <SummaryRow
                   label={t("common.labels.language")}
                   value={uiLanguageLabel(draft.ui_language)}
@@ -1184,101 +1477,153 @@ export function SetupWizard({ open, onComplete }: Props) {
                   value={draft.operator_name.trim() || "—"}
                 />
                 <SummaryRow
-                  label={t("common.labels.storageLocation")}
-                  value={
-                    skippedSteps.has(1) && !draft.speicherort.trim()
-                      ? t("setupWizard.summary.skipped")
-                        : draft.speicherort || t("setupWizard.summary.notSet")
-                  }
-                />
-                <SummaryRow
                   label={t("settings.general.storage.defaultDropzone")}
                   value={draft.ort || "—"}
                 />
                 <SummaryRow
-                  label={t("settings.sd.backup.title")}
+                  label={t("common.labels.storageLocation")}
                   value={
-                    skippedSteps.has(2) && !draft.sd_auto_backup
+                    skippedSteps.has("storage") && !draft.speicherort.trim()
                       ? t("setupWizard.summary.skipped")
-                      : draft.sd_auto_backup
-                        ? draft.sd_backup_folder || t("setupWizard.summary.missingFolder")
-                        : t("setupWizard.summary.disabled")
+                      : draft.speicherort || t("setupWizard.summary.notSet")
                   }
                 />
-                {draft.sd_auto_backup ? (
-                  <SummaryRow
-                    label={t("settings.sd.backup.pcName")}
-                    value={
-                      resolveSdPcName(
-                        draft.sd_pc_name,
-                        computerName,
-                        draft.operator_name,
-                      ) || t("setupWizard.summary.notSet")
-                    }
-                  />
-                ) : null}
-                <SummaryRow
-                  label={t("settings.sd.backup.clearAfter")}
-                  value={
-                    draft.sd_auto_backup && draft.sd_clear_after_backup
-                      ? t("setupWizard.summary.on")
-                      : t("setupWizard.summary.off")
-                  }
-                />
-                <SummaryRow
-                  label={t("settings.sd.import.auto")}
-                  value={draft.sd_auto_import ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
-                />
-                <SummaryRow
-                  label={t("settings.sd.import.eject")}
-                  value={draft.sd_eject_after_workflow ? t("setupWizard.summary.on") : t("setupWizard.summary.off")}
-                />
-                <SummaryRow
-                  label={t("setupWizard.summary.qrScan")}
-                  value={
-                    skippedSteps.has(2)
-                      ? t("setupWizard.summary.skipped")
-                      : [
-                          draft.qr_check_enabled ? t("common.labels.video") : null,
-                          draft.photo_qr_check_enabled ? t("common.labels.photo") : null,
-                        ]
-                          .filter(Boolean)
-                          .join(", ") || t("setupWizard.summary.off")
-                  }
-                />
-                <SummaryRow
-                  label={t("settings.server.upload.title")}
-                  value={
-                    skippedSteps.has(3)
-                      ? t("setupWizard.summary.skipped")
-                      : draft.upload_to_server
-                        ? activeServerProfileSummary(draft) ||
-                          draft.server_url ||
-                          t("setupWizard.summary.serverMissing")
-                        : t("setupWizard.summary.disabled")
-                  }
-                />
-                <SummaryRow
-                  label={t("settings.sd.backup.secondPath")}
-                  value={
-                    skippedSteps.has(3)
-                      ? t("setupWizard.summary.skipped")
-                      : draft.sd_server_backup_enabled
-                        ? t("setupWizard.summary.on")
-                        : t("setupWizard.summary.off")
-                  }
-                />
-                {draft.upload_to_server && draft.ams_bridge_display_name.trim() ? (
-                  <SummaryRow
-                    label={t("settings.server.ams.title")}
-                    value={draft.ams_bridge_display_name}
-                  />
-                ) : null}
-                <SummaryRow
-                  label={t("settings.server.smb.login")}
-                  value={draft.server_login ? draft.server_login : "—"}
-                />
+                {uiMode === "simple" ? (
+                  <>
+                    <SummaryRow
+                      label={t("settings.sd.backup.title")}
+                      value={
+                        draft.sd_backup_folder ||
+                        t("setupWizard.summary.notSet")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("setupWizard.steps.media")}
+                      value={t("setupWizard.summary.mediaDefaults")}
+                    />
+                    <SummaryRow
+                      label={t("settings.server.upload.title")}
+                      value={
+                        skippedSteps.has("connection")
+                          ? t("setupWizard.summary.skipped")
+                          : draft.ams_bridge_display_name.trim() ||
+                            activeServerProfileSummary(draft) ||
+                            draft.server_url ||
+                            t("setupWizard.summary.serverMissing")
+                      }
+                    />
+                  </>
+                ) : (
+                  <>
+                    <SummaryRow
+                      label={t("settings.sd.backup.title")}
+                      value={
+                        skippedSteps.has("media") && !draft.sd_auto_backup
+                          ? t("setupWizard.summary.skipped")
+                          : draft.sd_auto_backup
+                            ? draft.sd_backup_folder ||
+                              t("setupWizard.summary.missingFolder")
+                            : t("setupWizard.summary.disabled")
+                      }
+                    />
+                    {draft.sd_auto_backup ? (
+                      <SummaryRow
+                        label={t("settings.sd.backup.pcName")}
+                        value={
+                          resolveSdPcName(
+                            draft.sd_pc_name,
+                            computerName,
+                            draft.operator_name,
+                          ) || t("setupWizard.summary.notSet")
+                        }
+                      />
+                    ) : null}
+                    <SummaryRow
+                      label={t("settings.sd.backup.clearAfter")}
+                      value={
+                        draft.sd_auto_backup && draft.sd_clear_after_backup
+                          ? t("setupWizard.summary.on")
+                          : t("setupWizard.summary.off")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("settings.sd.import.auto")}
+                      value={
+                        draft.sd_auto_import
+                          ? t("setupWizard.summary.on")
+                          : t("setupWizard.summary.off")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("settings.sd.import.eject")}
+                      value={
+                        draft.sd_eject_after_workflow
+                          ? t("setupWizard.summary.on")
+                          : t("setupWizard.summary.off")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("setupWizard.summary.qrScan")}
+                      value={
+                        skippedSteps.has("media")
+                          ? t("setupWizard.summary.skipped")
+                          : [
+                              draft.qr_check_enabled
+                                ? t("common.labels.video")
+                                : null,
+                              draft.photo_qr_check_enabled
+                                ? t("common.labels.photo")
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(", ") || t("setupWizard.summary.off")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("settings.server.upload.title")}
+                      value={
+                        skippedSteps.has("connection")
+                          ? t("setupWizard.summary.skipped")
+                          : draft.upload_to_server
+                            ? activeServerProfileSummary(draft) ||
+                              draft.server_url ||
+                              t("setupWizard.summary.serverMissing")
+                            : t("setupWizard.summary.disabled")
+                      }
+                    />
+                    <SummaryRow
+                      label={t("settings.sd.backup.secondPath")}
+                      value={
+                        skippedSteps.has("connection")
+                          ? t("setupWizard.summary.skipped")
+                          : draft.sd_server_backup_enabled
+                            ? t("setupWizard.summary.on")
+                            : t("setupWizard.summary.off")
+                      }
+                    />
+                    {draft.upload_to_server &&
+                    draft.ams_bridge_display_name.trim() ? (
+                      <SummaryRow
+                        label={t("settings.server.ams.title")}
+                        value={draft.ams_bridge_display_name}
+                      />
+                    ) : null}
+                    <SummaryRow
+                      label={t("settings.server.smb.login")}
+                      value={draft.server_login ? draft.server_login : "—"}
+                    />
+                    <SummaryRow
+                      label={t("settings.encoding.codec")}
+                      value={
+                        skippedSteps.has("output")
+                          ? t("setupWizard.summary.skipped")
+                          : draft.video_codec
+                      }
+                    />
+                  </>
+                )}
               </dl>
+              <p className="text-xs text-muted">{t("setupWizard.finishHint")}</p>
               {!draft.speicherort.trim() ? (
                 <p className="text-xs text-muted">
                   {t("setupWizard.summary.storageMissingHint")}
@@ -1314,7 +1659,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             ) : (
               <span className="w-0 flex-1" aria-hidden />
             )}
-            {step < STEPS.length - 1 ? (
+            {step < steps.length - 1 ? (
               <Button type="button" disabled={busy} onClick={goNext}>
                 {t("common.actions.next")}
               </Button>

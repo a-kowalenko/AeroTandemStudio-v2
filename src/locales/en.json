@@ -107,6 +107,19 @@
       "server": "Server",
       "system": "System"
     },
+    "areas": {
+      "workplace": "Workplace",
+      "media": "Media",
+      "connection": "Connection",
+      "output": "Output",
+      "maintenance": "Maintenance"
+    },
+    "complexity": {
+      "simple": "Simple",
+      "advanced": "Advanced",
+      "advancedField": "Advanced field"
+    },
+    "moreOptions": "More options",
     "general": {
       "appearance": {
         "title": "Appearance",
@@ -335,7 +348,6 @@
         "serverUrlHint": "Same SMB upload as Create; destination independent of “aktuell”. Uses upload-server credentials.",
         "serverUrlTest": "Test",
         "serverUrlTesting": "Testing…",
-        "serverUrlMountWarn": "Legacy mount/folder path detected — please set an smb:// URL (no Finder mount).",
         "copyStrategy": "Server mirror",
         "copyAsync": "Background: local done → server in parallel",
         "copyMirror": "Mirror: local first, then wait → server",
@@ -2068,7 +2080,10 @@
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
-      "import": "Backup, import, eject, and QR scan are optional and can be changed later."
+      "import": "Backup, import, eject, and QR scan are optional and can be changed later.",
+      "workplace": "You can change appearance, drop zone, and operator later at any time.",
+      "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
+      "output": "Output settings are optional — defaults stay if you skip."
     },
     "crew": {
       "operatorHintMissingRole": "Choose at least one role — then the name will be added to the crew.",
@@ -2100,8 +2115,11 @@
       "on": "On",
       "qrScan": "QR scan",
       "serverMissing": "— server missing —",
-      "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
+      "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings.",
+      "mode": "Mode",
+      "mediaDefaults": "Defaults on (backup, import, eject, QR)"
     },
+    "finishHint": "Fine-tuning is in Settings.",
     "finish": "Finish setup",
     "skipAll": "Skip entire setup",
     "complete": "Setup completed.",
@@ -2112,10 +2130,21 @@
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
-      "appearance": "Welcome to Aero Tandem Studio. In just a few steps you can set language, appearance, storage, and import behavior. Everything else can be adjusted later in settings.",
+      "appearance": "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.",
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
-      "storage": "Completed jobs are saved to the storage location. You can also set the default drop zone here.",
-      "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later."
+      "storage": "Completed jobs are saved to the storage location.",
+      "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
+      "mode": "How should setup run? You can change the mode later in settings.",
+      "media": "Set backup, auto-import, eject, and QR scan. Further import details can be adjusted later in settings.",
+      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options.",
+      "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
+      "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later."
+    },
+    "mode": {
+      "simpleTitle": "Simple",
+      "simpleBody": "Quick setup with recommended defaults.",
+      "customTitle": "Custom",
+      "customBody": "Set every option yourself."
     },
     "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
     "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
@@ -2132,19 +2161,27 @@
     "standardFolderTitle": "Default folder",
     "steps": {
       "appearance": "Welcome",
+      "mode": "Setup mode",
+      "workplace": "Workplace",
       "storage": "Storage",
       "import": "Import",
+      "media": "Media",
       "upload": "Upload",
+      "connection": "Connection",
+      "output": "Output",
       "finish": "Finish"
     },
     "upload": {
       "disabledHint": "Upload stays off. You can set up the server later in settings at any time.",
       "amsHint": "We search automatically for the booking bridge. You can apply discovered paths, or set up the server manually.",
+      "amsHintSimple": "Tap a found server, enter the token, connect.",
       "connectAndApply": "Connect to server",
       "connectRequired": "Please connect to the server first.",
       "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
+      "connectedSimple": "Connected. You can continue.",
       "manualHint": "Pick a default profile or enter SMB address and credentials.",
       "noneFound": "No bridge found. Search again or set up the server manually.",
+      "noneFoundSimple": "No server found. Search again or skip this step — you can connect later in settings.",
       "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
       "pathsApplied": "Paths applied: {{primary}}",
       "presetCaldenHint": "Default URL for Calden",

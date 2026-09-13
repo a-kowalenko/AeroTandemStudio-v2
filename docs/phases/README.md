@@ -8,6 +8,7 @@
 | `open/31.10-reconnect-upload-select.md` | Phase 31.10 |
 | `open/23-usb-mtp.md` | Phase 23.x |
 | `open/14-ml-photo.md` | Phase 14 (Backlog) |
+| `open/47-settings-wizard-ux.md` | Phase 47 (Settings + Wizard UX, erledigt) |
 | `ARCHIVE.md` | Erledigte Phase-Specs (nicht standardmäßig anhängen) |
 | `REFERENCE.md` | Alte Plan-Anhänge (Mapping, Config-Skizze, Tests) |
 

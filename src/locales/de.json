@@ -107,6 +107,19 @@
       "server": "Server",
       "system": "System"
     },
+    "areas": {
+      "workplace": "Arbeitsplatz",
+      "media": "Medien",
+      "connection": "Verbindung",
+      "output": "Ausgabe",
+      "maintenance": "Wartung"
+    },
+    "complexity": {
+      "simple": "Einfach",
+      "advanced": "Erweitert",
+      "advancedField": "Erweitertes Feld"
+    },
+    "moreOptions": "Weitere Optionen",
     "general": {
       "appearance": {
         "title": "Darstellung",
@@ -335,7 +348,6 @@
         "serverUrlHint": "Gleicher SMB-Upload wie bei Erstellen; Ziel unabhängig von „aktuell“. Zugangsdaten vom Upload-Server.",
         "serverUrlTest": "Testen",
         "serverUrlTesting": "Test…",
-        "serverUrlMountWarn": "Alter Mount-/Ordnerpfad erkannt — bitte eine smb://-URL setzen (kein Finder-Mount).",
         "copyStrategy": "Server-Spiegel",
         "copyAsync": "Hintergrund: lokal fertig → Server parallel",
         "copyMirror": "Spiegeln: erst lokal, dann warten → Server",
@@ -2068,7 +2080,10 @@
       "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
       "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
       "server": "Server-Zugang kann später eingerichtet werden.",
-      "import": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar."
+      "import": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
+      "workplace": "Darstellung, Dropzone und Operator kannst du später jederzeit ändern.",
+      "media": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
+      "output": "Ausgabe-Einstellungen sind optional — Vorgabewerte bleiben, wenn du überspringst."
     },
     "crew": {
       "operatorHintMissingRole": "Mindestens eine Rolle wählen — dann wird der Name zur Crew hinzugefügt.",
@@ -2100,8 +2115,11 @@
       "on": "An",
       "qrScan": "QR-Scan",
       "serverMissing": "— Server fehlt —",
-      "storageMissingHint": "Ohne Speicherort können Vorgänge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen."
+      "storageMissingHint": "Ohne Speicherort können Vorgänge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen.",
+      "mode": "Modus",
+      "mediaDefaults": "Vorgaben aktiv (Backup, Import, Auswerfen, QR)"
     },
+    "finishHint": "Feintuning unter Einstellungen.",
     "finish": "Einrichtung abschließen",
     "skipAll": "Gesamte Einrichtung überspringen",
     "complete": "Einrichtung abgeschlossen.",
@@ -2112,10 +2130,21 @@
       "backupPcNameHint": "Backup-Ordner werden mit „{{name}}“ markiert."
     },
     "intro": {
-      "appearance": "Willkommen bei Aero Tandem Studio. In wenigen Schritten legst du Sprache, Darstellung, Speicherort und das Import-Verhalten fest. Alles Weitere kannst du später in den Einstellungen anpassen.",
+      "appearance": "Willkommen bei Aero Tandem Studio. Lege Darstellung, Dropzone und Operator fest. Alles Weitere kannst du später in den Einstellungen anpassen.",
       "import": "Lege hier die Import-Standards fest: Backup, Leeren, Import und Auswerfen. QR-Löschregeln und weitere Details findest du später in den Einstellungen.",
-      "storage": "Fertige Vorgänge werden im Speicherort abgelegt. Die Standard-Dropzone kannst du gleich mit festlegen.",
-      "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein."
+      "storage": "Fertige Vorgänge werden im Speicherort abgelegt.",
+      "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein.",
+      "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
+      "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. Weitere Import-Details findest du später in den Einstellungen.",
+      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro und Zusammenfügen liegen unter weiteren Optionen.",
+      "workplaceSimple": "Darstellung, Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
+      "connectionSimple": "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar."
+    },
+    "mode": {
+      "simpleTitle": "Einfach",
+      "simpleBody": "Schnelle Einrichtung mit empfohlenen Vorgaben.",
+      "customTitle": "Benutzerdefiniert",
+      "customBody": "Alle Einstellungen selbst festlegen."
     },
     "operatorHint": "Dein Name wird als Ich-Favorit in der Crew verwendet.",
     "operatorMultiRole": "Bei mehreren oder keinen Rollen wird für den Session-Reset nichts automatisch beibehalten.",
@@ -2132,19 +2161,27 @@
     "standardFolderTitle": "Standardordner",
     "steps": {
       "appearance": "Willkommen",
+      "mode": "Einrichtungsmodus",
+      "workplace": "Arbeitsplatz",
       "storage": "Speicherort",
       "import": "Import",
+      "media": "Medien",
       "upload": "Upload",
+      "connection": "Verbindung",
+      "output": "Ausgabe",
       "finish": "Fertig"
     },
     "upload": {
       "disabledHint": "Upload bleibt aus. Du kannst den Server jederzeit später in den Einstellungen einrichten.",
       "amsHint": "Wir suchen automatisch nach der Buchungs-Bridge. Gefundene Pfade kannst du übernehmen; sonst richtest du den Server manuell ein.",
+      "amsHintSimple": "Gefundenen Server antippen, Token eingeben, verbinden.",
       "connectAndApply": "Mit Server verbinden",
       "connectRequired": "Bitte zuerst mit dem Server verbinden.",
       "connectedNoPaths": "AMS verbunden — keine Pfadvorschläge. Bitte Server manuell eintragen.",
+      "connectedSimple": "Verbunden. Du kannst weitergehen.",
       "manualHint": "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.",
       "noneFound": "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.",
+      "noneFoundSimple": "Kein Server gefunden. Erneut suchen oder diesen Schritt überspringen — Verbindung später in den Einstellungen.",
       "optionalNote": "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.",
       "pathsApplied": "Pfade übernommen: {{primary}}",
       "presetCaldenHint": "Standard-URL für Calden",

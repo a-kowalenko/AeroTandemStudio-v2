@@ -20,6 +20,7 @@ import {
   DEFAULT_SERVER_PROFILE_ID,
   GERA_SERVER_PROFILE_ID,
   PRESET_SERVER_PROFILE_LABELS,
+  getActiveServerProfile,
   patchActiveServerProfileLabel,
   patchServerConnection,
   pruneWizardPresetsAfterPathApply,
@@ -45,6 +46,8 @@ type Props = {
   disabled?: boolean;
   /** Incremented when Next validates before a pending AMS connect. */
   connectNudge?: number;
+  /** Easy wizard: discover + token + connect only. */
+  variant?: "simple" | "full";
 };
 
 export function WizardUploadServerStep({
@@ -54,6 +57,7 @@ export function WizardUploadServerStep({
   onSuccess,
   disabled = false,
   connectNudge = 0,
+  variant = "full",
 }: Props) {
   const { t } = useTranslation();
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -72,6 +76,9 @@ export function WizardUploadServerStep({
   const [pathsApplied, setPathsApplied] = useState(false);
   const [amsStatus, setAmsStatus] = useState("");
   const [connectAttention, setConnectAttention] = useState(false);
+  const [simpleDone, setSimpleDone] = useState(false);
+
+  const simple = variant === "simple";
 
   const autoDiscoverStarted = useRef(false);
   const connectBtnRef = useRef<HTMLButtonElement>(null);
@@ -126,6 +133,7 @@ export function WizardUploadServerStep({
     setDiscovering(true);
     setAmsStatus("");
     setPathsApplied(false);
+    setSimpleDone(false);
     try {
       const list = await amsBridgeDiscover(3);
       setCandidates(list);
@@ -210,13 +218,28 @@ export function WizardUploadServerStep({
           next = patchActiveServerProfileLabel(next, label);
         }
         next = pruneWizardPresetsAfterPathApply(next);
+        const backupUrl =
+          getActiveServerProfile(next)?.backup_url?.trim() ||
+          hints.backupSmbUrl?.trim() ||
+          "";
+        if (backupUrl) {
+          next = { ...next, sd_server_backup_enabled: true };
+        }
         setPathsApplied(true);
-        setMode("profiles");
         setAmsStatus(
           t("setupWizard.upload.pathsApplied", {
             primary: hints.primarySmbUrl,
           }),
         );
+        if (simple) {
+          setSimpleDone(true);
+        } else {
+          setMode("profiles");
+        }
+      } else if (simple) {
+        setPathsApplied(false);
+        setSimpleDone(true);
+        setAmsStatus(t("setupWizard.upload.connectedSimple"));
       } else {
         setPathsApplied(false);
         setAmsStatus(t("setupWizard.upload.connectedNoPaths"));
@@ -279,6 +302,7 @@ export function WizardUploadServerStep({
         disabled && "pointer-events-none opacity-50",
       )}
     >
+      {simple ? null : (
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs font-semibold tracking-wide text-muted uppercase">
           {t("setupWizard.sections.server")}
@@ -301,11 +325,14 @@ export function WizardUploadServerStep({
           </Button>
         ) : null}
       </div>
+      )}
 
       <p className="text-xs leading-snug text-muted">
         {mode === "profiles"
           ? t("setupWizard.upload.profilesHint")
-          : t("setupWizard.upload.amsHint")}
+          : simple
+            ? t("setupWizard.upload.amsHintSimple")
+            : t("setupWizard.upload.amsHint")}
       </p>
 
       {mode === "ams" ? (
@@ -340,21 +367,25 @@ export function WizardUploadServerStep({
           {searched && !discovering && candidates.length === 0 ? (
             <div className="space-y-2 rounded-md border border-dashed border-border/80 bg-background/40 p-3">
               <p className="text-sm text-muted">
-                {t("setupWizard.upload.noneFound")}
+                {simple
+                  ? t("setupWizard.upload.noneFoundSimple")
+                  : t("setupWizard.upload.noneFound")}
               </p>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                disabled={locked}
-                onClick={() => setMode("manual")}
-              >
-                {t("setupWizard.upload.setupManually")}
-              </Button>
+              {simple ? null : (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={locked}
+                  onClick={() => setMode("manual")}
+                >
+                  {t("setupWizard.upload.setupManually")}
+                </Button>
+              )}
             </div>
           ) : null}
 
-          {candidates.length > 0 ? (
+          {candidates.length > 0 && !(simple && simpleDone) ? (
             <ul className="space-y-1.5">
               {candidates.map((c) => {
                 const key = `${c.base_url}\0${c.instance_id || c.instance}`;
@@ -386,7 +417,17 @@ export function WizardUploadServerStep({
             </ul>
           ) : null}
 
-          {selected ? (
+          {simple && simpleDone ? (
+            <div className="rounded-md border border-emerald-500/35 bg-emerald-500/12 px-3 py-3">
+              <p className="text-sm font-medium text-emerald-950 dark:text-emerald-50">
+                {draft.ams_bridge_display_name.trim() ||
+                  (selected ? discoveredAmsLabel(selected) : t("setupWizard.upload.connectAndApply"))}
+              </p>
+              {amsStatus ? (
+                <p className="mt-1 text-xs leading-snug text-muted">{amsStatus}</p>
+              ) : null}
+            </div>
+          ) : selected ? (
             <div className="space-y-2.5">
               <div className="space-y-1.5">
                 <Label>{t("settings.server.ams.token")}</Label>
@@ -397,19 +438,21 @@ export function WizardUploadServerStep({
                   disabled={locked}
                   placeholder={t("setupWizard.upload.tokenPlaceholder")}
                 />
-                <p className="text-[11px] text-muted">
+                <p className="text-[11px] leading-snug text-muted">
                   {t("setupWizard.upload.tokenHint")}
                 </p>
               </div>
-              <div className="space-y-1.5">
-                <Label>{t("setupWizard.upload.profileName")}</Label>
-                <Input
-                  value={profileLabel}
-                  onChange={(e) => setProfileLabel(e.target.value)}
-                  disabled={locked}
-                  placeholder={discoveredAmsLabel(selected)}
-                />
-              </div>
+              {simple ? null : (
+                <div className="space-y-1.5">
+                  <Label>{t("setupWizard.upload.profileName")}</Label>
+                  <Input
+                    value={profileLabel}
+                    onChange={(e) => setProfileLabel(e.target.value)}
+                    disabled={locked}
+                    placeholder={discoveredAmsLabel(selected)}
+                  />
+                </div>
+              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   ref={connectBtnRef}
@@ -431,15 +474,17 @@ export function WizardUploadServerStep({
                     t("setupWizard.upload.connectAndApply")
                   )}
                 </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={locked}
-                  onClick={() => setMode("manual")}
-                >
-                  {t("setupWizard.upload.skipAms")}
-                </Button>
+                {simple ? null : (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={locked}
+                    onClick={() => setMode("manual")}
+                  >
+                    {t("setupWizard.upload.skipAms")}
+                  </Button>
+                )}
               </div>
             </div>
           ) : null}

@@ -2,11 +2,14 @@ import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { showAdvanced } from "@/lib/settingsUi";
+import { SettingsAccordion } from "../SettingsAccordion";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-export function QrTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
+export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBaseProps) {
   const { t } = useTranslation();
+  const advanced = showAdvanced(disclosure);
 
   return (
     <div className="space-y-4">
@@ -32,6 +35,8 @@ export function QrTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
         </label>
       </SettingsSection>
 
+      {advanced ? (
+      <SettingsAccordion title={t("settings.moreOptions")}>
       <SettingsSection title={t("settings.qr.params.title")}>
         <div className="space-y-1.5">
           <Label>{t("settings.qr.params.videoSeconds")}</Label>
@@ -97,11 +102,13 @@ export function QrTab({ draft, patch, patchNow }: SettingsTabBaseProps) {
               );
             }}
           />
-          <p className="text-[11px] text-muted">
+          <p className="text-[11px] text-muted" title={t("settings.qr.after.maxDurationHint")}>
             {t("settings.qr.after.maxDurationHint")}
           </p>
         </div>
       </SettingsSection>
+      </SettingsAccordion>
+      ) : null}
     </div>
   );
 }

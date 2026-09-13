@@ -19,6 +19,8 @@ function normalizeConfig(config: AppConfig): AppConfig {
       ? config.crew_removed_names
       : [],
     ui_language: normalizeUiLanguage(config.ui_language),
+    settings_ui_mode:
+      config.settings_ui_mode === "advanced" ? "advanced" : "simple",
     log_min_level: parseLogLevelFilter(config.log_min_level ?? "info"),
     auto_cleanup_jobs_enabled: Boolean(config.auto_cleanup_jobs_enabled),
     auto_cleanup_jobs_retention_days: retention(
