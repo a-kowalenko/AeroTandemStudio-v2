@@ -162,6 +162,7 @@ import {
 import {
   RECONNECT_UPLOAD_OFFER_OPEN_DELAY_MS,
   RECONNECT_UPLOAD_OFFER_STABLE_MS,
+  partitionReconnectUploadSelection,
   type ReconnectUploadOfferState,
 } from "./lib/reconnectUploadOffer";
 import type { ReconnectUploadOfferChoice } from "./components/ReconnectUploadOfferDialog";
@@ -1977,8 +1978,33 @@ function App() {
     reconnectUploadOfferArmedRef.current = false;
     reconnectUploadOfferDeferredRef.current = false;
     clearReconnectUploadOpenDelayTimer();
-    if (choice === "later" || entries.length === 0) return;
+    if (choice.action === "later" || entries.length === 0) return;
+
     void (async () => {
+      const { toUpload, toIgnore } = partitionReconnectUploadSelection(
+        entries,
+        choice.selectedIds,
+      );
+
+      for (const entry of toIgnore) {
+        try {
+          await setVorgangUploadState("ignored", { vorgangId: entry.id });
+          useHistoryStore.getState().patchVorgang(entry.id, (row) => ({
+            ...row,
+            upload_state: "ignored",
+          }));
+        } catch (e) {
+          console.error("ignore upload_state failed:", e);
+        }
+      }
+      if (toIgnore.length > 0) {
+        void refreshPendingUploadCount(Boolean(config?.upload_to_server)).catch(
+          () => {},
+        );
+      }
+
+      if (toUpload.length === 0) return;
+
       if (!useServerStore.getState().connected) {
         showWarning(
           t("history.upload.bulkOffline"),
@@ -1988,7 +2014,7 @@ function App() {
       }
       setLoading(true, t("dialogs.reconnectUpload.scanning"));
       try {
-        const scan = await scanBulkUploadCandidates(entries);
+        const scan = await scanBulkUploadCandidates(toUpload);
         // Soft-confirm already authorized the run — no second bulk confirm.
         void retryVorgangUploadsBulk(scan);
       } catch (e) {

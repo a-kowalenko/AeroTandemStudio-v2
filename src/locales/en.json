@@ -827,7 +827,10 @@
       "body": "{{count}} uploads pending — upload now?",
       "later": "Later",
       "now": "Upload now",
+      "nowCount": "Upload {{count}}",
+      "nowIgnoreOnly": "Apply",
       "scanning": "Checking pending uploads…",
+      "selectionHint": "Unchecked jobs will not be suggested again. You can still upload them from Jobs.",
       "title": "Server back online"
     },
     "uploadExtraFiles": {
@@ -1494,6 +1497,8 @@
       "pendingHint": "Ready locally — copy to the server is still pending",
       "cancelled": "Cancelled",
       "cancelledHint": "Upload cancelled — retry from Jobs",
+      "ignored": "Ignored",
+      "ignoredHint": "No longer suggested automatically — retry from Jobs",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "retryBtn": "Retry upload",
       "uploadBtn": "Upload to server",

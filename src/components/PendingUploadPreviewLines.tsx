@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import type {
   PendingUploadMediaKey,
   PendingUploadPreviewLine,
@@ -25,7 +26,15 @@ function MediaChip({ mediaKey }: { mediaKey: PendingUploadMediaKey }) {
   );
 }
 
-function PreviewLine({ line }: { line: PendingUploadPreviewLine }) {
+function PreviewLine({
+  line,
+  selected,
+  onToggle,
+}: {
+  line: PendingUploadPreviewLine;
+  selected?: boolean;
+  onToggle?: (id: number, next: boolean) => void;
+}) {
   const { t } = useTranslation();
   const crewParts: string[] = [];
   if (line.tandemmaster) {
@@ -35,9 +44,25 @@ function PreviewLine({ line }: { line: PendingUploadPreviewLine }) {
     crewParts.push(t("history.vs", { name: line.videospringer }));
   }
   const crew = crewParts.join(" · ");
+  const selectable = onToggle != null;
+  const checked = selected ?? true;
 
   return (
-    <li className="grid min-w-0 grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] items-center gap-x-2 px-2.5 py-2 text-sm">
+    <li
+      className={cn(
+        "grid min-w-0 items-center gap-x-2 px-2.5 py-2 text-sm",
+        selectable
+          ? "grid-cols-[auto_minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+          : "grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]",
+      )}
+    >
+      {selectable ? (
+        <Checkbox
+          checked={checked}
+          onCheckedChange={(v) => onToggle(line.vorgangId, v === true)}
+          aria-label={line.guest}
+        />
+      ) : null}
       <span className="min-w-0 truncate font-medium text-foreground" title={line.guest}>
         {line.guest}
       </span>
@@ -62,6 +87,9 @@ type Props = {
   maxHeightClassName?: string;
   /** Extra footer line (e.g. „und N weitere“). */
   footer?: string | null;
+  /** When set, rows are selectable (Phase 31.10). */
+  selectedIds?: Set<number>;
+  onToggle?: (id: number, next: boolean) => void;
 };
 
 /** Compact guest · crew · media rows (Reconnect offer + bulk summary). */
@@ -70,6 +98,8 @@ export function PendingUploadPreviewLines({
   className,
   maxHeightClassName = "max-h-52",
   footer = null,
+  selectedIds,
+  onToggle,
 }: Props) {
   if (lines.length === 0 && !footer) return null;
 
@@ -81,13 +111,16 @@ export function PendingUploadPreviewLines({
         className,
       )}
     >
-      {lines.map((line, i) => (
-        <PreviewLine key={`${i}-${line.guest}`} line={line} />
+      {lines.map((line) => (
+        <PreviewLine
+          key={line.vorgangId}
+          line={line}
+          selected={selectedIds?.has(line.vorgangId)}
+          onToggle={onToggle}
+        />
       ))}
       {footer ? (
-        <li className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] px-2.5 py-2 text-xs text-muted">
-          <span className="col-span-3">{footer}</span>
-        </li>
+        <li className="px-2.5 py-2 text-xs text-muted">{footer}</li>
       ) : null}
     </ul>
   );

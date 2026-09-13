@@ -28,6 +28,8 @@ export function uploadStateLabel(state: string): string {
       return tr("history.upload.failed");
     case "cancelled":
       return tr("history.upload.cancelled");
+    case "ignored":
+      return tr("history.upload.ignored");
     default:
       return s;
   }
@@ -44,6 +46,8 @@ export function uploadStateHint(state: string): string {
       return tr("history.upload.failedHint");
     case "cancelled":
       return tr("history.upload.cancelledHint");
+    case "ignored":
+      return tr("history.upload.ignoredHint");
     default:
       return "";
   }

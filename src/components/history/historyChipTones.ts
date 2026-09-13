@@ -21,7 +21,7 @@ export function uploadChipTone(state: string): string {
   if (s === "uploading") {
     return "bg-primary/10 text-primary ring-primary/30";
   }
-  if (s === "cancelled") {
+  if (s === "cancelled" || s === "ignored") {
     return "bg-muted/40 text-muted-foreground ring-border/60";
   }
   return "bg-warning/10 text-warning ring-warning/30";

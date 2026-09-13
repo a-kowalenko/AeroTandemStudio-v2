@@ -1,4 +1,4 @@
-/** Soft-confirm when SMB reconnects and uploads are pending (Phase 31.9). */
+/** Soft-confirm when SMB reconnects and uploads are pending (Phase 31.9 / 31.10). */
 
 import type { VorgangEntry } from "./vorgangHistory";
 
@@ -17,8 +17,6 @@ export const RECONNECT_UPLOAD_OFFER_OPEN_DELAY_MS = 350;
  */
 export const RECONNECT_UPLOAD_OFFER_DISMISS_GRACE_MS = 400;
 
-export const RECONNECT_UPLOAD_PREVIEW_MAX = 3;
-
 export type ReconnectUploadOfferState = {
   open: true;
   /** Outstanding upload candidates at offer time (oldest first). */
@@ -33,16 +31,11 @@ export type PendingUploadMediaKey =
   | "outsidePhoto";
 
 export type PendingUploadPreviewLine = {
+  vorgangId: number;
   guest: string;
   mediaKeys: PendingUploadMediaKey[];
   tandemmaster: string | null;
   videospringer: string | null;
-};
-
-export type PendingUploadPreview = {
-  lines: PendingUploadPreviewLine[];
-  /** Count beyond `lines` (for „und N weitere“). */
-  more: number;
 };
 
 /** Guest label for compact reconnect / bulk lists. */
@@ -70,6 +63,7 @@ export function pendingUploadPreviewLine(
   entry: VorgangEntry,
 ): PendingUploadPreviewLine {
   return {
+    vorgangId: entry.id,
     guest: pendingUploadGuestLabel(entry),
     mediaKeys: pendingUploadMediaKeys(entry),
     tandemmaster: entry.tandemmaster?.trim() || null,
@@ -77,15 +71,17 @@ export function pendingUploadPreviewLine(
   };
 }
 
-/** Up to `max` preview lines; `more` = remaining count. */
-export function formatPendingUploadPreview(
+/** Split offer entries into upload vs ignore sets (Phase 31.10). */
+export function partitionReconnectUploadSelection(
   entries: VorgangEntry[],
-  max: number = RECONNECT_UPLOAD_PREVIEW_MAX,
-): PendingUploadPreview {
-  const limit = Math.max(0, Math.floor(max));
-  const lines = entries.slice(0, limit).map(pendingUploadPreviewLine);
-  return {
-    lines,
-    more: Math.max(0, entries.length - lines.length),
-  };
+  selectedIds: number[],
+): { toUpload: VorgangEntry[]; toIgnore: VorgangEntry[] } {
+  const selected = new Set(selectedIds);
+  const toUpload: VorgangEntry[] = [];
+  const toIgnore: VorgangEntry[] = [];
+  for (const entry of entries) {
+    if (selected.has(entry.id)) toUpload.push(entry);
+    else toIgnore.push(entry);
+  }
+  return { toUpload, toIgnore };
 }

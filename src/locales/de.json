@@ -827,7 +827,10 @@
       "body": "{{count}} Uploads ausstehend — jetzt nachholen?",
       "later": "Später",
       "now": "Jetzt nachholen",
+      "nowCount": "{{count}} nachholen",
+      "nowIgnoreOnly": "Übernehmen",
       "scanning": "Ausstehende Uploads prüfen…",
+      "selectionHint": "Nicht markierte werden nicht mehr vorgeschlagen. Upload weiter unter Vorgänge möglich.",
       "title": "Server wieder online"
     },
     "uploadExtraFiles": {
@@ -1494,6 +1497,8 @@
       "pendingHint": "Lokal fertig — Kopie auf den Server steht noch aus",
       "cancelled": "Abgebrochen",
       "cancelledHint": "Upload abgebrochen — unter Vorgänge nachholbar",
+      "ignored": "Ignoriert",
+      "ignoredHint": "Nicht mehr automatisch vorschlagen — unter Vorgänge nachholbar",
       "pendingBadgeTooltip": "{{count}} Uploads ausstehend",
       "retryBtn": "Upload nachholen",
       "uploadBtn": "Auf Server hochladen",

@@ -87,8 +87,9 @@ export function isPostUploadFolderCleanup(
 export function needsLocalJobFolder(entry: VorgangLike): boolean {
   const upload = normalizeUploadState(entry.upload_state);
   if (upload === "done" || upload === "none") return false;
-  // Cancelled: show cancel chip; retry would need folder but error is not "missing folder" primary.
-  if (upload === "cancelled") return false;
+  // Cancelled / ignored: show chip; retry would need folder but error is not
+  // "missing folder" primary.
+  if (upload === "cancelled" || upload === "ignored") return false;
   return isRetryableUploadState(upload) || upload === "uploading";
 }
 

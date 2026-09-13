@@ -16,7 +16,7 @@ import {
 } from "./uploadState";
 import {
   pendingUploadPreviewLine,
-  type PendingUploadMediaKey,
+  type PendingUploadPreviewLine,
 } from "./reconnectUploadOffer";
 
 export {
@@ -79,7 +79,7 @@ export type VorgangEntry = {
   ams_archive: string;
   /** `bridge` | `outbox` | `local` | `cached` */
   ams_source: string;
-  /** SMB upload: `none` | `pending` | `uploading` | `done` | `failed` | `cancelled`. */
+  /** SMB upload: `none` | `pending` | `uploading` | `done` | `failed` | `cancelled` | `ignored`. */
   upload_state: string;
   append_count: number;
   last_append_correlation_id: string;
@@ -155,7 +155,8 @@ export type VorgangUploadState =
   | "uploading"
   | "done"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "ignored";
 
 /** Persist SMB upload lifecycle (separate from AMS handoff state). */
 export async function setVorgangUploadState(
@@ -286,13 +287,12 @@ export type BulkUploadSummaryItem = {
 };
 
 /** Successful bulk upload row (same guest/crew/media shape as reconnect preview). */
-export type BulkUploadOkItem = {
-  guest: string;
-  vorgangId: number;
-  mediaKeys: PendingUploadMediaKey[];
-  tandemmaster: string | null;
-  videospringer: string | null;
-};
+export type BulkUploadOkItem = PendingUploadPreviewLine;
+
+/** Guest / crew / media row for successful bulk uploads. */
+export function bulkOkItemFromEntry(entry: VorgangEntry): BulkUploadOkItem {
+  return pendingUploadPreviewLine(entry);
+}
 
 export type BulkScanEntry = VorgangEntry & { reasonCodes: string[] };
 
@@ -339,11 +339,6 @@ export function createEmptyBulkUploadSummary(): BulkUploadSummary {
     skippedItems: [],
     failedItems: [],
   };
-}
-
-/** Guest / crew / media row for successful bulk uploads. */
-export function bulkOkItemFromEntry(entry: VorgangEntry): BulkUploadOkItem {
-  return { ...pendingUploadPreviewLine(entry), vorgangId: entry.id };
 }
 
 /** Preflight all bulk candidates once before confirm (Phase 31.6). */

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -11,13 +11,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  formatPendingUploadPreview,
+  pendingUploadPreviewLine,
   RECONNECT_UPLOAD_OFFER_DISMISS_GRACE_MS,
   type ReconnectUploadOfferState,
 } from "@/lib/reconnectUploadOffer";
 import { PendingUploadPreviewLines } from "@/components/PendingUploadPreviewLines";
 
-export type ReconnectUploadOfferChoice = "later" | "now";
+export type ReconnectUploadOfferChoice =
+  | { action: "later" }
+  | { action: "now"; selectedIds: number[] };
 
 export type PendingUploadsOfferVariant = "reconnect" | "history";
 
@@ -35,7 +37,7 @@ type Props = {
 
 /**
  * Soft confirm for pending uploads (Reconnect offer + Historie bulk).
- * Primary action starts scan → bulk (no second confirm).
+ * Checkboxes: default all selected; unchecked → ignored on „Jetzt“ (Phase 31.10).
  */
 export function ReconnectUploadOfferDialog({
   offer,
@@ -50,22 +52,28 @@ export function ReconnectUploadOfferDialog({
   onChooseRef.current = onChoose;
 
   const open = offer != null;
-  const count = offer?.entries.length ?? 0;
-  const preview = formatPendingUploadPreview(offer?.entries ?? []);
+  const entries = offer?.entries ?? [];
+  const lines = useMemo(
+    () => entries.map(pendingUploadPreviewLine),
+    [entries],
+  );
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+
   const title =
     variant === "history"
       ? t("history.upload.bulkConfirmTitle")
       : t("dialogs.reconnectUpload.title");
 
   useEffect(() => {
-    if (!open) {
+    if (!open || !offer) {
       chosenRef.current = false;
       openedAtRef.current = 0;
       return;
     }
     openedAtRef.current = Date.now();
     chosenRef.current = false;
-  }, [open, offer?.entries]);
+    setSelectedIds(new Set(offer.entries.map((e) => e.id)));
+  }, [open, offer]);
 
   function choose(choice: ReconnectUploadOfferChoice) {
     if (chosenRef.current) return;
@@ -79,13 +87,24 @@ export function ReconnectUploadOfferDialog({
     return Date.now() - openedAt < RECONNECT_UPLOAD_OFFER_DISMISS_GRACE_MS;
   }
 
+  function toggleId(id: number, next: boolean) {
+    setSelectedIds((prev) => {
+      const nextSet = new Set(prev);
+      if (next) nextSet.add(id);
+      else nextSet.delete(id);
+      return nextSet;
+    });
+  }
+
+  const selectedCount = selectedIds.size;
+
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
         if (v) return;
         if (dismissGraceActive()) return;
-        choose("later");
+        choose({ action: "later" });
       }}
     >
       <DialogContent
@@ -98,7 +117,7 @@ export function ReconnectUploadOfferDialog({
         onEscapeKeyDown={(e) => {
           e.preventDefault();
           if (dismissGraceActive()) return;
-          choose("later");
+          choose({ action: "later" });
         }}
       >
         <DialogHeader className="min-w-0">
@@ -106,27 +125,39 @@ export function ReconnectUploadOfferDialog({
           <DialogDescription asChild>
             <div className="min-w-0 space-y-3 text-sm text-foreground">
               <p className="break-words">
-                {t("dialogs.reconnectUpload.body", { count })}
+                {t("dialogs.reconnectUpload.body", { count: entries.length })}
               </p>
               <PendingUploadPreviewLines
-                lines={preview.lines}
-                footer={
-                  preview.more > 0
-                    ? t("dialogs.reconnectUpload.andMore", {
-                        count: preview.more,
-                      })
-                    : null
-                }
+                lines={lines}
+                maxHeightClassName="max-h-64"
+                selectedIds={selectedIds}
+                onToggle={toggleId}
               />
+              <p className="break-words text-xs text-muted">
+                {t("dialogs.reconnectUpload.selectionHint")}
+              </p>
             </div>
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="min-w-0 gap-2 sm:justify-between">
-          <Button variant="outline" onClick={() => choose("later")}>
+          <Button
+            variant="outline"
+            onClick={() => choose({ action: "later" })}
+          >
             {t("dialogs.reconnectUpload.later")}
           </Button>
-          <Button variant="default" onClick={() => choose("now")}>
-            {t("dialogs.reconnectUpload.now")}
+          <Button
+            variant="default"
+            onClick={() =>
+              choose({
+                action: "now",
+                selectedIds: [...selectedIds],
+              })
+            }
+          >
+            {selectedCount > 0
+              ? t("dialogs.reconnectUpload.nowCount", { count: selectedCount })
+              : t("dialogs.reconnectUpload.nowIgnoreOnly")}
           </Button>
         </DialogFooter>
       </DialogContent>

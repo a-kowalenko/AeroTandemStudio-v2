@@ -132,7 +132,7 @@ pub struct VorgangEntry {
     /// `bridge` | `outbox` | `local` | empty
     pub ams_source: String,
     /// SMB upload lifecycle, separate from AMS:
-    /// `none` | `pending` | `uploading` | `done` | `failed` | `cancelled`.
+    /// `none` | `pending` | `uploading` | `done` | `failed` | `cancelled` | `ignored`.
     pub upload_state: String,
     pub append_count: i64,
     pub last_append_correlation_id: String,
@@ -697,7 +697,7 @@ impl VorgangHistoryStore {
     }
 
     /// Set SMB `upload_state`
-    /// (`none` / `pending` / `uploading` / `done` / `failed` / `cancelled`).
+    /// (`none` / `pending` / `uploading` / `done` / `failed` / `cancelled` / `ignored`).
     /// Prefer `vorgang_id`; fall back to `correlation_id` when id is unknown.
     pub fn update_upload_state(
         &self,
@@ -1344,6 +1344,7 @@ fn normalize_upload_state(raw: &str) -> Result<&'static str, VorgangHistoryError
         "done" => Ok("done"),
         "failed" => Ok("failed"),
         "cancelled" | "canceled" => Ok("cancelled"),
+        "ignored" => Ok("ignored"),
         other => Err(VorgangHistoryError::Message(format!(
             "Ungültiger upload_state: {other}"
         ))),
@@ -2065,6 +2066,14 @@ mod tests {
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
             "cancelled"
+        );
+
+        store
+            .update_upload_state(Some(id), "", "ignored")
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "ignored"
         );
 
         assert!(store.update_upload_state(Some(id), "", "bogus").is_err());

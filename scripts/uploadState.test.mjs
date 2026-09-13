@@ -7,6 +7,7 @@ import {
   isOutstandingVorgangUpload,
   isRetryableUploadState,
 } from "../src/lib/uploadState.ts";
+import { partitionReconnectUploadSelection } from "../src/lib/reconnectUploadOffer.ts";
 
 function entry(overrides = {}) {
   return {
@@ -18,20 +19,23 @@ function entry(overrides = {}) {
   };
 }
 
-describe("upload_state cancelled vs outstanding (Phase 31.8)", () => {
-  it("cancelled is retryable but not outstanding", () => {
+describe("upload_state cancelled / ignored vs outstanding (Phase 31.8 / 31.10)", () => {
+  it("cancelled and ignored are retryable but not outstanding", () => {
     assert.equal(isRetryableUploadState("cancelled"), true);
+    assert.equal(isRetryableUploadState("ignored"), true);
     assert.equal(isOutstandingUploadState("cancelled"), false);
+    assert.equal(isOutstandingUploadState("ignored"), false);
     assert.equal(isOutstandingUploadState("pending"), true);
     assert.equal(isOutstandingUploadState("failed"), true);
   });
 
-  it("badge / bulk exclude cancelled; Historie retry includes it", () => {
+  it("badge / bulk exclude cancelled and ignored; Historie retry includes them", () => {
     const rows = [
       entry({ id: 1, upload_state: "pending" }),
       entry({ id: 2, upload_state: "failed", correlation_id: "cid-2" }),
       entry({ id: 3, upload_state: "cancelled", correlation_id: "cid-3" }),
-      entry({ id: 4, upload_state: "done", correlation_id: "cid-4" }),
+      entry({ id: 4, upload_state: "ignored", correlation_id: "cid-4" }),
+      entry({ id: 5, upload_state: "done", correlation_id: "cid-5" }),
     ];
 
     assert.equal(
@@ -39,16 +43,39 @@ describe("upload_state cancelled vs outstanding (Phase 31.8)", () => {
       2,
     );
     assert.equal(canRetryVorgangUpload(rows[2], true), true);
-    assert.equal(canRetryVorgangUpload(rows[3], true), false);
+    assert.equal(canRetryVorgangUpload(rows[3], true), true);
+    assert.equal(canRetryVorgangUpload(rows[4], true), false);
   });
 
   it("list chip shows only actionable SMB states", () => {
     assert.equal(isListUploadStatus("uploading"), true);
     assert.equal(isListUploadStatus("pending"), true);
     assert.equal(isListUploadStatus("cancelled"), true);
+    assert.equal(isListUploadStatus("ignored"), true);
     assert.equal(isListUploadStatus("failed"), true);
     assert.equal(isListUploadStatus("done"), false);
     assert.equal(isListUploadStatus("none"), false);
     assert.equal(isListUploadStatus(""), false);
+  });
+});
+
+describe("partitionReconnectUploadSelection (Phase 31.10)", () => {
+  it("splits selected vs ignored by id", () => {
+    const rows = [
+      entry({ id: 1, gast: "A" }),
+      entry({ id: 2, gast: "B", correlation_id: "cid-2" }),
+      entry({ id: 3, gast: "C", correlation_id: "cid-3" }),
+    ];
+    const { toUpload, toIgnore } = partitionReconnectUploadSelection(rows, [
+      1, 3,
+    ]);
+    assert.deepEqual(
+      toUpload.map((e) => e.id),
+      [1, 3],
+    );
+    assert.deepEqual(
+      toIgnore.map((e) => e.id),
+      [2],
+    );
   });
 });

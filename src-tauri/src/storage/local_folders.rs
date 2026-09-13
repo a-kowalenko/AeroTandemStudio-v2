@@ -154,7 +154,7 @@ fn delete_targets(targets: TargetSet) -> CacheCleanupResult {
 fn is_retryable_upload(state: &str) -> bool {
     matches!(
         state.trim().to_ascii_lowercase().as_str(),
-        "pending" | "failed" | "cancelled" | "canceled" | "uploading"
+        "pending" | "failed" | "cancelled" | "canceled" | "ignored" | "uploading"
     )
 }
 

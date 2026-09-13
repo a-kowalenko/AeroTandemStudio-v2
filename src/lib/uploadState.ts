@@ -1,4 +1,4 @@
-/** SMB upload lifecycle helpers (Phase 31 / 31.8) — pure, no Tauri/store. */
+/** SMB upload lifecycle helpers (Phase 31 / 31.8 / 31.10) — pure, no Tauri/store. */
 
 export type UploadStateLike = {
   correlation_id?: string | null;
@@ -32,13 +32,14 @@ export function isListUploadStatus(
     s === "pending" ||
     s === "failed" ||
     s === "uploading" ||
-    s === "cancelled"
+    s === "cancelled" ||
+    s === "ignored"
   );
 }
 
 /**
- * Still expected by the system: badge, reconnect toast, bulk candidates.
- * Manual cancel is `cancelled` — retryable, but not outstanding.
+ * Still expected by the system: badge, reconnect offer, bulk candidates.
+ * `cancelled` / `ignored` — retryable under Vorgänge, but not outstanding.
  */
 export function isOutstandingUploadState(
   state: string | null | undefined,
@@ -47,12 +48,20 @@ export function isOutstandingUploadState(
   return s === "pending" || s === "failed";
 }
 
-/** `pending` | `failed` | `cancelled` — Historie may offer “Upload nachholen”. */
+/**
+ * `pending` | `failed` | `cancelled` | `ignored` — Historie may offer
+ * “Upload nachholen”.
+ */
 export function isRetryableUploadState(
   state: string | null | undefined,
 ): boolean {
   const s = normalizeUploadState(state);
-  return s === "pending" || s === "failed" || s === "cancelled";
+  return (
+    s === "pending" ||
+    s === "failed" ||
+    s === "cancelled" ||
+    s === "ignored"
+  );
 }
 
 export function entryHasUploadTarget(entry: UploadStateLike): boolean {

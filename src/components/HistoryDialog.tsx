@@ -43,6 +43,8 @@ import {
   scanBulkUploadCandidates,
   bulkSummaryItemFromScanEntry,
   bulkOkItemFromEntry,
+  setVorgangUploadState,
+  refreshPendingUploadCount,
   type BulkPhase2Session,
   type BulkScanEntry,
   type BulkUploadScanResult,
@@ -74,6 +76,7 @@ import {
   type ReconnectUploadOfferChoice,
 } from "@/components/ReconnectUploadOfferDialog";
 import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
+import { partitionReconnectUploadSelection } from "@/lib/reconnectUploadOffer";
 import type {
   UploadExtraFilesConfirmState,
   UploadMissingFilesState,
@@ -620,7 +623,30 @@ export function HistoryDialog({
   async function onBulkUploadOfferChoice(choice: ReconnectUploadOfferChoice) {
     const entries = bulkUploadOffer?.entries ?? [];
     setBulkUploadOffer(null);
-    if (choice === "later" || entries.length === 0) return;
+    if (choice.action === "later" || entries.length === 0) return;
+
+    const { toUpload, toIgnore } = partitionReconnectUploadSelection(
+      entries,
+      choice.selectedIds,
+    );
+
+    for (const entry of toIgnore) {
+      try {
+        await setVorgangUploadState("ignored", { vorgangId: entry.id });
+        useHistoryStore.getState().patchVorgang(entry.id, (row) => ({
+          ...row,
+          upload_state: "ignored",
+        }));
+      } catch (e) {
+        console.error("ignore upload_state failed:", e);
+      }
+    }
+    if (toIgnore.length > 0) {
+      void refreshPendingUploadCount(uploadToServerEnabled).catch(() => {});
+    }
+
+    if (toUpload.length === 0) return;
+
     if (!useServerStore.getState().connected) {
       showWarning(
         t("history.upload.bulkOffline"),
@@ -630,7 +656,7 @@ export function HistoryDialog({
     }
     setRetryPreflightBusy(true);
     try {
-      const scan = await scanBulkUploadCandidates(entries);
+      const scan = await scanBulkUploadCandidates(toUpload);
       // Soft-confirm already authorized — no second scan confirm.
       startBulkRetryUploads(scan);
     } catch (e) {

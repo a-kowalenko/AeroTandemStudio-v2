@@ -15,7 +15,7 @@
 |----------|----------------|
 | `@AGENTS.md` | Immer |
 | `@docs/phases/open/31.5-extra-files.md` | Phase 31.5 |
-| `@docs/phases/open/31.9-reconnect-upload-offer.md` | Phase 31.9 |
+| `@docs/phases/open/31.10-reconnect-upload-select.md` | Phase 31.10 |
 | `@docs/phases/open/23-usb-mtp.md` | Phase 23.x |
 | `@docs/phases/open/14-ml-photo.md` | Phase 14 (Backlog) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
@@ -87,6 +87,7 @@ Details: `@AGENTS.md`
 | 31.5 | Extra-Dateien angleichen / löschen | ⬜ | [open/31.5](phases/open/31.5-extra-files.md) |
 | 31.6–31.8 | Bulk zweistufig … Upload-Abbruch | ✅ | ARCHIVE |
 | 31.9 | Reconnect Upload-Offer | ✅ | [open/31.9](phases/open/31.9-reconnect-upload-offer.md) |
+| 31.10 | Reconnect Offer Auswahl + `ignored` | ✅ | [open/31.10](phases/open/31.10-reconnect-upload-select.md) |
 | 32–37 | SMB Quiet-Poll … Background-Upload | ✅ | ARCHIVE |
 | 38 | Vorgänge-Dialog UX | ✅ | [VORGAENGE_DIALOG_PLAN](VORGAENGE_DIALOG_PLAN.md) |
 | 39–41 | Danger Zone … Eject-Ton | ✅ | ARCHIVE |
@@ -113,9 +114,9 @@ Nur Phase X. Danach cargo test && npm run check && npm run tauri dev.
 **Beispiele:**
 
 ```
-Implementiere Phase 31.9 aus @docs/phases/open/31.9-reconnect-upload-offer.md
+Implementiere Phase 31.10 aus @docs/phases/open/31.10-reconnect-upload-select.md
 Regeln: @AGENTS.md
-Nur 31.9.
+Nur 31.10.
 ```
 
 ```

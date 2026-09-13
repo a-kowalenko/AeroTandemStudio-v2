@@ -827,7 +827,10 @@
       "body": "{{count}} subidas pendientes — ¿subir ahora?",
       "later": "Más tarde",
       "now": "Subir ahora",
+      "nowCount": "Subir {{count}}",
+      "nowIgnoreOnly": "Aplicar",
       "scanning": "Comprobando subidas pendientes…",
+      "selectionHint": "Los no marcados no se volverán a sugerir. Aún puedes subirlos en Trabajos.",
       "title": "Servidor de nuevo en línea"
     },
     "uploadExtraFiles": {
@@ -1494,6 +1497,8 @@
       "pendingHint": "Listo en local — falta copiar al servidor",
       "cancelled": "Cancelada",
       "cancelledHint": "Subida cancelada — reintentar desde Trabajos",
+      "ignored": "Ignorada",
+      "ignoredHint": "Ya no se sugiere automáticamente — reintentar desde Trabajos",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "retryBtn": "Reintentar subida",
       "uploadBtn": "Subir al servidor",
