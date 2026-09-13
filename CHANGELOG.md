@@ -10,6 +10,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Verbessert
+
+- Reconnect- und Vorgänge-Nachholen: ausstehende Uploads per Checkbox wählen (Standard alle markiert); nicht markierte werden nicht mehr vorgeschlagen, bleiben unter Vorgänge nachholbar
+- Vorgänge: Status „Ignoriert“ für bewusst abgewählte Uploads
+
 ## [0.5.3] - 2026-09-13
 
 ### Neu
