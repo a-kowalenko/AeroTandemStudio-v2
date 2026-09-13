@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-09-13
+
 ### Neu
 
 - Nach Server-Reconnect: Dialog „Server wieder online“ mit Kurzlist ausstehender Uploads — „Jetzt nachholen“ oder „Später“ (statt nur Toast)
