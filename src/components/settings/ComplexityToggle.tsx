@@ -16,7 +16,7 @@ export function ComplexityToggle({
 }: Props) {
   return (
     <div
-      className="inline-flex rounded-lg border border-border p-0.5 text-xs"
+      className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs font-normal"
       role="group"
     >
       {(

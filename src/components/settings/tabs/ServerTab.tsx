@@ -388,10 +388,9 @@ export function ServerTab({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <SettingsSection
         title={t("settings.server.smb.title")}
-        description={t("settings.server.smb.description")}
       >
         {advanced ? (
           <>
@@ -468,6 +467,7 @@ export function ServerTab({
         />
       </SettingsSection>
 
+      {advanced ? (
       <SettingsSection title={t("settings.server.upload.title")}>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
@@ -476,7 +476,6 @@ export function ServerTab({
           />
           {t("settings.server.upload.afterCreate")}
         </label>
-        {advanced ? (
         <label className="flex items-start gap-2 text-sm" title={t("settings.server.upload.autoMountHint")}>
           <Checkbox
             className="mt-0.5"
@@ -489,14 +488,14 @@ export function ServerTab({
             <span className="block">{t("settings.server.upload.autoMount")}</span>
           </span>
         </label>
-        ) : null}
       </SettingsSection>
+      ) : null}
 
       <SettingsSection
         title={t("settings.server.ams.title")}
-        description={t("settings.server.ams.description")}
       >
-        <div ref={amsUrlRef} className="relative space-y-1.5 rounded-xl p-2.5">
+        <div className="grid gap-3 sm:grid-cols-2">
+        <div ref={amsUrlRef} className="relative space-y-1.5 rounded-xl">
           {flashFocus === "ams-bridge-url" ? (
             <div
               aria-hidden
@@ -512,7 +511,7 @@ export function ServerTab({
             placeholder="http://169.254.x.x:8787"
           />
         </div>
-        <div ref={amsTokenRef} className="relative space-y-1.5 rounded-xl p-2.5">
+        <div ref={amsTokenRef} className="relative space-y-1.5 rounded-xl">
           {flashFocus === "ams-bridge-token" ? (
             <div
               aria-hidden
@@ -528,18 +527,22 @@ export function ServerTab({
             autoComplete="off"
           />
         </div>
-        {draft.ams_bridge_last_ok_url.trim() ? (
-          <p className="text-[11px] text-muted">
-            {t("settings.server.ams.lastOk", {
-              url: draft.ams_bridge_last_ok_url,
-            })}
-          </p>
-        ) : null}
-        {draft.ams_bridge_display_name.trim() ? (
-          <p className="text-[11px] text-muted">
-            {t("settings.server.ams.connectedAs", {
-              name: draft.ams_bridge_display_name,
-            })}
+        </div>
+        {draft.ams_bridge_display_name.trim() ||
+        draft.ams_bridge_last_ok_url.trim() ? (
+          <p className="truncate text-[11px] text-muted">
+            {draft.ams_bridge_display_name.trim()
+              ? t("settings.server.ams.connectedAs", {
+                  name: draft.ams_bridge_display_name.trim(),
+                })
+              : null}
+            {draft.ams_bridge_last_ok_url.trim()
+              ? draft.ams_bridge_display_name.trim()
+                ? ` · ${draft.ams_bridge_last_ok_url}`
+                : t("settings.server.ams.lastOk", {
+                    url: draft.ams_bridge_last_ok_url,
+                  })
+              : null}
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-2">

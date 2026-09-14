@@ -455,29 +455,28 @@ export function SystemTab({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <SettingsSection
         title={t("settings.system.update.title")}
-        description={t("settings.system.update.description")}
       >
-        {appVersion ? (
-          <p className="text-xs text-muted">
-            {t("settings.system.update.installedVersion", {
-              version: appVersion,
-            })}
-            {installedIsBeta ? (
-              <span className="ml-1 font-medium text-amber-600 dark:text-amber-500">
-                ({t("settings.system.update.beta")})
-              </span>
-            ) : null}
-          </p>
-        ) : null}
         {platformHint ? (
           <p className="text-xs text-muted">
             {presentUpdaterInstallHint(platformHint)}
           </p>
         ) : null}
         <div className="flex flex-wrap items-center gap-3">
+          {appVersion ? (
+            <p className="text-xs text-muted">
+              {t("settings.system.update.installedVersion", {
+                version: appVersion,
+              })}
+              {installedIsBeta ? (
+                <span className="ml-1 font-medium text-amber-600 dark:text-amber-500">
+                  ({t("settings.system.update.beta")})
+                </span>
+              ) : null}
+            </p>
+          ) : null}
           <Button
             type="button"
             variant="secondary"
@@ -499,11 +498,6 @@ export function SystemTab({
           </label>
           ) : null}
         </div>
-        {advanced ? (
-        <p className="text-xs text-muted">
-          {t("settings.system.update.betaTesterDescription")}
-        </p>
-        ) : null}
 
         <div className="space-y-1.5">
           <Label>{t("settings.system.update.availableVersions")}</Label>
@@ -572,12 +566,13 @@ export function SystemTab({
         </div>
 
         {selectedRelease ? (
-          <div className="space-y-1 rounded-md border border-border/50 bg-card/40 p-3">
-            <p className="text-sm font-medium">
-              {t("settings.system.update.versionHeading", {
-                version: selectedRelease.tag_name,
-              })}
-            </p>
+          <SettingsAccordion
+            defaultOpen={false}
+            plainTitle
+            title={t("settings.system.update.notesTitle", {
+              version: selectedRelease.tag_name,
+            })}
+          >
             {selectedRelease.published_at ? (
               <p className="text-xs text-muted">
                 {formatReleaseDate(selectedRelease.published_at)}
@@ -586,15 +581,14 @@ export function SystemTab({
             <ReleaseNotes
               markdown={selectedRelease.body}
               emptyLabel={t("settings.system.update.noNotes")}
-              className="max-h-40"
+              className="max-h-52"
             />
-          </div>
+          </SettingsAccordion>
         ) : null}
       </SettingsSection>
 
       <SettingsSection
         title={t("settings.system.cache.title")}
-        description={t("settings.system.cache.description")}
       >
         <UsageActionRow
           clearButton={
@@ -656,7 +650,6 @@ export function SystemTab({
       >
       <SettingsSection
         title={t("settings.system.autoCleanup.title")}
-        description={t("settings.system.autoCleanup.description")}
       >
         <div className="space-y-4">
           <div className="space-y-2">
@@ -723,7 +716,7 @@ export function SystemTab({
             </div>
           </div>
 
-          <p className="text-xs text-muted">
+          <p className="text-[11px] text-muted">
             {t("settings.system.autoCleanup.hint")}
           </p>
         </div>
@@ -731,7 +724,6 @@ export function SystemTab({
 
       <SettingsSection
         title={t("settings.system.danger.title")}
-        description={t("settings.system.danger.description")}
         className={cn("border-destructive/60")}
       >
         <div className="space-y-4">
@@ -881,14 +873,9 @@ export function SystemTab({
           ) : null}
 
           <div className="space-y-2 border-t border-border/60 pt-3">
-            <div>
-              <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-                {t("settings.system.reset.title")}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted">
-                {t("settings.system.reset.description")}
-              </p>
-            </div>
+            <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+              {t("settings.system.reset.title")}
+            </p>
             <Button
               type="button"
               variant="destructive"

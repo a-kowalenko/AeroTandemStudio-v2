@@ -367,11 +367,6 @@ export function ServerProfileEditor({
                     name: displayServerProfileLabel(formProfile),
                   })}
             </p>
-            <p className="text-[11px] text-muted">
-              {wizardExpandedEditor || singleWizardProfile
-                ? t("settings.server.smb.profileWizardHint")
-                : t("settings.server.smb.profileEditPanelHint")}
-            </p>
           </div>
           {!singleWizardProfile && !wizardExpandedEditor ? (
             <div className="flex shrink-0 gap-1.5">
@@ -417,7 +412,7 @@ export function ServerProfileEditor({
 
         <div
           ref={urlSectionRef}
-          className="relative space-y-1.5 rounded-xl p-2.5"
+          className="relative space-y-1.5 rounded-xl"
         >
           {flashFocus === "server-url" ? (
             <div
@@ -483,7 +478,7 @@ export function ServerProfileEditor({
 
         <div
           ref={credentialsSectionRef}
-          className="relative rounded-xl p-2.5"
+          className="relative rounded-xl"
         >
           {flashFocus === "server-credentials" ? (
             <div
@@ -543,7 +538,7 @@ export function ServerProfileEditor({
           return (
             <div
               ref={backupUrlSectionRef}
-              className="relative space-y-1.5 rounded-xl p-2.5"
+              className="relative space-y-1.5 rounded-xl"
             >
               {flashFocus === "server-backup-url" ? (
                 <div
@@ -551,7 +546,11 @@ export function ServerProfileEditor({
                   className="pointer-events-none absolute inset-0 rounded-xl ats-settings-focus-flash"
                 />
               ) : null}
-              <Label htmlFor="server-profile-backup-url" className="relative">
+              <Label
+                htmlFor="server-profile-backup-url"
+                className="relative"
+                title={t("settings.server.smb.backupUrlHint")}
+              >
                 {t("settings.server.smb.backupUrl")}
               </Label>
               <div
@@ -617,9 +616,6 @@ export function ServerProfileEditor({
                   </button>
                 </div>
               </div>
-              <p className="text-[11px] text-muted">
-                {t("settings.server.smb.backupUrlHint")}
-              </p>
             </div>
           );
         })()}
@@ -672,18 +668,13 @@ export function ServerProfileEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {showList ? (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-medium">
-                {t("settings.server.smb.profileListTitle")}
-              </p>
-              <p className="text-[11px] text-muted">
-                {t("settings.server.smb.profileListHint")}
-              </p>
-            </div>
+            <p className="text-sm font-medium">
+              {t("settings.server.smb.profileListTitle")}
+            </p>
             <Button
               type="button"
               variant="secondary"
@@ -742,14 +733,6 @@ export function ServerProfileEditor({
             </div>
           ) : null}
         </div>
-      ) : null}
-
-      {!editorOpen && showList && active ? (
-        <p className="text-[11px] text-muted">
-          {t("settings.server.smb.profileActiveHint", {
-            name: displayServerProfileLabel(active),
-          })}
-        </p>
       ) : null}
 
       {renderEditorForm()}

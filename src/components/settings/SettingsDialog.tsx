@@ -383,8 +383,8 @@ export function SettingsDialog({
             if (suppressDismiss || softConfirmOpen) e.preventDefault();
           }}
         >
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center justify-between gap-3">
+          <DialogHeader className="shrink-0 pr-10">
+            <DialogTitle className="flex items-center gap-3">
               <span className="flex items-center gap-2">
                 {t("settings.dialog.title")}
                 {showPersistSpinner ? (
@@ -430,7 +430,9 @@ export function SettingsDialog({
                 {area === "media" ? (
                   <>
                     <SdTab {...areaProps} />
-                    <QrTab {...areaProps} />
+                    {disclosure.uiMode === "advanced" ? (
+                      <QrTab {...areaProps} />
+                    ) : null}
                   </>
                 ) : null}
                 {area === "connection" ? (

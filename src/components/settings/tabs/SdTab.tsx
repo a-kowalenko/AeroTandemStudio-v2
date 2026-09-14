@@ -47,7 +47,7 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
   const backupTarget = activeProfileBackupTarget(draft);
   const profileBackupUrl = backupTarget.url;
 
-  async function pickFolder(key: "sd_backup_folder") {
+  async function pickFolder(key: "speicherort" | "sd_backup_folder") {
     const selected = await openDialog({ directory: true, multiple: false });
     if (typeof selected === "string") patchNow(key, selected);
   }
@@ -95,9 +95,24 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
   return (
     <div className="space-y-4">
       <SettingsSection
+        title={t("settings.general.storage.title")}
+        description={t("settings.general.storage.description")}
+      >
+        <FolderPathField
+          label={t("common.labels.storageLocation")}
+          value={draft.speicherort}
+          onPick={() => void pickFolder("speicherort")}
+          onOpenError={(message) =>
+            showError(message, t("common.labels.storageLocation"))
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection
         title={t("settings.sd.backup.title")}
         description={t("settings.sd.backup.description")}
       >
+        {advanced ? (
         <div className="space-y-1.5">
           <Label>{t("settings.sd.backup.mode")}</Label>
           <Select
@@ -118,6 +133,7 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
             </SelectContent>
           </Select>
         </div>
+        ) : null}
 
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
@@ -153,7 +169,6 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
             }
           />
           {advanced ? (
-          <>
           <div className="space-y-1.5">
             <Label>{t("settings.sd.backup.pcName")}</Label>
             <Input
@@ -168,6 +183,7 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
               })}
             </p>
           </div>
+          ) : null}
           <label
             className={cn(
               "flex items-center gap-2 text-sm",
@@ -188,8 +204,6 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
             />
             {t("settings.sd.backup.clearAfter")}
           </label>
-          </>
-          ) : null}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
@@ -290,8 +304,11 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
 
       <SettingsSection
         title={t("settings.sd.import.title")}
-        description={t("settings.sd.import.description")}
+        description={
+          advanced ? t("settings.sd.import.description") : undefined
+        }
       >
+        {advanced ? (
         <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.autoHint")}>
           <Checkbox
             checked={draft.sd_auto_import}
@@ -299,6 +316,7 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           />
           {t("settings.sd.import.auto")}
         </label>
+        ) : null}
         <label
           className="flex items-center gap-2 text-sm"
           title={t("settings.sd.import.ejectHint")}

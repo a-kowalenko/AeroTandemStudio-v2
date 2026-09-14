@@ -37,6 +37,8 @@ export function EncodingTab({
         title={t("settings.encoding.standard.title")}
         description={t("settings.encoding.standard.description")}
       >
+        {advanced ? (
+        <>
         <div className="space-y-1.5">
           <Label>{t("settings.encoding.codec")}</Label>
           <Select
@@ -75,6 +77,8 @@ export function EncodingTab({
             </SelectContent>
           </Select>
         </div>
+        </>
+        ) : null}
 
         <label className="flex items-center gap-2 text-sm">
           <Checkbox

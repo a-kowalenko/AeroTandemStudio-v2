@@ -117,7 +117,9 @@
     "complexity": {
       "simple": "Simple",
       "advanced": "Advanced",
-      "advancedField": "Advanced field"
+      "advancedField": "Advanced field",
+      "hintSimple": "Everyday settings only.",
+      "hintAdvanced": "All options visible."
     },
     "moreOptions": "More options",
     "general": {
@@ -132,6 +134,10 @@
         "title": "Storage",
         "description": "Completed jobs are saved to the storage location.",
         "defaultDropzone": "Drop zone (default)"
+      },
+      "dropzone": {
+        "title": "Drop zone",
+        "description": "Default drop zone for new jobs."
       }
     },
     "system": {
@@ -180,6 +186,7 @@
         "applyVersion": "Apply version",
         "noAutoInstall": "Automatic installation is not available for this version.",
         "versionHeading": "Version {{version}}",
+        "notesTitle": "Patch notes {{version}}",
         "noNotes": "No release notes.",
         "releasesUnavailable": "Version list unavailable — please check your internet connection."
       },
@@ -189,7 +196,7 @@
         "jobsSwitch": "Automatically clean up job folders",
         "backupsSwitch": "Automatically clean up backup folders",
         "retentionLabel": "Retention period",
-        "hint": "Only local folders older than the selected period. Pending uploads are skipped. History and dedup stay intact.",
+        "hint": "Local folders only. History is kept.",
         "enableWarn": "Local folders older than the retention period will be permanently deleted. History entries are kept. Continue?",
         "toastTitle": "Automatic cleanup",
         "summaryJobs": "Jobs: {{summary}}",
@@ -245,11 +252,11 @@
         "hintExisting": "Appears at the top of form dropdowns when the role matches."
       },
       "session": {
-        "title": "Reset session",
+        "title": "After creating",
         "description": "After creating a job: mode or fixed name for tandem master and video jumper.",
-        "tandemmasterLabel": "Tandem master on reset",
-        "videospringerLabel": "Video jumper on reset",
-        "placeholder": "Choose mode or name…",
+        "tandemmasterLabel": "Tandem master",
+        "videospringerLabel": "Video jumper",
+        "placeholder": "Name or mode…",
         "hint": "Choose a mode above, or a fixed name from the crew."
       },
       "list": {
@@ -342,7 +349,7 @@
         "clearAfter": "Clear SD after backup",
         "clearAfterTitleOn": "Clear SD card after successful backup",
         "clearAfterTitleOff": "Only available when auto backup is enabled",
-        "secondPath": "Back up to server",
+        "secondPath": "Server backup",
         "serverUrl": "Server backup URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Same SMB upload as Create; destination independent of “aktuell”. Uses upload-server credentials.",

@@ -81,8 +81,8 @@
 ##### Ziel-Informationsarchitektur
 
 ```
-workplace     Theme, Sprache, Speicherort, Dropzone, Operator, Crew
-media         SD-Backup, Server-Zweitpfad (Anzeige + Deep-Link), Import, Eject,
+workplace     Theme, Sprache, Operator, Crew
+media         Speicherort, SD-Backup, Server-Zweitpfad (Anzeige + Deep-Link), Import, Eject,
               USB/MTP, Größenlimit, QR
 connection    Server-Profile, SMB-Credentials, Upload-Flags, AMS-Bridge,
               Path-Hints; Backup-URL editierbar hier
@@ -95,10 +95,10 @@ maintenance   Updates, Cache, Auto-Cleanup, Danger Zone, Factory Reset
 
 | Area | Sichtbar in Einfach |
 |------|---------------------|
-| workplace | Theme, Sprache, Speicherort, Ort, Operator + Rollen, Crew-Liste kompakt |
-| media | Backup-Modus, Auto-Backup + Ordner, Server-Zweitpfad an/aus (URL aus Profil), Auto-Import, Eject |
-| connection | Aktives Profil, URL/Login + Test, Upload nach Create, AMS URL/Token + Test |
-| output | Codec, Strategie, HW-Accel |
+| workplace | Theme, Sprache, Operator + Rollen, Nach-dem-Erstellen |
+| media | Speicherort, Auto-Backup + Ordner, SD leeren, Server-Backup, Auswerfen |
+| connection | Aktives Profil, URL/Login + Test, AMS URL/Token + Test |
+| output | HW-Accel |
 | maintenance | Update-Check, Cache leeren |
 
 **Nur Erweitert (Beispiele):** Intro/CRF/Concat-Details, Speculative, Parallel, QR-Sekunden/Remove-after, USB-Mode, Size-Limit, Eject-Sound, Skip-processed, Clear-after, PC-Name, Copy-Strategie, AMS Discover, Path-Hints-Feintuning, Auto-Cleanup, Danger, Beta-Updates, Log-Level.

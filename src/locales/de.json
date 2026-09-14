@@ -117,7 +117,9 @@
     "complexity": {
       "simple": "Einfach",
       "advanced": "Erweitert",
-      "advancedField": "Erweitertes Feld"
+      "advancedField": "Erweitertes Feld",
+      "hintSimple": "Nur Alltagseinstellungen.",
+      "hintAdvanced": "Alle Optionen sichtbar."
     },
     "moreOptions": "Weitere Optionen",
     "general": {
@@ -132,6 +134,10 @@
         "title": "Ablage",
         "description": "Fertige Vorgänge werden im Speicherort abgelegt.",
         "defaultDropzone": "Dropzone (Standard)"
+      },
+      "dropzone": {
+        "title": "Dropzone",
+        "description": "Standard-Dropzone für neue Vorgänge."
       }
     },
     "system": {
@@ -180,6 +186,7 @@
         "applyVersion": "Version übernehmen",
         "noAutoInstall": "Für diese Version ist die automatische Installation nicht verfügbar.",
         "versionHeading": "Version {{version}}",
+        "notesTitle": "Patchnotes {{version}}",
         "noNotes": "Keine Release Notes.",
         "releasesUnavailable": "Versionsliste nicht verfügbar — bitte Internetverbindung prüfen."
       },
@@ -189,7 +196,7 @@
         "jobsSwitch": "Vorgangsordner automatisch bereinigen",
         "backupsSwitch": "Backup-Ordner automatisch bereinigen",
         "retentionLabel": "Aufbewahrungsdauer",
-        "hint": "Nur lokale Ordner älter als die gewählte Dauer. Ausstehende Uploads werden übersprungen. Historie und Dedup bleiben.",
+        "hint": "Nur lokale Ordner. Historie bleibt.",
         "enableWarn": "Lokale Ordner älter als die Aufbewahrungsdauer werden unwiderruflich gelöscht. Einträge in der Historie bleiben erhalten. Fortfahren?",
         "toastTitle": "Automatische Bereinigung",
         "summaryJobs": "Vorgänge: {{summary}}",
@@ -245,11 +252,11 @@
         "hintExisting": "Erscheint oben in den Formular-Dropdowns bei passender Rolle."
       },
       "session": {
-        "title": "Session zurücksetzen",
+        "title": "Nach dem Erstellen",
         "description": "Nach dem Erstellen eines Vorgangs: Modus oder festen Namen für Tandemmaster und Videospringer.",
-        "tandemmasterLabel": "Tandemmaster beim Zurücksetzen",
-        "videospringerLabel": "Videospringer beim Zurücksetzen",
-        "placeholder": "Modus oder Name wählen…",
+        "tandemmasterLabel": "Tandemmaster",
+        "videospringerLabel": "Videospringer",
+        "placeholder": "Name oder Modus…",
         "hint": "Oben Modus wählen, oder einen festen Namen aus der Crew."
       },
       "list": {
@@ -342,7 +349,7 @@
         "clearAfter": "SD nach Backup leeren",
         "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
         "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
-        "secondPath": "Auf Server sichern",
+        "secondPath": "Server-Backup",
         "serverUrl": "Server-Backup-URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Gleicher SMB-Upload wie bei Erstellen; Ziel unabhängig von „aktuell“. Zugangsdaten vom Upload-Server.",

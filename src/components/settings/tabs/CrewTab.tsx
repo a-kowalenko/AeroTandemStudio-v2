@@ -116,60 +116,39 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
   }
 
   return (
-    <div className="space-y-4">
-      <SettingsSection
-        title={t("settings.crew.who.title")}
-        description={t("settings.crew.who.description")}
-      >
+    <div className="space-y-3">
+      <SettingsSection title={t("settings.crew.who.title")}>
         <Combobox
           label={t("settings.crew.who.label")}
           value={draft.operator_name}
           onChange={setOperatorName}
           options={allCrewNames}
           placeholder={t("settings.crew.who.placeholder")}
-          hint={
-            opName && !operatorMember
-              ? t("settings.crew.who.hintNew")
-              : t("settings.crew.who.hintExisting")
-          }
           listZIndex={200}
         />
         {opName ? (
-          <>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
-                <span>{t("create.ready.chips.tandemmaster")}</span>
-                <Switch
-                  checked={Boolean(operatorMember?.tandemmaster)}
-                  onCheckedChange={(v) => setOperatorRole("tandemmaster", v)}
-                  aria-label={t("create.ready.chips.tandemmaster")}
-                />
-              </label>
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
-                <span>{t("create.ready.chips.videospringer")}</span>
-                <Switch
-                  checked={Boolean(operatorMember?.videospringer)}
-                  onCheckedChange={(v) => setOperatorRole("videospringer", v)}
-                  aria-label={t("create.ready.chips.videospringer")}
-                />
-              </label>
-            </div>
-            <p className="text-[11px] leading-snug text-muted">
-              {operatorMember?.tandemmaster && !operatorMember?.videospringer
-                ? t("setupWizard.operatorSingleRoleTm")
-                : operatorMember?.videospringer && !operatorMember?.tandemmaster
-                  ? t("setupWizard.operatorSingleRoleVs")
-                  : t("setupWizard.operatorMultiRole")}
-            </p>
-          </>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+              <span>{t("create.ready.chips.tandemmaster")}</span>
+              <Switch
+                checked={Boolean(operatorMember?.tandemmaster)}
+                onCheckedChange={(v) => setOperatorRole("tandemmaster", v)}
+                aria-label={t("create.ready.chips.tandemmaster")}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-background/70 px-3 py-2 text-sm">
+              <span>{t("create.ready.chips.videospringer")}</span>
+              <Switch
+                checked={Boolean(operatorMember?.videospringer)}
+                onCheckedChange={(v) => setOperatorRole("videospringer", v)}
+                aria-label={t("create.ready.chips.videospringer")}
+              />
+            </label>
+          </div>
         ) : null}
       </SettingsSection>
 
-      {advanced ? (
-      <SettingsSection
-        title={t("settings.crew.session.title")}
-        description={t("settings.crew.session.description")}
-      >
+      <SettingsSection title={t("settings.crew.session.title")}>
         <Combobox
           label={t("settings.crew.session.tandemmasterLabel")}
           value={crewKeepComboboxValue(
@@ -195,7 +174,6 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
             draft.operator_name,
           )}
           placeholder={t("settings.crew.session.placeholder")}
-          hint={t("settings.crew.session.hint")}
           listZIndex={200}
         />
         <Combobox
@@ -223,12 +201,11 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
             draft.operator_name,
           )}
           placeholder={t("settings.crew.session.placeholder")}
-          hint={t("settings.crew.session.hint")}
           listZIndex={200}
         />
       </SettingsSection>
-      ) : null}
 
+      {advanced ? (
       <SettingsSection
         title={t("settings.crew.list.title")}
         description={t("settings.crew.list.description")}
@@ -356,6 +333,7 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
           )}
         </div>
       </SettingsSection>
+      ) : null}
     </div>
   );
 }

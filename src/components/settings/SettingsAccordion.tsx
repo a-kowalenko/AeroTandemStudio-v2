@@ -9,6 +9,8 @@ type Props = {
   defaultOpen?: boolean;
   forceOpen?: boolean;
   className?: string;
+  /** Keep title casing (e.g. version tags) instead of section uppercase. */
+  plainTitle?: boolean;
 };
 
 export function SettingsAccordion({
@@ -17,6 +19,7 @@ export function SettingsAccordion({
   defaultOpen = false,
   forceOpen = false,
   className,
+  plainTitle = false,
 }: Props) {
   const [open, setOpen] = useState(defaultOpen);
   const shown = forceOpen || open;
@@ -31,7 +34,10 @@ export function SettingsAccordion({
       <Button
         type="button"
         variant="ghost"
-        className="flex h-auto w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-semibold tracking-wide text-muted uppercase hover:bg-muted/30"
+        className={cn(
+          "flex h-auto w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-semibold text-muted hover:bg-muted/30",
+          plainTitle ? "tracking-normal" : "tracking-wide uppercase",
+        )}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={shown}
       >
@@ -42,7 +48,12 @@ export function SettingsAccordion({
         />
       </Button>
       {shown ? (
-        <div className="space-y-4 border-t border-border px-3 pt-3 pb-3">
+        <div
+          className={cn(
+            "border-t border-border px-3 pt-3 pb-3",
+            plainTitle ? "space-y-2" : "space-y-4",
+          )}
+        >
           {children}
         </div>
       ) : null}

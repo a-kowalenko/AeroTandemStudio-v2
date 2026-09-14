@@ -117,7 +117,9 @@
     "complexity": {
       "simple": "Simple",
       "advanced": "Avanzado",
-      "advancedField": "Campo avanzado"
+      "advancedField": "Campo avanzado",
+      "hintSimple": "Solo ajustes cotidianos.",
+      "hintAdvanced": "Todas las opciones visibles."
     },
     "moreOptions": "Más opciones",
     "general": {
@@ -132,6 +134,10 @@
         "title": "Almacenamiento",
         "description": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
         "defaultDropzone": "Zona de entrega (predeterminada)"
+      },
+      "dropzone": {
+        "title": "Zona de salto",
+        "description": "Zona de salto predeterminada para trabajos nuevos."
       }
     },
     "system": {
@@ -180,6 +186,7 @@
         "applyVersion": "Aplicar versión",
         "noAutoInstall": "La instalación automática no está disponible para esta versión.",
         "versionHeading": "Versión {{version}}",
+        "notesTitle": "Notas {{version}}",
         "noNotes": "Sin notas de la versión.",
         "releasesUnavailable": "Lista de versiones no disponible — revisa tu conexión a internet."
       },
@@ -189,7 +196,7 @@
         "jobsSwitch": "Limpiar automáticamente carpetas de trabajos",
         "backupsSwitch": "Limpiar automáticamente carpetas de respaldo",
         "retentionLabel": "Periodo de retención",
-        "hint": "Solo carpetas locales más antiguas que el periodo elegido. Las cargas pendientes se omiten. El historial y la deduplicación permanecen.",
+        "hint": "Solo carpetas locales. El historial se conserva.",
         "enableWarn": "Las carpetas locales más antiguas que el periodo de retención se eliminarán de forma irreversible. Las entradas del historial se conservan. ¿Continuar?",
         "toastTitle": "Limpieza automática",
         "summaryJobs": "Trabajos: {{summary}}",
@@ -245,11 +252,11 @@
         "hintExisting": "Aparece arriba en los menús del formulario si el rol coincide."
       },
       "session": {
-        "title": "Restablecer sesión",
+        "title": "Después de crear",
         "description": "Tras crear un trabajo: modo o nombre fijo para tandem master y video jumper.",
-        "tandemmasterLabel": "Tandem master al restablecer",
-        "videospringerLabel": "Video jumper al restablecer",
-        "placeholder": "Elige modo o nombre…",
+        "tandemmasterLabel": "Tandem master",
+        "videospringerLabel": "Video jumper",
+        "placeholder": "Nombre o modo…",
         "hint": "Elige un modo arriba, o un nombre fijo del equipo."
       },
       "list": {
@@ -342,7 +349,7 @@
         "clearAfter": "Vaciar SD tras el respaldo",
         "clearAfterTitleOn": "Vaciar la tarjeta SD tras un respaldo correcto",
         "clearAfterTitleOff": "Solo disponible si el respaldo automático está activo",
-        "secondPath": "Respaldar en el servidor",
+        "secondPath": "Respaldo en servidor",
         "serverUrl": "URL de respaldo en servidor",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
         "serverUrlHint": "Mismo envío SMB que al crear; destino independiente de «aktuell». Usa las credenciales del servidor de subida.",
