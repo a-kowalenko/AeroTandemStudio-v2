@@ -76,8 +76,8 @@ export function WarningDialog({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent
-        className="z-[100] max-w-md border-l-4 border-l-warning pb-7"
-        overlayClassName="z-[100]"
+        className="z-[130] max-w-md border-l-4 border-l-warning pb-7"
+        overlayClassName="z-[130]"
       >
         <DialogHeader>
           <DialogTitle className="text-warning">{resolvedTitle}</DialogTitle>

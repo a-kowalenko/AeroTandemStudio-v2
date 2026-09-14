@@ -58,12 +58,13 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ## Aktueller Stand (Kurz)
 
-- ✅ Phase 0–22, 24–31.4, 31.6–47 (Details: `@docs/IMPLEMENTATION_PLAN.md` Tracker; Phase 46 in `@docs/phases/ARCHIVE.md`)
+- ✅ Phase 0–22, 24–31.4, 31.6–48 (Details: `@docs/IMPLEMENTATION_PLAN.md` Tracker; Phase 46 in `@docs/phases/ARCHIVE.md`)
 - 🔄 **Phase 23** USB-MTP — 23.2g Whitelist / WPD-Descend ✅; als Nächstes **23.2h** oder **23.3** Linux · Spec: `@docs/phases/open/23-usb-mtp.md`
 - ⬜ **Phase 31.5** Extra-Dateien (Resync / optional löschen) · Spec: `@docs/phases/open/31.5-extra-files.md`
 - ✅ **Phase 31.10** Reconnect Offer Auswahl + `ignored` · Spec: `@docs/phases/open/31.10-reconnect-upload-select.md`
 - ⬜ **Phase 14** ML Foto-Klassifikation (Backlog) · Spec: `@docs/phases/open/14-ml-photo.md`
 - ✅ **Phase 47** Settings + Setup-Wizard UX Rebuild · Spec: `@docs/phases/open/47-settings-wizard-ux.md`
+- ✅ **Phase 48** Vorgang Medien-Viewer (lokal) · Spec: `@docs/phases/open/48-vorgang-media-viewer.md`
 
 **Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*

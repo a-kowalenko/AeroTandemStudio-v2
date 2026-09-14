@@ -110,9 +110,9 @@ export function ReconnectUploadOfferDialog({
       <DialogContent
         className={cn(
           "max-w-md overflow-hidden border-l-4 border-l-primary",
-          elevated && "z-[60]",
+          elevated && "z-[100]",
         )}
-        overlayClassName={elevated ? "z-[60]" : undefined}
+        overlayClassName={elevated ? "z-[100]" : undefined}
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => {
           e.preventDefault();

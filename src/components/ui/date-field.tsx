@@ -82,7 +82,7 @@ type DateFieldProps = {
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
-  /** Portal panel z-index (raise above modals, default 80). */
+  /** Portal panel z-index (page overlays under dialogs z-90; default 80). */
   panelZIndex?: number;
   /** Visually hide the label (keeps it for screen readers). */
   hideLabel?: boolean;

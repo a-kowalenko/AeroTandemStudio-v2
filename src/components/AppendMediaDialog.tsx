@@ -876,8 +876,8 @@ export const AppendMediaPanel = forwardRef<AppendMediaPanelHandle, Props>(
           }}
         >
           <DialogContent
-            className="z-[70] max-w-md border-l-4 border-l-destructive"
-            overlayClassName="z-[70]"
+            className="z-[110] max-w-md border-l-4 border-l-destructive"
+            overlayClassName="z-[110]"
             onPointerDownOutside={(e) => e.preventDefault()}
             onEscapeKeyDown={(e) => {
               // HistoryDialog Esc already routes to requestBack → closes this.

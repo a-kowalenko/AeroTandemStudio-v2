@@ -652,7 +652,7 @@ export function SetupWizard({ open, onComplete }: Props) {
       clearFieldError(kind);
       setDefaultDirDone((prev) => ({ ...prev, [kind]: true }));
       // Warnings already surfaced via confirm before create; avoid SuccessDialog
-      // under the wizard (z-50 vs wizard z-90) which ate the next click.
+      // under the wizard (dialog z-90 vs wizard z-150) which ate the next click.
     } catch (e) {
       showError(
         e instanceof Error ? e.message : String(e),
@@ -850,7 +850,7 @@ export function SetupWizard({ open, onComplete }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center p-4 pt-16"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 pt-16"
       style={{
         background:
           "radial-gradient(ellipse 70% 50% at 50% 30%, var(--ats-bg-glow-1), transparent 60%), color-mix(in srgb, var(--ats-bg) 92%, black)",

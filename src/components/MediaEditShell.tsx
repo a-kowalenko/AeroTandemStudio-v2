@@ -70,8 +70,8 @@ export function MediaEditShell<T extends string>({
       }}
     >
       <DialogContent
-        overlayClassName="z-[100] bg-black/40 backdrop-blur-[3px] dark:bg-black/60"
-        containerClassName="z-[100] items-start justify-center pt-14 pb-3 sm:pt-16 sm:pb-4"
+        overlayClassName="z-[130] bg-black/40 backdrop-blur-[3px] dark:bg-black/60"
+        containerClassName="z-[130] items-start justify-center pt-14 pb-3 sm:pt-16 sm:pb-4"
         className={cn(
           "flex h-[min(88vh,calc(100dvh-4.75rem))] w-full max-w-[min(44rem,calc(100vw-1.25rem))] flex-col gap-0 overflow-hidden border-border bg-card p-0 text-foreground shadow-2xl",
           "grid-cols-none",

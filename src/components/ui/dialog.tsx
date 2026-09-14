@@ -9,6 +9,13 @@ export const DialogTrigger = DialogPrimitive.Trigger;
 export const DialogPortal = DialogPrimitive.Portal;
 export const DialogClose = DialogPrimitive.Close;
 
+/**
+ * Overlay stack (keep in sync with Combobox/DateField/Select body portals at 80):
+ * 80 page dropdowns → 90 dialog → 100 nested → 110 elevated → 120 toast →
+ * 130 system dialogs → 150 setup wizard.
+ */
+const DIALOG_LAYER_Z = "z-[90]";
+
 /** Prefer explicit z-[n] / z-n from overlay or content so stacked dialogs stay ordered. */
 function layerZIndexClass(...classNames: (string | undefined)[]): string {
   for (const c of classNames) {
@@ -16,7 +23,7 @@ function layerZIndexClass(...classNames: (string | undefined)[]): string {
     const match = c.match(/(?:^|\s)(z-\[\d+\]|z-(?:\d+|auto|popover|modal|toast))(?:\s|$)/);
     if (match) return match[1];
   }
-  return "z-50";
+  return DIALOG_LAYER_Z;
 }
 
 export const DialogOverlay = React.forwardRef<
@@ -25,7 +32,11 @@ export const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn("fixed inset-0 z-50 bg-black/45 backdrop-blur-[2px] dark:bg-black/60", className)}
+    className={cn(
+      "fixed inset-0 bg-black/45 backdrop-blur-[2px] dark:bg-black/60",
+      DIALOG_LAYER_Z,
+      className,
+    )}
     {...props}
   />
 ));

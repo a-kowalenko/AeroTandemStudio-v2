@@ -18,6 +18,7 @@
 | `@docs/phases/open/31.10-reconnect-upload-select.md` | Phase 31.10 |
 | `@docs/phases/open/23-usb-mtp.md` | Phase 23.x |
 | `@docs/phases/open/14-ml-photo.md` | Phase 14 (Backlog) |
+| `@docs/phases/open/48-vorgang-media-viewer.md` | Phase 48 (Vorgang Medien-Viewer) |
 | `@docs/phases/open/47-settings-wizard-ux.md` | Phase 47 (Settings + Wizard UX) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/optimization_plan.md` | Nur ein OPT-Paket |
@@ -49,6 +50,7 @@ Desktop-App zur automatisierten Erstellung von Tandem-Fallschirmsprung-Videos (I
 | 1 | **31.5** Extra-Dateien (Resync / optional löschen) | [`phases/open/31.5-extra-files.md`](phases/open/31.5-extra-files.md) | ⬜ |
 | 2 | **23.2h / 23.3** USB-MTP (Overrides / Linux libmtp) | [`phases/open/23-usb-mtp.md`](phases/open/23-usb-mtp.md) | 🔄 |
 | later | **14** ML Foto-Klassifikation | [`phases/open/14-ml-photo.md`](phases/open/14-ml-photo.md) | ⬜ |
+| done | **48** Vorgang Medien-Viewer (lokal) | [`phases/open/48-vorgang-media-viewer.md`](phases/open/48-vorgang-media-viewer.md) | ✅ |
 
 *(AMS-Bridge Historie-Merge: AeroMediaService-v2 — AMS neu starten nach Deploy. Optional: Linux-VM-Abnahme, Windows-WPD mit echter Cam.)*
 
@@ -100,6 +102,7 @@ Details: `@AGENTS.md`
 | 45 | QR Dual-Family (`hc_ou`) + AMS Hash-Lookup | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 46 | Speculative Create Staging (Compatible, Intro aus) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 47 | Settings + Setup-Wizard UX Rebuild | ✅ | [open/47](phases/open/47-settings-wizard-ux.md) |
+| 48 | Vorgang Medien-Viewer (lokal) | ✅ | [open/48](phases/open/48-vorgang-media-viewer.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -138,4 +141,4 @@ Nur 23.2h.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-13 (Phase 47 erledigt).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-14 (Phase 48).*

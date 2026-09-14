@@ -150,8 +150,8 @@ export function UpdateDialog({
       }}
     >
       <DialogContent
-        className="z-[70] max-w-lg overflow-hidden"
-        overlayClassName="z-[70]"
+        className="z-[110] max-w-lg overflow-hidden"
+        overlayClassName="z-[110]"
         hideCloseButton={installing}
         onOpenAutoFocus={(e) => {
           e.preventDefault();

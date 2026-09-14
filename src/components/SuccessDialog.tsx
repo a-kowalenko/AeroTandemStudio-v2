@@ -326,7 +326,7 @@ export function SuccessDialog({
     <Dialog open={open} onOpenChange={(v) => !v && close()}>
       <DialogContent
         className={cn(
-          "z-[100] pb-7",
+          "z-[130] pb-7",
           // Keep viewport clamp when widening for QR preview (twMerge would drop the base max-w).
           hasPreview
             ? "max-w-[min(48rem,calc(100vw-2rem))]"
@@ -334,7 +334,7 @@ export function SuccessDialog({
           accent === "success" && "border-l-4 border-l-success",
           accent === "warning" && "border-l-4 border-l-warning",
         )}
-        overlayClassName="z-[100]"
+        overlayClassName="z-[130]"
       >
         <DialogHeader>
           {isQr ? (

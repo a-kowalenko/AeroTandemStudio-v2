@@ -35,8 +35,8 @@ export function ErrorDialog({
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent
-        className="z-[100] max-w-md border-l-4 border-l-destructive"
-        overlayClassName="z-[100]"
+        className="z-[130] max-w-md border-l-4 border-l-destructive"
+        overlayClassName="z-[130]"
       >
         <DialogHeader>
           <DialogTitle className="text-destructive">{resolvedTitle}</DialogTitle>

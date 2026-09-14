@@ -1,5 +1,6 @@
 //! Persist created Vorgänge (customers + output files) for the Historie UI.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -164,6 +165,21 @@ pub struct VorgangFileEntry {
     pub size_bytes: Option<i64>,
     pub path: Option<String>,
     /// Set when the file belongs to an AMS append batch (`vorgang_appends`).
+    pub append_id: Option<i64>,
+    pub append_folder_name: Option<String>,
+}
+
+/// Local deliverable media for the Vorgang viewer (Phase 48).
+#[derive(Debug, Clone, Serialize)]
+pub struct ViewableMediaItem {
+    /// `vorgang_dateien.id` when matched from DB; disk-only scans use `None`.
+    pub id: Option<i64>,
+    pub vorgang_id: i64,
+    pub filename: String,
+    pub media_type: String,
+    pub role: String,
+    pub size_bytes: Option<i64>,
+    pub path: String,
     pub append_id: Option<i64>,
     pub append_folder_name: Option<String>,
 }
@@ -1204,6 +1220,94 @@ impl VorgangHistoryStore {
         self.list_files_from_db(vorgang_id)
     }
 
+    /// Local deliverables still on disk (DB delivery roles + product-folder scan).
+    pub fn list_viewable_media(
+        &self,
+        vorgang_id: i64,
+    ) -> Result<Vec<ViewableMediaItem>, VorgangHistoryError> {
+        let base_output_dir = self.base_output_dir_for(vorgang_id)?;
+        let dateien = self.list_files_from_db(vorgang_id)?;
+        let appends = self.list_appends(vorgang_id)?;
+
+        let mut by_path: HashMap<String, ViewableMediaItem> = HashMap::new();
+
+        for f in dateien {
+            if !is_delivery_role(&f.role) {
+                continue;
+            }
+            let Some(path) = f.path.as_ref().map(|p| p.trim()).filter(|p| !p.is_empty()) else {
+                continue;
+            };
+            if !Path::new(path).is_file() {
+                continue;
+            }
+            let key = path_lookup_key(path);
+            by_path.insert(
+                key,
+                ViewableMediaItem {
+                    id: Some(f.id),
+                    vorgang_id: f.vorgang_id,
+                    filename: f.filename,
+                    media_type: f.media_type,
+                    role: f.role,
+                    size_bytes: f.size_bytes,
+                    path: path.to_string(),
+                    append_id: f.append_id,
+                    append_folder_name: f.append_folder_name,
+                },
+            );
+        }
+
+        if let Some(base) = base_output_dir
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            let scanned = scan_product_folder(Path::new(base), false)?;
+            for item in scanned {
+                merge_viewable_scan(&mut by_path, vorgang_id, item, None, None);
+            }
+        }
+
+        for append in appends {
+            let folder = append.folder_path.trim();
+            if folder.is_empty() {
+                continue;
+            }
+            let scanned = scan_product_folder(Path::new(folder), true)?;
+            for item in scanned {
+                merge_viewable_scan(
+                    &mut by_path,
+                    vorgang_id,
+                    item,
+                    Some(append.id),
+                    Some(append.folder_name.clone()),
+                );
+            }
+        }
+
+        let mut out: Vec<ViewableMediaItem> = by_path.into_values().collect();
+        out.sort_by(|a, b| {
+            viewable_role_rank(&a.role)
+                .cmp(&viewable_role_rank(&b.role))
+                .then_with(|| a.filename.cmp(&b.filename))
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        Ok(out)
+    }
+
+    fn base_output_dir_for(&self, vorgang_id: i64) -> Result<Option<String>, VorgangHistoryError> {
+        let conn = self.connect()?;
+        let dir: Option<String> = conn
+            .query_row(
+                "SELECT base_output_dir FROM vorgaenge WHERE id = ?1",
+                params![vorgang_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(dir)
+    }
+
     fn list_files_from_db(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
@@ -1466,6 +1570,14 @@ fn map_file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<VorgangFileEntry> {
 }
 
 fn scan_append_folder(folder_path: &Path) -> Result<Vec<VorgangFileInput>, VorgangHistoryError> {
+    scan_product_folder(folder_path, true)
+}
+
+/// Scan Handcam/Outside/Preview product subdirs under a job or append folder.
+fn scan_product_folder(
+    folder_path: &Path,
+    append_roles: bool,
+) -> Result<Vec<VorgangFileInput>, VorgangHistoryError> {
     use crate::video::export_paths::{
         SUBDIR_HANDCAM_FOTO, SUBDIR_HANDCAM_VIDEO, SUBDIR_OUTSIDE_FOTO, SUBDIR_OUTSIDE_VIDEO,
         SUBDIR_PREVIEW_FOTO, SUBDIR_PREVIEW_VIDEO,
@@ -1475,17 +1587,28 @@ fn scan_append_folder(folder_path: &Path) -> Result<Vec<VorgangFileInput>, Vorga
         return Ok(Vec::new());
     }
 
-    const SUBDIRS: &[(&str, &str, &str)] = &[
-        (SUBDIR_HANDCAM_VIDEO, "video", "append_handcam_video"),
-        (SUBDIR_OUTSIDE_VIDEO, "video", "append_outside_video"),
-        (SUBDIR_HANDCAM_FOTO, "photo", "append_handcam_foto"),
-        (SUBDIR_OUTSIDE_FOTO, "photo", "append_outside_foto"),
-        (SUBDIR_PREVIEW_VIDEO, "video", "append_preview_video"),
-        (SUBDIR_PREVIEW_FOTO, "photo", "append_preview_foto"),
-    ];
+    let subdirs: &[(&str, &str, &str)] = if append_roles {
+        &[
+            (SUBDIR_HANDCAM_VIDEO, "video", "append_handcam_video"),
+            (SUBDIR_OUTSIDE_VIDEO, "video", "append_outside_video"),
+            (SUBDIR_HANDCAM_FOTO, "photo", "append_handcam_foto"),
+            (SUBDIR_OUTSIDE_FOTO, "photo", "append_outside_foto"),
+            (SUBDIR_PREVIEW_VIDEO, "video", "append_preview_video"),
+            (SUBDIR_PREVIEW_FOTO, "photo", "append_preview_foto"),
+        ]
+    } else {
+        &[
+            (SUBDIR_HANDCAM_VIDEO, "video", "handcam_video"),
+            (SUBDIR_OUTSIDE_VIDEO, "video", "outside_video"),
+            (SUBDIR_HANDCAM_FOTO, "photo", "handcam_foto"),
+            (SUBDIR_OUTSIDE_FOTO, "photo", "outside_foto"),
+            (SUBDIR_PREVIEW_VIDEO, "video", "preview_video"),
+            (SUBDIR_PREVIEW_FOTO, "photo", "preview_foto"),
+        ]
+    };
 
     let mut out = Vec::new();
-    for (subdir, media_type, role) in SUBDIRS {
+    for (subdir, media_type, role) in subdirs {
         let dir = folder_path.join(subdir);
         if !dir.is_dir() {
             continue;
@@ -1512,6 +1635,104 @@ fn scan_append_folder(folder_path: &Path) -> Result<Vec<VorgangFileInput>, Vorga
     }
     out.sort_by(|a, b| a.filename.cmp(&b.filename));
     Ok(out)
+}
+
+fn is_delivery_role(role: &str) -> bool {
+    matches!(
+        role,
+        "output_video"
+            | "wm_video"
+            | "handcam_video"
+            | "outside_video"
+            | "handcam_foto"
+            | "outside_foto"
+            | "preview_video"
+            | "preview_foto"
+            | "append_handcam_video"
+            | "append_outside_video"
+            | "append_handcam_foto"
+            | "append_outside_foto"
+            | "append_preview_video"
+            | "append_preview_foto"
+    )
+}
+
+fn path_lookup_key(path: &str) -> String {
+    let pb = PathBuf::from(path);
+    let canonical = fs::canonicalize(&pb).unwrap_or(pb);
+    canonical.to_string_lossy().to_ascii_lowercase()
+}
+
+fn viewable_role_rank(role: &str) -> u8 {
+    match role {
+        "output_video" => 0,
+        "wm_video" => 1,
+        "handcam_video" | "outside_video" | "preview_video" => 2,
+        "handcam_foto" | "outside_foto" | "preview_foto" => 3,
+        r if r.starts_with("append_") && r.contains("video") => 4,
+        r if r.starts_with("append_") => 5,
+        _ => 9,
+    }
+}
+
+fn role_priority(role: &str) -> u8 {
+    match role {
+        "output_video" => 0,
+        "wm_video" => 1,
+        r if r.starts_with("append_") => 2,
+        _ => 3,
+    }
+}
+
+fn merge_viewable_scan(
+    by_path: &mut HashMap<String, ViewableMediaItem>,
+    vorgang_id: i64,
+    scanned: VorgangFileInput,
+    append_id: Option<i64>,
+    append_folder_name: Option<String>,
+) {
+    let Some(path) = scanned
+        .path
+        .as_ref()
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+    else {
+        return;
+    };
+    if !Path::new(path).is_file() {
+        return;
+    }
+    if scanned.media_type != "video" && scanned.media_type != "photo" {
+        return;
+    }
+    let key = path_lookup_key(path);
+    let (keep_id, keep_append_id, keep_append_folder) = if let Some(existing) = by_path.get(&key)
+    {
+        if role_priority(&existing.role) <= role_priority(&scanned.role) {
+            return;
+        }
+        (
+            existing.id,
+            append_id.or(existing.append_id),
+            append_folder_name.or_else(|| existing.append_folder_name.clone()),
+        )
+    } else {
+        (None, append_id, append_folder_name)
+    };
+    by_path.insert(
+        key,
+        ViewableMediaItem {
+            id: keep_id,
+            vorgang_id,
+            filename: scanned.filename,
+            media_type: scanned.media_type,
+            role: scanned.role,
+            size_bytes: scanned.size_bytes,
+            path: path.to_string(),
+            append_id: keep_append_id,
+            append_folder_name: keep_append_folder,
+        },
+    );
 }
 
 fn utc_now_iso() -> String {
@@ -2174,5 +2395,64 @@ mod tests {
         let store = VorgangHistoryStore::open_at(db).unwrap();
         let entry = &store.list_vorgaenge(10, None).unwrap()[0];
         assert_eq!(entry.upload_state, "none");
+    }
+
+    #[test]
+    fn list_viewable_media_prefers_output_skips_source_includes_disk_photos() {
+        use crate::video::export_paths::{SUBDIR_HANDCAM_FOTO, SUBDIR_HANDCAM_VIDEO};
+
+        let root = tempdir().unwrap();
+        let job = root.path().join("job");
+        fs::create_dir_all(job.join(SUBDIR_HANDCAM_VIDEO)).unwrap();
+        fs::create_dir_all(job.join(SUBDIR_HANDCAM_FOTO)).unwrap();
+
+        let video_path = job.join(SUBDIR_HANDCAM_VIDEO).join("final.mp4");
+        let photo_path = job.join(SUBDIR_HANDCAM_FOTO).join("shot.jpg");
+        let source_path = root.path().join("source_clip.mp4");
+        fs::write(&video_path, b"video").unwrap();
+        fs::write(&photo_path, b"photo").unwrap();
+        fs::write(&source_path, b"src").unwrap();
+
+        let store = VorgangHistoryStore::open_at(root.path().join("hist.db")).unwrap();
+        let mut kunde = sample_kunde();
+        kunde.handcam_foto = true;
+        let mut result = sample_result();
+        result.base_output_dir = job.to_string_lossy().into_owned();
+        result.video_output = Some(video_path.to_string_lossy().into_owned());
+        result.marker_path = String::new();
+        result.photos_copied = 1;
+
+        let id = store
+            .record_create_job(
+                &kunde,
+                &[source_path.to_string_lossy().into_owned()],
+                &[],
+                &result,
+                "",
+                None,
+                false,
+            )
+            .unwrap();
+
+        let viewable = store.list_viewable_media(id).unwrap();
+        assert!(
+            viewable.iter().any(|v| v.role == "output_video"),
+            "expected output_video: {:?}",
+            viewable.iter().map(|v| &v.role).collect::<Vec<_>>()
+        );
+        assert!(
+            viewable.iter().any(|v| v.media_type == "photo"),
+            "expected disk photo: {:?}",
+            viewable
+        );
+        assert!(
+            viewable.iter().all(|v| v.role != "source_video"),
+            "source must not be viewable"
+        );
+        let video_count = viewable
+            .iter()
+            .filter(|v| path_lookup_key(&v.path) == path_lookup_key(&video_path.to_string_lossy()))
+            .count();
+        assert_eq!(video_count, 1);
     }
 }

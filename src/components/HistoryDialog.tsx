@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye } from "lucide-react";
+import { Eye, FolderOpen, Images, MoreHorizontal } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ import {
   listVorgangDateien,
   listVorgaenge,
   listVorgangAppends,
+  listVorgangViewableMedia,
   preflightVorgangUpload,
   resyncVorgangDeliveryList,
   deleteVorgangExtraFiles,
@@ -56,6 +58,7 @@ import {
   type VorgangAppendEntry,
   type VorgangEntry,
   type VorgangFileEntry,
+  type ViewableMediaItem,
   type VorgangUploadRetryOptions,
 } from "../lib/vorgangHistory";
 import { useConfigStore } from "@/store/configStore";
@@ -133,8 +136,20 @@ import { VorgangCompleteChip } from "@/components/history/VorgangCompleteChip";
 import { VorgangFolderChip } from "@/components/history/VorgangFolderChip";
 import { VorgangLocalChip } from "@/components/history/VorgangLocalChip";
 import { VorgangAmsStepper } from "@/components/history/VorgangAmsStepper";
+import { VorgangMediaViewer } from "@/components/history/VorgangMediaViewer";
+import {
+  MediaFileContextMenu,
+  mediaContextMenuHandler,
+  type MediaContextMenuState,
+} from "@/components/MediaFileContextMenu";
 import { VorgangProductChip } from "@/components/history/VorgangProductChip";
 import { VorgangUploadChip } from "@/components/history/VorgangUploadChip";
+import {
+  defaultViewableIndex,
+  findViewableIndex,
+  isDateiViewable,
+  isSourceOrMarkerRole,
+} from "@/lib/vorgangMediaPlaylist";
 import { QrHitMeta } from "@/components/QrHitMeta";
 import {
   QR_PREVIEW_FRAME_AR,
@@ -303,16 +318,22 @@ function roleLabel(role: string): string {
       return tr("history.role.wmVideo");
     case "marker":
       return tr("history.role.marker");
+    case "handcam_video":
     case "append_handcam_video":
       return tr("history.role.appendHandcamVideo");
+    case "outside_video":
     case "append_outside_video":
       return tr("history.role.appendOutsideVideo");
+    case "handcam_foto":
     case "append_handcam_foto":
       return tr("history.role.appendHandcamFoto");
+    case "outside_foto":
     case "append_outside_foto":
       return tr("history.role.appendOutsideFoto");
+    case "preview_video":
     case "append_preview_video":
       return tr("history.role.appendPreviewVideo");
+    case "preview_foto":
     case "append_preview_foto":
       return tr("history.role.appendPreviewFoto");
     default:
@@ -377,6 +398,7 @@ export function HistoryDialog({
     useState<ReconnectUploadOfferState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [qrScanOpen, setQrScanOpen] = useState(false);
+  const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
   const [appendVorgang, setAppendVorgang] = useState<VorgangEntry | null>(null);
   const [appendPickingFiles, setAppendPickingFiles] = useState(false);
   const [appendRefreshKey, setAppendRefreshKey] = useState(0);
@@ -415,6 +437,7 @@ export function HistoryDialog({
     confirmOpen ||
     bulkUploadOffer != null ||
     qrScanOpen ||
+    mediaViewerOpen ||
     appendOpen ||
     appendPickingFiles ||
     extraFilesConfirm != null ||
@@ -948,6 +971,7 @@ export function HistoryDialog({
             if (
               confirmOpen ||
               qrScanOpen ||
+              mediaViewerOpen ||
               extraFilesConfirm != null ||
               preflightHardFail != null
             ) {
@@ -1011,6 +1035,8 @@ export function HistoryDialog({
                     dialogOpen={open}
                     qrScanOpen={qrScanOpen}
                     onQrScanOpenChange={setQrScanOpen}
+                    mediaViewerOpen={mediaViewerOpen}
+                    onMediaViewerOpenChange={setMediaViewerOpen}
                     appendRefreshKey={appendRefreshKey}
                     onOpenAppend={setAppendVorgang}
                     onRequestConfirm={setPendingConfirm}
@@ -1072,12 +1098,12 @@ export function HistoryDialog({
       >
         <DialogContent
           className={cn(
-            "z-[60] max-w-md border-l-4",
+            "z-[100] max-w-md border-l-4",
             (pendingConfirm?.actionVariant ?? "destructive") === "destructive"
               ? "border-l-destructive"
               : "border-l-primary",
           )}
-          overlayClassName="z-[60]"
+          overlayClassName="z-[100]"
         >
           <DialogHeader>
             <DialogTitle
@@ -1252,6 +1278,8 @@ function VorgaengePanel({
   dialogOpen,
   qrScanOpen,
   onQrScanOpenChange,
+  mediaViewerOpen,
+  onMediaViewerOpenChange,
   appendRefreshKey,
   onOpenAppend,
   onRequestConfirm,
@@ -1262,6 +1290,8 @@ function VorgaengePanel({
   dialogOpen: boolean;
   qrScanOpen: boolean;
   onQrScanOpenChange: (open: boolean) => void;
+  mediaViewerOpen: boolean;
+  onMediaViewerOpenChange: (open: boolean) => void;
   appendRefreshKey: number;
   onOpenAppend: (vorgang: VorgangEntry) => void;
   onRequestConfirm: (pending: PendingConfirm) => void;
@@ -1276,6 +1306,7 @@ function VorgaengePanel({
   const folderMissingById = useHistoryStore((s) => s.folderMissingById);
   const serverConnected = useServerStore((s) => s.connected);
   const showWarning = useUiStore((s) => s.showWarning);
+  const showError = useUiStore((s) => s.showError);
   const [entries, setEntries] = useState<VorgangEntry[]>(
     () => seedVorgaengePanel().entries,
   );
@@ -1287,6 +1318,13 @@ function VorgaengePanel({
   const [files, setFiles] = useState<VorgangFileEntry[]>(
     () => seedVorgaengePanel().files,
   );
+  const [viewableMedia, setViewableMedia] = useState<ViewableMediaItem[]>([]);
+  const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
+  const [fileCtxMenu, setFileCtxMenu] = useState<MediaContextMenuState | null>(
+    null,
+  );
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(() => !seedVorgaengePanel().ready);
   const [ready, setReady] = useState(() => seedVorgaengePanel().ready);
   const [filesReady, setFilesReady] = useState(
@@ -1417,6 +1455,7 @@ function VorgaengePanel({
     if (selectedId == null) {
       setFiles([]);
       setFilesReady(true);
+      setViewableMedia([]);
       return;
     }
     const cached = useHistoryStore.getState();
@@ -1439,6 +1478,13 @@ function VorgaengePanel({
       })
       .finally(() => {
         if (!cancelled) setFilesReady(true);
+      });
+    void listVorgangViewableMedia(selectedId)
+      .then((rows) => {
+        if (!cancelled) setViewableMedia(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setViewableMedia([]);
       });
     return () => {
       cancelled = true;
@@ -1776,8 +1822,65 @@ function VorgaengePanel({
 
   useEffect(() => {
     onQrScanOpenChange(false);
+    onMediaViewerOpenChange(false);
     setShowShadow(true);
-  }, [selectedId, onQrScanOpenChange]);
+    setMoreOpen(false);
+  }, [selectedId, onQrScanOpenChange, onMediaViewerOpenChange]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [moreOpen]);
+
+  useEffect(() => {
+    if (!dialogOpen) setMoreOpen(false);
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    setFileCtxMenu(null);
+  }, [selectedId, dialogOpen]);
+
+  const canViewMedia =
+    !selectedFolderProblem &&
+    !selectedFolderCleanedUp &&
+    viewableMedia.length > 0;
+  const canOpenFolder =
+    Boolean(selected?.base_output_dir?.trim()) &&
+    !selectedFolderProblem &&
+    !selectedFolderCleanedUp;
+
+  async function openSelectedFolder() {
+    const path = selected?.base_output_dir?.trim();
+    if (!path) return;
+    try {
+      await openPath(path);
+    } catch (e) {
+      showError(String(e), t("history.viewer.openFolder"));
+    }
+  }
+
+  const openMediaViewerAt = (index: number) => {
+    if (index < 0 || index >= viewableMedia.length) return;
+    onQrScanOpenChange(false);
+    setMediaViewerIndex(index);
+    onMediaViewerOpenChange(true);
+  };
+
+  const openMediaViewerDefault = () => {
+    openMediaViewerAt(defaultViewableIndex(viewableMedia));
+  };
+
+  const mediaViewerDisabledTitle = selectedFolderProblem
+    ? t("history.status.hint.folderMissing")
+    : selectedFolderCleanedUp
+      ? t("history.viewer.unavailableCleanedUp")
+      : viewableMedia.length === 0
+        ? t("history.viewer.unavailableEmpty")
+        : undefined;
 
   const scanDialogWidth = `min(max(min(22rem, calc(100vw - 2rem)), calc(min(50vh, 28rem) * ${QR_PREVIEW_FRAME_AR} + 3rem)), calc(100vw - 2rem))`;
 
@@ -1821,6 +1924,25 @@ function VorgaengePanel({
         await deleteVorgaenge(ids);
         useHistoryStore.getState().removeVorgaenge(ids);
         setEntries((prev) => prev.filter((e) => !ids.includes(e.id)));
+        await reload(search, { silent: true });
+      },
+    });
+  }
+
+  function requestRemoveAll() {
+    setMoreOpen(false);
+    if (entries.length === 0) return;
+    const ids = entries.map((e) => e.id);
+    onRequestConfirm({
+      title: t("history.confirm.removeJobAll", { count: ids.length }),
+      description: t("history.confirm.removeJobAllBody"),
+      actionLabel: t("history.removeAll"),
+      run: async () => {
+        await deleteVorgaenge(ids);
+        useHistoryStore.getState().removeVorgaenge(ids);
+        setEntries((prev) => prev.filter((e) => !ids.includes(e.id)));
+        setChecked(new Set());
+        setSelectedId(null);
         await reload(search, { silent: true });
       },
     });
@@ -1921,15 +2043,48 @@ function VorgaengePanel({
               : t("history.upload.bulkBtn")}
           </Button>
         ) : null}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={checked.size === 0}
-          onClick={requestRemoveSelected}
-        >
-          {t("history.removeSelected")}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={checked.size === 0}
+            onClick={requestRemoveSelected}
+          >
+            {t("history.removeSelected")}
+          </Button>
+          <div className="relative" ref={moreRef}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="px-2"
+              aria-label={t("history.moreActions")}
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              disabled={entries.length === 0}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden />
+            </Button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                className="absolute top-full right-0 z-20 mt-1 min-w-[11rem] rounded-md border border-border bg-card py-1 shadow-md"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                  disabled={entries.length === 0}
+                  onClick={requestRemoveAll}
+                >
+                  {t("history.removeAll")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
@@ -2122,22 +2277,63 @@ function VorgaengePanel({
                       <span className="text-muted"> · {selectedMode}</span>
                     )}
                   </div>
-                  {qrPreview ? (
+                  <div className="flex shrink-0 items-center gap-1">
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 shrink-0 px-0"
-                      title={t("form.toolbar.scanFrame")}
-                      aria-label={t("form.toolbar.scanFrame")}
-                      onClick={() => {
-                        setShowShadow(true);
-                        onQrScanOpenChange(true);
-                      }}
+                      variant="outline"
+                      className="h-7 gap-1 px-2"
+                      disabled={!canOpenFolder}
+                      title={
+                        canOpenFolder
+                          ? selected.base_output_dir
+                          : selectedFolderProblem || selectedFolderCleanedUp
+                            ? mediaViewerDisabledTitle
+                            : t("history.viewer.openFolder")
+                      }
+                      aria-label={t("history.viewer.openFolder")}
+                      onClick={() => void openSelectedFolder()}
                     >
-                      <Eye className="h-3.5 w-3.5" />
+                      <FolderOpen className="h-3.5 w-3.5" />
+                      <span className="text-[11px]">
+                        {t("history.viewer.openFolder")}
+                      </span>
                     </Button>
-                  ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 gap-1 px-2"
+                      disabled={!canViewMedia}
+                      title={
+                        canViewMedia
+                          ? t("history.viewer.openTitle")
+                          : mediaViewerDisabledTitle
+                      }
+                      aria-label={t("history.viewer.open")}
+                      onClick={openMediaViewerDefault}
+                    >
+                      <Images className="h-3.5 w-3.5" />
+                      <span className="text-[11px]">{t("history.viewer.open")}</span>
+                    </Button>
+                    {qrPreview ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 px-0"
+                        title={t("form.toolbar.scanFrame")}
+                        aria-label={t("form.toolbar.scanFrame")}
+                        onClick={() => {
+                          onMediaViewerOpenChange(false);
+                          setShowShadow(true);
+                          onQrScanOpenChange(true);
+                        }}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="text-muted">
                   {[
@@ -2396,11 +2592,36 @@ function VorgaengePanel({
                     </tr>
                   </thead>
                   <tbody>
-                    {files.map((f) => (
-                      <tr key={f.id} className="border-b border-border/40">
+                    {files.map((f) => {
+                      const playable = isDateiViewable(viewableMedia, f);
+                      const sourceLike = isSourceOrMarkerRole(f.role);
+                      const filePath = f.path?.trim() || "";
+                      const rowTitle = playable
+                        ? f.path ?? f.filename
+                        : sourceLike
+                          ? t("history.viewer.rowSourceHint")
+                          : t("history.viewer.rowMissingHint");
+                      return (
+                      <tr
+                        key={f.id}
+                        className={cn(
+                          "border-b border-border/40",
+                          playable && "cursor-pointer hover:bg-muted/40",
+                          !playable && "text-muted-foreground",
+                        )}
+                        onClick={() => {
+                          if (!playable) return;
+                          openMediaViewerAt(findViewableIndex(viewableMedia, f));
+                        }}
+                        onContextMenu={
+                          filePath
+                            ? mediaContextMenuHandler(filePath, setFileCtxMenu)
+                            : undefined
+                        }
+                      >
                         <td
                           className="min-w-0 truncate p-2"
-                          title={f.path ?? f.filename}
+                          title={rowTitle}
                         >
                           {f.filename}
                         </td>
@@ -2430,7 +2651,8 @@ function VorgaengePanel({
                         </td>
                         <td className="p-2">{formatBytes(f.size_bytes)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {filesReady && files.length === 0 && (
                       <tr>
                         <td colSpan={5} className="p-4 text-center text-muted">
@@ -2445,8 +2667,8 @@ function VorgaengePanel({
               {qrPreview ? (
                 <Dialog open={qrScanOpen} onOpenChange={onQrScanOpenChange}>
                   <DialogContent
-                    className="z-[60] flex w-auto max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-4"
-                    overlayClassName="z-[60]"
+                    className="z-[100] flex w-auto max-w-[min(56rem,calc(100vw-2rem))] flex-col gap-4"
+                    overlayClassName="z-[100]"
                     style={{ width: scanDialogWidth }}
                   >
                     <DialogHeader className="shrink-0">
@@ -2503,6 +2725,22 @@ function VorgaengePanel({
                   </DialogContent>
                 </Dialog>
               ) : null}
+              <VorgangMediaViewer
+                open={mediaViewerOpen}
+                onOpenChange={onMediaViewerOpenChange}
+                guestName={selected.gast}
+                folderPath={selected.base_output_dir}
+                items={viewableMedia}
+                index={mediaViewerIndex}
+                onIndexChange={setMediaViewerIndex}
+                roleLabel={roleLabel}
+              />
+              <MediaFileContextMenu
+                state={fileCtxMenu}
+                onClose={() => setFileCtxMenu(null)}
+                onError={(message) => showError(message)}
+                className="z-[110]"
+              />
             </div>
           ) : ready ? (
             <div className="flex flex-1 items-center justify-center text-xs text-muted">

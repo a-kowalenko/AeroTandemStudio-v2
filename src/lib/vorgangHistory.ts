@@ -101,6 +101,19 @@ export type VorgangFileEntry = {
   append_folder_name: string | null;
 };
 
+/** Local deliverable still on disk (Phase 48 viewer). */
+export type ViewableMediaItem = {
+  id: number | null;
+  vorgang_id: number;
+  filename: string;
+  media_type: string;
+  role: string;
+  size_bytes: number | null;
+  path: string;
+  append_id: number | null;
+  append_folder_name: string | null;
+};
+
 export type HandoffStatus = {
   correlation_id: string;
   state: string;
@@ -129,6 +142,15 @@ export async function listVorgangDateien(
   vorgangId: number,
 ): Promise<VorgangFileEntry[]> {
   return invoke<VorgangFileEntry[]>("list_vorgang_dateien", {
+    vorgangId,
+  });
+}
+
+/** Local deliverables still on disk for the Vorgang media viewer. */
+export async function listVorgangViewableMedia(
+  vorgangId: number,
+): Promise<ViewableMediaItem[]> {
+  return invoke<ViewableMediaItem[]>("list_vorgang_viewable_media", {
     vorgangId,
   });
 }

@@ -55,7 +55,7 @@ type ComboboxProps = {
    */
   warning?: boolean | string;
   id?: string;
-  /** Portal list z-index (raise above modals, default 80). */
+  /** Portal list z-index (page overlays under dialogs z-90; default 80). */
   listZIndex?: number;
   /** Visually hide the label (keeps it for screen readers). */
   hideLabel?: boolean;

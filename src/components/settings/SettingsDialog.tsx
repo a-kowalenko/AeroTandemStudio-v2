@@ -494,8 +494,8 @@ export function SettingsDialog({
 
       <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
         <DialogContent
-          className="z-[60] max-w-md border-l-4 border-l-destructive"
-          overlayClassName="z-[60]"
+          className="z-[100] max-w-md border-l-4 border-l-destructive"
+          overlayClassName="z-[100]"
         >
           <DialogHeader>
             <DialogTitle className="text-destructive">
@@ -533,8 +533,8 @@ export function SettingsDialog({
         }}
       >
         <DialogContent
-          className="z-[60] max-w-md border-l-4 border-l-destructive"
-          overlayClassName="z-[60]"
+          className="z-[100] max-w-md border-l-4 border-l-destructive"
+          overlayClassName="z-[100]"
         >
           <DialogHeader>
             <DialogTitle className="text-destructive">
@@ -574,8 +574,8 @@ export function SettingsDialog({
         }}
       >
         <DialogContent
-          className="z-[60] max-w-md border-l-4 border-l-destructive"
-          overlayClassName="z-[60]"
+          className="z-[100] max-w-md border-l-4 border-l-destructive"
+          overlayClassName="z-[100]"
         >
           <DialogHeader>
             <DialogTitle className="text-destructive">

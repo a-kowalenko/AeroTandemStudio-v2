@@ -3,7 +3,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Match Combobox / DateField overlay stacking (Dialog uses z-50). */
+/** Match Combobox / DateField (page overlays). Dialogs start at z-90. */
 const SELECT_LIST_Z = 80;
 
 /**

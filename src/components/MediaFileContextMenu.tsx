@@ -28,6 +28,8 @@ type Props = {
   onRemove?: (path: string) => void;
   /** Disable QR / remove while busy */
   actionsDisabled?: boolean;
+  /** Override menu surface classes (e.g. higher z-index above nested dialogs). */
+  className?: string;
 };
 
 function basename(path: string): string {
@@ -51,6 +53,7 @@ export function MediaFileContextMenu({
   canUndoCut = false,
   onRemove,
   actionsDisabled = false,
+  className,
 }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -137,6 +140,7 @@ export function MediaFileContextMenu({
       role="menu"
       className={cn(
         "fixed z-[80] min-w-[12.5rem] overflow-hidden rounded-md border border-border bg-card py-1 shadow-lg",
+        className,
       )}
       style={{ left: state.x, top: state.y }}
       onContextMenu={(e) => e.preventDefault()}

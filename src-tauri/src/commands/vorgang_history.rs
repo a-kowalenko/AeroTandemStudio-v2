@@ -8,7 +8,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::storage::logging;
 use crate::storage::vorgang_history::{
-    AmsHandoffStatusUpdate, VorgangAppendEntry, VorgangEntry, VorgangFileEntry, VorgangHistoryStore,
+    AmsHandoffStatusUpdate, ViewableMediaItem, VorgangAppendEntry, VorgangEntry, VorgangFileEntry,
+    VorgangHistoryStore,
 };
 use crate::video::append_job::{self, AppendJobResult, AppendMediaItem};
 use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, reset_cancel_flag};
@@ -349,6 +350,20 @@ pub async fn list_vorgang_dateien(vorgang_id: i64) -> Result<Vec<VorgangFileEntr
     blocking_hist(move || {
         let store = open_store()?;
         store.list_files(vorgang_id).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Local deliverable media still on disk (Phase 48 viewer playlist).
+#[tauri::command]
+pub async fn list_vorgang_viewable_media(
+    vorgang_id: i64,
+) -> Result<Vec<ViewableMediaItem>, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        store
+            .list_viewable_media(vorgang_id)
+            .map_err(|e| e.to_string())
     })
     .await
 }
