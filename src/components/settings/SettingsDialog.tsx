@@ -356,7 +356,8 @@ export function SettingsDialog({
             if (
               suppressDismiss ||
               softConfirmOpen ||
-              el?.closest?.("[data-ats-combobox-list]")
+              el?.closest?.("[data-ats-combobox-list]") ||
+              el?.closest?.("[data-ats-select-content]")
             ) {
               e.preventDefault();
             }
@@ -366,7 +367,8 @@ export function SettingsDialog({
             if (
               suppressDismiss ||
               softConfirmOpen ||
-              el?.closest?.("[data-ats-combobox-list]")
+              el?.closest?.("[data-ats-combobox-list]") ||
+              el?.closest?.("[data-ats-select-content]")
             ) {
               e.preventDefault();
             }
@@ -376,7 +378,8 @@ export function SettingsDialog({
             if (
               suppressDismiss ||
               softConfirmOpen ||
-              el?.closest?.("[data-ats-combobox-list]")
+              el?.closest?.("[data-ats-combobox-list]") ||
+              el?.closest?.("[data-ats-select-content]")
             ) {
               e.preventDefault();
             }

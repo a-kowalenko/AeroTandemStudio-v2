@@ -151,7 +151,7 @@ export function ReencodeConfirmDialog({
       }}
     >
       <DialogContent
-        className="max-w-md overflow-hidden border-l-4 border-l-warning"
+        className="max-w-md overflow-visible border-l-4 border-l-warning"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => {
           e.preventDefault();

@@ -10,9 +10,11 @@ export const DialogPortal = DialogPrimitive.Portal;
 export const DialogClose = DialogPrimitive.Close;
 
 /**
- * Overlay stack (keep in sync with Combobox/DateField/Select body portals at 80):
+ * Overlay stack (keep in sync with Combobox/DateField/Select page portals at 80):
  * 80 page dropdowns → 90 dialog → 100 nested → 110 elevated → 120 toast →
  * 130 system dialogs → 150 setup wizard.
+ * Select lists inside dialogs portal to `[data-ats-dialog-shell]` (not body),
+ * so they stay above the panel without raising the global page z-index.
  */
 const DIALOG_LAYER_Z = "z-[90]";
 
@@ -61,6 +63,7 @@ export const DialogContent = React.forwardRef<
         fixed coords stay correct — and WebKit (macOS) doesn't break on inset+m-auto+h-fit.
       */}
       <div
+        data-ats-dialog-shell=""
         className={cn(
           "pointer-events-none fixed inset-0 flex items-center justify-center p-4",
           layerZ,

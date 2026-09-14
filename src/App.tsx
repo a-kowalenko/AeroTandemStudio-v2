@@ -1643,6 +1643,8 @@ function App() {
         recommended: p.recommended ?? defaultEncodeProfile(),
         presets: p.presets ?? [],
       });
+      // Body concat often ends at 100%; reset so intro encode progress can climb.
+      setPercent(1);
       setStatus(t("progress.rust.reencodeWaiting"));
     }).then((fn) => {
       unlisten = fn;
