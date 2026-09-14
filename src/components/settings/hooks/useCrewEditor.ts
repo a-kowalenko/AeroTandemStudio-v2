@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppConfig, CrewMember } from "@/lib/tauri";
+import type { AppConfig } from "@/lib/tauri";
 import {
   clearCrewRemovedName,
   crewNamesEqual,
@@ -24,12 +24,9 @@ export function useCrewEditor({
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
-  const [crewDraft, setCrewDraft] = useState<CrewMember>({
-    name: "",
-    tandemmaster: true,
-    videospringer: false,
-  });
+  const [addName, setAddName] = useState("");
   const [crewEditIndex, setCrewEditIndex] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const crewList = draft?.crew_list ?? [];
 
   const sortedCrew = useMemo(
@@ -41,48 +38,58 @@ export function useCrewEditor({
   );
 
   function resetCrewForm() {
-    setCrewDraft({ name: "", tandemmaster: true, videospringer: false });
+    setAddName("");
     setCrewEditIndex(null);
+    setRenameDraft("");
+  }
+
+  function cancelEditCrew() {
+    setCrewEditIndex(null);
+    setRenameDraft("");
   }
 
   function startEditCrew(index: number) {
     const member = crewList[index];
     if (!member) return;
-    setCrewDraft({ ...member });
     setCrewEditIndex(index);
+    setRenameDraft(member.name);
   }
 
-  function saveCrewMember() {
-    if (!draft) return;
-    const name = crewDraft.name.trim();
+  function commitNameChange(index: number | null, rawName: string) {
+    if (!draft) return false;
+    const name = rawName.trim();
     if (!name) {
       showError(t("settings.crew.errors.nameRequired"), t("settings.tabs.crew"));
-      return;
+      return false;
     }
     const duplicate = crewList.some(
       (c, i) =>
-        c.name.trim().toLowerCase() === name.toLowerCase() &&
-        i !== crewEditIndex,
+        c.name.trim().toLowerCase() === name.toLowerCase() && i !== index,
     );
     if (duplicate) {
       showError(t("settings.crew.errors.duplicate"), t("settings.tabs.crew"));
-      return;
+      return false;
     }
     const list = [...crewList];
     let prevName = "";
-    if (crewEditIndex == null) {
+    if (index == null) {
       list.push({
         name,
         tandemmaster: true,
         videospringer: false,
       });
     } else {
-      const prev = list[crewEditIndex];
-      prevName = prev?.name ?? "";
-      list[crewEditIndex] = {
+      const prev = list[index];
+      if (!prev) return false;
+      if (crewNamesEqual(prev.name, name)) {
+        cancelEditCrew();
+        return true;
+      }
+      prevName = prev.name;
+      list[index] = {
         name,
-        tandemmaster: prev?.tandemmaster ?? true,
-        videospringer: prev?.videospringer ?? false,
+        tandemmaster: prev.tandemmaster,
+        videospringer: prev.videospringer,
       };
     }
     list.sort((a, b) => a.name.localeCompare(b.name, "de"));
@@ -104,7 +111,18 @@ export function useCrewEditor({
         operator_name: nextOperator,
       };
     });
+    return true;
+  }
+
+  function addCrewMember() {
+    if (!commitNameChange(null, addName)) return;
     resetCrewForm();
+  }
+
+  function saveRename() {
+    if (crewEditIndex == null) return;
+    if (!commitNameChange(crewEditIndex, renameDraft)) return;
+    cancelEditCrew();
   }
 
   function patchCrewRole(
@@ -155,20 +173,24 @@ export function useCrewEditor({
         t("settings.tabs.crew"),
       );
     }
-    if (crewEditIndex === index) resetCrewForm();
+    if (crewEditIndex === index) cancelEditCrew();
     else if (crewEditIndex != null && crewEditIndex > index) {
       setCrewEditIndex(crewEditIndex - 1);
     }
   }
 
   return {
-    crewDraft,
-    setCrewDraft,
+    addName,
+    setAddName,
+    renameDraft,
+    setRenameDraft,
     crewEditIndex,
     sortedCrew,
     resetCrewForm,
+    cancelEditCrew,
     startEditCrew,
-    saveCrewMember,
+    addCrewMember,
+    saveRename,
     patchCrewRole,
     deleteCrewMember,
   };

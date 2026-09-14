@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,13 +25,17 @@ import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
 type CrewEditor = {
-  crewDraft: CrewMember;
-  setCrewDraft: Dispatch<SetStateAction<CrewMember>>;
+  addName: string;
+  setAddName: Dispatch<SetStateAction<string>>;
+  renameDraft: string;
+  setRenameDraft: Dispatch<SetStateAction<string>>;
   crewEditIndex: number | null;
   sortedCrew: { member: CrewMember; index: number }[];
   resetCrewForm: () => void;
+  cancelEditCrew: () => void;
   startEditCrew: (index: number) => void;
-  saveCrewMember: () => void;
+  addCrewMember: () => void;
+  saveRename: () => void;
   patchCrewRole: (
     index: number,
     role: "tandemmaster" | "videospringer",
@@ -53,13 +57,16 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
   const operatorMember = findCrewMember(draft.crew_list, draft.operator_name);
   const opName = draft.operator_name.trim();
   const {
-    crewDraft,
-    setCrewDraft,
+    addName,
+    setAddName,
+    renameDraft,
+    setRenameDraft,
     crewEditIndex,
     sortedCrew,
-    resetCrewForm,
+    cancelEditCrew,
     startEditCrew,
-    saveCrewMember,
+    addCrewMember,
+    saveRename,
     patchCrewRole,
     deleteCrewMember,
   } = crewEditor;
@@ -214,35 +221,22 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
           <div className="space-y-1.5">
             <Label>{t("create.ready.chips.name")}</Label>
             <Input
-              value={crewDraft.name}
-              onChange={(e) =>
-                setCrewDraft((prev) => ({ ...prev, name: e.target.value }))
-              }
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
               placeholder={t("settings.crew.list.namePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  saveCrewMember();
+                  addCrewMember();
                 }
               }}
             />
           </div>
           <div className="flex items-end gap-2">
-            <Button type="button" onClick={saveCrewMember}>
-              {crewEditIndex == null ? (
-                <>
-                  <Plus className="h-4 w-4" />
-                  {t("common.actions.add")}
-                </>
-              ) : (
-                t("common.actions.rename")
-              )}
+            <Button type="button" onClick={addCrewMember}>
+              <Plus className="h-4 w-4" />
+              {t("common.actions.add")}
             </Button>
-            {crewEditIndex != null ? (
-              <Button type="button" variant="secondary" onClick={resetCrewForm}>
-                {t("common.actions.cancel")}
-              </Button>
-            ) : null}
           </div>
         </div>
 
@@ -266,68 +260,119 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
                 </span>
               </div>
               <ul className="divide-y divide-border">
-                {sortedCrew.map(({ member, index }) => (
-                  <li
-                    key={`${member.name}-${index}`}
-                    className={cn(
-                      "grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3 py-2",
-                      crewEditIndex === index && "bg-primary-soft/40",
-                    )}
-                  >
-                    <p className="truncate text-sm font-medium" title={member.name}>
-                      {member.name}
-                      {crewNamesEqual(member.name, draft.operator_name) ? (
-                        <span className="ml-2 text-[10px] font-normal text-muted">
-                          {t("settings.crew.list.me")}
-                        </span>
-                      ) : null}
-                    </p>
-                    <div className="flex w-28 justify-center">
-                      <Switch
-                        checked={member.tandemmaster}
-                        onCheckedChange={(v) =>
-                          patchCrewRole(index, "tandemmaster", v)
-                        }
-                        aria-label={t("settings.crew.list.ariaRole", {
-                          name: member.name,
-                          role: t("create.ready.chips.tandemmaster"),
-                        })}
-                      />
-                    </div>
-                    <div className="flex w-28 justify-center">
-                      <Switch
-                        checked={member.videospringer}
-                        onCheckedChange={(v) =>
-                          patchCrewRole(index, "videospringer", v)
-                        }
-                        aria-label={t("settings.crew.list.ariaRole", {
-                          name: member.name,
-                          role: t("create.ready.chips.videospringer"),
-                        })}
-                      />
-                    </div>
-                    <div className="flex w-20 justify-end gap-0.5">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        title={t("common.actions.rename")}
-                        onClick={() => startEditCrew(index)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        title={t("common.actions.delete")}
-                        onClick={() => deleteCrewMember(index)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                {sortedCrew.map(({ member, index }) => {
+                  const editing = crewEditIndex === index;
+                  return (
+                    <li
+                      key={`${member.name}-${index}`}
+                      className={cn(
+                        "grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-3 px-3 py-2",
+                        editing && "bg-primary-soft/40",
+                      )}
+                    >
+                      {editing ? (
+                        <Input
+                          autoFocus
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              saveRename();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelEditCrew();
+                            }
+                          }}
+                          aria-label={t("common.actions.rename")}
+                          className="h-8"
+                        />
+                      ) : (
+                        <p
+                          className="truncate text-sm font-medium"
+                          title={member.name}
+                          onDoubleClick={() => startEditCrew(index)}
+                        >
+                          {member.name}
+                          {crewNamesEqual(member.name, draft.operator_name) ? (
+                            <span className="ml-2 text-[10px] font-normal text-muted">
+                              {t("settings.crew.list.me")}
+                            </span>
+                          ) : null}
+                        </p>
+                      )}
+                      <div className="flex w-28 justify-center">
+                        <Switch
+                          checked={member.tandemmaster}
+                          onCheckedChange={(v) =>
+                            patchCrewRole(index, "tandemmaster", v)
+                          }
+                          aria-label={t("settings.crew.list.ariaRole", {
+                            name: member.name,
+                            role: t("create.ready.chips.tandemmaster"),
+                          })}
+                        />
+                      </div>
+                      <div className="flex w-28 justify-center">
+                        <Switch
+                          checked={member.videospringer}
+                          onCheckedChange={(v) =>
+                            patchCrewRole(index, "videospringer", v)
+                          }
+                          aria-label={t("settings.crew.list.ariaRole", {
+                            name: member.name,
+                            role: t("create.ready.chips.videospringer"),
+                          })}
+                        />
+                      </div>
+                      <div className="flex w-20 justify-end gap-0.5">
+                        {editing ? (
+                          <>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              title={t("common.actions.save")}
+                              onClick={saveRename}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              title={t("common.actions.cancel")}
+                              onClick={cancelEditCrew}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              title={t("common.actions.rename")}
+                              onClick={() => startEditCrew(index)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              title={t("common.actions.delete")}
+                              onClick={() => deleteCrewMember(index)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           )}
