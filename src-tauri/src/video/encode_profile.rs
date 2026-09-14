@@ -168,23 +168,33 @@ impl EncodeProfile {
         }
     }
 
-    /// Universal customer export (`intro_mux_mode = capcut`): one continuous H.264 encode.
+    /// Universal customer export (`intro_mux_mode = capcut`): one continuous encode.
     ///
-    /// Always H.264 (`avc1`, 8-bit) so the single output bitstream plays on any iPhone /
-    /// QuickTime / browser. Fast presets keep it CapCut-quick even without a GPU.
-    pub fn capcut_export(hw_accel: bool, base_crf: u8, _body_codec: &str) -> Self {
+    /// Default H.264 (`avc1`, 8-bit) so the single output bitstream plays on any iPhone /
+    /// QuickTime / browser. When the user explicitly forces H.265, encode HEVC (`hvc1`,
+    /// 8-bit) instead — still a single splice-safe bitstream. Fast presets keep it
+    /// CapCut-quick even without a GPU.
+    pub fn capcut_export(hw_accel: bool, base_crf: u8, target_codec: &str) -> Self {
         let mut p = Self::balanced(hw_accel);
         // Fast presets keep CapCut-quick; CRF comes from user setting (Video-Qualität).
         p.crf = clamp_crf(i32::from(base_crf), 18);
         p.preset_id = EncodePresetId::Fast;
         p.sw_preset = "superfast".into();
         p.nvenc_preset = "p2".into();
-        // Force H.264 regardless of body codec (iOS is strict on HEVC hev1/hvc1).
-        p.codec = "h264".into();
-        p.resolved_codec = Some("h264".into());
+        // Auto / H.264 → H.264 (max compatibility); explicit H.265 → HEVC (hvc1).
+        let codec = match normalize_codec_pref(target_codec).as_str() {
+            "h265" => "h265",
+            _ => "h264",
+        };
+        p.codec = codec.into();
+        p.resolved_codec = Some(codec.into());
         p.scale_mode = ScaleMode::Source;
         p.fps_mode = FpsMode::Source;
-        p.recommend_reason = Some("Universal-Export — ein H.264-Durchlauf (CapCut-Stil)".into());
+        p.recommend_reason = Some(if codec == "h265" {
+            "Universal-Export — ein HEVC-Durchlauf (CapCut-Stil)".into()
+        } else {
+            "Universal-Export — ein H.264-Durchlauf (CapCut-Stil)".into()
+        });
         p
     }
 
@@ -471,10 +481,22 @@ mod tests {
     }
 
     #[test]
-    fn capcut_export_forces_h264_even_for_hevc_body() {
+    fn capcut_export_h265_target_uses_hevc() {
+        // Explicit H.265 target → single-pass HEVC (hvc1), still CapCut-fast.
         let p = EncodeProfile::capcut_export(false, 20, "hevc");
-        assert_eq!(p.codec, "h264");
-        assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
+        assert_eq!(p.codec, "h265");
+        assert_eq!(p.resolved_codec.as_deref(), Some("h265"));
+        assert_eq!(p.sw_preset, "superfast");
+    }
+
+    #[test]
+    fn capcut_export_auto_and_h264_target_stays_h264() {
+        // Auto (unknown) and explicit H.264 both keep universal H.264.
+        for target in ["auto", "h264", ""] {
+            let p = EncodeProfile::capcut_export(false, 20, target);
+            assert_eq!(p.codec, "h264", "target {target:?}");
+            assert_eq!(p.resolved_codec.as_deref(), Some("h264"), "target {target:?}");
+        }
     }
 
     #[test]

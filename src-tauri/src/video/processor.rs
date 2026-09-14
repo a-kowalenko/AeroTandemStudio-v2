@@ -1140,6 +1140,16 @@ fn probe_body_codecs(ffmpeg: &Path, paths: &[String]) -> Vec<VideoCodec> {
     out
 }
 
+/// True when an explicit codec preference (≠ Auto) requires re-encoding the produced
+/// body: its actual codec differs from the resolved target. `Auto` never forces this
+/// (stream-copy keeps the source codec).
+fn body_needs_forced_reencode(pref: VideoCodecPreference, body_codec: &str) -> bool {
+    if matches!(pref, VideoCodecPreference::Auto) {
+        return false;
+    }
+    concat::normalize_vcodec_name(body_codec) != resolve_output_codec(pref, body_codec)
+}
+
 /// Target codec for mixed-body re-encode: forced preference, else majority (tie → H.264).
 fn resolve_mixed_body_target_pref(
     pref: VideoCodecPreference,
@@ -1196,6 +1206,10 @@ pub fn create_video(
     let mut encoder_used = String::from("libx264");
     let hw = detect_hardware();
     let hw_accel_enabled = options.hw_accel_enabled;
+    // Explicit codec choice (≠ Auto): the exported video must be this codec.
+    // Route the body through a temp file so `export_body_to_output` can re-encode
+    // when the produced body codec differs from the forced target.
+    let force_codec = !matches!(options.video_codec, VideoCodecPreference::Auto);
 
     // Stage 1: body (single path, parallel per-clip encode, or concat)
     if options.intro_enabled {
@@ -1203,9 +1217,9 @@ pub fn create_video(
     } else {
         emit_stage(&on_progress, 0.0, stages, "Bereite Videoclips vor…");
     }
-    // Without intro, write the body concat straight to the final output to skip
-    // an extra remux pass in `export_body_to_output`.
-    let body_target = if options.intro_enabled {
+    // Without intro (and without a forced codec), write the body concat straight to
+    // the final output to skip an extra remux pass in `export_body_to_output`.
+    let body_target = if options.intro_enabled || force_codec {
         work.join("body_concat.mp4").to_string_lossy().to_string()
     } else {
         output.to_string()
@@ -1339,6 +1353,9 @@ pub fn create_video(
         .map(|m| m.codec.as_str())
         .unwrap_or("h264");
     let out_codec = resolve_output_codec(options.video_codec, body_codec_name);
+    // Explicit codec (≠ Auto) whose target differs from the produced body → re-encode
+    // on export instead of stream-copy, so the output is really the requested codec.
+    let force_reencode = body_needs_forced_reencode(options.video_codec, body_codec_name);
     let mut v_params = intro_params_from_probe(&body_stderr, body_codec_name);
     v_params.vcodec = match out_codec {
         VideoCodec::Hevc => "hevc".into(),
@@ -1421,6 +1438,7 @@ pub fn create_video(
                             out_codec,
                             options.crf,
                             hw_accel_enabled,
+                            force_reencode,
                             Arc::clone(&on_progress),
                             on_reencode.as_ref(),
                         )
@@ -1487,13 +1505,27 @@ pub fn create_video(
             };
 
         let mux_result = if capcut_export {
-            // CapCut-style: one continuous H.264 encode → a single bitstream with one
-            // SPS/PPS. That is what makes it play on iPhone/QuickTime (stream-copy splice
-            // leaves two parameter sets → phones show audio only). Fast preset keeps it quick.
+            // CapCut-style: one continuous encode → a single bitstream with one SPS/PPS.
+            // That is what makes it play on iPhone/QuickTime (stream-copy splice leaves two
+            // parameter sets → phones show audio only). Fast preset keeps it quick.
+            //
+            // Codec: explicit H.265 → HEVC (hvc1); Auto / explicit H.264 → H.264 (universal).
+            let capcut_codec = match options.video_codec {
+                VideoCodecPreference::H265 => VideoCodec::Hevc,
+                _ => VideoCodec::H264,
+            };
+            let capcut_codec_str = match capcut_codec {
+                VideoCodec::Hevc => "h265",
+                _ => "h264",
+            };
             let mut capcut_params = v_params.clone();
-            capcut_params.vcodec = "h264".into();
-            capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — required by iOS
-            let profile = EncodeProfile::capcut_export(hw_accel_enabled, options.crf, "h264");
+            capcut_params.vcodec = match capcut_codec {
+                VideoCodec::Hevc => "hevc".into(),
+                _ => "h264".into(),
+            };
+            capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe (H.264 & HEVC Main)
+            let profile =
+                EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
             mux_intro_body_single_pass(
                 ffmpeg,
                 &hintergrund_s,
@@ -1601,7 +1633,8 @@ pub fn create_video(
             body_clips: video_paths.len(),
         }
     } else {
-        // No intro: copy/re-mux body to output
+        // No intro: copy/re-mux body to output — or re-encode when a forced codec
+        // (≠ Auto) differs from the produced body codec (source → target mismatch).
         emit_stage(&on_progress, 1.0, stages, "Exportiere Video…");
         if Path::new(&body_path) != Path::new(output) {
             encoder_used = export_body_to_output(
@@ -1612,6 +1645,7 @@ pub fn create_video(
                 out_codec,
                 options.crf,
                 hw_accel_enabled,
+                force_reencode,
                 Arc::clone(&on_progress),
                 on_reencode.as_ref(),
             )?;
@@ -1632,7 +1666,11 @@ pub fn create_video(
     Ok(final_body)
 }
 
-/// Remux body to `output` via stream-copy; re-encode only if remux fails.
+/// Export body to `output`.
+///
+/// Default: stream-copy remux (fast); re-encode only if the remux fails.
+/// When `force_reencode` is set (explicit codec ≠ Auto and body codec differs
+/// from the forced target), skip the copy attempt and re-encode to `out_codec`.
 fn export_body_to_output(
     ffmpeg: &Path,
     body_path: &str,
@@ -1641,13 +1679,37 @@ fn export_body_to_output(
     out_codec: VideoCodec,
     crf: u8,
     hw_accel_enabled: bool,
+    force_reencode: bool,
     on_progress: ProgressCallback,
     on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<String, ProcessorError> {
-    let (enc, _out_params) =
-        build_encode_output_params(hw, out_codec, crf, !hw_accel_enabled);
-    let encoder_used;
-    let mut args = vec![
+    let dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0);
+
+    // Forced target codec differs from the produced body → re-encode directly.
+    if force_reencode {
+        let target = match out_codec {
+            VideoCodec::Hevc => "H.265",
+            _ => "H.264",
+        };
+        let reason =
+            format!("Ziel-Codec {target} weicht vom Quell-Codec ab — Neu-Kodierung erzwungen");
+        return encode_body_to_output(
+            ffmpeg,
+            body_path,
+            output,
+            hw,
+            out_codec,
+            crf,
+            hw_accel_enabled,
+            reason,
+            "forced_codec_reencode",
+            dur,
+            &on_progress,
+            on_reencode,
+        );
+    }
+
+    let args = vec![
         "-y".into(),
         "-hide_banner".into(),
         "-i".into(),
@@ -1661,7 +1723,6 @@ fn export_body_to_output(
         "-nostats".into(),
         output.to_string(),
     ];
-    let dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0);
     let export_cb: ProgressCallback = {
         let outer = Arc::clone(&on_progress);
         Arc::new(move |p: crate::video::progress::EncodeProgress| {
@@ -1672,73 +1733,128 @@ fn export_body_to_output(
             outer(q);
         })
     };
-    if let Err(e) = run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&export_cb)) {
-        if is_disk_full_error(&e) {
-            return Err(ProcessorError::Ffmpeg(disk_full_error()));
+    match run_ffmpeg(ffmpeg, &args, dur, Arc::clone(&export_cb)) {
+        Ok(()) => Ok("copy".into()),
+        Err(e) => {
+            if is_disk_full_error(&e) {
+                return Err(ProcessorError::Ffmpeg(disk_full_error()));
+            }
+            let reason =
+                format!("Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})");
+            encode_body_to_output(
+                ffmpeg,
+                body_path,
+                output,
+                hw,
+                out_codec,
+                crf,
+                hw_accel_enabled,
+                reason,
+                "remux_fallback_reencode",
+                dur,
+                &on_progress,
+                on_reencode,
+            )
         }
-        let reason = format!(
-            "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback ({e})"
-        );
-        let intent = ReencodeIntent::new(ReencodeKind::RemuxFallback, reason.clone()).with_params(
-            ReencodeParams {
-                encoder: Some(enc.clone()),
-                crf: Some(crf),
-                hw_accel: Some(hw_accel_enabled),
-                target_codec: Some(match out_codec {
-                    VideoCodec::Hevc => "h265".into(),
-                    VideoCodec::H264 => "h264".into(),
-                    VideoCodec::Other => "other".into(),
-                }),
-                strategy: Some("remux_fallback_reencode".into()),
-                ..Default::default()
-            },
-        );
-        on_progress(progress_from_times(
-            48.0,
-            100.0,
-            "Neu-Kodierung — warte auf Bestätigung…",
-        ));
-        let profile = reencode_confirm::require_confirm(on_reencode, &intent)
-            .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
-        on_progress(progress_from_times(50.0, 100.0, &format!("Kodiere neu: {reason}")));
-        let reenc_cb: ProgressCallback = {
-            let outer = Arc::clone(&on_progress);
-            let reason = reason.clone();
-            Arc::new(move |p: crate::video::progress::EncodeProgress| {
-                let mut q = p;
-                if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                    q.status = format!("Kodiere neu: {reason}");
-                }
-                outer(q);
-            })
-        };
-        let (enc2, out_params2) =
-            profile.to_encode_output_params(hw, out_codec);
-        args = vec![
-            "-y".into(),
-            "-hide_banner".into(),
-            "-i".into(),
-            body_path.to_string(),
-        ];
-        args.extend(out_params2);
-        args.extend([
-            "-c:a".into(),
-            "aac".into(),
-            "-b:a".into(),
-            "192k".into(),
-            "-movflags".into(),
-            "+faststart".into(),
-            "-progress".into(),
-            "pipe:1".into(),
-            "-nostats".into(),
-            output.to_string(),
-        ]);
-        run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
-        encoder_used = enc2;
-    } else {
-        encoder_used = "copy".into();
     }
-    Ok(encoder_used)
+}
+
+/// Re-encode `body_path` → `output` to `out_codec` (video) + AAC audio.
+/// Prompts for confirmation via `on_reencode` (recommended profile when silent).
+#[allow(clippy::too_many_arguments)]
+fn encode_body_to_output(
+    ffmpeg: &Path,
+    body_path: &str,
+    output: &str,
+    hw: &HwAccelInfo,
+    out_codec: VideoCodec,
+    crf: u8,
+    hw_accel_enabled: bool,
+    reason: String,
+    strategy: &str,
+    dur: f64,
+    on_progress: &ProgressCallback,
+    on_reencode: Option<&ReencodeAskFn>,
+) -> Result<String, ProcessorError> {
+    let (enc, _out_params) = build_encode_output_params(hw, out_codec, crf, !hw_accel_enabled);
+    let intent = ReencodeIntent::new(ReencodeKind::RemuxFallback, reason.clone()).with_params(
+        ReencodeParams {
+            encoder: Some(enc.clone()),
+            crf: Some(crf),
+            hw_accel: Some(hw_accel_enabled),
+            target_codec: Some(match out_codec {
+                VideoCodec::Hevc => "h265".into(),
+                VideoCodec::H264 => "h264".into(),
+                VideoCodec::Other => "other".into(),
+            }),
+            strategy: Some(strategy.into()),
+            ..Default::default()
+        },
+    );
+    on_progress(progress_from_times(
+        0.0,
+        100.0,
+        "Neu-Kodierung — warte auf Bestätigung…",
+    ));
+    let profile = reencode_confirm::require_confirm(on_reencode, &intent)
+        .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+    // Reset the overall bar to 0 for the encode step; live FFmpeg progress drives it
+    // (the "Kodiere neu:" label is a reset-stage label on the frontend).
+    on_progress(progress_from_times(0.0, 100.0, &format!("Kodiere neu: {reason}")));
+    let reenc_cb: ProgressCallback = {
+        let outer = Arc::clone(on_progress);
+        let reason = reason.clone();
+        Arc::new(move |p: crate::video::progress::EncodeProgress| {
+            let mut q = p;
+            if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+                q.status = format!("Kodiere neu: {reason}");
+            }
+            outer(q);
+        })
+    };
+    let (enc2, out_params2) = profile.to_encode_output_params(hw, out_codec);
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        body_path.to_string(),
+    ];
+    args.extend(out_params2);
+    // Stream-copy already-AAC audio (faster, lossless); otherwise transcode to AAC.
+    let audio_is_aac = matches!(
+        concat::probe_audio_codec(ffmpeg, body_path),
+        Ok(Some((ref codec, _))) if codec == "aac" || codec == "mp4a"
+    );
+    args.extend(build_body_reencode_output_tail(out_codec, audio_is_aac));
+    args.extend([
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output.to_string(),
+    ]);
+    run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
+    Ok(enc2)
+}
+
+/// Output-tail args for a forced body re-encode (pure; unit-tested).
+///
+/// - H.264 target → force `yuv420p` (8-bit 4:2:0) so iOS/QuickTime can play it even from
+///   10-bit sources (libx264 would otherwise emit High 10). HEVC keeps source pix_fmt
+///   (HEVC Main10 is fine on modern devices) and gets the `hvc1` tag via quality params.
+/// - Audio: stream-copy when already AAC, else transcode to AAC 192k.
+/// - `+faststart` for progressive playback.
+fn build_body_reencode_output_tail(out_codec: VideoCodec, audio_is_aac: bool) -> Vec<String> {
+    let mut tail: Vec<String> = Vec::new();
+    if matches!(out_codec, VideoCodec::H264) {
+        tail.extend(["-pix_fmt".into(), "yuv420p".into()]);
+    }
+    if audio_is_aac {
+        tail.extend(["-c:a".into(), "copy".into()]);
+    } else {
+        tail.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
+    }
+    tail.extend(["-movflags".into(), "+faststart".into()]);
+    tail
 }
 
 fn create_intro_clip(
@@ -2188,6 +2304,43 @@ mod tests {
     }
 
     #[test]
+    fn forced_reencode_only_on_codec_mismatch() {
+        use crate::video::encoding_quality::VideoCodecPreference as P;
+        // Auto never forces a re-encode (stream-copy keeps the source codec).
+        assert!(!body_needs_forced_reencode(P::Auto, "h264"));
+        assert!(!body_needs_forced_reencode(P::Auto, "hevc"));
+        // Forced codec == source codec → stream-copy stays.
+        assert!(!body_needs_forced_reencode(P::H264, "h264"));
+        assert!(!body_needs_forced_reencode(P::H265, "hevc"));
+        assert!(!body_needs_forced_reencode(P::H265, "hev1"));
+        // Forced codec ≠ source codec → must re-encode.
+        assert!(body_needs_forced_reencode(P::H265, "h264"));
+        assert!(body_needs_forced_reencode(P::H264, "hevc"));
+        // Exotic/unknown source with a forced target → re-encode to target.
+        assert!(body_needs_forced_reencode(P::H264, "vp9"));
+        assert!(body_needs_forced_reencode(P::H265, "av1"));
+    }
+
+    #[test]
+    fn body_reencode_tail_h264_forces_yuv420p_and_aac_copy() {
+        // H.264 target + already-AAC audio → 8-bit pix_fmt and audio stream-copy.
+        let tail = build_body_reencode_output_tail(VideoCodec::H264, true);
+        assert!(tail.windows(2).any(|w| w[0] == "-pix_fmt" && w[1] == "yuv420p"));
+        assert!(tail.windows(2).any(|w| w[0] == "-c:a" && w[1] == "copy"));
+        assert!(!tail.iter().any(|a| a == "192k"));
+        assert!(tail.contains(&"+faststart".into()));
+    }
+
+    #[test]
+    fn body_reencode_tail_hevc_keeps_pix_fmt_and_transcodes_non_aac() {
+        // HEVC target → no forced pix_fmt (keeps source/Main10); non-AAC → transcode.
+        let tail = build_body_reencode_output_tail(VideoCodec::Hevc, false);
+        assert!(!tail.iter().any(|a| a == "-pix_fmt"));
+        assert!(tail.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
+        assert!(tail.windows(2).any(|w| w[0] == "-b:a" && w[1] == "192k"));
+    }
+
+    #[test]
     fn map_substep_progress_scales_within_step() {
         let last = Arc::new(std::sync::Mutex::new(None::<f64>));
         let sink: ProgressCallback = {
@@ -2292,11 +2445,15 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     }
 
     #[test]
-    fn capcut_export_profile_forces_fast_h264() {
-        let p = EncodeProfile::capcut_export(true, 18, "hevc");
-        assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
-        assert_eq!(p.sw_preset, "superfast");
-        assert_eq!(p.crf, 18);
+    fn capcut_export_profile_fast_presets_per_target() {
+        // Auto/H.264 target → H.264; explicit H.265 target → HEVC. Fast preset either way.
+        let h264 = EncodeProfile::capcut_export(true, 18, "h264");
+        assert_eq!(h264.resolved_codec.as_deref(), Some("h264"));
+        assert_eq!(h264.sw_preset, "superfast");
+        assert_eq!(h264.crf, 18);
+        let hevc = EncodeProfile::capcut_export(true, 18, "h265");
+        assert_eq!(hevc.resolved_codec.as_deref(), Some("h265"));
+        assert_eq!(hevc.sw_preset, "superfast");
     }
 
     #[test]

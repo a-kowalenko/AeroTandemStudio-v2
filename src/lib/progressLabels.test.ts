@@ -23,6 +23,12 @@ describe("shouldResetOverallProgressPercent", () => {
       ),
       true,
     );
+    assert.equal(
+      shouldResetOverallProgressPercent(
+        "Kodiere neu: Ziel-Codec H.264 weicht vom Quell-Codec ab — Neu-Kodierung erzwungen",
+      ),
+      true,
+    );
   });
 
   it("resets at body-join step start", () => {

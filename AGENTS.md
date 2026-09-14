@@ -65,6 +65,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ⬜ **Phase 14** ML Foto-Klassifikation (Backlog) · Spec: `@docs/phases/open/14-ml-photo.md`
 - ✅ **Phase 47** Settings + Setup-Wizard UX Rebuild · Spec: `@docs/phases/open/47-settings-wizard-ux.md`
 - ✅ **Phase 48** Vorgang Medien-Viewer (lokal) · Spec: `@docs/phases/open/48-vorgang-media-viewer.md`
+- ✅ **Phase 49** Forced-Codec Export (Ziel-Codec, phone-safe: H.264 `yuv420p` / H.265 `hvc1`, CapCut respektiert H.265, AAC-Copy, Fortschritt-Fix) · Spec: `@docs/phases/open/49-forced-codec-export.md`
 
 **Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*

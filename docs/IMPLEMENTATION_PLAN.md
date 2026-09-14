@@ -103,6 +103,7 @@ Details: `@AGENTS.md`
 | 46 | Speculative Create Staging (Compatible, Intro aus) | ✅ | [ARCHIVE](phases/ARCHIVE.md) |
 | 47 | Settings + Setup-Wizard UX Rebuild | ✅ | [open/47](phases/open/47-settings-wizard-ux.md) |
 | 48 | Vorgang Medien-Viewer (lokal) | ✅ | [open/48](phases/open/48-vorgang-media-viewer.md) |
+| 49 | Forced-Codec Export (Ziel-Codec, phone-safe) | ✅ | [open/49](phases/open/49-forced-codec-export.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -141,4 +142,4 @@ Nur 23.2h.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-14 (Phase 48).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-14 (Phase 49).*
