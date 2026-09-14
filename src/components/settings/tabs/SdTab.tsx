@@ -206,99 +206,104 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           </label>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={draft.sd_server_backup_enabled}
-            onCheckedChange={(v) =>
-              patchNow("sd_server_backup_enabled", v === true)
-            }
-          />
-          {t("settings.sd.backup.secondPath")}
-        </label>
-        {draft.sd_server_backup_enabled ? (
-          <div className="space-y-3 pl-1">
-            <div className="space-y-1.5">
-              <Label>{t("settings.sd.backup.serverUrl")}</Label>
-              {profileBackupUrl ? (
-                <>
-                  <div className="flex gap-2">
-                    <Input
-                      value={profileBackupUrl}
-                      readOnly
-                      className="flex-1"
-                      title={
-                        backupTarget.profile
-                          ? displayServerProfileLabel(backupTarget.profile)
-                          : undefined
-                      }
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={testingBackupUrl}
-                      onClick={() => void onTestBackupUrl()}
-                    >
-                      {testingBackupUrl
-                        ? t("settings.sd.backup.serverUrlTesting")
-                        : t("settings.sd.backup.serverUrlTest")}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted">
-                    {t("settings.sd.backup.serverUrlFromProfile", {
-                      name: backupTarget.profile
-                        ? displayServerProfileLabel(backupTarget.profile)
-                        : t("settings.tabs.server"),
-                    })}{" "}
-                    <button
-                      type="button"
-                      className="text-foreground underline-offset-2 hover:underline"
-                      onClick={goToServerBackupUrl}
-                    >
-                      {t("settings.sd.backup.editInServerProfile")}
-                    </button>
-                  </p>
-                </>
-              ) : (
-                <div className="space-y-2 rounded-md border border-dashed border-border/80 bg-background/40 px-3 py-2.5">
-                  <p className="text-sm text-muted">
-                    {t("settings.sd.backup.serverUrlMissing")}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={goToServerBackupUrl}
-                  >
-                    {t("settings.sd.backup.setInServerProfile")}
-                  </Button>
+        {advanced ? (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.sd_server_backup_enabled}
+                onCheckedChange={(v) =>
+                  patchNow("sd_server_backup_enabled", v === true)
+                }
+              />
+              {t("settings.sd.backup.secondPath")}
+            </label>
+            {draft.sd_server_backup_enabled ? (
+              <div className="space-y-3 pl-1">
+                <div className="space-y-1.5">
+                  <Label>{t("settings.sd.backup.serverUrl")}</Label>
+                  {profileBackupUrl ? (
+                    <>
+                      <div className="flex gap-2">
+                        <Input
+                          value={profileBackupUrl}
+                          readOnly
+                          className="flex-1"
+                          title={
+                            backupTarget.profile
+                              ? displayServerProfileLabel(backupTarget.profile)
+                              : undefined
+                          }
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={testingBackupUrl}
+                          onClick={() => void onTestBackupUrl()}
+                        >
+                          {testingBackupUrl
+                            ? t("settings.sd.backup.serverUrlTesting")
+                            : t("settings.sd.backup.serverUrlTest")}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted">
+                        {t("settings.sd.backup.serverUrlFromProfile", {
+                          name: backupTarget.profile
+                            ? displayServerProfileLabel(backupTarget.profile)
+                            : t("settings.tabs.server"),
+                        })}{" "}
+                        <button
+                          type="button"
+                          className="text-foreground underline-offset-2 hover:underline"
+                          onClick={goToServerBackupUrl}
+                        >
+                          {t("settings.sd.backup.editInServerProfile")}
+                        </button>
+                      </p>
+                    </>
+                  ) : (
+                    <div className="space-y-2 rounded-md border border-dashed border-border/80 bg-background/40 px-3 py-2.5">
+                      <p className="text-sm text-muted">
+                        {t("settings.sd.backup.serverUrlMissing")}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={goToServerBackupUrl}
+                      >
+                        {t("settings.sd.backup.setInServerProfile")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {advanced ? (
-            <div className="space-y-1.5">
-              <Label>{t("settings.sd.backup.copyStrategy")}</Label>
-              <Select
-                value={modeValue}
-                onValueChange={(v) => patchNow("sd_server_backup_mode", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local_then_server_async">
-                    {t("settings.sd.backup.copyAsync")}
-                  </SelectItem>
-                  <SelectItem value="local_then_server">
-                    {t("settings.sd.backup.copyMirror")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted" title={t("settings.sd.backup.copyHint")}>
-                {t("settings.sd.backup.copyHint")}
-              </p>
-            </div>
+                <div className="space-y-1.5">
+                  <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                  <Select
+                    value={modeValue}
+                    onValueChange={(v) => patchNow("sd_server_backup_mode", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="local_then_server_async">
+                        {t("settings.sd.backup.copyAsync")}
+                      </SelectItem>
+                      <SelectItem value="local_then_server">
+                        {t("settings.sd.backup.copyMirror")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p
+                    className="text-xs text-muted"
+                    title={t("settings.sd.backup.copyHint")}
+                  >
+                    {t("settings.sd.backup.copyHint")}
+                  </p>
+                </div>
+              </div>
             ) : null}
-          </div>
+          </>
         ) : null}
       </SettingsSection>
 
@@ -329,9 +334,10 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           />
           {t("settings.sd.import.eject")}
         </label>
-        {advanced ? (
-        <>
-        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.ejectSoundHint")}>
+        <label
+          className="flex items-center gap-2 text-sm"
+          title={t("settings.sd.import.ejectSoundHint")}
+        >
           <Checkbox
             checked={draft.sd_eject_sound_enabled}
             onCheckedChange={(v) =>
@@ -340,6 +346,8 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           />
           {t("settings.sd.import.ejectSound")}
         </label>
+        {advanced ? (
+        <>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_skip_processed}
