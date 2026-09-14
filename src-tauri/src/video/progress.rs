@@ -78,17 +78,25 @@ pub fn progress_from_times(current_secs: f64, total_secs: f64, status: &str) -> 
 }
 
 /// Build progress optionally tagged with a parallel `task_id` (1-based).
+///
+/// Live FFmpeg ticks (`continue` / empty status) cap at **99 %** so a short duration
+/// probe or jumpy NVENC `out_time` cannot pin the UI at 100 % while encoding still
+/// runs. Explicit `end` (and stage labels with current≥total) may reach 100 %.
 pub fn progress_from_times_with_task(
     current_secs: f64,
     total_secs: f64,
     status: &str,
     task_id: Option<u32>,
 ) -> EncodeProgress {
-    let percent = if total_secs > 0.0 {
+    let mut percent = if total_secs > 0.0 {
         ((current_secs / total_secs) * 100.0).clamp(0.0, 100.0)
     } else {
         0.0
     };
+    let live = status.is_empty() || status == "continue";
+    if live && percent >= 100.0 {
+        percent = 99.0;
+    }
 
     EncodeProgress {
         percent,
@@ -198,11 +206,21 @@ mod tests {
         assert!((p.percent - 50.0).abs() < 0.001);
         assert!(p.task_id.is_none());
 
+        // Live ticks never pin at 100% (short duration probe / jumpy NVENC out_time).
         let p2 = progress_from_times(200.0, 100.0, "continue");
-        assert!((p2.percent - 100.0).abs() < 0.001);
+        assert!((p2.percent - 99.0).abs() < 0.001);
 
         let p3 = progress_from_times(10.0, 0.0, "continue");
         assert!((p3.percent - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn progress_end_may_reach_100() {
+        let p = progress_from_times(100.0, 100.0, "end");
+        assert!((p.percent - 100.0).abs() < 0.001);
+        // Stage labels (not live continue) may also show 100%.
+        let done = progress_from_times(100.0, 100.0, "Videoclips vorbereitet");
+        assert!((done.percent - 100.0).abs() < 0.001);
     }
 
     #[test]

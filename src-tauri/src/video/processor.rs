@@ -908,6 +908,16 @@ fn emit_step_start(on_progress: &ProgressCallback, label: &str) {
     on_progress(progress_from_times(0.0, 100.0, label));
 }
 
+/// Progress denominator for a long encode: sum of segment durations + 5 % headroom.
+///
+/// Avoids pinning the live bar near 100 % when container duration is slightly short
+/// (common with Action-Cam / HEVC metadata). Combined with the 99 % live-tick cap in
+/// [`progress_from_times_with_task`].
+fn progress_encode_total_secs(parts: &[f64]) -> f64 {
+    let sum: f64 = parts.iter().copied().map(|s| s.max(0.0)).sum();
+    (sum * 1.05).max(0.1)
+}
+
 fn push_ffmpeg_progress_args(args: &mut Vec<String>) {
     args.extend([
         "-progress".into(),
@@ -1760,7 +1770,11 @@ fn export_body_to_output(
 }
 
 /// Re-encode `body_path` → `output` to `out_codec` (video) + AAC audio.
+///
 /// Prompts for confirmation via `on_reencode` (recommended profile when silent).
+/// When the profile requests HW encode, tries NVENC/VideoToolbox first, then falls
+/// back to software (same pattern as CapCut single-pass) — avoids hard fails on
+/// machines where the auto format filter + NVENC path returns ENOSYS.
 #[allow(clippy::too_many_arguments)]
 fn encode_body_to_output(
     ffmpeg: &Path,
@@ -1812,42 +1826,112 @@ fn encode_body_to_output(
             outer(q);
         })
     };
-    let (enc2, out_params2) = profile.to_encode_output_params(hw, out_codec);
-    let mut args = vec![
-        "-y".into(),
-        "-hide_banner".into(),
-        "-i".into(),
-        body_path.to_string(),
-    ];
-    args.extend(out_params2);
-    // Stream-copy already-AAC audio (faster, lossless); otherwise transcode to AAC.
+
+    let source_pix = probe_body_pix_fmt(ffmpeg, body_path);
     let audio_is_aac = matches!(
         concat::probe_audio_codec(ffmpeg, body_path),
         Ok(Some((ref codec, _))) if codec == "aac" || codec == "mp4a"
     );
-    args.extend(build_body_reencode_output_tail(out_codec, audio_is_aac));
-    args.extend([
-        "-progress".into(),
-        "pipe:1".into(),
-        "-nostats".into(),
-        output.to_string(),
-    ]);
-    run_ffmpeg(ffmpeg, &args, dur, reenc_cb)?;
-    Ok(enc2)
+    let encode_hw = profile.hw_accel && hw.available;
+    let attempts: &[bool] = if encode_hw {
+        &[false, true]
+    } else {
+        &[true]
+    };
+    let progress_total = progress_encode_total_secs(&[dur.max(0.05)]);
+    let encode_label = format!("Kodiere neu: {reason}");
+
+    let mut last_err: Option<ProcessorError> = None;
+    for (attempt_i, &force_sw) in attempts.iter().enumerate() {
+        if attempt_i > 0 {
+            emit_step_start(on_progress, &encode_label);
+        }
+        let (encoder, out_params) = if !force_sw {
+            profile.to_encode_output_params(hw, out_codec)
+        } else {
+            build_encode_output_params(hw, out_codec, profile.crf, true)
+        };
+        let mut args = vec![
+            "-y".into(),
+            "-hide_banner".into(),
+            "-i".into(),
+            body_path.to_string(),
+        ];
+        args.extend(build_body_reencode_mid_args(
+            out_codec,
+            &source_pix,
+            &out_params,
+        ));
+        args.extend(build_body_reencode_output_tail(audio_is_aac));
+        args.extend([
+            "-progress".into(),
+            "pipe:1".into(),
+            "-nostats".into(),
+            output.to_string(),
+        ]);
+        match run_ffmpeg(ffmpeg, &args, progress_total, Arc::clone(&reenc_cb)) {
+            Ok(()) => return Ok(encoder),
+            Err(e) => {
+                if is_disk_full_error(&e) {
+                    return Err(ProcessorError::Ffmpeg(disk_full_error()));
+                }
+                last_err = Some(ProcessorError::Ffmpeg(e));
+                let _ = fs::remove_file(output);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        ProcessorError::Message("body re-encode failed".into())
+    }))
 }
 
-/// Output-tail args for a forced body re-encode (pure; unit-tested).
+fn probe_body_pix_fmt(ffmpeg: &Path, body_path: &str) -> String {
+    ffmpeg_probe_stderr(ffmpeg, body_path)
+        .ok()
+        .and_then(|s| probe::parse_pix_fmt_from_probe(&s))
+        .unwrap_or_default()
+}
+
+/// True when the source is already phone-safe 8-bit 4:2:0 (no convert needed for H.264).
+fn source_pix_fmt_is_phone_safe_8bit(pix_fmt: &str) -> bool {
+    matches!(
+        pix_fmt.trim().to_ascii_lowercase().as_str(),
+        "yuv420p" | "yuvj420p" | "nv12"
+    )
+}
+
+/// H.264 targets need an explicit 8-bit convert when the source is not already safe
+/// (e.g. 10-bit HEVC → avoid libx264 High 10 / NVENC auto-filter ENOSYS).
+fn h264_needs_yuv420_convert(out_codec: VideoCodec, source_pix_fmt: &str) -> bool {
+    matches!(out_codec, VideoCodec::H264) && !source_pix_fmt_is_phone_safe_8bit(source_pix_fmt)
+}
+
+/// Mid args after `-i`: optional explicit CPU format filter + encoder params.
 ///
-/// - H.264 target → force `yuv420p` (8-bit 4:2:0) so iOS/QuickTime can play it even from
-///   10-bit sources (libx264 would otherwise emit High 10). HEVC keeps source pix_fmt
-///   (HEVC Main10 is fine on modern devices) and gets the `hvc1` tag via quality params.
-/// - Audio: stream-copy when already AAC, else transcode to AAC 192k.
-/// - `+faststart` for progressive playback.
-fn build_body_reencode_output_tail(out_codec: VideoCodec, audio_is_aac: bool) -> Vec<String> {
-    let mut tail: Vec<String> = Vec::new();
-    if matches!(out_codec, VideoCodec::H264) {
-        tail.extend(["-pix_fmt".into(), "yuv420p".into()]);
+/// When converting to H.264 from a non-8-bit-420 source, insert `-vf format=yuv420p`
+/// *before* `-c:v` so NVENC/libx264 get a stable CPU conversion (avoids fragile
+/// auto-inserted `vf` graphs that fail with ENOSYS on some Windows/NVIDIA setups).
+fn build_body_reencode_mid_args(
+    out_codec: VideoCodec,
+    source_pix_fmt: &str,
+    out_params: &[String],
+) -> Vec<String> {
+    let mut mid: Vec<String> = Vec::new();
+    if h264_needs_yuv420_convert(out_codec, source_pix_fmt) {
+        mid.extend(["-vf".into(), "format=yuv420p".into()]);
+        mid.extend(out_params.iter().cloned());
+        mid.extend(["-pix_fmt".into(), "yuv420p".into()]);
+    } else {
+        mid.extend(out_params.iter().cloned());
     }
+    mid
+}
+
+/// Output-tail args for a forced body re-encode (audio + faststart; pure; unit-tested).
+///
+/// Pixelformat conversion lives in [`build_body_reencode_mid_args`] (only when needed).
+fn build_body_reencode_output_tail(audio_is_aac: bool) -> Vec<String> {
+    let mut tail: Vec<String> = Vec::new();
     if audio_is_aac {
         tail.extend(["-c:a".into(), "copy".into()]);
     } else {
@@ -1880,7 +1964,10 @@ fn create_intro_clip(
     } else {
         &[true]
     };
-    for &force_sw in attempts {
+    for (attempt_i, &force_sw) in attempts.iter().enumerate() {
+        if attempt_i > 0 {
+            emit_step_start(&on_progress, "Erstelle Intro…");
+        }
         let (encoder, _) = build_encode_output_params(hw, codec, crf, force_sw);
         let use_hw = hw.available && !force_sw;
         let quality = intro_quality_params(&encoder, crf, use_hw);
@@ -1938,7 +2025,9 @@ fn mux_intro_body_single_pass(
     let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
     let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0).max(0.05);
     let intro_dauer = intro_dauer.max(0.1);
-    let total = intro_dauer + body_dur;
+    // Small headroom: short/wrong container duration must not make the bar race to 99%
+    // in the first seconds (live ticks are also capped at 99% until FFmpeg `end`).
+    let total = progress_encode_total_secs(&[intro_dauer, body_dur]);
     let copy_audio = has_audio && body_audio_is_aac_copyable(v_params);
 
     let audio_mode = if copy_audio {
@@ -1985,7 +2074,11 @@ fn mux_intro_body_single_pass(
     };
     let mut encoder_used = String::new();
     let mut encoded = false;
-    for &force_sw in attempts {
+    for (attempt_i, &force_sw) in attempts.iter().enumerate() {
+        if attempt_i > 0 {
+            // HW failed → SW retry: reset overall bar (monotonic UI would stay at 99%/100%).
+            emit_step_start(&on_progress, intro_label);
+        }
         let encode_crf = encode_profile.map(|p| p.crf).unwrap_or(crf);
         let (encoder, mut out_params) = match encode_profile {
             Some(profile) if !force_sw => profile.to_encode_output_params(hw, codec),
@@ -2322,22 +2415,57 @@ mod tests {
     }
 
     #[test]
-    fn body_reencode_tail_h264_forces_yuv420p_and_aac_copy() {
-        // H.264 target + already-AAC audio → 8-bit pix_fmt and audio stream-copy.
-        let tail = build_body_reencode_output_tail(VideoCodec::H264, true);
-        assert!(tail.windows(2).any(|w| w[0] == "-pix_fmt" && w[1] == "yuv420p"));
-        assert!(tail.windows(2).any(|w| w[0] == "-c:a" && w[1] == "copy"));
-        assert!(!tail.iter().any(|a| a == "192k"));
-        assert!(tail.contains(&"+faststart".into()));
+    fn progress_encode_total_adds_headroom() {
+        let t = progress_encode_total_secs(&[5.0, 95.0]);
+        assert!((t - 105.0).abs() < 0.01);
+        assert!((progress_encode_total_secs(&[0.0]) - 0.1).abs() < 0.001);
     }
 
     #[test]
-    fn body_reencode_tail_hevc_keeps_pix_fmt_and_transcodes_non_aac() {
-        // HEVC target → no forced pix_fmt (keeps source/Main10); non-AAC → transcode.
-        let tail = build_body_reencode_output_tail(VideoCodec::Hevc, false);
-        assert!(!tail.iter().any(|a| a == "-pix_fmt"));
-        assert!(tail.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
-        assert!(tail.windows(2).any(|w| w[0] == "-b:a" && w[1] == "192k"));
+    fn body_reencode_tail_aac_copy_vs_transcode() {
+        let copy = build_body_reencode_output_tail(true);
+        assert!(copy.windows(2).any(|w| w[0] == "-c:a" && w[1] == "copy"));
+        assert!(!copy.iter().any(|a| a == "192k"));
+        assert!(copy.contains(&"+faststart".into()));
+
+        let enc = build_body_reencode_output_tail(false);
+        assert!(enc.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
+        assert!(enc.windows(2).any(|w| w[0] == "-b:a" && w[1] == "192k"));
+    }
+
+    #[test]
+    fn h264_yuv420_convert_only_when_source_not_safe() {
+        assert!(!h264_needs_yuv420_convert(VideoCodec::H264, "yuv420p"));
+        assert!(!h264_needs_yuv420_convert(VideoCodec::H264, "yuvj420p"));
+        assert!(!h264_needs_yuv420_convert(VideoCodec::H264, "nv12"));
+        assert!(h264_needs_yuv420_convert(VideoCodec::H264, "yuv420p10le"));
+        assert!(h264_needs_yuv420_convert(VideoCodec::H264, "p010le"));
+        assert!(h264_needs_yuv420_convert(VideoCodec::H264, ""));
+        // HEVC target never forces the H.264 8-bit convert.
+        assert!(!h264_needs_yuv420_convert(VideoCodec::Hevc, "yuv420p10le"));
+    }
+
+    #[test]
+    fn body_reencode_mid_args_inserts_vf_only_when_converting() {
+        let enc = vec!["-c:v".into(), "h264_nvenc".into(), "-preset".into(), "p4".into()];
+        // Already safe → no vf / pix_fmt.
+        let mid_safe = build_body_reencode_mid_args(VideoCodec::H264, "yuv420p", &enc);
+        assert!(!mid_safe.iter().any(|a| a == "-vf"));
+        assert!(!mid_safe.iter().any(|a| a == "-pix_fmt"));
+        assert!(mid_safe.contains(&"h264_nvenc".into()));
+
+        // 10-bit source → explicit CPU format filter before encoder + output pix_fmt.
+        let mid_10 = build_body_reencode_mid_args(VideoCodec::H264, "yuv420p10le", &enc);
+        assert!(mid_10.windows(2).any(|w| w[0] == "-vf" && w[1] == "format=yuv420p"));
+        assert!(mid_10.windows(2).any(|w| w[0] == "-pix_fmt" && w[1] == "yuv420p"));
+        // -vf must come before -c:v so NVENC sees converted frames.
+        let vf_i = mid_10.iter().position(|a| a == "-vf").unwrap();
+        let cv_i = mid_10.iter().position(|a| a == "-c:v").unwrap();
+        assert!(vf_i < cv_i);
+
+        // HEVC: never inject H.264 convert.
+        let mid_hevc = build_body_reencode_mid_args(VideoCodec::Hevc, "yuv420p10le", &enc);
+        assert!(!mid_hevc.iter().any(|a| a == "-vf"));
     }
 
     #[test]
