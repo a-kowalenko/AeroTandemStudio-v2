@@ -66,7 +66,7 @@
 | 12 | Shared primitives | `SettingsNav`, `SettingsSection` (bestehend), neu `SettingsRow`, `ComplexityToggle`. Wizard darf Rows/Sections nutzen, bleibt aber Fullscreen-Overlay |
 | 13 | Wizard-Moduswahl | **Neuer Schritt 0.** Setzt `settings_ui_mode` und die Step-Machine. Zurück zu Schritt 0 und Wechsel: Step-Liste neu, bereits gesetzte Pfade/Operator **nicht** löschen |
 | 14 | Wizard Einfach | Heutiger Kern, entschlackt: Appearance+Operator → Storage → kompaktes Medien (Backup-Ordner, Auto-Import, Eject, QR an/aus) → Upload optional → Finish. **Kein** USB-Mode, Size-Limit, QR-Sekunden, Encoding, AMS-Discover |
-| 15 | Wizard Benutzerdefiniert | Einfach-Pfad **plus** Media-Accordion (USB, Size, QR-Parameter, Clear-after, Server-Zweitpfad-Strategie) **plus** Output-Kernstep (Codec/Strategie/HW) **plus** voller Connection-Step (AMS Discover/Token wie heute im Upload-Step, nicht kürzen) |
+| 15 | Wizard Benutzerdefiniert | Einfach-Pfad **plus** Media: Clear-after bei SD-Karten; Accordion (gruppiert, mit Settings-Hints: PC-Name-Feld, USB, Size/Warnschwelle, QR-Parameter/Remove inkl. Max-Dauer) **plus** Output-Kernstep (Codec/Strategie/HW) **plus** voller Connection-Step (AMS Discover/Token, Server-Backup-Haken + Spiegel-Strategie) |
 | 16 | Keine stillen Presets | Einfach schreibt **keine** Encoding-/Eject-/HW-Werte. Factory-Defaults bleiben. Nur `settings_ui_mode` + User-Eingaben |
 | 17 | Skip | Skip pro Schritt + Skip-all bleiben (Skip-all-Confirm wie heute) |
 | 18 | Finish | `setup_completed=true`; Modus bleibt; Hinweis „Feintuning unter Einstellungen“ |
@@ -98,7 +98,7 @@ maintenance   Updates, Cache, Auto-Cleanup, Danger Zone, Factory Reset
 | workplace | Theme, Sprache, Operator + Rollen, Nach-dem-Erstellen |
 | media | Speicherort, Auto-Backup + Ordner, SD leeren, Server-Backup, Auswerfen |
 | connection | Aktives Profil, URL/Login + Test, AMS URL/Token + Test |
-| output | HW-Accel |
+| output | *(nicht in Einfach — nur Erweitert)* |
 | maintenance | Update-Check, Cache leeren |
 
 **Nur Erweitert (Beispiele):** Intro/CRF/Concat-Details, Speculative, Parallel, QR-Sekunden/Remove-after, USB-Mode, Size-Limit, Eject-Sound, Skip-processed, Clear-after, PC-Name, Copy-Strategie, AMS Discover, Path-Hints-Feintuning, Auto-Cleanup, Danger, Beta-Updates, Log-Level.
@@ -125,7 +125,7 @@ Oben zuerst Sprache. Darunter zwei Karten (Titel auf gleicher Höhe):
 | 2 | `connection` | Nur AMS-Suche + Token + Verbinden (kein Upload-Toggle, kein SMB-Formular) | Skip ok |
 | 3 | `finish` | Kompakte Zusammenfassung (übernommene Standardpfade, Medien-Vorgaben) | Fertig |
 
-Nicht im Einfach-Pfad: Speicherort- und Backup-Picker (Standardordner werden still angelegt/übernommen), Medien-Toggles (alle an: Auto-Backup, Auto-Import, Eject, QR Video/Foto), USB-Mode, Size-Limit, QR-Parameter, Clear-after, Encoding, manuelles SMB / Calden-Gera-Presets / Profilname. Verbindung später in den Einstellungen möglich. Dropzone liegt im Arbeitsplatz-Schritt.
+Nicht im Einfach-Pfad: Speicherort- und Backup-Picker (Standardordner werden still angelegt/übernommen), Medien-Toggles (alle an: Auto-Backup, Auto-Import, Eject, QR Video/Foto), USB-Mode, Size-Limit, QR-Parameter, Clear-after, Encoding, manuelles SMB / Calden-Gera-Presets / Profilname. Verbindung später in den Einstellungen möglich. Dropzone liegt im Persönlich-Schritt.
 
 ###### Benutzerdefiniert — Steps
 
@@ -134,7 +134,7 @@ Nicht im Einfach-Pfad: Speicherort- und Backup-Picker (Standardordner werden sti
 | 0 | `mode` | Wahl |
 | 1 | `workplace` | Theme, Dropzone, Operator + Rollen |
 | 2 | `storage` | wie Einfach |
-| 3 | `media` | Einfach-Medien **plus** Accordion: Clear-after, PC-Name-Hinweis, USB, Size, QR-Parameter/Remove |
+| 3 | `media` | Einfach-Medien **plus** Clear-after bei SD-Karten; Accordion (gruppiert): PC-Name-Feld, USB, Size, QR-Parameter/Remove |
 | 4 | `connection` | voller heutiger Upload-Step inkl. AMS |
 | 5 | `output` | Codec, Strategie, HW; Accordion Intro/Concat. Skip → Factory-Defaults unverändert |
 | 6 | `finish` | Checkliste + Modus Erweitert |
@@ -153,7 +153,7 @@ Nicht im Einfach-Pfad: Speicherort- und Backup-Picker (Standardordner werden sti
 ┌──────────────────────────────────────────────┐
 │ Einstellungen           [ Einfach | Erweitert ] │
 ├────────────┬─────────────────────────────────┤
-│ Arbeitsplatz │  SettingsRow / Section         │
+│ Persönlich │  SettingsRow / Section           │
 │ Medien     │  Accordion „Weitere Optionen“   │
 │ Verbindung │                                 │
 │ Ausgabe    │                                 │

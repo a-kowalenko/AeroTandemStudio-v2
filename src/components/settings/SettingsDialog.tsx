@@ -17,9 +17,11 @@ import {
   type SettingsFocusTarget,
 } from "@/store/uiStore";
 import {
+  coerceSettingsArea,
   FOCUS_TARGET_AREA,
   normalizeSettingsUiMode,
   resolveSettingsArea,
+  settingsAreasForMode,
   type SettingsArea,
   type SettingsDisclosure,
 } from "@/lib/settingsUi";
@@ -396,7 +398,15 @@ export function SettingsDialog({
               </span>
               <ComplexityToggle
                 value={normalizeSettingsUiMode(draft.settings_ui_mode)}
-                onChange={(mode) => patchNow("settings_ui_mode", mode)}
+                onChange={(mode) => {
+                  patchNow("settings_ui_mode", mode);
+                  if (
+                    mode === "simple" &&
+                    resolveSettingsArea(settingsTab) === "output"
+                  ) {
+                    setSettingsTab("workplace");
+                  }
+                }}
                 simpleLabel={t("settings.complexity.simple")}
                 advancedLabel={t("settings.complexity.advanced")}
               />
@@ -407,9 +417,13 @@ export function SettingsDialog({
           </DialogHeader>
 
           {(() => {
-            const area = resolveSettingsArea(settingsTab);
+            const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
+            const area = coerceSettingsArea(
+              resolveSettingsArea(settingsTab),
+              uiMode,
+            );
             const disclosure: SettingsDisclosure = {
-              uiMode: normalizeSettingsUiMode(draft.settings_ui_mode),
+              uiMode,
               revealedFocus: flashFocus,
             };
             const areaProps = { ...tabProps, disclosure };
@@ -417,6 +431,7 @@ export function SettingsDialog({
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <SettingsNav
               value={area}
+              areas={settingsAreasForMode(uiMode)}
               onChange={(next: SettingsArea) => setSettingsTab(next)}
             />
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-1 pr-5 [scrollbar-gutter:stable]">

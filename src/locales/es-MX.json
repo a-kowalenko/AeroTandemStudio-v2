@@ -108,7 +108,7 @@
       "system": "Sistema"
     },
     "areas": {
-      "workplace": "Espacio de trabajo",
+      "workplace": "Personal",
       "media": "Medios",
       "connection": "Conexión",
       "output": "Salida",
@@ -154,14 +154,14 @@
         "toastTitle": "Caché",
         "cleaning": "Limpiando…",
         "clear": "Vaciar caché",
-        "confirmTitle": "¿Vaciar caché?",
-        "confirmBody": "Hay una sesión de medios activa (videos/fotos en la carpeta de trabajo).\n\nVaciar la caché elimina la sesión y los archivos temporales/de vista previa. La lista de medios se vaciará.",
-        "currentSize": "Ocupado:",
-        "measuring": "Calculando tamaño…",
-        "measureFailed": "Tamaño no disponible",
-        "refresh": "Actualizar tamaño",
         "cleanupErrors": "No se pudieron eliminar {{count}} elemento(s).",
-        "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}})."
+        "cleanupSummary": "{{dirs}} carpetas y {{files}} archivos eliminados ({{size}}).",
+        "confirmBody": "Hay una sesión de medios activa (videos/fotos en la carpeta de trabajo).\n\nVaciar la caché elimina la sesión y los archivos temporales/de vista previa. La lista de medios se vaciará.",
+        "confirmTitle": "¿Vaciar caché?",
+        "currentSize": "Ocupado:",
+        "measureFailed": "Tamaño no disponible",
+        "measuring": "Calculando tamaño…",
+        "refresh": "Actualizar tamaño"
       },
       "update": {
         "title": "Actualización",
@@ -191,17 +191,11 @@
         "releasesUnavailable": "Lista de versiones no disponible — revisa tu conexión a internet."
       },
       "autoCleanup": {
-        "title": "Limpieza automática",
-        "description": "Elimina carpetas locales de trabajos y respaldos tras un periodo de retención. El historial se conserva (se muestra como “carpeta ausente”).",
-        "jobsSwitch": "Limpiar automáticamente carpetas de trabajos",
         "backupsSwitch": "Limpiar automáticamente carpetas de respaldo",
-        "retentionLabel": "Periodo de retención",
-        "hint": "Solo carpetas locales. El historial se conserva.",
+        "description": "Elimina carpetas locales de trabajos y respaldos tras un periodo de retención. El historial se conserva (se muestra como “carpeta ausente”).",
         "enableWarn": "Las carpetas locales más antiguas que el periodo de retención se eliminarán de forma irreversible. Las entradas del historial se conservan. ¿Continuar?",
-        "toastTitle": "Limpieza automática",
-        "summaryJobs": "Trabajos: {{summary}}",
-        "summaryBackups": "Respaldos: {{summary}}",
-        "summarySkipped": "{{count}} trabajo(s) omitido(s) por carga pendiente.",
+        "hint": "Solo carpetas locales. El historial se conserva.",
+        "jobsSwitch": "Limpiar automáticamente carpetas de trabajos",
         "retention": {
           "7": "1 semana",
           "14": "2 semanas",
@@ -209,31 +203,37 @@
           "90": "3 meses",
           "180": "6 meses",
           "365": "1 año"
-        }
+        },
+        "retentionLabel": "Periodo de retención",
+        "summaryBackups": "Respaldos: {{summary}}",
+        "summaryJobs": "Trabajos: {{summary}}",
+        "summarySkipped": "{{count}} trabajo(s) omitido(s) por carga pendiente.",
+        "title": "Limpieza automática",
+        "toastTitle": "Limpieza automática"
       },
       "danger": {
-        "title": "Zona de peligro",
+        "busyHint": "No disponible mientras hay un trabajo, carga o respaldo de SD en curso.",
+        "clearBackups": "Eliminar carpetas de respaldo",
+        "clearJobs": "Eliminar carpetas de trabajos",
+        "clearing": "Eliminando…",
+        "confirmBackupsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
+        "confirmBackupsTitle": "¿Eliminar carpetas de respaldo?",
+        "confirmJobsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
+        "confirmJobsTitle": "¿Eliminar carpetas de trabajos?",
+        "confirmProceed": "Eliminar",
+        "confirmUploadWarn": "{{count}} trabajo(s) aún tienen una carga pendiente — después faltará la carpeta local.",
+        "currentSize": "Ocupado:",
         "description": "Elimina carpetas y archivos locales de forma irreversible. Las entradas de trabajos e historial de medios se conservan, pero los archivos de medios desaparecen.",
         "includeOrphans": "También eliminar carpetas desconocidas en la ubicación de almacenamiento",
-        "clearJobs": "Eliminar carpetas de trabajos",
-        "clearBackups": "Eliminar carpetas de respaldo",
-        "busyHint": "No disponible mientras hay un trabajo, carga o respaldo de SD en curso.",
-        "pathHint": "Configura la ubicación de almacenamiento y la carpeta de respaldo.",
-        "nothingToDelete": "Nada que eliminar.",
-        "toastTitle": "Carpetas locales",
-        "clearing": "Eliminando…",
-        "currentSize": "Ocupado:",
-        "measuring": "Calculando tamaño…",
         "measureFailed": "Tamaño no disponible",
-        "refresh": "Actualizar tamaño",
-        "usageSummary": "{{size}} · {{folders}} carpetas · {{files}} archivos",
-        "confirmJobsTitle": "¿Eliminar carpetas de trabajos?",
-        "confirmJobsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
-        "confirmUploadWarn": "{{count}} trabajo(s) aún tienen una carga pendiente — después faltará la carpeta local.",
-        "confirmBackupsTitle": "¿Eliminar carpetas de respaldo?",
-        "confirmBackupsBody": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}}).",
+        "measuring": "Calculando tamaño…",
+        "nothingToDelete": "Nada que eliminar.",
         "openFolder": "Ir a la carpeta",
-        "confirmProceed": "Eliminar"
+        "pathHint": "Configura la ubicación de almacenamiento y la carpeta de respaldo.",
+        "refresh": "Actualizar tamaño",
+        "title": "Zona de peligro",
+        "toastTitle": "Carpetas locales",
+        "usageSummary": "{{size}} · {{folders}} carpetas · {{files}} archivos"
       }
     },
     "folder": {
@@ -293,13 +293,10 @@
       "strategyCombined": "Combinado",
       "hwAccel": "Aceleración por hardware",
       "parallel": "Procesamiento de video en paralelo",
-      "speculativeCreate": "Preparar en segundo plano",
-      "speculativeCreateHint": "Cuando Crear está listo (Compatible, sin intro, cliente por QR/lookup), video y fotos se preparan antes del clic. Desactivado: flujo clásico.",
       "concat": "Unir clips",
-      "concatFast": "Fast Path",
-      "concatCompatible": "Compatible",
-      "concatLegacy": "Legacy",
-      "concatHint": "Fast Path: copia rápida, arriesgada en algunos reproductores.\nCompatible: similar a Avidemux — robusto, sin pérdida, orientación segura.\nLegacy: respaldo MPEG-TS, más lento.\nSi falla: cancelar o usar Legacy.",
+      "concatFast": "Ruta rápida",
+      "concatLegacy": "Legacy (robusto)",
+      "concatHint": "La ruta rápida une clips en una pasada (similar a Avidemux Copy). Si falla, puedes cancelar o usar Legacy. Legacy usa la canalización MPEG-TS.",
       "advanced": "Avanzado",
       "introEnabled": "Usar intro al crear (experimental)",
       "introDuration": "Duración del intro (s)",
@@ -309,7 +306,10 @@
       "introMuxHint": "Recodificar genera intro y video de vuelo como un bitstream continuo — fiable en móviles y reproductores. La copia de stream es más rápida, pero puede congelarse en algunos dispositivos.",
       "reencodeMatching": "Recodificar clips coincidentes",
       "previewCrf": "CRF de vista previa",
-      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar."
+      "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
+      "concatCompatible": "Compatible",
+      "speculativeCreate": "Preparar en segundo plano",
+      "speculativeCreateHint": "Cuando Crear está listo (Compatible, sin intro, cliente por QR/lookup), video y fotos se preparan antes del clic. Desactivado: flujo clásico."
     },
     "qr": {
       "autoScan": {
@@ -372,8 +372,6 @@
         "eject": "Expulsar SD automáticamente",
         "ejectTitle": "Expulsar justo tras el respaldo (importar/QR desde copias). Sin respaldo: tras importar.",
         "ejectHint": "Con respaldo, justo después; sin respaldo, tras importar.",
-        "ejectSound": "Sonido al expulsar correctamente",
-        "ejectSoundHint": "Señal corta cuando la SD o cámara USB se expulsó de forma segura — aunque la ventana no esté enfocada.",
         "skipProcessed": "Omitir archivos ya procesados",
         "usbCameras": "Cámaras de acción USB (GoPro / DJI / Insta360)",
         "usbCamerasHint": "Detecta cámaras por USB (MTP/WPD), copia los medios localmente e importa como desde la tarjeta SD. Teléfonos y memorias normales quedan fuera.",
@@ -381,7 +379,9 @@
         "usbImportModeAuto": "Automático (lista blanca)",
         "usbImportModeHint": "Automático: solo GoPro en la lista. «Solo volumen» para DJI Osmo (Transferencia de archivos en la cámara). Preferir MTP solo si la lista falla.",
         "usbImportModeMtp": "Preferir MTP (experimental)",
-        "usbImportModeVolume": "Solo volumen / SD"
+        "usbImportModeVolume": "Solo volumen / SD",
+        "ejectSound": "Sonido al expulsar correctamente",
+        "ejectSoundHint": "Señal corta cuando la SD o cámara USB se expulsó de forma segura — aunque la ventana no esté enfocada."
       },
       "size": {
         "title": "Umbral de aviso",
@@ -568,10 +568,6 @@
       "done": "Trabajo terminado",
       "cancelled": "Trabajo cancelado."
     },
-    "speculative": {
-      "preparing": "Preparando…",
-      "ready": "Listo"
-    },
     "append": {
       "pickFile": "Elige al menos un archivo para reenviar.",
       "tooMany": "Demasiados reenvíos para este trabajo (99)."
@@ -598,6 +594,10 @@
       "dirCreated": "Se creó el directorio",
       "openLocation": "Ir a la ubicación",
       "play": "Reproducir"
+    },
+    "speculative": {
+      "preparing": "Preparando…",
+      "ready": "Listo"
     }
   },
   "progress": {
@@ -625,17 +625,9 @@
       "replaceFile": "Reemplazando archivo…",
       "reencodeCut": "Corte (preciso)…",
       "streamCopyCut": "Corte…",
-      "fastConcat": "Uniendo clips…",
-      "compatibleProbe": "Comprobando clips…",
-      "compatiblePrep": "Preparando clips…",
-      "compatiblePrepCount": "Preparando clips ({{current}}/{{total}})…",
-      "compatibleConcat": "Uniendo clips…",
-      "compatibleFinalize": "Finalizando contenedor…",
-      "compatibleValidate": "Comprobando unión…",
-      "compatibleMkvFallback": "Respaldo MKV…",
-      "legacyConcat": "Uniendo clips…",
-      "fastPathWaiting": "Unión falló — elige una opción…",
-      "compatiblePathWaiting": "Unión falló — elige una opción…",
+      "fastConcat": "Uniendo clips (fast path)…",
+      "legacyConcat": "Unión legacy…",
+      "fastPathWaiting": "Fast path falló — elige una opción…",
       "replaceOriginal": "Reemplazando original…",
       "splitPart1": "Dividiendo clip (parte 1)…",
       "splitPart2": "Dividiendo clip (parte 2)…",
@@ -659,7 +651,15 @@
       "writeHandoff": "Escribiendo entrega…",
       "appendReady": "Reenvío listo",
       "parallelEncode": "Codificando clips en paralelo ({{clips}} clips, {{workers}} workers)…",
-      "parallelConcat": "Uniendo clips en paralelo ({{clips}} clips, {{workers}} workers)…"
+      "parallelConcat": "Uniendo clips en paralelo ({{clips}} clips, {{workers}} workers)…",
+      "compatibleConcat": "Uniendo clips…",
+      "compatibleFinalize": "Finalizando contenedor…",
+      "compatibleMkvFallback": "Respaldo MKV…",
+      "compatiblePathWaiting": "Unión falló — elige una opción…",
+      "compatiblePrep": "Preparando clips…",
+      "compatiblePrepCount": "Preparando clips ({{current}}/{{total}})…",
+      "compatibleProbe": "Comprobando clips…",
+      "compatibleValidate": "Comprobando unión…"
     },
     "rust": {
       "generateOutputDir": "Generando directorio de salida…",
@@ -676,7 +676,7 @@
       "analyseIntroVideo": "Analizando intro/video…",
       "streamCopyFailedWaiting": "Copia de stream falló — elige una opción…",
       "exportWithoutIntro": "Exportando video sin intro…",
-      "legacyMpegTs": "Uniendo clips (MPEG-TS)…",
+      "legacyMpegTs": "Unión legacy (MPEG-TS)…",
       "sdClearing": "Limpiando SD…",
       "backupFinishing": "Finalizando respaldo…",
       "reencodeWaiting": "Recodificación — esperando confirmación…"
@@ -723,9 +723,9 @@
     "bodyConcat": {
       "title": "Fast path falló",
       "body": "No se pudieron unir los clips en un solo paso rápido. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
-      "titleCompatible": "Compatible path falló",
+      "useLegacy": "Usar legacy",
       "bodyCompatible": "No se pudieron unir los clips por la ruta Compatible (similar a Avidemux). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
-      "useLegacy": "Usar legacy"
+      "titleCompatible": "Compatible path falló"
     },
     "introMux": {
       "title": "No se puede adjuntar el intro por copia de stream",
@@ -841,17 +841,6 @@
       "proceed": "Crear localmente de todos modos",
       "title": "Servidor no disponible"
     },
-    "reconnectUpload": {
-      "andMore": "y {{count}} más",
-      "body": "{{count}} subidas pendientes — ¿subir ahora?",
-      "later": "Más tarde",
-      "now": "Subir ahora",
-      "nowCount": "Subir {{count}}",
-      "nowIgnoreOnly": "Aplicar",
-      "scanning": "Comprobando subidas pendientes…",
-      "selectionHint": "Los no marcados no se volverán a sugerir. Aún puedes subirlos en Trabajos.",
-      "title": "Servidor de nuevo en línea"
-    },
     "uploadExtraFiles": {
       "body": "La carpeta de “{{guest}}” contiene archivos que no formaban parte del trabajo original:",
       "hintInclude": "Subir todos: la lista de entrega se actualizará antes de subir.",
@@ -891,6 +880,17 @@
         "unknown": "Error desconocido"
       },
       "title": "Subida no posible"
+    },
+    "reconnectUpload": {
+      "andMore": "y {{count}} más",
+      "body": "{{count}} subidas pendientes — ¿subir ahora?",
+      "later": "Más tarde",
+      "now": "Subir ahora",
+      "nowCount": "Subir {{count}}",
+      "nowIgnoreOnly": "Aplicar",
+      "scanning": "Comprobando subidas pendientes…",
+      "selectionHint": "Los no marcados no se volverán a sugerir. Aún puedes subirlos en Trabajos.",
+      "title": "Servidor de nuevo en línea"
     }
   },
   "splash": {
@@ -1138,11 +1138,11 @@
       "outsidePhoto": "Foto Outside",
       "outsideVideo": "Video Outside",
       "paid": "Pagado",
-      "unpaid": "No pagado",
       "paidAria": "{{label}} pagado",
-      "unpaidAria": "{{label}} no pagado",
       "lockedAms": "Los productos de la reserva están bloqueados — usa “Editar” para desbloquear.",
-      "lockedQr": "Los productos del QR están bloqueados — usa “Editar” para desbloquear."
+      "lockedQr": "Los productos del QR están bloqueados — usa “Editar” para desbloquear.",
+      "unpaid": "No pagado",
+      "unpaidAria": "{{label}} no pagado"
     }
   },
   "media": {
@@ -1246,21 +1246,12 @@
       "undoEdit": "Deshacer edición"
     },
     "edit": {
+      "doneDefault": "Listo",
       "modeAria": "Modo de edición",
       "noChanges": "Sin cambios"
     }
   },
   "workflow": {
-    "bodyConcat": {
-      "labelFast": "Fast Path",
-      "labelCompatible": "Compatible",
-      "labelLegacy": "Legacy",
-      "shortFast": "Fast",
-      "shortCompatible": "Compatible",
-      "shortLegacy": "Legacy",
-      "hint": "Fast Path: copia rápida, arriesgada en algunos reproductores.\nCompatible: similar a Avidemux — robusto, sin pérdida, orientación segura.\nLegacy: respaldo MPEG-TS, más lento.",
-      "aria": "Modo de unión de clips: {{mode}}"
-    },
     "progress": "Progreso",
     "stage": {
       "preview": "Se está generando la vista previa",
@@ -1300,6 +1291,16 @@
       "video": "Video",
       "wmPhotos": "Sello de vista previa",
       "wmVideo": "Marca de agua"
+    },
+    "bodyConcat": {
+      "aria": "Modo de unión de clips: {{mode}}",
+      "hint": "Fast Path: copia rápida, arriesgada en algunos reproductores.\nCompatible: similar a Avidemux — robusto, sin pérdida, orientación segura.\nLegacy: respaldo MPEG-TS, más lento.",
+      "labelCompatible": "Compatible",
+      "labelFast": "Fast Path",
+      "labelLegacy": "Legacy",
+      "shortCompatible": "Compatible",
+      "shortFast": "Fast",
+      "shortLegacy": "Legacy"
     }
   },
   "history": {
@@ -1358,21 +1359,14 @@
       "jobComplete": "Listo",
       "amsRejected": "Nube: rechazada",
       "amsCancelled": "Nube: cancelada",
-      "refreshStatus": "Actualizar estado",
-      "folderMissing": "Carpeta no encontrada",
-      "folderMissingRemove": "Quitar del historial",
-      "folderCleanedUp": "Local eliminado",
-      "localOnly": "Solo local",
-      "refreshNoChange": "No hay estado nuevo en la nube (caché o puente sin conexión).",
-      "refreshFailed": "No se pudo consultar el estado en la nube.",
       "hint": {
         "smbPending": "Listo en local — falta copiar al servidor",
         "amsPending": "Los medios están en el servidor — falta subirlos a la nube",
         "amsStale": "Estado desactualizado — toca para actualizar",
-        "folderMissing": "Se eliminó o movió la carpeta de salida. Subida y estado en la nube no disponibles.",
+        "jobComplete": "Subida al servidor y a la nube completada",
         "folderCleanedUp": "Carpeta local eliminada tras la subida — normal. El estado en la nube se sincroniza vía AMS.",
-        "localOnly": "Sin subida al servidor planificada — los archivos están solo en local",
-        "jobComplete": "Subida al servidor y a la nube completada"
+        "folderMissing": "Se eliminó o movió la carpeta de salida. Subida y estado en la nube no disponibles.",
+        "localOnly": "Sin subida al servidor planificada — los archivos están solo en local"
       },
       "step": {
         "smb": "Servidor",
@@ -1381,15 +1375,20 @@
         "amsQueued": "Cola",
         "amsUploading": "Nube",
         "amsCompleted": "Listo"
-      }
+      },
+      "folderCleanedUp": "Local eliminado",
+      "folderMissing": "Carpeta no encontrada",
+      "folderMissingRemove": "Quitar del historial",
+      "localOnly": "Solo local",
+      "refreshFailed": "No se pudo consultar el estado en la nube.",
+      "refreshNoChange": "No hay estado nuevo en la nube (caché o puente sin conexión).",
+      "refreshStatus": "Actualizar estado"
     },
     "append": "Reenvío",
     "appendBtn": "Reenviar…",
     "appendTitleLokal": "Solo en trabajos en línea, no locales",
     "appendTitleWait": "Solo cuando termine la subida",
     "appendTitleBusy": "Ya hay un reenvío en curso",
-    "appendTitleUploadOff": "Carga a la nube desactivada — actívala en ajustes para reenviar medios",
-    "appendTitleCloudOffline": "Sin conexión al servidor — reenvío a la nube cuando haya conexión",
     "appendTitleOk": "Agregar más medios a la misma carpeta del cliente",
     "files": "Archivos",
     "appended": "Reenviado",
@@ -1465,9 +1464,6 @@
       "catOutsideVideo": "Video Outside",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
-      "hintNew": "Sin reservar — el producto se crea con este reenvío; opcionalmente incluye vista previa.",
-      "hintOpen": "Abierto — opcionalmente incluye vista previa con marca de agua.",
-      "hintPaid": "Pagado — solo reenviar originales; no hace falta vista previa.",
       "modeOriginal": "Original",
       "modeOriginalPreview": "Original + vista previa",
       "noPhotos": "No se encontraron fotos compatibles.",
@@ -1486,12 +1482,15 @@
       "productTitle": "Producto",
       "removeItemAria": "Quitar {{name}}",
       "send": "Enviar",
-      "sendCount": "Enviar {{count}}",
       "statusNew": "Sin reservar",
       "statusOpen": "Abierto",
       "statusPaid": "Pagado",
       "wrongKindPhoto": "Suelta fotos (la categoría actual es foto).",
-      "wrongKindVideo": "Suelta videos (la categoría actual es video)."
+      "wrongKindVideo": "Suelta videos (la categoría actual es video).",
+      "hintNew": "Sin reservar — el producto se crea con este reenvío; opcionalmente incluye vista previa.",
+      "hintOpen": "Abierto — opcionalmente incluye vista previa con marca de agua.",
+      "hintPaid": "Pagado — solo reenviar originales; no hace falta vista previa.",
+      "sendCount": "Enviar {{count}}"
     },
     "upload": {
       "bulkBtn": "Procesar subidas pendientes…",
@@ -1520,17 +1519,19 @@
       "ignoredHint": "Ya no se sugiere automáticamente — reintentar desde Trabajos",
       "pendingBadgeTooltip": "{{count}} subidas pendientes",
       "retryBtn": "Reintentar subida",
-      "uploadBtn": "Subir al servidor",
-      "uploadTitle": "Subir al servidor",
-      "uploadTitleOk": "Copiar este trabajo local al servidor ahora",
       "retryCancelled": "Subida cancelada.",
       "retryDone": "Subida completada correctamente.",
       "retryOffline": "Servidor fuera de línea — la subida solo es posible con conexión",
       "retryTitle": "Reintentar subida",
       "retryTitleOk": "Iniciar ahora la subida pendiente",
       "uploading": "Copiando…",
-      "uploadingHint": "Se están copiando los archivos al servidor"
-    }
+      "uploadingHint": "Se están copiando los archivos al servidor",
+      "uploadBtn": "Subir al servidor",
+      "uploadTitle": "Subir al servidor",
+      "uploadTitleOk": "Copiar este trabajo local al servidor ahora"
+    },
+    "appendTitleCloudOffline": "Sin conexión al servidor — reenvío a la nube cuando haya conexión",
+    "appendTitleUploadOff": "Carga a la nube desactivada — actívala en ajustes para reenviar medios"
   },
   "ams": {
     "actions": {
@@ -1643,9 +1644,9 @@
       "serverBackupRunning": "Respaldo servidor: {{percent}}%",
       "serverBackupWithDetail": "Respaldo servidor: {{percent}}% · {{detail}}",
       "postUpdateHint": {
-        "title": "Conexión tras actualización",
         "body": "Tras una actualización, macOS a veces bloquea la conexión de la app. Reinicia el Mac para solucionarlo.",
-        "ok": "Entendido"
+        "ok": "Entendido",
+        "title": "Conexión tras actualización"
       }
     },
     "backupPopover": {
@@ -1669,7 +1670,6 @@
       "extraHitsMany": "{{count}} coincidencias adicionales",
       "extraHitsOne": "1 coincidencia adicional",
       "fastSpots": "Revisando puntos del clip…",
-      "fastPhoto": "Revisión rápida de foto…",
       "filesDone": "{{finished}} de {{total}} {{unit}} listos",
       "foundFile": "encontrado: {{name}}",
       "hitFound": "Coincidencia encontrada",
@@ -1689,15 +1689,11 @@
       "scanVideos": "Buscando código QR en videos…",
       "thorough": "Revisando código QR a fondo…",
       "thoroughSpots": "Revisando puntos con más detalle…",
-      "thoroughPhoto": "Revisión detallada de foto…",
       "unitFiles": "Archivos",
       "unitPhotos": "Fotos",
-      "unitVideos": "Videos"
-    },
-    "dual": {
-      "cancelled": "Elección de tipo cancelada — escaneo descartado",
-      "offlineHint": "El QR incluye Handcam y Outside.\nDatos de productos AMS no disponibles — elige el tipo y verifica los productos.",
-      "productsCheck": "Verifica los productos"
+      "unitVideos": "Videos",
+      "fastPhoto": "Revisión rápida de foto…",
+      "thoroughPhoto": "Revisión detallada de foto…"
     },
     "confirm": {
       "currentCustomer": "Cliente actual",
@@ -1717,6 +1713,11 @@
       "switchBody": "Actual: {{previous}}\nNuevo: {{next}}\n\n¿Cambiar datos del cliente? Los medios se conservan.",
       "switchPrimary": "Cambiar",
       "switchSummary": "Otro cliente reconocido"
+    },
+    "dual": {
+      "cancelled": "Elección de tipo cancelada — escaneo descartado",
+      "offlineHint": "El QR incluye Handcam y Outside.\nDatos de productos AMS no disponibles — elige el tipo y verifica los productos.",
+      "productsCheck": "Verifica los productos"
     }
   },
   "video": {
@@ -1746,10 +1747,10 @@
         "undo": "Falló deshacer"
       },
       "mode": {
-        "photos": "Fotos",
         "rotate": "Rotar",
         "split": "Dividir",
-        "trim": "Recorte"
+        "trim": "Recorte",
+        "photos": "Fotos"
       }
     },
     "preview": {
@@ -1823,36 +1824,36 @@
         "noRotation": "No hay rotación seleccionada."
       },
       "playhead": "Cabezal {{time}}",
-      "splitHint": "Ambas partes >= 10 s — luego Aplicar",
-      "resetRange": "Restablecer rango",
+      "splitHint": "Ambas partes >= 10 s — luego Listo",
       "photos": {
-        "title": "Fotos",
+        "addFrame": "Añadir frame",
+        "alsoExport": "Exportar también…",
+        "appliedMany": "{{count}} fotos añadidas",
+        "appliedOne": "1 foto añadida",
         "apply": "Aplicar",
         "applyCount": "Aplicar {{count}}",
+        "estimate": "≈ {{count}} fotos",
+        "exportTo": "Exportar: {{folder}}",
+        "exportedMany": "{{count}} fotos exportadas",
+        "exportedOne": "1 foto exportada",
+        "extractFailed": "No se pudieron crear los frames",
+        "generate": "Generar frames",
+        "importToSession": "Añadir al pedido",
+        "interval": "Intervalo",
+        "needSelection": "Selecciona al menos una foto y un destino (pedido o exportación).",
+        "noFrames": "No hay frames para este rango.",
+        "nudgeBack": "Un frame atrás",
+        "nudgeFwd": "Un frame adelante",
+        "pickExportFolder": "Elegir carpeta de exportación",
+        "progress": "{{done}} / {{total}}",
+        "selectedCount": "{{selected}} de {{total}} seleccionadas",
         "sub": {
           "interval": "Intervalo",
           "single": "Individual"
         },
-        "interval": "Intervalo",
-        "estimate": "≈ {{count}} fotos",
-        "generate": "Generar frames",
-        "addFrame": "Añadir frame",
-        "nudgeBack": "Un frame atrás",
-        "nudgeFwd": "Un frame adelante",
-        "importToSession": "Añadir al pedido",
-        "alsoExport": "Exportar también…",
-        "exportTo": "Exportar: {{folder}}",
-        "pickExportFolder": "Elegir carpeta de exportación",
-        "progress": "{{done}} / {{total}}",
-        "selectedCount": "{{selected}} de {{total}} seleccionadas",
-        "needSelection": "Selecciona al menos una foto y un destino (pedido o exportación).",
-        "extractFailed": "No se pudieron crear los frames",
-        "noFrames": "No hay frames para este rango.",
-        "appliedOne": "1 foto añadida",
-        "appliedMany": "{{count}} fotos añadidas",
-        "exportedOne": "1 foto exportada",
-        "exportedMany": "{{count}} fotos exportadas"
-      }
+        "title": "Fotos"
+      },
+      "resetRange": "Restablecer rango"
     },
     "player": {
       "volumeAria": "Volumen",
@@ -1943,7 +1944,7 @@
     "rotate": {
       "ccw": "90° en sentido antihorario",
       "cw": "90° en sentido horario",
-      "reset": "Restablecer rotación"
+      "reset": "Restablecer"
     }
   },
   "sd": {
@@ -1982,9 +1983,9 @@
       "none": "Sin SD",
       "ejectTitle": "Expulsar “{{label}}”",
       "ejectAria": "Expulsar tarjeta SD {{label}}",
-      "import": "Importar",
       "open": "Abrir",
-      "pickWithTooltip": "{{tip}} — elegir tarjeta SD / selector de archivos"
+      "pickWithTooltip": "{{tip}} — elegir tarjeta SD / selector de archivos",
+      "import": "Importar"
     },
     "selector": {
       "known": "Conocido",
@@ -2007,52 +2008,52 @@
       "selectAll": "Seleccionar todos",
       "selectAllFiltered": "Todos (filtrados)",
       "selectAllNew": "Todos nuevos",
-      "selectNew": "Seleccionar nuevos",
-      "selectAllShort": "Todos",
-      "selectNewShort": "Nuevos",
-      "selectAllVisible": "Todos",
-      "selectAllVideos": "Todos los videos",
-      "selectAllPhotos": "Todas las fotos",
-      "selectNewOnly": "Solo nuevos",
-      "selectNewVideos": "Solo videos nuevos",
-      "selectNewPhotos": "Solo fotos nuevas",
+      "summaryPhotos": ", {{count}} fotos",
+      "summarySelected": ", seleccionados: {{count}} ({{sizeMb}} MB)",
+      "summaryVideos": ", {{count}} videos",
+      "viewDetails": "Detalles",
+      "viewTiles": "Mosaicos",
       "clearSelection": "Quitar",
-      "clearSelectionVideos": "Quitar videos",
       "clearSelectionPhotos": "Quitar fotos",
-      "selectionLabel": "Selección",
+      "clearSelectionVideos": "Quitar videos",
+      "densityComfortable": "Normal",
+      "densityCompact": "Compacto",
+      "deselectDay": "Quitar día",
+      "filterEmpty": "Ningún archivo coincide con este filtro.",
+      "footerNoneSelected": "Ningún archivo elegido",
+      "footerSelected": "elegidos: {{count}} · {{sizeMb}} MB",
+      "footerSelectedAria": "{{count}} archivos elegidos, {{size}}, {{videos}} videos, {{photos}} fotos",
+      "groupCount": "{{count}} archivos",
       "invertSelection": "Invertir selección",
       "moreActions": "Más acciones",
+      "newOnlyHint": "Mostrar solo archivos no vistos antes — combinable con Videos/Fotos",
       "searchPlaceholder": "Buscar nombre de archivo…",
-      "densityCompact": "Compacto",
-      "densityComfortable": "Normal",
+      "selectAllPhotos": "Todas las fotos",
+      "selectAllShort": "Todos",
+      "selectAllVideos": "Todos los videos",
+      "selectAllVisible": "Todos",
+      "selectDay": "Seleccionar día",
+      "selectNew": "Seleccionar nuevos",
+      "selectNewOnly": "Solo nuevos",
+      "selectNewPhotos": "Solo fotos nuevas",
+      "selectNewShort": "Nuevos",
+      "selectNewVideos": "Solo videos nuevos",
+      "selectedFile": "archivo",
+      "selectedFiles": "archivos",
+      "selectedPhoto": "foto",
+      "selectedPhotos": "fotos",
+      "selectedVideo": "video",
+      "selectedVideos": "videos",
+      "selectionLabel": "Selección",
       "sortDateNewest": "Fecha · recientes",
       "sortDateOldest": "Fecha · antiguos",
       "sortNameAsc": "Nombre A–Z",
       "sortNameDesc": "Nombre Z–A",
       "sortSizeLargest": "Tamaño · mayor",
       "sortSizeSmallest": "Tamaño · menor",
-      "newOnlyHint": "Mostrar solo archivos no vistos antes — combinable con Videos/Fotos",
-      "filterEmpty": "Ningún archivo coincide con este filtro.",
       "today": "Hoy",
-      "yesterday": "Ayer",
       "unknownDate": "Sin fecha",
-      "groupCount": "{{count}} archivos",
-      "selectDay": "Seleccionar día",
-      "deselectDay": "Quitar día",
-      "footerSelected": "elegidos: {{count}} · {{sizeMb}} MB",
-      "footerSelectedAria": "{{count}} archivos elegidos, {{size}}, {{videos}} videos, {{photos}} fotos",
-      "footerNoneSelected": "Ningún archivo elegido",
-      "selectedFile": "archivo",
-      "selectedFiles": "archivos",
-      "selectedVideo": "video",
-      "selectedVideos": "videos",
-      "selectedPhoto": "foto",
-      "selectedPhotos": "fotos",
-      "summaryPhotos": ", {{count}} fotos",
-      "summarySelected": ", seleccionados: {{count}} ({{sizeMb}} MB)",
-      "summaryVideos": ", {{count}} videos",
-      "viewDetails": "Detalles",
-      "viewTiles": "Mosaicos"
+      "yesterday": "Ayer"
     },
     "catalog": {
       "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
@@ -2087,10 +2088,10 @@
       "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
       "qr": "Las opciones de escaneo QR se pueden configurar después.",
       "server": "El acceso al servidor se puede configurar después.",
-      "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
       "workplace": "Puedes cambiar la apariencia, la zona de salto y el operador después en cualquier momento.",
       "media": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
-      "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados."
+      "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados.",
+      "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
     },
     "crew": {
       "operatorHintMissingRole": "Elige al menos un rol — entonces el nombre se agregará al equipo.",
@@ -2115,6 +2116,8 @@
       "noneReset": "Ninguno (se restablecerán)",
       "description": "Revisa los datos y termina.",
       "sizeLimit": "Límite de tamaño",
+      "mode": "Modo",
+      "mediaDefaults": "Valores activos (respaldo, importación, expulsión, QR)",
       "disabled": "Desactivado",
       "missingFolder": "— falta carpeta —",
       "notSet": "— sin definir —",
@@ -2122,18 +2125,15 @@
       "on": "Activado",
       "qrScan": "Escaneo QR",
       "serverMissing": "— falta servidor —",
-      "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración.",
-      "mode": "Modo",
-      "mediaDefaults": "Valores activos (respaldo, importación, expulsión, QR)"
+      "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración."
     },
-    "finishHint": "El ajuste fino está en Configuración.",
     "finish": "Finalizar configuración",
     "skipAll": "Omitir toda la configuración",
     "complete": "Configuración completada.",
     "completeTitle": "Éxito",
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
-      "qrHint": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después.",
+      "qrHint": "Los archivos QR se conservan por defecto. Duración del escaneo y limpieza están en Más opciones.",
       "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
@@ -2141,11 +2141,11 @@
       "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
       "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
       "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después.",
-      "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
-      "media": "Define respaldo, importación automática, expulsión y escaneo QR. Más detalles se pueden ajustar después.",
-      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones.",
       "workplaceSimple": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
-      "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después."
+      "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después.",
+      "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
+      "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
+      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones."
     },
     "mode": {
       "simpleTitle": "Simple",
@@ -2153,23 +2153,25 @@
       "customTitle": "Personalizado",
       "customBody": "Define todas las opciones tú mismo."
     },
+    "finishHint": "El ajuste fino está en Configuración.",
     "operatorHint": "Tu nombre se usará como favorito Yo en los menús del equipo.",
-    "operatorMultiRole": "Si hay varios roles o ninguno, no se conservará nada automáticamente al restablecer la sesión.",
-    "operatorSingleRoleTm": "Solo se encontró el rol de tandem master; se conservará al restablecer la sesión.",
-    "operatorSingleRoleVs": "Solo se encontró el rol de video jumper; se conservará al restablecer la sesión.",
+    "operatorMultiRole": "Si hay varios roles o ninguno, nada queda preseleccionado automáticamente tras el siguiente trabajo.",
+    "operatorSingleRoleTm": "Solo tandem master — ese rol permanece preseleccionado tras el siguiente trabajo.",
+    "operatorSingleRoleVs": "Solo video jumper — ese rol permanece preseleccionado tras el siguiente trabajo.",
     "progress": "Paso {{current}} de {{total}}",
     "progressAria": "Configuración: paso {{current}} de {{total}}",
     "saveFailed": "No se pudieron guardar los ajustes.",
     "sections": {
       "sdCards": "Tarjetas SD",
       "qrDetection": "Detección QR",
+      "usb": "Cámaras USB",
       "server": "Servidor"
     },
     "standardFolderTitle": "Carpeta predeterminada",
     "steps": {
       "appearance": "Bienvenida",
       "mode": "Modo de configuración",
-      "workplace": "Espacio de trabajo",
+      "workplace": "Personal",
       "storage": "Almacenamiento",
       "import": "Importación",
       "media": "Medios",
@@ -2182,14 +2184,15 @@
       "disabledHint": "La subida permanece apagada. Puedes configurar el servidor después en cualquier momento.",
       "amsHint": "Buscamos automáticamente el puente de reservas. Puedes aplicar las rutas encontradas o configurar el servidor manualmente.",
       "amsHintSimple": "Toca un servidor encontrado, introduce el token y conéctate.",
+      "connectedSimple": "Conectado. Puedes continuar.",
+      "noneFoundSimple": "No se encontró servidor. Busca de nuevo u omite este paso — puedes conectar después en ajustes.",
       "connectAndApply": "Conectar con el servidor",
       "connectRequired": "Conéctate primero al servidor.",
       "connectedNoPaths": "AMS conectado — sin sugerencias de ruta. Introduce el servidor manualmente.",
-      "connectedSimple": "Conectado. Puedes continuar.",
       "manualHint": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales.",
       "noneFound": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente.",
-      "noneFoundSimple": "No se encontró servidor. Busca de nuevo u omite este paso — puedes conectar después en ajustes.",
       "optionalNote": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes.",
+      "secondPathHint": "Copia adicional del respaldo local al servidor. La URL de destino está en el perfil del servidor.",
       "pathsApplied": "Rutas aplicadas: {{primary}}",
       "presetCaldenHint": "URL predeterminada para Calden",
       "presetGeraHint": "Perfil Gera — introduce la URL tú mismo",

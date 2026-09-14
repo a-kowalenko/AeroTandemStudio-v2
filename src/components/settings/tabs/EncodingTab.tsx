@@ -202,12 +202,14 @@ export function EncodingTab({
             >
               {t("settings.encoding.introMuxHint")}
             </p>
-            <p
-              className="text-[11px] leading-snug text-muted"
-              title={t("settings.encoding.previewReuseHint")}
-            >
-              {t("settings.encoding.previewReuseHint")}
-            </p>
+            {wizard ? null : (
+              <p
+                className="text-[11px] leading-snug text-muted"
+                title={t("settings.encoding.previewReuseHint")}
+              >
+                {t("settings.encoding.previewReuseHint")}
+              </p>
+            )}
           </div>
 
           {wizard ? (

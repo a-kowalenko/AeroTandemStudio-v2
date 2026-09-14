@@ -1,4 +1,4 @@
-import { Briefcase, Cable, Clapperboard, HardDrive, Wrench } from "lucide-react";
+import { Cable, Clapperboard, HardDrive, User, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SettingsArea } from "@/lib/settingsUi";
 import { SETTINGS_AREAS } from "@/lib/settingsUi";
@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils";
 
 const AREA_ICONS: Record<
   SettingsArea,
-  typeof Briefcase
+  typeof User
 > = {
-  workplace: Briefcase,
+  workplace: User,
   media: HardDrive,
   connection: Cable,
   output: Clapperboard,
@@ -26,9 +26,14 @@ const AREA_LABEL_KEY: Record<SettingsArea, string> = {
 type Props = {
   value: SettingsArea;
   onChange: (area: SettingsArea) => void;
+  areas?: readonly SettingsArea[];
 };
 
-export function SettingsNav({ value, onChange }: Props) {
+export function SettingsNav({
+  value,
+  onChange,
+  areas = SETTINGS_AREAS,
+}: Props) {
   const { t } = useTranslation();
 
   return (
@@ -36,7 +41,7 @@ export function SettingsNav({ value, onChange }: Props) {
       className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-border pr-2"
       aria-label={t("settings.dialog.title")}
     >
-      {SETTINGS_AREAS.map((area) => {
+      {areas.map((area) => {
         const Icon = AREA_ICONS[area];
         const active = area === value;
         return (

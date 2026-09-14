@@ -35,6 +35,22 @@ export const SETTINGS_AREAS: readonly SettingsArea[] = [
   "maintenance",
 ] as const;
 
+export function settingsAreasForMode(
+  mode: SettingsUiMode,
+): readonly SettingsArea[] {
+  if (mode === "simple") {
+    return SETTINGS_AREAS.filter((area) => area !== "output");
+  }
+  return SETTINGS_AREAS;
+}
+
+export function coerceSettingsArea(
+  area: SettingsArea,
+  mode: SettingsUiMode,
+): SettingsArea {
+  return settingsAreasForMode(mode).includes(area) ? area : "workplace";
+}
+
 const TAB_TO_AREA: Record<string, SettingsArea> = {
   workplace: "workplace",
   allgemein: "workplace",

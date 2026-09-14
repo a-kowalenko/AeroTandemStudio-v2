@@ -108,7 +108,7 @@
       "system": "System"
     },
     "areas": {
-      "workplace": "Workplace",
+      "workplace": "Personal",
       "media": "Media",
       "connection": "Connection",
       "output": "Output",
@@ -154,14 +154,14 @@
         "toastTitle": "Cache",
         "cleaning": "Cleaning…",
         "clear": "Clear cache",
-        "confirmTitle": "Clear cache?",
-        "confirmBody": "A media session is active (videos/photos in the working folder).\n\nClearing the cache removes the session and temp/preview files. The media list will be emptied.",
-        "currentSize": "In use:",
-        "measuring": "Calculating size…",
-        "measureFailed": "Size unavailable",
-        "refresh": "Refresh size",
         "cleanupErrors": "{{count}} item(s) could not be deleted.",
-        "cleanupSummary": "Deleted {{dirs}} folders and {{files}} files ({{size}})."
+        "cleanupSummary": "Deleted {{dirs}} folders and {{files}} files ({{size}}).",
+        "confirmBody": "A media session is active (videos/photos in the working folder).\n\nClearing the cache removes the session and temp/preview files. The media list will be emptied.",
+        "confirmTitle": "Clear cache?",
+        "currentSize": "In use:",
+        "measureFailed": "Size unavailable",
+        "measuring": "Calculating size…",
+        "refresh": "Refresh size"
       },
       "update": {
         "title": "Update",
@@ -191,17 +191,11 @@
         "releasesUnavailable": "Version list unavailable — please check your internet connection."
       },
       "autoCleanup": {
-        "title": "Automatic cleanup",
-        "description": "Deletes local job and backup folders after a retention period. History entries are kept (shown as “folder missing”).",
-        "jobsSwitch": "Automatically clean up job folders",
         "backupsSwitch": "Automatically clean up backup folders",
-        "retentionLabel": "Retention period",
-        "hint": "Local folders only. History is kept.",
+        "description": "Deletes local job and backup folders after a retention period. History entries are kept (shown as “folder missing”).",
         "enableWarn": "Local folders older than the retention period will be permanently deleted. History entries are kept. Continue?",
-        "toastTitle": "Automatic cleanup",
-        "summaryJobs": "Jobs: {{summary}}",
-        "summaryBackups": "Backups: {{summary}}",
-        "summarySkipped": "{{count}} job(s) skipped due to pending upload.",
+        "hint": "Local folders only. History is kept.",
+        "jobsSwitch": "Automatically clean up job folders",
         "retention": {
           "7": "1 week",
           "14": "2 weeks",
@@ -209,31 +203,37 @@
           "90": "3 months",
           "180": "6 months",
           "365": "1 year"
-        }
+        },
+        "retentionLabel": "Retention period",
+        "summaryBackups": "Backups: {{summary}}",
+        "summaryJobs": "Jobs: {{summary}}",
+        "summarySkipped": "{{count}} job(s) skipped due to pending upload.",
+        "title": "Automatic cleanup",
+        "toastTitle": "Automatic cleanup"
       },
       "danger": {
-        "title": "Danger Zone",
+        "busyHint": "Not available while a job, upload, or SD backup is running.",
+        "clearBackups": "Delete backup folders",
+        "clearJobs": "Delete job folders",
+        "clearing": "Deleting…",
+        "confirmBackupsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
+        "confirmBackupsTitle": "Delete backup folders?",
+        "confirmJobsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
+        "confirmJobsTitle": "Delete job folders?",
+        "confirmProceed": "Delete",
+        "confirmUploadWarn": "{{count}} job(s) still have a pending upload — the local folder will be missing afterward.",
+        "currentSize": "In use:",
         "description": "Permanently deletes local folders and files. Job and media history entries are kept, but the media files themselves are gone.",
         "includeOrphans": "Also delete unknown folders in the storage location",
-        "clearJobs": "Delete job folders",
-        "clearBackups": "Delete backup folders",
-        "busyHint": "Not available while a job, upload, or SD backup is running.",
-        "pathHint": "Set storage location and backup folder in settings.",
-        "nothingToDelete": "Nothing to delete.",
-        "toastTitle": "Local folders",
-        "clearing": "Deleting…",
-        "currentSize": "In use:",
-        "measuring": "Calculating size…",
         "measureFailed": "Size unavailable",
-        "refresh": "Refresh size",
-        "usageSummary": "{{size}} · {{folders}} folders · {{files}} files",
-        "confirmJobsTitle": "Delete job folders?",
-        "confirmJobsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
-        "confirmUploadWarn": "{{count}} job(s) still have a pending upload — the local folder will be missing afterward.",
-        "confirmBackupsTitle": "Delete backup folders?",
-        "confirmBackupsBody": "{{folders}} folders and {{files}} files will be deleted ({{size}}).",
+        "measuring": "Calculating size…",
+        "nothingToDelete": "Nothing to delete.",
         "openFolder": "Open folder",
-        "confirmProceed": "Delete"
+        "pathHint": "Set storage location and backup folder in settings.",
+        "refresh": "Refresh size",
+        "title": "Danger Zone",
+        "toastTitle": "Local folders",
+        "usageSummary": "{{size}} · {{folders}} folders · {{files}} files"
       }
     },
     "folder": {
@@ -293,13 +293,10 @@
       "strategyCombined": "Combined",
       "hwAccel": "Hardware acceleration",
       "parallel": "Parallel video processing",
-      "speculativeCreate": "Prepare in the background",
-      "speculativeCreateHint": "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow.",
       "concat": "Join clips",
-      "concatFast": "Fast Path",
-      "concatCompatible": "Compatible",
-      "concatLegacy": "Legacy",
-      "concatHint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.\nOn failure: cancel or use Legacy.",
+      "concatFast": "Fast path (quick)",
+      "concatLegacy": "Legacy (robust)",
+      "concatHint": "Fast path joins clips in one pass (similar to Avidemux Copy). On errors you can cancel or use Legacy. Legacy uses the proven MPEG-TS pipeline.",
       "advanced": "Advanced",
       "introEnabled": "Use intro when creating (experimental)",
       "introDuration": "Intro duration (sec.)",
@@ -309,7 +306,10 @@
       "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
       "reencodeMatching": "Re-encode matching clips",
       "previewCrf": "Preview CRF",
-      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding."
+      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
+      "concatCompatible": "Compatible",
+      "speculativeCreate": "Prepare in the background",
+      "speculativeCreateHint": "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow."
     },
     "qr": {
       "autoScan": {
@@ -372,8 +372,6 @@
         "eject": "Eject SD automatically",
         "ejectTitle": "Eject immediately after backup (import/QR then from copies). Without backup: after import.",
         "ejectHint": "With backup, right after; without backup, after import.",
-        "ejectSound": "Sound on successful eject",
-        "ejectSoundHint": "Short cue when the SD or USB cam has been safely ejected — even if the window is not focused.",
         "skipProcessed": "Skip already processed files",
         "usbCameras": "USB action cams (GoPro / DJI / Insta360)",
         "usbCamerasHint": "Detects cameras over USB (MTP/WPD), copies media locally, then imports like an SD card. Phones and regular sticks stay excluded.",
@@ -381,7 +379,9 @@
         "usbImportModeAuto": "Automatic (whitelist)",
         "usbImportModeHint": "Automatic: whitelisted GoPro models only. “Volume only” for DJI Osmo (File Transfer on camera). Prefer MTP only if whitelist misbehaves.",
         "usbImportModeMtp": "Prefer MTP (experimental)",
-        "usbImportModeVolume": "Volume / SD drive only"
+        "usbImportModeVolume": "Volume / SD drive only",
+        "ejectSound": "Sound on successful eject",
+        "ejectSoundHint": "Short cue when the SD or USB cam has been safely ejected — even if the window is not focused."
       },
       "size": {
         "title": "Warning threshold",
@@ -568,10 +568,6 @@
       "done": "Job complete",
       "cancelled": "Job cancelled."
     },
-    "speculative": {
-      "preparing": "Preparing…",
-      "ready": "Ready"
-    },
     "append": {
       "pickFile": "Choose at least one file to append.",
       "tooMany": "Too many appends for this job (99)."
@@ -598,6 +594,10 @@
       "dirCreated": "Directory was created",
       "openLocation": "Go to location",
       "play": "Play"
+    },
+    "speculative": {
+      "preparing": "Preparing…",
+      "ready": "Ready"
     }
   },
   "progress": {
@@ -625,17 +625,9 @@
       "replaceFile": "Replacing file…",
       "reencodeCut": "Cut (precise)…",
       "streamCopyCut": "Cut…",
-      "fastConcat": "Joining clips…",
-      "compatibleProbe": "Checking clips…",
-      "compatiblePrep": "Preparing clips…",
-      "compatiblePrepCount": "Preparing clips ({{current}}/{{total}})…",
-      "compatibleConcat": "Joining clips…",
-      "compatibleFinalize": "Finalizing container…",
-      "compatibleValidate": "Checking join…",
-      "compatibleMkvFallback": "MKV fallback…",
-      "legacyConcat": "Joining clips…",
-      "fastPathWaiting": "Join failed — please choose…",
-      "compatiblePathWaiting": "Join failed — please choose…",
+      "fastConcat": "Joining clips (fast path)…",
+      "legacyConcat": "Legacy join…",
+      "fastPathWaiting": "Fast path failed — please choose…",
       "replaceOriginal": "Replacing original…",
       "splitPart1": "Splitting clip (part 1)…",
       "splitPart2": "Splitting clip (part 2)…",
@@ -659,7 +651,15 @@
       "writeHandoff": "Writing handoff…",
       "appendReady": "Append ready",
       "parallelEncode": "Encoding clips in parallel ({{clips}} clips, {{workers}} workers)…",
-      "parallelConcat": "Joining clips in parallel ({{clips}} clips, {{workers}} workers)…"
+      "parallelConcat": "Joining clips in parallel ({{clips}} clips, {{workers}} workers)…",
+      "compatibleConcat": "Joining clips…",
+      "compatibleFinalize": "Finalizing container…",
+      "compatibleMkvFallback": "MKV fallback…",
+      "compatiblePathWaiting": "Join failed — please choose…",
+      "compatiblePrep": "Preparing clips…",
+      "compatiblePrepCount": "Preparing clips ({{current}}/{{total}})…",
+      "compatibleProbe": "Checking clips…",
+      "compatibleValidate": "Checking join…"
     },
     "rust": {
       "generateOutputDir": "Generating output directory…",
@@ -676,7 +676,7 @@
       "analyseIntroVideo": "Analyzing intro/video…",
       "streamCopyFailedWaiting": "Stream copy failed — please choose…",
       "exportWithoutIntro": "Exporting video without intro…",
-      "legacyMpegTs": "Joining clips (MPEG-TS)…",
+      "legacyMpegTs": "Legacy join (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
       "backupFinishing": "Finishing backup…",
       "reencodeWaiting": "Re-encoding — waiting for confirmation…"
@@ -723,9 +723,9 @@
     "bodyConcat": {
       "title": "Fast path failed",
       "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
-      "titleCompatible": "Compatible path failed",
+      "useLegacy": "Use legacy",
       "bodyCompatible": "The clips could not be joined via the Compatible path (Avidemux-like). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
-      "useLegacy": "Use legacy"
+      "titleCompatible": "Compatible path failed"
     },
     "introMux": {
       "title": "Intro cannot be attached via stream copy",
@@ -841,17 +841,6 @@
       "proceed": "Create locally anyway",
       "title": "Server unreachable"
     },
-    "reconnectUpload": {
-      "andMore": "and {{count}} more",
-      "body": "{{count}} uploads pending — upload now?",
-      "later": "Later",
-      "now": "Upload now",
-      "nowCount": "Upload {{count}}",
-      "nowIgnoreOnly": "Apply",
-      "scanning": "Checking pending uploads…",
-      "selectionHint": "Unchecked jobs will not be suggested again. You can still upload them from Jobs.",
-      "title": "Server back online"
-    },
     "uploadExtraFiles": {
       "body": "The folder for “{{guest}}” contains files that were not part of the original job:",
       "hintInclude": "Upload all files: the delivery list will be updated before upload.",
@@ -891,6 +880,17 @@
         "unknown": "Unknown error"
       },
       "title": "Upload not possible"
+    },
+    "reconnectUpload": {
+      "andMore": "and {{count}} more",
+      "body": "{{count}} uploads pending — upload now?",
+      "later": "Later",
+      "now": "Upload now",
+      "nowCount": "Upload {{count}}",
+      "nowIgnoreOnly": "Apply",
+      "scanning": "Checking pending uploads…",
+      "selectionHint": "Unchecked jobs will not be suggested again. You can still upload them from Jobs.",
+      "title": "Server back online"
     }
   },
   "splash": {
@@ -1138,11 +1138,11 @@
       "outsidePhoto": "Outside photo",
       "outsideVideo": "Outside video",
       "paid": "Paid",
-      "unpaid": "Unpaid",
       "paidAria": "{{label}} paid",
-      "unpaidAria": "{{label}} unpaid",
       "lockedAms": "Products from the booking are locked — use “Edit” to unlock.",
-      "lockedQr": "Products from the QR are locked — use “Edit” to unlock."
+      "lockedQr": "Products from the QR are locked — use “Edit” to unlock.",
+      "unpaid": "Unpaid",
+      "unpaidAria": "{{label}} unpaid"
     }
   },
   "media": {
@@ -1246,21 +1246,12 @@
       "undoEdit": "Undo edit"
     },
     "edit": {
+      "doneDefault": "Done",
       "modeAria": "Edit mode",
       "noChanges": "No changes"
     }
   },
   "workflow": {
-    "bodyConcat": {
-      "labelFast": "Fast Path",
-      "labelCompatible": "Compatible",
-      "labelLegacy": "Legacy",
-      "shortFast": "Fast",
-      "shortCompatible": "Compatible",
-      "shortLegacy": "Legacy",
-      "hint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
-      "aria": "Clip join mode: {{mode}}"
-    },
     "progress": "Progress",
     "stage": {
       "preview": "Preview is being generated",
@@ -1300,6 +1291,16 @@
       "video": "Video",
       "wmPhotos": "Preview stamp",
       "wmVideo": "Watermark"
+    },
+    "bodyConcat": {
+      "aria": "Clip join mode: {{mode}}",
+      "hint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
+      "labelCompatible": "Compatible",
+      "labelFast": "Fast Path",
+      "labelLegacy": "Legacy",
+      "shortCompatible": "Compatible",
+      "shortFast": "Fast",
+      "shortLegacy": "Legacy"
     }
   },
   "history": {
@@ -1358,21 +1359,14 @@
       "jobComplete": "Complete",
       "amsRejected": "Cloud: rejected",
       "amsCancelled": "Cloud: cancelled",
-      "refreshStatus": "Refresh status",
-      "folderMissing": "Folder missing",
-      "folderMissingRemove": "Remove from history",
-      "folderCleanedUp": "Local removed",
-      "localOnly": "Local only",
-      "refreshNoChange": "No new cloud status available (cache or bridge offline).",
-      "refreshFailed": "Could not fetch cloud status.",
       "hint": {
         "smbPending": "Ready locally — copy to the server is still pending",
         "amsPending": "Media is on the server — cloud upload still pending",
         "amsStale": "Status outdated — tap to refresh",
-        "folderMissing": "Output folder was removed or moved. Upload and cloud status are unavailable.",
+        "jobComplete": "Server and cloud upload finished",
         "folderCleanedUp": "Output folder removed after upload — normal. Cloud status syncs via AMS.",
-        "localOnly": "No server upload planned — files are local only",
-        "jobComplete": "Server and cloud upload finished"
+        "folderMissing": "Output folder was removed or moved. Upload and cloud status are unavailable.",
+        "localOnly": "No server upload planned — files are local only"
       },
       "step": {
         "smb": "Server",
@@ -1381,15 +1375,20 @@
         "amsQueued": "Queue",
         "amsUploading": "Cloud",
         "amsCompleted": "Done"
-      }
+      },
+      "folderCleanedUp": "Local removed",
+      "folderMissing": "Folder missing",
+      "folderMissingRemove": "Remove from history",
+      "localOnly": "Local only",
+      "refreshFailed": "Could not fetch cloud status.",
+      "refreshNoChange": "No new cloud status available (cache or bridge offline).",
+      "refreshStatus": "Refresh status"
     },
     "append": "Append",
     "appendBtn": "Append…",
     "appendTitleLokal": "Only for online jobs, not local",
     "appendTitleWait": "Only after upload has finished",
     "appendTitleBusy": "An append is already running",
-    "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media",
-    "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
     "appendTitleOk": "Add more media to the same customer folder",
     "files": "Files",
     "appended": "Appended",
@@ -1465,9 +1464,6 @@
       "catOutsideVideo": "Outside video",
       "groupHandcam": "Handcam",
       "groupOutside": "Outside",
-      "hintNew": "Not booked — product is created with this append; optional preview can be included.",
-      "hintOpen": "Open — optionally include a watermarked preview.",
-      "hintPaid": "Paid — append originals only; no preview needed.",
       "modeOriginal": "Original",
       "modeOriginalPreview": "Original + preview",
       "noPhotos": "No supported photos found.",
@@ -1486,12 +1482,15 @@
       "productTitle": "Product",
       "removeItemAria": "Remove {{name}}",
       "send": "Send",
-      "sendCount": "Send {{count}}",
       "statusNew": "Not booked",
       "statusOpen": "Open",
       "statusPaid": "Paid",
       "wrongKindPhoto": "Please drop photos (current category is photo).",
-      "wrongKindVideo": "Please drop videos (current category is video)."
+      "wrongKindVideo": "Please drop videos (current category is video).",
+      "hintNew": "Not booked — product is created with this append; optional preview can be included.",
+      "hintOpen": "Open — optionally include a watermarked preview.",
+      "hintPaid": "Paid — append originals only; no preview needed.",
+      "sendCount": "Send {{count}}"
     },
     "upload": {
       "bulkBtn": "Process pending uploads…",
@@ -1520,17 +1519,19 @@
       "ignoredHint": "No longer suggested automatically — retry from Jobs",
       "pendingBadgeTooltip": "{{count}} uploads pending",
       "retryBtn": "Retry upload",
-      "uploadBtn": "Upload to server",
-      "uploadTitle": "Upload to server",
-      "uploadTitleOk": "Copy this local job to the server now",
       "retryCancelled": "Upload cancelled.",
       "retryDone": "Upload completed successfully.",
       "retryOffline": "Server offline — upload only when the connection is back",
       "retryTitle": "Retry upload",
       "retryTitleOk": "Start the pending upload now",
       "uploading": "Copying…",
-      "uploadingHint": "Files are being copied to the server"
-    }
+      "uploadingHint": "Files are being copied to the server",
+      "uploadBtn": "Upload to server",
+      "uploadTitle": "Upload to server",
+      "uploadTitleOk": "Copy this local job to the server now"
+    },
+    "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
+    "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media"
   },
   "ams": {
     "actions": {
@@ -1643,9 +1644,9 @@
       "serverBackupRunning": "Server backup: {{percent}}%",
       "serverBackupWithDetail": "Server backup: {{percent}}% · {{detail}}",
       "postUpdateHint": {
-        "title": "Connection after update",
         "body": "After an update, macOS may block this app's connection. Restart your Mac to fix it.",
-        "ok": "Got it"
+        "ok": "Got it",
+        "title": "Connection after update"
       }
     },
     "backupPopover": {
@@ -1669,7 +1670,6 @@
       "extraHitsMany": "{{count}} additional hits",
       "extraHitsOne": "1 additional hit",
       "fastSpots": "Checking spots in clip…",
-      "fastPhoto": "Quick photo check…",
       "filesDone": "{{finished}} of {{total}} {{unit}} done",
       "foundFile": "found: {{name}}",
       "hitFound": "Hit found",
@@ -1689,15 +1689,11 @@
       "scanVideos": "Searching for QR code in videos…",
       "thorough": "Checking QR code thoroughly…",
       "thoroughSpots": "Checking spots more closely…",
-      "thoroughPhoto": "Thorough photo check…",
       "unitFiles": "Files",
       "unitPhotos": "Photos",
-      "unitVideos": "Videos"
-    },
-    "dual": {
-      "cancelled": "Type choice cancelled — scan discarded",
-      "offlineHint": "The QR includes both Handcam and Outside.\nAMS product data is unavailable — please choose a type and verify products.",
-      "productsCheck": "Please verify products"
+      "unitVideos": "Videos",
+      "fastPhoto": "Quick photo check…",
+      "thoroughPhoto": "Thorough photo check…"
     },
     "confirm": {
       "currentCustomer": "Current customer",
@@ -1717,6 +1713,11 @@
       "switchBody": "Current: {{previous}}\nNew: {{next}}\n\nReally switch customer data? Media is kept.",
       "switchPrimary": "Switch",
       "switchSummary": "Different customer recognized"
+    },
+    "dual": {
+      "cancelled": "Type choice cancelled — scan discarded",
+      "offlineHint": "The QR includes both Handcam and Outside.\nAMS product data is unavailable — please choose a type and verify products.",
+      "productsCheck": "Please verify products"
     }
   },
   "video": {
@@ -1746,10 +1747,10 @@
         "undo": "Undo failed"
       },
       "mode": {
-        "photos": "Photos",
         "rotate": "Rotate",
         "split": "Split",
-        "trim": "Trim"
+        "trim": "Trim",
+        "photos": "Photos"
       }
     },
     "preview": {
@@ -1823,36 +1824,36 @@
         "noRotation": "No rotation selected."
       },
       "playhead": "Playhead {{time}}",
-      "splitHint": "Both parts >= 10s — then Apply",
-      "resetRange": "Reset range",
+      "splitHint": "Both parts >= 10s — then Done",
       "photos": {
-        "title": "Photos",
+        "addFrame": "Add frame",
+        "alsoExport": "Also export…",
+        "appliedMany": "{{count}} photos added",
+        "appliedOne": "1 photo added",
         "apply": "Apply",
         "applyCount": "Apply {{count}}",
+        "estimate": "≈ {{count}} photos",
+        "exportTo": "Export: {{folder}}",
+        "exportedMany": "{{count}} photos exported",
+        "exportedOne": "1 photo exported",
+        "extractFailed": "Could not create frames",
+        "generate": "Generate frames",
+        "importToSession": "Add to session",
+        "interval": "Interval",
+        "needSelection": "Select at least one photo and a destination (session or export).",
+        "noFrames": "No frames for this range.",
+        "nudgeBack": "One frame back",
+        "nudgeFwd": "One frame forward",
+        "pickExportFolder": "Choose export folder",
+        "progress": "{{done}} / {{total}}",
+        "selectedCount": "{{selected}} of {{total}} selected",
         "sub": {
           "interval": "Interval",
           "single": "Single"
         },
-        "interval": "Interval",
-        "estimate": "≈ {{count}} photos",
-        "generate": "Generate frames",
-        "addFrame": "Add frame",
-        "nudgeBack": "One frame back",
-        "nudgeFwd": "One frame forward",
-        "importToSession": "Add to session",
-        "alsoExport": "Also export…",
-        "exportTo": "Export: {{folder}}",
-        "pickExportFolder": "Choose export folder",
-        "progress": "{{done}} / {{total}}",
-        "selectedCount": "{{selected}} of {{total}} selected",
-        "needSelection": "Select at least one photo and a destination (session or export).",
-        "extractFailed": "Could not create frames",
-        "noFrames": "No frames for this range.",
-        "appliedOne": "1 photo added",
-        "appliedMany": "{{count}} photos added",
-        "exportedOne": "1 photo exported",
-        "exportedMany": "{{count}} photos exported"
-      }
+        "title": "Photos"
+      },
+      "resetRange": "Reset range"
     },
     "player": {
       "volumeAria": "Volume",
@@ -1943,7 +1944,7 @@
     "rotate": {
       "ccw": "90° counter-clockwise",
       "cw": "90° clockwise",
-      "reset": "Reset rotation"
+      "reset": "Reset"
     }
   },
   "sd": {
@@ -1982,9 +1983,9 @@
       "none": "No SD",
       "ejectTitle": "Eject “{{label}}”",
       "ejectAria": "Eject SD card {{label}}",
-      "import": "Import",
       "open": "Open",
-      "pickWithTooltip": "{{tip}} — choose SD card / file picker"
+      "pickWithTooltip": "{{tip}} — choose SD card / file picker",
+      "import": "Import"
     },
     "selector": {
       "known": "Known",
@@ -2007,52 +2008,52 @@
       "selectAll": "Select all",
       "selectAllFiltered": "All (filtered)",
       "selectAllNew": "All new",
-      "selectNew": "Select new",
-      "selectAllShort": "All",
-      "selectNewShort": "New",
-      "selectAllVisible": "All",
-      "selectAllVideos": "All videos",
-      "selectAllPhotos": "All photos",
-      "selectNewOnly": "New only",
-      "selectNewVideos": "New videos only",
-      "selectNewPhotos": "New photos only",
+      "summaryPhotos": ", {{count}} photos",
+      "summarySelected": ", selected: {{count}} ({{sizeMb}} MB)",
+      "summaryVideos": ", {{count}} videos",
+      "viewDetails": "Details",
+      "viewTiles": "Tiles",
       "clearSelection": "Clear",
-      "clearSelectionVideos": "Clear videos",
       "clearSelectionPhotos": "Clear photos",
-      "selectionLabel": "Selection",
+      "clearSelectionVideos": "Clear videos",
+      "densityComfortable": "Comfortable",
+      "densityCompact": "Compact",
+      "deselectDay": "Deselect day",
+      "filterEmpty": "No files match this filter.",
+      "footerNoneSelected": "No files selected",
+      "footerSelected": "selected: {{count}} · {{sizeMb}} MB",
+      "footerSelectedAria": "{{count}} files selected, {{size}}, {{videos}} videos, {{photos}} photos",
+      "groupCount": "{{count}} files",
       "invertSelection": "Invert selection",
       "moreActions": "More actions",
+      "newOnlyHint": "Show only files not seen before — can combine with Videos/Photos",
       "searchPlaceholder": "Search filename…",
-      "densityCompact": "Compact",
-      "densityComfortable": "Comfortable",
+      "selectAllPhotos": "All photos",
+      "selectAllShort": "All",
+      "selectAllVideos": "All videos",
+      "selectAllVisible": "All",
+      "selectDay": "Select day",
+      "selectNew": "Select new",
+      "selectNewOnly": "New only",
+      "selectNewPhotos": "New photos only",
+      "selectNewShort": "New",
+      "selectNewVideos": "New videos only",
+      "selectedFile": "file",
+      "selectedFiles": "files",
+      "selectedPhoto": "photo",
+      "selectedPhotos": "photos",
+      "selectedVideo": "video",
+      "selectedVideos": "videos",
+      "selectionLabel": "Selection",
       "sortDateNewest": "Date · newest",
       "sortDateOldest": "Date · oldest",
       "sortNameAsc": "Name A–Z",
       "sortNameDesc": "Name Z–A",
       "sortSizeLargest": "Size · largest",
       "sortSizeSmallest": "Size · smallest",
-      "newOnlyHint": "Show only files not seen before — can combine with Videos/Photos",
-      "filterEmpty": "No files match this filter.",
       "today": "Today",
-      "yesterday": "Yesterday",
       "unknownDate": "No date",
-      "groupCount": "{{count}} files",
-      "selectDay": "Select day",
-      "deselectDay": "Deselect day",
-      "footerSelected": "selected: {{count}} · {{sizeMb}} MB",
-      "footerSelectedAria": "{{count}} files selected, {{size}}, {{videos}} videos, {{photos}} photos",
-      "footerNoneSelected": "No files selected",
-      "selectedFile": "file",
-      "selectedFiles": "files",
-      "selectedVideo": "video",
-      "selectedVideos": "videos",
-      "selectedPhoto": "photo",
-      "selectedPhotos": "photos",
-      "summaryPhotos": ", {{count}} photos",
-      "summarySelected": ", selected: {{count}} ({{sizeMb}} MB)",
-      "summaryVideos": ", {{count}} videos",
-      "viewDetails": "Details",
-      "viewTiles": "Tiles"
+      "yesterday": "Yesterday"
     },
     "catalog": {
       "filteredOnly": "No importable media (timelapse/proxies only).",
@@ -2087,10 +2088,10 @@
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
-      "import": "Backup, import, eject, and QR scan are optional and can be changed later.",
       "workplace": "You can change appearance, drop zone, and operator later at any time.",
       "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
-      "output": "Output settings are optional — defaults stay if you skip."
+      "output": "Output settings are optional — defaults stay if you skip.",
+      "import": "Backup, import, eject, and QR scan are optional and can be changed later."
     },
     "crew": {
       "operatorHintMissingRole": "Choose at least one role — then the name will be added to the crew.",
@@ -2115,6 +2116,8 @@
       "noneReset": "None (will be reset)",
       "description": "Please review the entries and finish.",
       "sizeLimit": "Size limit",
+      "mode": "Mode",
+      "mediaDefaults": "Defaults on (backup, import, eject, QR)",
       "disabled": "Disabled",
       "missingFolder": "— folder missing —",
       "notSet": "— not set —",
@@ -2122,18 +2125,15 @@
       "on": "On",
       "qrScan": "QR scan",
       "serverMissing": "— server missing —",
-      "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings.",
-      "mode": "Mode",
-      "mediaDefaults": "Defaults on (backup, import, eject, QR)"
+      "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
-    "finishHint": "Fine-tuning is in Settings.",
     "finish": "Finish setup",
     "skipAll": "Skip entire setup",
     "complete": "Setup completed.",
     "completeTitle": "Success",
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
-      "qrHint": "QR files stay in place by default. Cleanup behavior can be fine-tuned later.",
+      "qrHint": "QR files stay in place by default. Scan duration and cleanup are under More options.",
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
@@ -2141,11 +2141,11 @@
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
       "storage": "Completed jobs are saved to the storage location.",
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
-      "mode": "How should setup run? You can change the mode later in settings.",
-      "media": "Set backup, auto-import, eject, and QR scan. Further import details can be adjusted later in settings.",
-      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options.",
       "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
-      "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later."
+      "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
+      "mode": "How should setup run? You can change the mode later in settings.",
+      "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
+      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options."
     },
     "mode": {
       "simpleTitle": "Simple",
@@ -2153,23 +2153,25 @@
       "customTitle": "Custom",
       "customBody": "Set every option yourself."
     },
+    "finishHint": "Fine-tuning is in Settings.",
     "operatorHint": "Your name will be used as the Me favorite in crew dropdowns.",
-    "operatorMultiRole": "When multiple or no roles are found, nothing is kept automatically on session reset.",
-    "operatorSingleRoleTm": "Only tandem master was found — that role will be kept on session reset.",
-    "operatorSingleRoleVs": "Only video jumper was found — that role will be kept on session reset.",
+    "operatorMultiRole": "When multiple or no roles are set, nothing stays preselected after the next job.",
+    "operatorSingleRoleTm": "Only tandem master — that role stays preselected after the next job.",
+    "operatorSingleRoleVs": "Only video jumper — that role stays preselected after the next job.",
     "progress": "Step {{current}} of {{total}}",
     "progressAria": "Setup: step {{current}} of {{total}}",
     "saveFailed": "Settings could not be saved.",
     "sections": {
       "sdCards": "SD cards",
       "qrDetection": "QR detection",
+      "usb": "USB cameras",
       "server": "Server"
     },
     "standardFolderTitle": "Default folder",
     "steps": {
       "appearance": "Welcome",
       "mode": "Setup mode",
-      "workplace": "Workplace",
+      "workplace": "Personal",
       "storage": "Storage",
       "import": "Import",
       "media": "Media",
@@ -2182,14 +2184,15 @@
       "disabledHint": "Upload stays off. You can set up the server later in settings at any time.",
       "amsHint": "We search automatically for the booking bridge. You can apply discovered paths, or set up the server manually.",
       "amsHintSimple": "Tap a found server, enter the token, connect.",
+      "connectedSimple": "Connected. You can continue.",
+      "noneFoundSimple": "No server found. Search again or skip this step — you can connect later in settings.",
       "connectAndApply": "Connect to server",
       "connectRequired": "Please connect to the server first.",
       "connectedNoPaths": "AMS connected — no path suggestions. Enter the server manually.",
-      "connectedSimple": "Connected. You can continue.",
       "manualHint": "Pick a default profile or enter SMB address and credentials.",
       "noneFound": "No bridge found. Search again or set up the server manually.",
-      "noneFoundSimple": "No server found. Search again or skip this step — you can connect later in settings.",
       "optionalNote": "Recommended when AMS or SMB is available on the network — change anytime in settings.",
+      "secondPathHint": "Extra copy of the local backup to the server. The target URL is in the server profile.",
       "pathsApplied": "Paths applied: {{primary}}",
       "presetCaldenHint": "Default URL for Calden",
       "presetGeraHint": "Gera profile — enter URL yourself",

@@ -1,8 +1,12 @@
 /**
  * Generates src/locales/{de,en,es-MX}.json from a flat tri-lingual catalog.
  * Run: node scripts/generate-i18n-locales.mjs
+ *
+ * Add new strings here — do not edit the JSON files by hand.
+ * Existing JSON keys missing from this catalog are preserved with a warning
+ * so a regenerate cannot silently drop translations again.
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,7 +70,7 @@ const catalog = {
   "settings.tabs.sd": { de: "SD / Backup", en: "SD / backup", "es-MX": "SD / respaldo" },
   "settings.tabs.server": { de: "Server", en: "Server", "es-MX": "Servidor" },
   "settings.tabs.system": { de: "System", en: "System", "es-MX": "Sistema" },
-  "settings.areas.workplace": { de: "Arbeitsplatz", en: "Workplace", "es-MX": "Espacio de trabajo" },
+  "settings.areas.workplace": { de: "Persönlich", en: "Personal", "es-MX": "Personal" },
   "settings.areas.media": { de: "Medien", en: "Media", "es-MX": "Medios" },
   "settings.areas.connection": { de: "Verbindung", en: "Connection", "es-MX": "Conexión" },
   "settings.areas.output": { de: "Ausgabe", en: "Output", "es-MX": "Salida" },
@@ -1438,7 +1442,7 @@ const catalog = {
   "setupWizard.complete": { de: "Einrichtung abgeschlossen.", en: "Setup completed.", "es-MX": "Configuración completada." },
   "setupWizard.completeTitle": { de: "Erfolg", en: "Success", "es-MX": "Éxito" },
   "setupWizard.import.backupHint": { de: "Importiert die Karte im empfohlenen Workflow über eine lokale Kopie.", en: "Imports the card through the recommended workflow using a local copy.", "es-MX": "Importa la tarjeta con el flujo recomendado usando una copia local." },
-  "setupWizard.import.qrHint": { de: "QR-Dateien bleiben standardmäßig erhalten. Aufräumen kannst du später feinjustieren.", en: "QR files stay in place by default. Cleanup behavior can be fine-tuned later.", "es-MX": "Los archivos QR se conservan por defecto. La limpieza se puede ajustar después." },
+  "setupWizard.import.qrHint": { de: "QR-Dateien bleiben standardmäßig erhalten. Scan-Dauer und Aufräumen liegen unter Weitere Optionen.", en: "QR files stay in place by default. Scan duration and cleanup are under More options.", "es-MX": "Los archivos QR se conservan por defecto. Duración del escaneo y limpieza están en Más opciones." },
   "setupWizard.intro.appearance": { de: "Willkommen bei Aero Tandem Studio. Lege Darstellung, Dropzone und Operator fest. Alles Weitere kannst du später in den Einstellungen anpassen.", en: "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.", "es-MX": "Bienvenido a Aero Tandem Studio. Define apariencia, zona de salto y operador. Todo lo demás se puede ajustar después en la configuración." },
   "setupWizard.intro.import": { de: "Lege hier die Import-Standards fest: Backup, Leeren, Import und Auswerfen. QR-Löschregeln und weitere Details findest du später in den Einstellungen.", en: "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.", "es-MX": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después." },
   "setupWizard.intro.storage": { de: "Fertige Vorgänge werden im Speicherort abgelegt.", en: "Completed jobs are saved to the storage location.", "es-MX": "Los trabajos terminados se guardan en la ubicación de almacenamiento." },
@@ -1446,7 +1450,7 @@ const catalog = {
   "setupWizard.intro.workplaceSimple": { de: "Darstellung, Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.", en: "Appearance, drop zone, and your name. Storage folders and media use the defaults.", "es-MX": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados." },
   "setupWizard.intro.connectionSimple": { de: "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar.", en: "We search for the server on the network. Enter the token and connect — you can change this later.", "es-MX": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después." },
   "setupWizard.intro.mode": { de: "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.", en: "How should setup run? You can change the mode later in settings.", "es-MX": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes." },
-  "setupWizard.intro.media": { de: "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. Weitere Import-Details findest du später in den Einstellungen.", en: "Set backup, auto-import, eject, and QR scan. Further import details can be adjusted later in settings.", "es-MX": "Define respaldo, importación automática, expulsión y escaneo QR. Más detalles se pueden ajustar después." },
+  "setupWizard.intro.media": { de: "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.", en: "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.", "es-MX": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones." },
   "setupWizard.intro.output": { de: "Codec, Strategie und Hardware-Beschleunigung. Intro und Zusammenfügen liegen unter weiteren Optionen.", en: "Codec, strategy, and hardware acceleration. Intro and concat are under more options.", "es-MX": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones." },
   "setupWizard.mode.simpleTitle": { de: "Einfach", en: "Simple", "es-MX": "Simple" },
   "setupWizard.mode.simpleBody": { de: "Schnelle Einrichtung mit empfohlenen Vorgaben.", en: "Quick setup with recommended defaults.", "es-MX": "Configuración rápida con valores recomendados." },
@@ -1456,19 +1460,20 @@ const catalog = {
   "setupWizard.summary.mode": { de: "Modus", en: "Mode", "es-MX": "Modo" },
   "setupWizard.summary.mediaDefaults": { de: "Vorgaben aktiv (Backup, Import, Auswerfen, QR)", en: "Defaults on (backup, import, eject, QR)", "es-MX": "Valores activos (respaldo, importación, expulsión, QR)" },
   "setupWizard.operatorHint": { de: "Dein Name wird als Ich-Favorit in der Crew verwendet.", en: "Your name will be used as the Me favorite in crew dropdowns.", "es-MX": "Tu nombre se usará como favorito Yo en los menús del equipo." },
-  "setupWizard.operatorMultiRole": { de: "Bei mehreren oder keinen Rollen wird für den Session-Reset nichts automatisch beibehalten.", en: "When multiple or no roles are found, nothing is kept automatically on session reset.", "es-MX": "Si hay varios roles o ninguno, no se conservará nada automáticamente al restablecer la sesión." },
-  "setupWizard.operatorSingleRoleTm": { de: "Nur Tandemmaster gefunden — diese Rolle wird für den Session-Reset beibehalten.", en: "Only tandem master was found — that role will be kept on session reset.", "es-MX": "Solo se encontró el rol de tandem master; se conservará al restablecer la sesión." },
-  "setupWizard.operatorSingleRoleVs": { de: "Nur Videospringer gefunden — diese Rolle wird für den Session-Reset beibehalten.", en: "Only video jumper was found — that role will be kept on session reset.", "es-MX": "Solo se encontró el rol de video jumper; se conservará al restablecer la sesión." },
+  "setupWizard.operatorMultiRole": { de: "Bei mehreren oder keinen Rollen bleibt nach dem nächsten Vorgang nichts automatisch vorausgewählt.", en: "When multiple or no roles are set, nothing stays preselected after the next job.", "es-MX": "Si hay varios roles o ninguno, nada queda preseleccionado automáticamente tras el siguiente trabajo." },
+  "setupWizard.operatorSingleRoleTm": { de: "Nur Tandemmaster — nach dem nächsten Vorgang bleibt diese Rolle vorausgewählt.", en: "Only tandem master — that role stays preselected after the next job.", "es-MX": "Solo tandem master — ese rol permanece preseleccionado tras el siguiente trabajo." },
+  "setupWizard.operatorSingleRoleVs": { de: "Nur Videospringer — nach dem nächsten Vorgang bleibt diese Rolle vorausgewählt.", en: "Only video jumper — that role stays preselected after the next job.", "es-MX": "Solo video jumper — ese rol permanece preseleccionado tras el siguiente trabajo." },
   "setupWizard.progress": { de: "Schritt {{current}} von {{total}}", en: "Step {{current}} of {{total}}", "es-MX": "Paso {{current}} de {{total}}" },
   "setupWizard.progressAria": { de: "Einrichtung: Schritt {{current}} von {{total}}", en: "Setup: step {{current}} of {{total}}", "es-MX": "Configuración: paso {{current}} de {{total}}" },
   "setupWizard.saveFailed": { de: "Einstellungen konnten nicht gespeichert werden.", en: "Settings could not be saved.", "es-MX": "No se pudieron guardar los ajustes." },
   "setupWizard.sections.sdCards": { de: "SD-Karten", en: "SD cards", "es-MX": "Tarjetas SD" },
   "setupWizard.sections.qrDetection": { de: "QR-Erkennung", en: "QR detection", "es-MX": "Detección QR" },
+  "setupWizard.sections.usb": { de: "USB-Kameras", en: "USB cameras", "es-MX": "Cámaras USB" },
   "setupWizard.standardFolderTitle": { de: "Standardordner", en: "Default folder", "es-MX": "Carpeta predeterminada" },
   "setupWizard.stepHint.import": { de: "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.", en: "Backup, import, eject, and QR scan are optional and can be changed later.", "es-MX": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después." },
   "setupWizard.steps.appearance": { de: "Willkommen", en: "Welcome", "es-MX": "Bienvenida" },
   "setupWizard.steps.mode": { de: "Einrichtungsmodus", en: "Setup mode", "es-MX": "Modo de configuración" },
-  "setupWizard.steps.workplace": { de: "Arbeitsplatz", en: "Workplace", "es-MX": "Espacio de trabajo" },
+  "setupWizard.steps.workplace": { de: "Persönlich", en: "Personal", "es-MX": "Personal" },
   "setupWizard.steps.storage": { de: "Speicherort", en: "Storage", "es-MX": "Almacenamiento" },
   "setupWizard.steps.import": { de: "Import", en: "Import", "es-MX": "Importación" },
   "setupWizard.steps.media": { de: "Medien", en: "Media", "es-MX": "Medios" },
@@ -1613,7 +1618,6 @@ const catalog = {
   "setupWizard.defaultMediaDir.createFolder": { de: "Ordner anlegen:\n{{path}}", en: "Create folder:\n{{path}}", "es-MX": "Crear carpeta:\n{{path}}" },
   "setupWizard.defaultMediaDir.proceedAnyway": { de: "Trotzdem fortfahren?", en: "Continue anyway?", "es-MX": "¿Continuar de todos modos?" },
   "setupWizard.defaultMediaDir.warningsTitle": { de: "Hinweise zum Speicherort:", en: "Storage location notes:", "es-MX": "Notas sobre la ubicación de almacenamiento:" },
-  "setupWizard.import.backupPcNameHint": { de: "Backup-Ordner werden mit „{{name}}“ markiert.", en: "Backup folders are labeled with “{{name}}”.", "es-MX": "Las carpetas de respaldo se marcan con «{{name}}»." },
   "setupWizard.sections.server": { de: "Server", en: "Server", "es-MX": "Servidor" },
   "video.edit.mode.rotate": { de: "Drehen", en: "Rotate", "es-MX": "Rotar" },
   "video.edit.mode.split": { de: "Teilen", en: "Split", "es-MX": "Dividir" },
@@ -1861,6 +1865,7 @@ const catalog = {
   "setupWizard.upload.manualHint": { de: "Wähle ein Standardprofil oder trage SMB-Adresse und Zugangsdaten ein.", en: "Pick a default profile or enter SMB address and credentials.", "es-MX": "Elige un perfil predeterminado o introduce la dirección SMB y las credenciales." },
   "setupWizard.upload.noneFound": { de: "Keine Bridge gefunden. Du kannst erneut suchen oder den Server manuell einrichten.", en: "No bridge found. Search again or set up the server manually.", "es-MX": "No se encontró el puente. Busca de nuevo o configura el servidor manualmente." },
   "setupWizard.upload.optionalNote": { de: "Empfohlen, wenn AMS oder SMB im Netzwerk verfügbar ist — jederzeit später in den Einstellungen änderbar.", en: "Recommended when AMS or SMB is available on the network — change anytime in settings.", "es-MX": "Recomendado si AMS o SMB están disponibles en la red — se puede cambiar después en ajustes." },
+  "setupWizard.upload.secondPathHint": { de: "Zusätzliche Kopie des lokalen Backups auf den Server. Die Ziel-URL steht im Server-Profil.", en: "Extra copy of the local backup to the server. The target URL is in the server profile.", "es-MX": "Copia adicional del respaldo local al servidor. La URL de destino está en el perfil del servidor." },
   "setupWizard.upload.pathsApplied": { de: "Pfade übernommen: {{primary}}", en: "Paths applied: {{primary}}", "es-MX": "Rutas aplicadas: {{primary}}" },
   "setupWizard.upload.presetCaldenHint": { de: "Standard-URL für Calden", en: "Default URL for Calden", "es-MX": "URL predeterminada para Calden" },
   "setupWizard.upload.presetGeraHint": { de: "Profil für Gera — URL selbst eintragen", en: "Gera profile — enter URL yourself", "es-MX": "Perfil Gera — introduce la URL tú mismo" },
@@ -1876,33 +1881,279 @@ const catalog = {
   "setupWizard.upload.tokenPlaceholder": { de: "Token / Schlüssel", en: "Token / key", "es-MX": "Token / clave" },
   "setupWizard.upload.tokenRequired": { de: "Bitte AMS-Token oder Schlüssel eingeben.", en: "Please enter the AMS token or key.", "es-MX": "Introduce el token o clave de AMS." },
 
+  // Restored keys that lived only in locale JSON (not previously in this catalog).
+  "create.speculative.preparing": { de: "Vorbereitung…", en: "Preparing…", "es-MX": "Preparando…" },
+  "create.speculative.ready": { de: "Bereit", en: "Ready", "es-MX": "Listo" },
+  "dialogs.bodyConcat.bodyCompatible": { de: "Die Clips konnten nicht über den Compatible-Pfad (Avidemux-ähnlich) zusammengefügt werden. Du kannst abbrechen oder den Legacy-Modus (MPEG-TS) verwenden — das dauert länger.", en: "The clips could not be joined via the Compatible path (Avidemux-like). You can cancel or use legacy mode (MPEG-TS) — that takes longer.", "es-MX": "No se pudieron unir los clips por la ruta Compatible (similar a Avidemux). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más." },
+  "dialogs.bodyConcat.titleCompatible": { de: "Compatible Path fehlgeschlagen", en: "Compatible path failed", "es-MX": "Compatible path falló" },
+  "form.media.unpaid": { de: "Unbezahlt", en: "Unpaid", "es-MX": "No pagado" },
+  "form.media.unpaidAria": { de: "{{label}} unbezahlt", en: "{{label}} unpaid", "es-MX": "{{label}} no pagado" },
+  "header.connection.postUpdateHint.body": { de: "Nach einem Update blockiert macOS manchmal die App-Verbindung. Mac neu starten behebt das.", en: "After an update, macOS may block this app's connection. Restart your Mac to fix it.", "es-MX": "Tras una actualización, macOS a veces bloquea la conexión de la app. Reinicia el Mac para solucionarlo." },
+  "header.connection.postUpdateHint.ok": { de: "Verstanden", en: "Got it", "es-MX": "Entendido" },
+  "header.connection.postUpdateHint.title": { de: "Verbindung nach Update", en: "Connection after update", "es-MX": "Conexión tras actualización" },
+  "history.appendPanel.hintNew": { de: "Nicht gebucht — Produkt wird mit Nachreichung angelegt; optional Preview mitsenden.", en: "Not booked — product is created with this append; optional preview can be included.", "es-MX": "Sin reservar — el producto se crea con este reenvío; opcionalmente incluye vista previa." },
+  "history.appendPanel.hintOpen": { de: "Offen — optional Preview mit Wasserzeichen mitsenden.", en: "Open — optionally include a watermarked preview.", "es-MX": "Abierto — opcionalmente incluye vista previa con marca de agua." },
+  "history.appendPanel.hintPaid": { de: "Bezahlt — nur Originaldateien nachreichen, kein Preview nötig.", en: "Paid — append originals only; no preview needed.", "es-MX": "Pagado — solo reenviar originales; no hace falta vista previa." },
+  "history.appendPanel.sendCount": { de: "{{count}} senden", en: "Send {{count}}", "es-MX": "Enviar {{count}}" },
+  "history.appendTitleCloudOffline": { de: "Keine Serververbindung — Nachreichen in die Cloud, sobald die Verbindung steht", en: "No server connection — append to the cloud once connected", "es-MX": "Sin conexión al servidor — reenvío a la nube cuando haya conexión" },
+  "history.appendTitleUploadOff": { de: "Cloud-Upload ist deaktiviert — in den Einstellungen aktivieren, um nachzureichen", en: "Cloud upload is disabled — enable it in settings to append media", "es-MX": "Carga a la nube desactivada — actívala en ajustes para reenviar medios" },
+  "history.status.folderCleanedUp": { de: "Lokal entfernt", en: "Local removed", "es-MX": "Local eliminado" },
+  "history.status.folderMissing": { de: "Ordner fehlt", en: "Folder missing", "es-MX": "Carpeta no encontrada" },
+  "history.status.folderMissingRemove": { de: "Aus Historie entfernen", en: "Remove from history", "es-MX": "Quitar del historial" },
+  "history.status.hint.folderCleanedUp": { de: "Ausgabeordner nach Upload entfernt — üblich. Cloud-Status wird über AMS synchronisiert.", en: "Output folder removed after upload — normal. Cloud status syncs via AMS.", "es-MX": "Carpeta local eliminada tras la subida — normal. El estado en la nube se sincroniza vía AMS." },
+  "history.status.hint.folderMissing": { de: "Ausgabeordner wurde entfernt oder verschoben. Upload und Cloud-Status sind nicht verfügbar.", en: "Output folder was removed or moved. Upload and cloud status are unavailable.", "es-MX": "Se eliminó o movió la carpeta de salida. Subida y estado en la nube no disponibles." },
+  "history.status.hint.localOnly": { de: "Kein Server-Upload geplant — Ordner liegt nur lokal", en: "No server upload planned — files are local only", "es-MX": "Sin subida al servidor planificada — los archivos están solo en local" },
+  "history.status.localOnly": { de: "Nur lokal", en: "Local only", "es-MX": "Solo local" },
+  "history.status.refreshFailed": { de: "Cloud-Status konnte nicht abgefragt werden.", en: "Could not fetch cloud status.", "es-MX": "No se pudo consultar el estado en la nube." },
+  "history.status.refreshNoChange": { de: "Kein neuer Cloud-Status verfügbar (Cache oder Bridge offline).", en: "No new cloud status available (cache or bridge offline).", "es-MX": "No hay estado nuevo en la nube (caché o puente sin conexión)." },
+  "history.status.refreshStatus": { de: "Status aktualisieren", en: "Refresh status", "es-MX": "Actualizar estado" },
+  "history.upload.uploadBtn": { de: "Auf Server hochladen", en: "Upload to server", "es-MX": "Subir al servidor" },
+  "history.upload.uploadTitle": { de: "Auf Server hochladen", en: "Upload to server", "es-MX": "Subir al servidor" },
+  "history.upload.uploadTitleOk": { de: "Lokalen Vorgang jetzt auf den Server kopieren", en: "Copy this local job to the server now", "es-MX": "Copiar este trabajo local al servidor ahora" },
+  "media.edit.noChanges": { de: "Keine Änderungen", en: "No changes", "es-MX": "Sin cambios" },
+  "photo.edit.resetCrop": { de: "Zuschnitt zurücksetzen", en: "Reset crop", "es-MX": "Restablecer recorte" },
+  "progress.status.compatibleConcat": { de: "Clips zusammenfügen…", en: "Joining clips…", "es-MX": "Uniendo clips…" },
+  "progress.status.compatibleFinalize": { de: "Container finalisieren…", en: "Finalizing container…", "es-MX": "Finalizando contenedor…" },
+  "progress.status.compatibleMkvFallback": { de: "MKV-Fallback…", en: "MKV fallback…", "es-MX": "Respaldo MKV…" },
+  "progress.status.compatiblePathWaiting": { de: "Zusammenfügen fehlgeschlagen — bitte Entscheidung…", en: "Join failed — please choose…", "es-MX": "Unión falló — elige una opción…" },
+  "progress.status.compatiblePrep": { de: "Clips vorbereiten…", en: "Preparing clips…", "es-MX": "Preparando clips…" },
+  "progress.status.compatiblePrepCount": { de: "Clips vorbereiten ({{current}}/{{total}})…", en: "Preparing clips ({{current}}/{{total}})…", "es-MX": "Preparando clips ({{current}}/{{total}})…" },
+  "progress.status.compatibleProbe": { de: "Clips prüfen…", en: "Checking clips…", "es-MX": "Comprobando clips…" },
+  "progress.status.compatibleValidate": { de: "Zusammenfügung prüfen…", en: "Checking join…", "es-MX": "Comprobando unión…" },
+  "qr.dual.cancelled": { de: "Typwahl abgebrochen — Scan verworfen", en: "Type choice cancelled — scan discarded", "es-MX": "Elección de tipo cancelada — escaneo descartado" },
+  "qr.dual.offlineHint": {
+    de: "Handcam und Outside sind im QR hinterlegt.\nAMS-Produktdaten nicht verfügbar — bitte Typ wählen und Produkte prüfen.",
+    en: "The QR includes both Handcam and Outside.\nAMS product data is unavailable — please choose a type and verify products.",
+    "es-MX": "El QR incluye Handcam y Outside.\nDatos de productos AMS no disponibles — elige el tipo y verifica los productos.",
+  },
+  "qr.dual.productsCheck": { de: "Produkte bitte prüfen", en: "Please verify products", "es-MX": "Verifica los productos" },
+  "qr.progress.fastPhoto": { de: "Schnelle Foto-Prüfung…", en: "Quick photo check…", "es-MX": "Revisión rápida de foto…" },
+  "qr.progress.thoroughPhoto": { de: "Gründliche Foto-Prüfung…", en: "Thorough photo check…", "es-MX": "Revisión detallada de foto…" },
+  "sd.drive.import": { de: "Importieren", en: "Import", "es-MX": "Importar" },
+  "sd.selector.clearSelection": { de: "Aufheben", en: "Clear", "es-MX": "Quitar" },
+  "sd.selector.clearSelectionPhotos": { de: "Fotos aufheben", en: "Clear photos", "es-MX": "Quitar fotos" },
+  "sd.selector.clearSelectionVideos": { de: "Videos aufheben", en: "Clear videos", "es-MX": "Quitar videos" },
+  "sd.selector.densityComfortable": { de: "Normal", en: "Comfortable", "es-MX": "Normal" },
+  "sd.selector.densityCompact": { de: "Kompakt", en: "Compact", "es-MX": "Compacto" },
+  "sd.selector.deselectDay": { de: "Tag abwählen", en: "Deselect day", "es-MX": "Quitar día" },
+  "sd.selector.filterEmpty": { de: "Keine Dateien für diesen Filter.", en: "No files match this filter.", "es-MX": "Ningún archivo coincide con este filtro." },
+  "sd.selector.footerNoneSelected": { de: "Keine Dateien gewählt", en: "No files selected", "es-MX": "Ningún archivo elegido" },
+  "sd.selector.footerSelected": { de: "gewählt: {{count}} · {{sizeMb}} MB", en: "selected: {{count}} · {{sizeMb}} MB", "es-MX": "elegidos: {{count}} · {{sizeMb}} MB" },
+  "sd.selector.footerSelectedAria": { de: "{{count}} Dateien gewählt, {{size}}, {{videos}} Videos, {{photos}} Fotos", en: "{{count}} files selected, {{size}}, {{videos}} videos, {{photos}} photos", "es-MX": "{{count}} archivos elegidos, {{size}}, {{videos}} videos, {{photos}} fotos" },
+  "sd.selector.groupCount": { de: "{{count}} Dateien", en: "{{count}} files", "es-MX": "{{count}} archivos" },
+  "sd.selector.invertSelection": { de: "Auswahl umkehren", en: "Invert selection", "es-MX": "Invertir selección" },
+  "sd.selector.moreActions": { de: "Weitere Aktionen", en: "More actions", "es-MX": "Más acciones" },
+  "sd.selector.newOnlyHint": { de: "Nur noch nicht bekannte Dateien anzeigen — kombinierbar mit Videos/Fotos", en: "Show only files not seen before — can combine with Videos/Photos", "es-MX": "Mostrar solo archivos no vistos antes — combinable con Videos/Fotos" },
+  "sd.selector.searchPlaceholder": { de: "Dateiname suchen…", en: "Search filename…", "es-MX": "Buscar nombre de archivo…" },
+  "sd.selector.selectAllPhotos": { de: "Alle Fotos", en: "All photos", "es-MX": "Todas las fotos" },
+  "sd.selector.selectAllShort": { de: "Alle", en: "All", "es-MX": "Todos" },
+  "sd.selector.selectAllVideos": { de: "Alle Videos", en: "All videos", "es-MX": "Todos los videos" },
+  "sd.selector.selectAllVisible": { de: "Alle", en: "All", "es-MX": "Todos" },
+  "sd.selector.selectDay": { de: "Tag wählen", en: "Select day", "es-MX": "Seleccionar día" },
+  "sd.selector.selectNew": { de: "Neue auswählen", en: "Select new", "es-MX": "Seleccionar nuevos" },
+  "sd.selector.selectNewOnly": { de: "Nur neue", en: "New only", "es-MX": "Solo nuevos" },
+  "sd.selector.selectNewPhotos": { de: "Nur neue Fotos", en: "New photos only", "es-MX": "Solo fotos nuevas" },
+  "sd.selector.selectNewShort": { de: "Neue", en: "New", "es-MX": "Nuevos" },
+  "sd.selector.selectNewVideos": { de: "Nur neue Videos", en: "New videos only", "es-MX": "Solo videos nuevos" },
+  "sd.selector.selectedFile": { de: "Datei", en: "file", "es-MX": "archivo" },
+  "sd.selector.selectedFiles": { de: "Dateien", en: "files", "es-MX": "archivos" },
+  "sd.selector.selectedPhoto": { de: "Foto", en: "photo", "es-MX": "foto" },
+  "sd.selector.selectedPhotos": { de: "Fotos", en: "photos", "es-MX": "fotos" },
+  "sd.selector.selectedVideo": { de: "Video", en: "video", "es-MX": "video" },
+  "sd.selector.selectedVideos": { de: "Videos", en: "videos", "es-MX": "videos" },
+  "sd.selector.selectionLabel": { de: "Auswahl", en: "Selection", "es-MX": "Selección" },
+  "sd.selector.sortDateNewest": { de: "Datum · neueste", en: "Date · newest", "es-MX": "Fecha · recientes" },
+  "sd.selector.sortDateOldest": { de: "Datum · älteste", en: "Date · oldest", "es-MX": "Fecha · antiguos" },
+  "sd.selector.sortNameAsc": { de: "Name A–Z", en: "Name A–Z", "es-MX": "Nombre A–Z" },
+  "sd.selector.sortNameDesc": { de: "Name Z–A", en: "Name Z–A", "es-MX": "Nombre Z–A" },
+  "sd.selector.sortSizeLargest": { de: "Größe · groß zuerst", en: "Size · largest", "es-MX": "Tamaño · mayor" },
+  "sd.selector.sortSizeSmallest": { de: "Größe · klein zuerst", en: "Size · smallest", "es-MX": "Tamaño · menor" },
+  "sd.selector.today": { de: "Heute", en: "Today", "es-MX": "Hoy" },
+  "sd.selector.unknownDate": { de: "Ohne Datum", en: "No date", "es-MX": "Sin fecha" },
+  "sd.selector.yesterday": { de: "Gestern", en: "Yesterday", "es-MX": "Ayer" },
+  "settings.encoding.concatCompatible": { de: "Compatible", en: "Compatible", "es-MX": "Compatible" },
+  "settings.encoding.speculativeCreate": { de: "Vorbereitung im Hintergrund", en: "Prepare in the background", "es-MX": "Preparar en segundo plano" },
+  "settings.encoding.speculativeCreateHint": { de: "Sobald Erstellen bereit ist (Compatible, ohne Intro, Kunde per QR/Lookup), werden Video und Fotos schon vor dem Klick vorbereitet. Bei aus: klassischer Create-Flow.", en: "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow.", "es-MX": "Cuando Crear está listo (Compatible, sin intro, cliente por QR/lookup), video y fotos se preparan antes del clic. Desactivado: flujo clásico." },
+  "settings.sd.import.ejectSound": { de: "Ton bei erfolgreichem Auswerfen", en: "Sound on successful eject", "es-MX": "Sonido al expulsar correctamente" },
+  "settings.sd.import.ejectSoundHint": { de: "Kurzer Signalton, wenn SD oder USB-Cam sicher ausgeworfen wurde — auch wenn das Fenster nicht im Fokus ist.", en: "Short cue when the SD or USB cam has been safely ejected — even if the window is not focused.", "es-MX": "Señal corta cuando la SD o cámara USB se expulsó de forma segura — aunque la ventana no esté enfocada." },
+  "settings.server.upload.autoMount": { de: "SMB automatisch verbinden (OS-Mount)", en: "Connect SMB automatically (OS mount)", "es-MX": "Conectar SMB automáticamente (montaje del SO)" },
+  "settings.server.upload.autoMountHint": { de: "Legt bei Bedarf eine temporäre Laufwerkszuordnung an und trennt sie nur beim Beenden der App. Aus = nur vorhandene Mounts oder smb2.", en: "Creates a temporary drive mapping when needed and disconnects it only on app quit. Off = existing mounts only, or smb2.", "es-MX": "Crea un mapeo temporal si hace falta y solo lo desconecta al cerrar la app. Desactivado = solo montajes existentes o smb2." },
+  "settings.system.autoCleanup.backupsSwitch": { de: "Backup-Ordner automatisch bereinigen", en: "Automatically clean up backup folders", "es-MX": "Limpiar automáticamente carpetas de respaldo" },
+  "settings.system.autoCleanup.description": { de: "Löscht lokale Vorgangs- und Backup-Ordner nach einer Aufbewahrungsdauer. Die Historie bleibt erhalten (Anzeige „Ordner fehlt“).", en: "Deletes local job and backup folders after a retention period. History entries are kept (shown as “folder missing”).", "es-MX": "Elimina carpetas locales de trabajos y respaldos tras un periodo de retención. El historial se conserva (se muestra como “carpeta ausente”)." },
+  "settings.system.autoCleanup.enableWarn": { de: "Lokale Ordner älter als die Aufbewahrungsdauer werden unwiderruflich gelöscht. Einträge in der Historie bleiben erhalten. Fortfahren?", en: "Local folders older than the retention period will be permanently deleted. History entries are kept. Continue?", "es-MX": "Las carpetas locales más antiguas que el periodo de retención se eliminarán de forma irreversible. Las entradas del historial se conservan. ¿Continuar?" },
+  "settings.system.autoCleanup.hint": { de: "Nur lokale Ordner. Historie bleibt.", en: "Local folders only. History is kept.", "es-MX": "Solo carpetas locales. El historial se conserva." },
+  "settings.system.autoCleanup.jobsSwitch": { de: "Vorgangsordner automatisch bereinigen", en: "Automatically clean up job folders", "es-MX": "Limpiar automáticamente carpetas de trabajos" },
+  "settings.system.autoCleanup.retention.14": { de: "2 Wochen", en: "2 weeks", "es-MX": "2 semanas" },
+  "settings.system.autoCleanup.retention.180": { de: "6 Monate", en: "6 months", "es-MX": "6 meses" },
+  "settings.system.autoCleanup.retention.30": { de: "1 Monat", en: "1 month", "es-MX": "1 mes" },
+  "settings.system.autoCleanup.retention.365": { de: "1 Jahr", en: "1 year", "es-MX": "1 año" },
+  "settings.system.autoCleanup.retention.7": { de: "1 Woche", en: "1 week", "es-MX": "1 semana" },
+  "settings.system.autoCleanup.retention.90": { de: "3 Monate", en: "3 months", "es-MX": "3 meses" },
+  "settings.system.autoCleanup.retentionLabel": { de: "Aufbewahrungsdauer", en: "Retention period", "es-MX": "Periodo de retención" },
+  "settings.system.autoCleanup.summaryBackups": { de: "Backups: {{summary}}", en: "Backups: {{summary}}", "es-MX": "Respaldos: {{summary}}" },
+  "settings.system.autoCleanup.summaryJobs": { de: "Vorgänge: {{summary}}", en: "Jobs: {{summary}}", "es-MX": "Trabajos: {{summary}}" },
+  "settings.system.autoCleanup.summarySkipped": { de: "{{count}} Vorgang/Vorgänge wegen ausstehendem Upload übersprungen.", en: "{{count}} job(s) skipped due to pending upload.", "es-MX": "{{count}} trabajo(s) omitido(s) por carga pendiente." },
+  "settings.system.autoCleanup.title": { de: "Automatische Bereinigung", en: "Automatic cleanup", "es-MX": "Limpieza automática" },
+  "settings.system.autoCleanup.toastTitle": { de: "Automatische Bereinigung", en: "Automatic cleanup", "es-MX": "Limpieza automática" },
+  "settings.system.cache.confirmBody": {
+    de: "Die aktuelle Medien-Session ist aktiv (Videos/Fotos im Working-Folder).\n\nCache leeren entfernt die Session und die Temp-/Preview-Dateien. Die Medienliste wird geleert.",
+    en: "A media session is active (videos/photos in the working folder).\n\nClearing the cache removes the session and temp/preview files. The media list will be emptied.",
+    "es-MX": "Hay una sesión de medios activa (videos/fotos en la carpeta de trabajo).\n\nVaciar la caché elimina la sesión y los archivos temporales/de vista previa. La lista de medios se vaciará.",
+  },
+  "settings.system.cache.confirmTitle": { de: "Cache leeren?", en: "Clear cache?", "es-MX": "¿Vaciar caché?" },
+  "settings.system.cache.currentSize": { de: "Belegt:", en: "In use:", "es-MX": "Ocupado:" },
+  "settings.system.cache.measureFailed": { de: "Größe nicht verfügbar", en: "Size unavailable", "es-MX": "Tamaño no disponible" },
+  "settings.system.cache.measuring": { de: "Größe wird ermittelt…", en: "Calculating size…", "es-MX": "Calculando tamaño…" },
+  "settings.system.cache.refresh": { de: "Größe aktualisieren", en: "Refresh size", "es-MX": "Actualizar tamaño" },
+  "settings.system.danger.busyHint": { de: "Nicht möglich während Vorgang, Upload oder SD-Backup.", en: "Not available while a job, upload, or SD backup is running.", "es-MX": "No disponible mientras hay un trabajo, carga o respaldo de SD en curso." },
+  "settings.system.danger.clearBackups": { de: "Backup-Ordner löschen", en: "Delete backup folders", "es-MX": "Eliminar carpetas de respaldo" },
+  "settings.system.danger.clearJobs": { de: "Vorgänge-Ordner löschen", en: "Delete job folders", "es-MX": "Eliminar carpetas de trabajos" },
+  "settings.system.danger.clearing": { de: "Lösche…", en: "Deleting…", "es-MX": "Eliminando…" },
+  "settings.system.danger.confirmBackupsBody": { de: "{{folders}} Ordner und {{files}} Dateien werden gelöscht ({{size}}).", en: "{{folders}} folders and {{files}} files will be deleted ({{size}}).", "es-MX": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}})." },
+  "settings.system.danger.confirmBackupsTitle": { de: "Backup-Ordner löschen?", en: "Delete backup folders?", "es-MX": "¿Eliminar carpetas de respaldo?" },
+  "settings.system.danger.confirmJobsBody": { de: "{{folders}} Ordner und {{files}} Dateien werden gelöscht ({{size}}).", en: "{{folders}} folders and {{files}} files will be deleted ({{size}}).", "es-MX": "Se eliminarán {{folders}} carpetas y {{files}} archivos ({{size}})." },
+  "settings.system.danger.confirmJobsTitle": { de: "Vorgänge-Ordner löschen?", en: "Delete job folders?", "es-MX": "¿Eliminar carpetas de trabajos?" },
+  "settings.system.danger.confirmProceed": { de: "Löschen", en: "Delete", "es-MX": "Eliminar" },
+  "settings.system.danger.confirmUploadWarn": { de: "{{count}} Vorgang/Vorgänge haben noch einen ausstehenden Upload — nach dem Löschen fehlt der lokale Ordner.", en: "{{count}} job(s) still have a pending upload — the local folder will be missing afterward.", "es-MX": "{{count}} trabajo(s) aún tienen una carga pendiente — después faltará la carpeta local." },
+  "settings.system.danger.currentSize": { de: "Belegt:", en: "In use:", "es-MX": "Ocupado:" },
+  "settings.system.danger.description": { de: "Löscht lokale Ordner und Dateien unwiderruflich. Einträge in Vorgänge und Medien-Historie bleiben erhalten, die Mediendateien selbst sind danach weg.", en: "Permanently deletes local folders and files. Job and media history entries are kept, but the media files themselves are gone.", "es-MX": "Elimina carpetas y archivos locales de forma irreversible. Las entradas de trabajos e historial de medios se conservan, pero los archivos de medios desaparecen." },
+  "settings.system.danger.includeOrphans": { de: "Auch unbekannte Ordner im Speicherort löschen", en: "Also delete unknown folders in the storage location", "es-MX": "También eliminar carpetas desconocidas en la ubicación de almacenamiento" },
+  "settings.system.danger.measureFailed": { de: "Größe nicht verfügbar", en: "Size unavailable", "es-MX": "Tamaño no disponible" },
+  "settings.system.danger.measuring": { de: "Größe wird ermittelt…", en: "Calculating size…", "es-MX": "Calculando tamaño…" },
+  "settings.system.danger.nothingToDelete": { de: "Nichts zu löschen.", en: "Nothing to delete.", "es-MX": "Nada que eliminar." },
+  "settings.system.danger.openFolder": { de: "Zum Ordner", en: "Open folder", "es-MX": "Ir a la carpeta" },
+  "settings.system.danger.pathHint": { de: "Speicherort bzw. Backup-Ordner in den Einstellungen setzen.", en: "Set storage location and backup folder in settings.", "es-MX": "Configura la ubicación de almacenamiento y la carpeta de respaldo." },
+  "settings.system.danger.refresh": { de: "Größe aktualisieren", en: "Refresh size", "es-MX": "Actualizar tamaño" },
+  "settings.system.danger.title": { de: "Danger Zone", en: "Danger Zone", "es-MX": "Zona de peligro" },
+  "settings.system.danger.toastTitle": { de: "Lokale Ordner", en: "Local folders", "es-MX": "Carpetas locales" },
+  "settings.system.danger.usageSummary": { de: "{{size}} · {{folders}} Ordner · {{files}} Dateien", en: "{{size}} · {{folders}} folders · {{files}} files", "es-MX": "{{size}} · {{folders}} carpetas · {{files}} archivos" },
+  "setupWizard.import.backupPcNameHint": { de: "Backup-Ordner werden mit „{{name}}“ markiert.", en: "Backup folders are labeled with “{{name}}”.", "es-MX": "Las carpetas de respaldo se marcan con «{{name}}»." },
+  "video.cutter.photos.addFrame": { de: "Frame hinzufügen", en: "Add frame", "es-MX": "Añadir frame" },
+  "video.cutter.photos.alsoExport": { de: "Zusätzlich exportieren…", en: "Also export…", "es-MX": "Exportar también…" },
+  "video.cutter.photos.appliedMany": { de: "{{count}} Fotos übernommen", en: "{{count}} photos added", "es-MX": "{{count}} fotos añadidas" },
+  "video.cutter.photos.appliedOne": { de: "1 Foto übernommen", en: "1 photo added", "es-MX": "1 foto añadida" },
+  "video.cutter.photos.apply": { de: "Übernehmen", en: "Apply", "es-MX": "Aplicar" },
+  "video.cutter.photos.applyCount": { de: "{{count}} übernehmen", en: "Apply {{count}}", "es-MX": "Aplicar {{count}}" },
+  "video.cutter.photos.estimate": { de: "≈ {{count}} Fotos", en: "≈ {{count}} photos", "es-MX": "≈ {{count}} fotos" },
+  "video.cutter.photos.exportTo": { de: "Export: {{folder}}", en: "Export: {{folder}}", "es-MX": "Exportar: {{folder}}" },
+  "video.cutter.photos.exportedMany": { de: "{{count}} Fotos exportiert", en: "{{count}} photos exported", "es-MX": "{{count}} fotos exportadas" },
+  "video.cutter.photos.exportedOne": { de: "1 Foto exportiert", en: "1 photo exported", "es-MX": "1 foto exportada" },
+  "video.cutter.photos.extractFailed": { de: "Frames konnten nicht erzeugt werden", en: "Could not create frames", "es-MX": "No se pudieron crear los frames" },
+  "video.cutter.photos.generate": { de: "Frames erzeugen", en: "Generate frames", "es-MX": "Generar frames" },
+  "video.cutter.photos.importToSession": { de: "In Vorgang übernehmen", en: "Add to session", "es-MX": "Añadir al pedido" },
+  "video.cutter.photos.interval": { de: "Intervall", en: "Interval", "es-MX": "Intervalo" },
+  "video.cutter.photos.needSelection": { de: "Mindestens ein Foto auswählen und Ziel (Vorgang oder Export) setzen.", en: "Select at least one photo and a destination (session or export).", "es-MX": "Selecciona al menos una foto y un destino (pedido o exportación)." },
+  "video.cutter.photos.noFrames": { de: "Keine Frames für diesen Bereich.", en: "No frames for this range.", "es-MX": "No hay frames para este rango." },
+  "video.cutter.photos.nudgeBack": { de: "Einen Frame zurück", en: "One frame back", "es-MX": "Un frame atrás" },
+  "video.cutter.photos.nudgeFwd": { de: "Einen Frame vor", en: "One frame forward", "es-MX": "Un frame adelante" },
+  "video.cutter.photos.pickExportFolder": { de: "Export-Ordner wählen", en: "Choose export folder", "es-MX": "Elegir carpeta de exportación" },
+  "video.cutter.photos.progress": { de: "{{done}} / {{total}}", en: "{{done}} / {{total}}", "es-MX": "{{done}} / {{total}}" },
+  "video.cutter.photos.selectedCount": { de: "{{selected}} von {{total}} ausgewählt", en: "{{selected}} of {{total}} selected", "es-MX": "{{selected}} de {{total}} seleccionadas" },
+  "video.cutter.photos.sub.interval": { de: "Intervall", en: "Interval", "es-MX": "Intervalo" },
+  "video.cutter.photos.sub.single": { de: "Einzel", en: "Single", "es-MX": "Individual" },
+  "video.cutter.photos.title": { de: "Fotos", en: "Photos", "es-MX": "Fotos" },
+  "video.cutter.resetRange": { de: "Bereich zurücksetzen", en: "Reset range", "es-MX": "Restablecer rango" },
+  "video.edit.mode.photos": { de: "Fotos", en: "Photos", "es-MX": "Fotos" },
+  "workflow.bodyConcat.aria": { de: "Clip-Zusammenfügen: {{mode}}", en: "Clip join mode: {{mode}}", "es-MX": "Modo de unión de clips: {{mode}}" },
+  "workflow.bodyConcat.hint": {
+    de: "Fast Path: schneller Copy-Pass, bei manchen Playern riskant.\nCompatible: Avidemux-ähnlich — robust, verlustfrei, orientierungssicher.\nLegacy: MPEG-TS-Fallback, langsamer.",
+    en: "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
+    "es-MX": "Fast Path: copia rápida, arriesgada en algunos reproductores.\nCompatible: similar a Avidemux — robusto, sin pérdida, orientación segura.\nLegacy: respaldo MPEG-TS, más lento.",
+  },
+  "workflow.bodyConcat.labelCompatible": { de: "Compatible", en: "Compatible", "es-MX": "Compatible" },
+  "workflow.bodyConcat.labelFast": { de: "Fast Path", en: "Fast Path", "es-MX": "Fast Path" },
+  "workflow.bodyConcat.labelLegacy": { de: "Legacy", en: "Legacy", "es-MX": "Legacy" },
+  "workflow.bodyConcat.shortCompatible": { de: "Compatible", en: "Compatible", "es-MX": "Compatible" },
+  "workflow.bodyConcat.shortFast": { de: "Fast", en: "Fast", "es-MX": "Fast" },
+  "workflow.bodyConcat.shortLegacy": { de: "Legacy", en: "Legacy", "es-MX": "Legacy" },
+
 };
 
 function setNested(obj, path, value) {
   const parts = path.split(".");
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
-    cur[parts[i]] ??= {};
-    cur = cur[parts[i]];
+    const part = parts[i];
+    const prefix = parts.slice(0, i + 1).join(".");
+    if (cur[part] == null) {
+      cur[part] = {};
+    } else if (typeof cur[part] !== "object" || Array.isArray(cur[part])) {
+      throw new Error(
+        `i18n key collision: "${prefix}" is a leaf and cannot hold "${path}"`,
+      );
+    }
+    cur = cur[part];
   }
-  cur[parts[parts.length - 1]] = value;
+  const last = parts[parts.length - 1];
+  if (
+    cur[last] != null &&
+    typeof cur[last] === "object" &&
+    !Array.isArray(cur[last])
+  ) {
+    throw new Error(
+      `i18n key collision: "${path}" would overwrite nested keys`,
+    );
+  }
+  cur[last] = value;
+}
+
+function flattenLocale(obj, prefix = "", out = {}) {
+  if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+    for (const [key, value] of Object.entries(obj)) {
+      flattenLocale(value, prefix ? `${prefix}.${key}` : key, out);
+    }
+    return out;
+  }
+  if (prefix) out[prefix] = obj;
+  return out;
+}
+
+function preserveUncataloguedKeys(built, lang) {
+  const file = lang === "es-MX" ? "es-MX.json" : `${lang}.json`;
+  const path = join(outDir, file);
+  if (!existsSync(path)) return [];
+  const existing = flattenLocale(JSON.parse(readFileSync(path, "utf8")));
+  const extras = [];
+  for (const [key, value] of Object.entries(existing)) {
+    if (!(key in catalog)) {
+      extras.push(key);
+      setNested(built, key, value);
+    }
+  }
+  return extras;
 }
 
 function buildLocale(lang) {
   const out = {};
   for (const [key, row] of Object.entries(catalog)) {
+    if (row[lang] == null) {
+      throw new Error(`i18n catalog missing "${lang}" for "${key}"`);
+    }
     setNested(out, key, row[lang]);
   }
   return out;
 }
 
 mkdirSync(outDir, { recursive: true });
+const extraByLang = {};
 for (const lang of ["de", "en", "es-MX"]) {
   const file = lang === "es-MX" ? "es-MX.json" : `${lang}.json`;
+  const built = buildLocale(lang);
+  extraByLang[lang] = preserveUncataloguedKeys(built, lang);
   writeFileSync(
     join(outDir, file),
-    `${JSON.stringify(buildLocale(lang), null, 2)}\n`,
+    `${JSON.stringify(built, null, 2)}\n`,
     "utf8",
+  );
+}
+const extras = extraByLang.de;
+if (extras.length) {
+  console.warn(
+    `Preserved ${extras.length} locale key(s) that are missing from the catalog.`,
+  );
+  for (const key of extras) console.warn(`  ${key}`);
+  console.warn(
+    "Add them to scripts/generate-i18n-locales.mjs so de/en/es-MX stay in sync.",
   );
 }
 console.log(`Wrote locale files to ${outDir} (${Object.keys(catalog).length} keys)`);

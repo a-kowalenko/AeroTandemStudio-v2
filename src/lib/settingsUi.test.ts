@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   FOCUS_TARGET_AREA,
+  coerceSettingsArea,
   isWizardStepSkippable,
   normalizeSettingsUiMode,
   resolveSettingsArea,
+  settingsAreasForMode,
   showAdvanced,
   wizardStepsForMode,
   applySimpleWizardMediaDefaults,
@@ -51,6 +53,33 @@ describe("focus targets", () => {
     for (const target of targets) {
       assert.equal(FOCUS_TARGET_AREA[target], "connection");
     }
+  });
+});
+
+describe("settingsAreasForMode", () => {
+  it("omits output in simple mode", () => {
+    assert.deepEqual(settingsAreasForMode("simple"), [
+      "workplace",
+      "media",
+      "connection",
+      "maintenance",
+    ]);
+  });
+
+  it("keeps all five areas in advanced mode", () => {
+    assert.deepEqual(settingsAreasForMode("advanced"), [
+      "workplace",
+      "media",
+      "connection",
+      "output",
+      "maintenance",
+    ]);
+  });
+
+  it("falls back from output to workplace in simple mode", () => {
+    assert.equal(coerceSettingsArea("output", "simple"), "workplace");
+    assert.equal(coerceSettingsArea("output", "advanced"), "output");
+    assert.equal(coerceSettingsArea("media", "simple"), "media");
   });
 });
 

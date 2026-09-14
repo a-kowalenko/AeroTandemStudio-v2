@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Check, FolderOpen, Info, Languages, Loader2, Moon, Sun } from "lucide-react";
@@ -57,6 +57,35 @@ import {
 } from "@/components/ui/select";
 
 type DefaultDirDone = Partial<Record<DefaultMediaDirKind, boolean>>;
+
+function WizardOptionGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold tracking-wide text-muted uppercase">
+        {title}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function encodingCodecLabel(
+  codec: string,
+  t: (key: string) => string,
+): string {
+  if (codec === "auto") return t("settings.encoding.codecAuto");
+  if (codec === "h264") return "H.264";
+  if (codec === "h265") return "H.265";
+  if (codec === "vp9") return "VP9";
+  if (codec === "av1") return "AV1";
+  return codec;
+}
 
 function pathsEqual(a: string, b: string): boolean {
   const norm = (p: string) =>
@@ -1165,6 +1194,28 @@ export function SetupWizard({ open, onComplete }: Props) {
                     }
                     error={fieldErrors.sd_backup_folder}
                   />
+                  <label
+                    className={cn(
+                      "flex items-center gap-2 text-sm",
+                      !draft.sd_auto_backup && "pointer-events-none",
+                    )}
+                    title={
+                      draft.sd_auto_backup
+                        ? t("settings.sd.backup.clearAfterTitleOn")
+                        : t("settings.sd.backup.clearAfterTitleOff")
+                    }
+                  >
+                    <Checkbox
+                      checked={
+                        draft.sd_clear_after_backup && draft.sd_auto_backup
+                      }
+                      disabled={!draft.sd_auto_backup}
+                      onCheckedChange={(v) =>
+                        patch("sd_clear_after_backup", v === true)
+                      }
+                    />
+                    {t("settings.sd.backup.clearAfter")}
+                  </label>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1217,143 +1268,187 @@ export function SetupWizard({ open, onComplete }: Props) {
               </div>
               {uiMode === "advanced" ? (
                 <SettingsAccordion title={t("settings.moreOptions")}>
-                  <label
-                    className={cn(
-                      "flex items-center gap-2 text-sm",
-                      !draft.sd_auto_backup && "pointer-events-none",
-                    )}
-                    title={
-                      draft.sd_auto_backup
-                        ? t("settings.sd.backup.clearAfterTitleOn")
-                        : t("settings.sd.backup.clearAfterTitleOff")
-                    }
-                  >
-                    <Checkbox
-                      checked={
-                        draft.sd_clear_after_backup && draft.sd_auto_backup
-                      }
-                      disabled={!draft.sd_auto_backup}
-                      onCheckedChange={(v) =>
-                        patch("sd_clear_after_backup", v === true)
-                      }
-                    />
-                    {t("settings.sd.backup.clearAfter")}
-                  </label>
-                  {draft.sd_auto_backup && computerName ? (
-                    <p className="text-[11px] leading-snug text-muted">
-                      {t("setupWizard.import.backupPcNameHint", {
-                        name: resolveSdPcName(
-                          draft.sd_pc_name,
-                          computerName,
-                          draft.operator_name,
-                        ),
-                      })}
-                    </p>
-                  ) : null}
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={draft.usb_camera_import_enabled}
-                      onCheckedChange={(v) =>
-                        patch("usb_camera_import_enabled", v === true)
-                      }
-                    />
-                    {t("settings.sd.import.usbCameras")}
-                  </label>
-                  <div
-                    className={cn(
-                      "space-y-1.5",
-                      !draft.usb_camera_import_enabled &&
-                        "pointer-events-none opacity-50",
-                    )}
-                  >
-                    <Label>{t("settings.sd.import.usbImportMode")}</Label>
-                    <Select
-                      value={
-                        draft.usb_import_mode === "volume_only"
-                          ? "volume_only"
-                          : draft.usb_import_mode === "mtp_preferred"
-                            ? "mtp_preferred"
-                            : "auto"
-                      }
-                      disabled={!draft.usb_camera_import_enabled}
-                      onValueChange={(v) => patch("usb_import_mode", v)}
+                  <WizardOptionGroup title={t("settings.sd.backup.title")}>
+                    <div
+                      className={cn(
+                        "space-y-1.5",
+                        !draft.sd_auto_backup && "opacity-50",
+                      )}
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="auto">
-                          {t("settings.sd.import.usbImportModeAuto")}
-                        </SelectItem>
-                        <SelectItem value="volume_only">
-                          {t("settings.sd.import.usbImportModeVolume")}
-                        </SelectItem>
-                        <SelectItem value="mtp_preferred">
-                          {t("settings.sd.import.usbImportModeMtp")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={draft.sd_size_limit_enabled}
-                      onCheckedChange={(v) =>
-                        patch("sd_size_limit_enabled", v === true)
-                      }
-                    />
-                    {t("settings.sd.size.enable")}
-                  </label>
-                  <div
-                    className={cn(
-                      "space-y-1.5",
-                      !draft.sd_size_limit_enabled &&
-                        "pointer-events-none opacity-50",
-                    )}
-                  >
-                    <Label>{t("settings.sd.size.limitMb")}</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={draft.sd_size_limit_mb}
-                      disabled={!draft.sd_size_limit_enabled}
-                      onChange={(e) =>
-                        patch("sd_size_limit_mb", Number(e.target.value) || 3000)
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>{t("settings.qr.params.videoSeconds")}</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={draft.qr_video_scan_seconds}
-                      onChange={(e) =>
-                        patch(
-                          "qr_video_scan_seconds",
-                          Math.max(1, Number(e.target.value) || 5),
-                        )
-                      }
-                    />
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={draft.qr_remove_photo_after_scan}
-                      onCheckedChange={(v) =>
-                        patch("qr_remove_photo_after_scan", v === true)
-                      }
-                    />
-                    {t("settings.qr.after.removePhoto")}
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={draft.qr_remove_video_after_scan}
-                      onCheckedChange={(v) =>
-                        patch("qr_remove_video_after_scan", v === true)
-                      }
-                    />
-                    {t("settings.qr.after.removeVideo")}
-                  </label>
+                      <Label>{t("settings.sd.backup.pcName")}</Label>
+                      <Input
+                        value={draft.sd_pc_name}
+                        placeholder={t("settings.sd.backup.pcNamePlaceholder")}
+                        disabled={!draft.sd_auto_backup}
+                        onChange={(e) => patch("sd_pc_name", e.target.value)}
+                      />
+                      <p className="text-[11px] leading-snug text-muted">
+                        {t("settings.sd.backup.pcNameHint", {
+                          name:
+                            draft.sd_pc_name.trim() ||
+                            t("settings.sd.backup.pcNameFallback"),
+                        })}
+                      </p>
+                    </div>
+                  </WizardOptionGroup>
+                  <WizardOptionGroup title={t("setupWizard.sections.usb")}>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={draft.usb_camera_import_enabled}
+                        onCheckedChange={(v) =>
+                          patch("usb_camera_import_enabled", v === true)
+                        }
+                      />
+                      {t("settings.sd.import.usbCameras")}
+                    </label>
+                    <p className="text-[11px] leading-snug text-muted">
+                      {t("settings.sd.import.usbCamerasHint")}
+                    </p>
+                    <div
+                      className={cn(
+                        "space-y-1.5",
+                        !draft.usb_camera_import_enabled &&
+                          "pointer-events-none opacity-50",
+                      )}
+                    >
+                      <Label>{t("settings.sd.import.usbImportMode")}</Label>
+                      <Select
+                        value={
+                          draft.usb_import_mode === "volume_only"
+                            ? "volume_only"
+                            : draft.usb_import_mode === "mtp_preferred"
+                              ? "mtp_preferred"
+                              : "auto"
+                        }
+                        disabled={!draft.usb_camera_import_enabled}
+                        onValueChange={(v) => patch("usb_import_mode", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">
+                            {t("settings.sd.import.usbImportModeAuto")}
+                          </SelectItem>
+                          <SelectItem value="volume_only">
+                            {t("settings.sd.import.usbImportModeVolume")}
+                          </SelectItem>
+                          <SelectItem value="mtp_preferred">
+                            {t("settings.sd.import.usbImportModeMtp")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] leading-snug text-muted">
+                        {t("settings.sd.import.usbImportModeHint")}
+                      </p>
+                    </div>
+                  </WizardOptionGroup>
+                  <WizardOptionGroup title={t("settings.sd.size.title")}>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={draft.sd_size_limit_enabled}
+                        onCheckedChange={(v) =>
+                          patch("sd_size_limit_enabled", v === true)
+                        }
+                      />
+                      {t("settings.sd.size.enable")}
+                    </label>
+                    <p className="text-[11px] leading-snug text-muted">
+                      {t("settings.sd.size.description")}
+                    </p>
+                    <div
+                      className={cn(
+                        "space-y-1.5",
+                        !draft.sd_size_limit_enabled &&
+                          "pointer-events-none opacity-50",
+                      )}
+                    >
+                      <Label>{t("settings.sd.size.limitMb")}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draft.sd_size_limit_mb}
+                        disabled={!draft.sd_size_limit_enabled}
+                        onChange={(e) =>
+                          patch(
+                            "sd_size_limit_mb",
+                            Number(e.target.value) || 3000,
+                          )
+                        }
+                      />
+                    </div>
+                  </WizardOptionGroup>
+                  <WizardOptionGroup title={t("settings.qr.params.title")}>
+                    <div className="space-y-1.5">
+                      <Label>{t("settings.qr.params.videoSeconds")}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={draft.qr_video_scan_seconds}
+                        onChange={(e) =>
+                          patch(
+                            "qr_video_scan_seconds",
+                            Math.max(1, Number(e.target.value) || 5),
+                          )
+                        }
+                      />
+                      <p className="text-[11px] leading-snug text-muted">
+                        {t("settings.qr.params.videoSecondsHint")}
+                      </p>
+                    </div>
+                  </WizardOptionGroup>
+                  <WizardOptionGroup title={t("settings.qr.after.title")}>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={draft.qr_remove_photo_after_scan}
+                        onCheckedChange={(v) =>
+                          patch("qr_remove_photo_after_scan", v === true)
+                        }
+                      />
+                      {t("settings.qr.after.removePhoto")}
+                    </label>
+                    <p className="text-[11px] leading-snug text-muted">
+                      {t("settings.qr.after.removePhotoHint")}
+                    </p>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={draft.qr_remove_video_after_scan}
+                        onCheckedChange={(v) =>
+                          patch("qr_remove_video_after_scan", v === true)
+                        }
+                      />
+                      {t("settings.qr.after.removeVideo")}
+                    </label>
+                    <div
+                      className={cn(
+                        "space-y-1.5",
+                        !draft.qr_remove_video_after_scan &&
+                          "pointer-events-none opacity-50",
+                      )}
+                    >
+                      <Label>{t("settings.qr.after.maxDuration")}</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={300}
+                        value={draft.qr_remove_video_max_duration_sec}
+                        disabled={!draft.qr_remove_video_after_scan}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          patch(
+                            "qr_remove_video_max_duration_sec",
+                            Number.isFinite(n)
+                              ? Math.min(300, Math.max(1, Math.round(n)))
+                              : 10,
+                          );
+                        }}
+                      />
+                      <p className="text-[11px] leading-snug text-muted">
+                        {t("settings.qr.after.maxDurationHint")}
+                      </p>
+                    </div>
+                  </WizardOptionGroup>
                 </SettingsAccordion>
               ) : null}
             </>
@@ -1406,6 +1501,39 @@ export function SetupWizard({ open, onComplete }: Props) {
                     />
                     {t("settings.sd.backup.secondPath")}
                   </label>
+                  <p className="text-[11px] leading-snug text-muted">
+                    {t("setupWizard.upload.secondPathHint")}
+                  </p>
+                  {draft.sd_server_backup_enabled ? (
+                    <div className="space-y-1.5">
+                      <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                      <Select
+                        value={
+                          draft.sd_server_backup_mode === "local_then_server"
+                            ? "local_then_server"
+                            : "local_then_server_async"
+                        }
+                        onValueChange={(v) =>
+                          patch("sd_server_backup_mode", v)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="local_then_server_async">
+                            {t("settings.sd.backup.copyAsync")}
+                          </SelectItem>
+                          <SelectItem value="local_then_server">
+                            {t("settings.sd.backup.copyMirror")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-[11px] leading-snug text-muted">
+                        {t("settings.sd.backup.copyHint")}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
                 {!draft.upload_to_server ? (
                   <div className="rounded-lg border border-dashed border-border bg-background/40 p-3 text-sm text-muted">
@@ -1608,16 +1736,18 @@ export function SetupWizard({ open, onComplete }: Props) {
                         value={draft.ams_bridge_display_name}
                       />
                     ) : null}
-                    <SummaryRow
-                      label={t("settings.server.smb.login")}
-                      value={draft.server_login ? draft.server_login : "—"}
-                    />
+                    {draft.upload_to_server ? (
+                      <SummaryRow
+                        label={t("settings.server.smb.login")}
+                        value={draft.server_login ? draft.server_login : "—"}
+                      />
+                    ) : null}
                     <SummaryRow
                       label={t("settings.encoding.codec")}
                       value={
                         skippedSteps.has("output")
                           ? t("setupWizard.summary.skipped")
-                          : draft.video_codec
+                          : encodingCodecLabel(draft.video_codec, t)
                       }
                     />
                   </>
