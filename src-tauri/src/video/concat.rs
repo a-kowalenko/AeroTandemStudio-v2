@@ -1684,6 +1684,100 @@ pub fn concat_videos_stream_copy_only_with_mode(
     Err(ConcatError::NeedsReencode { reason })
 }
 
+/// Join encoded intro clip + prepared body (CapCut-style).
+///
+/// Skips Compatible **clean-pass**: freshly encoded intro always has different
+/// SPS/PPS/extradata than camera body — clean MP4 concat plays audio but freezes
+/// on the intro frame. Uses TS-prep + mandatory splice validation instead.
+pub fn concat_intro_with_body(
+    ffmpeg: &Path,
+    paths: &[String],
+    output: &str,
+    on_progress: ProgressCallback,
+) -> Result<ConcatOutcome, ConcatError> {
+    if paths.len() != 2 {
+        return Err(ConcatError::Message(
+            "concat_intro_with_body requires intro + body".into(),
+        ));
+    }
+    for p in paths {
+        if !Path::new(p).is_file() {
+            return Err(ConcatError::Message(format!("input file not found: {p}")));
+        }
+    }
+
+    let (cached_probes, _) =
+        probe_cache::resolve_clips_parallel(ffmpeg, paths, |_, _, _| {}).map_err(|e| match e {
+            super::parallel::ParallelError::Cancelled => {
+                ConcatError::Ffmpeg(FfmpegError::Cancelled)
+            }
+            super::parallel::ParallelError::Message(m) => ConcatError::Message(m),
+        })?;
+
+    let clip_probes: Vec<ClipConcatProbe> = cached_probes
+        .iter()
+        .map(ClipConcatProbe::from_cached)
+        .collect();
+    let codecs: Vec<VideoCodec> = clip_probes.iter().map(|p| p.vcodec).collect();
+    let has_audio_flags: Vec<bool> = clip_probes.iter().map(|p| p.has_audio).collect();
+    let total_secs: f64 = clip_probes.iter().map(|p| p.duration_secs).sum();
+
+    let all_same = codecs.windows(2).all(|w| w[0] == w[1]);
+    let vcodec = codecs[0];
+    let has_audio = has_audio_flags.iter().all(|&a| a);
+
+    if !(all_same && matches!(vcodec, VideoCodec::H264 | VideoCodec::Hevc)) {
+        let reason = if !all_same {
+            let names: Vec<&str> = codecs.iter().map(|c| c.as_str()).collect();
+            format!("Unterschiedliche Video-Codecs ({})", names.join(", "))
+        } else {
+            format!(
+                "Codec „{}“ ist nicht stream-copy-fähig (nur H.264/HEVC)",
+                vcodec.as_str()
+            )
+        };
+        return Err(ConcatError::NeedsReencode { reason });
+    }
+
+    let keys: Vec<CompatibleStreamKey> = clip_probes
+        .iter()
+        .map(|p| p.compatible_key.clone())
+        .collect();
+    match compatible_probe_gate_keys(&keys, has_audio) {
+        Ok(()) => {}
+        Err(ConcatError::NeedsReencode { reason }) => {
+            return Err(ConcatError::NeedsReencode { reason });
+        }
+        Err(e) => return Err(e),
+    }
+
+    logging::info("concat", "intro-body join: compatible ts-prep (no clean-pass)");
+
+    match concat_compatible_ts_prep(
+        ffmpeg,
+        paths,
+        output,
+        vcodec,
+        has_audio,
+        total_secs,
+        &on_progress,
+        &clip_probes,
+    ) {
+        Ok(()) => {
+            emit(&on_progress, 100.0, "end");
+            Ok(ConcatOutcome {
+                method: "stream-copy-intro-body".into(),
+                codec: vcodec.as_str().into(),
+                reencode_reason: None,
+            })
+        }
+        Err(ConcatError::Message(msg)) => Err(ConcatError::NeedsReencode {
+            reason: format!("Intro+Body Join fehlgeschlagen: {msg}"),
+        }),
+        Err(e) => Err(e),
+    }
+}
+
 /// Shared Ask / silent-Legacy handling for Fast or Compatible path failure.
 fn handle_body_concat_path_fail(
     on_progress: &ProgressCallback,

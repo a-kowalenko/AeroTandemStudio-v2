@@ -1,11 +1,15 @@
 /** Dynamic create-job pipeline steps for the Workflow Progress Panel. */
 
 import { normalizeBodyConcatMode } from "./bodyConcatMode";
+import { usesSinglePassIntroMux } from "./introMuxMode";
 import type { BodyConcatMode, Kunde } from "./tauri";
 
 export type CreateJobStepId =
   | "folder"
   | "video"
+  | "body-join"
+  | "intro-video"
+  | "intro-audio"
   | "preview-reuse"
   | "wm-video"
   | "photos"
@@ -42,6 +46,18 @@ export type CreateJobPipelineView = {
 const STEP_DEFS: Record<CreateJobStepId, CreateJobStepDef> = {
   folder: { id: "folder", labelKey: "workflow.createSteps.folder" },
   video: { id: "video", labelKey: "workflow.createSteps.video" },
+  "body-join": {
+    id: "body-join",
+    labelKey: "workflow.createSteps.bodyJoin",
+  },
+  "intro-video": {
+    id: "intro-video",
+    labelKey: "workflow.createSteps.introVideo",
+  },
+  "intro-audio": {
+    id: "intro-audio",
+    labelKey: "workflow.createSteps.introAudio",
+  },
   "preview-reuse": {
     id: "preview-reuse",
     labelKey: "workflow.createSteps.previewReuse",
@@ -95,6 +111,10 @@ export type BuildCreateJobPlanInput = {
   reusePreview?: boolean;
   /** Config: body concat path (frozen into the plan when video is encoded). */
   bodyConcatMode?: string | null;
+  /** When true, split encode video into body-join / intro-video / intro-audio chips. */
+  introEnabled?: boolean;
+  /** Frozen intro mux mode — audio sub-step only for forced single-pass. */
+  introMuxMode?: string | null;
 };
 
 /**
@@ -107,7 +127,16 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
   const doVideo = needsVideoProduct(input.kunde) && input.videoCount > 0;
   const encodeVideo = doVideo && !input.reusePreview;
   if (doVideo) {
-    ids.push(input.reusePreview ? "preview-reuse" : "video");
+    if (input.reusePreview) {
+      ids.push("preview-reuse");
+    } else if (input.introEnabled) {
+      ids.push("body-join", "intro-video");
+      if (usesSinglePassIntroMux(input.introMuxMode)) {
+        ids.push("intro-audio");
+      }
+    } else {
+      ids.push("video");
+    }
   }
 
   if (videoUnpaid(input.kunde) && input.videoCount > 0) {
@@ -145,11 +174,23 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
   };
 }
 
+/** True when the frozen plan uses intro sub-steps instead of a single video chip. */
+export function planHasIntroVideoSubSteps(plan: CreateJobPlan | null): boolean {
+  return plan?.steps.some((s) => s.id === "body-join") ?? false;
+}
+
+function planHasIntroAudioStep(plan: CreateJobPlan | null): boolean {
+  return plan?.steps.some((s) => s.id === "intro-audio") ?? false;
+}
+
 /**
  * Map a progress status string (localized or raw German/backend) to a step id.
  * Returns null when the status does not advance the pipeline (e.g. clip detail).
  */
-export function createStepIdFromStatus(status: string): CreateJobStepId | null {
+export function createStepIdFromStatus(
+  status: string,
+  plan?: CreateJobPlan | null,
+): CreateJobStepId | null {
   const s = status.trim().toLowerCase();
   if (!s) return null;
 
@@ -161,6 +202,13 @@ export function createStepIdFromStatus(status: string): CreateJobStepId | null {
     )
   ) {
     return "done";
+  }
+
+  if (/^video fertig|video ready/.test(s)) {
+    if (planHasIntroVideoSubSteps(plan ?? null)) {
+      return planHasIntroAudioStep(plan ?? null) ? "intro-audio" : "intro-video";
+    }
+    return "video";
   }
 
   if (
@@ -209,6 +257,29 @@ export function createStepIdFromStatus(status: string): CreateJobStepId | null {
     )
   ) {
     return "preview-reuse";
+  }
+
+  if (planHasIntroVideoSubSteps(plan ?? null)) {
+    if (
+      /audio anhängen|attach audio|adjuntar audio|adjuntando audio/.test(s)
+    ) {
+      return "intro-audio";
+    }
+    if (
+      /erstelle intro|intro fertig|kodiere intro|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc/.test(
+        s,
+      )
+    ) {
+      return "intro-video";
+    }
+    if (
+      /bereite videoclips|videoclips vorbereitet|füge clips|füge kodierte clips|kodiere .*clips parallel|compatible|fast-concat|mpegts|legacy-zusammenfügen|stream-copy trim|re-encode trim|probing|compatible-probe|compatible-prep|compatible-concat|compatible-finalize|compatible-validate|container finalisieren/.test(
+        s,
+      )
+    ) {
+      return "body-join";
+    }
+    return null;
   }
 
   if (
@@ -272,7 +343,7 @@ export function resolveCreateJobPipeline(opts: {
   if (opts.uploading && hasUpload) {
     activeIndex = uploadIdx;
   } else {
-    const fromStatus = createStepIdFromStatus(opts.status);
+    const fromStatus = createStepIdFromStatus(opts.status, plan);
     if (fromStatus) {
       let idx = stepIndex(plan, fromStatus);
       // Preview-reuse plan uses that id; if status says "video" map to preview-reuse.
@@ -315,7 +386,7 @@ export function resolveCreateJobPipeline(opts: {
     !failed &&
     !opts.busy &&
     !opts.uploading &&
-    (createStepIdFromStatus(opts.status) === "done" ||
+    (createStepIdFromStatus(opts.status, plan) === "done" ||
       activeIndex >= last ||
       /vorgang fertig|job done|proceso listo/i.test(opts.status.trim()));
 

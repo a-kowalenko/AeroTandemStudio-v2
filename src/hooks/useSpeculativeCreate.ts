@@ -171,7 +171,7 @@ export function useSpeculativeCreate({
           video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
           crf: config?.preview_encode_crf ?? 18,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
-          intro_mux_mode: config?.intro_mux_mode ?? "reencode",
+          intro_mux_mode: config?.intro_mux_mode ?? "stream_copy",
           body_concat_mode: "compatible",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
         },

@@ -1,6 +1,7 @@
 /** Map raw encode-progress `status` strings to localized UI labels. */
 
 import { tr } from "@/i18n";
+export { shouldResetOverallProgressPercent } from "./progressPercentReset";
 
 const TRANSIENT = new Set(["continue", "end"]);
 
@@ -187,10 +188,6 @@ export const CREATE_VIDEO_STAGE = "Erstelle Video…";
 const CLEAR_TASK_BARS =
   /foto|wasserzeichen|upload|_fertig|vorgang fertig|erstelle intro|intro fertig|füge intro|zusammenfüg|analysiere intro|ohne intro|übernehme vorschau|exportiere video|kopiere fotos|generiere ausgabe|vorschau übernommen|video fertig|mpegts-concat|hevc-mkv-fallback|füge kodierte clips|füge clips zusammen…|kodiere intro\+video|schreibe ams-manifest|nachreichung bereit|compatible-concat|compatible-finalize|compatible-validate|compatible-mkv|container finalisieren|finalizing container|finalizando contenedor/i;
 
-/** create_job phase boundaries that may restart the overall percent bar. */
-const PROGRESS_PERCENT_RESET_STAGE =
-  /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
-
 const CREATE_JOB_MAJOR_STAGE =
   /^(vorgang wird erstellt|generiere ausgabe|übernehme vorschau|vorschau übernommen|erstelle video|erstelle wasserzeichen-video|wasserzeichen-video:|kopiere fotos|kopiere foto \(|erstelle foto-wasserzeichen|foto-wasserzeichen|schreibe _fertig|überspringe _fertig|vorgang fertig|upload\b)/i;
 
@@ -212,19 +209,6 @@ export function shouldClearTaskProgress(status: string | undefined | null): bool
   const s = (status ?? "").trim();
   if (!s) return false;
   return CLEAR_TASK_BARS.test(s);
-}
-
-/**
- * True for create_job major phases that intentionally restart overall %
- * (watermark / photos / fertig). Not for "Erstelle Video…" itself — that stays
- * monotonic across compatible concat → finalize.
- */
-export function shouldResetOverallProgressPercent(
-  status: string | undefined | null,
-): boolean {
-  const s = (status ?? "").trim();
-  if (!s) return false;
-  return PROGRESS_PERCENT_RESET_STAGE.test(s);
 }
 
 /** Never decrease; treat 0 as "no update" so status-only kicks do not flash the bar. */

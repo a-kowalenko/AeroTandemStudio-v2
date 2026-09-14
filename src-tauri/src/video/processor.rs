@@ -97,17 +97,14 @@ fn default_crf() -> u8 {
     18
 }
 fn default_intro_mux_mode() -> String {
-    "reencode".into()
+    "stream_copy".into()
 }
 fn default_body_concat_mode() -> String {
     "compatible".into()
 }
 
-fn is_stream_copy_mode(mode: &str) -> bool {
-    matches!(
-        mode.trim().to_ascii_lowercase().as_str(),
-        "stream_copy" | "stream-copy" | "streamcopy"
-    )
+fn is_force_single_pass_intro_mode(mode: &str) -> bool {
+    crate::storage::config::normalize_intro_mux_mode(mode) == "single_pass"
 }
 
 impl Default for CreateVideoOptions {
@@ -905,6 +902,32 @@ fn emit_stage(on_progress: &ProgressCallback, stage: f64, stages: f64, label: &s
     on_progress(progress_from_times(pct_secs, 100.0, label));
 }
 
+/// Start a pipeline sub-step: overall bar resets to 0–100 % for this operation (UI).
+fn emit_step_start(on_progress: &ProgressCallback, label: &str) {
+    on_progress(progress_from_times(0.0, 100.0, label));
+}
+
+fn push_ffmpeg_progress_args(args: &mut Vec<String>) {
+    args.extend([
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+    ]);
+}
+
+/// Map nested FFmpeg 0–100 % into `[lo, hi]` on the overall bar (single step only).
+fn map_substep_progress(outer: ProgressCallback, lo: f64, hi: f64) -> ProgressCallback {
+    let span = (hi - lo).max(0.0);
+    Arc::new(move |p: crate::video::progress::EncodeProgress| {
+        let mut q = p;
+        q.percent = lo + (q.percent.clamp(0.0, 100.0) / 100.0) * span;
+        if q.status == "continue" || q.status == "end" || q.status.is_empty() {
+            q.status = "Audio anhängen (Copy)…".into();
+        }
+        outer(q);
+    })
+}
+
 /// Body Fast/Compatible/Legacy concat may emit per-clip prep `task_id`s (Legacy
 /// MPEG-TS). Keep overall status only so the floating progress panel does not grow.
 /// Compatible prep (Phase 43.1) emits aggregate overall events without `task_id`.
@@ -1129,11 +1152,9 @@ fn resolve_mixed_body_target_pref(
 
 /// Create final MP4: optional intro + body clips → `output`.
 ///
-/// Default mux: continuous re-encode of intro+body (customer-compatible).
-/// Optional `stream_copy`: when it fails and `on_intro_mux_fallback` is set, the
-/// callback decides between body-only export and re-encode-with-intro.
-/// When unset (e.g. preview), stream-copy failure falls back to re-encode
-/// (after `on_reencode` confirmation when provided).
+/// Default mux: encode intro clip, stream-copy join with body (CapCut-style).
+/// On failure: optional [`IntroMuxAskFn`] dialog, else auto single-pass fallback.
+/// `intro_mux_mode = single_pass`: skip join attempt — always one continuous re-encode.
 pub fn create_video(
     ffmpeg: &Path,
     kunde: &Kunde,
@@ -1160,14 +1181,18 @@ pub fn create_video(
         }
     }
 
-    let stages = if options.intro_enabled { 4.0 } else { 3.0 };
+    let stages = 3.0;
     let work = work_temp_dir(output)?;
     let mut encoder_used = String::from("libx264");
     let hw = detect_hardware();
     let hw_accel_enabled = options.hw_accel_enabled;
 
     // Stage 1: body (single path, parallel per-clip encode, or concat)
-    emit_stage(&on_progress, 0.0, stages, "Bereite Videoclips vor…");
+    if options.intro_enabled {
+        emit_step_start(&on_progress, "Bereite Videoclips vor…");
+    } else {
+        emit_stage(&on_progress, 0.0, stages, "Bereite Videoclips vor…");
+    }
     // Without intro, write the body concat straight to the final output to skip
     // an extra remux pass in `export_body_to_output`.
     let body_target = if options.intro_enabled {
@@ -1254,7 +1279,7 @@ pub fn create_video(
         )?;
 
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
-        on_progress(progress_from_times(5.0, 100.0, "Füge kodierte Clips zusammen…"));
+        emit_step_start(&on_progress, "Füge kodierte Clips zusammen…");
         concat::concat_videos_with_opts(
             ffmpeg,
             &clip_outs,
@@ -1270,7 +1295,9 @@ pub fn create_video(
         body_target
     } else {
         // Neutral overall status — worker count is misleading for Fast/Compatible.
-        on_progress(progress_from_times(0.0, 100.0, "Füge Clips zusammen…"));
+        if video_paths.len() > 1 {
+            emit_step_start(&on_progress, "Füge Clips zusammen…");
+        }
         let cb = body_concat_overall_progress(Arc::clone(&on_progress));
         concat::concat_videos_with_opts(
             ffmpeg,
@@ -1285,7 +1312,15 @@ pub fn create_video(
         )?;
         body_target
     };
-    emit_stage(&on_progress, 1.0, stages, "Videoclips vorbereitet");
+    if options.intro_enabled {
+        on_progress(progress_from_times(
+            100.0,
+            100.0,
+            "Videoclips vorbereitet",
+        ));
+    } else {
+        emit_stage(&on_progress, 1.0, stages, "Videoclips vorbereitet");
+    }
 
     let body_stderr = ffmpeg_probe_stderr(ffmpeg, &body_path)?;
     let body_meta = probe::parse_video_metadata_from_probe(&body_stderr);
@@ -1306,7 +1341,7 @@ pub fn create_video(
         let drawtext = prepare_text_overlay(kunde, v_params.width, v_params.height);
         let intro_path = work.join("intro.mp4");
         let intro_s = intro_path.to_string_lossy().to_string();
-        let use_stream_copy = is_stream_copy_mode(&options.intro_mux_mode);
+        let force_single_pass = is_force_single_pass_intro_mode(&options.intro_mux_mode);
 
         let mux_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
@@ -1344,7 +1379,7 @@ pub fn create_video(
             |reason: String| -> Result<concat::ConcatOutcome, ConcatError> {
                 let choice = if let Some(ask) = &on_intro_mux_fallback {
                     on_progress(progress_from_times(
-                        55.0,
+                        0.0,
                         100.0,
                         "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…",
                     ));
@@ -1362,11 +1397,10 @@ pub fn create_video(
 
                 match choice {
                     IntroMuxChoice::WithoutIntro => {
-                        on_progress(progress_from_times(
-                            60.0,
-                            100.0,
+                        emit_step_start(
+                            &on_progress,
                             "Exportiere Video ohne Intro (Stream-Copy)…",
-                        ));
+                        );
                         let enc = export_body_to_output(
                             ffmpeg,
                             &body_path,
@@ -1408,7 +1442,7 @@ pub fn create_video(
                                 ..Default::default()
                             });
                             on_progress(progress_from_times(
-                                58.0,
+                                0.0,
                                 100.0,
                                 "Neu-Kodierung — warte auf Bestätigung…",
                             ));
@@ -1421,11 +1455,6 @@ pub fn create_video(
                         } else {
                             (options.crf, hw_accel_enabled)
                         };
-                        on_progress(progress_from_times(
-                            60.0,
-                            100.0,
-                            &format!("Kodiere Intro+Video neu: {reason}"),
-                        ));
                         mux_intro_body_single_pass(
                             ffmpeg,
                             &hintergrund_s,
@@ -1444,13 +1473,51 @@ pub fn create_video(
                 }
             };
 
-        let mux_result = if use_stream_copy {
-            // Optional fast path: intro clip + stream-copy concat (may fail on cameras).
-            emit_stage(&on_progress, 1.0, stages, "Erstelle Intro…");
+        let mux_result = if force_single_pass {
+            // Explicit slow path: one continuous encode (intro overlay + full body).
+            let intent = ReencodeIntent::new(
+                ReencodeKind::IntroMux,
+                "Intro+Body durchgängig kodieren (max. Schnitt-Kompatibilität)",
+            )
+            .with_params(ReencodeParams {
+                crf: Some(options.crf),
+                hw_accel: Some(hw_accel_enabled),
+                clip_count: Some(video_paths.len()),
+                intro_duration_secs: Some(options.dauer),
+                intro_mux_mode: Some(options.intro_mux_mode.clone()),
+                strategy: Some("single_pass_intro_body".into()),
+                target_codec: Some(v_params.vcodec.clone()),
+                ..Default::default()
+            });
+            on_progress(progress_from_times(
+                0.0,
+                100.0,
+                "Neu-Kodierung — warte auf Bestätigung…",
+            ));
+            let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
+                .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+            mux_intro_body_single_pass(
+                ffmpeg,
+                &hintergrund_s,
+                &body_path,
+                output,
+                options.dauer,
+                &v_params,
+                &drawtext,
+                &hw,
+                profile.crf,
+                profile.hw_accel,
+                &work,
+                Arc::clone(&mux_cb),
+            )
+        } else {
+            // CapCut-style: encode intro only, stream-copy join; fallback on failure.
+            emit_step_start(&on_progress, "Erstelle Intro…");
             let intro_cb = {
                 let outer = Arc::clone(&on_progress);
                 Arc::new(move |p: crate::video::progress::EncodeProgress| {
                     let mut q = p;
+                    q.task_id = None;
                     if q.status == "continue" || q.status == "end" || q.status.is_empty() {
                         q.status = "Erstelle Intro…".into();
                     }
@@ -1469,72 +1536,26 @@ pub fn create_video(
                 hw_accel_enabled,
                 intro_cb,
             )?;
-            emit_stage(&on_progress, 2.0, stages, "Intro fertig");
+            on_progress(progress_from_times(100.0, 100.0, "Intro fertig"));
 
-            emit_stage(&on_progress, 2.0, stages, "Füge Intro und Video zusammen…");
+            emit_step_start(&on_progress, "Füge Intro und Video zusammen…");
             let paths = vec![intro_s.clone(), body_path.clone()];
-            match concat::concat_videos_stream_copy_only(
+            match concat::concat_intro_with_body(
                 ffmpeg,
                 &paths,
                 output,
                 Arc::clone(&mux_cb),
             ) {
                 Ok(outcome) => Ok(outcome),
-                Err(ConcatError::NeedsReencode { reason }) => {
-                    handle_needs_reencode(reason)
-                }
+                Err(ConcatError::NeedsReencode { reason }) => handle_needs_reencode(reason),
                 Err(e) => Err(e),
             }
-        } else {
-            // Default: one continuous encode (intro overlay + body) — customer-compatible.
-            let intent = ReencodeIntent::new(
-                ReencodeKind::IntroMux,
-                "Intro+Body durchgängig kodieren (kundenkompatibel)",
-            )
-            .with_params(ReencodeParams {
-                crf: Some(options.crf),
-                hw_accel: Some(hw_accel_enabled),
-                clip_count: Some(video_paths.len()),
-                intro_duration_secs: Some(options.dauer),
-                intro_mux_mode: Some(options.intro_mux_mode.clone()),
-                strategy: Some("single_pass_intro_body".into()),
-                target_codec: Some(v_params.vcodec.clone()),
-                ..Default::default()
-            });
-            emit_stage(
-                &on_progress,
-                1.0,
-                stages,
-                "Neu-Kodierung — warte auf Bestätigung…",
-            );
-            let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
-                .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
-            emit_stage(
-                &on_progress,
-                1.0,
-                stages,
-                "Kodiere Intro+Video (kompatibel)…",
-            );
-            mux_intro_body_single_pass(
-                ffmpeg,
-                &hintergrund_s,
-                &body_path,
-                output,
-                options.dauer,
-                &v_params,
-                &drawtext,
-                &hw,
-                profile.crf,
-                profile.hw_accel,
-                &work,
-                Arc::clone(&mux_cb),
-            )
         };
 
         let outcome = mux_result?;
         let intro_created = outcome.method != "body-only";
         encoder_used = outcome.codec;
-        emit_stage(&on_progress, 3.0, stages, "Zusammenfügen fertig");
+        on_progress(progress_from_times(100.0, 100.0, "Zusammenfügen fertig"));
 
         CreateVideoResult {
             output: output.to_string(),
@@ -1779,15 +1800,12 @@ fn mux_intro_body_single_pass(
         output.to_string()
     };
 
-    on_progress(progress_from_times(
-        25.0,
-        100.0,
-        if copy_audio {
-            "Kodiere Intro+Video (Audio-Copy)…"
-        } else {
-            "Kodiere Intro+Video (kompatibel)…"
-        },
-    ));
+    let intro_label = if copy_audio {
+        "Kodiere Intro+Video (Audio-Copy)…"
+    } else {
+        "Kodiere Intro+Video (kompatibel)…"
+    };
+    emit_step_start(&on_progress, intro_label);
 
     let codec = match v_params.vcodec.as_str() {
         "hevc" | "h265" => VideoCodec::Hevc,
@@ -1836,7 +1854,6 @@ fn mux_intro_body_single_pass(
     }
 
     if copy_audio {
-        on_progress(progress_from_times(80.0, 100.0, "Audio anhängen (Copy)…"));
         assemble_silent_plus_body_audio(
             ffmpeg,
             body_path,
@@ -1845,6 +1862,7 @@ fn mux_intro_body_single_pass(
             intro_dauer,
             v_params,
             work,
+            on_progress,
         )?;
         let _ = fs::remove_file(&video_target);
     }
@@ -1868,6 +1886,7 @@ fn assemble_silent_plus_body_audio(
     intro_dauer: f64,
     v_params: &IntroVideoParams,
     work: &Path,
+    on_progress: ProgressCallback,
 ) -> Result<(), ConcatError> {
     let silent = work.join("intro_silence.m4a");
     let silent_s = silent.to_string_lossy().to_string();
@@ -1876,20 +1895,40 @@ fn assemble_silent_plus_body_audio(
     let full_a = work.join("full_audio.m4a");
     let full_a_s = full_a.to_string_lossy().to_string();
 
-    let silent_args = build_silent_aac_args(
+    emit_step_start(&on_progress, "Audio anhängen (Copy)…");
+
+    let intro_dauer = intro_dauer.max(0.1);
+    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(intro_dauer).max(0.05);
+    let video_dur = probe_duration_secs(ffmpeg, video_path)
+        .unwrap_or(intro_dauer + body_dur)
+        .max(0.1);
+
+    let mut silent_args = build_silent_aac_args(
         &silent_s,
         intro_dauer,
         &v_params.sample_rate,
         &v_params.channel_layout,
     );
-    run_ffmpeg_checked(ffmpeg, &silent_args).map_err(ConcatError::Ffmpeg)?;
+    push_ffmpeg_progress_args(&mut silent_args);
+    run_ffmpeg(
+        ffmpeg,
+        &silent_args,
+        intro_dauer,
+        map_substep_progress(Arc::clone(&on_progress), 0.0, 35.0),
+    )
+    .map_err(ConcatError::Ffmpeg)?;
+
+    on_progress(progress_from_times(40.0, 100.0, "Audio anhängen (Copy)…"));
 
     let extract_args = build_extract_audio_copy_args(body_path, &body_a_s);
     run_ffmpeg_checked(ffmpeg, &extract_args).map_err(ConcatError::Ffmpeg)?;
 
+    on_progress(progress_from_times(50.0, 100.0, "Audio anhängen (Copy)…"));
+
     let list_path = work.join("audio_concat.txt");
     concat::write_concat_file_list(&[&silent_s, &body_a_s], &list_path)?;
-    let concat_args = vec![
+    let audio_concat_dur = intro_dauer + body_dur;
+    let mut concat_args = vec![
         "-y".into(),
         "-hide_banner".into(),
         "-f".into(),
@@ -1900,12 +1939,26 @@ fn assemble_silent_plus_body_audio(
         list_path.to_string_lossy().into_owned(),
         "-c".into(),
         "copy".into(),
-        full_a_s.clone(),
     ];
-    run_ffmpeg_checked(ffmpeg, &concat_args).map_err(ConcatError::Ffmpeg)?;
+    push_ffmpeg_progress_args(&mut concat_args);
+    concat_args.push(full_a_s.clone());
+    run_ffmpeg(
+        ffmpeg,
+        &concat_args,
+        audio_concat_dur.max(0.1),
+        map_substep_progress(Arc::clone(&on_progress), 50.0, 75.0),
+    )
+    .map_err(ConcatError::Ffmpeg)?;
 
-    let mux_args = build_mux_video_audio_copy_args(video_path, &full_a_s, output);
-    run_ffmpeg_checked(ffmpeg, &mux_args).map_err(ConcatError::Ffmpeg)?;
+    let mut mux_args = build_mux_video_audio_copy_args(video_path, &full_a_s, output);
+    push_ffmpeg_progress_args(&mut mux_args);
+    run_ffmpeg(
+        ffmpeg,
+        &mux_args,
+        video_dur,
+        map_substep_progress(on_progress, 75.0, 100.0),
+    )
+    .map_err(ConcatError::Ffmpeg)?;
     Ok(())
 }
 
@@ -2056,12 +2109,28 @@ mod tests {
     }
 
     #[test]
-    fn stream_copy_mode_detection() {
-        assert!(is_stream_copy_mode("stream_copy"));
-        assert!(is_stream_copy_mode("stream-copy"));
-        assert!(!is_stream_copy_mode("reencode"));
-        assert!(!is_stream_copy_mode("soft_splice"));
-        assert!(!is_stream_copy_mode(""));
+    fn force_single_pass_intro_mode_detection() {
+        assert!(!is_force_single_pass_intro_mode("stream_copy"));
+        assert!(!is_force_single_pass_intro_mode("stream-copy"));
+        assert!(!is_force_single_pass_intro_mode("reencode"));
+        assert!(is_force_single_pass_intro_mode("single_pass"));
+        assert!(is_force_single_pass_intro_mode("soft_splice"));
+        assert!(!is_force_single_pass_intro_mode(""));
+    }
+
+    #[test]
+    fn map_substep_progress_scales_within_step() {
+        let last = Arc::new(std::sync::Mutex::new(None::<f64>));
+        let sink: ProgressCallback = {
+            let last = Arc::clone(&last);
+            Arc::new(move |p: crate::video::progress::EncodeProgress| {
+                *last.lock().unwrap_or_else(|e| e.into_inner()) = Some(p.percent);
+            })
+        };
+        let cb = map_substep_progress(sink, 50.0, 100.0);
+        cb(progress_from_times(50.0, 100.0, "continue"));
+        let pct = last.lock().unwrap_or_else(|e| e.into_inner()).unwrap();
+        assert!((pct - 75.0).abs() < 0.01);
     }
 
     #[test]

@@ -579,7 +579,7 @@ fn default_encoding_strategy() -> String {
     "per_clip".into()
 }
 fn default_intro_mux_mode() -> String {
-    "reencode".into()
+    "stream_copy".into()
 }
 fn default_body_concat_mode() -> String {
     "compatible".into()
@@ -588,13 +588,16 @@ fn default_preview_crf() -> u8 {
     18
 }
 
-/// Normalize intro mux mode to `stream_copy` | `reencode`.
+/// Normalize intro mux mode to `stream_copy` | `single_pass`.
 ///
-/// Legacy `soft_splice` maps to `reencode` (customer-compatible continuous encode).
+/// Default `stream_copy`: encode intro, join body via stream-copy (CapCut-style).
+/// `single_pass`: always one continuous intro+body re-encode (slow, max splice safety).
+/// Legacy `reencode` maps to `stream_copy` (CapCut-style). `soft_splice` → `single_pass`.
 pub fn normalize_intro_mux_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
-        "stream_copy" | "stream-copy" | "streamcopy" => "stream_copy".into(),
-        _ => "reencode".into(),
+        "stream_copy" | "stream-copy" | "streamcopy" | "reencode" => "stream_copy".into(),
+        "single_pass" | "force_reencode" | "soft_splice" => "single_pass".into(),
+        _ => "stream_copy".into(),
     }
 }
 
@@ -725,7 +728,7 @@ impl AppConfig {
         .to_string();
     }
 
-    /// Canonicalize `intro_mux_mode` to `stream_copy` | `reencode`.
+    /// Canonicalize `intro_mux_mode` to `stream_copy` | `single_pass`.
     pub fn sync_intro_mux_mode(&mut self) {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
@@ -1360,7 +1363,7 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.settings_ui_mode, "simple");
         assert_eq!(cfg.video_codec, "auto");
-        assert_eq!(cfg.intro_mux_mode, "reencode");
+        assert_eq!(cfg.intro_mux_mode, "stream_copy");
         assert!(cfg.speculative_create_enabled);
         assert_eq!(cfg.body_concat_mode, "compatible");
         assert!(cfg.settings_fleet_preset_v1_applied);
@@ -1394,9 +1397,10 @@ mod tests {
     fn normalize_intro_mux_mode_maps_legacy_soft_splice() {
         assert_eq!(normalize_intro_mux_mode("stream_copy"), "stream_copy");
         assert_eq!(normalize_intro_mux_mode("stream-copy"), "stream_copy");
-        assert_eq!(normalize_intro_mux_mode("reencode"), "reencode");
-        assert_eq!(normalize_intro_mux_mode("soft_splice"), "reencode");
-        assert_eq!(normalize_intro_mux_mode(""), "reencode");
+        assert_eq!(normalize_intro_mux_mode("single_pass"), "single_pass");
+        assert_eq!(normalize_intro_mux_mode("reencode"), "stream_copy");
+        assert_eq!(normalize_intro_mux_mode("soft_splice"), "single_pass");
+        assert_eq!(normalize_intro_mux_mode(""), "stream_copy");
     }
 
     #[test]

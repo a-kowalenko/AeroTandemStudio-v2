@@ -217,7 +217,8 @@ impl EncodeProfile {
             ReencodeKind::IntroMux => {
                 let mut p = Self::balanced(hw_accel);
                 p.crf = crf;
-                p.recommend_reason = Some("Intro+Body durchgängig kodieren".into());
+                p.recommend_reason =
+                    Some("Intro+Body Fallback — durchgängig kodieren".into());
                 p
             }
             ReencodeKind::BodyParallel
