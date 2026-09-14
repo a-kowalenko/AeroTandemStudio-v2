@@ -27,6 +27,25 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Bestehende Installationen starten in „Erweitert“, damit alle bisherigen Optionen sofort sichtbar bleiben
 
 
+
+## [0.5.4-beta.1] - 2026-09-14
+
+### Neu
+
+- Einstellungen: Umschalter „Einfach“ / „Erweitert“ — in Einfach nur Alltagseinstellungen, alles Weitere unter „Weitere Optionen“
+- Ersteinrichtung: Wahl „Einfach“ oder „Benutzerdefiniert“ — Schnellstart mit Vorgaben bzw. alle Schritte inkl. Ausgabe und Medien-Details
+
+### Verbessert
+
+- Einstellungen neu gegliedert: linke Navigation mit Persönlich, Medien, Verbindung, Ausgabe, Wartung statt sieben Tabs
+- Einstellungen-Fenster größer und klarer; seltene Optionen hinter Accordion „Weitere Optionen“
+- Reconnect- und Vorgänge-Nachholen: ausstehende Uploads per Checkbox wählen (Standard alle markiert); nicht markierte werden nicht mehr vorgeschlagen, bleiben unter Vorgänge nachholbar
+- Vorgänge: Status „Ignoriert“ für bewusst abgewählte Uploads
+
+### Hinweis
+
+- Bestehende Installationen starten in „Erweitert“, damit alle bisherigen Optionen sofort sichtbar bleiben
+
 ## [0.5.3] - 2026-09-13
 
 ### Neu
