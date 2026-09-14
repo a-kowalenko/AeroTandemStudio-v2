@@ -15,7 +15,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen: Umschalter „Einfach“ / „Erweitert“ — in Einfach nur Alltagseinstellungen, alles Weitere unter „Weitere Optionen“
 - Ersteinrichtung: Wahl „Einfach“ oder „Benutzerdefiniert“ — Schnellstart mit Vorgaben bzw. alle Schritte inkl. Ausgabe und Medien-Details
 - Vorgänge: lokale Liefermedien ansehen und abspielen — „Medien ansehen“ oder Klick auf spielbare Dateien; Vor/Zurück in der Liste (nur solange der Ordner noch lokal da ist)
-- Intro und Flugvideo: Universal-Export (CapCut) — Zusammenfügen in einem H.264-Durchlauf, iPhone- und QuickTime-tauglich; Qualität über „Video-Qualität (CRF)“
+- Intro und Flugvideo: Universal-Export (CapCut) — Zusammenfügen in einem Durchlauf, iPhone- und QuickTime-tauglich; Qualität über „Video-Qualität (CRF)“
 
 ### Verbessert
 
@@ -23,6 +23,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen-Fenster größer und klarer; seltene Optionen hinter Accordion „Weitere Optionen“
 - Einstellungen Einfach: Server-Backup und Backup-URL unter Medien ausgeblendet (nur noch unter Erweitert bzw. im Server-Profil)
 - Einstellungen Einfach: „Ton bei erfolgreichem Auswerfen“ unter Medien sichtbar
+- Einstellungen → Encoding → Video-Codec: Auto behält den Quellcodec; H.264 bzw. H.265 erzwingen den Export-Codec (passt die Quelle, wird kopiert — sonst Neu-Kodierung), auch mit Intro / Universal-Export
 - Reconnect- und Vorgänge-Nachholen: ausstehende Uploads per Checkbox wählen (Standard alle markiert); nicht markierte werden nicht mehr vorgeschlagen, bleiben unter Vorgänge nachholbar
 - Vorgänge: Status „Ignoriert“ für bewusst abgewählte Uploads
 - Crew-Liste: Namen direkt in der Zeile umbenennen und mit Speichern bestätigen
@@ -31,6 +32,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - SD-/USB-Import: beim Aufziehen der Auswahl wird Text nicht mehr ungewollt markiert
 - Dropdowns in Dialogen liegen wieder korrekt über dem Dialog statt dahinter
+- Fortschritt bei Neu-Kodierung startet wieder bei 0 % und folgt dem Encode (statt hängen zu bleiben)
 
 ### Hinweis
 
