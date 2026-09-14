@@ -7,7 +7,7 @@ export const PROGRESS_PERCENT_RESET_STAGE =
  * Must NOT match in-step statuses (compatible-finalize, continue, videoclips vorbereitet @100 %).
  */
 export const VIDEO_STEP_START_RESET =
-  /^(Bereite Videoclips vor…|Füge Clips zusammen…|Füge kodierte Clips zusammen…|Erstelle Intro…|Kodiere Intro\+Video \(kompatibel\)…|Kodiere Intro\+Video \(Audio-Copy\)…|Kodiere Intro\+Video neu:|Kodiere Intro\+Video: HEVC|Füge Intro und Video zusammen…|Audio anhängen \(Copy\)…|Exportiere Video…|Exportiere Video ohne Intro \(Stream-Copy\)…|Export fertig)/i;
+  /^(Bereite Videoclips vor…|Füge Clips zusammen…|Füge kodierte Clips zusammen…|Erstelle Intro…|Exportiere Intro \(Universal\)…|Bereite Video vor \(Universal\)…|Exportiere Video \(Universal\)…|Exportiere Intro\+Video \(Universal|Kodiere Intro\+Video \(kompatibel\)…|Kodiere Intro\+Video \(Audio-Copy\)…|Kodiere Intro\+Video neu:|Kodiere Intro\+Video: HEVC|Füge Intro und Video zusammen…|Audio anhängen \(Copy\)…|Exportiere Video…|Exportiere Video ohne Intro \(Stream-Copy\)…|Export fertig)/i;
 
 /**
  * True when the overall progress bar should restart (0–100 %) for the new step.

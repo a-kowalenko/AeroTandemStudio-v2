@@ -115,7 +115,7 @@ export type AppConfig = {
   encoding_strategy: string;
   reencode_matching_clips: boolean;
   /** Intro+Body mux: "reencode" (default) | "stream_copy". */
-  intro_mux_mode: "stream_copy" | "single_pass" | string;
+  intro_mux_mode: "stream_copy" | "capcut" | "single_pass" | string;
   /** Multi-clip body concat: "compatible" (default) | "fast" | "legacy". */
   body_concat_mode: BodyConcatMode | string;
   preview_encode_crf: number;
@@ -549,7 +549,7 @@ export type CreateVideoOptions = {
   crf?: number;
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
-  intro_mux_mode?: "stream_copy" | "single_pass" | string;
+  intro_mux_mode?: "stream_copy" | "capcut" | "single_pass" | string;
   /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
@@ -572,7 +572,7 @@ export type CreateJobOptions = {
   crf?: number;
   parallel_enabled?: boolean;
   /** Intro+Body mux: "stream_copy" | "reencode". */
-  intro_mux_mode?: "stream_copy" | "single_pass" | string;
+  intro_mux_mode?: "stream_copy" | "capcut" | "single_pass" | string;
   /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */

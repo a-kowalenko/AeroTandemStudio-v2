@@ -50,6 +50,14 @@ const RAW_TO_I18N: Record<string, string> = {
   "mux-done": "progress.status.muxDone",
   "Kodiere Intro+Video (kompatibel)…": "progress.status.introVideoCompatible",
   "Kodiere Intro+Video (Audio-Copy)…": "progress.status.introVideoAudioCopy",
+  "Exportiere Intro (Universal)…": "progress.status.introVideoUniversalIntro",
+  "Bereite Video vor (Universal)…": "progress.status.introVideoUniversalPrep",
+  "Exportiere Video (Universal)…": "progress.status.introVideoUniversalBody",
+  "Exportiere Intro+Video (Universal)…": "progress.status.introVideoUniversal",
+  "Exportiere Intro+Video (Universal, Audio-Copy)…":
+    "progress.status.introVideoUniversalAudio",
+  "Exportiere Intro+Video (Universal, Fallback)…":
+    "progress.status.introVideoUniversalFallback",
   "Audio anhängen (Copy)…": "progress.status.attachAudio",
   "Intro+Body durchgängig kodieren (kundenkompatibel)":
     "progress.status.introVideoCompatible",

@@ -168,6 +168,26 @@ impl EncodeProfile {
         }
     }
 
+    /// Universal customer export (`intro_mux_mode = capcut`): one continuous H.264 encode.
+    ///
+    /// Always H.264 (`avc1`, 8-bit) so the single output bitstream plays on any iPhone /
+    /// QuickTime / browser. Fast presets keep it CapCut-quick even without a GPU.
+    pub fn capcut_export(hw_accel: bool, base_crf: u8, _body_codec: &str) -> Self {
+        let mut p = Self::balanced(hw_accel);
+        // Slightly higher CRF + fast preset — camera footage stays clean, export stays quick.
+        p.crf = clamp_crf(i32::from(base_crf).max(20), 20);
+        p.preset_id = EncodePresetId::Fast;
+        p.sw_preset = "superfast".into();
+        p.nvenc_preset = "p2".into();
+        // Force H.264 regardless of body codec (iOS is strict on HEVC hev1/hvc1).
+        p.codec = "h264".into();
+        p.resolved_codec = Some("h264".into());
+        p.scale_mode = ScaleMode::Source;
+        p.fps_mode = FpsMode::Source;
+        p.recommend_reason = Some("Universal-Export — ein H.264-Durchlauf (CapCut-Stil)".into());
+        p
+    }
+
     /// Baseline from app config (preview CRF + HW flag). Preview == export.
     pub fn from_config_defaults(preview_crf: u8, hw_accel: bool, video_codec: &str) -> Self {
         let mut p = Self::balanced(hw_accel);
@@ -437,6 +457,24 @@ mod tests {
         assert_eq!(f.crf, 22);
         assert_eq!(f.sw_preset, "ultrafast");
         assert!(!f.hw_accel);
+    }
+
+    #[test]
+    fn capcut_export_always_h264_fast() {
+        let p = EncodeProfile::capcut_export(true, 18, "h264");
+        assert_eq!(p.codec, "h264");
+        assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
+        assert_eq!(p.scale_mode, ScaleMode::Source);
+        assert!(p.hw_accel);
+        assert_eq!(p.sw_preset, "superfast");
+        assert!(p.crf >= 20);
+    }
+
+    #[test]
+    fn capcut_export_forces_h264_even_for_hevc_body() {
+        let p = EncodeProfile::capcut_export(false, 20, "hevc");
+        assert_eq!(p.codec, "h264");
+        assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
     }
 
     #[test]

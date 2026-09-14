@@ -588,14 +588,16 @@ fn default_preview_crf() -> u8 {
     18
 }
 
-/// Normalize intro mux mode to `stream_copy` | `single_pass`.
+/// Normalize intro mux mode to `stream_copy` | `capcut` | `single_pass`.
 ///
-/// Default `stream_copy`: encode intro, join body via stream-copy (CapCut-style).
-/// `single_pass`: always one continuous intro+body re-encode (slow, max splice safety).
-/// Legacy `reencode` maps to `stream_copy` (CapCut-style). `soft_splice` → `single_pass`.
+/// - `stream_copy`: encode intro, join body via stream-copy (fast).
+/// - `capcut`: intro encode + body prep (copy) + TS join (phones, browsers, QuickTime).
+/// - `single_pass`: filter_complex full re-encode + confirm dialog (max splice safety).
+/// Legacy `reencode` → `stream_copy`. `soft_splice` → `single_pass`.
 pub fn normalize_intro_mux_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "stream_copy" | "stream-copy" | "streamcopy" | "reencode" => "stream_copy".into(),
+        "capcut" | "universal" | "export" => "capcut".into(),
         "single_pass" | "force_reencode" | "soft_splice" => "single_pass".into(),
         _ => "stream_copy".into(),
     }
@@ -728,7 +730,7 @@ impl AppConfig {
         .to_string();
     }
 
-    /// Canonicalize `intro_mux_mode` to `stream_copy` | `single_pass`.
+    /// Canonicalize `intro_mux_mode` to `stream_copy` | `capcut` | `single_pass`.
     pub fn sync_intro_mux_mode(&mut self) {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
@@ -1397,6 +1399,8 @@ mod tests {
     fn normalize_intro_mux_mode_maps_legacy_soft_splice() {
         assert_eq!(normalize_intro_mux_mode("stream_copy"), "stream_copy");
         assert_eq!(normalize_intro_mux_mode("stream-copy"), "stream_copy");
+        assert_eq!(normalize_intro_mux_mode("capcut"), "capcut");
+        assert_eq!(normalize_intro_mux_mode("universal"), "capcut");
         assert_eq!(normalize_intro_mux_mode("single_pass"), "single_pass");
         assert_eq!(normalize_intro_mux_mode("reencode"), "stream_copy");
         assert_eq!(normalize_intro_mux_mode("soft_splice"), "single_pass");

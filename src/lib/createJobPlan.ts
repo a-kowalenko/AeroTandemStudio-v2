@@ -1,7 +1,7 @@
 /** Dynamic create-job pipeline steps for the Workflow Progress Panel. */
 
 import { normalizeBodyConcatMode } from "./bodyConcatMode";
-import { usesSinglePassIntroMux } from "./introMuxMode";
+import { usesUnifiedIntroEncode } from "./introMuxMode";
 import type { BodyConcatMode, Kunde } from "./tauri";
 
 export type CreateJobStepId =
@@ -131,7 +131,7 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
       ids.push("preview-reuse");
     } else if (input.introEnabled) {
       ids.push("body-join", "intro-video");
-      if (usesSinglePassIntroMux(input.introMuxMode)) {
+      if (usesUnifiedIntroEncode(input.introMuxMode)) {
         ids.push("intro-audio");
       }
     } else {
@@ -266,7 +266,7 @@ export function createStepIdFromStatus(
       return "intro-audio";
     }
     if (
-      /erstelle intro|intro fertig|kodiere intro|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc/.test(
+      /erstelle intro|intro fertig|kodiere intro|exportiere intro\+video|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc/.test(
         s,
       )
     ) {

@@ -205,6 +205,46 @@ pub fn build_hw_quality_params(
     }
 }
 
+/// CapCut-style segment encode: closed GOP, splice tags, phone-safe headers.
+pub fn append_capcut_splice_encode_params(
+    params: &mut Vec<String>,
+    codec: VideoCodec,
+    encoder: &str,
+    fps: u32,
+) {
+    let fps = fps.max(1);
+    params.extend([
+        "-g".into(),
+        fps.to_string(),
+        "-keyint_min".into(),
+        fps.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-bf".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+    ]);
+    match codec {
+        VideoCodec::Hevc => append_hevc_splice_encode_params(params, encoder, fps),
+        VideoCodec::H264 => {
+            params.extend(["-tag:v".into(), "avc1".into()]);
+            let enc = encoder.to_ascii_lowercase();
+            if enc == "libx264" {
+                params.extend([
+                    "-x264-params".into(),
+                    format!(
+                        "keyint={fps}:min-keyint={fps}:scenecut=0:open-gop=0:repeat-headers=1:aud=1:bframes=0"
+                    ),
+                ]);
+            } else if enc.ends_with("_nvenc") {
+                params.extend(["-no-scenecut".into(), "1".into()]);
+            }
+        }
+        VideoCodec::Other => {}
+    }
+}
+
 /// HEVC splice-friendly extras (no B-frames, closed GOP, hvc1 tag).
 pub fn append_hevc_splice_encode_params(params: &mut Vec<String>, encoder: &str, fps: u32) {
     let fps = fps.max(1);
@@ -328,6 +368,23 @@ mod tests {
         assert!(p.contains(&"18".into()));
         assert!(p.contains(&"-preset".into()));
         assert!(p.contains(&"veryfast".into()));
+    }
+
+    #[test]
+    fn capcut_splice_params_h264_avc1() {
+        let mut p = vec![];
+        append_capcut_splice_encode_params(&mut p, VideoCodec::H264, "libx264", 30);
+        assert!(p.contains(&"-tag:v".into()));
+        assert!(p.contains(&"avc1".into()));
+        assert!(p.contains(&"-x264-params".into()));
+    }
+
+    #[test]
+    fn capcut_splice_params_hevc_hvc1() {
+        let mut p = vec![];
+        append_capcut_splice_encode_params(&mut p, VideoCodec::Hevc, "libx265", 30);
+        assert!(p.contains(&"-tag:v".into()));
+        assert!(p.contains(&"hvc1".into()));
     }
 
     #[test]

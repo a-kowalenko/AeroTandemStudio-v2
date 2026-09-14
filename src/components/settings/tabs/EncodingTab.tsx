@@ -180,7 +180,10 @@ export function EncodingTab({
                 draft.intro_mux_mode === "single_pass" ||
                 draft.intro_mux_mode === "soft_splice"
                   ? "single_pass"
-                  : "stream_copy"
+                  : draft.intro_mux_mode === "capcut" ||
+                      draft.intro_mux_mode === "universal"
+                    ? "capcut"
+                    : "stream_copy"
               }
               onValueChange={(v) => patchNow("intro_mux_mode", v)}
               disabled={!draft.intro_enabled}
@@ -191,6 +194,9 @@ export function EncodingTab({
               <SelectContent>
                 <SelectItem value="stream_copy">
                   {t("settings.encoding.introMuxCopy")}
+                </SelectItem>
+                <SelectItem value="capcut">
+                  {t("settings.encoding.introMuxCapcut")}
                 </SelectItem>
                 <SelectItem value="single_pass">
                   {t("settings.encoding.introMuxReencode")}

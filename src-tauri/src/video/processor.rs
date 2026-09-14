@@ -22,9 +22,10 @@ use crate::constants::{
 use crate::model::Kunde;
 use super::body_concat_fallback::BodyConcatAskFn;
 use super::concat::{self, ConcatError, VideoCodec};
+use super::encode_profile::EncodeProfile;
 use super::encoding_quality::{
-    build_encode_output_params, majority_body_codec, resolve_output_codec, video_codec_to_pref_str,
-    VideoCodecPreference,
+    append_capcut_splice_encode_params, build_encode_output_params, majority_body_codec,
+    resolve_output_codec, video_codec_to_pref_str, VideoCodecPreference,
 };
 use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
@@ -103,8 +104,8 @@ fn default_body_concat_mode() -> String {
     "compatible".into()
 }
 
-fn is_force_single_pass_intro_mode(mode: &str) -> bool {
-    crate::storage::config::normalize_intro_mux_mode(mode) == "single_pass"
+fn normalized_intro_mux_mode(mode: &str) -> String {
+    crate::storage::config::normalize_intro_mux_mode(mode)
 }
 
 impl Default for CreateVideoOptions {
@@ -916,16 +917,25 @@ fn push_ffmpeg_progress_args(args: &mut Vec<String>) {
 }
 
 /// Map nested FFmpeg 0–100 % into `[lo, hi]` on the overall bar (single step only).
-fn map_substep_progress(outer: ProgressCallback, lo: f64, hi: f64) -> ProgressCallback {
+fn map_substep_progress_label(
+    outer: ProgressCallback,
+    lo: f64,
+    hi: f64,
+    label: &'static str,
+) -> ProgressCallback {
     let span = (hi - lo).max(0.0);
     Arc::new(move |p: crate::video::progress::EncodeProgress| {
         let mut q = p;
         q.percent = lo + (q.percent.clamp(0.0, 100.0) / 100.0) * span;
         if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-            q.status = "Audio anhängen (Copy)…".into();
+            q.status = label.into();
         }
         outer(q);
     })
+}
+
+fn map_substep_progress(outer: ProgressCallback, lo: f64, hi: f64) -> ProgressCallback {
+    map_substep_progress_label(outer, lo, hi, "Audio anhängen (Copy)…")
 }
 
 /// Body Fast/Compatible/Legacy concat may emit per-clip prep `task_id`s (Legacy
@@ -1152,9 +1162,9 @@ fn resolve_mixed_body_target_pref(
 
 /// Create final MP4: optional intro + body clips → `output`.
 ///
-/// Default mux: encode intro clip, stream-copy join with body (CapCut-style).
-/// On failure: optional [`IntroMuxAskFn`] dialog, else auto single-pass fallback.
-/// `intro_mux_mode = single_pass`: skip join attempt — always one continuous re-encode.
+/// Default mux: encode intro clip, stream-copy join with body (fast).
+/// `intro_mux_mode = capcut`: intro encode + body prep (copy) + TS join — fast, no re-encode fallback.
+/// `intro_mux_mode = single_pass`: filter_complex single-pass + confirm dialog (max splice safety).
 pub fn create_video(
     ffmpeg: &Path,
     kunde: &Kunde,
@@ -1341,7 +1351,9 @@ pub fn create_video(
         let drawtext = prepare_text_overlay(kunde, v_params.width, v_params.height);
         let intro_path = work.join("intro.mp4");
         let intro_s = intro_path.to_string_lossy().to_string();
-        let force_single_pass = is_force_single_pass_intro_mode(&options.intro_mux_mode);
+        let intro_mux = normalized_intro_mux_mode(&options.intro_mux_mode);
+        let force_single_pass = intro_mux == "single_pass";
+        let capcut_export = intro_mux == "capcut";
 
         let mux_cb: ProgressCallback = {
             let outer = Arc::clone(&on_progress);
@@ -1466,6 +1478,7 @@ pub fn create_video(
                             &hw,
                             encode_crf,
                             encode_hw,
+                            None,
                             &work,
                             Arc::clone(&mux_cb),
                         )
@@ -1473,8 +1486,31 @@ pub fn create_video(
                 }
             };
 
-        let mux_result = if force_single_pass {
-            // Explicit slow path: one continuous encode (intro overlay + full body).
+        let mux_result = if capcut_export {
+            // CapCut-style: one continuous H.264 encode → a single bitstream with one
+            // SPS/PPS. That is what makes it play on iPhone/QuickTime (stream-copy splice
+            // leaves two parameter sets → phones show audio only). Fast preset keeps it quick.
+            let mut capcut_params = v_params.clone();
+            capcut_params.vcodec = "h264".into();
+            capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — required by iOS
+            let profile = EncodeProfile::capcut_export(hw_accel_enabled, options.crf, "h264");
+            mux_intro_body_single_pass(
+                ffmpeg,
+                &hintergrund_s,
+                &body_path,
+                output,
+                options.dauer,
+                &capcut_params,
+                &drawtext,
+                &hw,
+                profile.crf,
+                profile.hw_accel,
+                Some(&profile),
+                &work,
+                Arc::clone(&mux_cb),
+            )
+        } else if force_single_pass {
+            // Max splice safety: one continuous encode + optional confirm dialog.
             let intent = ReencodeIntent::new(
                 ReencodeKind::IntroMux,
                 "Intro+Body durchgängig kodieren (max. Schnitt-Kompatibilität)",
@@ -1507,11 +1543,12 @@ pub fn create_video(
                 &hw,
                 profile.crf,
                 profile.hw_accel,
+                None,
                 &work,
                 Arc::clone(&mux_cb),
             )
         } else {
-            // CapCut-style: encode intro only, stream-copy join; fallback on failure.
+            // Fast join: encode intro only, stream-copy join; fallback on failure.
             emit_step_start(&on_progress, "Erstelle Intro…");
             let intro_cb = {
                 let outer = Arc::clone(&on_progress);
@@ -1760,6 +1797,9 @@ fn quality_params_without_codec(output_params: Vec<String>) -> Vec<String> {
 }
 
 /// Single-pass Intro+Body encode (one bitstream). Optionally stream-copies body AAC.
+///
+/// When `encode_profile` is set (CapCut export), uses [`EncodeProfile::to_encode_output_params`]
+/// and HEVC customer tags (`hvc1`). Otherwise legacy crf/hw params (single-pass dialog path).
 fn mux_intro_body_single_pass(
     ffmpeg: &Path,
     hintergrund: &str,
@@ -1771,6 +1811,7 @@ fn mux_intro_body_single_pass(
     hw: &HwAccelInfo,
     crf: u8,
     hw_accel_enabled: bool,
+    encode_profile: Option<&EncodeProfile>,
     work: &Path,
     on_progress: ProgressCallback,
 ) -> Result<concat::ConcatOutcome, ConcatError> {
@@ -1800,7 +1841,14 @@ fn mux_intro_body_single_pass(
         output.to_string()
     };
 
-    let intro_label = if copy_audio {
+    let capcut = encode_profile.is_some();
+    let intro_label = if capcut {
+        if copy_audio {
+            "Exportiere Intro+Video (Universal, Audio-Copy)…"
+        } else {
+            "Exportiere Intro+Video (Universal)…"
+        }
+    } else if copy_audio {
         "Kodiere Intro+Video (Audio-Copy)…"
     } else {
         "Kodiere Intro+Video (kompatibel)…"
@@ -1812,8 +1860,9 @@ fn mux_intro_body_single_pass(
         _ => VideoCodec::H264,
     };
 
+    let encode_hw = encode_profile.map(|p| p.hw_accel).unwrap_or(hw_accel_enabled);
     let mut last_err: Option<ConcatError> = None;
-    let attempts: &[bool] = if hw_accel_enabled {
+    let attempts: &[bool] = if encode_hw {
         &[false, true]
     } else {
         &[true]
@@ -1821,7 +1870,16 @@ fn mux_intro_body_single_pass(
     let mut encoder_used = String::new();
     let mut encoded = false;
     for &force_sw in attempts {
-        let (encoder, out_params) = build_encode_output_params(hw, codec, crf, force_sw);
+        let encode_crf = encode_profile.map(|p| p.crf).unwrap_or(crf);
+        let (encoder, mut out_params) = match encode_profile {
+            Some(profile) if !force_sw => profile.to_encode_output_params(hw, codec),
+            _ => build_encode_output_params(hw, codec, encode_crf, force_sw),
+        };
+        if capcut {
+            // avc1 tag + closed GOP + repeat-headers/AUD → maximal phone/QuickTime safety.
+            let fps_int = parse_fps_int(&v_params.fps);
+            append_capcut_splice_encode_params(&mut out_params, codec, &encoder, fps_int);
+        }
         let quality = quality_params_without_codec(out_params);
         let args = build_intro_body_single_pass_args(
             hintergrund,
@@ -1867,14 +1925,25 @@ fn mux_intro_body_single_pass(
         let _ = fs::remove_file(&video_target);
     }
 
-    Ok(concat::ConcatOutcome {
-        method: if copy_audio {
-            "single-pass-reencode+acopy".into()
+    let method = if capcut {
+        if copy_audio {
+            "capcut-export+acopy".into()
         } else {
-            "single-pass-reencode".into()
-        },
+            "capcut-export".into()
+        }
+    } else if copy_audio {
+        "single-pass-reencode+acopy".into()
+    } else {
+        "single-pass-reencode".into()
+    };
+    Ok(concat::ConcatOutcome {
+        method,
         codec: encoder_used,
-        reencode_reason: Some("Intro+Body durchgängig kodieren (kundenkompatibel)".into()),
+        reencode_reason: if capcut {
+            Some("Universal-Export — ein Durchlauf".into())
+        } else {
+            Some("Intro+Body durchgängig kodieren (kundenkompatibel)".into())
+        },
     })
 }
 
@@ -2109,13 +2178,13 @@ mod tests {
     }
 
     #[test]
-    fn force_single_pass_intro_mode_detection() {
-        assert!(!is_force_single_pass_intro_mode("stream_copy"));
-        assert!(!is_force_single_pass_intro_mode("stream-copy"));
-        assert!(!is_force_single_pass_intro_mode("reencode"));
-        assert!(is_force_single_pass_intro_mode("single_pass"));
-        assert!(is_force_single_pass_intro_mode("soft_splice"));
-        assert!(!is_force_single_pass_intro_mode(""));
+    fn intro_mux_mode_detection() {
+        assert_eq!(normalized_intro_mux_mode("stream_copy"), "stream_copy");
+        assert_eq!(normalized_intro_mux_mode("reencode"), "stream_copy");
+        assert_eq!(normalized_intro_mux_mode("capcut"), "capcut");
+        assert_eq!(normalized_intro_mux_mode("universal"), "capcut");
+        assert_eq!(normalized_intro_mux_mode("single_pass"), "single_pass");
+        assert_eq!(normalized_intro_mux_mode("soft_splice"), "single_pass");
     }
 
     #[test]
@@ -2220,6 +2289,14 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     #[test]
     fn ffmpeg_escape_colon() {
         assert_eq!(ffmpeg_escape_text("a:b"), r"a\:b");
+    }
+
+    #[test]
+    fn capcut_export_profile_forces_fast_h264() {
+        let p = EncodeProfile::capcut_export(true, 18, "hevc");
+        assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
+        assert_eq!(p.sw_preset, "superfast");
+        assert!(p.crf >= 20);
     }
 
     #[test]
