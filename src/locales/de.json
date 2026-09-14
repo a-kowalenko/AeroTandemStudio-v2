@@ -298,15 +298,28 @@
       "concatLegacy": "Legacy (robust)",
       "concatHint": "Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy. Legacy nutzt die bewährte MPEG-TS-Pipeline.",
       "advanced": "Erweitert",
-      "introEnabled": "Intro beim Erstellen verwenden (experimentell)",
+      "quality": {
+        "title": "Qualität",
+        "description": "Gilt für Create, sobald neu kodiert wird — mit und ohne Intro."
+      },
+      "intro": {
+        "title": "Intro (experimentell)",
+        "description": "Intro vor dem Flugvideo beim Erstellen."
+      },
+      "introEnabled": "Intro beim Erstellen verwenden",
       "introDuration": "Intro-Dauer (Sek.)",
       "introMux": "Intro zusammenfügen",
       "introMuxCapcut": "Universal-Export (CapCut)",
       "introMuxReencode": "Durchgängig neu kodieren (max. Schnitt-Sicherheit)",
       "introMuxCopy": "Schnell (Intro kodieren + zusammenfügen)",
-      "introMuxHint": "Schnell: Intro kodieren, Flugvideo per Stream-Copy — für Tempo, nicht für alle Handys. Universal-Export: Intro + Video in einem H.264-Durchlauf (CapCut-Stil) — ein Bitstream, iPhone- und QuickTime-tauglich, schnelles Preset. Max. Sicherheit: wie Universal, aber mit Bestätigungsdialog und höherer Qualität für schwierige Kameras.",
+      "introMuxHint": "Intro und Flugvideo werden in einem H.264-Durchlauf (Universal-Export / CapCut-Stil) zusammengefügt — ein Bitstream, iPhone- und QuickTime-tauglich. Qualität steuert „Video-Qualität (CRF)“.",
       "reencodeMatching": "Passende Clips neu encodieren",
-      "previewCrf": "Preview CRF",
+      "previewCrf": "Video-Qualität (CRF)",
+      "crfVeryHigh": "Sehr hoch (CRF 18)",
+      "crfHigh": "Hoch (CRF 20)",
+      "crfBalanced": "Ausgewogen (CRF 23)",
+      "crfSmall": "Klein / schneller (CRF 26)",
+      "crfHint": "Niedrigerer CRF = bessere Qualität, größere Datei. Bei reinem Kopieren (Fast Path) ohne Wirkung.",
       "previewReuseHint": "Tipp: Zuerst „Vorschau generieren“ — bei unveränderten Clips übernimmt Erstellen die Vorschau ohne Neu-Kodierung.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Vorbereitung im Hintergrund",
@@ -1809,7 +1822,7 @@
       "staleBadge": "Veraltet",
       "empty": "Keine Videos — per Drag & Drop im Medien-Bereich hinzufügen",
       "singleClipWithPreview": "Einzelclip-Wiedergabe — „Vorschau anzeigen“ für die kombinierte Datei.",
-      "singleClipWithoutPreview": "Einzelclip-Wiedergabe — „Vorschau generieren“ für die kombinierte Datei.",
+      "singleClipWithoutPreview": "Einzelclip-Wiedergabe.",
       "undoThisEditTitle": "Diese Bearbeitung rückgängig machen",
       "previewReencode": "Neu-Kodierung: {{reason}}",
       "previewStreamCopy": "Neu-Kodierung: nein (Stream-Copy)",
@@ -2186,7 +2199,7 @@
       "connectionSimple": "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar.",
       "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
       "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
-      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro und Zusammenfügen liegen unter weiteren Optionen."
+      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro, Dauer und Zusammenfügen folgen darunter."
     },
     "mode": {
       "simpleTitle": "Einfach",

@@ -298,15 +298,28 @@
       "concatLegacy": "Legacy (robusto)",
       "concatHint": "La ruta rápida une clips en una pasada (similar a Avidemux Copy). Si falla, puedes cancelar o usar Legacy. Legacy usa la canalización MPEG-TS.",
       "advanced": "Avanzado",
-      "introEnabled": "Usar intro al crear (experimental)",
+      "quality": {
+        "title": "Calidad",
+        "description": "Aplica a Crear cuando hay recodificación — con o sin intro."
+      },
+      "intro": {
+        "title": "Intro (experimental)",
+        "description": "Intro antes del video de vuelo al crear."
+      },
+      "introEnabled": "Usar intro al crear",
       "introDuration": "Duración del intro (s)",
       "introMux": "Unir intro",
       "introMuxCapcut": "Export universal (CapCut)",
       "introMuxReencode": "Recodificación continua (máx. seguridad en el corte)",
       "introMuxCopy": "Rápido (codificar intro + unir)",
-      "introMuxHint": "Rápido: codifica el intro y une el video por copia de stream — para velocidad, no todos los teléfonos. Export universal: intro + video en un solo pase H.264 (estilo CapCut) — un bitstream, compatible con iPhone/QuickTime, preset rápido. Máx. seguridad: como universal pero con diálogo de confirmación y mayor calidad para cámaras difíciles.",
+      "introMuxHint": "El intro y el video se unen en un solo pase H.264 (export universal / estilo CapCut) — un bitstream, compatible con iPhone y QuickTime. La calidad la controla «Calidad de video (CRF)».",
       "reencodeMatching": "Recodificar clips coincidentes",
-      "previewCrf": "CRF de vista previa",
+      "previewCrf": "Calidad de video (CRF)",
+      "crfVeryHigh": "Muy alta (CRF 18)",
+      "crfHigh": "Alta (CRF 20)",
+      "crfBalanced": "Equilibrada (CRF 23)",
+      "crfSmall": "Más pequeña / más rápida (CRF 26)",
+      "crfHint": "CRF más bajo = mejor calidad, archivo más grande. Sin efecto en copia pura (Fast Path).",
       "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Preparar en segundo plano",
@@ -1809,7 +1822,7 @@
       "staleBadge": "Desactualizada",
       "empty": "No hay videos — agrégalos arrastrando al área de medios",
       "singleClipWithPreview": "Reproducción de clip único — usa “Mostrar vista previa” para el archivo combinado.",
-      "singleClipWithoutPreview": "Reproducción de clip único — usa “Generar vista previa” para el archivo combinado.",
+      "singleClipWithoutPreview": "Reproducción de clip único.",
       "undoThisEditTitle": "Deshacer esta edición",
       "previewReencode": "Recodificación: {{reason}}",
       "previewStreamCopy": "Recodificación: no (copia de stream)",
@@ -2186,7 +2199,7 @@
       "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después.",
       "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
       "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
-      "output": "Códec, estrategia y aceleración por hardware. Intro y concatenación están en más opciones."
+      "output": "Códec, estrategia y aceleración por hardware. Intro, duración y concatenación siguen debajo."
     },
     "mode": {
       "simpleTitle": "Simple",

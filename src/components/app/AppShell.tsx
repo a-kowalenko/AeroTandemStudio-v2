@@ -151,7 +151,7 @@ export function AppShell({
   const encodingSig = previewEncodingSignature(
     Boolean(config?.intro_enabled ?? false),
     config?.dauer ?? 5,
-    config?.intro_mux_mode ?? "stream_copy",
+    config?.intro_mux_mode ?? "capcut",
   );
   const canReusePreview = getPreviewReusePlan(
     videoList,

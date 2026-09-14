@@ -98,7 +98,7 @@ fn default_crf() -> u8 {
     18
 }
 fn default_intro_mux_mode() -> String {
-    "stream_copy".into()
+    "capcut".into()
 }
 fn default_body_concat_mode() -> String {
     "compatible".into()
@@ -1163,8 +1163,8 @@ fn resolve_mixed_body_target_pref(
 /// Create final MP4: optional intro + body clips → `output`.
 ///
 /// Default mux: encode intro clip, stream-copy join with body (fast).
-/// `intro_mux_mode = capcut`: intro encode + body prep (copy) + TS join — fast, no re-encode fallback.
-/// `intro_mux_mode = single_pass`: filter_complex single-pass + confirm dialog (max splice safety).
+/// `intro_mux_mode = capcut` (product default): one continuous H.264 export (CapCut-style).
+/// Other mode names are normalized to `capcut` on config load/save.
 pub fn create_video(
     ffmpeg: &Path,
     kunde: &Kunde,
@@ -2179,12 +2179,12 @@ mod tests {
 
     #[test]
     fn intro_mux_mode_detection() {
-        assert_eq!(normalized_intro_mux_mode("stream_copy"), "stream_copy");
-        assert_eq!(normalized_intro_mux_mode("reencode"), "stream_copy");
+        assert_eq!(normalized_intro_mux_mode("stream_copy"), "capcut");
+        assert_eq!(normalized_intro_mux_mode("reencode"), "capcut");
         assert_eq!(normalized_intro_mux_mode("capcut"), "capcut");
         assert_eq!(normalized_intro_mux_mode("universal"), "capcut");
-        assert_eq!(normalized_intro_mux_mode("single_pass"), "single_pass");
-        assert_eq!(normalized_intro_mux_mode("soft_splice"), "single_pass");
+        assert_eq!(normalized_intro_mux_mode("single_pass"), "capcut");
+        assert_eq!(normalized_intro_mux_mode("soft_splice"), "capcut");
     }
 
     #[test]
@@ -2296,7 +2296,7 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         let p = EncodeProfile::capcut_export(true, 18, "hevc");
         assert_eq!(p.resolved_codec.as_deref(), Some("h264"));
         assert_eq!(p.sw_preset, "superfast");
-        assert!(p.crf >= 20);
+        assert_eq!(p.crf, 18);
     }
 
     #[test]

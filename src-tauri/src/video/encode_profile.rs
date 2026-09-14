@@ -174,8 +174,8 @@ impl EncodeProfile {
     /// QuickTime / browser. Fast presets keep it CapCut-quick even without a GPU.
     pub fn capcut_export(hw_accel: bool, base_crf: u8, _body_codec: &str) -> Self {
         let mut p = Self::balanced(hw_accel);
-        // Slightly higher CRF + fast preset — camera footage stays clean, export stays quick.
-        p.crf = clamp_crf(i32::from(base_crf).max(20), 20);
+        // Fast presets keep CapCut-quick; CRF comes from user setting (Video-Qualität).
+        p.crf = clamp_crf(i32::from(base_crf), 18);
         p.preset_id = EncodePresetId::Fast;
         p.sw_preset = "superfast".into();
         p.nvenc_preset = "p2".into();
@@ -467,7 +467,7 @@ mod tests {
         assert_eq!(p.scale_mode, ScaleMode::Source);
         assert!(p.hw_accel);
         assert_eq!(p.sw_preset, "superfast");
-        assert!(p.crf >= 20);
+        assert_eq!(p.crf, 18);
     }
 
     #[test]

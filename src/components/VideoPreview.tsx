@@ -33,7 +33,6 @@ import {
   Pencil,
   Play,
   QrCode,
-  RefreshCw,
   RotateCcw,
   Trash2,
 } from "lucide-react";
@@ -53,8 +52,6 @@ import { useUiStore } from "../store/uiStore";
 import { usePreviewCacheStore, previewEncodingSignature } from "../store/previewCacheStore";
 import { withQrScanProgress } from "../store/qrScanStore";
 import {
-  generatePreview,
-  validateKunde,
   scanQrVideo,
   type PreviewResult,
   type VideoMetadata,
@@ -73,7 +70,7 @@ import {
   mediaContextMenuHandler,
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
-import { cn, isCancellationError } from "../lib/utils";
+import { cn } from "../lib/utils";
 
 /** Snappy ease-out — close to iOS spring settle without extra deps. */
 const CLIP_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -445,10 +442,10 @@ type VideoPreviewProps = {
   onBeforeRemoveClip?: (path: string) => void;
   /**
    * Same readiness gate as „Erstellen“ (form + products).
-   * When false, preview encode is blocked.
+   * Kept for call-site compatibility; combined preview generate UI was removed.
    */
   formReady?: boolean;
-  /** Optional hints from create validation (shown on click / title). */
+  /** Optional create-validation hints (unused after generate-preview UI removal). */
   formHints?: string[];
   /** Pause preview playback (e.g. while the cutter dialog is open). */
   playbackSuspended?: boolean;
@@ -456,17 +453,11 @@ type VideoPreviewProps = {
 
 export function VideoPreview({
   busy: busyProp,
-  onBusyChange,
-  onStatus,
-  onProgressReset,
-  onProgressComplete,
   onCutClip,
   onUndoClipCut,
   onUndoAllCuts,
   canUndoCuts = false,
   onBeforeRemoveClip,
-  formReady = true,
-  formHints = [],
   playbackSuspended = false,
 }: VideoPreviewProps) {
   const { t } = useTranslation();
@@ -480,16 +471,13 @@ export function VideoPreview({
   const getMediaRevision = useVideoStore((s) => s.getMediaRevision);
   const cutMarks = useVideoStore((s) => s.cutMarks);
   const kunde = useKundeStore((s) => s.kunde);
-  const oldschoolMode = useConfigStore((s) => s.config?.oldschool_mode);
   const config = useConfigStore((s) => s.config);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const showWarning = useUiStore((s) => s.showWarning);
-  const setPreviewCache = usePreviewCacheStore((s) => s.setFromPreview);
   const clearPreviewCache = usePreviewCacheStore((s) => s.clear);
   const previewCacheMatches = usePreviewCacheStore((s) => s.matches);
 
-  const [localBusy, setLocalBusy] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   /** Combined preview vs. single-clip player; preview file is kept until overwritten or list cleared. */
   const [playerMode, setPlayerMode] = useState<"combined" | "clip">("clip");
@@ -596,7 +584,7 @@ export function VideoPreview({
   const showingCombined = hasPreviewFile && playerMode === "combined";
   const einzelclipMode = !showingCombined;
 
-  const busy = busyProp ?? localBusy;
+  const busy = busyProp ?? false;
   const workflowBusy = busy || qrBusy || videoImporting;
 
   // Pause filmstrip prefetch during import/encode/QR (OPT-7).
@@ -643,7 +631,7 @@ export function VideoPreview({
   const encodingSig = previewEncodingSignature(
     Boolean(config?.intro_enabled ?? false),
     config?.dauer ?? 5,
-    config?.intro_mux_mode ?? "stream_copy",
+    config?.intro_mux_mode ?? "capcut",
   );
 
   const previewStale = Boolean(
@@ -666,80 +654,6 @@ export function VideoPreview({
     }
     // Keep the last preview file when form/clips change; reuse is blocked via matches().
   }, [videoList, activeClip, clearPreviewCache]);
-
-  function setBusy(value: boolean) {
-    setLocalBusy(value);
-    onBusyChange?.(value);
-  }
-
-  function resetLocalProgress() {
-    onProgressReset?.();
-  }
-
-  async function handleGenerate() {
-    if (videoList.length === 0) {
-      showError(t("media.drop.noVideos"));
-      return;
-    }
-    const paths = videoList.map((v) => v.path);
-    try {
-      const form = await validateKunde(kunde, paths, oldschoolMode);
-      if (!form.valid) {
-        showWarning(form.errors.join("\n"), t("create.validation.validation"));
-        return;
-      }
-    } catch (e) {
-      showError(String(e), t("create.validation.validation"));
-      return;
-    }
-    if (!formReady) {
-      const hint =
-        formHints.filter((h) => !h.includes("Speicherort")).join("\n") ||
-        t("video.preview.formIncomplete");
-      showWarning(hint, t("create.validation.validation"));
-      return;
-    }
-
-    setBusy(true);
-    resetLocalProgress();
-    onStatus?.(t("video.preview.generating"));
-    try {
-      const result = await generatePreview(paths, kunde);
-      setPreview(result);
-      setPreviewCache(result, videoList, kunde, encodingSig);
-      setPlayerMode("combined");
-      onProgressComplete?.(t("video.preview.ready"));
-      const strategy =
-        result.strategy === "stream_copy_only"
-          ? t("video.preview.strategyStreamCopy")
-          : result.strategy === "per_clip"
-            ? t("video.preview.strategyPerClip")
-            : result.strategy === "combined"
-              ? t("video.preview.strategyCombined")
-              : result.strategy;
-      const reasonSuffix = result.reencode_reason
-        ? t("video.preview.reencodeSuffix", { reason: result.reencode_reason })
-        : "";
-      showSuccess(
-        result.intro_included
-          ? t("video.preview.combinedCreatedWithIntro", { strategy, suffix: reasonSuffix })
-          : t("video.preview.combinedCreated", { strategy, suffix: reasonSuffix }),
-        t("video.preview.toastTitle"),
-        { autoCloseSecs: 5 },
-      );
-    } catch (e) {
-      if (isCancellationError(e)) {
-        onStatus?.(t("progress.default.cancelled"));
-        showWarning(t("video.preview.cancelled"));
-      } else {
-        showError(String(e));
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const canGeneratePreview = formReady && videoList.length >= 1;
 
   async function handleQrScan(path?: string) {
     const clip = path
@@ -844,56 +758,19 @@ export function VideoPreview({
               {t("video.preview.undoAllEditsBtn")}
             </Button>
           )}
-          {videoList.length > 0 &&
-            (!hasPreviewFile ? (
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleGenerate()}
-                disabled={busy || !canGeneratePreview}
-                title={
-                  canGeneratePreview
-                    ? undefined
-                    : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                      t("video.preview.formIncompleteShort")
-                }
-              >
-                <Play className="h-4 w-4" />
-                {t("video.preview.generatePreview")}
-              </Button>
-            ) : (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={showingCombined ? "default" : "secondary"}
-                  onClick={showCombinedPreview}
-                  disabled={busy}
-                  title={t("video.preview.showExistingTitle")}
-                >
-                  <Play className="h-4 w-4" />
-                  {t("video.preview.showPreview")}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={previewStale ? "default" : "secondary"}
-                  onClick={() => void handleGenerate()}
-                  disabled={busy || !canGeneratePreview}
-                  title={
-                    canGeneratePreview
-                      ? previewStale
-                        ? t("video.preview.staleRegenerateTitle")
-                        : t("video.preview.regenerateTitle")
-                      : formHints.filter((h) => !h.includes("Speicherort"))[0] ||
-                        t("video.preview.formIncompleteShort")
-                  }
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  {previewStale ? t("video.preview.regenerateBtn") : t("video.preview.regenerateNew")}
-                </Button>
-              </>
-            ))}
+          {hasPreviewFile && (
+            <Button
+              type="button"
+              size="sm"
+              variant={showingCombined ? "default" : "secondary"}
+              onClick={showCombinedPreview}
+              disabled={busy}
+              title={t("video.preview.showExistingTitle")}
+            >
+              <Play className="h-4 w-4" />
+              {t("video.preview.showPreview")}
+            </Button>
+          )}
         </div>
       </div>
 

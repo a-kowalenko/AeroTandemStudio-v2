@@ -298,15 +298,28 @@
       "concatLegacy": "Legacy (robust)",
       "concatHint": "Fast path joins clips in one pass (similar to Avidemux Copy). On errors you can cancel or use Legacy. Legacy uses the proven MPEG-TS pipeline.",
       "advanced": "Advanced",
-      "introEnabled": "Use intro when creating (experimental)",
+      "quality": {
+        "title": "Quality",
+        "description": "Applies to Create whenever re-encoding happens — with or without intro."
+      },
+      "intro": {
+        "title": "Intro (experimental)",
+        "description": "Intro before the flight video when creating."
+      },
+      "introEnabled": "Use intro when creating",
       "introDuration": "Intro duration (sec.)",
       "introMux": "Join intro",
       "introMuxCapcut": "Universal export (CapCut)",
       "introMuxReencode": "Continuous re-encode (max splice safety)",
       "introMuxCopy": "Fast (encode intro + join)",
-      "introMuxHint": "Fast: encode intro, join flight video via stream copy — for speed, not all phones. Universal export: intro + video in one H.264 pass (CapCut-style) — single bitstream, iPhone/QuickTime-safe, fast preset. Max safety: like universal but with confirm dialog and higher quality for difficult cameras.",
+      "introMuxHint": "Intro and flight video are joined in one H.264 pass (universal export / CapCut-style) — a single bitstream, iPhone- and QuickTime-safe. Quality is controlled by Video quality (CRF).",
       "reencodeMatching": "Re-encode matching clips",
-      "previewCrf": "Preview CRF",
+      "previewCrf": "Video quality (CRF)",
+      "crfVeryHigh": "Very high (CRF 18)",
+      "crfHigh": "High (CRF 20)",
+      "crfBalanced": "Balanced (CRF 23)",
+      "crfSmall": "Smaller / faster (CRF 26)",
+      "crfHint": "Lower CRF = better quality, larger file. No effect on pure copy (Fast Path).",
       "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Prepare in the background",
@@ -1809,7 +1822,7 @@
       "staleBadge": "Stale",
       "empty": "No videos — add them via drag and drop in the media area",
       "singleClipWithPreview": "Single-clip playback — use “Show preview” for the combined file.",
-      "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
+      "singleClipWithoutPreview": "Single-clip playback.",
       "undoThisEditTitle": "Undo this edit",
       "previewReencode": "Re-encode: {{reason}}",
       "previewStreamCopy": "Re-encode: no (stream copy)",
@@ -2186,7 +2199,7 @@
       "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
       "mode": "How should setup run? You can change the mode later in settings.",
       "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
-      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options."
+      "output": "Codec, strategy, and hardware acceleration. Intro, duration, and concat follow below."
     },
     "mode": {
       "simpleTitle": "Simple",

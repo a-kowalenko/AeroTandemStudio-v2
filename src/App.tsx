@@ -2154,7 +2154,7 @@ function App() {
     const encodingSig = previewEncodingSignature(
       Boolean(config?.intro_enabled ?? false),
       config?.dauer ?? 5,
-      config?.intro_mux_mode ?? "stream_copy",
+      config?.intro_mux_mode ?? "capcut",
     );
     const canReusePreview = getPreviewReusePlan(
       videoList,
@@ -2172,7 +2172,7 @@ function App() {
         reusePreview: canReusePreview,
         bodyConcatMode: config?.body_concat_mode ?? "compatible",
         introEnabled: Boolean(config?.intro_enabled),
-        introMuxMode: config?.intro_mux_mode ?? "stream_copy",
+        introMuxMode: config?.intro_mux_mode ?? "capcut",
       }),
     );
     setCreateFailed(false);
@@ -2192,7 +2192,7 @@ function App() {
           video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
           crf: config?.preview_encode_crf ?? 18,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
-          intro_mux_mode: config?.intro_mux_mode ?? "stream_copy",
+          intro_mux_mode: config?.intro_mux_mode ?? "capcut",
           body_concat_mode: config?.body_concat_mode ?? "compatible",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,

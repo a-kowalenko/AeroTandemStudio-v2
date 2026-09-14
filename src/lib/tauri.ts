@@ -114,8 +114,8 @@ export type AppConfig = {
   video_codec: string;
   encoding_strategy: string;
   reencode_matching_clips: boolean;
-  /** Intro+Body mux: "reencode" (default) | "stream_copy". */
-  intro_mux_mode: "stream_copy" | "capcut" | "single_pass" | string;
+  /** Intro+Body mux: always CapCut-style universal export (`capcut`). */
+  intro_mux_mode: "capcut" | string;
   /** Multi-clip body concat: "compatible" (default) | "fast" | "legacy". */
   body_concat_mode: BodyConcatMode | string;
   preview_encode_crf: number;
@@ -548,8 +548,8 @@ export type CreateVideoOptions = {
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
-  /** Intro+Body mux: "stream_copy" | "reencode". */
-  intro_mux_mode?: "stream_copy" | "capcut" | "single_pass" | string;
+  /** Intro+Body mux: CapCut universal export (`capcut`). */
+  intro_mux_mode?: "capcut" | string;
   /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
@@ -571,8 +571,8 @@ export type CreateJobOptions = {
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
-  /** Intro+Body mux: "stream_copy" | "reencode". */
-  intro_mux_mode?: "stream_copy" | "capcut" | "single_pass" | string;
+  /** Intro+Body mux: CapCut universal export (`capcut`). */
+  intro_mux_mode?: "capcut" | string;
   /** Multi-clip body concat: "legacy" | "fast" | "compatible". */
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */

@@ -579,7 +579,7 @@ fn default_encoding_strategy() -> String {
     "per_clip".into()
 }
 fn default_intro_mux_mode() -> String {
-    "stream_copy".into()
+    "capcut".into()
 }
 fn default_body_concat_mode() -> String {
     "compatible".into()
@@ -588,19 +588,14 @@ fn default_preview_crf() -> u8 {
     18
 }
 
-/// Normalize intro mux mode to `stream_copy` | `capcut` | `single_pass`.
+/// Normalize intro mux mode. Product default is CapCut-style universal export only.
 ///
-/// - `stream_copy`: encode intro, join body via stream-copy (fast).
-/// - `capcut`: intro encode + body prep (copy) + TS join (phones, browsers, QuickTime).
-/// - `single_pass`: filter_complex full re-encode + confirm dialog (max splice safety).
-/// Legacy `reencode` → `stream_copy`. `soft_splice` → `single_pass`.
+/// Legacy values (`stream_copy`, `single_pass`, …) are mapped to `capcut` so existing
+/// configs keep working after the UI dropdown was removed. Backend still understands
+/// the old mode names if forced for diagnostics.
 pub fn normalize_intro_mux_mode(mode: &str) -> String {
-    match mode.trim().to_ascii_lowercase().as_str() {
-        "stream_copy" | "stream-copy" | "streamcopy" | "reencode" => "stream_copy".into(),
-        "capcut" | "universal" | "export" => "capcut".into(),
-        "single_pass" | "force_reencode" | "soft_splice" => "single_pass".into(),
-        _ => "stream_copy".into(),
-    }
+    let _ = mode;
+    "capcut".into()
 }
 
 /// Normalize body concat mode to `fast` | `compatible` | `legacy` (default `compatible`).
@@ -730,7 +725,7 @@ impl AppConfig {
         .to_string();
     }
 
-    /// Canonicalize `intro_mux_mode` to `stream_copy` | `capcut` | `single_pass`.
+    /// Canonicalize `intro_mux_mode` to `capcut` (sole product mode).
     pub fn sync_intro_mux_mode(&mut self) {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
@@ -1365,7 +1360,7 @@ mod tests {
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.settings_ui_mode, "simple");
         assert_eq!(cfg.video_codec, "auto");
-        assert_eq!(cfg.intro_mux_mode, "stream_copy");
+        assert_eq!(cfg.intro_mux_mode, "capcut");
         assert!(cfg.speculative_create_enabled);
         assert_eq!(cfg.body_concat_mode, "compatible");
         assert!(cfg.settings_fleet_preset_v1_applied);
@@ -1396,15 +1391,15 @@ mod tests {
     }
 
     #[test]
-    fn normalize_intro_mux_mode_maps_legacy_soft_splice() {
-        assert_eq!(normalize_intro_mux_mode("stream_copy"), "stream_copy");
-        assert_eq!(normalize_intro_mux_mode("stream-copy"), "stream_copy");
+    fn normalize_intro_mux_mode_always_capcut() {
+        assert_eq!(normalize_intro_mux_mode("stream_copy"), "capcut");
+        assert_eq!(normalize_intro_mux_mode("stream-copy"), "capcut");
         assert_eq!(normalize_intro_mux_mode("capcut"), "capcut");
         assert_eq!(normalize_intro_mux_mode("universal"), "capcut");
-        assert_eq!(normalize_intro_mux_mode("single_pass"), "single_pass");
-        assert_eq!(normalize_intro_mux_mode("reencode"), "stream_copy");
-        assert_eq!(normalize_intro_mux_mode("soft_splice"), "single_pass");
-        assert_eq!(normalize_intro_mux_mode(""), "stream_copy");
+        assert_eq!(normalize_intro_mux_mode("single_pass"), "capcut");
+        assert_eq!(normalize_intro_mux_mode("reencode"), "capcut");
+        assert_eq!(normalize_intro_mux_mode("soft_splice"), "capcut");
+        assert_eq!(normalize_intro_mux_mode(""), "capcut");
     }
 
     #[test]

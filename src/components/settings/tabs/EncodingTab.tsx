@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -11,18 +10,33 @@ import {
 } from "@/components/ui/select";
 import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
 import { showAdvanced } from "@/lib/settingsUi";
-import { SettingsAccordion } from "../SettingsAccordion";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
+/** Preset CRF steps for the quality dropdown (lower = better / larger). */
+const VIDEO_CRF_OPTIONS = [18, 20, 23, 26] as const;
+
+function nearestVideoCrf(raw: number): number {
+  let best: number = VIDEO_CRF_OPTIONS[0];
+  let bestDist = Math.abs(raw - best);
+  for (const v of VIDEO_CRF_OPTIONS) {
+    const d = Math.abs(raw - v);
+    if (d < bestDist) {
+      best = v;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 type Props = SettingsTabBaseProps & {
-  /** Wizard custom path: codec/strategy/HW + intro/concat accordion. */
+  /** Wizard custom path: codec/strategy/HW + intro/concat. */
   layout?: "settings" | "wizard";
 };
 
 export function EncodingTab({
   draft,
-  patch,
+  patch: _patch,
   patchNow,
   disclosure,
   layout = "settings",
@@ -38,46 +52,48 @@ export function EncodingTab({
         description={t("settings.encoding.standard.description")}
       >
         {advanced ? (
-        <>
-        <div className="space-y-1.5">
-          <Label>{t("settings.encoding.codec")}</Label>
-          <Select
-            value={draft.video_codec}
-            onValueChange={(v) => patchNow("video_codec", v)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="auto">{t("settings.encoding.codecAuto")}</SelectItem>
-              <SelectItem value="h264">H.264</SelectItem>
-              <SelectItem value="h265">H.265</SelectItem>
-              <SelectItem value="vp9">VP9</SelectItem>
-              <SelectItem value="av1">AV1</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          <>
+            <div className="space-y-1.5">
+              <Label>{t("settings.encoding.codec")}</Label>
+              <Select
+                value={draft.video_codec}
+                onValueChange={(v) => patchNow("video_codec", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">
+                    {t("settings.encoding.codecAuto")}
+                  </SelectItem>
+                  <SelectItem value="h264">H.264</SelectItem>
+                  <SelectItem value="h265">H.265</SelectItem>
+                  <SelectItem value="vp9">VP9</SelectItem>
+                  <SelectItem value="av1">AV1</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-        <div className="space-y-1.5">
-          <Label>{t("settings.encoding.strategy")}</Label>
-          <Select
-            value={draft.encoding_strategy}
-            onValueChange={(v) => patchNow("encoding_strategy", v)}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="per_clip">
-                {t("settings.encoding.strategyPerClip")}
-              </SelectItem>
-              <SelectItem value="combined">
-                {t("settings.encoding.strategyCombined")}
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        </>
+            <div className="space-y-1.5">
+              <Label>{t("settings.encoding.strategy")}</Label>
+              <Select
+                value={draft.encoding_strategy}
+                onValueChange={(v) => patchNow("encoding_strategy", v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="per_clip">
+                    {t("settings.encoding.strategyPerClip")}
+                  </SelectItem>
+                  <SelectItem value="combined">
+                    {t("settings.encoding.strategyCombined")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
         ) : null}
 
         <label className="flex items-center gap-2 text-sm">
@@ -110,8 +126,13 @@ export function EncodingTab({
                   patchNow("speculative_create_enabled", v === true)
                 }
               />
-              <span className="min-w-0" title={t("settings.encoding.speculativeCreateHint")}>
-                <span className="block">{t("settings.encoding.speculativeCreate")}</span>
+              <span
+                className="min-w-0"
+                title={t("settings.encoding.speculativeCreateHint")}
+              >
+                <span className="block">
+                  {t("settings.encoding.speculativeCreate")}
+                </span>
               </span>
             </label>
 
@@ -125,7 +146,9 @@ export function EncodingTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+                  <SelectItem value="fast">
+                    {t("settings.encoding.concatFast")}
+                  </SelectItem>
                   <SelectItem value="compatible">
                     {t("settings.encoding.concatCompatible")}
                   </SelectItem>
@@ -145,8 +168,47 @@ export function EncodingTab({
         ) : null}
       </SettingsSection>
 
+      {advanced && !wizard ? (
+        <SettingsSection
+          title={t("settings.encoding.quality.title")}
+          description={t("settings.encoding.quality.description")}
+        >
+          <div className="space-y-1.5">
+            <Label>{t("settings.encoding.previewCrf")}</Label>
+            <Select
+              value={String(nearestVideoCrf(draft.preview_encode_crf))}
+              onValueChange={(v) => patchNow("preview_encode_crf", Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="18">
+                  {t("settings.encoding.crfVeryHigh")}
+                </SelectItem>
+                <SelectItem value="20">
+                  {t("settings.encoding.crfHigh")}
+                </SelectItem>
+                <SelectItem value="23">
+                  {t("settings.encoding.crfBalanced")}
+                </SelectItem>
+                <SelectItem value="26">
+                  {t("settings.encoding.crfSmall")}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] leading-snug text-muted">
+              {t("settings.encoding.crfHint")}
+            </p>
+          </div>
+        </SettingsSection>
+      ) : null}
+
       {advanced ? (
-        <SettingsAccordion title={t("settings.encoding.advanced")}>
+        <SettingsSection
+          title={t("settings.encoding.intro.title")}
+          description={t("settings.encoding.intro.description")}
+        >
           <label className="flex items-center gap-2 text-sm">
             <Checkbox
               checked={draft.intro_enabled}
@@ -154,6 +216,7 @@ export function EncodingTab({
             />
             {t("settings.encoding.introEnabled")}
           </label>
+
           <div className="space-y-1.5">
             <Label>{t("settings.encoding.introDuration")}</Label>
             <Select
@@ -173,51 +236,6 @@ export function EncodingTab({
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>{t("settings.encoding.introMux")}</Label>
-            <Select
-              value={
-                draft.intro_mux_mode === "single_pass" ||
-                draft.intro_mux_mode === "soft_splice"
-                  ? "single_pass"
-                  : draft.intro_mux_mode === "capcut" ||
-                      draft.intro_mux_mode === "universal"
-                    ? "capcut"
-                    : "stream_copy"
-              }
-              onValueChange={(v) => patchNow("intro_mux_mode", v)}
-              disabled={!draft.intro_enabled}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="stream_copy">
-                  {t("settings.encoding.introMuxCopy")}
-                </SelectItem>
-                <SelectItem value="capcut">
-                  {t("settings.encoding.introMuxCapcut")}
-                </SelectItem>
-                <SelectItem value="single_pass">
-                  {t("settings.encoding.introMuxReencode")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <p
-              className="text-[11px] leading-snug text-muted"
-              title={t("settings.encoding.introMuxHint")}
-            >
-              {t("settings.encoding.introMuxHint")}
-            </p>
-            {wizard ? null : (
-              <p
-                className="text-[11px] leading-snug text-muted"
-                title={t("settings.encoding.previewReuseHint")}
-              >
-                {t("settings.encoding.previewReuseHint")}
-              </p>
-            )}
-          </div>
 
           {wizard ? (
             <div className="space-y-1.5">
@@ -230,7 +248,9 @@ export function EncodingTab({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="fast">{t("settings.encoding.concatFast")}</SelectItem>
+                  <SelectItem value="fast">
+                    {t("settings.encoding.concatFast")}
+                  </SelectItem>
                   <SelectItem value="compatible">
                     {t("settings.encoding.concatCompatible")}
                   </SelectItem>
@@ -240,33 +260,8 @@ export function EncodingTab({
                 </SelectContent>
               </Select>
             </div>
-          ) : (
-            <>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.reencode_matching_clips}
-                  onCheckedChange={(v) =>
-                    patchNow("reencode_matching_clips", v === true)
-                  }
-                />
-                {t("settings.encoding.reencodeMatching")}
-              </label>
-
-              <div className="space-y-1.5">
-                <Label>{t("settings.encoding.previewCrf")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={51}
-                  value={draft.preview_encode_crf}
-                  onChange={(e) =>
-                    patch("preview_encode_crf", Number(e.target.value) || 18)
-                  }
-                />
-              </div>
-            </>
-          )}
-        </SettingsAccordion>
+          ) : null}
+        </SettingsSection>
       ) : null}
     </div>
   );
