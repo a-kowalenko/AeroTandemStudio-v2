@@ -271,22 +271,32 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
                       )}
                     >
                       {editing ? (
-                        <Input
-                          autoFocus
-                          value={renameDraft}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              saveRename();
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelEditCrew();
-                            }
-                          }}
-                          aria-label={t("common.actions.rename")}
-                          className="h-8"
-                        />
+                        <div className="relative min-w-0">
+                          <Input
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                saveRename();
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                cancelEditCrew();
+                              }
+                            }}
+                            aria-label={t("common.actions.rename")}
+                            className="h-8 pr-9"
+                          />
+                          <button
+                            type="button"
+                            title={t("common.actions.save")}
+                            onClick={saveRename}
+                            className="absolute top-1/2 right-1 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-muted transition-colors hover:bg-primary-soft hover:text-foreground"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       ) : (
                         <p
                           className="truncate text-sm font-medium"
@@ -327,48 +337,35 @@ export function CrewTab({ draft, setDraft, commitNow, crewEditor, disclosure }: 
                       </div>
                       <div className="flex w-20 justify-end gap-0.5">
                         {editing ? (
-                          <>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              title={t("common.actions.save")}
-                              onClick={saveRename}
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              title={t("common.actions.cancel")}
-                              onClick={cancelEditCrew}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            title={t("common.actions.cancel")}
+                            onClick={cancelEditCrew}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
                         ) : (
-                          <>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              title={t("common.actions.rename")}
-                              onClick={() => startEditCrew(index)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              title={t("common.actions.delete")}
-                              onClick={() => deleteCrewMember(index)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            title={t("common.actions.rename")}
+                            onClick={() => startEditCrew(index)}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                         )}
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          title={t("common.actions.delete")}
+                          onClick={() => deleteCrewMember(index)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
                     </li>
                   );
