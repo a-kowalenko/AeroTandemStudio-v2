@@ -853,6 +853,7 @@ export function SdFileSelector({
 
     const pt = gridLocalPoint(e);
     if (!pt) return;
+    window.getSelection()?.removeAllRanges();
     pendingMarqueeRef.current = {
       pointerId: e.pointerId,
       x0: pt.x,
@@ -972,7 +973,7 @@ export function SdFileSelector({
         if (!v) onClose();
       }}
     >
-      <DialogContent className="flex h-[min(90vh,880px)] max-h-[90vh] w-[min(1100px,95vw)] max-w-none flex-col gap-2.5 overflow-hidden">
+      <DialogContent className="flex h-[min(90vh,880px)] max-h-[90vh] w-[min(1100px,95vw)] max-w-none select-none flex-col gap-2.5 overflow-hidden">
         <DialogHeader className="space-y-2 pr-8">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription className="sr-only">
@@ -1074,7 +1075,7 @@ export function SdFileSelector({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("sd.selector.searchPlaceholder")}
-              className="h-7 pl-7 text-xs"
+              className="h-7 pl-7 text-xs select-text"
             />
           </div>
           <div className="flex gap-0.5 rounded-md border border-border/60 p-0.5">
@@ -1291,10 +1292,7 @@ export function SdFileSelector({
         {viewMode === "thumbnail" ? (
           <div
             ref={attachGridRef}
-            className={cn(
-              "relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated [scrollbar-gutter:stable]",
-              selectionDragging && "select-none",
-            )}
+            className="relative min-h-0 flex-1 overflow-auto rounded-md border border-border/60 bg-card-elevated [scrollbar-gutter:stable]"
             onPointerDown={onGridPointerDown}
             onPointerMove={onGridPointerMove}
             onPointerUp={onGridPointerUp}
