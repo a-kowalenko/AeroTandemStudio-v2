@@ -23,16 +23,22 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen-Fenster größer und klarer; seltene Optionen hinter Accordion „Weitere Optionen“
 - Einstellungen Einfach: Server-Backup und Backup-URL unter Medien ausgeblendet (nur noch unter Erweitert bzw. im Server-Profil)
 - Einstellungen Einfach: „Ton bei erfolgreichem Auswerfen“ unter Medien sichtbar
+- Einstellungen & Ersteinrichtung: kurze Hinweis-Icons an Optionen (Backup, Import, QR, Kodierung) statt langer Textzeilen
+- SD-Backup: klarere Hinweise — „SD nach Backup leeren“ betrifft nur bereits gesicherte Dateien
 - Einstellungen → Encoding → Video-Codec: Auto behält den Quellcodec; H.264 bzw. H.265 erzwingen den Export-Codec (passt die Quelle, wird kopiert — sonst Neu-Kodierung), auch mit Intro / Universal-Export
+- Neu-Kodierungs-Dialog: verständlichere Gründe und dieselben Qualitätsstufen wie „Video-Qualität (CRF)“ in den Einstellungen
+- Hintergrund-Vorbereitung auch mit Intro: Body und Fotos vorab, Intro erst beim Erstellen anfügen
 - Reconnect- und Vorgänge-Nachholen: ausstehende Uploads per Checkbox wählen (Standard alle markiert); nicht markierte werden nicht mehr vorgeschlagen, bleiben unter Vorgänge nachholbar
 - Vorgänge: Status „Ignoriert“ für bewusst abgewählte Uploads
 - Crew-Liste: Namen direkt in der Zeile umbenennen und mit Speichern bestätigen
+- Vorgänge-Historie: „Alles entfernen“ unter dem Mehr-Menü (⋯)
 
 ### Behoben
 
 - SD-/USB-Import: beim Aufziehen der Auswahl wird Text nicht mehr ungewollt markiert
 - Dropdowns in Dialogen liegen wieder korrekt über dem Dialog statt dahinter
 - Fortschritt bei Neu-Kodierung startet wieder bei 0 % und folgt dem Encode (statt hängen zu bleiben)
+- Kodierungs-Vorgaben (Empfohlen, Ausgewogen, …) nutzen dieselben CRF-Stufen wie die Einstellungen
 
 ### Hinweis
 
