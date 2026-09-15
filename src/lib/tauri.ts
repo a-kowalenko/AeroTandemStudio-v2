@@ -196,6 +196,8 @@ export type AppConfig = {
   post_update_hint_ack_version: string;
   /** One-shot fleet settings preset (USB / concat / SMB) already applied. */
   settings_fleet_preset_v1_applied: boolean;
+  /** One-shot encoding defaults reset (body concat Auto + CRF 20) already applied. */
+  encoding_defaults_reset_v1_applied: boolean;
   /** Phase 42: auto-delete local Vorgang folders older than retention. */
   auto_cleanup_jobs_enabled: boolean;
   /** Retention presets: 7 / 14 / 30 / 90 / 180 / 365 (default 14). */

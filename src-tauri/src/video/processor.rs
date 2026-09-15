@@ -89,7 +89,7 @@ pub struct CreateVideoOptions {
     /// Intro+Body mux: `"reencode"` (default) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
-    /// Multi-clip body concat: `"compatible"` (default) | `"fast"` | `"legacy"`.
+    /// Multi-clip body concat: `"auto"` (default) | `"compatible"` | `"apple"` | `"fast"` | `"legacy"`.
     #[serde(default = "default_body_concat_mode")]
     pub body_concat_mode: String,
     /// Use NVENC/VideoToolbox when available (from config `hardware_acceleration_enabled`).

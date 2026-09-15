@@ -345,6 +345,10 @@ pub struct AppConfig {
     /// Missing key on load → migration runs once; fresh defaults already have this set.
     #[serde(default)]
     pub settings_fleet_preset_v1_applied: bool,
+    /// One-shot: force `body_concat_mode=auto` + `preview_encode_crf=20` for all installs once.
+    /// Missing key on load → migration runs once; fresh defaults already have this set.
+    #[serde(default)]
+    pub encoding_defaults_reset_v1_applied: bool,
 }
 
 fn default_ort() -> String {
@@ -1140,6 +1144,8 @@ impl Default for AppConfig {
             last_auto_cleanup_date: String::new(),
             // Fresh installs already match the fleet target — skip one-shot.
             settings_fleet_preset_v1_applied: true,
+            // Fresh installs already match encoding defaults — skip one-shot.
+            encoding_defaults_reset_v1_applied: true,
         }
     }
 }
@@ -1184,10 +1190,14 @@ pub fn merge_with_defaults_ex(partial: Value) -> Result<(AppConfig, bool), Confi
     let mut cfg = merge_with_defaults_core(partial)?;
     let crew_dirty = merge_default_crew(&mut cfg);
     let preset_dirty = apply_fleet_settings_preset_v1(&mut cfg);
+    let encoding_reset_dirty = apply_encoding_defaults_reset_v1(&mut cfg);
     // Rewrite only when migration leaves a non-default mode (legacy completed → advanced).
     let ui_mode_dirty =
         !had_settings_ui_mode && cfg.settings_ui_mode != default_settings_ui_mode();
-    Ok((cfg, crew_dirty || preset_dirty || ui_mode_dirty))
+    Ok((
+        cfg,
+        crew_dirty || preset_dirty || encoding_reset_dirty || ui_mode_dirty,
+    ))
 }
 
 fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
@@ -1203,6 +1213,9 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
         .unwrap_or(false);
     let had_fleet_preset = obj
         .map(|o| o.contains_key("settings_fleet_preset_v1_applied"))
+        .unwrap_or(false);
+    let had_encoding_defaults_reset = obj
+        .map(|o| o.contains_key("encoding_defaults_reset_v1_applied"))
         .unwrap_or(false);
     let had_settings_ui_mode = obj
         .map(|o| o.contains_key("settings_ui_mode"))
@@ -1247,6 +1260,10 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
         // Existing installs lack the key; defaults JSON would otherwise mark applied.
         cfg.settings_fleet_preset_v1_applied = false;
     }
+    if !had_encoding_defaults_reset {
+        // Existing installs lack the key; defaults JSON would otherwise mark applied.
+        cfg.encoding_defaults_reset_v1_applied = false;
+    }
     if !had_settings_ui_mode {
         // Legacy operators keep the full Settings surface; first-run starts simple.
         cfg.settings_ui_mode = if cfg.setup_completed {
@@ -1271,17 +1288,30 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     Ok(cfg)
 }
 
-/// One-shot: USB cams on, import auto, concat compatible, SMB auto-mount on.
+/// One-shot: USB cams on, import auto, concat auto, SMB auto-mount on.
 fn apply_fleet_settings_preset_v1(cfg: &mut AppConfig) -> bool {
     if cfg.settings_fleet_preset_v1_applied {
         return false;
     }
     cfg.usb_camera_import_enabled = true;
     cfg.usb_import_mode = "auto".into();
-    cfg.body_concat_mode = "compatible".into();
+    cfg.body_concat_mode = "auto".into();
     cfg.smb_auto_mount_enabled = true;
     cfg.settings_fleet_preset_v1_applied = true;
     cfg.sync_usb_import_mode();
+    cfg.sync_body_concat_mode();
+    true
+}
+
+/// One-shot: force H.265 player compatibility Auto + Video-Qualität CRF 20 for all installs.
+/// Runs after fleet v1 so every upgrade lands on these product defaults once.
+fn apply_encoding_defaults_reset_v1(cfg: &mut AppConfig) -> bool {
+    if cfg.encoding_defaults_reset_v1_applied {
+        return false;
+    }
+    cfg.body_concat_mode = "auto".into();
+    cfg.preview_encode_crf = default_preview_crf();
+    cfg.encoding_defaults_reset_v1_applied = true;
     cfg.sync_body_concat_mode();
     true
 }
@@ -1452,8 +1482,10 @@ mod tests {
         assert_eq!(cfg.video_codec, "auto");
         assert_eq!(cfg.intro_mux_mode, "capcut");
         assert!(cfg.speculative_create_enabled);
-        assert_eq!(cfg.body_concat_mode, "compatible");
+        assert_eq!(cfg.body_concat_mode, "auto");
+        assert_eq!(cfg.preview_encode_crf, 20);
         assert!(cfg.settings_fleet_preset_v1_applied);
+        assert!(cfg.encoding_defaults_reset_v1_applied);
         assert!(cfg.usb_camera_import_enabled);
         assert_eq!(cfg.usb_import_mode, "auto");
         assert_eq!(cfg.server_url, "smb://169.254.169.254/aktuell");
@@ -1527,11 +1559,12 @@ mod tests {
         assert!(cfg.settings_fleet_preset_v1_applied);
         assert!(cfg.usb_camera_import_enabled);
         assert_eq!(cfg.usb_import_mode, "auto");
-        assert_eq!(cfg.body_concat_mode, "compatible");
+        assert_eq!(cfg.body_concat_mode, "auto");
         assert!(cfg.smb_auto_mount_enabled);
 
         let (again, dirty2) = merge_with_defaults_ex(serde_json::json!({
             "settings_fleet_preset_v1_applied": true,
+            "encoding_defaults_reset_v1_applied": true,
             "usb_camera_import_enabled": false,
             "usb_import_mode": "mtp_preferred",
             "body_concat_mode": "fast",
@@ -1544,6 +1577,33 @@ mod tests {
         assert_eq!(again.body_concat_mode, "fast");
         assert!(!again.smb_auto_mount_enabled);
         assert!(again.settings_fleet_preset_v1_applied);
+        assert!(again.encoding_defaults_reset_v1_applied);
+    }
+
+    #[test]
+    fn encoding_defaults_reset_v1_forces_auto_and_crf20_once() {
+        let (cfg, dirty) = merge_with_defaults_ex(serde_json::json!({
+            "settings_fleet_preset_v1_applied": true,
+            "body_concat_mode": "apple",
+            "preview_encode_crf": 26,
+        }))
+        .unwrap();
+        assert!(dirty);
+        assert!(cfg.encoding_defaults_reset_v1_applied);
+        assert_eq!(cfg.body_concat_mode, "auto");
+        assert_eq!(cfg.preview_encode_crf, 20);
+
+        let (again, dirty2) = merge_with_defaults_ex(serde_json::json!({
+            "settings_fleet_preset_v1_applied": true,
+            "encoding_defaults_reset_v1_applied": true,
+            "body_concat_mode": "compatible",
+            "preview_encode_crf": 18,
+        }))
+        .unwrap();
+        assert!(!dirty2);
+        assert_eq!(again.body_concat_mode, "compatible");
+        assert_eq!(again.preview_encode_crf, 18);
+        assert!(again.encoding_defaults_reset_v1_applied);
     }
 
     #[test]
