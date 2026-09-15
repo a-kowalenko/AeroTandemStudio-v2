@@ -75,7 +75,7 @@ export type ServerProfile = {
 };
 
 /** Multi-clip body concat mode (canonical values after normalize). */
-export type BodyConcatMode = "fast" | "compatible" | "legacy";
+export type BodyConcatMode = "auto" | "fast" | "compatible" | "apple" | "legacy";
 
 export type AppConfig = {
   speicherort: string;
@@ -128,7 +128,7 @@ export type AppConfig = {
   reencode_matching_clips: boolean;
   /** Intro+Body mux: always CapCut-style universal export (`capcut`). */
   intro_mux_mode: "capcut" | string;
-  /** Multi-clip body concat: "compatible" (default) | "fast" | "legacy". */
+  /** Multi-clip body concat: "auto" (default) | "compatible" | "apple" (UI). Fast/legacy still work at runtime / fallback. */
   body_concat_mode: BodyConcatMode | string;
   preview_encode_crf: number;
   qr_check_enabled: boolean;

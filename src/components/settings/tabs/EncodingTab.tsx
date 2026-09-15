@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
+import { settingsBodyConcatMode } from "@/lib/bodyConcatMode";
 import { PHOTO_EXTENSIONS, VIDEO_EXTENSIONS, mediaKind } from "@/lib/media";
 import { probeOutroAsset } from "@/lib/tauri";
 import { showAdvanced } from "@/lib/settingsUi";
@@ -126,6 +126,14 @@ export function EncodingTab({
   useEffect(() => {
     if (instructorPath) void refreshInstructorProbe(instructorPath);
   }, [instructorPath, refreshInstructorProbe]);
+
+  // Fast/Legacy removed from Settings — migrate leftover configs to Compatible-family.
+  useEffect(() => {
+    const next = settingsBodyConcatMode(draft.body_concat_mode);
+    if (draft.body_concat_mode !== next) {
+      patchNow("body_concat_mode", next);
+    }
+  }, [draft.body_concat_mode, patchNow]);
 
   const pickInstructor = useCallback(async () => {
     const selected = await openDialog({
@@ -243,21 +251,21 @@ export function EncodingTab({
                 <SettingsHintIcon text={t("settings.encoding.concatHint")} />
               </div>
               <Select
-                value={normalizeBodyConcatMode(draft.body_concat_mode)}
+                value={settingsBodyConcatMode(draft.body_concat_mode)}
                 onValueChange={(v) => patchNow("body_concat_mode", v)}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="fast">
-                    {t("settings.encoding.concatFast")}
+                  <SelectItem value="auto">
+                    {t("settings.encoding.concatAuto")}
                   </SelectItem>
                   <SelectItem value="compatible">
                     {t("settings.encoding.concatCompatible")}
                   </SelectItem>
-                  <SelectItem value="legacy">
-                    {t("settings.encoding.concatLegacy")}
+                  <SelectItem value="apple">
+                    {t("settings.encoding.concatApple")}
                   </SelectItem>
                 </SelectContent>
               </Select>

@@ -117,7 +117,7 @@ fn default_intro_mux_mode() -> String {
     "capcut".into()
 }
 fn default_body_concat_mode() -> String {
-    "compatible".into()
+    "auto".into()
 }
 
 fn normalized_intro_mux_mode(mode: &str) -> String {

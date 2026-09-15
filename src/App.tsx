@@ -1621,7 +1621,7 @@ function App() {
         reason: p.reason ?? "",
       });
       setStatus(
-        /compatible\s*path/i.test(p.reason ?? "")
+        /(compatible|apple|auto)\s*path/i.test(p.reason ?? "")
           ? t("progress.status.compatiblePathWaiting")
           : t("progress.status.fastPathWaiting"),
       );
@@ -2222,7 +2222,7 @@ function App() {
         uploadToServer: Boolean(config?.upload_to_server),
         manualEntryMode: config?.manual_entry_mode,
         reusePreview: canReusePreview,
-        bodyConcatMode: config?.body_concat_mode ?? "compatible",
+        bodyConcatMode: config?.body_concat_mode ?? "auto",
         introEnabled: Boolean(config?.intro_enabled),
         outroEnabled:
           Boolean(config?.outro_enabled) &&
@@ -2251,7 +2251,7 @@ function App() {
           crf: config?.preview_encode_crf ?? 20,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
-          body_concat_mode: config?.body_concat_mode ?? "compatible",
+          body_concat_mode: config?.body_concat_mode ?? "auto",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
           reuse_preview_fingerprint: canReusePreview

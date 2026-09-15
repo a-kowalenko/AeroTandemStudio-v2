@@ -24,7 +24,7 @@ use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::progress::{progress_from_times_with_task, EncodeProgress};
 use super::prep_cache;
-use super::probe::CompatibleStreamKey;
+use super::probe::{compatible_stream_key_from_probe, CompatibleStreamKey};
 use super::probe_cache::{self, CachedClipProbe};
 use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 use crate::storage::logging;
@@ -133,6 +133,81 @@ pub fn hevc_stream_copy_video_tag() -> &'static str {
     "hev1"
 }
 
+/// hvc1 = Apple / QuickTime preferred HEVC sample-entry (parameter sets in extradata).
+pub fn hevc_apple_video_tag() -> &'static str {
+    "hvc1"
+}
+
+/// Pick output HEVC tag from probed clip keys (Auto mode).
+///
+/// - No HEVC clips → `hev1` (unused)
+/// - All nonempty tags `hvc1` → `hvc1`
+/// - All nonempty tags `hev1` (or empty-only) → `hev1`
+/// - Mixed / exotic → `hev1` (robust concat)
+pub fn resolve_hevc_tag_from_stream_keys(keys: &[CompatibleStreamKey]) -> &'static str {
+    let tags: Vec<String> = keys
+        .iter()
+        .filter(|k| matches!(normalize_vcodec_name(&k.codec), VideoCodec::Hevc))
+        .map(|k| k.tag.trim().to_ascii_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tags.is_empty() {
+        return hevc_stream_copy_video_tag();
+    }
+    if tags.iter().all(|t| t == "hvc1") {
+        return hevc_apple_video_tag();
+    }
+    if tags.iter().all(|t| t == "hev1") {
+        return hevc_stream_copy_video_tag();
+    }
+    // Mixed hvc1/hev1 or exotic fourcc → prefer robust concat tag.
+    hevc_stream_copy_video_tag()
+}
+
+/// HEVC `-tag:v` for Compatible-family modes.
+///
+/// - `apple` → always `hvc1`
+/// - `auto` → preserve unanimous source tag (see [`resolve_hevc_tag_from_stream_keys`])
+/// - `compatible` / other → `hev1`
+pub fn resolve_hevc_output_tag(mode: &str, keys: &[CompatibleStreamKey]) -> &'static str {
+    if is_apple_body_concat_mode(mode) {
+        return hevc_apple_video_tag();
+    }
+    if is_auto_body_concat_mode(mode) {
+        return resolve_hevc_tag_from_stream_keys(keys);
+    }
+    hevc_stream_copy_video_tag()
+}
+
+/// Legacy helper without probe keys (`apple` → hvc1, else hev1). Prefer [`resolve_hevc_output_tag`].
+pub fn hevc_tag_for_body_concat_mode(mode: &str) -> &'static str {
+    resolve_hevc_output_tag(mode, &[])
+}
+
+/// Stream-copy remux that only rewrites `-tag:v` to `hvc1` (safe post-Dirty fix-up).
+pub fn build_retag_hevc_hvc1_args(input: &str, output: &str, has_audio: bool) -> Vec<String> {
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        input.to_string(),
+        "-map".into(),
+        "0:v:0".into(),
+    ];
+    map_audio_if(has_audio, &mut args);
+    args.extend([
+        "-c".into(),
+        "copy".into(),
+        "-tag:v".into(),
+        hevc_apple_video_tag().into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-dn".into(),
+        output.to_string(),
+    ]);
+    args
+}
+
 // ---------------------------------------------------------------------------
 // Pure FFmpeg command builders (unit-tested)
 // ---------------------------------------------------------------------------
@@ -203,12 +278,14 @@ pub fn build_prep_hevc_splice_args(
 /// Compatible-path per-clip prep: AUD + QT-safe tag + strip soft-rotation (stream-copy).
 ///
 /// When `ignore_editlist` is true, adds `-ignore_editlist 1` before `-i` (edit-list hygiene).
+/// `hevc_tag` is `-tag:v` for HEVC (`hev1` Compatible / `hvc1` Apple); ignored for H.264.
 pub fn build_prep_compatible_args(
     input: &str,
     output: &str,
     vcodec: VideoCodec,
     has_audio: bool,
     ignore_editlist: bool,
+    hevc_tag: &str,
 ) -> Vec<String> {
     let mut args = vec![
         "-y".into(),
@@ -245,7 +322,7 @@ pub fn build_prep_compatible_args(
                 "-bsf:v".into(),
                 "hevc_metadata=aud=insert".into(),
                 "-tag:v".into(),
-                hevc_stream_copy_video_tag().to_string(),
+                hevc_tag.to_string(),
             ]);
         }
         VideoCodec::H264 => {
@@ -332,18 +409,20 @@ pub fn build_compatible_mp4_to_mpegts_args(
 ///
 /// Same stream-copy merge as Legacy ([`build_mpegts_concat_to_mp4_args`]) including AUD/tag
 /// so the MP4 muxer can derive HEVC dimensions; omits only `+faststart` (43.1 finalize).
+/// `hevc_tag`: `hev1` (Compatible) or `hvc1` (Apple).
 pub fn build_compatible_mpegts_concat_to_mp4_args(
     concat_list_path: &str,
     output_mp4: &str,
     vcodec: VideoCodec,
     has_audio: bool,
+    hevc_tag: &str,
 ) -> Vec<String> {
     let mut args = build_mpegts_concat_to_mp4_args(
         concat_list_path,
         output_mp4,
         vcodec,
         has_audio,
-        hevc_stream_copy_video_tag(),
+        hevc_tag,
     );
     omit_faststart_movflags(&mut args);
     args
@@ -358,13 +437,14 @@ pub fn build_compatible_prep_mp4_concat_args(
     output_mp4: &str,
     vcodec: VideoCodec,
     has_audio: bool,
+    hevc_tag: &str,
 ) -> Vec<String> {
     let mut args = build_mpegts_concat_to_mp4_args(
         concat_list_path,
         output_mp4,
         vcodec,
         has_audio,
-        hevc_stream_copy_video_tag(),
+        hevc_tag,
     );
     omit_faststart_movflags(&mut args);
     args
@@ -481,11 +561,13 @@ pub fn compatible_clips_are_clean(keys: &[CompatibleStreamKey]) -> bool {
 /// Clean-Set: concat demuxer + stream-copy + Compatible output AUD/tag (no Prep, no faststart).
 ///
 /// Analog to [`build_concat_demuxer_copy_args`] plus QT hygiene; finalize applies faststart.
+/// `hevc_tag`: `hev1` (Compatible) or `hvc1` (Apple).
 pub fn build_compatible_clean_concat_args(
     concat_list_path: &str,
     output: &str,
     vcodec: VideoCodec,
     has_audio: bool,
+    hevc_tag: &str,
 ) -> Vec<String> {
     let mut args = vec![
         "-y".into(),
@@ -515,7 +597,7 @@ pub fn build_compatible_clean_concat_args(
                 "-bsf:v".into(),
                 "hevc_metadata=aud=insert".into(),
                 "-tag:v".into(),
-                hevc_stream_copy_video_tag().to_string(),
+                hevc_tag.to_string(),
             ]);
         }
         VideoCodec::H264 => {
@@ -541,11 +623,13 @@ pub fn build_compatible_clean_concat_args(
 ///
 /// Matroska cannot mux HEVC-from-TS without dimensions; remux to MP4 first
 /// (same AUD/tag as the primary merge) so concat→MKV sees a proper track header.
+/// `hevc_tag`: `hev1` (Compatible) or `hvc1` (Apple).
 pub fn build_compatible_ts_segment_to_mp4_args(
     input_ts: &str,
     output_mp4: &str,
     vcodec: VideoCodec,
     has_audio: bool,
+    hevc_tag: &str,
 ) -> Vec<String> {
     let mut args = vec![
         "-y".into(),
@@ -574,7 +658,7 @@ pub fn build_compatible_ts_segment_to_mp4_args(
                 "-bsf:v".into(),
                 "hevc_metadata=aud=insert".into(),
                 "-tag:v".into(),
-                hevc_stream_copy_video_tag().to_string(),
+                hevc_tag.to_string(),
             ]);
         }
         VideoCodec::H264 => {
@@ -1473,7 +1557,8 @@ pub struct ConcatOutcome {
 /// with an ask callback, the user may abort or switch to the legacy MPEG-TS path.
 /// Without a callback (e.g. preview), fast failure falls back to legacy silently.
 ///
-/// Mode `compatible` uses Clean Ein-Pass or Dirty TS-Prep (probe gate + AUD/tag hygiene).
+/// Mode `compatible` / `apple` use Clean Ein-Pass or Dirty TS-Prep (probe gate + AUD/tag).
+/// Apple keeps HEVC `hvc1`; Compatible forces `hev1`.
 /// On FFmpeg failure: same Ask/silent-Legacy parity as Fast — never falls back to Fast.
 /// Clean-Fail prefers one Dirty retry before Ask (Phase 43.3).
 pub fn concat_videos_stream_copy_only(
@@ -1512,7 +1597,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
         }
     }
 
-    let compatible_mode = is_compatible_body_concat_mode(body_concat_mode);
+    let compatible_family = is_compatible_family_body_concat_mode(body_concat_mode);
 
     // OPT-16: skip "Analysiere Videos…" when every clip is already cached.
     let all_cached_peek = paths.iter().all(|p| probe_cache::get(p).is_some());
@@ -1539,14 +1624,14 @@ pub fn concat_videos_stream_copy_only_with_mode(
     let codecs: Vec<VideoCodec> = clip_probes.iter().map(|p| p.vcodec).collect();
     let has_audio_flags: Vec<bool> = clip_probes.iter().map(|p| p.has_audio).collect();
     let total_secs: f64 = clip_probes.iter().map(|p| p.duration_secs).sum();
-    let compatible_probes: Option<Vec<ClipConcatProbe>> = if compatible_mode {
+    let compatible_probes: Option<Vec<ClipConcatProbe>> = if compatible_family {
         Some(clip_probes.clone())
     } else {
         None
     };
     // Emit compatible-probe only when gate runs now (cache miss) and multi-clip.
     let emit_compatible_probe_progress =
-        should_emit_compatible_probe_progress(compatible_mode, all_from_cache, paths.len());
+        should_emit_compatible_probe_progress(compatible_family, all_from_cache, paths.len());
 
     let all_same = codecs.windows(2).all(|w| w[0] == w[1]);
     let vcodec = codecs[0];
@@ -1556,7 +1641,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
 
     if stream_copy_ok {
         let use_fast = is_fast_body_concat_mode(body_concat_mode);
-        let use_compatible = is_compatible_body_concat_mode(body_concat_mode);
+        let use_compatible_family = is_compatible_family_body_concat_mode(body_concat_mode);
 
         if use_fast {
             match concat_stream_copy_fast(
@@ -1597,7 +1682,35 @@ pub fn concat_videos_stream_copy_only_with_mode(
                     }
                 }
             }
-        } else if use_compatible {
+        } else if use_compatible_family {
+            let keys: Vec<CompatibleStreamKey> = compatible_probes
+                .as_ref()
+                .expect("compatible probes")
+                .iter()
+                .map(|p| p.compatible_key.clone())
+                .collect();
+            let hevc_tag = resolve_hevc_output_tag(body_concat_mode, &keys);
+            let use_auto = is_auto_body_concat_mode(body_concat_mode);
+            let path_label = if use_auto {
+                "Auto"
+            } else if hevc_tag == hevc_apple_video_tag() {
+                "Apple"
+            } else {
+                "Compatible"
+            };
+            let outcome_method = if use_auto {
+                "stream-copy-auto"
+            } else if hevc_tag == hevc_apple_video_tag() {
+                "stream-copy-apple"
+            } else {
+                "stream-copy-compatible"
+            };
+            if use_auto {
+                logging::info(
+                    "concat",
+                    format!("auto: resolved HEVC tag={hevc_tag}"),
+                );
+            }
             match concat_stream_copy_compatible(
                 ffmpeg,
                 paths,
@@ -1608,11 +1721,12 @@ pub fn concat_videos_stream_copy_only_with_mode(
                 &on_progress,
                 compatible_probes.as_ref().expect("compatible probes"),
                 emit_compatible_probe_progress,
+                hevc_tag,
             ) {
                 Ok(()) => {
                     emit(&on_progress, 100.0, "end");
                     return Ok(ConcatOutcome {
-                        method: "stream-copy-compatible".into(),
+                        method: outcome_method.into(),
                         codec: vcodec.as_str().into(),
                         reencode_reason: None,
                     });
@@ -1629,12 +1743,14 @@ pub fn concat_videos_stream_copy_only_with_mode(
                         return Err(e);
                     }
                     let _ = fs::remove_file(output);
-                    let reason = format!("Compatible Path fehlgeschlagen: {e}");
+                    let reason = format!("{path_label} Path fehlgeschlagen: {e}");
                     match handle_body_concat_path_fail(
                         &on_progress,
                         on_fast_fail,
                         &reason,
-                        "Compatible Path fehlgeschlagen — warte auf Entscheidung…",
+                        &format!(
+                            "{path_label} Path fehlgeschlagen — warte auf Entscheidung…"
+                        ),
                     ) {
                         Ok(()) => {
                             // Fall through to legacy MPEG-TS (never to Fast).
@@ -1762,6 +1878,7 @@ pub fn concat_intro_with_body(
         total_secs,
         &on_progress,
         &clip_probes,
+        hevc_stream_copy_video_tag(),
     ) {
         Ok(()) => {
             emit(&on_progress, 100.0, "end");
@@ -1820,6 +1937,29 @@ pub fn is_compatible_body_concat_mode(mode: &str) -> bool {
         mode.trim().to_ascii_lowercase().as_str(),
         "compatible" | "compat" | "qt_safe" | "prepared" | "avidemux"
     )
+}
+
+/// True when settings request Apple mode (Compatible fork, HEVC `hvc1`).
+pub fn is_apple_body_concat_mode(mode: &str) -> bool {
+    matches!(
+        mode.trim().to_ascii_lowercase().as_str(),
+        "apple" | "hvc1" | "iphone"
+    )
+}
+
+/// True when settings request Auto (preserve unanimous source HEVC tag).
+pub fn is_auto_body_concat_mode(mode: &str) -> bool {
+    matches!(
+        mode.trim().to_ascii_lowercase().as_str(),
+        "auto" | "preserve" | "source_tag"
+    )
+}
+
+/// Compatible, Apple, or Auto — shared Clean/Dirty pipeline with mode-specific HEVC tags.
+pub fn is_compatible_family_body_concat_mode(mode: &str) -> bool {
+    is_compatible_body_concat_mode(mode)
+        || is_apple_body_concat_mode(mode)
+        || is_auto_body_concat_mode(mode)
 }
 
 /// Whether Create should emit the generic `probing` / „Analysiere Videos…“ step (OPT-16).
@@ -1936,6 +2076,7 @@ fn compatible_mkv_merge_from_prep(
     has_audio: bool,
     total_secs: f64,
     on_progress: &ProgressCallback,
+    hevc_tag: &str,
 ) -> Result<(), ConcatError> {
     let mut mp4_paths: Vec<String> = Vec::with_capacity(prepared_ts_paths.len());
     for (i, ts) in prepared_ts_paths.iter().enumerate() {
@@ -1945,7 +2086,7 @@ fn compatible_mkv_merge_from_prep(
         let mp4 = work.join(format!("seg_{i}_mkv_prep.mp4"));
         let mp4_str = path_str(&mp4);
         let remux_args =
-            build_compatible_ts_segment_to_mp4_args(ts, &mp4_str, vcodec, has_audio);
+            build_compatible_ts_segment_to_mp4_args(ts, &mp4_str, vcodec, has_audio, hevc_tag);
         match run_ffmpeg_checked(ffmpeg, &remux_args) {
             Err(e) if is_disk_full_error(&e) => {
                 return Err(ConcatError::Ffmpeg(disk_full_error()));
@@ -1970,7 +2111,7 @@ fn compatible_mkv_merge_from_prep(
     }
 
     let video_tag = match vcodec {
-        VideoCodec::Hevc => hevc_stream_copy_video_tag(),
+        VideoCodec::Hevc => hevc_tag,
         _ => "avc1",
     };
     let merge_tmp = work.join("compatible_merge.mp4");
@@ -2019,6 +2160,7 @@ fn compatible_merge_from_prep(
     has_audio: bool,
     total_secs: f64,
     on_progress: &ProgressCallback,
+    hevc_tag: &str,
 ) -> Result<(), ConcatError> {
     let list_path = work.join("prep_concat_list.txt");
     let refs: Vec<&str> = prepared_ts_paths.iter().map(|s| s.as_str()).collect();
@@ -2028,8 +2170,13 @@ fn compatible_merge_from_prep(
     let merge_tmp_str = path_str(&merge_tmp);
 
     emit(on_progress, 0.0, "compatible-concat");
-    let concat_args =
-        build_compatible_mpegts_concat_to_mp4_args(&list_str, &merge_tmp_str, vcodec, has_audio);
+    let concat_args = build_compatible_mpegts_concat_to_mp4_args(
+        &list_str,
+        &merge_tmp_str,
+        vcodec,
+        has_audio,
+        hevc_tag,
+    );
     let result = run_ffmpeg(ffmpeg, &concat_args, total_secs, on_progress.clone());
 
     match result {
@@ -2054,6 +2201,7 @@ fn compatible_merge_from_prep(
                 has_audio,
                 total_secs,
                 on_progress,
+                hevc_tag,
             )
         }
     }
@@ -2093,6 +2241,7 @@ fn compatible_finalize_faststart(
 /// Prepared QT-safe stream-copy: probe gate → Clean Ein-Pass | Dirty TS-Prep → finalize.
 ///
 /// Phase 43.3: Clean-Fail → one Dirty retry (never silent Fast). Cancel/disk-full stay fatal.
+/// `hevc_tag`: `hev1` (Compatible) or `hvc1` (Apple).
 fn concat_stream_copy_compatible(
     ffmpeg: &Path,
     paths: &[String],
@@ -2103,6 +2252,7 @@ fn concat_stream_copy_compatible(
     on_progress: &ProgressCallback,
     clip_probes: &[ClipConcatProbe],
     emit_probe_progress: bool,
+    hevc_tag: &str,
 ) -> Result<(), ConcatError> {
     if is_cancelled() {
         return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
@@ -2129,6 +2279,7 @@ fn concat_stream_copy_compatible(
             has_audio,
             total_secs,
             on_progress,
+            hevc_tag,
         ) {
             Ok(()) => {
                 compatible_validate_output(
@@ -2138,6 +2289,14 @@ fn concat_stream_copy_compatible(
                     on_progress,
                     false,
                     vcodec,
+                )?;
+                maybe_ensure_output_hevc_hvc1_tag(
+                    ffmpeg,
+                    output,
+                    vcodec,
+                    hevc_tag,
+                    has_audio,
+                    on_progress,
                 )?;
                 return Ok(());
             }
@@ -2169,7 +2328,86 @@ fn concat_stream_copy_compatible(
         total_secs,
         on_progress,
         clip_probes,
+        hevc_tag,
+    )?;
+    maybe_ensure_output_hevc_hvc1_tag(
+        ffmpeg,
+        output,
+        vcodec,
+        hevc_tag,
+        has_audio,
+        on_progress,
     )
+}
+
+/// When target tag is `hvc1` but Dirty/TS left `hev1`, stream-copy remux with `-tag:v hvc1`.
+///
+/// Never fails the concat on retag errors (keep prior output + warn). No-op for `hev1` targets.
+fn maybe_ensure_output_hevc_hvc1_tag(
+    ffmpeg: &Path,
+    output: &str,
+    vcodec: VideoCodec,
+    want_tag: &str,
+    has_audio: bool,
+    on_progress: &ProgressCallback,
+) -> Result<(), ConcatError> {
+    if vcodec != VideoCodec::Hevc || want_tag != hevc_apple_video_tag() {
+        return Ok(());
+    }
+    if is_cancelled() {
+        return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+    }
+
+    let stderr = match ffmpeg_probe_stderr(ffmpeg, output) {
+        Ok(s) => s,
+        Err(e) => {
+            logging::warn(
+                "concat",
+                format!("hvc1 ensure: probe failed (keeping output): {e}"),
+            );
+            return Ok(());
+        }
+    };
+    let Some(key) = compatible_stream_key_from_probe(&stderr, has_audio) else {
+        logging::warn("concat", "hvc1 ensure: no stream key (keeping output)");
+        return Ok(());
+    };
+    if key.tag.eq_ignore_ascii_case("hvc1") {
+        return Ok(());
+    }
+
+    emit(on_progress, 0.0, "compatible-hvc1-retag");
+    logging::info(
+        "concat",
+        format!(
+            "hvc1 ensure: output tag='{}' — stream-copy retag",
+            key.tag
+        ),
+    );
+
+    let out_path = Path::new(output);
+    let tmp = out_path.with_extension("hvc1retag.mp4");
+    let tmp_str = path_str(&tmp);
+    let args = build_retag_hevc_hvc1_args(output, &tmp_str, has_audio);
+    match run_ffmpeg_checked(ffmpeg, &args) {
+        Ok(()) => {
+            if let Err(e) = fs::rename(&tmp, out_path) {
+                let _ = fs::remove_file(&tmp);
+                logging::warn(
+                    "concat",
+                    format!("hvc1 ensure: rename failed (keeping prior output): {e}"),
+                );
+            }
+        }
+        Err(e) => {
+            let _ = fs::remove_file(&tmp);
+            logging::warn(
+                "concat",
+                format!("hvc1 ensure: retag failed (keeping prior output): {e}"),
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Clean Ein-Pass: source list → concat+copy+AUD/tag (no Prep) → finalize faststart.
@@ -2181,6 +2419,7 @@ fn concat_compatible_clean_pass(
     has_audio: bool,
     total_secs: f64,
     on_progress: &ProgressCallback,
+    hevc_tag: &str,
 ) -> Result<(), ConcatError> {
     if is_cancelled() {
         return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
@@ -2198,6 +2437,7 @@ fn concat_compatible_clean_pass(
         &merge_tmp_str,
         vcodec,
         has_audio,
+        hevc_tag,
     );
     let result = run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone());
     match result {
@@ -2234,6 +2474,7 @@ fn concat_compatible_ts_prep(
     total_secs: f64,
     on_progress: &ProgressCallback,
     clip_probes: &[ClipConcatProbe],
+    hevc_tag: &str,
 ) -> Result<(), ConcatError> {
     let n = paths.len();
     emit(
@@ -2329,6 +2570,7 @@ fn concat_compatible_ts_prep(
         has_audio,
         total_secs,
         on_progress,
+        hevc_tag,
     )?;
 
     compatible_validate_output(
@@ -2867,7 +3109,14 @@ pts_time:4.000000 type:I
 
     #[test]
     fn prep_compatible_h264_and_hevc_args() {
-        let h264 = build_prep_compatible_args("in.mp4", "out.mp4", VideoCodec::H264, true, true);
+        let h264 = build_prep_compatible_args(
+            "in.mp4",
+            "out.mp4",
+            VideoCodec::H264,
+            true,
+            true,
+            hevc_stream_copy_video_tag(),
+        );
         assert!(h264.contains(&"-ignore_editlist".into()));
         assert!(h264.contains(&"-noautorotate".into()));
         assert!(h264.contains(&"h264_metadata=aud=insert".into()));
@@ -2890,11 +3139,29 @@ pts_time:4.000000 type:I
             "display_rotation must be an input option (before -i)"
         );
 
-        let hevc = build_prep_compatible_args("in.mp4", "out.mp4", VideoCodec::Hevc, false, false);
+        let hevc = build_prep_compatible_args(
+            "in.mp4",
+            "out.mp4",
+            VideoCodec::Hevc,
+            false,
+            false,
+            hevc_stream_copy_video_tag(),
+        );
         assert!(!hevc.iter().any(|a| a == "-ignore_editlist"));
         assert!(hevc.contains(&"hevc_metadata=aud=insert".into()));
         assert!(hevc.contains(&"hev1".into()));
         assert!(!hevc.iter().any(|a| a == "0:a:0"));
+
+        let apple = build_prep_compatible_args(
+            "in.mp4",
+            "out.mp4",
+            VideoCodec::Hevc,
+            false,
+            false,
+            hevc_apple_video_tag(),
+        );
+        assert!(apple.contains(&"hvc1".into()));
+        assert!(!apple.iter().any(|a| a == "hev1"));
     }
 
     #[test]
@@ -2938,6 +3205,7 @@ pts_time:4.000000 type:I
             "out.mp4",
             VideoCodec::Hevc,
             true,
+            hevc_stream_copy_video_tag(),
         );
         // AUD on merge so MP4 muxer can derive HEVC dimensions (Legacy parity).
         assert!(merge.contains(&"hevc_metadata=aud=insert".into()));
@@ -2953,9 +3221,20 @@ pts_time:4.000000 type:I
             "out.mp4",
             VideoCodec::Hevc,
             true,
+            hevc_stream_copy_video_tag(),
         );
         // Same stream args as prep-MP4 merge builder; both omit faststart.
         assert_eq!(merge, prep_mp4);
+
+        let apple = build_compatible_mpegts_concat_to_mp4_args(
+            "list.txt",
+            "out.mp4",
+            VideoCodec::Hevc,
+            true,
+            hevc_apple_video_tag(),
+        );
+        assert!(apple.contains(&"hvc1".into()));
+        assert!(!apple.iter().any(|a| a == "hev1"));
     }
 
     #[test]
@@ -2965,6 +3244,7 @@ pts_time:4.000000 type:I
             "seg.mp4",
             VideoCodec::Hevc,
             true,
+            hevc_stream_copy_video_tag(),
         );
         assert!(hevc.contains(&"hevc_metadata=aud=insert".into()));
         assert!(hevc.contains(&"hev1".into()));
@@ -3076,6 +3356,7 @@ pts_time:4.000000 type:I
             "out.mp4",
             VideoCodec::H264,
             true,
+            hevc_stream_copy_video_tag(),
         );
         assert!(prep.contains(&"h264_mp4toannexb".into()));
         assert!(!prep.iter().any(|a| a.contains("aud=insert")));
@@ -3161,6 +3442,7 @@ pts_time:4.000000 type:I
             "out.mp4",
             VideoCodec::Hevc,
             true,
+            hevc_stream_copy_video_tag(),
         );
         assert!(merge.contains(&"hevc_metadata=aud=insert".into()));
         assert!(merge.contains(&"hev1".into()));
@@ -3296,7 +3578,85 @@ pts_time:4.000000 type:I
         assert!(is_compatible_body_concat_mode("COMPATIBLE"));
         assert!(!is_compatible_body_concat_mode("fast"));
         assert!(!is_compatible_body_concat_mode("legacy"));
+        assert!(!is_compatible_body_concat_mode("apple"));
         assert!(!is_compatible_body_concat_mode(""));
+    }
+
+    #[test]
+    fn apple_body_concat_mode_aliases() {
+        assert!(is_apple_body_concat_mode("apple"));
+        assert!(is_apple_body_concat_mode("APPLE"));
+        assert!(is_apple_body_concat_mode("hvc1"));
+        assert!(is_apple_body_concat_mode("iphone"));
+        assert!(!is_apple_body_concat_mode("compatible"));
+        assert!(!is_apple_body_concat_mode("fast"));
+        assert!(!is_apple_body_concat_mode("auto"));
+        assert!(is_auto_body_concat_mode("auto"));
+        assert!(is_auto_body_concat_mode("preserve"));
+        assert!(is_compatible_family_body_concat_mode("apple"));
+        assert!(is_compatible_family_body_concat_mode("compatible"));
+        assert!(is_compatible_family_body_concat_mode("auto"));
+        assert!(!is_compatible_family_body_concat_mode("fast"));
+        assert_eq!(hevc_tag_for_body_concat_mode("apple"), "hvc1");
+        assert_eq!(hevc_tag_for_body_concat_mode("compatible"), "hev1");
+        assert_eq!(hevc_tag_for_body_concat_mode("auto"), "hev1"); // no keys → hev1
+        assert_eq!(hevc_tag_for_body_concat_mode("legacy"), "hev1");
+    }
+
+    #[test]
+    fn resolve_hevc_tag_from_stream_keys_cases() {
+        use crate::video::probe::VideoRotationProbe;
+        fn key(codec: &str, tag: &str) -> CompatibleStreamKey {
+            CompatibleStreamKey {
+                codec: codec.into(),
+                width: 1920,
+                height: 1080,
+                pix_fmt: "yuv420p".into(),
+                tag: tag.into(),
+                profile: String::new(),
+                has_audio: true,
+                rotation: VideoRotationProbe::Known(0),
+                needs_editlist_hygiene: false,
+            }
+        }
+        assert_eq!(
+            resolve_hevc_tag_from_stream_keys(&[key("h264", "avc1")]),
+            "hev1"
+        );
+        assert_eq!(
+            resolve_hevc_tag_from_stream_keys(&[key("hevc", "hvc1"), key("hevc", "hvc1")]),
+            "hvc1"
+        );
+        assert_eq!(
+            resolve_hevc_tag_from_stream_keys(&[key("hevc", "hev1"), key("hevc", "")]),
+            "hev1"
+        );
+        assert_eq!(
+            resolve_hevc_tag_from_stream_keys(&[key("hevc", "hvc1"), key("hevc", "hev1")]),
+            "hev1"
+        );
+        assert_eq!(
+            resolve_hevc_output_tag("apple", &[key("hevc", "hev1")]),
+            "hvc1"
+        );
+        assert_eq!(
+            resolve_hevc_output_tag("auto", &[key("hevc", "hvc1")]),
+            "hvc1"
+        );
+        assert_eq!(
+            resolve_hevc_output_tag("compatible", &[key("hevc", "hvc1")]),
+            "hev1"
+        );
+    }
+
+    #[test]
+    fn retag_hevc_hvc1_args() {
+        let args = build_retag_hevc_hvc1_args("in.mp4", "out.mp4", true);
+        assert!(args.contains(&"-tag:v".into()));
+        assert!(args.contains(&"hvc1".into()));
+        assert!(args.contains(&"copy".into()));
+        assert!(args.contains(&"0:a:0".into()));
+        assert_eq!(args.last().unwrap(), "out.mp4");
     }
 
     #[test]
@@ -3445,6 +3805,7 @@ Input #0, mov, from 'a.mp4':
             "out.mp4",
             VideoCodec::H264,
             true,
+            hevc_stream_copy_video_tag(),
         );
         assert!(h264.contains(&"concat".into()));
         assert!(h264.contains(&"copy".into()));
@@ -3459,15 +3820,27 @@ Input #0, mov, from 'a.mp4':
             "out.mp4",
             VideoCodec::Hevc,
             false,
+            hevc_stream_copy_video_tag(),
         );
         assert!(hevc.contains(&"hevc_metadata=aud=insert".into()));
         assert!(hevc.contains(&"hev1".into()));
         assert!(!hevc.iter().any(|a| a == "0:a:0?"));
         assert!(!hevc.iter().any(|a| a == "+faststart"));
+
+        let apple = build_compatible_clean_concat_args(
+            "list.txt",
+            "out.mp4",
+            VideoCodec::Hevc,
+            false,
+            hevc_apple_video_tag(),
+        );
+        assert!(apple.contains(&"hvc1".into()));
+        assert!(!apple.iter().any(|a| a == "hev1"));
     }
 
     #[test]
     fn hevc_tag_default() {
         assert_eq!(hevc_stream_copy_video_tag(), "hev1");
+        assert_eq!(hevc_apple_video_tag(), "hvc1");
     }
 }

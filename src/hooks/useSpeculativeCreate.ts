@@ -3,7 +3,7 @@ import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { usePhotoStore } from "../store/photoStore";
 import { useVideoStore } from "../store/videoStore";
-import { normalizeBodyConcatMode } from "../lib/bodyConcatMode";
+import { normalizeBodyConcatMode, isSpeculativeBodyConcatMode } from "../lib/bodyConcatMode";
 import { speculativeMediaReadyFromKunde } from "../lib/speculativeMediaReady";
 import {
   cancelSpeculativeCreate,
@@ -153,7 +153,7 @@ export function useSpeculativeCreate({
    */
   const canStart =
     speculativeEnabled &&
-    bodyMode === "compatible" &&
+    isSpeculativeBodyConcatMode(bodyMode) &&
     recognized &&
     mediaProductsOk &&
     sessionSettled &&
@@ -179,7 +179,7 @@ export function useSpeculativeCreate({
           crf: config?.preview_encode_crf ?? 20,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
-          body_concat_mode: "compatible",
+          body_concat_mode: bodyMode,
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
         },
       });
@@ -199,7 +199,7 @@ export function useSpeculativeCreate({
       // race cancel_encode into the import. Only drop on hard precondition fails.
       const hardFail =
         !speculativeEnabled ||
-        bodyMode !== "compatible" ||
+        !isSpeculativeBodyConcatMode(bodyMode) ||
         !recognized ||
         !mediaProductsOk ||
         canReusePreview;
@@ -280,7 +280,7 @@ export function useSpeculativeCreate({
   const chipVisible =
     !busy &&
     speculativeEnabled &&
-    bodyMode === "compatible" &&
+    isSpeculativeBodyConcatMode(bodyMode) &&
     recognized &&
     mediaProductsOk &&
     !canReusePreview &&

@@ -18,12 +18,28 @@ type Props = {
 };
 
 /**
- * Shown when Fast- or Compatible-path clip concat fails.
+ * Shown when Fast-, Compatible-, or Apple-path clip concat fails.
  * User must abort or switch to Legacy — no auto-timeout.
  */
 export function BodyConcatFallbackDialog({ open, reason, onChoose }: Props) {
   const { t } = useTranslation();
+  const isAppleFail = /apple\s*path/i.test(reason);
+  const isAutoFail = /auto\s*path/i.test(reason);
   const isCompatibleFail = /compatible\s*path/i.test(reason);
+  const failTitleKey = isAutoFail
+    ? "dialogs.bodyConcat.titleAuto"
+    : isAppleFail
+      ? "dialogs.bodyConcat.titleApple"
+      : isCompatibleFail
+        ? "dialogs.bodyConcat.titleCompatible"
+        : "dialogs.bodyConcat.title";
+  const failBodyKey = isAutoFail
+    ? "dialogs.bodyConcat.bodyAuto"
+    : isAppleFail
+      ? "dialogs.bodyConcat.bodyApple"
+      : isCompatibleFail
+        ? "dialogs.bodyConcat.bodyCompatible"
+        : "dialogs.bodyConcat.body";
   return (
     <Dialog
       open={open}
@@ -41,20 +57,12 @@ export function BodyConcatFallbackDialog({ open, reason, onChoose }: Props) {
       >
         <DialogHeader className="min-w-0">
           <DialogTitle className="text-warning">
-            {t(
-              isCompatibleFail
-                ? "dialogs.bodyConcat.titleCompatible"
-                : "dialogs.bodyConcat.title",
-            )}
+            {t(failTitleKey)}
           </DialogTitle>
           <DialogDescription asChild>
             <div className="min-w-0 space-y-3 text-sm text-foreground">
               <p className="break-words">
-                {t(
-                  isCompatibleFail
-                    ? "dialogs.bodyConcat.bodyCompatible"
-                    : "dialogs.bodyConcat.body",
-                )}
+                {t(failBodyKey)}
               </p>
               {reason ? (
                 <p className="min-w-0 overflow-x-auto rounded-md bg-muted/40 px-3 py-2 font-mono text-xs text-muted [overflow-wrap:anywhere]">

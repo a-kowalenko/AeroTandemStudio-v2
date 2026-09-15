@@ -38,6 +38,11 @@ const RAW_TO_I18N: Record<string, string> = {
     "progress.status.fastPathWaiting",
   "Compatible Path fehlgeschlagen — warte auf Entscheidung…":
     "progress.status.compatiblePathWaiting",
+  "Apple Path fehlgeschlagen — warte auf Entscheidung…":
+    "progress.status.compatiblePathWaiting",
+  "Auto Path fehlgeschlagen — warte auf Entscheidung…":
+    "progress.status.compatiblePathWaiting",
+  "compatible-hvc1-retag": "progress.status.compatibleHvc1Retag",
   "replacing original": "progress.status.replaceOriginal",
   "split part 1": "progress.status.splitPart1",
   "split part 2": "progress.status.splitPart2",

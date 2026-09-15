@@ -293,10 +293,11 @@
       "strategyCombined": "Combined",
       "hwAccel": "Hardware acceleration",
       "parallel": "Parallel video processing",
-      "concat": "Join clips",
-      "concatFast": "Fast path (quick)",
-      "concatLegacy": "Legacy (robust)",
-      "concatHint": "Fast path joins clips in one pass (similar to Avidemux Copy). On errors you can cancel or use Legacy. Legacy uses the proven MPEG-TS pipeline.",
+      "concat": "H.265 player compatibility",
+      "concatHint": "Only with multiple H.265 clips.\n\nAuto: keep source tags (hvc1/hev1).\nHEVC robust (hev1): force tag — more robust multi-clip.\nHEVC Apple (hvc1): force tag — iPhone/QuickTime.\n\nNo effect on H.264.\nOn failure, legacy (MPEG-TS) may be offered.",
+      "concatAuto": "Auto (keep tag)",
+      "concatCompatible": "HEVC robust (hev1)",
+      "concatApple": "HEVC Apple (hvc1)",
       "advanced": "Advanced",
       "quality": {
         "title": "Quality",
@@ -346,9 +347,8 @@
       "crfSmall": "Smaller / faster (CRF 26)",
       "crfHint": "Lower CRF = better quality, larger file. No effect on pure copy (Fast Path).",
       "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
-      "concatCompatible": "Compatible",
       "speculativeCreate": "Prepare in the background",
-      "speculativeCreateHint": "When the session is ready (Compatible, customer via QR/lookup), body and photos are prepared before you click. With intro on, the intro is applied at Create. Off: classic create flow."
+      "speculativeCreateHint": "When the session is ready (H.265 Auto/robust/Apple, customer via QR/lookup), body and photos are prepared before you click. With intro on, the intro is applied at Create. Off: classic create flow."
     },
     "qr": {
       "autoScan": {
@@ -706,6 +706,7 @@
       "parallelConcat": "Joining clips in parallel ({{clips}} clips, {{workers}} workers)…",
       "compatibleConcat": "Joining clips…",
       "compatibleFinalize": "Finalizing container…",
+      "compatibleHvc1Retag": "Setting H.265 tag hvc1…",
       "compatibleMkvFallback": "MKV fallback…",
       "compatiblePathWaiting": "Join failed — please choose…",
       "compatiblePrep": "Preparing clips…",
@@ -776,8 +777,12 @@
       "title": "Fast path failed",
       "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
       "useLegacy": "Use legacy",
-      "bodyCompatible": "The clips could not be joined via the Compatible path (Avidemux-like). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
-      "titleCompatible": "Compatible path failed"
+      "bodyCompatible": "The clips could not be joined via HEVC robust (hev1). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
+      "titleCompatible": "HEVC robust (hev1) failed",
+      "bodyApple": "The clips could not be joined via HEVC Apple (hvc1). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
+      "titleApple": "HEVC Apple (hvc1) failed",
+      "bodyAuto": "The clips could not be joined via Auto (keep tag). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
+      "titleAuto": "Auto (H.265 tag) failed"
     },
     "introMux": {
       "title": "Intro cannot be attached via stream copy",
@@ -1380,12 +1385,16 @@
       "wmVideo": "Watermark"
     },
     "bodyConcat": {
-      "aria": "Clip join mode: {{mode}}",
-      "hint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
-      "labelCompatible": "Compatible",
+      "aria": "H.265 player compatibility: {{mode}}",
+      "hint": "Only with multiple H.265 clips.\n\nAuto: keep source tags.\nHEVC robust (hev1): force tag.\nHEVC Apple (hvc1): force tag.\n\nOn failure, legacy (MPEG-TS) may be offered.",
+      "labelAuto": "Auto",
+      "labelCompatible": "HEVC robust (hev1)",
+      "labelApple": "HEVC Apple (hvc1)",
       "labelFast": "Fast Path",
       "labelLegacy": "Legacy",
-      "shortCompatible": "Compatible",
+      "shortAuto": "Auto",
+      "shortCompatible": "hev1",
+      "shortApple": "hvc1",
       "shortFast": "Fast",
       "shortLegacy": "Legacy"
     }

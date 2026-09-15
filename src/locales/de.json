@@ -293,10 +293,11 @@
       "strategyCombined": "Kombiniert",
       "hwAccel": "Hardware-Beschleunigung",
       "parallel": "Paralleles Video-Processing",
-      "concat": "Clips zusammenfügen",
-      "concatFast": "Fast Path (schnell)",
-      "concatLegacy": "Legacy (robust)",
-      "concatHint": "Fast Path fügt Clips in einem Durchlauf zusammen (ähnlich Avidemux Copy). Bei Fehlern erscheint eine Auswahl: Abbrechen oder Legacy. Legacy nutzt die bewährte MPEG-TS-Pipeline.",
+      "concat": "H.265 Player-Kompatibilität",
+      "concatHint": "Nur bei mehreren H.265-Clips.\n\nAuto: Tag der Quellen beibehalten (hvc1/hev1).\nHEVC robust (hev1): Tag erzwingen — robusteres Multi-Clip.\nHEVC Apple (hvc1): Tag erzwingen — iPhone/QuickTime.\n\nBei H.264 ohne Wirkung.\nBei Fehlern kann Legacy (MPEG-TS) angeboten werden.",
+      "concatAuto": "Auto (Tag beibehalten)",
+      "concatCompatible": "HEVC robust (hev1)",
+      "concatApple": "HEVC Apple (hvc1)",
       "advanced": "Erweitert",
       "quality": {
         "title": "Qualität",
@@ -346,9 +347,8 @@
       "crfSmall": "Klein / schneller (CRF 26)",
       "crfHint": "Niedrigerer CRF = bessere Qualität, größere Datei. Bei reinem Kopieren (Fast Path) ohne Wirkung.",
       "previewReuseHint": "Tipp: Zuerst „Vorschau generieren“ — bei unveränderten Clips übernimmt Erstellen die Vorschau ohne Neu-Kodierung.",
-      "concatCompatible": "Compatible",
       "speculativeCreate": "Vorbereitung im Hintergrund",
-      "speculativeCreateHint": "Sobald die Session bereit ist (Compatible, Kunde per QR/Lookup), werden Body und Fotos schon vor dem Klick vorbereitet. Mit Intro wird das Intro erst beim Erstellen angefügt. Bei aus: klassischer Create-Flow."
+      "speculativeCreateHint": "Sobald die Session bereit ist (H.265 Auto/Robust/Apple, Kunde per QR/Lookup), werden Body und Fotos schon vor dem Klick vorbereitet. Mit Intro wird das Intro erst beim Erstellen angefügt. Bei aus: klassischer Create-Flow."
     },
     "qr": {
       "autoScan": {
@@ -707,6 +707,7 @@
       "compatibleConcat": "Clips zusammenfügen…",
       "compatibleFinalize": "Container finalisieren…",
       "compatibleMkvFallback": "MKV-Fallback…",
+      "compatibleHvc1Retag": "H.265-Tag hvc1 setzen…",
       "compatiblePathWaiting": "Zusammenfügen fehlgeschlagen — bitte Entscheidung…",
       "compatiblePrep": "Clips vorbereiten…",
       "compatiblePrepCount": "Clips vorbereiten ({{current}}/{{total}})…",
@@ -776,8 +777,12 @@
       "title": "Fast Path fehlgeschlagen",
       "body": "Die Clips konnten nicht im schnellen Single-Pass zusammengefügt werden. Du kannst abbrechen oder den robusteren Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
       "useLegacy": "Legacy verwenden",
-      "bodyCompatible": "Die Clips konnten nicht über den Compatible-Pfad (Avidemux-ähnlich) zusammengefügt werden. Du kannst abbrechen oder den Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
-      "titleCompatible": "Compatible Path fehlgeschlagen"
+      "bodyCompatible": "Die Clips konnten nicht über HEVC robust (hev1) zusammengefügt werden. Du kannst abbrechen oder den Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
+      "titleCompatible": "HEVC robust (hev1) fehlgeschlagen",
+      "bodyApple": "Die Clips konnten nicht über HEVC Apple (hvc1) zusammengefügt werden. Du kannst abbrechen oder den Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
+      "titleApple": "HEVC Apple (hvc1) fehlgeschlagen",
+      "bodyAuto": "Die Clips konnten nicht über Auto (Tag beibehalten) zusammengefügt werden. Du kannst abbrechen oder den Legacy-Modus (MPEG-TS) verwenden — das dauert länger.",
+      "titleAuto": "Auto (H.265-Tag) fehlgeschlagen"
     },
     "introMux": {
       "title": "Intro kann nicht per Stream-Copy angefügt werden",
@@ -1380,12 +1385,16 @@
       "wmVideo": "Wasserzeichen"
     },
     "bodyConcat": {
-      "aria": "Clip-Zusammenfügen: {{mode}}",
-      "hint": "Fast Path: schneller Copy-Pass, bei manchen Playern riskant.\nCompatible: Avidemux-ähnlich — robust, verlustfrei, orientierungssicher.\nLegacy: MPEG-TS-Fallback, langsamer.",
-      "labelCompatible": "Compatible",
+      "aria": "H.265 Player-Kompatibilität: {{mode}}",
+      "hint": "Nur bei mehreren H.265-Clips.\n\nAuto: Tag der Quellen beibehalten.\nHEVC robust (hev1): Tag erzwingen.\nHEVC Apple (hvc1): Tag erzwingen.\n\nBei Fehlern kann Legacy (MPEG-TS) angeboten werden.",
+      "labelAuto": "Auto",
+      "labelCompatible": "HEVC robust (hev1)",
+      "labelApple": "HEVC Apple (hvc1)",
       "labelFast": "Fast Path",
       "labelLegacy": "Legacy",
-      "shortCompatible": "Compatible",
+      "shortAuto": "Auto",
+      "shortCompatible": "hev1",
+      "shortApple": "hvc1",
       "shortFast": "Fast",
       "shortLegacy": "Legacy"
     }

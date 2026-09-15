@@ -603,7 +603,7 @@ pub fn status() -> SpeculativeStatus {
 /// Preconditions that must hold before starting (caller also checks UI createReady).
 pub fn preconditions_ok(video_opts: &CreateVideoOptions) -> Result<(), String> {
     let mode = normalize_body_concat_mode(&video_opts.body_concat_mode);
-    if mode != "compatible" {
+    if mode != "compatible" && mode != "apple" && mode != "auto" {
         return Err(format!("body_concat_mode={mode}"));
     }
     Ok(())
@@ -1969,9 +1969,11 @@ fn run_staging_job(
 
         let mut video_opts = request.video.clone();
         // Body-only staging: Intro / Outro / CapCut / forced-codec encode happen at commit.
+        // Keep Compatible-family mode (compatible | apple) so HEVC tag matches Settings.
         video_opts.intro_enabled = false;
         video_opts.outro_enabled = false;
-        video_opts.body_concat_mode = "compatible".into();
+        video_opts.body_concat_mode =
+            normalize_body_concat_mode(&video_opts.body_concat_mode);
         video_opts.defer_forced_reencode = true;
 
         let res: CreateVideoResult = create_video(
@@ -2432,7 +2434,7 @@ pub(crate) fn commit_from_staging(
             || (options.video.outro_enabled
                 && !options.video.outro_path.trim().is_empty())
         {
-            // Staged Compatible body → CapCut/intro/outro in one pass (no second concat).
+            // Staged Compatible/Apple body → CapCut/intro/outro in one pass (no second concat).
             // CapCut also applies the target codec; skip a separate forced remux.
             let mut video_opts = options.video.clone();
             video_opts.defer_forced_reencode = false;
@@ -2869,7 +2871,8 @@ pub fn try_promote_into_create_job(
     on_reencode: Option<ReencodeAskFn>,
     on_intro_mux_fallback: Option<IntroMuxAskFn>,
 ) -> Result<Option<CreateJobResult>, ProcessorError> {
-    if normalize_body_concat_mode(&options.video.body_concat_mode) != "compatible" {
+    let mode = normalize_body_concat_mode(&options.video.body_concat_mode);
+    if mode != "compatible" && mode != "apple" && mode != "auto" {
         return Ok(None);
     }
 

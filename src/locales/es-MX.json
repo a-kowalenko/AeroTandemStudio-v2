@@ -293,10 +293,11 @@
       "strategyCombined": "Combinado",
       "hwAccel": "Aceleración por hardware",
       "parallel": "Procesamiento de video en paralelo",
-      "concat": "Unir clips",
-      "concatFast": "Ruta rápida",
-      "concatLegacy": "Legacy (robusto)",
-      "concatHint": "La ruta rápida une clips en una pasada (similar a Avidemux Copy). Si falla, puedes cancelar o usar Legacy. Legacy usa la canalización MPEG-TS.",
+      "concat": "Compatibilidad de reproductor H.265",
+      "concatHint": "Solo con varios clips H.265.\n\nAuto: conservar etiquetas de origen (hvc1/hev1).\nHEVC robusto (hev1): forzar etiqueta — multi-clip más robusto.\nHEVC Apple (hvc1): forzar etiqueta — iPhone/QuickTime.\n\nSin efecto en H.264.\nSi falla, se puede ofrecer legacy (MPEG-TS).",
+      "concatAuto": "Auto (conservar etiqueta)",
+      "concatCompatible": "HEVC robusto (hev1)",
+      "concatApple": "HEVC Apple (hvc1)",
       "advanced": "Avanzado",
       "quality": {
         "title": "Calidad",
@@ -346,9 +347,8 @@
       "crfSmall": "Más pequeña / más rápida (CRF 26)",
       "crfHint": "CRF más bajo = mejor calidad, archivo más grande. Sin efecto en copia pura (Fast Path).",
       "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
-      "concatCompatible": "Compatible",
       "speculativeCreate": "Preparar en segundo plano",
-      "speculativeCreateHint": "Cuando la sesión está lista (Compatible, cliente por QR/lookup), cuerpo y fotos se preparan antes del clic. Con intro, el intro se aplica al crear. Desactivado: flujo clásico."
+      "speculativeCreateHint": "Cuando la sesión está lista (H.265 Auto/robusto/Apple, cliente por QR/lookup), cuerpo y fotos se preparan antes del clic. Con intro, el intro se aplica al crear. Desactivado: flujo clásico."
     },
     "qr": {
       "autoScan": {
@@ -706,6 +706,7 @@
       "parallelConcat": "Uniendo clips en paralelo ({{clips}} clips, {{workers}} workers)…",
       "compatibleConcat": "Uniendo clips…",
       "compatibleFinalize": "Finalizando contenedor…",
+      "compatibleHvc1Retag": "Aplicando etiqueta H.265 hvc1…",
       "compatibleMkvFallback": "Respaldo MKV…",
       "compatiblePathWaiting": "Unión falló — elige una opción…",
       "compatiblePrep": "Preparando clips…",
@@ -776,8 +777,12 @@
       "title": "Fast path falló",
       "body": "No se pudieron unir los clips en un solo paso rápido. Puedes cancelar o usar el modo legacy más robusto (MPEG-TS) — tarda más.",
       "useLegacy": "Usar legacy",
-      "bodyCompatible": "No se pudieron unir los clips por la ruta Compatible (similar a Avidemux). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
-      "titleCompatible": "Compatible path falló"
+      "bodyCompatible": "No se pudieron unir los clips con HEVC robusto (hev1). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
+      "titleCompatible": "HEVC robusto (hev1) falló",
+      "bodyApple": "No se pudieron unir los clips con HEVC Apple (hvc1). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
+      "titleApple": "HEVC Apple (hvc1) falló",
+      "bodyAuto": "No se pudieron unir los clips con Auto (conservar etiqueta). Puedes cancelar o usar el modo legacy (MPEG-TS) — tarda más.",
+      "titleAuto": "Auto (etiqueta H.265) falló"
     },
     "introMux": {
       "title": "No se puede adjuntar el intro por copia de stream",
@@ -1380,12 +1385,16 @@
       "wmVideo": "Marca de agua"
     },
     "bodyConcat": {
-      "aria": "Modo de unión de clips: {{mode}}",
-      "hint": "Fast Path: copia rápida, arriesgada en algunos reproductores.\nCompatible: similar a Avidemux — robusto, sin pérdida, orientación segura.\nLegacy: respaldo MPEG-TS, más lento.",
-      "labelCompatible": "Compatible",
+      "aria": "Compatibilidad de reproductor H.265: {{mode}}",
+      "hint": "Solo con varios clips H.265.\n\nAuto: conservar etiquetas de origen.\nHEVC robusto (hev1): forzar etiqueta.\nHEVC Apple (hvc1): forzar etiqueta.\n\nSi falla, se puede ofrecer legacy (MPEG-TS).",
+      "labelAuto": "Auto",
+      "labelCompatible": "HEVC robusto (hev1)",
+      "labelApple": "HEVC Apple (hvc1)",
       "labelFast": "Fast Path",
       "labelLegacy": "Legacy",
-      "shortCompatible": "Compatible",
+      "shortAuto": "Auto",
+      "shortCompatible": "hev1",
+      "shortApple": "hvc1",
       "shortFast": "Fast",
       "shortLegacy": "Legacy"
     }

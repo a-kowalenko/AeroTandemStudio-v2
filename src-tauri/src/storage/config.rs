@@ -200,7 +200,7 @@ pub struct AppConfig {
     /// Intro+Body mux: `"reencode"` (default, compatible) | `"stream_copy"`.
     #[serde(default = "default_intro_mux_mode")]
     pub intro_mux_mode: String,
-    /// Multi-clip body concat: `"compatible"` (default) | `"fast"` | `"legacy"`.
+    /// Multi-clip body concat: `"auto"` (default) | `"compatible"` | `"apple"` | `"fast"` | `"legacy"`.
     #[serde(default = "default_body_concat_mode")]
     pub body_concat_mode: String,
     #[serde(default = "default_preview_crf", deserialize_with = "de_u8_flexible")]
@@ -636,7 +636,7 @@ fn default_intro_mux_mode() -> String {
     "capcut".into()
 }
 fn default_body_concat_mode() -> String {
-    "compatible".into()
+    "auto".into()
 }
 fn default_preview_crf() -> u8 {
     20
@@ -652,13 +652,16 @@ pub fn normalize_intro_mux_mode(mode: &str) -> String {
     "capcut".into()
 }
 
-/// Normalize body concat mode to `fast` | `compatible` | `legacy` (default `compatible`).
+/// Normalize body concat mode to `auto` | `fast` | `compatible` | `apple` | `legacy`
+/// (default `auto`).
 pub fn normalize_body_concat_mode(mode: &str) -> String {
     match mode.trim().to_ascii_lowercase().as_str() {
         "legacy" | "mpegts" | "robust" => "legacy".into(),
         "fast" | "fast_path" | "fast-path" => "fast".into(),
+        "apple" | "hvc1" | "iphone" => "apple".into(),
+        "auto" | "preserve" | "source_tag" => "auto".into(),
         "compatible" | "compat" | "qt_safe" | "prepared" | "avidemux" => "compatible".into(),
-        _ => "compatible".into(),
+        _ => "auto".into(),
     }
 }
 fn default_qr_scan_seconds() -> u32 {
@@ -784,7 +787,7 @@ impl AppConfig {
         self.intro_mux_mode = normalize_intro_mux_mode(&self.intro_mux_mode);
     }
 
-    /// Canonicalize `body_concat_mode` to `fast` | `compatible` | `legacy`.
+    /// Canonicalize `body_concat_mode` to `auto` | `fast` | `compatible` | `apple` | `legacy`.
     pub fn sync_body_concat_mode(&mut self) {
         self.body_concat_mode = normalize_body_concat_mode(&self.body_concat_mode);
     }
@@ -1502,8 +1505,13 @@ mod tests {
         assert_eq!(normalize_body_concat_mode("qt_safe"), "compatible");
         assert_eq!(normalize_body_concat_mode("prepared"), "compatible");
         assert_eq!(normalize_body_concat_mode("avidemux"), "compatible");
-        assert_eq!(normalize_body_concat_mode(""), "compatible");
-        assert_eq!(normalize_body_concat_mode("bogus"), "compatible");
+        assert_eq!(normalize_body_concat_mode("apple"), "apple");
+        assert_eq!(normalize_body_concat_mode("hvc1"), "apple");
+        assert_eq!(normalize_body_concat_mode("iphone"), "apple");
+        assert_eq!(normalize_body_concat_mode("auto"), "auto");
+        assert_eq!(normalize_body_concat_mode("preserve"), "auto");
+        assert_eq!(normalize_body_concat_mode(""), "auto");
+        assert_eq!(normalize_body_concat_mode("bogus"), "auto");
     }
 
     #[test]
