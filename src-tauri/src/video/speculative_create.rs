@@ -1,8 +1,12 @@
-//! Phase 46 — Speculative Create Staging (Compatible, Intro off).
+//! Phase 46 — Speculative Create Staging (Compatible; body only).
 //!
 //! Prepares body video + original photo copies under a temp layout while the
 //! operator has not yet clicked Erstellen. No marker / manifest / AMS / history
-//! until commit via [`promote_into_create_job`].
+//! until commit via [`try_promote_into_create_job`].
+//!
+//! Staging always builds the body with Intro off. When Erstellen has Intro on,
+//! commit applies CapCut/intro on the staged body (no second Compatible concat).
+//! Forced target-codec re-encode (no Intro) is also deferred to commit.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,16 +27,20 @@ use crate::video::export_paths::{
     video_subdir_name, OutputLayout, SUBDIR_HANDCAM_FOTO, SUBDIR_OUTSIDE_FOTO,
     SUBDIR_PREVIEW_FOTO, SUBDIR_PREVIEW_VIDEO,
 };
-use crate::video::ffmpeg::{
-    cancel_encode, is_cancelled, reset_cancel_flag, ProgressCallback,
-};
-use crate::video::handoff_manifest::write_handoff_manifest;
-use crate::video::marker::write_marker_file;
 use crate::video::processor::{
-    create_video, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn, ProcessorError,
+    body_needs_forced_reencode, create_video, export_body_to_output, CreateVideoOptions,
+    CreateVideoResult, IntroMuxAskFn, ProcessorError,
 };
 use crate::video::body_concat_fallback::{BodyConcatAskFn, BodyConcatChoice};
+use crate::video::encoding_quality::resolve_output_codec;
+use crate::video::ffmpeg::{
+    cancel_encode, ffmpeg_probe_stderr, is_cancelled, reset_cancel_flag, ProgressCallback,
+};
+use crate::video::handoff_manifest::write_handoff_manifest;
+use crate::video::hw_accel::detect_hardware;
 use crate::video::intro_mux_fallback::IntroMuxChoice;
+use crate::video::marker::write_marker_file;
+use crate::video::probe;
 use crate::video::progress::EncodeProgress;
 use crate::video::reencode_confirm::{ReencodeAskFn, ReencodeDecision};
 use crate::video::watermark::{
@@ -537,9 +545,6 @@ pub fn status() -> SpeculativeStatus {
 
 /// Preconditions that must hold before starting (caller also checks UI createReady).
 pub fn preconditions_ok(video_opts: &CreateVideoOptions) -> Result<(), String> {
-    if video_opts.intro_enabled {
-        return Err("intro_enabled".into());
-    }
     let mode = normalize_body_concat_mode(&video_opts.body_concat_mode);
     if mode != "compatible" {
         return Err(format!("body_concat_mode={mode}"));
@@ -1884,8 +1889,10 @@ fn run_staging_job(
         update_progress(slot, 0.0, "Erstelle Video…");
 
         let mut video_opts = request.video.clone();
+        // Body-only staging: Intro / CapCut / forced-codec encode happen at commit.
         video_opts.intro_enabled = false;
         video_opts.body_concat_mode = "compatible".into();
+        video_opts.defer_forced_reencode = true;
 
         let res: CreateVideoResult = create_video(
             ffmpeg,
@@ -2263,6 +2270,8 @@ pub(crate) fn commit_from_staging(
     resource_dir: Option<&Path>,
     artifacts: StagingArtifacts,
     on_progress: ProgressCallback,
+    on_reencode: Option<ReencodeAskFn>,
+    on_intro_mux_fallback: Option<IntroMuxAskFn>,
 ) -> Result<CreateJobResult, ProcessorError> {
     let speicherort = config.speicherort.trim();
     if speicherort.is_empty() {
@@ -2311,7 +2320,7 @@ pub(crate) fn commit_from_staging(
 
     let mut video_out: Option<String> = None;
     let mut encoder = artifacts.encoder.clone();
-    let intro_created = artifacts.intro_created;
+    let mut intro_created = artifacts.intro_created;
     let body_clips = artifacts.body_clips;
     let photos_copied = artifacts.photos_copied;
 
@@ -2327,13 +2336,91 @@ pub(crate) fn commit_from_staging(
     if let Some(rel) = &artifacts.video_rel {
         let src = artifacts.staging_dir.join(rel);
         let dest = video_output_path(&layout, kunde).map_err(ProcessorError::Message)?;
-        promote_file(&src, &dest).map_err(ProcessorError::Message)?;
-        video_out = Some(dest.to_string_lossy().to_string());
+        let src_str = src.to_string_lossy().to_string();
+        let dest_str = dest.to_string_lossy().to_string();
+
+        if options.video.intro_enabled {
+            // Staged Compatible body → CapCut/intro in one pass (no second concat).
+            // CapCut also applies the target codec; skip a separate forced remux.
+            let mut video_opts = options.video.clone();
+            video_opts.defer_forced_reencode = false;
+            log_event("speculative_hit", "deferred_intro_on_staged_body");
+            match create_video(
+                ffmpeg,
+                kunde,
+                &[src_str],
+                &dest_str,
+                &video_opts,
+                resource_dir,
+                Arc::clone(&on_progress),
+                on_intro_mux_fallback.clone(),
+                None,
+                on_reencode.clone(),
+            ) {
+                Ok(res) => {
+                    encoder = res.encoder;
+                    intro_created = res.intro_created;
+                    video_out = Some(dest_str);
+                }
+                Err(e) => {
+                    cleanup_after_failed_commit(&artifacts, &layout);
+                    return Err(e);
+                }
+            }
+        } else {
+            // Speculative deferred forced-codec re-encode: staged body may still be
+            // source codec (e.g. H.265) while settings request H.264 — encode now
+            // with the real confirm dialog instead of re-running Compatible concat.
+            let body_stderr = ffmpeg_probe_stderr(ffmpeg, &src_str)
+                .map_err(ProcessorError::Ffmpeg)?;
+            let body_codec_name = probe::parse_video_metadata_from_probe(&body_stderr)
+                .map(|m| m.codec)
+                .unwrap_or_else(|| "h264".into());
+            let force_reencode =
+                body_needs_forced_reencode(options.video.video_codec, &body_codec_name);
+
+            if force_reencode {
+                let out_codec =
+                    resolve_output_codec(options.video.video_codec, &body_codec_name);
+                let hw = detect_hardware();
+                log_event(
+                    "speculative_hit",
+                    format!(
+                        "deferred_forced_reencode {}→{:?}",
+                        body_codec_name, options.video.video_codec
+                    ),
+                );
+                match export_body_to_output(
+                    ffmpeg,
+                    &src_str,
+                    &dest_str,
+                    &hw,
+                    out_codec,
+                    options.video.crf,
+                    options.video.hw_accel_enabled,
+                    true,
+                    Arc::clone(&on_progress),
+                    on_reencode.as_ref(),
+                ) {
+                    Ok(enc) => {
+                        encoder = enc;
+                        video_out = Some(dest_str);
+                    }
+                    Err(e) => {
+                        cleanup_after_failed_commit(&artifacts, &layout);
+                        return Err(e);
+                    }
+                }
+            } else {
+                promote_file(&src, &dest).map_err(ProcessorError::Message)?;
+                video_out = Some(dest_str);
+            }
+        }
         logging::info(
             "create",
             format!(
                 "Speculative body übernommen: {}",
-                file_name(&video_out.as_deref().unwrap_or(""))
+                file_name(video_out.as_deref().unwrap_or(""))
             ),
         );
     }
@@ -2677,10 +2764,9 @@ pub fn try_promote_into_create_job(
     resource_dir: Option<&Path>,
     media_revision_tag: &str,
     on_progress: ProgressCallback,
+    on_reencode: Option<ReencodeAskFn>,
+    on_intro_mux_fallback: Option<IntroMuxAskFn>,
 ) -> Result<Option<CreateJobResult>, ProcessorError> {
-    if options.video.intro_enabled {
-        return Ok(None);
-    }
     if normalize_body_concat_mode(&options.video.body_concat_mode) != "compatible" {
         return Ok(None);
     }
@@ -2755,6 +2841,8 @@ pub fn try_promote_into_create_job(
         resource_dir,
         artifacts,
         on_progress,
+        on_reencode,
+        on_intro_mux_fallback,
     )?;
     Ok(Some(result))
 }
@@ -2985,10 +3073,24 @@ mod tests {
     }
 
     #[test]
-    fn preconditions_reject_intro() {
+    fn preconditions_accept_intro() {
         let mut o = opts();
         o.intro_enabled = true;
-        assert!(preconditions_ok(&o).is_err());
+        assert!(preconditions_ok(&o).is_ok());
+    }
+
+    #[test]
+    fn fingerprint_changes_on_intro_flag() {
+        let v = write_temp(b"video-bytes");
+        let k = base_kunde();
+        let mut off = opts();
+        off.intro_enabled = false;
+        let mut on = opts();
+        on.intro_enabled = true;
+        let vp = v.path().to_string_lossy().into_owned();
+        let a = fp(&k, &[vp.clone()], &[], &off, "");
+        let b = fp(&k, &[vp], &[], &on, "");
+        assert_ne!(a, b);
     }
 
     #[test]

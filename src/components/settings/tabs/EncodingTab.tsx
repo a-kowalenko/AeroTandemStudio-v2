@@ -10,24 +10,13 @@ import {
 } from "@/components/ui/select";
 import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
 import { showAdvanced } from "@/lib/settingsUi";
+import {
+  VIDEO_CRF_OPTIONS,
+  nearestVideoCrf,
+  videoCrfLabelKey,
+} from "@/lib/videoCrf";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
-
-/** Preset CRF steps for the quality dropdown (lower = better / larger). */
-const VIDEO_CRF_OPTIONS = [18, 20, 23, 26] as const;
-
-function nearestVideoCrf(raw: number): number {
-  let best: number = VIDEO_CRF_OPTIONS[0];
-  let bestDist = Math.abs(raw - best);
-  for (const v of VIDEO_CRF_OPTIONS) {
-    const d = Math.abs(raw - v);
-    if (d < bestDist) {
-      best = v;
-      bestDist = d;
-    }
-  }
-  return best;
-}
 
 type Props = SettingsTabBaseProps & {
   /** Wizard custom path: codec/strategy/HW + intro/concat. */
@@ -183,18 +172,11 @@ export function EncodingTab({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="18">
-                  {t("settings.encoding.crfVeryHigh")}
-                </SelectItem>
-                <SelectItem value="20">
-                  {t("settings.encoding.crfHigh")}
-                </SelectItem>
-                <SelectItem value="23">
-                  {t("settings.encoding.crfBalanced")}
-                </SelectItem>
-                <SelectItem value="26">
-                  {t("settings.encoding.crfSmall")}
-                </SelectItem>
+                {VIDEO_CRF_OPTIONS.map((crf) => (
+                  <SelectItem key={crf} value={String(crf)}>
+                    {t(videoCrfLabelKey(crf))}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-[11px] leading-snug text-muted">

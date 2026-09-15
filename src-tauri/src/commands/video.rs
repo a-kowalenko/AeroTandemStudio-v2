@@ -1280,7 +1280,7 @@ pub async fn create_job(
     }
 }
 
-/// Phase 46: start speculative create staging (Compatible + Intro off).
+/// Phase 46: start speculative create staging (Compatible; body only, Intro at commit).
 #[tauri::command]
 pub async fn start_speculative_create(
     app: AppHandle,

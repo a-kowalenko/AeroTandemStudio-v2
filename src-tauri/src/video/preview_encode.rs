@@ -773,6 +773,7 @@ pub fn generate_preview(
             intro_mux_mode: config.intro_mux_mode.clone(),
             body_concat_mode: config.body_concat_mode.clone(),
             hw_accel_enabled: config.hardware_acceleration_enabled,
+            defer_forced_reencode: false,
         };
         let result = processor::create_video(
             ffmpeg,

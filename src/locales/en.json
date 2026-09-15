@@ -323,7 +323,7 @@
       "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Prepare in the background",
-      "speculativeCreateHint": "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow."
+      "speculativeCreateHint": "When the session is ready (Compatible, customer via QR/lookup), body and photos are prepared before you click. With intro on, the intro is applied at Create. Off: classic create flow."
     },
     "qr": {
       "autoScan": {
@@ -789,11 +789,41 @@
       "hideAdvanced": "Less",
       "hwOff": "HW off",
       "hwOn": "HW on",
+      "kinds": {
+        "body_parallel": "Parallel encode",
+        "concat_fallback": "Concatenate",
+        "intro_mux": "Intro + flight video",
+        "preview_clips": "Preview clips",
+        "preview_combined": "Combined preview",
+        "preview_remux_fallback": "Preview remux",
+        "remux_fallback": "Remux",
+        "forced_codec": "Target codec",
+        "rotate": "Rotate"
+      },
       "nvencPreset": "NVENC",
       "paramCodec": "Codec",
-      "paramCrf": "CRF / CQ",
+      "paramCrf": "Video quality (CRF)",
       "preset": "Quality",
+      "presets": {
+        "balanced": "Balanced",
+        "compat": "Compatible (H.264 · 1080p · 30 fps)",
+        "custom": "Custom",
+        "fast": "Fast",
+        "max_quality": "Maximum quality",
+        "recommended": "Recommended"
+      },
       "proceed": "Encode",
+      "reasons": {
+        "body_parallel": "The clips use different codecs and will be re-encoded in parallel.",
+        "concat_fallback": "Copy-concat is not possible — the clips must be re-encoded.",
+        "intro_mux": "Intro and flight video cannot be joined by copy and will be re-encoded.",
+        "preview_clips": "Preview needs a re-encode (same quality as export).",
+        "preview_combined": "Combined preview requires a re-encode.",
+        "preview_remux_fallback": "Preview remux failed — re-encode required.",
+        "remux_fallback": "Remux failed — the video will be re-encoded.",
+        "forced_codec": "The selected video codec differs from the source codec — re-encoding is required.",
+        "rotate": "Rotation requires re-encoding the pixels."
+      },
       "scale1080": "1080p",
       "scaleMode": "Resolution",
       "scaleSource": "Source",
@@ -1444,7 +1474,8 @@
       "today": "Today",
       "last7": "Last 7 days",
       "lastMonth": "Last month",
-      "lastYear": "Last year"
+      "lastYear": "Last year",
+      "removeAll": "Remove all"
     },
     "viewer": {
       "title": "Media · {{name}}",

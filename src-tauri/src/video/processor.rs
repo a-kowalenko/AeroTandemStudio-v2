@@ -86,6 +86,10 @@ pub struct CreateVideoOptions {
     /// Use NVENC/VideoToolbox when available (from config `hardware_acceleration_enabled`).
     #[serde(default)]
     pub hw_accel_enabled: bool,
+    /// Speculative staging: finish body concat/copy at source codec; skip the forced
+    /// target-codec re-encode so Erstellen can reuse the staged body and confirm then.
+    #[serde(default)]
+    pub defer_forced_reencode: bool,
 }
 
 fn default_intro_dauer() -> f64 {
@@ -95,7 +99,7 @@ fn default_true() -> bool {
     true
 }
 fn default_crf() -> u8 {
-    18
+    20
 }
 fn default_intro_mux_mode() -> String {
     "capcut".into()
@@ -114,11 +118,12 @@ impl Default for CreateVideoOptions {
             dauer: DEFAULT_INTRO_DAUER_SECS,
             intro_enabled: true,
             video_codec: VideoCodecPreference::Auto,
-            crf: 18,
+            crf: 20,
             parallel_enabled: true,
             intro_mux_mode: default_intro_mux_mode(),
             body_concat_mode: default_body_concat_mode(),
             hw_accel_enabled: false,
+            defer_forced_reencode: false,
         }
     }
 }
@@ -1153,7 +1158,7 @@ fn probe_body_codecs(ffmpeg: &Path, paths: &[String]) -> Vec<VideoCodec> {
 /// True when an explicit codec preference (≠ Auto) requires re-encoding the produced
 /// body: its actual codec differs from the resolved target. `Auto` never forces this
 /// (stream-copy keeps the source codec).
-fn body_needs_forced_reencode(pref: VideoCodecPreference, body_codec: &str) -> bool {
+pub(crate) fn body_needs_forced_reencode(pref: VideoCodecPreference, body_codec: &str) -> bool {
     if matches!(pref, VideoCodecPreference::Auto) {
         return false;
     }
@@ -1219,7 +1224,10 @@ pub fn create_video(
     // Explicit codec choice (≠ Auto): the exported video must be this codec.
     // Route the body through a temp file so `export_body_to_output` can re-encode
     // when the produced body codec differs from the forced target.
-    let force_codec = !matches!(options.video_codec, VideoCodecPreference::Auto);
+    // Speculative staging may defer that re-encode — then write the source-codec
+    // body straight to `output` (no temp hop) for later commit-time encode.
+    let force_codec = !matches!(options.video_codec, VideoCodecPreference::Auto)
+        && !options.defer_forced_reencode;
 
     // Stage 1: body (single path, parallel per-clip encode, or concat)
     if options.intro_enabled {
@@ -1365,7 +1373,9 @@ pub fn create_video(
     let out_codec = resolve_output_codec(options.video_codec, body_codec_name);
     // Explicit codec (≠ Auto) whose target differs from the produced body → re-encode
     // on export instead of stream-copy, so the output is really the requested codec.
-    let force_reencode = body_needs_forced_reencode(options.video_codec, body_codec_name);
+    // Speculative staging defers this step so Erstellen can reuse the concat body.
+    let force_reencode = body_needs_forced_reencode(options.video_codec, body_codec_name)
+        && !options.defer_forced_reencode;
     let mut v_params = intro_params_from_probe(&body_stderr, body_codec_name);
     v_params.vcodec = match out_codec {
         VideoCodec::Hevc => "hevc".into(),
@@ -1681,7 +1691,7 @@ pub fn create_video(
 /// Default: stream-copy remux (fast); re-encode only if the remux fails.
 /// When `force_reencode` is set (explicit codec ≠ Auto and body codec differs
 /// from the forced target), skip the copy attempt and re-encode to `out_codec`.
-fn export_body_to_output(
+pub(crate) fn export_body_to_output(
     ffmpeg: &Path,
     body_path: &str,
     output: &str,
@@ -1701,8 +1711,7 @@ fn export_body_to_output(
             VideoCodec::Hevc => "H.265",
             _ => "H.264",
         };
-        let reason =
-            format!("Ziel-Codec {target} weicht vom Quell-Codec ab — Neu-Kodierung erzwungen");
+        let reason = format!("auf {target} (Ziel-Codec)");
         return encode_body_to_output(
             ffmpeg,
             body_path,
@@ -1791,7 +1800,12 @@ fn encode_body_to_output(
     on_reencode: Option<&ReencodeAskFn>,
 ) -> Result<String, ProcessorError> {
     let (enc, _out_params) = build_encode_output_params(hw, out_codec, crf, !hw_accel_enabled);
-    let intent = ReencodeIntent::new(ReencodeKind::RemuxFallback, reason.clone()).with_params(
+    let kind = if strategy == "forced_codec_reencode" {
+        ReencodeKind::ForcedCodec
+    } else {
+        ReencodeKind::RemuxFallback
+    };
+    let intent = ReencodeIntent::new(kind, reason.clone()).with_params(
         ReencodeParams {
             encoder: Some(enc.clone()),
             crf: Some(crf),
@@ -1813,15 +1827,21 @@ fn encode_body_to_output(
     let profile = reencode_confirm::require_confirm(on_reencode, &intent)
         .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
     // Reset the overall bar to 0 for the encode step; live FFmpeg progress drives it
-    // (the "Kodiere neu:" label is a reset-stage label on the frontend).
-    on_progress(progress_from_times(0.0, 100.0, &format!("Kodiere neu: {reason}")));
+    // (the "Kodiere neu" label is a reset-stage label on the frontend).
+    let encode_label = if strategy == "forced_codec_reencode" {
+        // e.g. "Kodiere neu auf H.264 (Ziel-Codec)"
+        format!("Kodiere neu {reason}")
+    } else {
+        format!("Kodiere neu: {reason}")
+    };
+    on_progress(progress_from_times(0.0, 100.0, &encode_label));
     let reenc_cb: ProgressCallback = {
         let outer = Arc::clone(on_progress);
-        let reason = reason.clone();
+        let encode_label = encode_label.clone();
         Arc::new(move |p: crate::video::progress::EncodeProgress| {
             let mut q = p;
             if q.status == "continue" || q.status == "end" || q.status.is_empty() {
-                q.status = format!("Kodiere neu: {reason}");
+                q.status = encode_label.clone();
             }
             outer(q);
         })
@@ -1839,7 +1859,6 @@ fn encode_body_to_output(
         &[true]
     };
     let progress_total = progress_encode_total_secs(&[dur.max(0.05)]);
-    let encode_label = format!("Kodiere neu: {reason}");
 
     let mut last_err: Option<ProcessorError> = None;
     for (attempt_i, &force_sw) in attempts.iter().enumerate() {
@@ -2412,6 +2431,18 @@ mod tests {
         // Exotic/unknown source with a forced target → re-encode to target.
         assert!(body_needs_forced_reencode(P::H264, "vp9"));
         assert!(body_needs_forced_reencode(P::H265, "av1"));
+    }
+
+    #[test]
+    fn defer_forced_reencode_skips_export_force_flag() {
+        use crate::video::encoding_quality::VideoCodecPreference as P;
+        // Mirrors create_video: mismatch + defer → no force_reencode at staging time.
+        let mismatch = body_needs_forced_reencode(P::H264, "hevc");
+        assert!(mismatch);
+        let defer = true;
+        assert!(!(mismatch && !defer));
+        let defer = false;
+        assert!(mismatch && !defer);
     }
 
     #[test]

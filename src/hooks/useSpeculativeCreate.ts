@@ -135,7 +135,7 @@ export function useSpeculativeCreate({
     bodyMode,
     introEnabled,
     config?.video_codec ?? "auto",
-    config?.preview_encode_crf ?? 18,
+    config?.preview_encode_crf ?? 20,
     config?.parallel_processing_enabled ?? true,
     config?.hardware_acceleration_enabled ?? false,
     recognized,
@@ -150,7 +150,6 @@ export function useSpeculativeCreate({
    */
   const canStart =
     speculativeEnabled &&
-    !introEnabled &&
     bodyMode === "compatible" &&
     recognized &&
     mediaProductsOk &&
@@ -167,9 +166,10 @@ export function useSpeculativeCreate({
         media_revision_tag: mediaTag,
         video: {
           dauer: config?.dauer ?? 5,
-          intro_enabled: false,
+          // Fingerprint includes intro; staging still builds body-only.
+          intro_enabled: introEnabled,
           video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
-          crf: config?.preview_encode_crf ?? 18,
+          crf: config?.preview_encode_crf ?? 20,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
           body_concat_mode: "compatible",
@@ -192,7 +192,6 @@ export function useSpeculativeCreate({
       // race cancel_encode into the import. Only drop on hard precondition fails.
       const hardFail =
         !speculativeEnabled ||
-        introEnabled ||
         bodyMode !== "compatible" ||
         !recognized ||
         !mediaProductsOk ||
@@ -274,7 +273,6 @@ export function useSpeculativeCreate({
   const chipVisible =
     !busy &&
     speculativeEnabled &&
-    !introEnabled &&
     bodyMode === "compatible" &&
     recognized &&
     mediaProductsOk &&

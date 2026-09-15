@@ -54,6 +54,8 @@ pub enum ReencodeKind {
     BodyParallel,
     ConcatFallback,
     RemuxFallback,
+    /// Explicit H.264/H.265 preference ≠ produced body codec (no remux attempt).
+    ForcedCodec,
     Rotate,
 }
 
@@ -68,6 +70,7 @@ impl ReencodeKind {
             Self::BodyParallel => "body_parallel",
             Self::ConcatFallback => "concat_fallback",
             Self::RemuxFallback => "remux_fallback",
+            Self::ForcedCodec => "forced_codec",
             Self::Rotate => "rotate",
         }
     }
@@ -298,7 +301,7 @@ mod tests {
         let intent = ReencodeIntent::new(ReencodeKind::Rotate, "test");
         let p = require_confirm(None, &intent).unwrap();
         assert_eq!(p.preset_id, EncodePresetId::Recommended);
-        assert!(p.crf <= 16);
+        assert_eq!(p.crf, 18);
     }
 
     #[test]
@@ -329,6 +332,8 @@ mod tests {
     fn kind_as_str_stable() {
         assert_eq!(ReencodeKind::IntroMux.as_str(), "intro_mux");
         assert_eq!(ReencodeKind::Rotate.as_str(), "rotate");
+        assert_eq!(ReencodeKind::ForcedCodec.as_str(), "forced_codec");
+        assert_eq!(ReencodeKind::RemuxFallback.as_str(), "remux_fallback");
     }
 
     #[test]

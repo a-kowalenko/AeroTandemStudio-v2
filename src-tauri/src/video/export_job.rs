@@ -411,6 +411,8 @@ pub fn create_job(
             resource_dir,
             &options.media_revision_tag,
             Arc::clone(&on_progress),
+            on_reencode.clone(),
+            on_intro_mux_fallback.clone(),
         )? {
             return Ok(res);
         }

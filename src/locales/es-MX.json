@@ -323,7 +323,7 @@
       "previewReuseHint": "Consejo: genera primero la vista previa — si los clips no cambian, Crear la reutiliza sin recodificar.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Preparar en segundo plano",
-      "speculativeCreateHint": "Cuando Crear está listo (Compatible, sin intro, cliente por QR/lookup), video y fotos se preparan antes del clic. Desactivado: flujo clásico."
+      "speculativeCreateHint": "Cuando la sesión está lista (Compatible, cliente por QR/lookup), cuerpo y fotos se preparan antes del clic. Con intro, el intro se aplica al crear. Desactivado: flujo clásico."
     },
     "qr": {
       "autoScan": {
@@ -789,11 +789,41 @@
       "hideAdvanced": "Menos",
       "hwOff": "HW no",
       "hwOn": "HW sí",
+      "kinds": {
+        "body_parallel": "Codificación paralela",
+        "concat_fallback": "Unión",
+        "intro_mux": "Intro + video de vuelo",
+        "preview_clips": "Clips de vista previa",
+        "preview_combined": "Vista previa combinada",
+        "preview_remux_fallback": "Remux de vista previa",
+        "remux_fallback": "Remux",
+        "forced_codec": "Códec de destino",
+        "rotate": "Rotar"
+      },
       "nvencPreset": "NVENC",
       "paramCodec": "Códec",
-      "paramCrf": "CRF / CQ",
+      "paramCrf": "Calidad de video (CRF)",
       "preset": "Calidad",
+      "presets": {
+        "balanced": "Equilibrada",
+        "compat": "Compatible (H.264 · 1080p · 30 fps)",
+        "custom": "Personalizado",
+        "fast": "Rápida",
+        "max_quality": "Máxima calidad",
+        "recommended": "Recomendada"
+      },
       "proceed": "Codificar",
+      "reasons": {
+        "body_parallel": "Los clips usan códecs distintos y se recodificarán en paralelo.",
+        "concat_fallback": "No se pueden unir por copia — los clips deben recodificarse.",
+        "intro_mux": "Intro y video de vuelo no se pueden unir por copia y se recodificarán.",
+        "preview_clips": "La vista previa necesita recodificación (misma calidad que la exportación).",
+        "preview_combined": "La vista previa combinada requiere recodificación.",
+        "preview_remux_fallback": "Falló el remux de la vista previa — se requiere recodificación.",
+        "remux_fallback": "Falló el remux — el video se recodificará.",
+        "forced_codec": "El códec de video seleccionado difiere del códec de origen — se requiere recodificación.",
+        "rotate": "Rotar requiere recodificar los píxeles."
+      },
       "scale1080": "1080p",
       "scaleMode": "Resolución",
       "scaleSource": "Origen",
@@ -1444,7 +1474,8 @@
       "today": "Hoy",
       "last7": "Últimos 7 días",
       "lastMonth": "Último mes",
-      "lastYear": "Último año"
+      "lastYear": "Último año",
+      "removeAll": "Quitar todo"
     },
     "viewer": {
       "title": "Medios · {{name}}",

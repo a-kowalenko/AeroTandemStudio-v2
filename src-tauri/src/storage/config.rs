@@ -585,7 +585,7 @@ fn default_body_concat_mode() -> String {
     "compatible".into()
 }
 fn default_preview_crf() -> u8 {
-    18
+    20
 }
 
 /// Normalize intro mux mode. Product default is CapCut-style universal export only.

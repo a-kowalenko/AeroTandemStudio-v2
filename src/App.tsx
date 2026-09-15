@@ -2190,7 +2190,7 @@ function App() {
           dauer: config?.dauer ?? 5,
           intro_enabled: config?.intro_enabled ?? false,
           video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
-          crf: config?.preview_encode_crf ?? 18,
+          crf: config?.preview_encode_crf ?? 20,
           parallel_enabled: config?.parallel_processing_enabled ?? true,
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
           body_concat_mode: config?.body_concat_mode ?? "compatible",

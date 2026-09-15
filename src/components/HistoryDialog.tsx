@@ -2781,6 +2781,8 @@ function MedienPanel({
   const [ready, setReady] = useState(
     () => useHistoryStore.getState().medienLoaded,
   );
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef(search);
   searchRef.current = search;
   const searchSkipRef = useRef(true);
@@ -2814,6 +2816,7 @@ function MedienPanel({
   useEffect(() => {
     if (!dialogOpen) {
       searchSkipRef.current = true;
+      setMoreOpen(false);
       return;
     }
     if (searchSkipRef.current) {
@@ -2824,6 +2827,15 @@ function MedienPanel({
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, dialogOpen]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [moreOpen]);
 
   const filtered = useMemo(() => {
     return entries.filter((e) => {
@@ -2876,10 +2888,12 @@ function MedienPanel({
   }
 
   function requestPurgeAll() {
+    setMoreOpen(false);
+    if (entries.length === 0) return;
     onRequestConfirm({
       title: t("history.confirm.purgeMedia"),
       description: t("history.confirm.purgeMediaBody"),
-      actionLabel: t("common.actions.deleteAll"),
+      actionLabel: t("history.media.removeAll"),
       run: async () => {
         await purgeProcessedFiles();
         useHistoryStore.getState().clearMedien();
@@ -2924,18 +2938,48 @@ function MedienPanel({
         <span className="ml-auto min-w-[12rem] text-right text-xs text-muted tabular-nums">
           {!ready && filtered.length === 0 ? t("common.actions.loading") : stats}
         </span>
-        <Button type="button" variant="destructive" size="sm" onClick={requestPurgeAll}>
-          {t("common.actions.deleteAll")}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={selected.size === 0}
-          onClick={requestRemoveSelected}
-        >
-          {t("history.removeSelected")}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={selected.size === 0}
+            onClick={requestRemoveSelected}
+          >
+            {t("history.removeSelected")}
+          </Button>
+          <div className="relative" ref={moreRef}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="px-2"
+              aria-label={t("history.moreActions")}
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              disabled={entries.length === 0}
+              onClick={() => setMoreOpen((v) => !v)}
+            >
+              <MoreHorizontal className="h-4 w-4" aria-hidden />
+            </Button>
+            {moreOpen ? (
+              <div
+                role="menu"
+                className="absolute top-full right-0 z-20 mt-1 min-w-[11rem] rounded-md border border-border bg-card py-1 shadow-md"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="flex w-full px-3 py-1.5 text-left text-xs text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                  disabled={entries.length === 0}
+                  onClick={requestPurgeAll}
+                >
+                  {t("history.media.removeAll")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-border/60">

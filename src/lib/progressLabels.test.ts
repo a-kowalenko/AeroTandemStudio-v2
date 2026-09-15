@@ -25,7 +25,7 @@ describe("shouldResetOverallProgressPercent", () => {
     );
     assert.equal(
       shouldResetOverallProgressPercent(
-        "Kodiere neu: Ziel-Codec H.264 weicht vom Quell-Codec ab — Neu-Kodierung erzwungen",
+        "Kodiere neu auf H.264 (Ziel-Codec)",
       ),
       true,
     );

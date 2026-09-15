@@ -323,7 +323,7 @@
       "previewReuseHint": "Tipp: Zuerst „Vorschau generieren“ — bei unveränderten Clips übernimmt Erstellen die Vorschau ohne Neu-Kodierung.",
       "concatCompatible": "Compatible",
       "speculativeCreate": "Vorbereitung im Hintergrund",
-      "speculativeCreateHint": "Sobald Erstellen bereit ist (Compatible, ohne Intro, Kunde per QR/Lookup), werden Video und Fotos schon vor dem Klick vorbereitet. Bei aus: klassischer Create-Flow."
+      "speculativeCreateHint": "Sobald die Session bereit ist (Compatible, Kunde per QR/Lookup), werden Body und Fotos schon vor dem Klick vorbereitet. Mit Intro wird das Intro erst beim Erstellen angefügt. Bei aus: klassischer Create-Flow."
     },
     "qr": {
       "autoScan": {
@@ -789,11 +789,41 @@
       "hideAdvanced": "Weniger",
       "hwOff": "HW aus",
       "hwOn": "HW an",
+      "kinds": {
+        "body_parallel": "Parallele Kodierung",
+        "concat_fallback": "Zusammenfügen",
+        "intro_mux": "Intro + Flugvideo",
+        "preview_clips": "Vorschau-Clips",
+        "preview_combined": "Vorschau kombiniert",
+        "preview_remux_fallback": "Vorschau-Remux",
+        "remux_fallback": "Remux",
+        "forced_codec": "Ziel-Codec",
+        "rotate": "Drehen"
+      },
       "nvencPreset": "NVENC",
       "paramCodec": "Codec",
-      "paramCrf": "CRF / CQ",
+      "paramCrf": "Video-Qualität (CRF)",
       "preset": "Qualität",
+      "presets": {
+        "balanced": "Ausgewogen",
+        "compat": "Kompatibel (H.264 · 1080p · 30 fps)",
+        "custom": "Benutzerdefiniert",
+        "fast": "Schnell",
+        "max_quality": "Maximale Qualität",
+        "recommended": "Empfohlen"
+      },
       "proceed": "Kodieren",
+      "reasons": {
+        "body_parallel": "Die Clips haben unterschiedliche Codecs und werden parallel neu kodiert.",
+        "concat_fallback": "Zusammenfügen per Kopie ist nicht möglich — die Clips müssen neu kodiert werden.",
+        "intro_mux": "Intro und Flugvideo können nicht per Kopie verbunden werden und werden neu kodiert.",
+        "preview_clips": "Für die Vorschau müssen Clips neu kodiert werden (gleiche Qualität wie beim Export).",
+        "preview_combined": "Für die kombinierte Vorschau ist eine Neu-Kodierung nötig.",
+        "preview_remux_fallback": "Remux der Vorschau ist fehlgeschlagen — Neu-Kodierung erforderlich.",
+        "remux_fallback": "Remux ist fehlgeschlagen — das Video wird neu kodiert.",
+        "forced_codec": "Der eingestellte Video-Codec weicht vom Quell-Codec ab — Neu-Kodierung erforderlich.",
+        "rotate": "Drehen erfordert eine Neu-Kodierung der Pixel."
+      },
       "scale1080": "1080p",
       "scaleMode": "Auflösung",
       "scaleSource": "Quelle",
@@ -1444,7 +1474,8 @@
       "today": "Heute",
       "last7": "Letzte 7 Tage",
       "lastMonth": "Letzter Monat",
-      "lastYear": "Letztes Jahr"
+      "lastYear": "Letztes Jahr",
+      "removeAll": "Alles entfernen"
     },
     "viewer": {
       "title": "Medien · {{name}}",

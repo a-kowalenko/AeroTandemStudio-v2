@@ -34,7 +34,7 @@ export function applyEncodePreset(
   const resolved = base.resolved_codec ?? null;
   switch (preset) {
     case "recommended": {
-      const isRotate = (base.recommend_reason ?? "").includes("Drehen");
+      const isRotate = (base.recommend_reason ?? "") === "rotate";
       if (isRotate) {
         return {
           ...maxQuality(hw),
@@ -94,7 +94,8 @@ function balanced(hw: boolean): EncodeProfile {
     preset_id: "balanced",
     codec: "auto",
     resolved_codec: null,
-    crf: 18,
+    // Align with settings: Balanced (CRF 23).
+    crf: 23,
     sw_preset: "veryfast",
     nvenc_preset: "p4",
     hw_accel: hw,
@@ -109,7 +110,7 @@ function maxQuality(hw: boolean): EncodeProfile {
     preset_id: "max_quality",
     codec: "auto",
     resolved_codec: null,
-    crf: 15,
+    crf: 18,
     sw_preset: "slow",
     nvenc_preset: "p6",
     hw_accel: hw,
@@ -124,7 +125,7 @@ function fast(hw: boolean): EncodeProfile {
     preset_id: "fast",
     codec: "auto",
     resolved_codec: null,
-    crf: 22,
+    crf: 26,
     sw_preset: "ultrafast",
     nvenc_preset: "p2",
     hw_accel: hw,
@@ -139,7 +140,7 @@ function compat(hw: boolean): EncodeProfile {
     preset_id: "compat",
     codec: "h264",
     resolved_codec: "h264",
-    crf: 18,
+    crf: 20,
     sw_preset: "medium",
     nvenc_preset: "p4",
     hw_accel: hw,

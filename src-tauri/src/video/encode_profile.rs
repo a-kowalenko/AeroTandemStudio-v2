@@ -113,7 +113,8 @@ impl EncodeProfile {
             preset_id: EncodePresetId::Balanced,
             codec: "auto".into(),
             resolved_codec: None,
-            crf: 18,
+            // Align with settings Video-Qualität steps: Balanced (CRF 23).
+            crf: 23,
             sw_preset: "veryfast".into(),
             nvenc_preset: "p4".into(),
             hw_accel,
@@ -128,7 +129,8 @@ impl EncodeProfile {
             preset_id: EncodePresetId::MaxQuality,
             codec: "auto".into(),
             resolved_codec: None,
-            crf: 15,
+            // Align with settings: Very high (CRF 18).
+            crf: 18,
             sw_preset: "slow".into(),
             nvenc_preset: "p6".into(),
             hw_accel,
@@ -143,7 +145,8 @@ impl EncodeProfile {
             preset_id: EncodePresetId::Fast,
             codec: "auto".into(),
             resolved_codec: None,
-            crf: 22,
+            // Align with settings: Smaller / faster (CRF 26).
+            crf: 26,
             sw_preset: "ultrafast".into(),
             nvenc_preset: "p2".into(),
             hw_accel,
@@ -158,7 +161,7 @@ impl EncodeProfile {
             preset_id: EncodePresetId::Compat,
             codec: "h264".into(),
             resolved_codec: Some("h264".into()),
-            crf: 18,
+            crf: 20,
             sw_preset: "medium".into(),
             nvenc_preset: "p4".into(),
             hw_accel,
@@ -190,10 +193,11 @@ impl EncodeProfile {
         p.resolved_codec = Some(codec.into());
         p.scale_mode = ScaleMode::Source;
         p.fps_mode = FpsMode::Source;
+        // Stable i18n codes — UI maps via `dialogs.reencode.recommendReason.*`.
         p.recommend_reason = Some(if codec == "h265" {
-            "Universal-Export — ein HEVC-Durchlauf (CapCut-Stil)".into()
+            "capcut_h265".into()
         } else {
-            "Universal-Export — ein H.264-Durchlauf (CapCut-Stil)".into()
+            "capcut_h264".into()
         });
         p
     }
@@ -232,7 +236,7 @@ impl EncodeProfile {
         let mut profile = match kind {
             ReencodeKind::Rotate => {
                 let mut p = Self::max_quality(hw_accel);
-                p.recommend_reason = Some("Drehen — höhere Qualität empfohlen".into());
+                p.recommend_reason = Some("rotate".into());
                 p
             }
             ReencodeKind::PreviewClips
@@ -241,14 +245,13 @@ impl EncodeProfile {
                 let mut p = Self::balanced(hw_accel);
                 // Preview == export: keep source geometry unless browser forces compat later.
                 p.crf = crf;
-                p.recommend_reason = Some("Preview = Export".into());
+                p.recommend_reason = Some("preview_export".into());
                 p
             }
             ReencodeKind::IntroMux => {
                 let mut p = Self::balanced(hw_accel);
                 p.crf = crf;
-                p.recommend_reason =
-                    Some("Intro+Body Fallback — durchgängig kodieren".into());
+                p.recommend_reason = Some("intro_mux".into());
                 p
             }
             ReencodeKind::BodyParallel
@@ -256,7 +259,13 @@ impl EncodeProfile {
             | ReencodeKind::RemuxFallback => {
                 let mut p = Self::balanced(hw_accel);
                 p.crf = crf;
-                p.recommend_reason = Some("Ziel-Codec für gemischte Clips".into());
+                p.recommend_reason = Some("mixed_clips".into());
+                p
+            }
+            ReencodeKind::ForcedCodec => {
+                let mut p = Self::balanced(hw_accel);
+                p.crf = crf;
+                p.recommend_reason = Some("forced_codec".into());
                 p
             }
         };
@@ -291,12 +300,8 @@ impl EncodeProfile {
         let resolved = base.resolved_codec.clone();
         let mut p = match preset {
             EncodePresetId::Recommended => {
-                // Re-derive from base's recommend_reason context: use max if reason mentions Drehen.
-                if base
-                    .recommend_reason
-                    .as_deref()
-                    .is_some_and(|r| r.contains("Drehen"))
-                {
+                // Re-derive from base's recommend_reason code: rotate → max quality.
+                if base.recommend_reason.as_deref() == Some("rotate") {
                     let mut m = Self::max_quality(hw);
                     m.preset_id = EncodePresetId::Recommended;
                     m.recommend_reason = base.recommend_reason.clone();
@@ -446,9 +451,9 @@ mod tests {
     fn recommend_rotate_prefers_max_quality() {
         let p = EncodeProfile::recommend(ReencodeKind::Rotate, 18, true, None);
         assert_eq!(p.preset_id, EncodePresetId::Recommended);
-        assert!(p.crf <= 16);
+        assert_eq!(p.crf, 18);
         assert_eq!(p.sw_preset, "slow");
-        assert!(p.recommend_reason.as_ref().unwrap().contains("Drehen"));
+        assert_eq!(p.recommend_reason.as_deref(), Some("rotate"));
     }
 
     #[test]
@@ -464,7 +469,7 @@ mod tests {
     fn apply_preset_fast() {
         let base = EncodeProfile::from_config_defaults(18, false, "auto");
         let f = EncodeProfile::apply_preset(EncodePresetId::Fast, &base);
-        assert_eq!(f.crf, 22);
+        assert_eq!(f.crf, 26);
         assert_eq!(f.sw_preset, "ultrafast");
         assert!(!f.hw_accel);
     }
@@ -507,7 +512,7 @@ mod tests {
         let (enc, params) = p.to_encode_output_params(&hw, VideoCodec::H264);
         assert_eq!(enc, "libx264");
         assert!(params.windows(2).any(|w| w[0] == "-preset" && w[1] == "slow"));
-        assert!(params.windows(2).any(|w| w[0] == "-crf" && w[1] == "15"));
+        assert!(params.windows(2).any(|w| w[0] == "-crf" && w[1] == "18"));
     }
 
     #[test]
