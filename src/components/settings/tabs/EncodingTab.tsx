@@ -185,26 +185,6 @@ export function EncodingTab({
                 </SelectContent>
               </Select>
             </div>
-
-            <div className="space-y-1.5">
-              <Label>{t("settings.encoding.strategy")}</Label>
-              <Select
-                value={draft.encoding_strategy}
-                onValueChange={(v) => patchNow("encoding_strategy", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="per_clip">
-                    {t("settings.encoding.strategyPerClip")}
-                  </SelectItem>
-                  <SelectItem value="combined">
-                    {t("settings.encoding.strategyCombined")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </>
         ) : null}
 
