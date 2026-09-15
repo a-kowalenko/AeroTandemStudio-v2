@@ -17,6 +17,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Vorgänge: lokale Liefermedien ansehen und abspielen — „Medien ansehen“ oder Klick auf spielbare Dateien; Vor/Zurück in der Liste (nur solange der Ordner noch lokal da ist)
 - Intro und Flugvideo: Universal-Export (CapCut) — Zusammenfügen in einem Durchlauf, iPhone- und QuickTime-tauglich; Qualität über „Video-Qualität (CRF)“
 - Outro: eigenes Foto oder Video ans Ende anhängen (Einstellungen → Ausgabe); Dauer bei Fotos wählbar, bei Videos angezeigt — auch zusammen mit Intro über Universal-Export
+- Instructor-Foto: optionales Foto beim Erstellen zusätzlich in die Foto-Ordner legen (Einstellungen → Ausgabe); Dateiname wählbar
 
 ### Verbessert
 
