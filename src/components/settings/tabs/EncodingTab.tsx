@@ -268,103 +268,106 @@ export function EncodingTab({
         <SettingsSection
           title={t("settings.encoding.outro.title")}
           description={t("settings.encoding.outro.description")}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className="min-w-0 flex-1 space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={draft.outro_enabled}
-                  onCheckedChange={(v) => {
-                    const on = v === true;
-                    patchNow("outro_enabled", on);
-                    if (on && !outroPath) void pickOutro();
-                  }}
+          aside={
+            outroPath && (outroKind === "photo" || outroKind === "video") ? (
+              <div className="w-44 space-y-1.5 sm:w-52 md:w-56">
+                <OutroMediaPreview
+                  path={outroPath}
+                  kind={outroKind}
+                  exists={outroProbe.exists}
+                  className="w-full"
                 />
-                {t("settings.encoding.outro.enabled")}
-              </label>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void pickOutro()}
+                <p
+                  className="truncate text-center text-xs text-muted-foreground"
+                  title={outroFilename}
                 >
-                  {t("settings.encoding.outro.pick")}
-                </Button>
-                {outroPath ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={removeOutro}
-                  >
-                    {t("settings.encoding.outro.remove")}
-                  </Button>
-                ) : null}
-              </div>
-
-              {outroPath ? (
-                <p className="break-all text-sm text-muted-foreground">
                   {outroFilename}
                 </p>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  {t("settings.encoding.outro.noMedia")}
-                </p>
-              )}
+              </div>
+            ) : null
+          }
+        >
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={draft.outro_enabled}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  patchNow("outro_enabled", on);
+                  if (on && !outroPath) void pickOutro();
+                }}
+              />
+              {t("settings.encoding.outro.enabled")}
+            </label>
 
-              {draft.outro_enabled && outroPath && !outroProbe.exists ? (
-                <p className="text-sm text-destructive">
-                  {t("settings.encoding.outro.missing")}
-                </p>
-              ) : null}
-
-              {outroKind === "photo" ? (
-                <div className="space-y-1.5">
-                  <Label>{t("settings.encoding.outro.duration")}</Label>
-                  <Select
-                    value={String(draft.outro_dauer)}
-                    onValueChange={(v) => patchNow("outro_dauer", Number(v))}
-                    disabled={!draft.outro_enabled}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-
-              {outroKind === "video" && outroProbe.durationSecs != null ? (
-                <div className="space-y-1 text-sm">
-                  <p className="text-muted-foreground">
-                    {t("settings.encoding.outro.videoDuration", {
-                      secs: outroProbe.durationSecs.toFixed(1),
-                    })}
-                  </p>
-                  {outroProbe.durationSecs > 10 ? (
-                    <p className="text-amber-600 dark:text-amber-500">
-                      {t("settings.encoding.outro.longWarning")}
-                    </p>
-                  ) : null}
-                </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void pickOutro()}
+              >
+                {t("settings.encoding.outro.pick")}
+              </Button>
+              {outroPath ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={removeOutro}
+                >
+                  {t("settings.encoding.outro.remove")}
+                </Button>
               ) : null}
             </div>
 
-            {outroPath && (outroKind === "photo" || outroKind === "video") ? (
-              <OutroMediaPreview
-                path={outroPath}
-                kind={outroKind}
-                exists={outroProbe.exists}
-                className="w-full shrink-0 sm:w-56 md:w-64 sm:-mt-1"
-              />
+            {!outroPath ? (
+              <p className="text-sm text-muted-foreground">
+                {t("settings.encoding.outro.noMedia")}
+              </p>
+            ) : null}
+
+            {draft.outro_enabled && outroPath && !outroProbe.exists ? (
+              <p className="text-sm text-destructive">
+                {t("settings.encoding.outro.missing")}
+              </p>
+            ) : null}
+
+            {outroKind === "photo" ? (
+              <div className="space-y-1.5">
+                <Label>{t("settings.encoding.outro.duration")}</Label>
+                <Select
+                  value={String(draft.outro_dauer)}
+                  onValueChange={(v) => patchNow("outro_dauer", Number(v))}
+                  disabled={!draft.outro_enabled}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : null}
+
+            {outroKind === "video" && outroProbe.durationSecs != null ? (
+              <div className="space-y-1 text-sm">
+                <p className="text-muted-foreground">
+                  {t("settings.encoding.outro.videoDuration", {
+                    secs: outroProbe.durationSecs.toFixed(1),
+                  })}
+                </p>
+                {outroProbe.durationSecs > 10 ? (
+                  <p className="text-amber-600 dark:text-amber-500">
+                    {t("settings.encoding.outro.longWarning")}
+                  </p>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </SettingsSection>
