@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { showAdvanced } from "@/lib/settingsUi";
 import { FolderPathField } from "../FolderPathField";
+import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
@@ -170,18 +171,22 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           />
           {advanced ? (
           <div className="space-y-1.5">
-            <Label>{t("settings.sd.backup.pcName")}</Label>
+            <div className="flex items-center gap-1.5">
+              <Label>{t("settings.sd.backup.pcName")}</Label>
+              <SettingsHintIcon
+                text={t("settings.sd.backup.pcNameHint", {
+                  name:
+                    draft.sd_pc_name.trim() ||
+                    t("settings.sd.backup.pcNameFallback"),
+                })}
+              />
+            </div>
             <Input
               value={draft.sd_pc_name}
               placeholder={t("settings.sd.backup.pcNamePlaceholder")}
               disabled={!draft.sd_auto_backup}
               onChange={(e) => patch("sd_pc_name", e.target.value)}
             />
-            <p className="text-xs text-muted">
-              {t("settings.sd.backup.pcNameHint", {
-                name: draft.sd_pc_name.trim() || t("settings.sd.backup.pcNameFallback"),
-              })}
-            </p>
           </div>
           ) : null}
           <label
@@ -204,6 +209,9 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
             />
             {t("settings.sd.backup.clearAfter")}
           </label>
+          <p className="text-[11px] leading-snug text-muted">
+            {t("settings.sd.backup.clearAfterHint")}
+          </p>
         </div>
 
         {advanced ? (
@@ -277,7 +285,12 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
                   )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                  <div className="flex items-center gap-1.5">
+                    <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                    <SettingsHintIcon
+                      text={t("settings.sd.backup.copyHint")}
+                    />
+                  </div>
                   <Select
                     value={modeValue}
                     onValueChange={(v) => patchNow("sd_server_backup_mode", v)}
@@ -294,12 +307,6 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  <p
-                    className="text-xs text-muted"
-                    title={t("settings.sd.backup.copyHint")}
-                  >
-                    {t("settings.sd.backup.copyHint")}
-                  </p>
                 </div>
               </div>
             ) : null}
@@ -314,37 +321,40 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
         }
       >
         {advanced ? (
-        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.autoHint")}>
+        <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_auto_import}
             onCheckedChange={(v) => patchNow("sd_auto_import", v === true)}
           />
-          {t("settings.sd.import.auto")}
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.sd.import.auto")}
+            <SettingsHintIcon text={t("settings.sd.import.autoHint")} />
+          </span>
         </label>
         ) : null}
-        <label
-          className="flex items-center gap-2 text-sm"
-          title={t("settings.sd.import.ejectHint")}
-        >
+        <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_eject_after_workflow}
             onCheckedChange={(v) =>
               patchNow("sd_eject_after_workflow", v === true)
             }
           />
-          {t("settings.sd.import.eject")}
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.sd.import.eject")}
+            <SettingsHintIcon text={t("settings.sd.import.ejectHint")} />
+          </span>
         </label>
-        <label
-          className="flex items-center gap-2 text-sm"
-          title={t("settings.sd.import.ejectSoundHint")}
-        >
+        <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.sd_eject_sound_enabled}
             onCheckedChange={(v) =>
               patchNow("sd_eject_sound_enabled", v === true)
             }
           />
-          {t("settings.sd.import.ejectSound")}
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.sd.import.ejectSound")}
+            <SettingsHintIcon text={t("settings.sd.import.ejectSoundHint")} />
+          </span>
         </label>
         {advanced ? (
         <>
@@ -355,14 +365,17 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
           />
           {t("settings.sd.import.skipProcessed")}
         </label>
-        <label className="flex items-center gap-2 text-sm" title={t("settings.sd.import.usbCamerasHint")}>
+        <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.usb_camera_import_enabled}
             onCheckedChange={(v) =>
               patchNow("usb_camera_import_enabled", v === true)
             }
           />
-          {t("settings.sd.import.usbCameras")}
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.sd.import.usbCameras")}
+            <SettingsHintIcon text={t("settings.sd.import.usbCamerasHint")} />
+          </span>
         </label>
         <div
           className={cn(
@@ -370,7 +383,12 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
             !draft.usb_camera_import_enabled && "pointer-events-none opacity-50",
           )}
         >
-          <Label>{t("settings.sd.import.usbImportMode")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>{t("settings.sd.import.usbImportMode")}</Label>
+            <SettingsHintIcon
+              text={t("settings.sd.import.usbImportModeHint")}
+            />
+          </div>
           <Select
             value={
               draft.usb_import_mode === "volume_only"
@@ -397,9 +415,6 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
               </SelectItem>
             </SelectContent>
           </Select>
-          <p className="text-[11px] leading-snug text-muted" title={t("settings.sd.import.usbImportModeHint")}>
-            {t("settings.sd.import.usbImportModeHint")}
-          </p>
         </div>
         </>
         ) : null}

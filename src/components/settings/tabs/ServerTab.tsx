@@ -28,6 +28,7 @@ import {
 import { amsBridgeDiscover, amsBridgeHealth, getConfig } from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { showAdvanced } from "@/lib/settingsUi";
+import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
@@ -476,16 +477,18 @@ export function ServerTab({
           />
           {t("settings.server.upload.afterCreate")}
         </label>
-        <label className="flex items-start gap-2 text-sm" title={t("settings.server.upload.autoMountHint")}>
+        <label className="flex items-center gap-2 text-sm">
           <Checkbox
-            className="mt-0.5"
             checked={draft.smb_auto_mount_enabled}
             onCheckedChange={(v) =>
               patchNow("smb_auto_mount_enabled", v === true)
             }
           />
-          <span>
-            <span className="block">{t("settings.server.upload.autoMount")}</span>
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.server.upload.autoMount")}
+            <SettingsHintIcon
+              text={t("settings.server.upload.autoMountHint")}
+            />
           </span>
         </label>
       </SettingsSection>

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { showAdvanced } from "@/lib/settingsUi";
 import { SettingsAccordion } from "../SettingsAccordion";
+import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
@@ -39,7 +40,12 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
       <SettingsAccordion title={t("settings.moreOptions")}>
       <SettingsSection title={t("settings.qr.params.title")}>
         <div className="space-y-1.5">
-          <Label>{t("settings.qr.params.videoSeconds")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>{t("settings.qr.params.videoSeconds")}</Label>
+            <SettingsHintIcon
+              text={t("settings.qr.params.videoSecondsHint")}
+            />
+          </div>
           <Input
             type="number"
             min={1}
@@ -52,9 +58,6 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
               )
             }
           />
-          <p className="text-[11px] text-muted">
-            {t("settings.qr.params.videoSecondsHint")}
-          </p>
         </div>
       </SettingsSection>
 
@@ -66,11 +69,13 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
               patchNow("qr_remove_photo_after_scan", v === true)
             }
           />
-          {t("settings.qr.after.removePhoto")}
+          <span className="inline-flex items-center gap-1.5">
+            {t("settings.qr.after.removePhoto")}
+            <SettingsHintIcon
+              text={t("settings.qr.after.removePhotoHint")}
+            />
+          </span>
         </label>
-        <p className="pl-6 text-[11px] leading-relaxed text-muted">
-          {t("settings.qr.after.removePhotoHint")}
-        </p>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
             checked={draft.qr_remove_video_after_scan}
@@ -87,7 +92,12 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
               : "pointer-events-none space-y-1.5 pl-6 opacity-50"
           }
         >
-          <Label>{t("settings.qr.after.maxDuration")}</Label>
+          <div className="flex items-center gap-1.5">
+            <Label>{t("settings.qr.after.maxDuration")}</Label>
+            <SettingsHintIcon
+              text={t("settings.qr.after.maxDurationHint")}
+            />
+          </div>
           <Input
             type="number"
             min={1}
@@ -102,9 +112,6 @@ export function QrTab({ draft, patch, patchNow, disclosure }: SettingsTabBasePro
               );
             }}
           />
-          <p className="text-[11px] text-muted" title={t("settings.qr.after.maxDurationHint")}>
-            {t("settings.qr.after.maxDurationHint")}
-          </p>
         </div>
       </SettingsSection>
       </SettingsAccordion>

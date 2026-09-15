@@ -363,6 +363,7 @@
         "clearAfter": "Vaciar SD tras el respaldo",
         "clearAfterTitleOn": "Vaciar la tarjeta SD tras un respaldo correcto",
         "clearAfterTitleOff": "Solo disponible si el respaldo automático está activo",
+        "clearAfterHint": "Borra solo archivos ya respaldados — el resto se conserva.",
         "secondPath": "Respaldo en servidor",
         "serverUrl": "URL de respaldo en servidor",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
@@ -2169,12 +2170,12 @@
     "stepHint": {
       "appearance": "Puedes cambiar la apariencia después en cualquier momento.",
       "crew": "Los valores predeterminados del equipo y Yo soy se pueden configurar después.",
-      "storage": "Sin ubicación de almacenamiento, los trabajos no se pueden guardar; puedes configurarla después.",
+      "storage": "Sin carpetas de almacenamiento y respaldo, guardar trabajos y el respaldo SD quedan limitados; puedes configurarlas después.",
       "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
       "qr": "Las opciones de escaneo QR se pueden configurar después.",
       "server": "El acceso al servidor se puede configurar después.",
       "workplace": "Puedes cambiar la apariencia, la zona de salto y el operador después en cualquier momento.",
-      "media": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
+      "media": "Respaldo automático, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
       "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados.",
       "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
     },
@@ -2218,19 +2219,19 @@
     "completeTitle": "Éxito",
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
-      "qrHint": "Los archivos QR se conservan por defecto. Duración del escaneo y limpieza están en Más opciones.",
+      "qrHint": "Tras un análisis correcto, los clips/fotos QR se eliminan por defecto. Duración del escaneo y limpieza están en Más opciones.",
       "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
       "appearance": "Bienvenido a Aero Tandem Studio. Define apariencia, zona de salto y operador. Todo lo demás se puede ajustar después en la configuración.",
       "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
-      "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
+      "storage": "Los trabajos terminados y los respaldos SD se guardan en estas carpetas.",
       "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después.",
       "workplaceSimple": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
       "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después.",
       "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
-      "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
-      "output": "Códec, estrategia y aceleración por hardware. Intro, duración y concatenación siguen debajo."
+      "media": "Define respaldo automático, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
+      "output": "Las mismas opciones de salida que en Ajustes: predeterminado, calidad e intro."
     },
     "mode": {
       "simpleTitle": "Simple",

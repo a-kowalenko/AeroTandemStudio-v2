@@ -39,6 +39,7 @@ import {
 import { WizardUploadServerStep } from "@/components/WizardUploadServerStep";
 import { EncodingTab } from "@/components/settings/tabs/EncodingTab";
 import { SettingsAccordion } from "@/components/settings/SettingsAccordion";
+import { SettingsHintIcon } from "@/components/settings/SettingsHintIcon";
 import {
   applySimpleWizardMediaDefaults,
   isWizardStepSkippable,
@@ -82,8 +83,6 @@ function encodingCodecLabel(
   if (codec === "auto") return t("settings.encoding.codecAuto");
   if (codec === "h264") return "H.264";
   if (codec === "h265") return "H.265";
-  if (codec === "vp9") return "VP9";
-  if (codec === "av1") return "AV1";
   return codec;
 }
 
@@ -685,12 +684,13 @@ export function SetupWizard({ open, onComplete }: Props) {
     if (id === "workplace" && !draft.operator_name.trim()) {
       errors.operator_name = t("setupWizard.operatorRequired");
     }
-    if (id === "storage" && !draft.speicherort.trim()) {
-      errors.speicherort = t("setupWizard.storage.pickFolderError");
-    }
-    if (id === "media" && draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
-      errors.sd_backup_folder =
-        t("setupWizard.sd.pickFolderOrDisableAutoBackup");
+    if (id === "storage") {
+      if (!draft.speicherort.trim()) {
+        errors.speicherort = t("setupWizard.storage.pickFolderError");
+      }
+      if (draft.sd_auto_backup && !draft.sd_backup_folder.trim()) {
+        errors.sd_backup_folder = t("setupWizard.storage.pickFolderError");
+      }
     }
     if (id === "connection" && draft.upload_to_server) {
       const simple =
@@ -748,7 +748,7 @@ export function SetupWizard({ open, onComplete }: Props) {
     const stepId = steps[step] ?? "mode";
     if (!isWizardStepSkippable(stepId)) return;
 
-    if (stepId === "media") {
+    if (stepId === "storage") {
       setDraft((prev) => {
         if (!prev) return prev;
         if (!prev.sd_auto_backup || prev.sd_backup_folder.trim()) return prev;
@@ -1126,6 +1126,28 @@ export function SetupWizard({ open, onComplete }: Props) {
                   onUseStandard={() => onUseExistingStandardDir("speicherort")}
                   error={fieldErrors.speicherort}
                 />
+                <FolderDirField
+                  label={t("settings.sd.backup.folder")}
+                  value={draft.sd_backup_folder}
+                  placeholder={t("setupWizard.storage.folderPlaceholder")}
+                  standardPath={mediaDirsProposal?.sd_backup_folder}
+                  standardExists={Boolean(
+                    mediaDirsProposal?.sd_backup_folder_exists,
+                  )}
+                  invalid={Boolean(fieldErrors.sd_backup_folder)}
+                  onPick={() => void pickFolder("sd_backup_folder")}
+                  busy={creatingDefaultDir === "sd_backup_folder"}
+                  done={Boolean(defaultDirDone.sd_backup_folder)}
+                  createDisabled={
+                    creatingDefaultDir !== null &&
+                    creatingDefaultDir !== "sd_backup_folder"
+                  }
+                  onCreate={() => void onCreateDefaultDir("sd_backup_folder")}
+                  onUseStandard={() =>
+                    onUseExistingStandardDir("sd_backup_folder")
+                  }
+                  error={fieldErrors.sd_backup_folder}
+                />
               </div>
             </>
           ) : null}
@@ -1158,75 +1180,51 @@ export function SetupWizard({ open, onComplete }: Props) {
                       if (!on) clearFieldError("sd_backup_folder");
                     }}
                   />
-                  {t("settings.sd.backup.auto")}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("settings.sd.backup.auto")}
+                    <SettingsHintIcon text={t("setupWizard.import.backupHint")} />
+                  </span>
                 </label>
-                <p className="text-[11px] leading-snug text-muted">
-                  {t("setupWizard.import.backupHint")}
-                </p>
-                <div
+                <label
                   className={cn(
-                    "space-y-3 pt-1",
+                    "flex items-center gap-2 text-sm",
+                    !draft.sd_auto_backup && "pointer-events-none opacity-50",
+                  )}
+                  title={
+                    draft.sd_auto_backup
+                      ? t("settings.sd.backup.clearAfterTitleOn")
+                      : t("settings.sd.backup.clearAfterTitleOff")
+                  }
+                >
+                  <Checkbox
+                    checked={
+                      draft.sd_clear_after_backup && draft.sd_auto_backup
+                    }
+                    disabled={!draft.sd_auto_backup}
+                    onCheckedChange={(v) =>
+                      patch("sd_clear_after_backup", v === true)
+                    }
+                  />
+                  {t("settings.sd.backup.clearAfter")}
+                </label>
+                <p
+                  className={cn(
+                    "text-[11px] leading-snug text-muted",
                     !draft.sd_auto_backup && "opacity-50",
                   )}
                 >
-                  <FolderDirField
-                    label={t("settings.sd.backup.folder")}
-                    value={draft.sd_backup_folder}
-                    placeholder={t("setupWizard.storage.folderPlaceholder")}
-                    standardPath={mediaDirsProposal?.sd_backup_folder}
-                    standardExists={Boolean(
-                      mediaDirsProposal?.sd_backup_folder_exists,
-                    )}
-                    inputDisabled={!draft.sd_auto_backup}
-                    pickDisabled={!draft.sd_auto_backup}
-                    invalid={Boolean(fieldErrors.sd_backup_folder)}
-                    onPick={() => void pickFolder("sd_backup_folder")}
-                    busy={creatingDefaultDir === "sd_backup_folder"}
-                    done={Boolean(defaultDirDone.sd_backup_folder)}
-                    createDisabled={
-                      !draft.sd_auto_backup ||
-                      (creatingDefaultDir !== null &&
-                        creatingDefaultDir !== "sd_backup_folder")
-                    }
-                    onCreate={() => void onCreateDefaultDir("sd_backup_folder")}
-                    onUseStandard={() =>
-                      onUseExistingStandardDir("sd_backup_folder")
-                    }
-                    error={fieldErrors.sd_backup_folder}
-                  />
-                  <label
-                    className={cn(
-                      "flex items-center gap-2 text-sm",
-                      !draft.sd_auto_backup && "pointer-events-none",
-                    )}
-                    title={
-                      draft.sd_auto_backup
-                        ? t("settings.sd.backup.clearAfterTitleOn")
-                        : t("settings.sd.backup.clearAfterTitleOff")
-                    }
-                  >
-                    <Checkbox
-                      checked={
-                        draft.sd_clear_after_backup && draft.sd_auto_backup
-                      }
-                      disabled={!draft.sd_auto_backup}
-                      onCheckedChange={(v) =>
-                        patch("sd_clear_after_backup", v === true)
-                      }
-                    />
-                    {t("settings.sd.backup.clearAfter")}
-                  </label>
-                </div>
+                  {t("settings.sd.backup.clearAfterHint")}
+                </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={draft.sd_auto_import}
                     onCheckedChange={(v) => patch("sd_auto_import", v === true)}
                   />
-                  {t("settings.sd.import.auto")}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("settings.sd.import.auto")}
+                    <SettingsHintIcon text={t("settings.sd.import.autoHint")} />
+                  </span>
                 </label>
-                <p className="text-[11px] leading-snug text-muted">
-                  {t("settings.sd.import.autoHint")}
-                </p>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
                     checked={draft.sd_eject_after_workflow}
@@ -1234,11 +1232,11 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("sd_eject_after_workflow", v === true)
                     }
                   />
-                  {t("settings.sd.import.eject")}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("settings.sd.import.eject")}
+                    <SettingsHintIcon text={t("settings.sd.import.ejectHint")} />
+                  </span>
                 </label>
-                <p className="text-[11px] leading-snug text-muted">
-                  {t("settings.sd.import.ejectHint")}
-                </p>
               </div>
               <div className="space-y-3 rounded-lg border border-border bg-background/60 p-3">
                 <p className="text-xs font-semibold tracking-wide text-muted uppercase">
@@ -1251,7 +1249,10 @@ export function SetupWizard({ open, onComplete }: Props) {
                       patch("qr_check_enabled", v === true)
                     }
                   />
-                  {t("settings.qr.autoScan.videos")}
+                  <span className="inline-flex items-center gap-1.5">
+                    {t("settings.qr.autoScan.videos")}
+                    <SettingsHintIcon text={t("setupWizard.import.qrHint")} />
+                  </span>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -1262,9 +1263,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                   />
                   {t("settings.qr.autoScan.photos")}
                 </label>
-                <p className="text-[11px] leading-snug text-muted">
-                  {t("setupWizard.import.qrHint")}
-                </p>
               </div>
               {uiMode === "advanced" ? (
                 <SettingsAccordion title={t("settings.moreOptions")}>
@@ -1275,20 +1273,22 @@ export function SetupWizard({ open, onComplete }: Props) {
                         !draft.sd_auto_backup && "opacity-50",
                       )}
                     >
-                      <Label>{t("settings.sd.backup.pcName")}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>{t("settings.sd.backup.pcName")}</Label>
+                        <SettingsHintIcon
+                          text={t("settings.sd.backup.pcNameHint", {
+                            name:
+                              draft.sd_pc_name.trim() ||
+                              t("settings.sd.backup.pcNameFallback"),
+                          })}
+                        />
+                      </div>
                       <Input
                         value={draft.sd_pc_name}
                         placeholder={t("settings.sd.backup.pcNamePlaceholder")}
                         disabled={!draft.sd_auto_backup}
                         onChange={(e) => patch("sd_pc_name", e.target.value)}
                       />
-                      <p className="text-[11px] leading-snug text-muted">
-                        {t("settings.sd.backup.pcNameHint", {
-                          name:
-                            draft.sd_pc_name.trim() ||
-                            t("settings.sd.backup.pcNameFallback"),
-                        })}
-                      </p>
                     </div>
                   </WizardOptionGroup>
                   <WizardOptionGroup title={t("setupWizard.sections.usb")}>
@@ -1299,11 +1299,13 @@ export function SetupWizard({ open, onComplete }: Props) {
                           patch("usb_camera_import_enabled", v === true)
                         }
                       />
-                      {t("settings.sd.import.usbCameras")}
+                      <span className="inline-flex items-center gap-1.5">
+                        {t("settings.sd.import.usbCameras")}
+                        <SettingsHintIcon
+                          text={t("settings.sd.import.usbCamerasHint")}
+                        />
+                      </span>
                     </label>
-                    <p className="text-[11px] leading-snug text-muted">
-                      {t("settings.sd.import.usbCamerasHint")}
-                    </p>
                     <div
                       className={cn(
                         "space-y-1.5",
@@ -1311,7 +1313,12 @@ export function SetupWizard({ open, onComplete }: Props) {
                           "pointer-events-none opacity-50",
                       )}
                     >
-                      <Label>{t("settings.sd.import.usbImportMode")}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>{t("settings.sd.import.usbImportMode")}</Label>
+                        <SettingsHintIcon
+                          text={t("settings.sd.import.usbImportModeHint")}
+                        />
+                      </div>
                       <Select
                         value={
                           draft.usb_import_mode === "volume_only"
@@ -1338,9 +1345,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-[11px] leading-snug text-muted">
-                        {t("settings.sd.import.usbImportModeHint")}
-                      </p>
                     </div>
                   </WizardOptionGroup>
                   <WizardOptionGroup title={t("settings.sd.size.title")}>
@@ -1351,11 +1355,13 @@ export function SetupWizard({ open, onComplete }: Props) {
                           patch("sd_size_limit_enabled", v === true)
                         }
                       />
-                      {t("settings.sd.size.enable")}
+                      <span className="inline-flex items-center gap-1.5">
+                        {t("settings.sd.size.enable")}
+                        <SettingsHintIcon
+                          text={t("settings.sd.size.description")}
+                        />
+                      </span>
                     </label>
-                    <p className="text-[11px] leading-snug text-muted">
-                      {t("settings.sd.size.description")}
-                    </p>
                     <div
                       className={cn(
                         "space-y-1.5",
@@ -1380,7 +1386,12 @@ export function SetupWizard({ open, onComplete }: Props) {
                   </WizardOptionGroup>
                   <WizardOptionGroup title={t("settings.qr.params.title")}>
                     <div className="space-y-1.5">
-                      <Label>{t("settings.qr.params.videoSeconds")}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>{t("settings.qr.params.videoSeconds")}</Label>
+                        <SettingsHintIcon
+                          text={t("settings.qr.params.videoSecondsHint")}
+                        />
+                      </div>
                       <Input
                         type="number"
                         min={1}
@@ -1393,9 +1404,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                           )
                         }
                       />
-                      <p className="text-[11px] leading-snug text-muted">
-                        {t("settings.qr.params.videoSecondsHint")}
-                      </p>
                     </div>
                   </WizardOptionGroup>
                   <WizardOptionGroup title={t("settings.qr.after.title")}>
@@ -1406,11 +1414,13 @@ export function SetupWizard({ open, onComplete }: Props) {
                           patch("qr_remove_photo_after_scan", v === true)
                         }
                       />
-                      {t("settings.qr.after.removePhoto")}
+                      <span className="inline-flex items-center gap-1.5">
+                        {t("settings.qr.after.removePhoto")}
+                        <SettingsHintIcon
+                          text={t("settings.qr.after.removePhotoHint")}
+                        />
+                      </span>
                     </label>
-                    <p className="text-[11px] leading-snug text-muted">
-                      {t("settings.qr.after.removePhotoHint")}
-                    </p>
                     <label className="flex items-center gap-2 text-sm">
                       <Checkbox
                         checked={draft.qr_remove_video_after_scan}
@@ -1427,7 +1437,12 @@ export function SetupWizard({ open, onComplete }: Props) {
                           "pointer-events-none opacity-50",
                       )}
                     >
-                      <Label>{t("settings.qr.after.maxDuration")}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>{t("settings.qr.after.maxDuration")}</Label>
+                        <SettingsHintIcon
+                          text={t("settings.qr.after.maxDurationHint")}
+                        />
+                      </div>
                       <Input
                         type="number"
                         min={1}
@@ -1444,9 +1459,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                           );
                         }}
                       />
-                      <p className="text-[11px] leading-snug text-muted">
-                        {t("settings.qr.after.maxDurationHint")}
-                      </p>
                     </div>
                   </WizardOptionGroup>
                 </SettingsAccordion>
@@ -1499,14 +1511,21 @@ export function SetupWizard({ open, onComplete }: Props) {
                         patch("sd_server_backup_enabled", v === true)
                       }
                     />
-                    {t("settings.sd.backup.secondPath")}
+                    <span className="inline-flex items-center gap-1.5">
+                      {t("settings.sd.backup.secondPath")}
+                      <SettingsHintIcon
+                        text={t("setupWizard.upload.secondPathHint")}
+                      />
+                    </span>
                   </label>
-                  <p className="text-[11px] leading-snug text-muted">
-                    {t("setupWizard.upload.secondPathHint")}
-                  </p>
                   {draft.sd_server_backup_enabled ? (
                     <div className="space-y-1.5">
-                      <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                      <div className="flex items-center gap-1.5">
+                        <Label>{t("settings.sd.backup.copyStrategy")}</Label>
+                        <SettingsHintIcon
+                          text={t("settings.sd.backup.copyHint")}
+                        />
+                      </div>
                       <Select
                         value={
                           draft.sd_server_backup_mode === "local_then_server"
@@ -1529,9 +1548,6 @@ export function SetupWizard({ open, onComplete }: Props) {
                           </SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-[11px] leading-snug text-muted">
-                        {t("settings.sd.backup.copyHint")}
-                      </p>
                     </div>
                   ) : null}
                 </div>
@@ -1571,7 +1587,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                     typeof update === "function" ? update(prev) : update,
                   );
                 }}
-                layout="wizard"
+                disclosure={{ uiMode: "advanced", revealedFocus: null }}
               />
             </>
           ) : null}

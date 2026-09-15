@@ -363,6 +363,7 @@
         "clearAfter": "Clear SD after backup",
         "clearAfterTitleOn": "Clear SD card after successful backup",
         "clearAfterTitleOff": "Only available when auto backup is enabled",
+        "clearAfterHint": "Deletes only files already backed up — others stay.",
         "secondPath": "Server backup",
         "serverUrl": "Server backup URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
@@ -2169,12 +2170,12 @@
     "stepHint": {
       "appearance": "You can change the appearance later at any time.",
       "crew": "Crew defaults and I am can be set later in settings.",
-      "storage": "Without a storage location, jobs cannot be saved — you can set it later in settings.",
+      "storage": "Without storage and backup folders, saving jobs and SD backup are limited — you can set them later in settings.",
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
       "workplace": "You can change appearance, drop zone, and operator later at any time.",
-      "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
+      "media": "Auto backup, import, eject, and QR scan are optional and can be changed later.",
       "output": "Output settings are optional — defaults stay if you skip.",
       "import": "Backup, import, eject, and QR scan are optional and can be changed later."
     },
@@ -2218,19 +2219,19 @@
     "completeTitle": "Success",
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
-      "qrHint": "QR files stay in place by default. Scan duration and cleanup are under More options.",
+      "qrHint": "After a successful scan, QR clips/photos are removed by default. Scan duration and cleanup are under More options.",
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
       "appearance": "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.",
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
-      "storage": "Completed jobs are saved to the storage location.",
+      "storage": "Completed jobs and SD backups are saved in these folders.",
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
       "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
       "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
       "mode": "How should setup run? You can change the mode later in settings.",
-      "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
-      "output": "Codec, strategy, and hardware acceleration. Intro, duration, and concat follow below."
+      "media": "Set auto backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
+      "output": "Same output options as in Settings: defaults, quality, and intro."
     },
     "mode": {
       "simpleTitle": "Simple",

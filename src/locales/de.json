@@ -363,6 +363,7 @@
         "clearAfter": "SD nach Backup leeren",
         "clearAfterTitleOn": "SD-Karte nach erfolgreichem Backup leeren",
         "clearAfterTitleOff": "Nur möglich, wenn Auto-Backup aktiviert ist",
+        "clearAfterHint": "Löscht nur bereits gesicherte Dateien — ungesicherte bleiben.",
         "secondPath": "Server-Backup",
         "serverUrl": "Server-Backup-URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
@@ -2169,12 +2170,12 @@
     "stepHint": {
       "appearance": "Darstellung kannst du später jederzeit umschalten.",
       "crew": "Crew-Defaults und Ich bin können später in den Einstellungen gesetzt werden.",
-      "storage": "Ohne Speicherort können Vorgänge nicht abgelegt werden — später in den Einstellungen setzbar.",
+      "storage": "Ohne Speicherort und Backup-Ordner sind Ablage und SD-Backup eingeschränkt — später in den Einstellungen setzbar.",
       "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
       "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
       "server": "Server-Zugang kann später eingerichtet werden.",
       "workplace": "Darstellung, Dropzone und Operator kannst du später jederzeit ändern.",
-      "media": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
+      "media": "Auto-Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
       "output": "Ausgabe-Einstellungen sind optional — Vorgabewerte bleiben, wenn du überspringst.",
       "import": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar."
     },
@@ -2218,19 +2219,19 @@
     "completeTitle": "Erfolg",
     "import": {
       "backupHint": "Importiert die Karte im empfohlenen Workflow über eine lokale Kopie.",
-      "qrHint": "QR-Dateien bleiben standardmäßig erhalten. Scan-Dauer und Aufräumen liegen unter Weitere Optionen.",
+      "qrHint": "Nach erfolgreichem Scan werden QR-Clips/-Fotos standardmäßig entfernt. Scan-Dauer und Aufräumen unter Weitere Optionen.",
       "backupPcNameHint": "Backup-Ordner werden mit „{{name}}“ markiert."
     },
     "intro": {
       "appearance": "Willkommen bei Aero Tandem Studio. Lege Darstellung, Dropzone und Operator fest. Alles Weitere kannst du später in den Einstellungen anpassen.",
       "import": "Lege hier die Import-Standards fest: Backup, Leeren, Import und Auswerfen. QR-Löschregeln und weitere Details findest du später in den Einstellungen.",
-      "storage": "Fertige Vorgänge werden im Speicherort abgelegt.",
+      "storage": "Fertige Vorgänge und SD-Backups werden in diesen Ordnern abgelegt.",
       "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein.",
       "workplaceSimple": "Darstellung, Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
       "connectionSimple": "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar.",
       "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
-      "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
-      "output": "Codec, Strategie und Hardware-Beschleunigung. Intro, Dauer und Zusammenfügen folgen darunter."
+      "media": "Lege Auto-Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
+      "output": "Dieselben Ausgabe-Optionen wie in den Einstellungen: Standard, Qualität und Intro."
     },
     "mode": {
       "simpleTitle": "Einfach",

@@ -15,24 +15,18 @@ import {
   nearestVideoCrf,
   videoCrfLabelKey,
 } from "@/lib/videoCrf";
+import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
-
-type Props = SettingsTabBaseProps & {
-  /** Wizard custom path: codec/strategy/HW + intro/concat. */
-  layout?: "settings" | "wizard";
-};
 
 export function EncodingTab({
   draft,
   patch: _patch,
   patchNow,
   disclosure,
-  layout = "settings",
-}: Props) {
+}: SettingsTabBaseProps) {
   const { t } = useTranslation();
-  const wizard = layout === "wizard";
-  const advanced = wizard || showAdvanced(disclosure);
+  const advanced = showAdvanced(disclosure);
 
   return (
     <div className="space-y-4">
@@ -57,8 +51,6 @@ export function EncodingTab({
                   </SelectItem>
                   <SelectItem value="h264">H.264</SelectItem>
                   <SelectItem value="h265">H.265</SelectItem>
-                  <SelectItem value="vp9">VP9</SelectItem>
-                  <SelectItem value="av1">AV1</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -95,7 +87,7 @@ export function EncodingTab({
           {t("settings.encoding.hwAccel")}
         </label>
 
-        {advanced && !wizard ? (
+        {advanced ? (
           <>
             <label className="flex items-center gap-2 text-sm">
               <Checkbox
@@ -107,26 +99,26 @@ export function EncodingTab({
               {t("settings.encoding.parallel")}
             </label>
 
-            <label className="flex items-start gap-2 text-sm">
+            <label className="flex items-center gap-2 text-sm">
               <Checkbox
-                className="mt-0.5"
                 checked={draft.speculative_create_enabled !== false}
                 onCheckedChange={(v) =>
                   patchNow("speculative_create_enabled", v === true)
                 }
               />
-              <span
-                className="min-w-0"
-                title={t("settings.encoding.speculativeCreateHint")}
-              >
-                <span className="block">
-                  {t("settings.encoding.speculativeCreate")}
-                </span>
+              <span className="inline-flex items-center gap-1.5">
+                {t("settings.encoding.speculativeCreate")}
+                <SettingsHintIcon
+                  text={t("settings.encoding.speculativeCreateHint")}
+                />
               </span>
             </label>
 
             <div className="space-y-1.5">
-              <Label>{t("settings.encoding.concat")}</Label>
+              <div className="flex items-center gap-1.5">
+                <Label>{t("settings.encoding.concat")}</Label>
+                <SettingsHintIcon text={t("settings.encoding.concatHint")} />
+              </div>
               <Select
                 value={normalizeBodyConcatMode(draft.body_concat_mode)}
                 onValueChange={(v) => patchNow("body_concat_mode", v)}
@@ -146,24 +138,21 @@ export function EncodingTab({
                   </SelectItem>
                 </SelectContent>
               </Select>
-              <p
-                className="whitespace-pre-line text-[11px] leading-snug text-muted"
-                title={t("settings.encoding.concatHint")}
-              >
-                {t("settings.encoding.concatHint")}
-              </p>
             </div>
           </>
         ) : null}
       </SettingsSection>
 
-      {advanced && !wizard ? (
+      {advanced ? (
         <SettingsSection
           title={t("settings.encoding.quality.title")}
           description={t("settings.encoding.quality.description")}
         >
           <div className="space-y-1.5">
-            <Label>{t("settings.encoding.previewCrf")}</Label>
+            <div className="flex items-center gap-1.5">
+              <Label>{t("settings.encoding.previewCrf")}</Label>
+              <SettingsHintIcon text={t("settings.encoding.crfHint")} />
+            </div>
             <Select
               value={String(nearestVideoCrf(draft.preview_encode_crf))}
               onValueChange={(v) => patchNow("preview_encode_crf", Number(v))}
@@ -179,9 +168,6 @@ export function EncodingTab({
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-[11px] leading-snug text-muted">
-              {t("settings.encoding.crfHint")}
-            </p>
           </div>
         </SettingsSection>
       ) : null}
@@ -218,31 +204,6 @@ export function EncodingTab({
               </SelectContent>
             </Select>
           </div>
-
-          {wizard ? (
-            <div className="space-y-1.5">
-              <Label>{t("settings.encoding.concat")}</Label>
-              <Select
-                value={normalizeBodyConcatMode(draft.body_concat_mode)}
-                onValueChange={(v) => patchNow("body_concat_mode", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fast">
-                    {t("settings.encoding.concatFast")}
-                  </SelectItem>
-                  <SelectItem value="compatible">
-                    {t("settings.encoding.concatCompatible")}
-                  </SelectItem>
-                  <SelectItem value="legacy">
-                    {t("settings.encoding.concatLegacy")}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
         </SettingsSection>
       ) : null}
     </div>
