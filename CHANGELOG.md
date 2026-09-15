@@ -28,6 +28,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Einstellungen & Ersteinrichtung: kurze Hinweis-Icons an Optionen (Backup, Import, QR, Kodierung) statt langer Textzeilen
 - SD-Backup: klarere Hinweise — „SD nach Backup leeren“ betrifft nur bereits gesicherte Dateien
 - Einstellungen → Encoding → Video-Codec: Auto behält den Quellcodec; H.264 bzw. H.265 erzwingen den Export-Codec (passt die Quelle, wird kopiert — sonst Neu-Kodierung), auch mit Intro / Outro / Universal-Export
+- Einstellungen → Encoding: „H.265 Player-Kompatibilität“ — Auto (Tag beibehalten), HEVC robust (hev1) oder HEVC Apple (hvc1) für iPhone/QuickTime; Fast Path und Legacy entfallen in den Einstellungen
 - Einstellungen → Ausgabe: Outro-Vorschau neben den Optionen
 - Neu-Kodierungs-Dialog: verständlichere Gründe und dieselben Qualitätsstufen wie „Video-Qualität (CRF)“ in den Einstellungen
 - Hintergrund-Vorbereitung auch mit Intro/Outro: Body und Fotos vorab, Intro und Outro erst beim Erstellen anfügen
@@ -47,6 +48,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Bestehende Installationen starten in „Erweitert“, damit alle bisherigen Optionen sofort sichtbar bleiben
 - Ältere Intro-Zusammenfüge-Modi entfallen — bestehende Einstellungen nutzen automatisch Universal-Export (CapCut)
+- Ältere Fast-/Legacy-Einstellungen für Clip-Zusammenfügen werden auf Auto umgestellt; bei Fehlern bleibt Legacy als Auswahl im Dialog
 
 ## [0.6.0-beta.5] - 2026-09-15
 
