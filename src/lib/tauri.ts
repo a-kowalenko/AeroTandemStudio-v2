@@ -88,6 +88,12 @@ export type AppConfig = {
   outro_path: string;
   /** Outro duration (sec.) for a photo Outro (1–10); ignored for a video Outro. */
   outro_dauer: number;
+  /** Phase 51: copy instructor photo into photo product folders on create (default false). */
+  instructor_foto_enabled: boolean;
+  /** Absolute path to instructor JPEG/PNG. Empty disables Instructor on save. */
+  instructor_foto_path: string;
+  /** Destination filename (incl. extension) inside Handcam_Foto / Outside_Foto. */
+  instructor_foto_filename: string;
   outside_video: boolean;
   gast_name: string;
   tandemmaster: string;
@@ -898,6 +904,10 @@ export type SpeculativeStartRequest = {
   watermark_photo_indices?: number[];
   media_revision_tag?: string;
   video?: CreateVideoOptions;
+  /** Phase 51: instructor photo settings for staging fingerprint + copy. */
+  instructor_foto_enabled?: boolean;
+  instructor_foto_path?: string;
+  instructor_foto_filename?: string;
 };
 
 export async function startSpeculativeCreate(

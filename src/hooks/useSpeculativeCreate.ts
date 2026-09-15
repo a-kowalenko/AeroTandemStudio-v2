@@ -138,6 +138,9 @@ export function useSpeculativeCreate({
     config?.preview_encode_crf ?? 20,
     config?.parallel_processing_enabled ?? true,
     config?.hardware_acceleration_enabled ?? false,
+    config?.instructor_foto_enabled ?? false,
+    config?.instructor_foto_path ?? "",
+    config?.instructor_foto_filename ?? "Instructor.jpg",
     recognized,
     mediaProductsOk,
     speculativeEnabled,
@@ -164,6 +167,10 @@ export function useSpeculativeCreate({
         watermark_clip_index: watermarkClipIndex,
         watermark_photo_indices: wmPhotosSorted,
         media_revision_tag: mediaTag,
+        instructor_foto_enabled: Boolean(config?.instructor_foto_enabled),
+        instructor_foto_path: config?.instructor_foto_path ?? "",
+        instructor_foto_filename:
+          config?.instructor_foto_filename ?? "Instructor.jpg",
         video: {
           dauer: config?.dauer ?? 5,
           // Fingerprint includes intro; staging still builds body-only.

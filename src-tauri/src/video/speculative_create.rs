@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
 use crate::model::Kunde;
-use crate::storage::config::{normalize_body_concat_mode, AppConfig};
+use crate::storage::config::{
+    normalize_body_concat_mode, sanitize_instructor_foto_filename, AppConfig,
+};
 use crate::storage::logging::{self, file_name};
 use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
 use crate::video::export_paths::{
@@ -106,6 +108,13 @@ pub struct SpeculativeStartRequest {
     /// Frontend cut/media revision tag (sorted `path:rev` lines).
     #[serde(default)]
     pub media_revision_tag: String,
+    /// Phase 51: instructor photo settings (fingerprint + staging copy).
+    #[serde(default)]
+    pub instructor_foto_enabled: bool,
+    #[serde(default)]
+    pub instructor_foto_path: String,
+    #[serde(default)]
+    pub instructor_foto_filename: String,
 }
 
 #[derive(Debug, Clone)]
@@ -197,8 +206,44 @@ pub fn build_fingerprint(
     watermark_photo_indices: &[usize],
     resource_dir: Option<&Path>,
 ) -> Result<String, String> {
+    build_fingerprint_with_instructor(
+        kunde,
+        video_paths,
+        photo_paths,
+        video_opts,
+        media_revision_tag,
+        watermark_clip_index,
+        watermark_photo_indices,
+        resource_dir,
+        false,
+        "",
+        "",
+    )
+}
+
+/// Like [`build_fingerprint`], plus Phase-51 instructor-foto fields in the photos half.
+pub fn build_fingerprint_with_instructor(
+    kunde: &Kunde,
+    video_paths: &[String],
+    photo_paths: &[String],
+    video_opts: &CreateVideoOptions,
+    media_revision_tag: &str,
+    watermark_clip_index: Option<usize>,
+    watermark_photo_indices: &[usize],
+    resource_dir: Option<&Path>,
+    instructor_enabled: bool,
+    instructor_path: &str,
+    instructor_filename: &str,
+) -> Result<String, String> {
     let body = build_body_fingerprint(kunde, video_paths, video_opts, media_revision_tag)?;
-    let photos = build_photos_fingerprint(kunde, photo_paths, media_revision_tag)?;
+    let photos = build_photos_fingerprint(
+        kunde,
+        photo_paths,
+        media_revision_tag,
+        instructor_enabled,
+        instructor_path,
+        instructor_filename,
+    )?;
     let wm = build_wm_fingerprint(
         kunde,
         video_paths,
@@ -256,11 +301,14 @@ pub fn build_body_fingerprint(
     hash_payload(&payload)
 }
 
-/// Photos-only fingerprint (photo products + files + photo rev lines).
+/// Photos-only fingerprint (photo products + files + photo rev lines + instructor).
 pub fn build_photos_fingerprint(
     kunde: &Kunde,
     photo_paths: &[String],
     media_revision_tag: &str,
+    instructor_enabled: bool,
+    instructor_path: &str,
+    instructor_filename: &str,
 ) -> Result<String, String> {
     let mut payload = String::with_capacity(256 + photo_paths.len() * 128);
     payload.push_str(&format!(
@@ -270,6 +318,15 @@ pub fn build_photos_fingerprint(
     ));
     for path in photo_paths {
         append_file_identity(&mut payload, "photo", path)?;
+    }
+    let instructor_on = instructor_enabled && !instructor_path.trim().is_empty();
+    payload.push_str(&format!(
+        "instructor:en={}|name={}\n",
+        instructor_on as u8,
+        sanitize_instructor_foto_filename(instructor_filename),
+    ));
+    if instructor_on {
+        append_file_identity(&mut payload, "instructor", instructor_path.trim())?;
     }
     append_rev_lines(&mut payload, media_revision_tag, 'p');
     hash_payload(&payload)
@@ -642,8 +699,14 @@ pub fn start_staging(
         &request.video,
         &request.media_revision_tag,
     )?;
-    let photos_fp =
-        build_photos_fingerprint(kunde, photo_paths, &request.media_revision_tag)?;
+    let photos_fp = build_photos_fingerprint(
+        kunde,
+        photo_paths,
+        &request.media_revision_tag,
+        request.instructor_foto_enabled,
+        &request.instructor_foto_path,
+        &request.instructor_foto_filename,
+    )?;
     let resolved_wm_clip = if video_unpaid(kunde) && !video_paths.is_empty() {
         export_job::pick_watermark_clip(ffmpeg, video_paths, request.watermark_clip_index)
     } else {
@@ -1259,6 +1322,22 @@ fn refresh_photos_incremental(
                     return;
                 }
             };
+            if let Err(e) = export_job::copy_instructor_foto(
+                request.instructor_foto_enabled,
+                &request.instructor_foto_path,
+                &request.instructor_foto_filename,
+                &layout,
+                &kunde,
+                photos_copied,
+                &rename_map,
+            ) {
+                log_event("speculative_miss_gate", e.to_string());
+                let mut inner = slot_worker.inner.lock().unwrap_or_else(|e| e.into_inner());
+                inner.phase = SpeculativePhase::Failed;
+                inner.fail_reason = Some(e.to_string());
+                slot_worker.cv.notify_all();
+                return;
+            }
 
             // Publish photos Ready before WM so attach/commit is not blocked on WM encode.
             {
@@ -1934,6 +2013,15 @@ fn run_staging_job(
         update_progress(slot, 75.0, "Kopiere Fotos…");
         let photos_copied =
             export_job::copy_photos(photo_paths, &layout, kunde, &rename_map, &on_progress)?;
+        export_job::copy_instructor_foto(
+            request.instructor_foto_enabled,
+            &request.instructor_foto_path,
+            &request.instructor_foto_filename,
+            &layout,
+            kunde,
+            photos_copied,
+            &rename_map,
+        )?;
         (photos_copied, rename_map)
     };
     {
@@ -2735,9 +2823,19 @@ fn resolve_attach_fingerprints(
     photo_paths: &[String],
     video_opts: &CreateVideoOptions,
     media_revision_tag: &str,
+    instructor_enabled: bool,
+    instructor_path: &str,
+    instructor_filename: &str,
 ) -> Option<(String, String)> {
     let body = build_body_fingerprint(kunde, video_paths, video_opts, media_revision_tag);
-    let photos = build_photos_fingerprint(kunde, photo_paths, media_revision_tag);
+    let photos = build_photos_fingerprint(
+        kunde,
+        photo_paths,
+        media_revision_tag,
+        instructor_enabled,
+        instructor_path,
+        instructor_filename,
+    );
     match (body, photos) {
         (Ok(b), Ok(p)) => Some((b, p)),
         (Err(e), _) | (_, Err(e)) => {
@@ -2781,6 +2879,9 @@ pub fn try_promote_into_create_job(
         photo_paths,
         &options.video,
         media_revision_tag,
+        config.instructor_foto_enabled,
+        &config.instructor_foto_path,
+        &config.instructor_foto_filename,
     ) else {
         return Ok(None);
     };
@@ -2946,11 +3047,17 @@ mod tests {
             &k,
             &[p1.path().to_string_lossy().into()],
             "",
+            false,
+            "",
+            "",
         )
         .unwrap();
         let photos_b = build_photos_fingerprint(
             &k,
             &[p2.path().to_string_lossy().into()],
+            "",
+            false,
+            "",
             "",
         )
         .unwrap();
@@ -2963,6 +3070,36 @@ mod tests {
     }
 
     #[test]
+    fn photos_fp_changes_on_instructor_settings() {
+        let p = write_temp(b"photo");
+        let instructor = write_temp(b"instructor");
+        let k = base_kunde();
+        let pp = p.path().to_string_lossy().to_string();
+        let ip = instructor.path().to_string_lossy().to_string();
+        let off = build_photos_fingerprint(&k, &[pp.clone()], "", false, "", "").unwrap();
+        let on = build_photos_fingerprint(
+            &k,
+            &[pp.clone()],
+            "",
+            true,
+            &ip,
+            "Instructor.jpg",
+        )
+        .unwrap();
+        let renamed = build_photos_fingerprint(
+            &k,
+            &[pp],
+            "",
+            true,
+            &ip,
+            "Pilot.png",
+        )
+        .unwrap();
+        assert_ne!(off, on);
+        assert_ne!(on, renamed);
+    }
+
+    #[test]
     fn photos_fp_stable_when_only_body_rev_changes() {
         let v = write_temp(b"video-bytes");
         let p = write_temp(b"photo");
@@ -2970,11 +3107,14 @@ mod tests {
         let o = opts();
         let vp = v.path().to_string_lossy().to_string();
         let pp = p.path().to_string_lossy().to_string();
-        let photos = build_photos_fingerprint(&k, &[pp.clone()], &format!("p:{pp}:1")).unwrap();
+        let photos = build_photos_fingerprint(&k, &[pp.clone()], &format!("p:{pp}:1"), false, "", "")
+            .unwrap();
         let body_a = build_body_fingerprint(&k, &[vp.clone()], &o, &format!("v:{vp}:1")).unwrap();
         let body_b = build_body_fingerprint(&k, &[vp.clone()], &o, &format!("v:{vp}:2")).unwrap();
         assert_ne!(body_a, body_b);
-        let photos_b = build_photos_fingerprint(&k, &[pp.clone()], &format!("p:{pp}:1")).unwrap();
+        let photos_b =
+            build_photos_fingerprint(&k, &[pp.clone()], &format!("p:{pp}:1"), false, "", "")
+                .unwrap();
         assert_eq!(photos, photos_b);
     }
 
@@ -2995,7 +3135,7 @@ mod tests {
         let b = build_wm_fingerprint(&k, &[vp], &photos, None, &[0], None, None).unwrap();
         assert_ne!(a, b);
         let body = build_body_fingerprint(&k, &[v.path().to_string_lossy().into()], &opts(), "").unwrap();
-        let photos_fp = build_photos_fingerprint(&k, &photos, "").unwrap();
+        let photos_fp = build_photos_fingerprint(&k, &photos, "", false, "", "").unwrap();
         // Body/photos stable while WM selection changes.
         assert_ne!(
             combine_fingerprints(&body, &photos_fp, &a),

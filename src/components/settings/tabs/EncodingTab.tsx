@@ -4,6 +4,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -24,6 +25,22 @@ import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import { OutroMediaPreview } from "../OutroMediaPreview";
 import type { SettingsTabBaseProps } from "../types";
+
+const INSTRUCTOR_PHOTO_EXTENSIONS = ["jpg", "jpeg", "png"] as const;
+
+function sanitizeInstructorFilename(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "Instructor.jpg";
+  let out = "";
+  for (const c of trimmed) {
+    if ("/\\<>:\"|?*\0".includes(c)) continue;
+    out += c;
+  }
+  while (out.includes("..")) out = out.replace("..", "");
+  out = out.trim();
+  if (!out || out === ".") return "Instructor.jpg";
+  return out;
+}
 
 export function EncodingTab({
   draft,
@@ -83,6 +100,55 @@ export function EncodingTab({
     patchNow("outro_path", "");
     patchNow("outro_enabled", false);
     setOutroProbe({ exists: false, durationSecs: null });
+  }, [patchNow]);
+
+  // Phase 51 — Instructor photo (JPEG/PNG only; Erweitert).
+  const instructorPath = draft.instructor_foto_path ?? "";
+  const instructorLabel =
+    instructorPath.replace(/\\/g, "/").split("/").pop() ?? instructorPath;
+  const [instructorProbe, setInstructorProbe] = useState<{ exists: boolean }>({
+    exists: true,
+  });
+
+  const refreshInstructorProbe = useCallback(async (path: string) => {
+    if (!path.trim()) {
+      setInstructorProbe({ exists: false });
+      return;
+    }
+    try {
+      const p = await probeOutroAsset(path);
+      setInstructorProbe({ exists: p.exists });
+    } catch {
+      setInstructorProbe({ exists: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (instructorPath) void refreshInstructorProbe(instructorPath);
+  }, [instructorPath, refreshInstructorProbe]);
+
+  const pickInstructor = useCallback(async () => {
+    const selected = await openDialog({
+      title: t("settings.encoding.instructorFoto.pick"),
+      multiple: false,
+      filters: [
+        {
+          name: t("settings.encoding.instructorFoto.mediaFilter"),
+          extensions: [...INSTRUCTOR_PHOTO_EXTENSIONS],
+        },
+      ],
+    });
+    if (typeof selected === "string" && selected) {
+      patchNow("instructor_foto_path", selected);
+      patchNow("instructor_foto_enabled", true);
+      void refreshInstructorProbe(selected);
+    }
+  }, [patchNow, refreshInstructorProbe, t]);
+
+  const removeInstructor = useCallback(() => {
+    patchNow("instructor_foto_path", "");
+    patchNow("instructor_foto_enabled", false);
+    setInstructorProbe({ exists: false });
   }, [patchNow]);
 
   return (
@@ -369,6 +435,104 @@ export function EncodingTab({
                 ) : null}
               </div>
             ) : null}
+          </div>
+        </SettingsSection>
+      ) : null}
+
+      {advanced ? (
+        <SettingsSection
+          title={t("settings.encoding.instructorFoto.title")}
+          description={t("settings.encoding.instructorFoto.description")}
+          aside={
+            instructorPath ? (
+              <div className="w-44 space-y-1.5 sm:w-52 md:w-56">
+                <OutroMediaPreview
+                  path={instructorPath}
+                  kind="photo"
+                  exists={instructorProbe.exists}
+                  className="w-full"
+                />
+                <p
+                  className="truncate text-center text-xs text-muted-foreground"
+                  title={instructorLabel}
+                >
+                  {instructorLabel}
+                </p>
+              </div>
+            ) : null
+          }
+        >
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={Boolean(draft.instructor_foto_enabled)}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  patchNow("instructor_foto_enabled", on);
+                  if (on && !instructorPath) void pickInstructor();
+                }}
+              />
+              {t("settings.encoding.instructorFoto.enabled")}
+            </label>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void pickInstructor()}
+              >
+                {t("settings.encoding.instructorFoto.pick")}
+              </Button>
+              {instructorPath ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={removeInstructor}
+                >
+                  {t("settings.encoding.instructorFoto.remove")}
+                </Button>
+              ) : null}
+            </div>
+
+            {!instructorPath ? (
+              <p className="text-sm text-muted-foreground">
+                {t("settings.encoding.instructorFoto.noMedia")}
+              </p>
+            ) : null}
+
+            {draft.instructor_foto_enabled &&
+            instructorPath &&
+            !instructorProbe.exists ? (
+              <p className="text-sm text-destructive">
+                {t("settings.encoding.instructorFoto.missing")}
+              </p>
+            ) : null}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="instructor-foto-filename">
+                {t("settings.encoding.instructorFoto.filename")}
+              </Label>
+              <Input
+                id="instructor-foto-filename"
+                value={draft.instructor_foto_filename ?? "Instructor.jpg"}
+                onChange={(e) =>
+                  patchNow("instructor_foto_filename", e.target.value)
+                }
+                onBlur={(e) =>
+                  patchNow(
+                    "instructor_foto_filename",
+                    sanitizeInstructorFilename(e.target.value),
+                  )
+                }
+                disabled={!draft.instructor_foto_enabled && !instructorPath}
+                placeholder="Instructor.jpg"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("settings.encoding.instructorFoto.filenameHint")}
+              </p>
+            </div>
           </div>
         </SettingsSection>
       ) : null}

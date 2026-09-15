@@ -141,6 +141,15 @@ pub struct AppConfig {
     /// Outro duration in seconds for a photo Outro (1–10). Ignored for a video Outro.
     #[serde(default = "default_outro_dauer", deserialize_with = "de_u32_flexible")]
     pub outro_dauer: u32,
+    /// Phase 51: copy an instructor photo into photo product folders on create — off by default.
+    #[serde(default)]
+    pub instructor_foto_enabled: bool,
+    /// Absolute path to the instructor JPEG/PNG. Empty disables Instructor on save.
+    #[serde(default)]
+    pub instructor_foto_path: String,
+    /// Destination filename (incl. extension) inside Handcam_Foto / Outside_Foto.
+    #[serde(default = "default_instructor_foto_filename")]
+    pub instructor_foto_filename: String,
     #[serde(default)]
     pub outside_video: bool,
     #[serde(default)]
@@ -545,8 +554,41 @@ fn default_dauer() -> u32 {
 fn default_outro_dauer() -> u32 {
     5
 }
+fn default_instructor_foto_filename() -> String {
+    "Instructor.jpg".into()
+}
 fn default_true() -> bool {
     true
+}
+
+/// Phase 51: true when `path` looks like a JPEG/PNG (extension only; existence is runtime).
+pub fn instructor_foto_path_ext_ok(path: &str) -> bool {
+    let lower = path.trim().to_ascii_lowercase();
+    lower.ends_with(".jpg") || lower.ends_with(".jpeg") || lower.ends_with(".png")
+}
+
+/// Phase 51: strip path separators / invalid name chars; empty → default `Instructor.jpg`.
+pub fn sanitize_instructor_foto_filename(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return default_instructor_foto_filename();
+    }
+    let mut out = String::with_capacity(trimmed.len());
+    for c in trimmed.chars() {
+        match c {
+            '/' | '\\' | '\0' | '<' | '>' | ':' | '"' | '|' | '?' | '*' => {}
+            _ => out.push(c),
+        }
+    }
+    while out.contains("..") {
+        out = out.replace("..", "");
+    }
+    let out = out.trim().to_string();
+    if out.is_empty() || out == "." {
+        default_instructor_foto_filename()
+    } else {
+        out
+    }
 }
 fn default_server_url() -> String {
     "smb://169.254.169.254/aktuell".into()
@@ -771,6 +813,18 @@ impl AppConfig {
             self.outro_enabled = false;
         }
         self.outro_dauer = self.outro_dauer.clamp(1, 10);
+    }
+
+    /// Sanitize Instructor-Foto (Phase 51): empty/invalid path disables; sanitize filename.
+    ///
+    /// File existence is checked at Create time (like Outro), not here.
+    pub fn sync_instructor_foto(&mut self) {
+        let path = self.instructor_foto_path.trim();
+        if path.is_empty() || !instructor_foto_path_ext_ok(path) {
+            self.instructor_foto_enabled = false;
+        }
+        self.instructor_foto_filename =
+            sanitize_instructor_foto_filename(&self.instructor_foto_filename);
     }
 
     /// Canonicalize `settings_ui_mode` to `simple` | `advanced`.
@@ -1010,6 +1064,9 @@ impl Default for AppConfig {
             outro_enabled: false,
             outro_path: String::new(),
             outro_dauer: default_outro_dauer(),
+            instructor_foto_enabled: false,
+            instructor_foto_path: String::new(),
+            instructor_foto_filename: default_instructor_foto_filename(),
             outside_video: false,
             gast_name: String::new(),
             tandemmaster: String::new(),
@@ -1205,6 +1262,7 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_sd_server_backup_mode();
     cfg.sync_auto_cleanup_retention();
     cfg.sync_outro();
+    cfg.sync_instructor_foto();
     cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
@@ -1321,6 +1379,7 @@ impl ConfigStore {
         normalized.sync_settings_ui_mode();
         normalized.sync_sd_server_backup_mode();
         normalized.sync_outro();
+        normalized.sync_instructor_foto();
         normalized.push_active_profile_from_flat();
         normalized.sync_server_profiles();
         crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
@@ -2083,6 +2142,86 @@ mod tests {
         assert!(loaded.outro_enabled);
         assert_eq!(loaded.outro_path, r"C:\assets\outro.png");
         assert_eq!(loaded.outro_dauer, 7);
+    }
+
+    #[test]
+    fn instructor_foto_defaults_off() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.instructor_foto_enabled);
+        assert!(cfg.instructor_foto_path.is_empty());
+        assert_eq!(cfg.instructor_foto_filename, "Instructor.jpg");
+        let merged = merge_with_defaults(serde_json::json!({ "ort": "Calden" })).unwrap();
+        assert!(!merged.instructor_foto_enabled);
+        assert!(merged.instructor_foto_path.is_empty());
+        assert_eq!(merged.instructor_foto_filename, "Instructor.jpg");
+    }
+
+    #[test]
+    fn sync_instructor_foto_disables_when_path_empty_or_bad_ext() {
+        let mut cfg = AppConfig::default();
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = "   ".into();
+        cfg.sync_instructor_foto();
+        assert!(!cfg.instructor_foto_enabled, "empty path must disable");
+
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = r"C:\assets\pilot.heic".into();
+        cfg.sync_instructor_foto();
+        assert!(!cfg.instructor_foto_enabled, "non-jpeg/png must disable");
+
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = r"C:\assets\pilot.PNG".into();
+        cfg.sync_instructor_foto();
+        assert!(cfg.instructor_foto_enabled, "PNG keeps enabled");
+    }
+
+    #[test]
+    fn sanitize_instructor_foto_filename_strips_separators() {
+        assert_eq!(
+            sanitize_instructor_foto_filename(""),
+            "Instructor.jpg"
+        );
+        assert_eq!(
+            sanitize_instructor_foto_filename("  Pilot.png  "),
+            "Pilot.png"
+        );
+        assert_eq!(
+            sanitize_instructor_foto_filename(r"..\foo/bar.jpg"),
+            "foobar.jpg"
+        );
+        assert_eq!(
+            sanitize_instructor_foto_filename("a:b|c?.jpg"),
+            "abc.jpg"
+        );
+    }
+
+    #[test]
+    fn save_sanitizes_instructor_without_path() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = String::new();
+        cfg.instructor_foto_filename = "  ".into();
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert!(!loaded.instructor_foto_enabled);
+        assert_eq!(loaded.instructor_foto_filename, "Instructor.jpg");
+    }
+
+    #[test]
+    fn instructor_foto_roundtrips_with_path() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = r"C:\assets\pilot.jpg".into();
+        cfg.instructor_foto_filename = "Pilot.png".into();
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert!(loaded.instructor_foto_enabled);
+        assert_eq!(loaded.instructor_foto_path, r"C:\assets\pilot.jpg");
+        assert_eq!(loaded.instructor_foto_filename, "Pilot.png");
     }
 
     #[test]

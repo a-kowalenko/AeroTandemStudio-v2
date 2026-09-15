@@ -319,6 +319,18 @@
         "longWarning": "Más de 10 s — el outro alarga notablemente el video.",
         "mediaFilter": "Imágenes y videos"
       },
+      "instructorFoto": {
+        "title": "Foto del instructor",
+        "description": "Foto opcional que se copia a las carpetas de fotos al crear.",
+        "enabled": "Colocar foto del instructor",
+        "pick": "Elegir foto…",
+        "remove": "Quitar foto",
+        "noMedia": "No se eligió ninguna foto.",
+        "missing": "Archivo no encontrado — elígelo de nuevo.",
+        "filename": "Nombre de archivo en la carpeta de fotos",
+        "filenameHint": "El mismo nombre en Handcam_Foto y Outside_Foto. Predeterminado: Instructor.jpg",
+        "mediaFilter": "JPEG y PNG"
+      },
       "introEnabled": "Usar intro al crear",
       "introDuration": "Duración del intro (s)",
       "introMux": "Unir intro",
@@ -568,7 +580,8 @@
       "bookingIdRequired": "Se requiere ID de reserva",
       "validation": "Validación",
       "storageDeferredHint": "La ubicación de almacenamiento se pedirá al crear y luego se guardará.",
-      "outroMissing": "No se encontró el medio del outro: {{path}}. Elígelo de nuevo en Ajustes o desactiva el outro."
+      "outroMissing": "No se encontró el medio del outro: {{path}}. Elígelo de nuevo en Ajustes o desactiva el outro.",
+      "instructorFotoMissing": "No se encontró la foto del instructor: {{path}}. Elígela de nuevo en Ajustes o desactiva la foto del instructor."
     },
     "ready": {
       "headline": {

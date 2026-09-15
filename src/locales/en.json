@@ -319,6 +319,18 @@
         "longWarning": "Longer than 10 s — the outro noticeably extends the video.",
         "mediaFilter": "Images & videos"
       },
+      "instructorFoto": {
+        "title": "Instructor photo",
+        "description": "Optional photo copied into the photo folders when creating.",
+        "enabled": "Place instructor photo",
+        "pick": "Choose photo…",
+        "remove": "Remove photo",
+        "noMedia": "No photo selected.",
+        "missing": "File not found — please choose again.",
+        "filename": "Filename in photo folder",
+        "filenameHint": "Same name in Handcam_Foto and Outside_Foto. Default: Instructor.jpg",
+        "mediaFilter": "JPEG & PNG"
+      },
       "introEnabled": "Use intro when creating",
       "introDuration": "Intro duration (sec.)",
       "introMux": "Join intro",
@@ -568,7 +580,8 @@
       "bookingIdRequired": "Booking ID is required",
       "validation": "Validation",
       "storageDeferredHint": "Storage location will be chosen when creating and then saved.",
-      "outroMissing": "Outro media not found: {{path}}. Please choose it again in Settings or disable the outro."
+      "outroMissing": "Outro media not found: {{path}}. Please choose it again in Settings or disable the outro.",
+      "instructorFotoMissing": "Instructor photo not found: {{path}}. Please choose it again in Settings or disable the instructor photo."
     },
     "ready": {
       "headline": {

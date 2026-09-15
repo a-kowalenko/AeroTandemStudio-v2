@@ -67,8 +67,9 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 48** Vorgang Medien-Viewer (lokal) · Spec: `@docs/phases/open/48-vorgang-media-viewer.md`
 - ✅ **Phase 49** Forced-Codec Export (Ziel-Codec, phone-safe: H.264 `yuv420p` / H.265 `hvc1`, CapCut respektiert H.265, AAC-Copy, Fortschritt-Fix) · Spec: `@docs/phases/open/49-forced-codec-export.md`
 - ✅ **Phase 50** Outro (User-Asset am Videoende; Foto/Video, Mux wie Intro, Intro+Outro erlaubt, Existenz-Gate, i18n) · Spec: `@docs/phases/open/50-outro.md`
+- ✅ **Phase 51** Instructor-Foto (Settings Erweitert; Copy beim Foto-Export) · Spec: `@docs/phases/open/51-instructor-foto.md`
 
-**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 50 (wenn priorisiert)  
+**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
 
 ### Performance-Backlog
@@ -109,6 +110,12 @@ Nur 23.2h.
 Implementiere Phase 50 aus @docs/phases/open/50-outro.md
 Regeln: @AGENTS.md
 Nur 50.
+```
+
+```
+Implementiere Phase 51 aus @docs/phases/open/51-instructor-foto.md
+Regeln: @AGENTS.md
+Nur 51.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 

@@ -2158,6 +2158,31 @@ function App() {
       }
     }
 
+    // Phase 51: block when Instructor-Foto is on but its asset is missing.
+    const instructorPath = (config?.instructor_foto_path ?? "").trim();
+    if (config?.instructor_foto_enabled && instructorPath) {
+      try {
+        const probe = await probeOutroAsset(instructorPath);
+        if (!probe.exists) {
+          showError(
+            t("create.validation.instructorFotoMissing", {
+              path: instructorPath,
+            }),
+            t("settings.encoding.instructorFoto.title"),
+          );
+          return;
+        }
+      } catch {
+        showError(
+          t("create.validation.instructorFotoMissing", {
+            path: instructorPath,
+          }),
+          t("settings.encoding.instructorFoto.title"),
+        );
+        return;
+      }
+    }
+
     const paths = videoList.map((v) => v.path);
     const photos = photoList.map((p) => p.path);
     const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);

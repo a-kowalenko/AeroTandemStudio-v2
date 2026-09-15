@@ -2,7 +2,7 @@
 //!
 //! Behaviour port of legacy `_execute_video_creation_with_intro_only`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -14,7 +14,7 @@ use crate::media::datetime::{
     build_chrono_photo_filename, claim_unique_photo_filename, is_chrono_photo_filename,
 };
 use crate::model::Kunde;
-use crate::storage::config::AppConfig;
+use crate::storage::config::{sanitize_instructor_foto_filename, AppConfig};
 use crate::storage::logging::{self, file_name};
 use crate::video::export_paths::{
     create_base_output_dir, foto_subdir_for_handcam, foto_subdir_for_outside, needs_foto_product,
@@ -341,6 +341,82 @@ pub(crate) fn copy_photos(
     Ok(copied)
 }
 
+/// Phase 51: after ≥1 customer photo was copied, place the instructor image into each
+/// active photo product subdir (Handcam_Foto / Outside_Foto). Never watermarked.
+///
+/// Missing source is soft-skipped here (Create existence-gate blocks first). Collision
+/// with a customer filename gets a unique `_001` claim.
+pub(crate) fn copy_instructor_foto(
+    enabled: bool,
+    path: &str,
+    filename: &str,
+    layout: &OutputLayout,
+    kunde: &Kunde,
+    customers_photos_copied: usize,
+    rename_map: &HashMap<String, String>,
+) -> Result<usize, ProcessorError> {
+    if !enabled || customers_photos_copied == 0 {
+        return Ok(0);
+    }
+    let src = path.trim();
+    if src.is_empty() {
+        return Ok(0);
+    }
+    let src_path = Path::new(src);
+    if !src_path.is_file() {
+        // Existence gate should have blocked Create; speculative soft-skips.
+        return Ok(0);
+    }
+
+    let mut used: HashSet<String> = rename_map
+        .values()
+        .map(|n| n.to_ascii_lowercase())
+        .collect();
+    let dest_name =
+        claim_unique_photo_filename(&sanitize_instructor_foto_filename(filename), &mut used);
+
+    let handcam_dir = if kunde.handcam_foto {
+        Some(foto_subdir_for_handcam(layout).map_err(ProcessorError::Message)?)
+    } else {
+        None
+    };
+    let outside_dir = if kunde.outside_foto {
+        Some(foto_subdir_for_outside(layout).map_err(ProcessorError::Message)?)
+    } else {
+        None
+    };
+
+    let mut dirs = 0usize;
+    if let Some(dir) = &handcam_dir {
+        fs::copy(src_path, dir.join(&dest_name))?;
+        dirs += 1;
+    }
+    if let Some(dir) = &outside_dir {
+        fs::copy(src_path, dir.join(&dest_name))?;
+        dirs += 1;
+    }
+    Ok(dirs)
+}
+
+/// Phase 51: block Create when Instructor is on but the asset is missing.
+pub(crate) fn ensure_instructor_foto_present(config: &AppConfig) -> Result<(), ProcessorError> {
+    if !config.instructor_foto_enabled {
+        return Ok(());
+    }
+    let p = config.instructor_foto_path.trim();
+    if p.is_empty() {
+        return Err(ProcessorError::Message(
+            "Instructor-Foto ist aktiviert, aber kein Medium hinterlegt.".into(),
+        ));
+    }
+    if !Path::new(p).is_file() {
+        return Err(ProcessorError::Message(format!(
+            "Instructor-Foto nicht gefunden: {p}"
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn pick_watermark_clip(
     ffmpeg: &Path,
     video_paths: &[String],
@@ -397,6 +473,9 @@ pub fn create_job(
     if !validation.is_empty() {
         return Err(ProcessorError::Message(validation.join("\n")));
     }
+
+    // Phase 51: fail fast when Instructor-Foto is on but the asset is missing.
+    ensure_instructor_foto_present(config)?;
 
     // Phase 46: attach/commit speculative staging when fingerprint matches.
     // Must run before canceling the slot — Create during clean-pass is the common case.
@@ -636,6 +715,23 @@ pub fn create_job(
         &on_progress,
     )?;
     logging::info("create", format!("Fotos kopiert: {photos_copied}"));
+    if photos_copied > 0 {
+        let instructor_dirs = copy_instructor_foto(
+            config.instructor_foto_enabled,
+            &config.instructor_foto_path,
+            &config.instructor_foto_filename,
+            &layout,
+            kunde,
+            photos_copied,
+            &rename_map,
+        )?;
+        if instructor_dirs > 0 {
+            logging::info(
+                "create",
+                format!("Instructor-Foto in {instructor_dirs} Foto-Ordner kopiert"),
+            );
+        }
+    }
     if !photo_paths.is_empty() {
         emit(&on_progress, 100.0, "Fotos kopiert");
     }
@@ -792,5 +888,184 @@ mod tests {
         k.ist_bezahlt_handcam_foto = false;
         let errs = validate_create_job(&k, &[], &["a.jpg".into()], &[], false, false);
         assert!(errs.iter().any(|e| e.contains("Wasserzeichen")));
+    }
+
+    fn write_bytes(dir: &Path, name: &str, bytes: &[u8]) -> String {
+        let p = dir.join(name);
+        fs::write(&p, bytes).unwrap();
+        p.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn copy_instructor_skips_when_disabled_or_no_customer_photos() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let instructor = write_bytes(dir.path(), "src.jpg", b"inst");
+        let mut k = Kunde::default();
+        k.handcam_foto = true;
+        let map = HashMap::new();
+
+        assert_eq!(
+            copy_instructor_foto(false, &instructor, "Instructor.jpg", &layout, &k, 1, &map)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            copy_instructor_foto(true, &instructor, "Instructor.jpg", &layout, &k, 0, &map)
+                .unwrap(),
+            0
+        );
+        assert!(!layout.base_dir.join("Handcam_Foto").exists());
+    }
+
+    #[test]
+    fn copy_instructor_only_handcam() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let instructor = write_bytes(dir.path(), "src.jpg", b"inst");
+        let mut k = Kunde::default();
+        k.handcam_foto = true;
+        let map = HashMap::new();
+        assert_eq!(
+            copy_instructor_foto(true, &instructor, "Instructor.jpg", &layout, &k, 2, &map)
+                .unwrap(),
+            1
+        );
+        assert!(layout
+            .base_dir
+            .join("Handcam_Foto")
+            .join("Instructor.jpg")
+            .is_file());
+        assert!(!layout.base_dir.join("Outside_Foto").exists());
+    }
+
+    #[test]
+    fn copy_instructor_only_outside() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let instructor = write_bytes(dir.path(), "src.png", b"inst");
+        let mut k = Kunde::default();
+        k.outside_foto = true;
+        let map = HashMap::new();
+        assert_eq!(
+            copy_instructor_foto(true, &instructor, "Pilot.png", &layout, &k, 1, &map)
+                .unwrap(),
+            1
+        );
+        assert!(layout
+            .base_dir
+            .join("Outside_Foto")
+            .join("Pilot.png")
+            .is_file());
+        assert!(!layout.base_dir.join("Handcam_Foto").exists());
+    }
+
+    #[test]
+    fn copy_instructor_both_dirs_same_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let instructor = write_bytes(dir.path(), "src.jpg", b"inst");
+        let mut k = Kunde::default();
+        k.handcam_foto = true;
+        k.outside_foto = true;
+        let map = HashMap::new();
+        assert_eq!(
+            copy_instructor_foto(true, &instructor, "Instructor.jpg", &layout, &k, 3, &map)
+                .unwrap(),
+            2
+        );
+        assert!(layout
+            .base_dir
+            .join("Handcam_Foto")
+            .join("Instructor.jpg")
+            .is_file());
+        assert!(layout
+            .base_dir
+            .join("Outside_Foto")
+            .join("Instructor.jpg")
+            .is_file());
+    }
+
+    #[test]
+    fn copy_instructor_claims_unique_on_collision() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let instructor = write_bytes(dir.path(), "src.jpg", b"inst");
+        let mut k = Kunde::default();
+        k.handcam_foto = true;
+        let mut map = HashMap::new();
+        map.insert("customer.jpg".into(), "Instructor.jpg".into());
+        assert_eq!(
+            copy_instructor_foto(true, &instructor, "Instructor.jpg", &layout, &k, 1, &map)
+                .unwrap(),
+            1
+        );
+        assert!(layout
+            .base_dir
+            .join("Handcam_Foto")
+            .join("Instructor_001.jpg")
+            .is_file());
+        assert!(!layout
+            .base_dir
+            .join("Handcam_Foto")
+            .join("Instructor.jpg")
+            .exists());
+    }
+
+    #[test]
+    fn copy_instructor_soft_skips_missing_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let layout = OutputLayout {
+            base_dir: dir.path().to_path_buf(),
+            base_filename: "t".into(),
+        };
+        let mut k = Kunde::default();
+        k.handcam_foto = true;
+        let map = HashMap::new();
+        assert_eq!(
+            copy_instructor_foto(
+                true,
+                &dir.path().join("gone.jpg").to_string_lossy(),
+                "Instructor.jpg",
+                &layout,
+                &k,
+                1,
+                &map
+            )
+            .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn ensure_instructor_foto_present_blocks_missing() {
+        let mut cfg = AppConfig::default();
+        assert!(ensure_instructor_foto_present(&cfg).is_ok());
+
+        cfg.instructor_foto_enabled = true;
+        cfg.instructor_foto_path = String::new();
+        assert!(ensure_instructor_foto_present(&cfg).is_err());
+
+        cfg.instructor_foto_path = r"C:\this\path\should\not\exist\instructor.jpg".into();
+        assert!(ensure_instructor_foto_present(&cfg).is_err());
+
+        let f = NamedTempFile::new().unwrap();
+        cfg.instructor_foto_path = f.path().to_string_lossy().to_string();
+        assert!(ensure_instructor_foto_present(&cfg).is_ok());
     }
 }

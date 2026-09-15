@@ -319,6 +319,18 @@
         "longWarning": "Länger als 10 s — das Outro verlängert das Video deutlich.",
         "mediaFilter": "Bilder & Videos"
       },
+      "instructorFoto": {
+        "title": "Instructor-Foto",
+        "description": "Optionales Foto, das beim Erstellen zusätzlich in die Foto-Ordner kopiert wird.",
+        "enabled": "Instructor-Foto ablegen",
+        "pick": "Foto wählen…",
+        "remove": "Foto entfernen",
+        "noMedia": "Kein Foto gewählt.",
+        "missing": "Datei nicht gefunden — bitte neu wählen.",
+        "filename": "Dateiname im Foto-Ordner",
+        "filenameHint": "Gleicher Name in Handcam_Foto und Outside_Foto. Standard: Instructor.jpg",
+        "mediaFilter": "JPEG & PNG"
+      },
       "introEnabled": "Intro beim Erstellen verwenden",
       "introDuration": "Intro-Dauer (Sek.)",
       "introMux": "Intro zusammenfügen",
@@ -568,7 +580,8 @@
       "bookingIdRequired": "Booking-ID ist erforderlich",
       "validation": "Validierung",
       "storageDeferredHint": "Speicherort wird beim Erstellen abgefragt und gespeichert.",
-      "outroMissing": "Outro-Medium nicht gefunden: {{path}}. Bitte in den Einstellungen neu wählen oder Outro deaktivieren."
+      "outroMissing": "Outro-Medium nicht gefunden: {{path}}. Bitte in den Einstellungen neu wählen oder Outro deaktivieren.",
+      "instructorFotoMissing": "Instructor-Foto nicht gefunden: {{path}}. Bitte in den Einstellungen neu wählen oder Instructor-Foto deaktivieren."
     },
     "ready": {
       "headline": {
