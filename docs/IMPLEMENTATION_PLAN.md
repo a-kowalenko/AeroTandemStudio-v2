@@ -20,6 +20,7 @@
 | `@docs/phases/open/14-ml-photo.md` | Phase 14 (Backlog) |
 | `@docs/phases/open/48-vorgang-media-viewer.md` | Phase 48 (Vorgang Medien-Viewer) |
 | `@docs/phases/open/47-settings-wizard-ux.md` | Phase 47 (Settings + Wizard UX) |
+| `@docs/phases/open/50-outro.md` | Phase 50 (Outro) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/optimization_plan.md` | Nur ein OPT-Paket |
 | `@docs/phases/ARCHIVE.md` | Regression / erledigte Spec |
@@ -51,6 +52,7 @@ Desktop-App zur automatisierten Erstellung von Tandem-Fallschirmsprung-Videos (I
 | 2 | **23.2h / 23.3** USB-MTP (Overrides / Linux libmtp) | [`phases/open/23-usb-mtp.md`](phases/open/23-usb-mtp.md) | 🔄 |
 | later | **14** ML Foto-Klassifikation | [`phases/open/14-ml-photo.md`](phases/open/14-ml-photo.md) | ⬜ |
 | done | **48** Vorgang Medien-Viewer (lokal) | [`phases/open/48-vorgang-media-viewer.md`](phases/open/48-vorgang-media-viewer.md) | ✅ |
+| done | **50** Outro (User-Asset am Videoende) | [`phases/open/50-outro.md`](phases/open/50-outro.md) | ✅ |
 
 *(AMS-Bridge Historie-Merge: AeroMediaService-v2 — AMS neu starten nach Deploy. Optional: Linux-VM-Abnahme, Windows-WPD mit echter Cam.)*
 
@@ -104,6 +106,7 @@ Details: `@AGENTS.md`
 | 47 | Settings + Setup-Wizard UX Rebuild | ✅ | [open/47](phases/open/47-settings-wizard-ux.md) |
 | 48 | Vorgang Medien-Viewer (lokal) | ✅ | [open/48](phases/open/48-vorgang-media-viewer.md) |
 | 49 | Forced-Codec Export (Ziel-Codec, phone-safe) | ✅ | [open/49](phases/open/49-forced-codec-export.md) |
+| 50 | Outro (User-Asset am Videoende) | ✅ | [open/50](phases/open/50-outro.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -137,9 +140,15 @@ Regeln: @AGENTS.md
 Nur 23.2h.
 ```
 
+```
+Implementiere Phase 50 aus @docs/phases/open/50-outro.md
+Regeln: @AGENTS.md
+Nur 50.
+```
+
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
 **Performance (OPT-X):** nur ein Paket aus `@docs/optimization_plan.md`
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-14 (Phase 49).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-15 (Phase 50 Spec-Skizze).*

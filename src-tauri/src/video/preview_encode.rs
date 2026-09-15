@@ -737,6 +737,9 @@ pub fn generate_preview(
         config.intro_enabled,
         f64::from(config.dauer),
         &config.intro_mux_mode,
+        config.outro_enabled,
+        &config.outro_path,
+        f64::from(config.outro_dauer),
     );
     let fingerprint =
         preview_reuse::create_content_fingerprint_with_tag(kunde, video_paths, &enc_tag)
@@ -751,22 +754,31 @@ pub fn generate_preview(
         config.reencode_matching_clips,
     );
 
-    // Intro path: reuse create_video into the work dir (kunde drives overlay text).
-    if config.intro_enabled {
+    // Intro / Outro path: reuse create_video into the work dir so Preview == Create
+    // (kunde drives overlay text; Outro asset is appended identically).
+    let outro_on = config.outro_enabled && !config.outro_path.trim().is_empty();
+    if config.intro_enabled || outro_on {
         let intro_reason = plan.reencode_reason.clone().unwrap_or_else(|| {
-            "Intro-Overlay erfordert Kodierung".into()
+            if config.intro_enabled {
+                "Intro-Overlay erfordert Kodierung".into()
+            } else {
+                "Outro erfordert Kodierung".into()
+            }
         });
         on_progress(progress_from_times(
             5.0,
             100.0,
-            &format!("Vorschau-Intro: {intro_reason}"),
+            &format!("Vorschau-Intro/Outro: {intro_reason}"),
         ));
         let out = work.join("preview_with_intro.mp4");
         let out_s = out.to_string_lossy().to_string();
         let codec_pref = VideoCodecPreference::parse(&config.video_codec);
         let opts = CreateVideoOptions {
             dauer: f64::from(config.dauer),
-            intro_enabled: true,
+            intro_enabled: config.intro_enabled,
+            outro_enabled: config.outro_enabled,
+            outro_path: config.outro_path.clone(),
+            outro_dauer: f64::from(config.outro_dauer),
             video_codec: codec_pref,
             crf,
             parallel_enabled: config.parallel_processing_enabled,
@@ -794,7 +806,7 @@ pub fn generate_preview(
             strategy: strategy_label(&plan),
             target_codec: plan.target_codec.clone(),
             encoder: result.encoder,
-            intro_included: true,
+            intro_included: result.intro_created,
             clip_count: video_paths.len(),
             fingerprint,
             reencode_reason: Some(intro_reason),

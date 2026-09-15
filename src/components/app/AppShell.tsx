@@ -152,6 +152,11 @@ export function AppShell({
     Boolean(config?.intro_enabled ?? false),
     config?.dauer ?? 5,
     config?.intro_mux_mode ?? "capcut",
+    {
+      enabled: Boolean(config?.outro_enabled ?? false),
+      path: config?.outro_path ?? "",
+      dauer: config?.outro_dauer ?? 5,
+    },
   );
   const canReusePreview = getPreviewReusePlan(
     videoList,

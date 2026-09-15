@@ -82,6 +82,12 @@ export type AppConfig = {
   ort: string;
   dauer: number;
   intro_enabled: boolean;
+  /** Phase 50: append a user Outro (photo/video) at the very end (default false). */
+  outro_enabled: boolean;
+  /** Absolute path to the Outro asset (photo or video). Empty disables Outro on save. */
+  outro_path: string;
+  /** Outro duration (sec.) for a photo Outro (1–10); ignored for a video Outro. */
+  outro_dauer: number;
   outside_video: boolean;
   gast_name: string;
   tandemmaster: string;
@@ -545,6 +551,10 @@ export type ValidationResult = {
 export type CreateVideoOptions = {
   dauer?: number;
   intro_enabled?: boolean;
+  /** Phase 50: append Outro at the end. */
+  outro_enabled?: boolean;
+  outro_path?: string;
+  outro_dauer?: number;
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
@@ -568,6 +578,10 @@ export type CreateJobOptions = {
   watermark_photo_indices?: number[];
   dauer?: number;
   intro_enabled?: boolean;
+  /** Phase 50: append Outro at the end. */
+  outro_enabled?: boolean;
+  outro_path?: string;
+  outro_dauer?: number;
   video_codec?: "auto" | "h264" | "h265";
   crf?: number;
   parallel_enabled?: boolean;
@@ -760,6 +774,17 @@ export async function mediaFileUrl(path: string): Promise<string> {
 
 export async function probeVideo(path: string): Promise<VideoMetadata> {
   return invoke<VideoMetadata>("probe_video", { path });
+}
+
+/** Phase 50: outro asset existence + media kind (+ duration for videos). */
+export type OutroAssetProbe = {
+  exists: boolean;
+  kind: "photo" | "video";
+  duration_secs: number | null;
+};
+
+export async function probeOutroAsset(path: string): Promise<OutroAssetProbe> {
+  return invoke<OutroAssetProbe>("probe_outro_asset", { path });
 }
 
 /** Keyframe timestamps in seconds (for trim snapping / stream-copy). */

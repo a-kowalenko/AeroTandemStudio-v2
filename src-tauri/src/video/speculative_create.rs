@@ -1889,8 +1889,9 @@ fn run_staging_job(
         update_progress(slot, 0.0, "Erstelle Video…");
 
         let mut video_opts = request.video.clone();
-        // Body-only staging: Intro / CapCut / forced-codec encode happen at commit.
+        // Body-only staging: Intro / Outro / CapCut / forced-codec encode happen at commit.
         video_opts.intro_enabled = false;
+        video_opts.outro_enabled = false;
         video_opts.body_concat_mode = "compatible".into();
         video_opts.defer_forced_reencode = true;
 
@@ -2339,12 +2340,15 @@ pub(crate) fn commit_from_staging(
         let src_str = src.to_string_lossy().to_string();
         let dest_str = dest.to_string_lossy().to_string();
 
-        if options.video.intro_enabled {
-            // Staged Compatible body → CapCut/intro in one pass (no second concat).
+        if options.video.intro_enabled
+            || (options.video.outro_enabled
+                && !options.video.outro_path.trim().is_empty())
+        {
+            // Staged Compatible body → CapCut/intro/outro in one pass (no second concat).
             // CapCut also applies the target codec; skip a separate forced remux.
             let mut video_opts = options.video.clone();
             video_opts.defer_forced_reencode = false;
-            log_event("speculative_hit", "deferred_intro_on_staged_body");
+            log_event("speculative_hit", "deferred_intro_outro_on_staged_body");
             match create_video(
                 ffmpeg,
                 kunde,
@@ -2805,11 +2809,19 @@ pub fn try_promote_into_create_job(
     }
 
     // Fast-forward body/photo stages for hit UX.
+    // When CapCut Intro/Outro still runs at commit, do NOT emit "Video fertig" —
+    // that used to light the Audio chip (monotonic) while mux was still encoding.
+    let deferred_mux = options.video.intro_enabled
+        || (options.video.outro_enabled && !options.video.outro_path.trim().is_empty());
     on_progress(EncodeProgress {
-        percent: 100.0,
-        current_secs: 100.0,
+        percent: if deferred_mux { 5.0 } else { 100.0 },
+        current_secs: if deferred_mux { 5.0 } else { 100.0 },
         total_secs: 100.0,
-        status: "Video fertig".into(),
+        status: if deferred_mux {
+            "Videoclips vorbereitet".into()
+        } else {
+            "Video fertig".into()
+        },
         task_id: None,
     });
     if needs_foto_product(kunde) {

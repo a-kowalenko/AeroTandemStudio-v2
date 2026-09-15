@@ -306,6 +306,19 @@
         "title": "Intro (experimental)",
         "description": "Intro antes del video de vuelo al crear."
       },
+      "outro": {
+        "title": "Outro (experimental)",
+        "description": "Tu propia foto o video al final del video terminado.",
+        "enabled": "Usar outro al crear",
+        "pick": "Elegir medio…",
+        "remove": "Quitar medio",
+        "noMedia": "No se eligió ningún medio.",
+        "missing": "Archivo no encontrado — elígelo de nuevo.",
+        "duration": "Duración del outro (s)",
+        "videoDuration": "Duración del video: {{secs}} s",
+        "longWarning": "Más de 10 s — el outro alarga notablemente el video.",
+        "mediaFilter": "Imágenes y videos"
+      },
       "introEnabled": "Usar intro al crear",
       "introDuration": "Duración del intro (s)",
       "introMux": "Unir intro",
@@ -554,7 +567,8 @@
       "customerIdRequired": "Se requiere ID de cliente",
       "bookingIdRequired": "Se requiere ID de reserva",
       "validation": "Validación",
-      "storageDeferredHint": "La ubicación de almacenamiento se pedirá al crear y luego se guardará."
+      "storageDeferredHint": "La ubicación de almacenamiento se pedirá al crear y luego se guardará.",
+      "outroMissing": "No se encontró el medio del outro: {{path}}. Elígelo de nuevo en Ajustes o desactiva el outro."
     },
     "ready": {
       "headline": {
@@ -662,6 +676,10 @@
       "introVideoUniversal": "Exportando intro+video (universal)…",
       "introVideoUniversalAudio": "Exportando intro+video (universal, copia de audio)…",
       "introVideoUniversalFallback": "Exportando intro+video (universal, respaldo)…",
+      "introVideoOutroUniversal": "Exportando intro+video+outro (universal)…",
+      "introVideoOutroUniversalAudio": "Exportando intro+video+outro (universal, copia de audio)…",
+      "videoOutroUniversal": "Exportando video+outro (universal)…",
+      "videoOutroUniversalAudio": "Exportando video+outro (universal, copia de audio)…",
       "export": "Exportando video…",
       "exportDone": "Exportación terminada",
       "previewAnalyse": "Analizando para vista previa…",
@@ -1342,6 +1360,8 @@
       "video": "Video",
       "bodyJoin": "Unir clips",
       "introVideo": "Intro+video",
+      "introVideoOutro": "Intro+video+outro",
+      "videoOutro": "Video+outro",
       "introAudio": "Audio",
       "wmPhotos": "Sello de vista previa",
       "wmVideo": "Marca de agua"

@@ -54,16 +54,26 @@ pub fn create_content_fingerprint_with_tag(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Encoding-relevant tag so preview reuse invalidates when mux/intro settings change.
+/// Encoding-relevant tag so preview reuse invalidates when mux/intro/outro settings change.
 pub fn preview_encoding_tag(
     intro_enabled: bool,
     intro_dauer: f64,
     intro_mux_mode: &str,
+    outro_enabled: bool,
+    outro_path: &str,
+    outro_dauer: f64,
 ) -> String {
     let mux = crate::storage::config::normalize_intro_mux_mode(intro_mux_mode);
+    // Outro is effective only with a non-empty path.
+    let outro_on = outro_enabled && !outro_path.trim().is_empty();
     format!(
-        "intro={}|dauer={:.3}|mux={}",
-        intro_enabled as u8, intro_dauer, mux
+        "intro={}|dauer={:.3}|mux={}|outro={}|outropath={}|outrodauer={:.3}",
+        intro_enabled as u8,
+        intro_dauer,
+        mux,
+        outro_on as u8,
+        if outro_on { outro_path.trim() } else { "" },
+        outro_dauer,
     )
 }
 

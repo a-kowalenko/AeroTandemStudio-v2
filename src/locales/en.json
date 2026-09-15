@@ -306,6 +306,19 @@
         "title": "Intro (experimental)",
         "description": "Intro before the flight video when creating."
       },
+      "outro": {
+        "title": "Outro (experimental)",
+        "description": "Your own photo or video at the end of the finished video.",
+        "enabled": "Use outro when creating",
+        "pick": "Choose media…",
+        "remove": "Remove media",
+        "noMedia": "No media selected.",
+        "missing": "File not found — please choose again.",
+        "duration": "Outro duration (sec.)",
+        "videoDuration": "Video duration: {{secs}} s",
+        "longWarning": "Longer than 10 s — the outro noticeably extends the video.",
+        "mediaFilter": "Images & videos"
+      },
       "introEnabled": "Use intro when creating",
       "introDuration": "Intro duration (sec.)",
       "introMux": "Join intro",
@@ -554,7 +567,8 @@
       "customerIdRequired": "Customer ID is required",
       "bookingIdRequired": "Booking ID is required",
       "validation": "Validation",
-      "storageDeferredHint": "Storage location will be chosen when creating and then saved."
+      "storageDeferredHint": "Storage location will be chosen when creating and then saved.",
+      "outroMissing": "Outro media not found: {{path}}. Please choose it again in Settings or disable the outro."
     },
     "ready": {
       "headline": {
@@ -662,6 +676,10 @@
       "introVideoUniversal": "Exporting intro+video (universal)…",
       "introVideoUniversalAudio": "Exporting intro+video (universal, audio copy)…",
       "introVideoUniversalFallback": "Exporting intro+video (universal, fallback)…",
+      "introVideoOutroUniversal": "Exporting intro+video+outro (universal)…",
+      "introVideoOutroUniversalAudio": "Exporting intro+video+outro (universal, audio copy)…",
+      "videoOutroUniversal": "Exporting video+outro (universal)…",
+      "videoOutroUniversalAudio": "Exporting video+outro (universal, audio copy)…",
       "export": "Exporting video…",
       "exportDone": "Export complete",
       "previewAnalyse": "Analyzing for preview…",
@@ -1342,6 +1360,8 @@
       "video": "Video",
       "bodyJoin": "Join clips",
       "introVideo": "Intro+video",
+      "introVideoOutro": "Intro+video+outro",
+      "videoOutro": "Video+outro",
       "introAudio": "Audio",
       "wmPhotos": "Preview stamp",
       "wmVideo": "Watermark"

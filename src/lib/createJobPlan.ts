@@ -99,6 +99,26 @@ function skipHandoffMarker(
   );
 }
 
+/** CapCut mux chip label: Intro / Outro / both. */
+function muxEncodeStepDef(
+  introEnabled: boolean,
+  outroEnabled: boolean,
+): CreateJobStepDef {
+  if (introEnabled && outroEnabled) {
+    return {
+      id: "intro-video",
+      labelKey: "workflow.createSteps.introVideoOutro",
+    };
+  }
+  if (outroEnabled) {
+    return {
+      id: "intro-video",
+      labelKey: "workflow.createSteps.videoOutro",
+    };
+  }
+  return STEP_DEFS["intro-video"];
+}
+
 export type BuildCreateJobPlanInput = {
   kunde: Kunde;
   videoCount: number;
@@ -113,6 +133,8 @@ export type BuildCreateJobPlanInput = {
   bodyConcatMode?: string | null;
   /** When true, split encode video into body-join / intro-video / intro-audio chips. */
   introEnabled?: boolean;
+  /** Phase 50: Outro mux — same CapCut sub-steps as Intro when encoding. */
+  outroEnabled?: boolean;
   /** Frozen intro mux mode — audio sub-step only for forced single-pass. */
   introMuxMode?: string | null;
 };
@@ -122,33 +144,38 @@ export type BuildCreateJobPlanInput = {
  * plus optional SMB upload in the frontend).
  */
 export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPlan {
-  const ids: CreateJobStepId[] = ["folder"];
+  const steps: CreateJobStepDef[] = [STEP_DEFS.folder];
+
+  const introOn = Boolean(input.introEnabled);
+  const outroOn = Boolean(input.outroEnabled);
+  const muxSubSteps = introOn || outroOn;
 
   const doVideo = needsVideoProduct(input.kunde) && input.videoCount > 0;
   const encodeVideo = doVideo && !input.reusePreview;
   if (doVideo) {
     if (input.reusePreview) {
-      ids.push("preview-reuse");
-    } else if (input.introEnabled) {
-      ids.push("body-join", "intro-video");
+      steps.push(STEP_DEFS["preview-reuse"]);
+    } else if (muxSubSteps) {
+      steps.push(STEP_DEFS["body-join"]);
+      steps.push(muxEncodeStepDef(introOn, outroOn));
       if (usesUnifiedIntroEncode(input.introMuxMode)) {
-        ids.push("intro-audio");
+        steps.push(STEP_DEFS["intro-audio"]);
       }
     } else {
-      ids.push("video");
+      steps.push(STEP_DEFS.video);
     }
   }
 
   if (videoUnpaid(input.kunde) && input.videoCount > 0) {
-    ids.push("wm-video");
+    steps.push(STEP_DEFS["wm-video"]);
   }
 
   if (input.photoCount > 0) {
-    ids.push("photos");
+    steps.push(STEP_DEFS.photos);
   }
 
   if (photoUnpaid(input.kunde) && input.watermarkPhotoCount > 0) {
-    ids.push("wm-photos");
+    steps.push(STEP_DEFS["wm-photos"]);
   }
 
   // Local marker/manifest: only as its own chip when there is no SMB upload.
@@ -157,24 +184,24 @@ export function buildCreateJobPlan(input: BuildCreateJobPlanInput): CreateJobPla
     !input.uploadToServer &&
     !skipHandoffMarker(input.kunde.form_mode, input.manualEntryMode)
   ) {
-    ids.push("handoff");
+    steps.push(STEP_DEFS.handoff);
   }
 
   if (input.uploadToServer) {
-    ids.push("upload");
+    steps.push(STEP_DEFS.upload);
   }
 
-  ids.push("done");
+  steps.push(STEP_DEFS.done);
 
   return {
-    steps: ids.map((id) => STEP_DEFS[id]),
+    steps,
     bodyConcatMode: encodeVideo
       ? normalizeBodyConcatMode(input.bodyConcatMode)
       : null,
   };
 }
 
-/** True when the frozen plan uses intro sub-steps instead of a single video chip. */
+/** True when the frozen plan uses intro/outro mux sub-steps instead of a single video chip. */
 export function planHasIntroVideoSubSteps(plan: CreateJobPlan | null): boolean {
   return plan?.steps.some((s) => s.id === "body-join") ?? false;
 }
@@ -204,9 +231,12 @@ export function createStepIdFromStatus(
     return "done";
   }
 
-  if (/^video fertig|video ready/.test(s)) {
+  // Final video ready. With CapCut mux sub-steps this must NOT leap to Audio —
+  // speculative hit / body-only staging also emits "Video fertig" before CapCut
+  // Intro/Outro runs. Only "Audio anhängen" owns the Audio chip.
+  if (/^video fertig|video ready|video listo/.test(s)) {
     if (planHasIntroVideoSubSteps(plan ?? null)) {
-      return planHasIntroAudioStep(plan ?? null) ? "intro-audio" : "intro-video";
+      return "intro-video";
     }
     return "video";
   }
@@ -261,19 +291,19 @@ export function createStepIdFromStatus(
 
   if (planHasIntroVideoSubSteps(plan ?? null)) {
     if (
-      /audio anhängen|attach audio|adjuntar audio|adjuntando audio/.test(s)
+      /audio anhängen|attach(ing)? audio|adjuntar audio|adjuntando audio/.test(s)
     ) {
-      return "intro-audio";
+      return planHasIntroAudioStep(plan ?? null) ? "intro-audio" : "intro-video";
     }
     if (
-      /erstelle intro|intro fertig|kodiere intro|exportiere intro\+video|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc/.test(
+      /erstelle intro|intro fertig|kodiere intro|exportiere intro\+video|exporting intro\+video|exportando intro\+video|füge intro|analysiere intro|zusammenfügen fertig|ohne intro \(stream-copy\)|intro\+video: hevc|exportiere video\+outro|exporting video\+outro|exportando video\+outro|kodiere intro\+video|encoding intro\+video|codificando intro\+video/.test(
         s,
       )
     ) {
       return "intro-video";
     }
     if (
-      /bereite videoclips|videoclips vorbereitet|füge clips|füge kodierte clips|kodiere .*clips parallel|compatible|fast-concat|mpegts|legacy-zusammenfügen|stream-copy trim|re-encode trim|probing|compatible-probe|compatible-prep|compatible-concat|compatible-finalize|compatible-validate|container finalisieren/.test(
+      /bereite videoclips|videoclips vorbereitet|füge clips|füge kodierte clips|kodiere .*clips parallel|compatible|fast-concat|mpegts|legacy-zusammenfügen|stream-copy trim|re-encode trim|probing|compatible-probe|compatible-prep|compatible-concat|compatible-finalize|compatible-validate|container finalisieren|übernehme vorbereitete|preparing clips|preparando clips/.test(
         s,
       )
     ) {

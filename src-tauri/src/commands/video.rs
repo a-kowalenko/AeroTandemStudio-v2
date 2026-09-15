@@ -609,6 +609,58 @@ pub async fn probe_video(app: AppHandle, path: String) -> Result<VideoMetadata, 
     .map_err(|e| e.to_string())?
 }
 
+/// Phase 50: outro asset probe for the settings picker + create/preview existence gate.
+#[derive(Debug, Serialize)]
+pub struct OutroAssetProbe {
+    /// Whether the file exists on disk right now.
+    pub exists: bool,
+    /// "photo" | "video" — inferred from extension.
+    pub kind: String,
+    /// Measured duration in seconds (videos only; None for photos or when probing failed).
+    pub duration_secs: Option<f64>,
+}
+
+/// Probe an Outro asset: existence + media kind (+ duration for videos).
+///
+/// Used by the Encoding settings picker (show duration / soft-warning) and by the
+/// Create/Preview existence gate so a missing file blocks early instead of failing
+/// mid-encode.
+#[tauri::command]
+pub async fn probe_outro_asset(app: AppHandle, path: String) -> Result<OutroAssetProbe, String> {
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(OutroAssetProbe {
+            exists: false,
+            kind: "photo".into(),
+            duration_secs: None,
+        });
+    }
+    let kind = match processor::outro_media_kind(&trimmed) {
+        processor::OutroKind::Video => "video",
+        processor::OutroKind::Photo => "photo",
+    };
+    let exists = std::path::Path::new(&trimmed).is_file();
+    let mut duration_secs: Option<f64> = None;
+    if exists && kind == "video" {
+        if let Ok(ffmpeg) = resolve_ffmpeg(&app) {
+            let probe_path = trimmed.clone();
+            duration_secs = tauri::async_runtime::spawn_blocking(move || {
+                probe::probe_video(&ffmpeg, &probe_path)
+                    .ok()
+                    .map(|m| m.duration_secs)
+            })
+            .await
+            .ok()
+            .flatten();
+        }
+    }
+    Ok(OutroAssetProbe {
+        exists,
+        kind: kind.into(),
+        duration_secs,
+    })
+}
+
 /// List keyframe timestamps (seconds) for stream-copy-friendly trim snapping.
 #[tauri::command]
 pub async fn list_video_keyframes(

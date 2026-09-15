@@ -58,6 +58,13 @@ const RAW_TO_I18N: Record<string, string> = {
     "progress.status.introVideoUniversalAudio",
   "Exportiere Intro+Video (Universal, Fallback)…":
     "progress.status.introVideoUniversalFallback",
+  "Exportiere Intro+Video+Outro (Universal)…":
+    "progress.status.introVideoOutroUniversal",
+  "Exportiere Intro+Video+Outro (Universal, Audio-Copy)…":
+    "progress.status.introVideoOutroUniversalAudio",
+  "Exportiere Video+Outro (Universal)…": "progress.status.videoOutroUniversal",
+  "Exportiere Video+Outro (Universal, Audio-Copy)…":
+    "progress.status.videoOutroUniversalAudio",
   "Audio anhängen (Copy)…": "progress.status.attachAudio",
   "Intro+Body durchgängig kodieren (kundenkompatibel)":
     "progress.status.introVideoCompatible",
@@ -201,7 +208,7 @@ const CREATE_JOB_MAJOR_STAGE =
 
 /** Concrete encode steps — shown as the main overall label (not nested under the parent stage). */
 const CREATE_VIDEO_DETAIL =
-  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen|kodiere intro|analysiere intro|exportiere video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|compatible|legacy-zusammenfügen|probing|prepare|clips prüfen|checking clips|comprobando clips|clips vorbereiten|preparing clips|preparando clips|clips zusammenfügen|joining clips|uniendo clips|container finalisieren|finalizing container|finalizando contenedor|zusammenfügung prüfen|checking join|comprobando unión|mkv-fallback|mkv fallback|respaldo mkv/i;
+  /bereite videoclips|videoclips vorbereitet|füge .+clips|kodiere .+clips|clips parallel|erstelle intro|intro fertig|füge intro|zusammenfügen|kodiere intro|analysiere intro|exportiere (intro\+)?video|exporting (intro\+)?video|exportando (intro\+)?video|export fertig|video fertig|audio anhängen|ohne intro|kodiere neu|analysiere videos|analysiere intro\/video|füge clips|hevc|mpegts|clip-segment|stream-copy|fast-concat|fast path|compatible|legacy-zusammenfügen|probing|prepare|clips prüfen|checking clips|comprobando clips|clips vorbereiten|preparing clips|preparando clips|clips zusammenfügen|joining clips|uniendo clips|container finalisieren|finalizing container|finalizando contenedor|zusammenfügung prüfen|checking join|comprobando unión|mkv-fallback|mkv fallback|respaldo mkv|übernehme vorbereitete/i;
 
 function inProgressLabel(): string {
   return tr("progress.default.inProgress");

@@ -29,6 +29,30 @@ describe("shouldResetOverallProgressPercent", () => {
       ),
       true,
     );
+    assert.equal(
+      shouldResetOverallProgressPercent(
+        "Exportiere Intro+Video (Universal)…",
+      ),
+      true,
+    );
+    assert.equal(
+      shouldResetOverallProgressPercent(
+        "Exportiere Intro+Video+Outro (Universal)…",
+      ),
+      true,
+    );
+    assert.equal(
+      shouldResetOverallProgressPercent(
+        "Exportiere Intro+Video+Outro (Universal, Audio-Copy)…",
+      ),
+      true,
+    );
+    assert.equal(
+      shouldResetOverallProgressPercent(
+        "Exportiere Video+Outro (Universal)…",
+      ),
+      true,
+    );
   });
 
   it("resets at body-join step start", () => {

@@ -70,6 +70,15 @@ pub struct CreateVideoOptions {
     pub dauer: f64,
     #[serde(default = "default_true")]
     pub intro_enabled: bool,
+    /// Phase 50: append a user Outro (photo/video) at the very end.
+    #[serde(default)]
+    pub outro_enabled: bool,
+    /// Absolute path to the Outro asset (photo or video). Empty ⇒ treated as disabled.
+    #[serde(default)]
+    pub outro_path: String,
+    /// Outro duration (seconds) for a photo Outro; ignored for a video Outro.
+    #[serde(default = "default_outro_dauer")]
+    pub outro_dauer: f64,
     #[serde(default)]
     pub video_codec: VideoCodecPreference,
     #[serde(default = "default_crf")]
@@ -95,6 +104,9 @@ pub struct CreateVideoOptions {
 fn default_intro_dauer() -> f64 {
     DEFAULT_INTRO_DAUER_SECS
 }
+fn default_outro_dauer() -> f64 {
+    5.0
+}
 fn default_true() -> bool {
     true
 }
@@ -117,6 +129,9 @@ impl Default for CreateVideoOptions {
         Self {
             dauer: DEFAULT_INTRO_DAUER_SECS,
             intro_enabled: true,
+            outro_enabled: false,
+            outro_path: String::new(),
+            outro_dauer: default_outro_dauer(),
             video_codec: VideoCodecPreference::Auto,
             crf: 20,
             parallel_enabled: true,
@@ -722,6 +737,319 @@ pub fn build_intro_body_single_pass_args(
     args
 }
 
+// ---------------------------------------------------------------------------
+// Phase 50 — Outro kinds + CapCut single-pass (Intro? + Body + Outro)
+// ---------------------------------------------------------------------------
+
+/// Whether the Outro asset is treated as a still photo or a video clip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutroKind {
+    Photo,
+    Video,
+}
+
+/// Common photo / video extensions used for the Outro (parity with app media filter).
+const OUTRO_VIDEO_EXTS: &[&str] = &["mp4", "mov", "mkv", "avi", "m4v", "webm", "mts", "m2ts"];
+const OUTRO_PHOTO_EXTS: &[&str] =
+    &["jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "heic", "dng"];
+
+/// Infer Outro media kind from the file extension (video wins ties; unknown → photo).
+pub fn outro_media_kind(path: &str) -> OutroKind {
+    let ext = Path::new(path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if OUTRO_VIDEO_EXTS.contains(&ext.as_str()) {
+        OutroKind::Video
+    } else if OUTRO_PHOTO_EXTS.contains(&ext.as_str()) {
+        OutroKind::Photo
+    } else {
+        // Unknown extension → treat as photo (safe: loop still + silence).
+        OutroKind::Photo
+    }
+}
+
+/// Outro input for CapCut single-pass encode (`[Intro?] → Body → Outro`).
+#[derive(Debug, Clone)]
+pub struct SinglePassOutroInput {
+    pub path: String,
+    pub kind: OutroKind,
+    /// Effective duration (photo: configured; video: probed).
+    pub dauer: f64,
+    /// True when a video Outro has an audio stream (photos are always silent).
+    pub has_audio: bool,
+}
+
+/// One continuous CapCut-style encode: optional Intro PNG + Body + Outro (photo/video).
+///
+/// Same principle as [`build_intro_body_single_pass_args`]: body is encoded once; Intro/Outro
+/// are filtergraph branches (no pre-rendered segment MP4s).
+///
+/// Input order:
+/// 1. optional Intro still (`-loop 1`)
+/// 2. Body
+/// 3. Outro (still with `-loop 1`, or video)
+/// 4. optional `anullsrc` when audio is encoded in-graph
+pub fn build_intro_body_outro_single_pass_args(
+    intro: Option<(&str, &str, f64)>,
+    body_path: &str,
+    body_dauer: f64,
+    outro: &SinglePassOutroInput,
+    output_path: &str,
+    v_params: &IntroVideoParams,
+    encoder: &str,
+    quality_params: &[String],
+    audio_mode: SinglePassAudioMode,
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let body_dauer = body_dauer.max(0.05);
+    let outro_dauer = outro.dauer.max(0.1);
+    let intro_dauer = intro.map(|(_, _, d)| d.max(0.1)).unwrap_or(0.0);
+    let total = intro_dauer + body_dauer + outro_dauer;
+    let fps_int = parse_fps_int(&v_params.fps);
+    let w = v_params.width;
+    let h = v_params.height;
+    let fps = &v_params.fps;
+    let aformat = format!(
+        "aformat=sample_rates={}:channel_layouts={}",
+        v_params.sample_rate, v_params.channel_layout
+    );
+
+    let mut next_idx = 0usize;
+    let intro_idx = if intro.is_some() {
+        let i = next_idx;
+        next_idx += 1;
+        Some(i)
+    } else {
+        None
+    };
+    let body_idx = next_idx;
+    next_idx += 1;
+    let outro_idx = next_idx;
+    next_idx += 1;
+    let silence_idx = next_idx;
+
+    let scale_pad = format!(
+        "scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"
+    );
+
+    // Silence pads consumed from anullsrc (0 → no lavfi input).
+    let silence_pads: usize = match audio_mode {
+        SinglePassAudioMode::VideoOnly => 0,
+        SinglePassAudioMode::EncodeSilence => 1,
+        SinglePassAudioMode::EncodeAac => {
+            usize::from(intro_idx.is_some()) + usize::from(!outro.has_audio)
+        }
+    };
+    let need_silence_input = silence_pads > 0;
+
+    let mut fc = String::new();
+    let mut v_n = 0usize;
+
+    if let (Some(ii), Some((_, drawtext, _))) = (intro_idx, intro) {
+        fc.push_str(&format!(
+            "[{ii}:v]{scale_pad},\
+             {drawtext},format={target_pix_fmt},fps={fps},\
+             trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv];"
+        ));
+        v_n += 1;
+    }
+    fc.push_str(&format!(
+        "[{body_idx}:v]{scale_pad},fps={fps},format={target_pix_fmt},\
+         setpts=PTS-STARTPTS,setsar=1[bodyv];"
+    ));
+    v_n += 1;
+    match outro.kind {
+        OutroKind::Photo => {
+            fc.push_str(&format!(
+                "[{outro_idx}:v]{scale_pad},format={target_pix_fmt},fps={fps},\
+                 trim=duration={outro_dauer},setpts=PTS-STARTPTS,setsar=1[outrov];"
+            ));
+        }
+        OutroKind::Video => {
+            fc.push_str(&format!(
+                "[{outro_idx}:v]{scale_pad},fps={fps},format={target_pix_fmt},\
+                 setpts=PTS-STARTPTS,setsar=1[outrov];"
+            ));
+        }
+    }
+    v_n += 1;
+
+    if intro_idx.is_some() {
+        fc.push_str("[introv]");
+    }
+    fc.push_str(&format!("[bodyv][outrov]concat=n={v_n}:v=1:a=0[v]"));
+
+    match audio_mode {
+        SinglePassAudioMode::VideoOnly => {}
+        SinglePassAudioMode::EncodeSilence => {
+            fc.push(';');
+            if outro.has_audio {
+                let lead = (intro_dauer + body_dauer).max(0.05);
+                fc.push_str(&format!(
+                    "[{silence_idx}:a]atrim=0:{lead},asetpts=PTS-STARTPTS,{aformat}[leada];\
+                     [{outro_idx}:a]asetpts=PTS-STARTPTS,{aformat}[outroa];\
+                     [leada][outroa]concat=n=2:v=0:a=1[a]"
+                ));
+            } else {
+                fc.push_str(&format!(
+                    "[{silence_idx}:a]atrim=0:{total},asetpts=PTS-STARTPTS[a]"
+                ));
+            }
+        }
+        SinglePassAudioMode::EncodeAac => {
+            fc.push(';');
+            if silence_pads >= 2 {
+                fc.push_str(&format!("[{silence_idx}:a]asplit={silence_pads}"));
+                for k in 0..silence_pads {
+                    fc.push_str(&format!("[sil{k}]"));
+                }
+                fc.push(';');
+            }
+            let mut sil_k = 0usize;
+            let mut a_n = 0usize;
+            let mut a_concat = String::new();
+
+            if intro_idx.is_some() {
+                let src = if silence_pads >= 2 {
+                    let s = format!("[sil{sil_k}]");
+                    sil_k += 1;
+                    s
+                } else {
+                    format!("[{silence_idx}:a]")
+                };
+                fc.push_str(&format!(
+                    "{src}atrim=0:{intro_dauer},asetpts=PTS-STARTPTS,{aformat}[introa];"
+                ));
+                a_concat.push_str("[introa]");
+                a_n += 1;
+            }
+            fc.push_str(&format!(
+                "[{body_idx}:a]asetpts=PTS-STARTPTS,{aformat}[bodya];"
+            ));
+            a_concat.push_str("[bodya]");
+            a_n += 1;
+            if outro.has_audio {
+                fc.push_str(&format!(
+                    "[{outro_idx}:a]asetpts=PTS-STARTPTS,{aformat}[outroa];"
+                ));
+            } else {
+                let src = if silence_pads >= 2 {
+                    format!("[sil{sil_k}]")
+                } else {
+                    format!("[{silence_idx}:a]")
+                };
+                fc.push_str(&format!(
+                    "{src}atrim=0:{outro_dauer},asetpts=PTS-STARTPTS,{aformat}[outroa];"
+                ));
+            }
+            a_concat.push_str("[outroa]");
+            a_n += 1;
+            fc.push_str(&format!("{a_concat}concat=n={a_n}:v=0:a=1[a]"));
+        }
+    }
+
+    let mut kf = String::from("eq(n,0)");
+    let mut t_acc = 0.0_f64;
+    if intro_dauer > 0.0 {
+        t_acc += intro_dauer;
+        kf.push_str(&format!("+gte(t,{t_acc})"));
+    }
+    t_acc += body_dauer;
+    kf.push_str(&format!("+gte(t,{t_acc})"));
+
+    let mut args = vec!["-y".into(), "-hide_banner".into()];
+    if let Some((hintergrund, _, _)) = intro {
+        args.extend([
+            "-loop".into(),
+            "1".into(),
+            "-i".into(),
+            hintergrund.to_string(),
+        ]);
+    }
+    args.extend(["-i".into(), body_path.to_string()]);
+    match outro.kind {
+        OutroKind::Photo => {
+            args.extend([
+                "-loop".into(),
+                "1".into(),
+                "-i".into(),
+                outro.path.clone(),
+            ]);
+        }
+        OutroKind::Video => {
+            args.extend(["-i".into(), outro.path.clone()]);
+        }
+    }
+    if need_silence_input {
+        args.extend([
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            format!(
+                "anullsrc=channel_layout={}:sample_rate={}",
+                v_params.channel_layout, v_params.sample_rate
+            ),
+        ]);
+    }
+
+    args.extend(["-filter_complex".into(), fc, "-map".into(), "[v]".into()]);
+    match audio_mode {
+        SinglePassAudioMode::VideoOnly => args.push("-an".into()),
+        SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
+            args.extend(["-map".into(), "[a]".into()]);
+        }
+    }
+    args.extend(["-c:v".into(), encoder.to_string()]);
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+    ]);
+    match audio_mode {
+        SinglePassAudioMode::VideoOnly => {}
+        SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
+            args.extend([
+                "-c:a".into(),
+                "aac".into(),
+                "-b:a".into(),
+                "192k".into(),
+            ]);
+        }
+    }
+    args.extend([
+        "-t".into(),
+        format!("{total}"),
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-bf".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-force_key_frames".into(),
+        format!("expr:{kf}"),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
+    args
+}
+
 /// Build silent AAC args matching body sample rate / layout (for audio-copy mux).
 pub fn build_silent_aac_args(
     output_path: &str,
@@ -794,6 +1122,307 @@ pub fn build_mux_video_audio_copy_args(
         "+faststart".into(),
         output_path.to_string(),
     ]
+}
+
+// ---------------------------------------------------------------------------
+// Phase 50 — Outro segment builders (pure; kept for tests / optional fallback)
+// ---------------------------------------------------------------------------
+
+/// Build FFmpeg args for a photo Outro segment: looped still + silence, normalized to
+/// the body params (scale/pad/fps/pixelformat). No drawtext (Outro stays un-personalized).
+pub fn build_outro_photo_segment_args(
+    image_path: &str,
+    output_path: &str,
+    dauer: f64,
+    v_params: &IntroVideoParams,
+    encoder: &str,
+    quality_params: &[String],
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let video_filters = format!(
+        "scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,format={target_pix_fmt}",
+        w = v_params.width,
+        h = v_params.height,
+    );
+    let fps_int = parse_fps_int(&v_params.fps);
+    let dauer = dauer.max(0.1);
+
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-loop".into(),
+        "1".into(),
+        "-i".into(),
+        image_path.to_string(),
+        "-f".into(),
+        "lavfi".into(),
+        "-i".into(),
+        format!(
+            "anullsrc=channel_layout={}:sample_rate={}",
+            v_params.channel_layout, v_params.sample_rate
+        ),
+        "-vf".into(),
+        video_filters,
+        "-c:v".into(),
+        encoder.to_string(),
+    ];
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        "192k".into(),
+        "-t".into(),
+        format!("{dauer}"),
+        "-shortest".into(),
+        "-map".into(),
+        "0:v:0".into(),
+        "-map".into(),
+        "1:a:0".into(),
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
+    args
+}
+
+/// Build FFmpeg args for a video Outro segment: normalize video (scale/pad/fps/pixfmt)
+/// and keep its audio when present, otherwise lay down matching silence (`anullsrc`).
+pub fn build_outro_video_segment_args(
+    video_path: &str,
+    output_path: &str,
+    v_params: &IntroVideoParams,
+    encoder: &str,
+    quality_params: &[String],
+    has_audio: bool,
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let video_filters = format!(
+        "scale={w}:{h}:force_original_aspect_ratio=decrease,\
+         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt}",
+        w = v_params.width,
+        h = v_params.height,
+        fps = v_params.fps,
+    );
+    let fps_int = parse_fps_int(&v_params.fps);
+
+    let mut args = vec!["-y".into(), "-hide_banner".into(), "-i".into(), video_path.to_string()];
+    if !has_audio {
+        // Continuous audio track: silence spanning the (shorter) video via -shortest.
+        args.extend([
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            format!(
+                "anullsrc=channel_layout={}:sample_rate={}",
+                v_params.channel_layout, v_params.sample_rate
+            ),
+        ]);
+    }
+    args.extend(["-vf".into(), video_filters, "-c:v".into(), encoder.to_string()]);
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        "192k".into(),
+        "-ar".into(),
+        v_params.sample_rate.clone(),
+    ]);
+    if has_audio {
+        args.extend(["-map".into(), "0:v:0".into(), "-map".into(), "0:a:0".into()]);
+    } else {
+        args.extend([
+            "-map".into(),
+            "0:v:0".into(),
+            "-map".into(),
+            "1:a:0".into(),
+            "-shortest".into(),
+        ]);
+    }
+    args.extend([
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
+    args
+}
+
+/// One normalized segment fed into the final continuous concat encode.
+#[derive(Debug, Clone)]
+pub struct ConcatSegment {
+    pub path: String,
+    pub has_audio: bool,
+    pub duration: f64,
+}
+
+/// Build args for a single continuous re-encode that concatenates all `segments`
+/// ([Intro?] → Body → [Outro?]) into one phone-safe bitstream (single SPS/PPS).
+///
+/// Video is normalized per segment (scale/pad/fps/format); audio is concatenated with
+/// silence generated for any segment that has no audio track (continuous audio spur).
+pub fn build_concat_segments_encode_args(
+    segments: &[ConcatSegment],
+    output_path: &str,
+    v_params: &IntroVideoParams,
+    encoder: &str,
+    quality_params: &[String],
+) -> Vec<String> {
+    let target_pix_fmt = match v_params.pix_fmt.as_str() {
+        "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
+        _ => "yuv420p".into(),
+    };
+    let w = v_params.width;
+    let h = v_params.height;
+    let fps = &v_params.fps;
+    let fps_int = parse_fps_int(fps);
+    let n = segments.len().max(1);
+    let total = progress_encode_total_secs(
+        &segments.iter().map(|s| s.duration).collect::<Vec<_>>(),
+    );
+    let silent_count = segments.iter().filter(|s| !s.has_audio).count();
+    let aformat = format!(
+        "aformat=sample_rates={}:channel_layouts={}",
+        v_params.sample_rate, v_params.channel_layout
+    );
+
+    let mut args = vec!["-y".into(), "-hide_banner".into()];
+    for seg in segments {
+        args.push("-i".into());
+        args.push(seg.path.clone());
+    }
+    let silence_idx = segments.len();
+    if silent_count > 0 {
+        args.extend([
+            "-f".into(),
+            "lavfi".into(),
+            "-i".into(),
+            format!(
+                "anullsrc=channel_layout={}:sample_rate={}",
+                v_params.channel_layout, v_params.sample_rate
+            ),
+        ]);
+    }
+
+    let mut fc = String::new();
+    for i in 0..segments.len() {
+        fc.push_str(&format!(
+            "[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt},\
+             setpts=PTS-STARTPTS,setsar=1[v{i}];"
+        ));
+    }
+    if silent_count > 0 {
+        fc.push_str(&format!("[{silence_idx}:a]asplit={silent_count}"));
+        for k in 0..silent_count {
+            fc.push_str(&format!("[sil{k}]"));
+        }
+        fc.push(';');
+    }
+    let mut sil_k = 0usize;
+    for (i, seg) in segments.iter().enumerate() {
+        if seg.has_audio {
+            fc.push_str(&format!("[{i}:a]asetpts=PTS-STARTPTS,{aformat}[a{i}];"));
+        } else {
+            let dur = seg.duration.max(0.05);
+            fc.push_str(&format!(
+                "[sil{sil_k}]atrim=0:{dur},asetpts=PTS-STARTPTS,{aformat}[a{i}];"
+            ));
+            sil_k += 1;
+        }
+    }
+    for i in 0..segments.len() {
+        fc.push_str(&format!("[v{i}]"));
+    }
+    fc.push_str(&format!("concat=n={n}:v=1:a=0[v];"));
+    for i in 0..segments.len() {
+        fc.push_str(&format!("[a{i}]"));
+    }
+    fc.push_str(&format!("concat=n={n}:v=0:a=1[a]"));
+
+    args.extend([
+        "-filter_complex".into(),
+        fc,
+        "-map".into(),
+        "[v]".into(),
+        "-map".into(),
+        "[a]".into(),
+        "-c:v".into(),
+        encoder.to_string(),
+    ]);
+    args.extend(quality_params.iter().cloned());
+    args.extend([
+        "-pix_fmt".into(),
+        target_pix_fmt,
+        "-r".into(),
+        v_params.fps.clone(),
+        "-video_track_timescale".into(),
+        v_params.timescale.clone(),
+        "-c:a".into(),
+        "aac".into(),
+        "-b:a".into(),
+        "192k".into(),
+        "-t".into(),
+        format!("{total}"),
+        "-g".into(),
+        fps_int.to_string(),
+        "-keyint_min".into(),
+        fps_int.to_string(),
+        "-sc_threshold".into(),
+        "0".into(),
+        "-bf".into(),
+        "0".into(),
+        "-fps_mode".into(),
+        "cfr".into(),
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output_path.to_string(),
+    ]);
+    args
 }
 
 /// Intro-tuned quality flags (faster preset / constqp) — without `-c:v`.
@@ -1216,6 +1845,23 @@ pub fn create_video(
         }
     }
 
+    // Phase 50: fail fast when Outro is on but the asset is missing (block Preview/Erstellen
+    // with a clear message instead of a late encode failure).
+    let outro_active = options.outro_enabled && !options.outro_path.trim().is_empty();
+    if options.outro_enabled {
+        let outro_p = options.outro_path.trim();
+        if outro_p.is_empty() {
+            return Err(ProcessorError::Message(
+                "Outro ist aktiviert, aber kein Medium hinterlegt.".into(),
+            ));
+        }
+        if !Path::new(outro_p).is_file() {
+            return Err(ProcessorError::Message(format!(
+                "Outro-Datei nicht gefunden: {outro_p}"
+            )));
+        }
+    }
+
     let stages = 3.0;
     let work = work_temp_dir(output)?;
     let mut encoder_used = String::from("libx264");
@@ -1237,7 +1883,7 @@ pub fn create_video(
     }
     // Without intro (and without a forced codec), write the body concat straight to
     // the final output to skip an extra remux pass in `export_body_to_output`.
-    let body_target = if options.intro_enabled || force_codec {
+    let body_target = if options.intro_enabled || force_codec || outro_active {
         work.join("body_concat.mp4").to_string_lossy().to_string()
     } else {
         output.to_string()
@@ -1355,8 +2001,16 @@ pub fn create_video(
         body_target
     };
     if options.intro_enabled {
+        // When Outro follows, do not pin the bar at 100% — CapCut mux is still ahead.
+        let body_done_pct = if outro_active { 5.0 } else { 100.0 };
         on_progress(progress_from_times(
+            body_done_pct,
             100.0,
+            "Videoclips vorbereitet",
+        ));
+    } else if outro_active {
+        on_progress(progress_from_times(
+            5.0,
             100.0,
             "Videoclips vorbereitet",
         ));
@@ -1382,7 +2036,64 @@ pub fn create_video(
         _ => "h264".into(),
     };
 
-    let final_body = if options.intro_enabled {
+    let final_body = if outro_active {
+        // Phase 50: [Intro?] → Body → Outro in one continuous, phone-safe encode
+        // (CapCut principle). Codec: explicit H.265 → HEVC; Auto / H.264 → H.264.
+        let outro_path = options.outro_path.trim().to_string();
+        let outro_kind = outro_media_kind(&outro_path);
+        let capcut_codec = match options.video_codec {
+            VideoCodecPreference::H265 => VideoCodec::Hevc,
+            _ => VideoCodec::H264,
+        };
+        let capcut_codec_str = match capcut_codec {
+            VideoCodec::Hevc => "h265",
+            _ => "h264",
+        };
+        let mut capcut_params = v_params.clone();
+        capcut_params.vcodec = match capcut_codec {
+            VideoCodec::Hevc => "hevc".into(),
+            _ => "h264".into(),
+        };
+        capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe
+        let profile =
+            EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
+
+        // Intro strings must outlive the mux call; declared here, filled when enabled.
+        let hintergrund_s: String;
+        let drawtext: String;
+        let intro_opt = if options.intro_enabled {
+            let hintergrund = find_asset(ASSET_HINTERGRUND, resource_dir)?;
+            hintergrund_s = hintergrund.to_string_lossy().to_string();
+            drawtext = prepare_text_overlay(kunde, capcut_params.width, capcut_params.height);
+            Some((hintergrund_s.as_str(), drawtext.as_str(), options.dauer))
+        } else {
+            None
+        };
+
+        let outcome = mux_with_outro(
+            ffmpeg,
+            intro_opt,
+            &body_path,
+            &outro_path,
+            outro_kind,
+            options.outro_dauer,
+            output,
+            &capcut_params,
+            &hw,
+            &profile,
+            &work,
+            Arc::clone(&on_progress),
+        )?;
+        encoder_used = outcome.codec;
+        on_progress(progress_from_times(100.0, 100.0, "Zusammenfügen fertig"));
+
+        CreateVideoResult {
+            output: output.to_string(),
+            encoder: encoder_used,
+            intro_created: options.intro_enabled,
+            body_clips: video_paths.len(),
+        }
+    } else if options.intro_enabled {
         let hintergrund = find_asset(ASSET_HINTERGRUND, resource_dir)?;
         let hintergrund_s = hintergrund.to_string_lossy().to_string();
         let drawtext = prepare_text_overlay(kunde, v_params.width, v_params.height);
@@ -2146,6 +2857,7 @@ fn mux_intro_body_single_pass(
             &video_target,
             output,
             intro_dauer,
+            0.0,
             v_params,
             work,
             on_progress,
@@ -2181,6 +2893,7 @@ fn assemble_silent_plus_body_audio(
     video_path: &str,
     output: &str,
     intro_dauer: f64,
+    trail_silence: f64,
     v_params: &IntroVideoParams,
     work: &Path,
     on_progress: ProgressCallback,
@@ -2189,42 +2902,69 @@ fn assemble_silent_plus_body_audio(
     let silent_s = silent.to_string_lossy().to_string();
     let body_a = work.join("body_audio.m4a");
     let body_a_s = body_a.to_string_lossy().to_string();
+    let trail = work.join("outro_silence.m4a");
+    let trail_s = trail.to_string_lossy().to_string();
     let full_a = work.join("full_audio.m4a");
     let full_a_s = full_a.to_string_lossy().to_string();
 
     emit_step_start(&on_progress, "Audio anhängen (Copy)…");
 
-    let intro_dauer = intro_dauer.max(0.1);
-    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(intro_dauer).max(0.05);
+    let intro_dauer = intro_dauer.max(0.0);
+    let trail_silence = trail_silence.max(0.0);
+    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.05).max(0.05);
     let video_dur = probe_duration_secs(ffmpeg, video_path)
-        .unwrap_or(intro_dauer + body_dur)
+        .unwrap_or(intro_dauer + body_dur + trail_silence)
         .max(0.1);
 
-    let mut silent_args = build_silent_aac_args(
-        &silent_s,
-        intro_dauer,
-        &v_params.sample_rate,
-        &v_params.channel_layout,
-    );
-    push_ffmpeg_progress_args(&mut silent_args);
-    run_ffmpeg(
-        ffmpeg,
-        &silent_args,
-        intro_dauer,
-        map_substep_progress(Arc::clone(&on_progress), 0.0, 35.0),
-    )
-    .map_err(ConcatError::Ffmpeg)?;
+    let mut concat_parts: Vec<&str> = Vec::with_capacity(3);
 
-    on_progress(progress_from_times(40.0, 100.0, "Audio anhängen (Copy)…"));
+    if intro_dauer > 0.05 {
+        let mut silent_args = build_silent_aac_args(
+            &silent_s,
+            intro_dauer,
+            &v_params.sample_rate,
+            &v_params.channel_layout,
+        );
+        push_ffmpeg_progress_args(&mut silent_args);
+        run_ffmpeg(
+            ffmpeg,
+            &silent_args,
+            intro_dauer,
+            map_substep_progress(Arc::clone(&on_progress), 0.0, 30.0),
+        )
+        .map_err(ConcatError::Ffmpeg)?;
+        concat_parts.push(&silent_s);
+    }
+
+    on_progress(progress_from_times(35.0, 100.0, "Audio anhängen (Copy)…"));
 
     let extract_args = build_extract_audio_copy_args(body_path, &body_a_s);
     run_ffmpeg_checked(ffmpeg, &extract_args).map_err(ConcatError::Ffmpeg)?;
+    concat_parts.push(&body_a_s);
 
-    on_progress(progress_from_times(50.0, 100.0, "Audio anhängen (Copy)…"));
+    on_progress(progress_from_times(45.0, 100.0, "Audio anhängen (Copy)…"));
+
+    if trail_silence > 0.05 {
+        let mut trail_args = build_silent_aac_args(
+            &trail_s,
+            trail_silence,
+            &v_params.sample_rate,
+            &v_params.channel_layout,
+        );
+        push_ffmpeg_progress_args(&mut trail_args);
+        run_ffmpeg(
+            ffmpeg,
+            &trail_args,
+            trail_silence,
+            map_substep_progress(Arc::clone(&on_progress), 45.0, 55.0),
+        )
+        .map_err(ConcatError::Ffmpeg)?;
+        concat_parts.push(&trail_s);
+    }
 
     let list_path = work.join("audio_concat.txt");
-    concat::write_concat_file_list(&[&silent_s, &body_a_s], &list_path)?;
-    let audio_concat_dur = intro_dauer + body_dur;
+    concat::write_concat_file_list(&concat_parts, &list_path)?;
+    let audio_concat_dur = intro_dauer + body_dur + trail_silence;
     let mut concat_args = vec![
         "-y".into(),
         "-hide_banner".into(),
@@ -2243,7 +2983,7 @@ fn assemble_silent_plus_body_audio(
         ffmpeg,
         &concat_args,
         audio_concat_dur.max(0.1),
-        map_substep_progress(Arc::clone(&on_progress), 50.0, 75.0),
+        map_substep_progress(Arc::clone(&on_progress), 55.0, 75.0),
     )
     .map_err(ConcatError::Ffmpeg)?;
 
@@ -2257,6 +2997,181 @@ fn assemble_silent_plus_body_audio(
     )
     .map_err(ConcatError::Ffmpeg)?;
     Ok(())
+}
+
+/// Phase 50: CapCut single-pass mux — `[Intro?] → Body → Outro` in one continuous encode
+/// (same principle as Intro-only: body encoded once; optional AAC audio-copy afterward).
+#[allow(clippy::too_many_arguments)]
+fn mux_with_outro(
+    ffmpeg: &Path,
+    intro: Option<(&str, &str, f64)>,
+    body_path: &str,
+    outro_path: &str,
+    outro_kind: OutroKind,
+    outro_dauer: f64,
+    output: &str,
+    v_params: &IntroVideoParams,
+    hw: &HwAccelInfo,
+    capcut_profile: &EncodeProfile,
+    work: &Path,
+    on_progress: ProgressCallback,
+) -> Result<concat::ConcatOutcome, ProcessorError> {
+    if is_cancelled() {
+        return Err(ProcessorError::Ffmpeg(FfmpegError::Cancelled));
+    }
+    let codec = match v_params.vcodec.as_str() {
+        "hevc" | "h265" => VideoCodec::Hevc,
+        _ => VideoCodec::H264,
+    };
+    let fps_int = parse_fps_int(&v_params.fps);
+
+    let body_has_audio = concat::probe_has_audio(ffmpeg, body_path).unwrap_or(false);
+    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0).max(0.05);
+    let intro_dauer = intro.map(|(_, _, d)| d.max(0.1)).unwrap_or(0.0);
+
+    let outro_has_audio = match outro_kind {
+        OutroKind::Photo => false,
+        OutroKind::Video => concat::probe_has_audio(ffmpeg, outro_path).unwrap_or(false),
+    };
+    let outro_eff_dauer = match outro_kind {
+        OutroKind::Photo => outro_dauer.max(0.1),
+        OutroKind::Video => probe_duration_secs(ffmpeg, outro_path).unwrap_or(0.0).max(0.05),
+    };
+    let outro_input = SinglePassOutroInput {
+        path: outro_path.to_string(),
+        kind: outro_kind,
+        dauer: outro_eff_dauer,
+        has_audio: outro_has_audio,
+    };
+
+    // AAC copy only when body audio is copyable AND Outro does not bring its own audio
+    // (photo / silent video → trailing silence via stream-copy assemble).
+    let copy_audio = body_has_audio
+        && body_audio_is_aac_copyable(v_params)
+        && !outro_has_audio;
+
+    let audio_mode = if copy_audio {
+        SinglePassAudioMode::VideoOnly
+    } else if body_has_audio {
+        SinglePassAudioMode::EncodeAac
+    } else {
+        SinglePassAudioMode::EncodeSilence
+    };
+
+    let video_target = if copy_audio {
+        work.join("single_pass_outro_video.mp4")
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        output.to_string()
+    };
+
+    let label: &'static str = if intro.is_some() {
+        if copy_audio {
+            "Exportiere Intro+Video+Outro (Universal, Audio-Copy)…"
+        } else {
+            "Exportiere Intro+Video+Outro (Universal)…"
+        }
+    } else if copy_audio {
+        "Exportiere Video+Outro (Universal, Audio-Copy)…"
+    } else {
+        "Exportiere Video+Outro (Universal)…"
+    };
+    // First tick must match VIDEO_STEP_START_RESET (incl. older frontends that only
+    // know Intro+Video Universal). A 0 % Outro label alone would not lower the bar
+    // after "Videoclips vorbereitet" @ 100 % (monotonic UI).
+    emit_step_start(
+        &on_progress,
+        "Exportiere Intro+Video (Universal)…",
+    );
+    on_progress(progress_from_times(0.0, 100.0, label));
+
+    let total = progress_encode_total_secs(&[intro_dauer, body_dur, outro_eff_dauer]);
+    let encode_hw = capcut_profile.hw_accel;
+    let attempts: &[bool] = if encode_hw {
+        &[false, true]
+    } else {
+        &[true]
+    };
+    let mut last_err: Option<ProcessorError> = None;
+    let mut encoder_used = String::new();
+    let mut encoded = false;
+    for (attempt_i, &force_sw) in attempts.iter().enumerate() {
+        if attempt_i > 0 {
+            emit_step_start(
+                &on_progress,
+                "Exportiere Intro+Video (Universal)…",
+            );
+            on_progress(progress_from_times(0.0, 100.0, label));
+        }
+        let (encoder, mut out_params) = if !force_sw {
+            capcut_profile.to_encode_output_params(hw, codec)
+        } else {
+            build_encode_output_params(hw, codec, capcut_profile.crf, true)
+        };
+        append_capcut_splice_encode_params(&mut out_params, codec, &encoder, fps_int);
+        let quality = quality_params_without_codec(out_params);
+        let args = build_intro_body_outro_single_pass_args(
+            intro,
+            body_path,
+            body_dur,
+            &outro_input,
+            &video_target,
+            v_params,
+            &encoder,
+            &quality,
+            audio_mode,
+        );
+        match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
+            Ok(()) => {
+                encoder_used = encoder;
+                encoded = true;
+                break;
+            }
+            Err(e) => {
+                if is_disk_full_error(&e) {
+                    return Err(ProcessorError::Ffmpeg(disk_full_error()));
+                }
+                last_err = Some(ProcessorError::Ffmpeg(e));
+                let _ = fs::remove_file(&video_target);
+            }
+        }
+    }
+    if !encoded {
+        return Err(last_err
+            .unwrap_or_else(|| ProcessorError::Message("Outro-Zusammenfügen fehlgeschlagen".into())));
+    }
+
+    if copy_audio {
+        assemble_silent_plus_body_audio(
+            ffmpeg,
+            body_path,
+            &video_target,
+            output,
+            intro_dauer,
+            outro_eff_dauer,
+            v_params,
+            work,
+            on_progress,
+        )?;
+        let _ = fs::remove_file(&video_target);
+    }
+
+    Ok(concat::ConcatOutcome {
+        method: if intro.is_some() {
+            if copy_audio {
+                "capcut-export+outro+acopy".into()
+            } else {
+                "capcut-export+outro".into()
+            }
+        } else if copy_audio {
+            "capcut-export-outro+acopy".into()
+        } else {
+            "capcut-export-outro".into()
+        },
+        codec: encoder_used,
+        reencode_reason: Some("Universal-Export Outro — ein Durchlauf".into()),
+    })
 }
 
 #[cfg(test)]
@@ -2627,5 +3542,221 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         assert!(args.contains(&"-progress".into()));
         assert!(args.iter().any(|a| a.contains("scale=1920:1080")));
         assert_eq!(args.last().unwrap(), "out.mp4");
+    }
+
+    #[test]
+    fn outro_media_kind_from_extension() {
+        assert_eq!(outro_media_kind("clip.mp4"), OutroKind::Video);
+        assert_eq!(outro_media_kind(r"C:\a\OUTRO.MOV"), OutroKind::Video);
+        assert_eq!(outro_media_kind("logo.png"), OutroKind::Photo);
+        assert_eq!(outro_media_kind("shot.JPEG"), OutroKind::Photo);
+        // Unknown / no extension → treated as photo (safe still + silence).
+        assert_eq!(outro_media_kind("weird.xyz"), OutroKind::Photo);
+        assert_eq!(outro_media_kind("noext"), OutroKind::Photo);
+    }
+
+    #[test]
+    fn intro_body_outro_single_pass_photo_with_intro() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let outro = SinglePassOutroInput {
+            path: r"C:\assets\outro.png".into(),
+            kind: OutroKind::Photo,
+            dauer: 4.0,
+            has_audio: false,
+        };
+        let args = build_intro_body_outro_single_pass_args(
+            Some((r"C:\assets\bg.png", "drawtext=text='Gast'", 5.0)),
+            r"C:\body.mp4",
+            60.0,
+            &outro,
+            r"C:\out\final.mp4",
+            &v,
+            "libx264",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+        );
+        assert!(args.contains(&"-filter_complex".into()));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("concat=n=3:v=1:a=0[v]"));
+        assert!(fc.contains("concat=n=3:v=0:a=1[a]"));
+        assert!(fc.contains("trim=duration=5"));
+        assert!(fc.contains("trim=duration=4"));
+        assert!(fc.contains("drawtext=text='Gast'"));
+        // Outro branch must not get drawtext (only Intro).
+        let outro_branch = fc.split("[outrov]").next().unwrap_or("");
+        assert!(
+            !outro_branch.contains("drawtext") || fc.matches("drawtext").count() == 1,
+            "drawtext only on intro"
+        );
+        assert!(args.contains(&"-loop".into()));
+        // Two loops: intro still + outro photo.
+        assert_eq!(args.iter().filter(|a| *a == "-loop").count(), 2);
+        assert!(args.iter().any(|a| a.starts_with("anullsrc=")));
+        assert!(args.iter().any(|a| a.contains("force_key_frames")));
+        assert_eq!(args.last().unwrap(), r"C:\out\final.mp4");
+    }
+
+    #[test]
+    fn intro_body_outro_single_pass_video_only_audio_copy() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let outro = SinglePassOutroInput {
+            path: "outro.png".into(),
+            kind: OutroKind::Photo,
+            dauer: 3.0,
+            has_audio: false,
+        };
+        let args = build_intro_body_outro_single_pass_args(
+            None,
+            "body.mp4",
+            10.0,
+            &outro,
+            "v.mp4",
+            &v,
+            "libx264",
+            &quality,
+            SinglePassAudioMode::VideoOnly,
+        );
+        assert!(args.contains(&"-an".into()));
+        assert!(!args.iter().any(|a| a.starts_with("anullsrc=")));
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .unwrap();
+        assert!(fc.contains("concat=n=2:v=1:a=0[v]"));
+        assert!(!fc.contains(":a=1[a]"));
+    }
+
+    #[test]
+    fn intro_body_outro_single_pass_video_outro_keeps_audio() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let outro = SinglePassOutroInput {
+            path: "outro.mp4".into(),
+            kind: OutroKind::Video,
+            dauer: 8.0,
+            has_audio: true,
+        };
+        let args = build_intro_body_outro_single_pass_args(
+            Some(("bg.png", "drawtext=text='x'", 5.0)),
+            "body.mp4",
+            20.0,
+            &outro,
+            "final.mp4",
+            &v,
+            "libx264",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .unwrap();
+        assert!(fc.contains("concat=n=3:v=1:a=0[v]"));
+        // Outro audio from the video input (index 2 when intro present).
+        assert!(fc.contains("[2:a]"));
+        assert!(fc.contains("[outroa]"));
+        // Only one silence pad (intro); no asplit needed.
+        assert!(!fc.contains("asplit"));
+        // Outro video is not looped.
+        assert_eq!(args.iter().filter(|a| *a == "-loop").count(), 1);
+        assert!(args.iter().any(|a| a.contains("gte(t,5)") && a.contains("gte(t,25)")));
+    }
+
+    #[test]
+    fn outro_photo_segment_args_structure() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let args = build_outro_photo_segment_args(
+            r"C:\assets\outro.png",
+            r"C:\out\outro.mp4",
+            6.0,
+            &v,
+            "libx264",
+            &quality,
+        );
+        assert!(args.contains(&"-loop".into()));
+        assert!(args.iter().any(|a| a.starts_with("anullsrc=")));
+        // No drawtext on the outro (stays un-personalized).
+        let vf = args
+            .iter()
+            .position(|a| a == "-vf")
+            .and_then(|i| args.get(i + 1))
+            .expect("-vf");
+        assert!(!vf.contains("drawtext"));
+        assert!(args.iter().any(|a| a == "6" || a.starts_with("6.")));
+        assert_eq!(args.last().unwrap(), r"C:\out\outro.mp4");
+    }
+
+    #[test]
+    fn outro_video_segment_args_audio_modes() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+
+        let with_audio = build_outro_video_segment_args(
+            "outro.mp4", "seg.mp4", &v, "libx264", &quality, true,
+        );
+        assert!(with_audio.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:0"));
+        assert!(!with_audio.iter().any(|a| a.starts_with("anullsrc=")));
+
+        let no_audio = build_outro_video_segment_args(
+            "outro.mp4", "seg.mp4", &v, "libx264", &quality, false,
+        );
+        assert!(no_audio.iter().any(|a| a.starts_with("anullsrc=")));
+        assert!(no_audio.windows(2).any(|w| w[0] == "-map" && w[1] == "1:a:0"));
+        assert!(no_audio.contains(&"-shortest".into()));
+    }
+
+    #[test]
+    fn concat_segments_encode_all_audio_no_silence_input() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = vec!["-preset".into(), "superfast".into(), "-crf".into(), "18".into()];
+        let segs = vec![
+            ConcatSegment { path: "intro.mp4".into(), has_audio: true, duration: 5.0 },
+            ConcatSegment { path: "body.mp4".into(), has_audio: true, duration: 60.0 },
+            ConcatSegment { path: "outro.mp4".into(), has_audio: true, duration: 6.0 },
+        ];
+        let args = build_concat_segments_encode_args(&segs, "final.mp4", &v, "libx264", &quality);
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("concat=n=3:v=1:a=0[v]"));
+        assert!(fc.contains("concat=n=3:v=0:a=1[a]"));
+        assert!(!fc.contains("asplit"));
+        assert!(!fc.contains("atrim"));
+        // No silence lavfi input when every segment has audio.
+        assert!(!args.iter().any(|a| a.starts_with("anullsrc=")));
+        assert_eq!(args.last().unwrap(), "final.mp4");
+    }
+
+    #[test]
+    fn concat_segments_encode_silent_body_gets_silence() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = vec!["-crf".into(), "18".into()];
+        let segs = vec![
+            ConcatSegment { path: "body.mp4".into(), has_audio: false, duration: 30.0 },
+            ConcatSegment { path: "outro.mp4".into(), has_audio: true, duration: 4.0 },
+        ];
+        let args = build_concat_segments_encode_args(&segs, "final.mp4", &v, "libx264", &quality);
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        // Exactly one silent segment → single asplit fan-out + atrim span.
+        assert!(fc.contains("asplit=1[sil0]"));
+        assert!(fc.contains("[sil0]atrim=0:30"));
+        assert!(fc.contains("concat=n=2:v=1:a=0[v]"));
+        assert!(fc.contains("concat=n=2:v=0:a=1[a]"));
+        assert!(args.iter().any(|a| a.starts_with("anullsrc=")));
     }
 }

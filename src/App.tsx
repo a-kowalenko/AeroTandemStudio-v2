@@ -76,6 +76,7 @@ import {
   uploadToServer,
   validateCreateJob,
   probeCreateOutputFolder,
+  probeOutroAsset,
   type AvailableRelease,
   type BodyConcatFallbackPayload,
   type CreateJobResult,
@@ -2136,6 +2137,27 @@ function App() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
       return;
 
+    // Phase 50: block early when the Outro is on but its asset is missing.
+    const outroPath = (config?.outro_path ?? "").trim();
+    if (config?.outro_enabled && outroPath) {
+      try {
+        const probe = await probeOutroAsset(outroPath);
+        if (!probe.exists) {
+          showError(
+            t("create.validation.outroMissing", { path: outroPath }),
+            t("settings.encoding.outro.title"),
+          );
+          return;
+        }
+      } catch {
+        showError(
+          t("create.validation.outroMissing", { path: outroPath }),
+          t("settings.encoding.outro.title"),
+        );
+        return;
+      }
+    }
+
     const paths = videoList.map((v) => v.path);
     const photos = photoList.map((p) => p.path);
     const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
@@ -2155,6 +2177,11 @@ function App() {
       Boolean(config?.intro_enabled ?? false),
       config?.dauer ?? 5,
       config?.intro_mux_mode ?? "capcut",
+      {
+        enabled: Boolean(config?.outro_enabled ?? false),
+        path: config?.outro_path ?? "",
+        dauer: config?.outro_dauer ?? 5,
+      },
     );
     const canReusePreview = getPreviewReusePlan(
       videoList,
@@ -2172,6 +2199,9 @@ function App() {
         reusePreview: canReusePreview,
         bodyConcatMode: config?.body_concat_mode ?? "compatible",
         introEnabled: Boolean(config?.intro_enabled),
+        outroEnabled:
+          Boolean(config?.outro_enabled) &&
+          Boolean((config?.outro_path ?? "").trim()),
         introMuxMode: config?.intro_mux_mode ?? "capcut",
       }),
     );
@@ -2189,6 +2219,9 @@ function App() {
           watermark_photo_indices: wmPhotos,
           dauer: config?.dauer ?? 5,
           intro_enabled: config?.intro_enabled ?? false,
+          outro_enabled: config?.outro_enabled ?? false,
+          outro_path: config?.outro_path ?? "",
+          outro_dauer: config?.outro_dauer ?? 5,
           video_codec: codec === "h265" || codec === "h264" ? codec : "auto",
           crf: config?.preview_encode_crf ?? 20,
           parallel_enabled: config?.parallel_processing_enabled ?? true,

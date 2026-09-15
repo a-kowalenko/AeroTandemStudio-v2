@@ -132,6 +132,15 @@ pub struct AppConfig {
     /// Intro clip on create — off by default (enable in settings / create form).
     #[serde(default)]
     pub intro_enabled: bool,
+    /// Phase 50: append a user Outro (photo/video) at the very end — off by default.
+    #[serde(default)]
+    pub outro_enabled: bool,
+    /// Absolute path to the Outro asset (photo or video). Empty disables Outro on save.
+    #[serde(default)]
+    pub outro_path: String,
+    /// Outro duration in seconds for a photo Outro (1–10). Ignored for a video Outro.
+    #[serde(default = "default_outro_dauer", deserialize_with = "de_u32_flexible")]
+    pub outro_dauer: u32,
     #[serde(default)]
     pub outside_video: bool,
     #[serde(default)]
@@ -533,6 +542,9 @@ fn default_crew_list() -> Vec<CrewMember> {
 fn default_dauer() -> u32 {
     5
 }
+fn default_outro_dauer() -> u32 {
+    5
+}
 fn default_true() -> bool {
     true
 }
@@ -748,6 +760,17 @@ impl AppConfig {
     pub fn sync_log_min_level(&mut self) {
         self.log_min_level =
             crate::storage::logging::normalize_min_level_name(&self.log_min_level);
+    }
+
+    /// Sanitize Outro (Phase 50): empty path disables it; clamp photo duration to 1–10 s.
+    ///
+    /// File existence is checked at runtime (before Preview/Erstellen), not here, so a
+    /// temporarily missing asset does not silently wipe the configured path.
+    pub fn sync_outro(&mut self) {
+        if self.outro_path.trim().is_empty() {
+            self.outro_enabled = false;
+        }
+        self.outro_dauer = self.outro_dauer.clamp(1, 10);
     }
 
     /// Canonicalize `settings_ui_mode` to `simple` | `advanced`.
@@ -984,6 +1007,9 @@ impl Default for AppConfig {
             ort: default_ort(),
             dauer: default_dauer(),
             intro_enabled: false,
+            outro_enabled: false,
+            outro_path: String::new(),
+            outro_dauer: default_outro_dauer(),
             outside_video: false,
             gast_name: String::new(),
             tandemmaster: String::new(),
@@ -1178,6 +1204,7 @@ fn merge_with_defaults_core(partial: Value) -> Result<AppConfig, ConfigError> {
     cfg.sync_settings_ui_mode();
     cfg.sync_sd_server_backup_mode();
     cfg.sync_auto_cleanup_retention();
+    cfg.sync_outro();
     cfg.sync_server_profiles();
     crate::storage::logging::apply_min_level_from_config(&cfg.log_min_level);
     Ok(cfg)
@@ -1293,6 +1320,7 @@ impl ConfigStore {
         normalized.sync_log_min_level();
         normalized.sync_settings_ui_mode();
         normalized.sync_sd_server_backup_mode();
+        normalized.sync_outro();
         normalized.push_active_profile_from_flat();
         normalized.sync_server_profiles();
         crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
@@ -1989,6 +2017,72 @@ mod tests {
         assert!(sd_server_backup_url_looks_like_mount_path("/Volumes/NAS/backups"));
         assert!(!sd_server_backup_url_looks_like_mount_path("smb://nas/sd-backups"));
         assert!(!sd_server_backup_url_looks_like_mount_path(r"\\nas\sd-backups"));
+    }
+
+    #[test]
+    fn outro_defaults_off() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.outro_enabled);
+        assert!(cfg.outro_path.is_empty());
+        assert_eq!(cfg.outro_dauer, 5);
+        let merged = merge_with_defaults(serde_json::json!({ "ort": "Calden" })).unwrap();
+        assert!(!merged.outro_enabled);
+        assert!(merged.outro_path.is_empty());
+        assert_eq!(merged.outro_dauer, 5);
+    }
+
+    #[test]
+    fn sync_outro_disables_when_path_empty() {
+        let mut cfg = AppConfig::default();
+        cfg.outro_enabled = true;
+        cfg.outro_path = "   ".into();
+        cfg.sync_outro();
+        assert!(!cfg.outro_enabled, "empty path must disable outro");
+
+        cfg.outro_enabled = true;
+        cfg.outro_path = r"C:\assets\outro.mp4".into();
+        cfg.sync_outro();
+        assert!(cfg.outro_enabled, "valid path keeps outro enabled");
+    }
+
+    #[test]
+    fn sync_outro_clamps_duration() {
+        let mut cfg = AppConfig::default();
+        cfg.outro_dauer = 0;
+        cfg.sync_outro();
+        assert_eq!(cfg.outro_dauer, 1);
+        cfg.outro_dauer = 42;
+        cfg.sync_outro();
+        assert_eq!(cfg.outro_dauer, 10);
+    }
+
+    #[test]
+    fn save_sanitizes_outro_without_path() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.outro_enabled = true; // but no path
+        cfg.outro_path = String::new();
+        cfg.outro_dauer = 8;
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert!(!loaded.outro_enabled);
+        assert_eq!(loaded.outro_dauer, 8);
+    }
+
+    #[test]
+    fn outro_roundtrips_with_path() {
+        let dir = tempdir().unwrap();
+        let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.outro_enabled = true;
+        cfg.outro_path = r"C:\assets\outro.png".into();
+        cfg.outro_dauer = 7;
+        store.save(&cfg).unwrap();
+        let loaded = store.load().unwrap();
+        assert!(loaded.outro_enabled);
+        assert_eq!(loaded.outro_path, r"C:\assets\outro.png");
+        assert_eq!(loaded.outro_dauer, 7);
     }
 
     #[test]

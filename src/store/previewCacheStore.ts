@@ -17,13 +17,19 @@ export function previewEncodingSignature(
   introEnabled: boolean,
   dauer: number,
   introMuxMode: string,
+  outro?: { enabled: boolean; path: string; dauer: number },
 ): string {
   const mux =
     introMuxMode.trim().toLowerCase() === "stream_copy" ||
     introMuxMode.trim().toLowerCase() === "stream-copy"
       ? "stream_copy"
       : "reencode";
-  return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}`;
+  const outroPath = (outro?.path ?? "").trim();
+  const outroOn = Boolean(outro?.enabled) && outroPath.length > 0;
+  const outroSig = `|outro=${outroOn ? 1 : 0}|outroPath=${
+    outroOn ? outroPath : ""
+  }|outroDauer=${outro?.dauer ?? 0}`;
+  return `intro=${introEnabled ? 1 : 0}|dauer=${dauer}|mux=${mux}${outroSig}`;
 }
 
 export type PreviewReuseBlockReason =

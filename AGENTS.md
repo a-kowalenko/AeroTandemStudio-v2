@@ -66,8 +66,9 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 47** Settings + Setup-Wizard UX Rebuild · Spec: `@docs/phases/open/47-settings-wizard-ux.md`
 - ✅ **Phase 48** Vorgang Medien-Viewer (lokal) · Spec: `@docs/phases/open/48-vorgang-media-viewer.md`
 - ✅ **Phase 49** Forced-Codec Export (Ziel-Codec, phone-safe: H.264 `yuv420p` / H.265 `hvc1`, CapCut respektiert H.265, AAC-Copy, Fortschritt-Fix) · Spec: `@docs/phases/open/49-forced-codec-export.md`
+- ✅ **Phase 50** Outro (User-Asset am Videoende; Foto/Video, Mux wie Intro, Intro+Outro erlaubt, Existenz-Gate, i18n) · Spec: `@docs/phases/open/50-outro.md`
 
-**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
+**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 50 (wenn priorisiert)  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
 
 ### Performance-Backlog
@@ -102,6 +103,12 @@ Nur 31.5.
 Implementiere Phase 23.2h aus @docs/phases/open/23-usb-mtp.md
 Regeln: @AGENTS.md
 Nur 23.2h.
+```
+
+```
+Implementiere Phase 50 aus @docs/phases/open/50-outro.md
+Regeln: @AGENTS.md
+Nur 50.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 

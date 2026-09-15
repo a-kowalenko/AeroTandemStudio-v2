@@ -1,5 +1,8 @@
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -9,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { normalizeBodyConcatMode } from "@/lib/bodyConcatMode";
+import { PHOTO_EXTENSIONS, VIDEO_EXTENSIONS, mediaKind } from "@/lib/media";
+import { probeOutroAsset } from "@/lib/tauri";
 import { showAdvanced } from "@/lib/settingsUi";
 import {
   VIDEO_CRF_OPTIONS,
@@ -17,6 +22,7 @@ import {
 } from "@/lib/videoCrf";
 import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
+import { OutroMediaPreview } from "../OutroMediaPreview";
 import type { SettingsTabBaseProps } from "../types";
 
 export function EncodingTab({
@@ -27,6 +33,57 @@ export function EncodingTab({
 }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const advanced = showAdvanced(disclosure);
+
+  // Phase 50 — Outro asset picker / probe (duration + existence).
+  const outroPath = draft.outro_path ?? "";
+  // Unknown extensions are treated as photo (parity with Rust outro_media_kind).
+  const outroKind = outroPath ? (mediaKind(outroPath) ?? "photo") : null;
+  const outroFilename = outroPath.replace(/\\/g, "/").split("/").pop() ?? outroPath;
+  const [outroProbe, setOutroProbe] = useState<{
+    exists: boolean;
+    durationSecs: number | null;
+  }>({ exists: true, durationSecs: null });
+
+  const refreshOutroProbe = useCallback(async (path: string) => {
+    if (!path.trim()) {
+      setOutroProbe({ exists: false, durationSecs: null });
+      return;
+    }
+    try {
+      const p = await probeOutroAsset(path);
+      setOutroProbe({ exists: p.exists, durationSecs: p.duration_secs });
+    } catch {
+      setOutroProbe({ exists: false, durationSecs: null });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (outroPath) void refreshOutroProbe(outroPath);
+  }, [outroPath, refreshOutroProbe]);
+
+  const pickOutro = useCallback(async () => {
+    const selected = await openDialog({
+      title: t("settings.encoding.outro.pick"),
+      multiple: false,
+      filters: [
+        {
+          name: t("settings.encoding.outro.mediaFilter"),
+          extensions: [...VIDEO_EXTENSIONS, ...PHOTO_EXTENSIONS],
+        },
+      ],
+    });
+    if (typeof selected === "string" && selected) {
+      patchNow("outro_path", selected);
+      patchNow("outro_enabled", true);
+      void refreshOutroProbe(selected);
+    }
+  }, [patchNow, refreshOutroProbe, t]);
+
+  const removeOutro = useCallback(() => {
+    patchNow("outro_path", "");
+    patchNow("outro_enabled", false);
+    setOutroProbe({ exists: false, durationSecs: null });
+  }, [patchNow]);
 
   return (
     <div className="space-y-4">
@@ -203,6 +260,112 @@ export function EncodingTab({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </SettingsSection>
+      ) : null}
+
+      {advanced ? (
+        <SettingsSection
+          title={t("settings.encoding.outro.title")}
+          description={t("settings.encoding.outro.description")}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0 flex-1 space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={draft.outro_enabled}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    patchNow("outro_enabled", on);
+                    if (on && !outroPath) void pickOutro();
+                  }}
+                />
+                {t("settings.encoding.outro.enabled")}
+              </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void pickOutro()}
+                >
+                  {t("settings.encoding.outro.pick")}
+                </Button>
+                {outroPath ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={removeOutro}
+                  >
+                    {t("settings.encoding.outro.remove")}
+                  </Button>
+                ) : null}
+              </div>
+
+              {outroPath ? (
+                <p className="break-all text-sm text-muted-foreground">
+                  {outroFilename}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.encoding.outro.noMedia")}
+                </p>
+              )}
+
+              {draft.outro_enabled && outroPath && !outroProbe.exists ? (
+                <p className="text-sm text-destructive">
+                  {t("settings.encoding.outro.missing")}
+                </p>
+              ) : null}
+
+              {outroKind === "photo" ? (
+                <div className="space-y-1.5">
+                  <Label>{t("settings.encoding.outro.duration")}</Label>
+                  <Select
+                    value={String(draft.outro_dauer)}
+                    onValueChange={(v) => patchNow("outro_dauer", Number(v))}
+                    disabled={!draft.outro_enabled}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[1, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+
+              {outroKind === "video" && outroProbe.durationSecs != null ? (
+                <div className="space-y-1 text-sm">
+                  <p className="text-muted-foreground">
+                    {t("settings.encoding.outro.videoDuration", {
+                      secs: outroProbe.durationSecs.toFixed(1),
+                    })}
+                  </p>
+                  {outroProbe.durationSecs > 10 ? (
+                    <p className="text-amber-600 dark:text-amber-500">
+                      {t("settings.encoding.outro.longWarning")}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            {outroPath && (outroKind === "photo" || outroKind === "video") ? (
+              <OutroMediaPreview
+                path={outroPath}
+                kind={outroKind}
+                exists={outroProbe.exists}
+                className="w-full shrink-0 sm:w-56 md:w-64 sm:-mt-1"
+              />
+            ) : null}
           </div>
         </SettingsSection>
       ) : null}

@@ -509,6 +509,9 @@ pub fn create_job(
                     options.video.intro_enabled,
                     options.video.dauer,
                     &options.video.intro_mux_mode,
+                    options.video.outro_enabled,
+                    &options.video.outro_path,
+                    options.video.outro_dauer,
                 ),
             ) {
                 Ok(true) => {
