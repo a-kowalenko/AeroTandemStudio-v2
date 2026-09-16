@@ -14,6 +14,8 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 use thiserror::Error;
 
+use crate::storage::logging;
+
 use super::progress::{
     parse_duration, parse_progress_line, progress_from_times_with_task, EncodeProgress,
     ProgressLine,
@@ -90,6 +92,30 @@ pub fn is_disk_full_error(err: &FfmpegError) -> bool {
 /// Map a disk-full FFmpeg failure to the stable user-facing error.
 pub fn disk_full_error() -> FfmpegError {
     FfmpegError::Message(DISK_FULL_USER_MESSAGE.into())
+}
+
+/// Format + log an FFmpeg non-zero exit with **full** stderr (OPT-21 Slice 0).
+///
+/// No line truncation: CapCut/NVENC failures often put the root cause above the
+/// last few lines; truncating to 8 lines hid `Function not implemented` etc.
+pub fn ffmpeg_exit_error(exit_code: i32, stderr_text: &str) -> FfmpegError {
+    let msg = format_ffmpeg_exit_message(exit_code, stderr_text);
+    logging::error("ffmpeg", &msg);
+    if stderr_text.trim().is_empty() {
+        FfmpegError::ExitStatus(exit_code)
+    } else {
+        FfmpegError::Message(msg)
+    }
+}
+
+/// Pure message body used by [`ffmpeg_exit_error`] (unit-tested: no truncate).
+pub fn format_ffmpeg_exit_message(exit_code: i32, stderr_text: &str) -> String {
+    let trimmed = stderr_text.trim_end();
+    if trimmed.is_empty() {
+        format!("FFmpeg exited with status {exit_code}")
+    } else {
+        format!("FFmpeg exited with status {exit_code}:\n{trimmed}")
+    }
 }
 
 /// Resolve path to the bundled FFmpeg binary.
@@ -516,23 +542,7 @@ where
     if exit_code == 0 {
         Ok(0)
     } else {
-        let hint = stderr_text
-            .lines()
-            .rev()
-            .take(8)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join("\n");
-        Err(FfmpegError::Message(format!(
-            "FFmpeg exited with status {exit_code}{}",
-            if hint.is_empty() {
-                String::new()
-            } else {
-                format!(": {hint}")
-            }
-        )))
+        Err(ffmpeg_exit_error(exit_code, &stderr_text))
     }
 }
 
@@ -594,22 +604,7 @@ pub fn run_ffmpeg_checked(ffmpeg: &Path, args: &[String]) -> Result<(), FfmpegEr
     if exit_code == 0 {
         Ok(())
     } else {
-        let hint = stderr_text
-            .lines()
-            .rev()
-            .take(8)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join("\n");
-        if hint.is_empty() {
-            Err(FfmpegError::ExitStatus(exit_code))
-        } else {
-            Err(FfmpegError::Message(format!(
-                "FFmpeg exited with status {exit_code}: {hint}"
-            )))
-        }
+        Err(ffmpeg_exit_error(exit_code, &stderr_text))
     }
 }
 
@@ -769,22 +764,7 @@ pub fn run_ffmpeg_tagged(
         ));
         Ok(())
     } else {
-        let hint = stderr_text
-            .lines()
-            .rev()
-            .take(8)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect::<Vec<_>>()
-            .join("\n");
-        if hint.is_empty() {
-            Err(FfmpegError::ExitStatus(exit_code))
-        } else {
-            Err(FfmpegError::Message(format!(
-                "FFmpeg exited with status {exit_code}: {hint}"
-            )))
-        }
+        Err(ffmpeg_exit_error(exit_code, &stderr_text))
     }
 }
 
@@ -895,5 +875,42 @@ mod tests {
     fn disk_full_spawn_storage_full() {
         let io = std::io::Error::new(std::io::ErrorKind::StorageFull, "disk full");
         assert!(is_disk_full_error(&FfmpegError::Spawn(io)));
+    }
+
+    #[test]
+    fn format_ffmpeg_exit_keeps_full_stderr_no_truncate() {
+        // More than the old take(8) window — root cause must stay in the message.
+        let mut lines: Vec<String> = (0..20)
+            .map(|i| format!("diag line {i}: setup"))
+            .collect();
+        lines.push("vf#0:0 Function not implemented".into());
+        lines.push("Error while filtering: Function not implemented".into());
+        lines.push("h264_nvenc: Could not open encoder before EOF".into());
+        lines.push("[out#0] Error encoding frames: Function not implemented".into());
+        lines.push("Conversion failed!".into());
+        let stderr = lines.join("\n");
+        let msg = format_ffmpeg_exit_message(1, &stderr);
+        assert!(
+            msg.contains("Function not implemented"),
+            "root cause must not be truncated: {msg}"
+        );
+        assert!(
+            msg.contains("diag line 0: setup"),
+            "early stderr must remain: {msg}"
+        );
+        assert!(
+            msg.contains("Conversion failed!"),
+            "tail must remain: {msg}"
+        );
+        assert!(
+            !msg.contains("…") && !msg.contains("truncated"),
+            "must not mark truncation: {msg}"
+        );
+    }
+
+    #[test]
+    fn format_ffmpeg_exit_empty_stderr() {
+        let msg = format_ffmpeg_exit_message(1, "   \n  ");
+        assert_eq!(msg, "FFmpeg exited with status 1");
     }
 }

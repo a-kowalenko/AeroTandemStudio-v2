@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -20,6 +20,7 @@ use crate::constants::{
     HINTERGRUND_ORIGINAL_WIDTH,
 };
 use crate::model::Kunde;
+use crate::storage::logging;
 use super::body_concat_fallback::BodyConcatAskFn;
 use super::concat::{self, ConcatError, VideoCodec};
 use super::encode_profile::EncodeProfile;
@@ -31,7 +32,7 @@ use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
     run_ffmpeg, run_ffmpeg_checked, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
 };
-use super::hw_accel::{detect_hardware, HwAccelInfo};
+use super::hw_accel::{detect_hardware, HwAccelInfo, HwType};
 use super::intro_mux_fallback::IntroMuxChoice;
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::probe;
@@ -482,6 +483,194 @@ fn parse_fps_int(fps: &str) -> u32 {
         .max(1)
 }
 
+fn parse_fps_f64(fps: &str) -> Option<f64> {
+    let s = fps.trim();
+    if s.is_empty() || s == "0/0" {
+        return None;
+    }
+    if let Some((n, d)) = s.split_once('/') {
+        let num: f64 = n.parse().ok()?;
+        let den: f64 = d.parse().ok()?;
+        if den.abs() < 1e-12 {
+            return None;
+        }
+        return Some(num / den);
+    }
+    s.parse().ok()
+}
+
+/// True when two fps strings describe the same rate (exact, rounded-int, or ±0.05).
+pub fn fps_rates_match(a: &str, b: &str) -> bool {
+    if a.trim() == b.trim() {
+        return true;
+    }
+    match (parse_fps_f64(a), parse_fps_f64(b)) {
+        (Some(x), Some(y)) => (x - y).abs() < 0.05 || parse_fps_int(a) == parse_fps_int(b),
+        _ => false,
+    }
+}
+
+/// OPT-21A: probed source geometry used to skip redundant CapCut normalize filters.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapcutSourceVideo {
+    pub width: u32,
+    pub height: u32,
+    pub fps: String,
+    pub pix_fmt: String,
+}
+
+impl CapcutSourceVideo {
+    pub fn from_intro_params(p: &IntroVideoParams) -> Self {
+        Self {
+            width: p.width,
+            height: p.height,
+            fps: p.fps.clone(),
+            pix_fmt: p.pix_fmt.clone(),
+        }
+    }
+}
+
+/// Which CapCut video-normalize filters are still required for one segment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CapcutNormalizePlan {
+    pub scale_pad: bool,
+    pub fps: bool,
+    pub format: bool,
+}
+
+impl CapcutNormalizePlan {
+    pub fn full() -> Self {
+        Self {
+            scale_pad: true,
+            fps: true,
+            format: true,
+        }
+    }
+
+    pub fn none() -> Self {
+        Self {
+            scale_pad: false,
+            fps: false,
+            format: false,
+        }
+    }
+
+    /// Any remaining CPU normalize filter (scale/pad/fps/format).
+    pub fn needs_cpu_normalize(self) -> bool {
+        self.scale_pad || self.fps || self.format
+    }
+
+    /// Safe to attach `-hwaccel` on this input (no CPU normalize left).
+    pub fn allow_hwaccel_decode(self) -> bool {
+        !self.needs_cpu_normalize()
+    }
+}
+
+fn pix_fmt_matches_capcut_target(source: &str, target: &str) -> bool {
+    let s = source.trim().to_ascii_lowercase();
+    let t = target.trim().to_ascii_lowercase();
+    if s.is_empty() || t.is_empty() {
+        return false;
+    }
+    if s == t {
+        return true;
+    }
+    // Full-range 4:2:0 is CapCut-equivalent to limited-range yuv420p.
+    matches!(
+        (s.as_str(), t.as_str()),
+        ("yuvj420p", "yuv420p") | ("yuv420p", "yuvj420p")
+    )
+}
+
+/// Decide which normalize filters a CapCut segment still needs.
+///
+/// `source = None` → conservative full graph (unknown geometry).
+pub fn capcut_normalize_plan(
+    source: Option<&CapcutSourceVideo>,
+    target: &IntroVideoParams,
+    target_pix_fmt: &str,
+) -> CapcutNormalizePlan {
+    let Some(src) = source else {
+        return CapcutNormalizePlan::full();
+    };
+    CapcutNormalizePlan {
+        scale_pad: src.width != target.width || src.height != target.height,
+        fps: !fps_rates_match(&src.fps, &target.fps),
+        format: !pix_fmt_matches_capcut_target(&src.pix_fmt, target_pix_fmt),
+    }
+}
+
+/// NVENC/VideoToolbox decode accel name when normalize filters are fully skipped.
+pub fn capcut_hwaccel_for_decode(hw: &HwAccelInfo, plan: CapcutNormalizePlan) -> Option<&str> {
+    if !plan.allow_hwaccel_decode() || !hw.available {
+        return None;
+    }
+    match hw.hw_type {
+        HwType::Nvidia => Some("cuda"),
+        HwType::Videotoolbox => Some("videotoolbox"),
+        HwType::Software => None,
+    }
+}
+
+/// Build `[idx:v]…[label]` CapCut video branch with conditional scale/pad/fps/format.
+pub fn build_capcut_segment_vfilter(
+    input_idx: usize,
+    out_label: &str,
+    plan: CapcutNormalizePlan,
+    width: u32,
+    height: u32,
+    fps: &str,
+    target_pix_fmt: &str,
+    // Extra filters after normalize, before setpts (e.g. drawtext, trim).
+    mid_filters: &[&str],
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if plan.scale_pad {
+        parts.push(format!(
+            "scale={width}:{height}:force_original_aspect_ratio=decrease"
+        ));
+        parts.push(format!(
+            "pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
+        ));
+    }
+    for f in mid_filters {
+        if !f.is_empty() {
+            parts.push((*f).to_string());
+        }
+    }
+    if plan.fps {
+        parts.push(format!("fps={fps}"));
+    }
+    if plan.format {
+        parts.push(format!("format={target_pix_fmt}"));
+    }
+    parts.push("setpts=PTS-STARTPTS".into());
+    parts.push("setsar=1".into());
+    format!("[{input_idx}:v]{}[{out_label}]", parts.join(","))
+}
+
+fn push_media_input(args: &mut Vec<String>, path: &str, hwaccel: Option<&str>) {
+    if let Some(accel) = hwaccel {
+        args.push("-hwaccel".into());
+        args.push(accel.to_string());
+    }
+    args.push("-i".into());
+    args.push(path.to_string());
+}
+
+fn log_capcut_filter_plan(segment: &str, plan: CapcutNormalizePlan, hwaccel: Option<&str>) {
+    logging::info(
+        "encode",
+        format!(
+            "capcut.filters segment={segment} scale_pad={} fps={} format={} hwaccel={}",
+            plan.scale_pad,
+            plan.fps,
+            plan.format,
+            hwaccel.unwrap_or("none")
+        ),
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Intro FFmpeg command (pure)
 // ---------------------------------------------------------------------------
@@ -597,6 +786,10 @@ pub enum SinglePassAudioMode {
 /// One continuous encode: intro overlay + full body → single MP4 bitstream.
 ///
 /// Inputs: `0` = background still, `1` = body, `2` = silent AAC source (`anullsrc`).
+///
+/// OPT-21A: when `body_source` matches target WxH / fps / pix_fmt, body skips
+/// scale/pad/fps/format. `body_hwaccel` (`cuda` / `videotoolbox`) is only safe when
+/// those filters are fully skipped — callers must not pass it when CPU normalize remains.
 pub fn build_intro_body_single_pass_args(
     hintergrund_path: &str,
     body_path: &str,
@@ -608,6 +801,8 @@ pub fn build_intro_body_single_pass_args(
     encoder: &str,
     quality_params: &[String],
     audio_mode: SinglePassAudioMode,
+    body_source: Option<&CapcutSourceVideo>,
+    body_hwaccel: Option<&str>,
 ) -> Vec<String> {
     let target_pix_fmt = match v_params.pix_fmt.as_str() {
         "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
@@ -621,16 +816,30 @@ pub fn build_intro_body_single_pass_args(
     let h = v_params.height;
     let fps = &v_params.fps;
 
+    let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
+    // Never attach broken HW-decode when CPU normalize remains (ENOSYS risk).
+    let body_hwaccel = if body_plan.allow_hwaccel_decode() {
+        body_hwaccel
+    } else {
+        None
+    };
+
+    // Intro still always needs scale/pad/drawtext/format/fps (PNG → video).
     let intro_v = format!(
         "[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
          pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,\
          {drawtext_filter},format={target_pix_fmt},fps={fps},\
          trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv]"
     );
-    let body_v = format!(
-        "[1:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
-         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,fps={fps},format={target_pix_fmt},\
-         setpts=PTS-STARTPTS,setsar=1[bodyv]"
+    let body_v = build_capcut_segment_vfilter(
+        1,
+        "bodyv",
+        body_plan,
+        w,
+        h,
+        fps,
+        &target_pix_fmt,
+        &[],
     );
     let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
     let aformat = format!(
@@ -665,8 +874,9 @@ pub fn build_intro_body_single_pass_args(
         "1".into(),
         "-i".into(),
         hintergrund_path.to_string(),
-        "-i".into(),
-        body_path.to_string(),
+    ];
+    push_media_input(&mut args, body_path, body_hwaccel);
+    args.extend([
         "-f".into(),
         "lavfi".into(),
         "-i".into(),
@@ -678,7 +888,7 @@ pub fn build_intro_body_single_pass_args(
         filter_complex,
         "-map".into(),
         "[v]".into(),
-    ];
+    ]);
 
     match audio_mode {
         SinglePassAudioMode::VideoOnly => {
@@ -785,6 +995,9 @@ pub struct SinglePassOutroInput {
 /// Same principle as [`build_intro_body_single_pass_args`]: body is encoded once; Intro/Outro
 /// are filtergraph branches (no pre-rendered segment MP4s).
 ///
+/// OPT-21A: `body_source` / `outro_source` skip redundant scale/pad/fps/format when matching.
+/// `body_hwaccel` only applies when the body plan allows HW decode.
+///
 /// Input order:
 /// 1. optional Intro still (`-loop 1`)
 /// 2. Body
@@ -800,6 +1013,9 @@ pub fn build_intro_body_outro_single_pass_args(
     encoder: &str,
     quality_params: &[String],
     audio_mode: SinglePassAudioMode,
+    body_source: Option<&CapcutSourceVideo>,
+    outro_source: Option<&CapcutSourceVideo>,
+    body_hwaccel: Option<&str>,
 ) -> Vec<String> {
     let target_pix_fmt = match v_params.pix_fmt.as_str() {
         "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
@@ -832,10 +1048,17 @@ pub fn build_intro_body_outro_single_pass_args(
     next_idx += 1;
     let silence_idx = next_idx;
 
-    let scale_pad = format!(
-        "scale={w}:{h}:force_original_aspect_ratio=decrease,\
-         pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black"
-    );
+    let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
+    let body_hwaccel = if body_plan.allow_hwaccel_decode() {
+        body_hwaccel
+    } else {
+        None
+    };
+    // Photo outro always normalizes; video outro may skip when source matches.
+    let outro_plan = match outro.kind {
+        OutroKind::Photo => CapcutNormalizePlan::full(),
+        OutroKind::Video => capcut_normalize_plan(outro_source, v_params, &target_pix_fmt),
+    };
 
     // Silence pads consumed from anullsrc (0 → no lavfi input).
     let silence_pads: usize = match audio_mode {
@@ -852,29 +1075,45 @@ pub fn build_intro_body_outro_single_pass_args(
 
     if let (Some(ii), Some((_, drawtext, _))) = (intro_idx, intro) {
         fc.push_str(&format!(
-            "[{ii}:v]{scale_pad},\
+            "[{ii}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+             pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,\
              {drawtext},format={target_pix_fmt},fps={fps},\
              trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv];"
         ));
         v_n += 1;
     }
-    fc.push_str(&format!(
-        "[{body_idx}:v]{scale_pad},fps={fps},format={target_pix_fmt},\
-         setpts=PTS-STARTPTS,setsar=1[bodyv];"
+    fc.push_str(&build_capcut_segment_vfilter(
+        body_idx,
+        "bodyv",
+        body_plan,
+        w,
+        h,
+        fps,
+        &target_pix_fmt,
+        &[],
     ));
+    fc.push(';');
     v_n += 1;
     match outro.kind {
         OutroKind::Photo => {
             fc.push_str(&format!(
-                "[{outro_idx}:v]{scale_pad},format={target_pix_fmt},fps={fps},\
+                "[{outro_idx}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,\
+                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black,format={target_pix_fmt},fps={fps},\
                  trim=duration={outro_dauer},setpts=PTS-STARTPTS,setsar=1[outrov];"
             ));
         }
         OutroKind::Video => {
-            fc.push_str(&format!(
-                "[{outro_idx}:v]{scale_pad},fps={fps},format={target_pix_fmt},\
-                 setpts=PTS-STARTPTS,setsar=1[outrov];"
+            fc.push_str(&build_capcut_segment_vfilter(
+                outro_idx,
+                "outrov",
+                outro_plan,
+                w,
+                h,
+                fps,
+                &target_pix_fmt,
+                &[],
             ));
+            fc.push(';');
         }
     }
     v_n += 1;
@@ -971,7 +1210,7 @@ pub fn build_intro_body_outro_single_pass_args(
             hintergrund.to_string(),
         ]);
     }
-    args.extend(["-i".into(), body_path.to_string()]);
+    push_media_input(&mut args, body_path, body_hwaccel);
     match outro.kind {
         OutroKind::Photo => {
             args.extend([
@@ -2054,6 +2293,8 @@ pub fn create_video(
             VideoCodec::Hevc => "hevc".into(),
             _ => "h264".into(),
         };
+        // OPT-21A: source geometry before forcing phone-safe pix_fmt.
+        let body_source = CapcutSourceVideo::from_intro_params(&v_params);
         capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe
         let profile =
             EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
@@ -2081,6 +2322,7 @@ pub fn create_video(
             &capcut_params,
             &hw,
             &profile,
+            Some(&body_source),
             &work,
             Arc::clone(&on_progress),
         )?;
@@ -2228,6 +2470,7 @@ pub fn create_video(
                             encode_crf,
                             encode_hw,
                             None,
+                            None,
                             &work,
                             Arc::clone(&mux_cb),
                         )
@@ -2254,6 +2497,7 @@ pub fn create_video(
                 VideoCodec::Hevc => "hevc".into(),
                 _ => "h264".into(),
             };
+            let body_source = CapcutSourceVideo::from_intro_params(&v_params);
             capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe (H.264 & HEVC Main)
             let profile =
                 EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
@@ -2269,6 +2513,7 @@ pub fn create_video(
                 profile.crf,
                 profile.hw_accel,
                 Some(&profile),
+                Some(&body_source),
                 &work,
                 Arc::clone(&mux_cb),
             )
@@ -2306,6 +2551,7 @@ pub fn create_video(
                 &hw,
                 profile.crf,
                 profile.hw_accel,
+                None,
                 None,
                 &work,
                 Arc::clone(&mux_cb),
@@ -2564,6 +2810,27 @@ fn encode_body_to_output(
         Ok(Some((ref codec, _))) if codec == "aac" || codec == "mp4a"
     );
     let encode_hw = profile.hw_accel && hw.available;
+    let kind = if strategy == "forced_codec_reencode" {
+        "encode.forced_codec"
+    } else {
+        "encode.body_reencode"
+    };
+    let codec_label = match out_codec {
+        VideoCodec::Hevc => "h265",
+        VideoCodec::H264 => "h264",
+        VideoCodec::Other => "other",
+    };
+    log_encode_start(
+        kind,
+        0,
+        0,
+        "?",
+        dur,
+        profile.crf,
+        encode_hw,
+        codec_label,
+    );
+    let t0 = Instant::now();
     let attempts: &[bool] = if encode_hw {
         &[false, true]
     } else {
@@ -2575,12 +2842,16 @@ fn encode_body_to_output(
     for (attempt_i, &force_sw) in attempts.iter().enumerate() {
         if attempt_i > 0 {
             emit_step_start(on_progress, &encode_label);
+            if let Some(ProcessorError::Ffmpeg(ref e)) = last_err {
+                log_encode_fallback_sw(kind, e);
+            }
         }
         let (encoder, out_params) = if !force_sw {
             profile.to_encode_output_params(hw, out_codec)
         } else {
             build_encode_output_params(hw, out_codec, profile.crf, true)
         };
+        log_encode_attempt(kind, attempt_i + 1, force_sw, &encoder);
         let mut args = vec![
             "-y".into(),
             "-hide_banner".into(),
@@ -2600,7 +2871,10 @@ fn encode_body_to_output(
             output.to_string(),
         ]);
         match run_ffmpeg(ffmpeg, &args, progress_total, Arc::clone(&reenc_cb)) {
-            Ok(()) => return Ok(encoder),
+            Ok(()) => {
+                log_encode_ok(kind, &encoder, t0.elapsed().as_millis(), strategy);
+                return Ok(encoder);
+            }
             Err(e) => {
                 if is_disk_full_error(&e) {
                     return Err(ProcessorError::Ffmpeg(disk_full_error()));
@@ -2609,6 +2883,9 @@ fn encode_body_to_output(
                 let _ = fs::remove_file(output);
             }
         }
+    }
+    if let Some(ref e) = last_err {
+        log_encode_fail(kind, e);
     }
     Err(last_err.unwrap_or_else(|| {
         ProcessorError::Message("body re-encode failed".into())
@@ -2729,6 +3006,53 @@ fn quality_params_without_codec(output_params: Vec<String>) -> Vec<String> {
     q
 }
 
+/// OPT-21 Slice 0: structured CapCut / forced-encode diagnostics (source `encode`).
+fn log_encode_start(
+    kind: &str,
+    width: u32,
+    height: u32,
+    fps: &str,
+    duration_secs: f64,
+    crf: u8,
+    hw_accel: bool,
+    codec: &str,
+) {
+    logging::info(
+        "encode",
+        format!(
+            "{kind}.start codec={codec} hw={hw_accel} crf={crf} {width}x{height}@{fps} dur_s={duration_secs:.2}"
+        ),
+    );
+}
+
+fn log_encode_attempt(kind: &str, attempt: usize, force_sw: bool, encoder: &str) {
+    logging::info(
+        "encode",
+        format!("{kind}.attempt #{attempt} force_sw={force_sw} encoder={encoder}"),
+    );
+}
+
+fn log_encode_fallback_sw(kind: &str, err: &FfmpegError) {
+    // Full FFmpeg stderr was already logged by ffmpeg_exit_error; summarize here.
+    let summary = err.to_string();
+    let first_line = summary.lines().next().unwrap_or("unknown");
+    logging::warn(
+        "encode",
+        format!("{kind}.fallback_sw after HW fail: {first_line} (see prior [ffmpeg] ERROR for full stderr)"),
+    );
+}
+
+fn log_encode_ok(kind: &str, encoder: &str, elapsed_ms: u128, method: &str) {
+    logging::info(
+        "encode",
+        format!("{kind}.ok encoder={encoder} elapsed_ms={elapsed_ms} method={method}"),
+    );
+}
+
+fn log_encode_fail(kind: &str, err: &impl std::fmt::Display) {
+    logging::error("encode", format!("{kind}.fail: {err}"));
+}
+
 /// Single-pass Intro+Body encode (one bitstream). Optionally stream-copies body AAC.
 ///
 /// When `encode_profile` is set (CapCut export), uses [`EncodeProfile::to_encode_output_params`]
@@ -2745,6 +3069,7 @@ fn mux_intro_body_single_pass(
     crf: u8,
     hw_accel_enabled: bool,
     encode_profile: Option<&EncodeProfile>,
+    body_source: Option<&CapcutSourceVideo>,
     work: &Path,
     on_progress: ProgressCallback,
 ) -> Result<concat::ConcatOutcome, ConcatError> {
@@ -2796,6 +3121,23 @@ fn mux_intro_body_single_pass(
     };
 
     let encode_hw = encode_profile.map(|p| p.hw_accel).unwrap_or(hw_accel_enabled);
+    let kind = if capcut {
+        "capcut.intro_body"
+    } else {
+        "encode.intro_body"
+    };
+    let encode_crf_log = encode_profile.map(|p| p.crf).unwrap_or(crf);
+    log_encode_start(
+        kind,
+        v_params.width,
+        v_params.height,
+        &v_params.fps,
+        intro_dauer + body_dur,
+        encode_crf_log,
+        encode_hw,
+        &v_params.vcodec,
+    );
+    let t0 = Instant::now();
     let mut last_err: Option<ConcatError> = None;
     let attempts: &[bool] = if encode_hw {
         &[false, true]
@@ -2808,18 +3150,35 @@ fn mux_intro_body_single_pass(
         if attempt_i > 0 {
             // HW failed → SW retry: reset overall bar (monotonic UI would stay at 99%/100%).
             emit_step_start(&on_progress, intro_label);
+            if let Some(ConcatError::Ffmpeg(ref e)) = last_err {
+                log_encode_fallback_sw(kind, e);
+            }
         }
         let encode_crf = encode_profile.map(|p| p.crf).unwrap_or(crf);
         let (encoder, mut out_params) = match encode_profile {
             Some(profile) if !force_sw => profile.to_encode_output_params(hw, codec),
             _ => build_encode_output_params(hw, codec, encode_crf, force_sw),
         };
+        log_encode_attempt(kind, attempt_i + 1, force_sw, &encoder);
         if capcut {
             // avc1 tag + closed GOP + repeat-headers/AUD → maximal phone/QuickTime safety.
             let fps_int = parse_fps_int(&v_params.fps);
             append_capcut_splice_encode_params(&mut out_params, codec, &encoder, fps_int);
         }
         let quality = quality_params_without_codec(out_params);
+        let target_pix = match v_params.pix_fmt.as_str() {
+            "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.as_str(),
+            _ => "yuv420p",
+        };
+        let body_plan = capcut_normalize_plan(body_source, v_params, target_pix);
+        let body_hwaccel = if !force_sw && encode_hw {
+            capcut_hwaccel_for_decode(hw, body_plan)
+        } else {
+            None
+        };
+        if capcut && attempt_i == 0 {
+            log_capcut_filter_plan("body", body_plan, body_hwaccel);
+        }
         let args = build_intro_body_single_pass_args(
             hintergrund,
             body_path,
@@ -2831,6 +3190,8 @@ fn mux_intro_body_single_pass(
             &encoder,
             &quality,
             audio_mode,
+            body_source,
+            body_hwaccel,
         );
         match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
             Ok(()) => {
@@ -2845,6 +3206,9 @@ fn mux_intro_body_single_pass(
         }
     }
     if !encoded {
+        if let Some(ref e) = last_err {
+            log_encode_fail(kind, e);
+        }
         return Err(last_err.unwrap_or_else(|| ConcatError::NeedsReencode {
             reason: "Intro+Body Single-Pass-Kodierung fehlgeschlagen".into(),
         }));
@@ -2865,7 +3229,7 @@ fn mux_intro_body_single_pass(
         let _ = fs::remove_file(&video_target);
     }
 
-    let method = if capcut {
+    let method: String = if capcut {
         if copy_audio {
             "capcut-export+acopy".into()
         } else {
@@ -2876,6 +3240,7 @@ fn mux_intro_body_single_pass(
     } else {
         "single-pass-reencode".into()
     };
+    log_encode_ok(kind, &encoder_used, t0.elapsed().as_millis(), &method);
     Ok(concat::ConcatOutcome {
         method,
         codec: encoder_used,
@@ -3013,6 +3378,7 @@ fn mux_with_outro(
     v_params: &IntroVideoParams,
     hw: &HwAccelInfo,
     capcut_profile: &EncodeProfile,
+    body_source: Option<&CapcutSourceVideo>,
     work: &Path,
     on_progress: ProgressCallback,
 ) -> Result<concat::ConcatOutcome, ProcessorError> {
@@ -3088,6 +3454,22 @@ fn mux_with_outro(
 
     let total = progress_encode_total_secs(&[intro_dauer, body_dur, outro_eff_dauer]);
     let encode_hw = capcut_profile.hw_accel;
+    let kind = if intro.is_some() {
+        "capcut.intro_body_outro"
+    } else {
+        "capcut.body_outro"
+    };
+    log_encode_start(
+        kind,
+        v_params.width,
+        v_params.height,
+        &v_params.fps,
+        intro_dauer + body_dur + outro_eff_dauer,
+        capcut_profile.crf,
+        encode_hw,
+        &v_params.vcodec,
+    );
+    let t0 = Instant::now();
     let attempts: &[bool] = if encode_hw {
         &[false, true]
     } else {
@@ -3103,14 +3485,31 @@ fn mux_with_outro(
                 "Exportiere Intro+Video (Universal)…",
             );
             on_progress(progress_from_times(0.0, 100.0, label));
+            if let Some(ProcessorError::Ffmpeg(ref e)) = last_err {
+                log_encode_fallback_sw(kind, e);
+            }
         }
         let (encoder, mut out_params) = if !force_sw {
             capcut_profile.to_encode_output_params(hw, codec)
         } else {
             build_encode_output_params(hw, codec, capcut_profile.crf, true)
         };
+        log_encode_attempt(kind, attempt_i + 1, force_sw, &encoder);
         append_capcut_splice_encode_params(&mut out_params, codec, &encoder, fps_int);
         let quality = quality_params_without_codec(out_params);
+        let target_pix = match v_params.pix_fmt.as_str() {
+            "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.as_str(),
+            _ => "yuv420p",
+        };
+        let body_plan = capcut_normalize_plan(body_source, v_params, target_pix);
+        let body_hwaccel = if !force_sw && encode_hw {
+            capcut_hwaccel_for_decode(hw, body_plan)
+        } else {
+            None
+        };
+        if attempt_i == 0 {
+            log_capcut_filter_plan("body", body_plan, body_hwaccel);
+        }
         let args = build_intro_body_outro_single_pass_args(
             intro,
             body_path,
@@ -3121,6 +3520,9 @@ fn mux_with_outro(
             &encoder,
             &quality,
             audio_mode,
+            body_source,
+            None, // outro geometry not probed here — full normalize (safe)
+            body_hwaccel,
         );
         match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
             Ok(()) => {
@@ -3138,6 +3540,9 @@ fn mux_with_outro(
         }
     }
     if !encoded {
+        if let Some(ref e) = last_err {
+            log_encode_fail(kind, e);
+        }
         return Err(last_err
             .unwrap_or_else(|| ProcessorError::Message("Outro-Zusammenfügen fehlgeschlagen".into())));
     }
@@ -3157,18 +3562,20 @@ fn mux_with_outro(
         let _ = fs::remove_file(&video_target);
     }
 
-    Ok(concat::ConcatOutcome {
-        method: if intro.is_some() {
-            if copy_audio {
-                "capcut-export+outro+acopy".into()
-            } else {
-                "capcut-export+outro".into()
-            }
-        } else if copy_audio {
-            "capcut-export-outro+acopy".into()
+    let method: String = if intro.is_some() {
+        if copy_audio {
+            "capcut-export+outro+acopy".into()
         } else {
-            "capcut-export-outro".into()
-        },
+            "capcut-export+outro".into()
+        }
+    } else if copy_audio {
+        "capcut-export-outro+acopy".into()
+    } else {
+        "capcut-export-outro".into()
+    };
+    log_encode_ok(kind, &encoder_used, t0.elapsed().as_millis(), &method);
+    Ok(concat::ConcatOutcome {
+        method,
         codec: encoder_used,
         reencode_reason: Some("Universal-Export Outro — ein Durchlauf".into()),
     })
@@ -3243,6 +3650,8 @@ mod tests {
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
+            None,
+            None,
         );
         assert!(args.contains(&"-filter_complex".into()));
         let fc = args
@@ -3275,6 +3684,8 @@ mod tests {
             "libx264",
             &quality,
             SinglePassAudioMode::VideoOnly,
+            None,
+            None,
         );
         assert!(args.contains(&"-an".into()));
         assert!(!args.iter().any(|a| a == "[a]"));
@@ -3575,6 +3986,9 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
+            None,
+            None,
+            None,
         );
         assert!(args.contains(&"-filter_complex".into()));
         let fc = args
@@ -3621,6 +4035,9 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             "libx264",
             &quality,
             SinglePassAudioMode::VideoOnly,
+            None,
+            None,
+            None,
         );
         assert!(args.contains(&"-an".into()));
         assert!(!args.iter().any(|a| a.starts_with("anullsrc=")));
@@ -3653,6 +4070,9 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
+            None,
+            None,
+            None,
         );
         let fc = args
             .iter()
@@ -3758,5 +4178,172 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         assert!(fc.contains("concat=n=2:v=1:a=0[v]"));
         assert!(fc.contains("concat=n=2:v=0:a=1[a]"));
         assert!(args.iter().any(|a| a.starts_with("anullsrc=")));
+    }
+
+    // ----- OPT-21A: skip redundant CapCut normalize filters + conditional hwaccel -----
+
+    #[test]
+    fn capcut_normalize_plan_match_vs_mismatch() {
+        let target = IntroVideoParams::for_1080p30("h264");
+        let match_src = CapcutSourceVideo {
+            width: 1920,
+            height: 1080,
+            fps: "30".into(),
+            pix_fmt: "yuv420p".into(),
+        };
+        let plan = capcut_normalize_plan(Some(&match_src), &target, "yuv420p");
+        assert_eq!(plan, CapcutNormalizePlan::none());
+        assert!(plan.allow_hwaccel_decode());
+
+        let mismatch_res = CapcutSourceVideo {
+            width: 1280,
+            height: 720,
+            fps: "30".into(),
+            pix_fmt: "yuv420p".into(),
+        };
+        let plan = capcut_normalize_plan(Some(&mismatch_res), &target, "yuv420p");
+        assert!(plan.scale_pad);
+        assert!(!plan.fps);
+        assert!(!plan.format);
+        assert!(!plan.allow_hwaccel_decode());
+
+        let mismatch_fmt = CapcutSourceVideo {
+            width: 1920,
+            height: 1080,
+            fps: "30".into(),
+            pix_fmt: "yuv420p10le".into(),
+        };
+        let plan = capcut_normalize_plan(Some(&mismatch_fmt), &target, "yuv420p");
+        assert!(!plan.scale_pad);
+        assert!(!plan.fps);
+        assert!(plan.format);
+        assert!(!plan.allow_hwaccel_decode());
+
+        assert_eq!(
+            capcut_normalize_plan(None, &target, "yuv420p"),
+            CapcutNormalizePlan::full()
+        );
+        // yuvj420p accepted as CapCut-equivalent to yuv420p.
+        let full_range = CapcutSourceVideo {
+            width: 1920,
+            height: 1080,
+            fps: "30/1".into(),
+            pix_fmt: "yuvj420p".into(),
+        };
+        assert_eq!(
+            capcut_normalize_plan(Some(&full_range), &target, "yuv420p"),
+            CapcutNormalizePlan::none()
+        );
+    }
+
+    #[test]
+    fn capcut_hwaccel_only_when_normalize_fully_skipped() {
+        let hw = HwAccelInfo::nvidia();
+        assert_eq!(
+            capcut_hwaccel_for_decode(&hw, CapcutNormalizePlan::none()),
+            Some("cuda")
+        );
+        assert_eq!(
+            capcut_hwaccel_for_decode(&hw, CapcutNormalizePlan::full()),
+            None
+        );
+        let vt = HwAccelInfo::videotoolbox();
+        assert_eq!(
+            capcut_hwaccel_for_decode(&vt, CapcutNormalizePlan::none()),
+            Some("videotoolbox")
+        );
+        assert_eq!(
+            capcut_hwaccel_for_decode(&HwAccelInfo::software(), CapcutNormalizePlan::none()),
+            None
+        );
+    }
+
+    #[test]
+    fn single_pass_skips_body_normalize_on_match_and_allows_hwaccel() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let src = CapcutSourceVideo::from_intro_params(&v);
+        let args = build_intro_body_single_pass_args(
+            "bg.png",
+            "body.mp4",
+            "out.mp4",
+            5.0,
+            10.0,
+            &v,
+            "drawtext=text='x'",
+            "h264_nvenc",
+            &quality,
+            SinglePassAudioMode::VideoOnly,
+            Some(&src),
+            Some("cuda"),
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        // Body branch: no scale/pad/fps/format — only setpts/setsar.
+        assert!(
+            fc.contains("[1:v]setpts=PTS-STARTPTS,setsar=1[bodyv]"),
+            "body filter={fc}"
+        );
+        assert!(!fc.contains("[1:v]scale="));
+        // Intro still always normalized.
+        assert!(fc.contains("[0:v]scale=1920:1080"));
+        // hwaccel before body -i (after intro loop -i).
+        let hw_i = args.iter().position(|a| a == "-hwaccel").expect("hwaccel");
+        assert_eq!(args.get(hw_i + 1).map(String::as_str), Some("cuda"));
+        assert_eq!(args.get(hw_i + 2).map(String::as_str), Some("-i"));
+        assert_eq!(args.get(hw_i + 3).map(String::as_str), Some("body.mp4"));
+    }
+
+    #[test]
+    fn single_pass_keeps_body_normalize_on_mismatch_and_strips_hwaccel() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let src = CapcutSourceVideo {
+            width: 1280,
+            height: 720,
+            fps: "60".into(),
+            pix_fmt: "yuv420p10le".into(),
+        };
+        let args = build_intro_body_single_pass_args(
+            "bg.png",
+            "body.mp4",
+            "out.mp4",
+            5.0,
+            10.0,
+            &v,
+            "drawtext=text='x'",
+            "h264_nvenc",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+            Some(&src),
+            Some("cuda"), // must be ignored — CPU normalize remains
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("[1:v]scale=1920:1080"));
+        assert!(fc.contains("fps=30"));
+        assert!(fc.contains("format=yuv420p"));
+        assert!(!args.iter().any(|a| a == "-hwaccel"));
+    }
+
+    #[test]
+    fn build_capcut_segment_vfilter_match_vs_mismatch() {
+        let match_plan = CapcutNormalizePlan::none();
+        let s = build_capcut_segment_vfilter(1, "bodyv", match_plan, 1920, 1080, "30", "yuv420p", &[]);
+        assert_eq!(s, "[1:v]setpts=PTS-STARTPTS,setsar=1[bodyv]");
+
+        let full = CapcutNormalizePlan::full();
+        let s = build_capcut_segment_vfilter(0, "v0", full, 1920, 1080, "30", "yuv420p", &[]);
+        assert!(s.starts_with("[0:v]scale=1920:1080"));
+        assert!(s.contains("pad=1920:1080"));
+        assert!(s.contains("fps=30"));
+        assert!(s.contains("format=yuv420p"));
+        assert!(s.ends_with("[v0]"));
     }
 }
