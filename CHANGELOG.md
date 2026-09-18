@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-18
+
 ### Neu
 
 - Einstellungen: Umschalter „Einfach“ / „Erweitert“ — in Einfach nur Alltagseinstellungen, alles Weitere unter „Weitere Optionen“
@@ -51,7 +53,6 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Ältere Intro-Zusammenfüge-Modi entfallen — bestehende Einstellungen nutzen automatisch Universal-Export (CapCut)
 - Ältere Fast-/Legacy-Einstellungen für Clip-Zusammenfügen werden auf Auto umgestellt; bei Fehlern bleibt Legacy als Auswahl im Dialog
 - Bestehende Installationen: einmalig „H.265 Player-Kompatibilität“ auf Auto und „Video-Qualität (CRF)“ auf 20
-
 
 ## [0.6.0-beta.6] - 2026-09-15
 
