@@ -108,7 +108,14 @@ fn emit(on_progress: &ProgressCallback, percent: f64, status: &str) {
     });
 }
 
+/// Prefix for UI: HW encode failed; remaining text is FFmpeg details for a SW retry offer.
+pub const HARDWARE_ENCODE_FAILED_PREFIX: &str = "HARDWARE_ENCODE_FAILED\n";
+
 /// Rotate working-copy video in place (`overwrite=true`) or write to `output`.
+///
+/// When `force_software` is true (retry after HW encode failure), the re-encode
+/// confirm dialog is shown again with hardware acceleration recommended off so
+/// the user can pick presets / CRF before a software encode.
 pub fn rotate_video(
     ffmpeg: &Path,
     input: &str,
@@ -117,6 +124,7 @@ pub fn rotate_video(
     overwrite: bool,
     on_progress: ProgressCallback,
     on_reencode: Option<&ReencodeAskFn>,
+    force_software: bool,
 ) -> Result<CutResult, RotateError> {
     if !Path::new(input).is_file() {
         return Err(RotateError::Message(format!("input file not found: {input}")));
@@ -154,30 +162,42 @@ pub fn rotate_video(
         let body_codec = probe::parse_video_metadata_from_probe(&probe_txt)
             .map(|m| m.codec)
             .unwrap_or_else(|| "h264".into());
+
+        let recommend_hw = if force_software {
+            false
+        } else {
+            hw.available
+        };
         let recommended = EncodeProfile::recommend(
             ReencodeKind::Rotate,
             15,
-            hw.available,
+            recommend_hw,
             Some(&body_codec),
         );
-        let intent = ReencodeIntent::new(
-            ReencodeKind::Rotate,
-            "Drehen erfordert Neu-Kodierung (Pixel-Rotation)",
-        )
-        .with_params(ReencodeParams {
-            degrees: Some(deg as i32),
-            strategy: Some(format!("rotate-{deg}")),
-            details: vec![format!("transpose filter: {vf}")],
-            crf: Some(recommended.crf),
-            hw_accel: Some(recommended.hw_accel),
-            target_codec: Some(recommended.codec.clone()),
-            encoder: None,
-            ..Default::default()
-        })
-        .with_recommended(recommended);
+        let reason = if force_software {
+            "Hardwarebeschleunigung fehlgeschlagen — erneut ohne Hardware (Preset wählbar)"
+        } else {
+            "Drehen erfordert Neu-Kodierung (Pixel-Rotation)"
+        };
+        let intent = ReencodeIntent::new(ReencodeKind::Rotate, reason)
+            .with_params(ReencodeParams {
+                degrees: Some(deg as i32),
+                strategy: Some(if force_software {
+                    format!("rotate-{deg}-sw")
+                } else {
+                    format!("rotate-{deg}")
+                }),
+                details: vec![format!("transpose filter: {vf}")],
+                crf: Some(recommended.crf),
+                hw_accel: Some(recommended.hw_accel),
+                target_codec: Some(recommended.codec.clone()),
+                encoder: None,
+                ..Default::default()
+            })
+            .with_recommended(recommended);
         emit(
             &on_progress,
-            3.0,
+            0.0,
             "Neu-Kodierung — warte auf Bestätigung…",
         );
         let profile = match reencode_confirm::require_confirm(on_reencode, &intent) {
@@ -186,21 +206,43 @@ pub fn rotate_video(
         };
         emit(
             &on_progress,
-            5.0,
-            "Drehen erfordert Neu-Kodierung…",
+            0.0,
+            if !profile.hw_accel {
+                "Drehen ohne Hardwarebeschleunigung…"
+            } else {
+                "Drehen erfordert Neu-Kodierung…"
+            },
         );
         let out_codec = resolve_output_codec(profile.codec_preference(), &body_codec);
         // Software decode: transpose filter needs CPU frames.
         let (encoder, output_params) = profile.to_encode_output_params(&hw, out_codec);
+        let used_hw = profile.hw_accel
+            && hw.available
+            && !encoder.to_ascii_lowercase().starts_with("lib");
         let params = EncodingParams {
             input_params: Vec::new(),
             output_params,
-            encoder,
+            encoder: encoder.clone(),
         };
         let duration = probe_duration_secs(ffmpeg, input).unwrap_or(1.0);
         let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
         let args = build_rotate_video_args(input, &target_str, &vf, &params, has_audio);
-        run_ffmpeg(ffmpeg, &args, duration.max(0.1), Arc::clone(&on_progress))?;
+        if let Err(e) = run_ffmpeg(ffmpeg, &args, duration.max(0.1), Arc::clone(&on_progress)) {
+            if used_hw {
+                let msg = e.to_string();
+                let first = msg.lines().next().unwrap_or("unknown");
+                crate::storage::logging::warn(
+                    "edit",
+                    format!(
+                        "rotate.hw_fail encoder={encoder}: {first} (offering SW retry; see prior [ffmpeg] ERROR)"
+                    ),
+                );
+                return Err(RotateError::Message(format!(
+                    "{HARDWARE_ENCODE_FAILED_PREFIX}{msg}"
+                )));
+            }
+            return Err(e.into());
+        }
 
         let final_output = if is_overwrite {
             emit(&on_progress, 98.0, "Ersetze Original…");
@@ -218,9 +260,7 @@ pub fn rotate_video(
             output: final_output,
             method: format!("rotate-{deg}"),
             overwritten: is_overwrite,
-            reencode_reason: Some(
-                "Drehen erfordert Neu-Kodierung (Pixel-Rotation)".into(),
-            ),
+            reencode_reason: Some(reason.into()),
         })
     })();
 
@@ -288,5 +328,12 @@ mod tests {
         let args = build_rotate_video_args("in.mp4", "out.mp4", "transpose=2", &params, false);
         assert!(!args.iter().any(|a| a == "0:a:0?"));
         assert!(args.contains(&"0:v:0".into()));
+    }
+
+    #[test]
+    fn hardware_encode_failed_prefix_is_stable() {
+        let msg = format!("{HARDWARE_ENCODE_FAILED_PREFIX}Driver does not support nvenc");
+        assert!(msg.starts_with("HARDWARE_ENCODE_FAILED\n"));
+        assert!(msg.contains("nvenc"));
     }
 }

@@ -20,6 +20,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "re-encode trim": "progress.status.reencodeTrim",
   "stream-copy trim": "progress.status.streamCopyTrim",
   "Drehen erfordert Neu-Kodierung…": "progress.status.rotateReencode",
+  "Drehen ohne Hardwarebeschleunigung…": "progress.status.rotateSoftware",
   "Ersetze Original…": "progress.status.replaceFile",
   "re-encode cut": "progress.status.reencodeCut",
   "stream-copy cut": "progress.status.streamCopyCut",

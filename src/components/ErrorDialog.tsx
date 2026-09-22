@@ -14,6 +14,8 @@ type Props = {
   open: boolean;
   title?: string;
   message: string;
+  /** Full technical text (e.g. FFmpeg stderr); shown collapsed by default. */
+  details?: string | null;
   primaryAction?: DialogPrimaryAction | null;
   onPrimaryAction?: () => void;
   onClose: () => void;
@@ -23,6 +25,7 @@ export function ErrorDialog({
   open,
   title,
   message,
+  details = null,
   primaryAction = null,
   onPrimaryAction,
   onClose,
@@ -31,6 +34,7 @@ export function ErrorDialog({
   const resolvedTitle = title ?? t("dialogs.error.defaultTitle");
   const actionLabel = primaryAction?.label?.trim() ?? "";
   const hasAction = Boolean(actionLabel && onPrimaryAction);
+  const detailText = details?.trim() ?? "";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -44,6 +48,16 @@ export function ErrorDialog({
             {message}
           </DialogDescription>
         </DialogHeader>
+        {detailText ? (
+          <details className="rounded-md border border-border bg-muted/40 px-3 py-2">
+            <summary className="cursor-pointer select-none text-sm text-muted-foreground">
+              {t("dialogs.error.technicalDetails")}
+            </summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-foreground [overflow-wrap:anywhere]">
+              {detailText}
+            </pre>
+          </details>
+        ) : null}
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
           {hasAction ? (
             <Button

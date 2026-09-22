@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { tr } from "@/i18n";
+import { parseHardwareEncodeFailure } from "@/lib/hwEncodeError";
 import {
   cutVideo,
   probeVideo,
@@ -17,6 +18,8 @@ type ApplyOptions = {
   onProgressReset?: () => void;
   /** Status line for the sticky progress panel (no full-screen overlay). */
   onStatus?: (message: string) => void;
+  /** Encode with software only (retry after hardware-encode failure). */
+  forceSoftware?: boolean;
 };
 
 function beginProgress(opts: ApplyOptions | undefined, message: string) {
@@ -137,16 +140,30 @@ export function useVideoCutApply() {
     [applying, applySplitInList, markSplit, showError, showSuccess],
   );
 
+  type RotateFn = (
+    sourcePath: string,
+    degrees: number,
+    opts?: ApplyOptions,
+  ) => Promise<void>;
+  const applyRotateRef = useRef<RotateFn | null>(null);
+
   const applyRotate = useCallback(
     async (sourcePath: string, degrees: number, opts?: ApplyOptions) => {
       if (applying) return;
       setApplying(true);
-      beginProgress(opts, tr("video.edit.progress.rotate"));
+      const forceSoftware = opts?.forceSoftware === true;
+      beginProgress(
+        opts,
+        forceSoftware
+          ? tr("video.edit.progress.rotateSoftware")
+          : tr("video.edit.progress.rotate"),
+      );
       try {
         await rotateVideo({
           input: sourcePath,
           degrees,
           overwrite: true,
+          forceSoftware,
         });
         const meta = await probeVideo(sourcePath);
         replaceVideo(sourcePath, meta);
@@ -158,7 +175,26 @@ export function useVideoCutApply() {
           { autoCloseSecs: 5 },
         );
       } catch (e) {
-        showError(String(e), tr("video.edit.error.rotate"));
+        const raw = String(e);
+        const hwDetails = !forceSoftware
+          ? parseHardwareEncodeFailure(raw)
+          : null;
+        if (hwDetails) {
+          showError(tr("video.edit.error.hwFailed"), tr("video.edit.error.rotate"), {
+            details: hwDetails,
+            primaryAction: {
+              label: tr("video.edit.error.retryWithoutHw"),
+              onClick: () => {
+                void applyRotateRef.current?.(sourcePath, degrees, {
+                  ...opts,
+                  forceSoftware: true,
+                });
+              },
+            },
+          });
+        } else {
+          showError(raw, tr("video.edit.error.rotate"));
+        }
       } finally {
         setApplying(false);
         endProgress(opts);
@@ -166,6 +202,7 @@ export function useVideoCutApply() {
     },
     [applying, replaceVideo, markRotated, showError, showSuccess],
   );
+  applyRotateRef.current = applyRotate;
 
   const undoForPath = useCallback(
     async (path: string, opts?: ApplyOptions) => {

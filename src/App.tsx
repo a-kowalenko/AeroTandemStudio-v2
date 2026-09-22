@@ -216,6 +216,7 @@ function App() {
   const dialogActions = useUiStore((s) => s.dialogActions);
   const dialogQrPreview = useUiStore((s) => s.dialogQrPreview);
   const dialogPrimaryAction = useUiStore((s) => s.dialogPrimaryAction);
+  const dialogErrorDetails = useUiStore((s) => s.dialogErrorDetails);
   const dialogConfirm = useUiStore((s) => s.dialogConfirm);
   const dialogChoices = useUiStore((s) => s.dialogChoices);
   const dialogPrompt = useUiStore((s) => s.dialogPrompt);
@@ -2937,6 +2938,7 @@ function App() {
         dialogActions={dialogActions}
         dialogQrPreview={dialogQrPreview}
         dialogPrimaryAction={dialogPrimaryAction}
+        dialogErrorDetails={dialogErrorDetails}
         dialogConfirm={dialogConfirm}
         dialogChoices={dialogChoices}
         dialogPrompt={dialogPrompt}

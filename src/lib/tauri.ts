@@ -1040,12 +1040,15 @@ export async function rotateVideo(opts: {
   degrees: number;
   output?: string | null;
   overwrite?: boolean;
+  /** Re-open confirm with HW recommended off (retry after HW failure). */
+  forceSoftware?: boolean;
 }): Promise<CutResult> {
   return invoke<CutResult>("rotate_video", {
     input: opts.input,
     degrees: opts.degrees,
     output: opts.output ?? null,
     overwrite: opts.overwrite ?? false,
+    forceSoftware: opts.forceSoftware ?? false,
   });
 }
 

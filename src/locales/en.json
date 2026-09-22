@@ -661,6 +661,7 @@
       "reencodeTrim": "Trimming (precise)…",
       "streamCopyTrim": "Trimming…",
       "rotateReencode": "Rotating…",
+      "rotateSoftware": "Rotating (software)…",
       "replaceFile": "Replacing file…",
       "reencodeCut": "Cut (precise)…",
       "streamCopyCut": "Cut…",
@@ -754,7 +755,8 @@
   },
   "dialogs": {
     "error": {
-      "defaultTitle": "Error"
+      "defaultTitle": "Error",
+      "technicalDetails": "Technical details"
     },
     "success": {
       "defaultTitle": "Success",
@@ -1853,6 +1855,7 @@
         "split": "Splitting video…",
         "splitDone": "Split complete",
         "rotate": "Rotating video (re-encoding)…",
+        "rotateSoftware": "Rotating video (without hardware acceleration)…",
         "rotateDone": "Rotation complete",
         "undoOne": "Undoing edit…",
         "undoAll": "Undoing all edits…",
@@ -1869,7 +1872,9 @@
         "trim": "Trim failed",
         "split": "Split failed",
         "rotate": "Rotate failed",
-        "undo": "Undo failed"
+        "undo": "Undo failed",
+        "hwFailed": "Hardware acceleration failed (encoder/driver). You can retry without hardware acceleration — this takes longer.",
+        "retryWithoutHw": "Retry without hardware"
       },
       "mode": {
         "rotate": "Rotate",

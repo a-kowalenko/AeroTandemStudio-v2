@@ -91,17 +91,21 @@ export type DialogConfirmOptions = {
 /** Phase 28: Fotos-Tab browse mode (session preference; null = auto by count). */
 export type PhotoBrowseMode = "overview" | "review";
 
-/** Primary CTA on error dialogs (e.g. deep-link into Settings). */
+/** Primary CTA on error dialogs (e.g. deep-link into Settings, SW retry). */
 export type DialogPrimaryAction = {
   label: string;
   openSettings?: {
     tab?: SettingsTab;
     focus?: SettingsFocusTarget;
   };
+  /** Custom handler (e.g. retry without hardware acceleration). */
+  onClick?: () => void;
 };
 
 export type ErrorDialogOptions = {
   primaryAction?: DialogPrimaryAction;
+  /** Technical details shown collapsed under the main message. */
+  details?: string;
 };
 
 type UiState = {
@@ -114,6 +118,7 @@ type UiState = {
   dialogActions: DialogActionStatus[];
   dialogQrPreview: QrPreview | null;
   dialogPrimaryAction: DialogPrimaryAction | null;
+  dialogErrorDetails: string | null;
   dialogConfirm: DialogConfirmOptions | null;
   dialogChoices: DialogChoicesOptions | null;
   dialogPrompt: DialogPromptOptions | null;
@@ -167,6 +172,7 @@ const emptyDialogFields = {
   dialogActions: [] as DialogActionStatus[],
   dialogQrPreview: null as QrPreview | null,
   dialogPrimaryAction: null as DialogPrimaryAction | null,
+  dialogErrorDetails: null as string | null,
   dialogConfirm: null as DialogConfirmOptions | null,
   dialogChoices: null as DialogChoicesOptions | null,
   dialogPrompt: null as DialogPromptOptions | null,
@@ -191,6 +197,9 @@ export const useUiStore = create<UiState>((set) => ({
       dialogTitle: title ?? tr("dialogs.error.defaultTitle"),
       dialogMessage: message,
       dialogPrimaryAction: options?.primaryAction ?? null,
+      dialogErrorDetails: options?.details?.trim()
+        ? options.details.trim()
+        : null,
     }),
   showSuccess: (message, title, options) =>
     set({

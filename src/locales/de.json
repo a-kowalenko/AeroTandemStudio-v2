@@ -661,6 +661,7 @@
       "reencodeTrim": "Zuschneiden (präzise)…",
       "streamCopyTrim": "Zuschneiden…",
       "rotateReencode": "Drehen…",
+      "rotateSoftware": "Drehen (Software)…",
       "replaceFile": "Ersetze Datei…",
       "reencodeCut": "Schnitt (präzise)…",
       "streamCopyCut": "Schnitt…",
@@ -754,7 +755,8 @@
   },
   "dialogs": {
     "error": {
-      "defaultTitle": "Fehler"
+      "defaultTitle": "Fehler",
+      "technicalDetails": "Technische Details"
     },
     "success": {
       "defaultTitle": "Erfolg",
@@ -1853,6 +1855,7 @@
         "split": "Video wird geteilt…",
         "splitDone": "Teilen fertig",
         "rotate": "Video wird gedreht (Neu-Kodierung)…",
+        "rotateSoftware": "Video wird gedreht (ohne Hardwarebeschleunigung)…",
         "rotateDone": "Drehen fertig",
         "undoOne": "Bearbeitung wird rückgängig gemacht…",
         "undoAll": "Alle Bearbeitungen werden rückgängig gemacht…",
@@ -1869,7 +1872,9 @@
         "trim": "Schnitt fehlgeschlagen",
         "split": "Teilen fehlgeschlagen",
         "rotate": "Drehen fehlgeschlagen",
-        "undo": "Rückgängig fehlgeschlagen"
+        "undo": "Rückgängig fehlgeschlagen",
+        "hwFailed": "Hardwarebeschleunigung ist fehlgeschlagen (Encoder/Treiber). Du kannst den Vorgang ohne Hardwarebeschleunigung erneut starten — das dauert länger.",
+        "retryWithoutHw": "Ohne Hardware erneut"
       },
       "mode": {
         "rotate": "Drehen",

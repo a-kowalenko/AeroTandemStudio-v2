@@ -358,6 +358,8 @@ pub async fn cut_video(
 }
 
 /// Rotate video by 90° steps (pixel transpose + re-encode). Emits `encode-progress`.
+///
+/// `force_software`: re-open confirm with HW recommended off (SW retry after HW fail).
 #[tauri::command]
 pub async fn rotate_video(
     app: AppHandle,
@@ -365,6 +367,7 @@ pub async fn rotate_video(
     degrees: i32,
     output: Option<String>,
     overwrite: Option<bool>,
+    force_software: Option<bool>,
 ) -> Result<CutResult, String> {
     if input.trim().is_empty() {
         return Err("input path is required".into());
@@ -374,10 +377,11 @@ pub async fn rotate_video(
     }
 
     let overwrite = overwrite.unwrap_or(false);
+    let force_software = force_software.unwrap_or(false);
     logging::info(
         "edit",
         format!(
-            "Rotate start: {} by {degrees}° overwrite={overwrite}",
+            "Rotate start: {} by {degrees}° overwrite={overwrite} force_software={force_software}",
             file_name(&input)
         ),
     );
@@ -403,6 +407,7 @@ pub async fn rotate_video(
             overwrite,
             on_progress,
             Some(&on_reencode),
+            force_software,
         )
         .map_err(|e| e.to_string())
     })

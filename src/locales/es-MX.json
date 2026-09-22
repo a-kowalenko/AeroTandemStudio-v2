@@ -661,6 +661,7 @@
       "reencodeTrim": "Recortando (preciso)…",
       "streamCopyTrim": "Recortando…",
       "rotateReencode": "Rotando…",
+      "rotateSoftware": "Rotando (software)…",
       "replaceFile": "Reemplazando archivo…",
       "reencodeCut": "Corte (preciso)…",
       "streamCopyCut": "Corte…",
@@ -754,7 +755,8 @@
   },
   "dialogs": {
     "error": {
-      "defaultTitle": "Error"
+      "defaultTitle": "Error",
+      "technicalDetails": "Detalles técnicos"
     },
     "success": {
       "defaultTitle": "Éxito",
@@ -1853,6 +1855,7 @@
         "split": "Dividiendo video…",
         "splitDone": "División lista",
         "rotate": "Rotando video (recodificando)…",
+        "rotateSoftware": "Rotando video (sin aceleración por hardware)…",
         "rotateDone": "Rotación lista",
         "undoOne": "Deshaciendo edición…",
         "undoAll": "Deshaciendo todas las ediciones…",
@@ -1869,7 +1872,9 @@
         "trim": "Falló el recorte",
         "split": "Falló la división",
         "rotate": "Falló la rotación",
-        "undo": "Falló deshacer"
+        "undo": "Falló deshacer",
+        "hwFailed": "Falló la aceleración por hardware (codificador/controlador). Puedes reintentar sin aceleración por hardware — tarda más.",
+        "retryWithoutHw": "Reintentar sin hardware"
       },
       "mode": {
         "rotate": "Rotar",

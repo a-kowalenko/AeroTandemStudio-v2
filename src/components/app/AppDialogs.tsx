@@ -122,6 +122,7 @@ export type AppDialogsProps = {
   dialogActions: DialogActionStatus[];
   dialogQrPreview: QrPreview | null;
   dialogPrimaryAction: DialogPrimaryAction | null;
+  dialogErrorDetails?: string | null;
   dialogConfirm: DialogConfirmOptions | null;
   dialogChoices: DialogChoicesOptions | null;
   dialogPrompt: DialogPromptOptions | null;
@@ -210,6 +211,7 @@ export function AppDialogs(props: AppDialogsProps) {
     dialogActions,
     dialogQrPreview,
     dialogPrimaryAction,
+    dialogErrorDetails = null,
     dialogConfirm,
     dialogChoices,
     dialogPrompt,
@@ -336,11 +338,14 @@ export function AppDialogs(props: AppDialogsProps) {
         open={dialogKind === "error"}
         title={dialogTitle}
         message={dialogMessage}
+        details={dialogErrorDetails}
         primaryAction={dialogPrimaryAction}
         onPrimaryAction={() => {
           const action = dialogPrimaryAction;
           closeDialog();
-          if (action?.openSettings) {
+          if (action?.onClick) {
+            action.onClick();
+          } else if (action?.openSettings) {
             openSettings(action.openSettings);
           }
         }}
