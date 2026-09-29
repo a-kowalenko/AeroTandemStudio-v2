@@ -843,7 +843,7 @@ impl SdCardMonitor {
             .into_iter()
             .filter(|d| is_drive_ready(d))
             .collect();
-        self.supersede_mtp_with_volumes(&ready);
+        let mtp_handoff_volumes = self.supersede_mtp_with_volumes(&ready);
         let mut current_action = ready_action_cam_drives(&ready);
         // USB cameras are not volume mounts — keep them in `known` so removal is detected.
         let usb_now = usb_action_cam_source_ids();
@@ -870,6 +870,9 @@ impl SdCardMonitor {
         candidates.extend(newly_action);
 
         for drive in candidates {
+            if mtp_handoff_volumes.contains(&drive) {
+                continue;
+            }
             if self.processed_drives.lock().unwrap().contains(&drive) {
                 continue;
             }
@@ -898,9 +901,11 @@ impl SdCardMonitor {
     }
 
     /// Drop tracked MTP sources when a matching DCIM volume is ready (Phase 23.2f).
-    fn supersede_mtp_with_volumes(&self, ready: &HashSet<String>) {
+    /// Returns volume paths that received an explicit insert handoff (avoid duplicate detect).
+    fn supersede_mtp_with_volumes(&self, ready: &HashSet<String>) -> HashSet<String> {
+        let mut handoff_volumes = HashSet::new();
         if !self.config().usb_camera_import_enabled {
-            return;
+            return handoff_volumes;
         }
         let attached = crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras();
         let tracked_mtp: HashSet<String> = {
@@ -914,7 +919,7 @@ impl SdCardMonitor {
                 .collect()
         };
         if tracked_mtp.is_empty() {
-            return;
+            return handoff_volumes;
         }
         let pairs = crate::sd_card::mtp::volume_link::mtp_superseded_by_volumes(
             ready,
@@ -937,8 +942,13 @@ impl SdCardMonitor {
                     "new": vol,
                 }),
             );
-            self.notify_removed(&[mtp_id]);
+            self.notify_removed(&[mtp_id.clone()]);
+            if ready.contains(&vol) && is_action_cam_sd_card(&vol) {
+                handoff_volumes.insert(vol.clone());
+                self.handle_sd_detection(&vol, true);
+            }
         }
+        handoff_volumes
     }
 
     fn handle_sd_detection(&self, drive: &str, is_new_insertion: bool) {

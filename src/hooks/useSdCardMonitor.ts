@@ -12,6 +12,7 @@ import {
   type SdWorkflowActions,
   type SecondaryBackupEvent,
   type WorkflowProgress,
+  isMtpDrive,
 } from "../lib/sdCard";
 import { jobKindFromInsert } from "../lib/sdQueue";
 import {
@@ -53,6 +54,7 @@ export function useSdCardMonitor(opts?: {
   const enqueueSdJob = useSdStore((s) => s.enqueueSdJob);
   const dropQueuedDrives = useSdStore((s) => s.dropQueuedDrives);
   const closeSelector = useSdStore((s) => s.closeSelector);
+  const setIntakeBusy = useSdStore((s) => s.setIntakeBusy);
   const showError = useUiStore((s) => s.showError);
   const showWarning = useUiStore((s) => s.showWarning);
 
@@ -234,6 +236,10 @@ export function useSdCardMonitor(opts?: {
             Boolean(st.selectorDrive) &&
             removedSet.has(st.selectorDrive!);
 
+          if (removed.some((d) => isMtpDrive(d))) {
+            setIntakeBusy(false);
+          }
+
           if (selectorGone) {
             closeSelector();
             onRequestDrainRef.current?.();
@@ -326,6 +332,10 @@ export function useSdCardMonitor(opts?: {
           if (kind === "backup_confirmation_required") {
             setPhase("confirming");
           }
+          if (kind === "usb_mtp_superseded") {
+            setIntakeBusy(false);
+            onRequestDrainRef.current?.();
+          }
           if (kind === "mtp_catalog") {
             queueCatalog(
               event.payload.data as {
@@ -384,6 +394,7 @@ export function useSdCardMonitor(opts?: {
     };
   }, [
     closeSelector,
+    setIntakeBusy,
     dropQueuedDrives,
     enqueueSdJob,
     setActiveDrive,

@@ -626,6 +626,7 @@ function App() {
       setIntakeBusy(false);
       setLoading(false);
       setPhase("monitoring");
+      scheduleSdQueueDrain();
     }
   }
 
