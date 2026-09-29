@@ -61,8 +61,9 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-19 | SMB: Auto-Mount (OS-Map anlegen, App-owned) | hoch | L | mittel | OPT-17, OPT-18 |
 | OPT-20 | SMB: macOS User-Pfad-Mount + Windows Prefer-Local (Sleep) | hoch | M | mittel | OPT-17–19 |
 | OPT-21 | CapCut-Export: schnell + robust (Diagnose → GPU/RC → Encoder) | hoch | L | mittel | Phase 49/50 |
+| OPT-22 | SMB: Session-Budget (Win11 ~20er-Limit) — Poll/Pool/Serialisieren | hoch | M | mittel | OPT-17–20 |
 
-**Empfohlene Reihenfolge:** OPT-0 … OPT-20 ✅; **OPT-21** Slice 0+A ✅, als Nächstes **21B**.
+**Empfohlene Reihenfolge:** OPT-0 … OPT-20 ✅; **OPT-21** Slice 0+A ✅ (21B–E offen); **OPT-22** ✅ (A+B+C).
 
 ---
 
@@ -92,6 +93,7 @@ Nur OPT-X. Danach cargo test && npm run tauri dev.
 | OPT-19 | ✅ |
 | OPT-20 | ✅ Slice A + Slice B — siehe Paket |
 | OPT-21 | 🔄 Slice 0 ✅ (Logging); **21A ✅** (skip-redundant filters + conditional hwaccel); 21B–21E offen |
+| OPT-22 | ✅ Slice A+B+C — Quiet-Poll/Bridge; Session-Pool; Host-Mutex Upload↔Backup↔GC — Win11 LanmanServer ~20 Sessions; siehe Paket |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -1755,6 +1757,283 @@ Nur OPT-21B. Danach cargo test.
 
 ---
 
+### OPT-22: SMB — Session-Budget (Win11 ~20er-Host-Limit)
+
+> **Agent-Attach:** Nur dieses Paket (ein Slice pro Session). Kein OPT-21/CapCut, kein Phase-23.
+> Kontext: AMS oft auf **Windows 11 Client** als Filehost → LanmanServer erlaubt ~**20 gleichzeitige
+> eingehende SMB-Sessions** (SKU-Limit, nicht Registry-„hochdrehen“). OPT-17–20 vermeiden Doppel-Sessions
+> (Map + smb2); OPT-22 reduziert **SessionSetup-Sturm**, **Bridge-Doppelung** und **parallele Host-Last**.
+
+**Ziel:** Pro ATS-Client und Fleet möglichst **≤ 1 dauerhafte Session** zum AMS-Share (OS-Map/Local),  
+kurzlebige `smb2`-SessionSetups minimieren (Quiet-Poll, GC, Bridge, Backup parallel),  
+`STATUS_REQUEST_NOT_ACCEPTED` seltener — ohne Upload-Durchsatz absichtlich zu opfern.
+
+**Impact:** hoch (Fleet auf Win11-AMS; Sleep/Wake; viele Stationen)  
+**Aufwand:** M (drei Slices)  
+**Risiko:** mittel (Pool-Lebensdauer, Cancel/GC-Locks, Backup-Latenz)  
+**Abhängigkeiten:** OPT-17–20 (`resolve_server_target`, Prefer-Local, Auto-Mount, Quiet `soft_hold`)
+
+> **Session-Regel:** Eine Agent-Session = **nur Slice A** *oder* **B** *oder* **C**. Nicht kombinieren.
+
+#### Produktentscheidungen (fest)
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| P1 | Host-Limit | Code **arbeitet um** das ~20er-Limit herum; kein Versuch, LanmanServer-SKU zu ändern |
+| P2 | Prefer Local bleibt König | Wenn Map/Mount erreichbar → Health/Upload/Cleanup **ohne** neues smb2-SessionSetup |
+| P3 | Bridge nur transient | smb2-Brücke (OPT-20B) darf existieren, aber Quiet-Poll darf sie **nicht** alle 45 s neu SessionSetup’en |
+| P4 | Eine Session pro Share (smb2-Pfad) | Health / Upload-Idle / GC teilen wo möglich **eine** gepoolte Session; kein Connect-pro-Tick |
+| P5 | Host-Serialisierung | Gegen **denselben** SMB-Host: max. **eine** schreibende Transfer-Session (Vorgang-Upload **oder** SD-Server-Backup); GC wartet oder nutzt Pool nach Transfer |
+| P6 | Foto-Parallelität | OPT-15 Worker-Caps **unverändert** (eine Session, viele Opens — kein Session-Multiplikator) |
+| P7 | UI | Kein neuer Settings-Toggle in v1; Logs + bestehende `soft_hold`-UX reichen |
+| P8 | Infra | NAS / Windows Server / AMS-lokal-Pfad = **Ops-Empfehlung** in Messnotiz — kein Code-Scope |
+
+#### Kontext / Lastquellen (Ist)
+
+| Quelle | Heute | Problem auf Win11-Host |
+|--------|-------|-------------------------|
+| Quiet-Poll ~45 s (`useServerHealthPoll`) | Bei `ServerTarget::Smb` → `connect_smb` + `connect_share` je Tick | N Clients × Poll = SessionSetup-Sturm; Ghosts nach Sleep |
+| Prefer-Local-Bridge | Map-Session + smb2 parallel bis Promote (~90 s) | Kurz **2** Sessions / Client |
+| Upload-Erfolg | `drop(client)` ohne `disconnect_share` | Server-Session kann länger kleben als nötig |
+| Staging-GC | bis 4 Rounds × frischer Connect | Extra Setups direkt nach Cancel (Limit schon knapp) |
+| SD-Server-Backup | eigener `upload_path` / Cancel-Slot parallel zum Vorgang | 2. schreibende Session zum selben Host möglich |
+| OPT-17–20 Local | 1 Map-Session, Health ohne smb2 | Zielzustand — OPT-22 erzwingt ihn stärker unter Last |
+
+```mermaid
+flowchart TD
+  tick[Quiet-Poll / Resolve]
+  local{Local Map erreichbar?}
+  hold{Bridge / soft_hold aktiv?}
+  pool{Pool-Session warm?}
+  skip[Kein SessionSetup — Status halten]
+  reuse[list/exists auf Pool]
+  connect[connect_smb einmal]
+  localPath[Nur Local-Probe]
+
+  tick --> local
+  local -->|ja| localPath
+  local -->|nein| hold
+  hold -->|ja| skip
+  hold -->|nein| pool
+  pool -->|ja| reuse
+  pool -->|nein| connect
+```
+
+#### Slices
+
+| Slice | Titel | Impact | Status |
+|-------|-------|--------|--------|
+| **A** | Quiet-Poll + Bridge: kein SessionSetup-Sturm | hoch | ✅ |
+| **B** | smb2-Session-Pool + explizites Disconnect | hoch | ✅ |
+| **C** | Host-Mutex: Upload ↔ Backup ↔ GC serialisieren | mittel | ✅ |
+
+---
+
+#### Slice A — Quiet-Poll / Bridge Session-Economy
+
+**Ziel:** Health-Ticks erzeugen **kein** unnötiges `SessionSetup`, solange Local ok, Bridge aktiv oder zuletzt `soft_hold`.
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| A1 | Local-Hit | Quiet-Poll: nur timed Local-Probe (OPT-20B); **kein** smb2-Fallback im Quiet-Tick wenn Map gelistet aber noch Bridge-Fenster (`is_recently_bridging`) — Status halten (`soft_hold`) |
+| A2 | Bridge-Fenster | Innerhalb `PREFER_LOCAL_WINDOW`: Quiet darf **kein** neues `connect_smb` starten (laut Retry / manueller Check weiter erlaubt) |
+| A3 | smb2-only Clients | Ohne Map: Quiet darf prüfen, aber **Backoff** nach OK (z. B. Erfolg → nächster Quiet erst nach 2–5 min) und nach `REQUEST_NOT_ACCEPTED` / Connect-Fail (z. B. 60–120 s) |
+| A4 | Visibility | Visibility-Kick wie heute, unterliegt A1–A3 |
+| A5 | Logging | Bei übersprungenem Setup: Debug/Info selten, z. B. `SMB quiet skip (bridging\|backoff)` — kein Spam alle 45 s |
+
+##### Scope Slice A
+
+**In scope:**
+
+- [x] `test_connection(quiet)` / Resolve: Bridge → kein Connect; Local → kein Connect
+- [x] Quiet-Backoff-State pro kanonischer UNC (Process-lokal, analog `reconnect` cache)
+- [x] Unit-Tests: bridging skip, backoff after fail, local quiet ohne smb2-Aufruf (Hook/Mock wo machbar)
+- [x] `cargo test`; manuell optional: mehrere Clients + `Get-SmbSession` während Idle
+
+**Out of scope Slice A:**
+
+- Session-Pool (→ Slice B)
+- Upload/Backup-Mutex (→ Slice C)
+- Poll-Intervall global von 45 s ändern (Backoff reicht; Konstante darf bleiben)
+- WNet ERROR_86
+
+##### Akzeptanz Slice A
+
+- [x] Map gelistet + bridging: Quiet-Ticks öffnen **0** neue smb2-Sessions (`Get-SmbSession` / Log ohne Connect) *(Code-Pfad: `should_skip_quiet_smb2` → soft_hold)*
+- [x] Local erreichbar: Quiet weiterhin ohne smb2 (Regression OPT-17/20)
+- [x] smb2-only: nach OK deutlich weniger Connects/min als 1/45 s; nach `REQUEST_NOT_ACCEPTED` kein Connect-Sturm *(OK-Backoff 180 s / Reject 120 s / Fail 90 s)*
+- [x] Laut-Check / Settings „Verbindung testen“ unverändert verbindlich
+- [x] `cargo test` grün
+
+##### Agent-Prompt Slice A
+
+```
+Implementiere OPT-22 Slice A aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur Slice A (Quiet-Poll/Bridge: kein SessionSetup-Sturm;
+kein Pool, kein Upload/Backup-Mutex).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run check.
+```
+
+---
+
+#### Slice B — smb2-Session-Pool + Disconnect
+
+**Ziel:** Auf dem smb2-Pfad: **eine** wiederverwendbare Session pro Share; sauberes Teardown ohne Geister.
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| B1 | Pool-Key | Kanonisch `host:port/share` (+ Login-Identität); Passwort nicht loggen |
+| B2 | Nutzer | Quiet Health (wenn A Connect erlaubt), Staging-GC-Rounds, Cleanup-Hot-Paths — **nicht** den laufenden parallelen Upload-Writer ersetzen ohne Ownership-Regeln |
+| B3 | Upload | Upload darf Pool-Session **exklusiv ausleihen** oder eigene Session öffnen und danach Pool invalidieren; v1: Upload öffnet weiter eigene Session, **nach Ende** `disconnect_share` + Drop; Pool nur für Health/GC |
+| B4 | Idle-TTL | Unbenutzte Pool-Session nach z. B. 30–60 s disconnecten (Host-Slot freigeben) |
+| B5 | Fehler | `REQUEST_NOT_ACCEPTED` / Transport-Error → Pool verwerfen, Backoff (Slice A State teilen) |
+| B6 | Erfolg-Upload | Wie Cancel-Pfad: `disconnect_share` (Timeout) vor Drop — Symmetrie zu `release_smb_session_for_cleanup` |
+| B7 | Thread-Sicherheit | `tokio` Mutex / einmalige Connect-in-flight pro Key |
+
+##### Scope Slice B
+
+**In scope:**
+
+- [x] Modul z. B. `smb/session_pool.rs` (oder Erweiterung `client.rs`) — get / invalidate / idle reap
+- [x] `test_smb_connection` + `cleanup_smb_remote_tree` / GC über Pool
+- [x] Upload-Erfolgspfad: explizites Disconnect vor Drop
+- [x] Unit-Tests: Keying, invalidate on error, idle TTL (Fake-Clock/Mock wo möglich)
+- [x] `cargo test`
+
+**Out of scope Slice B:**
+
+- Quiet-Bridge-Politik (→ A, Voraussetzung empfohlen)
+- Host-Mutex Backup (→ C)
+- Multi-Channel / SMB3 Credit-Tuning
+- OPT-15 Parallelitäts-Caps ändern
+
+##### Akzeptanz Slice B
+
+- [x] 10 Quiet-OK-Ticks (smb2-only, Backoff aus / Test-Harness): **≤ 1–2** SessionSetups statt 10 (Pool warm) *(Code-Pfad: `session_pool::acquire` hit; Live `Get-SmbSession` manuell)*
+- [x] GC-Rounds nach Cancel: keine unnötige Connect-Kaskade wenn Pool lebt; bei Sharing-Violation weiter Retry mit Pause *(Pool release bei Sharing-Violation)*
+- [x] Upload-Erfolg: Log/Trace Disconnect; weniger hängende Sessions auf Host vs. vorher *(Log `SMB session disconnect (upload)`)*
+- [x] Local-Pfad unverändert ohne Pool
+- [x] `cargo test` grün
+- [ ] Manuell: Quiet-Ticks / Upload / Cancel-GC mit `Get-SmbSession`
+
+##### Agent-Prompt Slice B
+
+```
+Implementiere OPT-22 Slice B aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur Slice B (smb2-Session-Pool für Health/GC + Upload-Disconnect;
+kein Quiet-Bridge-Rewrite außer Hook, kein Backup-Mutex).
+Danach cargo test --manifest-path src-tauri/Cargo.toml.
+```
+
+---
+
+#### Slice C — Host-Mutex (Upload ↔ Backup ↔ GC)
+
+**Ziel:** Gegen denselben Filehost höchstens **eine** schreibende Transfer-Pipeline; GC nicht parallel zu Upload/Backup connecten.
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| C1 | Host-Key | Aus URL: kanonischer Host (ohne DNS-Guess) — Backup und Primary auf gleichem Host teilen Mutex |
+| C2 | Vorgang-Upload | Behält FIFO-Slot (`uploadSlot`); Mutex zusätzlich host-weit |
+| C3 | SD-Server-Backup | Wartet auf Mutex (Timeout/Queue); UI/Fortschritt darf „warte auf Server…“ nicht rot werden nur wegen Warten |
+| C4 | GC | `spawn_smb_staging_gc` / Background-Rounds: Mutex **nicht** stehlen während Transfer; nach Transfer oder Idle ausführen |
+| C5 | Unterschiedliche Hosts | Parallel erlaubt (Primary NAS ≠ Backup NAS) |
+| C6 | Local-Targets | Mutex optional skip (kein smb2-Slot) — Local-FS-Copy blockiert SMB-Budget nicht |
+
+##### Scope Slice C
+
+**In scope:**
+
+- [x] Rust-seitiger Host-Lock um SMB-Transfer-Einstiege (`upload_path` smb2-Zweig, Backup-Aufrufer, GC-Connect)
+- [x] Klare Acquire/Release in Success/Cancel/Fail (kein Leak)
+- [x] Unit-Tests: gleicher Host serialisiert; zwei Hosts parallel; Local skip
+- [x] `cargo test`; kurzer Log bei Wait (`SMB host busy, waiting…`)
+
+**Out of scope Slice C:**
+
+- Fleet-weite Koordination über AMS (multi-PC Scheduler)
+- UI-Toggle / Prioritäts-Einstellungen Backup vs. Upload
+- Ändern der Upload-Queue-UX außer Warten ohne Fehlalarm
+
+##### Akzeptanz Slice C
+
+- [x] Gleicher Host: Backup startet nicht mit zweiter smb2-Session während Vorgang-Upload (Log + `Get-SmbSession`) *(Code-Pfad: `host_lock::acquire` in `upload_smb` — Backup teilt Mutex über `upload_path`)*
+- [x] GC während Upload: kein paralleles `connect_smb` (enqueue bleibt ok) *(GC wartet in `cleanup_smb_remote_tree`)*
+- [x] Zwei verschiedene Hosts: parallel möglich
+- [x] Cancel gibt Lock frei; nächster Waiter kommt durch *(RAII `HostLockGuard` Drop)*
+- [x] `cargo test` grün
+
+##### Agent-Prompt Slice C
+
+```
+Implementiere OPT-22 Slice C aus @docs/optimization_plan.md
+Regeln: @AGENTS.md
+Nur Slice C (Host-Mutex Upload/Backup/GC; kein Pool-Rewrite, kein Quiet-Backoff).
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run check.
+```
+
+---
+
+#### Betroffene Dateien (erwartet)
+
+| Slice | Dateien |
+|-------|---------|
+| A | `smb/reconnect.rs` oder neu `smb/quiet_budget.rs`; `client.rs` (`test_connection`); ggf. `serverStore` / Poll nur wenn Flag nötig |
+| B | neu `smb/session_pool.rs`; `client.rs` (`connect_smb` Nutzer, Upload-Ende, GC); `staging_gc` Aufrufer |
+| C | `client.rs` / `handoff_upload.rs` / SD-Backup-Command-Pfad; kleiner `smb/host_lock.rs` |
+| Alle | Logs; Unit-Tests; Messnotiz |
+
+#### Risiken & Mitigation
+
+| Risiko | Mitigation |
+|--------|------------|
+| Pool hält Session → belegt Host-Slot im Idle | Idle-TTL 30–60 s + Prefer Local (0 smb2) |
+| Quiet skip verschleiert echten Offline | Laut-Check / Visibility nach Backoff-Ablauf; Bridge-Fenster zeitlich begrenzt |
+| Mutex verlängert Backup | Backup ist async-Spiegel — Warten ok; Log statt Fehler |
+| GC verzögert → Staging-Müll | Queue bleibt; Idle-GC nach Transfer; Local-Staging wo Local-Upload |
+| Doppel-Lock Upload-Slot + Host | Klare Reihenfolge: Queue-Job starten → Host-Lock → connect |
+
+#### Ops-Hinweis (nicht Code, Abnahme/Doku)
+
+| Maßnahme | Wirkung |
+|----------|---------|
+| Share auf NAS / Windows Server; AMS liest **lokal** | Entfernt SKU-Deckel für Fleet |
+| `smb_auto_mount_enabled` an auf allen Stationen | 1 Map-Session statt smb2-Poll |
+| `Get-SmbSession` auf AMS-PC bei Incidents | Täter (Station, Ghost, Explorer) finden |
+
+#### Messnotiz (nach Implementierung)
+
+| Szenario | Metrik | Vorher | Nachher | Notiz |
+|----------|--------|--------|---------|-------|
+| 5 Clients Idle, Map ok | Sessions am Host | oft 5 Map + Quiet-smb2-Spikes | **~5** (nur Map) | Slice A: Local quiet = probe only |
+| 1 Client smb2-only, 10 min Idle | SessionSetups | ~1/45 s | ≪ mit Backoff (+ Pool in B) | A: OK-Backoff 180 s |
+| Sleep Bridge + Quiet | Sessions / Client | Map+smb2 + Poll-Connects | Map+≤1 Bridge, Quiet skip | A: `quiet skip (bridging)` |
+| Upload + SD-Backup gleicher Host | Parallele smb2 | 2 möglich | **1** Transfer | C |
+| Cancel + GC | Connect-Burst | bis 4 frisch | Pool/Reuse + nach Transfer | B: `cleanup_smb_remote_tree` → `session_pool::acquire` |
+| Upload-Erfolg | Host-Session klebt | drop ohne TreeDisconnect | `disconnect_share` + Log | B6 |
+
+Implementierung Slice A: `smb/quiet_budget.rs` — Quiet skip bei bridging / Backoff (OK 180 s, Fail 90 s, Reject 120 s); `note_smb2_bridge` sticky im Prefer-Local-Fenster; Hook in `test_connection(quiet)`.
+
+Implementierung Slice B: `smb/session_pool.rs` — Key `host:port/share|login`, Idle-TTL 45 s, get/release/discard/invalidate; Health (`test_smb_connection`) + GC (`cleanup_smb_remote_tree`) über Pool; Upload eigene Session + `disconnect_owned` + Pool-Invalidate.
+
+Implementierung Slice C: `smb/host_lock.rs` — kanonischer Host-Key (ohne DNS); `acquire` um `upload_smb` + `cleanup_smb_remote_tree`; Local skip; Log `SMB host busy, waiting…`; RAII-Release.
+
+#### Empfohlene Slice-Reihenfolge
+
+1. **A** (sofortiger Druck weg: Quiet/Bridge) ✅  
+2. **B** (Pool + Disconnect) ✅  
+3. **C** (Serialisierung unter Last) ✅
+
+---
+
 ## 5. Bewusst nicht in diesem Plan
 
 | Thema | Grund |
@@ -1769,8 +2048,10 @@ Nur OPT-21B. Danach cargo test.
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |
 | macOS NetFS (`NetFSMountURLSync`) statt User-Pfad | Follow-up nur wenn OPT-20A nicht reicht |
-| Windows WNet ERROR_86 / Cred-Session-Härtung | Follow-up nach OPT-20B; getrennt von Sleep-Bridge |
+| Windows WNet ERROR_86 / Cred-Session-Härtung | Follow-up nach OPT-20B; getrennt von Sleep-Bridge / OPT-22 |
 | Letter-less UNC ohne Drive-Letter | Follow-up; OPT-17 enumeriert nur A–Z |
+| LanmanServer-SKU / Registry „max connections“ auf Win11 Client | SKU-Limit — Ops: NAS/Server; App: OPT-22 |
+| Fleet-weiter SMB-Scheduler über AMS | Multi-PC — eigenes AMS-Thema, nicht OPT-22C |
 
 ---
 

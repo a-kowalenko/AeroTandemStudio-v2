@@ -1430,7 +1430,7 @@ mod tests {
         assert!(args.contains(&"-c:v".to_string()));
         assert!(args.contains(&"libx264".to_string()));
         assert!(args.contains(&"-crf".to_string()));
-        assert!(args.contains(&"18".to_string()));
+        assert!(args.contains(&"20".to_string())); // EncodeProfile::compat CRF
         assert!(args.contains(&"-vf".to_string()));
         assert_eq!(args.last().map(String::as_str), Some("out.mp4"));
         assert!(args.iter().any(|a| a.contains("scale=1920:1080")));

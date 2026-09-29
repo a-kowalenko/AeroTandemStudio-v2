@@ -74,7 +74,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ### Performance-Backlog
 
-OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen. Details: `@docs/optimization_plan.md`.
+OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen. **OPT-22** SMB Session-Budget — **22A+B+C ✅**. Details: `@docs/optimization_plan.md`.
 
 ---
 
@@ -119,4 +119,4 @@ Nur 51.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 
-**Performance (OPT-X):** `@docs/optimization_plan.md` — nur **ein** OPT-Paket (OPT-0…20 ✅; **OPT-21** offen)
+**Performance (OPT-X):** `@docs/optimization_plan.md` — nur **ein** OPT-Paket (OPT-0…20 ✅; **OPT-22** ✅; **OPT-21** offen — ein Slice pro Session)

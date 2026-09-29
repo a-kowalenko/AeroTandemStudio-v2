@@ -20,11 +20,17 @@ use smb2::{ClientConfig, FileWriter, SmbClient};
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 use super::auto_mount::{ensure_os_smb_mount, AutoMountParams};
+use super::host_lock;
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
+use super::quiet_budget::{
+    self, log_quiet_skip, note_quiet_smb2_fail, note_quiet_smb2_ok, quiet_skip_result,
+    should_skip_quiet_smb2,
+};
 use super::reconnect::{
     self, is_recently_bridging, note_smb2_bridge, probe_local, start_prefer_local_promote,
     LOCAL_PROBE_TIMEOUT,
 };
+use super::session_pool;
 use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
     staging_prefix,
@@ -370,7 +376,7 @@ fn smb_addr(host: &str, port: u16) -> String {
     }
 }
 
-async fn connect_smb(
+pub(crate) async fn connect_smb(
     host: &str,
     port: u16,
     login: &str,
@@ -426,8 +432,9 @@ fn display_remote(target: &ServerTarget, relative: &str) -> String {
 
 /// Test reachability of the configured server (local path or SMB share).
 ///
-/// `quiet`: Quiet-Poll mode (OPT-20B) — short Local probe, and on map-bridge
-/// failure return `soft_hold` so the UI keeps the last good status.
+/// `quiet`: Quiet-Poll mode (OPT-20B / OPT-22A) — short Local probe; skip smb2
+/// SessionSetup while Prefer-Local bridging or Quiet backoff is active
+/// (`soft_hold` keeps the last UI status). Loud checks always connect.
 pub async fn test_connection(
     server_url: &str,
     login: &str,
@@ -476,7 +483,7 @@ pub async fn test_connection(
 
     match target {
         ServerTarget::Local { path } => {
-            // OPT-20B B8: prefer shared probe cache from resolve; never unbounded exists.
+            // OPT-20B B8 / OPT-22A A1: Local path — timed probe only, never smb2.
             let outcome = probe_local(&path, LOCAL_PROBE_TIMEOUT);
             if outcome.is_reachable() {
                 ConnectionTestResult {
@@ -507,7 +514,33 @@ pub async fn test_connection(
             share,
             subpath,
         } => {
+            // OPT-22A: Quiet — no SessionSetup while bridging or Quiet backoff.
+            if quiet {
+                if let Some(unc) = bridge_unc.as_ref() {
+                    if let Some(reason) = should_skip_quiet_smb2(unc) {
+                        log_quiet_skip(unc, reason);
+                        let (ok, message, soft_hold) = quiet_skip_result(reason);
+                        return ConnectionTestResult {
+                            ok,
+                            message,
+                            soft_hold,
+                        };
+                    }
+                }
+            }
+
             let result = test_smb_connection(&host, port, &share, &subpath, login, password).await;
+            if let Some(unc) = bridge_unc.as_ref() {
+                if result.ok {
+                    // Loud + Quiet OK → Quiet backs off (A3).
+                    note_quiet_smb2_ok(unc);
+                } else if quiet {
+                    note_quiet_smb2_fail(unc, &result.message);
+                } else if quiet_budget::is_session_rejected(&result.message) {
+                    // Loud reject still cools Quiet so Visibility-Kick cannot storm.
+                    note_quiet_smb2_fail(unc, &result.message);
+                }
+            }
             if result.ok {
                 result
             } else if quiet
@@ -535,58 +568,63 @@ async fn test_smb_connection(
     login: &str,
     password: &str,
 ) -> ConnectionTestResult {
-    match connect_smb(host, port, login, password).await {
-        Ok(mut client) => match client.connect_share(share).await {
-            Ok(mut tree) => {
-                let list_path = if subpath.is_empty() {
-                    ""
-                } else {
-                    subpath
+    // OPT-22B: reuse pooled smb2 session (Health path).
+    let mut pooled = match session_pool::acquire(host, port, share, login, password).await {
+        Ok(p) => p,
+        Err(e) => {
+            return ConnectionTestResult {
+                ok: false,
+                message: e,
+                soft_hold: false,
+            };
+        }
+    };
+
+    let list_path = if subpath.is_empty() { "" } else { subpath };
+    let list_result = {
+        let (client, tree) = pooled.parts_mut();
+        client.list_directory(tree, list_path).await
+    };
+    let result = match list_result {
+        Ok(_) => ConnectionTestResult {
+            ok: true,
+            message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
+            soft_hold: false,
+        },
+        Err(e) => {
+            if subpath.is_empty() {
+                ConnectionTestResult {
+                    ok: false,
+                    message: format!("Share erreichbar, Listing fehlgeschlagen: {e}"),
+                    soft_hold: false,
+                }
+            } else {
+                let fs_result = {
+                    let (client, tree) = pooled.parts_mut();
+                    client.fs_info(tree).await
                 };
-                match client.list_directory(&mut tree, list_path).await {
+                match fs_result {
                     Ok(_) => ConnectionTestResult {
                         ok: true,
                         message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
                         soft_hold: false,
                     },
-                    Err(e) => {
-                        if subpath.is_empty() {
-                            ConnectionTestResult {
-                                ok: false,
-                                message: format!("Share erreichbar, Listing fehlgeschlagen: {e}"),
-                                soft_hold: false,
-                            }
-                        } else {
-                            match client.fs_info(&mut tree).await {
-                                Ok(_) => ConnectionTestResult {
-                                    ok: true,
-                                    message: format!(
-                                        "Verbindung zum Server erfolgreich (//{host}/{share})"
-                                    ),
-                                    soft_hold: false,
-                                },
-                                Err(e2) => ConnectionTestResult {
-                                    ok: false,
-                                    message: format!("Verbindung fehlgeschlagen: {e2}"),
-                                    soft_hold: false,
-                                },
-                            }
-                        }
-                    }
+                    Err(e2) => ConnectionTestResult {
+                        ok: false,
+                        message: format!("Verbindung fehlgeschlagen: {e2}"),
+                        soft_hold: false,
+                    },
                 }
             }
-            Err(e) => ConnectionTestResult {
-                ok: false,
-                message: map_smb_error(&e.to_string(), share),
-                soft_hold: false,
-            },
-        },
-        Err(e) => ConnectionTestResult {
-            ok: false,
-            message: e,
-            soft_hold: false,
-        },
+        }
+    };
+
+    if result.ok {
+        pooled.release().await;
+    } else {
+        session_pool::discard_on_error(pooled, &result.message).await;
     }
+    result
 }
 
 fn map_connect_error(err: &str) -> String {
@@ -626,7 +664,7 @@ fn map_connect_error(err: &str) -> String {
     }
 }
 
-fn map_smb_error(err: &str, share: &str) -> String {
+pub(crate) fn map_smb_error(err: &str, share: &str) -> String {
     let lower = err.to_lowercase();
     if lower.contains("logon")
         || (lower.contains("access_denied") && lower.contains("session"))
@@ -1127,14 +1165,10 @@ where
 
     let tree_for_disconnect = (*tree).clone();
     match Arc::try_unwrap(client) {
-        Ok(mut client) => {
+        Ok(client) => {
             drop(tree);
-            let _ = tokio::time::timeout(
-                Duration::from_secs(1),
-                client.disconnect_share(&tree_for_disconnect),
-            )
-            .await;
-            drop(client);
+            // OPT-22B B6: explicit disconnect before Drop (shared with success path).
+            session_pool::disconnect_owned(client, tree_for_disconnect).await;
         }
         Err(client) => {
             drop(tree);
@@ -1253,6 +1287,8 @@ where
     F: FnMut(UploadProgress) + Send + 'static,
 {
     let result = release_smb_session_for_cleanup(result, cancel, progress, tree, client).await;
+    // OPT-22B: upload session torn down — clear any Health/GC pool entry.
+    session_pool::invalidate(host, port, share, login).await;
     schedule_staging_gc(host, port, share, staging_root, login, password);
     result.with_staging(Some(staging_root.to_string()))
 }
@@ -1270,8 +1306,16 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     cancel: UploadCancelPolicy,
     progress: UploadProgressGate<F>,
 ) -> UploadResult {
+    // OPT-22C: one writing pipeline per host (Upload ↔ Backup ↔ GC).
+    // Guard drops on every return path (success / cancel / fail).
+    let _host_lock = host_lock::acquire(host).await;
+
     // Never block a new upload on leftover GC — run in background.
+    // GC acquires the same host lock → waits until this transfer finishes.
     spawn_smb_staging_gc(login, password);
+
+    // OPT-22B B3: upload owns its session — drop any Health/GC pool entry first.
+    session_pool::invalidate(host, port, share, login).await;
 
     let mut client = match connect_smb(host, port, login, password).await {
         Ok(c) => c,
@@ -1299,8 +1343,8 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     // Create every parent directory before any parallel write (no races on mkdir).
     for file in phases.ordered() {
         if let Err(cancelled) = ensure_upload_not_cancelled(cancel) {
-            drop(tree);
-            drop(client);
+            session_pool::disconnect_owned(client, tree).await;
+            session_pool::invalidate(host, port, share, login).await;
             schedule_staging_gc(host, port, share, &staging_root, login, password);
             return cancelled.with_staging(Some(staging_root));
         }
@@ -1312,8 +1356,8 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
                     ensure_remote_dirs(&mut client, &mut tree, &parent_str, &mut created_dirs)
                         .await
                 {
-                    drop(tree);
-                    drop(client);
+                    session_pool::disconnect_owned(client, tree).await;
+                    session_pool::invalidate(host, port, share, login).await;
                     schedule_staging_gc(host, port, share, &staging_root, login, password);
                     return UploadResult::fail(e).with_staging(Some(staging_root));
                 }
@@ -1533,8 +1577,8 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
 
     if let Err(e) = client.rename(&mut tree, &staged_job, &final_job).await {
         let msg = e.to_string();
-        drop(tree);
-        drop(client);
+        session_pool::disconnect_owned(client, tree).await;
+        session_pool::invalidate(host, port, share, login).await;
         schedule_staging_gc(host, port, share, &staging_root, login, password);
         return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {msg}"))
             .with_staging(Some(staging_root));
@@ -1542,8 +1586,9 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
 
     // Best-effort remove empty `.ats_staging/<id>` parent.
     let _ = client.delete_directory(&mut tree, &staging_root).await;
-    drop(tree);
-    drop(client);
+    // OPT-22B B6: disconnect_share before Drop (symmetry with cancel path).
+    session_pool::disconnect_owned(client, tree).await;
+    session_pool::invalidate(host, port, share, login).await;
 
     let remote = display_remote(
         &ServerTarget::Smb {
@@ -2008,6 +2053,8 @@ async fn cleanup_smb_job_root(
 /// When `already_paused` is true, skips the initial session-teardown sleep
 /// (caller already waited after dropping the upload session).
 /// `max_attempts` caps reconnect/delete rounds (use 1 on hot paths).
+/// OPT-22B: uses the smb2 session pool so GC rounds reuse a warm session.
+/// OPT-22C: waits for the host transfer mutex before any pool connect.
 async fn cleanup_smb_remote_tree(
     host: &str,
     port: u16,
@@ -2022,6 +2069,9 @@ async fn cleanup_smb_remote_tree(
         return Err("Leerer Cleanup-Pfad".into());
     }
 
+    // Do not open a GC/cleanup session while Upload/Backup holds the host.
+    let _host_lock = host_lock::acquire(host).await;
+
     if !already_paused {
         tokio::time::sleep(SESSION_TEARDOWN_PAUSE).await;
     }
@@ -2029,28 +2079,50 @@ async fn cleanup_smb_remote_tree(
     let attempts = max_attempts.max(1);
     let mut last_err: Option<String> = None;
     for attempt in 1..=attempts {
-        let mut client = connect_smb(host, port, login, password).await?;
-        let mut tree = client
-            .connect_share(share)
-            .await
-            .map_err(|e| map_smb_error(&e.to_string(), share))?;
+        let mut pooled = session_pool::acquire(host, port, share, login, password).await?;
 
-        match delete_smb_tree_recursive(&mut client, &mut tree, remote_root).await {
+        let delete_result = {
+            let (client, tree) = pooled.parts_mut();
+            delete_smb_tree_recursive(client, tree, remote_root).await
+        };
+
+        match delete_result {
             Ok(()) => {
-                if smb_remote_gone(&mut client, &mut tree, remote_root).await {
+                let gone = {
+                    let (client, tree) = pooled.parts_mut();
+                    smb_remote_gone(client, tree, remote_root).await
+                };
+                if gone {
+                    pooled.release().await;
                     return Ok(());
                 }
                 last_err = Some(format!(
                     "Remote-Ordner noch vorhanden nach Löschen: {remote_root}"
                 ));
+                pooled.release().await;
             }
             Err(e) => {
+                let sharing = smb_sharing_violation(&e);
+                let reject = quiet_budget::is_session_rejected(&e);
+                if reject || e.to_ascii_lowercase().contains("protocol error") {
+                    session_pool::discard_on_error(pooled, &e).await;
+                } else {
+                    // Sharing-violation: keep pool warm for the next retry round.
+                    pooled.release().await;
+                }
                 last_err = Some(e);
+                if attempt < attempts {
+                    let backoff_ms = if sharing {
+                        400 * u64::from(attempt)
+                    } else {
+                        250 * u64::from(attempt)
+                    };
+                    tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                }
+                continue;
             }
         }
         let retry_sharing = last_err.as_deref().is_some_and(smb_sharing_violation);
-        drop(tree);
-        drop(client);
         if attempt < attempts {
             let backoff_ms = if retry_sharing {
                 400 * u64::from(attempt)

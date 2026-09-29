@@ -144,20 +144,36 @@ pub fn prefer_local_now(path: &Path) -> bool {
 }
 
 /// Mark that Health/Upload is using smb2 while a mapped path wakes (B2/B4).
+///
+/// OPT-22A: do **not** reset the Prefer-Local window on every Quiet tick — only
+/// start (or restart after expiry) so Quiet can skip SessionSetup for the full
+/// [`PREFER_LOCAL_WINDOW`].
 pub fn note_smb2_bridge(config_unc: &str, local_path: &Path) {
     let key = canonicalize_unc(config_unc);
-    if let Ok(mut state) = STATE.lock() {
-        state.bridging.insert(key, Instant::now());
+    let newly_started = {
+        let Ok(mut state) = STATE.lock() else {
+            return;
+        };
+        let fresh = match state.bridging.get(&key) {
+            Some(t) if t.elapsed() < PREFER_LOCAL_WINDOW => false,
+            _ => true,
+        };
+        if fresh {
+            state.bridging.insert(key, Instant::now());
+        }
+        fresh
+    };
+    if newly_started {
+        crate::storage::logging::info(
+            "smb",
+            format!(
+                "SMB via smb2 bridge (mapped path not ready: {}); Prefer-Local reconnect…",
+                local_path
+                    .to_string_lossy()
+                    .trim_end_matches(['\\', '/'])
+            ),
+        );
     }
-    crate::storage::logging::info(
-        "smb",
-        format!(
-            "SMB via smb2 bridge (mapped path not ready: {}); Prefer-Local reconnect…",
-            local_path
-                .to_string_lossy()
-                .trim_end_matches(['\\', '/'])
-        ),
-    );
 }
 
 /// Quiet-Poll: map was bridging recently — hold last UI status on hard fail (B6).
@@ -177,6 +193,12 @@ fn clear_bridging(config_unc: &str) {
     if let Ok(mut state) = STATE.lock() {
         state.bridging.remove(&key);
     }
+}
+
+/// Test helper: drop Prefer-Local bridge flag for `config_unc`.
+#[cfg(test)]
+pub fn clear_bridging_for_test(config_unc: &str) {
+    clear_bridging(config_unc);
 }
 
 /// Background Prefer-Local: keep probing until Local is up or window expires (B4/B5).
@@ -286,6 +308,31 @@ mod tests {
         assert!(is_recently_bridging(unc));
         clear_bridging(unc);
         assert!(!is_recently_bridging(unc));
+    }
+
+    #[test]
+    fn note_smb2_bridge_does_not_reset_window() {
+        let unc = r"\\opt22a-bridge-sticky.invalid\share";
+        clear_bridging(unc);
+        note_smb2_bridge(unc, Path::new(r"Z:\"));
+        let started = {
+            let state = STATE.lock().unwrap();
+            *state
+                .bridging
+                .get(&canonicalize_unc(unc))
+                .expect("bridging started")
+        };
+        // Second note (Quiet tick) must keep the original Instant.
+        note_smb2_bridge(unc, Path::new(r"Z:\"));
+        let again = {
+            let state = STATE.lock().unwrap();
+            *state
+                .bridging
+                .get(&canonicalize_unc(unc))
+                .expect("bridging still set")
+        };
+        assert_eq!(started, again);
+        clear_bridging(unc);
     }
 
     #[test]
