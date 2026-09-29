@@ -157,5 +157,5 @@ Notizen:
 
 ## Referenzen
 
-- Backlog: `@docs/optimization_plan.md`
+- Backlog-Index: `@docs/optimization_plan.md` · Specs: `@docs/opt/ARCHIVE.md` / `@docs/opt/open/`
 - Bekannte Bottlenecks: Import/Probe sequentiell, Full-Res-Fotos, `App.tsx` Re-Render-Fläche, synchroner Cache-Sweep beim Startup

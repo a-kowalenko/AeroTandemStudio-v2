@@ -9,13 +9,15 @@
 | `@docs/phases/open/…` | **Die eine offene Phase-Spec** |
 | `@docs/phases/ARCHIVE.md` | Nur Regression / erledigte Spec |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt) |
-| `@docs/optimization_plan.md` | Nur **ein** OPT-Paket |
+| `@docs/opt/open/…` | **Die eine offene OPT-Spec** |
+| `@docs/optimization_plan.md` | OPT-Index / Tracker (schlank) |
+| `@docs/opt/ARCHIVE.md` | Nur Regression / erledigte OPT |
 | `@docs/ARCHITECTURE.md` | Bei Architekturfragen |
 | `@docs/MIGRATION.md` | Legacy-Mapping, gezielt |
 | `@docs/LINUX_BUILD.md` / `@docs/MACOS_BUILD.md` | Plattform-Build |
 
 **Context-Regel:** Nicht `ARCHIVE.md` und nicht den alten Monolithen anhängen.  
-Pro Session **eine** Phase aus `docs/phases/open/` (oder ein OPT-Paket).
+Pro Session **eine** Phase aus `docs/phases/open/` (oder ein OPT aus `docs/opt/open/`).
 
 ---
 
@@ -74,7 +76,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ### Performance-Backlog
 
-OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen. **OPT-22** SMB Session-Budget — **22A+B+C ✅**. Details: `@docs/optimization_plan.md`.
+OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen · Spec: `@docs/opt/open/21-capcut-export.md`. **OPT-22** ✅. Index: `@docs/optimization_plan.md`.
 
 ---
 
@@ -119,4 +121,10 @@ Nur 51.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 
-**Performance (OPT-X):** `@docs/optimization_plan.md` — nur **ein** OPT-Paket (OPT-0…20 ✅; **OPT-22** ✅; **OPT-21** offen — ein Slice pro Session)
+```
+Implementiere OPT-21 Slice B aus @docs/opt/open/21-capcut-export.md
+Regeln: @AGENTS.md
+Nur OPT-21B. Danach cargo test.
+```
+
+**Performance:** ein Slice pro Session · Index: `@docs/optimization_plan.md`

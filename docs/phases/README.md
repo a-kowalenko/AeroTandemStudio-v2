@@ -12,4 +12,5 @@
 | `ARCHIVE.md` | Erledigte Phase-Specs (nicht standardmäßig anhängen) |
 | `REFERENCE.md` | Alte Plan-Anhänge (Mapping, Config-Skizze, Tests) |
 
-Index & Tracker: [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)
+Index & Tracker: [`../IMPLEMENTATION_PLAN.md`](../IMPLEMENTATION_PLAN.md)  
+Performance-OPT: [`../opt/README.md`](../opt/README.md)

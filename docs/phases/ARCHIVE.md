@@ -3323,7 +3323,7 @@ src/components/settings/tabs/EncodingTab.tsx
 src/lib/progressLabels.ts
 src/lib/bodyConcatMode.ts
 src/locales/de.json | en.json | es-MX.json
-docs/optimization_plan.md              # OPT-16
+docs/opt/ARCHIVE.md                    # OPT-16 (Index: docs/optimization_plan.md)
 ```
 
 **Phase 43 abgeschlossen** (2026-09-09).

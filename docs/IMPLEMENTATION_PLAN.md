@@ -23,7 +23,9 @@
 | `@docs/phases/open/50-outro.md` | Phase 50 (Outro) |
 | `@docs/phases/open/51-instructor-foto.md` | Phase 51 (Instructor-Foto) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
-| `@docs/optimization_plan.md` | Nur ein OPT-Paket |
+| `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
+| `@docs/optimization_plan.md` | OPT-Index / Tracker |
+| `@docs/opt/ARCHIVE.md` | Erledigte OPT-Specs |
 | `@docs/phases/ARCHIVE.md` | Regression / erledigte Spec |
 | `@docs/phases/REFERENCE.md` | Mapping / Config-Skizze / alte Plan-Anhänge |
 | `@docs/ARCHITECTURE.md` | Architektur |
@@ -156,7 +158,7 @@ Nur 51.
 ```
 
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
-**Performance (OPT-X):** nur ein Paket aus `@docs/optimization_plan.md`
+**Performance (OPT-21):** `@docs/opt/open/21-capcut-export.md` · Index `@docs/optimization_plan.md`
 
 ---
 
