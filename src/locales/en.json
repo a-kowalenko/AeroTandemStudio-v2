@@ -599,6 +599,7 @@
         "videos": "Videos",
         "photos": "Photos",
         "watermark": "Watermark",
+        "previewVideo": "Preview video",
         "crewConflict": "Crew conflict"
       }
     },
@@ -730,6 +731,18 @@
       "legacyMpegTs": "Legacy join (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
       "backupFinishing": "Finishing backup…",
+      "usbClearing": "Clearing USB camera…",
+      "copyVideos": "Copying videos…",
+      "analyseVideos": "Analyzing videos…",
+      "joinDone": "Join complete",
+      "photosTakenOver": "Photos taken over",
+      "takePreparedMedia": "Taking over prepared media…",
+      "watermarkVideoTakenOver": "Watermark video taken over",
+      "photoWatermarkTakenOver": "Photo watermark taken over",
+      "sortPhotos": "Sorting photos…",
+      "readPhotoMeta": "Reading photo metadata…",
+      "importVideos": "Importing {{count}} video(s)…",
+      "importPhotos": "Importing {{count}} photo(s)…",
       "reencodeWaiting": "Re-encoding — waiting for confirmation…"
     },
     "legend": {
@@ -1083,6 +1096,7 @@
       "applied": "Customer data applied",
       "source": "Source: {{name}}",
       "notFound": "No QR code found.",
+      "notFoundInNew": "No QR code found in the new files.",
       "scanFailed": "Scan failed",
       "recognized": "QR code recognized",
       "cleanup": {
@@ -1781,6 +1795,13 @@
     }
   },
   "qr": {
+    "spotlight": {
+      "frameAlt": "QR hit frame"
+    },
+    "hit": {
+      "customer": "Customer",
+      "booking": "Booking"
+    },
     "progress": {
       "pending": "QR search waiting…",
       "found": "QR code found",
@@ -1994,6 +2015,11 @@
     }
   },
   "photo": {
+    "crop": {
+      "aspect": {
+        "free": "Free"
+      }
+    },
     "edit": {
       "and": "and",
       "progress": {
@@ -2189,6 +2215,28 @@
       "filteredOnly": "No importable media (timelapse/proxies only).",
       "mtpEmpty": "No media found on camera.",
       "sdEmpty": "No media files found on SD card."
+    },
+    "messages": {
+      "backupAlreadyRunning": "Backup already running",
+      "noDrive": "No drive specified",
+      "usbImportDisabled": "USB camera import is disabled in settings.",
+      "clearOnlyAfterBackup": "SD clear is only allowed after a successful backup",
+      "notClearedNoFilesInBackup": "Not cleared (no files in backup).",
+      "clearReportedOkButNothingDeleted": "Camera clear reported success, but nothing was deleted.",
+      "usbReleased": "USB camera released. Please disconnect the cable; import again only after reconnecting.",
+      "directCopyDeprecated": "“Direct” copy strategy is obsolete — server mirror runs in the background (local first).",
+      "serverBackupUrlMissingShort": "Server backup URL missing",
+      "serverBackupUrlMissing": "Server backup URL missing (primary still succeeded) — set smb://… in the server profile.",
+      "invalidBackupFolder": "Invalid backup folder: {{detail}}",
+      "dcimNotFound": "DCIM not found: {{detail}}",
+      "noNewFilesToBackup": "No new files to back up. Skipped: {{detail}}",
+      "sdRemovedDuringBackup": "SD card was removed during backup: {{detail}}",
+      "serverBackupUrlInvalid": "Server backup URL invalid (primary still succeeded): {{detail}}",
+      "serverBackupFailedPrimaryOk": "Server backup failed (primary still succeeded): {{detail}}",
+      "cameraClearFailed": "Camera clear failed: {{detail}}",
+      "localBackupFolderMissing": "Local backup folder missing: {{detail}}",
+      "usbCleared": "USB camera cleared ({{count}} file(s)).",
+      "usbClearSoftFail": "Backup is saved. USB camera clear is not possible. Briefly unplug/replug the GoPro and import again, or delete the MicroSD in a reader / on the camera."
     },
     "monitor": {
       "secondaryBackupFailed": "Server backup (second path) failed.",

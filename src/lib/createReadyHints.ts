@@ -208,6 +208,11 @@ const HINT_META: Record<string, Omit<HintMeta, "label"> & { labelKey: string }> 
     kind: "missing",
     target: "watermark",
   },
+  "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.": {
+    labelKey: "create.ready.chips.previewVideo",
+    kind: "missing",
+    target: "videos",
+  },
   "Validierung fehlgeschlagen": {
     labelKey: "create.validation.validation",
     kind: "invalid",

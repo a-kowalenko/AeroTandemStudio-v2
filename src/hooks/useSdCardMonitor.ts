@@ -14,6 +14,7 @@ import {
   type WorkflowProgress,
   isMtpDrive,
 } from "../lib/sdCard";
+import { presentSdUserMessage } from "../lib/sdMessages";
 import { jobKindFromInsert } from "../lib/sdQueue";
 import {
   showSdQueueDroppedToast,
@@ -355,7 +356,8 @@ export function useSdCardMonitor(opts?: {
           setSecondaryBackup(p);
           if (p.state === "failed") {
             showWarning(
-              p.message?.trim() || tr("sd.monitor.secondaryBackupFailed"),
+              presentSdUserMessage(p.message) ||
+                tr("sd.monitor.secondaryBackupFailed"),
               tr("sd.monitor.secondaryBackupTitle"),
             );
           }

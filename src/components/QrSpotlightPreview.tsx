@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import type { QrPreview } from "@/lib/tauri";
 
@@ -18,6 +19,7 @@ export function QrSpotlightPreview({
   className,
   showSpotlight = true,
 }: Props) {
+  const { t } = useTranslation();
   const src = convertFileSrc(preview.path);
   const spot = preview.spotlight;
   const nativeAr =
@@ -49,7 +51,7 @@ export function QrSpotlightPreview({
         >
           <img
             src={src}
-            alt="QR-Treffer Frame"
+            alt={t("qr.spotlight.frameAlt")}
             className="absolute inset-0 h-full w-full object-fill"
             draggable={false}
           />

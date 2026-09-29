@@ -436,7 +436,7 @@ export function PhotoEditor({
                   : "text-muted hover:bg-black/5 hover:text-foreground dark:hover:bg-white/8",
               )}
             >
-              {p.label}
+              {p.labelKey ? t(p.labelKey) : p.label}
             </button>
           ))}
         </div>
@@ -668,6 +668,7 @@ function PendingCropPreview({
   rotateTransition?: boolean;
   onLoadSize: (w: number, h: number) => void;
 }) {
+  const { t } = useTranslation();
   const onLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     if (img.naturalWidth > 0 && img.naturalHeight > 0) {
@@ -698,7 +699,7 @@ function PendingCropPreview({
         >
           <img
             src={src}
-            alt="Foto"
+            alt={t("common.labels.photo")}
             className="block"
             style={mediaStyle}
             onLoad={onLoad}
@@ -728,7 +729,7 @@ function PendingCropPreview({
       >
         <img
           src={src}
-          alt="Foto"
+          alt={t("common.labels.photo")}
           className="absolute max-w-none object-fill"
           style={{
             width: `${100 / crop.w}%`,

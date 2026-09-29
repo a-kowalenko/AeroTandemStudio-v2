@@ -419,7 +419,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
         } catch {
           if (!cancelled) {
             setSrc(null);
-            setLoadError("Video-URL konnte nicht geladen werden.");
+            setLoadError(t("video.player.loadError"));
           }
         }
       }

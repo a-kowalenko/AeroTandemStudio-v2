@@ -74,6 +74,8 @@ const RAW_TO_I18N: Record<string, string> = {
   "Audio anhängen (Copy)…": "progress.status.attachAudio",
   "Intro+Body durchgängig kodieren (kundenkompatibel)":
     "progress.status.introVideoCompatible",
+  "Intro+Body durchgängig kodieren (max. Schnitt-Kompatibilität)":
+    "progress.status.introVideoCompatible",
   export: "progress.status.export",
   "export-done": "progress.status.exportDone",
   "preview-analyse": "progress.status.previewAnalyse",
@@ -90,6 +92,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "Erstelle Video…": "progress.createVideoStage",
   "Erstelle Wasserzeichen-Video…": "progress.rust.createWatermarkVideo",
   "Kopiere Fotos…": "progress.rust.copyPhotos",
+  "Kopiere Videos…": "progress.rust.copyVideos",
   "Sortiere Fotos…": "progress.rust.sortPhotos",
   "Lese Foto-Metadaten…": "progress.rust.readPhotoMeta",
   "Erstelle Foto-Wasserzeichen…": "progress.rust.createPhotoWatermark",
@@ -98,12 +101,19 @@ const RAW_TO_I18N: Record<string, string> = {
   "Vorgang fertig": "create.job.done",
   "Vorgang wird erstellt…": "create.job.creating",
   "Füge kodierte Clips zusammen…": "progress.rust.joinEncodedClips",
+  "Zusammenfügen fertig": "progress.rust.joinDone",
   "Analysiere Intro/Video…": "progress.rust.analyseIntroVideo",
+  "Analysiere Videos…": "progress.rust.analyseVideos",
   "Stream-Copy fehlgeschlagen — bitte Entscheidung…":
     "progress.rust.streamCopyFailedWaiting",
   "Exportiere Video ohne Intro…": "progress.rust.exportWithoutIntro",
   "SD wird bereinigt…": "progress.rust.sdClearing",
   "Backup wird abgeschlossen…": "progress.rust.backupFinishing",
+  "USB-Kamera wird bereinigt…": "progress.rust.usbClearing",
+  "Fotos übernommen": "progress.rust.photosTakenOver",
+  "Übernehme vorbereitete Medien…": "progress.rust.takePreparedMedia",
+  "Wasserzeichen-Video übernommen": "progress.rust.watermarkVideoTakenOver",
+  "Foto-Wasserzeichen übernommen": "progress.rust.photoWatermarkTakenOver",
 };
 
 export function createVideoStageLabel(): string {
@@ -266,6 +276,15 @@ export function resolveProgressLabel(
       current: compatiblePrep[1],
       total: compatiblePrep[2],
     });
+  }
+
+  const importVideos = /^Importiere (\d+) Video/i.exec(s);
+  if (importVideos) {
+    return tr("progress.rust.importVideos", { count: Number(importVideos[1]) });
+  }
+  const importPhotos = /^Importiere (\d+) Foto/i.exec(s);
+  if (importPhotos) {
+    return tr("progress.rust.importPhotos", { count: Number(importPhotos[1]) });
   }
 
   if (/[äöüÄÖÜß ]/.test(s) || s.includes("…") || s.includes(":")) {

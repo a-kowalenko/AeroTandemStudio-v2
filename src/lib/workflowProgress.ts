@@ -1,5 +1,6 @@
 import type { BackupProgress, WorkflowProgress } from "./sdCard";
 import { tr } from "@/i18n";
+import { resolveProgressLabel } from "./progressLabels";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -70,7 +71,8 @@ export function formatWorkflowDetail(p: WorkflowProgress): string | undefined {
 }
 
 export function formatWorkflowLabel(p: WorkflowProgress, fallback: string): string {
-  const base = (p.label || fallback).trim() || fallback;
+  const raw = (p.label || "").trim();
+  const base = raw ? resolveProgressLabel(raw, fallback) : fallback;
   if (p.file_total != null && p.file_total > 0 && p.file_index != null && p.file_index > 0) {
     return `${base} (${p.file_index}/${p.file_total})`;
   }

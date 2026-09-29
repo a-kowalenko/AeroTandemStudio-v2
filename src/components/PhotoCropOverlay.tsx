@@ -22,9 +22,11 @@ export type CropAspectPreset =
 
 export const CROP_ASPECT_PRESETS: {
   id: CropAspectPreset;
-  label: string;
+  /** i18n key; ratio ids use the literal as label. */
+  labelKey?: string;
+  label?: string;
 }[] = [
-  { id: "free", label: "Frei" },
+  { id: "free", labelKey: "photo.crop.aspect.free" },
   { id: "1:1", label: "1:1" },
   { id: "4:3", label: "4:3" },
   { id: "3:4", label: "3:4" },

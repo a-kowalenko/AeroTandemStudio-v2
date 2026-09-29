@@ -17,6 +17,7 @@ import {
   maybeRemoveQrPhoto,
   maybeRemoveQrVideo,
 } from "@/lib/qrCleanup";
+import { tr } from "@/i18n";
 import { presentQrHit } from "@/lib/qrPresent";
 import {
   PHOTO_THUMB_PREFETCH_BEFORE_QR_MS,
@@ -242,7 +243,7 @@ export async function runAutoQrAfterImport(
   return {
     ...emptyOutcome(),
     attempted: true,
-    message: "Kein QR-Code in den neuen Dateien gefunden.",
+    message: tr("app.qr.notFoundInNew"),
   };
 }
 

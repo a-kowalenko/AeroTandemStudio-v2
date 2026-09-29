@@ -5,6 +5,7 @@ import {
   Smartphone,
   Video,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 export type QrHitMedia = {
@@ -28,32 +29,6 @@ type MediaChip = {
   kind: "mode" | "product";
   icon: LucideIcon;
 };
-
-function mediaChips(media: QrHitMedia): MediaChip[] {
-  const chips: MediaChip[] = [];
-  if (media.mode === "handcam") {
-    chips.push({
-      key: "mode",
-      label: "Handcam",
-      kind: "mode",
-      icon: Smartphone,
-    });
-  } else if (media.mode === "outside") {
-    chips.push({
-      key: "mode",
-      label: "Outside",
-      kind: "mode",
-      icon: Mountain,
-    });
-  }
-  if (media.foto) {
-    chips.push({ key: "foto", label: "Foto", kind: "product", icon: Camera });
-  }
-  if (media.video) {
-    chips.push({ key: "video", label: "Video", kind: "product", icon: Video });
-  }
-  return chips;
-}
 
 function MediaChipView({ chip }: { chip: MediaChip }) {
   const Icon = chip.icon;
@@ -94,11 +69,44 @@ export function QrHitMeta({
   media,
   className,
 }: QrHitMetaProps) {
+  const { t } = useTranslation();
   const name = displayName?.trim() || "";
   const file = fileName?.trim() || "";
   const customer = customerHash?.trim() || "";
   const booking = bookingHash?.trim() || "";
-  const chips = media ? mediaChips(media) : [];
+
+  const chips: MediaChip[] = [];
+  if (media?.mode === "handcam") {
+    chips.push({
+      key: "mode",
+      label: t("form.media.handcam"),
+      kind: "mode",
+      icon: Smartphone,
+    });
+  } else if (media?.mode === "outside") {
+    chips.push({
+      key: "mode",
+      label: t("form.media.outside"),
+      kind: "mode",
+      icon: Mountain,
+    });
+  }
+  if (media?.foto) {
+    chips.push({
+      key: "foto",
+      label: t("common.labels.photo"),
+      kind: "product",
+      icon: Camera,
+    });
+  }
+  if (media?.video) {
+    chips.push({
+      key: "video",
+      label: t("common.labels.video"),
+      kind: "product",
+      icon: Video,
+    });
+  }
 
   if (!name && !file && !customer && !booking && chips.length === 0) {
     return null;
@@ -150,8 +158,12 @@ export function QrHitMeta({
             customer && booking ? "sm:grid-cols-2" : "grid-cols-1",
           )}
         >
-          {customer ? <HashRow label="Customer" value={customer} /> : null}
-          {booking ? <HashRow label="Booking" value={booking} /> : null}
+          {customer ? (
+            <HashRow label={t("qr.hit.customer")} value={customer} />
+          ) : null}
+          {booking ? (
+            <HashRow label={t("qr.hit.booking")} value={booking} />
+          ) : null}
         </dl>
       )}
     </div>

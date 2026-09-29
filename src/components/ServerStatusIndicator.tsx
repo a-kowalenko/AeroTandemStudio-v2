@@ -25,6 +25,7 @@ import {
   formatUploadProgressTooltip,
 } from "../lib/uploadProgress";
 import { cancelSecondaryBackup } from "../lib/tauri";
+import { presentSdUserMessage } from "../lib/sdMessages";
 import {
   CancelSecondaryBackupConfirmDialog,
   type CancelSecondaryBackupConfirmChoice,
@@ -474,7 +475,11 @@ export function ServerStatusIndicator({
           compact={backupCompact}
           state={secondaryBackup?.state ?? ""}
           filesLabel={filesLabel}
-          message={secondaryBackup?.message ?? null}
+          message={
+            secondaryBackup?.message
+              ? presentSdUserMessage(secondaryBackup.message)
+              : null
+          }
           parallelUploadPercent={
             smbPhase === "uploading"
               ? (uploadProgress?.percent ?? 0)

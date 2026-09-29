@@ -2123,7 +2123,7 @@ function VorgaengePanel({
                         !isAmsCancelled(baseView)
                           ? {
                               errorCode: "cancelled",
-                              errorMessage: "Abgebrochen",
+                              errorMessage: tr("history.upload.cancelled"),
                             }
                           : {}),
                       }

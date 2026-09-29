@@ -599,6 +599,7 @@
         "videos": "Videos",
         "photos": "Fotos",
         "watermark": "Wasserzeichen",
+        "previewVideo": "Vorschau-Video",
         "crewConflict": "Crew-Konflikt"
       }
     },
@@ -730,6 +731,18 @@
       "legacyMpegTs": "Legacy-Zusammenfügen (MPEG-TS)…",
       "sdClearing": "SD wird bereinigt…",
       "backupFinishing": "Backup wird abgeschlossen…",
+      "usbClearing": "USB-Kamera wird bereinigt…",
+      "copyVideos": "Kopiere Videos…",
+      "analyseVideos": "Analysiere Videos…",
+      "joinDone": "Zusammenfügen fertig",
+      "photosTakenOver": "Fotos übernommen",
+      "takePreparedMedia": "Übernehme vorbereitete Medien…",
+      "watermarkVideoTakenOver": "Wasserzeichen-Video übernommen",
+      "photoWatermarkTakenOver": "Foto-Wasserzeichen übernommen",
+      "sortPhotos": "Sortiere Fotos…",
+      "readPhotoMeta": "Lese Foto-Metadaten…",
+      "importVideos": "Importiere {{count}} Video(s)…",
+      "importPhotos": "Importiere {{count}} Foto(s)…",
       "reencodeWaiting": "Neu-Kodierung — warte auf Bestätigung…"
     },
     "legend": {
@@ -1083,6 +1096,7 @@
       "applied": "Kundendaten übernommen",
       "source": "Quelle: {{name}}",
       "notFound": "Kein QR-Code gefunden.",
+      "notFoundInNew": "Kein QR-Code in den neuen Dateien gefunden.",
       "scanFailed": "Scan fehlgeschlagen",
       "recognized": "QR-Code erkannt",
       "cleanup": {
@@ -1781,6 +1795,13 @@
     }
   },
   "qr": {
+    "spotlight": {
+      "frameAlt": "QR-Treffer Frame"
+    },
+    "hit": {
+      "customer": "Kunde",
+      "booking": "Buchung"
+    },
     "progress": {
       "pending": "QR-Code-Suche wartet…",
       "found": "QR-Code gefunden",
@@ -1994,6 +2015,11 @@
     }
   },
   "photo": {
+    "crop": {
+      "aspect": {
+        "free": "Frei"
+      }
+    },
     "edit": {
       "and": "und",
       "progress": {
@@ -2189,6 +2215,28 @@
       "filteredOnly": "Keine importierbaren Medien (nur Timelapse/Proxies).",
       "mtpEmpty": "Keine Medien auf der Kamera gefunden.",
       "sdEmpty": "Keine Mediendateien auf der SD-Karte gefunden."
+    },
+    "messages": {
+      "backupAlreadyRunning": "Backup läuft bereits",
+      "noDrive": "Kein Laufwerk angegeben",
+      "usbImportDisabled": "USB-Kamera-Import ist in den Einstellungen deaktiviert.",
+      "clearOnlyAfterBackup": "SD-Bereinigung ist nur nach erfolgreichem Backup erlaubt",
+      "notClearedNoFilesInBackup": "Nicht bereinigt (keine Dateien im Backup).",
+      "clearReportedOkButNothingDeleted": "Kamera-Bereinigung meldete Erfolg, aber es wurde nichts gelöscht.",
+      "usbReleased": "USB-Kamera freigegeben. Bitte Kabel trennen; erst nach erneutem Anstecken wieder importieren.",
+      "directCopyDeprecated": "Kopierstrategie „Direkt“ ist veraltet — Server-Spiegel läuft im Hintergrund (lokal zuerst).",
+      "serverBackupUrlMissingShort": "Server-Backup-URL fehlt",
+      "serverBackupUrlMissing": "Server-Backup-URL fehlt (Primär bleibt erfolgreich) — bitte smb://… im Server-Profil setzen.",
+      "invalidBackupFolder": "Ungültiger Backup-Ordner: {{detail}}",
+      "dcimNotFound": "DCIM nicht gefunden: {{detail}}",
+      "noNewFilesToBackup": "Keine neuen Dateien zum Sichern. Übersprungen: {{detail}}",
+      "sdRemovedDuringBackup": "SD-Karte wurde während des Backups entfernt: {{detail}}",
+      "serverBackupUrlInvalid": "Server-Backup-URL ungültig (Primär bleibt erfolgreich): {{detail}}",
+      "serverBackupFailedPrimaryOk": "Server-Backup fehlgeschlagen (Primär bleibt erfolgreich): {{detail}}",
+      "cameraClearFailed": "Kamera-Bereinigung fehlgeschlagen: {{detail}}",
+      "localBackupFolderMissing": "Lokaler Backup-Ordner fehlt: {{detail}}",
+      "usbCleared": "USB-Kamera bereinigt ({{count}} Datei(en)).",
+      "usbClearSoftFail": "Backup ist gespeichert. Kamera-Bereinigung über USB nicht möglich. GoPro kurz ab/an stecken und erneut importieren, oder MicroSD im Kartenleser / an der Kamera löschen."
     },
     "monitor": {
       "secondaryBackupFailed": "Server-Backup (zweiter Pfad) fehlgeschlagen.",

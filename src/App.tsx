@@ -99,6 +99,7 @@ import {
   scanSdDrives,
   type SdWorkflowActions,
 } from "./lib/sdCard";
+import { presentSdUserMessage } from "./lib/sdMessages";
 import {
   resolveSdEjectDetail,
   showSdEjectToast,
@@ -616,9 +617,9 @@ function App() {
           replaceSelectorCatalog(drive, [], 0, false, "no_media");
           return;
         }
-        showWarning(msg, t("app.sd.title"));
+        showWarning(presentSdUserMessage(msg, { drive }), t("app.sd.title"));
       } else {
-        showError(msg);
+        showError(presentSdUserMessage(msg, { drive }));
         if (streaming) closeSelector();
       }
       scheduleSdQueueDrain();
@@ -916,15 +917,16 @@ function App() {
             showWarning(t("app.sd.backupCancelled"), t("app.sd.backupLabel"));
             return true;
           }
-          const failMsg =
-            (res.error_message || t("app.sd.backupFailed")) +
+          const failWithClear =
+            (presentSdUserMessage(res.error_message, { drive }) ||
+              t("app.sd.backupFailed")) +
             (actions.clear
               ? `\n\n${t("app.sd.notClearedNoBackup")}`
               : "");
           if (isEmptyCatalogMessage(res.error_message || "")) {
-            showWarning(failMsg, t("app.sd.title"));
+            showWarning(failWithClear, t("app.sd.title"));
           } else {
-            showError(failMsg);
+            showError(failWithClear);
           }
           return true;
         }
@@ -936,7 +938,9 @@ function App() {
               ? t("app.sd.secondPathBackground")
               : "",
           res.skipped_count ? t("app.sd.skippedCount", { count: res.skipped_count }) : "",
-          res.secondary_warning?.trim() ?? "",
+          res.secondary_warning
+            ? presentSdUserMessage(res.secondary_warning, { drive })
+            : "",
         ]
           .map((s) => s.trim())
           .filter(Boolean);
@@ -959,7 +963,8 @@ function App() {
               summary: clearWarn
                 ? t("app.sd.clearFailed")
                 : t("app.sd.notCleared"),
-              detail: res.clear_warning?.trim() || undefined,
+              detail:
+                presentSdUserMessage(res.clear_warning, { drive }) || undefined,
             });
           } else {
             statusActions.push({
@@ -1117,9 +1122,9 @@ function App() {
     } catch (e) {
       const msg = String(e);
       if (isEmptyCatalogMessage(msg)) {
-        showWarning(msg, t("app.sd.title"));
+        showWarning(presentSdUserMessage(msg, { drive }), t("app.sd.title"));
       } else {
-        showError(msg);
+        showError(presentSdUserMessage(msg, { drive }));
       }
       scheduleSdQueueDrain();
     } finally {

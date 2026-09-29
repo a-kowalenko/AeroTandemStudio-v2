@@ -20,6 +20,7 @@ import {
   presentServerConnectionError,
   serverStatusErrorTooltip,
 } from "./serverStatus";
+import { presentSdUserMessage } from "./sdMessages";
 
 export type ConnectionDot = "ok" | "error" | "checking" | "idle";
 
@@ -245,7 +246,7 @@ export function presentHeaderConnection(input: {
     percentText = null;
     toneClass = "text-destructive";
     liveMessage = backup?.message?.trim()
-      ? backup.message.trim()
+      ? presentSdUserMessage(backup.message)
       : tr("header.connection.chipServerBackupFailed");
   } else if (uploading) {
     const pct = input.uploadPercent ?? 0;
@@ -363,7 +364,8 @@ export function presentHeaderConnection(input: {
     lines.push(tr("header.connection.chipServerBackupCancelled"));
   } else if (backupFailed) {
     const failMsg =
-      backup?.message?.trim() || tr("header.connection.chipServerBackupFailed");
+      presentSdUserMessage(backup?.message) ||
+      tr("header.connection.chipServerBackupFailed");
     lines.push(failMsg);
   } else if (uploading && input.uploadDetail) {
     lines.push(input.uploadDetail);

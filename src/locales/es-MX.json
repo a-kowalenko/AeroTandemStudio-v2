@@ -599,6 +599,7 @@
         "videos": "Videos",
         "photos": "Fotos",
         "watermark": "Marca de agua",
+        "previewVideo": "Video de vista previa",
         "crewConflict": "Conflicto de equipo"
       }
     },
@@ -730,6 +731,18 @@
       "legacyMpegTs": "Unión legacy (MPEG-TS)…",
       "sdClearing": "Limpiando SD…",
       "backupFinishing": "Finalizando respaldo…",
+      "usbClearing": "Limpiando cámara USB…",
+      "copyVideos": "Copiando videos…",
+      "analyseVideos": "Analizando videos…",
+      "joinDone": "Unión lista",
+      "photosTakenOver": "Fotos adoptadas",
+      "takePreparedMedia": "Adoptando medios preparados…",
+      "watermarkVideoTakenOver": "Video con marca de agua adoptado",
+      "photoWatermarkTakenOver": "Marca de agua de foto adoptada",
+      "sortPhotos": "Ordenando fotos…",
+      "readPhotoMeta": "Leyendo metadatos de fotos…",
+      "importVideos": "Importando {{count}} video(s)…",
+      "importPhotos": "Importando {{count}} foto(s)…",
       "reencodeWaiting": "Recodificación — esperando confirmación…"
     },
     "legend": {
@@ -1083,6 +1096,7 @@
       "applied": "Datos del cliente aplicados",
       "source": "Origen: {{name}}",
       "notFound": "No se encontró código QR.",
+      "notFoundInNew": "No se encontró código QR en los archivos nuevos.",
       "scanFailed": "El escaneo falló",
       "recognized": "Código QR reconocido",
       "cleanup": {
@@ -1781,6 +1795,13 @@
     }
   },
   "qr": {
+    "spotlight": {
+      "frameAlt": "Fotograma del código QR"
+    },
+    "hit": {
+      "customer": "Cliente",
+      "booking": "Reserva"
+    },
     "progress": {
       "pending": "Esperando búsqueda QR…",
       "found": "Código QR encontrado",
@@ -1994,6 +2015,11 @@
     }
   },
   "photo": {
+    "crop": {
+      "aspect": {
+        "free": "Libre"
+      }
+    },
     "edit": {
       "and": "y",
       "progress": {
@@ -2189,6 +2215,28 @@
       "filteredOnly": "No hay medios importables (solo timelapse/proxies).",
       "mtpEmpty": "No se encontraron medios en la cámara.",
       "sdEmpty": "No se encontraron archivos de medios en la tarjeta SD."
+    },
+    "messages": {
+      "backupAlreadyRunning": "El respaldo ya está en curso",
+      "noDrive": "No se indicó ninguna unidad",
+      "usbImportDisabled": "La importación por cámara USB está desactivada en la configuración.",
+      "clearOnlyAfterBackup": "La limpieza de SD solo está permitida tras un respaldo exitoso",
+      "notClearedNoFilesInBackup": "No se limpió (no hay archivos en el respaldo).",
+      "clearReportedOkButNothingDeleted": "La limpieza de la cámara reportó éxito, pero no se eliminó nada.",
+      "usbReleased": "Cámara USB liberada. Desconecte el cable; importe de nuevo solo tras volver a conectarla.",
+      "directCopyDeprecated": "La estrategia de copia «Directa» está obsoleta — el espejo del servidor corre en segundo plano (local primero).",
+      "serverBackupUrlMissingShort": "Falta la URL de respaldo en servidor",
+      "serverBackupUrlMissing": "Falta la URL de respaldo en servidor (el primario sigue OK) — configure smb://… en el perfil de servidor.",
+      "invalidBackupFolder": "Carpeta de respaldo no válida: {{detail}}",
+      "dcimNotFound": "DCIM no encontrado: {{detail}}",
+      "noNewFilesToBackup": "No hay archivos nuevos para respaldar. Omitidos: {{detail}}",
+      "sdRemovedDuringBackup": "Se extrajo la tarjeta SD durante el respaldo: {{detail}}",
+      "serverBackupUrlInvalid": "URL de respaldo en servidor no válida (el primario sigue OK): {{detail}}",
+      "serverBackupFailedPrimaryOk": "Falló el respaldo en servidor (el primario sigue OK): {{detail}}",
+      "cameraClearFailed": "Falló la limpieza de la cámara: {{detail}}",
+      "localBackupFolderMissing": "Falta la carpeta de respaldo local: {{detail}}",
+      "usbCleared": "Cámara USB limpiada ({{count}} archivo(s)).",
+      "usbClearSoftFail": "El respaldo está guardado. No es posible limpiar la cámara por USB. Desconecte y vuelva a conectar la GoPro e importe de nuevo, o borre la MicroSD en un lector / en la cámara."
     },
     "monitor": {
       "secondaryBackupFailed": "Respaldo en servidor (segunda ruta) falló.",
