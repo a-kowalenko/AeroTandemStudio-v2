@@ -54,10 +54,7 @@ fn write_marker_at(dir: &Path, marker: &PostUpdateMarker) -> Result<(), String> 
 /// Write marker before `update.install()` — survives process exit on restart.
 pub fn mark_post_update_restart(version: &str) -> Result<(), String> {
     let path = focus_after_update_marker_path()?;
-    mark_post_update_restart_at(
-        path.parent().unwrap_or(Path::new("")),
-        version.trim(),
-    )
+    mark_post_update_restart_at(path.parent().unwrap_or(Path::new("")), version.trim())
 }
 
 fn mark_post_update_restart_at(dir: &Path, version: &str) -> Result<(), String> {

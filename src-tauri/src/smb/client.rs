@@ -28,14 +28,14 @@ use super::quiet_budget::{
 };
 use super::reconnect::{
     self, is_recently_bridging, note_smb2_bridge, probe_local, start_prefer_local_promote,
-    LOCAL_PROBE_TIMEOUT,
+    ProbeOutcome, LOCAL_PROBE_TIMEOUT,
 };
 use super::session_pool;
 use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
     staging_prefix,
 };
-use super::windows_mapping::{lookup_mapped_local_path, unc_from_smb_parts};
+use super::windows_mapping::{lookup_mapped_local, unc_from_smb_parts};
 
 const CHUNK_SIZE: usize = 1024 * 1024;
 /// Min interval between upload progress UI events (local + SMB).
@@ -64,7 +64,9 @@ pub struct NormalizedServerPath {
 /// Parsed destination for upload / connection tests.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ServerTarget {
-    Local { path: PathBuf },
+    Local {
+        path: PathBuf,
+    },
     Smb {
         host: String,
         port: u16,
@@ -149,9 +151,8 @@ pub fn normalize_server_path(server_url: &str) -> Option<NormalizedServerPath> {
         return None;
     }
 
-    let is_network = was_smb_url
-        || without_scheme.starts_with(r"\\")
-        || without_scheme.starts_with("//");
+    let is_network =
+        was_smb_url || without_scheme.starts_with(r"\\") || without_scheme.starts_with("//");
 
     if is_network {
         let mut body = without_scheme
@@ -246,6 +247,30 @@ pub fn resolve_server_target(
     Ok(apply_os_smb_mapping(target, auto_mount))
 }
 
+/// OPT-23B: WNet / mount / timed probe must not run on a Tokio worker.
+async fn resolve_server_target_blocking(
+    server_url: &str,
+    auto_mount_enabled: bool,
+    login: &str,
+    password: &str,
+) -> Result<ServerTarget, String> {
+    let server_url = server_url.to_string();
+    let login = login.to_string();
+    let password = password.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        resolve_server_target(
+            &server_url,
+            Some(AutoMountParams {
+                enabled: auto_mount_enabled,
+                login: &login,
+                password: &password,
+            }),
+        )
+    })
+    .await
+    .map_err(|e| format!("Server-Pfad konnte nicht aufgelöst werden: {e}"))?
+}
+
 fn apply_os_smb_mapping(
     target: ServerTarget,
     auto_mount: Option<AutoMountParams<'_>>,
@@ -262,25 +287,27 @@ fn apply_os_smb_mapping(
 
     let config_unc = unc_from_smb_parts(host, share, subpath);
 
-    // OPT-17/18 + OPT-20B: map listed → timed Local probe; asleep → smb2 bridge
-    // (do not auto-mount a second letter for the same UNC).
-    if let Some(path) = lookup_mapped_local_path(&config_unc) {
-        let outcome = probe_local(&path, LOCAL_PROBE_TIMEOUT);
-        if outcome.is_reachable() {
-            return local_via_os_map(path, &config_unc);
+    // OPT-17/18 + OPT-20B + OPT-23B: probe the mapping root. A missing or
+    // denied child stays Local (upload creates the folder / health explains
+    // the denial). Asleep root → smb2 bridge. Do not auto-mount a second
+    // letter for the same UNC.
+    if let Some(mapped) = lookup_mapped_local(&config_unc) {
+        let outcome = reconnect::classify_mapped_path(&mapped.root, &mapped.full);
+        if outcome.prefers_local() {
+            return local_via_os_map(mapped.full, &config_unc, outcome);
         }
-        if matches!(outcome, reconnect::ProbeOutcome::TimedOut) {
-            reconnect::note_map_needs_reconnect(&config_unc);
+        if matches!(outcome, ProbeOutcome::TimedOut) {
+            reconnect::note_map_needs_reconnect(&config_unc, &mapped.root);
         }
-        note_smb2_bridge(&config_unc, &path);
-        start_prefer_local_promote(config_unc, path);
+        note_smb2_bridge(&config_unc, &mapped.full);
+        start_prefer_local_promote(config_unc, mapped.full);
         return target;
     }
 
     if let Some(params) = auto_mount.filter(|p| p.enabled) {
         match ensure_os_smb_mount(host, share, subpath, params) {
             Ok(Some(path)) => {
-                return local_via_os_map(path, &config_unc);
+                return local_via_os_map(path, &config_unc, ProbeOutcome::Reachable);
             }
             Ok(None) => {}
             Err(e) => {
@@ -295,7 +322,7 @@ fn apply_os_smb_mapping(
     target
 }
 
-fn local_via_os_map(path: PathBuf, config_unc: &str) -> ServerTarget {
+fn local_via_os_map(path: PathBuf, config_unc: &str, outcome: ProbeOutcome) -> ServerTarget {
     let display = path
         .to_string_lossy()
         .trim_end_matches(['\\', '/'])
@@ -305,8 +332,53 @@ fn local_via_os_map(path: PathBuf, config_unc: &str) -> ServerTarget {
     } else {
         "OS mount"
     };
-    crate::storage::logging::info("smb", format!("SMB via {via} {display} ({config_unc})"));
+    let note = match outcome {
+        ProbeOutcome::Missing => " — Zielordner fehlt, wird angelegt",
+        ProbeOutcome::Denied => " — Zugriff verweigert",
+        _ => "",
+    };
+    crate::storage::logging::info(
+        "smb",
+        format!("SMB via {via} {display} ({config_unc}){note}"),
+    );
     ServerTarget::Local { path }
+}
+
+fn local_health_result(path: &Path, outcome: ProbeOutcome, quiet: bool) -> ConnectionTestResult {
+    if outcome.is_reachable() {
+        ConnectionTestResult {
+            ok: true,
+            message: format!("Lokaler Pfad erreichbar: {}", path.display()),
+            soft_hold: false,
+        }
+    } else if matches!(outcome, ProbeOutcome::Missing) {
+        ConnectionTestResult {
+            ok: true,
+            message: format!("Zielordner fehlt, wird angelegt: {}", path.display()),
+            soft_hold: false,
+        }
+    } else if matches!(outcome, ProbeOutcome::Denied) {
+        ConnectionTestResult {
+            ok: false,
+            message: format!("Zugriff verweigert: {}", path.display()),
+            soft_hold: false,
+        }
+    } else if quiet {
+        ConnectionTestResult {
+            ok: false,
+            message: format!(
+                "Lokaler Pfad noch nicht bereit (Reconnect…): {}",
+                path.display()
+            ),
+            soft_hold: true,
+        }
+    } else {
+        ConnectionTestResult {
+            ok: false,
+            message: format!("Lokaler Pfad nicht gefunden: {}", path.display()),
+            soft_hold: false,
+        }
+    }
 }
 
 fn split_host_port(host: &str) -> (String, u16) {
@@ -376,17 +448,25 @@ fn smb_addr(host: &str, port: u16) -> String {
     }
 }
 
+/// SessionSetup budget for Upload and Staging-GC (OPT-23A A6).
+pub(crate) const SMB_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Health SessionSetup budget — a dead NAS must not stall the check.
+pub(crate) const SMB_HEALTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// Loud health when a transfer still holds the host after the lock wait (A4).
+const LOUD_HOST_BUSY_MESSAGE: &str = "Übertragung aktiv — Verbindung besteht";
+
 pub(crate) async fn connect_smb(
     host: &str,
     port: u16,
     login: &str,
     password: &str,
+    timeout: Duration,
 ) -> Result<SmbClient, String> {
     let (username, password, domain) = parse_credentials(login, password);
     let addr = smb_addr(host, port);
     SmbClient::connect(ClientConfig {
         addr,
-        timeout: Duration::from_secs(10),
+        timeout,
         username,
         password,
         domain,
@@ -433,8 +513,11 @@ fn display_remote(target: &ServerTarget, relative: &str) -> String {
 /// Test reachability of the configured server (local path or SMB share).
 ///
 /// `quiet`: Quiet-Poll mode (OPT-20B / OPT-22A) — short Local probe; skip smb2
-/// SessionSetup while Prefer-Local bridging or Quiet backoff is active
-/// (`soft_hold` keeps the last UI status). Loud checks always connect.
+/// SessionSetup while Prefer-Local bridging, Quiet backoff, or a writing
+/// pipeline (Upload / Backup / GC) holds the host (`soft_hold` keeps the last
+/// UI status). A loud check waits up to 3s; if the pipeline is still running
+/// it reports success without SessionSetup. A pooled health session is
+/// disconnected afterwards (not returned to the pool).
 pub async fn test_connection(
     server_url: &str,
     login: &str,
@@ -463,50 +546,25 @@ pub async fn test_connection(
         ServerTarget::Local { .. } => None,
     };
 
-    let target = match resolve_server_target(
-        server_url,
-        Some(AutoMountParams {
-            enabled: auto_mount_enabled,
-            login,
-            password,
-        }),
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            return ConnectionTestResult {
-                ok: false,
-                message: e,
-                soft_hold: false,
+    let target =
+        match resolve_server_target_blocking(server_url, auto_mount_enabled, login, password).await
+        {
+            Ok(t) => t,
+            Err(e) => {
+                return ConnectionTestResult {
+                    ok: false,
+                    message: e,
+                    soft_hold: false,
+                }
             }
-        }
-    };
+        };
 
     match target {
         ServerTarget::Local { path } => {
-            // OPT-20B B8 / OPT-22A A1: Local path — timed probe only, never smb2.
+            // OPT-20B B8 / OPT-22A A1 / OPT-23B: timed probe only, never smb2.
+            // Missing/Denied were cached by the mapping classifier moments ago.
             let outcome = probe_local(&path, LOCAL_PROBE_TIMEOUT);
-            if outcome.is_reachable() {
-                ConnectionTestResult {
-                    ok: true,
-                    message: format!("Lokaler Pfad erreichbar: {}", path.display()),
-                    soft_hold: false,
-                }
-            } else if quiet {
-                ConnectionTestResult {
-                    ok: false,
-                    message: format!(
-                        "Lokaler Pfad noch nicht bereit (Reconnect…): {}",
-                        path.display()
-                    ),
-                    soft_hold: true,
-                }
-            } else {
-                ConnectionTestResult {
-                    ok: false,
-                    message: format!("Lokaler Pfad nicht gefunden: {}", path.display()),
-                    soft_hold: false,
-                }
-            }
+            local_health_result(&path, outcome, quiet)
         }
         ServerTarget::Smb {
             host,
@@ -529,25 +587,23 @@ pub async fn test_connection(
                 }
             }
 
-            let result = test_smb_connection(&host, port, &share, &subpath, login, password).await;
+            let result =
+                test_smb_connection(&host, port, &share, &subpath, login, password, quiet).await;
             if let Some(unc) = bridge_unc.as_ref() {
                 if result.ok {
                     // Loud + Quiet OK → Quiet backs off (A3).
                     note_quiet_smb2_ok(unc);
-                } else if quiet {
+                } else if !result.soft_hold && quiet {
                     note_quiet_smb2_fail(unc, &result.message);
-                } else if quiet_budget::is_session_rejected(&result.message) {
+                } else if !result.soft_hold && quiet_budget::is_session_rejected(&result.message) {
                     // Loud reject still cools Quiet so Visibility-Kick cannot storm.
+                    // soft_hold is a skipped SessionSetup, not a failure.
                     note_quiet_smb2_fail(unc, &result.message);
                 }
             }
             if result.ok {
                 result
-            } else if quiet
-                && bridge_unc
-                    .as_ref()
-                    .is_some_and(|u| is_recently_bridging(u))
-            {
+            } else if quiet && bridge_unc.as_ref().is_some_and(|u| is_recently_bridging(u)) {
                 ConnectionTestResult {
                     ok: false,
                     message: format!("{} (Reconnect…)", result.message),
@@ -567,25 +623,120 @@ async fn test_smb_connection(
     subpath: &str,
     login: &str,
     password: &str,
+    quiet: bool,
 ) -> ConnectionTestResult {
-    // OPT-22B: reuse pooled smb2 session (Health path).
-    let mut pooled = match session_pool::acquire(host, port, share, login, password).await {
-        Ok(p) => p,
-        Err(e) => {
+    // Hold the host mutex for the whole check so Health cannot SessionSetup
+    // beside Upload, SD-Backup, or GC (same host, any share).
+    let _host_guard = match host_lock::gate_health_connect(host, quiet).await {
+        host_lock::HealthConnectGate::Ready(guard) => guard,
+        host_lock::HealthConnectGate::QuietBusy => {
+            let unc = unc_from_smb_parts(host, share, subpath);
+            let reason = quiet_budget::QuietSkipReason::HostBusy;
+            log_quiet_skip(&unc, reason);
+            let (ok, message, soft_hold) = quiet_skip_result(reason);
             return ConnectionTestResult {
-                ok: false,
-                message: e,
+                ok,
+                message,
+                soft_hold,
+            };
+        }
+        host_lock::HealthConnectGate::LoudBusy => {
+            // A4: transfer still running — connection exists, no SessionSetup.
+            return ConnectionTestResult {
+                ok: true,
+                message: LOUD_HOST_BUSY_MESSAGE.to_string(),
                 soft_hold: false,
             };
         }
     };
 
+    // OPT-22B / OPT-23A: one pooled session. Success disconnects (A1) so Health
+    // does not keep a host slot. A dead pool hit retries once (A5); only that
+    // second failure is a Quiet-backoff.
+    let mut already_retried = false;
+    loop {
+        let mut pooled = match session_pool::acquire(
+            host,
+            port,
+            share,
+            login,
+            password,
+            SMB_HEALTH_CONNECT_TIMEOUT,
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                return ConnectionTestResult {
+                    ok: false,
+                    message: e,
+                    soft_hold: false,
+                };
+            }
+        };
+
+        let was_hit = pooled.was_hit();
+        let result = probe_pooled_share(&mut pooled, host, share, subpath).await;
+        match health_probe_disposition(result.ok, was_hit, already_retried) {
+            HealthProbeDisposition::Discard => {
+                pooled.discard().await;
+                return result;
+            }
+            HealthProbeDisposition::RetryFresh => {
+                // Stale hit: drop the dead session without Quiet-backoff.
+                crate::storage::logging::info(
+                    "smb",
+                    format!("SMB pool stale hit — reconnect once ({host})"),
+                );
+                pooled.discard().await;
+                already_retried = true;
+            }
+            HealthProbeDisposition::Fail => {
+                session_pool::discard_on_error(pooled, &result.message).await;
+                return result;
+            }
+        }
+    }
+}
+
+/// What to do with a health probe against a pooled session (OPT-23A A1/A5).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HealthProbeDisposition {
+    /// Check succeeded — disconnect, do not park in the pool.
+    Discard,
+    /// Error immediately after a pool hit — drop it and connect once more.
+    /// This attempt does not count as Quiet-backoff.
+    RetryFresh,
+    /// Miss, or the fresh retry failed — discard and count Quiet-backoff.
+    Fail,
+}
+
+fn health_probe_disposition(
+    ok: bool,
+    was_hit: bool,
+    already_retried: bool,
+) -> HealthProbeDisposition {
+    if ok {
+        HealthProbeDisposition::Discard
+    } else if was_hit && !already_retried {
+        HealthProbeDisposition::RetryFresh
+    } else {
+        HealthProbeDisposition::Fail
+    }
+}
+
+async fn probe_pooled_share(
+    pooled: &mut session_pool::PooledSession,
+    host: &str,
+    share: &str,
+    subpath: &str,
+) -> ConnectionTestResult {
     let list_path = if subpath.is_empty() { "" } else { subpath };
     let list_result = {
         let (client, tree) = pooled.parts_mut();
         client.list_directory(tree, list_path).await
     };
-    let result = match list_result {
+    match list_result {
         Ok(_) => ConnectionTestResult {
             ok: true,
             message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
@@ -617,14 +768,7 @@ async fn test_smb_connection(
                 }
             }
         }
-    };
-
-    if result.ok {
-        pooled.release().await;
-    } else {
-        session_pool::discard_on_error(pooled, &result.message).await;
     }
-    result
 }
 
 fn map_connect_error(err: &str) -> String {
@@ -701,9 +845,7 @@ pub(crate) struct FileEntry {
 
 fn collect_upload_files(local: &Path) -> Result<Vec<FileEntry>, String> {
     if local.is_file() {
-        let size = fs::metadata(local)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let size = fs::metadata(local).map(|m| m.len()).unwrap_or(0);
         let name = local
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -774,9 +916,7 @@ impl<F: FnMut(UploadProgress)> UploadProgressGate<F> {
         let now = Instant::now();
         Self {
             cb,
-            last_emit: now
-                .checked_sub(UPLOAD_PROGRESS_MIN_INTERVAL)
-                .unwrap_or(now),
+            last_emit: now.checked_sub(UPLOAD_PROGRESS_MIN_INTERVAL).unwrap_or(now),
             last_percent: -1.0,
             last_file: 0,
             started: now,
@@ -864,24 +1004,12 @@ where
         return cancelled;
     }
 
-    let target = match resolve_server_target(
-        server_url,
-        Some(AutoMountParams {
-            enabled: auto_mount_enabled,
-            login,
-            password,
-        }),
-    ) {
-        Ok(t) => t,
-        Err(e) => {
-            return UploadResult {
-                success: false,
-                message: e,
-                remote_path: String::new(),
-                staging_root: None,
-            }
-        }
-    };
+    let target =
+        match resolve_server_target_blocking(server_url, auto_mount_enabled, login, password).await
+        {
+            Ok(t) => t,
+            Err(e) => return UploadResult::fail(e),
+        };
 
     let files = match collect_upload_files(local_path) {
         Ok(f) => f,
@@ -905,7 +1033,14 @@ where
             let dest = path.clone();
             let files = files.to_vec();
             match tauri::async_runtime::spawn_blocking(move || {
-                upload_local(&dest, &files, total_files, total_bytes, cancel, &mut progress)
+                upload_local(
+                    &dest,
+                    &files,
+                    total_files,
+                    total_bytes,
+                    cancel,
+                    &mut progress,
+                )
             })
             .await
             {
@@ -918,7 +1053,7 @@ where
                         format!("Upload fehlgeschlagen: {e}")
                     },
                     remote_path: String::new(),
-                staging_root: None,
+                    staging_root: None,
                 },
             }
         }
@@ -1097,10 +1232,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
     let final_job = dest_root.join(&job_name);
     if final_job.exists() {
         cleanup_local_staging(&staging_base);
-        return UploadResult::fail(format!(
-            "Ziel existiert bereits: {}",
-            final_job.display()
-        ));
+        return UploadResult::fail(format!("Ziel existiert bereits: {}", final_job.display()));
     }
     if let Err(e) = fs::rename(&staged_job, &final_job) {
         cleanup_local_staging(&staging_base);
@@ -1142,8 +1274,7 @@ async fn release_smb_session_for_cleanup<F>(
 where
     F: FnMut(UploadProgress) + Send + 'static,
 {
-    let cancelled =
-        result.message.trim() == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
+    let cancelled = result.message.trim() == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
     drop(progress);
 
     // Aborted JoinSet tasks may still hold Connection Arc clones briefly.
@@ -1214,10 +1345,7 @@ fn schedule_staging_gc(
             {
                 Ok(()) => {
                     dequeue_staging_gc(&host, port, &share, &staging_root);
-                    crate::storage::logging::info(
-                        "smb",
-                        format!("Staging-GC OK: {staging_root}"),
-                    );
+                    crate::storage::logging::info("smb", format!("Staging-GC OK: {staging_root}"));
                     return;
                 }
                 Err(e) => {
@@ -1229,10 +1357,7 @@ fn schedule_staging_gc(
                     record_gc_attempt(&host, port, &share, &staging_root, false);
                     crate::storage::logging::warn(
                         "smb",
-                        format!(
-                            "Staging-GC später (.ats_staging…): {}",
-                            shorten_smb_err(&e)
-                        ),
+                        format!("Staging-GC später (.ats_staging…): {}", shorten_smb_err(&e)),
                     );
                     return;
                 }
@@ -1261,10 +1386,7 @@ pub fn spawn_smb_staging_gc(login: &str, password: &str) {
     tauri::async_runtime::spawn(async move {
         let n = drain_smb_staging_gc(&login, &password).await;
         if n > 0 {
-            crate::storage::logging::info(
-                "smb",
-                format!("Staging-GC: {n} Ordner entfernt"),
-            );
+            crate::storage::logging::info("smb", format!("Staging-GC: {n} Ordner entfernt"));
         }
     });
 }
@@ -1317,7 +1439,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     // OPT-22B B3: upload owns its session — drop any Health/GC pool entry first.
     session_pool::invalidate(host, port, share, login).await;
 
-    let mut client = match connect_smb(host, port, login, password).await {
+    let mut client = match connect_smb(host, port, login, password, SMB_CONNECT_TIMEOUT).await {
         Ok(c) => c,
         Err(e) => return UploadResult::fail(e),
     };
@@ -1353,8 +1475,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
             let parent_str = parent.to_string_lossy().replace('\\', "/");
             if !parent_str.is_empty() && parent_str != "." {
                 if let Err(e) =
-                    ensure_remote_dirs(&mut client, &mut tree, &parent_str, &mut created_dirs)
-                        .await
+                    ensure_remote_dirs(&mut client, &mut tree, &parent_str, &mut created_dirs).await
                 {
                     session_pool::disconnect_owned(client, tree).await;
                     session_pool::invalidate(host, port, share, login).await;
@@ -1633,28 +1754,35 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
 
     // `file_index` is the completed count after this file finishes.
     let completed_before = file_index.saturating_sub(1);
-    match stream_upload_file(client, tree, &file.absolute, remote_rel, cancel, |copied_in_file| {
-        let current = bytes_before + copied_in_file;
-        let mut percent = if total_bytes > 0 {
-            (current as f64 / total_bytes as f64) * 100.0
-        } else {
-            (completed_before as f64 / total_files.max(1) as f64) * 100.0
-        };
-        if !allow_100 {
-            percent = percent.min(99.9);
-        }
-        if let Ok(mut gate) = progress.lock() {
-            gate.emit(
-                percent,
-                completed_before,
-                total_files,
-                current,
-                total_bytes,
-                &filename,
-                false,
-            );
-        }
-    })
+    match stream_upload_file(
+        client,
+        tree,
+        &file.absolute,
+        remote_rel,
+        cancel,
+        |copied_in_file| {
+            let current = bytes_before + copied_in_file;
+            let mut percent = if total_bytes > 0 {
+                (current as f64 / total_bytes as f64) * 100.0
+            } else {
+                (completed_before as f64 / total_files.max(1) as f64) * 100.0
+            };
+            if !allow_100 {
+                percent = percent.min(99.9);
+            }
+            if let Ok(mut gate) = progress.lock() {
+                gate.emit(
+                    percent,
+                    completed_before,
+                    total_files,
+                    current,
+                    total_bytes,
+                    &filename,
+                    false,
+                );
+            }
+        },
+    )
     .await
     {
         Ok(_) => {}
@@ -1668,7 +1796,7 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
                 success: false,
                 message,
                 remote_path: String::new(),
-            staging_root: None,
+                staging_root: None,
             });
         }
     }
@@ -1828,12 +1956,8 @@ pub(crate) async fn stream_upload_file(
                 return Err(WORKFLOW_CANCELLED.into());
             }
             let end = (offset + CHUNK_SIZE).min(data.len());
-            if let Err(e) = write_chunk_unless_cancelled(
-                &mut writer,
-                &data[offset..end],
-                cancel,
-            )
-            .await
+            if let Err(e) =
+                write_chunk_unless_cancelled(&mut writer, &data[offset..end], cancel).await
             {
                 abort_writer_bounded(writer).await;
                 return Err(e);
@@ -1935,22 +2059,10 @@ pub async fn cleanup_staging_path(
             Ok(())
         }
         ServerTarget::Smb {
-            host,
-            port,
-            share,
-            ..
+            host, port, share, ..
         } => {
-            cleanup_smb_remote_tree(
-                &host,
-                port,
-                &share,
-                login,
-                password,
-                staging_root,
-                true,
-                1,
-            )
-            .await?;
+            cleanup_smb_remote_tree(&host, port, &share, login, password, staging_root, true, 1)
+                .await?;
             dequeue_staging_gc(&host, port, &share, staging_root);
             Ok(())
         }
@@ -1993,18 +2105,7 @@ pub async fn cleanup_remote_upload_folder(
             port,
             share,
             subpath,
-        } => {
-            cleanup_smb_job_root(
-                &host,
-                port,
-                &share,
-                &subpath,
-                login,
-                password,
-                &job_name,
-            )
-            .await
-        }
+        } => cleanup_smb_job_root(&host, port, &share, &subpath, login, password, &job_name).await,
     }
 }
 
@@ -2079,7 +2180,8 @@ async fn cleanup_smb_remote_tree(
     let attempts = max_attempts.max(1);
     let mut last_err: Option<String> = None;
     for attempt in 1..=attempts {
-        let mut pooled = session_pool::acquire(host, port, share, login, password).await?;
+        let mut pooled =
+            session_pool::acquire(host, port, share, login, password, SMB_CONNECT_TIMEOUT).await?;
 
         let delete_result = {
             let (client, tree) = pooled.parts_mut();
@@ -2260,15 +2362,13 @@ fn delete_smb_tree_recursive<'a>(
                 match client.delete_directory(tree, path).await {
                     Ok(()) => return Ok(()),
                     Err(e) if smb_path_not_found(&e.to_string()) => return Ok(()),
-                    Err(dir_err) => {
-                        match client.delete_file(tree, path).await {
-                            Ok(()) => Ok(()),
-                            Err(e) if smb_path_not_found(&e.to_string()) => Ok(()),
-                            Err(file_err) => Err(format!(
-                                "{path}: list={list_msg}; dir={dir_err}; file={file_err}"
-                            )),
-                        }
-                    }
+                    Err(dir_err) => match client.delete_file(tree, path).await {
+                        Ok(()) => Ok(()),
+                        Err(e) if smb_path_not_found(&e.to_string()) => Ok(()),
+                        Err(file_err) => Err(format!(
+                            "{path}: list={list_msg}; dir={dir_err}; file={file_err}"
+                        )),
+                    },
                 }
             }
         }
@@ -2344,7 +2444,9 @@ mod tests {
     fn parse_host_with_port() {
         let t = parse_server_target("smb://192.168.1.10:1445/share").unwrap();
         match t {
-            ServerTarget::Smb { host, port, share, .. } => {
+            ServerTarget::Smb {
+                host, port, share, ..
+            } => {
                 assert_eq!(host, "192.168.1.10");
                 assert_eq!(port, 1445);
                 assert_eq!(share, "share");
@@ -2416,6 +2518,27 @@ mod tests {
             path: PathBuf::from(r"D:\out"),
         };
         assert_eq!(apply_os_smb_mapping(local.clone(), None), local);
+    }
+
+    #[test]
+    fn missing_under_root_health_stays_local() {
+        let tmp = tempfile::tempdir().unwrap();
+        let child = tmp.path().join("jobs").join("neu");
+        let outcome = reconnect::classify_mapped_path(tmp.path(), &child);
+        assert_eq!(outcome, ProbeOutcome::Missing);
+        assert!(outcome.prefers_local());
+        let health = local_health_result(&child, outcome, false);
+        assert!(health.ok);
+        assert!(!health.soft_hold);
+        assert!(health.message.contains("Zielordner fehlt, wird angelegt"));
+    }
+
+    #[test]
+    fn denied_health_is_explicit_and_not_soft_hold() {
+        let health = local_health_result(Path::new(r"Z:\jobs"), ProbeOutcome::Denied, true);
+        assert!(!health.ok);
+        assert!(!health.soft_hold);
+        assert!(health.message.contains("Zugriff verweigert"));
     }
 
     #[test]
@@ -2509,7 +2632,8 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
+        let mut gate =
+            UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
         gate.emit(10.0, 1, 5, 100, 1000, "a.bin", true);
         gate.emit(10.4, 1, 5, 104, 1000, "a.bin", false);
         assert_eq!(count.get(), 1);
@@ -2528,7 +2652,8 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let count = Cell::new(0);
-        let mut gate = UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
+        let mut gate =
+            UploadProgressGate::new(|_| count.set(count.get() + 1), UploadCancelPolicy::SlotOnly);
         gate.emit(50.0, 1, 3, 500, 1000, "a.bin", true);
         gate.emit(50.0, 2, 3, 500, 1000, "b.bin", false);
         assert_eq!(count.get(), 2);
@@ -2545,7 +2670,8 @@ mod tests {
         reset_cancel_flag();
         reset_upload_slot_cancel();
         let speed = Cell::new(0.0_f64);
-        let mut gate = UploadProgressGate::new(|p| speed.set(p.speed_bps), UploadCancelPolicy::SlotOnly);
+        let mut gate =
+            UploadProgressGate::new(|p| speed.set(p.speed_bps), UploadCancelPolicy::SlotOnly);
         gate.emit(10.0, 1, 5, 1_000_000, 10_000_000, "a.bin", true);
         assert!(speed.get() > 0.0);
     }
@@ -2588,8 +2714,12 @@ mod tests {
 
     #[test]
     fn smb_sharing_violation_matches_lock_errors() {
-        assert!(smb_sharing_violation("STATUS_SHARING_VIOLATION during Create"));
-        assert!(smb_sharing_violation("STATUS_DIRECTORY_NOT_EMPTY during SetInfo"));
+        assert!(smb_sharing_violation(
+            "STATUS_SHARING_VIOLATION during Create"
+        ));
+        assert!(smb_sharing_violation(
+            "STATUS_DIRECTORY_NOT_EMPTY during SetInfo"
+        ));
         assert!(!smb_sharing_violation("STATUS_OBJECT_NAME_NOT_FOUND"));
     }
 
@@ -2629,18 +2759,15 @@ mod tests {
     #[test]
     fn local_upload_respects_slot_cancel_flag() {
         use crate::video::ffmpeg::{
-            cancel_upload_slot, reset_cancel_flag, reset_upload_slot_cancel,
-            UploadCancelPolicy,
+            cancel_upload_slot, reset_cancel_flag, reset_upload_slot_cancel, UploadCancelPolicy,
         };
         use std::io::Write;
 
         let _guard = upload_test_lock();
         reset_cancel_flag();
         reset_upload_slot_cancel();
-        let dir = std::env::temp_dir().join(format!(
-            "aero_upload_slot_cancel_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("aero_upload_slot_cancel_{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         let src = dir.join("src.bin");
@@ -2930,6 +3057,54 @@ mod tests {
         assert!(
             !dest.join("JobCancel").join("_fertig.txt").exists(),
             "marker must not appear on cancel mid-upload"
+        );
+    }
+
+    #[test]
+    fn health_connect_timeout_is_shorter_than_transfer() {
+        assert_eq!(SMB_HEALTH_CONNECT_TIMEOUT, Duration::from_secs(5));
+        assert_eq!(SMB_CONNECT_TIMEOUT, Duration::from_secs(10));
+        assert!(SMB_HEALTH_CONNECT_TIMEOUT < SMB_CONNECT_TIMEOUT);
+    }
+
+    #[test]
+    fn loud_host_busy_message_matches_spec() {
+        assert_eq!(
+            LOUD_HOST_BUSY_MESSAGE,
+            "Übertragung aktiv — Verbindung besteht"
+        );
+    }
+
+    #[test]
+    fn stale_pool_hit_retries_once_then_failure_counts() {
+        assert_eq!(
+            health_probe_disposition(true, true, false),
+            HealthProbeDisposition::Discard,
+            "success disconnects the health session instead of parking it"
+        );
+        assert_eq!(
+            health_probe_disposition(false, true, false),
+            HealthProbeDisposition::RetryFresh,
+            "an error right after a pool hit retries once and does not count yet"
+        );
+        assert_eq!(
+            health_probe_disposition(false, false, true),
+            HealthProbeDisposition::Fail,
+            "only the fresh connect's error counts for Quiet-backoff"
+        );
+        assert_eq!(
+            health_probe_disposition(true, false, true),
+            HealthProbeDisposition::Discard
+        );
+        assert_eq!(
+            health_probe_disposition(false, false, false),
+            HealthProbeDisposition::Fail,
+            "a pool miss does not open a second SessionSetup"
+        );
+        assert_eq!(
+            health_probe_disposition(false, true, true),
+            HealthProbeDisposition::Fail,
+            "stale-hit retry happens only once"
         );
     }
 }

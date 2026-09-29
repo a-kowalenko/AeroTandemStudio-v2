@@ -38,7 +38,12 @@ impl HwAccelInfo {
             hw_type: HwType::Software,
             encoder: "libx264".into(),
             hwaccel: None,
-            extra_params: vec!["-preset".into(), "medium".into(), "-crf".into(), "23".into()],
+            extra_params: vec![
+                "-preset".into(),
+                "medium".into(),
+                "-crf".into(),
+                "23".into(),
+            ],
         }
     }
 
@@ -325,7 +330,10 @@ mod tests {
         let params = EncodingParams::from_hw(&HwAccelInfo::videotoolbox(), false);
         let args = build_encode_args("in.mov", "out.mp4", &params);
         let cv = args.iter().position(|a| a == "-c:v").unwrap();
-        assert_eq!(args.get(cv + 1).map(String::as_str), Some("h264_videotoolbox"));
+        assert_eq!(
+            args.get(cv + 1).map(String::as_str),
+            Some("h264_videotoolbox")
+        );
         assert!(args.contains(&"-b:v".into()));
         assert_eq!(args.last().unwrap(), "out.mp4");
     }

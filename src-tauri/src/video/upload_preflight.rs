@@ -10,9 +10,7 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::export_paths::MARKER_FILENAME;
-use super::handoff_manifest::{
-    collect_integrity_files, HandoffManifestV1, MANIFEST_FILENAME,
-};
+use super::handoff_manifest::{collect_integrity_files, HandoffManifestV1, MANIFEST_FILENAME};
 
 /// Machine-readable preflight issue codes (i18n on the frontend).
 pub mod codes {
@@ -68,8 +66,8 @@ fn dir_has_any_file(dir: &Path) -> Result<bool, String> {
     }
     let mut stack = vec![dir.to_path_buf()];
     while let Some(cur) = stack.pop() {
-        let entries = fs::read_dir(&cur)
-            .map_err(|e| format!("Ordner lesen '{}': {e}", cur.display()))?;
+        let entries =
+            fs::read_dir(&cur).map_err(|e| format!("Ordner lesen '{}': {e}", cur.display()))?;
         for entry in entries {
             let entry = entry.map_err(|e| format!("Ordner lesen '{}': {e}", cur.display()))?;
             let path = entry.path();
@@ -104,11 +102,7 @@ pub fn preflight_vorgang_upload(input: &UploadPreflightInput<'_>) -> UploadPrefl
 
     let upload = input.upload_state.trim().to_ascii_lowercase();
     if upload == "done" {
-        hard.push(issue(
-            codes::ALREADY_DONE,
-            "",
-            "upload_state=done",
-        ));
+        hard.push(issue(codes::ALREADY_DONE, "", "upload_state=done"));
     }
 
     let ams = input.ams_state.trim().to_ascii_lowercase();
@@ -230,11 +224,7 @@ pub fn preflight_vorgang_upload(input: &UploadPreflightInput<'_>) -> UploadPrefl
             }
         }
         if !abs.is_file() {
-            hard.push(issue(
-                codes::FILE_MISSING,
-                rel,
-                "Datei fehlt",
-            ));
+            hard.push(issue(codes::FILE_MISSING, rel, "Datei fehlt"));
             continue;
         }
         match fs::metadata(&abs) {
@@ -249,11 +239,7 @@ pub fn preflight_vorgang_upload(input: &UploadPreflightInput<'_>) -> UploadPrefl
                 }
             }
             Err(e) => {
-                hard.push(issue(
-                    codes::FILE_MISSING,
-                    rel,
-                    format!("Datei lesen: {e}"),
-                ));
+                hard.push(issue(codes::FILE_MISSING, rel, format!("Datei lesen: {e}")));
             }
         }
     }
@@ -481,7 +467,8 @@ mod tests {
             .iter()
             .any(|e| e.code == codes::FILE_MISSING && e.path == "Outside_Foto/gone.jpg"));
 
-        let report = crate::video::handoff_manifest::resync_integrity_from_disk(dir.path()).unwrap();
+        let report =
+            crate::video::handoff_manifest::resync_integrity_from_disk(dir.path()).unwrap();
         assert_eq!(report.removed_paths, vec!["Outside_Foto/gone.jpg"]);
 
         let after = preflight_vorgang_upload(&input(dir.path()));

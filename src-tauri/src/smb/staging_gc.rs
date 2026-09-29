@@ -45,7 +45,9 @@ pub fn staging_dir_name() -> &'static str {
 }
 
 fn gc_path() -> Result<PathBuf, String> {
-    Ok(app_config_dir().map_err(|e| e.to_string())?.join(GC_FILE_NAME))
+    Ok(app_config_dir()
+        .map_err(|e| e.to_string())?
+        .join(GC_FILE_NAME))
 }
 
 fn now_unix() -> i64 {
@@ -85,11 +87,12 @@ fn save_unlocked(file: &GcFile) -> Result<(), String> {
 pub fn enqueue_staging_gc(entry: StagingGcEntry) {
     let _guard = GC_FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut file = load_unlocked();
-    if let Some(existing) = file
-        .entries
-        .iter_mut()
-        .find(|e| e.host == entry.host && e.port == entry.port && e.share == entry.share && e.staging_root == entry.staging_root)
-    {
+    if let Some(existing) = file.entries.iter_mut().find(|e| {
+        e.host == entry.host
+            && e.port == entry.port
+            && e.share == entry.share
+            && e.staging_root == entry.staging_root
+    }) {
         // Keep the sooner next attempt; do not reset attempts downward.
         existing.next_attempt_unix = existing.next_attempt_unix.min(entry.next_attempt_unix);
     } else {
@@ -120,10 +123,7 @@ pub fn dequeue_staging_gc(host: &str, port: u16, share: &str, staging_root: &str
     let mut file = load_unlocked();
     let before = file.entries.len();
     file.entries.retain(|e| {
-        !(e.host == host
-            && e.port == port
-            && e.share == share
-            && e.staging_root == staging_root)
+        !(e.host == host && e.port == port && e.share == share && e.staging_root == staging_root)
     });
     if file.entries.len() != before {
         let _ = save_unlocked(&file);
@@ -168,7 +168,10 @@ fn mark_attempt_result(host: &str, port: u16, share: &str, staging_root: &str, o
 /// Build `subpath/.ats_staging/<id>` (share-relative).
 pub fn staging_prefix(subpath: &str, staging_id: &str) -> String {
     let leaf = format!("{STAGING_DIR_NAME}/{staging_id}");
-    let sub = subpath.trim_matches('/').trim_matches('\\').replace('\\', "/");
+    let sub = subpath
+        .trim_matches('/')
+        .trim_matches('\\')
+        .replace('\\', "/");
     if sub.is_empty() {
         leaf
     } else {
@@ -193,13 +196,7 @@ pub fn min_gc_backoff() -> Duration {
     Duration::from_secs(2)
 }
 
-pub(crate) fn record_gc_attempt(
-    host: &str,
-    port: u16,
-    share: &str,
-    staging_root: &str,
-    ok: bool,
-) {
+pub(crate) fn record_gc_attempt(host: &str, port: u16, share: &str, staging_root: &str, ok: bool) {
     mark_attempt_result(host, port, share, staging_root, ok);
 }
 

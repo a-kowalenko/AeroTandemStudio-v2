@@ -1,6 +1,6 @@
 /** Staggered preview-thumbnail queue (OPT-10): max 2 concurrent FFmpeg poster jobs. */
 
-import { getMediaThumbnail, thumbnailDisplayUrl } from "./sdCard";
+import { getMediaThumbnail, thumbnailDisplayUrl, type ThumbQuality } from "./sdCard";
 
 export const THUMB_PRIORITY = {
   /** Active clip in player — jump the queue */
@@ -26,12 +26,15 @@ type Waiter = {
 type QueueItem = {
   path: string;
   cacheKey: string;
+  quality: ThumbQuality;
+  /** Tile warm-ups: at most one, and only while no foreground poster is running. */
+  background: boolean;
   priority: number;
   resolvers: Waiter[];
 };
 
-function memKey(path: string, cacheKey: string): string {
-  return `${path}\0${cacheKey}`;
+function memKey(path: string, cacheKey: string, quality: ThumbQuality): string {
+  return `${quality}\0${path}\0${cacheKey}`;
 }
 
 class PreviewThumbnailQueue {
@@ -48,18 +51,29 @@ class PreviewThumbnailQueue {
   }> = [];
   private generation = 0;
 
-  getCached(path: string, bustKey?: string | number | null): string | null {
-    return this.cache.get(memKey(path, String(bustKey ?? ""))) ?? null;
+  getCached(
+    path: string,
+    bustKey?: string | number | null,
+    quality: ThumbQuality = "preview",
+  ): string | null {
+    return this.cache.get(memKey(path, String(bustKey ?? ""), quality)) ?? null;
   }
 
-  /** Request preview thumb; dedupes in-flight work and serves memory cache. */
+  /**
+   * Request a thumb; dedupes in-flight work and serves memory cache.
+   * `background` jobs stay serialized and wait until foreground posters finish,
+   * so opening a viewer does not run a tile extract next to playback.
+   */
   request(
     path: string,
     priority: number = THUMB_PRIORITY.onDemand,
     bustKey?: string | number | null,
+    quality: ThumbQuality = "preview",
+    opts?: { background?: boolean },
   ): Promise<string> {
     const cacheKey = String(bustKey ?? "");
-    const key = memKey(path, cacheKey);
+    const background = opts?.background === true;
+    const key = memKey(path, cacheKey, quality);
     const hit = this.cache.get(key);
     if (hit) return Promise.resolve(hit);
 
@@ -74,6 +88,7 @@ class PreviewThumbnailQueue {
     const existing = this.pending.get(key);
     if (existing) {
       existing.priority = Math.max(existing.priority, priority);
+      if (!background) existing.background = false;
       return new Promise((resolve, reject) => {
         existing.resolvers.push({ resolve, reject });
       });
@@ -83,6 +98,8 @@ class PreviewThumbnailQueue {
       this.pending.set(key, {
         path,
         cacheKey,
+        quality,
+        background,
         priority,
         resolvers: [{ resolve, reject }],
       });
@@ -91,16 +108,19 @@ class PreviewThumbnailQueue {
   }
 
   /** Raise priority for a path already queued or not yet warmed. */
-  boost(path: string, bustKey?: string | number | null) {
-    const key = memKey(path, String(bustKey ?? ""));
+  boost(path: string, bustKey?: string | number | null, quality: ThumbQuality = "preview") {
+    const key = memKey(path, String(bustKey ?? ""), quality);
     const item = this.pending.get(key);
     if (item) {
       item.priority = Math.max(item.priority, THUMB_PRIORITY.active);
+      item.background = false;
       this.pump();
       return;
     }
     if (!this.cache.has(key) && !this.inFlight.has(key)) {
-      void this.request(path, THUMB_PRIORITY.active, bustKey).catch(() => undefined);
+      void this.request(path, THUMB_PRIORITY.active, bustKey, quality).catch(
+        () => undefined,
+      );
     }
   }
 
@@ -139,19 +159,36 @@ class PreviewThumbnailQueue {
     }, POST_IMPORT_DELAY_MS);
   }
 
-  private pump() {
-    while (this.pending.size > 0 && this.active < CONCURRENCY) {
-      let bestKey: string | null = null;
-      let best: QueueItem | null = null;
-      for (const [k, item] of this.pending) {
-        if (!best || item.priority > best.priority) {
-          best = item;
-          bestKey = k;
-        }
+  private pickBest(background: boolean): [string, QueueItem] | null {
+    let bestKey: string | null = null;
+    let best: QueueItem | null = null;
+    for (const [k, item] of this.pending) {
+      if (item.background !== background) continue;
+      if (!best || item.priority > best.priority) {
+        best = item;
+        bestKey = k;
       }
-      if (!best || !bestKey) break;
-      this.pending.delete(bestKey);
-      void this.runOne(bestKey, best);
+    }
+    if (!best || !bestKey) return null;
+    return [bestKey, best];
+  }
+
+  private pump() {
+    while (this.active < CONCURRENCY) {
+      const foreground = this.pickBest(false);
+      if (foreground) {
+        const [key, item] = foreground;
+        this.pending.delete(key);
+        void this.runOne(key, item);
+        continue;
+      }
+      // One background extract at a time, and never beside a foreground poster.
+      if (this.active >= 1) break;
+      const background = this.pickBest(true);
+      if (!background) break;
+      const [key, item] = background;
+      this.pending.delete(key);
+      void this.runOne(key, item);
     }
   }
 
@@ -159,7 +196,7 @@ class PreviewThumbnailQueue {
     this.inFlight.add(flightKey);
     this.active += 1;
     try {
-      const res = await getMediaThumbnail(item.path, "preview");
+      const res = await getMediaThumbnail(item.path, item.quality);
       const displayUrl = thumbnailDisplayUrl(res);
       this.cache.set(flightKey, displayUrl);
       // Drain waiters that joined while FFmpeg was running (e.g. strip + player).

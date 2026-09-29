@@ -149,7 +149,7 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
       </span>
       <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="min-w-0 break-words text-sm font-medium text-foreground [overflow-wrap:anywhere]">
+          <p className="min-w-0 break-words text-sm font-medium text-foreground">
             {action.label}
           </p>
           <span className="flex shrink-0 items-center gap-1" title={toneText}>
@@ -157,12 +157,12 @@ function ActionRow({ action }: { action: DialogActionStatus }) {
             {toneStatusIcon(action.tone)}
           </span>
         </div>
-        <p className="mt-0.5 break-words text-sm text-foreground/90 [overflow-wrap:anywhere]">
+        <p className="mt-0.5 break-words text-sm text-foreground/90">
           {action.summary}
         </p>
         {action.detail?.trim() ? (
           <p
-            className="mt-1 whitespace-pre-wrap break-all text-xs text-muted [overflow-wrap:anywhere]"
+            className="mt-1 whitespace-pre-wrap break-words text-xs text-muted"
             title={action.detail}
           >
             {action.detail}

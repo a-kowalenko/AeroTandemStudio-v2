@@ -32,10 +32,7 @@ impl HandoffUploadContext {
 }
 
 /// Notify AMS after a successful upload (`handoff/ready`).
-pub async fn notify_handoff_after_upload(
-    config: &AppConfig,
-    handoff: &HandoffUploadContext,
-) {
+pub async fn notify_handoff_after_upload(config: &AppConfig, handoff: &HandoffUploadContext) {
     let Some(cid) = handoff.correlation_id() else {
         return;
     };
@@ -64,22 +61,18 @@ pub async fn abort_handoff_upload(
     staging_root: Option<&str>,
 ) {
     if let Some(root) = staging_root.map(str::trim).filter(|s| !s.is_empty()) {
-        logging::info(
-            "smb",
-            format!("Staging-GC geplant nach Abbruch: {root}"),
-        );
+        logging::info("smb", format!("Staging-GC geplant nach Abbruch: {root}"));
     }
 
     // Final job name usually does not exist (staging); one quick attempt is enough.
-    if let Err(e) =
-        cleanup_remote_upload_folder(
-            local_path,
-            server_url,
-            login,
-            password,
-            config.smb_auto_mount_enabled,
-        )
-        .await
+    if let Err(e) = cleanup_remote_upload_folder(
+        local_path,
+        server_url,
+        login,
+        password,
+        config.smb_auto_mount_enabled,
+    )
+    .await
     {
         let low = e.to_ascii_lowercase();
         if !(low.contains("not_found")
@@ -87,10 +80,7 @@ pub async fn abort_handoff_upload(
             || low.contains("sharing_violation")
             || low.contains("directory_not_empty"))
         {
-            logging::warn(
-                "smb",
-                format!("Remote-Aufräumen nach Upload-Abbruch: {e}"),
-            );
+            logging::warn("smb", format!("Remote-Aufräumen nach Upload-Abbruch: {e}"));
         }
     } else {
         logging::info(
@@ -110,13 +100,8 @@ pub async fn abort_handoff_upload(
     let Some(cid) = handoff.correlation_id() else {
         return;
     };
-    match maybe_notify_handoff_cancel(
-        config,
-        cid,
-        handoff.folder_name(),
-        Some(WORKFLOW_CANCELLED),
-    )
-    .await
+    match maybe_notify_handoff_cancel(config, cid, handoff.folder_name(), Some(WORKFLOW_CANCELLED))
+        .await
     {
         Ok(Some(_)) => logging::info(
             "bridge",
@@ -143,7 +128,5 @@ pub async fn abort_handoff_upload(
 }
 
 pub fn upload_failure_is_cancelled(message: &str) -> bool {
-    is_cancelled()
-        || is_upload_slot_cancelled()
-        || message.trim() == WORKFLOW_CANCELLED
+    is_cancelled() || is_upload_slot_cancelled() || message.trim() == WORKFLOW_CANCELLED
 }

@@ -40,8 +40,7 @@ pub struct IntroMuxFallbackPayload {
     pub timeout_secs: u64,
 }
 
-static PENDING: Lazy<Mutex<Option<mpsc::Sender<IntroMuxChoice>>>> =
-    Lazy::new(|| Mutex::new(None));
+static PENDING: Lazy<Mutex<Option<mpsc::Sender<IntroMuxChoice>>>> = Lazy::new(|| Mutex::new(None));
 
 fn clear_pending() {
     if let Ok(mut g) = PENDING.lock() {

@@ -31,10 +31,8 @@ fn cache_map() -> &'static Mutex<HashMap<String, CacheEntry>> {
 fn cache_root() -> PathBuf {
     static ROOT: OnceLock<PathBuf> = OnceLock::new();
     ROOT.get_or_init(|| {
-        let dir = std::env::temp_dir().join(format!(
-            "ats_compat_prep_cache_{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("ats_compat_prep_cache_{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
         dir
     })
@@ -42,13 +40,7 @@ fn cache_root() -> PathBuf {
 }
 
 /// Cache identity string (path|size|mtime|vcodec|audio). Exposed for unit tests.
-pub fn prep_cache_key(
-    path: &str,
-    size: u64,
-    mtime: u64,
-    vcodec: &str,
-    has_audio: bool,
-) -> String {
+pub fn prep_cache_key(path: &str, size: u64, mtime: u64, vcodec: &str, has_audio: bool) -> String {
     format!(
         "{path}|{size}|{mtime}|{vcodec}|{}",
         if has_audio { "a1" } else { "a0" }
@@ -81,12 +73,7 @@ pub fn get(path: &str, vcodec: &str, has_audio: bool) -> Option<PathBuf> {
 }
 
 /// Store `segment_path` under current source identity (copies into cache root).
-pub fn put(
-    path: &str,
-    vcodec: &str,
-    has_audio: bool,
-    segment_path: &Path,
-) -> Option<PathBuf> {
+pub fn put(path: &str, vcodec: &str, has_audio: bool, segment_path: &Path) -> Option<PathBuf> {
     if !segment_path.is_file() {
         return None;
     }

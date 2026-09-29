@@ -218,7 +218,10 @@ mod tests {
             ..BridgeCustomer::default()
         };
         match classify_typed_hits(Some(&handcam), Some(&outside)) {
-            ClassifiedLookupHits::Choice { handcam: h, outside: o } => {
+            ClassifiedLookupHits::Choice {
+                handcam: h,
+                outside: o,
+            } => {
                 assert!(h.handcam_video && !h.outside_foto);
                 assert!(o.outside_foto && !o.handcam_video);
                 assert_eq!(h.first_name.as_deref(), Some("Ada"));

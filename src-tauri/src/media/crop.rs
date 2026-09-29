@@ -8,9 +8,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use super::photo_edit_undo;
-use super::rotate::{
-    apply_exif_orientation, detect_format, read_exif_orientation, save_image,
-};
+use super::rotate::{apply_exif_orientation, detect_format, read_exif_orientation, save_image};
 
 /// Minimum crop edge as fraction of the shorter image side.
 const MIN_NORM_EDGE: f64 = 0.05;
@@ -65,7 +63,9 @@ pub fn norm_crop_to_pixels(
     }
 
     let min_side = f64::from(img_w.min(img_h));
-    let min_norm = (f64::from(MIN_PIXEL_EDGE) / min_side).max(MIN_NORM_EDGE).min(1.0);
+    let min_norm = (f64::from(MIN_PIXEL_EDGE) / min_side)
+        .max(MIN_NORM_EDGE)
+        .min(1.0);
     if rect.w + 1e-9 < min_norm || rect.h + 1e-9 < min_norm {
         return Err(PhotoCropError::Message(format!(
             "crop too small (min {:.0}% / {MIN_PIXEL_EDGE}px)",
@@ -94,21 +94,17 @@ pub fn norm_crop_to_pixels(
         )));
     }
     if w >= img_w && h >= img_h {
-        return Err(PhotoCropError::Message("Kein Zuschnitt nötig (Vollbild)".into()));
+        return Err(PhotoCropError::Message(
+            "Kein Zuschnitt nötig (Vollbild)".into(),
+        ));
     }
     Ok((x0, y0, w, h))
 }
 
 fn temp_crop_path(photo_path: &str) -> PathBuf {
     let path = Path::new(photo_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("photo");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("jpg");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("photo");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("jpg");
     path.with_file_name(format!("{stem}.__temp_crop__.{ext}"))
 }
 
@@ -135,11 +131,9 @@ pub fn crop_photo(
     let (target, is_overwrite) = if overwrite {
         (temp_crop_path(input), true)
     } else {
-        let out = output
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| {
-                PhotoCropError::Message("output path is required when overwrite=false".into())
-            })?;
+        let out = output.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            PhotoCropError::Message("output path is required when overwrite=false".into())
+        })?;
         (PathBuf::from(out), false)
     };
 
@@ -158,11 +152,8 @@ pub fn crop_photo(
         let mut img = image::open(path)?;
         img = apply_exif_orientation(img, orientation);
 
-        let (px, py, pw, ph) = norm_crop_to_pixels(
-            NormCropRect { x, y, w, h },
-            img.width(),
-            img.height(),
-        )?;
+        let (px, py, pw, ph) =
+            norm_crop_to_pixels(NormCropRect { x, y, w, h }, img.width(), img.height())?;
         img = crop_dynamic(img, px, py, pw, ph);
 
         let format = detect_format(path);
@@ -216,9 +207,17 @@ mod tests {
 
     #[test]
     fn norm_to_pixels_basic() {
-        let (x, y, w, h) =
-            norm_crop_to_pixels(NormCropRect { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, 200, 100)
-                .unwrap();
+        let (x, y, w, h) = norm_crop_to_pixels(
+            NormCropRect {
+                x: 0.25,
+                y: 0.25,
+                w: 0.5,
+                h: 0.5,
+            },
+            200,
+            100,
+        )
+        .unwrap();
         assert_eq!((x, y, w, h), (50, 25, 100, 50));
     }
 

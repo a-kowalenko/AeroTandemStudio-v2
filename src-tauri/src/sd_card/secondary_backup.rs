@@ -1,4 +1,4 @@
-﻿//! Background mirror of a completed local SD backup to a server target via SMB2
+//! Background mirror of a completed local SD backup to a server target via SMB2
 //! (same transport as Erstellen-Upload). Local absolute paths remain a fallback
 //! for tests / rare local dual-disk setups — not Finder mounts as the primary path.
 
@@ -15,9 +15,7 @@ use serde::Serialize;
 
 use crate::smb::{upload_path, UploadProgress, UploadResult};
 use crate::storage::logging;
-use crate::video::ffmpeg::{
-    reset_secondary_backup_cancel, UploadCancelPolicy, WORKFLOW_CANCELLED,
-};
+use crate::video::ffmpeg::{reset_secondary_backup_cancel, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 pub const EVENT_SECONDARY_BACKUP: &str = "sd-secondary-backup";
 
@@ -58,12 +56,11 @@ pub struct SecondaryBackupQueue {
     on_event: Mutex<Option<EventCb>>,
 }
 
-pub static SECONDARY_BACKUP: Lazy<SecondaryBackupQueue> =
-    Lazy::new(|| SecondaryBackupQueue {
-        jobs: Mutex::new(VecDeque::new()),
-        running: AtomicBool::new(false),
-        on_event: Mutex::new(None),
-    });
+pub static SECONDARY_BACKUP: Lazy<SecondaryBackupQueue> = Lazy::new(|| SecondaryBackupQueue {
+    jobs: Mutex::new(VecDeque::new()),
+    running: AtomicBool::new(false),
+    on_event: Mutex::new(None),
+});
 
 impl SecondaryBackupQueue {
     pub fn set_callback(&self, cb: Option<EventCb>) {
@@ -195,10 +192,7 @@ impl SecondaryBackupQueue {
             Err(e) => {
                 let cancelled = e.trim() == WORKFLOW_CANCELLED;
                 if cancelled {
-                    logging::info(
-                        "sd",
-                        format!("Secondary backup cancelled: id={}", job.id),
-                    );
+                    logging::info("sd", format!("Secondary backup cancelled: id={}", job.id));
                     self.emit(SecondaryBackupEvent {
                         state: "cancelled".into(),
                         job_id: job.id.clone(),
@@ -365,7 +359,8 @@ mod tests {
     fn mirror_soft_fails_bad_smb_url() {
         let primary = tempdir().unwrap();
         fs::write(primary.path().join("a.mp4"), b"v").unwrap();
-        let err = mirror_backup_to_smb(primary.path(), "smb://", "", "", false, |_| {}).unwrap_err();
+        let err =
+            mirror_backup_to_smb(primary.path(), "smb://", "", "", false, |_| {}).unwrap_err();
         assert!(!err.is_empty());
     }
 
@@ -396,7 +391,11 @@ mod tests {
         )
         .unwrap();
         assert!(remote.contains("SD_Backup_test"), "{remote}");
-        assert!(dest_root.path().join("SD_Backup_test").join("a.mp4").is_file());
+        assert!(dest_root
+            .path()
+            .join("SD_Backup_test")
+            .join("a.mp4")
+            .is_file());
     }
 
     #[test]
@@ -419,7 +418,11 @@ mod tests {
             };
             SECONDARY_BACKUP.enqueue(job);
             assert!(SECONDARY_BACKUP.wait_idle(Duration::from_secs(5)));
-            assert!(dest_root.path().join("SD_Backup_q").join("clip.mp4").is_file());
+            assert!(dest_root
+                .path()
+                .join("SD_Backup_q")
+                .join("clip.mp4")
+                .is_file());
         });
     }
 }

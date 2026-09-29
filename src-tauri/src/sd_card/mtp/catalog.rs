@@ -48,9 +48,7 @@ pub fn is_mtp_virtual_cache_component(name: &str) -> bool {
 /// True when `path` is under the MTP/ICA virtual media cache (may not exist on disk yet).
 pub fn is_mtp_virtual_media_path(path: &Path) -> bool {
     path.components().any(|c| match c {
-        Component::Normal(os) => os
-            .to_str()
-            .is_some_and(is_mtp_virtual_cache_component),
+        Component::Normal(os) => os.to_str().is_some_and(is_mtp_virtual_cache_component),
         _ => false,
     })
 }
@@ -106,7 +104,9 @@ mod tests {
 
     #[test]
     fn non_mtp_path_rejected() {
-        assert!(!is_mtp_virtual_media_path(Path::new(r"E:\DCIM\100GOPRO\GX01.MP4")));
+        assert!(!is_mtp_virtual_media_path(Path::new(
+            r"E:\DCIM\100GOPRO\GX01.MP4"
+        )));
         assert!(parse_mtp_virtual_media_path(Path::new(r"E:\DCIM\GX01.MP4")).is_none());
     }
 }

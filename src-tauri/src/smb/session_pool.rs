@@ -1,10 +1,13 @@
-//! OPT-22B: smb2 session pool for Health / GC (+ upload disconnect hook).
+//! OPT-22B / OPT-23A: smb2 session pool for Health / GC (+ upload disconnect hook).
 //!
 //! One reusable Session+Tree per `host:port/share` + login identity. Idle
-//! sessions are reaped after [`IDLE_TTL`] so Win11 LanmanServer slots free up.
-//! Upload keeps its own session (v1) and invalidates the pool around the job.
+//! sessions are reaped after [`IDLE_TTL`] (background task, not only on
+//! `acquire`) so Win11 LanmanServer slots free up. Health checks disconnect
+//! instead of parking. Upload keeps its own session and invalidates the pool
+//! around the job.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,8 +18,13 @@ use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 use super::client::{connect_smb, map_smb_error};
 use super::quiet_budget::{self, is_session_rejected};
 
-/// Unused pooled sessions are disconnected after this idle window (B4: 30–60s).
-pub const IDLE_TTL: Duration = Duration::from_secs(45);
+/// Unused pooled sessions are disconnected after this idle window.
+///
+/// OPT-23A: 20s is enough for a GC burst to reuse the session, then the slot
+/// frees without waiting for the next `acquire`.
+pub const IDLE_TTL: Duration = Duration::from_secs(20);
+/// How often the process-wide reaper calls [`reap_idle`] (OPT-23A).
+pub const REAP_INTERVAL: Duration = Duration::from_secs(15);
 const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Canonical pool key: `host:port/share|login` (password never included / logged).
@@ -64,10 +72,37 @@ fn normalize_login_identity(login: &str) -> String {
     }
 }
 
+enum IdlePayload {
+    Live {
+        client: SmbClient,
+        tree: Tree,
+    },
+    /// Test stand-in so reap can be proven without a real SessionSetup.
+    #[cfg(test)]
+    Marker,
+}
+
 struct IdleSession {
-    client: SmbClient,
-    tree: Tree,
+    payload: IdlePayload,
     last_used: Instant,
+}
+
+impl IdleSession {
+    fn into_live(self) -> Option<(SmbClient, Tree)> {
+        match self.payload {
+            IdlePayload::Live { client, tree } => Some((client, tree)),
+            #[cfg(test)]
+            IdlePayload::Marker => None,
+        }
+    }
+
+    async fn disconnect_idle(self) {
+        match self.payload {
+            IdlePayload::Live { client, tree } => disconnect_session(client, tree).await,
+            #[cfg(test)]
+            IdlePayload::Marker => {}
+        }
+    }
 }
 
 struct PoolSlot {
@@ -95,20 +130,34 @@ struct PoolState {
 }
 
 static POOL: Lazy<Mutex<PoolState>> = Lazy::new(|| Mutex::new(PoolState::default()));
+static REAPER_STARTED: AtomicBool = AtomicBool::new(false);
+/// How many reaper tasks have been spawned (tests assert the lazy start is once).
+static REAPER_SPAWNS: AtomicU64 = AtomicU64::new(0);
 
 /// Checked-out pooled session. Call [`PooledSession::release`] or
-/// [`PooledSession::discard`] when done (Drop discards without await).
+/// [`PooledSession::discard`] when done.
+///
+/// Drop disconnects and keeps the pool permit until `disconnect_share` finishes,
+/// so the next `acquire` cannot SessionSetup while the old TCP slot is still dying.
 pub struct PooledSession {
     key: PoolKey,
     client: Option<SmbClient>,
     tree: Option<Tree>,
     slot: Arc<PoolSlot>,
-    _permit: OwnedSemaphorePermit,
-    /// If true, Drop will spawn a best-effort discard (not returned to pool).
+    /// `None` after Drop moved it into the disconnect task.
+    permit: Option<OwnedSemaphorePermit>,
+    /// If true, Drop will spawn a discard (not returned to pool).
     return_on_drop: bool,
+    /// `true` when this checkout reused an idle session (OPT-23A stale-hit retry).
+    from_hit: bool,
 }
 
 impl PooledSession {
+    /// Whether [`acquire`] reused an idle session (`false` after a fresh connect).
+    pub fn was_hit(&self) -> bool {
+        self.from_hit
+    }
+
     /// Mutable access to both halves without overlapping `&mut self` borrows.
     pub fn parts_mut(&mut self) -> (&mut SmbClient, &mut Tree) {
         (
@@ -128,8 +177,7 @@ impl PooledSession {
         };
         let mut idle = self.slot.idle.lock().await;
         *idle = Some(IdleSession {
-            client,
-            tree,
+            payload: IdlePayload::Live { client, tree },
             last_used: Instant::now(),
         });
         // permit drops with self → next waiter may proceed
@@ -150,18 +198,22 @@ impl PooledSession {
 
 impl Drop for PooledSession {
     fn drop(&mut self) {
+        let permit = self.permit.take();
         if !self.return_on_drop {
+            drop(permit);
             return;
         }
         let client = self.client.take();
         let tree = self.tree.take();
         let slot = Arc::clone(&self.slot);
         if let (Some(client), Some(tree)) = (client, tree) {
-            // Best-effort: free host slot without blocking the Drop path.
+            // Permit stays in this task until disconnect finishes. The next
+            // acquire blocks instead of opening a second SessionSetup.
             tauri::async_runtime::spawn(async move {
                 disconnect_session(client, tree).await;
                 let mut idle = slot.idle.lock().await;
                 *idle = None;
+                drop(permit);
             });
         }
     }
@@ -202,23 +254,29 @@ pub async fn invalidate(host: &str, port: u16, share: &str, login: &str) {
         let mut idle = slot.idle.lock().await;
         idle.take()
     };
-    if let Some(IdleSession { client, tree, .. }) = taken {
+    if let Some(session) = taken {
         crate::storage::logging::info(
             "smb",
             format!("SMB pool invalidate ({})", key.share_label()),
         );
-        disconnect_session(client, tree).await;
+        session.disconnect_idle().await;
     }
 }
 
 /// Acquire a pooled session (reuse idle or connect once). Exclusive until release/discard.
+///
+/// `connect_timeout` is the SessionSetup budget on a pool miss (Health 5s,
+/// Upload/GC callers pass 10s). [`PooledSession::was_hit`] is set when an idle
+/// session was reused.
 pub async fn acquire(
     host: &str,
     port: u16,
     share: &str,
     login: &str,
     password: &str,
+    connect_timeout: Duration,
 ) -> Result<PooledSession, String> {
+    ensure_reaper();
     reap_idle().await;
 
     let key = PoolKey::new(host, port, share, login);
@@ -232,32 +290,38 @@ pub async fn acquire(
         .map_err(|_| "SMB-Pool: Semaphor geschlossen".to_string())?;
 
     // Try idle reuse (still within TTL after reap).
-    {
+    let reused = {
         let mut idle = slot.idle.lock().await;
         if let Some(session) = idle.take() {
             if session.last_used.elapsed() < IDLE_TTL {
+                let live = session.into_live();
                 drop(idle);
-                {
-                    let mut state = POOL.lock().await;
-                    state.hit_count = state.hit_count.saturating_add(1);
-                }
-                crate::storage::logging::info(
-                    "smb",
-                    format!("SMB pool hit ({})", key.share_label()),
-                );
-                return Ok(PooledSession {
-                    key,
-                    client: Some(session.client),
-                    tree: Some(session.tree),
-                    slot,
-                    _permit: permit,
-                    return_on_drop: true,
-                });
+                live
+            } else {
+                // Expired between reap and take — disconnect before fresh connect.
+                drop(idle);
+                session.disconnect_idle().await;
+                None
             }
-            // Expired between reap and take — disconnect before fresh connect.
-            drop(idle);
-            disconnect_session(session.client, session.tree).await;
+        } else {
+            None
         }
+    };
+    if let Some((client, tree)) = reused {
+        {
+            let mut state = POOL.lock().await;
+            state.hit_count = state.hit_count.saturating_add(1);
+        }
+        crate::storage::logging::info("smb", format!("SMB pool hit ({})", key.share_label()));
+        return Ok(PooledSession {
+            key,
+            client: Some(client),
+            tree: Some(tree),
+            slot,
+            permit: Some(permit),
+            return_on_drop: true,
+            from_hit: true,
+        });
     }
 
     crate::storage::logging::info(
@@ -265,7 +329,7 @@ pub async fn acquire(
         format!("SMB pool miss — connect ({})", key.share_label()),
     );
 
-    let mut client = match connect_smb(host, port, login, password).await {
+    let mut client = match connect_smb(host, port, login, password, connect_timeout).await {
         Ok(c) => c,
         Err(e) => {
             note_pool_connect_fail(host, share, &e);
@@ -292,9 +356,40 @@ pub async fn acquire(
         client: Some(client),
         tree: Some(tree),
         slot,
-        _permit: permit,
+        permit: Some(permit),
         return_on_drop: true,
+        from_hit: false,
     })
+}
+
+/// Start the process-wide idle reaper on the first `acquire` (OPT-23A).
+fn ensure_reaper() {
+    if REAPER_STARTED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+        .is_ok()
+    {
+        spawn_reaper(REAP_INTERVAL, None);
+    }
+}
+
+fn spawn_reaper(interval: Duration, max_ticks: Option<u32>) {
+    REAPER_SPAWNS.fetch_add(1, Ordering::Relaxed);
+    tauri::async_runtime::spawn(async move {
+        let mut tick = tokio::time::interval(interval);
+        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // `interval` completes the first tick immediately. `acquire` already
+        // reaps synchronously, so the task waits one full period before work.
+        tick.tick().await;
+        let mut n = 0u32;
+        loop {
+            tick.tick().await;
+            reap_idle().await;
+            n = n.saturating_add(1);
+            if max_ticks.is_some_and(|limit| n >= limit) {
+                break;
+            }
+        }
+    });
 }
 
 fn note_pool_connect_fail(host: &str, share: &str, message: &str) {
@@ -310,7 +405,10 @@ fn note_pool_connect_fail(host: &str, share: &str, message: &str) {
     }
 }
 
-/// Disconnect idle sessions past [`IDLE_TTL`] (B4). Called from acquire.
+/// Disconnect idle sessions past [`IDLE_TTL`].
+///
+/// Called from [`acquire`] and from the background reaper so a parked GC
+/// session does not wait for the next checkout.
 pub async fn reap_idle() {
     let slots: Vec<(String, Arc<PoolSlot>)> = {
         let state = POOL.lock().await;
@@ -333,12 +431,9 @@ pub async fn reap_idle() {
                 _ => None,
             }
         };
-        if let Some(IdleSession { client, tree, .. }) = expired {
-            crate::storage::logging::info(
-                "smb",
-                format!("SMB pool idle reap ({storage_key})"),
-            );
-            disconnect_session(client, tree).await;
+        if let Some(session) = expired {
+            crate::storage::logging::info("smb", format!("SMB pool idle reap ({storage_key})"));
+            session.disconnect_idle().await;
         }
     }
 }
@@ -382,8 +477,9 @@ mod tests {
 
     #[test]
     fn idle_ttl_is_in_spec_window() {
-        assert!(IDLE_TTL >= Duration::from_secs(30));
-        assert!(IDLE_TTL <= Duration::from_secs(60));
+        assert_eq!(IDLE_TTL, Duration::from_secs(20));
+        assert_eq!(REAP_INTERVAL, Duration::from_secs(15));
+        assert!(REAP_INTERVAL < IDLE_TTL);
     }
 
     #[test]
@@ -420,5 +516,88 @@ mod tests {
         assert!(is_session_rejected(
             "Protocol error: STATUS_REQUEST_NOT_ACCEPTED during SessionSetup"
         ));
+    }
+
+    fn unique_storage_key(label: &str) -> String {
+        format!(
+            "opt23a-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        )
+    }
+
+    async fn park_idle_marker(storage_key: &str, age: Duration) {
+        let slot = slot_for(storage_key).await;
+        let last_used = Instant::now()
+            .checked_sub(age)
+            .expect("test clock can represent idle age");
+        let mut idle = slot.idle.lock().await;
+        *idle = Some(IdleSession {
+            payload: IdlePayload::Marker,
+            last_used,
+        });
+    }
+
+    async fn idle_is_parked(storage_key: &str) -> bool {
+        let slot = {
+            let state = POOL.lock().await;
+            state.slots.get(storage_key).cloned()
+        };
+        let Some(slot) = slot else {
+            return false;
+        };
+        let idle = slot.idle.lock().await;
+        idle.is_some()
+    }
+
+    async fn clear_idle(storage_key: &str) {
+        let slot = {
+            let state = POOL.lock().await;
+            state.slots.get(storage_key).cloned()
+        };
+        if let Some(slot) = slot {
+            let mut idle = slot.idle.lock().await;
+            *idle = None;
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_reaper_starts_once() {
+        ensure_reaper();
+        let mid = REAPER_SPAWNS.load(Ordering::SeqCst);
+        ensure_reaper();
+        assert_eq!(REAPER_SPAWNS.load(Ordering::SeqCst), mid);
+        assert!(mid >= 1);
+    }
+
+    /// Background interval reaps an expired idle entry without another `acquire`.
+    #[tokio::test]
+    async fn reaper_clears_expired_idle_without_acquire() {
+        let expired = unique_storage_key("expired");
+        let fresh = unique_storage_key("fresh");
+        park_idle_marker(&expired, IDLE_TTL + Duration::from_secs(1)).await;
+        park_idle_marker(&fresh, Duration::ZERO).await;
+        assert!(idle_is_parked(&expired).await);
+        assert!(idle_is_parked(&fresh).await);
+
+        spawn_reaper(Duration::from_millis(20), Some(8));
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline && idle_is_parked(&expired).await {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        assert!(
+            !idle_is_parked(&expired).await,
+            "reaper must drop an expired idle session without acquire"
+        );
+        assert!(
+            idle_is_parked(&fresh).await,
+            "reaper must keep a session inside IDLE_TTL"
+        );
+        clear_idle(&fresh).await;
     }
 }

@@ -52,10 +52,7 @@ fn gopro_hero5_plus_mtp_product(upper_name: &str) -> bool {
         return false;
     };
     let rest = &upper_name[idx + 4..];
-    let digits: String = rest
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     digits
         .parse::<u32>()
         .ok()
@@ -101,8 +98,8 @@ pub fn may_use_mtp_path(hint: &UsbDeviceHint, mode: UsbImportMode) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::allowlist::DJI_VID;
+    use super::*;
 
     fn hint(vid: Option<u16>, name: &str) -> UsbDeviceHint {
         UsbDeviceHint {
@@ -160,7 +157,10 @@ mod tests {
 
     #[test]
     fn parse_import_mode() {
-        assert_eq!(UsbImportMode::parse("volume_only"), UsbImportMode::VolumeOnly);
+        assert_eq!(
+            UsbImportMode::parse("volume_only"),
+            UsbImportMode::VolumeOnly
+        );
         assert_eq!(UsbImportMode::parse("auto"), UsbImportMode::Auto);
         assert_eq!(UsbImportMode::parse(""), UsbImportMode::Auto);
     }

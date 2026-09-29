@@ -28,13 +28,11 @@ static FPS_RE: Lazy<Regex> =
 static PIX_FMT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+[^,]*,\s*([a-z0-9]+)").unwrap());
 
-static VIDEO_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)Video:\s+\w+.*?\((\w+)\s*/\s*0x[0-9a-f]+\)").unwrap()
-});
+static VIDEO_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+.*?\((\w+)\s*/\s*0x[0-9a-f]+\)").unwrap());
 
-static PROFILE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)Video:\s+\w+\s+\(([^)/]+)\)").unwrap()
-});
+static PROFILE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+\s+\(([^)/]+)\)").unwrap());
 
 /// `rotate : 180` / `rotate: 90` container or stream metadata tags.
 static ROTATE_TAG_RE: Lazy<Regex> =
@@ -46,14 +44,12 @@ static DISPLAYMATRIX_ROT_RE: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Explicit edit-list mentions in FFmpeg `-i` stderr (rare but decisive).
-static EDITLIST_HINT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)\b(?:edit\s*lists?|elst)\b").unwrap()
-});
+static EDITLIST_HINT_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)\b(?:edit\s*lists?|elst)\b").unwrap());
 
 /// `Duration: …, start: 0.021333, bitrate: …` — non-zero start often implies elst.
-static CONTAINER_START_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)Duration:\s*[0-9:.]+,\s*start:\s*(-?\d+(?:\.\d+)?)").unwrap()
-});
+static CONTAINER_START_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Duration:\s*[0-9:.]+,\s*start:\s*(-?\d+(?:\.\d+)?)").unwrap());
 
 /// Tolerance when snapping probe angles to quarter turns (degrees).
 const ROTATION_SNAP_TOLERANCE_DEG: f64 = 1.0;
@@ -64,10 +60,8 @@ const EDITLIST_START_EPSILON_SECS: f64 = 0.001;
 /// Container metadata keys written by many cameras (MP4/MOV).
 /// Prefer explicit make/model; ignore `encoder` (usually Lavf / app software).
 static CAMERA_TAG_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?im)^\s*(?:com\.apple\.quicktime\.)?(make|model|manufacturer)\s*:\s*(.+?)\s*$",
-    )
-    .unwrap()
+    Regex::new(r"(?im)^\s*(?:com\.apple\.quicktime\.)?(make|model|manufacturer)\s*:\s*(.+?)\s*$")
+        .unwrap()
 });
 
 static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
@@ -141,7 +135,10 @@ pub fn parse_camera_from_probe(stderr: &str) -> (String, String) {
     let mut make = String::new();
     let mut model = String::new();
     for caps in CAMERA_TAG_RE.captures_iter(stderr) {
-        let key = caps.get(1).map(|m| m.as_str().to_ascii_lowercase()).unwrap_or_default();
+        let key = caps
+            .get(1)
+            .map(|m| m.as_str().to_ascii_lowercase())
+            .unwrap_or_default();
         let val = caps
             .get(2)
             .map(|m| sanitize_meta_value(m.as_str()))
@@ -183,7 +180,10 @@ pub fn format_camera_label(make: &str, model: &str) -> Option<String> {
     if model.is_empty() {
         return Some(make);
     }
-    if model.to_ascii_lowercase().starts_with(&make.to_ascii_lowercase()) {
+    if model
+        .to_ascii_lowercase()
+        .starts_with(&make.to_ascii_lowercase())
+    {
         Some(model)
     } else {
         Some(format!("{make} {model}"))
@@ -358,7 +358,10 @@ fn snap_rotation_degrees_f64(raw: f64) -> Option<u32> {
 }
 
 /// i18n-ready technical reason when a clip's orientation cannot be trusted.
-pub fn compatible_orientation_unreliable_reason(probe: VideoRotationProbe, clip_index: usize) -> Option<String> {
+pub fn compatible_orientation_unreliable_reason(
+    probe: VideoRotationProbe,
+    clip_index: usize,
+) -> Option<String> {
     match probe {
         VideoRotationProbe::Known(_) => None,
         VideoRotationProbe::Unknown { raw_deg } => Some(format!(
@@ -383,7 +386,10 @@ pub fn compatible_orientation_mismatch_reason(
 }
 
 /// Build a Compatible probe key from one clip's FFmpeg `-i` stderr.
-pub fn compatible_stream_key_from_probe(stderr: &str, has_audio: bool) -> Option<CompatibleStreamKey> {
+pub fn compatible_stream_key_from_probe(
+    stderr: &str,
+    has_audio: bool,
+) -> Option<CompatibleStreamKey> {
     let meta = parse_video_metadata_from_probe(stderr)?;
     let pix_fmt = parse_pix_fmt_from_probe(stderr).unwrap_or_default();
     let tag = VIDEO_TAG_RE
@@ -454,7 +460,11 @@ pub fn probe_videos_parallel(
     on_progress: impl Fn(u64, u64, &str) + Sync + Send,
 ) -> Result<Vec<Result<VideoMetadata, String>>, ParallelError> {
     let ffmpeg = ffmpeg.to_path_buf();
-    probe_videos_parallel_with(paths, move |path| probe_video(&ffmpeg, path).map_err(|e| e.to_string()), on_progress)
+    probe_videos_parallel_with(
+        paths,
+        move |path| probe_video(&ffmpeg, path).map_err(|e| e.to_string()),
+        on_progress,
+    )
 }
 
 fn probe_videos_parallel_with<P, F>(
@@ -485,20 +495,24 @@ where
     let completed = AtomicUsize::new(0);
     let total = n as u64;
 
-    pool.process_indexed(n, |i, _task_id| {
-        if is_cancelled() {
-            return Err("cancelled".into());
-        }
-        let path = paths[i].as_str();
-        let result = probe_one(path);
-        let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
-        let name = Path::new(path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path);
-        on_progress(done as u64, total, name);
-        result
-    }, None)
+    pool.process_indexed(
+        n,
+        |i, _task_id| {
+            if is_cancelled() {
+                return Err("cancelled".into());
+            }
+            let path = paths[i].as_str();
+            let result = probe_one(path);
+            let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+            let name = Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path);
+            on_progress(done as u64, total, name);
+            result
+        },
+        None,
+    )
 }
 
 /// Common video extensions accepted for import (case-insensitive).

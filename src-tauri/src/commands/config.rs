@@ -52,7 +52,10 @@ fn preserve_ams_bridge_identity(state: &ConfigState, config: &mut AppConfig) -> 
 }
 
 /// When the frontend saves settings it does not edit `ams_bridge_instance_id`; merge from cache/disk.
-fn preserve_ams_bridge_instance_id(state: &ConfigState, config: &mut AppConfig) -> Result<(), String> {
+fn preserve_ams_bridge_instance_id(
+    state: &ConfigState,
+    config: &mut AppConfig,
+) -> Result<(), String> {
     if !config.ams_bridge_instance_id.trim().is_empty() {
         return Ok(());
     }
@@ -101,7 +104,10 @@ pub fn get_config(state: State<'_, ConfigState>) -> Result<AppConfig, String> {
 }
 
 #[tauri::command]
-pub fn save_config(state: State<'_, ConfigState>, mut config: AppConfig) -> Result<AppConfig, String> {
+pub fn save_config(
+    state: State<'_, ConfigState>,
+    mut config: AppConfig,
+) -> Result<AppConfig, String> {
     preserve_ams_bridge_identity(&state, &mut config)?;
     config.sync_auto_cleanup_retention();
     {

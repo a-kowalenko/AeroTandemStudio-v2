@@ -106,14 +106,8 @@ pub(crate) fn detect_format(path: &Path) -> ImageFormat {
 
 fn temp_rotate_path(photo_path: &str) -> PathBuf {
     let path = Path::new(photo_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("photo");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("jpg");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("photo");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("jpg");
     path.with_file_name(format!("{stem}.__temp_rotate__.{ext}"))
 }
 
@@ -161,11 +155,9 @@ pub fn rotate_photo(
     let (target, is_overwrite) = if overwrite {
         (temp_rotate_path(input), true)
     } else {
-        let out = output
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| {
-                PhotoRotateError::Message("output path is required when overwrite=false".into())
-            })?;
+        let out = output.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            PhotoRotateError::Message("output path is required when overwrite=false".into())
+        })?;
         (PathBuf::from(out), false)
     };
 

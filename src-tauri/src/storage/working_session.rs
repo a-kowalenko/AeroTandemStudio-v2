@@ -217,9 +217,7 @@ impl WorkingSession {
             on_sort(done, total, name);
         })
         .map_err(|e| match e {
-            PhotoSortError::Cancelled => {
-                WorkingSessionError::Message(WORKFLOW_CANCELLED.into())
-            }
+            PhotoSortError::Cancelled => WorkingSessionError::Message(WORKFLOW_CANCELLED.into()),
         })?;
 
         if is_cancelled() {
@@ -308,83 +306,84 @@ impl WorkingSession {
             cpu_count,
         };
 
-        let copy_result = pool.process_indexed(n_jobs, |i, _task_id| {
-            if is_cancelled() {
-                return Err::<(), String>("cancelled".into());
-            }
-            if first_error.lock().map(|g| g.is_some()).unwrap_or(true) {
-                return Err::<(), String>("cancelled".into());
-            }
+        let copy_result = pool.process_indexed(
+            n_jobs,
+            |i, _task_id| {
+                if is_cancelled() {
+                    return Err::<(), String>("cancelled".into());
+                }
+                if first_error.lock().map(|g| g.is_some()).unwrap_or(true) {
+                    return Err::<(), String>("cancelled".into());
+                }
 
-            let job = &jobs[i];
-            let file_index = job.file_index;
-            let name = job.source_name.as_str();
+                let job = &jobs[i];
+                let file_index = job.file_index;
+                let name = job.source_name.as_str();
 
-            if let Ok(mut g) = progress.lock() {
-                g(file_index, name, 0);
-            }
+                if let Ok(mut g) = progress.lock() {
+                    g(file_index, name, 0);
+                }
 
-            if job.dest.is_none() {
-                if job.skip_size > 0 {
-                    if let Ok(mut g) = progress.lock() {
-                        g(file_index, name, job.skip_size);
+                if job.dest.is_none() {
+                    if job.skip_size > 0 {
+                        if let Ok(mut g) = progress.lock() {
+                            g(file_index, name, job.skip_size);
+                        }
                     }
+                    if let Ok(mut d) = dests.lock() {
+                        d.push(job.source.clone());
+                    }
+                    return Ok(());
+                }
+
+                let dest = job.dest.as_ref().expect("dest set for copy jobs");
+                let progress_ref = &progress;
+                let fi = file_index;
+                let name_owned = job.source_name.clone();
+                let mut report = |delta: u64| {
+                    if let Ok(mut g) = progress_ref.lock() {
+                        g(fi, &name_owned, delta);
+                    }
+                };
+
+                match copy_file_reporting(&job.source, dest, &mut report) {
+                    Ok(file_link::ImportLinkMethod::HardLink) => {
+                        if let Ok(mut c) = hardlink_count.lock() {
+                            *c += 1;
+                        }
+                    }
+                    Ok(file_link::ImportLinkMethod::Copy) => {
+                        if let Ok(mut c) = copy_count.lock() {
+                            *c += 1;
+                        }
+                    }
+                    Err(e) => {
+                        if let Ok(mut err) = first_error.lock() {
+                            *err = Some(e);
+                        }
+                        return Err::<(), String>("copy failed".into());
+                    }
+                }
+
+                if should_log_photo_import(file_index, total) {
+                    logging::info(
+                        "import",
+                        format!(
+                            "Foto importiert: {} → {}",
+                            file_name(&job.source),
+                            file_name(dest)
+                        ),
+                    );
                 }
                 if let Ok(mut d) = dests.lock() {
-                    d.push(job.source.clone());
+                    d.push(dest.clone());
                 }
-                return Ok(());
-            }
+                Ok(())
+            },
+            None,
+        );
 
-            let dest = job.dest.as_ref().expect("dest set for copy jobs");
-            let progress_ref = &progress;
-            let fi = file_index;
-            let name_owned = job.source_name.clone();
-            let mut report = |delta: u64| {
-                if let Ok(mut g) = progress_ref.lock() {
-                    g(fi, &name_owned, delta);
-                }
-            };
-
-            match copy_file_reporting(&job.source, dest, &mut report) {
-                Ok(file_link::ImportLinkMethod::HardLink) => {
-                    if let Ok(mut c) = hardlink_count.lock() {
-                        *c += 1;
-                    }
-                }
-                Ok(file_link::ImportLinkMethod::Copy) => {
-                    if let Ok(mut c) = copy_count.lock() {
-                        *c += 1;
-                    }
-                }
-                Err(e) => {
-                    if let Ok(mut err) = first_error.lock() {
-                        *err = Some(e);
-                    }
-                    return Err::<(), String>("copy failed".into());
-                }
-            }
-
-            if should_log_photo_import(file_index, total) {
-                logging::info(
-                    "import",
-                    format!(
-                        "Foto importiert: {} → {}",
-                        file_name(&job.source),
-                        file_name(dest)
-                    ),
-                );
-            }
-            if let Ok(mut d) = dests.lock() {
-                d.push(dest.clone());
-            }
-            Ok(())
-        }, None);
-
-        let dests_vec = dests
-            .lock()
-            .map(|g| g.clone())
-            .unwrap_or_default();
+        let dests_vec = dests.lock().map(|g| g.clone()).unwrap_or_default();
 
         if copy_result.is_err() || is_cancelled() {
             rollback_imported(self, &dests_vec);
@@ -475,7 +474,9 @@ fn path_starts_with(path: &Path, root: &Path) -> bool {
 }
 
 fn normalize_cmp(path: &Path) -> String {
-    let s = path.to_string_lossy().replace('/', std::path::MAIN_SEPARATOR_STR);
+    let s = path
+        .to_string_lossy()
+        .replace('/', std::path::MAIN_SEPARATOR_STR);
     #[cfg(windows)]
     {
         s.to_lowercase()
@@ -583,7 +584,9 @@ pub fn with_session<T>(f: impl FnOnce(&mut WorkingSession) -> T) -> Result<T, Wo
 }
 
 pub fn get_working_dir() -> Option<PathBuf> {
-    with_session(|s| s.current_dir().map(|p| p.to_path_buf())).ok().flatten()
+    with_session(|s| s.current_dir().map(|p| p.to_path_buf()))
+        .ok()
+        .flatten()
 }
 
 pub fn clear_working_session() {
@@ -705,7 +708,10 @@ mod tests {
         assert!(crate::media::datetime::is_chrono_photo_filename(&p_name));
         assert!(p_name.contains("_0001"), "{p_name}");
         assert_ne!(p_name, p2_name);
-        assert!(p2_name.contains("_0001") || p2_name.contains("_0002") || p2_name.contains("_001"), "{p2_name}");
+        assert!(
+            p2_name.contains("_0001") || p2_name.contains("_0002") || p2_name.contains("_001"),
+            "{p2_name}"
+        );
         assert!(crate::media::datetime::is_chrono_photo_filename(&p2_name));
 
         // Second import of same video names → unique suffix
@@ -794,9 +800,7 @@ mod tests {
         let root = session.ensure_dir().unwrap();
         let photos = root.join("photos");
         if photos.is_dir() {
-            let count = fs::read_dir(&photos)
-                .map(|rd| rd.count())
-                .unwrap_or(0);
+            let count = fs::read_dir(&photos).map(|rd| rd.count()).unwrap_or(0);
             assert_eq!(count, 0, "cancelled import must not leave photo copies");
         }
 

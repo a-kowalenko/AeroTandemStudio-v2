@@ -254,10 +254,7 @@ pub fn discard_qr_preview(path: &str) -> Result<(), String> {
         let _ = fs::remove_file(path);
     }
     if let Some(parent) = path.parent() {
-        let name = parent
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let name = parent.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if name.starts_with(QR_PREVIEW_DIR_PREFIX) {
             let _ = fs::remove_dir_all(parent);
         }
@@ -562,9 +559,7 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, Q
 fn looks_like_qr_landing_url(s: &str) -> bool {
     let lower = s.to_ascii_lowercase();
     lower.contains("/qr/")
-        && (lower.starts_with("http://")
-            || lower.starts_with("https://")
-            || lower.contains("://"))
+        && (lower.starts_with("http://") || lower.starts_with("https://") || lower.contains("://"))
 }
 
 fn is_ascii_numeric_id(s: &str) -> bool {
@@ -573,12 +568,14 @@ fn is_ascii_numeric_id(s: &str) -> bool {
 
 /// Variant 3: URL-only numeric customer + booking IDs (both required).
 fn parse_numeric_ids_from_url(url: &str) -> Result<ParsedQrKunde, QrScanError> {
-    let customer = extract_qr_customer_id_from_url(url).filter(|s| !s.is_empty()).ok_or_else(
-        || QrScanError::Parse("missing Customer_ID in URL path /qr/{id}".into()),
-    )?;
-    let booking = extract_qr_booking_id_from_url(url).filter(|s| !s.is_empty()).ok_or_else(
-        || QrScanError::Parse("missing Booking_ID in URL query (b= or booking_id=)".into()),
-    )?;
+    let customer = extract_qr_customer_id_from_url(url)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| QrScanError::Parse("missing Customer_ID in URL path /qr/{id}".into()))?;
+    let booking = extract_qr_booking_id_from_url(url)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            QrScanError::Parse("missing Booking_ID in URL query (b= or booking_id=)".into())
+        })?;
     if !is_ascii_numeric_id(&customer) {
         return Err(QrScanError::Parse(format!(
             "Customer_ID in URL must be numeric digits, got {customer:?}"
@@ -730,11 +727,7 @@ fn extract_qr_customer_id_from_url(url: &str) -> Option<String> {
     let lower = url.to_ascii_lowercase();
     let idx = lower.find("/qr/")?;
     let rest = &url[idx + "/qr/".len()..];
-    let segment = rest
-        .split(['?', '#', '/'])
-        .next()
-        .unwrap_or("")
-        .trim();
+    let segment = rest.split(['?', '#', '/']).next().unwrap_or("").trim();
     if segment.is_empty() {
         None
     } else {
@@ -1073,10 +1066,7 @@ pub fn cascade_target_widths(max_escalate: u32, orig_w: u32) -> Vec<u32> {
         QR_CASCADE_ESCALATE_WIDTH,
         MAX_QR_DECODE_WIDTH,
     ];
-    let mut widths: Vec<u32> = candidates
-        .iter()
-        .map(|&w| w.min(cap).min(orig_w))
-        .collect();
+    let mut widths: Vec<u32> = candidates.iter().map(|&w| w.min(cap).min(orig_w)).collect();
     widths.sort();
     widths.dedup();
     if widths.is_empty() {
@@ -1123,9 +1113,15 @@ fn decode_qr_cascade_from_luma(
     }
     // Pass 3 — preprocess variants.
     let preps = [
-        (QrPreprocess::Contrast, QrDecodeCascadePass::PreprocessContrast),
+        (
+            QrPreprocess::Contrast,
+            QrDecodeCascadePass::PreprocessContrast,
+        ),
         (QrPreprocess::Invert, QrDecodeCascadePass::PreprocessInvert),
-        (QrPreprocess::Unsharp, QrDecodeCascadePass::PreprocessUnsharp),
+        (
+            QrPreprocess::Unsharp,
+            QrDecodeCascadePass::PreprocessUnsharp,
+        ),
     ];
     for (prep, pass) in preps {
         let processed = apply_qr_preprocess(&luma, width, height, prep);
@@ -1789,9 +1785,7 @@ fn try_quick_anchor_pass(
             continue;
         }
 
-        if let Some((parsed, preview)) =
-            decode_kunde_from_image_path(&frame_path, max_width)?
-        {
+        if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, max_width)? {
             logging::info(
                 "qr",
                 format!(
@@ -1799,10 +1793,7 @@ fn try_quick_anchor_pass(
                     clip_file_name(path)
                 ),
             );
-            return Ok((
-                Some(QrScanResult::hit(parsed, path, Some(preview))),
-                tried,
-            ));
+            return Ok((Some(QrScanResult::hit(parsed, path, Some(preview))), tried));
         }
     }
 
@@ -1866,11 +1857,7 @@ fn scan_video_rank_pipe(
         frames[write_i] = Some(frame.to_vec());
         if write_i == 0 || write_i + 1 == frames.len() || (write_i + 1) % 8 == 0 {
             // Progress: how far the rank extract has buffered (not decode count).
-            notify(
-                "extract",
-                (write_i as u32).saturating_add(1),
-                frames_total,
-            );
+            notify("extract", (write_i as u32).saturating_add(1), frames_total);
         }
         write_i = write_i.saturating_add(1);
         true
@@ -1971,11 +1958,7 @@ fn scan_video_topk_hq_pass(
         if !frame_path.is_file() {
             continue;
         }
-        notify(
-            progress_phase,
-            (i as u32).saturating_add(1),
-            frames_total,
-        );
+        notify(progress_phase, (i as u32).saturating_add(1), frames_total);
 
         if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
             let via = if accurate {
@@ -2015,10 +1998,7 @@ fn scan_video_clip_seek_fallback(
     let step = video_rank_frame_step(options.frame_step);
     let indices = target_frame_indices(fps, options.scan_seconds, step);
     let ordered = midpoint_ordered_frames(&indices);
-    let budget: Vec<u32> = ordered
-        .into_iter()
-        .take(QR_VIDEO_DECODE_TOP_K)
-        .collect();
+    let budget: Vec<u32> = ordered.into_iter().take(QR_VIDEO_DECODE_TOP_K).collect();
     let frames_total = (budget.len() as u32).max(1);
 
     let notify = |phase: &str, frame: u32, frames_total: u32| {
@@ -2151,7 +2131,10 @@ mod tests {
         assert!(idx.contains(&10));
         assert!(idx.contains(&140) || idx.last() == Some(&140) || idx.contains(&140));
         // 30*5=150 frames → 0,10,...,140
-        assert_eq!(idx, vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]);
+        assert_eq!(
+            idx,
+            vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]
+        );
     }
 
     #[test]
@@ -2486,7 +2469,12 @@ mod tests {
 
     #[test]
     fn spotlight_from_points_makes_padded_square() {
-        let pts = [(100.0, 100.0), (100.0, 200.0), (200.0, 100.0), (200.0, 200.0)];
+        let pts = [
+            (100.0, 100.0),
+            (100.0, 200.0),
+            (200.0, 100.0),
+            (200.0, 200.0),
+        ];
         let spot = spotlight_from_points(&pts, 1000, 800).unwrap();
         // AABB 100×100 → side 120 with 20% pad; center (150,150)
         assert!((spot.size - 0.12).abs() < 1e-4, "size={}", spot.size);
@@ -2576,10 +2564,7 @@ mod tests {
         let blur = box_blur_luma(&sharp, w, h, 3);
         let v_sharp = laplacian_variance(&sharp, w, h);
         let v_blur = laplacian_variance(&blur, w, h);
-        assert!(
-            v_sharp > v_blur * 2.0,
-            "sharp={v_sharp} blur={v_blur}"
-        );
+        assert!(v_sharp > v_blur * 2.0, "sharp={v_sharp} blur={v_blur}");
         let uniform = vec![128u8; (w * h) as usize];
         let v_uniform = laplacian_variance(&uniform, w, h);
         assert!(v_uniform < QR_SHARPNESS_GATE_THRESHOLD);
@@ -2607,10 +2592,7 @@ mod tests {
     #[test]
     fn sharpness_ranked_slots_sharpest_first() {
         let scores = vec![(0, 5.0), (1, 100.0), (2, 80.0), (3, 1.0), (4, 90.0)];
-        assert_eq!(
-            sharpness_ranked_slots(&scores, 3),
-            vec![1, 4, 2]
-        );
+        assert_eq!(sharpness_ranked_slots(&scores, 3), vec![1, 4, 2]);
         assert!(sharpness_ranked_slots(&scores, 0).is_empty());
         assert_eq!(sharpness_ranked_slots(&scores, 8).len(), 5);
     }
@@ -2676,9 +2658,7 @@ mod tests {
         assert!(
             decode_qr_cascade_from_luma(luma.clone(), 64, 64, QrCascadeMode::Fast, None).is_none()
         );
-        assert!(
-            decode_qr_cascade_from_luma(luma, 64, 64, QrCascadeMode::Full, None).is_none()
-        );
+        assert!(decode_qr_cascade_from_luma(luma, 64, 64, QrCascadeMode::Full, None).is_none());
     }
 
     #[test]

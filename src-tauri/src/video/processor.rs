@@ -13,14 +13,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::constants::{
-    ASSET_HINTERGRUND, CONTENT_AREA_PADDING_BOTTOM, CONTENT_AREA_PADDING_LEFT,
-    CONTENT_AREA_PADDING_RIGHT, CONTENT_AREA_PADDING_TOP, CONTENT_AREA_X1, CONTENT_AREA_X2,
-    CONTENT_AREA_Y1, CONTENT_AREA_Y2, DEFAULT_INTRO_DAUER_SECS, HINTERGRUND_ORIGINAL_HEIGHT,
-    HINTERGRUND_ORIGINAL_WIDTH,
-};
-use crate::model::Kunde;
-use crate::storage::logging;
 use super::body_concat_fallback::BodyConcatAskFn;
 use super::concat::{self, ConcatError, VideoCodec};
 use super::encode_profile::EncodeProfile;
@@ -37,15 +29,19 @@ use super::intro_mux_fallback::IntroMuxChoice;
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::probe;
 use super::progress::{progress_from_times, progress_from_times_with_task};
-use super::reencode_confirm::{
-    self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams,
+use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
+use crate::constants::{
+    ASSET_HINTERGRUND, CONTENT_AREA_PADDING_BOTTOM, CONTENT_AREA_PADDING_LEFT,
+    CONTENT_AREA_PADDING_RIGHT, CONTENT_AREA_PADDING_TOP, CONTENT_AREA_X1, CONTENT_AREA_X2,
+    CONTENT_AREA_Y1, CONTENT_AREA_Y2, DEFAULT_INTRO_DAUER_SECS, HINTERGRUND_ORIGINAL_HEIGHT,
+    HINTERGRUND_ORIGINAL_WIDTH,
 };
+use crate::model::Kunde;
+use crate::storage::logging;
 
 static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:\s+(\w+).*?(\d+)\s*Hz",
-    )
-    .unwrap()
+    Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:\s+(\w+).*?(\d+)\s*Hz")
+        .unwrap()
 });
 static PIX_FMT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+[^,]*,\s*([a-z0-9]+)").unwrap());
@@ -629,9 +625,7 @@ pub fn build_capcut_segment_vfilter(
         parts.push(format!(
             "scale={width}:{height}:force_original_aspect_ratio=decrease"
         ));
-        parts.push(format!(
-            "pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
-        ));
+        parts.push(format!("pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"));
     }
     for f in mid_filters {
         if !f.is_empty() {
@@ -831,16 +825,8 @@ pub fn build_intro_body_single_pass_args(
          {drawtext_filter},format={target_pix_fmt},fps={fps},\
          trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv]"
     );
-    let body_v = build_capcut_segment_vfilter(
-        1,
-        "bodyv",
-        body_plan,
-        w,
-        h,
-        fps,
-        &target_pix_fmt,
-        &[],
-    );
+    let body_v =
+        build_capcut_segment_vfilter(1, "bodyv", body_plan, w, h, fps, &target_pix_fmt, &[]);
     let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
     let aformat = format!(
         "aformat=sample_rates={}:channel_layouts={}",
@@ -913,12 +899,7 @@ pub fn build_intro_body_single_pass_args(
     match audio_mode {
         SinglePassAudioMode::VideoOnly => {}
         SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
-            args.extend([
-                "-c:a".into(),
-                "aac".into(),
-                "-b:a".into(),
-                "192k".into(),
-            ]);
+            args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
         }
     }
 
@@ -960,8 +941,9 @@ pub enum OutroKind {
 
 /// Common photo / video extensions used for the Outro (parity with app media filter).
 const OUTRO_VIDEO_EXTS: &[&str] = &["mp4", "mov", "mkv", "avi", "m4v", "webm", "mts", "m2ts"];
-const OUTRO_PHOTO_EXTS: &[&str] =
-    &["jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "heic", "dng"];
+const OUTRO_PHOTO_EXTS: &[&str] = &[
+    "jpg", "jpeg", "png", "bmp", "tiff", "tif", "webp", "heic", "dng",
+];
 
 /// Infer Outro media kind from the file extension (video wins ties; unknown → photo).
 pub fn outro_media_kind(path: &str) -> OutroKind {
@@ -1213,12 +1195,7 @@ pub fn build_intro_body_outro_single_pass_args(
     push_media_input(&mut args, body_path, body_hwaccel);
     match outro.kind {
         OutroKind::Photo => {
-            args.extend([
-                "-loop".into(),
-                "1".into(),
-                "-i".into(),
-                outro.path.clone(),
-            ]);
+            args.extend(["-loop".into(), "1".into(), "-i".into(), outro.path.clone()]);
         }
         OutroKind::Video => {
             args.extend(["-i".into(), outro.path.clone()]);
@@ -1256,12 +1233,7 @@ pub fn build_intro_body_outro_single_pass_args(
     match audio_mode {
         SinglePassAudioMode::VideoOnly => {}
         SinglePassAudioMode::EncodeAac | SinglePassAudioMode::EncodeSilence => {
-            args.extend([
-                "-c:a".into(),
-                "aac".into(),
-                "-b:a".into(),
-                "192k".into(),
-            ]);
+            args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
         }
     }
     args.extend([
@@ -1469,7 +1441,12 @@ pub fn build_outro_video_segment_args(
     );
     let fps_int = parse_fps_int(&v_params.fps);
 
-    let mut args = vec!["-y".into(), "-hide_banner".into(), "-i".into(), video_path.to_string()];
+    let mut args = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-i".into(),
+        video_path.to_string(),
+    ];
     if !has_audio {
         // Continuous audio track: silence spanning the (shorter) video via -shortest.
         args.extend([
@@ -1482,7 +1459,12 @@ pub fn build_outro_video_segment_args(
             ),
         ]);
     }
-    args.extend(["-vf".into(), video_filters, "-c:v".into(), encoder.to_string()]);
+    args.extend([
+        "-vf".into(),
+        video_filters,
+        "-c:v".into(),
+        encoder.to_string(),
+    ]);
     args.extend(quality_params.iter().cloned());
     args.extend([
         "-pix_fmt".into(),
@@ -1557,9 +1539,8 @@ pub fn build_concat_segments_encode_args(
     let fps = &v_params.fps;
     let fps_int = parse_fps_int(fps);
     let n = segments.len().max(1);
-    let total = progress_encode_total_secs(
-        &segments.iter().map(|s| s.duration).collect::<Vec<_>>(),
-    );
+    let total =
+        progress_encode_total_secs(&segments.iter().map(|s| s.duration).collect::<Vec<_>>());
     let silent_count = segments.iter().filter(|s| !s.has_audio).count();
     let aformat = format!(
         "aformat=sample_rates={}:channel_layouts={}",
@@ -1732,7 +1713,10 @@ pub fn intro_params_from_probe(stderr: &str, fallback_codec: &str) -> IntroVideo
         .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
         .map(|t| {
             if let Some(stripped) = t.strip_suffix('k').or_else(|| t.strip_suffix('K')) {
-                format!("{}", (stripped.parse::<f64>().unwrap_or(90.0) * 1000.0) as u64)
+                format!(
+                    "{}",
+                    (stripped.parse::<f64>().unwrap_or(90.0) * 1000.0) as u64
+                )
             } else {
                 t
             }
@@ -1792,11 +1776,7 @@ fn progress_encode_total_secs(parts: &[f64]) -> f64 {
 }
 
 fn push_ffmpeg_progress_args(args: &mut Vec<String>) {
-    args.extend([
-        "-progress".into(),
-        "pipe:1".into(),
-        "-nostats".into(),
-    ]);
+    args.extend(["-progress".into(), "pipe:1".into(), "-nostats".into()]);
 }
 
 /// Map nested FFmpeg 0–100 % into `[lo, hi]` on the overall bar (single step only).
@@ -1964,13 +1944,7 @@ pub fn encode_body_clips_parallel(
                 &encoder,
                 &quality_only,
             );
-            run_ffmpeg_tagged(
-                &ffmpeg_path,
-                &args,
-                dur,
-                Some(task_id),
-                task_progress,
-            )?;
+            run_ffmpeg_tagged(&ffmpeg_path, &args, dur, Some(task_id), task_progress)?;
             progress(progress_from_times_with_task(
                 100.0,
                 100.0,
@@ -2132,8 +2106,7 @@ pub fn create_video(
     } else if options.parallel_enabled && !body_codecs_compatible(ffmpeg, video_paths) {
         // Mixed codecs → per_clip encode in parallel, then stream-copy concat.
         // Resolve target before confirm so the dialog can show `auto (H.264|H.265)`.
-        let target_pref =
-            resolve_mixed_body_target_pref(options.video_codec, ffmpeg, video_paths);
+        let target_pref = resolve_mixed_body_target_pref(options.video_codec, ffmpeg, video_paths);
         let intent = ReencodeIntent::new(
             ReencodeKind::BodyParallel,
             "Unterschiedliche Codecs unter den Clips — parallele Neu-Kodierung",
@@ -2248,11 +2221,7 @@ pub fn create_video(
             "Videoclips vorbereitet",
         ));
     } else if outro_active {
-        on_progress(progress_from_times(
-            5.0,
-            100.0,
-            "Videoclips vorbereitet",
-        ));
+        on_progress(progress_from_times(5.0, 100.0, "Videoclips vorbereitet"));
     } else {
         emit_stage(&on_progress, 1.0, stages, "Videoclips vorbereitet");
     }
@@ -2296,8 +2265,7 @@ pub fn create_video(
         // OPT-21A: source geometry before forcing phone-safe pix_fmt.
         let body_source = CapcutSourceVideo::from_intro_params(&v_params);
         capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe
-        let profile =
-            EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
+        let profile = EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
 
         // Intro strings must outlive the mux call; declared here, filled when enabled.
         let hintergrund_s: String;
@@ -2368,8 +2336,9 @@ pub fn create_video(
                 } else if let Some(reason) = q.status.strip_prefix("Kodiere neu: ") {
                     q.status = format!("Kodiere Intro+Video neu: {reason}");
                 } else if q.status == "re-encode" {
-                    q.status = "Kodiere Intro+Video neu: Intro und Body nicht stream-copy-kompatibel"
-                        .into();
+                    q.status =
+                        "Kodiere Intro+Video neu: Intro und Body nicht stream-copy-kompatibel"
+                            .into();
                 } else if q.status == "hevc-mkv-fallback" {
                     q.status = "Kodiere Intro+Video: HEVC Stream-Copy-Fallback (MKV-Remux)…".into();
                 }
@@ -2377,63 +2346,56 @@ pub fn create_video(
             })
         };
 
-        let handle_needs_reencode =
-            |reason: String| -> Result<concat::ConcatOutcome, ConcatError> {
-                let choice = if let Some(ask) = &on_intro_mux_fallback {
-                    on_progress(progress_from_times(
-                        0.0,
-                        100.0,
-                        "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…",
-                    ));
-                    match ask(&reason) {
-                        Ok(c) => c,
-                        Err(()) => {
-                            return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
-                        }
+        let handle_needs_reencode = |reason: String| -> Result<concat::ConcatOutcome, ConcatError> {
+            let choice = if let Some(ask) = &on_intro_mux_fallback {
+                on_progress(progress_from_times(
+                    0.0,
+                    100.0,
+                    "Stream-Copy Intro+Video fehlgeschlagen — warte auf Entscheidung…",
+                ));
+                match ask(&reason) {
+                    Ok(c) => c,
+                    Err(()) => {
+                        return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
                     }
-                } else {
-                    // Preview / silent path: keep previous auto re-encode behaviour
-                    // (still gated by on_reencode below).
-                    IntroMuxChoice::WithIntroEncode
-                };
+                }
+            } else {
+                // Preview / silent path: keep previous auto re-encode behaviour
+                // (still gated by on_reencode below).
+                IntroMuxChoice::WithIntroEncode
+            };
 
-                match choice {
-                    IntroMuxChoice::WithoutIntro => {
-                        emit_step_start(
-                            &on_progress,
-                            "Exportiere Video ohne Intro (Stream-Copy)…",
-                        );
-                        let enc = export_body_to_output(
-                            ffmpeg,
-                            &body_path,
-                            output,
-                            &hw,
-                            out_codec,
-                            options.crf,
-                            hw_accel_enabled,
-                            force_reencode,
-                            Arc::clone(&on_progress),
-                            on_reencode.as_ref(),
-                        )
-                        .map_err(|e| match e {
-                            ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
-                            ProcessorError::Concat(ce) => ce,
-                            other => ConcatError::Message(other.to_string()),
-                        })?;
-                        Ok(concat::ConcatOutcome {
-                            method: "body-only".into(),
-                            codec: enc,
-                            reencode_reason: Some(reason),
-                        })
-                    }
-                    IntroMuxChoice::WithIntroEncode => {
-                        // User already chose re-encode via IntroMux dialog when ask was set.
-                        // When ask was None (preview), require explicit re-encode confirm.
-                        let (encode_crf, encode_hw) = if on_intro_mux_fallback.is_none() {
-                            let intent = ReencodeIntent::new(
-                                ReencodeKind::IntroMux,
-                                reason.clone(),
-                            )
+            match choice {
+                IntroMuxChoice::WithoutIntro => {
+                    emit_step_start(&on_progress, "Exportiere Video ohne Intro (Stream-Copy)…");
+                    let enc = export_body_to_output(
+                        ffmpeg,
+                        &body_path,
+                        output,
+                        &hw,
+                        out_codec,
+                        options.crf,
+                        hw_accel_enabled,
+                        force_reencode,
+                        Arc::clone(&on_progress),
+                        on_reencode.as_ref(),
+                    )
+                    .map_err(|e| match e {
+                        ProcessorError::Ffmpeg(fe) => ConcatError::Ffmpeg(fe),
+                        ProcessorError::Concat(ce) => ce,
+                        other => ConcatError::Message(other.to_string()),
+                    })?;
+                    Ok(concat::ConcatOutcome {
+                        method: "body-only".into(),
+                        codec: enc,
+                        reencode_reason: Some(reason),
+                    })
+                }
+                IntroMuxChoice::WithIntroEncode => {
+                    // User already chose re-encode via IntroMux dialog when ask was set.
+                    // When ask was None (preview), require explicit re-encode confirm.
+                    let (encode_crf, encode_hw) = if on_intro_mux_fallback.is_none() {
+                        let intent = ReencodeIntent::new(ReencodeKind::IntroMux, reason.clone())
                             .with_params(ReencodeParams {
                                 crf: Some(options.crf),
                                 hw_accel: Some(hw_accel_enabled),
@@ -2444,39 +2406,37 @@ pub fn create_video(
                                 target_codec: Some(v_params.vcodec.clone()),
                                 ..Default::default()
                             });
-                            on_progress(progress_from_times(
-                                0.0,
-                                100.0,
-                                "Neu-Kodierung — warte auf Bestätigung…",
-                            ));
-                            let profile = reencode_confirm::require_confirm(
-                                on_reencode.as_ref(),
-                                &intent,
-                            )
-                            .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
-                            (profile.crf, profile.hw_accel)
-                        } else {
-                            (options.crf, hw_accel_enabled)
-                        };
-                        mux_intro_body_single_pass(
-                            ffmpeg,
-                            &hintergrund_s,
-                            &body_path,
-                            output,
-                            options.dauer,
-                            &v_params,
-                            &drawtext,
-                            &hw,
-                            encode_crf,
-                            encode_hw,
-                            None,
-                            None,
-                            &work,
-                            Arc::clone(&mux_cb),
-                        )
-                    }
+                        on_progress(progress_from_times(
+                            0.0,
+                            100.0,
+                            "Neu-Kodierung — warte auf Bestätigung…",
+                        ));
+                        let profile =
+                            reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
+                                .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
+                        (profile.crf, profile.hw_accel)
+                    } else {
+                        (options.crf, hw_accel_enabled)
+                    };
+                    mux_intro_body_single_pass(
+                        ffmpeg,
+                        &hintergrund_s,
+                        &body_path,
+                        output,
+                        options.dauer,
+                        &v_params,
+                        &drawtext,
+                        &hw,
+                        encode_crf,
+                        encode_hw,
+                        None,
+                        None,
+                        &work,
+                        Arc::clone(&mux_cb),
+                    )
                 }
-            };
+            }
+        };
 
         let mux_result = if capcut_export {
             // CapCut-style: one continuous encode → a single bitstream with one SPS/PPS.
@@ -2586,12 +2546,7 @@ pub fn create_video(
 
             emit_step_start(&on_progress, "Füge Intro und Video zusammen…");
             let paths = vec![intro_s.clone(), body_path.clone()];
-            match concat::concat_intro_with_body(
-                ffmpeg,
-                &paths,
-                output,
-                Arc::clone(&mux_cb),
-            ) {
+            match concat::concat_intro_with_body(ffmpeg, &paths, output, Arc::clone(&mux_cb)) {
                 Ok(outcome) => Ok(outcome),
                 Err(ConcatError::NeedsReencode { reason }) => handle_needs_reencode(reason),
                 Err(e) => Err(e),
@@ -2762,20 +2717,18 @@ fn encode_body_to_output(
     } else {
         ReencodeKind::RemuxFallback
     };
-    let intent = ReencodeIntent::new(kind, reason.clone()).with_params(
-        ReencodeParams {
-            encoder: Some(enc.clone()),
-            crf: Some(crf),
-            hw_accel: Some(hw_accel_enabled),
-            target_codec: Some(match out_codec {
-                VideoCodec::Hevc => "h265".into(),
-                VideoCodec::H264 => "h264".into(),
-                VideoCodec::Other => "other".into(),
-            }),
-            strategy: Some(strategy.into()),
-            ..Default::default()
-        },
-    );
+    let intent = ReencodeIntent::new(kind, reason.clone()).with_params(ReencodeParams {
+        encoder: Some(enc.clone()),
+        crf: Some(crf),
+        hw_accel: Some(hw_accel_enabled),
+        target_codec: Some(match out_codec {
+            VideoCodec::Hevc => "h265".into(),
+            VideoCodec::H264 => "h264".into(),
+            VideoCodec::Other => "other".into(),
+        }),
+        strategy: Some(strategy.into()),
+        ..Default::default()
+    });
     on_progress(progress_from_times(
         0.0,
         100.0,
@@ -2820,22 +2773,9 @@ fn encode_body_to_output(
         VideoCodec::H264 => "h264",
         VideoCodec::Other => "other",
     };
-    log_encode_start(
-        kind,
-        0,
-        0,
-        "?",
-        dur,
-        profile.crf,
-        encode_hw,
-        codec_label,
-    );
+    log_encode_start(kind, 0, 0, "?", dur, profile.crf, encode_hw, codec_label);
     let t0 = Instant::now();
-    let attempts: &[bool] = if encode_hw {
-        &[false, true]
-    } else {
-        &[true]
-    };
+    let attempts: &[bool] = if encode_hw { &[false, true] } else { &[true] };
     let progress_total = progress_encode_total_secs(&[dur.max(0.05)]);
 
     let mut last_err: Option<ProcessorError> = None;
@@ -2887,9 +2827,7 @@ fn encode_body_to_output(
     if let Some(ref e) = last_err {
         log_encode_fail(kind, e);
     }
-    Err(last_err.unwrap_or_else(|| {
-        ProcessorError::Message("body re-encode failed".into())
-    }))
+    Err(last_err.unwrap_or_else(|| ProcessorError::Message("body re-encode failed".into())))
 }
 
 fn probe_body_pix_fmt(ffmpeg: &Path, body_path: &str) -> String {
@@ -3078,7 +3016,9 @@ fn mux_intro_body_single_pass(
     }
 
     let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
-    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0).max(0.05);
+    let body_dur = probe_duration_secs(ffmpeg, body_path)
+        .unwrap_or(0.0)
+        .max(0.05);
     let intro_dauer = intro_dauer.max(0.1);
     // Small headroom: short/wrong container duration must not make the bar race to 99%
     // in the first seconds (live ticks are also capped at 99% until FFmpeg `end`).
@@ -3120,7 +3060,9 @@ fn mux_intro_body_single_pass(
         _ => VideoCodec::H264,
     };
 
-    let encode_hw = encode_profile.map(|p| p.hw_accel).unwrap_or(hw_accel_enabled);
+    let encode_hw = encode_profile
+        .map(|p| p.hw_accel)
+        .unwrap_or(hw_accel_enabled);
     let kind = if capcut {
         "capcut.intro_body"
     } else {
@@ -3139,11 +3081,7 @@ fn mux_intro_body_single_pass(
     );
     let t0 = Instant::now();
     let mut last_err: Option<ConcatError> = None;
-    let attempts: &[bool] = if encode_hw {
-        &[false, true]
-    } else {
-        &[true]
-    };
+    let attempts: &[bool] = if encode_hw { &[false, true] } else { &[true] };
     let mut encoder_used = String::new();
     let mut encoded = false;
     for (attempt_i, &force_sw) in attempts.iter().enumerate() {
@@ -3276,7 +3214,9 @@ fn assemble_silent_plus_body_audio(
 
     let intro_dauer = intro_dauer.max(0.0);
     let trail_silence = trail_silence.max(0.0);
-    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.05).max(0.05);
+    let body_dur = probe_duration_secs(ffmpeg, body_path)
+        .unwrap_or(0.05)
+        .max(0.05);
     let video_dur = probe_duration_secs(ffmpeg, video_path)
         .unwrap_or(intro_dauer + body_dur + trail_silence)
         .max(0.1);
@@ -3392,7 +3332,9 @@ fn mux_with_outro(
     let fps_int = parse_fps_int(&v_params.fps);
 
     let body_has_audio = concat::probe_has_audio(ffmpeg, body_path).unwrap_or(false);
-    let body_dur = probe_duration_secs(ffmpeg, body_path).unwrap_or(0.0).max(0.05);
+    let body_dur = probe_duration_secs(ffmpeg, body_path)
+        .unwrap_or(0.0)
+        .max(0.05);
     let intro_dauer = intro.map(|(_, _, d)| d.max(0.1)).unwrap_or(0.0);
 
     let outro_has_audio = match outro_kind {
@@ -3401,7 +3343,9 @@ fn mux_with_outro(
     };
     let outro_eff_dauer = match outro_kind {
         OutroKind::Photo => outro_dauer.max(0.1),
-        OutroKind::Video => probe_duration_secs(ffmpeg, outro_path).unwrap_or(0.0).max(0.05),
+        OutroKind::Video => probe_duration_secs(ffmpeg, outro_path)
+            .unwrap_or(0.0)
+            .max(0.05),
     };
     let outro_input = SinglePassOutroInput {
         path: outro_path.to_string(),
@@ -3412,9 +3356,7 @@ fn mux_with_outro(
 
     // AAC copy only when body audio is copyable AND Outro does not bring its own audio
     // (photo / silent video → trailing silence via stream-copy assemble).
-    let copy_audio = body_has_audio
-        && body_audio_is_aac_copyable(v_params)
-        && !outro_has_audio;
+    let copy_audio = body_has_audio && body_audio_is_aac_copyable(v_params) && !outro_has_audio;
 
     let audio_mode = if copy_audio {
         SinglePassAudioMode::VideoOnly
@@ -3446,10 +3388,7 @@ fn mux_with_outro(
     // First tick must match VIDEO_STEP_START_RESET (incl. older frontends that only
     // know Intro+Video Universal). A 0 % Outro label alone would not lower the bar
     // after "Videoclips vorbereitet" @ 100 % (monotonic UI).
-    emit_step_start(
-        &on_progress,
-        "Exportiere Intro+Video (Universal)…",
-    );
+    emit_step_start(&on_progress, "Exportiere Intro+Video (Universal)…");
     on_progress(progress_from_times(0.0, 100.0, label));
 
     let total = progress_encode_total_secs(&[intro_dauer, body_dur, outro_eff_dauer]);
@@ -3470,20 +3409,13 @@ fn mux_with_outro(
         &v_params.vcodec,
     );
     let t0 = Instant::now();
-    let attempts: &[bool] = if encode_hw {
-        &[false, true]
-    } else {
-        &[true]
-    };
+    let attempts: &[bool] = if encode_hw { &[false, true] } else { &[true] };
     let mut last_err: Option<ProcessorError> = None;
     let mut encoder_used = String::new();
     let mut encoded = false;
     for (attempt_i, &force_sw) in attempts.iter().enumerate() {
         if attempt_i > 0 {
-            emit_step_start(
-                &on_progress,
-                "Exportiere Intro+Video (Universal)…",
-            );
+            emit_step_start(&on_progress, "Exportiere Intro+Video (Universal)…");
             on_progress(progress_from_times(0.0, 100.0, label));
             if let Some(ProcessorError::Ffmpeg(ref e)) = last_err {
                 log_encode_fallback_sw(kind, e);
@@ -3543,8 +3475,9 @@ fn mux_with_outro(
         if let Some(ref e) = last_err {
             log_encode_fail(kind, e);
         }
-        return Err(last_err
-            .unwrap_or_else(|| ProcessorError::Message("Outro-Zusammenfügen fehlgeschlagen".into())));
+        return Err(last_err.unwrap_or_else(|| {
+            ProcessorError::Message("Outro-Zusammenfügen fehlgeschlagen".into())
+        }));
     }
 
     if copy_audio {
@@ -3804,7 +3737,12 @@ mod tests {
 
     #[test]
     fn body_reencode_mid_args_inserts_vf_only_when_converting() {
-        let enc = vec!["-c:v".into(), "h264_nvenc".into(), "-preset".into(), "p4".into()];
+        let enc = vec![
+            "-c:v".into(),
+            "h264_nvenc".into(),
+            "-preset".into(),
+            "p4".into(),
+        ];
         // Already safe → no vf / pix_fmt.
         let mid_safe = build_body_reencode_mid_args(VideoCodec::H264, "yuv420p", &enc);
         assert!(!mid_safe.iter().any(|a| a == "-vf"));
@@ -3813,8 +3751,12 @@ mod tests {
 
         // 10-bit source → explicit CPU format filter before encoder + output pix_fmt.
         let mid_10 = build_body_reencode_mid_args(VideoCodec::H264, "yuv420p10le", &enc);
-        assert!(mid_10.windows(2).any(|w| w[0] == "-vf" && w[1] == "format=yuv420p"));
-        assert!(mid_10.windows(2).any(|w| w[0] == "-pix_fmt" && w[1] == "yuv420p"));
+        assert!(mid_10
+            .windows(2)
+            .any(|w| w[0] == "-vf" && w[1] == "format=yuv420p"));
+        assert!(mid_10
+            .windows(2)
+            .any(|w| w[0] == "-pix_fmt" && w[1] == "yuv420p"));
         // -vf must come before -c:v so NVENC sees converted frames.
         let vf_i = mid_10.iter().position(|a| a == "-vf").unwrap();
         let cv_i = mid_10.iter().position(|a| a == "-c:v").unwrap();
@@ -3868,7 +3810,9 @@ mod tests {
             .iter()
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .collect();
-        assert!(joined.iter().any(|p| p.contains("assets/fonts/DejaVuSans.ttf")));
+        assert!(joined
+            .iter()
+            .any(|p| p.contains("assets/fonts/DejaVuSans.ttf")));
         assert!(joined
             .iter()
             .any(|p| p.contains("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")));
@@ -3944,7 +3888,12 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     #[test]
     fn build_body_clip_encode_args_structure() {
         let params = IntroVideoParams::for_1080p30("h264");
-        let quality = vec!["-preset".into(), "medium".into(), "-crf".into(), "18".into()];
+        let quality = vec![
+            "-preset".into(),
+            "medium".into(),
+            "-crf".into(),
+            "18".into(),
+        ];
         let args = build_body_clip_encode_args("in.mp4", "out.mp4", &params, "libx264", &quality);
         assert!(args.contains(&"-i".into()));
         assert!(args.contains(&"in.mp4".into()));
@@ -4087,7 +4036,9 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         assert!(!fc.contains("asplit"));
         // Outro video is not looped.
         assert_eq!(args.iter().filter(|a| *a == "-loop").count(), 1);
-        assert!(args.iter().any(|a| a.contains("gte(t,5)") && a.contains("gte(t,25)")));
+        assert!(args
+            .iter()
+            .any(|a| a.contains("gte(t,5)") && a.contains("gte(t,25)")));
     }
 
     #[test]
@@ -4120,28 +4071,47 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         let v = IntroVideoParams::for_1080p30("h264");
         let quality = intro_quality_params("libx264", 18, false);
 
-        let with_audio = build_outro_video_segment_args(
-            "outro.mp4", "seg.mp4", &v, "libx264", &quality, true,
-        );
-        assert!(with_audio.windows(2).any(|w| w[0] == "-map" && w[1] == "0:a:0"));
+        let with_audio =
+            build_outro_video_segment_args("outro.mp4", "seg.mp4", &v, "libx264", &quality, true);
+        assert!(with_audio
+            .windows(2)
+            .any(|w| w[0] == "-map" && w[1] == "0:a:0"));
         assert!(!with_audio.iter().any(|a| a.starts_with("anullsrc=")));
 
-        let no_audio = build_outro_video_segment_args(
-            "outro.mp4", "seg.mp4", &v, "libx264", &quality, false,
-        );
+        let no_audio =
+            build_outro_video_segment_args("outro.mp4", "seg.mp4", &v, "libx264", &quality, false);
         assert!(no_audio.iter().any(|a| a.starts_with("anullsrc=")));
-        assert!(no_audio.windows(2).any(|w| w[0] == "-map" && w[1] == "1:a:0"));
+        assert!(no_audio
+            .windows(2)
+            .any(|w| w[0] == "-map" && w[1] == "1:a:0"));
         assert!(no_audio.contains(&"-shortest".into()));
     }
 
     #[test]
     fn concat_segments_encode_all_audio_no_silence_input() {
         let v = IntroVideoParams::for_1080p30("h264");
-        let quality = vec!["-preset".into(), "superfast".into(), "-crf".into(), "18".into()];
+        let quality = vec![
+            "-preset".into(),
+            "superfast".into(),
+            "-crf".into(),
+            "18".into(),
+        ];
         let segs = vec![
-            ConcatSegment { path: "intro.mp4".into(), has_audio: true, duration: 5.0 },
-            ConcatSegment { path: "body.mp4".into(), has_audio: true, duration: 60.0 },
-            ConcatSegment { path: "outro.mp4".into(), has_audio: true, duration: 6.0 },
+            ConcatSegment {
+                path: "intro.mp4".into(),
+                has_audio: true,
+                duration: 5.0,
+            },
+            ConcatSegment {
+                path: "body.mp4".into(),
+                has_audio: true,
+                duration: 60.0,
+            },
+            ConcatSegment {
+                path: "outro.mp4".into(),
+                has_audio: true,
+                duration: 6.0,
+            },
         ];
         let args = build_concat_segments_encode_args(&segs, "final.mp4", &v, "libx264", &quality);
         let fc = args
@@ -4163,8 +4133,16 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         let v = IntroVideoParams::for_1080p30("h264");
         let quality = vec!["-crf".into(), "18".into()];
         let segs = vec![
-            ConcatSegment { path: "body.mp4".into(), has_audio: false, duration: 30.0 },
-            ConcatSegment { path: "outro.mp4".into(), has_audio: true, duration: 4.0 },
+            ConcatSegment {
+                path: "body.mp4".into(),
+                has_audio: false,
+                duration: 30.0,
+            },
+            ConcatSegment {
+                path: "outro.mp4".into(),
+                has_audio: true,
+                duration: 4.0,
+            },
         ];
         let args = build_concat_segments_encode_args(&segs, "final.mp4", &v, "libx264", &quality);
         let fc = args
@@ -4335,7 +4313,8 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     #[test]
     fn build_capcut_segment_vfilter_match_vs_mismatch() {
         let match_plan = CapcutNormalizePlan::none();
-        let s = build_capcut_segment_vfilter(1, "bodyv", match_plan, 1920, 1080, "30", "yuv420p", &[]);
+        let s =
+            build_capcut_segment_vfilter(1, "bodyv", match_plan, 1920, 1080, "30", "yuv420p", &[]);
         assert_eq!(s, "[1:v]setpts=PTS-STARTPTS,setsar=1[bodyv]");
 
         let full = CapcutNormalizePlan::full();

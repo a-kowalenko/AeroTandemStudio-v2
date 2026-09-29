@@ -112,7 +112,12 @@ pub fn build_cut_stream_copy_args(
 }
 
 /// Stream-copy first half of a split: `[0, split_secs)`.
-pub fn build_split_part1_args(input: &str, output: &str, split_secs: f64, has_audio: bool) -> Vec<String> {
+pub fn build_split_part1_args(
+    input: &str,
+    output: &str,
+    split_secs: f64,
+    has_audio: bool,
+) -> Vec<String> {
     let mut args = vec![
         "-y".into(),
         "-i".into(),
@@ -137,7 +142,12 @@ pub fn build_split_part1_args(input: &str, output: &str, split_secs: f64, has_au
 }
 
 /// Stream-copy second half of a split: from `split_secs` to EOF.
-pub fn build_split_part2_args(input: &str, output: &str, split_secs: f64, has_audio: bool) -> Vec<String> {
+pub fn build_split_part2_args(
+    input: &str,
+    output: &str,
+    split_secs: f64,
+    has_audio: bool,
+) -> Vec<String> {
     let mut args = vec![
         "-y".into(),
         "-ss".into(),
@@ -164,42 +174,24 @@ pub fn build_split_part2_args(input: &str, output: &str, split_secs: f64, has_au
 /// Temp path next to `video_path`: `name.__temp_cut__.ext`.
 pub fn temp_cut_path(video_path: &str) -> PathBuf {
     let path = Path::new(video_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mp4");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
     path.with_file_name(format!("{stem}.__temp_cut__.{ext}"))
 }
 
 /// Temp path for split part 1 before atomic rename.
 pub fn temp_split_part1_path(video_path: &str) -> PathBuf {
     let path = Path::new(video_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mp4");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
     path.with_file_name(format!("{stem}.__temp_part1__.{ext}"))
 }
 
 /// Final split paths: `name_1.ext` / `name_2.ext` (legacy `apply_split_overwrite`).
 pub fn split_output_paths(video_path: &str) -> (PathBuf, PathBuf) {
     let path = Path::new(video_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mp4");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     (
         parent.join(format!("{stem}_1.{ext}")),
@@ -209,9 +201,7 @@ pub fn split_output_paths(video_path: &str) -> (PathBuf, PathBuf) {
 
 fn validate_trim_range(start_secs: f64, end_secs: f64) -> Result<f64, CutterError> {
     if !(start_secs >= 0.0) || !(end_secs > start_secs) {
-        return Err(CutterError::Message(
-            "cut requires 0 <= start < end".into(),
-        ));
+        return Err(CutterError::Message("cut requires 0 <= start < end".into()));
     }
     Ok(end_secs - start_secs)
 }
@@ -228,16 +218,18 @@ pub fn cut_video(
     on_progress: ProgressCallback,
 ) -> Result<CutResult, CutterError> {
     if !Path::new(input).is_file() {
-        return Err(CutterError::Message(format!("input file not found: {input}")));
+        return Err(CutterError::Message(format!(
+            "input file not found: {input}"
+        )));
     }
     let duration = validate_trim_range(start_secs, end_secs)?;
 
     let (target, is_overwrite) = if overwrite {
         (temp_cut_path(input), true)
     } else {
-        let out = output
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| CutterError::Message("output path is required when overwrite=false".into()))?;
+        let out = output.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            CutterError::Message("output path is required when overwrite=false".into())
+        })?;
         (PathBuf::from(out), false)
     };
     let target_str = target.to_string_lossy().to_string();
@@ -266,7 +258,8 @@ pub fn cut_video(
         } else {
             emit(&on_progress, 5.0, "stream-copy cut");
             let has_audio = concat::probe_has_audio(ffmpeg, input).unwrap_or(true);
-            let args = build_cut_stream_copy_args(input, &target_str, start_secs, duration, has_audio);
+            let args =
+                build_cut_stream_copy_args(input, &target_str, start_secs, duration, has_audio);
             run_ffmpeg(ffmpeg, &args, duration, on_progress.clone())?;
             "stream-copy".to_string()
         };
@@ -288,9 +281,7 @@ pub fn cut_video(
             method: method.clone(),
             overwritten: is_overwrite,
             reencode_reason: if method == "re-encode" {
-                Some(
-                    "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
-                )
+                Some("Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into())
             } else {
                 None
             },
@@ -331,7 +322,9 @@ pub fn split_video(
     on_progress: ProgressCallback,
 ) -> Result<SplitResult, CutterError> {
     if !Path::new(input).is_file() {
-        return Err(CutterError::Message(format!("input file not found: {input}")));
+        return Err(CutterError::Message(format!(
+            "input file not found: {input}"
+        )));
     }
     let duration = probe_duration_secs(ffmpeg, input).unwrap_or(0.0);
     if !split_point_valid(split_secs, duration) {
@@ -346,12 +339,12 @@ pub fn split_video(
         let (_final1, final2) = split_output_paths(input);
         (temp_split_part1_path(input), final2, true)
     } else {
-        let p1 = part1_out
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| CutterError::Message("part1_path required when overwrite=false".into()))?;
-        let p2 = part2_out
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| CutterError::Message("part2_path required when overwrite=false".into()))?;
+        let p1 = part1_out.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            CutterError::Message("part1_path required when overwrite=false".into())
+        })?;
+        let p2 = part2_out.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            CutterError::Message("part2_path required when overwrite=false".into())
+        })?;
         (PathBuf::from(p1), PathBuf::from(p2), false)
     };
 
@@ -426,12 +419,7 @@ pub fn split_video(
     match split_result {
         Ok(res) => {
             if let Some(b) = backup {
-                super::cut_undo::commit_split_undo(
-                    input,
-                    &res.part1_path,
-                    &res.part2_path,
-                    b,
-                );
+                super::cut_undo::commit_split_undo(input, &res.part1_path, &res.part2_path, b);
             }
             // OPT-16 / 43.4: drop stale input identity; warm both split parts; drop prep TS.
             super::probe_cache::invalidate_path(input);

@@ -45,7 +45,10 @@ fn try_build_response(request: Request<Vec<u8>>) -> Result<Response<Vec<u8>>, St
     }
 
     let mut file = File::open(&path).map_err(|_| StatusCode::NOT_FOUND)?;
-    let len = file.metadata().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?.len();
+    let len = file
+        .metadata()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .len();
     let mime = mime_for_path(&path);
 
     if request.method() == Method::HEAD {
@@ -69,7 +72,8 @@ fn try_build_response(request: Request<Vec<u8>>) -> Result<Response<Vec<u8>>, St
         .and_then(|v| v.to_str().ok());
 
     let (start, end) = if let Some(range_header) = range_header {
-        let ranges = HttpRange::parse(range_header, len).map_err(|_| StatusCode::RANGE_NOT_SATISFIABLE)?;
+        let ranges =
+            HttpRange::parse(range_header, len).map_err(|_| StatusCode::RANGE_NOT_SATISFIABLE)?;
         let first = ranges.first().ok_or(StatusCode::RANGE_NOT_SATISFIABLE)?;
         let start = first.start;
         let mut end = start + first.length - 1;
@@ -130,7 +134,10 @@ fn read_range(
         .status(status)
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(ACCEPT_RANGES, "bytes")
-        .header(ACCESS_CONTROL_EXPOSE_HEADERS, "content-range, accept-ranges")
+        .header(
+            ACCESS_CONTROL_EXPOSE_HEADERS,
+            "content-range, accept-ranges",
+        )
         .header(CONTENT_TYPE, mime)
         .header(CONTENT_RANGE, format!("bytes {start}-{end}/{len}"))
         .header(CONTENT_LENGTH, nbytes)

@@ -24,7 +24,9 @@ use crate::video::handoff_manifest::write_append_handoff_manifest;
 use crate::video::marker::write_marker_file;
 use crate::video::processor::ProcessorError;
 use crate::video::progress::EncodeProgress;
-use crate::video::watermark::{create_photo_with_watermark, create_video_with_watermark, resolve_stamp};
+use crate::video::watermark::{
+    create_photo_with_watermark, create_video_with_watermark, resolve_stamp,
+};
 
 pub const APPEND_FOLDER_SUFFIX: &str = "_nachreichung_";
 
@@ -143,7 +145,10 @@ pub fn kunde_from_vorgang(entry: &VorgangEntry) -> Kunde {
     }
 }
 
-pub fn next_append_folder(speicherort: &Path, base_filename: &str) -> Result<(String, PathBuf), String> {
+pub fn next_append_folder(
+    speicherort: &Path,
+    base_filename: &str,
+) -> Result<(String, PathBuf), String> {
     if speicherort.as_os_str().is_empty() || !speicherort.is_dir() {
         return Err(format!(
             "Speicherort existiert nicht: {}",
@@ -190,9 +195,8 @@ fn copy_media_to_subdir(
 ) -> Result<(), ProcessorError> {
     let sub = cat.dest_subdir(preview);
     let dest_dir = layout.base_dir.join(sub);
-    fs::create_dir_all(&dest_dir).map_err(|e| {
-        ProcessorError::Message(format!("Unterordner '{sub}' anlegen: {e}"))
-    })?;
+    fs::create_dir_all(&dest_dir)
+        .map_err(|e| ProcessorError::Message(format!("Unterordner '{sub}' anlegen: {e}")))?;
 
     let basename = src
         .file_name()
@@ -225,9 +229,8 @@ fn write_watermark_preview(
 ) -> Result<(), ProcessorError> {
     let sub = cat.dest_subdir(true);
     let dest_dir = layout.base_dir.join(sub);
-    fs::create_dir_all(&dest_dir).map_err(|e| {
-        ProcessorError::Message(format!("Unterordner '{sub}' anlegen: {e}"))
-    })?;
+    fs::create_dir_all(&dest_dir)
+        .map_err(|e| ProcessorError::Message(format!("Unterordner '{sub}' anlegen: {e}")))?;
 
     if cat.is_video() {
         let stamp_ok = resolve_stamp(resource_dir);
@@ -240,8 +243,7 @@ fn write_watermark_preview(
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "video".into());
-        let out_name =
-            claim_unique_photo_filename(&format!("{stem}_preview.mp4"), used_names);
+        let out_name = claim_unique_photo_filename(&format!("{stem}_preview.mp4"), used_names);
         let dest = dest_dir.join(&out_name);
         let dest_str = dest.to_string_lossy().to_string();
         let src_str = src.to_string_lossy().to_string();
@@ -329,9 +331,9 @@ pub fn create_append_job(
     let has_not_paid_photos = parsed
         .iter()
         .any(|(cat, _, _)| cat.is_not_paid(vorgang) && !cat.is_video());
-    let has_not_paid_photo_preview = parsed.iter().any(|(cat, preview, _)| {
-        cat.is_not_paid(vorgang) && !cat.is_video() && *preview
-    });
+    let has_not_paid_photo_preview = parsed
+        .iter()
+        .any(|(cat, preview, _)| cat.is_not_paid(vorgang) && !cat.is_video() && *preview);
     if has_not_paid_photos && !has_not_paid_photo_preview {
         return Err(ProcessorError::Message(
             "Foto-Produkt ist nicht bezahlt — bitte mindestens ein Foto für das Wasserzeichen auswählen.".into(),
@@ -341,9 +343,9 @@ pub fn create_append_job(
     let has_not_paid_videos = parsed
         .iter()
         .any(|(cat, _, _)| cat.is_not_paid(vorgang) && cat.is_video());
-    let has_not_paid_video_preview = parsed.iter().any(|(cat, preview, _)| {
-        cat.is_not_paid(vorgang) && cat.is_video() && *preview
-    });
+    let has_not_paid_video_preview = parsed
+        .iter()
+        .any(|(cat, preview, _)| cat.is_not_paid(vorgang) && cat.is_video() && *preview);
     if has_not_paid_videos && !has_not_paid_video_preview {
         return Err(ProcessorError::Message(
             "Video-Produkt ist nicht bezahlt — bitte mindestens ein Video für die Preview auswählen.".into(),
@@ -351,13 +353,11 @@ pub fn create_append_job(
     }
 
     emit(&on_progress, 4.0, "Lege Nachreich-Ordner an…");
-    let (folder_name, folder_path) = next_append_folder(Path::new(speicherort), &vorgang.base_filename)
-        .map_err(ProcessorError::Message)?;
+    let (folder_name, folder_path) =
+        next_append_folder(Path::new(speicherort), &vorgang.base_filename)
+            .map_err(ProcessorError::Message)?;
     fs::create_dir_all(&folder_path).map_err(|e| {
-        ProcessorError::Message(format!(
-            "Ordner '{}' anlegen: {e}",
-            folder_path.display()
-        ))
+        ProcessorError::Message(format!("Ordner '{}' anlegen: {e}", folder_path.display()))
     })?;
     let layout = OutputLayout {
         base_dir: folder_path.clone(),

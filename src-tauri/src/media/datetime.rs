@@ -12,7 +12,11 @@ use exif::{In, Reader as ExifReader, Tag, Value};
 use crate::util::file_times::{get_creation_timestamp, get_mtime_timestamp};
 
 fn sanitize_exif_text(raw: &str) -> String {
-    raw.trim().trim_matches('"').trim_matches('\'').trim().to_string()
+    raw.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string()
 }
 
 /// Clean camera make/model text from EXIF display strings or FFmpeg metadata.
@@ -27,11 +31,7 @@ pub(crate) fn sanitize_camera_text(raw: &str) -> String {
     // Quoted display / probe forms: `"GoPro"`, `"", "", ""`, `"DJI", ""`
     if trimmed.contains('"') || trimmed.contains('\'') {
         for segment in trimmed.split(',') {
-            let seg = segment
-                .trim()
-                .trim_matches('"')
-                .trim_matches('\'')
-                .trim();
+            let seg = segment.trim().trim_matches('"').trim_matches('\'').trim();
             if !seg.is_empty() {
                 return seg.to_string();
             }
@@ -175,7 +175,10 @@ pub fn get_exif_datetime_original_epoch(path: &Path) -> Option<(f64, String)> {
     read_exif_datetime_epoch(&exif, false)
 }
 
-fn read_exif_datetime_epoch(exif: &exif::Exif, allow_datetime_fallback: bool) -> Option<(f64, String)> {
+fn read_exif_datetime_epoch(
+    exif: &exif::Exif,
+    allow_datetime_fallback: bool,
+) -> Option<(f64, String)> {
     let field = find_exif_field(exif, Tag::DateTimeOriginal).or_else(|| {
         if allow_datetime_fallback {
             find_exif_field(exif, Tag::DateTime)
@@ -200,7 +203,9 @@ fn read_exif_datetime_epoch(exif: &exif::Exif, allow_datetime_fallback: bool) ->
         chrono::NaiveTime::from_hms_opt(edt.hour as u32, edt.minute as u32, edt.second as u32)?,
     );
     // EXIF timestamps are naive camera-local; interpret as local wall time.
-    let local = Local.from_local_datetime(&naive).single()
+    let local = Local
+        .from_local_datetime(&naive)
+        .single()
         .or_else(|| Local.from_local_datetime(&naive).earliest())?;
     let mut epoch = local.timestamp() as f64;
     let ms = match edt.nanosecond {
@@ -388,12 +393,7 @@ pub fn build_chrono_photo_filename_sequenced(
     used_names: &mut HashSet<String>,
 ) -> String {
     let instant = resolve_photo_capture_instant(photo_path);
-    build_chrono_photo_filename_sequenced_with_instant(
-        photo_path,
-        &instant,
-        sequence,
-        used_names,
-    )
+    build_chrono_photo_filename_sequenced_with_instant(photo_path, &instant, sequence, used_names)
 }
 
 /// Like [`build_chrono_photo_filename_sequenced`], reusing a precomputed capture instant
@@ -487,8 +487,7 @@ pub enum PhotoSortError {
 /// Resolve capture instant once per existing file, sort by epoch (then path).
 /// Prefer this for batch import so rename can reuse the same instant.
 pub fn photos_sorted_by_capture_time(sources: &[String]) -> Vec<(String, PhotoCaptureInstant)> {
-    photos_sorted_by_capture_time_with_progress(sources, |_, _, _| {})
-        .unwrap_or_default()
+    photos_sorted_by_capture_time_with_progress(sources, |_, _, _| {}).unwrap_or_default()
 }
 
 /// Like [`photos_sorted_by_capture_time`], reporting resolve progress.
@@ -551,23 +550,27 @@ where
         let progress = Mutex::new(on_progress);
         let completed = AtomicUsize::new(0);
 
-        let results = pool.process_indexed(n, |i, _task_id| {
-            if is_cancelled() {
-                return Err::<(String, PhotoCaptureInstant), String>("cancelled".into());
-            }
-            let path = &files[i];
-            let name = path
-                .rsplit(['/', '\\'])
-                .next()
-                .unwrap_or(path.as_str())
-                .to_string();
-            let instant = resolve_photo_capture_instant(Path::new(path));
-            let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
-            if let Ok(mut guard) = progress.lock() {
-                guard(done as u64, total, &name);
-            }
-            Ok((path.clone(), instant))
-        }, None);
+        let results = pool.process_indexed(
+            n,
+            |i, _task_id| {
+                if is_cancelled() {
+                    return Err::<(String, PhotoCaptureInstant), String>("cancelled".into());
+                }
+                let path = &files[i];
+                let name = path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or(path.as_str())
+                    .to_string();
+                let instant = resolve_photo_capture_instant(Path::new(path));
+                let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                if let Ok(mut guard) = progress.lock() {
+                    guard(done as u64, total, &name);
+                }
+                Ok((path.clone(), instant))
+            },
+            None,
+        );
 
         match results {
             Err(ParallelError::Cancelled) | Err(ParallelError::Message(_)) => {
@@ -622,10 +625,7 @@ mod tests {
         let epoch = resolve_video_display_epoch(f.path(), None, None);
         let mtime = get_mtime_timestamp(f.path()).unwrap();
         // No EXIF on a text temp file → must use mtime (not a divergent creation stamp).
-        assert!(
-            (epoch - mtime).abs() < 1.0,
-            "epoch={epoch} mtime={mtime}"
-        );
+        assert!((epoch - mtime).abs() < 1.0, "epoch={epoch} mtime={mtime}");
     }
 
     #[test]
@@ -688,8 +688,14 @@ mod tests {
         // Ensure distinct mtimes even on coarse FS.
         let t_early = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
         let t_late = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_100);
-        let _ = fs::File::options().write(true).open(&early).and_then(|f| f.set_modified(t_early));
-        let _ = fs::File::options().write(true).open(&late).and_then(|f| f.set_modified(t_late));
+        let _ = fs::File::options()
+            .write(true)
+            .open(&early)
+            .and_then(|f| f.set_modified(t_early));
+        let _ = fs::File::options()
+            .write(true)
+            .open(&late)
+            .and_then(|f| f.set_modified(t_late));
 
         let mut paths = vec![
             late.to_string_lossy().into_owned(),
@@ -709,8 +715,14 @@ mod tests {
         fs::write(&late, b"b").unwrap();
         let t_early = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
         let t_late = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_100);
-        let _ = fs::File::options().write(true).open(&early).and_then(|f| f.set_modified(t_early));
-        let _ = fs::File::options().write(true).open(&late).and_then(|f| f.set_modified(t_late));
+        let _ = fs::File::options()
+            .write(true)
+            .open(&early)
+            .and_then(|f| f.set_modified(t_early));
+        let _ = fs::File::options()
+            .write(true)
+            .open(&late)
+            .and_then(|f| f.set_modified(t_late));
 
         let sources = vec![
             late.to_string_lossy().into_owned(),

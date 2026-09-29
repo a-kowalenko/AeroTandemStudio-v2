@@ -42,14 +42,8 @@ fn norm_key(path: &str) -> String {
 
 pub fn pre_edit_backup_path(photo_path: &str) -> PathBuf {
     let path = Path::new(photo_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("photo");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("jpg");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("photo");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("jpg");
     path.with_file_name(format!("{stem}.__pre_edit__.{ext}"))
 }
 
@@ -73,19 +67,12 @@ pub fn clear_photo_edit_undo() {
 }
 
 pub fn has_photo_edit_undo() -> bool {
-    lock_state()
-        .map(|s| !s.by_key.is_empty())
-        .unwrap_or(false)
+    lock_state().map(|s| !s.by_key.is_empty()).unwrap_or(false)
 }
 
 pub fn photo_edit_mark_paths() -> Vec<String> {
     lock_state()
-        .map(|s| {
-            s.by_key
-                .values()
-                .map(|e| e.restore_path.clone())
-                .collect()
-        })
+        .map(|s| s.by_key.values().map(|e| e.restore_path.clone()).collect())
         .unwrap_or_default()
 }
 

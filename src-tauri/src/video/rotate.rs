@@ -13,13 +13,13 @@ use super::concat;
 use super::cutter::{temp_cut_path, CutResult};
 use super::encode_profile::EncodeProfile;
 use super::encoding_quality::resolve_output_codec;
-use super::ffmpeg::{ffmpeg_probe_stderr, probe_duration_secs, run_ffmpeg, FfmpegError, ProgressCallback};
+use super::ffmpeg::{
+    ffmpeg_probe_stderr, probe_duration_secs, run_ffmpeg, FfmpegError, ProgressCallback,
+};
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::probe;
 use super::progress::EncodeProgress;
-use super::reencode_confirm::{
-    self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams,
-};
+use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 
 #[derive(Debug, Error)]
 pub enum RotateError {
@@ -72,17 +72,9 @@ pub fn build_rotate_video_args(
     args.push("-vf".into());
     args.push(vf.to_string());
     args.extend(params.output_params.iter().cloned());
-    args.extend([
-        "-map".into(),
-        "0:v:0".into(),
-    ]);
+    args.extend(["-map".into(), "0:v:0".into()]);
     if has_audio {
-        args.extend([
-            "-map".into(),
-            "0:a:0?".into(),
-            "-c:a".into(),
-            "copy".into(),
-        ]);
+        args.extend(["-map".into(), "0:a:0?".into(), "-c:a".into(), "copy".into()]);
     }
     // Clear stale display-rotation hints after baking pixels.
     args.extend([
@@ -127,7 +119,9 @@ pub fn rotate_video(
     force_software: bool,
 ) -> Result<CutResult, RotateError> {
     if !Path::new(input).is_file() {
-        return Err(RotateError::Message(format!("input file not found: {input}")));
+        return Err(RotateError::Message(format!(
+            "input file not found: {input}"
+        )));
     }
     let deg = normalize_rotation_degrees(degrees)?;
     if deg == 0 {
@@ -138,11 +132,9 @@ pub fn rotate_video(
     let (target, is_overwrite) = if overwrite {
         (temp_cut_path(input), true)
     } else {
-        let out = output
-            .filter(|s| !s.trim().is_empty())
-            .ok_or_else(|| {
-                RotateError::Message("output path is required when overwrite=false".into())
-            })?;
+        let out = output.filter(|s| !s.trim().is_empty()).ok_or_else(|| {
+            RotateError::Message("output path is required when overwrite=false".into())
+        })?;
         (PathBuf::from(out), false)
     };
     let target_str = target.to_string_lossy().to_string();
@@ -163,17 +155,9 @@ pub fn rotate_video(
             .map(|m| m.codec)
             .unwrap_or_else(|| "h264".into());
 
-        let recommend_hw = if force_software {
-            false
-        } else {
-            hw.available
-        };
-        let recommended = EncodeProfile::recommend(
-            ReencodeKind::Rotate,
-            15,
-            recommend_hw,
-            Some(&body_codec),
-        );
+        let recommend_hw = if force_software { false } else { hw.available };
+        let recommended =
+            EncodeProfile::recommend(ReencodeKind::Rotate, 15, recommend_hw, Some(&body_codec));
         let reason = if force_software {
             "Hardwarebeschleunigung fehlgeschlagen — erneut ohne Hardware (Preset wählbar)"
         } else {
@@ -195,11 +179,7 @@ pub fn rotate_video(
                 ..Default::default()
             })
             .with_recommended(recommended);
-        emit(
-            &on_progress,
-            0.0,
-            "Neu-Kodierung — warte auf Bestätigung…",
-        );
+        emit(&on_progress, 0.0, "Neu-Kodierung — warte auf Bestätigung…");
         let profile = match reencode_confirm::require_confirm(on_reencode, &intent) {
             Ok(p) => p,
             Err(()) => return Err(RotateError::Ffmpeg(FfmpegError::Cancelled)),
@@ -216,9 +196,8 @@ pub fn rotate_video(
         let out_codec = resolve_output_codec(profile.codec_preference(), &body_codec);
         // Software decode: transpose filter needs CPU frames.
         let (encoder, output_params) = profile.to_encode_output_params(&hw, out_codec);
-        let used_hw = profile.hw_accel
-            && hw.available
-            && !encoder.to_ascii_lowercase().starts_with("lib");
+        let used_hw =
+            profile.hw_accel && hw.available && !encoder.to_ascii_lowercase().starts_with("lib");
         let params = EncodingParams {
             input_params: Vec::new(),
             output_params,

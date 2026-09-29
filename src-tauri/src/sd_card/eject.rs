@@ -69,9 +69,8 @@ pub fn windows_drive_letter(drive: &str) -> Option<char> {
 
 #[cfg(windows)]
 fn eject_windows(drive: &str) -> Result<(), EjectError> {
-    let letter = windows_drive_letter(drive).ok_or_else(|| {
-        EjectError::Message(format!("Ungültiges Windows-Laufwerk: {drive}"))
-    })?;
+    let letter = windows_drive_letter(drive)
+        .ok_or_else(|| EjectError::Message(format!("Ungültiges Windows-Laufwerk: {drive}")))?;
 
     // Brief settle time so backup/clear handles can close.
     thread::sleep(Duration::from_millis(400));
@@ -174,27 +173,28 @@ fn eject_windows_ioctl(letter: char) -> Result<(), EjectError> {
     let guard = HandleGuard(handle);
 
     let mut bytes = 0u32;
-    let mut ioctl = |code: u32, in_buf: *mut std::ffi::c_void, in_len: u32| -> Result<(), EjectError> {
-        let ok = unsafe {
-            DeviceIoControl(
-                guard.0,
-                code,
-                in_buf,
-                in_len,
-                ptr::null_mut(),
-                0,
-                &mut bytes,
-                ptr::null_mut(),
-            )
+    let mut ioctl =
+        |code: u32, in_buf: *mut std::ffi::c_void, in_len: u32| -> Result<(), EjectError> {
+            let ok = unsafe {
+                DeviceIoControl(
+                    guard.0,
+                    code,
+                    in_buf,
+                    in_len,
+                    ptr::null_mut(),
+                    0,
+                    &mut bytes,
+                    ptr::null_mut(),
+                )
+            };
+            if ok == 0 {
+                let err = unsafe { GetLastError() };
+                return Err(EjectError::Message(format!(
+                    "DeviceIoControl 0x{code:X} fehlgeschlagen (Win32 {err})"
+                )));
+            }
+            Ok(())
         };
-        if ok == 0 {
-            let err = unsafe { GetLastError() };
-            return Err(EjectError::Message(format!(
-                "DeviceIoControl 0x{code:X} fehlgeschlagen (Win32 {err})"
-            )));
-        }
-        Ok(())
-    };
 
     ioctl(FSCTL_LOCK_VOLUME, ptr::null_mut(), 0)?;
     ioctl(FSCTL_DISMOUNT_VOLUME, ptr::null_mut(), 0)?;
@@ -261,9 +261,7 @@ fn eject_macos(drive: &str) -> Result<(), EjectError> {
 
     thread::sleep(Duration::from_millis(300));
 
-    let output = Command::new("diskutil")
-        .args(["eject", path])
-        .output()?;
+    let output = Command::new("diskutil").args(["eject", path]).output()?;
     if output.status.success() {
         return Ok(());
     }
@@ -420,7 +418,10 @@ pub fn whole_disk_device(partition: &str) -> String {
     let p = partition.trim();
     if let Some(rest) = p.strip_prefix("/dev/mmcblk") {
         if let Some(idx) = rest.find('p') {
-            let disk_num: String = rest[..idx].chars().take_while(|c| c.is_ascii_digit()).collect();
+            let disk_num: String = rest[..idx]
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
             if !disk_num.is_empty() {
                 return format!("/dev/mmcblk{disk_num}");
             }
@@ -461,7 +462,10 @@ mod tests {
 
     #[test]
     fn unescape_space_in_mount() {
-        assert_eq!(unescape_mount_path(r"/run/media/user/NO\040NAME"), "/run/media/user/NO NAME");
+        assert_eq!(
+            unescape_mount_path(r"/run/media/user/NO\040NAME"),
+            "/run/media/user/NO NAME"
+        );
         assert_eq!(unescape_mount_path("/media/foo"), "/media/foo");
     }
 

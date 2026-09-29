@@ -1,3 +1,4 @@
+mod bridge;
 mod commands;
 mod constants;
 mod media;
@@ -9,7 +10,6 @@ mod storage;
 mod updater;
 mod util;
 mod video;
-mod bridge;
 
 use commands::app::{
     cleanup_cache, clear_local_backup_folders, clear_local_job_folders, clear_log_buffer,
@@ -19,8 +19,7 @@ use commands::app::{
 };
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
-    ams_bridge_handoff_ready, ams_bridge_health,
-    ams_bridge_job_status, ams_bridge_preflight,
+    ams_bridge_handoff_ready, ams_bridge_health, ams_bridge_job_status, ams_bridge_preflight,
 };
 use commands::config::{
     ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
@@ -51,25 +50,24 @@ use commands::video::{
     discard_video_cut_undo_for_path, encode_video, generate_preview, get_hw_info,
     get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
     list_video_keyframes, probe_create_output_folder, probe_outro_asset, probe_video,
-    reset_upload_slot_cancel,
-    reset_workflow_cancel, resolve_body_concat_fallback, resolve_intro_mux_fallback,
-    resolve_reencode_confirm, rotate_video, speculative_create_status, split_video,
-    start_speculative_create, trim_video, undo_all_video_cuts, undo_last_video_cut,
+    reset_upload_slot_cancel, reset_workflow_cancel, resolve_body_concat_fallback,
+    resolve_intro_mux_fallback, resolve_reencode_confirm, rotate_video, speculative_create_status,
+    split_video, start_speculative_create, trim_video, undo_all_video_cuts, undo_last_video_cut,
     undo_video_cut_for_path, validate_create_job,
 };
 use commands::vorgang_history::{
-    create_append_job, delete_vorgaenge, get_handoff_status, list_vorgang_appends,
-    delete_vorgang_extra_files, list_vorgang_dateien, list_vorgang_viewable_media, list_vorgaenge,
+    create_append_job, delete_vorgaenge, delete_vorgang_extra_files, get_handoff_status,
+    list_vorgaenge, list_vorgang_appends, list_vorgang_dateien, list_vorgang_viewable_media,
     preflight_vorgang_upload, probe_vorgang_folders, reconcile_stale_uploads,
     resync_vorgang_delivery_list, set_vorgang_upload_state, sync_open_handoffs,
 };
-use storage::logging::{init_logging, log_info, set_log_emitter};
 use storage::cache::cleanup_on_app_exit;
+use storage::logging::{init_logging, log_info, set_log_emitter};
+use tauri::Emitter;
 use updater::{
     cancel_update_install, check_for_updates, get_updater_install_hint, get_updater_status,
     install_specific_version, install_update, list_available_versions,
 };
-use tauri::Emitter;
 
 /// Allow WebKitGTK/GStreamer to play custom URI schemes (Linux media hang fix).
 #[cfg(target_os = "linux")]

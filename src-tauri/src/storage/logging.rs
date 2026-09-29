@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::Mutex;
 
 use once_cell::sync::Lazy;
@@ -245,10 +245,10 @@ fn append_line(level: &str, source: &str, message: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     // UTF-8 with BOM on first create helps Windows editors display umlauts.
     if file.metadata().map(|m| m.len()).unwrap_or(1) == 0 {
-        file.write_all(&[0xEF, 0xBB, 0xBF]).map_err(|e| e.to_string())?;
+        file.write_all(&[0xEF, 0xBB, 0xBF])
+            .map_err(|e| e.to_string())?;
     }
-    file.write_all(line.as_bytes())
-        .map_err(|e| e.to_string())?;
+    file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
 
     let entry = LogEntry {
         id: NEXT_ID.fetch_add(1, Ordering::Relaxed),

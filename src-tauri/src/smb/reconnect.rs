@@ -1,16 +1,17 @@
-//! OPT-20B: Timed Local-Probe + Prefer-Local / smb2 bridge (Sleep/Reconnect).
+//! OPT-20B / OPT-23B: Timed Local-Probe + Prefer-Local / smb2 bridge.
 //!
-//! Windows mapped drives can block for ~60s on `Path::exists()` while the
-//! redirector wakes after standby. This module:
-//! - probes Local reachability on a **worker thread with timeout**
+//! Windows mapped drives can block for ~60s on `metadata` while the redirector
+//! wakes after standby. This module:
+//! - probes Local reachability on **one worker thread per path** (single-flight)
+//! - further callers wait for that flight or return [`ProbeOutcome::TimedOut`]
+//! - classifies a missing/denied child under a living mapping root as Local
 //! - falls back to smb2 as a **bridge** while Prefer-Local reconnect runs
 //! - caches recent probe results so resolve + `test_connection` share one probe
-//! - never blocks the caller for a full network-drive hang
 
 use std::collections::{HashMap, HashSet};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::sync::Mutex;
+use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -32,6 +33,10 @@ const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(2);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProbeOutcome {
     Reachable,
+    /// NotFound on a path whose mapping root just probed as alive (OPT-23B).
+    Missing,
+    /// PermissionDenied — stay on the OS path, do not open smb2 (OPT-23B).
+    Denied,
     Unreachable,
     TimedOut,
 }
@@ -39,6 +44,11 @@ pub enum ProbeOutcome {
 impl ProbeOutcome {
     pub fn is_reachable(self) -> bool {
         matches!(self, Self::Reachable)
+    }
+
+    /// OS path is the right target: alive, or classified under a living root.
+    pub fn prefers_local(self) -> bool {
+        matches!(self, Self::Reachable | Self::Missing | Self::Denied)
     }
 }
 
@@ -58,8 +68,16 @@ struct ReconnectState {
     bridging: HashMap<String, Instant>,
 }
 
-static STATE: Lazy<Mutex<ReconnectState>> =
-    Lazy::new(|| Mutex::new(ReconnectState::default()));
+static STATE: Lazy<Mutex<ReconnectState>> = Lazy::new(|| Mutex::new(ReconnectState::default()));
+
+/// One in-flight OS probe per cache key (OPT-23B). Waiters share the result.
+struct Flight {
+    result: Mutex<Option<ProbeOutcome>>,
+    cv: Condvar,
+}
+
+static INFLIGHT: Lazy<Mutex<HashMap<String, Arc<Flight>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn path_cache_key(path: &Path) -> String {
     path.to_string_lossy()
@@ -67,34 +85,126 @@ fn path_cache_key(path: &Path) -> String {
         .to_ascii_lowercase()
 }
 
-/// Threaded `exists` with hard timeout — does not block the caller beyond `timeout`.
-///
-/// The worker may remain blocked until the OS returns; callers must not spawn
-/// unbounded workers for the same path (Prefer-Local promote is serialized per UNC).
-pub fn path_reachable_timed(path: &Path, timeout: Duration) -> ProbeOutcome {
-    if timeout.is_zero() {
-        return if path.exists() {
-            ProbeOutcome::Reachable
-        } else {
-            ProbeOutcome::Unreachable
-        };
-    }
+fn is_permission_denied(err: &std::io::Error) -> bool {
+    err.kind() == ErrorKind::PermissionDenied || (cfg!(windows) && err.raw_os_error() == Some(5))
+}
 
-    let path_buf = path.to_path_buf();
-    let (tx, rx) = mpsc::channel();
-    thread::Builder::new()
+/// `metadata` classification. NotFound stays [`ProbeOutcome::Unreachable`] here;
+/// [`classify_mapped_path`] promotes that to [`ProbeOutcome::Missing`] only for a
+/// child of a living mapping root.
+fn probe_metadata(path: &Path) -> ProbeOutcome {
+    match std::fs::metadata(path) {
+        Ok(_) => ProbeOutcome::Reachable,
+        Err(e) if is_permission_denied(&e) => ProbeOutcome::Denied,
+        Err(_) => ProbeOutcome::Unreachable,
+    }
+}
+
+fn inflight_map() -> std::sync::MutexGuard<'static, HashMap<String, Arc<Flight>>> {
+    INFLIGHT.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+fn begin_flight(key: &str) -> (Arc<Flight>, bool) {
+    let mut map = inflight_map();
+    if let Some(existing) = map.get(key) {
+        return (existing.clone(), false);
+    }
+    let flight = Arc::new(Flight {
+        result: Mutex::new(None),
+        cv: Condvar::new(),
+    });
+    map.insert(key.to_string(), flight.clone());
+    (flight, true)
+}
+
+fn probe_still_inflight(path: &Path) -> bool {
+    let key = path_cache_key(path);
+    inflight_map().contains_key(&key)
+}
+
+fn finish_flight(key: &str, flight: &Arc<Flight>, outcome: ProbeOutcome) {
+    store_probe_key(key, outcome);
+    {
+        let mut slot = flight.result.lock().unwrap_or_else(|p| p.into_inner());
+        if slot.is_none() {
+            *slot = Some(outcome);
+        }
+        flight.cv.notify_all();
+    }
+    let mut map = inflight_map();
+    if map
+        .get(key)
+        .is_some_and(|existing| Arc::ptr_eq(existing, flight))
+    {
+        map.remove(key);
+    }
+}
+
+fn spawn_probe(path: PathBuf, key: String, flight: Arc<Flight>) {
+    #[cfg(test)]
+    record_spawn(&key);
+    let key_for_thread = key.clone();
+    let flight_for_thread = flight.clone();
+    let spawned = thread::Builder::new()
         .name("smb-local-probe".into())
         .spawn(move || {
-            let ok = path_buf.exists();
-            let _ = tx.send(ok);
-        })
-        .ok();
-
-    match rx.recv_timeout(timeout) {
-        Ok(true) => ProbeOutcome::Reachable,
-        Ok(false) => ProbeOutcome::Unreachable,
-        Err(_) => ProbeOutcome::TimedOut,
+            #[cfg(test)]
+            if let Some(delay) = test_delay_for(&key_for_thread) {
+                thread::sleep(delay);
+            }
+            let outcome = probe_metadata(&path);
+            finish_flight(&key_for_thread, &flight_for_thread, outcome);
+        });
+    if spawned.is_err() {
+        finish_flight(&key, &flight, ProbeOutcome::Unreachable);
     }
+}
+
+fn wait_for_flight(flight: &Flight, timeout: Duration) -> ProbeOutcome {
+    let deadline = Instant::now() + timeout;
+    let mut guard = flight.result.lock().unwrap_or_else(|p| p.into_inner());
+    loop {
+        if let Some(outcome) = *guard {
+            return outcome;
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return ProbeOutcome::TimedOut;
+        }
+        let remaining = deadline - now;
+        match flight.cv.wait_timeout(guard, remaining) {
+            Ok((next, status)) => {
+                guard = next;
+                if status.timed_out() {
+                    return guard.unwrap_or(ProbeOutcome::TimedOut);
+                }
+            }
+            Err(poisoned) => {
+                let (next, status) = poisoned.into_inner();
+                guard = next;
+                if status.timed_out() {
+                    return guard.unwrap_or(ProbeOutcome::TimedOut);
+                }
+            }
+        }
+    }
+}
+
+/// Threaded `metadata` with hard timeout — does not block the caller beyond `timeout`.
+///
+/// OPT-23B: at most one `smb-local-probe` thread per cache key. Further callers
+/// wait on that flight (or return [`ProbeOutcome::TimedOut`]) and do not spawn.
+pub fn path_reachable_timed(path: &Path, timeout: Duration) -> ProbeOutcome {
+    if timeout.is_zero() {
+        return probe_metadata(path);
+    }
+
+    let key = path_cache_key(path);
+    let (flight, leader) = begin_flight(&key);
+    if leader {
+        spawn_probe(path.to_path_buf(), key, flight.clone());
+    }
+    wait_for_flight(&flight, timeout)
 }
 
 /// Look up a fresh cached probe for `path` (positive or negative TTL).
@@ -104,7 +214,7 @@ pub fn cached_probe(path: &Path) -> Option<ProbeOutcome> {
         return None;
     };
     let entry = state.cache.get(&key)?;
-    let ttl = if entry.outcome.is_reachable() {
+    let ttl = if entry.outcome.prefers_local() {
         POSITIVE_CACHE_TTL
     } else {
         NEGATIVE_CACHE_TTL
@@ -116,10 +226,13 @@ pub fn cached_probe(path: &Path) -> Option<ProbeOutcome> {
 }
 
 pub fn store_probe(path: &Path, outcome: ProbeOutcome) {
-    let key = path_cache_key(path);
+    store_probe_key(&path_cache_key(path), outcome);
+}
+
+fn store_probe_key(key: &str, outcome: ProbeOutcome) {
     if let Ok(mut state) = STATE.lock() {
         state.cache.insert(
-            key,
+            key.to_string(),
             CachedProbe {
                 outcome,
                 at: Instant::now(),
@@ -129,13 +242,65 @@ pub fn store_probe(path: &Path, outcome: ProbeOutcome) {
 }
 
 /// Probe Local with cache + timeout. Used by Prefer-Local resolve (B1/B8).
+///
+/// A caller that times out while the shared flight is still running does not
+/// write [`ProbeOutcome::TimedOut`] over the result the worker publishes later.
 pub fn probe_local(path: &Path, timeout: Duration) -> ProbeOutcome {
     if let Some(cached) = cached_probe(path) {
         return cached;
     }
     let outcome = path_reachable_timed(path, timeout);
-    store_probe(path, outcome);
+    if let Some(cached) = cached_probe(path) {
+        return cached;
+    }
+    if !probe_still_inflight(path) {
+        store_probe(path, outcome);
+    }
     outcome
+}
+
+fn paths_equivalent(a: &Path, b: &Path) -> bool {
+    path_cache_key(a) == path_cache_key(b)
+}
+
+/// Reachability of a listed OS map (OPT-23B).
+///
+/// The mapping root is probed with the timed single-flight probe. A missing or
+/// access-denied child under a living root becomes [`ProbeOutcome::Missing`] or
+/// [`ProbeOutcome::Denied`] — both [`ProbeOutcome::prefers_local`] — so the
+/// caller stays on the OS path instead of opening smb2.
+pub fn classify_mapped_path(root: &Path, full: &Path) -> ProbeOutcome {
+    let root_outcome = probe_local(root, LOCAL_PROBE_TIMEOUT);
+    if paths_equivalent(root, full) {
+        return root_outcome;
+    }
+    let outcome = match root_outcome {
+        ProbeOutcome::Reachable => classify_child(full),
+        ProbeOutcome::Denied => ProbeOutcome::Denied,
+        other => other,
+    };
+    store_probe(full, outcome);
+    outcome
+}
+
+fn classify_child(full: &Path) -> ProbeOutcome {
+    match std::fs::metadata(full) {
+        Ok(_) => ProbeOutcome::Reachable,
+        Err(e) if e.kind() == ErrorKind::NotFound => ProbeOutcome::Missing,
+        Err(e) if is_permission_denied(&e) => ProbeOutcome::Denied,
+        Err(_) => ProbeOutcome::Unreachable,
+    }
+}
+
+fn cache_key_under_root(key: &str, root: &str) -> bool {
+    if root.is_empty() {
+        return false;
+    }
+    if key == root {
+        return true;
+    }
+    let rest = key.get(root.len()..);
+    rest.is_some_and(|rest| key.starts_with(root) && rest.starts_with(['\\', '/']))
 }
 
 /// True when map is listed and Prefer-Local should use Local **now**.
@@ -168,9 +333,7 @@ pub fn note_smb2_bridge(config_unc: &str, local_path: &Path) {
             "smb",
             format!(
                 "SMB via smb2 bridge (mapped path not ready: {}); Prefer-Local reconnect…",
-                local_path
-                    .to_string_lossy()
-                    .trim_end_matches(['\\', '/'])
+                local_path.to_string_lossy().trim_end_matches(['\\', '/'])
             ),
         );
     }
@@ -255,14 +418,72 @@ pub fn start_prefer_local_promote(config_unc: String, local_path: PathBuf) {
     }
 }
 
-/// Heuristic “map needs reconnect” — first slow/timeout Local probe after resume (B7).
-pub fn note_map_needs_reconnect(config_unc: &str) {
+/// Heuristic “map needs reconnect” — first slow/timeout Local probe after resume.
+///
+/// OPT-23B: drops cached probes under `local_root` only. Other drives / mounts
+/// keep their entries.
+pub fn note_map_needs_reconnect(config_unc: &str, local_root: &Path) {
     let key = canonicalize_unc(config_unc);
+    let root_key = path_cache_key(local_root);
     if let Ok(mut state) = STATE.lock() {
-        // Invalidate positive cache entries so the next resolve re-probes.
-        state.cache.retain(|_, v| v.outcome.is_reachable() == false);
+        state
+            .cache
+            .retain(|entry, _| !cache_key_under_root(entry, &root_key));
         state.bridging.insert(key, Instant::now());
     }
+}
+
+#[cfg(test)]
+static PROBE_DELAYS: Lazy<Mutex<HashMap<String, Duration>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[cfg(test)]
+static PROBE_SPAWNS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+#[cfg(test)]
+fn test_delay_for(key: &str) -> Option<Duration> {
+    PROBE_DELAYS
+        .lock()
+        .ok()
+        .and_then(|map| map.get(key).copied())
+}
+
+#[cfg(test)]
+fn record_spawn(key: &str) {
+    if let Ok(mut spawns) = PROBE_SPAWNS.lock() {
+        spawns.push(key.to_string());
+    }
+}
+
+#[cfg(test)]
+fn test_set_probe_delay(path: &Path, delay: Option<Duration>) {
+    let key = path_cache_key(path);
+    if let Ok(mut map) = PROBE_DELAYS.lock() {
+        match delay {
+            Some(delay) => {
+                map.insert(key, delay);
+            }
+            None => {
+                map.remove(&key);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+fn test_reset_spawns() {
+    if let Ok(mut spawns) = PROBE_SPAWNS.lock() {
+        spawns.clear();
+    }
+}
+
+#[cfg(test)]
+fn test_spawn_count(path: &Path) -> usize {
+    let key = path_cache_key(path);
+    PROBE_SPAWNS
+        .lock()
+        .map(|spawns| spawns.iter().filter(|entry| entry.as_str() == key).count())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -346,14 +567,109 @@ mod tests {
     }
 
     #[test]
-    fn note_reconnect_clears_positive_cache() {
+    fn note_reconnect_clears_only_local_root_prefix() {
+        let root_dir = tempfile::tempdir().unwrap();
+        let other_dir = tempfile::tempdir().unwrap();
+        let base = root_dir.path().join("share");
+        let under = base.join("jobs").join("neu");
+        let sibling_name = root_dir.path().join("share2");
+        let keep = other_dir.path().join("keep");
+        let negative = base.join("missing-cached");
+        fs::create_dir_all(&under).unwrap();
+        fs::create_dir_all(&sibling_name).unwrap();
+        fs::create_dir_all(&keep).unwrap();
+
+        store_probe(&base, ProbeOutcome::Reachable);
+        store_probe(&under, ProbeOutcome::Reachable);
+        store_probe(&negative, ProbeOutcome::Unreachable);
+        store_probe(&sibling_name, ProbeOutcome::Reachable);
+        store_probe(&keep, ProbeOutcome::Denied);
+
+        let unc = r"\\opt23b-reconnect.invalid\share";
+        clear_bridging(unc);
+        note_map_needs_reconnect(unc, &base);
+
+        assert!(cached_probe(&base).is_none());
+        assert!(cached_probe(&under).is_none());
+        assert!(cached_probe(&negative).is_none());
+        assert_eq!(cached_probe(&sibling_name), Some(ProbeOutcome::Reachable));
+        assert_eq!(cached_probe(&keep), Some(ProbeOutcome::Denied));
+        assert!(is_recently_bridging(unc));
+        clear_bridging(unc);
+    }
+
+    #[test]
+    fn missing_child_under_living_root_prefers_local() {
         let tmp = tempfile::tempdir().unwrap();
-        let p = tmp.path().join("pos");
-        fs::create_dir_all(&p).unwrap();
-        store_probe(&p, ProbeOutcome::Reachable);
-        assert!(cached_probe(&p).unwrap().is_reachable());
-        note_map_needs_reconnect(r"\\opt20b-reconnect.invalid\share");
-        // Positive entries dropped.
-        assert!(cached_probe(&p).is_none());
+        let child = tmp.path().join("jobs").join("neu");
+        let outcome = classify_mapped_path(tmp.path(), &child);
+        assert_eq!(outcome, ProbeOutcome::Missing);
+        assert!(outcome.prefers_local());
+        assert!(!outcome.is_reachable());
+        assert_eq!(cached_probe(&child), Some(ProbeOutcome::Missing));
+    }
+
+    #[test]
+    fn living_child_under_root_is_reachable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let child = tmp.path().join("jobs");
+        fs::create_dir_all(&child).unwrap();
+        assert_eq!(
+            classify_mapped_path(tmp.path(), &child),
+            ProbeOutcome::Reachable
+        );
+    }
+
+    #[test]
+    fn dead_root_does_not_classify_child_as_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let missing_root = tmp.path().join("no-such-root");
+        let child = missing_root.join("jobs");
+        let outcome = classify_mapped_path(&missing_root, &child);
+        assert_eq!(outcome, ProbeOutcome::Unreachable);
+        assert!(!outcome.prefers_local());
+    }
+
+    #[test]
+    fn single_flight_second_caller_does_not_spawn() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("flight");
+        fs::create_dir_all(&path).unwrap();
+        test_set_probe_delay(&path, Some(Duration::from_millis(400)));
+        test_reset_spawns();
+
+        let leader_path = path.clone();
+        let leader =
+            thread::spawn(move || path_reachable_timed(&leader_path, Duration::from_secs(2)));
+        let started = Instant::now();
+        while test_spawn_count(&path) == 0 && started.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(test_spawn_count(&path), 1, "leader should have spawned");
+
+        let join_path = path.clone();
+        let joiner =
+            thread::spawn(move || path_reachable_timed(&join_path, Duration::from_secs(2)));
+        let timeout_path = path.clone();
+        let timed_out =
+            thread::spawn(move || path_reachable_timed(&timeout_path, Duration::from_millis(30)));
+
+        assert_eq!(leader.join().unwrap(), ProbeOutcome::Reachable);
+        assert_eq!(joiner.join().unwrap(), ProbeOutcome::Reachable);
+        assert_eq!(timed_out.join().unwrap(), ProbeOutcome::TimedOut);
+        assert_eq!(
+            test_spawn_count(&path),
+            1,
+            "waiters must join the in-flight probe"
+        );
+        test_set_probe_delay(&path, None);
+    }
+
+    #[test]
+    fn permission_denied_outcome_from_metadata_error() {
+        let err = std::io::Error::new(ErrorKind::PermissionDenied, "denied");
+        assert!(is_permission_denied(&err));
+        let not_found = std::io::Error::new(ErrorKind::NotFound, "missing");
+        assert!(!is_permission_denied(&not_found));
     }
 }

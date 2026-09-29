@@ -74,15 +74,12 @@ pub async fn ams_bridge_health(
     )
     .await;
     if result.ok {
-        if overrides.base_url.is_none() && overrides.token.is_none() && !result.base_url.is_empty() {
+        if overrides.base_url.is_none() && overrides.token.is_none() && !result.base_url.is_empty()
+        {
             let _ = persist_last_ok(&state, &result.base_url);
         }
         if let Some(health) = result.health.as_ref() {
-            let _ = persist_server_identity(
-                &state,
-                &health.display_name,
-                &health.instance_id,
-            );
+            let _ = persist_server_identity(&state, &health.display_name, &health.instance_id);
         }
     }
     Ok(result)
@@ -105,13 +102,7 @@ pub async fn ams_bridge_customer_lookup(
         marker_type,
         mode: mode.unwrap_or_else(|| "hash".into()),
     };
-    let resp = bridge::customer_lookup(
-        &base,
-        &config.ams_bridge_token,
-        &req,
-        &identity,
-    )
-    .await?;
+    let resp = bridge::customer_lookup(&base, &config.ams_bridge_token, &req, &identity).await?;
     if resp.ok {
         let _ = persist_last_ok(&state, &base);
     }
@@ -137,13 +128,8 @@ pub async fn ams_bridge_job_status(
     let config = ensure_ams_bridge_identity(&state)?;
     let base = bridge::resolve_bridge_base_url(&config)?;
     let identity = bridge::build_ats_bridge_identity(&config);
-    let job = bridge::fetch_job_status(
-        &base,
-        &config.ams_bridge_token,
-        &correlation_id,
-        &identity,
-    )
-    .await?;
+    let job = bridge::fetch_job_status(&base, &config.ams_bridge_token, &correlation_id, &identity)
+        .await?;
     if job.is_some() {
         let _ = persist_last_ok(&state, &base);
     }

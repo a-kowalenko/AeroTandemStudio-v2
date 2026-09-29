@@ -112,7 +112,12 @@ impl Kunde {
         if !from_name.is_empty() {
             return from_name;
         }
-        if let Some(id) = self.kunden_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(id) = self
+            .kunden_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             return id.to_string();
         }
         "Unbekannt".into()

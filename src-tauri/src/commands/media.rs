@@ -24,10 +24,7 @@ pub async fn expand_media_paths(paths: Vec<String>) -> Result<Vec<String>, Strin
             .map(|p| p.trim().to_string())
             .filter(|p| !p.is_empty())
             .collect();
-        logging::info(
-            "import",
-            format!("Expandiere {} Pfad(e)…", paths.len()),
-        );
+        logging::info("import", format!("Expandiere {} Pfad(e)…", paths.len()));
         let expanded = expand_import_paths(&paths);
         logging::info(
             "import",
@@ -158,7 +155,10 @@ where
 
 /// Copy photos into the session working folder (`…/photos/`) and return metadata.
 #[tauri::command]
-pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<Vec<PhotoMetadata>, String> {
+pub async fn import_photos(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<PhotoMetadata>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -171,10 +171,7 @@ pub async fn import_photos(app: tauri::AppHandle, paths: Vec<String>) -> Result<
         use std::time::{Duration, Instant, SystemTime};
         use tauri::Emitter;
 
-        let photo_paths: Vec<String> = paths
-            .into_iter()
-            .filter(|p| is_photo_path(p))
-            .collect();
+        let photo_paths: Vec<String> = paths.into_iter().filter(|p| is_photo_path(p)).collect();
         if photo_paths.is_empty() {
             logging::warn("import", "Foto-Import: keine gültigen Bildpfade");
             return Ok(Vec::new());
@@ -314,10 +311,7 @@ pub fn get_working_dir() -> Option<String> {
 pub async fn clear_working_session() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(|| {
         if let Some(dir) = working_session::get_working_dir() {
-            logging::info(
-                "import",
-                format!("Lösche Arbeitsordner: {}", dir.display()),
-            );
+            logging::info("import", format!("Lösche Arbeitsordner: {}", dir.display()));
         } else {
             logging::info("import", "Kein Arbeitsordner zum Löschen");
         }
@@ -378,10 +372,19 @@ pub fn get_media_server_base(state: State<'_, MediaServerState>) -> String {
 }
 
 /// Playback URL for a local video file (loopback HTTP with Range support).
+/// `is_file` runs off the main thread so a stalled network folder cannot freeze the UI.
 #[tauri::command]
-pub fn media_file_url(path: String, state: State<'_, MediaServerState>) -> Result<String, String> {
-    ensure_media_file(&path)?;
-    Ok(state.url_for_path(path.trim()))
+pub async fn media_file_url(
+    path: String,
+    state: State<'_, MediaServerState>,
+) -> Result<String, String> {
+    let base_url = state.base_url.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        ensure_media_file(&path)?;
+        Ok(MediaServerState { base_url }.url_for_path(path.trim()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Rotate a photo working copy by 90° steps (pixels + EXIF orientation baked).
@@ -500,11 +503,7 @@ fn resolve_ffmpeg(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 
 /// Preview timestamps for an interval extract (no FFmpeg).
 #[tauri::command]
-pub fn preview_frame_extract_times(
-    start_secs: f64,
-    end_secs: f64,
-    interval_secs: f64,
-) -> Vec<f64> {
+pub fn preview_frame_extract_times(start_secs: f64, end_secs: f64, interval_secs: f64) -> Vec<f64> {
     frame_extract::interval_timestamps(start_secs, end_secs, interval_secs)
 }
 

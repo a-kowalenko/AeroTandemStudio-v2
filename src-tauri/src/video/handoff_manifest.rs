@@ -101,7 +101,8 @@ pub fn collect_integrity_files(job_root: &Path) -> Result<Vec<ManifestFileEntry>
 }
 
 fn walk_collect(root: &Path, dir: &Path, out: &mut Vec<ManifestFileEntry>) -> Result<(), String> {
-    let entries = fs::read_dir(dir).map_err(|e| format!("Ordner lesen '{}': {e}", dir.display()))?;
+    let entries =
+        fs::read_dir(dir).map_err(|e| format!("Ordner lesen '{}': {e}", dir.display()))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("Ordner lesen '{}': {e}", dir.display()))?;
         let path = entry.path();
@@ -139,7 +140,12 @@ pub fn marker_hint_for(kunde: &Kunde, config: &AppConfig) -> MarkerHint {
         "pure_contact"
     } else if kunde.form_mode == "kunde" {
         "api_hash"
-    } else if kunde.kunden_id.as_deref().map(str::trim).filter(|s| !s.is_empty()).is_some()
+    } else if kunde
+        .kunden_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .is_some()
         || kunde
             .booking_id
             .as_deref()
@@ -292,9 +298,9 @@ pub fn delete_extra_files_from_disk(
         }
 
         let abs = resolve_payload_path_under_job(job_dir, rel)?;
-        let canon = abs.canonicalize().map_err(|e| {
-            format!("Datei fehlt oder nicht lesbar '{}': {e}", abs.display())
-        })?;
+        let canon = abs
+            .canonicalize()
+            .map_err(|e| format!("Datei fehlt oder nicht lesbar '{}': {e}", abs.display()))?;
         if !canon.starts_with(&job_root) {
             return Err(format!("Pfad außerhalb des Ordners: {rel_norm}"));
         }
@@ -302,12 +308,7 @@ pub fn delete_extra_files_from_disk(
             return Err(format!("Keine Datei: {rel_norm}"));
         }
 
-        fs::remove_file(&canon).map_err(|e| {
-            format!(
-                "Datei löschen '{}': {e}",
-                rel_norm
-            )
-        })?;
+        fs::remove_file(&canon).map_err(|e| format!("Datei löschen '{}': {e}", rel_norm))?;
         deleted_paths.push(rel_norm);
     }
 
@@ -322,8 +323,8 @@ pub fn resync_integrity_from_disk(job_dir: &Path) -> Result<DeliveryResyncReport
         return Err(format!("{MANIFEST_FILENAME} fehlt"));
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    let mut manifest: HandoffManifestV1 = serde_json::from_str(raw.trim())
-        .map_err(|e| format!("Manifest parse: {e}"))?;
+    let mut manifest: HandoffManifestV1 =
+        serde_json::from_str(raw.trim()).map_err(|e| format!("Manifest parse: {e}"))?;
 
     let old_paths: HashSet<String> = manifest
         .integrity
@@ -338,10 +339,7 @@ pub fn resync_integrity_from_disk(job_dir: &Path) -> Result<DeliveryResyncReport
     }
 
     let new_paths: HashSet<String> = new_files.iter().map(|f| f.path.clone()).collect();
-    let mut removed_paths: Vec<String> = old_paths
-        .difference(&new_paths)
-        .cloned()
-        .collect();
+    let mut removed_paths: Vec<String> = old_paths.difference(&new_paths).cloned().collect();
     removed_paths.sort();
 
     manifest.integrity.files = new_files;
@@ -369,9 +367,7 @@ pub fn patch_manifest_producer_ref(job_dir: &Path, vorgang_id: i64) -> Result<()
     let obj = value
         .as_object_mut()
         .ok_or_else(|| "Manifest root is not an object".to_string())?;
-    let producer_ref = obj
-        .entry("producer_ref")
-        .or_insert_with(|| json!({}));
+    let producer_ref = obj.entry("producer_ref").or_insert_with(|| json!({}));
     if let Some(pref) = producer_ref.as_object_mut() {
         pref.insert("vorgang_id".into(), json!(vorgang_id));
     } else {
@@ -485,10 +481,7 @@ pub fn read_status_outbox_any(
 }
 
 /// Atomically write `_fertig.txt` (temp → rename).
-pub fn write_marker_file_atomic(
-    layout: &OutputLayout,
-    payload: &str,
-) -> Result<PathBuf, String> {
+pub fn write_marker_file_atomic(layout: &OutputLayout, payload: &str) -> Result<PathBuf, String> {
     let path = marker_path(layout);
     atomic_write(&path, payload.as_bytes()).map_err(|e| format!("_fertig.txt schreiben: {e}"))?;
     Ok(path)
@@ -644,11 +637,8 @@ mod tests {
         fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
         write_handoff_manifest(&layout, &Kunde::default(), &AppConfig::default()).unwrap();
 
-        let report = delete_extra_files_from_disk(
-            dir.path(),
-            &["Outside_Foto/extra.jpg".into()],
-        )
-        .unwrap();
+        let report =
+            delete_extra_files_from_disk(dir.path(), &["Outside_Foto/extra.jpg".into()]).unwrap();
         assert_eq!(report.deleted_paths, vec!["Outside_Foto/extra.jpg"]);
         assert!(dir.path().join("Outside_Foto/keep.jpg").is_file());
         assert!(dir.path().join("Handcam_Video/a.mp4").is_file());
@@ -661,8 +651,7 @@ mod tests {
         fs::create_dir_all(dir.path().join("Handcam_Video")).unwrap();
         fs::write(dir.path().join("Handcam_Video/a.mp4"), b"aaa").unwrap();
 
-        let err = delete_extra_files_from_disk(dir.path(), &["../outside.txt".into()])
-            .unwrap_err();
+        let err = delete_extra_files_from_disk(dir.path(), &["../outside.txt".into()]).unwrap_err();
         assert!(err.contains("Escape") || err.contains("Ungültig"));
     }
 

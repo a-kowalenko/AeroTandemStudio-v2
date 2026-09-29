@@ -356,9 +356,18 @@ mod tests {
 
     #[test]
     fn codec_preference_parse() {
-        assert_eq!(VideoCodecPreference::parse("auto"), VideoCodecPreference::Auto);
-        assert_eq!(VideoCodecPreference::parse("H264"), VideoCodecPreference::H264);
-        assert_eq!(VideoCodecPreference::parse("hevc"), VideoCodecPreference::H265);
+        assert_eq!(
+            VideoCodecPreference::parse("auto"),
+            VideoCodecPreference::Auto
+        );
+        assert_eq!(
+            VideoCodecPreference::parse("H264"),
+            VideoCodecPreference::H264
+        );
+        assert_eq!(
+            VideoCodecPreference::parse("hevc"),
+            VideoCodecPreference::H265
+        );
     }
 
     #[test]

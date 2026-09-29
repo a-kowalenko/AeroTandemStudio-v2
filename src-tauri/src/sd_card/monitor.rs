@@ -21,8 +21,8 @@ use crate::media::dji_paths::{
     media_type_from_filename, paths_for_sd_clear, resolve_drive_dcim_path, unique_dest_name,
     write_backup_manifest, ManifestEntry,
 };
-use crate::sd_card::mtp::mtp_whitelist::UsbImportMode;
 use crate::sd_card::copy_progress::copy_file_with_progress;
+use crate::sd_card::mtp::mtp_whitelist::UsbImportMode;
 use crate::sd_card::secondary_backup::{
     mirror_backup_to_smb, new_job_id, SecondaryBackupJob, SECONDARY_BACKUP,
 };
@@ -1320,7 +1320,10 @@ impl SdCardMonitor {
         if cache.len() >= IDENTITY_CACHE_MAX {
             cache.clear();
         }
-        cache.insert(Self::identity_cache_key(path, size, mtime), hash.to_string());
+        cache.insert(
+            Self::identity_cache_key(path, size, mtime),
+            hash.to_string(),
+        );
     }
 
     /// Drop known (hash-confirmed) paths when `sd_skip_processed` is on.
@@ -1500,8 +1503,7 @@ impl SdCardMonitor {
                 "USB-Kamera-Import ist in den Einstellungen deaktiviert.".into(),
             ));
         }
-        if let Some(vol) =
-            crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(drive)
+        if let Some(vol) = crate::sd_card::mtp::volume_link::mtp_covered_by_volume_for_source(drive)
         {
             eprintln!("usb_mtp_suppressed: {drive} list redirected to {vol}");
             return self.list_files(&vol);
@@ -1542,7 +1544,8 @@ impl SdCardMonitor {
                             }),
                         );
                     },
-                ) as Box<dyn FnMut(Vec<crate::sd_card::mtp::catalog::CameraCatalogFile>) + Send>
+                )
+                    as Box<dyn FnMut(Vec<crate::sd_card::mtp::catalog::CameraCatalogFile>) + Send>
             });
 
             let catalog_result = {
@@ -1972,15 +1975,13 @@ impl SdCardMonitor {
             }
             self.emit_status("clearing_started", serde_json::json!(drive));
             if is_mtp_source(drive) {
-                let clear_sources =
-                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
+                let clear_sources = paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
                 let (deleted, warn) = self.clear_mtp_after_backup(drive, &clear_sources);
                 clear_deleted_count = deleted;
                 clear_warning = warn;
             } else {
                 let before = copied_sources.len();
-                let clear_paths =
-                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
+                let clear_paths = paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
                 clear_sd_files(
                     &clear_paths,
                     Some(|current, total| {
@@ -2066,10 +2067,7 @@ impl SdCardMonitor {
             let cfg = self.config();
             let listed = self.list_mtp_files(drive)?;
             if listed.files.is_empty() {
-                return Ok(BackupResult::fail(
-                    empty_media_message(true).to_string(),
-                    0,
-                ));
+                return Ok(BackupResult::fail(empty_media_message(true).to_string(), 0));
             }
 
             let wanted: Option<HashSet<String>> = selected_files.as_ref().map(|sel| {
@@ -2100,10 +2098,7 @@ impl SdCardMonitor {
             let keep: HashSet<String> = filtered_paths.iter().cloned().collect();
             chosen.retain(|f| keep.contains(&f.path));
             if chosen.is_empty() {
-                return Ok(BackupResult::fail(
-                    empty_media_message(true).to_string(),
-                    0,
-                ));
+                return Ok(BackupResult::fail(empty_media_message(true).to_string(), 0));
             }
 
             let names: Vec<String> = chosen.iter().map(|f| f.filename.clone()).collect();
@@ -2338,8 +2333,7 @@ impl SdCardMonitor {
             let mut clear_deleted_count: Option<usize> = None;
             if want_clear && !copied_sources.is_empty() {
                 self.emit_status("clearing_started", serde_json::json!(drive));
-                let clear_sources =
-                    paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
+                let clear_sources = paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
                 let (deleted, warn) = self.clear_mtp_after_backup(drive, &clear_sources);
                 clear_deleted_count = deleted;
                 clear_warning = warn;
@@ -2990,7 +2984,8 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
     let ready = crate::sd_card::mtp::volume_link::ready_volumes();
     let attached = crate::sd_card::mtp::usb_enumerate::list_allowlisted_usb_cameras();
     let mode = UsbImportMode::parse(&SD_MONITOR.config().usb_import_mode);
-    for cam in crate::sd_card::mtp::volume_link::filter_visible_usb_cameras(&ready, attached, mode) {
+    for cam in crate::sd_card::mtp::volume_link::filter_visible_usb_cameras(&ready, attached, mode)
+    {
         if !visible_usb.contains(&cam.source_id) {
             continue;
         }
@@ -3489,12 +3484,16 @@ mod tests {
         let mut chunks = 0usize;
         let mut saw_known = false;
         let enriched2 = monitor
-            .enrich_files_with_progress(&drive, None, Some(|chunk: &[SdFileEnrichment]| {
-                chunks += 1;
-                if chunk.iter().any(|e| e.already_processed) {
-                    saw_known = true;
-                }
-            }))
+            .enrich_files_with_progress(
+                &drive,
+                None,
+                Some(|chunk: &[SdFileEnrichment]| {
+                    chunks += 1;
+                    if chunk.iter().any(|e| e.already_processed) {
+                        saw_known = true;
+                    }
+                }),
+            )
             .unwrap();
         assert!(chunks >= 1);
         assert!(saw_known);
@@ -3577,14 +3576,13 @@ mod tests {
         assert!(is_empty_catalog_message(empty_media_message(true)));
         assert!(is_empty_catalog_message(empty_media_message(false)));
         assert!(is_empty_catalog_message(filtered_only_message()));
-        assert!(!is_empty_catalog_message("DCIM nicht gefunden: /Volumes/X/DCIM"));
+        assert!(!is_empty_catalog_message(
+            "DCIM nicht gefunden: /Volumes/X/DCIM"
+        ));
         assert!(!is_empty_catalog_message("Kamera wurde getrennt."));
         assert_eq!(list_empty_reason(2, 2), None);
         assert_eq!(list_empty_reason(0, 0), Some(ListEmptyReason::NoMedia));
-        assert_eq!(
-            list_empty_reason(0, 3),
-            Some(ListEmptyReason::FilteredOnly)
-        );
+        assert_eq!(list_empty_reason(0, 3), Some(ListEmptyReason::FilteredOnly));
     }
 
     #[test]
@@ -3593,9 +3591,7 @@ mod tests {
         fs::create_dir_all(src.path().join("DCIM").join("100")).unwrap();
         let hist = tempdir().unwrap();
         let monitor = test_monitor(&hist);
-        let listed = monitor
-            .list_files(&src.path().to_string_lossy())
-            .unwrap();
+        let listed = monitor.list_files(&src.path().to_string_lossy()).unwrap();
         assert!(listed.files.is_empty());
         assert_eq!(listed.empty_reason, Some(ListEmptyReason::NoMedia));
     }
@@ -3618,19 +3614,9 @@ mod tests {
         fs::write(dji.join("DJI_20260827_0008.MP4"), b"v8").unwrap();
 
         let all = collect_media_paths_from_tree(&dcim);
-        let result = filter_media_paths_for_backup(
-            &all,
-            &dcim.to_string_lossy(),
-            true,
-        );
-        assert!(result
-            .kept
-            .iter()
-            .any(|p| p.ends_with("IMG_001.JPG")));
-        assert!(result
-            .kept
-            .iter()
-            .any(|p| p.ends_with("_0007.MP4")));
+        let result = filter_media_paths_for_backup(&all, &dcim.to_string_lossy(), true);
+        assert!(result.kept.iter().any(|p| p.ends_with("IMG_001.JPG")));
+        assert!(result.kept.iter().any(|p| p.ends_with("_0007.MP4")));
         assert_eq!(result.skipped_count(), 2);
         let companion_clear = expand_files_for_sd_clear(&result.skipped_timelapse_videos);
         assert!(companion_clear.iter().any(|p| p.ends_with("_0006.MP4")));
@@ -3651,32 +3637,14 @@ mod tests {
             fs::write(tl.join("IMG_001.JPG"), b"photo").unwrap();
         }
         fs::create_dir_all(&dji).unwrap();
-        fs::write(
-            dji.join("DJI_20260827004523_0005_D.MP4"),
-            vec![0u8; 1024],
-        )
-        .unwrap();
-        fs::write(
-            dji.join("DJI_20260827005007_0006_D.MP4"),
-            vec![0u8; 1024],
-        )
-        .unwrap();
-        fs::write(
-            dji.join("DJI_20260827005028_0007_D.MP4"),
-            vec![0u8; 1024],
-        )
-        .unwrap();
-        fs::write(
-            dji.join("DJI_20260827005045_0008_D.MP4"),
-            vec![0u8; 1024],
-        )
-        .unwrap();
+        fs::write(dji.join("DJI_20260827004523_0005_D.MP4"), vec![0u8; 1024]).unwrap();
+        fs::write(dji.join("DJI_20260827005007_0006_D.MP4"), vec![0u8; 1024]).unwrap();
+        fs::write(dji.join("DJI_20260827005028_0007_D.MP4"), vec![0u8; 1024]).unwrap();
+        fs::write(dji.join("DJI_20260827005045_0008_D.MP4"), vec![0u8; 1024]).unwrap();
 
         let hist = tempdir().unwrap();
         let monitor = test_monitor(&hist);
-        let listed = monitor
-            .list_files(&src.path().to_string_lossy())
-            .unwrap();
+        let listed = monitor.list_files(&src.path().to_string_lossy()).unwrap();
         let names: Vec<_> = listed.files.iter().map(|f| f.filename.as_str()).collect();
         assert!(names.iter().any(|n| n.ends_with("IMG_001.JPG")));
         assert!(names.iter().any(|n| *n == "DJI_20260827005028_0007_D.MP4"));
@@ -3693,9 +3661,7 @@ mod tests {
         fs::write(tl.join("DJI_0001.MP4"), vec![0u8; 1024]).unwrap();
         let hist = tempdir().unwrap();
         let monitor = test_monitor(&hist);
-        let listed = monitor
-            .list_files(&src.path().to_string_lossy())
-            .unwrap();
+        let listed = monitor.list_files(&src.path().to_string_lossy()).unwrap();
         assert!(listed.files.is_empty());
         assert_eq!(listed.empty_reason, Some(ListEmptyReason::FilteredOnly));
     }

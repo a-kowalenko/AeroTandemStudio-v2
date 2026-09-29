@@ -98,9 +98,8 @@ pub fn create_photo_with_watermark(
     output: &Path,
     stamp_path: &Path,
 ) -> Result<(), ProcessorError> {
-    let foto = image::open(input).map_err(|e| {
-        ProcessorError::Message(format!("Foto öffnen {}: {e}", input.display()))
-    })?;
+    let foto = image::open(input)
+        .map_err(|e| ProcessorError::Message(format!("Foto öffnen {}: {e}", input.display())))?;
     let stamp = image::open(stamp_path).map_err(|e| {
         ProcessorError::Message(format!("Stempel öffnen {}: {e}", stamp_path.display()))
     })?;

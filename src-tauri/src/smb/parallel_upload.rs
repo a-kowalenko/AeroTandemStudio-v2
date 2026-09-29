@@ -15,9 +15,7 @@ use crate::video::export_paths::MARKER_FILENAME;
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 use crate::video::handoff_manifest::MANIFEST_FILENAME;
 
-use super::client::{
-    stream_upload_file, FileEntry, UploadProgressGate, UploadResult,
-};
+use super::client::{stream_upload_file, FileEntry, UploadProgressGate, UploadResult};
 
 /// Concurrent photo / small-file streams (recommended 4–8).
 pub const PHOTO_UPLOAD_PARALLELISM: usize = 6;
@@ -38,9 +36,7 @@ const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "m4v", "avi", "webm"];
 /// Workers should exit quickly via cancel-raced `write_chunk` + bounded
 /// `FileWriter::abort` (~1s). If not, force-abort the JoinSet so the shared
 /// SMB session can be dropped — lingering exclusive locks block remote delete.
-async fn drain_media_workers_after_cancel(
-    set: &mut tokio::task::JoinSet<Result<(), String>>,
-) {
+async fn drain_media_workers_after_cancel(set: &mut tokio::task::JoinSet<Result<(), String>>) {
     let deadline = tokio::time::Instant::now() + COOPERATIVE_CANCEL_TIMEOUT;
     while !set.is_empty() {
         let now = tokio::time::Instant::now();
@@ -71,7 +67,9 @@ impl UploadPhases {
     /// Media, then optional manifest, then optional marker (never interleave).
     pub fn ordered(&self) -> Vec<&FileEntry> {
         let mut out = Vec::with_capacity(
-            self.media.len() + usize::from(self.manifest.is_some()) + usize::from(self.marker.is_some()),
+            self.media.len()
+                + usize::from(self.manifest.is_some())
+                + usize::from(self.marker.is_some()),
         );
         out.extend(self.media.iter());
         if let Some(m) = &self.manifest {
@@ -92,10 +90,7 @@ impl UploadPhases {
 
 /// Basename of a relative upload path (`Job/Handcam_Foto/a.jpg` → `a.jpg`).
 fn entry_basename(relative: &str) -> &str {
-    relative
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(relative)
+    relative.rsplit(['/', '\\']).next().unwrap_or(relative)
 }
 
 pub fn is_marker_file(relative: &str) -> bool {
@@ -118,11 +113,7 @@ pub fn is_large_media(entry: &FileEntry) -> bool {
         .absolute
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| {
-            VIDEO_EXTENSIONS
-                .iter()
-                .any(|v| e.eq_ignore_ascii_case(v))
-        })
+        .map(|e| VIDEO_EXTENSIONS.iter().any(|v| e.eq_ignore_ascii_case(v)))
         .unwrap_or(false)
 }
 
@@ -393,10 +384,7 @@ mod tests {
         ];
         let phases = partition_upload_phases(&files);
         assert_eq!(phases.media.len(), 3);
-        assert!(phases
-            .media
-            .iter()
-            .all(|f| !is_commit_file(&f.relative)));
+        assert!(phases.media.iter().all(|f| !is_commit_file(&f.relative)));
         assert!(phases
             .manifest
             .as_ref()
@@ -406,7 +394,11 @@ mod tests {
             .as_ref()
             .is_some_and(|m| m.relative.ends_with(MARKER_FILENAME)));
 
-        let ordered: Vec<&str> = phases.ordered().iter().map(|f| f.relative.as_str()).collect();
+        let ordered: Vec<&str> = phases
+            .ordered()
+            .iter()
+            .map(|f| f.relative.as_str())
+            .collect();
         assert_eq!(ordered.last().copied(), Some("Job/_fertig.txt"));
         assert_eq!(
             ordered.get(ordered.len() - 2).copied(),
@@ -419,10 +411,7 @@ mod tests {
 
     #[test]
     fn partition_without_commit_files_is_all_media() {
-        let files = vec![
-            entry("Job/a.jpg", 1),
-            entry("Job/b.mp4", 2),
-        ];
+        let files = vec![entry("Job/a.jpg", 1), entry("Job/b.mp4", 2)];
         let phases = partition_upload_phases(&files);
         assert_eq!(phases.media.len(), 2);
         assert!(phases.manifest.is_none());

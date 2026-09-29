@@ -246,8 +246,8 @@ mod tests {
     fn series_gap_stops_direction() {
         let paths = vec![
             chrono_at_ms(0, 1),
-            chrono_at_ms(100, 2),  // QR
-            chrono_at_ms(200, 3),  // hit
+            chrono_at_ms(100, 2),    // QR
+            chrono_at_ms(200, 3),    // hit
             chrono_at_ms(20_000, 4), // +19.8s — other series
             chrono_at_ms(20_100, 5),
         ];
@@ -321,7 +321,11 @@ mod tests {
 
     #[test]
     fn hit_at_list_edge_only_one_side() {
-        let paths = vec![chrono_at_ms(0, 1), chrono_at_ms(100, 2), chrono_at_ms(200, 3)];
+        let paths = vec![
+            chrono_at_ms(0, 1),
+            chrono_at_ms(100, 2),
+            chrono_at_ms(200, 3),
+        ];
         let qr: HashSet<String> = paths.iter().map(|p| path_key(p)).collect();
         let hits = expand_bidirectional_qr_hits(
             &paths,

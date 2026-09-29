@@ -15,8 +15,7 @@ use once_cell::sync::Lazy;
 use crate::sd_card::copy_progress::copy_file_with_progress;
 use crate::storage::logging::{self, file_name};
 
-static HARDLINK_REGISTRY: Lazy<Mutex<HashSet<String>>> =
-    Lazy::new(|| Mutex::new(HashSet::new()));
+static HARDLINK_REGISTRY: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportLinkMethod {
@@ -25,7 +24,9 @@ pub enum ImportLinkMethod {
 }
 
 fn norm_path_key(path: &Path) -> String {
-    let s = path.to_string_lossy().replace('/', std::path::MAIN_SEPARATOR_STR);
+    let s = path
+        .to_string_lossy()
+        .replace('/', std::path::MAIN_SEPARATOR_STR);
     #[cfg(windows)]
     {
         s.to_lowercase()
@@ -125,10 +126,7 @@ pub fn is_hardlinked(path: &Path) -> bool {
 }
 
 fn temp_materialize_path(path: &Path) -> PathBuf {
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("media");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("media");
     let ext = path
         .extension()
         .and_then(|e| e.to_str())

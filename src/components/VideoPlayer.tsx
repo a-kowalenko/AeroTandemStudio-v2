@@ -77,6 +77,11 @@ type VideoPlayerProps = {
   onEnded?: () => void;
   /** Start playback once metadata/data is ready (e.g. after advancing clips). */
   autoPlay?: boolean;
+  /**
+   * Keep the `<video>` unmounted until `autoPlay` becomes true.
+   * The poster can paint first so decode does not start beside FFmpeg.
+   */
+  delaySrcUntilAutoPlay?: boolean;
   /** UI chrome: trim = filmstrip + caps; playback = overlay scrub + transport. */
   chrome?: VideoChrome;
   /** Optional overlay marks for keep-range (0–1). */
@@ -222,6 +227,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       onTimeUpdate,
       onEnded,
       autoPlay,
+      delaySrcUntilAutoPlay = false,
       chrome = "auto",
       keepRange,
       onTrimChange,
@@ -252,6 +258,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     const [dragging, setDragging] = useState(false);
     const [dragHandle, setDragHandle] = useState<TrimHandle | null>(null);
     const [src, setSrc] = useState<string | null>(null);
+    const playbackSrc = delaySrcUntilAutoPlay && !autoPlay ? null : src;
     const [posterUrl, setPosterUrl] = useState<string | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     /** Center play/pause cue — hover (desktop) or brief flash after touch tap. */
@@ -437,7 +444,7 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       if (!v) return;
       v.muted = muted;
       v.volume = muted ? 0 : volume;
-    }, [volume, muted, src]);
+    }, [volume, muted, playbackSrc]);
 
     function clearOverlayHideTimer() {
       if (overlayHideTimerRef.current != null) {
@@ -462,11 +469,11 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
     }, []);
 
     useEffect(() => {
-      if (disabled || !src || loadError) {
+      if (disabled || !playbackSrc || loadError) {
         clearOverlayHideTimer();
         setOverlayVisible(false);
       }
-    }, [disabled, src, loadError]);
+    }, [disabled, playbackSrc, loadError]);
 
     useEffect(() => {
       bumpControlsVisibility();
@@ -501,7 +508,19 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       bumpControlsVisibility();
     }
 
-    const hasMediaSurface = Boolean(src);
+    const hasMediaSurface = Boolean(playbackSrc);
+
+    // autoPlay may flip on after metadata (poster finished first).
+    useEffect(() => {
+      if (!autoPlay || disabled || !playbackSrc) return;
+      const v = videoRef.current;
+      if (!v || !v.paused) return;
+      if (v.readyState >= 1) {
+        void v.play().catch(() => {
+          /* autoplay may be blocked until user gesture */
+        });
+      }
+    }, [autoPlay, disabled, playbackSrc]);
     const canTogglePlayback = Boolean(hasMediaSurface && !disabled && !loadError);
 
     function msFromClientX(
@@ -821,16 +840,16 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
             seekBy(e.clientX < mid ? -DOUBLE_TAP_SKIP_MS : DOUBLE_TAP_SKIP_MS);
           }}
         >
-          {src ? (
+          {playbackSrc ? (
             <video
-              key={src}
+              key={playbackSrc}
               ref={videoRef}
               className={cn(
                 "pointer-events-none object-contain",
                 rotateMediaStyle ? null : "h-full w-full",
               )}
               style={rotateMediaStyle}
-              src={src}
+              src={playbackSrc}
               poster={posterUrl ?? undefined}
               playsInline
               preload="metadata"

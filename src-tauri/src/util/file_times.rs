@@ -30,9 +30,7 @@ pub fn get_mtime_timestamp(path: &Path) -> Option<f64> {
 }
 
 fn system_time_to_epoch(t: SystemTime) -> Option<f64> {
-    t.duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|d| d.as_secs_f64())
+    t.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs_f64())
 }
 
 #[cfg(test)]

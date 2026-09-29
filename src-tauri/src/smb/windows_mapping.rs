@@ -53,17 +53,35 @@ pub fn unc_from_smb_parts(host: &str, share: &str, subpath: &str) -> String {
     }
 }
 
+/// Mapping root plus the config path joined under it.
+///
+/// `root` is what OPT-23B probes for liveness (`Z:\`, mount root). `full` is
+/// the upload/health target and may be a missing subdirectory of `root`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MappedLocal {
+    pub root: PathBuf,
+    pub full: PathBuf,
+}
+
 /// If `config_unc` matches a mapping (equal or map is a prefix of config),
 /// return the local filesystem path under that drive / mount.
 ///
 /// Map deeper than config → no match (cannot write to parent of mapped root).
 pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> Option<PathBuf> {
+    match_unc_to_mapped_local(config_unc, mappings).map(|m| m.full)
+}
+
+/// Like [`match_unc_to_mapped_path`], but also returns the mapping root.
+pub fn match_unc_to_mapped_local(
+    config_unc: &str,
+    mappings: &[DriveMapping],
+) -> Option<MappedLocal> {
     let config = canonicalize_unc(config_unc);
     if config == r"\\" || config.len() < 5 {
         return None;
     }
 
-    let mut best: Option<(usize, PathBuf)> = None;
+    let mut best: Option<(usize, MappedLocal)> = None;
 
     for m in mappings {
         let remote = canonicalize_unc(&m.remote_unc);
@@ -77,8 +95,7 @@ pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> 
 
         let remainder = if config == remote {
             Some(String::new())
-        } else if config.starts_with(&remote)
-            && config.as_bytes().get(remote.len()) == Some(&b'\\')
+        } else if config.starts_with(&remote) && config.as_bytes().get(remote.len()) == Some(&b'\\')
         {
             Some(config[remote.len() + 1..].replace('/', r"\"))
         } else {
@@ -92,14 +109,17 @@ pub fn match_unc_to_mapped_path(config_unc: &str, mappings: &[DriveMapping]) -> 
 
         // Prefer the longest matching remote prefix (most specific map).
         let score = remote.len();
-        let path = join_under_local_root(local_root_name, &rest);
+        let mapped = MappedLocal {
+            root: local_root_path(local_root_name),
+            full: join_under_local_root(local_root_name, &rest),
+        };
         match &best {
             Some((best_score, _)) if *best_score >= score => {}
-            _ => best = Some((score, path)),
+            _ => best = Some((score, mapped)),
         }
     }
 
-    best.map(|(_, p)| p)
+    best.map(|(_, mapped)| mapped)
 }
 
 /// Windows drive letter (`Z:`) or Unix absolute path (`/Volumes/…`).
@@ -119,7 +139,11 @@ fn is_windows_drive_root(local_name: &str) -> bool {
     let t = local_name.trim().trim_end_matches(['\\', '/']);
     if t.ends_with(':') {
         let letter = &t[..t.len() - 1];
-        return letter.len() == 1 && letter.chars().next().is_some_and(|c| c.is_ascii_alphabetic());
+        return letter.len() == 1
+            && letter
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic());
     }
     t.len() == 1 && t.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
 }
@@ -139,16 +163,19 @@ fn mapping_drive_letter(local_name: &str) -> Option<String> {
     }
 }
 
-/// Local FS path under a mapped drive or Unix mount root.
-///
-/// Windows drive roots use `Z:\` so `.exists()` checks the volume root, not the
-/// process CWD on that drive.
-fn join_under_local_root(local_name: &str, remainder: &str) -> PathBuf {
-    let mut path = if let Some(letter) = mapping_drive_letter(local_name) {
+/// `Z:` → `Z:\` (volume root, not the process CWD on that drive). Unix mount
+/// paths stay as given, without a trailing slash.
+fn local_root_path(local_name: &str) -> PathBuf {
+    if let Some(letter) = mapping_drive_letter(local_name) {
         PathBuf::from(format!(r"{letter}\"))
     } else {
         PathBuf::from(local_name.trim().trim_end_matches(['\\', '/']))
-    };
+    }
+}
+
+/// Local FS path under a mapped drive or Unix mount root.
+fn join_under_local_root(local_name: &str, remainder: &str) -> PathBuf {
+    let mut path = local_root_path(local_name);
     for part in remainder.split(['\\', '/']).filter(|p| !p.is_empty()) {
         path.push(part);
     }
@@ -171,9 +198,13 @@ pub fn list_smb_drive_mappings() -> Vec<DriveMapping> {
 ///
 /// Use this when Prefer-Local / smb2-bridge logic needs to know a map is listed
 /// even if `Z:` is still waking (OPT-20B).
-pub fn lookup_mapped_local_path(config_unc: &str) -> Option<PathBuf> {
+pub fn lookup_mapped_local(config_unc: &str) -> Option<MappedLocal> {
     let mappings = list_smb_drive_mappings();
-    match_unc_to_mapped_path(config_unc, &mappings)
+    match_unc_to_mapped_local(config_unc, &mappings)
+}
+
+pub fn lookup_mapped_local_path(config_unc: &str) -> Option<PathBuf> {
+    lookup_mapped_local(config_unc).map(|m| m.full)
 }
 
 /// Resolve config UNC against live mappings; require local root reachable
@@ -199,16 +230,11 @@ fn list_smb_drive_mappings_windows() -> Vec<DriveMapping> {
     let mut out = Vec::new();
     for letter in b'A'..=b'Z' {
         let local = format!("{}:", letter as char);
-        let local_wide: Vec<u16> = local
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
+        let local_wide: Vec<u16> = local.encode_utf16().chain(std::iter::once(0)).collect();
 
         // First call: query required buffer length (chars, including NUL).
         let mut needed: u32 = 0;
-        let status = unsafe {
-            WNetGetConnectionW(PCWSTR(local_wide.as_ptr()), None, &mut needed)
-        };
+        let status = unsafe { WNetGetConnectionW(PCWSTR(local_wide.as_ptr()), None, &mut needed) };
         // Not a network drive / not connected → skip.
         if status != ERROR_MORE_DATA && status != ERROR_SUCCESS {
             continue;
@@ -265,14 +291,8 @@ mod tests {
 
     #[test]
     fn canonicalize_slashes_and_case() {
-        assert_eq!(
-            canonicalize_unc(r"\\Host\Share\Sub"),
-            r"\\host\share\sub"
-        );
-        assert_eq!(
-            canonicalize_unc("//Host/Share/Sub/"),
-            r"\\host\share\sub"
-        );
+        assert_eq!(canonicalize_unc(r"\\Host\Share\Sub"), r"\\host\share\sub");
+        assert_eq!(canonicalize_unc("//Host/Share/Sub/"), r"\\host\share\sub");
     }
 
     #[test]
@@ -281,10 +301,7 @@ mod tests {
             unc_from_smb_parts("169.254.169.254", "aktuell", "jobs/a"),
             r"\\169.254.169.254\aktuell\jobs\a"
         );
-        assert_eq!(
-            unc_from_smb_parts("NAS", "videos", ""),
-            r"\\nas\videos"
-        );
+        assert_eq!(unc_from_smb_parts("NAS", "videos", ""), r"\\nas\videos");
     }
 
     #[test]
@@ -375,5 +392,30 @@ mod tests {
         // match helper only — lookup uses live OS maps; here we assert join logic.
         let p = match_unc_to_mapped_path(r"\\host\share\sub", &maps).unwrap();
         assert_eq!(slash(&p), r"Z:\sub");
+    }
+
+    #[test]
+    fn mapped_local_root_stops_at_drive() {
+        let maps = [DriveMapping {
+            local_name: "Z:".into(),
+            remote_unc: r"\\host\share".into(),
+        }];
+        let mapped = match_unc_to_mapped_local(r"\\host\share\jobs\neu", &maps).unwrap();
+        assert_eq!(slash(&mapped.root), "Z:");
+        assert_eq!(slash(&mapped.full), r"Z:\jobs\neu");
+    }
+
+    #[test]
+    fn mapped_local_root_unix_mount() {
+        let maps = [DriveMapping {
+            local_name: "/Volumes/aktuell".into(),
+            remote_unc: r"\\host\share".into(),
+        }];
+        let mapped = match_unc_to_mapped_local(r"\\host\share\jobs\neu", &maps).unwrap();
+        assert_eq!(mapped.root, PathBuf::from("/Volumes/aktuell"));
+        assert_eq!(
+            mapped.full,
+            PathBuf::from("/Volumes/aktuell").join("jobs").join("neu")
+        );
     }
 }

@@ -1,8 +1,8 @@
 //! Parse FFmpeg progress output (`-progress pipe:1`) and Duration lines from stderr.
 
+use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use once_cell::sync::Lazy;
 
 static DURATION_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"Duration:\s*(\d{2}):(\d{2}):(\d{2})\.(\d{2})").unwrap());
@@ -238,7 +238,8 @@ mod tests {
 
     #[test]
     fn parse_time_stat_fallback() {
-        let line = "frame=  100 fps=25 q=28.0 size=    1024kB time=00:00:04.00 bitrate=2048.0kbits/s";
+        let line =
+            "frame=  100 fps=25 q=28.0 size=    1024kB time=00:00:04.00 bitrate=2048.0kbits/s";
         assert!((parse_time_stat(line).unwrap() - 4.0).abs() < 0.001);
     }
 }

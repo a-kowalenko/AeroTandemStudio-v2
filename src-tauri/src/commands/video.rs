@@ -7,29 +7,29 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
+use crate::model::Kunde;
+use crate::model::ValidationResult;
 use crate::storage::logging::{self, file_name};
 use crate::util::natural_sort::sort_paths_by_basename;
+use crate::video::body_concat_fallback::{self, BodyConcatAskFn, BodyConcatChoice};
 use crate::video::concat;
 use crate::video::cutter::{self, CutResult, SplitResult};
+use crate::video::encode_profile::EncodeProfile;
+use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
 use crate::video::ffmpeg::{
     cancel_encode as ffmpeg_cancel, cancel_secondary_backup as ffmpeg_cancel_secondary_backup,
     cancel_upload_slot as ffmpeg_cancel_upload_slot, find_ffmpeg_with_resource_dir, is_cancelled,
     probe_duration_secs, reset_cancel_flag,
     reset_upload_slot_cancel as reset_upload_slot_cancel_flag, run_ffmpeg, WORKFLOW_CANCELLED,
 };
+use crate::video::folder_conflict::{self, OutputFolderProbe};
 use crate::video::hw_accel::{build_encode_command, detect_hardware, HwAccelInfo, HwType};
+use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
 use crate::video::preview_encode::{self, PreviewResult};
 use crate::video::probe::{self, VideoMetadata};
-use crate::model::Kunde;
-use crate::video::body_concat_fallback::{self, BodyConcatAskFn, BodyConcatChoice};
-use crate::video::export_job::{self, CreateJobOptions, CreateJobResult};
-use crate::video::folder_conflict::{self, OutputFolderProbe};
-use crate::video::intro_mux_fallback::{self, IntroMuxChoice};
 use crate::video::processor::{self, CreateVideoOptions, CreateVideoResult, IntroMuxAskFn};
 use crate::video::progress::EncodeProgress;
-use crate::video::encode_profile::EncodeProfile;
 use crate::video::reencode_confirm::{self, ReencodeAskFn, ReencodeChoice};
-use crate::model::ValidationResult;
 
 #[derive(Debug, Serialize)]
 pub struct EncodeResult {
@@ -112,10 +112,7 @@ pub async fn encode_video(
     let (hw, args) = build_encode_command(&input, &output);
     let encoder = hw.encoder.clone();
     let hw_label = hw_type_label(&hw);
-    logging::info(
-        "encode",
-        format!("Encoder: {encoder} ({hw_label})"),
-    );
+    logging::info("encode", format!("Encoder: {encoder} ({hw_label})"));
 
     let total_secs = probe_duration_secs(&ffmpeg, &input).unwrap_or(0.0);
 
@@ -260,19 +257,16 @@ pub async fn trim_video(
 
     match result {
         Ok(()) => {
-            let method = if precise {
-                "re-encode"
-            } else {
-                "stream-copy"
-            };
-            logging::info("trim", format!("Trim fertig ({method}): {}", file_name(&output_clone)));
+            let method = if precise { "re-encode" } else { "stream-copy" };
+            logging::info(
+                "trim",
+                format!("Trim fertig ({method}): {}", file_name(&output_clone)),
+            );
             Ok(TrimResult {
                 output: output_clone,
                 method: method.into(),
                 reencode_reason: if precise {
-                    Some(
-                        "Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into(),
-                    )
+                    Some("Präziser Zuschnitt (frame-genau) erfordert Neu-Kodierung".into())
                 } else {
                     None
                 },
@@ -394,9 +388,8 @@ pub async fn rotate_video(
     });
 
     let app_for_reenc = app.clone();
-    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
-        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
-    });
+    let on_reencode: ReencodeAskFn =
+        Arc::new(move |intent| reencode_confirm::wait_for_choice(&app_for_reenc, intent));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         crate::video::rotate::rotate_video(
@@ -575,14 +568,20 @@ pub fn cancel_encode() -> Result<bool, String> {
 /// Cancel the active Vorgang/Historie SMB upload slot (not SD server-backup).
 #[tauri::command]
 pub fn cancel_upload_slot() -> Result<bool, String> {
-    logging::warn("smb", "Upload-Slot-Abbruch angefordert (cancel_upload_slot)");
+    logging::warn(
+        "smb",
+        "Upload-Slot-Abbruch angefordert (cancel_upload_slot)",
+    );
     Ok(ffmpeg_cancel_upload_slot())
 }
 
 /// Cancel the active SD server-backup mirror job only (not Vorgang upload).
 #[tauri::command]
 pub fn cancel_secondary_backup() -> Result<bool, String> {
-    logging::warn("sd", "Server-Backup-Abbruch angefordert (cancel_secondary_backup)");
+    logging::warn(
+        "sd",
+        "Server-Backup-Abbruch angefordert (cancel_secondary_backup)",
+    );
     Ok(ffmpeg_cancel_secondary_backup())
 }
 
@@ -705,8 +704,7 @@ pub async fn get_video_filmstrip(
         return Err(format!("input file not found: {path}"));
     }
     let ffmpeg = resolve_ffmpeg(&app)?;
-    let frame_count =
-        count.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_COUNT as u32) as usize;
+    let frame_count = count.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_COUNT as u32) as usize;
     let frame_height = height.unwrap_or(crate::media::filmstrip::DEFAULT_FRAME_HEIGHT);
     let media_base = media.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -763,19 +761,16 @@ pub async fn create_video(
     });
 
     let app_for_ask = app.clone();
-    let on_intro_mux_fallback: IntroMuxAskFn = Arc::new(move |reason: &str| {
-        intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
-    });
+    let on_intro_mux_fallback: IntroMuxAskFn =
+        Arc::new(move |reason: &str| intro_mux_fallback::wait_for_choice(&app_for_ask, reason));
 
     let app_for_body = app.clone();
-    let on_body_concat_fallback: BodyConcatAskFn = Arc::new(move |reason: &str| {
-        body_concat_fallback::wait_for_choice(&app_for_body, reason)
-    });
+    let on_body_concat_fallback: BodyConcatAskFn =
+        Arc::new(move |reason: &str| body_concat_fallback::wait_for_choice(&app_for_body, reason));
 
     let app_for_reenc = app.clone();
-    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
-        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
-    });
+    let on_reencode: ReencodeAskFn =
+        Arc::new(move |intent| reencode_confirm::wait_for_choice(&app_for_reenc, intent));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         processor::create_video(
@@ -816,16 +811,16 @@ pub async fn create_video(
 /// Resolve a pending Intro+Body stream-copy fallback decision from the UI.
 #[tauri::command]
 pub fn resolve_intro_mux_fallback(choice: String) -> Result<(), String> {
-    let parsed = IntroMuxChoice::parse(&choice)
-        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    let parsed =
+        IntroMuxChoice::parse(&choice).ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
     intro_mux_fallback::resolve_choice(parsed)
 }
 
 /// Resolve a pending Fast-Path body-concat fallback decision from the UI.
 #[tauri::command]
 pub fn resolve_body_concat_fallback(choice: String) -> Result<(), String> {
-    let parsed = BodyConcatChoice::parse(&choice)
-        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    let parsed =
+        BodyConcatChoice::parse(&choice).ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
     body_concat_fallback::resolve_choice(parsed)
 }
 
@@ -836,8 +831,8 @@ pub fn resolve_reencode_confirm(
     choice: String,
     profile: Option<EncodeProfile>,
 ) -> Result<(), String> {
-    let parsed = ReencodeChoice::parse(&choice)
-        .ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
+    let parsed =
+        ReencodeChoice::parse(&choice).ok_or_else(|| format!("Ungültige Wahl: {choice}"))?;
     reencode_confirm::resolve_choice(parsed, profile)
 }
 
@@ -866,7 +861,10 @@ pub async fn generate_preview(
     if !form.valid {
         logging::warn(
             "preview",
-            format!("Vorschau abgebrochen (Formular): {}", form.errors.join("; ")),
+            format!(
+                "Vorschau abgebrochen (Formular): {}",
+                form.errors.join("; ")
+            ),
         );
         return Err(form.errors.join("\n"));
     }
@@ -889,9 +887,8 @@ pub async fn generate_preview(
     });
 
     let app_for_reenc = app.clone();
-    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
-        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
-    });
+    let on_reencode: ReencodeAskFn =
+        Arc::new(move |intent| reencode_confirm::wait_for_choice(&app_for_reenc, intent));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         preview_encode::generate_preview(
@@ -931,7 +928,10 @@ pub async fn generate_preview(
 
 /// Filter video paths, natural-sort by basename, and probe metadata for each.
 #[tauri::command]
-pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<VideoMetadata>, String> {
+pub async fn import_videos(
+    app: AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<VideoMetadata>, String> {
     if paths.is_empty() {
         return Ok(Vec::new());
     }
@@ -1029,7 +1029,10 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         }
         logging::info(
             "import",
-            format!("Videos kopiert: {} Datei(en), starte parallele Probe…", working.len()),
+            format!(
+                "Videos kopiert: {} Datei(en), starte parallele Probe…",
+                working.len()
+            ),
         );
 
         use std::sync::{Arc, Mutex};
@@ -1079,21 +1082,13 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
                         "import",
                         format!(
                             "Probe OK: {} ({}x{}, {:.1}s, {}{})",
-                            name,
-                            meta.width,
-                            meta.height,
-                            meta.duration_secs,
-                            meta.codec,
-                            device
+                            name, meta.width, meta.height, meta.duration_secs, meta.codec, device
                         ),
                     );
                     out.push(meta.clone());
                 }
                 Err(e) => {
-                    logging::warn(
-                        "import",
-                        format!("Probe fehlgeschlagen ({name}): {e}"),
-                    );
+                    logging::warn("import", format!("Probe fehlgeschlagen ({name}): {e}"));
                     errors.push(format!("{path}: {e}"));
                 }
             }
@@ -1114,9 +1109,7 @@ pub async fn import_videos(app: AppHandle, paths: Vec<String>) -> Result<Vec<Vid
         Ok(out) => {
             let with_device = out
                 .iter()
-                .filter(|m| {
-                    probe::format_camera_label(&m.camera_make, &m.camera_model).is_some()
-                })
+                .filter(|m| probe::format_camera_label(&m.camera_make, &m.camera_model).is_some())
                 .count();
             logging::info(
                 "import",
@@ -1214,7 +1207,7 @@ pub async fn create_job(
 ) -> Result<CreateJobResult, String> {
     logging::info(
         "create",
-            format!(
+        format!(
             "Vorgang starten: Gast={}, Videos={}, Fotos={}",
             kunde.resolve_gast(),
             video_paths.len(),
@@ -1258,19 +1251,16 @@ pub async fn create_job(
     });
 
     let app_for_ask = app.clone();
-    let on_intro_mux_fallback: IntroMuxAskFn = Arc::new(move |reason: &str| {
-        intro_mux_fallback::wait_for_choice(&app_for_ask, reason)
-    });
+    let on_intro_mux_fallback: IntroMuxAskFn =
+        Arc::new(move |reason: &str| intro_mux_fallback::wait_for_choice(&app_for_ask, reason));
 
     let app_for_body = app.clone();
-    let on_body_concat_fallback: BodyConcatAskFn = Arc::new(move |reason: &str| {
-        body_concat_fallback::wait_for_choice(&app_for_body, reason)
-    });
+    let on_body_concat_fallback: BodyConcatAskFn =
+        Arc::new(move |reason: &str| body_concat_fallback::wait_for_choice(&app_for_body, reason));
 
     let app_for_reenc = app.clone();
-    let on_reencode: ReencodeAskFn = Arc::new(move |intent| {
-        reencode_confirm::wait_for_choice(&app_for_reenc, intent)
-    });
+    let on_reencode: ReencodeAskFn =
+        Arc::new(move |intent| reencode_confirm::wait_for_choice(&app_for_reenc, intent));
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         export_job::create_job(

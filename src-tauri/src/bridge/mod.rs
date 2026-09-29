@@ -15,8 +15,8 @@ use uuid::Uuid;
 
 use crate::model::Kunde;
 use crate::storage::config::AppConfig;
-use crate::video::handoff_manifest::StatusOutboxV1;
 use crate::util::host::current_computer_name;
+use crate::video::handoff_manifest::StatusOutboxV1;
 
 const REQUEST_TIMEOUT_SECS: u64 = 15;
 const ATS_BRIDGE_APP: &str = "AeroTandemStudio";
@@ -237,8 +237,7 @@ pub fn resolve_bridge_base_url(config: &AppConfig) -> Result<String, String> {
 }
 
 pub fn bridge_configured(config: &AppConfig) -> bool {
-    !config.ams_bridge_url.trim().is_empty()
-        || !config.ams_bridge_last_ok_url.trim().is_empty()
+    !config.ams_bridge_url.trim().is_empty() || !config.ams_bridge_last_ok_url.trim().is_empty()
 }
 
 async fn http_client() -> Result<reqwest::Client, String> {
@@ -277,7 +276,9 @@ pub async fn fetch_health(
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         let snippet: String = body.chars().take(200).collect();
-        return Err(format!("AMS-Bridge health fehlgeschlagen: HTTP {status} {snippet}"));
+        return Err(format!(
+            "AMS-Bridge health fehlgeschlagen: HTTP {status} {snippet}"
+        ));
     }
     resp.json::<BridgeHealth>()
         .await
@@ -442,14 +443,7 @@ pub async fn preflight_customer_lookup(
         Err(_) => return Ok(None),
     };
     let identity = build_ats_bridge_identity(config);
-    match customer_lookup(
-        &base,
-        &config.ams_bridge_token,
-        &req,
-        &identity,
-    )
-    .await
-    {
+    match customer_lookup(&base, &config.ams_bridge_token, &req, &identity).await {
         Ok(resp) if resp.ok => Ok(Some(resp)),
         Ok(resp) => {
             let msg = resp
@@ -553,10 +547,7 @@ pub async fn resolve_handoff_status(
         }
     }
 
-    Ok(
-        crate::video::handoff_manifest::read_status_outbox(share_root, cid)?
-            .map(|j| (j, "outbox")),
-    )
+    Ok(crate::video::handoff_manifest::read_status_outbox(share_root, cid)?.map(|j| (j, "outbox")))
 }
 
 /// `POST /v1/handoff/ready` — optional wake after Manifest + `_fertig.txt`.
@@ -680,10 +671,7 @@ pub async fn maybe_notify_handoff_cancel(
         Ok(resp) => Ok(Some(resp)),
         Err(e) if is_unreachable(&e) => Ok(None),
         Err(e) => {
-            crate::storage::logging::warn(
-                "bridge",
-                format!("handoff/cancel ignoriert: {e}"),
-            );
+            crate::storage::logging::warn("bridge", format!("handoff/cancel ignoriert: {e}"));
             Ok(None)
         }
     }
@@ -705,15 +693,7 @@ pub async fn maybe_notify_handoff_ready(
         Ok(u) => u,
         Err(_) => return Ok(None),
     };
-    match notify_handoff_ready(
-        &base,
-        &config.ams_bridge_token,
-        cid,
-        folder_name,
-        &identity,
-    )
-    .await
-    {
+    match notify_handoff_ready(&base, &config.ams_bridge_token, cid, folder_name, &identity).await {
         Ok(resp) => Ok(Some(resp)),
         Err(e) if is_unreachable(&e) => Ok(None),
         Err(e) => {

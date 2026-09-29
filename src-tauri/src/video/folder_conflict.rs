@@ -61,14 +61,8 @@ pub fn probe_output_folder(
         return Err("Speicherort ist leer".into());
     }
 
-    let folder_name = build_base_filename(
-        gast,
-        tandemmaster,
-        videospringer,
-        datum,
-        outside_video,
-        ort,
-    );
+    let folder_name =
+        build_base_filename(gast, tandemmaster, videospringer, datum, outside_video, ort);
     let folder_path = speicherort.join(&folder_name);
     let path_str = folder_path.to_string_lossy().to_string();
 
@@ -236,14 +230,7 @@ pub fn planned_output_dir(
     outside_video: bool,
     ort: &str,
 ) -> PathBuf {
-    let name = build_base_filename(
-        gast,
-        tandemmaster,
-        videospringer,
-        datum,
-        outside_video,
-        ort,
-    );
+    let name = build_base_filename(gast, tandemmaster, videospringer, datum, outside_video, ort);
     speicherort.join(name)
 }
 

@@ -57,12 +57,7 @@ pub struct HandoffStatusDto {
 }
 
 impl HandoffStatusDto {
-    fn from_outbox(
-        v: StatusOutboxV1,
-        source: &str,
-        offline: bool,
-        verified_at: String,
-    ) -> Self {
+    fn from_outbox(v: StatusOutboxV1, source: &str, offline: bool, verified_at: String) -> Self {
         Self {
             correlation_id: v.correlation_id,
             state: v.state,
@@ -125,10 +120,7 @@ impl HandoffStatusDto {
 fn is_ams_cancelled_update(update: &AmsHandoffStatusUpdate) -> bool {
     let state = update.state.trim().to_ascii_lowercase();
     let code = update.error_code.trim().to_ascii_lowercase();
-    state == "cancelled"
-        || state == "canceled"
-        || code == "cancelled"
-        || code == "canceled"
+    state == "cancelled" || state == "canceled" || code == "cancelled" || code == "canceled"
 }
 
 fn is_live_terminal_problem(state: &str, error_code: &str) -> bool {
@@ -160,11 +152,7 @@ fn apply_archive_cancelled_hint(job: &mut StatusOutboxV1) {
     if is_live_terminal_problem(&state, "") {
         return;
     }
-    let code = job
-        .error
-        .as_ref()
-        .map(|e| e.code.as_str())
-        .unwrap_or("");
+    let code = job.error.as_ref().map(|e| e.code.as_str()).unwrap_or("");
     if is_live_terminal_problem("", code) {
         return;
     }
@@ -234,14 +222,14 @@ fn resolve_live_or_cached_cancelled(
 ) -> HandoffStatusDto {
     apply_archive_cancelled_hint(&mut job);
     normalize_cancelled_outbox_state(&mut job);
-    let live_code = job
-        .error
-        .as_ref()
-        .map(|e| e.code.as_str())
-        .unwrap_or("");
-    if let Some(cached) =
-        prefer_cached_cancelled(store, vorgang_id, &job.correlation_id, &job.state, live_code)
-    {
+    let live_code = job.error.as_ref().map(|e| e.code.as_str()).unwrap_or("");
+    if let Some(cached) = prefer_cached_cancelled(
+        store,
+        vorgang_id,
+        &job.correlation_id,
+        &job.state,
+        live_code,
+    ) {
         logging::debug(
             "vorgang_history",
             format!(
@@ -400,13 +388,8 @@ async fn resolve_handoff_status(
     if crate::bridge::bridge_configured(config) {
         if let Ok(base) = crate::bridge::resolve_bridge_base_url(config) {
             let identity = crate::bridge::build_ats_bridge_identity(config);
-            match crate::bridge::fetch_job_status(
-                &base,
-                &config.ams_bridge_token,
-                cid,
-                &identity,
-            )
-            .await
+            match crate::bridge::fetch_job_status(&base, &config.ams_bridge_token, cid, &identity)
+                .await
             {
                 Ok(Some(job)) => {
                     return Ok(Some(resolve_live_or_cached_cancelled(
@@ -462,11 +445,7 @@ fn should_sync_handoff_entry(entry: &VorgangEntry) -> bool {
         return false;
     }
     // Re-verify completed — AMS may cancel or re-archive after ATS recorded success.
-    if entry
-        .ams_state
-        .trim()
-        .eq_ignore_ascii_case("completed")
-    {
+    if entry.ams_state.trim().eq_ignore_ascii_case("completed") {
         return true;
     }
     if entry.upload_state.trim().eq_ignore_ascii_case("none") {
@@ -485,11 +464,7 @@ fn handoff_dto_changed(entry: &VorgangEntry, dto: &HandoffStatusDto) -> bool {
     if dto.state.trim() != entry.ams_state.trim() {
         return true;
     }
-    let live_code = dto
-        .error
-        .as_ref()
-        .map(|e| e.code.as_str())
-        .unwrap_or("");
+    let live_code = dto.error.as_ref().map(|e| e.code.as_str()).unwrap_or("");
     if live_code.trim() != entry.ams_error_code.trim() {
         return true;
     }
@@ -755,7 +730,8 @@ pub async fn create_append_job(
     }
 
     let resource_dir = app.path().resource_dir().ok();
-    let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())?;
+    let ffmpeg =
+        find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())?;
     let config = read_config(&state)?;
     let app_for_cb = app.clone();
     let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
@@ -800,11 +776,9 @@ pub async fn create_append_job(
     };
 
     if let Some(append_id) = append_id {
-        if let Err(e) = store.record_append_files(
-            append_id,
-            vorgang_id,
-            Path::new(&local_folder_path),
-        ) {
+        if let Err(e) =
+            store.record_append_files(append_id, vorgang_id, Path::new(&local_folder_path))
+        {
             logging::warn(
                 "append",
                 format!("Nachreichung-Dateien nicht in Historie gespeichert: {e}"),
@@ -912,9 +886,7 @@ mod tests {
             error: None,
             ams: OutboxAmsMeta {
                 history_id: None,
-                archive: Some(
-                    r"C:\Archiv\2 Abgebrochen\20260826_Andreas_Kowalenko".into(),
-                ),
+                archive: Some(r"C:\Archiv\2 Abgebrochen\20260826_Andreas_Kowalenko".into()),
             },
             extensions: serde_json::json!({}),
         };

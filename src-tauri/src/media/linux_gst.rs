@@ -99,7 +99,9 @@ mod linux_impl {
         if !dir.is_dir() {
             return false;
         }
-        H264_PLUGIN_FILES.iter().any(|name| dir.join(name).is_file())
+        H264_PLUGIN_FILES
+            .iter()
+            .any(|name| dir.join(name).is_file())
     }
 
     fn gstreamer_plugin_dirs() -> Vec<PathBuf> {

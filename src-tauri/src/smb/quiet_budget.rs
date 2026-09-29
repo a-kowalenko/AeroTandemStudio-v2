@@ -26,6 +26,8 @@ const SKIP_LOG_MIN_INTERVAL: Duration = Duration::from_secs(120);
 pub enum QuietSkipReason {
     Bridging,
     Backoff,
+    /// Upload, SD-Backup, or Staging-GC already holds the host mutex.
+    HostBusy,
 }
 
 impl QuietSkipReason {
@@ -33,6 +35,7 @@ impl QuietSkipReason {
         match self {
             Self::Bridging => "bridging",
             Self::Backoff => "backoff",
+            Self::HostBusy => "host-busy",
         }
     }
 }
@@ -50,8 +53,7 @@ struct QuietBudgetState {
     last_skip_log: HashMap<String, (String, Instant)>,
 }
 
-static STATE: Lazy<Mutex<QuietBudgetState>> =
-    Lazy::new(|| Mutex::new(QuietBudgetState::default()));
+static STATE: Lazy<Mutex<QuietBudgetState>> = Lazy::new(|| Mutex::new(QuietBudgetState::default()));
 
 fn now() -> Instant {
     Instant::now()
@@ -124,17 +126,12 @@ pub fn log_quiet_skip(config_unc: &str, reason: QuietSkipReason) {
             _ => true,
         };
         if log {
-            state
-                .last_skip_log
-                .insert(key.clone(), (tag.clone(), now));
+            state.last_skip_log.insert(key.clone(), (tag.clone(), now));
         }
         log
     };
     if should_log {
-        crate::storage::logging::info(
-            "smb",
-            format!("SMB quiet skip ({tag}) ({key})"),
-        );
+        crate::storage::logging::info("smb", format!("SMB quiet skip ({tag}) ({key})"));
     }
 }
 
@@ -146,6 +143,9 @@ pub fn quiet_skip_result(reason: QuietSkipReason) -> (bool, String, bool) {
         }
         QuietSkipReason::Backoff => {
             "SMB Quiet: Session-Backoff aktiv — Status gehalten".to_string()
+        }
+        QuietSkipReason::HostBusy => {
+            "SMB Quiet: Host belegt (Upload/Backup/GC) — kein neues SessionSetup".to_string()
         }
     };
     (false, message, true)
@@ -188,10 +188,7 @@ mod tests {
         clear_bridging_for_test(&unc);
         assert!(should_skip_quiet_smb2(&unc).is_none());
         note_quiet_smb2_ok(&unc);
-        assert_eq!(
-            should_skip_quiet_smb2(&unc),
-            Some(QuietSkipReason::Backoff)
-        );
+        assert_eq!(should_skip_quiet_smb2(&unc), Some(QuietSkipReason::Backoff));
     }
 
     #[test]
@@ -199,10 +196,7 @@ mod tests {
         let unc = unique_unc("fail");
         clear_bridging_for_test(&unc);
         note_quiet_smb2_fail(&unc, "connection refused");
-        assert_eq!(
-            should_skip_quiet_smb2(&unc),
-            Some(QuietSkipReason::Backoff)
-        );
+        assert_eq!(should_skip_quiet_smb2(&unc), Some(QuietSkipReason::Backoff));
     }
 
     #[test]
@@ -222,6 +216,9 @@ mod tests {
         let (ok2, _, soft2) = quiet_skip_result(QuietSkipReason::Backoff);
         assert!(!ok2);
         assert!(soft2);
+        let (ok3, _, soft3) = quiet_skip_result(QuietSkipReason::HostBusy);
+        assert!(!ok3);
+        assert!(soft3);
     }
 
     #[test]
@@ -249,10 +246,7 @@ mod tests {
                 },
             );
         }
-        assert_eq!(
-            should_skip_quiet_smb2(&unc),
-            Some(QuietSkipReason::Backoff)
-        );
+        assert_eq!(should_skip_quiet_smb2(&unc), Some(QuietSkipReason::Backoff));
         thread::sleep(Duration::from_millis(50));
         assert!(should_skip_quiet_smb2(&unc).is_none());
     }

@@ -161,8 +161,7 @@ impl ReencodeIntent {
 }
 
 /// Called before starting a re-encode. Return `Err(())` to abort.
-pub type ReencodeAskFn =
-    Arc<dyn Fn(&ReencodeIntent) -> Result<ReencodeDecision, ()> + Send + Sync>;
+pub type ReencodeAskFn = Arc<dyn Fn(&ReencodeIntent) -> Result<ReencodeDecision, ()> + Send + Sync>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReencodeConfirmPayload {
@@ -317,13 +316,12 @@ mod tests {
             assert_eq!(i.kind, ReencodeKind::IntroMux);
             Ok(ReencodeDecision::Proceed(i.recommended.clone()))
         });
-        let intent = ReencodeIntent::new(ReencodeKind::IntroMux, "intro").with_params(
-            ReencodeParams {
+        let intent =
+            ReencodeIntent::new(ReencodeKind::IntroMux, "intro").with_params(ReencodeParams {
                 crf: Some(18),
                 clip_count: Some(2),
                 ..Default::default()
-            },
-        );
+            });
         let p = require_confirm(Some(&ask), &intent).unwrap();
         assert_eq!(p.crf, 18);
     }
@@ -338,14 +336,13 @@ mod tests {
 
     #[test]
     fn with_params_builds_recommended() {
-        let intent = ReencodeIntent::new(ReencodeKind::PreviewClips, "x").with_params(
-            ReencodeParams {
+        let intent =
+            ReencodeIntent::new(ReencodeKind::PreviewClips, "x").with_params(ReencodeParams {
                 crf: Some(16),
                 hw_accel: Some(false),
                 target_codec: Some("h265".into()),
                 ..Default::default()
-            },
-        );
+            });
         assert_eq!(intent.recommended.crf, 16);
         assert!(!intent.recommended.hw_accel);
         assert_eq!(intent.recommended.codec, "auto");

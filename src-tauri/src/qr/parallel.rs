@@ -114,7 +114,9 @@ pub fn photo_edge_scan_indices(n: usize, per_side: usize) -> Vec<usize> {
 /// Hot-path jobs: at most the first two entries of [`ends_first_jobs`] (index 0 and n−1).
 pub fn ends_first_hot_jobs(n: usize) -> Vec<EndsFirstJob> {
     let jobs = ends_first_jobs(n);
-    jobs.into_iter().take(HOT_PATH_WORKERS.min(n).max(1)).collect()
+    jobs.into_iter()
+        .take(HOT_PATH_WORKERS.min(n).max(1))
+        .collect()
 }
 
 fn phase_b_worker_count(n: usize, configured: usize) -> usize {
@@ -165,9 +167,7 @@ pub fn scan_videos_hybrid_with_progress(
     let n = paths.len();
     let result = run_ends_first(
         paths,
-        |path, stop| {
-            scan_video_clip_with_progress(ffmpeg_bin, path, options, Some(stop), on_file)
-        },
+        |path, stop| scan_video_clip_with_progress(ffmpeg_bin, path, options, Some(stop), on_file),
         parallel_workers,
         cancel,
         on_file,
@@ -223,9 +223,7 @@ pub fn scan_photos_hybrid_with_progress(
     let n = paths.len();
     let result = run_ends_first(
         paths,
-        |path, stop| {
-            scan_photo_with_progress(ffmpeg_bin, path, options, Some(stop), on_file)
-        },
+        |path, stop| scan_photo_with_progress(ffmpeg_bin, path, options, Some(stop), on_file),
         parallel_workers,
         cancel,
         on_file,
@@ -296,7 +294,9 @@ where
         return Ok(hot_result);
     }
 
-    let b_workers = phase_b_worker_count(n, parallel_workers).min(rest.len()).max(1);
+    let b_workers = phase_b_worker_count(n, parallel_workers)
+        .min(rest.len())
+        .max(1);
     run_job_pool(items, rest, &scan_one, b_workers, cancel, on_file)
 }
 
@@ -336,43 +336,41 @@ where
             let jobs = &jobs;
             let tx = tx.clone();
 
-            scope.spawn(move || {
-                loop {
-                    if cancelled(cancel) {
-                        let _ = tx.send(Ok(QrScanResult::cancelled()));
-                        break;
-                    }
-                    if stop.load(Ordering::SeqCst) {
-                        break;
-                    }
+            scope.spawn(move || loop {
+                if cancelled(cancel) {
+                    let _ = tx.send(Ok(QrScanResult::cancelled()));
+                    break;
+                }
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
 
-                    let i = next.fetch_add(1, Ordering::SeqCst);
-                    if i >= jobs.len() {
+                let i = next.fetch_add(1, Ordering::SeqCst);
+                if i >= jobs.len() {
+                    break;
+                }
+                let job = jobs[i];
+                let path = &items[job.index];
+                notify(path, "start");
+                match scan_one(path, &stop) {
+                    Ok(res) if res.found => {
+                        stop.store(true, Ordering::SeqCst);
+                        notify(path, "hit");
+                        let _ = tx.send(Ok(res.with_cleanup_direction(job.cleanup)));
                         break;
                     }
-                    let job = jobs[i];
-                    let path = &items[job.index];
-                    notify(path, "start");
-                    match scan_one(path, &stop) {
-                        Ok(res) if res.found => {
-                            stop.store(true, Ordering::SeqCst);
-                            notify(path, "hit");
-                            let _ = tx.send(Ok(res.with_cleanup_direction(job.cleanup)));
-                            break;
-                        }
-                        Ok(res) if res.cancelled => {
-                            stop.store(true, Ordering::SeqCst);
-                            notify(path, "done");
-                            let _ = tx.send(Ok(res));
-                            break;
-                        }
-                        Ok(_) => {
-                            notify(path, "done");
-                        }
-                        Err(e) => {
-                            notify(path, "done");
-                            eprintln!("QR parallel scan error ({path}): {e}");
-                        }
+                    Ok(res) if res.cancelled => {
+                        stop.store(true, Ordering::SeqCst);
+                        notify(path, "done");
+                        let _ = tx.send(Ok(res));
+                        break;
+                    }
+                    Ok(_) => {
+                        notify(path, "done");
+                    }
+                    Err(e) => {
+                        notify(path, "done");
+                        eprintln!("QR parallel scan error ({path}): {e}");
                     }
                 }
             });
@@ -534,14 +532,11 @@ mod tests {
     #[test]
     fn photo_edge_scan_indices_list_order() {
         assert_eq!(photo_edge_scan_indices(12, 20), (0..12).collect::<Vec<_>>());
-        assert_eq!(
-            photo_edge_scan_indices(46, 20),
-            {
-                let mut v: Vec<usize> = (0..20).collect();
-                v.extend(26..46);
-                v
-            }
-        );
+        assert_eq!(photo_edge_scan_indices(46, 20), {
+            let mut v: Vec<usize> = (0..20).collect();
+            v.extend(26..46);
+            v
+        });
     }
 
     #[test]

@@ -62,14 +62,8 @@ fn norm_key(path: &str) -> String {
 /// Sibling backup path: `name.__pre_cut__.ext`.
 pub fn pre_cut_backup_path(video_path: &str) -> PathBuf {
     let path = Path::new(video_path);
-    let stem = path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let ext = path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mp4");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("video");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
     path.with_file_name(format!("{stem}.__pre_cut__.{ext}"))
 }
 
@@ -110,9 +104,7 @@ pub fn clear_cut_undo() {
 }
 
 pub fn has_cut_undo() -> bool {
-    lock_state()
-        .map(|s| !s.by_key.is_empty())
-        .unwrap_or(false)
+    lock_state().map(|s| !s.by_key.is_empty()).unwrap_or(false)
 }
 
 /// Paths that currently have an undoable cut (trim path, or both split parts).
@@ -183,12 +175,7 @@ pub fn commit_trim_undo(restore_path: &str, backup: Option<PathBuf>) {
     }
 }
 
-pub fn commit_split_undo(
-    restore_path: &str,
-    part1: &str,
-    part2: &str,
-    backup: Option<PathBuf>,
-) {
+pub fn commit_split_undo(restore_path: &str, part1: &str, part2: &str, backup: Option<PathBuf>) {
     let Some(backup) = backup else {
         // Already had an entry for this original — upgrade kind to split.
         let key = norm_key(restore_path);
@@ -198,9 +185,7 @@ pub fn commit_split_undo(
                     part1: part1.to_string(),
                     part2: part2.to_string(),
                 };
-                state
-                    .split_parts
-                    .insert(norm_key(part1), key.clone());
+                state.split_parts.insert(norm_key(part1), key.clone());
                 state.split_parts.insert(norm_key(part2), key);
             }
         }
@@ -251,11 +236,7 @@ fn restore_entry(entry: CutUndoEntry) -> Result<UndoCutResult, CutUndoError> {
                 let _ = fs::remove_file(restore);
             }
             fs::rename(&tmp, restore)?;
-            (
-                Vec::new(),
-                vec![entry.restore_path.clone()],
-                "trim",
-            )
+            (Vec::new(), vec![entry.restore_path.clone()], "trim")
         }
         CutUndoKind::Split { part1, part2 } => {
             for p in [part1.as_str(), part2.as_str()] {

@@ -9,12 +9,12 @@
 //! Manual version switch uses the same silent `download_and_install` path as
 //! auto-update, pointed at that release's `latest.json` (allows downgrade).
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Runtime};
-use once_cell::sync::Lazy;
 
 /// Frontend listens for download/install progress while applying an update.
 pub const EVENT_UPDATE_INSTALL_PROGRESS: &str = "update-install-progress";
@@ -136,8 +136,7 @@ pub fn get_updater_install_hint() -> Option<String> {
             let path = exe.to_string_lossy();
             if !path.contains("/Applications/") {
                 return Some(
-                    "Für automatische Updates sollte die App im Ordner „Programme“ liegen."
-                        .into(),
+                    "Für automatische Updates sollte die App im Ordner „Programme“ liegen.".into(),
                 );
             }
         }
@@ -146,9 +145,7 @@ pub fn get_updater_install_hint() -> Option<String> {
     #[cfg(target_os = "linux")]
     {
         if std::env::var_os("APPIMAGE").is_none() {
-            Some(
-                "Automatische Updates funktionieren zuverlässig nur als AppImage.".into(),
-            )
+            Some("Automatische Updates funktionieren zuverlässig nur als AppImage.".into())
         } else {
             None
         }
@@ -1029,13 +1026,11 @@ mod tests {
             sample_release("0.3.0", false, true),
         ];
         assert_eq!(
-            resolve_best_update(&releases, "0.3.0", false)
-                .map(|r| r.tag_name.as_str()),
+            resolve_best_update(&releases, "0.3.0", false).map(|r| r.tag_name.as_str()),
             Some("0.3.1")
         );
         assert_eq!(
-            resolve_best_update(&releases, "0.3.0", true)
-                .map(|r| r.tag_name.as_str()),
+            resolve_best_update(&releases, "0.3.0", true).map(|r| r.tag_name.as_str()),
             Some("0.3.2")
         );
         assert!(resolve_best_update(&releases, "0.3.2", false).is_none());
@@ -1050,8 +1045,7 @@ mod tests {
         ];
         assert!(resolve_best_update(&releases, "0.3.8", false).is_none());
         assert_eq!(
-            resolve_best_update(&releases, "0.3.8", true)
-                .map(|r| r.tag_name.as_str()),
+            resolve_best_update(&releases, "0.3.8", true).map(|r| r.tag_name.as_str()),
             Some("0.3.9-beta.1")
         );
     }
@@ -1064,13 +1058,11 @@ mod tests {
             sample_release("0.3.8", false, true),
         ];
         assert_eq!(
-            resolve_best_update(&releases, "0.3.9-beta.2", true)
-                .map(|r| r.tag_name.as_str()),
+            resolve_best_update(&releases, "0.3.9-beta.2", true).map(|r| r.tag_name.as_str()),
             Some("0.3.9")
         );
         assert_eq!(
-            resolve_best_update(&releases, "0.3.8", false)
-                .map(|r| r.tag_name.as_str()),
+            resolve_best_update(&releases, "0.3.8", false).map(|r| r.tag_name.as_str()),
             Some("0.3.9")
         );
     }

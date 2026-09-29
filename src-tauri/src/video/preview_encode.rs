@@ -24,13 +24,11 @@ use super::ffmpeg::{
     run_ffmpeg, FfmpegError, ProgressCallback,
 };
 use super::hw_accel::{detect_hardware, EncodingParams, HwAccelInfo};
-use super::probe;
 use super::preview_reuse;
+use super::probe;
 use super::processor::{self, CreateVideoOptions, ProcessorError};
 use super::progress::{progress_from_times, progress_from_times_with_task};
-use super::reencode_confirm::{
-    self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams,
-};
+use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 
 static PIX_FMT_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+[^,]*,\s*([a-z0-9]+)").unwrap());
@@ -67,7 +65,11 @@ pub struct PreviewClipFormat {
 }
 
 impl PreviewClipFormat {
-    pub fn from_probe_meta(meta: &probe::ParsedStreamMeta, pix_fmt: &str, fps_fallback: f64) -> Self {
+    pub fn from_probe_meta(
+        meta: &probe::ParsedStreamMeta,
+        pix_fmt: &str,
+        fps_fallback: f64,
+    ) -> Self {
         let rate = if meta.fps > 0.0 {
             format_fps_as_rate(meta.fps)
         } else if fps_fallback > 0.0 {
@@ -258,10 +260,12 @@ pub fn resolve_auto_target_codec(format_info: &PreviewFormatInfo, default: &str)
     }
     let codecs: Vec<VideoCodec> = valid
         .iter()
-        .map(|f| match normalize_target_codec(Some(&f.codec_name)).as_str() {
-            "h265" => VideoCodec::Hevc,
-            _ => VideoCodec::H264,
-        })
+        .map(
+            |f| match normalize_target_codec(Some(&f.codec_name)).as_str() {
+                "h265" => VideoCodec::Hevc,
+                _ => VideoCodec::H264,
+            },
+        )
         .collect();
     let all_same = codecs.windows(2).all(|w| w[0] == w[1]);
     if all_same {
@@ -339,9 +343,7 @@ fn forced_codec_reencode_reason(
             "Encoding-Strategie „kombiniert“ mit festem Codec {target_codec}"
         ));
     } else if strategy == "combined" && !format_info.compatible {
-        parts.push(
-            "Strategie „kombiniert“ nicht möglich → Fallback auf Pro-Clip-Kodierung".into(),
-        );
+        parts.push("Strategie „kombiniert“ nicht möglich → Fallback auf Pro-Clip-Kodierung".into());
     }
 
     if parts.is_empty() {
@@ -468,7 +470,8 @@ pub fn clip_needs_video_filter_for_profile(
     {
         return true;
     }
-    if matches!(profile.fps_mode, FpsMode::Force30) && !fps_matches_preview_target(&fmt.r_frame_rate)
+    if matches!(profile.fps_mode, FpsMode::Force30)
+        && !fps_matches_preview_target(&fmt.r_frame_rate)
     {
         return true;
     }
@@ -501,13 +504,12 @@ pub fn build_preview_reencode_args(
 
     let video_codec = target_codec_to_video_codec(codec_to_use);
     let (encoder, quality_full) = profile.to_encode_output_params(hw, video_codec);
-    let quality: Vec<String> = if quality_full.first().map(|s| s.as_str()) == Some("-c:v")
-        && quality_full.len() >= 2
-    {
-        quality_full[2..].to_vec()
-    } else {
-        quality_full
-    };
+    let quality: Vec<String> =
+        if quality_full.first().map(|s| s.as_str()) == Some("-c:v") && quality_full.len() >= 2 {
+            quality_full[2..].to_vec()
+        } else {
+            quality_full
+        };
 
     let use_hw_encode = profile.hw_accel && hw.available && !encoder.starts_with("lib");
     let needs_vf = clip_needs_video_filter_for_profile(source_fmt, profile);
@@ -626,12 +628,7 @@ pub fn probe_preview_formats(
             compatible = false;
             details = format!(
                 "Format-Unterschied: {} {}x{} vs {} {}x{}",
-                first.codec_name,
-                first.width,
-                first.height,
-                fmt.codec_name,
-                fmt.width,
-                fmt.height
+                first.codec_name, first.width, first.height, fmt.codec_name, fmt.width, fmt.height
             );
             break;
         }
@@ -902,7 +899,8 @@ pub fn generate_preview(
                             task_id: None,
                         });
                     } else {
-                        q.percent = 10.0 + (i + q.percent.clamp(0.0, 100.0) / 100.0) / n_clips * 60.0;
+                        q.percent =
+                            10.0 + (i + q.percent.clamp(0.0, 100.0) / 100.0) / n_clips * 60.0;
                         outer(q);
                     }
                 })
@@ -975,10 +973,8 @@ pub fn generate_preview(
                 Arc::clone(&on_progress),
                 None,
             )?;
-            let (enc, _) = profile.to_encode_output_params(
-                &hw,
-                target_codec_to_video_codec(&target_codec),
-            );
+            let (enc, _) =
+                profile.to_encode_output_params(&hw, target_codec_to_video_codec(&target_codec));
             encoder_used = enc;
         } else if Path::new(&prepared[0]) == combined.as_path() {
             // unreachable
@@ -1006,18 +1002,16 @@ pub fn generate_preview(
                 let remux_reason =
                     "Remux (Stream-Copy) fehlgeschlagen → Neu-Kodierung als Fallback".to_string();
                 active_reason = Some(remux_reason.clone());
-                let intent = ReencodeIntent::new(
-                    ReencodeKind::PreviewRemuxFallback,
-                    remux_reason.clone(),
-                )
-                .with_params(ReencodeParams {
-                    crf: Some(crf),
-                    hw_accel: Some(hw_accel_enabled),
-                    clip_count: Some(1),
-                    target_codec: Some(target_codec.clone()),
-                    strategy: Some("preview_remux_fallback".into()),
-                    ..Default::default()
-                });
+                let intent =
+                    ReencodeIntent::new(ReencodeKind::PreviewRemuxFallback, remux_reason.clone())
+                        .with_params(ReencodeParams {
+                            crf: Some(crf),
+                            hw_accel: Some(hw_accel_enabled),
+                            clip_count: Some(1),
+                            target_codec: Some(target_codec.clone()),
+                            strategy: Some("preview_remux_fallback".into()),
+                            ..Default::default()
+                        });
                 on_progress(progress_from_times(
                     72.0,
                     100.0,
@@ -1119,10 +1113,8 @@ pub fn generate_preview(
             // Replace combined with re-encoded
             let _ = fs::remove_file(&combined);
             fs::rename(&reenc, &combined)?;
-            let (enc, _) = profile.to_encode_output_params(
-                &hw,
-                target_codec_to_video_codec(&target_codec),
-            );
+            let (enc, _) =
+                profile.to_encode_output_params(&hw, target_codec_to_video_codec(&target_codec));
             encoder_used = enc;
         }
     }
@@ -1416,14 +1408,8 @@ mod tests {
         src.height = 2160;
         // Compat preset scales to 1080p (legacy browser target).
         let profile = EncodeProfile::compat(false);
-        let args = build_preview_reencode_args(
-            "in.mp4",
-            "out.mp4",
-            "h264",
-            Some(&src),
-            &hw,
-            &profile,
-        );
+        let args =
+            build_preview_reencode_args("in.mp4", "out.mp4", "h264", Some(&src), &hw, &profile);
         assert!(args.contains(&"-y".to_string()));
         assert!(args.contains(&"-i".to_string()));
         assert!(args.contains(&"in.mp4".to_string()));

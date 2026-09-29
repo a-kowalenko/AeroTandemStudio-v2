@@ -16,6 +16,7 @@
 |----------|----------------|
 | `@AGENTS.md` | Immer |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (CapCut-Export; ein Slice pro Session) |
+| `@docs/opt/open/23-smb-stability.md` | OPT-23 (SMB-Stabilität / Mapping; ein Slice pro Session) |
 | `@docs/optimization_plan.md` | Index / Tracker (optional) |
 | `@docs/opt/ARCHIVE.md` | Regression / erledigte OPT-Spec (gezielt, nicht ganz) |
 | `@docs/PERF_BASELINE.md` | OPT-0 Messungen / Vorher-Nachher |
@@ -28,7 +29,8 @@
 
 | Priorität | OPT | Spec | Status |
 |-----------|-----|------|--------|
-| 1 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| 1 | **23C–F** SMB-Stabilität (Mapping-Treffer, UNC, TCP-Health, Credentials) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | 🔄 A+B ✅ |
+| 2 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
 | done | **0–20, 22** Import, Thumbs, SMB, … | [`opt/ARCHIVE.md`](opt/ARCHIVE.md) | ✅ (OPT-13 entfernt) |
 
 **Empfohlene Reihenfolge (historisch):** OPT-0 … OPT-20 ✅ · **OPT-22** ✅ · **OPT-21** offen (Slice 0+A ✅).
@@ -62,6 +64,7 @@
 | OPT-20 | SMB: macOS User-Pfad + Windows Prefer-Local | hoch | M | mittel | OPT-17–19 | ARCHIVE |
 | OPT-21 | CapCut-Export: schnell + robust | hoch | L | mittel | Phase 49/50 | [open/21](opt/open/21-capcut-export.md) |
 | OPT-22 | SMB: Session-Budget (Win11 ~20er-Limit) | hoch | M | mittel | OPT-17–20 | ARCHIVE |
+| OPT-23 | SMB: Stabilität, Mapping-Treffer, Session-Hygiene | hoch | M–L | niedrig–mittel | OPT-17–22 | [open/23](opt/open/23-smb-stability.md) |
 
 ---
 
@@ -104,6 +107,7 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-20 | ✅ Slice A+B | ARCHIVE |
 | OPT-21 | 🔄 Slice 0+A ✅; **21B–E offen** | [open/21-capcut-export.md](opt/open/21-capcut-export.md) |
 | OPT-22 | ✅ Slice A+B+C | ARCHIVE |
+| OPT-23 | 🔄 Slice A+B ✅; **C–F offen** (Reihenfolge C → E → D → F) | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -125,6 +129,12 @@ Nur OPT-21B. Danach cargo test.
 ```
 
 **Weitere Slices:** B–E in derselben Spec-Datei; **ein Slice pro Session**.
+
+```
+Implementiere OPT-23 Slice A aus @docs/opt/open/23-smb-stability.md
+Regeln: @AGENTS.md
+Nur OPT-23A. Danach cargo test --manifest-path src-tauri/Cargo.toml.
+```
 
 **Erledigte OPTs (Regression):** Abschnitt `### OPT-N` in `@docs/opt/ARCHIVE.md` — nicht ganzes Archiv anhängen.
 

@@ -141,9 +141,7 @@ pub fn probe_and_store(ffmpeg: &Path, path: &str) -> Result<CachedClipProbe, Ffm
             put(path, probe.clone());
             probe
         })
-        .ok_or_else(|| {
-            FfmpegError::Message(format!("could not parse video stream from: {path}"))
-        })
+        .ok_or_else(|| FfmpegError::Message(format!("could not parse video stream from: {path}")))
 }
 
 /// Cache hit → return probe; miss → probe + store. Second value is `true` on hit.

@@ -18,7 +18,7 @@ use once_cell::sync::Lazy;
 use windows::core::PCWSTR;
 use windows::core::PWSTR;
 use windows::Win32::Devices::PortableDevices::*;
-use windows::Win32::Foundation::{PROPERTYKEY, GENERIC_READ, GENERIC_WRITE};
+use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE, PROPERTYKEY};
 use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PROPVARIANT};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, IStream, CLSCTX_INPROC_SERVER,
@@ -194,8 +194,7 @@ fn list_allowlisted_wpd_cameras_inner() -> Result<Vec<DetectedUsbCamera>, WpdErr
             content_names_look_like_action_cam(names.iter().map(|s| s.as_str()), matched.vendor);
         // GoPro USB VID is exclusive; WPD presence means MTP (not webcam). Accept even
         // when the shallow name walk misses DCIM chapter folders on composite MI_xx devices.
-        let accept = signature_ok
-            || matched.vendor == ActionCamVendor::GoPro;
+        let accept = signature_ok || matched.vendor == ActionCamVendor::GoPro;
         if !accept {
             logging::warn(
                 "usb",
@@ -242,10 +241,7 @@ fn list_allowlisted_wpd_cameras_inner() -> Result<Vec<DetectedUsbCamera>, WpdErr
             format!("{} (USB)", matched.model_label)
         };
 
-        logging::info(
-            "usb",
-            format!("WPD erkannt: {label} → {source_id}"),
-        );
+        logging::info("usb", format!("WPD erkannt: {label} → {source_id}"));
 
         out.push(DetectedUsbCamera {
             source_id,
@@ -272,8 +268,7 @@ pub fn list_camera_catalog(
     let files = collect_media_catalog(&device, on_tick.as_mut())?;
     let dest = cache_dir_for(source_id);
     fs::create_dir_all(&dest)?;
-    let raw =
-        serde_json::to_string_pretty(&files).map_err(|e| WpdError::Message(e.to_string()))?;
+    let raw = serde_json::to_string_pretty(&files).map_err(|e| WpdError::Message(e.to_string()))?;
     let _ = fs::write(dest.join(".ats_wpd_catalog.json"), raw);
     Ok(files)
 }
@@ -430,9 +425,9 @@ pub fn camera_thumbnail_jpeg(
         s
     };
     let objects = find_objects_by_filename(&device, &wanted)?;
-    let obj = objects.first().ok_or_else(|| {
-        WpdError::Message(format!("Datei nicht auf der Kamera: {filename}"))
-    })?;
+    let obj = objects
+        .first()
+        .ok_or_else(|| WpdError::Message(format!("Datei nicht auf der Kamera: {filename}")))?;
 
     let content = unsafe { device.Content()? };
     let resources = unsafe { content.Transfer()? };
@@ -472,16 +467,22 @@ pub fn ensure_preview_file(virtual_path: &Path) -> Result<PathBuf, WpdError> {
             }
         }
     }
-    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path).ok_or_else(|| {
-        WpdError::Message("Kein MTP-Vorschau-Pfad.".into())
-    })?;
+    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path)
+        .ok_or_else(|| WpdError::Message("Kein MTP-Vorschau-Pfad.".into()))?;
     if let Some(parent) = virtual_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let paths = download_camera_files(&source_id, "", virtual_path.parent().unwrap_or(virtual_path), &[filename], None)?;
-    let staged = paths.into_iter().next().ok_or_else(|| {
-        WpdError::Message("Vorschau-Download lieferte keine Datei.".into())
-    })?;
+    let paths = download_camera_files(
+        &source_id,
+        "",
+        virtual_path.parent().unwrap_or(virtual_path),
+        &[filename],
+        None,
+    )?;
+    let staged = paths
+        .into_iter()
+        .next()
+        .ok_or_else(|| WpdError::Message("Vorschau-Download lieferte keine Datei.".into()))?;
     // download may use unique_path if name collided; prefer the virtual path name.
     if staged != virtual_path && virtual_path.file_name() == staged.file_name() {
         let _ = fs::rename(&staged, virtual_path);
@@ -617,9 +618,8 @@ fn open_device(pnp: &str) -> Result<IPortableDevice, WpdError> {
 fn open_device_for_write(pnp: &str) -> Result<IPortableDevice, WpdError> {
     open_device_with_access(pnp, GENERIC_READ.0 | GENERIC_WRITE.0).or_else(|e_rw| {
         // Some stacks only accept GENERIC_WRITE alone.
-        open_device_with_access(pnp, GENERIC_WRITE.0).map_err(|e_w| {
-            WpdError::Message(format!("Open read+write={e_rw}; write={e_w}"))
-        })
+        open_device_with_access(pnp, GENERIC_WRITE.0)
+            .map_err(|e_w| WpdError::Message(format!("Open read+write={e_rw}; write={e_w}")))
     })
 }
 
@@ -950,8 +950,7 @@ fn read_string_prop(
     unsafe {
         CoTaskMemFree(Some(pw.0 as *const _));
     }
-    s.map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
+    s.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())
 }
 
 fn copy_object_resource_to_file(
@@ -986,8 +985,13 @@ fn copy_object_resource_to_file(
     let mut written = 0u64;
     loop {
         let mut read = 0u32;
-        let hr =
-            unsafe { stream.Read(buf.as_mut_ptr() as *mut _, buf.len() as u32, Some(&mut read)) };
+        let hr = unsafe {
+            stream.Read(
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                Some(&mut read),
+            )
+        };
         if read == 0 {
             let _ = hr;
             break;
@@ -1069,7 +1073,8 @@ mod tests {
 
     #[test]
     fn parse_vid_pid_from_typical_pnp() {
-        let pnp = r"\\?\usb#vid_2672&pid_0049#c3331352219254#{6ac27878-a6bc-11d0-96b8-00a0c91fadcf}";
+        let pnp =
+            r"\\?\usb#vid_2672&pid_0049#c3331352219254#{6ac27878-a6bc-11d0-96b8-00a0c91fadcf}";
         let (vid, pid) = parse_vid_pid_from_pnp(pnp);
         assert_eq!(vid, Some(0x2672));
         assert_eq!(pid, Some(0x0049));
@@ -1078,8 +1083,7 @@ mod tests {
     #[test]
     fn parse_vid_pid_from_composite_mi_pnp() {
         // HERO12 Black: USB\VID_2672&PID_0059&MI_02\…
-        let pnp =
-            r"\\?\usb#vid_2672&pid_0059&mi_02#7&1bb32f3f&0&0002#{6ac27878-a6bc-11d0-96b8-00a0c91fadcf}";
+        let pnp = r"\\?\usb#vid_2672&pid_0059&mi_02#7&1bb32f3f&0&0002#{6ac27878-a6bc-11d0-96b8-00a0c91fadcf}";
         let (vid, pid) = parse_vid_pid_from_pnp(pnp);
         assert_eq!(vid, Some(0x2672));
         assert_eq!(pid, Some(0x0059));
@@ -1115,7 +1119,9 @@ mod tests {
         assert!(is_wpd_container_content_type(WPD_CONTENT_TYPE_VIDEO_ALBUM));
         assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_VIDEO));
         assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_IMAGE));
-        assert!(!is_wpd_container_content_type(WPD_CONTENT_TYPE_GENERIC_FILE));
+        assert!(!is_wpd_container_content_type(
+            WPD_CONTENT_TYPE_GENERIC_FILE
+        ));
     }
 
     #[test]

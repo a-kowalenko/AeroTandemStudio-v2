@@ -8,7 +8,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::commands::config::ConfigState;
 use crate::media::http_server::MediaServerState;
 use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
-use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, is_cancelled, WORKFLOW_CANCELLED};
 use crate::sd_card::autoplay;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
@@ -16,17 +15,18 @@ use crate::sd_card::monitor::{
     EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_FILE_ENRICH_PROGRESS, EVENT_SD_INSERTED,
     EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
-use crate::sd_card::secondary_backup::{SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP};
+use crate::sd_card::secondary_backup::{
+    SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP,
+};
 use crate::storage::logging;
 use crate::storage::media_history::ProcessedFileEntry;
+use crate::video::ffmpeg::{find_ffmpeg_with_resource_dir, is_cancelled, WORKFLOW_CANCELLED};
 
 fn is_backup_cancel_msg(msg: &str) -> bool {
-    is_cancelled()
-        || msg.trim() == WORKFLOW_CANCELLED
-        || {
-            let lower = msg.to_lowercase();
-            lower.contains("cancel") || lower.contains("abgebrochen") || lower.contains("abbruch")
-        }
+    is_cancelled() || msg.trim() == WORKFLOW_CANCELLED || {
+        let lower = msg.to_lowercase();
+        lower.contains("cancel") || lower.contains("abgebrochen") || lower.contains("abbruch")
+    }
 }
 
 fn log_backup_failure(msg: &str) {
@@ -224,16 +224,20 @@ pub async fn enrich_sd_files(
     );
     let result = tauri::async_runtime::spawn_blocking(move || {
         let drive_for_emit = drive.clone();
-        SD_MONITOR.enrich_files_with_progress(&drive, paths, Some(|chunk: &[SdFileEnrichment]| {
-            let _ = app.emit(
-                EVENT_FILE_ENRICH_PROGRESS,
-                SdFileEnrichProgress {
-                    drive: drive_for_emit.clone(),
-                    generation,
-                    updates: chunk.to_vec(),
-                },
-            );
-        }))
+        SD_MONITOR.enrich_files_with_progress(
+            &drive,
+            paths,
+            Some(|chunk: &[SdFileEnrichment]| {
+                let _ = app.emit(
+                    EVENT_FILE_ENRICH_PROGRESS,
+                    SdFileEnrichProgress {
+                        drive: drive_for_emit.clone(),
+                        generation,
+                        updates: chunk.to_vec(),
+                    },
+                );
+            }),
+        )
     })
     .await
     .map_err(|e| e.to_string())?;
@@ -262,9 +266,7 @@ pub async fn backup_sd_card(
         "sd",
         format!(
             "Backup start: drive={drive}, selected={}, clear_after={clear_after:?}",
-            count
-                .map(|n| n.to_string())
-                .unwrap_or_else(|| "all".into())
+            count.map(|n| n.to_string()).unwrap_or_else(|| "all".into())
         ),
     );
     crate::video::ffmpeg::reset_cancel_flag();
@@ -309,10 +311,7 @@ pub async fn backup_sd_card(
 
 #[tauri::command]
 pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
-    logging::info(
-        "sd",
-        format!("SD bereinigen: {} Datei(en)", paths.len()),
-    );
+    logging::info("sd", format!("SD bereinigen: {} Datei(en)", paths.len()));
     match SD_MONITOR.clear_media_files(&paths) {
         Ok(n) => {
             logging::info("sd", format!("SD bereinigt: {n} Datei(en)"));
@@ -328,10 +327,7 @@ pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
 
 #[tauri::command]
 pub async fn import_sd_files(paths: Vec<String>) -> Result<ImportSdResult, String> {
-    logging::info(
-        "sd",
-        format!("SD-Import start: {} Datei(en)", paths.len()),
-    );
+    logging::info("sd", format!("SD-Import start: {} Datei(en)", paths.len()));
     let result = tauri::async_runtime::spawn_blocking(move || SD_MONITOR.import_files(&paths))
         .await
         .map_err(|e| e.to_string())?;
@@ -374,7 +370,10 @@ pub fn eject_sd_card(drive: String) -> Result<(), String> {
         }
         Err(e) => {
             let msg = e.to_string();
-            logging::error("sd", format!("SD auswerfen fehlgeschlagen ({drive}): {msg}"));
+            logging::error(
+                "sd",
+                format!("SD auswerfen fehlgeschlagen ({drive}): {msg}"),
+            );
             Err(msg)
         }
     }
@@ -554,7 +553,6 @@ pub async fn list_processed_files(
     .await
     .map_err(|e| e.to_string())?
 }
-
 
 #[tauri::command]
 pub fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {

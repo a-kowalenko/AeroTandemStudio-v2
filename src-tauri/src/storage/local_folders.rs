@@ -9,9 +9,7 @@ use std::time::SystemTime;
 use chrono::{DateTime, Duration, Local, NaiveDateTime, TimeZone, Utc};
 use serde::Serialize;
 
-use crate::storage::cache::{
-    normalize_key, path_size, remove_file, rmtree, CacheCleanupResult,
-};
+use crate::storage::cache::{normalize_key, path_size, remove_file, rmtree, CacheCleanupResult};
 use crate::storage::config::AppConfig;
 use crate::storage::vorgang_history::VorgangHistoryStore;
 
@@ -81,8 +79,7 @@ pub fn is_strict_child_of(root: &Path, candidate: &Path) -> bool {
         return false;
     }
     let sep = if cfg!(windows) { '\\' } else { '/' };
-    cand_key.starts_with(&root_key)
-        && cand_key.as_bytes().get(root_key.len()) == Some(&(sep as u8))
+    cand_key.starts_with(&root_key) && cand_key.as_bytes().get(root_key.len()) == Some(&(sep as u8))
 }
 
 fn resolve_existing_root(root: &str) -> Option<PathBuf> {
@@ -169,8 +166,7 @@ pub fn parse_vorgang_created_at(raw: &str) -> Option<DateTime<Utc>> {
     }
     // `%Y-%m-%dT%H:%M:%SZ` without fractional seconds is already RFC3339;
     // also accept naive UTC with trailing Z via chrono flexible parse.
-    if let Ok(naive) = NaiveDateTime::parse_from_str(s.trim_end_matches('Z'), "%Y-%m-%dT%H:%M:%S")
-    {
+    if let Ok(naive) = NaiveDateTime::parse_from_str(s.trim_end_matches('Z'), "%Y-%m-%dT%H:%M:%S") {
         return Some(Utc.from_utc_datetime(&naive));
     }
     None
@@ -232,9 +228,7 @@ fn collect_job_targets(
     store: &VorgangHistoryStore,
     opts: JobClearOptions,
 ) -> Result<TargetSet, String> {
-    let refs = store
-        .list_disk_folder_refs()
-        .map_err(|e| e.to_string())?;
+    let refs = store.list_disk_folder_refs().map_err(|e| e.to_string())?;
 
     let now = Utc::now();
     let age_filter = opts.older_than_days;
@@ -642,16 +636,10 @@ mod tests {
                 true,
             )
             .unwrap();
-        store
-            .update_upload_state(Some(id), "", "pending")
-            .unwrap();
+        store.update_upload_state(Some(id), "", "pending").unwrap();
 
-        let probe = probe_clear_local_job_folders(
-            root.path().to_str().unwrap(),
-            &store,
-            false,
-        )
-        .unwrap();
+        let probe =
+            probe_clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
         assert!(probe.root_exists);
         assert_eq!(probe.history_folder_count, 1);
         assert_eq!(probe.folder_count, 1);
@@ -659,8 +647,7 @@ mod tests {
         assert!(probe.bytes >= 4);
         assert_eq!(probe.file_count, 1);
 
-        let result =
-            clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
+        let result = clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
         assert!(!job.exists());
         assert!(root.path().is_dir());
         assert_eq!(result.deleted_dirs.len(), 1);
@@ -694,21 +681,13 @@ mod tests {
             )
             .unwrap();
 
-        let without = probe_clear_local_job_folders(
-            root.path().to_str().unwrap(),
-            &store,
-            false,
-        )
-        .unwrap();
+        let without =
+            probe_clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
         assert_eq!(without.folder_count, 1);
         assert_eq!(without.orphan_folder_count, 0);
 
-        let with = probe_clear_local_job_folders(
-            root.path().to_str().unwrap(),
-            &store,
-            true,
-        )
-        .unwrap();
+        let with =
+            probe_clear_local_job_folders(root.path().to_str().unwrap(), &store, true).unwrap();
         assert_eq!(with.folder_count, 2);
         assert_eq!(with.orphan_folder_count, 1);
 
@@ -772,12 +751,8 @@ mod tests {
             )
             .unwrap();
 
-        let probe = probe_clear_local_job_folders(
-            root.path().to_str().unwrap(),
-            &store,
-            false,
-        )
-        .unwrap();
+        let probe =
+            probe_clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
         assert_eq!(probe.history_folder_count, 2);
 
         clear_local_job_folders(root.path().to_str().unwrap(), &store, false).unwrap();
@@ -865,9 +840,7 @@ mod tests {
                 true,
             )
             .unwrap();
-        store
-            .update_upload_state(Some(id), "", "pending")
-            .unwrap();
+        store.update_upload_state(Some(id), "", "pending").unwrap();
         force_created_at(&db_path, id, "2020-01-01T12:00:00Z");
 
         let (result, skipped) = clear_local_job_folders_opts(
@@ -955,10 +928,7 @@ mod tests {
 
         let root = tempdir().unwrap();
         let old = root.path().join("SD_Backup_20200101_120000_dead");
-        let fresh_name = format!(
-            "SD_Backup_{}_abcd",
-            Local::now().format("%Y%m%d_%H%M%S")
-        );
+        let fresh_name = format!("SD_Backup_{}_abcd", Local::now().format("%Y%m%d_%H%M%S"));
         let fresh = root.path().join(&fresh_name);
         fs::create_dir_all(&old).unwrap();
         fs::create_dir_all(&fresh).unwrap();
@@ -978,8 +948,12 @@ mod tests {
     #[test]
     fn is_older_than_days_boundary() {
         let now = Utc::now();
-        let old = (now - Duration::days(20)).format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        let recent = (now - Duration::days(5)).format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let old = (now - Duration::days(20))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let recent = (now - Duration::days(5))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
         assert!(is_older_than_days(&old, 14, now));
         assert!(!is_older_than_days(&recent, 14, now));
         assert!(!is_older_than_days("not-a-date", 14, now));

@@ -88,37 +88,35 @@ impl ParallelVideoProcessor {
 
         thread::scope(|scope| {
             for _ in 0..workers {
-                scope.spawn(|| {
-                    loop {
-                        if stop.load(Ordering::SeqCst)
-                            || is_cancelled()
-                            || cancelled.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
-                        {
-                            break;
-                        }
+                scope.spawn(|| loop {
+                    if stop.load(Ordering::SeqCst)
+                        || is_cancelled()
+                        || cancelled.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
+                    {
+                        break;
+                    }
 
-                        let idx = {
-                            let Ok(guard) = job_rx.lock() else {
-                                break;
-                            };
-                            guard.recv().ok()
-                        };
-                        let Some(i) = idx else {
+                    let idx = {
+                        let Ok(guard) = job_rx.lock() else {
                             break;
                         };
+                        guard.recv().ok()
+                    };
+                    let Some(i) = idx else {
+                        break;
+                    };
 
-                        if stop.load(Ordering::SeqCst)
-                            || is_cancelled()
-                            || cancelled.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
-                        {
-                            break;
-                        }
+                    if stop.load(Ordering::SeqCst)
+                        || is_cancelled()
+                        || cancelled.map(|c| c.load(Ordering::SeqCst)).unwrap_or(false)
+                    {
+                        break;
+                    }
 
-                        let task_id = (i + 1) as u32;
-                        let result = work(i, task_id);
-                        if let Ok(mut out) = results.lock() {
-                            out.push((i, result));
-                        }
+                    let task_id = (i + 1) as u32;
+                    let result = work(i, task_id);
+                    if let Ok(mut out) = results.lock() {
+                        out.push((i, result));
                     }
                 });
             }

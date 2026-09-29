@@ -214,7 +214,9 @@ pub fn measure_cache_usage(
     let mut usage = CacheUsageResult::default();
     let mut seen = std::collections::HashSet::new();
 
-    let add_dir = |path: &Path, usage: &mut CacheUsageResult, seen: &mut std::collections::HashSet<String>| {
+    let add_dir = |path: &Path,
+                   usage: &mut CacheUsageResult,
+                   seen: &mut std::collections::HashSet<String>| {
         let key = normalize_key(path);
         if !seen.insert(key) {
             return;
@@ -225,7 +227,9 @@ pub fn measure_cache_usage(
         usage.bytes = usage.bytes.saturating_add(path_size(path));
         usage.dirs = usage.dirs.saturating_add(1);
     };
-    let add_file = |path: &Path, usage: &mut CacheUsageResult, seen: &mut std::collections::HashSet<String>| {
+    let add_file = |path: &Path,
+                    usage: &mut CacheUsageResult,
+                    seen: &mut std::collections::HashSet<String>| {
         let key = normalize_key(path);
         if !seen.insert(key) {
             return;
@@ -441,7 +445,9 @@ pub(crate) fn rmtree(path: &Path, result: &mut CacheCleanupResult) {
     let size = path_size(path);
     match fs::remove_dir_all(path) {
         Ok(()) => {
-            result.deleted_dirs.push(path.to_string_lossy().into_owned());
+            result
+                .deleted_dirs
+                .push(path.to_string_lossy().into_owned());
             result.bytes_freed = result.bytes_freed.saturating_add(size);
         }
         Err(e) => {
@@ -459,7 +465,9 @@ pub(crate) fn remove_file(path: &Path, result: &mut CacheCleanupResult) {
     let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
     match fs::remove_file(path) {
         Ok(()) => {
-            result.deleted_files.push(path.to_string_lossy().into_owned());
+            result
+                .deleted_files
+                .push(path.to_string_lossy().into_owned());
             result.bytes_freed = result.bytes_freed.saturating_add(size);
         }
         Err(e) => {
@@ -563,10 +571,7 @@ mod tests {
 
     #[test]
     fn collect_work_base_paths_dedupes_and_skips_missing() {
-        let tmp = std::env::temp_dir().join(format!(
-            "ats_cache_test_bases_{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("ats_cache_test_bases_{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         let nested = tmp.join("clip.mp4");
@@ -574,7 +579,10 @@ mod tests {
 
         let paths = collect_work_base_paths(
             Some(tmp.to_str().unwrap()),
-            Some(&[nested.to_string_lossy().into_owned(), tmp.to_string_lossy().into_owned()]),
+            Some(&[
+                nested.to_string_lossy().into_owned(),
+                tmp.to_string_lossy().into_owned(),
+            ]),
         );
         assert_eq!(paths.len(), 1);
         assert!(
@@ -637,10 +645,7 @@ mod tests {
         assert!(keep.is_dir(), "excluded preview dir must remain");
         assert!(!drop_dir.exists(), "non-excluded orphan should be removed");
         assert!(
-            result
-                .deleted_dirs
-                .iter()
-                .any(|p| p.contains("drop_")),
+            result.deleted_dirs.iter().any(|p| p.contains("drop_")),
             "drop dir should be listed: {:?}",
             result.deleted_dirs
         );
@@ -693,10 +698,8 @@ mod tests {
     #[test]
     fn cleanup_all_removes_cut_temp_siblings() {
         let _guard = temp_sweep_lock();
-        let tmp = std::env::temp_dir().join(format!(
-            "ats_cache_cut_siblings_{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("ats_cache_cut_siblings_{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         let keep = tmp.join("keep.mp4");
@@ -712,7 +715,10 @@ mod tests {
         assert!(!cut.exists());
         assert!(!part.exists());
         assert!(
-            result.deleted_files.iter().any(|p| p.contains("__temp_cut__")),
+            result
+                .deleted_files
+                .iter()
+                .any(|p| p.contains("__temp_cut__")),
             "{:?}",
             result.deleted_files
         );
@@ -736,10 +742,8 @@ mod tests {
     #[test]
     fn measure_cache_usage_returns_ok() {
         let _guard = temp_sweep_lock();
-        let tmp = std::env::temp_dir().join(format!(
-            "ats_cache_measure_empty_{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("ats_cache_measure_empty_{}", std::process::id()));
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).unwrap();
         let usage = measure_cache_usage(None, Some(&[tmp.clone()]), false).unwrap();

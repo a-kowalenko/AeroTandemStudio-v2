@@ -12,10 +12,7 @@ use crate::model::Kunde;
 ///
 /// Clip identity uses path, byte size, and mtime so in-place cuts/trims invalidate
 /// even when the path string stays the same.
-pub fn create_content_fingerprint(
-    kunde: &Kunde,
-    video_paths: &[String],
-) -> Result<String, String> {
+pub fn create_content_fingerprint(kunde: &Kunde, video_paths: &[String]) -> Result<String, String> {
     create_content_fingerprint_with_tag(kunde, video_paths, "")
 }
 
@@ -134,7 +131,8 @@ mod tests {
         let f = write_temp(b"abc");
         let path = f.path().to_string_lossy().to_string();
         let k = Kunde::default();
-        let a = create_content_fingerprint_with_tag(&k, &[path.clone()], "mux=stream_copy").unwrap();
+        let a =
+            create_content_fingerprint_with_tag(&k, &[path.clone()], "mux=stream_copy").unwrap();
         let b = create_content_fingerprint_with_tag(&k, &[path], "mux=reencode").unwrap();
         assert_ne!(a, b);
     }
@@ -198,8 +196,7 @@ mod tests {
         let fp = create_content_fingerprint(&k, &[src_path.clone()]).unwrap();
         let dest_dir = tempfile::tempdir().unwrap();
         let dest = dest_dir.path().join("final.mp4");
-        let reused =
-            try_reuse_preview(&src_path, &fp, &k, &[src_path.clone()], &dest).unwrap();
+        let reused = try_reuse_preview(&src_path, &fp, &k, &[src_path.clone()], &dest).unwrap();
         assert!(reused);
         assert_eq!(fs::read(&dest).unwrap(), b"preview-bytes");
     }
@@ -214,8 +211,7 @@ mod tests {
         k.gast = "B".into();
         let dest_dir = tempfile::tempdir().unwrap();
         let dest = dest_dir.path().join("final.mp4");
-        let reused =
-            try_reuse_preview(&src_path, &fp, &k, &[src_path.clone()], &dest).unwrap();
+        let reused = try_reuse_preview(&src_path, &fp, &k, &[src_path.clone()], &dest).unwrap();
         assert!(!reused);
         assert!(!dest.exists());
     }

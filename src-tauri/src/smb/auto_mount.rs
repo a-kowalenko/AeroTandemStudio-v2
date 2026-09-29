@@ -19,9 +19,7 @@ use once_cell::sync::Lazy;
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
-use super::windows_mapping::{
-    canonicalize_unc, lookup_mapped_local_path, unc_from_smb_parts,
-};
+use super::windows_mapping::{canonicalize_unc, lookup_mapped_local_path, unc_from_smb_parts};
 
 const REGISTRY_FILE: &str = "smb_app_mounts.json";
 /// Subdir under [`crate::storage::app_config_dir`] for macOS `mount_smbfs` points (OPT-20A).
@@ -128,7 +126,7 @@ pub fn ensure_os_smb_mount(
                 }
             }
             let full = join_subpath(&local_root, subpath);
-            if full.exists() || local_root.exists() {
+            if path_reachable(&full) || path_reachable(&local_root) {
                 Ok(Some(full))
             } else {
                 Ok(Some(local_root))
@@ -233,9 +231,8 @@ fn mount_windows(share_unc: &str, login: &str, password: &str) -> Result<PathBuf
         WNetAddConnection2W, CONNECT_TEMPORARY, NETRESOURCEW, RESOURCETYPE_DISK,
     };
 
-    let letter = find_free_drive_letter().ok_or_else(|| {
-        "Kein freier Laufwerksbuchstabe für SMB auto-mount".to_string()
-    })?;
+    let letter = find_free_drive_letter()
+        .ok_or_else(|| "Kein freier Laufwerksbuchstabe für SMB auto-mount".to_string())?;
     let local = format!("{letter}:");
     let remote = share_unc.replace('/', r"\");
     // Ensure \\server\share form for WNet.
@@ -336,9 +333,7 @@ fn find_free_drive_letter() -> Option<char> {
         let local = format!("{}:", letter as char);
         let local_wide: Vec<u16> = local.encode_utf16().chain(std::iter::once(0)).collect();
         let mut needed: u32 = 0;
-        let status = unsafe {
-            WNetGetConnectionW(PCWSTR(local_wide.as_ptr()), None, &mut needed)
-        };
+        let status = unsafe { WNetGetConnectionW(PCWSTR(local_wide.as_ptr()), None, &mut needed) };
         if status == ERROR_MORE_DATA || status == ERROR_SUCCESS {
             let mut buf = vec![0u16; needed.max(1) as usize];
             let mut len = needed.max(1);
@@ -370,16 +365,14 @@ fn mount_macos(host: &str, share: &str, login: &str, password: &str) -> Result<P
 
     // OPT-20A: writable user path — never mkdir under /Volumes (EACCES).
     let mounts_root = smb_mounts_root()?;
-    fs::create_dir_all(&mounts_root).map_err(|e| {
-        format!("smb-mounts root {}: {e}", mounts_root.display())
-    })?;
+    fs::create_dir_all(&mounts_root)
+        .map_err(|e| format!("smb-mounts root {}: {e}", mounts_root.display()))?;
     let mount_point = pick_user_mount_point(&mounts_root, share);
 
     // Create mount point if missing (mount_smbfs requires an existing directory).
     if !mount_point.exists() {
-        fs::create_dir_all(&mount_point).map_err(|e| {
-            format!("mount point {}: {e}", mount_point.display())
-        })?;
+        fs::create_dir_all(&mount_point)
+            .map_err(|e| format!("mount point {}: {e}", mount_point.display()))?;
     }
 
     let output = Command::new("mount_smbfs")
@@ -445,7 +438,12 @@ fn is_reusable_mount_point(path: &Path) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn mount_linux_gvfs(host: &str, share: &str, login: &str, password: &str) -> Result<PathBuf, String> {
+fn mount_linux_gvfs(
+    host: &str,
+    share: &str,
+    login: &str,
+    password: &str,
+) -> Result<PathBuf, String> {
     let (user, pass, domain) = split_creds(login, password);
     let smb_url = format_gio_smb_url(host, share, &user, &pass, &domain);
 
@@ -482,9 +480,8 @@ fn mount_linux_gvfs(host: &str, share: &str, login: &str, password: &str) -> Res
         }
     }
 
-    let path = find_gvfs_mount_path(host, share).ok_or_else(|| {
-        "gio mount reported ok but gvfs path not found".to_string()
-    })?;
+    let path = find_gvfs_mount_path(host, share)
+        .ok_or_else(|| "gio mount reported ok but gvfs path not found".to_string())?;
     wait_until_reachable(&path)?;
     Ok(path)
 }
@@ -525,9 +522,7 @@ fn unmount_windows(local_path: &str) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Foundation::NO_ERROR;
-    use windows::Win32::NetworkManagement::WNet::{
-        WNetCancelConnection2W, NET_CONNECT_FLAGS,
-    };
+    use windows::Win32::NetworkManagement::WNet::{WNetCancelConnection2W, NET_CONNECT_FLAGS};
 
     let letter = normalize_drive_letter(local_path)
         .ok_or_else(|| format!("invalid drive mapping local_path: {local_path}"))?;
@@ -535,9 +530,8 @@ fn unmount_windows(local_path: &str) -> Result<(), String> {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
-    let status = unsafe {
-        WNetCancelConnection2W(PCWSTR(wide.as_ptr()), NET_CONNECT_FLAGS(0), true)
-    };
+    let status =
+        unsafe { WNetCancelConnection2W(PCWSTR(wide.as_ptr()), NET_CONNECT_FLAGS(0), true) };
     if status != NO_ERROR {
         return Err(format!("WNetCancelConnection2W failed: Win32 {status:?}"));
     }
@@ -566,11 +560,7 @@ fn unmount_macos(local_path: &str) -> Result<(), String> {
     let output = Command::new("diskutil")
         .args(["unmount", local_path])
         .output()
-        .or_else(|_| {
-            Command::new("umount")
-                .arg(local_path)
-                .output()
-        })
+        .or_else(|_| Command::new("umount").arg(local_path).output())
         .map_err(|e| format!("unmount failed: {e}"))?;
     if output.status.success() {
         maybe_remove_app_mount_dir(Path::new(local_path));
@@ -655,13 +645,7 @@ fn format_smb_auth(user: &str, pass: &str, domain: &str) -> String {
 }
 
 #[cfg(target_os = "linux")]
-fn format_gio_smb_url(
-    host: &str,
-    share: &str,
-    user: &str,
-    pass: &str,
-    domain: &str,
-) -> String {
+fn format_gio_smb_url(host: &str, share: &str, user: &str, pass: &str, domain: &str) -> String {
     let h = utf8_percent_encode(host, NON_ALPHANUMERIC).to_string();
     let s = utf8_percent_encode(share, NON_ALPHANUMERIC).to_string();
     if user.is_empty() || (user.eq_ignore_ascii_case("Guest") && pass.is_empty()) {
@@ -710,14 +694,14 @@ fn display_local(path: &Path) -> String {
 }
 
 fn path_reachable(path: &Path) -> bool {
-    // Fresh mounts / settle polls — direct exists (path should be local & live).
-    path.exists()
+    // OPT-23B: settle polls and post-mount checks use the timed single-flight
+    // probe — a sleeping redirector must not block on naked `exists()`.
+    super::reconnect::path_reachable_timed(path, super::reconnect::LOCAL_PROBE_TIMEOUT)
+        .is_reachable()
 }
 
 fn path_reachable_registry(path: &Path) -> bool {
-    // OPT-20B: registry sweep must not hang on a sleeping mapped drive.
-    super::reconnect::path_reachable_timed(path, super::reconnect::LOCAL_PROBE_TIMEOUT)
-        .is_reachable()
+    path_reachable(path)
 }
 
 fn wait_until_reachable(path: &Path) -> Result<(), String> {

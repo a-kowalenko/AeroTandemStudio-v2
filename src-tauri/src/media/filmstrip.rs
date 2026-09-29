@@ -3,8 +3,8 @@
 //! Strategy: parallel keyframe seeks (`-ss` before `-i`) → cached JPEGs under
 //! `{app_config}/filmstrips/`. Returns absolute file paths (caller maps to media URLs).
 
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -59,10 +59,7 @@ fn file_identity(path: &Path) -> Result<(u64, u64), FilmstripError> {
 fn cache_key(path: &Path, mtime: u64, size: u64, count: usize, height: u32) -> String {
     let mut hasher = DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);
-    format!(
-        "{:016x}_{mtime}_{size}_{count}x{height}",
-        hasher.finish()
-    )
+    format!("{:016x}_{mtime}_{size}_{count}x{height}", hasher.finish())
 }
 
 fn clamp_count(count: usize) -> usize {
@@ -182,25 +179,22 @@ fn extract_seek_frames(
 
     thread::scope(|scope| {
         for _ in 0..workers {
-            scope.spawn(|| {
-                loop {
-                    if error.lock().ok().and_then(|g| g.clone()).is_some() {
-                        break;
-                    }
-                    let i = next.fetch_add(1, Ordering::SeqCst);
-                    if i >= count {
-                        break;
-                    }
-                    if let Err(e) =
-                        extract_one_frame(ffmpeg, &in_str, times[i], height, &out_paths[i])
-                    {
-                        if let Ok(mut g) = error.lock() {
-                            if g.is_none() {
-                                *g = Some(e.to_string());
-                            }
+            scope.spawn(|| loop {
+                if error.lock().ok().and_then(|g| g.clone()).is_some() {
+                    break;
+                }
+                let i = next.fetch_add(1, Ordering::SeqCst);
+                if i >= count {
+                    break;
+                }
+                if let Err(e) = extract_one_frame(ffmpeg, &in_str, times[i], height, &out_paths[i])
+                {
+                    if let Ok(mut g) = error.lock() {
+                        if g.is_none() {
+                            *g = Some(e.to_string());
                         }
-                        break;
                     }
+                    break;
                 }
             });
         }
@@ -340,8 +334,7 @@ mod tests {
             .expect("spawn ffmpeg");
         assert!(status.success(), "failed to generate test mp4");
 
-        let paths =
-            generate_filmstrip(&vid, 8, 48, Some(2.0), Some(&ffmpeg)).expect("filmstrip");
+        let paths = generate_filmstrip(&vid, 8, 48, Some(2.0), Some(&ffmpeg)).expect("filmstrip");
         assert_eq!(paths.len(), 8);
         for p in &paths {
             assert!(p.is_file(), "missing {}", p.display());
@@ -349,8 +342,7 @@ mod tests {
         }
 
         // Second call should hit memory/disk cache (same paths).
-        let paths2 =
-            generate_filmstrip(&vid, 8, 48, Some(2.0), Some(&ffmpeg)).expect("cached");
+        let paths2 = generate_filmstrip(&vid, 8, 48, Some(2.0), Some(&ffmpeg)).expect("cached");
         assert_eq!(paths, paths2);
     }
 }

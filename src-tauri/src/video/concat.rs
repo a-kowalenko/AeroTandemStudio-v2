@@ -9,8 +9,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -22,10 +22,10 @@ use super::ffmpeg::{
 };
 use super::hw_accel::{detect_hardware, EncodingParams};
 use super::parallel::{ParallelError, ParallelVideoProcessor};
-use super::progress::{progress_from_times_with_task, EncodeProgress};
 use super::prep_cache;
 use super::probe::{compatible_stream_key_from_probe, CompatibleStreamKey};
 use super::probe_cache::{self, CachedClipProbe};
+use super::progress::{progress_from_times_with_task, EncodeProgress};
 use super::reencode_confirm::{self, ReencodeAskFn, ReencodeIntent, ReencodeKind, ReencodeParams};
 use crate::storage::logging;
 
@@ -36,18 +36,14 @@ static AUDIO_STREAM_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:").unwrap()
 });
 static AUDIO_CODEC_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:\s+(\w+).*?(\d+)\s*Hz",
-    )
-    .unwrap()
+    Regex::new(r"(?i)Stream\s+#\d+:\d+(?:\[[^\]]*\])?(?:\([^)]*\))?:\s+Audio:\s+(\w+).*?(\d+)\s*Hz")
+        .unwrap()
 });
-static SHOWINFO_TYPE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?).*?\btype:\s*([IPB])\b").unwrap()
-});
+static SHOWINFO_TYPE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?).*?\btype:\s*([IPB])\b").unwrap());
 /// Fallback when using `-skip_frame nokey` (every showinfo line is a keyframe).
-static SHOWINFO_PTS_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?)").unwrap()
-});
+static SHOWINFO_PTS_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)pts_time:([0-9]+(?:\.[0-9]+)?)").unwrap());
 
 #[derive(Debug, Error)]
 pub enum ConcatError {
@@ -287,11 +283,7 @@ pub fn build_prep_compatible_args(
     ignore_editlist: bool,
     hevc_tag: &str,
 ) -> Vec<String> {
-    let mut args = vec![
-        "-y".into(),
-        "-fflags".into(),
-        "+genpts".into(),
-    ];
+    let mut args = vec!["-y".into(), "-fflags".into(), "+genpts".into()];
     if ignore_editlist {
         args.extend(["-ignore_editlist".into(), "1".into()]);
     }
@@ -354,11 +346,7 @@ pub fn build_prep_compatible_to_mpegts_args(
     has_audio: bool,
     ignore_editlist: bool,
 ) -> Vec<String> {
-    let mut args = vec![
-        "-y".into(),
-        "-fflags".into(),
-        "+genpts".into(),
-    ];
+    let mut args = vec!["-y".into(), "-fflags".into(), "+genpts".into()];
     if ignore_editlist {
         args.extend(["-ignore_editlist".into(), "1".into()]);
     }
@@ -417,13 +405,8 @@ pub fn build_compatible_mpegts_concat_to_mp4_args(
     has_audio: bool,
     hevc_tag: &str,
 ) -> Vec<String> {
-    let mut args = build_mpegts_concat_to_mp4_args(
-        concat_list_path,
-        output_mp4,
-        vcodec,
-        has_audio,
-        hevc_tag,
-    );
+    let mut args =
+        build_mpegts_concat_to_mp4_args(concat_list_path, output_mp4, vcodec, has_audio, hevc_tag);
     omit_faststart_movflags(&mut args);
     args
 }
@@ -439,13 +422,8 @@ pub fn build_compatible_prep_mp4_concat_args(
     has_audio: bool,
     hevc_tag: &str,
 ) -> Vec<String> {
-    let mut args = build_mpegts_concat_to_mp4_args(
-        concat_list_path,
-        output_mp4,
-        vcodec,
-        has_audio,
-        hevc_tag,
-    );
+    let mut args =
+        build_mpegts_concat_to_mp4_args(concat_list_path, output_mp4, vcodec, has_audio, hevc_tag);
     omit_faststart_movflags(&mut args);
     args
 }
@@ -495,11 +473,7 @@ pub fn compatible_remux_prep_worker_count(clip_count: usize) -> usize {
 /// - Clean H.264 skips (Avidemux-like tempo; Gate already matched streams)
 ///
 /// Internal force flag for tests / diagnostics (no UI setting).
-pub fn compatible_should_validate_splice(
-    dirty: bool,
-    vcodec: VideoCodec,
-    force: bool,
-) -> bool {
+pub fn compatible_should_validate_splice(dirty: bool, vcodec: VideoCodec, force: bool) -> bool {
     force || dirty || matches!(vcodec, VideoCodec::Hevc)
 }
 
@@ -517,13 +491,8 @@ pub fn compatible_dirty_prep_plan(
     has_audio: bool,
 ) -> (PathBuf, Vec<String>) {
     let out = work_dir.join(compatible_prep_segment_filename(index));
-    let args = build_prep_compatible_to_mpegts_args(
-        input,
-        &path_str(&out),
-        vcodec,
-        has_audio,
-        true,
-    );
+    let args =
+        build_prep_compatible_to_mpegts_args(input, &path_str(&out), vcodec, has_audio, true);
     (out, args)
 }
 
@@ -1060,12 +1029,7 @@ pub fn build_concat_demuxer_reencode_args(
     if copy_audio {
         args.extend(["-c:a".into(), "copy".into()]);
     } else {
-        args.extend([
-            "-c:a".into(),
-            "aac".into(),
-            "-b:a".into(),
-            "192k".into(),
-        ]);
+        args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
     }
     args.extend([
         "-movflags".into(),
@@ -1216,8 +1180,8 @@ pub fn probe_clip_for_concat(ffmpeg: &Path, path: &str) -> Result<ClipConcatProb
     if parse_vcodec_from_probe(&stderr).is_none() {
         return Err(ConcatError::Message(format!("no video stream in: {path}")));
     }
-    let cached = probe_cache::put_from_stderr(path, &stderr).ok_or_else(|| {
-        ConcatError::NeedsReencode {
+    let cached =
+        probe_cache::put_from_stderr(path, &stderr).ok_or_else(|| ConcatError::NeedsReencode {
             reason: format!(
                 "Compatible Path: Video-Stream nicht lesbar ({})",
                 Path::new(path)
@@ -1225,13 +1189,15 @@ pub fn probe_clip_for_concat(ffmpeg: &Path, path: &str) -> Result<ClipConcatProb
                     .and_then(|n| n.to_str())
                     .unwrap_or(path)
             ),
-        }
-    })?;
+        })?;
     Ok(ClipConcatProbe::from_cached(&cached))
 }
 
 /// Returns `(codec, sample_rate_hz)` when an audio stream is present.
-pub fn probe_audio_codec(ffmpeg: &Path, input: &str) -> Result<Option<(String, String)>, ConcatError> {
+pub fn probe_audio_codec(
+    ffmpeg: &Path,
+    input: &str,
+) -> Result<Option<(String, String)>, ConcatError> {
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
     Ok(parse_audio_codec_from_probe(&stderr))
 }
@@ -1329,14 +1295,11 @@ pub fn nearest_keyframe(times: &[f64], target_secs: f64) -> Option<f64> {
     if times.is_empty() {
         return None;
     }
-    times
-        .iter()
-        .copied()
-        .min_by(|a, b| {
-            let da = (a - target_secs).abs();
-            let db = (b - target_secs).abs();
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        })
+    times.iter().copied().min_by(|a, b| {
+        let da = (a - target_secs).abs();
+        let db = (b - target_secs).abs();
+        da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+    })
 }
 
 /// Snap a keep-range to stream-copy-friendly keyframes.
@@ -1347,11 +1310,7 @@ pub fn nearest_keyframe(times: &[f64], target_secs: f64) -> Option<f64> {
 /// Guarantees `end > start` when at least two distinct keyframes exist; otherwise
 /// falls back to the raw range (clamped).
 #[allow(dead_code)] // used by unit tests + frontend parity helper
-pub fn snap_trim_range_to_keyframes(
-    times: &[f64],
-    start_secs: f64,
-    end_secs: f64,
-) -> (f64, f64) {
+pub fn snap_trim_range_to_keyframes(times: &[f64], start_secs: f64, end_secs: f64) -> (f64, f64) {
     let mut start = start_secs.max(0.0);
     let mut end = end_secs.max(start);
     if times.is_empty() {
@@ -1426,11 +1385,7 @@ pub fn body_starts_with_keyframe(ffmpeg: &Path, video_path: &str) -> bool {
     }
 }
 
-pub fn get_first_keyframe_time(
-    ffmpeg: &Path,
-    video_path: &str,
-    max_scan_sec: f64,
-) -> Option<f64> {
+pub fn get_first_keyframe_time(ffmpeg: &Path, video_path: &str, max_scan_sec: f64) -> Option<f64> {
     let args = build_keyframe_scan_args(video_path, max_scan_sec);
     let (_code, stderr) = run_ffmpeg_capture_stderr(ffmpeg, &args).ok()?;
     parse_first_keyframe_time(&stderr)
@@ -1567,14 +1522,7 @@ pub fn concat_videos_stream_copy_only(
     output: &str,
     on_progress: ProgressCallback,
 ) -> Result<ConcatOutcome, ConcatError> {
-    concat_videos_stream_copy_only_with_mode(
-        ffmpeg,
-        paths,
-        output,
-        on_progress,
-        "legacy",
-        None,
-    )
+    concat_videos_stream_copy_only_with_mode(ffmpeg, paths, output, on_progress, "legacy", None)
 }
 
 /// Like [`concat_videos_stream_copy_only`], with explicit body-concat mode + optional ask.
@@ -1636,8 +1584,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
     let all_same = codecs.windows(2).all(|w| w[0] == w[1]);
     let vcodec = codecs[0];
     let has_audio = has_audio_flags.iter().all(|&a| a);
-    let stream_copy_ok =
-        all_same && matches!(vcodec, VideoCodec::H264 | VideoCodec::Hevc);
+    let stream_copy_ok = all_same && matches!(vcodec, VideoCodec::H264 | VideoCodec::Hevc);
 
     if stream_copy_ok {
         let use_fast = is_fast_body_concat_mode(body_concat_mode);
@@ -1706,10 +1653,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
                 "stream-copy-compatible"
             };
             if use_auto {
-                logging::info(
-                    "concat",
-                    format!("auto: resolved HEVC tag={hevc_tag}"),
-                );
+                logging::info("concat", format!("auto: resolved HEVC tag={hevc_tag}"));
             }
             match concat_stream_copy_compatible(
                 ffmpeg,
@@ -1748,9 +1692,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
                         &on_progress,
                         on_fast_fail,
                         &reason,
-                        &format!(
-                            "{path_label} Path fehlgeschlagen — warte auf Entscheidung…"
-                        ),
+                        &format!("{path_label} Path fehlgeschlagen — warte auf Entscheidung…"),
                     ) {
                         Ok(()) => {
                             // Fall through to legacy MPEG-TS (never to Fast).
@@ -1761,8 +1703,15 @@ pub fn concat_videos_stream_copy_only_with_mode(
             }
         }
 
-        match concat_stream_copy(ffmpeg, paths, output, vcodec, has_audio, total_secs, &on_progress)
-        {
+        match concat_stream_copy(
+            ffmpeg,
+            paths,
+            output,
+            vcodec,
+            has_audio,
+            total_secs,
+            &on_progress,
+        ) {
             Ok(()) => {
                 emit(&on_progress, 100.0, "end");
                 return Ok(ConcatOutcome {
@@ -1787,10 +1736,7 @@ pub fn concat_videos_stream_copy_only_with_mode(
 
     let reason = if !all_same {
         let names: Vec<&str> = codecs.iter().map(|c| c.as_str()).collect();
-        format!(
-            "Unterschiedliche Video-Codecs ({})",
-            names.join(", ")
-        )
+        format!("Unterschiedliche Video-Codecs ({})", names.join(", "))
     } else {
         format!(
             "Codec „{}“ ist nicht stream-copy-fähig (nur H.264/HEVC)",
@@ -1822,8 +1768,8 @@ pub fn concat_intro_with_body(
         }
     }
 
-    let (cached_probes, _) =
-        probe_cache::resolve_clips_parallel(ffmpeg, paths, |_, _, _| {}).map_err(|e| match e {
+    let (cached_probes, _) = probe_cache::resolve_clips_parallel(ffmpeg, paths, |_, _, _| {})
+        .map_err(|e| match e {
             super::parallel::ParallelError::Cancelled => {
                 ConcatError::Ffmpeg(FfmpegError::Cancelled)
             }
@@ -1867,7 +1813,10 @@ pub fn concat_intro_with_body(
         Err(e) => return Err(e),
     }
 
-    logging::info("concat", "intro-body join: compatible ts-prep (no clean-pass)");
+    logging::info(
+        "concat",
+        "intro-body join: compatible ts-prep (no clean-pass)",
+    );
 
     match concat_compatible_ts_prep(
         ffmpeg,
@@ -2129,11 +2078,7 @@ fn compatible_mkv_merge_from_prep(
     let output_arg = remux_args
         .pop()
         .ok_or_else(|| ConcatError::Message("remux args missing output".into()))?;
-    remux_args.extend([
-        "-progress".into(),
-        "pipe:1".into(),
-        "-nostats".into(),
-    ]);
+    remux_args.extend(["-progress".into(), "pipe:1".into(), "-nostats".into()]);
     remux_args.push(output_arg);
     match run_ffmpeg(ffmpeg, &remux_args, total_secs, on_progress.clone()) {
         Err(e) if is_disk_full_error(&e) => return Err(ConcatError::Ffmpeg(disk_full_error())),
@@ -2330,14 +2275,7 @@ fn concat_stream_copy_compatible(
         clip_probes,
         hevc_tag,
     )?;
-    maybe_ensure_output_hevc_hvc1_tag(
-        ffmpeg,
-        output,
-        vcodec,
-        hevc_tag,
-        has_audio,
-        on_progress,
-    )
+    maybe_ensure_output_hevc_hvc1_tag(ffmpeg, output, vcodec, hevc_tag, has_audio, on_progress)
 }
 
 /// When target tag is `hvc1` but Dirty/TS left `hev1`, stream-copy remux with `-tag:v hvc1`.
@@ -2379,10 +2317,7 @@ fn maybe_ensure_output_hevc_hvc1_tag(
     emit(on_progress, 0.0, "compatible-hvc1-retag");
     logging::info(
         "concat",
-        format!(
-            "hvc1 ensure: output tag='{}' — stream-copy retag",
-            key.tag
-        ),
+        format!("hvc1 ensure: output tag='{}' — stream-copy retag", key.tag),
     );
 
     let out_path = Path::new(output);
@@ -2530,17 +2465,11 @@ fn concat_compatible_ts_prep(
             }
 
             // Phase 43.2: one-pass hygiene → MPEG-TS (no intermediate MP4).
-            let (prep, prep_args) = compatible_dirty_prep_plan(
-                &work_dir,
-                i,
-                src,
-                vcodec,
-                has_audio,
-            );
+            let (prep, prep_args) =
+                compatible_dirty_prep_plan(&work_dir, i, src, vcodec, has_audio);
             run_ffmpeg_checked(&ffmpeg_path, &prep_args)?;
             // Prefer cached path for merge so work-dir cleanup cannot invalidate reuse.
-            let prep_path = prep_cache::put(src, vcodec_key, has_audio, &prep)
-                .unwrap_or(prep);
+            let prep_path = prep_cache::put(src, vcodec_key, has_audio, &prep).unwrap_or(prep);
 
             let completed = done_count.fetch_add(1, Ordering::Relaxed) + 1;
             progress(EncodeProgress {
@@ -2573,14 +2502,7 @@ fn concat_compatible_ts_prep(
         hevc_tag,
     )?;
 
-    compatible_validate_output(
-        ffmpeg,
-        output,
-        clip_probes,
-        on_progress,
-        true,
-        vcodec,
-    )?;
+    compatible_validate_output(ffmpeg, output, clip_probes, on_progress, true, vcodec)?;
     let _ = fs::remove_dir_all(&work);
     Ok(())
 }
@@ -2600,12 +2522,7 @@ fn compatible_validate_output(
         return Ok(());
     }
     emit(on_progress, 100.0, "compatible-validate");
-    let (ok, reason) = validate_splice_decode(
-        ffmpeg,
-        output,
-        clip_probes[0].duration_secs,
-        2.0,
-    );
+    let (ok, reason) = validate_splice_decode(ffmpeg, output, clip_probes[0].duration_secs, 2.0);
     if !ok {
         let _ = fs::remove_file(output);
         return Err(ConcatError::Message(format!(
@@ -2718,18 +2635,10 @@ pub fn concat_videos_with_opts(
                     strategy: Some("concat_reencode".into()),
                     ..Default::default()
                 });
-            emit(
-                &on_progress,
-                40.0,
-                "Neu-Kodierung — warte auf Bestätigung…",
-            );
+            emit(&on_progress, 40.0, "Neu-Kodierung — warte auf Bestätigung…");
             let profile = reencode_confirm::require_confirm(on_reencode, &intent)
                 .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
-            emit(
-                &on_progress,
-                42.0,
-                &format!("Kodiere neu: {reason}"),
-            );
+            emit(&on_progress, 42.0, &format!("Kodiere neu: {reason}"));
             concat_videos_reencode(
                 ffmpeg,
                 paths,
@@ -2774,18 +2683,18 @@ fn concat_stream_copy(
             let activity = format!("Clip {task_id}/{n}: Segment vorbereiten…");
             let mid = format!("Clip {task_id}/{n}: Segment normalisieren…");
             let done = format!("Clip {task_id}/{n}: Segment bereit");
-            progress(progress_from_times_with_task(0.0, 100.0, &activity, Some(task_id)));
+            progress(progress_from_times_with_task(
+                0.0,
+                100.0,
+                &activity,
+                Some(task_id),
+            ));
 
             let mut current = paths_owned[i].clone();
 
             if vcodec == VideoCodec::Hevc && i > 0 {
                 let kf_out = work_dir.join(format!("seg_{i}_kf.mp4"));
-                trim_body_start_to_keyframe(
-                    &ffmpeg_path,
-                    &current,
-                    &path_str(&kf_out),
-                    has_audio,
-                )?;
+                trim_body_start_to_keyframe(&ffmpeg_path, &current, &path_str(&kf_out), has_audio)?;
                 current = path_str(&kf_out);
             }
 
@@ -2794,7 +2703,12 @@ fn concat_stream_copy(
             run_ffmpeg_checked(&ffmpeg_path, &norm_args)?;
             current = path_str(&norm);
 
-            progress(progress_from_times_with_task(50.0, 100.0, &mid, Some(task_id)));
+            progress(progress_from_times_with_task(
+                50.0,
+                100.0,
+                &mid,
+                Some(task_id),
+            ));
 
             if vcodec == VideoCodec::Hevc {
                 let splice = work_dir.join(format!("seg_{i}_splice.mp4"));
@@ -2808,7 +2722,12 @@ fn concat_stream_copy(
             let ts_args = build_mp4_to_mpegts_args(&current, &path_str(&ts), vcodec, has_audio);
             run_ffmpeg_checked(&ffmpeg_path, &ts_args)?;
 
-            progress(progress_from_times_with_task(100.0, 100.0, &done, Some(task_id)));
+            progress(progress_from_times_with_task(
+                100.0,
+                100.0,
+                &done,
+                Some(task_id),
+            ));
             Ok((PathBuf::from(&current), path_str(&ts)))
         },
         None,
@@ -2911,11 +2830,7 @@ fn concat_reencode(
     on_progress: &ProgressCallback,
 ) -> Result<String, ConcatError> {
     // Keep the reason visible for the whole re-encode stage (do not emit bare "re-encode").
-    emit(
-        on_progress,
-        50.0,
-        &format!("Kodiere neu: {reason}"),
-    );
+    emit(on_progress, 50.0, &format!("Kodiere neu: {reason}"));
     let work = make_work_dir("concat_re")?;
     let list_path = work.join("concat_list.txt");
     let refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
@@ -2923,25 +2838,20 @@ fn concat_reencode(
 
     let hw = detect_hardware();
     let force_software = !hw_accel_enabled || !hw.available;
-    let (encoder, output_params) =
-        crate::video::encoding_quality::build_encode_output_params(
-            &hw,
-            vcodec,
-            crf,
-            force_software,
-        );
+    let (encoder, output_params) = crate::video::encoding_quality::build_encode_output_params(
+        &hw,
+        vcodec,
+        crf,
+        force_software,
+    );
     let params = EncodingParams {
         input_params: Vec::new(),
         output_params,
         encoder: encoder.clone(),
     };
     let copy_audio = inputs_allow_aac_audio_copy(ffmpeg, paths);
-    let args = build_concat_demuxer_reencode_args(
-        &path_str(&list_path),
-        output,
-        &params,
-        copy_audio,
-    );
+    let args =
+        build_concat_demuxer_reencode_args(&path_str(&list_path), output, &params, copy_audio);
 
     run_ffmpeg(ffmpeg, &args, total_secs, on_progress.clone())?;
     let _ = fs::remove_dir_all(&work);
@@ -3089,11 +2999,7 @@ pts_time:4.000000 type:I
     fn format_ffmpeg_command_quotes_spaces() {
         let cmd = format_ffmpeg_command(
             Path::new("ffmpeg.exe"),
-            &[
-                "-i".into(),
-                "C:\\temp\\a b.ts".into(),
-                "-y".into(),
-            ],
+            &["-i".into(), "C:\\temp\\a b.ts".into(), "-y".into()],
         );
         assert!(cmd.contains("ffmpeg.exe"));
         assert!(cmd.contains("\"C:\\temp\\a b.ts\""));
@@ -3166,13 +3072,8 @@ pts_time:4.000000 type:I
 
     #[test]
     fn prep_compatible_to_mpegts_single_pass() {
-        let h264 = build_prep_compatible_to_mpegts_args(
-            "in.mp4",
-            "out.ts",
-            VideoCodec::H264,
-            true,
-            true,
-        );
+        let h264 =
+            build_prep_compatible_to_mpegts_args("in.mp4", "out.ts", VideoCodec::H264, true, true);
         // Annex-B only in prep; AUD/tag on merge (Legacy-compatible split).
         assert!(h264.contains(&"h264_mp4toannexb".into()));
         assert!(!h264.iter().any(|a| a.contains("aud=insert")));
@@ -3289,13 +3190,8 @@ pts_time:4.000000 type:I
     #[test]
     fn mkv_remux_omits_aud_when_segment_already_hygiened() {
         // Phase 43.4: TS→MP4 already applied AUD; MKV→MP4 must not re-insert.
-        let mut remux = build_remux_mkv_to_mp4_args(
-            "in.mkv",
-            "out.mp4",
-            VideoCodec::Hevc,
-            true,
-            "hev1",
-        );
+        let mut remux =
+            build_remux_mkv_to_mp4_args("in.mkv", "out.mp4", VideoCodec::Hevc, true, "hev1");
         assert!(remux.contains(&"hevc_metadata=aud=insert".into()));
         omit_video_aud_insert_bsf(&mut remux);
         assert!(!remux.iter().any(|a| a.contains("aud=insert")));
@@ -3344,13 +3240,8 @@ pts_time:4.000000 type:I
     #[test]
     fn prep_merge_hygiene_single_aud_layer() {
         // Prep = Annex-B only; Merge = AUD/tag once (no double insert).
-        let prep = build_prep_compatible_to_mpegts_args(
-            "in.mp4",
-            "out.ts",
-            VideoCodec::H264,
-            true,
-            true,
-        );
+        let prep =
+            build_prep_compatible_to_mpegts_args("in.mp4", "out.ts", VideoCodec::H264, true, true);
         let merge = build_compatible_mpegts_concat_to_mp4_args(
             "list.txt",
             "out.mp4",
@@ -3361,23 +3252,14 @@ pts_time:4.000000 type:I
         assert!(prep.contains(&"h264_mp4toannexb".into()));
         assert!(!prep.iter().any(|a| a.contains("aud=insert")));
         assert!(merge.contains(&"h264_metadata=aud=insert".into()));
-        let aud_count = merge
-            .iter()
-            .filter(|a| a.contains("aud=insert"))
-            .count();
+        let aud_count = merge.iter().filter(|a| a.contains("aud=insert")).count();
         assert_eq!(aud_count, 1);
     }
 
     #[test]
     fn compatible_dirty_prep_dispatch_writes_ts() {
         let work = Path::new("/tmp/ats_compat_prep");
-        let (out, args) = compatible_dirty_prep_plan(
-            work,
-            2,
-            "clip.mp4",
-            VideoCodec::H264,
-            true,
-        );
+        let (out, args) = compatible_dirty_prep_plan(work, 2, "clip.mp4", VideoCodec::H264, true);
         assert_eq!(compatible_prep_segment_filename(2), "seg_2_compat.ts");
         assert!(
             out.extension().and_then(|e| e.to_str()) == Some("ts"),

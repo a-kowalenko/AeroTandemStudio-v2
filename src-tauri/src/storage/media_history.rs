@@ -122,15 +122,13 @@ impl MediaHistoryStore {
         let next = AtomicUsize::new(0);
         thread::scope(|scope| {
             for _ in 0..workers {
-                scope.spawn(|| {
-                    loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        if i >= n {
-                            break;
-                        }
-                        let got = Self::compute_identity(&paths[i]).ok();
-                        results.lock().unwrap()[i] = got;
+                scope.spawn(|| loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    if i >= n {
+                        break;
                     }
+                    let got = Self::compute_identity(&paths[i]).ok();
+                    results.lock().unwrap()[i] = got;
                 });
             }
         });

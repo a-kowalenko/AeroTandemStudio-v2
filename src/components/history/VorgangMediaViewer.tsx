@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useTranslation } from "react-i18next";
 import {
@@ -30,8 +30,10 @@ import {
   isPreviewOrWmRole,
   partitionDeliveryAndPreview,
 } from "@/lib/vorgangMediaPlaylist";
+import { usePhotoThumbnailSrc } from "@/components/photo/usePhotoThumbnailSrc";
 import { useVideoThumbnailSrc } from "@/hooks/useVideoThumbnailSrc";
-import { THUMB_PRIORITY } from "@/lib/thumbnailQueue";
+import { PHOTO_THUMB_PRIORITY } from "@/lib/photoThumbnailQueue";
+import { previewThumbnailQueue, THUMB_PRIORITY } from "@/lib/thumbnailQueue";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 
@@ -60,32 +62,71 @@ function itemKey(item: ViewableMediaItem): string {
   return `${item.id ?? "x"}:${item.path}`;
 }
 
+function useTileInView(): [(node: HTMLButtonElement | null) => void, boolean] {
+  const [inView, setInView] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const ref = useCallback((node: HTMLButtonElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        setInView(entries.some((entry) => entry.isIntersecting));
+      },
+      { root: null, rootMargin: "120px", threshold: 0.01 },
+    );
+    io.observe(node);
+    observerRef.current = io;
+  }, []);
+  useEffect(() => () => observerRef.current?.disconnect(), []);
+  return [ref, inView];
+}
+
 function ThumbTile({
   item,
   selected,
   onSelect,
   onContextMenu,
-  photoSrc,
+  videoThumbsArmed,
 }: {
   item: ViewableMediaItem;
   selected: boolean;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
-  photoSrc: string | null;
+  /** Video tile extracts wait until the stage poster has settled. */
+  videoThumbsArmed: boolean;
 }) {
   const { t } = useTranslation();
   const isVideo = item.media_type === "video";
   const isPreview = isPreviewOrWmRole(item.role);
+  const [tileRef, inView] = useTileInView();
+  const wantThumb = selected || inView;
+  const previewPoster =
+    isVideo
+      ? previewThumbnailQueue.getCached(item.path, item.size_bytes ?? 0, "preview")
+      : null;
   const videoThumb = useVideoThumbnailSrc(
     isVideo ? item.path : null,
     item.size_bytes ?? 0,
     THUMB_PRIORITY.warm,
-    { enabled: isVideo },
+    {
+      enabled: isVideo && videoThumbsArmed && wantThumb && !previewPoster,
+      quality: "hq",
+      background: true,
+    },
   );
-  const thumbSrc = isVideo ? videoThumb : photoSrc;
+  const photoThumb = usePhotoThumbnailSrc(
+    isVideo ? null : item.path,
+    "hq",
+    item.size_bytes ?? 0,
+    PHOTO_THUMB_PRIORITY.visible,
+    { enabled: !isVideo && wantThumb, fallbackToFile: false },
+  );
+  const thumbSrc = isVideo ? (videoThumb ?? previewPoster) : photoThumb;
 
   return (
     <button
+      ref={tileRef}
       type="button"
       onClick={onSelect}
       onContextMenu={onContextMenu}
@@ -147,14 +188,14 @@ function TileSection({
   title,
   items,
   current,
-  photoThumbSrc,
+  videoThumbsArmed,
   onSelect,
   onContextMenuPath,
 }: {
   title: string;
   items: ViewableMediaItem[];
   current: ViewableMediaItem | null;
-  photoThumbSrc: Map<string, string>;
+  videoThumbsArmed: boolean;
   onSelect: (item: ViewableMediaItem) => void;
   onContextMenuPath: (path: string) => (e: React.MouseEvent) => void;
 }) {
@@ -181,11 +222,7 @@ function TileSection({
               selected={current != null && itemKey(item) === itemKey(current)}
               onSelect={() => onSelect(item)}
               onContextMenu={onContextMenuPath(item.path)}
-              photoSrc={
-                item.media_type === "photo"
-                  ? (photoThumbSrc.get(itemKey(item)) ?? null)
-                  : null
-              }
+              videoThumbsArmed={videoThumbsArmed}
             />
           </div>
         ))}
@@ -415,17 +452,62 @@ export function VorgangMediaViewer({
     }
   }, [current]);
 
-  const photoThumbSrc = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const item of photos) {
-      try {
-        map.set(itemKey(item), convertFileSrc(item.path));
-      } catch {
-        /* ignore */
-      }
+  const currentVideoPath =
+    open && current?.media_type === "video" ? current.path : null;
+  const currentVideoBust =
+    current?.media_type === "video" ? (current.size_bytes ?? 0) : 0;
+  const posterCached =
+    currentVideoPath != null &&
+    previewThumbnailQueue.getCached(currentVideoPath, currentVideoBust, "preview") !=
+      null;
+  const [settledPosterPath, setSettledPosterPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!currentVideoPath) {
+      setSettledPosterPath(null);
+      return;
     }
-    return map;
-  }, [photos]);
+    if (
+      previewThumbnailQueue.getCached(currentVideoPath, currentVideoBust, "preview")
+    ) {
+      setSettledPosterPath(currentVideoPath);
+      return;
+    }
+    setSettledPosterPath(null);
+    let cancelled = false;
+    void previewThumbnailQueue
+      .request(currentVideoPath, THUMB_PRIORITY.onDemand, currentVideoBust, "preview")
+      .finally(() => {
+        if (!cancelled) setSettledPosterPath(currentVideoPath);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVideoPath, currentVideoBust]);
+
+  const autoPlayVideo =
+    currentVideoPath != null &&
+    (posterCached || settledPosterPath === currentVideoPath);
+  const videoThumbsArmed = currentVideoPath == null || autoPlayVideo;
+
+  const stagePhotoPath = open && current?.media_type === "photo" ? current.path : null;
+  const stagePhotoThumb = usePhotoThumbnailSrc(
+    stagePhotoPath,
+    "hq",
+    current?.size_bytes ?? 0,
+    PHOTO_THUMB_PRIORITY.stageUpgrade,
+    { enabled: stagePhotoPath != null, fallbackToFile: false },
+  );
+  const [stagePhotoFullFor, setStagePhotoFullFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!stagePhotoPath) return;
+    const delay = stagePhotoThumb ? 400 : 2500;
+    const id = window.setTimeout(() => setStagePhotoFullFor(stagePhotoPath), delay);
+    return () => window.clearTimeout(id);
+  }, [stagePhotoPath, stagePhotoThumb]);
+
+  const stagePhotoDisplay =
+    stagePhotoFullFor === stagePhotoPath ? photoSrc : stagePhotoThumb;
 
   function selectItem(item: ViewableMediaItem) {
     const global = items.findIndex((row) => itemKey(row) === itemKey(item));
@@ -491,7 +573,7 @@ export function VorgangMediaViewer({
     >
       <DialogContent
         className="z-[100] flex h-[min(88vh,44rem)] w-[min(72rem,96vw)] max-w-none flex-col gap-0 overflow-hidden p-0"
-        overlayClassName="z-[100]"
+        overlayClassName="z-[100] backdrop-blur-none"
       >
         <div className="shrink-0 border-b border-border/70 px-4 pt-4 pr-12 pb-3 sm:px-5 sm:pr-14">
           <div className="flex flex-wrap items-start gap-3">
@@ -607,7 +689,7 @@ export function VorgangMediaViewer({
                         title={t("history.viewer.sectionDelivery")}
                         items={tabDelivery}
                         current={current}
-                        photoThumbSrc={photoThumbSrc}
+                        videoThumbsArmed={videoThumbsArmed}
                         onSelect={selectItem}
                         onContextMenuPath={onTileContextMenu}
                       />
@@ -618,7 +700,7 @@ export function VorgangMediaViewer({
                         title={t("history.viewer.sectionPreview")}
                         items={tabPreview}
                         current={current}
-                        photoThumbSrc={photoThumbSrc}
+                        videoThumbsArmed={videoThumbsArmed}
                         onSelect={selectItem}
                         onContextMenuPath={onTileContextMenu}
                       />
@@ -645,18 +727,20 @@ export function VorgangMediaViewer({
                       <VideoPlayer
                         key={current.path}
                         srcPath={open ? current.path : null}
+                        cacheKey={current.size_bytes ?? 0}
                         className="h-full w-full"
                         chrome="playback"
-                        autoPlay={open}
+                        autoPlay={autoPlayVideo}
+                        delaySrcUntilAutoPlay
                         fillAvailable
                       />
                     ) : current?.media_type === "photo" &&
                       tabId === "foto" &&
-                      photoSrc &&
+                      stagePhotoDisplay &&
                       !photoFailed ? (
                       <>
                         <img
-                          src={photoSrc}
+                          src={stagePhotoDisplay}
                           alt={current.filename}
                           className="max-h-full max-w-full object-contain"
                           draggable={false}
@@ -685,6 +769,10 @@ export function VorgangMediaViewer({
                           </>
                         ) : null}
                       </>
+                    ) : current?.media_type === "photo" &&
+                      tabId === "foto" &&
+                      !photoFailed ? (
+                      <ImageIcon className="h-8 w-8 text-white/50" aria-hidden />
                     ) : (
                       <p className="text-sm text-white/70">
                         {t("history.viewer.loadError")}

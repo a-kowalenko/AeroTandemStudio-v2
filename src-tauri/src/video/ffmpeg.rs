@@ -22,8 +22,7 @@ use super::progress::{
 };
 
 static NEXT_JOB_ID: AtomicU64 = AtomicU64::new(1);
-static ACTIVE_CHILDREN: Lazy<Mutex<HashMap<u64, Child>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static ACTIVE_CHILDREN: Lazy<Mutex<HashMap<u64, Child>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static CANCEL_FLAG: Lazy<AtomicBool> = Lazy::new(|| AtomicBool::new(false));
 /// Separate from [`CANCEL_FLAG`]: Vorgang/Historie SMB upload only.
 /// SD server-backup mirrors must not observe this flag.
@@ -330,9 +329,8 @@ pub fn workflow_cancelled_message() -> String {
 /// Probe media duration in seconds by running `ffmpeg -i` (parses stderr).
 pub fn probe_duration_secs(ffmpeg: &Path, input: &str) -> Result<f64, FfmpegError> {
     let stderr = ffmpeg_probe_stderr(ffmpeg, input)?;
-    parse_duration(&stderr).ok_or_else(|| {
-        FfmpegError::Message(format!("could not parse duration from: {input}"))
-    })
+    parse_duration(&stderr)
+        .ok_or_else(|| FfmpegError::Message(format!("could not parse duration from: {input}")))
 }
 
 /// Run `ffmpeg -hide_banner -i <input>` and return stderr (banner + stream info).
@@ -609,7 +607,10 @@ pub fn run_ffmpeg_checked(ffmpeg: &Path, args: &[String]) -> Result<(), FfmpegEr
 }
 
 /// Like [`run_ffmpeg_checked`], but returns stderr text (e.g. for splice validation).
-pub fn run_ffmpeg_capture_stderr(ffmpeg: &Path, args: &[String]) -> Result<(i32, String), FfmpegError> {
+pub fn run_ffmpeg_capture_stderr(
+    ffmpeg: &Path,
+    args: &[String],
+) -> Result<(i32, String), FfmpegError> {
     let mut cmd = Command::new(ffmpeg);
     cmd.arg("-nostdin")
         .args(args)
@@ -880,9 +881,7 @@ mod tests {
     #[test]
     fn format_ffmpeg_exit_keeps_full_stderr_no_truncate() {
         // More than the old take(8) window — root cause must stay in the message.
-        let mut lines: Vec<String> = (0..20)
-            .map(|i| format!("diag line {i}: setup"))
-            .collect();
+        let mut lines: Vec<String> = (0..20).map(|i| format!("diag line {i}: setup")).collect();
         lines.push("vf#0:0 Function not implemented".into());
         lines.push("Error while filtering: Function not implemented".into());
         lines.push("h264_nvenc: Could not open encoder before EOF".into());

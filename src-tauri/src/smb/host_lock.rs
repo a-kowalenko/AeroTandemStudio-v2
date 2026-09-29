@@ -2,14 +2,19 @@
 //!
 //! Against the same Filehost at most one writing pipeline (Vorgang-Upload **or**
 //! SD-Server-Backup) may hold an smb2 session; Staging-GC waits for the same
-//! lock instead of opening a parallel `connect_smb`. Different hosts may run
-//! in parallel. Local targets skip the mutex (no smb2 slot).
+//! lock instead of opening a parallel `connect_smb`. Health checks use
+//! [`gate_health_connect`] so they do not SessionSetup beside that pipeline.
+//! Different hosts may run in parallel. Local targets skip the mutex (no smb2 slot).
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use once_cell::sync::Lazy;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
+
+/// Loud health waits at most this long for a writing pipeline (OPT-23A A4).
+pub const LOUD_HEALTH_LOCK_WAIT: Duration = Duration::from_secs(3);
 
 static HOST_LOCKS: Lazy<Mutex<HashMap<String, Arc<Semaphore>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
@@ -19,10 +24,7 @@ static HOST_LOCKS: Lazy<Mutex<HashMap<String, Arc<Semaphore>>>> =
 /// Port is not part of the key — Backup and Primary on the same machine share
 /// one mutex even when shares differ.
 pub fn canonical_host_key(host: &str) -> String {
-    let trimmed = host
-        .trim()
-        .trim_matches(|c| c == '\\' || c == '/')
-        .trim();
+    let trimmed = host.trim().trim_matches(|c| c == '\\' || c == '/').trim();
     // Drop bracketed IPv6 form `[::1]` → `::1` for stable keys.
     let unbracketed = trimmed
         .strip_prefix('[')
@@ -83,10 +85,7 @@ pub async fn acquire(host: &str) -> HostLockGuard {
             _permit: permit,
         },
         Err(_) => {
-            crate::storage::logging::info(
-                "smb",
-                format!("SMB host busy, waiting… ({key})"),
-            );
+            crate::storage::logging::info("smb", format!("SMB host busy, waiting… ({key})"));
             let permit = sem
                 .acquire_owned()
                 .await
@@ -101,9 +100,8 @@ pub async fn acquire(host: &str) -> HostLockGuard {
 
 /// Non-blocking acquire — `None` if another Transfer/GC holds the host.
 ///
-/// Prefer [`acquire`] for Transfer/GC; `try_acquire` is for tests and callers
-/// that must not queue behind a long upload.
-#[allow(dead_code)]
+/// Prefer [`acquire`] for Transfer/GC. Quiet health uses this so a poll does
+/// not queue behind a long upload.
 pub async fn try_acquire(host: &str) -> Option<HostLockGuard> {
     let key = canonical_host_key(host);
     let sem = semaphore_for(&key).await;
@@ -111,6 +109,43 @@ pub async fn try_acquire(host: &str) -> Option<HostLockGuard> {
         key,
         _permit: permit,
     })
+}
+
+/// Health may open one pooled session only while it holds the host lock.
+pub enum HealthConnectGate {
+    /// Lock held. Caller must keep the guard until the pool session is released.
+    Ready(HostLockGuard),
+    /// Quiet poll: a writer already holds the host. Do not SessionSetup.
+    QuietBusy,
+    /// Loud check: writer still holds the host after [`LOUD_HEALTH_LOCK_WAIT`].
+    /// Do not SessionSetup — the in-flight transfer proves the connection.
+    LoudBusy,
+}
+
+/// Gate a Health SessionSetup on the host mutex.
+///
+/// Quiet returns [`HealthConnectGate::QuietBusy`] immediately when Upload,
+/// Backup, or GC holds the host. Loud waits up to [`LOUD_HEALTH_LOCK_WAIT`];
+/// on timeout it returns [`HealthConnectGate::LoudBusy`] without SessionSetup.
+pub async fn gate_health_connect(host: &str, quiet: bool) -> HealthConnectGate {
+    if quiet {
+        match try_acquire(host).await {
+            Some(guard) => HealthConnectGate::Ready(guard),
+            None => HealthConnectGate::QuietBusy,
+        }
+    } else {
+        match tokio::time::timeout(LOUD_HEALTH_LOCK_WAIT, acquire(host)).await {
+            Ok(guard) => HealthConnectGate::Ready(guard),
+            Err(_) => {
+                let key = canonical_host_key(host);
+                crate::storage::logging::info(
+                    "smb",
+                    format!("SMB health loud timeout — host busy ({key})"),
+                );
+                HealthConnectGate::LoudBusy
+            }
+        }
+    }
 }
 
 /// Whether `host` currently has no free permit (best-effort; races possible).
@@ -140,7 +175,10 @@ mod tests {
     #[test]
     fn same_host_key_ignores_share_and_port() {
         // Port stripped; share is never part of the key.
-        assert_eq!(canonical_host_key("nas.local:445"), canonical_host_key("NAS.LOCAL"));
+        assert_eq!(
+            canonical_host_key("nas.local:445"),
+            canonical_host_key("NAS.LOCAL")
+        );
     }
 
     #[test]
@@ -176,12 +214,9 @@ mod tests {
     async fn different_hosts_parallel() {
         let a = acquire("opt22c-host-a.invalid").await;
         // Must not block behind host-a.
-        let b = tokio::time::timeout(
-            Duration::from_millis(200),
-            acquire("opt22c-host-b.invalid"),
-        )
-        .await
-        .expect("different host must acquire in parallel");
+        let b = tokio::time::timeout(Duration::from_millis(200), acquire("opt22c-host-b.invalid"))
+            .await
+            .expect("different host must acquire in parallel");
         assert_ne!(a.key(), b.key());
         drop(a);
         drop(b);
@@ -204,5 +239,96 @@ mod tests {
             .await
             .expect("lock must be free after Drop");
         drop(next);
+    }
+
+    #[tokio::test]
+    async fn quiet_health_skips_when_host_busy() {
+        let host = "opt22d-quiet-busy.invalid";
+        let _held = acquire(host).await;
+        match gate_health_connect(host, true).await {
+            HealthConnectGate::QuietBusy => {}
+            HealthConnectGate::Ready(_) => panic!("quiet must not SessionSetup while host busy"),
+            HealthConnectGate::LoudBusy => panic!("quiet must not use the loud timeout"),
+        }
+    }
+
+    #[tokio::test]
+    async fn quiet_health_holds_lock_when_free() {
+        let host = "opt22d-quiet-free.invalid";
+        let gate = gate_health_connect(host, true).await;
+        let HealthConnectGate::Ready(guard) = gate else {
+            panic!("quiet must acquire when the host is free");
+        };
+        assert!(is_busy(host).await);
+        drop(guard);
+        assert!(!is_busy(host).await);
+    }
+
+    #[tokio::test]
+    async fn loud_health_waits_until_host_free() {
+        let host = "opt22d-loud-wait.invalid";
+        let held = acquire(host).await;
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<()>(1);
+        let waiter = tokio::spawn(async move {
+            let gate = gate_health_connect(host, false).await;
+            let _ = tx.send(()).await;
+            match gate {
+                HealthConnectGate::Ready(guard) => drop(guard),
+                HealthConnectGate::QuietBusy => panic!("loud must wait, not skip"),
+                HealthConnectGate::LoudBusy => {
+                    panic!("loud must acquire once the writer drops the lock")
+                }
+            }
+        });
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "loud health must wait for the writer"
+        );
+
+        drop(held);
+        tokio::time::timeout(Duration::from_secs(2), waiter)
+            .await
+            .expect("loud health timed out")
+            .expect("loud health task panicked");
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn loud_health_lock_wait_is_three_seconds() {
+        assert_eq!(LOUD_HEALTH_LOCK_WAIT, Duration::from_secs(3));
+    }
+
+    #[tokio::test]
+    async fn loud_health_timeout_returns_loud_busy() {
+        let host = "opt23a-loud-busy.invalid";
+        let held = acquire(host).await;
+        let started = std::time::Instant::now();
+        let gate = tokio::time::timeout(
+            LOUD_HEALTH_LOCK_WAIT + Duration::from_secs(2),
+            gate_health_connect(host, false),
+        )
+        .await
+        .expect("loud gate must return");
+        let elapsed = started.elapsed();
+        match gate {
+            HealthConnectGate::LoudBusy => {}
+            HealthConnectGate::Ready(_) => panic!("must not SessionSetup while host stays busy"),
+            HealthConnectGate::QuietBusy => panic!("loud path must not use QuietBusy"),
+        }
+        assert!(
+            elapsed >= LOUD_HEALTH_LOCK_WAIT,
+            "returned before the loud wait: {elapsed:?}"
+        );
+        assert!(
+            elapsed < LOUD_HEALTH_LOCK_WAIT + Duration::from_secs(2),
+            "loud wait ran too long: {elapsed:?}"
+        );
+        // Dropping the timed-out acquire must not take the permit.
+        assert!(is_busy(host).await);
+        assert!(try_acquire(host).await.is_none());
+        drop(held);
+        assert!(try_acquire(host).await.is_some());
     }
 }

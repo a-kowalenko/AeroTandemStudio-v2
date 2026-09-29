@@ -14,7 +14,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::media::dji_paths::is_listable_media_path;
 use serde::{Deserialize, Serialize};
 
-pub use super::catalog::{cache_dir_for as ica_cache_dir_for, virtual_media_path, CameraCatalogFile};
+pub use super::catalog::{
+    cache_dir_for as ica_cache_dir_for, virtual_media_path, CameraCatalogFile,
+};
 
 #[derive(Debug)]
 pub enum IcaError {
@@ -518,17 +520,17 @@ pub fn ensure_preview_file(virtual_path: &Path) -> Result<PathBuf, IcaError> {
             }
         }
     }
-    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path).ok_or_else(|| {
-        IcaError::Message("Kein MTP-Vorschau-Pfad.".into())
-    })?;
+    let (source_id, filename) = parse_mtp_virtual_media_path(virtual_path)
+        .ok_or_else(|| IcaError::Message("Kein MTP-Vorschau-Pfad.".into()))?;
     let dest_dir = virtual_path
         .parent()
         .ok_or_else(|| IcaError::Message("Ungültiger Vorschau-Pfad.".into()))?;
     let label = source_id.clone();
     let paths = download_camera_files(&source_id, &label, dest_dir, &[filename], None)?;
-    let staged = paths.into_iter().next().ok_or_else(|| {
-        IcaError::Message("Vorschau-Download lieferte keine Datei.".into())
-    })?;
+    let staged = paths
+        .into_iter()
+        .next()
+        .ok_or_else(|| IcaError::Message("Vorschau-Download lieferte keine Datei.".into()))?;
     if staged != virtual_path && !virtual_path.is_file() {
         let _ = std::fs::rename(&staged, virtual_path);
         if virtual_path.is_file() {

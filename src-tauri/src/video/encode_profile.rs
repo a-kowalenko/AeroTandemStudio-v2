@@ -4,9 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::encoding_quality::{
-    build_encode_output_params, clamp_crf, VideoCodecPreference,
-};
+use super::encoding_quality::{build_encode_output_params, clamp_crf, VideoCodecPreference};
 use super::hw_accel::HwAccelInfo;
 use super::reencode_confirm::ReencodeKind;
 
@@ -394,8 +392,7 @@ impl EncodeProfile {
         codec: super::concat::VideoCodec,
     ) -> (String, Vec<String>) {
         let force_sw = !self.hw_accel || !hw.available;
-        let (encoder, mut params) =
-            build_encode_output_params(hw, codec, self.crf, force_sw);
+        let (encoder, mut params) = build_encode_output_params(hw, codec, self.crf, force_sw);
         replace_flag_value(&mut params, "-preset", preset_for_encoder(&encoder, self));
         (encoder, params)
     }
@@ -500,7 +497,11 @@ mod tests {
         for target in ["auto", "h264", ""] {
             let p = EncodeProfile::capcut_export(false, 20, target);
             assert_eq!(p.codec, "h264", "target {target:?}");
-            assert_eq!(p.resolved_codec.as_deref(), Some("h264"), "target {target:?}");
+            assert_eq!(
+                p.resolved_codec.as_deref(),
+                Some("h264"),
+                "target {target:?}"
+            );
         }
     }
 
@@ -511,7 +512,9 @@ mod tests {
         p.sw_preset = "slow".into();
         let (enc, params) = p.to_encode_output_params(&hw, VideoCodec::H264);
         assert_eq!(enc, "libx264");
-        assert!(params.windows(2).any(|w| w[0] == "-preset" && w[1] == "slow"));
+        assert!(params
+            .windows(2)
+            .any(|w| w[0] == "-preset" && w[1] == "slow"));
         assert!(params.windows(2).any(|w| w[0] == "-crf" && w[1] == "18"));
     }
 

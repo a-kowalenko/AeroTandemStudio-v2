@@ -211,7 +211,10 @@ pub struct AppConfig {
     /// Auto-scan newly imported photos for QR codes.
     #[serde(default)]
     pub photo_qr_check_enabled: bool,
-    #[serde(default = "default_qr_scan_seconds", deserialize_with = "de_u32_flexible")]
+    #[serde(
+        default = "default_qr_scan_seconds",
+        deserialize_with = "de_u32_flexible"
+    )]
     pub qr_video_scan_seconds: u32,
     /// Remove the photo that carried a successful QR from the session list.
     #[serde(default = "default_true")]
@@ -258,7 +261,10 @@ pub struct AppConfig {
     pub sd_skip_processed: bool,
     #[serde(default = "default_true")]
     pub sd_size_limit_enabled: bool,
-    #[serde(default = "default_sd_size_limit", deserialize_with = "de_u32_flexible")]
+    #[serde(
+        default = "default_sd_size_limit",
+        deserialize_with = "de_u32_flexible"
+    )]
     pub sd_size_limit_mb: u32,
     /// Allowlisted USB action cams (GoPro/DJI/Insta360) via MTP/WPD.
     /// Default: on for all platforms (macOS ICA, Windows WPD; Linux volume/SD until libmtp).
@@ -397,9 +403,7 @@ pub fn merge_default_crew(cfg: &mut AppConfig) -> bool {
     cfg.crew_list
         .sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     for name in &added_names {
-        crate::storage::logging::log_info(&format!(
-            "Crew: „{name}“ aus App-Default übernommen"
-        ));
+        crate::storage::logging::log_info(&format!("Crew: „{name}“ aus App-Default übernommen"));
     }
     true
 }
@@ -779,11 +783,10 @@ impl AppConfig {
 
     /// Canonicalize `usb_import_mode`.
     pub fn sync_usb_import_mode(&mut self) {
-        self.usb_import_mode = crate::sd_card::mtp::mtp_whitelist::UsbImportMode::parse(
-            &self.usb_import_mode,
-        )
-        .as_str()
-        .to_string();
+        self.usb_import_mode =
+            crate::sd_card::mtp::mtp_whitelist::UsbImportMode::parse(&self.usb_import_mode)
+                .as_str()
+                .to_string();
     }
 
     /// Canonicalize `intro_mux_mode` to `capcut` (sole product mode).
@@ -807,8 +810,7 @@ impl AppConfig {
 
     /// Canonicalize `log_min_level` to `debug` | `info` | `warn` | `error`.
     pub fn sync_log_min_level(&mut self) {
-        self.log_min_level =
-            crate::storage::logging::normalize_min_level_name(&self.log_min_level);
+        self.log_min_level = crate::storage::logging::normalize_min_level_name(&self.log_min_level);
     }
 
     /// Sanitize Outro (Phase 50): empty path disables it; clamp photo duration to 1–10 s.
@@ -836,7 +838,10 @@ impl AppConfig {
 
     /// Canonicalize `settings_ui_mode` to `simple` | `advanced`.
     pub fn sync_settings_ui_mode(&mut self) {
-        self.settings_ui_mode = if self.settings_ui_mode.trim().eq_ignore_ascii_case("advanced")
+        self.settings_ui_mode = if self
+            .settings_ui_mode
+            .trim()
+            .eq_ignore_ascii_case("advanced")
         {
             "advanced".into()
         } else {
@@ -846,8 +851,7 @@ impl AppConfig {
 
     /// Canonicalize `sd_server_backup_mode` (maps deprecated `direct_dual_write`).
     pub fn sync_sd_server_backup_mode(&mut self) {
-        self.sd_server_backup_mode =
-            normalize_sd_server_backup_mode(&self.sd_server_backup_mode);
+        self.sd_server_backup_mode = normalize_sd_server_backup_mode(&self.sd_server_backup_mode);
     }
 
     /// Clamp auto-cleanup retention days onto whitelist presets.
@@ -926,9 +930,7 @@ impl AppConfig {
         let Some(idx) = self.active_server_profile_index() else {
             return;
         };
-        if self.server_profiles[idx].backup_url.trim().is_empty()
-            && !legacy.url.trim().is_empty()
-        {
+        if self.server_profiles[idx].backup_url.trim().is_empty() && !legacy.url.trim().is_empty() {
             self.server_profiles[idx].backup_url = legacy.url;
             if self.server_profiles[idx].backup_login.trim().is_empty() {
                 self.server_profiles[idx].backup_login = legacy.login;
@@ -1192,8 +1194,7 @@ pub fn merge_with_defaults_ex(partial: Value) -> Result<(AppConfig, bool), Confi
     let preset_dirty = apply_fleet_settings_preset_v1(&mut cfg);
     let encoding_reset_dirty = apply_encoding_defaults_reset_v1(&mut cfg);
     // Rewrite only when migration leaves a non-default mode (legacy completed → advanced).
-    let ui_mode_dirty =
-        !had_settings_ui_mode && cfg.settings_ui_mode != default_settings_ui_mode();
+    let ui_mode_dirty = !had_settings_ui_mode && cfg.settings_ui_mode != default_settings_ui_mode();
     Ok((
         cfg,
         crew_dirty || preset_dirty || encoding_reset_dirty || ui_mode_dirty,
@@ -1353,11 +1354,9 @@ impl ConfigStore {
     fn load_or_migrate(&self, dir: &Path) -> Result<AppConfig, ConfigError> {
         let conn = self.connect()?;
         let existing: Option<String> = conn
-            .query_row(
-                "SELECT data FROM app_config WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT data FROM app_config WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .ok();
 
         if let Some(json) = existing {
@@ -1385,11 +1384,9 @@ impl ConfigStore {
     pub fn load(&self) -> Result<AppConfig, ConfigError> {
         let conn = self.connect()?;
         let json: String = conn
-            .query_row(
-                "SELECT data FROM app_config WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT data FROM app_config WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .unwrap_or_else(|_| {
                 serde_json::to_string(&AppConfig::default()).unwrap_or_else(|_| "{}".into())
             });
@@ -1675,7 +1672,10 @@ mod tests {
         assert_eq!(cfg.sd_size_limit_mb, 2000);
         assert!(!cfg.setup_completed);
         assert_eq!(cfg.crew_list, default_crew_list());
-        assert!(cfg.crew_list.iter().any(|c| c.name == "Andy" && c.tandemmaster));
+        assert!(cfg
+            .crew_list
+            .iter()
+            .any(|c| c.name == "Andy" && c.tandemmaster));
     }
 
     #[test]
@@ -1818,10 +1818,7 @@ mod tests {
             },
         ];
         // Tombstone every default so load does not re-add roster names (Phase 36).
-        cfg.crew_removed_names = default_crew_list()
-            .into_iter()
-            .map(|c| c.name)
-            .collect();
+        cfg.crew_removed_names = default_crew_list().into_iter().map(|c| c.name).collect();
         let dir = tempdir().unwrap();
         let store = ConfigStore::open_at(dir.path().join("config.db")).unwrap();
         store.save(&cfg).unwrap();
@@ -1963,10 +1960,16 @@ mod tests {
         sorted.sort_by_key(|n| n.to_lowercase());
         assert_eq!(names, sorted);
         for name in ["Jan", "Pascal", "Rene"] {
-            assert!(list.iter().any(|c| c.name == name && c.tandemmaster && !c.videospringer));
+            assert!(list
+                .iter()
+                .any(|c| c.name == name && c.tandemmaster && !c.videospringer));
         }
-        for name in ["Jojo", "Kai", "Käthe", "Mathi", "Robert", "Robin", "Sabrina"] {
-            assert!(list.iter().any(|c| c.name == name && !c.tandemmaster && c.videospringer));
+        for name in [
+            "Jojo", "Kai", "Käthe", "Mathi", "Robert", "Robin", "Sabrina",
+        ] {
+            assert!(list
+                .iter()
+                .any(|c| c.name == name && !c.tandemmaster && c.videospringer));
         }
         let vs: Vec<_> = list
             .iter()
@@ -2141,9 +2144,15 @@ mod tests {
             normalize_sd_server_backup_mode("local_then_server"),
             "local_then_server"
         );
-        assert!(sd_server_backup_url_looks_like_mount_path("/Volumes/NAS/backups"));
-        assert!(!sd_server_backup_url_looks_like_mount_path("smb://nas/sd-backups"));
-        assert!(!sd_server_backup_url_looks_like_mount_path(r"\\nas\sd-backups"));
+        assert!(sd_server_backup_url_looks_like_mount_path(
+            "/Volumes/NAS/backups"
+        ));
+        assert!(!sd_server_backup_url_looks_like_mount_path(
+            "smb://nas/sd-backups"
+        ));
+        assert!(!sd_server_backup_url_looks_like_mount_path(
+            r"\\nas\sd-backups"
+        ));
     }
 
     #[test]
@@ -2245,10 +2254,7 @@ mod tests {
 
     #[test]
     fn sanitize_instructor_foto_filename_strips_separators() {
-        assert_eq!(
-            sanitize_instructor_foto_filename(""),
-            "Instructor.jpg"
-        );
+        assert_eq!(sanitize_instructor_foto_filename(""), "Instructor.jpg");
         assert_eq!(
             sanitize_instructor_foto_filename("  Pilot.png  "),
             "Pilot.png"
@@ -2257,10 +2263,7 @@ mod tests {
             sanitize_instructor_foto_filename(r"..\foo/bar.jpg"),
             "foobar.jpg"
         );
-        assert_eq!(
-            sanitize_instructor_foto_filename("a:b|c?.jpg"),
-            "abc.jpg"
-        );
+        assert_eq!(sanitize_instructor_foto_filename("a:b|c?.jpg"), "abc.jpg");
     }
 
     #[test]

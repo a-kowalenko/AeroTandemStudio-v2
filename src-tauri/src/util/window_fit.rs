@@ -137,10 +137,9 @@ pub fn fit_main_window(window: &tauri::WebviewWindow) {
     }
 
     if fit.pos_changed((pos.x, pos.y)) {
-        if let Err(e) = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
-            fit.outer_x,
-            fit.outer_y,
-        ))) {
+        if let Err(e) = window.set_position(tauri::Position::Physical(
+            tauri::PhysicalPosition::new(fit.outer_x, fit.outer_y),
+        )) {
             eprintln!("fit_main_window set_position failed: {e}");
         }
     }

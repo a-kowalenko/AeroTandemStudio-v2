@@ -8,11 +8,7 @@ use crate::storage::config::AppConfig;
 use super::export_paths::OutputLayout;
 
 /// Build JSON payload for `_fertig.txt` matching legacy rules.
-pub fn build_marker_json(
-    kunde: &Kunde,
-    outside_mode: bool,
-    oldschool_mode: bool,
-) -> Value {
+pub fn build_marker_json(kunde: &Kunde, outside_mode: bool, oldschool_mode: bool) -> Value {
     let marker_type = if outside_mode { "Outside" } else { "Handcam" };
 
     if oldschool_mode && kunde.form_mode != "kunde" {

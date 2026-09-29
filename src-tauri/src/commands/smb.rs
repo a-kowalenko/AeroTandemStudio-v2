@@ -7,9 +7,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::config::ConfigState;
 use crate::smb::{
-    abort_handoff_upload, notify_handoff_after_upload, upload_failure_is_cancelled,
-    test_connection, upload_path, ConnectionTestResult, HandoffUploadContext, UploadProgress,
-    UploadResult,
+    abort_handoff_upload, notify_handoff_after_upload, test_connection,
+    upload_failure_is_cancelled, upload_path, ConnectionTestResult, HandoffUploadContext,
+    UploadProgress, UploadResult,
 };
 use crate::storage::logging::{self, file_name};
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
@@ -78,27 +78,29 @@ pub async fn test_server_connection(
         let o = overrides.unwrap_or_default();
         (
             o.server_url.unwrap_or_else(|| cache.server_url.clone()),
-            o.server_login
-                .unwrap_or_else(|| cache.server_login.clone()),
+            o.server_login.unwrap_or_else(|| cache.server_login.clone()),
             o.server_password
                 .unwrap_or_else(|| cache.server_password.clone()),
             cache.smb_auto_mount_enabled,
         )
     };
-    logging::info(
-        "smb",
-        format!("Server-Test: url={}", url.trim()),
-    );
+    logging::info("smb", format!("Server-Test: url={}", url.trim()));
     let result = test_connection(&url, &login, &password, auto_mount, quiet.unwrap_or(false)).await;
     if result.ok {
         logging::info("smb", format!("Server-Test OK: {}", result.message));
     } else if result.soft_hold {
         logging::info(
             "smb",
-            format!("Server-Test soft-hold (status unchanged): {}", result.message),
+            format!(
+                "Server-Test soft-hold (status unchanged): {}",
+                result.message
+            ),
         );
     } else {
-        logging::warn("smb", format!("Server-Test fehlgeschlagen: {}", result.message));
+        logging::warn(
+            "smb",
+            format!("Server-Test fehlgeschlagen: {}", result.message),
+        );
     }
     Ok(result)
 }
@@ -126,18 +128,14 @@ pub async fn upload_to_server(
         (
             cache.clone(),
             o.server_url.unwrap_or_else(|| cache.server_url.clone()),
-            o.server_login
-                .unwrap_or_else(|| cache.server_login.clone()),
+            o.server_login.unwrap_or_else(|| cache.server_login.clone()),
             o.server_password
                 .unwrap_or_else(|| cache.server_password.clone()),
             cache.smb_auto_mount_enabled,
         )
     };
 
-    logging::info(
-        "smb",
-        format!("Upload start: {}", file_name(&local_path)),
-    );
+    logging::info("smb", format!("Upload start: {}", file_name(&local_path)));
 
     // Do NOT reset slot cancel here — the frontend clears it when starting a
     // fresh slot job. Resetting at command entry would swallow a cancel that

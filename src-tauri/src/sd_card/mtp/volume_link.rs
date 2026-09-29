@@ -75,9 +75,7 @@ fn macos_volume_candidate(path: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     !matches!(
         lower.as_str(),
-        "macintosh hd"
-            | "macintosh hd - data"
-            | "mac hd"
+        "macintosh hd" | "macintosh hd - data" | "mac hd"
     ) && !lower.starts_with("com.apple.timemachine.")
         && !lower.starts_with(".timemachine")
         && !lower.starts_with("backups of ")
@@ -186,9 +184,9 @@ pub fn mtp_covered_by_volume_for_source(source_id: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::allowlist::{match_usb_identity, mtp_source_id, UsbDeviceHint};
     use super::super::mtp_whitelist::UsbImportMode;
+    use super::*;
     use std::fs;
     use tempfile::tempdir;
 
@@ -293,8 +291,7 @@ mod tests {
         let cam = dji_cam("SERIAL1");
         let attached = vec![cam.clone()];
         assert!(volume_for_usb_camera(&volumes, &cam, &attached).is_none());
-        let visible =
-            filter_visible_usb_cameras(&volumes, vec![cam], UsbImportMode::MtpPreferred);
+        let visible = filter_visible_usb_cameras(&volumes, vec![cam], UsbImportMode::MtpPreferred);
         assert_eq!(visible.len(), 1);
     }
 

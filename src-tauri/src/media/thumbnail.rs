@@ -197,10 +197,7 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
             if let Ok(bytes) = fs::read(&cache_path) {
                 // Ignore empty leftovers from earlier failed Windows locked writes.
                 if bytes.len() > 32 {
-                    return Ok(CachedThumbnail {
-                        bytes,
-                        cache_path,
-                    });
+                    return Ok(CachedThumbnail { bytes, cache_path });
                 }
                 let _ = fs::remove_file(&cache_path);
             }
@@ -313,33 +310,34 @@ fn extract_video_frame_with_ffmpeg(
     let out_str = out_path.to_string_lossy().into_owned();
     let in_str = path.to_string_lossy().into_owned();
 
-    let run = |seek_before_input: bool, use_scale: bool| -> Result<(bool, String), ThumbnailError> {
-        let mut cmd = Command::new(ffmpeg);
-        cmd.arg("-nostdin")
-            .arg("-y")
-            .arg("-hide_banner")
-            .arg("-loglevel")
-            .arg("error");
-        if seek_before_input {
-            cmd.args(["-ss", "0.5"]);
-        }
-        cmd.arg("-i").arg(&in_str);
-        if !seek_before_input {
-            cmd.args(["-ss", "0.1"]);
-        }
-        cmd.args(["-an", "-frames:v", "1"]);
-        if use_scale {
-            cmd.args(["-vf", &scale]);
-        }
-        cmd.args(["-q:v", qv, "-threads", "1", "-update", "1", &out_str])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped());
-        apply_no_window(&mut cmd);
-        let output = cmd.output().map_err(ThumbnailError::Io)?;
-        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Ok((output.status.success(), err))
-    };
+    let run =
+        |seek_before_input: bool, use_scale: bool| -> Result<(bool, String), ThumbnailError> {
+            let mut cmd = Command::new(ffmpeg);
+            cmd.arg("-nostdin")
+                .arg("-y")
+                .arg("-hide_banner")
+                .arg("-loglevel")
+                .arg("error");
+            if seek_before_input {
+                cmd.args(["-ss", "0.5"]);
+            }
+            cmd.arg("-i").arg(&in_str);
+            if !seek_before_input {
+                cmd.args(["-ss", "0.1"]);
+            }
+            cmd.args(["-an", "-frames:v", "1"]);
+            if use_scale {
+                cmd.args(["-vf", &scale]);
+            }
+            cmd.args(["-q:v", qv, "-threads", "1", "-update", "1", &out_str])
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped());
+            apply_no_window(&mut cmd);
+            let output = cmd.output().map_err(ThumbnailError::Io)?;
+            let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            Ok((output.status.success(), err))
+        };
 
     let (ok, err1) = run(true, true)?;
     if !ok {
@@ -509,7 +507,11 @@ mod tests {
 
         let cached =
             generate_thumbnail_cached_with_ffmpeg(&vid, ThumbQuality::Lq, Some(&ffmpeg)).unwrap();
-        assert!(cached.bytes.len() > 32, "thumb too small: {}", cached.bytes.len());
+        assert!(
+            cached.bytes.len() > 32,
+            "thumb too small: {}",
+            cached.bytes.len()
+        );
         assert!(cached.cache_path.is_file());
     }
 }

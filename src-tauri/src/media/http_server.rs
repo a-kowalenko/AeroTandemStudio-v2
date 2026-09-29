@@ -24,10 +24,8 @@ pub struct MediaServerState {
 
 impl MediaServerState {
     pub fn url_for_path(&self, path: &str) -> String {
-        let encoded = percent_encoding::utf8_percent_encode(
-            path,
-            percent_encoding::NON_ALPHANUMERIC,
-        );
+        let encoded =
+            percent_encoding::utf8_percent_encode(path, percent_encoding::NON_ALPHANUMERIC);
         format!("{}/{encoded}", self.base_url.trim_end_matches('/'))
     }
 }
@@ -178,7 +176,8 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
     }
 
     if let Some(range_header) = range_header {
-        let ranges = HttpRange::parse(range_header, len).map_err(|_| "invalid range".to_string())?;
+        let ranges =
+            HttpRange::parse(range_header, len).map_err(|_| "invalid range".to_string())?;
         let first = ranges.first().ok_or_else(|| "empty range".to_string())?;
         let start = first.start;
         let mut end = start + first.length - 1;
@@ -199,7 +198,8 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
         end = start + (end - start).min(len - start).min(MAX_CHUNK - 1);
         let nbytes = end + 1 - start;
         let mut buf = vec![0_u8; nbytes as usize];
-        file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+        file.seek(SeekFrom::Start(start))
+            .map_err(|e| e.to_string())?;
         file.read_exact(&mut buf).map_err(|e| e.to_string())?;
         let content_range = format!("bytes {start}-{end}/{len}");
         return write_response(
@@ -347,7 +347,9 @@ mod tests {
 
     #[test]
     fn client_abort_kinds_are_ignored() {
-        assert!(is_client_abort(&std::io::Error::from(ErrorKind::BrokenPipe)));
+        assert!(is_client_abort(&std::io::Error::from(
+            ErrorKind::BrokenPipe
+        )));
         assert!(is_client_abort(&std::io::Error::from(
             ErrorKind::ConnectionReset
         )));
@@ -355,9 +357,7 @@ mod tests {
             ErrorKind::ConnectionAborted
         )));
         assert!(is_client_abort(&std::io::Error::from(ErrorKind::WriteZero)));
-        assert!(!is_client_abort(&std::io::Error::from(
-            ErrorKind::TimedOut
-        )));
+        assert!(!is_client_abort(&std::io::Error::from(ErrorKind::TimedOut)));
         assert!(map_write_err(std::io::Error::from(ErrorKind::ConnectionAborted)).is_ok());
         assert!(map_write_err(std::io::Error::from(ErrorKind::TimedOut)).is_err());
     }
@@ -391,7 +391,10 @@ mod tests {
             .split('/')
             .next()
             .unwrap();
-        let encoded = url_path.splitn(2, &format!("http://{host_port}")).nth(1).unwrap();
+        let encoded = url_path
+            .splitn(2, &format!("http://{host_port}"))
+            .nth(1)
+            .unwrap();
 
         // Range request
         let mut stream = TcpStream::connect(host_port).unwrap();
@@ -414,9 +417,8 @@ mod tests {
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
-        let req = format!(
-            "GET {encoded} HTTP/1.1\r\nHost: {host_port}\r\nConnection: close\r\n\r\n"
-        );
+        let req =
+            format!("GET {encoded} HTTP/1.1\r\nHost: {host_port}\r\nConnection: close\r\n\r\n");
         stream.write_all(req.as_bytes()).unwrap();
         let mut resp = Vec::new();
         stream.read_to_end(&mut resp).unwrap();

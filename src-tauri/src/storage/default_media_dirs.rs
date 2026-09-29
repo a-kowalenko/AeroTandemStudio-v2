@@ -61,7 +61,9 @@ pub enum DefaultMediaDirsError {
 }
 
 /// Resolve `…/Videos|Movies/AeroTandemStudio` (or override root).
-pub fn media_root_from_override(override_root: Option<&Path>) -> Result<PathBuf, DefaultMediaDirsError> {
+pub fn media_root_from_override(
+    override_root: Option<&Path>,
+) -> Result<PathBuf, DefaultMediaDirsError> {
     if let Some(root) = override_root {
         let trimmed = root.as_os_str();
         if trimmed.is_empty() {
@@ -369,9 +371,7 @@ fn list_alternate_fixed_roots() -> Vec<PathBuf> {
             for entry in entries.flatten() {
                 let name = entry.file_name();
                 let name_str = name.to_string_lossy();
-                if name_str.eq_ignore_ascii_case("Macintosh HD")
-                    || name_str.starts_with('.')
-                {
+                if name_str.eq_ignore_ascii_case("Macintosh HD") || name_str.starts_with('.') {
                     continue;
                 }
                 let p = entry.path();
@@ -393,9 +393,7 @@ fn list_alternate_fixed_roots() -> Vec<PathBuf> {
                     // /media/<user>/<vol> or /mnt/<vol>
                     if let Ok(inner) = fs::read_dir(&p) {
                         let children: Vec<_> = inner.flatten().map(|e| e.path()).collect();
-                        if children.iter().any(|c| c.is_dir())
-                            && p.components().count() <= 4
-                        {
+                        if children.iter().any(|c| c.is_dir()) && p.components().count() <= 4 {
                             for child in children {
                                 if child.is_dir() {
                                     out.push(child.join(APP_MEDIA_ROOT_NAME));
@@ -428,9 +426,15 @@ mod tests {
 
     #[test]
     fn cloud_path_detection() {
-        assert!(looks_like_cloud_path(r"C:\Users\x\OneDrive\Videos\AeroTandemStudio"));
-        assert!(looks_like_cloud_path("/Users/x/Library/Mobile Documents/com~apple~CloudDocs"));
-        assert!(looks_like_cloud_path("/home/x/Dropbox/Videos/AeroTandemStudio"));
+        assert!(looks_like_cloud_path(
+            r"C:\Users\x\OneDrive\Videos\AeroTandemStudio"
+        ));
+        assert!(looks_like_cloud_path(
+            "/Users/x/Library/Mobile Documents/com~apple~CloudDocs"
+        ));
+        assert!(looks_like_cloud_path(
+            "/home/x/Dropbox/Videos/AeroTandemStudio"
+        ));
         assert!(looks_like_cloud_path("/home/x/Google Drive/foo"));
         assert!(!looks_like_cloud_path(r"D:\AeroTandemStudio"));
         assert!(!looks_like_cloud_path("/home/x/Videos/AeroTandemStudio"));
@@ -440,8 +444,8 @@ mod tests {
     fn ensure_creates_one_dir_per_kind() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path().join(APP_MEDIA_ROOT_NAME);
-        let speicher = ensure_default_media_dir(DefaultMediaDirKind::Speicherort, Some(&root))
-            .unwrap();
+        let speicher =
+            ensure_default_media_dir(DefaultMediaDirKind::Speicherort, Some(&root)).unwrap();
         assert!(PathBuf::from(&speicher.path).is_dir());
         assert!(speicher.created);
         assert!(speicher.path.ends_with("Erstellt") || speicher.path.contains("Erstellt"));
@@ -475,9 +479,14 @@ mod tests {
                 || p.sd_backup_folder.contains(SD_BACKUPS_DIR)
         );
         let speicher_parent = PathBuf::from(&p.speicherort).parent().map(PathBuf::from);
-        let backup_parent = PathBuf::from(&p.sd_backup_folder).parent().map(PathBuf::from);
+        let backup_parent = PathBuf::from(&p.sd_backup_folder)
+            .parent()
+            .map(PathBuf::from);
         assert_eq!(speicher_parent, backup_parent);
-        assert_eq!(speicher_parent.map(|x| path_to_string(&x)), Some(p.root.clone()));
+        assert_eq!(
+            speicher_parent.map(|x| path_to_string(&x)),
+            Some(p.root.clone())
+        );
         assert_eq!(p.speicherort_exists, PathBuf::from(&p.speicherort).is_dir());
         assert_eq!(
             p.sd_backup_folder_exists,
@@ -495,7 +504,10 @@ mod tests {
         // Exercise the same existence check used by propose_default_media_dirs.
         assert!(speicher.is_dir());
         assert!(!backup.is_dir());
-        assert_eq!(path_for_kind(&root, DefaultMediaDirKind::Speicherort), speicher);
+        assert_eq!(
+            path_for_kind(&root, DefaultMediaDirKind::Speicherort),
+            speicher
+        );
         assert_eq!(
             path_for_kind(&root, DefaultMediaDirKind::SdBackupFolder),
             backup

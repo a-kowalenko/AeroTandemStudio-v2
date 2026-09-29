@@ -126,25 +126,23 @@ fn options_from_config(cfg: &AppConfig) -> QrScanOptions {
 }
 
 fn read_config(state: &ConfigState) -> AppConfig {
-    state
-        .cache
-        .lock()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+    state.cache.lock().map(|g| g.clone()).unwrap_or_default()
 }
 
 fn make_progress_cb(app: AppHandle) -> Arc<dyn Fn(&str, &str, u32, u32) + Send + Sync> {
-    Arc::new(move |path: &str, phase: &str, frame: u32, frames_total: u32| {
-        let _ = app.emit(
-            "qr-scan-progress",
-            QrScanProgressEvent {
-                path: path.to_string(),
-                phase: phase.to_string(),
-                frame,
-                frames_total,
-            },
-        );
-    })
+    Arc::new(
+        move |path: &str, phase: &str, frame: u32, frames_total: u32| {
+            let _ = app.emit(
+                "qr-scan-progress",
+                QrScanProgressEvent {
+                    path: path.to_string(),
+                    phase: phase.to_string(),
+                    frame,
+                    frames_total,
+                },
+            );
+        },
+    )
 }
 
 fn log_qr_result(kind: &str, path: &str, dto: &QrScanResultDto) {
@@ -257,25 +255,26 @@ pub async fn scan_qr_videos(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
-    let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
-    logging::info(
-        "qr",
-        {
-            let n = paths.len();
-            let scan_n = ends_first_edge_jobs(n, VIDEO_EDGE_SCAN_PER_SIDE).len();
-            if n > scan_n {
-                format!(
+    let workers = if cfg.parallel_processing_enabled {
+        4
+    } else {
+        1
+    };
+    logging::info("qr", {
+        let n = paths.len();
+        let scan_n = ends_first_edge_jobs(n, VIDEO_EDGE_SCAN_PER_SIDE).len();
+        if n > scan_n {
+            format!(
                     "Video-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {VIDEO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, window={:.0}s",
                     opts.scan_seconds
                 )
-            } else {
-                format!(
+        } else {
+            format!(
                     "Video-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, window={:.0}s",
                     opts.scan_seconds
                 )
-            }
-        },
-    );
+        }
+    });
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -303,12 +302,18 @@ pub async fn scan_qr_videos(
             .unwrap_or_default();
         logging::info(
             "qr",
-            format!("Video-Batch-Scan Treffer in {}: Gast={gast}", file_name(src)),
+            format!(
+                "Video-Batch-Scan Treffer in {}: Gast={gast}",
+                file_name(src)
+            ),
         );
     } else if dto.cancelled {
         logging::warn("qr", "Video-Batch-Scan abgebrochen");
     } else {
-        logging::info("qr", format!("Video-Batch-Scan ohne Treffer: {}", dto.message));
+        logging::info(
+            "qr",
+            format!("Video-Batch-Scan ohne Treffer: {}", dto.message),
+        );
     }
     Ok(dto)
 }
@@ -333,25 +338,26 @@ pub async fn scan_qr_photos(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
-    let workers = if cfg.parallel_processing_enabled { 4 } else { 1 };
-    logging::info(
-        "qr",
-        {
-            let n = paths.len();
-            let scan_n = ends_first_edge_jobs(n, PHOTO_EDGE_SCAN_PER_SIDE).len();
-            if n > scan_n {
-                format!(
+    let workers = if cfg.parallel_processing_enabled {
+        4
+    } else {
+        1
+    };
+    logging::info("qr", {
+        let n = paths.len();
+        let scan_n = ends_first_edge_jobs(n, PHOTO_EDGE_SCAN_PER_SIDE).len();
+        if n > scan_n {
+            format!(
                     "Foto-Batch-Scan start: {n} Datei(en), scan={scan_n} (je {PHOTO_EDGE_SCAN_PER_SIDE} Ränder), workers={workers}, strategy=ends-first, decode={}px fast→gründlich",
                     opts.max_photo_width
                 )
-            } else {
-                format!(
+        } else {
+            format!(
                     "Foto-Batch-Scan start: {n} Datei(en), workers={workers}, strategy=ends-first, decode={}px fast→gründlich",
                     opts.max_photo_width
                 )
-            }
-        },
-    );
+        }
+    });
     let on_progress = make_progress_cb(app.clone());
 
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -384,7 +390,10 @@ pub async fn scan_qr_photos(
     } else if dto.cancelled {
         logging::warn("qr", "Foto-Batch-Scan abgebrochen");
     } else {
-        logging::info("qr", format!("Foto-Batch-Scan ohne Treffer: {}", dto.message));
+        logging::info(
+            "qr",
+            format!("Foto-Batch-Scan ohne Treffer: {}", dto.message),
+        );
     }
     Ok(dto)
 }

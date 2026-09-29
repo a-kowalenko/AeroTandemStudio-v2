@@ -193,7 +193,10 @@ pub fn parse_ioreg_usb_cameras(text: &str) -> Vec<DetectedUsbCamera> {
     for line in text.lines() {
         let trimmed = line.trim();
         // New device node, e.g. `+-o HERO8 BLACK@14100000  <class IOUSBHostDevice…`
-        if let Some(rest) = trimmed.strip_prefix("+-o ").or_else(|| trimmed.strip_prefix("o ")) {
+        if let Some(rest) = trimmed
+            .strip_prefix("+-o ")
+            .or_else(|| trimmed.strip_prefix("o "))
+        {
             if vid.is_some() || pid.is_some() || !product.is_empty() || !block_name.is_empty() {
                 flush(
                     &mut block_name,
@@ -290,10 +293,7 @@ pub fn parse_hex_from_text(text: &str) -> Option<u16> {
     let lower = text.to_ascii_lowercase();
     if let Some(idx) = lower.rfind("0x") {
         let rest = &lower[idx + 2..];
-        let hex: String = rest
-            .chars()
-            .take_while(|c| c.is_ascii_hexdigit())
-            .collect();
+        let hex: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
         if (3..=4).contains(&hex.len()) {
             return u16::from_str_radix(&hex, 16).ok();
         }

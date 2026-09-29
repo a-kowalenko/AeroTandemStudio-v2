@@ -190,11 +190,7 @@ fn model_label_for(vendor: ActionCamVendor, pid: Option<u16>, friendly: &str) ->
 
 fn useful_friendly_name(name: &str) -> bool {
     let n = name.trim().to_ascii_lowercase();
-    !n.is_empty()
-        && !matches!(
-            n.as_str(),
-            "mtp" | "ptp" | "portable device" | "usb device"
-        )
+    !n.is_empty() && !matches!(n.as_str(), "mtp" | "ptp" | "portable device" | "usb device")
 }
 
 /// When the OS product string names a concrete model, use it over the PID table.
@@ -207,8 +203,7 @@ fn specific_model_from_friendly_name(vendor: ActionCamVendor, name: &str) -> Opt
     match vendor {
         ActionCamVendor::GoPro => {
             // "HERO13 Black", "HERO 8", "GoPro HERO11 Black", "MAX", "FUSION", …
-            let has_hero_gen = n.contains("hero")
-                && n.chars().any(|c| c.is_ascii_digit());
+            let has_hero_gen = n.contains("hero") && n.chars().any(|c| c.is_ascii_digit());
             if has_hero_gen || n.contains("max") || n.contains("fusion") {
                 Some(trimmed.to_string())
             } else {
@@ -457,7 +452,10 @@ mod tests {
     fn vids_map_to_vendors() {
         assert_eq!(vendor_for_vid(GOPRO_VID), Some(ActionCamVendor::GoPro));
         assert_eq!(vendor_for_vid(DJI_VID), Some(ActionCamVendor::Dji));
-        assert_eq!(vendor_for_vid(INSTA360_VID), Some(ActionCamVendor::Insta360));
+        assert_eq!(
+            vendor_for_vid(INSTA360_VID),
+            Some(ActionCamVendor::Insta360)
+        );
         assert_eq!(vendor_for_vid(0x18D1), None); // Google
         assert_eq!(vendor_for_vid(0x05AC), None); // Apple
     }
@@ -511,11 +509,7 @@ mod tests {
     #[test]
     fn gopro_hero13_name_beats_shared_pid_0059() {
         // HERO13 Black reuses USB PID 0x0059 (same as HERO11).
-        let label = model_label_for(
-            ActionCamVendor::GoPro,
-            Some(0x0059),
-            "HERO13 Black",
-        );
+        let label = model_label_for(ActionCamVendor::GoPro, Some(0x0059), "HERO13 Black");
         assert_eq!(label, "HERO13 Black");
 
         let hint = UsbDeviceHint {

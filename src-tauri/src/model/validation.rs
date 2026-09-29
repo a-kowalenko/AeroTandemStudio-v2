@@ -72,8 +72,7 @@ pub fn validate_kunde(
     if kunde.is_outside_video() && !tm.is_empty() && !vs.is_empty() {
         if tm.to_lowercase() == vs.to_lowercase() {
             errors.push(
-                "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein"
-                    .into(),
+                "Dieselbe Person kann nicht Tandemmaster und Videospringer zugleich sein".into(),
             );
         }
     }
@@ -203,8 +202,14 @@ mod tests {
         k.form_mode = "manual".into();
         let r = validate_kunde(&k, &[], false, true);
         assert!(!r.valid);
-        assert!(r.errors.iter().any(|e| e.contains("Kunden-ID ist erforderlich")));
-        assert!(r.errors.iter().any(|e| e.contains("Booking-ID ist erforderlich")));
+        assert!(r
+            .errors
+            .iter()
+            .any(|e| e.contains("Kunden-ID ist erforderlich")));
+        assert!(r
+            .errors
+            .iter()
+            .any(|e| e.contains("Booking-ID ist erforderlich")));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-﻿//! Extract full-resolution JPEG frames from a working video clip (Phase 44).
+//! Extract full-resolution JPEG frames from a working video clip (Phase 44).
 //!
 //! - **Accurate** seek (`-ss` after `-i`): playhead / single frame
 //! - **Fast** seek (`-ss` before `-i`, accurate fallback): interval batches
@@ -190,12 +190,8 @@ fn run_extract_one(
             }
             if mode == FrameSeekMode::Fast {
                 // Accurate fallback when keyframe seek fails.
-                let accurate = build_extract_frame_args(
-                    input,
-                    seek_secs,
-                    &out_str,
-                    FrameSeekMode::Accurate,
-                );
+                let accurate =
+                    build_extract_frame_args(input, seek_secs, &out_str, FrameSeekMode::Accurate);
                 match run_ffmpeg_checked(ffmpeg, &accurate) {
                     Ok(()) => {}
                     Err(e2) => {
@@ -283,53 +279,51 @@ where
 
     thread::scope(|scope| {
         for _ in 0..workers {
-            scope.spawn(|| {
-                loop {
-                    if is_cancelled() {
+            scope.spawn(|| loop {
+                if is_cancelled() {
+                    if let Ok(mut g) = error.lock() {
+                        if g.is_none() {
+                            *g = Some(FrameExtractError::cancelled());
+                        }
+                    }
+                    break;
+                }
+                if error
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.is_some().then_some(()))
+                    .is_some()
+                {
+                    break;
+                }
+                let i = next.fetch_add(1, Ordering::SeqCst);
+                if i >= count {
+                    break;
+                }
+                let t = times_secs[i];
+                let out = &out_paths[i];
+                match run_extract_one(ffmpeg, &in_str, t, out, seek_mode) {
+                    Ok(()) => {
+                        let epoch = frame_capture_epoch(clip_base, t);
+                        let _ = set_file_mtime_epoch(out, epoch);
+                        let finished = done_count.fetch_add(1, Ordering::SeqCst) + 1;
+                        if let Ok(mut cb) = on_progress.lock() {
+                            cb(finished as u64, total, t);
+                        }
+                    }
+                    Err(e) => {
+                        let cancelled =
+                            matches!(e, FrameExtractError::Cancelled(_)) || is_cancelled();
                         if let Ok(mut g) = error.lock() {
                             if g.is_none() {
-                                *g = Some(FrameExtractError::cancelled());
+                                *g = Some(if cancelled {
+                                    FrameExtractError::cancelled()
+                                } else {
+                                    e
+                                });
                             }
                         }
                         break;
-                    }
-                    if error
-                        .lock()
-                        .ok()
-                        .and_then(|g| g.is_some().then_some(()))
-                        .is_some()
-                    {
-                        break;
-                    }
-                    let i = next.fetch_add(1, Ordering::SeqCst);
-                    if i >= count {
-                        break;
-                    }
-                    let t = times_secs[i];
-                    let out = &out_paths[i];
-                    match run_extract_one(ffmpeg, &in_str, t, out, seek_mode) {
-                        Ok(()) => {
-                            let epoch = frame_capture_epoch(clip_base, t);
-                            let _ = set_file_mtime_epoch(out, epoch);
-                            let finished = done_count.fetch_add(1, Ordering::SeqCst) + 1;
-                            if let Ok(mut cb) = on_progress.lock() {
-                                cb(finished as u64, total, t);
-                            }
-                        }
-                        Err(e) => {
-                            let cancelled = matches!(e, FrameExtractError::Cancelled(_))
-                                || is_cancelled();
-                            if let Ok(mut g) = error.lock() {
-                                if g.is_none() {
-                                    *g = Some(if cancelled {
-                                        FrameExtractError::cancelled()
-                                    } else {
-                                        e
-                                    });
-                                }
-                            }
-                            break;
-                        }
                     }
                 }
             });
@@ -389,9 +383,7 @@ pub fn copy_files_preserving_names(
         }
         let src_path = Path::new(src);
         if !src_path.is_file() {
-            return Err(FrameExtractError::Message(format!(
-                "file not found: {src}"
-            )));
+            return Err(FrameExtractError::Message(format!("file not found: {src}")));
         }
         let name = src_path
             .file_name()

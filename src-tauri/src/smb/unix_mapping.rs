@@ -7,10 +7,7 @@
 //! on every CI host); live enumeration runs only on macOS/Linux.
 
 // On Windows this module is compile-tested only (OPT-17 owns live maps).
-#![cfg_attr(
-    not(any(target_os = "macos", target_os = "linux")),
-    allow(dead_code)
-)]
+#![cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
 
 #[cfg(any(test, target_os = "linux", target_os = "macos"))]
 use std::path::PathBuf;
@@ -130,9 +127,7 @@ pub fn mapping_from_proc_mounts_line(line: &str) -> Option<DriveMapping> {
     }
     let unc = unc_from_mount_source(&source).or_else(|| {
         // Fallback: options may carry server=/share=
-        fields
-            .get(3)
-            .and_then(|opts| unc_from_mount_options(opts))
+        fields.get(3).and_then(|opts| unc_from_mount_options(opts))
     })?;
     Some(DriveMapping {
         local_name: target,
@@ -177,7 +172,9 @@ fn strip_auth_from_host(host_part: &str) -> String {
         .rsplit_once('@')
         .map(|(_, host)| host)
         .unwrap_or(after_semicolon);
-    host.trim().trim_matches(|c| c == '/' || c == '\\').to_string()
+    host.trim()
+        .trim_matches(|c| c == '/' || c == '\\')
+        .to_string()
 }
 
 fn decode_gvfs_value(raw: &str) -> String {
@@ -189,9 +186,7 @@ fn decode_gvfs_value(raw: &str) -> String {
 
 /// Split `/proc/mounts` fields; octal escapes stay inside field tokens.
 fn split_proc_mounts_fields(line: &str) -> Vec<String> {
-    line.split_whitespace()
-        .map(|s| s.to_string())
-        .collect()
+    line.split_whitespace().map(|s| s.to_string()).collect()
 }
 
 fn unescape_proc_mounts(s: &str) -> String {
@@ -220,9 +215,10 @@ fn unescape_proc_mounts(s: &str) -> String {
 }
 
 fn push_unique(out: &mut Vec<DriveMapping>, mapping: DriveMapping) {
-    if out.iter().any(|m| {
-        m.local_name == mapping.local_name && m.remote_unc == mapping.remote_unc
-    }) {
+    if out
+        .iter()
+        .any(|m| m.local_name == mapping.local_name && m.remote_unc == mapping.remote_unc)
+    {
         return;
     }
     out.push(mapping);
@@ -379,9 +375,7 @@ mod tests {
     #[test]
     fn gvfs_name_with_user_and_encoding() {
         assert_eq!(
-            unc_from_gvfs_smb_share_name(
-                "smb-share:server=my%2dhost,share=my%20share,user=alice"
-            ),
+            unc_from_gvfs_smb_share_name("smb-share:server=my%2dhost,share=my%20share,user=alice"),
             Some(r"\\my-host\my share".into())
         );
     }
@@ -415,10 +409,7 @@ mod tests {
             remote_unc: r"\\169.254.169.254\aktuell".into(),
         }];
         let p = match_unc_to_mapped_path(r"\\169.254.169.254\aktuell\jobs\a", &maps).unwrap();
-        assert_eq!(
-            p,
-            PathBuf::from("/Volumes/aktuell").join("jobs").join("a")
-        );
+        assert_eq!(p, PathBuf::from("/Volumes/aktuell").join("jobs").join("a"));
     }
 
     #[test]

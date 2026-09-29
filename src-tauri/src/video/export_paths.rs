@@ -232,29 +232,33 @@ pub fn video_output_path(layout: &OutputLayout, kunde: &Kunde) -> Result<PathBuf
 
 pub fn watermark_video_path(layout: &OutputLayout) -> Result<PathBuf, String> {
     let dir = layout.base_dir.join(SUBDIR_PREVIEW_VIDEO);
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Unterordner '{SUBDIR_PREVIEW_VIDEO}' konnte nicht erstellt werden: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!("Unterordner '{SUBDIR_PREVIEW_VIDEO}' konnte nicht erstellt werden: {e}")
+    })?;
     Ok(dir.join(format!("{}_preview.mp4", layout.base_filename)))
 }
 
 pub fn watermark_photo_dir(layout: &OutputLayout) -> Result<PathBuf, String> {
     let dir = layout.base_dir.join(SUBDIR_PREVIEW_FOTO);
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Unterordner '{SUBDIR_PREVIEW_FOTO}' konnte nicht erstellt werden: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!("Unterordner '{SUBDIR_PREVIEW_FOTO}' konnte nicht erstellt werden: {e}")
+    })?;
     Ok(dir)
 }
 
 pub fn foto_subdir_for_handcam(layout: &OutputLayout) -> Result<PathBuf, String> {
     let dir = layout.base_dir.join(SUBDIR_HANDCAM_FOTO);
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Unterordner '{SUBDIR_HANDCAM_FOTO}' konnte nicht erstellt werden: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!("Unterordner '{SUBDIR_HANDCAM_FOTO}' konnte nicht erstellt werden: {e}")
+    })?;
     Ok(dir)
 }
 
 pub fn foto_subdir_for_outside(layout: &OutputLayout) -> Result<PathBuf, String> {
     let dir = layout.base_dir.join(SUBDIR_OUTSIDE_FOTO);
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Unterordner '{SUBDIR_OUTSIDE_FOTO}' konnte nicht erstellt werden: {e}"))?;
+    fs::create_dir_all(&dir).map_err(|e| {
+        format!("Unterordner '{SUBDIR_OUTSIDE_FOTO}' konnte nicht erstellt werden: {e}")
+    })?;
     Ok(dir)
 }
 
@@ -334,9 +338,14 @@ mod tests {
         assert_eq!(dropzone_folder_suffix("Hamburg"), "_HAM");
         assert_eq!(dropzone_folder_suffix("Hannover"), "_HAN");
         assert_eq!(dropzone_folder_suffix("C"), "_C2");
-        assert_ne!(dropzone_folder_suffix("Celle"), dropzone_folder_suffix("Calden"));
+        assert_ne!(
+            dropzone_folder_suffix("Celle"),
+            dropzone_folder_suffix("Calden")
+        );
 
-        let samples = ["Calden", "Gera", "Kassel", "Celle", "Hamburg", "Hannover", "C"];
+        let samples = [
+            "Calden", "Gera", "Kassel", "Celle", "Hamburg", "Hannover", "C",
+        ];
         let mut seen = HashSet::new();
         for ort in samples {
             let suffix = dropzone_folder_suffix(ort);
@@ -386,15 +395,11 @@ mod tests {
         let mut k = Kunde::default();
         k.handcam_video = true;
         let vp = video_output_path(&layout, &k).unwrap();
-        assert!(vp
-            .to_string_lossy()
-            .contains(SUBDIR_HANDCAM_VIDEO));
+        assert!(vp.to_string_lossy().contains(SUBDIR_HANDCAM_VIDEO));
         assert!(vp.file_name().unwrap().to_string_lossy().ends_with(".mp4"));
 
         k.outside_video = true;
         let vp2 = video_output_path(&layout, &k).unwrap();
-        assert!(vp2
-            .to_string_lossy()
-            .contains(SUBDIR_OUTSIDE_VIDEO));
+        assert!(vp2.to_string_lossy().contains(SUBDIR_OUTSIDE_VIDEO));
     }
 }

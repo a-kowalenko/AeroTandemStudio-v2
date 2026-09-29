@@ -14,8 +14,8 @@ use crate::storage::local_folders::{
     clear_local_backup_folders as clear_backup_folders_impl,
     clear_local_job_folders as clear_job_folders_impl,
     probe_clear_local_backup_folders as probe_backup_folders_impl,
-    probe_clear_local_job_folders as probe_job_folders_impl, run_auto_cleanup as run_auto_cleanup_impl,
-    AutoCleanupResult, LocalFolderClearProbe,
+    probe_clear_local_job_folders as probe_job_folders_impl,
+    run_auto_cleanup as run_auto_cleanup_impl, AutoCleanupResult, LocalFolderClearProbe,
 };
 use crate::storage::logging::{self, log_error, log_info, log_warn, LogEntry};
 use crate::storage::vorgang_history::VorgangHistoryStore;
@@ -89,10 +89,7 @@ pub fn get_log_min_level() -> String {
 
 /// Set minimum log level (persists into config when available).
 #[tauri::command]
-pub fn set_log_min_level(
-    state: State<'_, ConfigState>,
-    level: String,
-) -> Result<String, String> {
+pub fn set_log_min_level(state: State<'_, ConfigState>, level: String) -> Result<String, String> {
     let name = logging::set_min_level_name(&level);
     let mut cfg = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
@@ -316,10 +313,7 @@ pub struct ClearLocalBackupFoldersArgs {
     pub sd_backup_folder: Option<String>,
 }
 
-fn resolve_speicherort(
-    state: &ConfigState,
-    override_path: Option<String>,
-) -> String {
+fn resolve_speicherort(state: &ConfigState, override_path: Option<String>) -> String {
     override_path
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
@@ -333,10 +327,7 @@ fn resolve_speicherort(
         .unwrap_or_default()
 }
 
-fn resolve_sd_backup_folder(
-    state: &ConfigState,
-    override_path: Option<String>,
-) -> String {
+fn resolve_sd_backup_folder(state: &ConfigState, override_path: Option<String>) -> String {
     override_path
         .filter(|s| !s.trim().is_empty())
         .or_else(|| {
@@ -414,9 +405,7 @@ pub fn clear_local_backup_folders(
 
 /// Phase 42: age-filtered auto cleanup (max 1×/local calendar day). Busy gate is frontend-side.
 #[tauri::command]
-pub fn run_auto_cleanup(
-    state: tauri::State<'_, ConfigState>,
-) -> Result<AutoCleanupResult, String> {
+pub fn run_auto_cleanup(state: tauri::State<'_, ConfigState>) -> Result<AutoCleanupResult, String> {
     let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
     let mut cfg = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;

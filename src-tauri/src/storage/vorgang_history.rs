@@ -23,7 +23,8 @@ const QR_PREVIEW_DIR_NAME: &str = "vorgang_qr_previews";
 static DEFAULT_SCHEMA_READY: AtomicBool = AtomicBool::new(false);
 
 /// List/detail SELECT: aggregations computed once (not per-row correlated subqueries).
-const VORGAENGE_SELECT: &str = "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
+const VORGAENGE_SELECT: &str =
+    "SELECT v.id, v.created_at, v.gast, v.vorname, v.nachname, v.kunden_id, v.booking_id,
                         v.kunden_id_hash, v.booking_id_hash,
                         v.datum, v.ort, v.tandemmaster, v.videospringer, v.video_mode, v.form_mode,
                         v.manual_entry_mode,
@@ -252,7 +253,9 @@ impl VorgangHistoryStore {
 
     fn connect(&self) -> Result<Connection, VorgangHistoryError> {
         let conn = Connection::open(&self.db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")?;
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+        )?;
         Ok(conn)
     }
 
@@ -547,11 +550,7 @@ impl VorgangHistoryStore {
             files.push(file_input_from_path(wm, "video", "wm_video"));
         }
         if !result.marker_path.trim().is_empty() {
-            files.push(file_input_from_path(
-                &result.marker_path,
-                "other",
-                "marker",
-            ));
+            files.push(file_input_from_path(&result.marker_path, "other", "marker"));
         }
         self.insert_vorgang(
             kunde,
@@ -1140,7 +1139,10 @@ impl VorgangHistoryStore {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn list_appends(&self, vorgang_id: i64) -> Result<Vec<VorgangAppendEntry>, VorgangHistoryError> {
+    pub fn list_appends(
+        &self,
+        vorgang_id: i64,
+    ) -> Result<Vec<VorgangAppendEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT id, vorgang_id, correlation_id, folder_name, folder_path, created_at,
@@ -1150,8 +1152,7 @@ impl VorgangHistoryStore {
         )?;
         let rows = stmt.query_map(params![vorgang_id], |row| {
             let cats_raw: String = row.get(8)?;
-            let categories: Vec<String> =
-                serde_json::from_str(&cats_raw).unwrap_or_default();
+            let categories: Vec<String> = serde_json::from_str(&cats_raw).unwrap_or_default();
             Ok(VorgangAppendEntry {
                 id: row.get(0)?,
                 vorgang_id: row.get(1)?,
@@ -1216,7 +1217,10 @@ impl VorgangHistoryStore {
 
     /// List files from SQLite only — no SMB/`read_dir` scan on dialog open.
     /// Append rows are written by `record_append_files` when the job finishes.
-    pub fn list_files(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
+    pub fn list_files(
+        &self,
+        vorgang_id: i64,
+    ) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
         self.list_files_from_db(vorgang_id)
     }
 
@@ -1308,7 +1312,10 @@ impl VorgangHistoryStore {
         Ok(dir)
     }
 
-    fn list_files_from_db(&self, vorgang_id: i64) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
+    fn list_files_from_db(
+        &self,
+        vorgang_id: i64,
+    ) -> Result<Vec<VorgangFileEntry>, VorgangHistoryError> {
         let conn = self.connect()?;
         let mut stmt = conn.prepare(
             "SELECT d.id, d.vorgang_id, d.filename, d.media_type, d.role, d.size_bytes, d.path,
@@ -1362,8 +1369,10 @@ impl VorgangHistoryStore {
             "SELECT qr_preview_path FROM vorgaenge WHERE id IN ({placeholders}) AND qr_preview_path != ''"
         );
         let mut select_stmt = conn.prepare(&select_sql)?;
-        let params_dyn: Vec<&dyn rusqlite::types::ToSql> =
-            ids.iter().map(|i| i as &dyn rusqlite::types::ToSql).collect();
+        let params_dyn: Vec<&dyn rusqlite::types::ToSql> = ids
+            .iter()
+            .map(|i| i as &dyn rusqlite::types::ToSql)
+            .collect();
         let preview_paths: Vec<String> = select_stmt
             .query_map(params_dyn.as_slice(), |row| row.get::<_, String>(0))?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1380,7 +1389,11 @@ impl VorgangHistoryStore {
         }
         // Best-effort: remove empty preview dir.
         let dir = self.qr_preview_dir();
-        if dir.is_dir() && fs::read_dir(&dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if dir.is_dir()
+            && fs::read_dir(&dir)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(false)
+        {
             let _ = fs::remove_dir(&dir);
         }
         Ok(())
@@ -1426,7 +1439,9 @@ fn file_input_from_path(path: &str, media_type: &str, role: &str) -> VorgangFile
 }
 
 fn opt_str(s: Option<&str>) -> Option<String> {
-    s.map(str::trim).filter(|x| !x.is_empty()).map(str::to_string)
+    s.map(str::trim)
+        .filter(|x| !x.is_empty())
+        .map(str::to_string)
 }
 
 /// Initial SMB upload state when recording a create job.
@@ -1619,10 +1634,7 @@ fn scan_product_folder(
             if !path.is_file() {
                 continue;
             }
-            let fname = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if fname.starts_with('.') {
                 continue;
             }
@@ -1706,8 +1718,7 @@ fn merge_viewable_scan(
         return;
     }
     let key = path_lookup_key(path);
-    let (keep_id, keep_append_id, keep_append_folder) = if let Some(existing) = by_path.get(&key)
-    {
+    let (keep_id, keep_append_id, keep_append_folder) = if let Some(existing) = by_path.get(&key) {
         if role_priority(&existing.role) <= role_priority(&scanned.role) {
             return;
         }
@@ -1827,7 +1838,10 @@ mod tests {
         assert_eq!(list[0].manual_entry_mode, "oldschool");
         assert!(list[0].handcam_video);
         assert!(list[0].ist_bezahlt_handcam_video);
-        assert_eq!(list[0].correlation_id, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert_eq!(
+            list[0].correlation_id,
+            "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        );
         assert_eq!(list[0].ams_state, "pending");
         assert_eq!(list[0].ams_source, "local");
         assert_eq!(list[0].upload_state, "pending");
@@ -1858,10 +1872,7 @@ mod tests {
         assert_eq!(cached.state, "uploading");
 
         store
-            .mark_ams_handoff_cancelled(
-                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                "Abgebrochen",
-            )
+            .mark_ams_handoff_cancelled("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "Abgebrochen")
             .unwrap();
         let cancelled = &store.list_vorgaenge(10, None).unwrap()[0];
         assert_eq!(cancelled.ams_state, "cancelled");
@@ -1984,7 +1995,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
         store
             .update_ams_handoff_status(
@@ -2086,7 +2104,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
 
         let append_dir = dir.path().join("Max_nachreichung_01");
@@ -2115,7 +2140,10 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].append_id, Some(append_id));
         assert_eq!(files[0].role, "append_preview_foto");
-        assert_eq!(files[0].append_folder_name.as_deref(), Some("Max_nachreichung_01"));
+        assert_eq!(
+            files[0].append_folder_name.as_deref(),
+            Some("Max_nachreichung_01")
+        );
     }
 
     #[test]
@@ -2125,7 +2153,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
 
         let append_dir = dir.path().join("Max_nachreichung_01");
@@ -2155,7 +2190,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
         store
             .record_append(
@@ -2212,7 +2254,14 @@ mod tests {
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
 
         let id_off = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, false)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                false,
+            )
             .unwrap();
         let off_row = store.list_vorgaenge(10, None).unwrap()[0].clone();
         assert_eq!(off_row.upload_state, "none");
@@ -2238,7 +2287,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
@@ -2253,20 +2309,14 @@ mod tests {
             "uploading"
         );
 
-        store
-            .update_upload_state(Some(id), "", "done")
-            .unwrap();
+        store.update_upload_state(Some(id), "", "done").unwrap();
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
             "done"
         );
 
         store
-            .update_upload_state(
-                None,
-                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-                "failed",
-            )
+            .update_upload_state(None, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "failed")
             .unwrap();
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
@@ -2281,17 +2331,13 @@ mod tests {
             "cancelled"
         );
 
-        store
-            .update_upload_state(Some(id), "", "canceled")
-            .unwrap();
+        store.update_upload_state(Some(id), "", "canceled").unwrap();
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
             "cancelled"
         );
 
-        store
-            .update_upload_state(Some(id), "", "ignored")
-            .unwrap();
+        store.update_upload_state(Some(id), "", "ignored").unwrap();
         assert_eq!(
             store.list_vorgaenge(10, None).unwrap()[0].upload_state,
             "ignored"
@@ -2305,7 +2351,14 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
         let id = store
-            .insert_vorgang(&sample_kunde(), &sample_result(), "oldschool", &[], None, true)
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
             .unwrap();
         store
             .update_upload_state(Some(id), "", "uploading")

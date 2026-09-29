@@ -93,9 +93,9 @@ fn discover_bridges_blocking(timeout: Duration) -> Result<Vec<DiscoveredBridge>,
         match receiver.recv_timeout(wait) {
             Ok(ServiceEvent::ServiceResolved(info)) => {
                 let port = info.get_port();
-                let Some(host) = prefer_http_host(
-                    info.get_addresses().iter().map(|a| a.to_ip_addr()),
-                ) else {
+                let Some(host) =
+                    prefer_http_host(info.get_addresses().iter().map(|a| a.to_ip_addr()))
+                else {
                     continue;
                 };
                 let fullname = info.get_fullname().to_string();
@@ -104,10 +104,7 @@ fn discover_bridges_blocking(timeout: Duration) -> Result<Vec<DiscoveredBridge>,
                     .next()
                     .unwrap_or(info.get_hostname())
                     .to_string();
-                let version = info
-                    .get_property_val_str("ver")
-                    .unwrap_or("")
-                    .to_string();
+                let version = info.get_property_val_str("ver").unwrap_or("").to_string();
                 let caps = info
                     .get_property_val_str("caps")
                     .unwrap_or("")
@@ -116,18 +113,9 @@ fn discover_bridges_blocking(timeout: Duration) -> Result<Vec<DiscoveredBridge>,
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
                     .collect();
-                let monitor_path = info
-                    .get_property_val_str("path")
-                    .unwrap_or("")
-                    .to_string();
-                let display_name = info
-                    .get_property_val_str("name")
-                    .unwrap_or("")
-                    .to_string();
-                let instance_id = info
-                    .get_property_val_str("id")
-                    .unwrap_or("")
-                    .to_string();
+                let monitor_path = info.get_property_val_str("path").unwrap_or("").to_string();
+                let display_name = info.get_property_val_str("name").unwrap_or("").to_string();
+                let instance_id = info.get_property_val_str("id").unwrap_or("").to_string();
                 found.insert(
                     fullname,
                     DiscoveredBridge {
