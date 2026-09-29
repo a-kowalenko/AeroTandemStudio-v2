@@ -46,8 +46,41 @@ describe("amsPathHints", () => {
     );
     assert.equal(
       normalizeSmbUrlForCompare("SMB://Host/Share"),
-      "smb://Host/Share",
+      "smb://host/share",
     );
+    assert.equal(
+      normalizeSmbUrlForCompare("smb://SERVER/Aktuell/"),
+      "smb://server/aktuell",
+    );
+    assert.equal(
+      normalizeSmbUrlForCompare("\\\\Server\\Share\\"),
+      "smb://server/share",
+    );
+  });
+
+  it("treats case and trailing slash as equal in path-hints diff", () => {
+    const hints = {
+      primarySmbUrl: "smb://10.0.0.5/Aktuell/",
+      backupSmbUrl: "smb://10.0.0.5/Backup/",
+    };
+    const match = computePathHintsDiff(
+      {
+        server_url: "SMB://10.0.0.5/aktuell",
+        active_server_profile_id: "default",
+        server_profiles: [
+          {
+            id: "default",
+            url: "smb://10.0.0.5/aktuell",
+            backup_url: "smb://10.0.0.5/backup",
+          },
+        ],
+      },
+      {
+        primarySmbUrl: normalizeSmbUrlForCompare(hints.primarySmbUrl),
+        backupSmbUrl: normalizeSmbUrlForCompare(hints.backupSmbUrl),
+      },
+    );
+    assert.equal(match.kind, "match");
   });
 
   it("parses hints only with paths-v1 and primary", () => {

@@ -67,24 +67,30 @@ export function isPlaceholderServerUrl(url: string): boolean {
   );
 }
 
+/** Slash style + trailing `/` + full lower-case for SMB compare keys. */
+function finalizeSmbCompareKey(rest: string): string {
+  return `smb://${rest.replace(/\\/g, "/").replace(/\/+$/, "")}`.toLowerCase();
+}
+
 /**
  * Normalize SMB URLs for equality checks (HANDOFF §9.3 wire format).
- * UNC / `//` → `smb://`; backslashes → forward slashes; scheme lower-case.
+ * UNC / `//` → `smb://`; backslashes → forward slashes; trailing `/` stripped;
+ * entire key lower-cased (parity with OPT-17/18 UNC match).
  */
 export function normalizeSmbUrlForCompare(raw: string): string {
   const t = raw.trim();
   if (!t) return "";
   const lower = t.toLowerCase();
   if (lower.startsWith("smb://")) {
-    return `smb://${t.slice(6).replace(/\\/g, "/")}`;
+    return finalizeSmbCompareKey(t.slice(6));
   }
   if (t.startsWith("\\\\")) {
-    return `smb://${t.slice(2).replace(/\\/g, "/")}`;
+    return finalizeSmbCompareKey(t.slice(2));
   }
   if (t.startsWith("//")) {
-    return `smb://${t.slice(2).replace(/\\/g, "/")}`;
+    return finalizeSmbCompareKey(t.slice(2));
   }
-  return t;
+  return t.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
 export function hasPathsV1Capability(capabilities: string[] | undefined): boolean {
