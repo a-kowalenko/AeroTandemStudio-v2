@@ -25,7 +25,8 @@ pub const MEDIA_EXTENSIONS: &[&str] = &[
 ];
 
 /// Camera proxies / companions: never import or list as media; delete with the master on SD clear.
-pub const SIDECAR_EXTENSIONS: &[&str] = &[".lrv", ".lrf", ".thm", ".wav"];
+/// `.scr` / `.thx` are DJI preview files, typically under `MISC/THM/` rather than next to the MP4.
+pub const SIDECAR_EXTENSIONS: &[&str] = &[".lrv", ".lrf", ".thm", ".wav", ".scr", ".thx"];
 
 fn ext_of(path: &Path) -> String {
     // Prefer last path segment after `/` or `\` so Windows-style strings work on Unix.
@@ -459,6 +460,43 @@ pub fn resolve_timelapse_session_active_for_paths(
     paths_indicate_timelapse_session(media_paths)
 }
 
+/// Find timelapse companion videos on the volume that match `ctx`.
+///
+/// Needed because the SD selector / list cache already drops companions before
+/// backup — without a DCIM re-scan, `skipped_timelapse_videos` stays empty and
+/// clear never deletes `DJI_*_NNNN(_D).MP4` + `.LRF`.
+pub fn discover_timelapse_companion_videos(
+    dcim_root: &str,
+    ctx: &TimelapseFilterContext,
+) -> Vec<String> {
+    if !ctx.is_active() {
+        return Vec::new();
+    }
+    let Some(dcim) = resolve_dcim_root(dcim_root) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for path in collect_media_paths_from_tree(Path::new(&dcim)) {
+        let is_video = is_video_ext(&ext_of(Path::new(&path)));
+        if is_video && should_skip_file_for_timelapse_session(&path, true, ctx, true) {
+            out.push(path);
+        }
+    }
+    out
+}
+
+fn merge_skipped_timelapse_videos(into: &mut Vec<String>, extra: Vec<String>) {
+    if extra.is_empty() {
+        return;
+    }
+    let mut seen: HashSet<String> = into.iter().map(|p| normalize_key(p)).collect();
+    for path in extra {
+        if seen.insert(normalize_key(&path)) {
+            into.push(path);
+        }
+    }
+}
+
 /// Filter media paths for SD backup/import.
 pub fn filter_media_paths_for_backup(
     media_paths: &[String],
@@ -484,6 +522,11 @@ pub fn filter_media_paths_for_backup(
         }
         kept.push(path.clone());
     }
+    // Companions absent from `media_paths` (UI-filtered selection) still need clear.
+    merge_skipped_timelapse_videos(
+        &mut skipped_timelapse_videos,
+        discover_timelapse_companion_videos(dcim_root, &ctx),
+    );
     BackupMediaFilterResult {
         kept,
         skipped_timelapse_videos,
@@ -641,6 +684,7 @@ pub fn expand_basenames_for_camera_clear(backed_up_paths: &[String]) -> Vec<Stri
 
 /// Expand delete list with sidecar files (same stem, non-media extension).
 /// Also pairs GoPro `GX…`/`GH…` masters with `GL….LRV` proxies in the same folder.
+/// DJI: also matches `MISC/THM/**/{stem}.{THM,SCR,THX,…}` beside `DCIM/`.
 pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
     let media: HashSet<String> = MEDIA_EXTENSIONS.iter().map(|e| e.to_string()).collect();
     let mut to_delete: HashMap<String, String> = HashMap::new();
@@ -648,6 +692,7 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
     let mut exact_stems_by_dir: HashMap<PathBuf, HashSet<String>> = HashMap::new();
     // GoPro proxy stems: only sidecar extensions (never another master video).
     let mut proxy_stems_by_dir: HashMap<PathBuf, HashSet<String>> = HashMap::new();
+    let mut all_stems: HashSet<String> = HashSet::new();
 
     for path in backed_up_paths {
         if path.is_empty() {
@@ -662,6 +707,7 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_ascii_lowercase()),
         ) {
+            all_stems.insert(stem.clone());
             exact_stems_by_dir
                 .entry(dir.clone())
                 .or_default()
@@ -722,7 +768,80 @@ pub fn expand_files_for_sd_clear(backed_up_paths: &[String]) -> Vec<String> {
         }
     }
 
+    add_dji_misc_thm_sidecars(backed_up_paths, &all_stems, &mut to_delete);
+
     to_delete.into_values().collect()
+}
+
+/// Volume root that contains `DCIM/` (sibling of `MISC/`).
+fn volume_root_from_media_path(path: &str) -> Option<PathBuf> {
+    let mut cur = PathBuf::from(normalize_media_path(path));
+    loop {
+        let is_dcim = cur
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.eq_ignore_ascii_case("DCIM"))
+            .unwrap_or(false);
+        if is_dcim {
+            return cur.parent().map(|p| p.to_path_buf());
+        }
+        if !cur.pop() {
+            return None;
+        }
+    }
+}
+
+fn misc_thm_dir(volume_root: &Path) -> Option<PathBuf> {
+    let upper = volume_root.join("MISC").join("THM");
+    if upper.is_dir() {
+        return Some(upper);
+    }
+    let lower = volume_root.join("misc").join("thm");
+    if lower.is_dir() {
+        return Some(lower);
+    }
+    None
+}
+
+/// DJI stores preview sidecars under `MISC/THM/{DJI_001|…}/` next to `DCIM/`.
+fn add_dji_misc_thm_sidecars(
+    backed_up_paths: &[String],
+    stems: &HashSet<String>,
+    to_delete: &mut HashMap<String, String>,
+) {
+    if stems.is_empty() {
+        return;
+    }
+    let mut roots: HashSet<PathBuf> = HashSet::new();
+    for path in backed_up_paths {
+        if let Some(root) = volume_root_from_media_path(path) {
+            roots.insert(root);
+        }
+    }
+    for root in roots {
+        let Some(misc_thm) = misc_thm_dir(&root) else {
+            continue;
+        };
+        for full in walkdir_simple(&misc_thm) {
+            if !full.is_file() {
+                continue;
+            }
+            let stem = full
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_ascii_lowercase())
+                .unwrap_or_default();
+            if stem.is_empty() || !stems.contains(&stem) {
+                continue;
+            }
+            let ext = ext_of(&full);
+            if !is_sidecar_ext(&ext) {
+                continue;
+            }
+            let full_s = full.to_string_lossy().into_owned();
+            to_delete.insert(normalize_key(&full_s), full_s);
+        }
+    }
 }
 
 fn normalize_key(path: &str) -> String {
@@ -914,11 +1033,37 @@ mod tests {
     }
 
     #[test]
+    fn sd_clear_includes_dji_misc_thm_scr_sidecars() {
+        let root = tempfile::tempdir().unwrap();
+        let dji = root.path().join("DCIM").join("DJI_001");
+        let misc = root.path().join("MISC").join("THM").join("DJI_001");
+        fs::create_dir_all(&dji).unwrap();
+        fs::create_dir_all(&misc).unwrap();
+        let mp4 = dji.join("DJI_20260827005007_0006_D.MP4");
+        fs::write(&mp4, b"v6").unwrap();
+        fs::write(dji.join("DJI_20260827005007_0006_D.LRF"), b"lrf").unwrap();
+        fs::write(misc.join("DJI_20260827005007_0006_D.THM"), b"thm").unwrap();
+        fs::write(misc.join("DJI_20260827005007_0006_D.SCR"), b"scr").unwrap();
+        fs::write(misc.join("DJI_20260827005028_0007_D.THM"), b"keep").unwrap();
+        fs::write(misc.join("DJI_20260827005028_0007_D.SCR"), b"keep").unwrap();
+
+        let expanded = expand_files_for_sd_clear(&[mp4.to_string_lossy().into_owned()]);
+        assert!(expanded.iter().any(|p| p.ends_with("_0006_D.MP4")));
+        assert!(expanded.iter().any(|p| p.ends_with("_0006_D.LRF")));
+        assert!(expanded.iter().any(|p| p.ends_with("_0006_D.THM")));
+        assert!(expanded.iter().any(|p| p.ends_with("_0006_D.SCR")));
+        assert!(!expanded.iter().any(|p| p.ends_with("_0007_D.THM")));
+        assert!(!expanded.iter().any(|p| p.ends_with("_0007_D.SCR")));
+    }
+
+    #[test]
     fn expand_basenames_for_camera_clear_include_dji_lrf() {
         let names = expand_basenames_for_camera_clear(&["/tmp/DJI_20260827_0006.MP4".into()]);
         let lower: Vec<_> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
         assert!(lower.iter().any(|n| n == "dji_20260827_0006.mp4"));
         assert!(lower.iter().any(|n| n == "dji_20260827_0006.lrf"));
+        assert!(lower.iter().any(|n| n == "dji_20260827_0006.scr"));
+        assert!(lower.iter().any(|n| n == "dji_20260827_0006.thx"));
     }
 
     #[test]
@@ -976,6 +1121,69 @@ mod tests {
             .skipped_timelapse_videos
             .iter()
             .any(|p| p.ends_with("_0008_D.MP4")));
+    }
+
+    /// Selector/UI already dropped companions from the path list — clear must still find them.
+    #[test]
+    fn filter_discovers_companions_absent_from_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let dcim = dir.path().join("DCIM");
+        let tl6 = dcim.join("TIMELAPSE").join("001_0006");
+        let tl8 = dcim.join("TIMELAPSE").join("001_0008");
+        let dji = dcim.join("DJI_001");
+        fs::create_dir_all(&tl6).unwrap();
+        fs::create_dir_all(&tl8).unwrap();
+        fs::create_dir_all(&dji).unwrap();
+        let photo6 = tl6.join("IMG_001.JPG");
+        let photo8 = tl8.join("IMG_001.JPG");
+        fs::write(&photo6, b"photo").unwrap();
+        fs::write(&photo8, b"photo").unwrap();
+        fs::write(dji.join("DJI_20260827005007_0006_D.MP4"), b"v6").unwrap();
+        fs::write(dji.join("DJI_20260827005007_0006_D.LRF"), b"p6").unwrap();
+        fs::write(dji.join("DJI_20260827005028_0007_D.MP4"), b"v7").unwrap();
+        fs::write(dji.join("DJI_20260827005028_0007_D.LRF"), b"p7").unwrap();
+        fs::write(dji.join("DJI_20260827005045_0008_D.MP4"), b"v8").unwrap();
+        fs::write(dji.join("DJI_20260827005045_0008_D.LRF"), b"p8").unwrap();
+
+        // Mimic confirm-selector: only listable kept paths (companions already filtered out).
+        let selected = vec![
+            photo6.to_string_lossy().into_owned(),
+            photo8.to_string_lossy().into_owned(),
+            dji.join("DJI_20260827005028_0007_D.MP4")
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        let dcim_s = dcim.to_string_lossy().into_owned();
+        let result = filter_media_paths_for_backup(&selected, &dcim_s, true);
+        assert_eq!(result.kept.len(), 3);
+        assert!(result
+            .kept
+            .iter()
+            .any(|p| p.ends_with("_0007_D.MP4")));
+        assert_eq!(result.skipped_count(), 2);
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0006_D.MP4")));
+        assert!(result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0008_D.MP4")));
+        assert!(!result
+            .skipped_timelapse_videos
+            .iter()
+            .any(|p| p.ends_with("_0007_D.MP4")));
+
+        let clear = expand_files_for_sd_clear(&paths_for_sd_clear(
+            &result.kept,
+            &result.skipped_timelapse_videos,
+        ));
+        assert!(clear.iter().any(|p| p.ends_with("_0006_D.MP4")));
+        assert!(clear.iter().any(|p| p.ends_with("_0006_D.LRF")));
+        assert!(clear.iter().any(|p| p.ends_with("_0008_D.MP4")));
+        assert!(clear.iter().any(|p| p.ends_with("_0008_D.LRF")));
+        assert!(clear.iter().any(|p| p.ends_with("_0007_D.MP4")));
+        assert!(clear.iter().any(|p| p.ends_with("_0007_D.LRF")));
     }
 
     #[test]
@@ -1059,6 +1267,8 @@ mod tests {
         assert!(is_sidecar_ext(".lrv"));
         assert!(is_sidecar_ext(".lrf"));
         assert!(is_sidecar_ext("THM"));
+        assert!(is_sidecar_ext(".scr"));
+        assert!(is_sidecar_ext(".thx"));
         assert!(!is_video_ext(".lrv"));
         assert!(!is_media_ext(".lrv"));
 

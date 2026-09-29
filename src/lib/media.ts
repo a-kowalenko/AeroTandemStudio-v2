@@ -24,7 +24,14 @@ export const PHOTO_EXTENSIONS = [
 ] as const;
 
 /** Camera proxies / companions — never show in SD confirm / import pickers. */
-export const SIDECAR_EXTENSIONS = ["lrv", "thm", "wav"] as const;
+export const SIDECAR_EXTENSIONS = [
+  "lrv",
+  "lrf",
+  "thm",
+  "wav",
+  "scr",
+  "thx",
+] as const;
 
 export type MediaKind = "video" | "photo";
 
