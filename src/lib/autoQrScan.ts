@@ -97,6 +97,14 @@ export function sessionHasQrKunde(): boolean {
 }
 
 /**
+ * Confirm-dialog default for the post-import QR toggle.
+ * Off when the session already has identity; otherwise follow settings.
+ */
+export function defaultConfirmScanQr(settingsQrOn: boolean): boolean {
+  return sessionHasQrKunde() ? false : settingsQrOn;
+}
+
+/**
  * Whether post-import auto QR should run.
  *
  * When the session is already in QR/kunde mode, skip unless `force` is true

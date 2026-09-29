@@ -39,6 +39,7 @@ import {
 } from "../lib/sdFileSelectorModel";
 import { formatLocaleDateTime } from "@/lib/locale";
 import { cn } from "../lib/utils";
+import { defaultConfirmScanQr } from "../lib/autoQrScan";
 import { useConfigStore } from "../store/configStore";
 import { useKundeStore } from "../store/kundeStore";
 import { useSdStore } from "../store/sdStore";
@@ -233,7 +234,12 @@ export function SdFileSelector({
     scanQr: false,
   });
   const config = useConfigStore((s) => s.config);
+  // Keep scanQr default in sync with sessionHasQrKunde() inputs.
   const formMode = useKundeStore((s) => s.kunde.form_mode);
+  const amsLookupLocked = useKundeStore((s) => s.amsLookupLocked);
+  const qrRevision = useKundeStore((s) => s.qrRevision);
+  const kundenId = useKundeStore((s) => s.kunde.kunden_id);
+  const bookingId = useKundeStore((s) => s.kunde.booking_id);
   const [selectionDragging, setSelectionDragging] = useState(false);
   const [scrollLocked, setScrollLocked] = useState(false);
   const [activeVideoPath, setActiveVideoPath] = useState<string | null>(null);
@@ -394,7 +400,6 @@ export function SdFileSelector({
     dragBoxRef.current = null;
     paintMarqueeOverlay(null);
     setSelectionDragging(false);
-    const isQrMode = formMode === "kunde";
     const settingsQrOn =
       Boolean(config?.qr_check_enabled) ||
       Boolean(config?.photo_qr_check_enabled);
@@ -403,7 +408,7 @@ export function SdFileSelector({
       import: defaultActions?.import ?? true,
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
       eject: Boolean(defaultActions?.eject),
-      scanQr: isQrMode ? false : settingsQrOn,
+      scanQr: defaultConfirmScanQr(settingsQrOn),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, drive]);
@@ -424,7 +429,6 @@ export function SdFileSelector({
     }
     if (!wasEmptyCatalogRef.current) return;
     wasEmptyCatalogRef.current = false;
-    const isQrMode = formMode === "kunde";
     const settingsQrOn =
       Boolean(config?.qr_check_enabled) ||
       Boolean(config?.photo_qr_check_enabled);
@@ -433,13 +437,17 @@ export function SdFileSelector({
       import: defaultActions?.import ?? true,
       clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
       eject: Boolean(defaultActions?.eject),
-      scanQr: isQrMode ? false : settingsQrOn,
+      scanQr: defaultConfirmScanQr(settingsQrOn),
     });
   }, [
     open,
     listing,
     files.length,
     formMode,
+    amsLookupLocked,
+    qrRevision,
+    kundenId,
+    bookingId,
     config?.qr_check_enabled,
     config?.photo_qr_check_enabled,
     defaultActions,
@@ -788,14 +796,13 @@ export function SdFileSelector({
         return { ...prev, import: false, scanQr: false };
       }
       if (key === "import" && value) {
-        const isQrMode = formMode === "kunde";
         const settingsQrOn =
           Boolean(config?.qr_check_enabled) ||
           Boolean(config?.photo_qr_check_enabled);
         return {
           ...prev,
           import: true,
-          scanQr: isQrMode ? false : settingsQrOn,
+          scanQr: defaultConfirmScanQr(settingsQrOn),
         };
       }
       return { ...prev, [key]: value };
