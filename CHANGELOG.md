@@ -10,6 +10,21 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Erstellen: Hinweis, wenn die Buchungssuche den Kunden bzw. die Buchung nicht kennt — zurück oder trotzdem erstellen & Upload
+
+### Verbessert
+
+- Universal-Export: schneller, wenn Intro/Flugvideo schon passen (weniger unnötige Neu-Kodierung)
+- Server-Upload und Server-Backup: stabilere Verbindungen, weniger Abbrüche bei längeren Übertragungen
+- Video drehen / Neu-Kodierung: bei fehlgeschlagener Hardwarebeschleunigung erneuter Versuch ohne Hardware — mit verständlicher Meldung
+- Fehlerdialoge: optionale technische Details zum Weitergeben an den Support
+- SD- und USB-Import: klarere Meldungen bei Abbruch; nach Abbruch wird die Karte bzw. Kamera nicht geleert
+- DJI-Medien: Vorschau- und Begleitdateien sowie Timelapse-Begleiter werden beim Import mitübernommen
+- USB-Action-Cams: zuverlässigere Erkennung und Übernahme in die Medienliste
+- Medienliste: fehlende Vorschaubilder stören die Auswahl nicht mehr
+
 ## [0.6.0] - 2026-09-18
 
 ### Neu
