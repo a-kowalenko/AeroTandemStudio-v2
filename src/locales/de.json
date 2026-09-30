@@ -1062,6 +1062,7 @@
       "searchingQr": "QR-Code suchen…",
       "noFiles": "Keine Dateien.",
       "clearOnlyAfterBackup": "Bereinigen ist nur nach einem Backup möglich.",
+      "mtpImportNeedsBackup": "USB-Kameras: Import nur zusammen mit Backup möglich.",
       "noActionSelected": "Keine Aktion ausgewählt.",
       "pickBackupFolder": "Bitte in den Einstellungen einen Backup-Ordner wählen.",
       "ejectSuccess": "SD-Karte ausgeworfen — kann sicher entfernt werden",
@@ -2152,6 +2153,7 @@
       "titleSizeLimit": "Größen-Limit überschritten — Dateien wählen",
       "clearAfterBackup": "SD-Karte nach erfolgreichem Backup leeren",
       "clearNeedsBackup": "Nur möglich, wenn Backup aktiviert ist",
+      "importNeedsBackupMtp": "USB-Kamera: Import nur zusammen mit Backup möglich",
       "clearNoFiles": "Keine Dateien zum Bereinigen",
       "clearOnlyAfterBackupHint": "Bereinigen nur nach Backup möglich.",
       "clearSd": "SD bereinigen",
@@ -2247,7 +2249,8 @@
     },
     "tile": {
       "fullscreenNamed": "{{name}} Vollbild",
-      "noPreviewCodec": "Keine Vorschau (Codec/WebView)"
+      "noPreviewCodec": "Keine Vorschau (Codec/WebView)",
+      "mtpStaging": "Lädt von Kamera…"
     }
   },
   "setupWizard": {

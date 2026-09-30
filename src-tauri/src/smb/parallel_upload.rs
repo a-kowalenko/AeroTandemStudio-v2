@@ -282,12 +282,7 @@ where
                 };
                 if is_upload_cancelled(cancel) {
                     drain_media_workers_after_cancel(&mut set).await;
-                    return Err(UploadResult {
-                        success: false,
-                        message: WORKFLOW_CANCELLED.into(),
-                        remote_path: String::new(),
-                        staging_root: None,
-                    });
+                    return Err(UploadResult::fail(WORKFLOW_CANCELLED));
                 }
                 match joined {
                     Ok(Ok(())) => {}
@@ -296,53 +291,28 @@ where
                             e == WORKFLOW_CANCELLED || is_upload_cancelled(cancel);
                         if cancelled {
                             drain_media_workers_after_cancel(&mut set).await;
-                            return Err(UploadResult {
-                                success: false,
-                                message: WORKFLOW_CANCELLED.into(),
-                                remote_path: String::new(),
-                        staging_root: None,
-                            });
+                            return Err(UploadResult::fail(WORKFLOW_CANCELLED));
                         }
                         // Hard failure: stop siblings quickly (no remote cleanup path).
                         set.abort_all();
                         while set.join_next().await.is_some() {}
-                        return Err(UploadResult {
-                            success: false,
-                            message: e,
-                            remote_path: String::new(),
-                        staging_root: None,
-                        });
+                        return Err(UploadResult::fail(e));
                     }
                     Err(e) => {
                         if is_upload_cancelled(cancel) || e.is_cancelled() {
                             drain_media_workers_after_cancel(&mut set).await;
-                            return Err(UploadResult {
-                                success: false,
-                                message: WORKFLOW_CANCELLED.into(),
-                                remote_path: String::new(),
-                        staging_root: None,
-                            });
+                            return Err(UploadResult::fail(WORKFLOW_CANCELLED));
                         }
                         set.abort_all();
                         while set.join_next().await.is_some() {}
-                        return Err(UploadResult {
-                            success: false,
-                            message: format!("Upload-Worker abgestürzt: {e}"),
-                            remote_path: String::new(),
-                        staging_root: None,
-                        });
+                        return Err(UploadResult::fail(format!("Upload-Worker abgestürzt: {e}")));
                     }
                 }
             }
             _ = tokio::time::sleep(CANCEL_POLL_INTERVAL) => {
                 if is_upload_cancelled(cancel) {
                     drain_media_workers_after_cancel(&mut set).await;
-                    return Err(UploadResult {
-                        success: false,
-                        message: WORKFLOW_CANCELLED.into(),
-                        remote_path: String::new(),
-                        staging_root: None,
-                    });
+                    return Err(UploadResult::fail(WORKFLOW_CANCELLED));
                 }
             }
         }

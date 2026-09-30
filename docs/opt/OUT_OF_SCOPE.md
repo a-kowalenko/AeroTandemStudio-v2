@@ -15,9 +15,8 @@
 | „Fast Preview“ 720p/CRF-Modus | Preview selten genutzt; separates Backlog wenn Bedarf |
 | Foto-Review-Strip virtualisieren | Overview bereits virtualisiert; nur bei Review-Modus relevant |
 | Thumbs aus QR-Decode ableiten | Follow-up nach OPT-11, geringer ROI bei EXIF-Thumbs |
-| macOS NetFS (`NetFSMountURLSync`) statt User-Pfad | Follow-up nur wenn OPT-20A nicht reicht |
+| macOS NetFS unter `/Volumes` statt User-Pfad | OPT-23F nutzt `NetFSMountURLSync` **mit** `smb-mounts/` (OPT-20A). Mount unter `/Volumes` bleibt draußen |
 | Windows WNet ERROR_86 / Cred-Session-Härtung | Follow-up nach OPT-20B; getrennt von Sleep-Bridge / OPT-22 |
-| Letter-less UNC ohne Drive-Letter | Follow-up; OPT-17 enumeriert nur A–Z |
 | LanmanServer-SKU / Registry „max connections“ auf Win11 Client | SKU-Limit — Ops: NAS/Server; App: OPT-22 |
 | Fleet-weiter SMB-Scheduler über AMS | Multi-PC — eigenes AMS-Thema, nicht OPT-22C |
 

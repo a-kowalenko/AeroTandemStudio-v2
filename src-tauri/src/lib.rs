@@ -130,6 +130,7 @@ pub fn run() {
                     let _ = handle.emit("log-line", entry);
                 }
             });
+            smb::health_event::install(app.handle().clone());
 
             #[cfg(desktop)]
             {

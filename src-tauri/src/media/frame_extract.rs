@@ -488,6 +488,7 @@ mod tests {
 
     #[test]
     fn extract_frames_from_generated_mp4() {
+        let _cancel = crate::video::ffmpeg::cancel_test_lock();
         let ffmpeg = match find_ffmpeg() {
             Ok(p) => p,
             Err(_) => {

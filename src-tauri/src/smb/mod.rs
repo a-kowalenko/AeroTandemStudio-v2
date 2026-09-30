@@ -3,6 +3,8 @@
 pub mod auto_mount;
 pub mod client;
 pub mod handoff_upload;
+pub mod health_event;
+pub mod host_alias;
 pub mod host_lock;
 pub mod parallel_upload;
 pub mod quiet_budget;

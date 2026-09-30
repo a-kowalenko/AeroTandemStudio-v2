@@ -1062,6 +1062,7 @@
       "searchingQr": "Searching for QR code…",
       "noFiles": "No files.",
       "clearOnlyAfterBackup": "Clearing is only possible after a backup.",
+      "mtpImportNeedsBackup": "USB cameras: import is only possible together with backup.",
       "noActionSelected": "No action selected.",
       "pickBackupFolder": "Please choose a backup folder in settings.",
       "ejectSuccess": "SD card ejected — safe to remove",
@@ -2152,6 +2153,7 @@
       "titleSizeLimit": "Size limit exceeded — choose files",
       "clearAfterBackup": "Clear SD card after successful backup",
       "clearNeedsBackup": "Only available when backup is enabled",
+      "importNeedsBackupMtp": "USB camera: import only together with backup",
       "clearNoFiles": "No files to clear",
       "clearOnlyAfterBackupHint": "Clearing only possible after backup.",
       "clearSd": "Clear SD card",
@@ -2247,7 +2249,8 @@
     },
     "tile": {
       "fullscreenNamed": "{{name}} fullscreen",
-      "noPreviewCodec": "No preview (codec/WebView)"
+      "noPreviewCodec": "No preview (codec/WebView)",
+      "mtpStaging": "Loading from camera…"
     }
   },
   "setupWizard": {

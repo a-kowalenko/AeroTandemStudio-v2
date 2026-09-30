@@ -33,7 +33,8 @@ pub fn list_os_smb_mounts() -> Vec<DriveMapping> {
 }
 
 /// Parse `//host/share[/sub…]`, `smb://…`, or `\\host\share` into a canonical UNC.
-/// Strips `user@` / `domain;user@` from the host component. Returns `None` if
+/// Strips `user@` / `domain;user@` from the host component and percent-decodes
+/// host and path segments (OPT-23C — Finder `my%20share`). Returns `None` if
 /// host or share is missing (share-name-only sources are not matched).
 pub fn unc_from_mount_source(source: &str) -> Option<String> {
     let trimmed = source.trim();
@@ -62,8 +63,15 @@ pub fn unc_from_mount_source(source: &str) -> Option<String> {
         segments.push(p.to_string());
     }
 
-    let host = strip_auth_from_host(host_part);
-    if host.is_empty() || segments.iter().any(|s| s.is_empty()) {
+    let host = percent_decode_segment(&strip_auth_from_host(host_part));
+    if host.is_empty() {
+        return None;
+    }
+    let segments: Vec<String> = segments
+        .iter()
+        .map(|seg| percent_decode_segment(seg))
+        .collect();
+    if segments.iter().any(|s| s.is_empty()) {
         return None;
     }
 
@@ -73,6 +81,15 @@ pub fn unc_from_mount_source(source: &str) -> Option<String> {
         unc.push_str(&seg);
     }
     Some(canonicalize_unc(&unc))
+}
+
+/// Finder / mount sources percent-encode spaces and non-ASCII (`my%20share`).
+/// Invalid sequences stay as written so a bad escape cannot drop the segment.
+fn percent_decode_segment(segment: &str) -> String {
+    percent_decode_str(segment)
+        .decode_utf8()
+        .map(|decoded| decoded.into_owned())
+        .unwrap_or_else(|_| segment.to_string())
 }
 
 /// Parse gvfs directory basename `smb-share:server=…,share=…[,…]`.
@@ -356,6 +373,33 @@ mod tests {
             unc_from_mount_source("smb://169.254.169.254/aktuell"),
             Some(r"\\169.254.169.254\aktuell".into())
         );
+    }
+
+    #[test]
+    fn parse_percent_encoded_finder_share() {
+        assert_eq!(
+            unc_from_mount_source("//alice@nas.local/my%20share"),
+            Some(r"\\nas.local\my share".into())
+        );
+        assert_eq!(
+            unc_from_mount_source("smb://my%2dhost/gr%C3%BCn/sub%20dir"),
+            Some(r"\\my-host\grün\sub dir".into())
+        );
+        assert_eq!(
+            unc_from_mount_source(r"\\nas\my%20share"),
+            Some(r"\\nas\my share".into())
+        );
+    }
+
+    #[test]
+    fn percent_decoded_share_matches_config_unc() {
+        let source = unc_from_mount_source("//nas/my%20share").unwrap();
+        let maps = [DriveMapping {
+            local_name: "/Volumes/my share".into(),
+            remote_unc: source,
+        }];
+        let p = match_unc_to_mapped_path(r"\\nas\my share\jobs", &maps).unwrap();
+        assert_eq!(p, PathBuf::from("/Volumes/my share").join("jobs"));
     }
 
     #[test]

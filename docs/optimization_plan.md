@@ -29,8 +29,8 @@
 
 | Priorität | OPT | Spec | Status |
 |-----------|-----|------|--------|
-| 1 | **23C–F** SMB-Stabilität (Mapping-Treffer, UNC, TCP-Health, Credentials) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | 🔄 A+B ✅ |
-| 2 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| 1 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| — | **23** SMB-Stabilität (A–F Code ✅; manuell macOS/Linux offen) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | ✅ Code |
 | done | **0–20, 22** Import, Thumbs, SMB, … | [`opt/ARCHIVE.md`](opt/ARCHIVE.md) | ✅ (OPT-13 entfernt) |
 
 **Empfohlene Reihenfolge (historisch):** OPT-0 … OPT-20 ✅ · **OPT-22** ✅ · **OPT-21** offen (Slice 0+A ✅).
@@ -107,7 +107,7 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-20 | ✅ Slice A+B | ARCHIVE |
 | OPT-21 | 🔄 Slice 0+A ✅; **21B–E offen** | [open/21-capcut-export.md](opt/open/21-capcut-export.md) |
 | OPT-22 | ✅ Slice A+B+C | ARCHIVE |
-| OPT-23 | 🔄 Slice A+B ✅; **C–F offen** (Reihenfolge C → E → D → F) | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
+| OPT-23 | ✅ Slice A–F (Code); manuell macOS/Linux offen | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 

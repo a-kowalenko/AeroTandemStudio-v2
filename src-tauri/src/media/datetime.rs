@@ -708,6 +708,8 @@ mod tests {
 
     #[test]
     fn photos_sorted_reuses_instant_for_naming() {
+        let _cancel = crate::video::ffmpeg::cancel_test_lock();
+        crate::video::ffmpeg::reset_cancel_flag();
         let dir = tempfile::tempdir().unwrap();
         let early = dir.path().join("a.jpg");
         let late = dir.path().join("b.jpg");

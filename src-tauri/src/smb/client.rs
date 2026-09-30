@@ -20,15 +20,15 @@ use smb2::{ClientConfig, FileWriter, SmbClient};
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
 use super::auto_mount::{ensure_os_smb_mount, AutoMountParams};
+use super::health_event;
 use super::host_lock;
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
 use super::quiet_budget::{
     self, log_quiet_skip, note_quiet_smb2_fail, note_quiet_smb2_ok, quiet_skip_result,
-    should_skip_quiet_smb2,
 };
 use super::reconnect::{
-    self, is_recently_bridging, note_smb2_bridge, probe_local, start_prefer_local_promote,
-    ProbeOutcome, LOCAL_PROBE_TIMEOUT,
+    self, note_smb2_bridge, probe_local, start_prefer_local_promote, ProbeOutcome,
+    LOCAL_PROBE_TIMEOUT,
 };
 use super::session_pool;
 use super::staging_gc::{
@@ -94,20 +94,44 @@ pub struct UploadResult {
     /// Share-relative staging root when a staged SMB upload did not promote.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub staging_root: Option<String>,
+    /// Set when the transfer used smb2 (OPT-23E piggyback). Absent for Local / cancel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smb_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smb_share: Option<String>,
 }
 
 impl UploadResult {
-    fn fail(message: impl Into<String>) -> Self {
+    pub(crate) fn fail(message: impl Into<String>) -> Self {
         Self {
             success: false,
             message: message.into(),
             remote_path: String::new(),
             staging_root: None,
+            smb_host: None,
+            smb_share: None,
+        }
+    }
+
+    fn ok(message: impl Into<String>, remote_path: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            message: message.into(),
+            remote_path: remote_path.into(),
+            staging_root: None,
+            smb_host: None,
+            smb_share: None,
         }
     }
 
     fn with_staging(mut self, staging_root: Option<String>) -> Self {
         self.staging_root = staging_root;
+        self
+    }
+
+    fn with_smb_endpoint(mut self, host: &str, share: &str) -> Self {
+        self.smb_host = Some(host.to_string());
+        self.smb_share = Some(share.to_string());
         self
     }
 }
@@ -287,10 +311,10 @@ fn apply_os_smb_mapping(
 
     let config_unc = unc_from_smb_parts(host, share, subpath);
 
-    // OPT-17/18 + OPT-20B + OPT-23B: probe the mapping root. A missing or
-    // denied child stays Local (upload creates the folder / health explains
-    // the denial). Asleep root → smb2 bridge. Do not auto-mount a second
-    // letter for the same UNC.
+    // OPT-17/18 + OPT-20B + OPT-23B/D: probe the mapping root (drive letter
+    // first, then a deviceless UNC connection). A missing or denied child
+    // stays Local. Asleep root → smb2 bridge. Do not open a second connection
+    // for a UNC that is already listed.
     if let Some(mapped) = lookup_mapped_local(&config_unc) {
         let outcome = reconnect::classify_mapped_path(&mapped.root, &mapped.full);
         if outcome.prefers_local() {
@@ -302,6 +326,13 @@ fn apply_os_smb_mapping(
         note_smb2_bridge(&config_unc, &mapped.full);
         start_prefer_local_promote(config_unc, mapped.full);
         return target;
+    }
+
+    // OPT-23D: no listed connection. The redirector may still reach `\\host\share`
+    // with credentials it already has (Explorer / Credential Manager).
+    #[cfg(windows)]
+    if let Some(local) = try_windows_unc_redirector(host, share, subpath, &config_unc) {
+        return local;
     }
 
     if let Some(params) = auto_mount.filter(|p| p.enabled) {
@@ -322,16 +353,33 @@ fn apply_os_smb_mapping(
     target
 }
 
+/// Timed probe of `\\host\share` (OPT-23D). Reachable share root ⇒ Local via redirector.
+#[cfg(windows)]
+fn try_windows_unc_redirector(
+    host: &str,
+    share: &str,
+    subpath: &str,
+    config_unc: &str,
+) -> Option<ServerTarget> {
+    let mapped = super::windows_mapping::unc_redirector_local(host, share, subpath);
+    let root_outcome = probe_local(&mapped.root, LOCAL_PROBE_TIMEOUT);
+    if !root_outcome.is_reachable() {
+        return None;
+    }
+    let outcome = reconnect::classify_mapped_path(&mapped.root, &mapped.full);
+    if outcome.prefers_local() {
+        Some(local_via_os_map(mapped.full, config_unc, outcome))
+    } else {
+        None
+    }
+}
+
 fn local_via_os_map(path: PathBuf, config_unc: &str, outcome: ProbeOutcome) -> ServerTarget {
     let display = path
         .to_string_lossy()
         .trim_end_matches(['\\', '/'])
         .to_string();
-    let via = if cfg!(windows) {
-        "mapped drive"
-    } else {
-        "OS mount"
-    };
+    let via = local_via_label(&display);
     let note = match outcome {
         ProbeOutcome::Missing => " — Zielordner fehlt, wird angelegt",
         ProbeOutcome::Denied => " — Zugriff verweigert",
@@ -342,6 +390,16 @@ fn local_via_os_map(path: PathBuf, config_unc: &str, outcome: ProbeOutcome) -> S
         format!("SMB via {via} {display} ({config_unc}){note}"),
     );
     ServerTarget::Local { path }
+}
+
+fn local_via_label(display: &str) -> &'static str {
+    if display.starts_with(r"\\") || display.starts_with("//") {
+        "UNC"
+    } else if cfg!(windows) {
+        "mapped drive"
+    } else {
+        "OS mount"
+    }
 }
 
 fn local_health_result(path: &Path, outcome: ProbeOutcome, quiet: bool) -> ConnectionTestResult {
@@ -454,6 +512,9 @@ pub(crate) const SMB_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub(crate) const SMB_HEALTH_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Loud health when a transfer still holds the host after the lock wait (A4).
 const LOUD_HOST_BUSY_MESSAGE: &str = "Übertragung aktiv — Verbindung besteht";
+/// OPT-23E: Quiet smb2 health is a TCP connect only — no SessionSetup.
+const QUIET_TCP_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+const QUIET_TCP_OK_MESSAGE: &str = "Server erreichbar";
 
 pub(crate) async fn connect_smb(
     host: &str,
@@ -512,12 +573,13 @@ fn display_remote(target: &ServerTarget, relative: &str) -> String {
 
 /// Test reachability of the configured server (local path or SMB share).
 ///
-/// `quiet`: Quiet-Poll mode (OPT-20B / OPT-22A) — short Local probe; skip smb2
-/// SessionSetup while Prefer-Local bridging, Quiet backoff, or a writing
-/// pipeline (Upload / Backup / GC) holds the host (`soft_hold` keeps the last
-/// UI status). A loud check waits up to 3s; if the pipeline is still running
-/// it reports success without SessionSetup. A pooled health session is
-/// disconnected afterwards (not returned to the pool).
+/// `quiet`: Quiet-Poll (OPT-23E). Local stays a timed probe. The smb2 path is
+/// only `TcpStream::connect` (2s) — no SessionSetup and no Quiet backoff.
+/// A sticky loud Login/Share error is not cleared by TCP-OK (`soft_hold`).
+/// A loud check (boot, manual, visibility after a long hide) still does
+/// SessionSetup + TreeConnect. It waits up to 3s on the host lock; if a
+/// transfer is still running it reports success without SessionSetup. A pooled
+/// health session is disconnected afterwards (not returned to the pool).
 pub async fn test_connection(
     server_url: &str,
     login: &str,
@@ -572,47 +634,97 @@ pub async fn test_connection(
             share,
             subpath,
         } => {
-            // OPT-22A: Quiet — no SessionSetup while bridging or Quiet backoff.
+            // OPT-23E: Quiet never opens a session. TCP is cheap — no backoff.
             if quiet {
-                if let Some(unc) = bridge_unc.as_ref() {
-                    if let Some(reason) = should_skip_quiet_smb2(unc) {
-                        log_quiet_skip(unc, reason);
-                        let (ok, message, soft_hold) = quiet_skip_result(reason);
-                        return ConnectionTestResult {
-                            ok,
-                            message,
-                            soft_hold,
-                        };
-                    }
-                }
+                let host_for_probe = host.clone();
+                let tcp = match tauri::async_runtime::spawn_blocking(move || {
+                    probe_smb_tcp_blocking(&host_for_probe, port)
+                })
+                .await
+                {
+                    Ok(result) => result,
+                    Err(e) => Err(format!("TCP-Probe fehlgeschlagen: {e}")),
+                };
+                return quiet_tcp_health_result(&host, &share, tcp);
             }
 
             let result =
-                test_smb_connection(&host, port, &share, &subpath, login, password, quiet).await;
+                test_smb_connection(&host, port, &share, &subpath, login, password, false).await;
+            if result.ok && result.message != LOUD_HOST_BUSY_MESSAGE {
+                // A live SessionSetup proved Login + Share (E3).
+                quiet_budget::clear_loud_auth_failure(&host, &share);
+            } else if !result.ok && !result.soft_hold {
+                quiet_budget::note_loud_auth_failure(&host, &share, &result.message);
+            }
             if let Some(unc) = bridge_unc.as_ref() {
                 if result.ok {
-                    // Loud + Quiet OK → Quiet backs off (A3).
+                    // Loud OK → Quiet SessionSetup path backs off (E5). TCP ignores it.
                     note_quiet_smb2_ok(unc);
-                } else if !result.soft_hold && quiet {
-                    note_quiet_smb2_fail(unc, &result.message);
                 } else if !result.soft_hold && quiet_budget::is_session_rejected(&result.message) {
-                    // Loud reject still cools Quiet so Visibility-Kick cannot storm.
-                    // soft_hold is a skipped SessionSetup, not a failure.
+                    // Loud reject still cools a later SessionSetup so a kick cannot storm.
                     note_quiet_smb2_fail(unc, &result.message);
                 }
             }
-            if result.ok {
-                result
-            } else if quiet && bridge_unc.as_ref().is_some_and(|u| is_recently_bridging(u)) {
+            result
+        }
+    }
+}
+
+/// TCP connect to `host:port` (2s per address). Open means the server accepts
+/// SMB's port. Does not SessionSetup. Caller runs this off the Tokio worker.
+pub(crate) fn probe_smb_tcp_blocking(host: &str, port: u16) -> Result<(), String> {
+    use std::net::{TcpStream, ToSocketAddrs};
+
+    let addr = smb_addr(host, port);
+    let addrs: Vec<_> = match addr.to_socket_addrs() {
+        Ok(iter) => iter.collect(),
+        Err(e) => return Err(map_connect_error(&e.to_string())),
+    };
+    if addrs.is_empty() {
+        return Err("Server nicht erreichbar (Host nicht gefunden).".into());
+    }
+    let mut last_err: Option<String> = None;
+    for sock in addrs {
+        match TcpStream::connect_timeout(&sock, QUIET_TCP_PROBE_TIMEOUT) {
+            Ok(stream) => {
+                drop(stream);
+                return Ok(());
+            }
+            Err(e) => last_err = Some(map_connect_error(&e.to_string())),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "Server nicht erreichbar.".into()))
+}
+
+/// Quiet smb2 health from a TCP probe (OPT-23E E1/E3). No backoff side effects.
+fn quiet_tcp_health_result(
+    host: &str,
+    share: &str,
+    tcp: Result<(), String>,
+) -> ConnectionTestResult {
+    match tcp {
+        Ok(()) => {
+            if let Some(prev) = quiet_budget::loud_auth_failure(host, share) {
                 ConnectionTestResult {
                     ok: false,
-                    message: format!("{} (Reconnect…)", result.message),
+                    message: format!(
+                        "Server erreichbar — Anmeldung/Freigabe zuletzt fehlgeschlagen: {prev}"
+                    ),
                     soft_hold: true,
                 }
             } else {
-                result
+                ConnectionTestResult {
+                    ok: true,
+                    message: QUIET_TCP_OK_MESSAGE.to_string(),
+                    soft_hold: false,
+                }
             }
         }
+        Err(message) => ConnectionTestResult {
+            ok: false,
+            message,
+            soft_hold: false,
+        },
     }
 }
 
@@ -1013,14 +1125,7 @@ where
 
     let files = match collect_upload_files(local_path) {
         Ok(f) => f,
-        Err(e) => {
-            return UploadResult {
-                success: false,
-                message: e,
-                remote_path: String::new(),
-                staging_root: None,
-            }
-        }
+        Err(e) => return UploadResult::fail(e),
     };
 
     let total_files = files.len() as u32;
@@ -1045,16 +1150,11 @@ where
             .await
             {
                 Ok(result) => result,
-                Err(e) => UploadResult {
-                    success: false,
-                    message: if is_upload_cancelled(cancel) {
-                        WORKFLOW_CANCELLED.into()
-                    } else {
-                        format!("Upload fehlgeschlagen: {e}")
-                    },
-                    remote_path: String::new(),
-                    staging_root: None,
-                },
+                Err(e) => UploadResult::fail(if is_upload_cancelled(cancel) {
+                    WORKFLOW_CANCELLED.into()
+                } else {
+                    format!("Upload fehlgeschlagen: {e}")
+                }),
             }
         }
         ServerTarget::Smb {
@@ -1063,7 +1163,7 @@ where
             share,
             subpath,
         } => {
-            upload_smb(
+            let result = upload_smb(
                 host,
                 *port,
                 share,
@@ -1076,7 +1176,13 @@ where
                 cancel,
                 progress,
             )
-            .await
+            .await;
+            // Cancel is not a health signal. Callers emit `smb-health` otherwise.
+            if result.message.trim() == WORKFLOW_CANCELLED {
+                result
+            } else {
+                result.with_smb_endpoint(host, share)
+            }
         }
     }
 }
@@ -1251,12 +1357,7 @@ fn upload_local<F: FnMut(UploadProgress)>(
     );
 
     let remote = dest_root.to_string_lossy().into_owned();
-    UploadResult {
-        success: true,
-        message: format!("Erfolgreich auf Server kopiert: {remote}"),
-        remote_path: remote,
-        staging_root: None,
-    }
+    UploadResult::ok(format!("Erfolgreich auf Server kopiert: {remote}"), remote)
 }
 
 /// Hard-drop the upload SMB session (disconnect share + drop TCP), then pause on cancel.
@@ -1721,12 +1822,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         &job_name,
     );
 
-    UploadResult {
-        success: true,
-        message: format!("Erfolgreich auf Server kopiert: {remote}"),
-        remote_path: remote,
-        staging_root: None,
-    }
+    UploadResult::ok(format!("Erfolgreich auf Server kopiert: {remote}"), remote)
 }
 
 async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
@@ -1792,12 +1888,7 @@ async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
             } else {
                 format!("Upload fehlgeschlagen ({}): {e}", file.relative)
             };
-            return Err(UploadResult {
-                success: false,
-                message,
-                remote_path: String::new(),
-                staging_root: None,
-            });
+            return Err(UploadResult::fail(message));
         }
     }
 
@@ -2268,6 +2359,12 @@ pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
                     true,
                 );
                 cleared += 1;
+                health_event::publish(
+                    true,
+                    &entry.host,
+                    &entry.share,
+                    health_event::SMB_HEALTH_OK_MESSAGE,
+                );
                 crate::storage::logging::info(
                     "smb",
                     format!("Staging-GC OK: {}", entry.staging_root),
@@ -2281,6 +2378,7 @@ pub async fn drain_smb_staging_gc(login: &str, password: &str) -> usize {
                     &entry.staging_root,
                     false,
                 );
+                health_event::publish_gc(&entry.host, &entry.share, &Err(e.clone()));
                 crate::storage::logging::warn(
                     "smb",
                     format!(
@@ -2539,6 +2637,80 @@ mod tests {
         assert!(!health.ok);
         assert!(!health.soft_hold);
         assert!(health.message.contains("Zugriff verweigert"));
+    }
+
+    fn tcp_probe_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn quiet_tcp_probe_open_port_is_ok() {
+        use std::net::TcpListener;
+        let _guard = tcp_probe_test_lock();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let health = quiet_tcp_health_result(
+            "127.0.0.1",
+            "opt23e-open",
+            probe_smb_tcp_blocking("127.0.0.1", port),
+        );
+        assert!(health.ok, "{}", health.message);
+        assert!(!health.soft_hold);
+        assert_eq!(health.message, QUIET_TCP_OK_MESSAGE);
+        drop(listener);
+    }
+
+    #[test]
+    fn quiet_tcp_probe_closed_port_is_unreachable() {
+        use std::net::TcpListener;
+        let _guard = tcp_probe_test_lock();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let health = quiet_tcp_health_result(
+            "127.0.0.1",
+            "opt23e-closed",
+            probe_smb_tcp_blocking("127.0.0.1", port),
+        );
+        assert!(!health.ok, "{}", health.message);
+        assert!(!health.soft_hold);
+        assert!(
+            health.message.contains("nicht erreichbar") || health.message.contains("abgelehnt"),
+            "{}",
+            health.message
+        );
+    }
+
+    #[test]
+    fn quiet_tcp_ok_does_not_clear_sticky_auth_failure() {
+        let host = format!(
+            "opt23e-sticky-{}.invalid",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let share = "videos";
+        let auth = "Verbindung fehlgeschlagen: Ungültiger Benutzername oder Passwort.";
+        quiet_budget::clear_loud_auth_failure(&host, share);
+        quiet_budget::note_loud_auth_failure(&host, share, auth);
+        let unc = format!(r"\\{host}\{share}");
+        assert!(
+            quiet_budget::should_skip_quiet_smb2(&unc).is_none(),
+            "TCP probe must not arm SessionSetup backoff"
+        );
+        let health = quiet_tcp_health_result(&host, share, Ok(()));
+        assert!(!health.ok);
+        assert!(health.soft_hold);
+        assert!(health.message.contains("Benutzername oder Passwort"));
+        assert!(quiet_budget::should_skip_quiet_smb2(&unc).is_none());
+        assert!(quiet_budget::loud_auth_failure(&host, share).is_some());
+        quiet_budget::clear_loud_auth_failure(&host, share);
+        let cleared = quiet_tcp_health_result(&host, share, Ok(()));
+        assert!(cleared.ok);
+        assert!(!cleared.soft_hold);
+        assert_eq!(cleared.message, QUIET_TCP_OK_MESSAGE);
     }
 
     #[test]

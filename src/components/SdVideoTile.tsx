@@ -8,6 +8,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import {
+  Loader2,
   Maximize,
   Minimize,
   Pause,
@@ -172,7 +173,10 @@ export const SdVideoTile = memo(function SdVideoTile({
    * Tile transport chrome: hover, or paused-while-pinned (resume affordance).
    * While pinned play-without-hover, hide controls so the frame stays clear.
    */
-  const showControls = hovering || (pinned && !playing);
+  /** MTP preview is a full-file download — can take tens of seconds. */
+  const mtpStaging =
+    needsMtpStage && previewEnabled && showVideo && !src && !loadError;
+  const showControls = hovering || (pinned && !playing) || mtpStaging;
 
   // Resolve media URL when preview is wanted (stage MTP catalog files first).
   useEffect(() => {
@@ -545,12 +549,19 @@ export const SdVideoTile = memo(function SdVideoTile({
             onClick={togglePlay}
             onPointerDown={(ev) => ev.stopPropagation()}
           >
-            {playing ? (
+            {mtpStaging ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : playing ? (
               <Pause className="h-4 w-4" />
             ) : (
               <Play className="h-4 w-4 fill-current" />
             )}
           </button>
+          {mtpStaging ? (
+            <span className="absolute bottom-4 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white/90">
+              {t("sd.tile.mtpStaging")}
+            </span>
+          ) : null}
         </div>
 
         <div
@@ -696,6 +707,7 @@ export const SdVideoTile = memo(function SdVideoTile({
         placeholder={
           immersive ? "dark" : showVideo && src ? "none" : "video-icon"
         }
+        onThumbError={() => loader.invalidate(path)}
         onMouseEnter={onMediaEnter}
         onMouseLeave={onMediaLeave}
         onClick={(e) => {
@@ -853,7 +865,11 @@ export const SdVideoTile = memo(function SdVideoTile({
                 />
               ) : (
                 <div className="text-sm text-white/80">
-                  {loadError ? t("sd.tile.noPreviewCodec") : t("common.actions.loading")}
+                  {loadError
+                    ? t("sd.tile.noPreviewCodec")
+                    : needsMtpStage
+                      ? t("sd.tile.mtpStaging")
+                      : t("common.actions.loading")}
                 </div>
               )}
 

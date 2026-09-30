@@ -20,6 +20,8 @@ export type SdTilePreviewProps = {
   onMouseEnter?: MouseEventHandler<HTMLDivElement>;
   onMouseLeave?: MouseEventHandler<HTMLDivElement>;
   onClick?: MouseEventHandler<HTMLDivElement>;
+  /** Poster failed to decode / 404 (e.g. cache file deleted on unplug). */
+  onThumbError?: () => void;
   children?: ReactNode;
 };
 
@@ -69,6 +71,7 @@ export function SdTilePreview({
   onMouseEnter,
   onMouseLeave,
   onClick,
+  onThumbError,
   children,
 }: SdTilePreviewProps) {
   const showLqEnhance = thumbQuality === "lq" && !suppressLqEnhance;
@@ -97,6 +100,7 @@ export function SdTilePreview({
           )}
           draggable={false}
           decoding="async"
+          onError={onThumbError}
         />
       ) : (
         <PreviewPlaceholder variant={placeholder} />

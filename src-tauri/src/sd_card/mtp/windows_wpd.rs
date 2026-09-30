@@ -99,6 +99,53 @@ fn pnp_for_source(source_id: &str) -> Option<String> {
         .and_then(|g| g.get(source_id).cloned())
 }
 
+/// `source_id` → lowercase filename → WPD object. Filled by catalog / name walks so
+/// per-file thumbnail and preview requests skip the full device tree walk.
+static OBJECT_INDEX: Lazy<Mutex<HashMap<String, HashMap<String, CatalogObject>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn replace_object_index(source_id: &str, objects: Vec<CatalogObject>) {
+    let map = objects
+        .into_iter()
+        .map(|o| (o.name.to_ascii_lowercase(), o))
+        .collect();
+    if let Ok(mut g) = OBJECT_INDEX.lock() {
+        g.insert(source_id.to_string(), map);
+    }
+}
+
+fn remember_objects(source_id: &str, objects: Vec<CatalogObject>) {
+    if objects.is_empty() {
+        return;
+    }
+    if let Ok(mut g) = OBJECT_INDEX.lock() {
+        let entry = g.entry(source_id.to_string()).or_default();
+        for o in objects {
+            entry.insert(o.name.to_ascii_lowercase(), o);
+        }
+    }
+}
+
+fn indexed_objects(source_id: &str, wanted: &HashSet<String>) -> Vec<CatalogObject> {
+    let Ok(g) = OBJECT_INDEX.lock() else {
+        return Vec::new();
+    };
+    let Some(map) = g.get(source_id) else {
+        return Vec::new();
+    };
+    wanted.iter().filter_map(|k| map.get(k).cloned()).collect()
+}
+
+fn forget_objects(source_id: &str, names_lower: &HashSet<String>) {
+    if let Ok(mut g) = OBJECT_INDEX.lock() {
+        if let Some(map) = g.get_mut(source_id) {
+            for k in names_lower {
+                map.remove(k);
+            }
+        }
+    }
+}
+
 /// Drop local catalog cache (soft-eject / unplug).
 pub fn invalidate_stage_cache(source_id: &str) {
     let dest = cache_dir_for(source_id);
@@ -106,6 +153,9 @@ pub fn invalidate_stage_cache(source_id: &str) {
         let _ = fs::remove_dir_all(&dest);
     }
     if let Ok(mut g) = SOURCE_PNP.lock() {
+        g.remove(source_id);
+    }
+    if let Ok(mut g) = OBJECT_INDEX.lock() {
         g.remove(source_id);
     }
 }
@@ -265,7 +315,8 @@ pub fn list_camera_catalog(
     let _com = ComGuard::enter();
     let pnp = resolve_pnp(source_id)?;
     let device = open_device(&pnp)?;
-    let files = collect_media_catalog(&device, on_tick.as_mut())?;
+    let (files, objects) = collect_media_catalog(&device, on_tick.as_mut())?;
+    replace_object_index(source_id, objects);
     let dest = cache_dir_for(source_id);
     fs::create_dir_all(&dest)?;
     let raw = serde_json::to_string_pretty(&files).map_err(|e| WpdError::Message(e.to_string()))?;
@@ -293,7 +344,7 @@ pub fn download_camera_files(
     fs::create_dir_all(dest_dir)?;
     let device = open_device(&pnp)?;
     let wanted: HashSet<String> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
-    let objects = find_objects_by_filename(&device, &wanted)?;
+    let objects = find_objects_by_filename(&device, source_id, &wanted)?;
     let total = objects.len() as u32;
     if total == 0 {
         return Err(WpdError::Message(
@@ -359,7 +410,8 @@ pub fn delete_camera_files_named(
     let pnp = resolve_pnp(source_id)?;
     let device = open_device_for_write(&pnp)?;
     let wanted: HashSet<String> = names.iter().map(|n| n.to_ascii_lowercase()).collect();
-    let objects = find_objects_by_filename(&device, &wanted)?;
+    let objects = find_objects_by_filename(&device, source_id, &wanted)?;
+    forget_objects(source_id, &wanted);
     let total = objects.len().max(1) as u32;
     if let Some(cb) = on_progress.as_mut() {
         cb(0, total);
@@ -405,12 +457,10 @@ pub fn camera_thumbnail_jpeg(
     dest_jpeg: &Path,
     _max_edge: u32,
 ) -> Result<Vec<u8>, WpdError> {
-    if dest_jpeg.is_file() {
-        if let Ok(bytes) = fs::read(dest_jpeg) {
-            if bytes.len() > 32 {
-                return Ok(bytes);
-            }
-        }
+    use super::catalog::read_cached_thumbnail;
+
+    if let Some(bytes) = read_cached_thumbnail(dest_jpeg) {
+        return Ok(bytes);
     }
     if let Some(parent) = dest_jpeg.parent() {
         let _ = fs::create_dir_all(parent);
@@ -424,7 +474,7 @@ pub fn camera_thumbnail_jpeg(
         s.insert(filename.to_ascii_lowercase());
         s
     };
-    let objects = find_objects_by_filename(&device, &wanted)?;
+    let objects = find_objects_by_filename(&device, source_id, &wanted)?;
     let obj = objects
         .first()
         .ok_or_else(|| WpdError::Message(format!("Datei nicht auf der Kamera: {filename}")))?;
@@ -432,31 +482,24 @@ pub fn camera_thumbnail_jpeg(
     let content = unsafe { device.Content()? };
     let resources = unsafe { content.Transfer()? };
     // Prefer dedicated thumbnail; fall back to icon resource.
-    let written = copy_object_resource_to_file(
-        &resources,
-        &obj.object_id,
-        &WPD_RESOURCE_THUMBNAIL,
-        dest_jpeg,
-        0,
-        |_| {},
-    )
-    .or_else(|_| {
-        copy_object_resource_to_file(
-            &resources,
-            &obj.object_id,
-            &WPD_RESOURCE_ICON,
-            dest_jpeg,
-            0,
-            |_| {},
-        )
-    })?;
-    if written < 32 {
-        return Err(WpdError::Message("Thumbnail leer.".into()));
+    let mut last_err = WpdError::Message("Thumbnail leer.".into());
+    for resource in [&WPD_RESOURCE_THUMBNAIL, &WPD_RESOURCE_ICON] {
+        match copy_object_resource_to_file(&resources, &obj.object_id, resource, dest_jpeg, 0, |_| {})
+        {
+            Ok(_) => {
+                if let Some(bytes) = read_cached_thumbnail(dest_jpeg) {
+                    return Ok(bytes);
+                }
+                last_err = WpdError::Message("Thumbnail ungültig.".into());
+            }
+            Err(e) => last_err = e,
+        }
     }
-    fs::read(dest_jpeg).map_err(|e| WpdError::Message(e.to_string()))
+    Err(last_err)
 }
 
 /// Ensure a single catalog file exists on disk (on-demand stage for Confirm preview).
+/// Downloads are atomic (`.part` → rename), so an existing file is always complete.
 pub fn ensure_preview_file(virtual_path: &Path) -> Result<PathBuf, WpdError> {
     use super::catalog::parse_mtp_virtual_media_path;
 
@@ -730,6 +773,7 @@ fn collect_object_names_for_signature(
     Ok(names)
 }
 
+#[derive(Clone)]
 struct CatalogObject {
     object_id: String,
     name: String,
@@ -739,10 +783,11 @@ struct CatalogObject {
 fn collect_media_catalog(
     device: &IPortableDevice,
     mut on_tick: Option<&mut Box<dyn FnMut(Vec<CameraCatalogFile>) + Send>>,
-) -> Result<Vec<CameraCatalogFile>, WpdError> {
+) -> Result<(Vec<CameraCatalogFile>, Vec<CatalogObject>), WpdError> {
     let content = unsafe { device.Content()? };
     let props = unsafe { content.Properties()? };
     let mut files = Vec::new();
+    let mut objects = Vec::new();
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     queue.push_back(("DEVICE".into(), 0));
     let mut visited = 0usize;
@@ -780,6 +825,11 @@ fn collect_media_catalog(
                 // Prefer listable media even when content-type is wrong/unspecified.
                 if !name.is_empty() && is_listable_media_path(Path::new(&name)) {
                     let size = object_size(&props, &id_str).unwrap_or(0);
+                    objects.push(CatalogObject {
+                        object_id: id_str,
+                        name: name.clone(),
+                        size,
+                    });
                     files.push(CameraCatalogFile {
                         name,
                         size,
@@ -801,17 +851,39 @@ fn collect_media_catalog(
         }
     }
     files.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(files)
+    Ok((files, objects))
 }
 
+/// Resolve objects by filename: indexed object ids first (verified by name), then a
+/// tree walk for the rest. The walk indexes every media leaf it passes.
 fn find_objects_by_filename(
     device: &IPortableDevice,
+    source_id: &str,
     wanted: &HashSet<String>,
 ) -> Result<Vec<CatalogObject>, WpdError> {
     let content = unsafe { device.Content()? };
     let props = unsafe { content.Properties()? };
     let mut found = Vec::new();
     let mut remaining = wanted.clone();
+
+    let mut stale = HashSet::new();
+    for obj in indexed_objects(source_id, wanted) {
+        let key = obj.name.to_ascii_lowercase();
+        let current = object_original_name(&props, &obj.object_id)
+            .or_else(|| object_name(&props, &obj.object_id));
+        if current.is_some_and(|n| n.eq_ignore_ascii_case(&obj.name)) {
+            remaining.remove(&key);
+            found.push(obj);
+        } else {
+            stale.insert(key);
+        }
+    }
+    forget_objects(source_id, &stale);
+    if remaining.is_empty() {
+        return Ok(found);
+    }
+
+    let mut seen = Vec::new();
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
     queue.push_back(("DEVICE".into(), 0));
     const MAX_DEPTH: u32 = 8;
@@ -851,12 +923,23 @@ fn find_objects_by_filename(
                     });
                     continue;
                 }
+                if !name.is_empty() && is_listable_media_path(Path::new(&name)) {
+                    let size = object_size(&props, &id_str).unwrap_or(0);
+                    seen.push(CatalogObject {
+                        object_id: id_str,
+                        name,
+                        size,
+                    });
+                    continue;
+                }
                 if depth < MAX_DEPTH && should_descend_wpd_object(&props, &id_str, &name) {
                     queue.push_back((id_str, depth + 1));
                 }
             }
         }
     }
+    seen.extend(found.iter().cloned());
+    remember_objects(source_id, seen);
     Ok(found)
 }
 
@@ -975,7 +1058,41 @@ fn copy_object_resource_to_file(
     }
     let stream =
         stream.ok_or_else(|| WpdError::Message("Kein Datenstrom von der Kamera.".into()))?;
-    let mut file = File::create(dest)?;
+    let part = part_path(dest);
+    let result = stream_to_file(&stream, optimal, &part, expected_size, &mut on_bytes)
+        .and_then(|written| {
+            if expected_size > 0 && written < expected_size {
+                return Err(WpdError::Message(format!(
+                    "Übertragung unvollständig: {written} von {expected_size} Bytes"
+                )));
+            }
+            fs::rename(&part, dest)?;
+            Ok(written)
+        });
+    if result.is_err() {
+        let _ = fs::remove_file(&part);
+    }
+    result
+}
+
+/// Sibling temp path; the final name only appears once the transfer is complete.
+fn part_path(dest: &Path) -> PathBuf {
+    let mut name = dest
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".part");
+    dest.with_file_name(name)
+}
+
+fn stream_to_file(
+    stream: &IStream,
+    optimal: u32,
+    path: &Path,
+    expected_size: u64,
+    on_bytes: &mut impl FnMut(u64),
+) -> Result<u64, WpdError> {
+    let mut file = File::create(path)?;
     let buf_size = if optimal > 0 {
         optimal as usize
     } else {
@@ -1008,6 +1125,7 @@ fn copy_object_resource_to_file(
             break;
         }
     }
+    file.flush()?;
     Ok(written)
 }
 
@@ -1107,6 +1225,30 @@ mod tests {
             friendly_name: "Pixel".into(),
         };
         assert!(match_usb_identity(&hint).is_none());
+    }
+
+    #[test]
+    fn part_path_is_sibling_with_suffix() {
+        let p = part_path(Path::new(r"C:\tmp\aero_tandem_mtp\x\GX010123.MP4"));
+        assert_eq!(p, Path::new(r"C:\tmp\aero_tandem_mtp\x\GX010123.MP4.part"));
+    }
+
+    #[test]
+    fn object_index_roundtrip_and_forget() {
+        let sid = "mtp:gopro:INDEXTEST";
+        replace_object_index(
+            sid,
+            vec![CatalogObject {
+                object_id: "o1".into(),
+                name: "GX010001.MP4".into(),
+                size: 10,
+            }],
+        );
+        let wanted: HashSet<String> = ["gx010001.mp4".to_string()].into_iter().collect();
+        assert_eq!(indexed_objects(sid, &wanted).len(), 1);
+        forget_objects(sid, &wanted);
+        assert!(indexed_objects(sid, &wanted).is_empty());
+        invalidate_stage_cache(sid);
     }
 
     #[test]

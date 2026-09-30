@@ -437,6 +437,11 @@ fn default_crew_list() -> Vec<CrewMember> {
             videospringer: false,
         },
         CrewMember {
+            name: "Dan".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
             name: "Futti".into(),
             tandemmaster: true,
             videospringer: true,
@@ -468,6 +473,11 @@ fn default_crew_list() -> Vec<CrewMember> {
         },
         CrewMember {
             name: "Käthe".into(),
+            tandemmaster: false,
+            videospringer: true,
+        },
+        CrewMember {
+            name: "Kimi".into(),
             tandemmaster: false,
             videospringer: true,
         },
@@ -1952,7 +1962,7 @@ mod tests {
     #[test]
     fn default_crew_list_has_expected_tandemmasters() {
         let list = default_crew_list();
-        assert_eq!(list.len(), 28);
+        assert_eq!(list.len(), 30);
         assert_eq!(list.first().unwrap().name, "Alberto");
         assert_eq!(list.last().unwrap().name, "Torsten");
         let names: Vec<_> = list.iter().map(|c| c.name.as_str()).collect();
@@ -1965,7 +1975,7 @@ mod tests {
                 .any(|c| c.name == name && c.tandemmaster && !c.videospringer));
         }
         for name in [
-            "Jojo", "Kai", "Käthe", "Mathi", "Robert", "Robin", "Sabrina",
+            "Dan", "Jojo", "Kai", "Käthe", "Kimi", "Mathi", "Robert", "Robin", "Sabrina",
         ] {
             assert!(list
                 .iter()
@@ -1979,8 +1989,9 @@ mod tests {
         assert_eq!(
             vs,
             [
-                "Ana", "Andy", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Käthe", "Mathi", "Mayo",
-                "Ralph", "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim", "Tom", "Torsten"
+                "Ana", "Andy", "Dan", "Futti", "Harry", "Henrik", "Jojo", "Kai", "Kimi", "Käthe",
+                "Mathi", "Mayo", "Ralph", "Robert", "Robin", "Sabrina", "Sahira", "Samuel", "Tim",
+                "Tom", "Torsten"
             ]
         );
     }

@@ -19,27 +19,15 @@ pub const LOUD_HEALTH_LOCK_WAIT: Duration = Duration::from_secs(3);
 static HOST_LOCKS: Lazy<Mutex<HashMap<String, Arc<Semaphore>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
-/// Canonical host key from a parsed SMB host (no DNS lookup).
+/// Canonical host key from a parsed SMB host.
 ///
-/// Port is not part of the key — Backup and Primary on the same machine share
-/// one mutex even when shares differ.
+/// Uses the OPT-23C alias resolver: a sorted IP set when resolution succeeds,
+/// otherwise the normalized string (no port). Backup and Primary on the same
+/// machine share one mutex even when the share differs. Unit tests do not
+/// resolve (see [`super::host_alias::global`]), so keys stay the normalized
+/// spelling unless a caller injects a lookup on [`super::host_alias::HostResolver`].
 pub fn canonical_host_key(host: &str) -> String {
-    let trimmed = host.trim().trim_matches(|c| c == '\\' || c == '/').trim();
-    // Drop bracketed IPv6 form `[::1]` → `::1` for stable keys.
-    let unbracketed = trimmed
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(trimmed);
-    // If a caller passes `host:port`, keep only the host part (IPv4 / name).
-    let without_port = if unbracketed.matches(':').count() == 1 {
-        unbracketed
-            .rsplit_once(':')
-            .map(|(h, _)| h)
-            .unwrap_or(unbracketed)
-    } else {
-        unbracketed
-    };
-    without_port.to_ascii_lowercase()
+    super::host_alias::global().canonical_key(host)
 }
 
 /// Local FS targets do not consume an smb2 host slot (C6).

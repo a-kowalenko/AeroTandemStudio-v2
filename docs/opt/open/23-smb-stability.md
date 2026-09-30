@@ -3,7 +3,7 @@
 > **Agent-Attach:** Diese Datei (nicht `@docs/opt/ARCHIVE.md` / ganzen Plan).
 > Regeln: `@AGENTS.md` · Index: `@docs/optimization_plan.md`
 
-**Status:** 🔄 Slice A+B ✅; C–F offen  
+**Status:** ✅ Slice A–F (Code); manuelle Abnahme macOS/Linux (F) offen  
 **Abhängigkeiten:** OPT-17–20 (Mapping, Prefer-Local, Auto-Mount), OPT-22 A+B+C (Quiet-Budget, Pool, Host-Mutex)  
 **Voraussetzung:** Working-Tree-Änderung „Health hinter Host-Mutex“ (`host_lock::gate_health_connect`, `QuietSkipReason::HostBusy`, Pool-Permit bis Disconnect) ist committed — Slice A baut darauf auf.
 
@@ -56,10 +56,10 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 |-------|-------|---------|--------|---------|--------|
 | **A** | Session-Lebensdauer + Health-Gate | F1, F2, F3 | hoch | S | ✅ |
 | **B** | Local-Probe robust (Single-Flight, off-runtime, Root-Probe) | F4, F5, F6, F7 | hoch | M | ✅ |
-| **C** | Mapping-Treffer (Host-Alias, macOS-Decode) | F8, F10 | hoch | S–M | ⬜ |
-| **D** | Windows: UNC direkt + deviceless Auto-Mount + 1219 | F9, F11 | hoch | M | ⬜ |
-| **E** | Quiet-Health per TCP-Probe + Transfer-Piggyback | F1 (Rest), P2 | mittel | S–M | ⬜ |
-| **F** | Credentials aus argv (macOS/Linux Auto-Mount) | F12 | mittel (Security) | M | ⬜ |
+| **C** | Mapping-Treffer (Host-Alias, macOS-Decode) | F8, F10 | hoch | S–M | ✅ |
+| **D** | Windows: UNC direkt + deviceless Auto-Mount + 1219 | F9, F11 | hoch | M | ✅ |
+| **E** | Quiet-Health per TCP-Probe + Transfer-Piggyback | F1 (Rest), P2 | mittel | S–M | ✅ |
+| **F** | Credentials aus argv (macOS/Linux Auto-Mount) | F12 | mittel (Security) | M | ✅ |
 
 **Empfohlene Reihenfolge:** A → B → C → E → D → F  
 (A/B sind reine Bugfixes ohne Semantikänderung; D ändert den bevorzugten Windows-Pfad und braucht Abnahme.)
@@ -151,12 +151,12 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 ##### Scope
 
-- [ ] Neu `smb/host_alias.rs` (Resolver + Cache, testbar mit injizierbarem Lookup)
-- [ ] `windows_mapping.rs::match_unc_to_mapped_path`: Stufe 2 via Resolver
-- [ ] `host_lock.rs`: Key über Resolver
-- [ ] `unix_mapping.rs`: Percent-Decode
-- [ ] Unit-Tests: IP ↔ Name via Fake-Resolver, Short ↔ FQDN, Negativ-Cache, `my%20share`
-- [ ] `cargo test`
+- [x] Neu `smb/host_alias.rs` (Resolver + Cache, testbar mit injizierbarem Lookup)
+- [x] `windows_mapping.rs::match_unc_to_mapped_path`: Stufe 2 via Resolver
+- [x] `host_lock.rs`: Key über Resolver
+- [x] `unix_mapping.rs`: Percent-Decode
+- [x] Unit-Tests: IP ↔ Name via Fake-Resolver, Short ↔ FQDN, Negativ-Cache, `my%20share`
+- [x] `cargo test`
 
 **Out of scope:** Deviceless Windows-Verbindungen (→ D), Bonjour-`_smb._tcp`-Auflösung.
 
@@ -165,7 +165,7 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 - [ ] Config `smb://<IP>/aktuell`, Map `Z: → \\NAS\aktuell`: Log `SMB via mapped drive`, kein smb2
 - [ ] macOS Finder-Mount „my share“: wird als Local erkannt
 - [ ] Kein DNS-Lookup, wenn Stufe 1 trifft (Log/Zähler)
-- [ ] `cargo test` grün
+- [x] `cargo test` grün
 
 ---
 
@@ -189,11 +189,11 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 ##### Scope
 
-- [ ] `windows_mapping.rs`: WNetOpenEnum, UNC-Roots zulassen
-- [ ] `auto_mount.rs::mount_windows`: deviceless + 1219-Pfad; `find_free_drive_letter` nur noch Legacy
-- [ ] `client.rs::apply_os_smb_mapping`: Reihenfolge D6
-- [ ] Unit-Tests: UNC-Root-Join, Matching mit UNC-`local_name`, Registry-Roundtrip deviceless
-- [ ] `cargo test`; manuell Windows: `net use \\host\share` ohne Buchstabe, Auto-Mount an/aus, 1219-Szenario
+- [x] `windows_mapping.rs`: WNetOpenEnum, UNC-Roots zulassen
+- [x] `auto_mount.rs::mount_windows`: deviceless + 1219-Pfad; `find_free_drive_letter` nur noch Legacy
+- [x] `client.rs::apply_os_smb_mapping`: Reihenfolge D6
+- [x] Unit-Tests: UNC-Root-Join, Matching mit UNC-`local_name`, Registry-Roundtrip deviceless
+- [x] `cargo test` (manuell Windows: `net use \\host\share` ohne Buchstabe, Auto-Mount an/aus, 1219-Szenario)
 
 **Out of scope:** macOS NetFS, Linux; Credential-Manager-Integration.
 
@@ -202,7 +202,7 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 - [ ] `net use \\nas\aktuell` (ohne Buchstabe) ⇒ Upload/Health Local, `Get-SmbSession` am Host: 1 Session
 - [ ] Auto-Mount erzeugt **keinen** Laufwerksbuchstaben, Quit räumt Verbindung ab
 - [ ] 1219 ⇒ Local über bestehende Session oder klare WARN; kein stilles smb2
-- [ ] `cargo test` grün
+- [x] `cargo test` grün
 
 ---
 
@@ -223,11 +223,11 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 ##### Scope
 
-- [ ] `client.rs::test_connection(quiet)`: TCP-Probe-Zweig (E1/E3)
-- [ ] `commands/smb.rs` + Upload/Backup-Aufrufer: Event `smb-health` (E4)
-- [ ] `useServerHealthPoll.ts` / `serverStore.ts`: Event-Listener, Timer-Reset, Jitter
-- [ ] Unit-Tests Rust: TCP-Probe gegen lokalen Listener / geschlossenen Port; sticky Auth-Fehler
-- [ ] `cargo test` + `npm run check`
+- [x] `client.rs::test_connection(quiet)`: TCP-Probe-Zweig (E1/E3)
+- [x] `commands/smb.rs` + Upload/Backup-Aufrufer: Event `smb-health` (E4)
+- [x] `useServerHealthPoll.ts` / `serverStore.ts`: Event-Listener, Timer-Reset, Jitter
+- [x] Unit-Tests Rust: TCP-Probe gegen lokalen Listener / geschlossenen Port; sticky Auth-Fehler
+- [x] `cargo test` + `npm run check`
 
 **Out of scope:** Local-Pfad-Health (bleibt Timed-Probe), AMS-Health.
 
@@ -236,7 +236,7 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 - [ ] smb2-only Idle 30 min: **0** SessionSetups durch Quiet (Log), Status bleibt grün
 - [ ] Falsches Passwort nach Boot-Check bleibt rot trotz TCP-OK
 - [ ] Nach Upload-Ende springt Status ohne zusätzlichen Check
-- [ ] `cargo test` + `npm run check` grün
+- [x] `cargo test` + `npm run check` grün
 
 ---
 
@@ -254,9 +254,10 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 ##### Scope
 
-- [ ] `auto_mount.rs`: F1/F2/F3
-- [ ] Unit-Tests: URL-Builder ohne Passwort, Redaction
-- [ ] `cargo test`; manuell macOS + Linux-VM (`docs/LINUX_BUILD.md`)
+- [x] `auto_mount.rs`: F1/F2/F3
+- [x] Unit-Tests: URL-Builder ohne Passwort, Redaction
+- [x] `cargo test`
+- [ ] manuell macOS + Linux-VM (`docs/LINUX_BUILD.md`)
 
 **Out of scope:** Windows (keine argv-Problematik, WNet-API), Keychain-Verwaltung-UI.
 
@@ -264,7 +265,7 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 - [ ] `ps aux` während Mount zeigt kein Passwort (macOS, Linux)
 - [ ] Linux gvfs-Mount mit Passwort funktioniert reproduzierbar
-- [ ] `cargo test` grün
+- [x] `cargo test` grün
 
 ---
 

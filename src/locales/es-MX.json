@@ -1062,6 +1062,7 @@
       "searchingQr": "Buscando código QR…",
       "noFiles": "Sin archivos.",
       "clearOnlyAfterBackup": "Limpiar solo es posible tras un respaldo.",
+      "mtpImportNeedsBackup": "Cámaras USB: la importación solo es posible junto con el respaldo.",
       "noActionSelected": "No hay acción seleccionada.",
       "pickBackupFolder": "Elige una carpeta de respaldo en la configuración.",
       "ejectSuccess": "Tarjeta SD expulsada — se puede retirar",
@@ -2152,6 +2153,7 @@
       "titleSizeLimit": "Límite de tamaño superado — elegir archivos",
       "clearAfterBackup": "Limpiar tarjeta SD después de un respaldo exitoso",
       "clearNeedsBackup": "Solo disponible cuando el respaldo está activado",
+      "importNeedsBackupMtp": "Cámara USB: importación solo junto con el respaldo",
       "clearNoFiles": "No hay archivos para limpiar",
       "clearOnlyAfterBackupHint": "Limpiar solo es posible después del respaldo.",
       "clearSd": "Limpiar tarjeta SD",
@@ -2247,7 +2249,8 @@
     },
     "tile": {
       "fullscreenNamed": "{{name}} pantalla completa",
-      "noPreviewCodec": "Sin vista previa (códec/WebView)"
+      "noPreviewCodec": "Sin vista previa (códec/WebView)",
+      "mtpStaging": "Cargando desde la cámara…"
     }
   },
   "setupWizard": {

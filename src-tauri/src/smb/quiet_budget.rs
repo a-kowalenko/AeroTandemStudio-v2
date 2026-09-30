@@ -51,6 +51,8 @@ struct QuietBudgetState {
     backoff: HashMap<String, BackoffEntry>,
     /// Last skip log: UNC → (reason tag, when).
     last_skip_log: HashMap<String, (String, Instant)>,
+    /// OPT-23E: last loud Login/Share failure. Quiet TCP-OK must not clear it.
+    loud_auth_failure: HashMap<String, String>,
 }
 
 static STATE: Lazy<Mutex<QuietBudgetState>> = Lazy::new(|| Mutex::new(QuietBudgetState::default()));
@@ -108,6 +110,69 @@ pub fn is_session_rejected(message: &str) -> bool {
     lower.contains("request_not_accepted")
         || lower.contains("status_request_not_accepted")
         || (lower.contains("session setup") && lower.contains("not_accepted"))
+}
+
+fn auth_sticky_key(host: &str, share: &str) -> String {
+    let host = host.trim().trim_matches(['[', ']']).to_ascii_lowercase();
+    let share = share.trim().trim_matches(['\\', '/']).to_ascii_lowercase();
+    format!("{host}|{share}")
+}
+
+/// Login or share rejection from a loud SessionSetup / TreeConnect (OPT-23E E3).
+pub fn is_login_or_share_failure(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("benutzername oder passwort")
+        || lower.contains("kein zugriff auf freigabe")
+        || (lower.contains("freigabe") && lower.contains("nicht gefunden"))
+        || lower.contains("status_logon_failure")
+        || lower.contains("logon_failure")
+        || lower.contains("wrong password")
+        || lower.contains("status_bad_network_name")
+        || lower.contains("bad_network_name")
+        || (lower.contains("access_denied") && lower.contains("session"))
+}
+
+/// Transport failure: host/port never accepted a connection.
+pub fn is_server_unreachable(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("nicht erreichbar")
+        || lower.contains("timed out")
+        || lower.contains("zeitüberschreitung")
+        || lower.contains("connection refused")
+        || lower.contains("actively refused")
+        || lower.contains("host nicht gefunden")
+        || lower.contains("os error 10060")
+        || lower.contains("os error 10061")
+        || lower.contains("os error 110")
+        || lower.contains("os error 111")
+        || lower.contains("network is unreachable")
+        || lower.contains("no route to host")
+}
+
+/// Remember a loud Login/Share failure so Quiet TCP-OK stays red (`soft_hold`).
+pub fn note_loud_auth_failure(host: &str, share: &str, message: &str) {
+    if !is_login_or_share_failure(message) {
+        return;
+    }
+    let key = auth_sticky_key(host, share);
+    if let Ok(mut state) = STATE.lock() {
+        state.loud_auth_failure.insert(key, message.to_string());
+    }
+}
+
+pub fn clear_loud_auth_failure(host: &str, share: &str) {
+    let key = auth_sticky_key(host, share);
+    if let Ok(mut state) = STATE.lock() {
+        state.loud_auth_failure.remove(&key);
+    }
+}
+
+pub fn loud_auth_failure(host: &str, share: &str) -> Option<String> {
+    let key = auth_sticky_key(host, share);
+    STATE
+        .lock()
+        .ok()
+        .and_then(|state| state.loud_auth_failure.get(&key).cloned())
 }
 
 /// Rate-limited log when Quiet skips SessionSetup (A5 — no spam every 45s).
@@ -206,6 +271,47 @@ mod tests {
         ));
         assert!(is_session_rejected("request_not_accepted"));
         assert!(!is_session_rejected("connection refused"));
+    }
+
+    #[test]
+    fn login_or_share_failure_detected() {
+        assert!(is_login_or_share_failure(
+            "Verbindung fehlgeschlagen: Ungültiger Benutzername oder Passwort."
+        ));
+        assert!(is_login_or_share_failure(
+            "Verbindung fehlgeschlagen: Server oder Freigabe 'videos' nicht gefunden."
+        ));
+        assert!(is_login_or_share_failure(
+            "Verbindung fehlgeschlagen: Kein Zugriff auf Freigabe 'videos'."
+        ));
+        assert!(is_login_or_share_failure("STATUS_LOGON_FAILURE"));
+        assert!(is_login_or_share_failure("STATUS_BAD_NETWORK_NAME"));
+        assert!(!is_login_or_share_failure(
+            "Server nicht erreichbar (Zeitüberschreitung)."
+        ));
+        assert!(!is_login_or_share_failure("Server erreichbar"));
+    }
+
+    #[test]
+    fn loud_auth_failure_is_sticky_until_cleared() {
+        let host = unique_unc("auth");
+        let share = "videos";
+        clear_loud_auth_failure(&host, share);
+        assert!(loud_auth_failure(&host, share).is_none());
+        note_loud_auth_failure(
+            &host,
+            share,
+            "Server nicht erreichbar (Zeitüberschreitung).",
+        );
+        assert!(
+            loud_auth_failure(&host, share).is_none(),
+            "transport errors are not sticky"
+        );
+        let msg = "Verbindung fehlgeschlagen: Ungültiger Benutzername oder Passwort.";
+        note_loud_auth_failure(&host, share, msg);
+        assert_eq!(loud_auth_failure(&host, share).as_deref(), Some(msg));
+        clear_loud_auth_failure(&host, share);
+        assert!(loud_auth_failure(&host, share).is_none());
     }
 
     #[test]

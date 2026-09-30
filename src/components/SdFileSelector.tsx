@@ -90,6 +90,15 @@ function confirmLabel(actions: SdWorkflowActions, count: number): string {
   return `${parts.join(" · ")} (${count})`;
 }
 
+/** USB/MTP catalog paths only exist on disk after backup downloads them. */
+function withMtpImportGate(
+  a: SdWorkflowActions,
+  mtp: boolean,
+): SdWorkflowActions {
+  if (!mtp || a.backup || (!a.import && !a.scanQr)) return a;
+  return { ...a, import: false, scanQr: false };
+}
+
 function ActionToggle({
   pressed,
   disabled,
@@ -403,13 +412,18 @@ export function SdFileSelector({
     const settingsQrOn =
       Boolean(config?.qr_check_enabled) ||
       Boolean(config?.photo_qr_check_enabled);
-    setActions({
-      backup: defaultActions?.backup ?? true,
-      import: defaultActions?.import ?? true,
-      clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
-      eject: Boolean(defaultActions?.eject),
-      scanQr: defaultConfirmScanQr(settingsQrOn),
-    });
+    setActions(
+      withMtpImportGate(
+        {
+          backup: defaultActions?.backup ?? true,
+          import: defaultActions?.import ?? true,
+          clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
+          eject: Boolean(defaultActions?.eject),
+          scanQr: defaultConfirmScanQr(settingsQrOn),
+        },
+        isMtpDrive(drive),
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, drive]);
 
@@ -432,13 +446,18 @@ export function SdFileSelector({
     const settingsQrOn =
       Boolean(config?.qr_check_enabled) ||
       Boolean(config?.photo_qr_check_enabled);
-    setActions({
-      backup: defaultActions?.backup ?? true,
-      import: defaultActions?.import ?? true,
-      clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
-      eject: Boolean(defaultActions?.eject),
-      scanQr: defaultConfirmScanQr(settingsQrOn),
-    });
+    setActions(
+      withMtpImportGate(
+        {
+          backup: defaultActions?.backup ?? true,
+          import: defaultActions?.import ?? true,
+          clear: Boolean(defaultActions?.clear) && Boolean(defaultActions?.backup ?? true),
+          eject: Boolean(defaultActions?.eject),
+          scanQr: defaultConfirmScanQr(settingsQrOn),
+        },
+        isMtpDrive(drive),
+      ),
+    );
   }, [
     open,
     listing,
@@ -787,7 +806,13 @@ export function SdFileSelector({
   function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
     setActions((prev) => {
       if (key === "backup" && !value) {
-        return { ...prev, backup: false, clear: false };
+        return withMtpImportGate(
+          { ...prev, backup: false, clear: false },
+          icaVirtual,
+        );
+      }
+      if (key === "import" && value && icaVirtual && !prev.backup) {
+        return prev;
       }
       if (key === "clear" && value && !prev.backup) {
         return prev;
@@ -1514,7 +1539,12 @@ export function SdFileSelector({
             </ActionToggle>
             <ActionToggle
               pressed={actions.import}
-              disabled={catalogEmpty}
+              disabled={catalogEmpty || (icaVirtual && !actions.backup)}
+              title={
+                icaVirtual && !actions.backup
+                  ? t("sd.selector.importNeedsBackupMtp")
+                  : undefined
+              }
               onPressedChange={(v) => patchAction("import", v)}
             >
               {t("app.import.label")}
@@ -1552,6 +1582,11 @@ export function SdFileSelector({
             >
               {t("media.list.scanQr")}
             </ActionToggle>
+            {icaVirtual && !actions.backup && !catalogEmpty ? (
+              <span className="text-[11px] text-muted">
+                {t("sd.selector.importNeedsBackupMtp")}
+              </span>
+            ) : null}
           </div>
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {mode === "size_limit" && onProceedAll ? (

@@ -21,8 +21,9 @@ const CONCURRENCY = 3;
 const ICA_CONCURRENCY = 1;
 const HQ_DELAY_MS = 450;
 const FLUSH_MS = 80;
-const ICA_RETRY_MS = 250;
-const ICA_MAX_RETRIES = 2;
+/** MTP retry backoff: 400, 800, 1600, 3200 ms (device busy / session warming up). */
+const ICA_RETRY_BASE_MS = 400;
+const ICA_MAX_RETRIES = 4;
 
 function isMtpVirtualPath(path: string): boolean {
   return (
@@ -41,6 +42,36 @@ function bestCached(path: string): ThumbState | undefined {
   return memoryCache.get(cacheKey(path, "hq")) ?? memoryCache.get(cacheKey(path, "lq"));
 }
 
+/** Loaders with mounted tiles — notified when cached thumbs are dropped. */
+const activeLoaders = new Set<SdThumbnailLoader>();
+
+/** Drop cached thumbs whose path matches; mounted tiles fall back to the placeholder. */
+export function forgetThumbs(match: (path: string) => boolean): void {
+  const paths = new Set<string>();
+  for (const key of [...memoryCache.keys()]) {
+    const path = key.slice(key.indexOf(":") + 1);
+    if (!match(path)) continue;
+    memoryCache.delete(key);
+    paths.add(path);
+  }
+  if (paths.size === 0) return;
+  for (const loader of activeLoaders) loader.handleForgotten(paths);
+}
+
+/**
+ * Unplug / eject wipes the backend MTP cache dir (`.thumbs`); replug reuses the
+ * same virtual paths, so cached URLs would point at deleted files.
+ */
+export function forgetMtpSourceThumbs(sourceId: string): void {
+  const safe = sourceId.replace(/[^A-Za-z0-9_-]/g, "_");
+  forgetThumbs(
+    (path) => isMtpVirtualPath(path) && path.split(/[\\/]/).includes(safe),
+  );
+}
+
+/** Reloads per path after an `<img>` error before giving up (corrupt cache file). */
+const MAX_BROKEN_RELOADS = 2;
+
 type Listener = (batch: Map<string, ThumbState>) => void;
 
 /**
@@ -58,6 +89,7 @@ export class SdThumbnailLoader {
   private stopped = false;
   private listener: Listener | null = null;
   private pathListeners = new Map<string, Set<() => void>>();
+  private brokenReloads = new Map<string, number>();
   private generation = 0;
 
   setListener(fn: Listener | null) {
@@ -72,10 +104,33 @@ export class SdThumbnailLoader {
       this.pathListeners.set(path, set);
     }
     set.add(onStoreChange);
+    activeLoaders.add(this);
     return () => {
       set!.delete(onStoreChange);
       if (set!.size === 0) this.pathListeners.delete(path);
+      if (this.pathListeners.size === 0) activeLoaders.delete(this);
     };
+  }
+
+  /** Displayed thumb failed to load (file gone / corrupt): drop it and refetch. */
+  invalidate(path: string) {
+    const n = this.brokenReloads.get(path) ?? 0;
+    this.brokenReloads.set(path, n + 1);
+    forgetThumbs((p) => p === path);
+    if (n >= MAX_BROKEN_RELOADS) return;
+    if (this.stopped || !this.visible.has(path)) return;
+    this.enqueue(path, isMtpVirtualPath(path) ? "hq" : "lq", 10);
+    this.pump();
+  }
+
+  /** Called by {@link forgetThumbs}: clear buffered results and repaint tiles. */
+  handleForgotten(paths: Set<string>) {
+    for (const path of paths) {
+      this.flushBuffer.delete(path);
+      const subs = this.pathListeners.get(path);
+      if (!subs) continue;
+      for (const cb of subs) cb();
+    }
   }
 
   getBest(path: string): ThumbState | undefined {
@@ -94,6 +149,7 @@ export class SdThumbnailLoader {
 
   start() {
     this.stopped = false;
+    this.brokenReloads.clear();
   }
 
   stop() {
@@ -124,8 +180,13 @@ export class SdThumbnailLoader {
     const upgradeToHq = opts?.upgradeToHq !== false;
     if (visible) {
       this.visible.add(path);
-      this.enqueue(path, "lq", 10);
-      if (upgradeToHq) this.scheduleHq(path);
+      // MTP: one device round-trip per tile — fetch the camera thumb once at HQ.
+      if (isMtpVirtualPath(path)) {
+        this.enqueue(path, "hq", 10);
+      } else {
+        this.enqueue(path, "lq", 10);
+        if (upgradeToHq) this.scheduleHq(path);
+      }
     } else {
       this.visible.delete(path);
       const t = this.hqTimers.get(path);
@@ -244,7 +305,7 @@ export class SdThumbnailLoader {
             priority: Math.max(1, item.priority - 1),
           });
           this.pump();
-        }, ICA_RETRY_MS);
+        }, ICA_RETRY_BASE_MS * 2 ** item.retries);
       }
     } finally {
       this.inFlight.delete(key);

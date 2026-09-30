@@ -109,6 +109,7 @@ export const SdPhotoTile = memo(function SdPhotoTile({
         thumbUrl={thumb?.url}
         thumbQuality={thumb?.quality}
         placeholder="pulse"
+        onThumbError={() => loader.invalidate(path)}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest("[data-no-marquee]")) return;
           onSelect(path, e.shiftKey);
@@ -245,6 +246,7 @@ export const SdDetailsRow = memo(function SdDetailsRow({
           thumbQuality={thumb?.quality}
           placeholder="pulse"
           suppressLqEnhance
+          onThumbError={() => loader.invalidate(path)}
           layout="inline"
           className="h-9 w-14 shrink-0 rounded"
         />

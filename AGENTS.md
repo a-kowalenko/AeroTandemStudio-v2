@@ -76,7 +76,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 
 ### Performance-Backlog
 
-OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen · Spec: `@docs/opt/open/21-capcut-export.md`. **OPT-22** ✅. **OPT-23** SMB-Stabilität — Slice A+B ✅; C–F offen · Spec: `@docs/opt/open/23-smb-stability.md`. Index: `@docs/optimization_plan.md`.
+OPT-0 … OPT-20 ✅ (OPT-13 entfernt). **OPT-21** CapCut schnell+robust — Slice 0+A ✅; 21B–E offen · Spec: `@docs/opt/open/21-capcut-export.md`. **OPT-22** ✅. **OPT-23** SMB-Stabilität — Slice A–F ✅ (Code; manuell macOS/Linux offen) · Spec: `@docs/opt/open/23-smb-stability.md`. Index: `@docs/optimization_plan.md`.
 
 ---
 

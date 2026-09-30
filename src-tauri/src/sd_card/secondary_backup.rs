@@ -300,6 +300,14 @@ where
         on_progress,
     ));
 
+    // OPT-23E: backup result piggybacks SMB health (same host as the primary server).
+    if result.message.trim() != WORKFLOW_CANCELLED {
+        if let (Some(host), Some(share)) = (result.smb_host.as_deref(), result.smb_share.as_deref())
+        {
+            crate::smb::health_event::publish(result.success, host, share, &result.message);
+        }
+    }
+
     if result.success {
         let leaf = primary_path
             .file_name()

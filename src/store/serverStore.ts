@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { tr } from "@/i18n";
+import { smbHostsMatch, type SmbHealthEvent } from "@/lib/smbHealthPoll";
 import {
   testServerConnection,
   type ConnectionTestResult,
@@ -26,6 +27,11 @@ type ServerState = {
   setPhase: (phase: ServerPhase) => void;
   setUploadProgress: (p: UploadProgressEvent | null) => void;
   applyTestResult: (result: ConnectionTestResult) => void;
+  /** OPT-23E piggyback. Returns false when `host` is not the configured server. */
+  applyTransferHealth: (
+    event: SmbHealthEvent,
+    configuredHost: string | null,
+  ) => boolean;
   checkConnection: (
     opts?: ServerConnectionCheckOptions,
   ) => Promise<ConnectionTestResult>;
@@ -35,7 +41,7 @@ type ServerState = {
 /** Ignore stale results when a newer checkConnection started. */
 let connectionRequestSeq = 0;
 
-export const useServerStore = create<ServerState>((set) => ({
+export const useServerStore = create<ServerState>((set, get) => ({
   phase: "idle",
   connected: false,
   message: "",
@@ -59,6 +65,28 @@ export const useServerStore = create<ServerState>((set) => ({
       phase: result.ok ? "connected" : "error",
       refreshing: false,
     }),
+  applyTransferHealth: (event, configuredHost) => {
+    if (!smbHostsMatch(event.host, configuredHost)) return false;
+    // Drop an in-flight quiet check so it cannot overwrite this sample.
+    connectionRequestSeq += 1;
+    const phase = get().phase;
+    if (phase === "uploading") {
+      // Keep the upload chip until the slot runner sets the final phase.
+      set({
+        connected: event.ok,
+        message: event.message,
+        refreshing: false,
+      });
+      return true;
+    }
+    set({
+      connected: event.ok,
+      message: event.message,
+      phase: event.ok ? "connected" : "error",
+      refreshing: false,
+    });
+    return true;
+  },
   checkConnection: async (opts) => {
     const quiet = Boolean(opts?.quiet);
     const overrides =

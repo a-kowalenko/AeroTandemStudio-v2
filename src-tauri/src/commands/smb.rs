@@ -160,6 +160,14 @@ pub async fn upload_to_server(
     )
     .await;
 
+    // OPT-23E: a finished smb2 transfer is a health sample. Cancel is not.
+    if !upload_failure_is_cancelled(&result.message) {
+        if let (Some(host), Some(share)) = (result.smb_host.as_deref(), result.smb_share.as_deref())
+        {
+            crate::smb::health_event::publish(result.success, host, share, &result.message);
+        }
+    }
+
     if result.success {
         logging::info(
             "smb",

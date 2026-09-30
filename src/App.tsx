@@ -854,6 +854,11 @@ function App() {
       showWarning(t("app.sd.clearOnlyAfterBackup"));
       return false;
     }
+    // MTP catalog paths are virtual until backup downloads them (import would skip all).
+    if (doImport && !doBackup && isMtpDrive(drive)) {
+      showWarning(t("app.sd.mtpImportNeedsBackup"));
+      return false;
+    }
 
     if (doBackup && !config?.sd_backup_folder?.trim()) {
       showError(t("app.sd.pickBackupFolder"));

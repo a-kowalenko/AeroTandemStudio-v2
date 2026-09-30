@@ -550,12 +550,10 @@ pub fn camera_thumbnail_jpeg(
     dest_jpeg: &Path,
     max_edge: u32,
 ) -> Result<Vec<u8>, IcaError> {
-    if dest_jpeg.is_file() {
-        if let Ok(bytes) = std::fs::read(dest_jpeg) {
-            if bytes.len() > 32 {
-                return Ok(bytes);
-            }
-        }
+    use super::catalog::read_cached_thumbnail;
+
+    if let Some(bytes) = read_cached_thumbnail(dest_jpeg) {
+        return Ok(bytes);
     }
     if let Some(parent) = dest_jpeg.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -577,11 +575,8 @@ pub fn camera_thumbnail_jpeg(
             )
         };
         if rc == 0 {
-            let bytes = std::fs::read(dest_jpeg).map_err(|e| IcaError::Message(e.to_string()))?;
-            if bytes.len() < 32 {
-                return Err(IcaError::Message("Thumbnail leer.".into()));
-            }
-            return Ok(bytes);
+            return read_cached_thumbnail(dest_jpeg)
+                .ok_or_else(|| IcaError::Message("Thumbnail ungültig.".into()));
         }
         last_err = read_err_buf(&err);
         // 3 = ICA lock busy (backup / other op) — retry briefly.

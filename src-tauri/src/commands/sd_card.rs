@@ -391,8 +391,10 @@ pub async fn get_media_thumbnail(
     let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok();
     let media_server = media.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        use crate::sd_card::mtp::catalog::is_preview_staging;
+
         let p = std::path::Path::new(&path);
-        if p.is_file() {
+        if p.is_file() && !is_preview_staging(p) {
             match generate_thumbnail_cached_with_ffmpeg(p, q, ffmpeg.as_deref()) {
                 Ok(cached) => thumbnail_result_from_cache(&path, &media_server, cached.cache_path),
                 Err(e) => {
@@ -476,33 +478,39 @@ pub async fn get_media_thumbnail(
 #[tauri::command]
 pub async fn ensure_mtp_preview_file(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        use crate::sd_card::mtp::catalog::is_mtp_virtual_media_path;
+        use crate::sd_card::mtp::catalog::{is_mtp_virtual_media_path, with_preview_stage_lock};
         let p = std::path::Path::new(&path);
-        if p.is_file() {
-            return Ok(path);
-        }
         if !is_mtp_virtual_media_path(p) {
-            return Err("not an MTP preview path".into());
+            return if p.is_file() {
+                Ok(path)
+            } else {
+                Err("not an MTP preview path".into())
+            };
         }
 
-        #[cfg(target_os = "macos")]
-        {
-            use crate::sd_card::mtp::macos_ica::ensure_preview_file;
-            let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
-            return Ok(staged.to_string_lossy().into_owned());
-        }
+        with_preview_stage_lock(p, || {
+            #[cfg(target_os = "macos")]
+            {
+                use crate::sd_card::mtp::macos_ica::ensure_preview_file;
+                let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
+                return Ok(staged.to_string_lossy().into_owned());
+            }
 
-        #[cfg(target_os = "windows")]
-        {
-            use crate::sd_card::mtp::windows_wpd::ensure_preview_file;
-            let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
-            return Ok(staged.to_string_lossy().into_owned());
-        }
+            #[cfg(target_os = "windows")]
+            {
+                use crate::sd_card::mtp::windows_wpd::ensure_preview_file;
+                let staged = ensure_preview_file(p).map_err(|e| e.to_string())?;
+                return Ok(staged.to_string_lossy().into_owned());
+            }
 
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        {
-            Err("MTP-Vorschau auf dieser Plattform nicht verfügbar.".into())
-        }
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            {
+                if p.is_file() {
+                    return Ok(path.clone());
+                }
+                Err("MTP-Vorschau auf dieser Plattform nicht verfügbar.".into())
+            }
+        })
     })
     .await
     .map_err(|e| e.to_string())?

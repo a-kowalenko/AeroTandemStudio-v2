@@ -15,6 +15,7 @@ import {
   isMtpDrive,
 } from "../lib/sdCard";
 import { presentSdUserMessage } from "../lib/sdMessages";
+import { forgetMtpSourceThumbs } from "../lib/sdThumbnailLoader";
 import { jobKindFromInsert } from "../lib/sdQueue";
 import {
   showSdQueueDroppedToast,
@@ -237,8 +238,11 @@ export function useSdCardMonitor(opts?: {
             Boolean(st.selectorDrive) &&
             removedSet.has(st.selectorDrive!);
 
-          if (removed.some((d) => isMtpDrive(d))) {
+          const removedMtp = removed.filter((d) => isMtpDrive(d));
+          if (removedMtp.length) {
             setIntakeBusy(false);
+            // Backend wiped the MTP cache dir; replug reuses the same virtual paths.
+            for (const d of removedMtp) forgetMtpSourceThumbs(d);
           }
 
           if (selectorGone) {
