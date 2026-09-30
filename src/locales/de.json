@@ -2224,6 +2224,7 @@
       "usbImportDisabled": "USB-Kamera-Import ist in den Einstellungen deaktiviert.",
       "clearOnlyAfterBackup": "SD-Bereinigung ist nur nach erfolgreichem Backup erlaubt",
       "notClearedNoFilesInBackup": "Nicht bereinigt (keine Dateien im Backup).",
+      "notClearedCancelled": "Nicht bereinigt (abgebrochen). Die Dateien bleiben auf der Karte.",
       "clearReportedOkButNothingDeleted": "Kamera-Bereinigung meldete Erfolg, aber es wurde nichts gelöscht.",
       "usbReleased": "USB-Kamera freigegeben. Bitte Kabel trennen; erst nach erneutem Anstecken wieder importieren.",
       "directCopyDeprecated": "Kopierstrategie „Direkt“ ist veraltet — Server-Spiegel läuft im Hintergrund (lokal zuerst).",

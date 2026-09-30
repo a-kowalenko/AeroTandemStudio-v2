@@ -17,6 +17,7 @@ const EXACT: Record<string, string> = {
     "sd.messages.clearOnlyAfterBackup",
   "Nicht bereinigt (keine Dateien im Backup).":
     "sd.messages.notClearedNoFilesInBackup",
+  "Nicht bereinigt (abgebrochen).": "sd.messages.notClearedCancelled",
   "Kamera-Bereinigung meldete Erfolg, aber es wurde nichts gelöscht.":
     "sd.messages.clearReportedOkButNothingDeleted",
   "USB-Kamera freigegeben. Bitte Kabel trennen; erst nach erneutem Anstecken wieder importieren.":

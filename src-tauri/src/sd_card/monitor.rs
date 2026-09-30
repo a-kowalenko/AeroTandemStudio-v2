@@ -44,6 +44,9 @@ pub const EVENT_BACKUP_CONFIRM: &str = "sd-backup-confirmation-required";
 #[allow(dead_code)]
 pub const EVENT_SIZE_LIMIT: &str = "sd-size-limit-exceeded";
 
+/// Clear-after-backup skipped because the user cancelled after the copy finished.
+pub const CLEAR_SKIPPED_CANCELLED: &str = "Nicht bereinigt (abgebrochen).";
+
 #[derive(Debug, Error)]
 pub enum SdError {
     #[error("io error: {0}")]
@@ -1067,6 +1070,16 @@ impl SdCardMonitor {
         }
     }
 
+    fn emit_clear_skipped_cancelled(&self, drive: &str) {
+        self.emit_status(
+            "clearing_skipped",
+            serde_json::json!({
+                "drive": drive,
+                "reason": "cancelled",
+            }),
+        );
+    }
+
     pub fn decline_drive(&self, drive: &str) {
         self.declined_drives
             .lock()
@@ -1951,7 +1964,11 @@ impl SdCardMonitor {
             || (clear_after.is_none() && cfg.sd_clear_after_backup);
         let mut clear_warning: Option<String> = None;
         let mut clear_deleted_count: Option<usize> = None;
-        if want_clear && !copied_sources.is_empty() {
+        if want_clear && !copied_sources.is_empty() && is_cancelled() {
+            self.emit_clear_skipped_cancelled(drive);
+            clear_deleted_count = Some(0);
+            clear_warning = Some(CLEAR_SKIPPED_CANCELLED.into());
+        } else if want_clear && !copied_sources.is_empty() {
             if let Some(cb) = self.on_progress.lock().unwrap().as_ref() {
                 let elapsed = start.elapsed().unwrap_or_default().as_secs_f64();
                 let current_mb = copied_size as f64 / (1024.0 * 1024.0);
@@ -2254,6 +2271,13 @@ impl SdCardMonitor {
                 }
             };
 
+            if is_cancelled() {
+                drop(hash_tx);
+                let _ = hash_join.join();
+                let _ = fs::remove_dir_all(&backup_path);
+                return Ok(BackupResult::fail(WORKFLOW_CANCELLED, 0));
+            }
+
             self.emit_workflow(workflow_progress(
                 "backup",
                 file_total,
@@ -2331,7 +2355,11 @@ impl SdCardMonitor {
                 || (clear_after.is_none() && cfg.sd_clear_after_backup);
             let mut clear_warning: Option<String> = None;
             let mut clear_deleted_count: Option<usize> = None;
-            if want_clear && !copied_sources.is_empty() {
+            if want_clear && !copied_sources.is_empty() && is_cancelled() {
+                self.emit_clear_skipped_cancelled(drive);
+                clear_deleted_count = Some(0);
+                clear_warning = Some(CLEAR_SKIPPED_CANCELLED.into());
+            } else if want_clear && !copied_sources.is_empty() {
                 self.emit_status("clearing_started", serde_json::json!(drive));
                 let clear_sources = paths_for_sd_clear(&copied_sources, &skipped_timelapse_videos);
                 let (deleted, warn) = self.clear_mtp_after_backup(drive, &clear_sources);

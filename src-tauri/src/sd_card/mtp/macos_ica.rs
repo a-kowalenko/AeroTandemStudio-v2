@@ -57,6 +57,7 @@ unsafe extern "C" {
             ),
         >,
         progress_ctx: *mut c_void,
+        should_cancel: Option<unsafe extern "C" fn() -> i32>,
         err_buf: *mut c_char,
         err_len: usize,
     ) -> i32;
@@ -339,6 +340,10 @@ unsafe extern "C" fn ica_progress_trampoline(
     }
 }
 
+unsafe extern "C" fn ica_should_cancel() -> i32 {
+    i32::from(crate::video::ffmpeg::is_cancelled())
+}
+
 /// Download selected camera files (empty `names` = all) into `dest_dir`.
 pub fn download_camera_files(
     source_id: &str,
@@ -386,6 +391,7 @@ pub fn download_camera_files(
             names_c.as_ptr(),
             progress_fn,
             progress_ctx,
+            Some(ica_should_cancel),
             err.as_mut_ptr() as *mut c_char,
             err.len(),
         )

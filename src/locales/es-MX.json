@@ -2224,6 +2224,7 @@
       "usbImportDisabled": "La importación por cámara USB está desactivada en la configuración.",
       "clearOnlyAfterBackup": "La limpieza de SD solo está permitida tras un respaldo exitoso",
       "notClearedNoFilesInBackup": "No se limpió (no hay archivos en el respaldo).",
+      "notClearedCancelled": "No se limpió (cancelado). Los archivos permanecen en la tarjeta.",
       "clearReportedOkButNothingDeleted": "La limpieza de la cámara reportó éxito, pero no se eliminó nada.",
       "usbReleased": "Cámara USB liberada. Desconecte el cable; importe de nuevo solo tras volver a conectarla.",
       "directCopyDeprecated": "La estrategia de copia «Directa» está obsoleta — el espejo del servidor corre en segundo plano (local primero).",

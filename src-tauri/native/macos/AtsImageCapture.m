@@ -18,6 +18,8 @@ typedef void (*ats_ica_progress_cb)(unsigned int file_index, unsigned int file_t
                                     const char *filename_utf8, unsigned long long bytes_done,
                                     unsigned long long bytes_total, void *ctx);
 typedef void (*ats_ica_catalog_tick_cb)(void *ctx);
+/// Polled from the waiting (non-main) thread; non-zero = user requested cancel.
+typedef int (*ats_ica_cancel_cb)(void);
 typedef void (*ats_ica_count_progress_cb)(unsigned int current, unsigned int total, void *ctx);
 
 typedef NS_ENUM(NSInteger, AtsIcaPhase) {
@@ -72,6 +74,7 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 @property(nonatomic, assign) NSUInteger catalogSettleGen;
 @property(nonatomic, assign) ats_ica_progress_cb progressCb;
 @property(nonatomic, assign) void *progressCtx;
+@property(nonatomic, assign) ats_ica_cancel_cb cancelCb;
 @property(nonatomic, assign) ats_ica_count_progress_cb deleteProgressCb;
 @property(nonatomic, assign) void *deleteProgressCtx;
 @property(nonatomic, assign) ats_ica_catalog_tick_cb catalogTickCb;
@@ -90,6 +93,7 @@ typedef NS_ENUM(NSInteger, AtsIcaMode) {
 - (BOOL)writeCatalogJson:(NSString **)errOut;
 - (void)beginList;
 - (void)beginDownloads;
+- (void)cancelFromUser;
 - (ICCameraFile *)fileNamed:(NSString *)name;
 - (void)rememberCamera:(ICDevice *)device;
 - (void)tryOpenBestCamera;
@@ -617,7 +621,7 @@ int ats_ica_has_held(void) {
 }
 
 - (void)onCatalogReady {
-  if (self.catalogConsumed || self.finished) {
+  if (self.catalogConsumed || self.finished || self.phase == AtsIcaPhaseFailed) {
     return;
   }
   self.catalogConsumed = YES;
@@ -1220,6 +1224,9 @@ int ats_ica_has_held(void) {
 }
 
 - (void)beginDownloads {
+  if (self.finished || self.phase == AtsIcaPhaseFailed) {
+    return;
+  }
   [self refreshFilesFromCamera];
   if (self.namesToDownload.count > 0) {
     NSMutableArray<ICCameraFile *> *filtered = [NSMutableArray array];
@@ -1280,7 +1287,20 @@ int ats_ica_has_held(void) {
   return path;
 }
 
+- (void)cancelFromUser {
+  if (self.finished || self.phase == AtsIcaPhaseFailed) {
+    return;
+  }
+  if (self.phase == AtsIcaPhaseDownloading && self.camera) {
+    [self.camera cancelDownload];
+  }
+  [self failWithMessage:@"Abgebrochen"];
+}
+
 - (void)downloadNext {
+  if (self.phase != AtsIcaPhaseDownloading) {
+    return;
+  }
   if (self.downloadIndex >= self.files.count) {
     if (self.holdSessionAfterStage) {
       [self parkHeldAfterStage];
@@ -1311,6 +1331,9 @@ int ats_ica_has_held(void) {
                    }
                    // Completion may arrive off-main; hop back for ICA continuity.
                    dispatch_async(dispatch_get_main_queue(), ^{
+                     if (strong.finished || strong.phase != AtsIcaPhaseDownloading) {
+                       return;
+                     }
                      if (error) {
                        [strong failWithMessage:[NSString stringWithFormat:
                            @"Download fehlgeschlagen (%@): %@", name, error.localizedDescription]];
@@ -1583,10 +1606,21 @@ static BOOL ats_ica_wait_runner(AtsIcaRunner *runner, NSTimeInterval overallSec,
   NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:overallSec];
   NSDate *browseDeadline = [NSDate dateWithTimeIntervalSinceNow:browseSec];
   BOOL browseTimedOut = NO;
+  BOOL cancelSent = NO;
 
   [runner.condition lock];
   while (!runner.finished && [deadline timeIntervalSinceNow] > 0) {
     [runner.condition waitUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.25]];
+    if (!cancelSent && !runner.finished && runner.cancelCb && runner.cancelCb() != 0) {
+      cancelSent = YES;
+      [runner.condition unlock];
+      dispatch_sync(dispatch_get_main_queue(), ^{
+        [runner cancelFromUser];
+      });
+      [runner.condition lock];
+      // failWithMessage may still be closing the PTP session — keep waiting for finished.
+      continue;
+    }
     if (!browseTimedOut && !runner.finished && runner.phase == AtsIcaPhaseBrowsing &&
         [browseDeadline timeIntervalSinceNow] <= 0) {
       browseTimedOut = YES;
@@ -1862,7 +1896,7 @@ int ats_ica_list_catalog(const char *dest_dir_utf8, const char *name_hint_utf8,
  */
 int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8,
                            const char *names_utf8, ats_ica_progress_cb progress, void *progress_ctx,
-                           char *err_buf, size_t err_len) {
+                           ats_ica_cancel_cb should_cancel, char *err_buf, size_t err_len) {
   if (!dest_dir_utf8 || !dest_dir_utf8[0]) {
     ats_set_error(err_buf, err_len, @"Kein Zielordner angegeben.");
     return 1;
@@ -1885,6 +1919,7 @@ int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8
       runner.pendingFinishAfterClose = NO;
       runner.progressCb = progress;
       runner.progressCtx = progress_ctx;
+      runner.cancelCb = should_cancel;
       [runner.namesToDownload removeAllObjects];
       ats_ica_fill_name_set(runner.namesToDownload, raw);
       [runner.localPaths removeAllObjects];
@@ -1901,6 +1936,7 @@ int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8
       BOOL ok = ats_ica_wait_runner(runner, 3600.0, 3600.0);
       runner.progressCb = NULL;
       runner.progressCtx = NULL;
+      runner.cancelCb = NULL;
       [AtsIcaOpLock() unlock];
 
       if (!ok) {
@@ -1923,6 +1959,7 @@ int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8
     runner.holdSessionAfterStage = YES;
     runner.progressCb = progress;
     runner.progressCtx = progress_ctx;
+    runner.cancelCb = should_cancel;
     ats_ica_fill_name_set(runner.namesToDownload, raw);
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1932,6 +1969,7 @@ int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8
     BOOL ok = ats_ica_wait_runner(runner, 3600.0, 28.0);
     runner.progressCb = NULL;
     runner.progressCtx = NULL;
+    runner.cancelCb = NULL;
     [AtsIcaOpLock() unlock];
 
     if (!ok) {
@@ -1953,7 +1991,8 @@ int ats_ica_download_named(const char *dest_dir_utf8, const char *name_hint_utf8
  */
 int ats_ica_stage_all(const char *dest_dir_utf8, const char *name_hint_utf8, char *err_buf,
                       size_t err_len) {
-  return ats_ica_download_named(dest_dir_utf8, name_hint_utf8, "", NULL, NULL, err_buf, err_len);
+  return ats_ica_download_named(dest_dir_utf8, name_hint_utf8, "", NULL, NULL, NULL, err_buf,
+                                err_len);
 }
 
 /**

@@ -2224,6 +2224,7 @@
       "usbImportDisabled": "USB camera import is disabled in settings.",
       "clearOnlyAfterBackup": "SD clear is only allowed after a successful backup",
       "notClearedNoFilesInBackup": "Not cleared (no files in backup).",
+      "notClearedCancelled": "Not cleared (cancelled). Files remain on the card.",
       "clearReportedOkButNothingDeleted": "Camera clear reported success, but nothing was deleted.",
       "usbReleased": "USB camera released. Please disconnect the cable; import again only after reconnecting.",
       "directCopyDeprecated": "“Direct” copy strategy is obsolete — server mirror runs in the background (local first).",

@@ -33,6 +33,7 @@ use crate::sd_card::mtp::allowlist::{
 use crate::sd_card::mtp::catalog::{cache_dir_for, CameraCatalogFile};
 use crate::sd_card::mtp::usb_enumerate::DetectedUsbCamera;
 use crate::storage::logging;
+use crate::video::ffmpeg::{is_cancelled, WORKFLOW_CANCELLED};
 
 #[derive(Debug)]
 pub enum WpdError {
@@ -359,6 +360,9 @@ pub fn download_camera_files(
     let bytes_total: u64 = objects.iter().map(|o| o.size).sum();
 
     for (idx, obj) in objects.iter().enumerate() {
+        if is_cancelled() {
+            return Err(cancelled_error());
+        }
         let file_index = (idx + 1) as u32;
         let dest = unique_path(dest_dir, &obj.name);
         let written = copy_object_resource_to_file(
@@ -1059,7 +1063,31 @@ fn copy_object_resource_to_file(
     let stream =
         stream.ok_or_else(|| WpdError::Message("Kein Datenstrom von der Kamera.".into()))?;
     let part = part_path(dest);
-    let result = stream_to_file(&stream, optimal, &part, expected_size, &mut on_bytes)
+    let buf_size = if optimal > 0 {
+        optimal as usize
+    } else {
+        64 * 1024
+    };
+    let read_chunk = |buf: &mut [u8]| -> Result<usize, WpdError> {
+        let mut read = 0u32;
+        let hr = unsafe {
+            stream.Read(
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                Some(&mut read),
+            )
+        };
+        if read == 0 {
+            return Ok(0);
+        }
+        if hr.is_err() {
+            return Err(WpdError::Message(format!(
+                "Lesen von Kamera fehlgeschlagen: {hr:?}"
+            )));
+        }
+        Ok(read as usize)
+    };
+    let result = stream_to_file(read_chunk, buf_size, &part, expected_size, &mut on_bytes)
         .and_then(|written| {
             if expected_size > 0 && written < expected_size {
                 return Err(WpdError::Message(format!(
@@ -1085,41 +1113,34 @@ fn part_path(dest: &Path) -> PathBuf {
     dest.with_file_name(name)
 }
 
+fn cancelled_error() -> WpdError {
+    WpdError::Message(WORKFLOW_CANCELLED.into())
+}
+
+/// `read_chunk` fills the buffer and returns the byte count (`0` = end of stream).
 fn stream_to_file(
-    stream: &IStream,
-    optimal: u32,
+    mut read_chunk: impl FnMut(&mut [u8]) -> Result<usize, WpdError>,
+    buf_size: usize,
     path: &Path,
     expected_size: u64,
     on_bytes: &mut impl FnMut(u64),
 ) -> Result<u64, WpdError> {
     let mut file = File::create(path)?;
-    let buf_size = if optimal > 0 {
-        optimal as usize
-    } else {
-        64 * 1024
-    };
     let mut buf = vec![0u8; buf_size];
     let mut written = 0u64;
     loop {
-        let mut read = 0u32;
-        let hr = unsafe {
-            stream.Read(
-                buf.as_mut_ptr() as *mut _,
-                buf.len() as u32,
-                Some(&mut read),
-            )
-        };
+        if is_cancelled() {
+            return Err(cancelled_error());
+        }
+        let read = read_chunk(&mut buf)?;
         if read == 0 {
-            let _ = hr;
             break;
         }
-        if hr.is_err() {
-            return Err(WpdError::Message(format!(
-                "Lesen von Kamera fehlgeschlagen: {hr:?}"
-            )));
+        if is_cancelled() {
+            return Err(cancelled_error());
         }
-        file.write_all(&buf[..read as usize])?;
-        written += u64::from(read);
+        file.write_all(&buf[..read])?;
+        written += read as u64;
         on_bytes(written);
         if expected_size > 0 && written >= expected_size {
             break;
@@ -1188,6 +1209,66 @@ fn clear_propvariant(pv: &mut PROPVARIANT) {
 mod tests {
     use super::*;
     use crate::sd_card::mtp::allowlist::match_usb_identity;
+
+    fn chunked_reader(
+        payload: Vec<u8>,
+        chunk: usize,
+    ) -> impl FnMut(&mut [u8]) -> Result<usize, WpdError> {
+        let mut pos = 0usize;
+        move |buf: &mut [u8]| {
+            let n = chunk.min(buf.len()).min(payload.len() - pos);
+            buf[..n].copy_from_slice(&payload[pos..pos + n]);
+            pos += n;
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn stream_to_file_copies_all_chunks() {
+        let _guard = crate::video::ffmpeg::cancel_test_lock();
+        crate::video::ffmpeg::reset_cancel_flag();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.part");
+        let payload = vec![0x5Au8; 10 * 1024];
+        let mut calls = 0u32;
+        let written = stream_to_file(
+            chunked_reader(payload.clone(), 4 * 1024),
+            4 * 1024,
+            &path,
+            payload.len() as u64,
+            &mut |_| calls += 1,
+        )
+        .unwrap();
+        assert_eq!(written, payload.len() as u64);
+        assert_eq!(calls, 3);
+        assert_eq!(fs::read(&path).unwrap(), payload);
+    }
+
+    #[test]
+    fn stream_to_file_stops_when_cancelled_mid_stream() {
+        let _guard = crate::video::ffmpeg::cancel_test_lock();
+        crate::video::ffmpeg::reset_cancel_flag();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.part");
+        let payload = vec![0x5Au8; 64 * 1024];
+        let mut chunks = 0u32;
+        let err = stream_to_file(
+            chunked_reader(payload.clone(), 4 * 1024),
+            4 * 1024,
+            &path,
+            payload.len() as u64,
+            &mut |_| {
+                chunks += 1;
+                if chunks == 2 {
+                    crate::video::ffmpeg::cancel_encode();
+                }
+            },
+        )
+        .unwrap_err();
+        crate::video::ffmpeg::reset_cancel_flag();
+        assert_eq!(err.to_string(), WORKFLOW_CANCELLED);
+        assert_eq!(chunks, 2);
+    }
 
     #[test]
     fn parse_vid_pid_from_typical_pnp() {
