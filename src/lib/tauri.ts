@@ -608,6 +608,10 @@ export type CreateJobOptions = {
   media_revision_tag?: string;
   /** Phase 46: attach/commit speculative staging when available (default true). */
   use_speculative_staging?: boolean;
+  /** Skip AMS create-preflight: form already verified via live lookup. */
+  ams_lookup_verified?: boolean;
+  /** Skip AMS create-preflight: user confirmed proceed after not-found. */
+  ams_preflight_ack?: boolean;
 };
 
 export type CreateJobResult = {

@@ -1223,10 +1223,16 @@ pub async fn create_job(
     };
     let opts = options.unwrap_or_default();
 
-    // Optional AMS Bridge customer preflight (P2). Soft when bridge unreachable.
+    // Optional AMS Bridge customer preflight (P2). Soft when bridge/upstream down;
+    // skip when form already verified or user acked not-found; hard only for not-found.
     let preflight_started = std::time::Instant::now();
     logging::info("create", "AMS Preflight…");
-    if let Err(e) = crate::bridge::preflight_customer_lookup(&config, &kunde).await {
+    let preflight_opts = crate::bridge::PreflightLookupOpts {
+        skip: opts.ams_lookup_verified || opts.ams_preflight_ack,
+    };
+    if let Err(e) =
+        crate::bridge::preflight_customer_lookup_with_opts(&config, &kunde, preflight_opts).await
+    {
         logging::warn("create", format!("AMS Preflight abgebrochen: {e}"));
         return Err(e);
     }

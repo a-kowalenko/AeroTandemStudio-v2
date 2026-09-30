@@ -24,6 +24,11 @@ import {
 } from "./lib/folderConflictConfirm";
 import type { OfflineCreateConfirmChoice } from "./components/OfflineCreateConfirmDialog";
 import type { OfflineCreateConfirmState } from "./lib/offlineCreateConfirm";
+import type { AmsPreflightConfirmChoice } from "./components/AmsPreflightConfirmDialog";
+import {
+  isAmsPreflightNotFoundError,
+  type AmsPreflightConfirmState,
+} from "./lib/amsPreflightConfirm";
 import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
@@ -314,6 +319,8 @@ function App() {
     useState<FolderConflictConfirmState | null>(null);
   const [offlineCreateConfirm, setOfflineCreateConfirm] =
     useState<OfflineCreateConfirmState | null>(null);
+  const [amsPreflightConfirm, setAmsPreflightConfirm] =
+    useState<AmsPreflightConfirmState | null>(null);
   const [reconnectUploadOffer, setReconnectUploadOffer] =
     useState<ReconnectUploadOfferState | null>(null);
   const [bulkUploadSummary, setBulkUploadSummary] =
@@ -326,6 +333,8 @@ function App() {
   const folderConflictAckRef = useRef<string | null>(null);
   /** Soft-ack: create locally while upload is on but server offline (Phase 31.1). */
   const offlineCreateAckRef = useRef(false);
+  /** Soft-ack: proceed after AMS create-preflight not-found. */
+  const amsPreflightAckRef = useRef(false);
   const replaceExistingDirRef = useRef(false);
   /** Track SMB connected edge for reconnect upload offer (Phase 31.9). */
   const serverWasConnectedRef = useRef(false);
@@ -1338,6 +1347,7 @@ function App() {
     }
     if (uploadSlotHasWork || serverPhase === "uploading") return true;
     if (offlineCreateConfirm != null) return true;
+    if (amsPreflightConfirm != null) return true;
     if (lowMediaConfirm != null) return true;
     if (folderConflictConfirm != null) return true;
     if (reencodeConfirm != null) return true;
@@ -1495,6 +1505,7 @@ function App() {
     serverPhase,
     reconnectUploadOffer,
     offlineCreateConfirm,
+    amsPreflightConfirm,
     lowMediaConfirm,
     folderConflictConfirm,
     reencodeConfirm,
@@ -1984,6 +1995,16 @@ function App() {
     void startCreate();
   }
 
+  function onAmsPreflightChoice(choice: AmsPreflightConfirmChoice) {
+    setAmsPreflightConfirm(null);
+    if (choice === "back") {
+      amsPreflightAckRef.current = false;
+      return;
+    }
+    amsPreflightAckRef.current = true;
+    void runCreateJob();
+  }
+
   function onReconnectUploadOfferChoice(choice: ReconnectUploadOfferChoice) {
     const entries = reconnectUploadOffer?.entries ?? [];
     setReconnectUploadOffer(null);
@@ -2069,6 +2090,8 @@ function App() {
   async function startCreate() {
     if (busy || appendActive || sdWorkflowUiActive || loading || qrScanBusy)
       return;
+    // Fresh create entry: not-found ack only applies via confirm → runCreateJob.
+    amsPreflightAckRef.current = false;
     const speicher = await ensureSpeicherort();
     if (!speicher) return;
 
@@ -2274,6 +2297,8 @@ function App() {
           use_speculative_staging: Boolean(
             config?.speculative_create_enabled !== false,
           ),
+          ams_lookup_verified: useKundeStore.getState().amsLookupLocked,
+          ams_preflight_ack: amsPreflightAckRef.current,
         },
         kunde.form_mode === "kunde" ? qrPreview : null,
       );
@@ -2362,6 +2387,7 @@ function App() {
       folderConflictAckRef.current = null;
       replaceExistingDirRef.current = false;
       offlineCreateAckRef.current = false;
+      amsPreflightAckRef.current = false;
       if (config?.upload_to_server) {
         void refreshPendingUploadCount(true).catch(() => {});
       }
@@ -2383,6 +2409,7 @@ function App() {
         folderConflictAckRef.current = null;
         replaceExistingDirRef.current = false;
         offlineCreateAckRef.current = false;
+        amsPreflightAckRef.current = false;
       }
 
       // Encode finished; slot runner owns cancel flag while SMB runs.
@@ -2396,6 +2423,8 @@ function App() {
         setPercent(0);
         setStatus(t("progress.default.cancelled"));
         showWarning(t("create.job.cancelled"));
+      } else if (isAmsPreflightNotFoundError(String(e))) {
+        setAmsPreflightConfirm({ open: true });
       } else {
         setCreateFailed(true);
         showError(presentAmsUserMessage(String(e)));
@@ -2680,6 +2709,8 @@ function App() {
     setFolderConflictConfirm(null);
     offlineCreateAckRef.current = false;
     setOfflineCreateConfirm(null);
+    amsPreflightAckRef.current = false;
+    setAmsPreflightConfirm(null);
     setReconnectUploadOffer(null);
     showSessionResetToast(
       t("common.actions.reset"),
@@ -2973,6 +3004,8 @@ function App() {
         onFolderConflictChoice={onFolderConflictChoice}
         offlineCreateConfirm={offlineCreateConfirm}
         onOfflineCreateChoice={onOfflineCreateChoice}
+        amsPreflightConfirm={amsPreflightConfirm}
+        onAmsPreflightChoice={onAmsPreflightChoice}
         reconnectUploadOffer={reconnectUploadOffer}
         onReconnectUploadOfferChoice={onReconnectUploadOfferChoice}
         loading={loading}

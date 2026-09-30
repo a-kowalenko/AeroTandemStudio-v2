@@ -251,6 +251,28 @@ fn is_unreachable(err: &str) -> bool {
     err.contains("nicht erreichbar")
 }
 
+/// Machine-readable create-preflight gate: customer/booking not found in AMS.
+/// Frontend may soft-confirm and retry with `ams_preflight_ack`.
+pub const AMS_PREFLIGHT_NOT_FOUND_PREFIX: &str = "AMS_PREFLIGHT_NOT_FOUND:";
+
+/// Options for create-time customer preflight.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PreflightLookupOpts {
+    /// Skip lookup: prior successful form lookup, or user confirmed not-found.
+    pub skip: bool,
+}
+
+/// True when AMS reports the customer/booking is missing (hard confirm case).
+/// Other `ok: false` responses (upstream/API down, generic failures) are soft.
+pub fn is_lookup_not_found(code: &str, message: &str) -> bool {
+    let c = code.trim().to_lowercase();
+    if c == "not_found" || c.contains("not_found") {
+        return true;
+    }
+    let m = message.to_lowercase();
+    m.contains("nicht gefunden") || m.contains("not found")
+}
+
 pub async fn fetch_health(
     base_url: &str,
     token: &str,
@@ -423,12 +445,25 @@ pub fn lookup_request_from_kunde(kunde: &Kunde) -> Option<LookupRequest> {
 }
 
 /// Soft preflight: only when bridge URL is configured and kunde has API ids.
-/// Bridge unreachable → Ok(None) (file handoff must still work).
-/// Lookup failed (customer not found / API error) → Err.
+/// - `opts.skip` → Ok(None) (already verified at form time, or user ack).
+/// - Bridge unreachable / non-not-found lookup failure → Ok(None) (file handoff).
+/// - Customer not found → Err(`AMS_PREFLIGHT_NOT_FOUND:…`) for soft confirm.
+/// - Auth / hard transport errors (non-unreachable) → Err.
 pub async fn preflight_customer_lookup(
     config: &AppConfig,
     kunde: &Kunde,
 ) -> Result<Option<LookupResponse>, String> {
+    preflight_customer_lookup_with_opts(config, kunde, PreflightLookupOpts::default()).await
+}
+
+pub async fn preflight_customer_lookup_with_opts(
+    config: &AppConfig,
+    kunde: &Kunde,
+    opts: PreflightLookupOpts,
+) -> Result<Option<LookupResponse>, String> {
+    if opts.skip {
+        return Ok(None);
+    }
     if config.skip_marker_file(&kunde.form_mode) {
         return Ok(None);
     }
@@ -446,12 +481,29 @@ pub async fn preflight_customer_lookup(
     match customer_lookup(&base, &config.ams_bridge_token, &req, &identity).await {
         Ok(resp) if resp.ok => Ok(Some(resp)),
         Ok(resp) => {
-            let msg = resp
+            let (code, message) = resp
                 .error
                 .as_ref()
-                .map(|e| format!("{}: {}", e.code, e.message))
-                .unwrap_or_else(|| "Customer-Lookup fehlgeschlagen".into());
-            Err(format!("AMS Preflight: {msg}"))
+                .map(|e| (e.code.as_str(), e.message.as_str()))
+                .unwrap_or(("", "Customer-Lookup fehlgeschlagen"));
+            if is_lookup_not_found(code, message) {
+                let detail = if code.is_empty() {
+                    message.to_string()
+                } else {
+                    format!("{code}: {message}")
+                };
+                return Err(format!("{AMS_PREFLIGHT_NOT_FOUND_PREFIX} {detail}"));
+            }
+            // Soft: AMS up but upstream/API unavailable or other non-not-found failure.
+            crate::storage::logging::warn(
+                "bridge",
+                format!(
+                    "AMS Preflight soft (nicht blockierend): {}: {}",
+                    if code.is_empty() { "error" } else { code },
+                    message
+                ),
+            );
+            Ok(None)
         }
         Err(e) if is_unreachable(&e) => {
             // Soft: bridge down must not block file handoff.
@@ -760,6 +812,18 @@ mod tests {
             "AMS-Bridge Job-Status nicht erreichbar: timeout"
         ));
         assert!(!is_unreachable("AMS-Bridge: Token ungültig (401)."));
+    }
+
+    #[test]
+    fn lookup_not_found_detection() {
+        assert!(is_lookup_not_found("not_found", "missing"));
+        assert!(is_lookup_not_found("customer_not_found", "x"));
+        assert!(is_lookup_not_found("", "Kunde nicht gefunden"));
+        assert!(is_lookup_not_found("", "Customer not found"));
+        // Generic lookup failure (e.g. upstream API down) must stay soft.
+        assert!(!is_lookup_not_found("customer_lookup_failed", "upstream error"));
+        assert!(!is_lookup_not_found("upstream_unavailable", "API down"));
+        assert!(!is_lookup_not_found("internal_error", "boom"));
     }
 
     #[test]

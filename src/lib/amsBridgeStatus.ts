@@ -92,7 +92,7 @@ export function mapAmsBridgeErrorDetail(message: string): AmsBridgeErrorDetail {
       focus: null,
     };
   }
-  if (/preflight|customer-lookup/.test(lower) && /not[_ ]?found|nicht gefunden/.test(lower)) {
+  if (/preflight|customer-lookup|ams_preflight_not_found/.test(lower) && /not[_ ]?found|nicht gefunden/.test(lower)) {
     return {
       kind: "error",
       text: tr("ams.status.customerNotFound"),

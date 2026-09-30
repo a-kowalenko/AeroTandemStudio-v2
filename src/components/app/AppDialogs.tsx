@@ -10,6 +10,8 @@ import type { FolderConflictConfirmChoice } from "../FolderConflictConfirmDialog
 import type { FolderConflictConfirmState } from "@/lib/folderConflictConfirm";
 import type { OfflineCreateConfirmChoice } from "../OfflineCreateConfirmDialog";
 import type { OfflineCreateConfirmState } from "@/lib/offlineCreateConfirm";
+import type { AmsPreflightConfirmChoice } from "../AmsPreflightConfirmDialog";
+import type { AmsPreflightConfirmState } from "@/lib/amsPreflightConfirm";
 import type { ReconnectUploadOfferChoice } from "../ReconnectUploadOfferDialog";
 import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
 import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
@@ -31,6 +33,7 @@ import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
 import { FolderConflictConfirmDialog } from "../FolderConflictConfirmDialog";
 import { OfflineCreateConfirmDialog } from "../OfflineCreateConfirmDialog";
+import { AmsPreflightConfirmDialog } from "../AmsPreflightConfirmDialog";
 import { ReconnectUploadOfferDialog } from "../ReconnectUploadOfferDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
@@ -146,6 +149,8 @@ export type AppDialogsProps = {
   onFolderConflictChoice: (choice: FolderConflictConfirmChoice) => void;
   offlineCreateConfirm: OfflineCreateConfirmState | null;
   onOfflineCreateChoice: (choice: OfflineCreateConfirmChoice) => void;
+  amsPreflightConfirm: AmsPreflightConfirmState | null;
+  onAmsPreflightChoice: (choice: AmsPreflightConfirmChoice) => void;
   reconnectUploadOffer: ReconnectUploadOfferState | null;
   onReconnectUploadOfferChoice: (choice: ReconnectUploadOfferChoice) => void;
   loading: boolean;
@@ -232,6 +237,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onFolderConflictChoice,
     offlineCreateConfirm,
     onOfflineCreateChoice,
+    amsPreflightConfirm,
+    onAmsPreflightChoice,
     reconnectUploadOffer,
     onReconnectUploadOfferChoice,
     loading,
@@ -427,6 +434,10 @@ export function AppDialogs(props: AppDialogsProps) {
       <OfflineCreateConfirmDialog
         open={offlineCreateConfirm !== null}
         onChoose={onOfflineCreateChoice}
+      />
+      <AmsPreflightConfirmDialog
+        open={amsPreflightConfirm !== null}
+        onChoose={onAmsPreflightChoice}
       />
       <ReconnectUploadOfferDialog
         offer={reconnectUploadOffer}

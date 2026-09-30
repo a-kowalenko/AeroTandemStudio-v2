@@ -56,6 +56,12 @@ pub struct CreateJobOptions {
     /// Phase 46: attempt attach/commit from speculative staging when fingerprint matches.
     #[serde(default = "default_true_speculative")]
     pub use_speculative_staging: bool,
+    /// Skip AMS create-preflight: form already verified via live lookup.
+    #[serde(default)]
+    pub ams_lookup_verified: bool,
+    /// Skip AMS create-preflight: user confirmed proceed after not-found.
+    #[serde(default)]
+    pub ams_preflight_ack: bool,
     #[serde(default, flatten)]
     pub video: CreateVideoOptions,
 }
@@ -74,6 +80,8 @@ impl Default for CreateJobOptions {
             replace_existing_dir: false,
             media_revision_tag: String::new(),
             use_speculative_staging: true,
+            ams_lookup_verified: false,
+            ams_preflight_ack: false,
             video: CreateVideoOptions::default(),
         }
     }

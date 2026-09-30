@@ -290,12 +290,25 @@
       "codecAuto": "Auto (recommended)",
       "hwAccel": "Hardware acceleration",
       "parallel": "Parallel video processing",
-      "concat": "H.265 player compatibility",
-      "concatHint": "Only with multiple H.265 clips.\n\nAuto: keep source tags (hvc1/hev1).\nHEVC robust (hev1): force tag — more robust multi-clip.\nHEVC Apple (hvc1): force tag — iPhone/QuickTime.\n\nNo effect on H.264.\nOn failure, legacy (MPEG-TS) may be offered.",
-      "concatAuto": "Auto (keep tag)",
-      "concatCompatible": "HEVC robust (hev1)",
-      "concatApple": "HEVC Apple (hvc1)",
+      "concat": "Join clips",
+      "concatFast": "Fast path (quick)",
+      "concatLegacy": "Legacy (robust)",
+      "concatHint": "Fast path joins clips in one pass (similar to Avidemux Copy). On errors you can cancel or use Legacy. Legacy uses the proven MPEG-TS pipeline.",
       "advanced": "Advanced",
+      "introEnabled": "Use intro when creating (experimental)",
+      "introDuration": "Intro duration (sec.)",
+      "introMux": "Join intro",
+      "introMuxReencode": "Re-encode (compatible)",
+      "introMuxCopy": "Stream copy (fast)",
+      "introMuxHint": "Re-encoding produces intro and flight video as one continuous bitstream — reliable on phones and players. Stream copy is faster but may freeze on some devices.",
+      "reencodeMatching": "Re-encode matching clips",
+      "previewCrf": "Preview CRF",
+      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
+      "concatCompatible": "Compatible",
+      "speculativeCreate": "Prepare in the background",
+      "speculativeCreateHint": "When Create is ready (Compatible, intro off, customer via QR/lookup), video and photos are prepared before you click. Off: classic create flow.",
+      "concatAuto": "Auto (keep tag)",
+      "concatApple": "HEVC Apple (hvc1)",
       "quality": {
         "title": "Quality",
         "description": "Applies to Create whenever re-encoding happens — with or without intro."
@@ -329,23 +342,12 @@
         "filenameHint": "Same name in Handcam_Foto and Outside_Foto. Default: Instructor.jpg",
         "mediaFilter": "JPEG & PNG"
       },
-      "introEnabled": "Use intro when creating",
-      "introDuration": "Intro duration (sec.)",
-      "introMux": "Join intro",
       "introMuxCapcut": "Universal export (CapCut)",
-      "introMuxReencode": "Continuous re-encode (max splice safety)",
-      "introMuxCopy": "Fast (encode intro + join)",
-      "introMuxHint": "Intro and flight video are joined in one H.264 pass (universal export / CapCut-style) — a single bitstream, iPhone- and QuickTime-safe. Quality is controlled by Video quality (CRF).",
-      "reencodeMatching": "Re-encode matching clips",
-      "previewCrf": "Video quality (CRF)",
       "crfVeryHigh": "Very high (CRF 18)",
       "crfHigh": "High (CRF 20)",
       "crfBalanced": "Balanced (CRF 23)",
       "crfSmall": "Smaller / faster (CRF 26)",
-      "crfHint": "Lower CRF = better quality, larger file. No effect on pure copy (Fast Path).",
-      "previewReuseHint": "Tip: Generate a preview first — if clips stay unchanged, Create reuses it without re-encoding.",
-      "speculativeCreate": "Prepare in the background",
-      "speculativeCreateHint": "When the session is ready (H.265 Auto/robust/Apple, customer via QR/lookup), body and photos are prepared before you click. With intro on, the intro is applied at Create. Off: classic create flow."
+      "crfHint": "Lower CRF = better quality, larger file. No effect on pure copy (Fast Path)."
     },
     "qr": {
       "autoScan": {
@@ -385,7 +387,6 @@
         "clearAfter": "Clear SD after backup",
         "clearAfterTitleOn": "Clear SD card after successful backup",
         "clearAfterTitleOff": "Only available when auto backup is enabled",
-        "clearAfterHint": "Deletes only files already backed up — others stay.",
         "secondPath": "Server backup",
         "serverUrl": "Server backup URL",
         "serverUrlPlaceholder": "smb://nas/sd-backups",
@@ -399,7 +400,8 @@
         "editInServerProfile": "Edit in server profile",
         "serverUrlFromProfile": "From server profile “{{name}}”.",
         "serverUrlMissing": "No backup URL on the active server profile. Set it under Server.",
-        "setInServerProfile": "Set backup URL in server profile"
+        "setInServerProfile": "Set backup URL in server profile",
+        "clearAfterHint": "Deletes only files already backed up — others stay."
       },
       "import": {
         "title": "Import & eject",
@@ -599,8 +601,8 @@
         "videos": "Videos",
         "photos": "Photos",
         "watermark": "Watermark",
-        "previewVideo": "Preview video",
-        "crewConflict": "Crew conflict"
+        "crewConflict": "Crew conflict",
+        "previewVideo": "Preview video"
       }
     },
     "job": {
@@ -662,7 +664,6 @@
       "reencodeTrim": "Trimming (precise)…",
       "streamCopyTrim": "Trimming…",
       "rotateReencode": "Rotating…",
-      "rotateSoftware": "Rotating (software)…",
       "replaceFile": "Replacing file…",
       "reencodeCut": "Cut (precise)…",
       "streamCopyCut": "Cut…",
@@ -682,16 +683,6 @@
       "attachAudio": "Attaching audio…",
       "introVideoCompatible": "Encoding intro+video (compatible)…",
       "introVideoAudioCopy": "Encoding intro+video (audio copy)…",
-      "introVideoUniversalIntro": "Exporting intro (universal)…",
-      "introVideoUniversalPrep": "Preparing video (universal)…",
-      "introVideoUniversalBody": "Exporting video (universal)…",
-      "introVideoUniversal": "Exporting intro+video (universal)…",
-      "introVideoUniversalAudio": "Exporting intro+video (universal, audio copy)…",
-      "introVideoUniversalFallback": "Exporting intro+video (universal, fallback)…",
-      "introVideoOutroUniversal": "Exporting intro+video+outro (universal)…",
-      "introVideoOutroUniversalAudio": "Exporting intro+video+outro (universal, audio copy)…",
-      "videoOutroUniversal": "Exporting video+outro (universal)…",
-      "videoOutroUniversalAudio": "Exporting video+outro (universal, audio copy)…",
       "export": "Exporting video…",
       "exportDone": "Export complete",
       "previewAnalyse": "Analyzing for preview…",
@@ -705,13 +696,24 @@
       "parallelConcat": "Joining clips in parallel ({{clips}} clips, {{workers}} workers)…",
       "compatibleConcat": "Joining clips…",
       "compatibleFinalize": "Finalizing container…",
-      "compatibleHvc1Retag": "Setting H.265 tag hvc1…",
       "compatibleMkvFallback": "MKV fallback…",
       "compatiblePathWaiting": "Join failed — please choose…",
       "compatiblePrep": "Preparing clips…",
       "compatiblePrepCount": "Preparing clips ({{current}}/{{total}})…",
       "compatibleProbe": "Checking clips…",
-      "compatibleValidate": "Checking join…"
+      "compatibleValidate": "Checking join…",
+      "rotateSoftware": "Rotating (software)…",
+      "introVideoUniversalIntro": "Exporting intro (universal)…",
+      "introVideoUniversalPrep": "Preparing video (universal)…",
+      "introVideoUniversalBody": "Exporting video (universal)…",
+      "introVideoUniversal": "Exporting intro+video (universal)…",
+      "introVideoUniversalAudio": "Exporting intro+video (universal, audio copy)…",
+      "introVideoUniversalFallback": "Exporting intro+video (universal, fallback)…",
+      "introVideoOutroUniversal": "Exporting intro+video+outro (universal)…",
+      "introVideoOutroUniversalAudio": "Exporting intro+video+outro (universal, audio copy)…",
+      "videoOutroUniversal": "Exporting video+outro (universal)…",
+      "videoOutroUniversalAudio": "Exporting video+outro (universal, audio copy)…",
+      "compatibleHvc1Retag": "Setting H.265 tag hvc1…"
     },
     "rust": {
       "generateOutputDir": "Generating output directory…",
@@ -731,6 +733,7 @@
       "legacyMpegTs": "Legacy join (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
       "backupFinishing": "Finishing backup…",
+      "reencodeWaiting": "Re-encoding — waiting for confirmation…",
       "usbClearing": "Clearing USB camera…",
       "copyVideos": "Copying videos…",
       "analyseVideos": "Analyzing videos…",
@@ -742,8 +745,7 @@
       "sortPhotos": "Sorting photos…",
       "readPhotoMeta": "Reading photo metadata…",
       "importVideos": "Importing {{count}} video(s)…",
-      "importPhotos": "Importing {{count}} photo(s)…",
-      "reencodeWaiting": "Re-encoding — waiting for confirmation…"
+      "importPhotos": "Importing {{count}} photo(s)…"
     },
     "legend": {
       "aria": "Color legend",
@@ -789,8 +791,8 @@
       "title": "Fast path failed",
       "body": "The clips could not be joined in a fast single pass. You can cancel or use the more robust legacy mode (MPEG-TS) — that takes longer.",
       "useLegacy": "Use legacy",
-      "bodyCompatible": "The clips could not be joined via HEVC robust (hev1). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
-      "titleCompatible": "HEVC robust (hev1) failed",
+      "bodyCompatible": "The clips could not be joined via the Compatible path (Avidemux-like). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
+      "titleCompatible": "Compatible path failed",
       "bodyApple": "The clips could not be joined via HEVC Apple (hvc1). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
       "titleApple": "HEVC Apple (hvc1) failed",
       "bodyAuto": "The clips could not be joined via Auto (keep tag). You can cancel or use legacy mode (MPEG-TS) — that takes longer.",
@@ -838,6 +840,17 @@
       "hideAdvanced": "Less",
       "hwOff": "HW off",
       "hwOn": "HW on",
+      "nvencPreset": "NVENC",
+      "paramCodec": "Codec",
+      "paramCrf": "CRF / CQ",
+      "preset": "Quality",
+      "proceed": "Encode",
+      "scale1080": "1080p",
+      "scaleMode": "Resolution",
+      "scaleSource": "Source",
+      "showAdvanced": "More options",
+      "swPreset": "SW preset",
+      "title": "Re-encode",
       "kinds": {
         "body_parallel": "Parallel encode",
         "concat_fallback": "Concatenate",
@@ -849,10 +862,6 @@
         "forced_codec": "Target codec",
         "rotate": "Rotate"
       },
-      "nvencPreset": "NVENC",
-      "paramCodec": "Codec",
-      "paramCrf": "Video quality (CRF)",
-      "preset": "Quality",
       "presets": {
         "balanced": "Balanced",
         "compat": "Compatible (H.264 · 1080p · 30 fps)",
@@ -861,7 +870,6 @@
         "max_quality": "Maximum quality",
         "recommended": "Recommended"
       },
-      "proceed": "Encode",
       "reasons": {
         "body_parallel": "The clips use different codecs and will be re-encoded in parallel.",
         "concat_fallback": "Copy-concat is not possible — the clips must be re-encoded.",
@@ -872,13 +880,7 @@
         "remux_fallback": "Remux failed — the video will be re-encoded.",
         "forced_codec": "The selected video codec differs from the source codec — re-encoding is required.",
         "rotate": "Rotation requires re-encoding the pixels."
-      },
-      "scale1080": "1080p",
-      "scaleMode": "Resolution",
-      "scaleSource": "Source",
-      "showAdvanced": "More options",
-      "swPreset": "SW preset",
-      "title": "Re-encode"
+      }
     },
     "lowMedia": {
       "title": "Unusually few media files",
@@ -939,6 +941,12 @@
       "hint": "Retry later from Jobs when the server is back.",
       "proceed": "Create locally anyway",
       "title": "Server unreachable"
+    },
+    "amsPreflight": {
+      "title": "Customer not found in booking",
+      "body": "Booking search does not know this customer or booking. You can still create and upload — the handoff may be rejected later.",
+      "hint": "Check IDs or QR, or continue if you are sure.",
+      "proceed": "Create & upload anyway"
     },
     "uploadExtraFiles": {
       "body": "The folder for “{{guest}}” contains files that were not part of the original job:",
@@ -1062,7 +1070,6 @@
       "searchingQr": "Searching for QR code…",
       "noFiles": "No files.",
       "clearOnlyAfterBackup": "Clearing is only possible after a backup.",
-      "mtpImportNeedsBackup": "USB cameras: import is only possible together with backup.",
       "noActionSelected": "No action selected.",
       "pickBackupFolder": "Please choose a backup folder in settings.",
       "ejectSuccess": "SD card ejected — safe to remove",
@@ -1084,7 +1091,8 @@
       "ejectLabel": "Eject",
       "backupLabel": "Backup",
       "clearLabel": "Clear",
-      "title": "SD"
+      "title": "SD",
+      "mtpImportNeedsBackup": "USB cameras: import is only possible together with backup."
     },
     "import": {
       "label": "Import",
@@ -1097,7 +1105,6 @@
       "applied": "Customer data applied",
       "source": "Source: {{name}}",
       "notFound": "No QR code found.",
-      "notFoundInNew": "No QR code found in the new files.",
       "scanFailed": "Scan failed",
       "recognized": "QR code recognized",
       "cleanup": {
@@ -1105,7 +1112,8 @@
         "removedPhotosMany": "{{count}} photos removed from list",
         "removedVideos": "{{count}} clip removed from list",
         "removedVideosMany": "{{count}} clips removed from list"
-      }
+      },
+      "notFoundInNew": "No QR code found in the new files."
     },
     "storage": {
       "pickTitle": "Choose storage location for completed jobs",
@@ -1390,27 +1398,27 @@
       "previewReuse": "Preview",
       "upload": "Upload",
       "video": "Video",
+      "wmPhotos": "Preview stamp",
+      "wmVideo": "Watermark",
       "bodyJoin": "Join clips",
       "introVideo": "Intro+video",
       "introVideoOutro": "Intro+video+outro",
       "videoOutro": "Video+outro",
-      "introAudio": "Audio",
-      "wmPhotos": "Preview stamp",
-      "wmVideo": "Watermark"
+      "introAudio": "Audio"
     },
     "bodyConcat": {
-      "aria": "H.265 player compatibility: {{mode}}",
-      "hint": "Only with multiple H.265 clips.\n\nAuto: keep source tags.\nHEVC robust (hev1): force tag.\nHEVC Apple (hvc1): force tag.\n\nOn failure, legacy (MPEG-TS) may be offered.",
-      "labelAuto": "Auto",
-      "labelCompatible": "HEVC robust (hev1)",
-      "labelApple": "HEVC Apple (hvc1)",
+      "aria": "Clip join mode: {{mode}}",
+      "hint": "Fast Path: fast copy pass, risky on some players.\nCompatible: Avidemux-like — robust, lossless, orientation-safe.\nLegacy: MPEG-TS fallback, slower.",
+      "labelCompatible": "Compatible",
       "labelFast": "Fast Path",
       "labelLegacy": "Legacy",
-      "shortAuto": "Auto",
-      "shortCompatible": "hev1",
-      "shortApple": "hvc1",
+      "shortCompatible": "Compatible",
       "shortFast": "Fast",
-      "shortLegacy": "Legacy"
+      "shortLegacy": "Legacy",
+      "labelAuto": "Auto",
+      "labelApple": "HEVC Apple (hvc1)",
+      "shortAuto": "Auto",
+      "shortApple": "hvc1"
     }
   },
   "history": {
@@ -1439,8 +1447,6 @@
     "jobCount": "{{count}} jobs",
     "jobCountFiltered": "{{filtered}} / {{total}}",
     "removeSelected": "Remove selection",
-    "removeAll": "Remove all",
-    "moreActions": "More actions",
     "col": {
       "guest": "Guest",
       "date": "Date",
@@ -1511,16 +1517,16 @@
     "confirm": {
       "removeJobOne": "Remove job from Jobs?",
       "removeJobMany": "Remove {{count}} jobs from Jobs?",
-      "removeJobAll": "Remove all {{count}} jobs?",
       "removeJobOneBody": "The selected job will be deleted from Jobs. Files on disk are kept; a related app QR scan frame is removed.",
       "removeJobManyBody": "Selected jobs will be deleted from Jobs. Files on disk are kept; related app QR scan frames are removed.",
-      "removeJobAllBody": "All loaded jobs will be removed from the list. Files on disk are kept; related app QR scan frames are removed.",
       "removeMediaOne": "Remove media entry from history?",
       "removeMediaMany": "Remove {{count}} media entries from history?",
       "removeMediaOneBody": "The entry will be deleted from media history. The file itself is kept.",
       "removeMediaManyBody": "The entries will be deleted from media history. The files themselves are kept.",
       "purgeMedia": "Delete entire media history?",
-      "purgeMediaBody": "All media history entries (duplicate detection) will be removed. The files themselves are kept."
+      "purgeMediaBody": "All media history entries (duplicate detection) will be removed. The files themselves are kept.",
+      "removeJobAll": "Remove all {{count}} jobs?",
+      "removeJobAllBody": "All loaded jobs will be removed from the list. Files on disk are kept; related app QR scan frames are removed."
     },
     "media": {
       "stats": "{{total}} entries ({{videos}} videos, {{photos}} photos)",
@@ -1533,33 +1539,6 @@
       "lastMonth": "Last month",
       "lastYear": "Last year",
       "removeAll": "Remove all"
-    },
-    "viewer": {
-      "title": "Media · {{name}}",
-      "subtitle": "{{count}} local delivery files",
-      "open": "View media",
-      "openTitle": "View local delivery media",
-      "prev": "Previous file",
-      "next": "Next file",
-      "counter": "{{current}} / {{total}}",
-      "empty": "No local delivery media",
-      "emptyTab": "No files in this tab",
-      "loadError": "Could not load file",
-      "detailTitle": "File",
-      "summaryTitle": "Summary",
-      "path": "Path",
-      "position": "Position {{current}} / {{total}}",
-      "totalSize": "Total size",
-      "tileListAria": "Media files",
-      "sectionDelivery": "Customer media",
-      "sectionPreview": "Preview / watermark",
-      "badgeWm": "WM",
-      "badgePreview": "Preview",
-      "openFolder": "Open folder",
-      "unavailableCleanedUp": "Media no longer local — output folder was removed",
-      "unavailableEmpty": "No local delivery media available",
-      "rowSourceHint": "Source file (not a delivery product)",
-      "rowMissingHint": "File no longer local"
     },
     "role": {
       "sourceVideo": "Source video",
@@ -1673,7 +1652,36 @@
       "uploadTitleOk": "Copy this local job to the server now"
     },
     "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
-    "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media"
+    "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media",
+    "removeAll": "Remove all",
+    "moreActions": "More actions",
+    "viewer": {
+      "title": "Media · {{name}}",
+      "subtitle": "{{count}} local delivery files",
+      "open": "View media",
+      "openTitle": "View local delivery media",
+      "prev": "Previous file",
+      "next": "Next file",
+      "counter": "{{current}} / {{total}}",
+      "empty": "No local delivery media",
+      "emptyTab": "No files in this tab",
+      "loadError": "Could not load file",
+      "detailTitle": "File",
+      "summaryTitle": "Summary",
+      "path": "Path",
+      "position": "Position {{current}} / {{total}}",
+      "totalSize": "Total size",
+      "tileListAria": "Media files",
+      "sectionDelivery": "Customer media",
+      "sectionPreview": "Preview / watermark",
+      "badgeWm": "WM",
+      "badgePreview": "Preview",
+      "openFolder": "Open folder",
+      "unavailableCleanedUp": "Media no longer local — output folder was removed",
+      "unavailableEmpty": "No local delivery media available",
+      "rowSourceHint": "Source file (not a delivery product)",
+      "rowMissingHint": "File no longer local"
+    }
   },
   "ams": {
     "actions": {
@@ -1796,13 +1804,6 @@
     }
   },
   "qr": {
-    "spotlight": {
-      "frameAlt": "QR hit frame"
-    },
-    "hit": {
-      "customer": "Customer",
-      "booking": "Booking"
-    },
     "progress": {
       "pending": "QR search waiting…",
       "found": "QR code found",
@@ -1867,6 +1868,13 @@
       "cancelled": "Type choice cancelled — scan discarded",
       "offlineHint": "The QR includes both Handcam and Outside.\nAMS product data is unavailable — please choose a type and verify products.",
       "productsCheck": "Please verify products"
+    },
+    "spotlight": {
+      "frameAlt": "QR hit frame"
+    },
+    "hit": {
+      "customer": "Customer",
+      "booking": "Booking"
     }
   },
   "video": {
@@ -1877,11 +1885,11 @@
         "split": "Splitting video…",
         "splitDone": "Split complete",
         "rotate": "Rotating video (re-encoding)…",
-        "rotateSoftware": "Rotating video (without hardware acceleration)…",
         "rotateDone": "Rotation complete",
         "undoOne": "Undoing edit…",
         "undoAll": "Undoing all edits…",
-        "undoDone": "Undo complete"
+        "undoDone": "Undo complete",
+        "rotateSoftware": "Rotating video (without hardware acceleration)…"
       },
       "success": {
         "trim": "Trim applied. Undo from the clip or Undo all edits.",
@@ -1920,7 +1928,7 @@
       "staleBadge": "Stale",
       "empty": "No videos — add them via drag and drop in the media area",
       "singleClipWithPreview": "Single-clip playback — use “Show preview” for the combined file.",
-      "singleClipWithoutPreview": "Single-clip playback.",
+      "singleClipWithoutPreview": "Single-clip playback — use “Generate preview” for the combined file.",
       "undoThisEditTitle": "Undo this edit",
       "previewReencode": "Re-encode: {{reason}}",
       "previewStreamCopy": "Re-encode: no (stream copy)",
@@ -2016,11 +2024,6 @@
     }
   },
   "photo": {
-    "crop": {
-      "aspect": {
-        "free": "Free"
-      }
-    },
     "edit": {
       "and": "and",
       "progress": {
@@ -2102,6 +2105,11 @@
       "ccw": "90° counter-clockwise",
       "cw": "90° clockwise",
       "reset": "Reset"
+    },
+    "crop": {
+      "aspect": {
+        "free": "Free"
+      }
     }
   },
   "sd": {
@@ -2153,7 +2161,6 @@
       "titleSizeLimit": "Size limit exceeded — choose files",
       "clearAfterBackup": "Clear SD card after successful backup",
       "clearNeedsBackup": "Only available when backup is enabled",
-      "importNeedsBackupMtp": "USB camera: import only together with backup",
       "clearNoFiles": "No files to clear",
       "clearOnlyAfterBackupHint": "Clearing only possible after backup.",
       "clearSd": "Clear SD card",
@@ -2211,12 +2218,25 @@
       "sortSizeSmallest": "Size · smallest",
       "today": "Today",
       "unknownDate": "No date",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "importNeedsBackupMtp": "USB camera: import only together with backup"
     },
     "catalog": {
       "filteredOnly": "No importable media (timelapse/proxies only).",
       "mtpEmpty": "No media found on camera.",
       "sdEmpty": "No media files found on SD card."
+    },
+    "monitor": {
+      "secondaryBackupFailed": "Server backup (second path) failed.",
+      "secondaryBackupTitle": "Server backup",
+      "secondaryBackupCancelledTitle": "Server backup cancelled",
+      "secondaryBackupCancelledBody": "Local backup remains. Remote folder may be incomplete.",
+      "title": "SD monitor"
+    },
+    "tile": {
+      "fullscreenNamed": "{{name}} fullscreen",
+      "noPreviewCodec": "No preview (codec/WebView)",
+      "mtpStaging": "Loading from camera…"
     },
     "messages": {
       "backupAlreadyRunning": "Backup already running",
@@ -2240,18 +2260,6 @@
       "localBackupFolderMissing": "Local backup folder missing: {{detail}}",
       "usbCleared": "USB camera cleared ({{count}} file(s)).",
       "usbClearSoftFail": "Backup is saved. USB camera clear is not possible. Briefly unplug/replug the GoPro and import again, or delete the MicroSD in a reader / on the camera."
-    },
-    "monitor": {
-      "secondaryBackupFailed": "Server backup (second path) failed.",
-      "secondaryBackupTitle": "Server backup",
-      "secondaryBackupCancelledTitle": "Server backup cancelled",
-      "secondaryBackupCancelledBody": "Local backup remains. Remote folder may be incomplete.",
-      "title": "SD monitor"
-    },
-    "tile": {
-      "fullscreenNamed": "{{name}} fullscreen",
-      "noPreviewCodec": "No preview (codec/WebView)",
-      "mtpStaging": "Loading from camera…"
     }
   },
   "setupWizard": {
@@ -2266,12 +2274,12 @@
     "stepHint": {
       "appearance": "You can change the appearance later at any time.",
       "crew": "Crew defaults and I am can be set later in settings.",
-      "storage": "Without storage and backup folders, saving jobs and SD backup are limited — you can set them later in settings.",
+      "storage": "Without a storage location, jobs cannot be saved — you can set it later in settings.",
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
       "workplace": "You can change appearance, drop zone, and operator later at any time.",
-      "media": "Auto backup, import, eject, and QR scan are optional and can be changed later.",
+      "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
       "output": "Output settings are optional — defaults stay if you skip.",
       "import": "Backup, import, eject, and QR scan are optional and can be changed later."
     },
@@ -2315,19 +2323,19 @@
     "completeTitle": "Success",
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
-      "qrHint": "After a successful scan, QR clips/photos are removed by default. Scan duration and cleanup are under More options.",
+      "qrHint": "QR files stay in place by default. Scan duration and cleanup are under More options.",
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
       "appearance": "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.",
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
-      "storage": "Completed jobs and SD backups are saved in these folders.",
+      "storage": "Completed jobs are saved to the storage location.",
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
       "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
       "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
       "mode": "How should setup run? You can change the mode later in settings.",
-      "media": "Set auto backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
-      "output": "Same output options as in Settings: defaults, quality, and intro."
+      "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
+      "output": "Codec, strategy, and hardware acceleration. Intro and concat are under more options."
     },
     "mode": {
       "simpleTitle": "Simple",
