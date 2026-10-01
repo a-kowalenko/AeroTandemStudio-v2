@@ -1889,6 +1889,8 @@ function App() {
   }, [setUploadProgress]);
 
   const resetProgress = useCallback(() => {
+    // A new job starts — a stale cancel would otherwise drop all its encode-progress events.
+    sessionCancelRequestedRef.current = false;
     setPercent(0);
     setStatus("");
     setTaskProgress([]);

@@ -514,14 +514,18 @@ pub fn compatible_tag_allows_clean_pass(codec: &str, tag: &str) -> bool {
 /// - soft-rotation `Known(0)` (neutral; ≠0 / displaymatrix force Dirty)
 /// - QT-safe tag family (no exotic rewrite)
 /// - no edit-list hygiene flag
+/// - identical video `encoder` tag (MP4 concat keeps only clip 1's SPS/PPS; a re-encoded
+///   clip next to camera clips plays audio over a frozen frame)
 ///
 /// Empty `keys` → not clean. Gate hard-fails (Unknown/Conflict rotation) run before this.
 pub fn compatible_clips_are_clean(keys: &[CompatibleStreamKey]) -> bool {
     if keys.is_empty() {
         return false;
     }
+    let first_encoder = &keys[0].encoder;
     keys.iter().all(|k| {
-        k.rotation.known_degrees() == Some(0)
+        &k.encoder == first_encoder
+            && k.rotation.known_degrees() == Some(0)
             && !k.needs_editlist_hygiene
             && compatible_tag_allows_clean_pass(&k.codec, &k.tag)
     })
@@ -1052,6 +1056,8 @@ pub fn build_validate_splice_decode_args(
     vec![
         "-v".into(),
         "error".into(),
+        // Abort early on hard errors; concealed ones are caught via stderr (`splice_decode_ok`).
+        "-xerror".into(),
         "-nostats".into(),
         "-ss".into(),
         format_secs(seek),
@@ -1411,6 +1417,12 @@ pub fn get_keyframe_at_or_after(
     keyframe_at_or_after(&parse_keyframe_times(&stderr2), min_secs)
 }
 
+/// HEVC/H.264 decoders conceal bad slices (wrong SPS/PPS after a seam) and still exit 0,
+/// even with `-xerror`; at `-v error` any stderr output means the seam is broken.
+pub fn splice_decode_ok(exit_code: i32, stderr: &str) -> bool {
+    exit_code == 0 && stderr.trim().is_empty()
+}
+
 pub fn validate_splice_decode(
     ffmpeg: &Path,
     output_path: &str,
@@ -1419,7 +1431,7 @@ pub fn validate_splice_decode(
 ) -> (bool, String) {
     let args = build_validate_splice_decode_args(output_path, intro_duration_sec, scan_sec);
     match run_ffmpeg_capture_stderr(ffmpeg, &args) {
-        Ok((0, _)) => (true, String::new()),
+        Ok((code, err)) if splice_decode_ok(code, &err) => (true, String::new()),
         Ok((_, err)) => {
             let msg = err.trim();
             (
@@ -2214,6 +2226,7 @@ fn concat_stream_copy_compatible(
     compatible_probe_gate_keys(&keys, has_audio)?;
 
     let clean = compatible_clips_are_clean(&keys);
+    let mixed_encoders = keys.iter().any(|k| k.encoder != keys[0].encoder);
     if clean {
         logging::info("concat", "compatible: clean-pass");
         match concat_compatible_clean_pass(
@@ -2260,6 +2273,12 @@ fn concat_stream_copy_compatible(
                 let _ = fs::remove_file(output);
             }
         }
+    } else if mixed_encoders {
+        let encoders: Vec<&str> = keys.iter().map(|k| k.encoder.as_str()).collect();
+        logging::info(
+            "concat",
+            format!("compatible: ts-prep (mixed encoders: {})", encoders.join(" | ")),
+        );
     } else {
         logging::info("concat", "compatible: ts-prep");
     }
@@ -2273,9 +2292,22 @@ fn concat_stream_copy_compatible(
         total_secs,
         on_progress,
         clip_probes,
-        hevc_tag,
+        ts_prep_merge_hevc_tag(mixed_encoders, hevc_tag),
     )?;
     maybe_ensure_output_hevc_hvc1_tag(ffmpeg, output, vcodec, hevc_tag, has_audio, on_progress)
+}
+
+/// HEVC tag for the TS-prep → MP4 merge.
+///
+/// TS → MP4 with `-tag:v hvc1` drops the in-band VPS/SPS/PPS, so clips from different
+/// encoders get decoded with clip 1's parameter sets after the seam. Merge as `hev1`
+/// (keeps them); [`maybe_ensure_output_hevc_hvc1_tag`] retags afterwards.
+pub fn ts_prep_merge_hevc_tag(mixed_encoders: bool, hevc_tag: &str) -> &str {
+    if mixed_encoders {
+        hevc_stream_copy_video_tag()
+    } else {
+        hevc_tag
+    }
 }
 
 /// When target tag is `hvc1` but Dirty/TS left `hev1`, stream-copy remux with `-tag:v hvc1`.
@@ -2522,14 +2554,30 @@ fn compatible_validate_output(
         return Ok(());
     }
     emit(on_progress, 100.0, "compatible-validate");
-    let (ok, reason) = validate_splice_decode(ffmpeg, output, clip_probes[0].duration_secs, 2.0);
-    if !ok {
-        let _ = fs::remove_file(output);
-        return Err(ConcatError::Message(format!(
-            "compatible splice validation failed: {reason}"
-        )));
+    for seam in compatible_validation_seams(clip_probes) {
+        let (ok, reason) = validate_splice_decode(ffmpeg, output, seam, 2.0);
+        if !ok {
+            let _ = fs::remove_file(output);
+            return Err(ConcatError::Message(format!(
+                "compatible splice validation failed at {seam:.2}s: {reason}"
+            )));
+        }
     }
     Ok(())
+}
+
+/// Seam timestamps to decode-check: always clip 1→2, plus every seam where the
+/// video encoder changes (re-encoded clip between camera clips).
+pub fn compatible_validation_seams(clip_probes: &[ClipConcatProbe]) -> Vec<f64> {
+    let mut seams = Vec::new();
+    let mut offset = 0.0;
+    for (i, pair) in clip_probes.windows(2).enumerate() {
+        offset += pair[0].duration_secs;
+        if i == 0 || pair[0].compatible_key.encoder != pair[1].compatible_key.encoder {
+            seams.push(offset);
+        }
+    }
+    seams
 }
 
 /// Re-encode concat via demuxer (public for intro-mux fallback after user consent).
@@ -3499,6 +3547,7 @@ pts_time:4.000000 type:I
                 has_audio: true,
                 rotation: VideoRotationProbe::Known(0),
                 needs_editlist_hygiene: false,
+                encoder: String::new(),
             }
         }
         assert_eq!(
@@ -3589,6 +3638,62 @@ Input #0, mov, from 'a.mp4':
         let ss = args.iter().position(|a| a == "-ss").unwrap();
         assert_eq!(args[ss + 1], "4.750000");
         assert!(args.contains(&"null".into()));
+        let xerror = args.iter().position(|a| a == "-xerror").unwrap();
+        let input = args.iter().position(|a| a == "-i").unwrap();
+        assert!(xerror < input);
+    }
+
+    #[test]
+    fn ts_prep_merge_tag_hev1_for_mixed_encoders() {
+        assert_eq!(ts_prep_merge_hevc_tag(true, "hvc1"), "hev1");
+        assert_eq!(ts_prep_merge_hevc_tag(true, "hev1"), "hev1");
+        assert_eq!(ts_prep_merge_hevc_tag(false, "hvc1"), "hvc1");
+        assert_eq!(ts_prep_merge_hevc_tag(false, "hev1"), "hev1");
+    }
+
+    #[test]
+    fn splice_decode_ok_rejects_concealed_errors() {
+        assert!(splice_decode_ok(0, ""));
+        assert!(splice_decode_ok(0, "  \n"));
+        assert!(!splice_decode_ok(1, ""));
+        assert!(!splice_decode_ok(
+            0,
+            "[hevc @ 0x1] The cu_qp_delta -66 is outside the valid range [-26, 25]."
+        ));
+    }
+
+    #[test]
+    fn validation_seams_first_and_encoder_changes() {
+        let stderr = r#"
+  Duration: 00:00:10.00, start: 0.000000, bitrate: 8000 kb/s
+  Stream #0:0(eng): Video: hevc (Main) (hvc1 / 0x31637668), yuv420p, 1920x1080, 30 fps
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo
+"#;
+        let cached = probe_cache::cached_probe_from_stderr(stderr).unwrap();
+        let clip = |dur: f64, encoder: &str| {
+            let mut p = ClipConcatProbe::from_cached(&cached);
+            p.duration_secs = dur;
+            p.compatible_key.encoder = encoder.into();
+            p
+        };
+        let gopro = "gopro h.265 encoder";
+        let x265 = "lavc63.1.101 libx265";
+
+        assert!(compatible_validation_seams(&[clip(10.0, gopro)]).is_empty());
+        assert_eq!(
+            compatible_validation_seams(&[clip(10.0, gopro), clip(5.0, gopro), clip(5.0, gopro)]),
+            vec![10.0]
+        );
+        // Re-encoded clip in the middle: seams before and after it.
+        assert_eq!(
+            compatible_validation_seams(&[
+                clip(10.0, gopro),
+                clip(5.0, gopro),
+                clip(4.0, x265),
+                clip(5.0, gopro),
+            ]),
+            vec![10.0, 15.0, 19.0]
+        );
     }
 
     #[test]
@@ -3650,6 +3755,7 @@ Input #0, mov, from 'a.mp4':
                 has_audio: true,
                 rotation: rot,
                 needs_editlist_hygiene: editlist,
+                encoder: "gopro h.265 encoder".into(),
             }
         }
 
@@ -3672,6 +3778,13 @@ Input #0, mov, from 'a.mp4':
 
         let exotic = key("hevc", "dvh1", VideoRotationProbe::Known(0), false);
         assert!(!compatible_clips_are_clean(&[exotic]));
+
+        // Rotated (re-encoded) clip next to camera clips: same gate key, other SPS/PPS.
+        let camera = key("hevc", "hvc1", VideoRotationProbe::Known(0), false);
+        let mut reencoded = camera.clone();
+        reencoded.encoder = "lavc63.1.101 libx265".into();
+        assert!(crate::video::probe::compatible_stream_keys_match(&camera, &reencoded));
+        assert!(!compatible_clips_are_clean(&[reencoded, camera.clone(), camera]));
 
         assert!(compatible_tag_allows_clean_pass("h264", ""));
         assert!(compatible_tag_allows_clean_pass("h264", "avc1"));

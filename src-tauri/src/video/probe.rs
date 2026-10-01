@@ -34,6 +34,9 @@ static VIDEO_TAG_RE: Lazy<Regex> =
 static PROFILE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i)Video:\s+\w+\s+\(([^)/]+)\)").unwrap());
 
+static STREAM_ENCODER_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)^\s*encoder\s*:\s*(.+?)\s*$").unwrap());
+
 /// `rotate : 180` / `rotate: 90` container or stream metadata tags.
 static ROTATE_TAG_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?im)^\s*rotate\s*:\s*(-?\d+(?:\.\d+)?)\s*$").unwrap());
@@ -214,6 +217,9 @@ pub struct CompatibleStreamKey {
     pub rotation: VideoRotationProbe,
     /// True when probe hints that `-ignore_editlist` hygiene is needed (Phase 43.3).
     pub needs_editlist_hygiene: bool,
+    /// Video-stream `encoder` tag, lowercased (`gopro h.265 encoder`, `lavc… libx265`); empty if absent.
+    /// Different encoders ⇒ different SPS/PPS/extradata — unsafe for one-pass MP4 concat.
+    pub encoder: String,
 }
 
 /// Result of probing soft rotation from FFmpeg stderr (Phase 40.2).
@@ -402,6 +408,7 @@ pub fn compatible_stream_key_from_probe(
         .unwrap_or_default();
     let rotation = probe_video_rotation_degrees(stderr);
     let needs_editlist_hygiene = probe_needs_editlist_hygiene(stderr);
+    let encoder = parse_video_stream_encoder(stderr);
     Some(CompatibleStreamKey {
         codec: meta.codec,
         width: meta.width,
@@ -412,7 +419,33 @@ pub fn compatible_stream_key_from_probe(
         has_audio,
         rotation,
         needs_editlist_hygiene,
+        encoder,
     })
+}
+
+/// `encoder` metadata of the first video stream (not the container-level `Lavf…` tag).
+pub fn parse_video_stream_encoder(stderr: &str) -> String {
+    let mut in_video = false;
+    for line in stderr.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("Stream ") {
+            if in_video {
+                break;
+            }
+            in_video = trimmed.contains(": Video:");
+            continue;
+        }
+        if !in_video {
+            continue;
+        }
+        if let Some(caps) = STREAM_ENCODER_RE.captures(line) {
+            return caps
+                .get(1)
+                .map(|m| m.as_str().trim().to_lowercase())
+                .unwrap_or_default();
+        }
+    }
+    String::new()
 }
 
 /// True when two clips are Compatible-mergeable (same geometry/codec/pix_fmt/audio/rotation).
@@ -712,6 +745,50 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
 "#;
         let d = compatible_stream_key_from_probe(stderr_sz, true).unwrap();
         assert!(!compatible_stream_keys_match(&a, &d));
+    }
+
+    #[test]
+    fn video_stream_encoder_ignores_container_and_other_streams() {
+        let gopro = r#"
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'GX012460.MP4':
+  Metadata:
+    major_brand     : mp41
+  Duration: 00:03:07.99, start: 0.000000, bitrate: 39982 kb/s
+  Stream group #0:0[0x3]: Track Reference:
+    Stream #0:0[0x1](eng): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, bt709), 1920x1080 [SAR 1:1 DAR 16:9], 39726 kb/s, 29.97 fps, 29.97 tbr, 30k tbn (default)
+      Metadata:
+        handler_name    : GoPro H.265
+        encoder         : GoPro H.265 encoder
+    Stream #0:1[0x2]: Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 189 kb/s (default)
+"#;
+        let rotated = r#"
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'GX012446.MP4':
+  Metadata:
+    encoder         : Lavf63.1.101
+  Duration: 00:00:42.34, start: 0.000000, bitrate: 9000 kb/s
+  Stream #0:0[0x1](eng): Video: hevc (Main) (hvc1 / 0x31637668), yuvj420p(pc, bt709), 1920x1080 [SAR 1:1 DAR 16:9], 8800 kb/s, 29.97 fps, 29.97 tbr, 30k tbn (default)
+    Metadata:
+      handler_name    : GoPro H.265
+      encoder         : Lavc63.1.101 libx265
+  Stream #0:1[0x2](eng): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 189 kb/s (default)
+"#;
+        let no_stream_tag = r#"
+  Metadata:
+    encoder         : Lavf63.1.101
+  Stream #0:0: Video: h264 (High) (avc1 / 0x31637661), yuv420p, 1920x1080, 30 fps
+  Stream #0:1: Audio: aac (LC), 48000 Hz, stereo
+    Metadata:
+      encoder         : Lavc63 aac
+"#;
+        assert_eq!(parse_video_stream_encoder(gopro), "gopro h.265 encoder");
+        assert_eq!(parse_video_stream_encoder(rotated), "lavc63.1.101 libx265");
+        assert_eq!(parse_video_stream_encoder(no_stream_tag), "");
+
+        let a = compatible_stream_key_from_probe(gopro, true).unwrap();
+        let b = compatible_stream_key_from_probe(rotated, true).unwrap();
+        // Same gate geometry/codec — only the encoder differs (clean-pass must reject).
+        assert!(compatible_stream_keys_match(&a, &b));
+        assert_ne!(a.encoder, b.encoder);
     }
 
     #[test]
