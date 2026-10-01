@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-02
+
 ### Neu
 
 - Erstellen: Hinweis, wenn die Buchungssuche den Kunden bzw. die Buchung nicht kennt — zurück oder trotzdem erstellen & Upload
@@ -31,7 +33,6 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Fotos: Vorschau und Wasserzeichen stehen wieder richtig herum (auch bei gedrehten Handy-/Kamera-Aufnahmen)
 - Clips zusammenfügen: kein eingefrorenes Bild mit weiterlaufendem Ton mehr, wenn Kamera-Clips und neu kodierte Clips (z. B. nach Drehen) gemischt werden
 - Fortschritt: neuer Auftrag startet sauber, auch wenn zuvor abgebrochen wurde
-
 
 ## [0.7.0-beta.3] - 2026-10-01
 
