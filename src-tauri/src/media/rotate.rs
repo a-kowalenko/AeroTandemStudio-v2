@@ -75,6 +75,13 @@ pub fn apply_exif_orientation(img: DynamicImage, orientation: u32) -> DynamicIma
     }
 }
 
+/// Full decode with EXIF Orientation baked into pixels (tag treated as 1 afterwards).
+/// `image::open` alone ignores the tag; re-encoded JPEGs carry no EXIF.
+pub(crate) fn open_image_oriented(path: &Path) -> image::ImageResult<DynamicImage> {
+    let orientation = read_exif_orientation(path);
+    Ok(apply_exif_orientation(image::open(path)?, orientation))
+}
+
 pub fn rotate_dynamic(img: DynamicImage, degrees: u32) -> Result<DynamicImage, PhotoRotateError> {
     match degrees {
         0 => Ok(img),
@@ -172,9 +179,7 @@ pub fn rotate_photo(
 
     let result = (|| -> Result<PhotoRotateResult, PhotoRotateError> {
         let path = Path::new(input);
-        let orientation = read_exif_orientation(path);
-        let mut img = image::open(path)?;
-        img = apply_exif_orientation(img, orientation);
+        let mut img = open_image_oriented(path)?;
         img = rotate_dynamic(img, deg)?;
         let format = detect_format(path);
         save_image(&img, &target, format)?;
@@ -221,10 +226,116 @@ pub fn rotate_photo(
 }
 
 #[cfg(test)]
+pub(crate) mod test_fixtures {
+    use std::io::Cursor;
+    use std::path::Path;
+
+    use exif::experimental::Writer as ExifWriter;
+    use exif::{Field, In, Tag, Value};
+    use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
+
+    pub const TOP: [u8; 3] = [220, 30, 30];
+    pub const BOTTOM: [u8; 3] = [30, 30, 220];
+
+    /// JPEG with top half [`TOP`], bottom half [`BOTTOM`] and EXIF `Orientation = orientation`.
+    pub fn write_oriented_jpeg(path: &Path, width: u32, height: u32, orientation: u16) {
+        let img = RgbImage::from_fn(width, height, |_, y| {
+            if y < height / 2 {
+                Rgb(TOP)
+            } else {
+                Rgb(BOTTOM)
+            }
+        });
+        let mut primary = Cursor::new(Vec::new());
+        DynamicImage::ImageRgb8(img)
+            .write_to(&mut primary, ImageFormat::Jpeg)
+            .unwrap();
+        let primary = primary.into_inner();
+
+        let field = Field {
+            tag: Tag::Orientation,
+            ifd_num: In::PRIMARY,
+            value: Value::Short(vec![orientation]),
+        };
+        let mut writer = ExifWriter::new();
+        writer.push_field(&field);
+        let mut tiff = Cursor::new(Vec::new());
+        writer.write(&mut tiff, false).unwrap();
+        let tiff = tiff.into_inner();
+
+        let seg_len = u16::try_from(6 + tiff.len() + 2).expect("APP1 fits u16");
+        let mut out = vec![0xff, 0xd8, 0xff, 0xe1];
+        out.extend_from_slice(&seg_len.to_be_bytes());
+        out.extend_from_slice(b"Exif\0\0");
+        out.extend_from_slice(&tiff);
+        out.extend_from_slice(&primary[2..]);
+        std::fs::write(path, out).unwrap();
+    }
+
+    fn close(px: Rgb<u8>, want: [u8; 3]) -> bool {
+        px.0.iter()
+            .zip(want)
+            .all(|(&a, b)| (a as i32 - b as i32).abs() < 60)
+    }
+
+    /// Raw stored layout: [`TOP`] above [`BOTTOM`] (sampled at quarter heights).
+    /// For Orientation 3 this is the *unbaked* (wrong) display.
+    pub fn is_raw_layout(img: &DynamicImage) -> bool {
+        let rgb = img.to_rgb8();
+        let x = rgb.width() / 2;
+        close(*rgb.get_pixel(x, rgb.height() / 4), TOP)
+            && close(*rgb.get_pixel(x, rgb.height() * 3 / 4), BOTTOM)
+    }
+
+    /// Raw layout turned 180°: [`BOTTOM`] above [`TOP`] — correct display for Orientation 3.
+    pub fn is_rotated_180(img: &DynamicImage) -> bool {
+        let rgb = img.to_rgb8();
+        let x = rgb.width() / 2;
+        close(*rgb.get_pixel(x, rgb.height() / 4), BOTTOM)
+            && close(*rgb.get_pixel(x, rgb.height() * 3 / 4), TOP)
+    }
+}
+
+#[cfg(test)]
 mod tests {
+    use super::test_fixtures::{is_raw_layout, is_rotated_180, write_oriented_jpeg};
     use super::*;
     use image::{Rgb, RgbImage};
     use tempfile::tempdir;
+
+    #[test]
+    fn open_oriented_bakes_exif_3_and_6() {
+        let dir = tempdir().unwrap();
+
+        let p1 = dir.path().join("o1.jpg");
+        write_oriented_jpeg(&p1, 64, 32, 1);
+        assert_eq!(read_exif_orientation(&p1), 1);
+        assert!(is_raw_layout(&open_image_oriented(&p1).unwrap()));
+
+        let p3 = dir.path().join("o3.jpg");
+        write_oriented_jpeg(&p3, 64, 32, 3);
+        assert_eq!(read_exif_orientation(&p3), 3);
+        assert!(is_raw_layout(&image::open(&p3).unwrap()));
+        let img3 = open_image_oriented(&p3).unwrap();
+        assert_eq!((img3.width(), img3.height()), (64, 32));
+        assert!(is_rotated_180(&img3));
+
+        let p6 = dir.path().join("o6.jpg");
+        write_oriented_jpeg(&p6, 64, 32, 6);
+        let img6 = open_image_oriented(&p6).unwrap();
+        assert_eq!((img6.width(), img6.height()), (32, 64));
+    }
+
+    #[test]
+    fn open_oriented_without_exif_is_plain_decode() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("plain.jpg");
+        DynamicImage::ImageRgb8(RgbImage::from_pixel(40, 20, Rgb([1, 2, 3])))
+            .save_with_format(&path, ImageFormat::Jpeg)
+            .unwrap();
+        let img = open_image_oriented(&path).unwrap();
+        assert_eq!((img.width(), img.height()), (40, 20));
+    }
 
     #[test]
     fn normalize_degrees() {

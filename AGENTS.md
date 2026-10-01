@@ -70,6 +70,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 49** Forced-Codec Export (Ziel-Codec, phone-safe: H.264 `yuv420p` / H.265 `hvc1`, CapCut respektiert H.265, AAC-Copy, Fortschritt-Fix) · Spec: `@docs/phases/open/49-forced-codec-export.md`
 - ✅ **Phase 50** Outro (User-Asset am Videoende; Foto/Video, Mux wie Intro, Intro+Outro erlaubt, Existenz-Gate, i18n) · Spec: `@docs/phases/open/50-outro.md`
 - ✅ **Phase 51** Instructor-Foto (Settings Erweitert; Copy beim Foto-Export) · Spec: `@docs/phases/open/51-instructor-foto.md`
+- ✅ **Phase 52** Foto EXIF-Orientation (Preview-Thumbs, Wasserzeichen, QR; Thumb-Cache-Rev) · Spec: `@docs/phases/open/52-photo-exif-orientation.md`
 
 **Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*

@@ -8,7 +8,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use super::photo_edit_undo;
-use super::rotate::{apply_exif_orientation, detect_format, read_exif_orientation, save_image};
+use super::rotate::{detect_format, open_image_oriented, save_image};
 
 /// Minimum crop edge as fraction of the shorter image side.
 const MIN_NORM_EDGE: f64 = 0.05;
@@ -148,9 +148,7 @@ pub fn crop_photo(
 
     let result = (|| -> Result<PhotoCropResult, PhotoCropError> {
         let path = Path::new(input);
-        let orientation = read_exif_orientation(path);
-        let mut img = image::open(path)?;
-        img = apply_exif_orientation(img, orientation);
+        let mut img = open_image_oriented(path)?;
 
         let (px, py, pw, ph) =
             norm_crop_to_pixels(NormCropRect { x, y, w, h }, img.width(), img.height())?;

@@ -17,7 +17,7 @@ use image::{DynamicImage, ImageFormat};
 use thiserror::Error;
 
 use crate::media::dji_paths::{is_photo_ext, is_video_ext};
-use crate::media::rotate::{apply_exif_orientation, read_exif_orientation};
+use crate::media::rotate::{apply_exif_orientation, open_image_oriented, read_exif_orientation};
 use crate::storage::app_config_dir;
 use crate::util::process::apply_no_window;
 use crate::video::ffmpeg::find_ffmpeg;
@@ -33,6 +33,9 @@ const THUMB_HQ_JPEG_Q: u8 = 78;
 const THUMB_PREVIEW_JPEG_Q: u8 = 82;
 /// Embedded EXIF thumbs are typically ~160px; skip if absurdly tiny.
 const MIN_EMBEDDED_THUMB_EDGE: u32 = 24;
+/// Bump when generated pixels change for unchanged sources (cache key is path+mtime+size).
+/// `o1`: EXIF Orientation baked into full-decode photo thumbs.
+const THUMB_CACHE_REV: &str = "o1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbQuality {
@@ -129,7 +132,7 @@ fn cache_file_name(path: &Path, mtime: u64, size: u64, quality: ThumbQuality) ->
     let mut hasher = DefaultHasher::new();
     path.to_string_lossy().hash(&mut hasher);
     format!(
-        "{:016x}_{mtime}_{size}_{}.jpg",
+        "{:016x}_{mtime}_{size}_{}_{THUMB_CACHE_REV}.jpg",
         hasher.finish(),
         quality.as_str()
     )
@@ -237,7 +240,7 @@ fn generate_thumbnail_bytes(
                 return encode_jpeg(&thumb, quality.jpeg_quality());
             }
         }
-        image::open(path)?
+        open_image_oriented(path)?
     } else if is_video_ext(&ext) {
         let ff = match ffmpeg {
             Some(p) => p.to_path_buf(),
@@ -472,6 +475,32 @@ mod tests {
         assert!(lq.len() > 32);
         // Must be a JPEG payload.
         assert_eq!(&lq[..2], &[0xff, 0xd8]);
+    }
+
+    #[test]
+    fn preview_and_fallback_thumbs_bake_exif_orientation() {
+        use crate::media::rotate::test_fixtures::{is_rotated_180, write_oriented_jpeg};
+
+        let dir = tempdir().unwrap();
+        let p3 = dir.path().join("o3.jpg");
+        write_oriented_jpeg(&p3, 320, 160, 3);
+        for quality in [ThumbQuality::Preview, ThumbQuality::Lq] {
+            let jpeg = generate_thumbnail_bytes(&p3, quality, None).unwrap();
+            let img = image::load_from_memory(&jpeg).unwrap();
+            assert!(is_rotated_180(&img), "{quality:?} not oriented");
+        }
+
+        let p6 = dir.path().join("o6.jpg");
+        write_oriented_jpeg(&p6, 320, 160, 6);
+        let jpeg = generate_thumbnail_bytes(&p6, ThumbQuality::Preview, None).unwrap();
+        let img = image::load_from_memory(&jpeg).unwrap();
+        assert!(img.height() > img.width());
+    }
+
+    #[test]
+    fn cache_name_carries_revision() {
+        let name = cache_file_name(Path::new("a.jpg"), 1, 2, ThumbQuality::Preview);
+        assert!(name.ends_with(&format!("_preview_{THUMB_CACHE_REV}.jpg")));
     }
 
     #[test]

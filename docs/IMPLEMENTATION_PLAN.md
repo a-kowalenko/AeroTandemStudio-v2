@@ -22,6 +22,7 @@
 | `@docs/phases/open/47-settings-wizard-ux.md` | Phase 47 (Settings + Wizard UX) |
 | `@docs/phases/open/50-outro.md` | Phase 50 (Outro) |
 | `@docs/phases/open/51-instructor-foto.md` | Phase 51 (Instructor-Foto) |
+| `@docs/phases/open/52-photo-exif-orientation.md` | Phase 52 (Foto EXIF-Orientation) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
 | `@docs/optimization_plan.md` | OPT-Index / Tracker |
@@ -57,6 +58,7 @@ Desktop-App zur automatisierten Erstellung von Tandem-Fallschirmsprung-Videos (I
 | done | **48** Vorgang Medien-Viewer (lokal) | [`phases/open/48-vorgang-media-viewer.md`](phases/open/48-vorgang-media-viewer.md) | ✅ |
 | done | **50** Outro (User-Asset am Videoende) | [`phases/open/50-outro.md`](phases/open/50-outro.md) | ✅ |
 | done | **51** Instructor-Foto (mit Foto-Export) | [`phases/open/51-instructor-foto.md`](phases/open/51-instructor-foto.md) | ✅ |
+| done | **52** Foto EXIF-Orientation (Preview, Wasserzeichen, QR) | [`phases/open/52-photo-exif-orientation.md`](phases/open/52-photo-exif-orientation.md) | ✅ |
 
 *(AMS-Bridge Historie-Merge: AeroMediaService-v2 — AMS neu starten nach Deploy. Optional: Linux-VM-Abnahme, Windows-WPD mit echter Cam.)*
 
@@ -112,6 +114,7 @@ Details: `@AGENTS.md`
 | 49 | Forced-Codec Export (Ziel-Codec, phone-safe) | ✅ | [open/49](phases/open/49-forced-codec-export.md) |
 | 50 | Outro (User-Asset am Videoende) | ✅ | [open/50](phases/open/50-outro.md) |
 | 51 | Instructor-Foto (mit Foto-Export) | ✅ | [open/51](phases/open/51-instructor-foto.md) |
+| 52 | Foto EXIF-Orientation (Preview, Wasserzeichen, QR) | ✅ | [open/52](phases/open/52-photo-exif-orientation.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 

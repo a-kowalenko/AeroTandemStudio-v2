@@ -19,6 +19,7 @@ use rxing::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::media::rotate::{apply_exif_orientation, read_exif_orientation};
 use crate::model::Kunde;
 use crate::storage::logging;
 use crate::video::ffmpeg::{self, run_ffmpeg_checked, run_ffmpeg_raw_stdout_frames, FfmpegError};
@@ -1189,7 +1190,16 @@ fn decode_qr_from_luma_hints(
 
 /// Load image for QR: JPEG uses DCT-scaled decode (1/2, 1/4, 1/8) toward `max_width`
 /// so multi-MP files are not fully materialised. Other formats fall back to `image::open`.
+/// EXIF Orientation is baked in so the persisted hit preview and spotlight match the photo.
 fn open_image_for_qr(path: &Path, max_width: u32) -> Result<DynamicImage, QrScanError> {
+    let img = open_image_for_qr_unoriented(path, max_width)?;
+    Ok(apply_exif_orientation(img, read_exif_orientation(path)))
+}
+
+fn open_image_for_qr_unoriented(
+    path: &Path,
+    max_width: u32,
+) -> Result<DynamicImage, QrScanError> {
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -2123,6 +2133,23 @@ pub fn build_extract_frame_args_accurate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_image_for_qr_bakes_exif_orientation() {
+        use crate::media::rotate::test_fixtures::{is_rotated_180, write_oriented_jpeg};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let p3 = dir.path().join("o3.jpg");
+        write_oriented_jpeg(&p3, 320, 160, 3);
+        // Scaled JPEG path (max_width below source width).
+        assert!(is_rotated_180(&open_image_for_qr(&p3, 160).unwrap()));
+
+        let p6 = dir.path().join("o6.jpg");
+        write_oriented_jpeg(&p6, 320, 160, 6);
+        let img6 = open_image_for_qr(&p6, 160).unwrap();
+        assert!(img6.height() > img6.width());
+    }
 
     #[test]
     fn target_frame_indices_includes_zero_and_steps() {

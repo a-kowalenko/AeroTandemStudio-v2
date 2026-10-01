@@ -8,6 +8,7 @@ use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat, RgbaImage};
 
 use crate::constants::ASSET_PREVIEW_STEMPEL;
+use crate::media::rotate::open_image_oriented;
 use crate::video::concat::VideoCodec;
 use crate::video::encoding_quality::build_encode_output_params;
 use crate::video::ffmpeg::{probe_duration_secs, run_ffmpeg, FfmpegError, ProgressCallback};
@@ -98,7 +99,7 @@ pub fn create_photo_with_watermark(
     output: &Path,
     stamp_path: &Path,
 ) -> Result<(), ProcessorError> {
-    let foto = image::open(input)
+    let foto = open_image_oriented(input)
         .map_err(|e| ProcessorError::Message(format!("Foto öffnen {}: {e}", input.display())))?;
     let stamp = image::open(stamp_path).map_err(|e| {
         ProcessorError::Message(format!("Stempel öffnen {}: {e}", stamp_path.display()))
@@ -179,5 +180,33 @@ mod tests {
         assert!(args.contains(&"-progress".to_string()));
         assert!(args.contains(&"pipe:1".to_string()));
         assert_eq!(args.last().unwrap(), "out.mp4");
+    }
+
+    #[test]
+    fn photo_watermark_bakes_exif_orientation() {
+        use crate::media::rotate::test_fixtures::{is_rotated_180, write_oriented_jpeg};
+        use tempfile::tempdir;
+
+        let dir = tempdir().unwrap();
+        let stamp = dir.path().join("stamp.png");
+        RgbaImage::from_pixel(10, 10, image::Rgba([0, 0, 0, 0]))
+            .save(&stamp)
+            .unwrap();
+
+        let p3 = dir.path().join("o3.jpg");
+        write_oriented_jpeg(&p3, 320, 160, 3);
+        let out3 = dir.path().join("o3_wm.jpg");
+        create_photo_with_watermark(&p3, &out3, &stamp).unwrap();
+        let img3 = image::open(&out3).unwrap();
+        assert_eq!(img3.height(), 720);
+        assert!(is_rotated_180(&img3));
+
+        let p6 = dir.path().join("o6.jpg");
+        write_oriented_jpeg(&p6, 320, 160, 6);
+        let out6 = dir.path().join("o6_wm.jpg");
+        create_photo_with_watermark(&p6, &out6, &stamp).unwrap();
+        let img6 = image::open(&out6).unwrap();
+        assert_eq!(img6.height(), 720);
+        assert!(img6.width() < 720);
     }
 }
