@@ -18,6 +18,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Universal-Export: schneller, wenn Intro/Flugvideo schon passen (weniger unnötige Neu-Kodierung)
 - Server-Upload und Server-Backup: stabilere Verbindungen, weniger Abbrüche bei längeren Übertragungen
+- Server-Status: unterscheidet „Erreichbar“ (nur Netz) und „Verbunden“ (Anmeldung/Freigabe geprüft) — in Kopfzeile, Einstellungen und Ersteinrichtung
 - Video drehen / Neu-Kodierung: bei fehlgeschlagener Hardwarebeschleunigung erneuter Versuch ohne Hardware — mit verständlicher Meldung
 - Fehlerdialoge: optionale technische Details zum Weitergeben an den Support
 - SD- und USB-Import: klarere Meldungen bei Abbruch; nach Abbruch wird die Karte bzw. Kamera nicht geleert
@@ -30,7 +31,6 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Fotos: Vorschau und Wasserzeichen stehen wieder richtig herum (auch bei gedrehten Handy-/Kamera-Aufnahmen)
 - Clips zusammenfügen: kein eingefrorenes Bild mit weiterlaufendem Ton mehr, wenn Kamera-Clips und neu kodierte Clips (z. B. nach Drehen) gemischt werden
 - Fortschritt: neuer Auftrag startet sauber, auch wenn zuvor abgebrochen wurde
-
 
 ## [0.7.0-beta.2] - 2026-10-01
 
