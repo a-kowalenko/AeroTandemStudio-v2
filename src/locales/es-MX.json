@@ -532,6 +532,7 @@
   "errors": {
     "server": {
       "connected": "✓ Conectado",
+      "reachableUnverified": "Accesible – inicio de sesión sin verificar",
       "notChecked": "No verificado",
       "notConnected": "Sin conexión",
       "checking": "Verificando…",
@@ -1019,6 +1020,7 @@
     },
     "server": {
       "connected": "Conectado",
+      "reachable": "Accesible",
       "uploadPercent": "Subida {{percent}}%"
     }
   },
@@ -1759,6 +1761,7 @@
       "serverWithDetail": "Servidor: {{detail}}",
       "serverWithDetailMultiline": "Servidor:\n{{detail}}",
       "serverConnected": "Servidor: conectado",
+      "serverReachableUnverified": "Servidor: accesible – inicio de sesión sin verificar",
       "serverNotConfigured": "Servidor: no configurado",
       "serverNotChecked": "Servidor: no verificado",
       "amsChecking": "{{title}}: comprobando…",

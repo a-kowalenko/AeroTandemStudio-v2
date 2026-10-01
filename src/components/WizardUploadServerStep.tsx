@@ -63,6 +63,7 @@ export function WizardUploadServerStep({
   const checkConnection = useServerStore((s) => s.checkConnection);
   const serverPhase = useServerStore((s) => s.phase);
   const serverMessage = useServerStore((s) => s.message);
+  const serverLoginVerified = useServerStore((s) => s.loginVerified);
 
   const [mode, setMode] = useState<Mode>("ams");
   const [discovering, setDiscovering] = useState(false);
@@ -520,7 +521,11 @@ export function WizardUploadServerStep({
                 serverPhase !== "checking" &&
                 serverPhase !== "idle" ? (
                   <span className="text-xs text-muted">
-                    {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                    {serverConnectionStatusLabel(
+                      serverPhase,
+                      serverMessage,
+                      serverLoginVerified,
+                    )}
                   </span>
                 ) : null}
               </div>
@@ -629,7 +634,11 @@ export function WizardUploadServerStep({
             serverPhase !== "checking" &&
             serverPhase !== "idle" ? (
               <span className="text-xs text-muted">
-                {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                {serverConnectionStatusLabel(
+                  serverPhase,
+                  serverMessage,
+                  serverLoginVerified,
+                )}
               </span>
             ) : null}
           </div>

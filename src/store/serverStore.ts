@@ -21,6 +21,11 @@ type ServerState = {
   phase: ServerPhase;
   connected: boolean;
   message: string;
+  /**
+   * A real Login + Share check (or transfer) succeeded since the last failure.
+   * Quiet TCP-OK only proves the server answers and leaves this unchanged.
+   */
+  loginVerified: boolean;
   /** True during quiet background revalidation (label stays stable). */
   refreshing: boolean;
   uploadProgress: UploadProgressEvent | null;
@@ -41,10 +46,19 @@ type ServerState = {
 /** Ignore stale results when a newer checkConnection started. */
 let connectionRequestSeq = 0;
 
+export function nextLoginVerified(
+  prev: boolean,
+  result: Pick<ConnectionTestResult, "ok" | "login_unverified">,
+): boolean {
+  if (!result.ok) return false;
+  return result.login_unverified ? prev : true;
+}
+
 export const useServerStore = create<ServerState>((set, get) => ({
   phase: "idle",
   connected: false,
   message: "",
+  loginVerified: false,
   refreshing: false,
   uploadProgress: null,
 
@@ -62,6 +76,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
     set({
       connected: result.ok,
       message: result.message,
+      loginVerified: nextLoginVerified(get().loginVerified, result),
       phase: result.ok ? "connected" : "error",
       refreshing: false,
     }),
@@ -75,6 +90,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
       set({
         connected: event.ok,
         message: event.message,
+        loginVerified: event.ok,
         refreshing: false,
       });
       return true;
@@ -82,6 +98,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
     set({
       connected: event.ok,
       message: event.message,
+      loginVerified: event.ok,
       phase: event.ok ? "connected" : "error",
       refreshing: false,
     });
@@ -120,6 +137,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
       set({
         connected: result.ok,
         message: result.message,
+        loginVerified: nextLoginVerified(get().loginVerified, result),
         phase: result.ok ? "connected" : "error",
         refreshing: false,
       });
@@ -134,7 +152,13 @@ export const useServerStore = create<ServerState>((set, get) => ({
         set({ refreshing: false });
         return { ok: false, message, soft_hold: true };
       }
-      set({ connected: false, message, phase: "error", refreshing: false });
+      set({
+        connected: false,
+        message,
+        loginVerified: false,
+        phase: "error",
+        refreshing: false,
+      });
       return { ok: false, message };
     }
   },
@@ -144,6 +168,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
       phase: "idle",
       connected: false,
       message: "",
+      loginVerified: false,
       refreshing: false,
       uploadProgress: null,
     });

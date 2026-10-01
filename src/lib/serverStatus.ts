@@ -28,10 +28,13 @@ function mapKnownServerUnreachableMessage(raw: string): string | null {
 export function serverConnectionStatusLabel(
   phase: ServerPhase,
   message = "",
+  loginVerified = true,
 ): string {
   switch (phase) {
     case "connected":
-      return tr("errors.server.connected");
+      return loginVerified
+        ? tr("errors.server.connected")
+        : tr("errors.server.reachableUnverified");
     case "checking":
       return tr("errors.server.checking");
     case "uploading":

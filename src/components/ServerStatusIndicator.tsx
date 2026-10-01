@@ -47,6 +47,7 @@ function StatusDot({ tone }: { tone: ConnectionDot }) {
       className={cn(
         "h-1.5 w-1.5 rounded-full",
         tone === "ok" && "bg-success",
+        tone === "partial" && "bg-warning",
         tone === "error" && "bg-destructive",
         tone === "checking" && "animate-pulse bg-warning",
         tone === "idle" && "bg-muted/80",
@@ -113,6 +114,7 @@ export function ServerStatusIndicator({
   const smbPhase = useServerStore((s) => s.phase);
   const smbConnected = useServerStore((s) => s.connected);
   const smbMessage = useServerStore((s) => s.message);
+  const smbLoginVerified = useServerStore((s) => s.loginVerified);
   const smbRefreshing = useServerStore((s) => s.refreshing);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const checkConnection = useServerStore((s) => s.checkConnection);
@@ -150,6 +152,7 @@ export function ServerStatusIndicator({
     smbPhase,
     smbConnected,
     smbMessage,
+    smbLoginVerified,
     uploadPercent:
       smbPhase === "uploading" ? (uploadProgress?.percent ?? 0) : null,
     uploadDetail,

@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use smb2::{ClientConfig, FileWriter, SmbClient};
+use tokio::sync::Mutex as AsyncMutex;
 
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
@@ -84,6 +85,9 @@ pub struct ConnectionTestResult {
     /// keep the previous phase instead of flipping to red.
     #[serde(default)]
     pub soft_hold: bool,
+    /// Quiet TCP-OK: the server answers, but Login + Share were not checked.
+    #[serde(default)]
+    pub login_unverified: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -408,18 +412,21 @@ fn local_health_result(path: &Path, outcome: ProbeOutcome, quiet: bool) -> Conne
             ok: true,
             message: format!("Lokaler Pfad erreichbar: {}", path.display()),
             soft_hold: false,
+            login_unverified: false,
         }
     } else if matches!(outcome, ProbeOutcome::Missing) {
         ConnectionTestResult {
             ok: true,
             message: format!("Zielordner fehlt, wird angelegt: {}", path.display()),
             soft_hold: false,
+            login_unverified: false,
         }
     } else if matches!(outcome, ProbeOutcome::Denied) {
         ConnectionTestResult {
             ok: false,
             message: format!("Zugriff verweigert: {}", path.display()),
             soft_hold: false,
+            login_unverified: false,
         }
     } else if quiet {
         ConnectionTestResult {
@@ -429,12 +436,14 @@ fn local_health_result(path: &Path, outcome: ProbeOutcome, quiet: bool) -> Conne
                 path.display()
             ),
             soft_hold: true,
+            login_unverified: false,
         }
     } else {
         ConnectionTestResult {
             ok: false,
             message: format!("Lokaler Pfad nicht gefunden: {}", path.display()),
             soft_hold: false,
+            login_unverified: false,
         }
     }
 }
@@ -535,6 +544,7 @@ pub(crate) async fn connect_smb(
         compression: true,
         dfs_enabled: true,
         dfs_target_overrides: Default::default(),
+        connect_options: None,
     })
     .await
     .map_err(|e| map_connect_error(&e.to_string()))
@@ -594,6 +604,7 @@ pub async fn test_connection(
                 ok: false,
                 message: e,
                 soft_hold: false,
+                login_unverified: false,
             }
         }
     };
@@ -617,6 +628,7 @@ pub async fn test_connection(
                     ok: false,
                     message: e,
                     soft_hold: false,
+                    login_unverified: false,
                 }
             }
         };
@@ -711,12 +723,14 @@ fn quiet_tcp_health_result(
                         "Server erreichbar — Anmeldung/Freigabe zuletzt fehlgeschlagen: {prev}"
                     ),
                     soft_hold: true,
+                    login_unverified: false,
                 }
             } else {
                 ConnectionTestResult {
                     ok: true,
                     message: QUIET_TCP_OK_MESSAGE.to_string(),
                     soft_hold: false,
+                    login_unverified: true,
                 }
             }
         }
@@ -724,6 +738,7 @@ fn quiet_tcp_health_result(
             ok: false,
             message,
             soft_hold: false,
+            login_unverified: false,
         },
     }
 }
@@ -750,6 +765,7 @@ async fn test_smb_connection(
                 ok,
                 message,
                 soft_hold,
+                login_unverified: false,
             };
         }
         host_lock::HealthConnectGate::LoudBusy => {
@@ -758,6 +774,7 @@ async fn test_smb_connection(
                 ok: true,
                 message: LOUD_HOST_BUSY_MESSAGE.to_string(),
                 soft_hold: false,
+                login_unverified: false,
             };
         }
     };
@@ -783,6 +800,7 @@ async fn test_smb_connection(
                     ok: false,
                     message: e,
                     soft_hold: false,
+                    login_unverified: false,
                 };
             }
         };
@@ -853,6 +871,7 @@ async fn probe_pooled_share(
             ok: true,
             message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
             soft_hold: false,
+            login_unverified: false,
         },
         Err(e) => {
             if subpath.is_empty() {
@@ -860,6 +879,7 @@ async fn probe_pooled_share(
                     ok: false,
                     message: format!("Share erreichbar, Listing fehlgeschlagen: {e}"),
                     soft_hold: false,
+                    login_unverified: false,
                 }
             } else {
                 let fs_result = {
@@ -871,11 +891,13 @@ async fn probe_pooled_share(
                         ok: true,
                         message: format!("Verbindung zum Server erfolgreich (//{host}/{share})"),
                         soft_hold: false,
+                        login_unverified: false,
                     },
                     Err(e2) => ConnectionTestResult {
                         ok: false,
                         message: format!("Verbindung fehlgeschlagen: {e2}"),
                         soft_hold: false,
+                        login_unverified: false,
                     },
                 }
             }
@@ -1370,7 +1392,7 @@ async fn release_smb_session_for_cleanup<F>(
     cancel: UploadCancelPolicy,
     progress: Arc<Mutex<UploadProgressGate<F>>>,
     tree: Arc<smb2::client::Tree>,
-    client: Arc<SmbClient>,
+    client: Arc<AsyncMutex<SmbClient>>,
 ) -> UploadResult
 where
     F: FnMut(UploadProgress) + Send + 'static,
@@ -1396,7 +1418,7 @@ where
     }
 
     let tree_for_disconnect = (*tree).clone();
-    match Arc::try_unwrap(client) {
+    match Arc::try_unwrap(client).map(AsyncMutex::into_inner) {
         Ok(client) => {
             drop(tree);
             // OPT-22B B6: explicit disconnect before Drop (shared with success path).
@@ -1498,7 +1520,7 @@ async fn abandon_smb_staging<F>(
     cancel: UploadCancelPolicy,
     progress: Arc<Mutex<UploadProgressGate<F>>>,
     tree: Arc<smb2::client::Tree>,
-    client: Arc<SmbClient>,
+    client: Arc<AsyncMutex<SmbClient>>,
     host: &str,
     port: u16,
     share: &str,
@@ -1588,7 +1610,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     }
 
     let progress = Arc::new(Mutex::new(progress));
-    let client = Arc::new(client);
+    let client = Arc::new(AsyncMutex::new(client));
     let tree = Arc::new(tree);
 
     let media_remotes: Vec<String> = phases
@@ -1774,7 +1796,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
     let staged_job = join_smb_path(&staging_root, &job_name);
     let final_job = join_smb_path(subpath, &job_name);
 
-    let mut client = match Arc::try_unwrap(client) {
+    let mut client = match Arc::try_unwrap(client).map(AsyncMutex::into_inner) {
         Ok(c) => c,
         Err(_) => {
             drop(tree);
@@ -1826,7 +1848,7 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
 }
 
 async fn upload_smb_one<F: FnMut(UploadProgress) + Send>(
-    client: &SmbClient,
+    client: &AsyncMutex<SmbClient>,
     tree: &smb2::client::Tree,
     file: &FileEntry,
     remote_rel: &str,
@@ -2006,8 +2028,10 @@ async fn write_chunk_unless_cancelled(
     }
 }
 
+/// The client lock is held only while opening; the returned writer streams
+/// without it, so parallel workers still upload concurrently.
 pub(crate) async fn stream_upload_file(
-    client: &SmbClient,
+    client: &AsyncMutex<SmbClient>,
     tree: &smb2::client::Tree,
     local: &Path,
     remote: &str,
@@ -2015,6 +2039,8 @@ pub(crate) async fn stream_upload_file(
     mut on_chunk: impl FnMut(u64),
 ) -> Result<u64, String> {
     let mut writer = client
+        .lock()
+        .await
         .create_file_writer(tree, remote)
         .await
         .map_err(|e| e.to_string())?;
@@ -2710,6 +2736,7 @@ mod tests {
         let cleared = quiet_tcp_health_result(&host, share, Ok(()));
         assert!(cleared.ok);
         assert!(!cleared.soft_hold);
+        assert!(cleared.login_unverified, "TCP-OK proves no Login");
         assert_eq!(cleared.message, QUIET_TCP_OK_MESSAGE);
     }
 

@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use smb2::{SmbClient, Tree};
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
 use crate::video::export_paths::MARKER_FILENAME;
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
@@ -140,7 +140,7 @@ pub fn partition_upload_phases(files: &[FileEntry]) -> UploadPhases {
 /// Returns bytes uploaded in this phase. Caller must upload manifest/marker
 /// only after this future completes successfully (barrier).
 pub async fn upload_smb_media_parallel<F>(
-    client: Arc<SmbClient>,
+    client: Arc<AsyncMutex<SmbClient>>,
     tree: Arc<Tree>,
     media: &[FileEntry],
     remote_paths: &[String],

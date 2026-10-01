@@ -54,6 +54,7 @@ export function ServerTab({
   const persistConfig = useConfigStore((s) => s.persist);
   const serverPhase = useServerStore((s) => s.phase);
   const serverMessage = useServerStore((s) => s.message);
+  const serverLoginVerified = useServerStore((s) => s.loginVerified);
   const [testingServer, setTestingServer] = useState(false);
   const [testingBridge, setTestingBridge] = useState(false);
   const [discovering, setDiscovering] = useState(false);
@@ -460,7 +461,11 @@ export function ServerTab({
                   }
                   onClick={() => void onTestServer()}
                 >
-                  {serverConnectionStatusLabel(serverPhase, serverMessage)}
+                  {serverConnectionStatusLabel(
+                    serverPhase,
+                    serverMessage,
+                    serverLoginVerified,
+                  )}
                 </button>
               ) : null}
             </div>

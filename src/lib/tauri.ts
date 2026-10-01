@@ -1300,6 +1300,8 @@ export type ConnectionTestResult = {
   message: string;
   /** Quiet-Poll: keep previous UI status (map waking / smb2 bridge). */
   soft_hold?: boolean;
+  /** Quiet TCP-OK: server answers, Login + Share not checked. */
+  login_unverified?: boolean;
 };
 
 export type UploadResult = {

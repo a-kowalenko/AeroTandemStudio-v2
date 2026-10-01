@@ -22,7 +22,8 @@ import {
 } from "./serverStatus";
 import { presentSdUserMessage } from "./sdMessages";
 
-export type ConnectionDot = "ok" | "error" | "checking" | "idle";
+/** `partial`: server answers, Login not proven yet. */
+export type ConnectionDot = "ok" | "partial" | "error" | "checking" | "idle";
 
 /** Left icon in the header connection chip. */
 export type HeaderConnectionIcon = "server" | "upload" | "check";
@@ -98,10 +99,14 @@ function backupTooltipDetail(backup: NonNullable<HeaderSecondaryBackupInput>): s
   return parts.join(" · ");
 }
 
-function smbDot(phase: ServerPhase, connected: boolean): ConnectionDot {
+function smbDot(
+  phase: ServerPhase,
+  connected: boolean,
+  loginVerified: boolean,
+): ConnectionDot {
   if (phase === "checking") return "checking";
   if (phase === "uploading") return connected ? "ok" : "idle";
-  if (phase === "connected" || connected) return "ok";
+  if (phase === "connected" || connected) return loginVerified ? "ok" : "partial";
   if (phase === "error") return "error";
   return "idle";
 }
@@ -120,6 +125,7 @@ function smbTooltipLine(
   login: string,
   password: string,
   serverUrl: string,
+  loginVerified: boolean,
   refreshing?: boolean,
 ): string {
   if (phase === "checking" || refreshing) {
@@ -132,7 +138,11 @@ function smbTooltipLine(
       ? tr("header.connection.serverWithDetailMultiline", { detail })
       : tr("header.connection.serverWithDetail", { detail });
   }
-  if (phase === "connected" || connected) return tr("header.connection.serverConnected");
+  if (phase === "connected" || connected) {
+    return loginVerified
+      ? tr("header.connection.serverConnected")
+      : tr("header.connection.serverReachableUnverified");
+  }
   if (!serverUrl.trim()) return tr("header.connection.serverNotConfigured");
   return tr("header.connection.serverNotChecked");
 }
@@ -160,6 +170,8 @@ export function presentHeaderConnection(input: {
   smbPhase: ServerPhase;
   smbConnected: boolean;
   smbMessage: string;
+  /** False while only a TCP probe answered. Defaults to true. */
+  smbLoginVerified?: boolean;
   uploadPercent: number | null;
   /** Extra upload tooltip lines (bytes / files done); no single filename. */
   uploadDetail: string | null;
@@ -197,6 +209,7 @@ export function presentHeaderConnection(input: {
   const amsRefreshing =
     input.amsConfigured && Boolean(input.amsRefreshing) && !amsChecking;
   const smbOk = input.smbConnected || input.smbPhase === "connected";
+  const smbLoginVerified = input.smbLoginVerified ?? true;
   const amsOk = input.amsConnected || input.amsPhase === "connected";
   const smbError = input.smbPhase === "error";
   const amsError = input.amsConfigured && input.amsPhase === "error";
@@ -275,6 +288,9 @@ export function presentHeaderConnection(input: {
   } else if (amsError) {
     label = tr("header.connection.titleFailed");
     toneClass = "text-destructive";
+  } else if (smbOk && !smbLoginVerified) {
+    label = tr("chrome.server.reachable");
+    toneClass = "text-warning";
   } else if (smbOk) {
     label = tr("chrome.server.connected");
     toneClass = "text-success";
@@ -325,6 +341,7 @@ export function presentHeaderConnection(input: {
       input.login,
       input.password,
       input.serverUrl,
+      smbLoginVerified,
       smbRefreshing,
     ),
   ];
@@ -389,7 +406,7 @@ export function presentHeaderConnection(input: {
     transferBusy,
     transferKind,
     liveMessage,
-    smbDot: smbDot(input.smbPhase, input.smbConnected),
+    smbDot: smbDot(input.smbPhase, input.smbConnected, smbLoginVerified),
     amsDot: input.amsConfigured
       ? amsDot(input.amsPhase, input.amsConnected)
       : null,

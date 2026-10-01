@@ -532,6 +532,7 @@
   "errors": {
     "server": {
       "connected": "✓ Connected",
+      "reachableUnverified": "Reachable – login not checked",
       "notChecked": "Not checked",
       "notConnected": "Not connected",
       "checking": "Checking…",
@@ -1019,6 +1020,7 @@
     },
     "server": {
       "connected": "Connected",
+      "reachable": "Reachable",
       "uploadPercent": "Upload {{percent}}%"
     }
   },
@@ -1759,6 +1761,7 @@
       "serverWithDetail": "Server: {{detail}}",
       "serverWithDetailMultiline": "Server:\n{{detail}}",
       "serverConnected": "Server: connected",
+      "serverReachableUnverified": "Server: reachable – login not checked",
       "serverNotConfigured": "Server: not configured",
       "serverNotChecked": "Server: not checked",
       "amsChecking": "{{title}}: checking…",
