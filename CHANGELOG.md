@@ -17,7 +17,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Video-Kodierung und Export: laufen im Hintergrund mit niedrigerer Priorität, damit Klicks und Dialoge flüssig bleiben
 - App startet schlanker: selten genutzte Dialoge werden erst bei Bedarf geladen
 - Fortschritt und Protokoll: weniger Ruckeln der Oberfläche bei vielen parallelen Schritten
+- Hintergrund-Vorbereitung bei Video + Foto: startet schon mit den Videos — Fotos werden nachgezogen, sobald sie importiert sind
 
+### Behoben
+
+- Erstellen: bereits vorbereitete Videos werden zuverlässig übernommen, auch wenn kurz vorher noch Fotos hinzugekommen sind
 
 ## [0.7.1-beta.1] - 2026-10-03
 
