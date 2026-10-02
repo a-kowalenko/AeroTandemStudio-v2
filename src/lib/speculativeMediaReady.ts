@@ -19,6 +19,9 @@ export type SpeculativeMediaReadyInput = {
  * True when products + media are enough to stage body/photos.
  * Does **not** require form completeness (`createReady`) or WM selection.
  * Unpaid-foto WM remains a hard gate on Erstellen / `validate_create_job`.
+ *
+ * With video + foto products, videos alone suffice: the body encode starts
+ * early and photos (+ photo WM) are staged incrementally once imported.
  */
 export function isSpeculativeMediaReady(
   input: SpeculativeMediaReadyInput,
@@ -26,9 +29,8 @@ export function isSpeculativeMediaReady(
   const videoProd = input.handcam_video || input.outside_video;
   const fotoProd = input.handcam_foto || input.outside_foto;
   if (!videoProd && !fotoProd) return false;
-  if (videoProd && input.videoCount <= 0) return false;
-  if (fotoProd && input.photoCount <= 0) return false;
-  return true;
+  if (videoProd) return input.videoCount > 0;
+  return input.photoCount > 0;
 }
 
 export function speculativeMediaReadyFromKunde(

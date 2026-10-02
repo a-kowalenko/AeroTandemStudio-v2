@@ -917,33 +917,37 @@ pub fn start_staging(
     )
 }
 
+fn clear_pending_if_fp(inner: &mut SlotInner, fp: &str) {
+    if inner.pending.as_ref().is_some_and(|p| p.fingerprint == fp) {
+        inner.pending = None;
+    }
+}
+
 /// Apply coalesced pending after a job reaches Ready (photos/WM only; body already matches).
+///
+/// Pending stays in the slot until the incremental refresh adopts its fingerprints —
+/// an attached `wait_for_matching` must never observe "no pending + old photos_fp".
 fn try_drain_pending(ffmpeg: &Path, slot: &Arc<Slot>) {
     let pending = {
         let mut inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
         if inner.phase != SpeculativePhase::Ready {
             return;
         }
-        inner.pending.take()
-    };
-    let Some(pending) = pending else {
-        return;
-    };
-
-    {
-        let inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(pending) = inner.pending.clone() else {
+            return;
+        };
         if inner.fingerprint == pending.fingerprint {
+            inner.pending = None;
             log_event("speculative_drain", "noop_same_fp");
             return;
         }
-        let photos_same = inner.photos_fp == pending.photos_fp;
-        let wm_same = inner.wm_fp == pending.wm_fp;
-        if photos_same && wm_same {
+        if inner.photos_fp == pending.photos_fp && inner.wm_fp == pending.wm_fp {
+            inner.pending = None;
             log_event("speculative_drain", "noop_halves");
             return;
         }
-        drop(inner);
-    }
+        pending
+    };
 
     log_event(
         "speculative_drain",
@@ -984,6 +988,7 @@ fn try_drain_pending(ffmpeg: &Path, slot: &Arc<Slot>) {
         };
         if video_same {
             let mut inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
+            clear_pending_if_fp(&mut inner, &pending.fingerprint);
             inner.fingerprint = pending.fingerprint.clone();
             inner.wm_fp = pending.wm_fp.clone();
             inner.wm_video_fp = pending.wm_video_fp.clone();
@@ -1018,6 +1023,8 @@ fn try_drain_pending(ffmpeg: &Path, slot: &Arc<Slot>) {
         }
     };
     if let Err(e) = result {
+        let mut inner = slot.inner.lock().unwrap_or_else(|e| e.into_inner());
+        clear_pending_if_fp(&mut inner, &pending.fingerprint);
         log_event("speculative_miss_gate", format!("drain failed: {e}"));
     }
 }
@@ -1059,6 +1066,7 @@ fn refresh_wm_incremental(
         } else {
             None
         };
+        clear_pending_if_fp(&mut inner, fp);
         inner.phase = SpeculativePhase::Running;
         inner.fingerprint = fp.to_string();
         inner.wm_fp = wm_fp.to_string();
@@ -1230,6 +1238,7 @@ fn refresh_photos_incremental(
         } else {
             None
         };
+        clear_pending_if_fp(&mut inner, fp);
         inner.phase = SpeculativePhase::Running;
         inner.fingerprint = fp.to_string();
         inner.photos_fp = photos_fp.to_string();
@@ -3251,10 +3260,9 @@ mod tests {
         assert!(!media_paths_match(&["a.mp4".into()], &["b.mp4".into()]));
     }
 
-    #[test]
-    fn slot_matches_core_accepts_pending_photos() {
-        let inner = SlotInner {
-            phase: SpeculativePhase::Running,
+    fn inner_with_pending_photos(phase: SpeculativePhase) -> SlotInner {
+        SlotInner {
+            phase,
             fingerprint: "a".into(),
             body_fp: "body1".into(),
             photos_fp: "photos0".into(),
@@ -3288,10 +3296,25 @@ mod tests {
                 resource_dir: None,
                 kunde: base_kunde(),
             }),
-        };
+        }
+    }
+
+    #[test]
+    fn slot_matches_core_accepts_pending_photos() {
+        let inner = inner_with_pending_photos(SpeculativePhase::Running);
         assert!(slot_matches_core(&inner, "body1", "photos1"));
         assert!(slot_matches_core(&inner, "body1", "photos0"));
         assert!(!slot_matches_core(&inner, "body2", "photos1"));
+    }
+
+    #[test]
+    fn clear_pending_only_on_adopted_fp() {
+        let mut inner = inner_with_pending_photos(SpeculativePhase::Ready);
+        clear_pending_if_fp(&mut inner, "other");
+        assert!(inner.pending.is_some());
+        assert!(slot_matches_core(&inner, "body1", "photos1"));
+        clear_pending_if_fp(&mut inner, "b");
+        assert!(inner.pending.is_none());
     }
 
     #[test]
