@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-03
+
 ### Verbessert
 
 - Start: Startbildschirm erscheint sofort — kein weißer Bildschirm mehr beim Öffnen (auch nach Install oder Update)
