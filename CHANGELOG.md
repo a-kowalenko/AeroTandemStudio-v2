@@ -22,6 +22,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 ### Behoben
 
 - Erstellen: bereits vorbereitete Videos werden zuverlässig übernommen, auch wenn kurz vorher noch Fotos hinzugekommen sind
+- Ersteinrichtung: Fehler- und Hinweisdialoge liegen wieder über dem Assistenten und sind anklickbar
 
 ## [0.7.1-beta.1] - 2026-10-03
 
