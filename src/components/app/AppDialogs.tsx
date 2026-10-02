@@ -15,21 +15,14 @@ import type { AmsPreflightConfirmState } from "@/lib/amsPreflightConfirm";
 import type { ReconnectUploadOfferChoice } from "../ReconnectUploadOfferDialog";
 import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
 import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
-import { BulkUploadSummaryDialog } from "../BulkUploadSummaryDialog";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
 import type { VideoCutterResult } from "../VideoCutter";
 import { ErrorDialog } from "../ErrorDialog";
-import { SuccessDialog } from "../SuccessDialog";
-import {
-  CREATE_SUCCESS_AUTO_CLOSE_SECS,
-  CreateSuccessDialog,
-} from "../CreateSuccessDialog";
 import { WarningDialog } from "../WarningDialog";
 import { IntroMuxFallbackDialog } from "../IntroMuxFallbackDialog";
 import { BodyConcatFallbackDialog } from "../BodyConcatFallbackDialog";
-import { ReencodeConfirmDialog } from "../ReencodeConfirmDialog";
 import { LowMediaConfirmDialog } from "../LowMediaConfirmDialog";
 import { FolderConflictConfirmDialog } from "../FolderConflictConfirmDialog";
 import { OfflineCreateConfirmDialog } from "../OfflineCreateConfirmDialog";
@@ -37,7 +30,6 @@ import { AmsPreflightConfirmDialog } from "../AmsPreflightConfirmDialog";
 import { ReconnectUploadOfferDialog } from "../ReconnectUploadOfferDialog";
 import { LoadingOverlay } from "../LoadingOverlay";
 import { ToastHost } from "../ToastHost";
-import { UpdateDialog } from "../UpdateDialog";
 import type {
   DialogActionStatus,
   DialogChoicesOptions,
@@ -52,11 +44,16 @@ import type {
 import type { AppConfig } from "../../lib/tauri";
 import type { QrPreview } from "../../lib/tauri";
 import {
+  LazyBulkUploadSummaryDialog,
+  LazyCreateSuccessDialog,
   LazyHistoryDialog,
   LazyPhotoEditor,
+  LazyReencodeConfirmDialog,
   LazySdFileSelector,
   LazySettingsDialog,
   LazySetupWizard,
+  LazySuccessDialog,
+  LazyUpdateDialog,
   LazyVideoCutter,
 } from "./lazyDialogs";
 
@@ -274,25 +271,27 @@ export function AppDialogs(props: AppDialogsProps) {
         </DialogChunk>
       ) : null}
 
-      <UpdateDialog
-        open={updateDialogOpen}
-        fromVersion={versionInstall?.fromVersion ?? appVersion}
-        toVersion={versionInstall?.toVersion ?? null}
-        notes={versionInstall?.notes ?? null}
-        available={Boolean(versionInstall?.available)}
-        message={versionInstall?.message ?? ""}
-        installing={updateInstalling}
-        installProgress={updateInstallProgress}
-        silentAvailable={versionInstall?.silentAvailable ?? true}
-        blockedReason={installBlockedReason}
-        platformHint={updaterPlatformHint}
-        installerUrl={versionInstall?.installerUrl ?? null}
-        isBeta={versionInstall?.isBeta ?? false}
-        onInstall={onInstallVersion}
-        onCancelInstall={onCancelInstallVersion}
-        onLater={onUpdateLater}
-        onClose={onUpdateClose}
-      />
+      <DialogChunk>
+        <LazyUpdateDialog
+          open={updateDialogOpen}
+          fromVersion={versionInstall?.fromVersion ?? appVersion}
+          toVersion={versionInstall?.toVersion ?? null}
+          notes={versionInstall?.notes ?? null}
+          available={Boolean(versionInstall?.available)}
+          message={versionInstall?.message ?? ""}
+          installing={updateInstalling}
+          installProgress={updateInstallProgress}
+          silentAvailable={versionInstall?.silentAvailable ?? true}
+          blockedReason={installBlockedReason}
+          platformHint={updaterPlatformHint}
+          installerUrl={versionInstall?.installerUrl ?? null}
+          isBeta={versionInstall?.isBeta ?? false}
+          onInstall={onInstallVersion}
+          onCancelInstall={onCancelInstallVersion}
+          onLater={onUpdateLater}
+          onClose={onUpdateClose}
+        />
+      </DialogChunk>
 
       <DialogChunk>
         <LazySdFileSelector
@@ -358,26 +357,29 @@ export function AppDialogs(props: AppDialogsProps) {
         }}
         onClose={closeDialog}
       />
-      <SuccessDialog
-        open={dialogKind === "success"}
-        title={dialogTitle}
-        message={dialogMessage}
-        autoCloseSecs={dialogAutoCloseSecs}
-        variant={dialogVariant}
-        highlight={dialogHighlight}
-        actions={dialogActions}
-        qrPreview={dialogQrPreview}
-        confirm={dialogConfirm}
-        choices={dialogChoices}
-        prompt={dialogPrompt}
-        onClose={onSuccessClose}
-      />
-      <CreateSuccessDialog
-        open={createSuccess !== null}
-        info={createSuccess}
-        autoCloseSecs={CREATE_SUCCESS_AUTO_CLOSE_SECS}
-        onClose={onCreateSuccessClose}
-      />
+      <DialogChunk>
+        <LazySuccessDialog
+          open={dialogKind === "success"}
+          title={dialogTitle}
+          message={dialogMessage}
+          autoCloseSecs={dialogAutoCloseSecs}
+          variant={dialogVariant}
+          highlight={dialogHighlight}
+          actions={dialogActions}
+          qrPreview={dialogQrPreview}
+          confirm={dialogConfirm}
+          choices={dialogChoices}
+          prompt={dialogPrompt}
+          onClose={onSuccessClose}
+        />
+      </DialogChunk>
+      <DialogChunk>
+        <LazyCreateSuccessDialog
+          open={createSuccess !== null}
+          info={createSuccess}
+          onClose={onCreateSuccessClose}
+        />
+      </DialogChunk>
       <WarningDialog
         open={dialogKind === "warning"}
         title={dialogTitle}
@@ -400,19 +402,21 @@ export function AppDialogs(props: AppDialogsProps) {
           void onBodyConcatChoice(choice);
         }}
       />
-      <ReencodeConfirmDialog
-        open={reencodeConfirm !== null}
-        kind={reencodeConfirm?.kind ?? ""}
-        reason={reencodeConfirm?.reason ?? ""}
-        params={reencodeConfirm?.params ?? {}}
-        recommended={
-          reencodeConfirm?.recommended ?? defaultEncodeProfile()
-        }
-        presets={reencodeConfirm?.presets}
-        onChoose={(result) => {
-          void onReencodeChoice(result);
-        }}
-      />
+      <DialogChunk>
+        <LazyReencodeConfirmDialog
+          open={reencodeConfirm !== null}
+          kind={reencodeConfirm?.kind ?? ""}
+          reason={reencodeConfirm?.reason ?? ""}
+          params={reencodeConfirm?.params ?? {}}
+          recommended={
+            reencodeConfirm?.recommended ?? defaultEncodeProfile()
+          }
+          presets={reencodeConfirm?.presets}
+          onChoose={(result) => {
+            void onReencodeChoice(result);
+          }}
+        />
+      </DialogChunk>
       <LowMediaConfirmDialog
         open={lowMediaConfirm !== null}
         reasons={lowMediaConfirm?.reasons ?? []}
@@ -444,11 +448,13 @@ export function AppDialogs(props: AppDialogsProps) {
         variant="reconnect"
         onChoose={onReconnectUploadOfferChoice}
       />
-      <BulkUploadSummaryDialog
-        open={bulkUploadSummary !== null}
-        summary={bulkUploadSummary}
-        onClose={onBulkUploadSummaryClose}
-      />
+      <DialogChunk>
+        <LazyBulkUploadSummaryDialog
+          open={bulkUploadSummary !== null}
+          summary={bulkUploadSummary}
+          onClose={onBulkUploadSummaryClose}
+        />
+      </DialogChunk>
       <LoadingOverlay
         open={loading && !sdWorkflowUiActive}
         message={loadingMessage}

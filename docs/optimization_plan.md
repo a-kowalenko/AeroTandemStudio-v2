@@ -17,6 +17,7 @@
 | `@AGENTS.md` | Immer |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (CapCut-Export; ein Slice pro Session) |
 | `@docs/opt/open/23-smb-stability.md` | OPT-23 (SMB-Stabilität / Mapping; ein Slice pro Session) |
+| `@docs/opt/open/24-startup-ui-responsiveness.md` | OPT-24 (Kaltstart + UI-Responsiveness; **alle Slices in einer Session**) |
 | `@docs/optimization_plan.md` | Index / Tracker (optional) |
 | `@docs/opt/ARCHIVE.md` | Regression / erledigte OPT-Spec (gezielt, nicht ganz) |
 | `@docs/PERF_BASELINE.md` | OPT-0 Messungen / Vorher-Nachher |
@@ -29,7 +30,8 @@
 
 | Priorität | OPT | Spec | Status |
 |-----------|-----|------|--------|
-| 1 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| 1 | **24** Kaltstart ohne weiße Fläche + kein „Keine Rückmeldung“ bei großen Importen | [`opt/open/24-startup-ui-responsiveness.md`](opt/open/24-startup-ui-responsiveness.md) | ✅ (Code) |
+| 2 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
 | — | **23** SMB-Stabilität (A–F Code ✅; manuell macOS/Linux offen) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | ✅ Code |
 | done | **0–20, 22** Import, Thumbs, SMB, … | [`opt/ARCHIVE.md`](opt/ARCHIVE.md) | ✅ (OPT-13 entfernt) |
 
@@ -65,6 +67,7 @@
 | OPT-21 | CapCut-Export: schnell + robust | hoch | L | mittel | Phase 49/50 | [open/21](opt/open/21-capcut-export.md) |
 | OPT-22 | SMB: Session-Budget (Win11 ~20er-Limit) | hoch | M | mittel | OPT-17–20 | ARCHIVE |
 | OPT-23 | SMB: Stabilität, Mapping-Treffer, Session-Hygiene | hoch | M–L | niedrig–mittel | OPT-17–22 | [open/23](opt/open/23-smb-stability.md) |
+| OPT-24 | Kaltstart-Splash + UI-Responsiveness (Main-Thread, Priorität, Events) | hoch | L | niedrig–mittel | OPT-5, 6, 8, 10, 11 | [open/24](opt/open/24-startup-ui-responsiveness.md) |
 
 ---
 
@@ -108,6 +111,7 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-21 | 🔄 Slice 0+A ✅; **21B–E offen** | [open/21-capcut-export.md](opt/open/21-capcut-export.md) |
 | OPT-22 | ✅ Slice A+B+C | ARCHIVE |
 | OPT-23 | ✅ Slice A–F (Code); manuell macOS/Linux offen | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
+| OPT-24 | ✅ Slice A–F (Code); manuelle Abnahme offen | [open/24-startup-ui-responsiveness.md](opt/open/24-startup-ui-responsiveness.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -121,6 +125,13 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 ---
 
 ## 5. Schnell-Prompt
+
+```
+Implementiere OPT-24 (alle Slices A–F) aus @docs/opt/open/24-startup-ui-responsiveness.md
+Regeln: @AGENTS.md
+Ausnahme: alle Slices in dieser Session, Reihenfolge A → F.
+Danach cargo test --manifest-path src-tauri/Cargo.toml && npm run check && npm run tauri dev.
+```
 
 ```
 Implementiere OPT-21 Slice B aus @docs/opt/open/21-capcut-export.md

@@ -4,11 +4,11 @@ import { getRecentLogs, type LogEntry } from "../lib/tauri";
 import { useLogStore } from "../store/logStore";
 
 /**
- * Loads buffered logs and keeps the console store in sync via `log-line` events.
+ * Loads buffered logs and keeps the console store in sync via batched `log-lines` events.
  */
 export function useLogListener() {
   const replaceEntries = useLogStore((s) => s.replaceEntries);
-  const appendEntry = useLogStore((s) => s.appendEntry);
+  const appendEntries = useLogStore((s) => s.appendEntries);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,8 +27,8 @@ export function useLogListener() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    listen<LogEntry>("log-line", (event) => {
-      appendEntry(event.payload);
+    listen<LogEntry[]>("log-lines", (event) => {
+      appendEntries(event.payload);
     })
       .then((fn) => {
         unlisten = fn;
@@ -39,5 +39,5 @@ export function useLogListener() {
     return () => {
       unlisten?.();
     };
-  }, [appendEntry]);
+  }, [appendEntries]);
 }

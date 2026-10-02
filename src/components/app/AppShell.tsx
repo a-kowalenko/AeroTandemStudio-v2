@@ -25,8 +25,6 @@ import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import { CustomerSidebar } from "./CustomerSidebar";
 import { WorkflowLayout } from "./WorkflowLayout";
 import { AppPathHintsDriftBanner } from "./AppPathHintsDriftBanner";
-import type { TaskProgressState } from "./types";
-import type { CreateJobPlan } from "../../lib/createJobPlan";
 import { cn } from "../../lib/utils";
 import { useKundeStore } from "../../store/kundeStore";
 import {
@@ -47,10 +45,6 @@ export type AppShellProps = {
   sdWorkflowUiActive: boolean;
   mediaTab: "video" | "foto";
   setMediaTab: (tab: "video" | "foto") => void;
-  percent: number;
-  status: string;
-  taskProgress: TaskProgressState[];
-  createJobPlan?: CreateJobPlan | null;
   createFailed?: boolean;
   createSuccessOpen?: boolean;
   cutterOpen: boolean;
@@ -85,10 +79,6 @@ export function AppShell({
   sdWorkflowUiActive,
   mediaTab,
   setMediaTab,
-  percent,
-  status,
-  taskProgress,
-  createJobPlan = null,
   createFailed = false,
   createSuccessOpen = false,
   cutterOpen,
@@ -306,10 +296,6 @@ export function AppShell({
             cutterOpen={cutterOpen}
             mediaTab={mediaTab}
             setMediaTab={setMediaTab}
-            percent={percent}
-            status={status}
-            taskProgress={taskProgress}
-            createJobPlan={createJobPlan}
             createFailed={createFailed}
             createSuccessOpen={createSuccessOpen}
             onBusyChange={onBusyChange}

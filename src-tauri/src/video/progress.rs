@@ -147,9 +147,90 @@ fn parse_hms_flexible(value: &str) -> Option<f64> {
     Some(h * 3600.0 + m * 60.0 + s)
 }
 
+/// Max `encode-progress` events per task and second (OPT-24 D3).
+pub const ENCODE_PROGRESS_HZ: u32 = 10;
+
+/// Rate gate for `encode-progress`: ≤ 10 Hz per `task_id` (0 = overall); status changes
+/// and `percent >= 100` always pass so bars never stall below their final state.
+pub struct EncodeProgressGate {
+    throttle: crate::util::emit_throttle::Throttle<u32>,
+    last_status: std::sync::Mutex<std::collections::HashMap<u32, String>>,
+}
+
+impl EncodeProgressGate {
+    pub fn new() -> Self {
+        Self::with_throttle(crate::util::emit_throttle::Throttle::per_second(
+            ENCODE_PROGRESS_HZ,
+        ))
+    }
+
+    fn with_throttle(throttle: crate::util::emit_throttle::Throttle<u32>) -> Self {
+        Self {
+            throttle,
+            last_status: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    pub fn should_emit(&self, p: &EncodeProgress) -> bool {
+        let key = p.task_id.unwrap_or(0);
+        let status_changed = match self.last_status.lock() {
+            Ok(mut last) => {
+                let changed = last.get(&key).map(String::as_str) != Some(p.status.as_str());
+                if changed {
+                    last.insert(key, p.status.clone());
+                }
+                changed
+            }
+            Err(_) => true,
+        };
+        let force = status_changed || p.percent >= 100.0;
+        self.throttle.should_emit(key, force)
+    }
+}
+
+impl Default for EncodeProgressGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ev(percent: f64, status: &str, task_id: Option<u32>) -> EncodeProgress {
+        EncodeProgress {
+            percent,
+            current_secs: 0.0,
+            total_secs: 0.0,
+            status: status.into(),
+            task_id,
+        }
+    }
+
+    #[test]
+    fn encode_gate_throttles_same_status_per_task() {
+        let gate = EncodeProgressGate::with_throttle(crate::util::emit_throttle::Throttle::new(
+            std::time::Duration::from_secs(60),
+        ));
+        assert!(gate.should_emit(&ev(1.0, "continue", Some(1))));
+        assert!(!gate.should_emit(&ev(2.0, "continue", Some(1))));
+        assert!(gate.should_emit(&ev(2.0, "continue", Some(2))));
+        assert!(gate.should_emit(&ev(5.0, "continue", None)));
+        assert!(!gate.should_emit(&ev(6.0, "continue", None)));
+    }
+
+    #[test]
+    fn encode_gate_forces_status_change_and_completion() {
+        let gate = EncodeProgressGate::with_throttle(crate::util::emit_throttle::Throttle::new(
+            std::time::Duration::from_secs(60),
+        ));
+        assert!(gate.should_emit(&ev(10.0, "continue", Some(1))));
+        assert!(!gate.should_emit(&ev(50.0, "continue", Some(1))));
+        assert!(gate.should_emit(&ev(100.0, "continue", Some(1))));
+        assert!(gate.should_emit(&ev(100.0, "end", Some(1))));
+        assert!(gate.should_emit(&ev(0.0, "Abgebrochen", Some(1))));
+    }
 
     #[test]
     fn parse_duration_from_ffmpeg_banner() {

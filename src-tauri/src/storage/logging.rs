@@ -1,14 +1,15 @@
 //! File logging to `app.log` plus an in-memory ring buffer for the debug console.
 //!
 //! A process-wide **minimum level** drops lower-severity lines before file write,
-//! ring buffer, and `log-line` IPC (Release default: INFO; Dev default: DEBUG).
+//! ring buffer, and batched `log-lines` IPC (Release default: INFO; Dev default: DEBUG).
 
 use std::collections::VecDeque;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use once_cell::sync::Lazy;
 use serde::Serialize;
@@ -132,13 +133,86 @@ pub fn init_logging() -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Register a callback invoked for every new log line (e.g. Tauri `log-line` emit).
+/// Register a callback invoked for every new log line (see [`spawn_log_batch_emitter`]).
 pub fn set_log_emitter<F>(f: F)
 where
     F: Fn(&LogEntry) + Send + Sync + 'static,
 {
     if let Ok(mut guard) = EMITTER.lock() {
         *guard = Some(Box::new(f));
+    }
+}
+
+/// Flush interval for batched `log-lines` IPC (≤ 4 events/s; `ERROR` flushes early).
+pub const LOG_BATCH_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Collects log entries between IPC flushes (order preserved).
+pub struct LogBatcher {
+    buf: Mutex<Vec<LogEntry>>,
+    wake: Condvar,
+}
+
+impl LogBatcher {
+    pub fn new() -> Self {
+        Self {
+            buf: Mutex::new(Vec::new()),
+            wake: Condvar::new(),
+        }
+    }
+
+    pub fn push(&self, entry: &LogEntry) {
+        let Ok(mut buf) = self.buf.lock() else {
+            return;
+        };
+        buf.push(entry.clone());
+        if entry.level.eq_ignore_ascii_case("ERROR") {
+            self.wake.notify_one();
+        }
+    }
+
+    /// Wait up to `interval` (or until an `ERROR` arrives), then take everything buffered.
+    pub fn next_batch(&self, interval: Duration) -> Vec<LogEntry> {
+        let Ok(buf) = self.buf.lock() else {
+            return Vec::new();
+        };
+        let has_error = |b: &Vec<LogEntry>| b.iter().any(|e| e.level.eq_ignore_ascii_case("ERROR"));
+        let mut buf = if has_error(&buf) {
+            buf
+        } else {
+            match self.wake.wait_timeout(buf, interval) {
+                Ok((guard, _)) => guard,
+                Err(_) => return Vec::new(),
+            }
+        };
+        std::mem::take(&mut *buf)
+    }
+}
+
+impl Default for LogBatcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Route new log lines through a [`LogBatcher`]; a background thread hands each
+/// non-empty batch to `sink` (e.g. one Tauri `log-lines` emit).
+pub fn spawn_log_batch_emitter<F>(sink: F)
+where
+    F: Fn(Vec<LogEntry>) + Send + 'static,
+{
+    let batcher = Arc::new(LogBatcher::new());
+    let for_emitter = Arc::clone(&batcher);
+    set_log_emitter(move |entry| for_emitter.push(entry));
+    let spawned = std::thread::Builder::new()
+        .name("log-batch-emit".into())
+        .spawn(move || loop {
+            let batch = batcher.next_batch(LOG_BATCH_INTERVAL);
+            if !batch.is_empty() {
+                sink(batch);
+            }
+        });
+    if let Err(e) = spawned {
+        eprintln!("failed to spawn log batch emitter: {e}");
     }
 }
 
@@ -322,6 +396,56 @@ mod tests {
             "info must remain: {lines:?}"
         );
         set_min_level_name(&prev);
+    }
+
+    fn entry(id: u64, level: &str) -> LogEntry {
+        LogEntry {
+            id,
+            ts: String::new(),
+            level: level.into(),
+            source: "test".into(),
+            message: format!("m{id}"),
+        }
+    }
+
+    #[test]
+    fn log_batcher_collects_in_order_and_drains() {
+        let b = LogBatcher::new();
+        for id in 1..=5 {
+            b.push(&entry(id, "INFO"));
+        }
+        let batch = b.next_batch(Duration::from_millis(10));
+        assert_eq!(batch.iter().map(|e| e.id).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5]);
+        assert!(b.next_batch(Duration::from_millis(1)).is_empty());
+    }
+
+    #[test]
+    fn log_batcher_error_flushes_without_waiting() {
+        let b = LogBatcher::new();
+        b.push(&entry(1, "INFO"));
+        b.push(&entry(2, "ERROR"));
+        let started = std::time::Instant::now();
+        let batch = b.next_batch(Duration::from_secs(30));
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(batch.len(), 2);
+    }
+
+    #[test]
+    fn log_batcher_wakes_on_error_from_other_thread() {
+        let b = Arc::new(LogBatcher::new());
+        let pusher = Arc::clone(&b);
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            pusher.push(&entry(7, "ERROR"));
+        });
+        let started = std::time::Instant::now();
+        let mut got = Vec::new();
+        while got.is_empty() && started.elapsed() < Duration::from_secs(5) {
+            got = b.next_batch(Duration::from_secs(30));
+        }
+        t.join().unwrap();
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert_eq!(got.first().map(|e| e.id), Some(7));
     }
 
     #[test]

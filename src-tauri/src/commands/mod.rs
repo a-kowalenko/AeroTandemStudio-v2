@@ -7,3 +7,6 @@ pub mod sd_card;
 pub mod smb;
 pub mod video;
 pub mod vorgang_history;
+
+#[cfg(test)]
+mod sync_command_guard;

@@ -155,6 +155,18 @@ Notizen:
 
 ---
 
+## Nach OPT-24 (Kaltstart + UI-Responsiveness)
+
+> **Implementiert:** 2026-10-02 · `npx vite build` (Windows)
+
+| Metrik | Vorher | Nachher | Notiz |
+|--------|--------|---------|-------|
+| Haupt-Chunk `index-*.js` | 1.263,24 kB | **1.057,42 kB** (gzip 325,28 kB) | −205,8 kB: `en`/`es-MX` lazy (83,7 / 92,8 kB), 5 Dialoge lazy |
+| Export-Dauer S3 (libx264) | ___ s | ___ s | manuell; Ziel ≤ +10 % (BELOW_NORMAL + `-threads`) |
+| Kaltstart bis Splash sichtbar | weiße Fläche | ___ s | manuell nach Reboot; Boot-Splash in `index.html` |
+
+---
+
 ## Referenzen
 
 - Backlog-Index: `@docs/optimization_plan.md` · Specs: `@docs/opt/ARCHIVE.md` / `@docs/opt/open/`

@@ -19,7 +19,7 @@ use thiserror::Error;
 use crate::media::dji_paths::{is_photo_ext, is_video_ext};
 use crate::media::rotate::{apply_exif_orientation, open_image_oriented, read_exif_orientation};
 use crate::storage::app_config_dir;
-use crate::util::process::apply_no_window;
+use crate::util::process::apply_ffmpeg_spawn_defaults;
 use crate::video::ffmpeg::find_ffmpeg;
 
 /// Legacy / mid size (kept for callers that omit quality).
@@ -336,7 +336,7 @@ fn extract_video_frame_with_ffmpeg(
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::piped());
-            apply_no_window(&mut cmd);
+            apply_ffmpeg_spawn_defaults(&mut cmd);
             let output = cmd.output().map_err(ThumbnailError::Io)?;
             let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
             Ok((output.status.success(), err))

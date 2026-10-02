@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::commands::config::ConfigState;
+use crate::commands::config::{with_config_state, ConfigState};
 use crate::storage::cache::{
     cleanup_all, cleanup_orphans_only, collect_work_base_paths, measure_cache_usage,
     CacheCleanupResult, CacheUsageResult,
@@ -89,37 +89,70 @@ pub fn get_log_min_level() -> String {
 
 /// Set minimum log level (persists into config when available).
 #[tauri::command]
-pub fn set_log_min_level(state: State<'_, ConfigState>, level: String) -> Result<String, String> {
-    let name = logging::set_min_level_name(&level);
-    let mut cfg = {
-        let cache = state.cache.lock().map_err(|e| e.to_string())?;
-        cache.clone()
-    };
-    if cfg.log_min_level != name {
-        cfg.log_min_level = name.clone();
-        {
-            let store = state.store.lock().map_err(|e| e.to_string())?;
-            store.save(&cfg).map_err(|e| e.to_string())?;
+pub async fn set_log_min_level(app: AppHandle, level: String) -> Result<String, String> {
+    with_config_state(app, move |state| {
+        let name = logging::set_min_level_name(&level);
+        let mut cfg = {
+            let cache = state.cache.lock().map_err(|e| e.to_string())?;
+            cache.clone()
+        };
+        if cfg.log_min_level != name {
+            cfg.log_min_level = name.clone();
+            {
+                let store = state.store.lock().map_err(|e| e.to_string())?;
+                store.save(&cfg).map_err(|e| e.to_string())?;
+            }
+            {
+                let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
+                *cache = cfg;
+            }
         }
-        {
-            let mut cache = state.cache.lock().map_err(|e| e.to_string())?;
-            *cache = cfg;
-        }
-    }
-    Ok(name)
+        Ok(name)
+    })
+    .await
+}
+
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// FFmpeg find + HW detect + optional orphan cache sweep (used by SplashScreen).
 #[tauri::command]
-pub fn run_startup_checks(
+pub async fn run_startup_checks(
     app: AppHandle,
+    state: State<'_, ConfigState>,
     auto_cleanup: Option<bool>,
 ) -> Result<StartupCheckResult, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    let smb_credentials = state
+        .cache
+        .lock()
+        .ok()
+        .map(|cfg| (cfg.server_login.clone(), cfg.server_password.clone()));
+    blocking(move || {
+        Ok(run_startup_checks_blocking(
+            resource_dir,
+            smb_credentials,
+            auto_cleanup.unwrap_or(true),
+        ))
+    })
+    .await
+}
+
+fn run_startup_checks_blocking(
+    resource_dir: Option<PathBuf>,
+    smb_credentials: Option<(String, String)>,
+    do_cleanup: bool,
+) -> StartupCheckResult {
     let version = env!("CARGO_PKG_VERSION").to_string();
-    let do_cleanup = auto_cleanup.unwrap_or(true);
 
     log_info("Startup checks: locating FFmpeg...");
-    let resource_dir = app.path().resource_dir().ok();
     let ffmpeg_result = find_ffmpeg_with_resource_dir(resource_dir.as_deref());
 
     let (ffmpeg_path, ffmpeg_error) = match &ffmpeg_result {
@@ -161,8 +194,8 @@ pub fn run_startup_checks(
     };
 
     // Deferred SMB staging GC (best-effort; does not block splash on network).
-    if let Ok((_store, cfg)) = crate::storage::ConfigStore::open_default() {
-        crate::smb::spawn_smb_staging_gc(&cfg.server_login, &cfg.server_password);
+    if let Some((login, password)) = smb_credentials {
+        crate::smb::spawn_smb_staging_gc(&login, &password);
     }
 
     // OPT-19: drop stale App-owned mount registry rows (crash leftovers).
@@ -193,7 +226,7 @@ pub fn run_startup_checks(
         log_info(&message);
     }
 
-    Ok(StartupCheckResult {
+    StartupCheckResult {
         ok,
         ffmpeg_path,
         ffmpeg_error,
@@ -202,14 +235,31 @@ pub fn run_startup_checks(
         version,
         message,
         media_warning,
-    })
+    }
+}
+
+fn cached_speicherort(state: &ConfigState) -> Option<String> {
+    state
+        .cache
+        .lock()
+        .ok()
+        .map(|g| g.speicherort.clone())
+        .filter(|s| !s.is_empty())
 }
 
 #[tauri::command]
-pub fn cleanup_cache(
+pub async fn cleanup_cache(
     state: tauri::State<'_, ConfigState>,
     args: Option<CleanupCacheArgs>,
 ) -> Result<CacheCleanupResult, String> {
+    let fallback_speicherort = cached_speicherort(&state);
+    blocking(move || Ok(cleanup_cache_blocking(fallback_speicherort, args))).await
+}
+
+fn cleanup_cache_blocking(
+    fallback_speicherort: Option<String>,
+    args: Option<CleanupCacheArgs>,
+) -> CacheCleanupResult {
     let args = args.unwrap_or(CleanupCacheArgs {
         speicherort: None,
         import_paths: None,
@@ -229,17 +279,10 @@ pub fn cleanup_cache(
     if orphans_only {
         let result = cleanup_orphans_only(exclude.as_deref());
         log_info(&format!("cleanup_cache (orphans): {}", result.summary));
-        return Ok(result);
+        return result;
     }
 
-    let speicherort = args.speicherort.or_else(|| {
-        state
-            .cache
-            .lock()
-            .ok()
-            .map(|g| g.speicherort.clone())
-            .filter(|s| !s.is_empty())
-    });
+    let speicherort = args.speicherort.or(fallback_speicherort);
 
     let import_paths = args.import_paths.unwrap_or_default();
     let bases = collect_work_base_paths(
@@ -254,13 +297,21 @@ pub fn cleanup_cache(
     let include_hw = args.include_hw_cache.unwrap_or(false);
     let result = cleanup_all(exclude.as_deref(), Some(&bases), include_hw);
     log_info(&format!("cleanup_cache: {}", result.summary));
-    Ok(result)
+    result
 }
 
 /// Measure cache/temp footprint (same discovery as full cleanup; no deletes).
 #[tauri::command]
-pub fn measure_cache(
+pub async fn measure_cache(
     state: tauri::State<'_, ConfigState>,
+    args: Option<CleanupCacheArgs>,
+) -> Result<CacheUsageResult, String> {
+    let fallback_speicherort = cached_speicherort(&state);
+    blocking(move || measure_cache_blocking(fallback_speicherort, args)).await
+}
+
+fn measure_cache_blocking(
+    fallback_speicherort: Option<String>,
     args: Option<CleanupCacheArgs>,
 ) -> Result<CacheUsageResult, String> {
     let args = args.unwrap_or(CleanupCacheArgs {
@@ -278,14 +329,7 @@ pub fn measure_cache(
         .map(PathBuf::from)
         .or_else(crate::storage::working_session::get_working_dir);
 
-    let speicherort = args.speicherort.or_else(|| {
-        state
-            .cache
-            .lock()
-            .ok()
-            .map(|g| g.speicherort.clone())
-            .filter(|s| !s.is_empty())
-    });
+    let speicherort = args.speicherort.or(fallback_speicherort);
 
     let import_paths = args.import_paths.unwrap_or_default();
     let bases = collect_work_base_paths(
@@ -343,7 +387,7 @@ fn resolve_sd_backup_folder(state: &ConfigState, override_path: Option<String>) 
 
 /// Probe local Vorgang folders under speicherort (history kept; disk only).
 #[tauri::command]
-pub fn probe_clear_local_job_folders(
+pub async fn probe_clear_local_job_folders(
     state: tauri::State<'_, ConfigState>,
     args: Option<ClearLocalJobFoldersArgs>,
 ) -> Result<LocalFolderClearProbe, String> {
@@ -353,13 +397,16 @@ pub fn probe_clear_local_job_folders(
     });
     let speicherort = resolve_speicherort(&state, args.speicherort);
     let include_orphans = args.include_orphans.unwrap_or(false);
-    let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
-    probe_job_folders_impl(&speicherort, &store, include_orphans)
+    blocking(move || {
+        let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
+        probe_job_folders_impl(&speicherort, &store, include_orphans)
+    })
+    .await
 }
 
 /// Delete local Vorgang folders under speicherort; `vorgang_history` unchanged.
 #[tauri::command]
-pub fn clear_local_job_folders(
+pub async fn clear_local_job_folders(
     state: tauri::State<'_, ConfigState>,
     args: Option<ClearLocalJobFoldersArgs>,
 ) -> Result<CacheCleanupResult, String> {
@@ -369,15 +416,18 @@ pub fn clear_local_job_folders(
     });
     let speicherort = resolve_speicherort(&state, args.speicherort);
     let include_orphans = args.include_orphans.unwrap_or(false);
-    let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
-    let result = clear_job_folders_impl(&speicherort, &store, include_orphans)?;
-    log_info(&format!("clear_local_job_folders: {}", result.summary));
-    Ok(result)
+    blocking(move || {
+        let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
+        let result = clear_job_folders_impl(&speicherort, &store, include_orphans)?;
+        log_info(&format!("clear_local_job_folders: {}", result.summary));
+        Ok(result)
+    })
+    .await
 }
 
 /// Probe direct child folders under `sd_backup_folder`.
 #[tauri::command]
-pub fn probe_clear_local_backup_folders(
+pub async fn probe_clear_local_backup_folders(
     state: tauri::State<'_, ConfigState>,
     args: Option<ClearLocalBackupFoldersArgs>,
 ) -> Result<LocalFolderClearProbe, String> {
@@ -385,12 +435,12 @@ pub fn probe_clear_local_backup_folders(
         sd_backup_folder: None,
     });
     let root = resolve_sd_backup_folder(&state, args.sd_backup_folder);
-    Ok(probe_backup_folders_impl(&root))
+    blocking(move || Ok(probe_backup_folders_impl(&root))).await
 }
 
 /// Delete direct child folders under `sd_backup_folder`; media-history hashes kept.
 #[tauri::command]
-pub fn clear_local_backup_folders(
+pub async fn clear_local_backup_folders(
     state: tauri::State<'_, ConfigState>,
     args: Option<ClearLocalBackupFoldersArgs>,
 ) -> Result<CacheCleanupResult, String> {
@@ -398,14 +448,21 @@ pub fn clear_local_backup_folders(
         sd_backup_folder: None,
     });
     let root = resolve_sd_backup_folder(&state, args.sd_backup_folder);
-    let result = clear_backup_folders_impl(&root);
-    log_info(&format!("clear_local_backup_folders: {}", result.summary));
-    Ok(result)
+    blocking(move || {
+        let result = clear_backup_folders_impl(&root);
+        log_info(&format!("clear_local_backup_folders: {}", result.summary));
+        Ok(result)
+    })
+    .await
 }
 
 /// Phase 42: age-filtered auto cleanup (max 1×/local calendar day). Busy gate is frontend-side.
 #[tauri::command]
-pub fn run_auto_cleanup(state: tauri::State<'_, ConfigState>) -> Result<AutoCleanupResult, String> {
+pub async fn run_auto_cleanup(app: AppHandle) -> Result<AutoCleanupResult, String> {
+    with_config_state(app, run_auto_cleanup_blocking).await
+}
+
+fn run_auto_cleanup_blocking(state: &ConfigState) -> Result<AutoCleanupResult, String> {
     let store = VorgangHistoryStore::open_default().map_err(|e| e.to_string())?;
     let mut cfg = {
         let cache = state.cache.lock().map_err(|e| e.to_string())?;

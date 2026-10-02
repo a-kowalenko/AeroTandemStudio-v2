@@ -62,7 +62,7 @@ use commands::vorgang_history::{
     resync_vorgang_delivery_list, set_vorgang_upload_state, sync_open_handoffs,
 };
 use storage::cache::cleanup_on_app_exit;
-use storage::logging::{init_logging, log_info, set_log_emitter};
+use storage::logging::{init_logging, log_info, spawn_log_batch_emitter};
 use tauri::Emitter;
 use updater::{
     cancel_update_install, check_for_updates, get_updater_install_hint, get_updater_status,
@@ -124,10 +124,10 @@ pub fn run() {
                     eprintln!("failed to init app.log: {e}");
                 }
             }
-            set_log_emitter({
+            spawn_log_batch_emitter({
                 let handle = app.handle().clone();
-                move |entry| {
-                    let _ = handle.emit("log-line", entry);
+                move |batch| {
+                    let _ = handle.emit("log-lines", batch);
                 }
             });
             smb::health_event::install(app.handle().clone());

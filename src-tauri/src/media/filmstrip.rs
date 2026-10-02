@@ -16,7 +16,7 @@ use std::thread;
 use thiserror::Error;
 
 use crate::storage::app_config_dir;
-use crate::util::process::apply_no_window;
+use crate::util::process::apply_ffmpeg_spawn_defaults;
 use crate::video::ffmpeg::{find_ffmpeg, probe_duration_secs};
 
 pub const DEFAULT_FRAME_COUNT: usize = 14;
@@ -246,7 +246,7 @@ fn extract_one_frame(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-        apply_no_window(&mut cmd);
+        apply_ffmpeg_spawn_defaults(&mut cmd);
         let output = cmd.output().map_err(FilmstripError::Io)?;
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
         Ok((output.status.success(), err))

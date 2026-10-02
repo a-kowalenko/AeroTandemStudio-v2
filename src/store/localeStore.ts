@@ -20,7 +20,7 @@ export const useLocaleStore = create<LocaleState>((set) => ({
 
   setLanguage: async (lang) => {
     const normalized = normalizeUiLanguage(lang, "de");
-    await setUiLanguage(normalized);
-    set({ language: normalized });
+    const effective = await setUiLanguage(normalized);
+    set({ language: effective });
   },
 }));

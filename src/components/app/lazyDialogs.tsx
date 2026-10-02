@@ -25,3 +25,23 @@ export const LazyVideoCutter = lazy(() =>
 export const LazyPhotoEditor = lazy(() =>
   import("../PhotoEditor").then((m) => ({ default: m.PhotoEditor })),
 );
+
+export const LazySuccessDialog = lazy(() =>
+  import("../SuccessDialog").then((m) => ({ default: m.SuccessDialog })),
+);
+
+export const LazyCreateSuccessDialog = lazy(() =>
+  import("../CreateSuccessDialog").then((m) => ({ default: m.CreateSuccessDialog })),
+);
+
+export const LazyUpdateDialog = lazy(() =>
+  import("../UpdateDialog").then((m) => ({ default: m.UpdateDialog })),
+);
+
+export const LazyBulkUploadSummaryDialog = lazy(() =>
+  import("../BulkUploadSummaryDialog").then((m) => ({ default: m.BulkUploadSummaryDialog })),
+);
+
+export const LazyReencodeConfirmDialog = lazy(() =>
+  import("../ReencodeConfirmDialog").then((m) => ({ default: m.ReencodeConfirmDialog })),
+);

@@ -11,10 +11,19 @@ type Props = {
   className?: string;
 };
 
+/** Static `#boot-splash` from `index.html` (painted before the bundle loads). */
+export function removeBootSplash(): void {
+  document.getElementById("boot-splash")?.remove();
+}
+
 export function SplashScreen({ open, status, version, error, className }: Props) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(open);
   const [fading, setFading] = useState(false);
+
+  useEffect(() => {
+    removeBootSplash();
+  }, []);
 
   useEffect(() => {
     if (open) {

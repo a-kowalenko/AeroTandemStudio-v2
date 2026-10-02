@@ -1857,6 +1857,16 @@ pub fn build_body_clip_encode_args(
     args
 }
 
+/// `-threads N` for software encoders (`libx264` / `libx265`) when several encode in parallel,
+/// so `workers` FFmpeg processes share the cores instead of each claiming all of them.
+/// Hardware encoders (NVENC / VideoToolbox / QSV / AMF) and single-worker runs: no args.
+pub fn parallel_sw_thread_args(encoder: &str, workers: usize, threads: usize) -> Vec<String> {
+    if workers <= 1 || !encoder.starts_with("lib") {
+        return Vec::new();
+    }
+    vec!["-threads".into(), threads.max(1).to_string()]
+}
+
 /// Encode multiple body clips in parallel (legacy per_clip + ParallelVideoProcessor).
 pub fn encode_body_clips_parallel(
     ffmpeg: &Path,
@@ -1892,6 +1902,13 @@ pub fn encode_body_clips_parallel(
     };
 
     let pool = ParallelVideoProcessor::new(hw_accel_enabled && hw.available);
+    let workers = pool.max_workers.min(inputs.len()).max(1);
+    let mut quality_only = quality_only;
+    quality_only.extend(parallel_sw_thread_args(
+        &encoder,
+        workers,
+        crate::util::cpu_budget::ffmpeg_threads_per_worker(workers),
+    ));
     let ffmpeg_path = ffmpeg.to_path_buf();
     let inputs_owned = inputs.to_vec();
     let outputs_owned = outputs.to_vec();
@@ -3902,6 +3919,37 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         assert!(args.contains(&"-progress".into()));
         assert!(args.iter().any(|a| a.contains("scale=1920:1080")));
         assert_eq!(args.last().unwrap(), "out.mp4");
+    }
+
+    #[test]
+    fn parallel_sw_thread_args_only_for_parallel_software_encode() {
+        assert_eq!(
+            parallel_sw_thread_args("libx264", 2, 2),
+            vec!["-threads".to_string(), "2".to_string()]
+        );
+        assert_eq!(
+            parallel_sw_thread_args("libx265", 4, 0),
+            vec!["-threads".to_string(), "1".to_string()]
+        );
+        assert!(parallel_sw_thread_args("libx264", 1, 8).is_empty());
+        assert!(parallel_sw_thread_args("h264_nvenc", 4, 2).is_empty());
+        assert!(parallel_sw_thread_args("hevc_videotoolbox", 4, 2).is_empty());
+    }
+
+    #[test]
+    fn body_clip_args_carry_thread_cap_for_parallel_libx264() {
+        let params = IntroVideoParams::for_1080p30("h264");
+        let mut quality = vec!["-preset".into(), "medium".into(), "-crf".into(), "18".into()];
+        quality.extend(parallel_sw_thread_args("libx264", 2, 2));
+        let args = build_body_clip_encode_args("in.mp4", "out.mp4", &params, "libx264", &quality);
+        let pos = args.iter().position(|a| a == "-threads").expect("-threads");
+        assert_eq!(args[pos + 1], "2");
+        assert!(pos < args.len() - 1);
+
+        let mut nv = vec!["-preset".into(), "p5".into()];
+        nv.extend(parallel_sw_thread_args("h264_nvenc", 2, 2));
+        let args = build_body_clip_encode_args("in.mp4", "out.mp4", &params, "h264_nvenc", &nv);
+        assert!(!args.iter().any(|a| a == "-threads"));
     }
 
     #[test]

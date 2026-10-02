@@ -9,7 +9,11 @@ const initial = initTheme();
 useThemeStore.setState({ mode: initial });
 
 async function bootstrap() {
-  await useLocaleStore.getState().init();
+  try {
+    await useLocaleStore.getState().init();
+  } catch (e) {
+    console.error("i18n init failed", e);
+  }
   ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <StrictMode>
       <Suspense fallback={null}>

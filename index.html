@@ -5,9 +5,103 @@
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aero Tandem Studio</title>
+    <script>
+      (function () {
+        var mode = null;
+        try {
+          var v = localStorage.getItem("ats-theme");
+          if (v === "light" || v === "dark") mode = v;
+        } catch (e) {}
+        if (!mode) {
+          mode = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        }
+        document.documentElement.classList.toggle("dark", mode === "dark");
+        document.documentElement.dataset.theme = mode;
+      })();
+    </script>
+    <!--
+      OPT-24 A: static boot splash, painted before the JS bundle is parsed.
+      Mirrors SplashScreen.tsx (layout + colours); removed once the React splash is mounted.
+      The native window uses backgroundColor #0c1210 (tauri.conf.json) and stays visible.
+    -->
+    <style>
+      html { background-color: #eef4f2; }
+      html.dark { background-color: #0c1210; }
+      #boot-splash {
+        --bs-bg: #eef4f2; --bs-glow: #cfe8e2; --bs-primary: #009d8b;
+        --bs-soft: rgba(0, 157, 139, 0.12); --bs-ring: rgba(0, 157, 139, 0.25);
+        --bs-muted: #5a6b66; --bs-muted-80: rgba(90, 107, 102, 0.8); --bs-muted-70: rgba(90, 107, 102, 0.7); --bs-border: rgba(18, 32, 28, 0.12);
+        position: fixed; inset: 0; z-index: 140;
+        display: flex; align-items: center; justify-content: center;
+        padding-top: 3.5rem; box-sizing: border-box;
+        background: radial-gradient(ellipse 70% 50% at 50% 30%, var(--bs-glow), transparent 60%), var(--bs-bg);
+        font-family: "IBM Plex Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+        line-height: 1.5;
+      }
+      html.dark #boot-splash {
+        --bs-bg: #0c1210; --bs-glow: #14332c; --bs-primary: #1ab5a0;
+        --bs-soft: rgba(26, 181, 160, 0.16); --bs-ring: rgba(26, 181, 160, 0.25);
+        --bs-muted: #8f9f98; --bs-muted-80: rgba(143, 159, 152, 0.8); --bs-muted-70: rgba(143, 159, 152, 0.7); --bs-border: rgba(232, 239, 236, 0.12);
+      }
+      #boot-splash .bs-col {
+        display: flex; flex-direction: column; align-items: center; text-align: center;
+        width: min(400px, 90vw); padding: 0 1.5rem; box-sizing: border-box;
+      }
+      #boot-splash .bs-logo {
+        margin-bottom: 1rem; width: 5rem; height: 5rem; border-radius: 1rem;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--bs-soft); box-shadow: 0 0 0 1px var(--bs-ring);
+      }
+      #boot-splash .bs-logo img { width: 4rem; height: 4rem; object-fit: contain; }
+      #boot-splash h1 {
+        margin: 0; font-size: 1.5rem; line-height: 2rem; font-weight: 700;
+        letter-spacing: -0.025em; color: var(--bs-primary);
+      }
+      #boot-splash .bs-tagline {
+        margin: 0.25rem 0 0; font-size: 0.75rem; line-height: 1rem;
+        letter-spacing: 0.025em; text-transform: uppercase; color: var(--bs-muted);
+      }
+      #boot-splash .bs-spinner {
+        margin-top: 1.75rem; width: 44px; height: 44px; box-sizing: border-box;
+        border-radius: 9999px; border: 2px solid var(--bs-border); border-top-color: var(--bs-primary);
+        animation: bs-spin 1s linear infinite;
+      }
+      #boot-splash .bs-status { margin: 1rem 0 0; font-size: 0.875rem; line-height: 1.25rem; color: var(--bs-muted); }
+      #boot-splash .bs-version { margin: 0.75rem 0 0; font-size: 0.75rem; line-height: 1rem; color: var(--bs-muted-80); }
+      #boot-splash .bs-copy { margin: 0.5rem 0 0; font-size: 11px; color: var(--bs-muted-70); }
+      @keyframes bs-spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
 
   <body>
+    <div id="boot-splash" role="status" aria-busy="true">
+      <div class="bs-col">
+        <div class="bs-logo"><img src="/logo.png" alt="" width="64" height="64" /></div>
+        <h1>Aero Tandem Studio</h1>
+        <p class="bs-tagline">Jump. Cut. Done.</p>
+        <div class="bs-spinner"></div>
+        <p class="bs-status" id="bs-status">&nbsp;</p>
+        <p class="bs-version" id="bs-version"></p>
+        <script>
+          // Texts must match `splash.loading` / `splash.version` in src/locales/*.json.
+          // Version number: Vite replaces the APP_VERSION placeholder from package.json.
+          (function () {
+            var status = { de: "Oberfläche wird geladen…", en: "Loading interface…", es: "Cargando interfaz…" };
+            var verPrefix = { de: "Version", en: "Version", es: "Versión" };
+            var raw = null;
+            try { raw = localStorage.getItem("ats-lang"); } catch (e) {}
+            if (!raw) raw = (navigator.languages && navigator.languages[0]) || navigator.language || "de";
+            var l = String(raw).toLowerCase();
+            var key = l.indexOf("en") === 0 ? "en" : l.indexOf("es") === 0 ? "es" : "de";
+            document.getElementById("bs-status").textContent = status[key];
+            document.getElementById("bs-version").textContent = verPrefix[key] + " %APP_VERSION%";
+            document.documentElement.lang = key === "es" ? "es-MX" : key;
+          })();
+        </script>
+        <p class="bs-copy">© Andreas Kowalenko</p>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

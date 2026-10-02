@@ -129,18 +129,65 @@ fn read_config(state: &ConfigState) -> AppConfig {
     state.cache.lock().map(|g| g.clone()).unwrap_or_default()
 }
 
+/// Batch QR decoders: CPU budget (≤ 4), only one while Speculative-Create encodes.
+fn qr_batch_workers(parallel_enabled: bool) -> usize {
+    let speculative_busy = matches!(
+        crate::video::speculative_create::status().phase,
+        crate::video::speculative_create::SpeculativePhase::Running
+    );
+    qr_batch_workers_for(
+        parallel_enabled,
+        speculative_busy,
+        crate::util::cpu_budget::background_workers(4),
+    )
+}
+
+fn qr_batch_workers_for(parallel_enabled: bool, speculative_busy: bool, budget: usize) -> usize {
+    if !parallel_enabled || speculative_busy {
+        1
+    } else {
+        budget.max(1)
+    }
+}
+
+/// Phases that report per-frame progress (throttled); all others are phase changes.
+fn is_qr_frame_phase(phase: &str) -> bool {
+    matches!(phase, "extract" | "fast" | "thorough" | "frame")
+}
+
+/// Max `qr-scan-progress` frame updates per file and second.
+const QR_PROGRESS_HZ: u32 = 8;
+
 fn make_progress_cb(app: AppHandle) -> Arc<dyn Fn(&str, &str, u32, u32) + Send + Sync> {
+    let throttle = crate::util::emit_throttle::Throttle::<String>::per_second(QR_PROGRESS_HZ);
+    // Latest suppressed frame per file; flushed before that file's next phase change.
+    let pending: std::sync::Mutex<std::collections::HashMap<String, QrScanProgressEvent>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
     Arc::new(
         move |path: &str, phase: &str, frame: u32, frames_total: u32| {
-            let _ = app.emit(
-                "qr-scan-progress",
-                QrScanProgressEvent {
-                    path: path.to_string(),
-                    phase: phase.to_string(),
-                    frame,
-                    frames_total,
-                },
-            );
+            let event = QrScanProgressEvent {
+                path: path.to_string(),
+                phase: phase.to_string(),
+                frame,
+                frames_total,
+            };
+            if is_qr_frame_phase(phase) {
+                if throttle.should_emit(path.to_string(), false) {
+                    if let Ok(mut p) = pending.lock() {
+                        p.remove(path);
+                    }
+                    let _ = app.emit("qr-scan-progress", event);
+                } else if let Ok(mut p) = pending.lock() {
+                    p.insert(path.to_string(), event);
+                }
+                return;
+            }
+            let last_frame = pending.lock().ok().and_then(|mut p| p.remove(path));
+            if let Some(last) = last_frame {
+                let _ = app.emit("qr-scan-progress", last);
+            }
+            throttle.forget(&path.to_string());
+            let _ = app.emit("qr-scan-progress", event);
         },
     )
 }
@@ -255,11 +302,7 @@ pub async fn scan_qr_videos(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
-    let workers = if cfg.parallel_processing_enabled {
-        4
-    } else {
-        1
-    };
+    let workers = qr_batch_workers(cfg.parallel_processing_enabled);
     logging::info("qr", {
         let n = paths.len();
         let scan_n = ends_first_edge_jobs(n, VIDEO_EDGE_SCAN_PER_SIDE).len();
@@ -338,11 +381,7 @@ pub async fn scan_qr_photos(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let cfg = read_config(&config);
     let opts = options_from_config(&cfg);
-    let workers = if cfg.parallel_processing_enabled {
-        4
-    } else {
-        1
-    };
+    let workers = qr_batch_workers(cfg.parallel_processing_enabled);
     logging::info("qr", {
         let n = paths.len();
         let scan_n = ends_first_edge_jobs(n, PHOTO_EDGE_SCAN_PER_SIDE).len();
@@ -459,6 +498,32 @@ pub async fn scan_qr_photo_followups(
 
 /// Remove a persisted QR hit-frame preview (and its temp directory).
 #[tauri::command]
-pub fn discard_qr_preview_file(path: String) -> Result<(), String> {
-    discard_qr_preview(&path)
+pub async fn discard_qr_preview_file(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || discard_qr_preview(&path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_qr_frame_phase, qr_batch_workers_for};
+
+    #[test]
+    fn qr_workers_follow_budget_and_yield_to_speculative() {
+        assert_eq!(qr_batch_workers_for(true, false, 2), 2);
+        assert_eq!(qr_batch_workers_for(true, false, 4), 4);
+        assert_eq!(qr_batch_workers_for(true, true, 4), 1);
+        assert_eq!(qr_batch_workers_for(false, false, 4), 1);
+        assert_eq!(qr_batch_workers_for(true, false, 0), 1);
+    }
+
+    #[test]
+    fn qr_phase_changes_are_not_throttled() {
+        for p in ["extract", "fast", "thorough", "frame"] {
+            assert!(is_qr_frame_phase(p), "{p}");
+        }
+        for p in ["start", "hit", "done", "miss", "error", "cancelled"] {
+            assert!(!is_qr_frame_phase(p), "{p}");
+        }
+    }
 }

@@ -1004,7 +1004,7 @@
   "splash": {
     "appName": "Aero Tandem Studio",
     "tagline": "Jump. Cut. Done.",
-    "loading": "Wird geladen…",
+    "loading": "Oberfläche wird geladen…",
     "version": "Version {{version}}",
     "copyright": "© Andreas Kowalenko"
   },

@@ -61,6 +61,8 @@ export function useCreateValidation({
   });
   const hintsModeRef = useRef<ManualEntryMode | null>(null);
   hintsModeRef.current = hintsManualEntryMode;
+  const validationInFlightRef = useRef(false);
+  const pendingValidationRef = useRef<(() => Promise<void>) | null>(null);
 
   const manualEntryMode = normalizeManualEntryMode(
     config?.manual_entry_mode,
@@ -72,37 +74,57 @@ export function useCreateValidation({
     let cancelled = false;
     // Skip debounce while hints belong to another manual mode (avoids interim jump).
     const delayMs = hintsModeRef.current !== manualEntryMode ? 0 : 200;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        const paths = videoList.map((v) => v.path);
-        const photos = photoList.map((p) => p.path);
-        const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
-        try {
-          const validation = await validateCreateJob(
-            kunde,
-            paths,
-            photos,
-            wmPhotos,
-            config?.oldschool_mode,
-          );
-          if (cancelled) return;
-          const hints = [...validation.errors];
-          if (!config?.speicherort?.trim()) {
-            hints.push(tr("create.validation.storageDeferredHint"));
-          }
-          setCreateHints(hints);
+    const run = async () => {
+      if (cancelled) return;
+      const paths = videoList.map((v) => v.path);
+      const photos = photoList.map((p) => p.path);
+      const wmPhotos = [...watermarkPhotoIndices].sort((a, b) => a - b);
+      try {
+        const validation = await validateCreateJob(
+          kunde,
+          paths,
+          photos,
+          wmPhotos,
+          config?.oldschool_mode,
+        );
+        if (cancelled) return;
+        const hints = [...validation.errors];
+        if (!config?.speicherort?.trim()) {
+          hints.push(tr("create.validation.storageDeferredHint"));
+        }
+        setCreateHints(hints);
+        setHintsManualEntryMode(manualEntryMode);
+      } catch {
+        if (!cancelled) {
+          setCreateHints([tr("create.validation.failed")]);
           setHintsManualEntryMode(manualEntryMode);
-        } catch {
-          if (!cancelled) {
-            setCreateHints([tr("create.validation.failed")]);
-            setHintsManualEntryMode(manualEntryMode);
+        }
+      }
+    };
+    // At most one `validate_create_job` in flight; a newer request replaces the queued one.
+    const timer = window.setTimeout(() => {
+      if (validationInFlightRef.current) {
+        pendingValidationRef.current = run;
+        return;
+      }
+      validationInFlightRef.current = true;
+      void (async () => {
+        try {
+          let next: (() => Promise<void>) | null = run;
+          while (next) {
+            pendingValidationRef.current = null;
+            await next();
+            next = pendingValidationRef.current;
           }
+        } finally {
+          validationInFlightRef.current = false;
         }
       })();
     }, delayMs);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      if (pendingValidationRef.current === run) pendingValidationRef.current = null;
     };
   }, [
     ready,

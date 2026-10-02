@@ -147,20 +147,36 @@ pub fn stop_sd_monitor() -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub fn get_sd_status() -> Result<SdStatusSnapshot, String> {
-    Ok(SdStatusSnapshot {
-        monitoring: SD_MONITOR.is_monitoring(),
-        drives: find_dcim_drives(),
-        backup_in_progress: false,
-    })
+async fn sd_blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn scan_sd_drives() -> Result<Vec<SdDriveInfo>, String> {
-    let drives = find_dcim_drives();
-    logging::info("sd", format!("SD-Scan: {} Laufwerk(e)", drives.len()));
-    Ok(drives)
+pub async fn get_sd_status() -> Result<SdStatusSnapshot, String> {
+    sd_blocking(|| {
+        Ok(SdStatusSnapshot {
+            monitoring: SD_MONITOR.is_monitoring(),
+            drives: find_dcim_drives(),
+            backup_in_progress: false,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn scan_sd_drives() -> Result<Vec<SdDriveInfo>, String> {
+    sd_blocking(|| {
+        let drives = find_dcim_drives();
+        logging::info("sd", format!("SD-Scan: {} Laufwerk(e)", drives.len()));
+        Ok(drives)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -361,7 +377,11 @@ pub fn decline_sd_backup(drive: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn eject_sd_card(drive: String) -> Result<(), String> {
+pub async fn eject_sd_card(drive: String) -> Result<(), String> {
+    sd_blocking(move || eject_sd_card_blocking(drive)).await
+}
+
+fn eject_sd_card_blocking(drive: String) -> Result<(), String> {
     logging::info("sd", format!("SD auswerfen: {drive}"));
     match SD_MONITOR.eject_source(&drive) {
         Ok(()) => {
@@ -563,7 +583,11 @@ pub async fn list_processed_files(
 }
 
 #[tauri::command]
-pub fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {
+pub async fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {
+    sd_blocking(move || delete_processed_files_blocking(ids)).await
+}
+
+fn delete_processed_files_blocking(ids: Vec<i64>) -> Result<(), String> {
     logging::info(
         "history",
         format!("Verlauf: lösche {} Eintrag/Einträge", ids.len()),
@@ -579,7 +603,11 @@ pub fn delete_processed_files(ids: Vec<i64>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn purge_processed_files() -> Result<(), String> {
+pub async fn purge_processed_files() -> Result<(), String> {
+    sd_blocking(purge_processed_files_blocking).await
+}
+
+fn purge_processed_files_blocking() -> Result<(), String> {
     logging::warn("history", "Verlauf wird vollständig geleert");
     let hist = SD_MONITOR.history().map_err(|e| e.to_string())?;
     hist.purge_all().map_err(|e| {

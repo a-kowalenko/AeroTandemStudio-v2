@@ -169,7 +169,7 @@ fn encoder_listed(encoder_name: &str) -> bool {
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    apply_no_window(&mut cmd);
+    crate::util::process::apply_ffmpeg_spawn_defaults(&mut cmd);
 
     match cmd.output() {
         Ok(out) => {

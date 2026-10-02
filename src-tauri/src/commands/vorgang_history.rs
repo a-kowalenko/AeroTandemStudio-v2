@@ -1,9 +1,8 @@
 //! Vorgang (created customer) history commands.
 
 use std::path::Path;
-use std::sync::Arc;
 
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::commands::config::{ensure_ams_bridge_identity, ConfigState};
 use crate::storage::logging;
@@ -18,7 +17,7 @@ use crate::video::handoff_manifest::{
     resync_integrity_from_disk, DeleteExtraFilesReport, DeliveryResyncReport, OutboxAmsMeta,
     OutboxError, StatusOutboxV1,
 };
-use crate::video::progress::EncodeProgress;
+use super::video::encode_progress_emitter;
 use crate::video::upload_preflight::{
     preflight_vorgang_upload as run_upload_preflight, UploadPreflightInput, UploadPreflightResult,
 };
@@ -534,21 +533,24 @@ pub async fn sync_open_handoffs(
 }
 
 #[tauri::command]
-pub fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
-    logging::info(
-        "vorgang_history",
-        format!("Lösche {} Vorgang/Vorgänge", ids.len()),
-    );
-    let store = open_store()?;
-    store.delete_by_ids(&ids).map_err(|e| {
-        let msg = e.to_string();
-        logging::error(
+pub async fn delete_vorgaenge(ids: Vec<i64>) -> Result<(), String> {
+    blocking_hist(move || {
+        logging::info(
             "vorgang_history",
-            format!("Vorgänge löschen fehlgeschlagen: {msg}"),
+            format!("Lösche {} Vorgang/Vorgänge", ids.len()),
         );
-        msg
-    })?;
-    Ok(())
+        let store = open_store()?;
+        store.delete_by_ids(&ids).map_err(|e| {
+            let msg = e.to_string();
+            logging::error(
+                "vorgang_history",
+                format!("Vorgänge löschen fehlgeschlagen: {msg}"),
+            );
+            msg
+        })?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -565,64 +567,85 @@ pub struct VorgangFolderProbeResult {
 
 /// Batch probe: is each Vorgang's `base_output_dir` still present on disk?
 #[tauri::command]
-pub fn probe_vorgang_folders(
+pub async fn probe_vorgang_folders(
     items: Vec<VorgangFolderProbeItem>,
 ) -> Result<Vec<VorgangFolderProbeResult>, String> {
-    Ok(items
+    blocking_hist(move || Ok(probe_vorgang_folders_blocking(items))).await
+}
+
+fn probe_vorgang_folders_blocking(
+    items: Vec<VorgangFolderProbeItem>,
+) -> Vec<VorgangFolderProbeResult> {
+    items
         .into_iter()
         .map(|item| VorgangFolderProbeResult {
             vorgang_id: item.vorgang_id,
             folder_missing: job_folder_missing(&item.base_output_dir),
         })
-        .collect())
+        .collect()
 }
 
 /// Reset stale `uploading` rows to `pending` when no upload-slot job covers them.
 #[tauri::command]
-pub fn reconcile_stale_uploads(active_vorgang_ids: Vec<i64>) -> Result<u32, String> {
-    let store = open_store()?;
-    store
-        .reconcile_stale_uploads(&active_vorgang_ids)
-        .map_err(|e| e.to_string())
+pub async fn reconcile_stale_uploads(active_vorgang_ids: Vec<i64>) -> Result<u32, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        store
+            .reconcile_stale_uploads(&active_vorgang_ids)
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Update SMB upload lifecycle
 /// (`none` / `pending` / `uploading` / `done` / `failed` / `cancelled`).
 #[tauri::command]
-pub fn set_vorgang_upload_state(
+pub async fn set_vorgang_upload_state(
     vorgang_id: Option<i64>,
     correlation_id: Option<String>,
     upload_state: String,
 ) -> Result<(), String> {
-    let store = open_store()?;
-    store
-        .update_upload_state(
-            vorgang_id,
-            correlation_id.as_deref().unwrap_or(""),
-            &upload_state,
-        )
-        .map_err(|e| e.to_string())
+    blocking_hist(move || {
+        let store = open_store()?;
+        store
+            .update_upload_state(
+                vorgang_id,
+                correlation_id.as_deref().unwrap_or(""),
+                &upload_state,
+            )
+            .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 /// Prefight local job folder against `_ams_manifest.v1.json` before SMB retry (Phase 31.2).
 #[tauri::command]
-pub fn preflight_vorgang_upload(vorgang_id: i64) -> Result<UploadPreflightResult, String> {
-    let store = open_store()?;
-    let entry = store
-        .get_by_id(vorgang_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Vorgang {vorgang_id} nicht gefunden."))?;
-    Ok(run_upload_preflight(&UploadPreflightInput {
-        base_output_dir: &entry.base_output_dir,
-        correlation_id: &entry.correlation_id,
-        upload_state: &entry.upload_state,
-        ams_state: &entry.ams_state,
-    }))
+pub async fn preflight_vorgang_upload(vorgang_id: i64) -> Result<UploadPreflightResult, String> {
+    blocking_hist(move || {
+        let store = open_store()?;
+        let entry = store
+            .get_by_id(vorgang_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Vorgang {vorgang_id} nicht gefunden."))?;
+        Ok(run_upload_preflight(&UploadPreflightInput {
+            base_output_dir: &entry.base_output_dir,
+            correlation_id: &entry.correlation_id,
+            upload_state: &entry.upload_state,
+            ams_state: &entry.ams_state,
+        }))
+    })
+    .await
 }
 
 /// Align manifest delivery list with files currently in the job folder (Phase 31.4).
 #[tauri::command]
-pub fn resync_vorgang_delivery_list(vorgang_id: i64) -> Result<DeliveryResyncReport, String> {
+pub async fn resync_vorgang_delivery_list(
+    vorgang_id: i64,
+) -> Result<DeliveryResyncReport, String> {
+    blocking_hist(move || resync_vorgang_delivery_list_blocking(vorgang_id)).await
+}
+
+fn resync_vorgang_delivery_list_blocking(vorgang_id: i64) -> Result<DeliveryResyncReport, String> {
     let store = open_store()?;
     let entry = store
         .get_by_id(vorgang_id)
@@ -650,7 +673,14 @@ pub fn resync_vorgang_delivery_list(vorgang_id: i64) -> Result<DeliveryResyncRep
 
 /// Delete extra payload files listed by upload preflight before SMB retry (Phase 31.5).
 #[tauri::command]
-pub fn delete_vorgang_extra_files(
+pub async fn delete_vorgang_extra_files(
+    vorgang_id: i64,
+    relative_paths: Vec<String>,
+) -> Result<DeleteExtraFilesReport, String> {
+    blocking_hist(move || delete_vorgang_extra_files_blocking(vorgang_id, relative_paths)).await
+}
+
+fn delete_vorgang_extra_files_blocking(
     vorgang_id: i64,
     relative_paths: Vec<String>,
 ) -> Result<DeleteExtraFilesReport, String> {
@@ -733,10 +763,7 @@ pub async fn create_append_job(
     let ffmpeg =
         find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())?;
     let config = read_config(&state)?;
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         append_job::create_append_job(
@@ -792,7 +819,7 @@ pub async fn create_append_job(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_archive_cancelled_hint, job_folder_missing, probe_vorgang_folders,
+        apply_archive_cancelled_hint, job_folder_missing, probe_vorgang_folders_blocking,
         should_sync_handoff_entry, VorgangFolderProbeItem,
     };
     use crate::storage::vorgang_history::VorgangEntry;
@@ -903,7 +930,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let present = dir.path().join("job");
         fs::create_dir(&present).unwrap();
-        let rows = probe_vorgang_folders(vec![
+        let rows = probe_vorgang_folders_blocking(vec![
             VorgangFolderProbeItem {
                 vorgang_id: 1,
                 base_output_dir: present.to_string_lossy().into_owned(),
@@ -916,8 +943,7 @@ mod tests {
                 vorgang_id: 3,
                 base_output_dir: String::new(),
             },
-        ])
-        .unwrap();
+        ]);
         assert!(!rows[0].folder_missing);
         assert!(rows[1].folder_missing);
         assert!(rows[2].folder_missing);

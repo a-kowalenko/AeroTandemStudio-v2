@@ -403,10 +403,11 @@ fn kill_child(job_id: u64) {
     }
 }
 
-/// GUI-/background-safe FFmpeg spawn defaults (null stdin, no console window on Windows).
+/// GUI-/background-safe FFmpeg spawn defaults (null stdin, no console window on Windows,
+/// below-normal priority so the UI keeps CPU time).
 fn apply_noninteractive(cmd: &mut Command) {
     cmd.stdin(Stdio::null());
-    crate::util::process::apply_no_window(cmd);
+    crate::util::process::apply_ffmpeg_spawn_defaults(cmd);
 }
 
 /// Stream fixed-size frames from FFmpeg stdout (e.g. `rawvideo` gray).

@@ -66,6 +66,17 @@ fn resolve_ffmpeg(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     find_ffmpeg_with_resource_dir(resource_dir.as_deref()).map_err(|e| e.to_string())
 }
 
+/// Shared `encode-progress` emitter: ≤ 10 Hz per task, status changes / 100 % immediate.
+pub(crate) fn encode_progress_emitter(app: &AppHandle) -> crate::video::ffmpeg::ProgressCallback {
+    let app = app.clone();
+    let gate = crate::video::progress::EncodeProgressGate::new();
+    Arc::new(move |p: EncodeProgress| {
+        if gate.should_emit(&p) {
+            let _ = app.emit("encode-progress", &p);
+        }
+    })
+}
+
 fn is_cancel_err(e: &str) -> bool {
     let lower = e.to_lowercase();
     lower.contains("cancel") || lower.contains("abgebrochen") || lower.contains("abbruch")
@@ -81,8 +92,10 @@ fn log_job_failure(scope: &str, label: &str, e: &str) {
 
 /// Detect which hardware encoder will be used.
 #[tauri::command]
-pub fn get_hw_info() -> Result<HwAccelInfo, String> {
-    Ok(detect_hardware())
+pub async fn get_hw_info() -> Result<HwAccelInfo, String> {
+    tauri::async_runtime::spawn_blocking(detect_hardware)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Transcode `input` → `output` at 1080p@30fps. Emits `encode-progress` events.
@@ -116,10 +129,7 @@ pub async fn encode_video(
 
     let total_secs = probe_duration_secs(&ffmpeg, &input).unwrap_or(0.0);
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let output_clone = output.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -172,10 +182,7 @@ pub async fn concat_videos(
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let output_clone = output.clone();
     let outcome = tauri::async_runtime::spawn_blocking(move || {
@@ -242,10 +249,7 @@ pub async fn trim_video(
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let output_clone = output.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -310,10 +314,7 @@ pub async fn cut_video(
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         cutter::cut_video(
@@ -382,10 +383,7 @@ pub async fn rotate_video(
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let app_for_reenc = app.clone();
     let on_reencode: ReencodeAskFn =
@@ -518,10 +516,7 @@ pub async fn split_video(
     reset_cancel_flag();
     let ffmpeg = resolve_ffmpeg(&app)?;
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         cutter::split_video(
@@ -755,10 +750,7 @@ pub async fn create_video(
     let resource_dir = app.path().resource_dir().ok();
     let opts = options.unwrap_or_default();
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let app_for_ask = app.clone();
     let on_intro_mux_fallback: IntroMuxAskFn =
@@ -881,10 +873,7 @@ pub async fn generate_preview(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let resource_dir = app.path().resource_dir().ok();
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let app_for_reenc = app.clone();
     let on_reencode: ReencodeAskFn =
@@ -1130,7 +1119,7 @@ pub async fn import_videos(
 
 /// Validate products + media for the unified create/export job.
 #[tauri::command]
-pub fn validate_create_job(
+pub async fn validate_create_job(
     state: State<'_, ConfigState>,
     kunde: Kunde,
     video_paths: Option<Vec<String>>,
@@ -1138,39 +1127,33 @@ pub fn validate_create_job(
     watermark_photo_indices: Option<Vec<usize>>,
     oldschool_mode: Option<bool>,
 ) -> Result<ValidationResult, String> {
-    let oldschool = if let Some(v) = oldschool_mode {
-        v
-    } else {
-        state
-            .cache
-            .lock()
-            .map_err(|e| e.to_string())?
-            .oldschool_mode
+    let (cached_oldschool, manual_entry_mode) = {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        (cache.oldschool_mode, cache.manual_entry_mode.clone())
     };
-    let manual_entry_mode = state
-        .cache
-        .lock()
-        .map_err(|e| e.to_string())?
-        .manual_entry_mode
-        .clone();
+    let oldschool = oldschool_mode.unwrap_or(cached_oldschool);
     let require_ids = crate::model::require_api_ids(&kunde, &manual_entry_mode);
-    let errors = export_job::validate_create_job(
-        &kunde,
-        &video_paths.unwrap_or_default(),
-        &photo_paths.unwrap_or_default(),
-        &watermark_photo_indices.unwrap_or_default(),
-        oldschool,
-        require_ids,
-    );
-    Ok(ValidationResult {
-        valid: errors.is_empty(),
-        errors,
+    tauri::async_runtime::spawn_blocking(move || {
+        let errors = export_job::validate_create_job(
+            &kunde,
+            &video_paths.unwrap_or_default(),
+            &photo_paths.unwrap_or_default(),
+            &watermark_photo_indices.unwrap_or_default(),
+            oldschool,
+            require_ids,
+        );
+        ValidationResult {
+            valid: errors.is_empty(),
+            errors,
+        }
     })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Read-only probe: does the planned create output folder already contain files?
 #[tauri::command]
-pub fn probe_create_output_folder(
+pub async fn probe_create_output_folder(
     state: State<'_, ConfigState>,
     kunde: Kunde,
 ) -> Result<OutputFolderProbe, String> {
@@ -1178,20 +1161,24 @@ pub fn probe_create_output_folder(
         let cache = state.cache.lock().map_err(|e| e.to_string())?;
         cache.speicherort.clone()
     };
-    let speicher = speicherort.trim();
+    let speicher = speicherort.trim().to_string();
     if speicher.is_empty() {
         return Err("Speicherort ist nicht gesetzt. Bitte Ordner wählen.".into());
     }
-    let outside_mode = kunde.is_outside_video() || kunde.video_mode == "outside";
-    folder_conflict::probe_output_folder(
-        Path::new(speicher),
-        &kunde.resolve_gast(),
-        kunde.tandemmaster.trim(),
-        kunde.videospringer.trim(),
-        kunde.datum.trim(),
-        outside_mode,
-        kunde.ort.trim(),
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        let outside_mode = kunde.is_outside_video() || kunde.video_mode == "outside";
+        folder_conflict::probe_output_folder(
+            Path::new(&speicher),
+            &kunde.resolve_gast(),
+            kunde.tandemmaster.trim(),
+            kunde.videospringer.trim(),
+            kunde.datum.trim(),
+            outside_mode,
+            kunde.ort.trim(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Full export job: folders, video, photos, watermarks, `_fertig.txt`.
@@ -1251,10 +1238,7 @@ pub async fn create_job(
     let config_for_ready = config.clone();
     let qr_preview_for_history = qr_preview.filter(|p| !p.path.trim().is_empty());
 
-    let app_for_cb = app.clone();
-    let on_progress: crate::video::ffmpeg::ProgressCallback = Arc::new(move |p: EncodeProgress| {
-        let _ = app_for_cb.emit("encode-progress", &p);
-    });
+    let on_progress = encode_progress_emitter(&app);
 
     let app_for_ask = app.clone();
     let on_intro_mux_fallback: IntroMuxAskFn =

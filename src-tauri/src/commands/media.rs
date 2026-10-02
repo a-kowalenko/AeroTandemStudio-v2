@@ -324,7 +324,13 @@ pub async fn clear_working_session() -> Result<(), String> {
 
 /// Delete a single file if it belongs to the session working folder.
 #[tauri::command]
-pub fn delete_working_copy(path: String) -> bool {
+pub async fn delete_working_copy(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || delete_working_copy_blocking(path))
+        .await
+        .unwrap_or(false)
+}
+
+fn delete_working_copy_blocking(path: String) -> bool {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return false;

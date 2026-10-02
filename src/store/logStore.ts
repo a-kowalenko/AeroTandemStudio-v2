@@ -20,7 +20,8 @@ type LogState = {
   setLevelFilter: (filter: LogLevelFilter) => void;
   setAutoScroll: (autoScroll: boolean) => void;
   replaceEntries: (entries: LogEntry[]) => void;
-  appendEntry: (entry: LogEntry) => void;
+  /** Append a `log-lines` batch (oldest → newest). */
+  appendEntries: (batch: LogEntry[]) => void;
   clearEntries: () => void;
   markSeen: () => void;
 };
@@ -61,20 +62,29 @@ export const useLogStore = create<LogState>((set, get) => ({
     set({ entries: trimmed, lastSeenId: maxId(trimmed), unreadErrors: 0 });
   },
 
-  appendEntry: (entry) => {
-    const { entries, open, lastSeenId } = get();
-    if (entries.some((e) => e.id === entry.id)) return;
-    const next = [...entries, entry];
+  appendEntries: (batch) => {
+    const { entries, open, lastSeenId, unreadErrors } = get();
+    // IDs are monotonic — anything at or below the newest known id is a duplicate
+    // (e.g. already delivered by `getRecentLogs`).
+    let lastId = entries.length > 0 ? entries[entries.length - 1].id : 0;
+    const fresh: LogEntry[] = [];
+    let newErrors = 0;
+    for (const entry of batch) {
+      if (entry.id <= lastId) continue;
+      lastId = entry.id;
+      fresh.push(entry);
+      if (!open && entry.id > lastSeenId && entry.level.toUpperCase() === "ERROR") {
+        newErrors += 1;
+      }
+    }
+    if (fresh.length === 0) return;
+    const next = entries.concat(fresh);
     const trimmed =
       next.length > MAX_ENTRIES ? next.slice(next.length - MAX_ENTRIES) : next;
-    const isError = entry.level.toUpperCase() === "ERROR";
     set({
       entries: trimmed,
-      unreadErrors:
-        !open && entry.id > lastSeenId && isError
-          ? get().unreadErrors + 1
-          : get().unreadErrors,
-      lastSeenId: open ? Math.max(lastSeenId, entry.id) : lastSeenId,
+      unreadErrors: unreadErrors + newErrors,
+      lastSeenId: open ? Math.max(lastSeenId, lastId) : lastSeenId,
     });
   },
 

@@ -33,7 +33,6 @@ import { defaultEncodeProfile } from "./lib/encodeProfile";
 import { SplashScreen } from "./components/SplashScreen";
 import { AppShell } from "./components/app/AppShell";
 import { AppDialogs } from "./components/app/AppDialogs";
-import type { TaskProgressState } from "./components/app/types";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useConfigStore } from "./store/configStore";
@@ -47,7 +46,7 @@ import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
 import { buildMediaRevisionTag } from "./hooks/useSpeculativeCreate";
-import { buildCreateJobPlan, type CreateJobPlan } from "./lib/createJobPlan";
+import { buildCreateJobPlan } from "./lib/createJobPlan";
 import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
@@ -92,6 +91,7 @@ import {
   type UploadProgressEvent,
 } from "./lib/tauri";
 import { compareVersionParts, isVersionPrerelease } from "./lib/versionCompare";
+import { APP_VERSION } from "./lib/appVersion";
 import {
   backupSdCard,
   ejectSdCard,
@@ -127,13 +127,8 @@ import {
   withQrScanProgress,
 } from "./store/qrScanStore";
 import { useQrScanProgressListener } from "./hooks/useQrScanProgress";
-import {
-  applyMonotonicPercent,
-  formatOverallProgressLabel,
-  resolveProgressLabel,
-  shouldClearTaskProgress,
-  shouldResetOverallProgressPercent,
-} from "./lib/progressLabels";
+import { useProgressStore } from "./store/progressStore";
+import { useEncodeProgressListener } from "./hooks/useEncodeProgressListener";
 import { translateValidationHint } from "./lib/createReadyHints";
 import {
   presentLinuxMediaWarning,
@@ -187,7 +182,6 @@ import type { UploadQueueJob } from "./lib/uploadQueue";
 import { useHistoryStore } from "./store/historyStore";
 import { useUploadQueueStore } from "./store/uploadQueueStore";
 import { applyHandoffToEntry } from "./lib/amsHandoffPatch";
-import type { EncodeProgress } from "./components/app/types";
 import { QuitUploadConfirmDialog } from "./components/QuitUploadConfirmDialog";
 import {
   useQuitUploadConfirmState,
@@ -259,10 +253,9 @@ function App() {
 
   const [hwInfo, setHwInfo] = useState<HwAccelInfo | null>(null);
   const [busy, setBusy] = useState(false);
-  const [percent, setPercent] = useState(0);
-  const [status, setStatus] = useState("");
-  const [taskProgress, setTaskProgress] = useState<TaskProgressState[]>([]);
-  const [createJobPlan, setCreateJobPlan] = useState<CreateJobPlan | null>(null);
+  // Progress lives in `progressStore`; App only writes (no subscription → no re-render per event).
+  const { setPercent, setStatus, setTaskProgress, setCreateJobPlan } =
+    useProgressStore.getState();
   const [createFailed, setCreateFailed] = useState(false);
   /** Shared media list + preview tab (video | foto). */
   const [mediaTab, setMediaTab] = useState<"video" | "foto">("video");
@@ -295,7 +288,7 @@ function App() {
   const [splashOpen, setSplashOpen] = useState(true);
   const [splashStatus, setSplashStatus] = useState("");
   const [splashError, setSplashError] = useState<string | null>(null);
-  const [appVersion, setAppVersion] = useState("0.1.0");
+  const [appVersion, setAppVersion] = useState(APP_VERSION);
   const [ready, setReady] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
@@ -1566,58 +1559,7 @@ function App() {
     });
   }, [config, applyDefaultsFromConfig]);
 
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    listen<EncodeProgress>("encode-progress", (event) => {
-      if (sessionCancelRequestedRef.current) return;
-      const p = event.payload;
-
-      if (p.task_id != null && p.task_id > 0) {
-        // Per-clip bars only — overall % comes exclusively from overall events
-        // (avoids flicker when task-average and remapped stage % race).
-        setTaskProgress((prev) => {
-          const next = [...prev];
-          const idx = next.findIndex((t) => t.taskId === p.task_id);
-          const prevStatus = idx >= 0 ? next[idx].status : "";
-          const entry: TaskProgressState = {
-            taskId: p.task_id!,
-            percent: applyMonotonicPercent(idx >= 0 ? next[idx].percent : 0, p.percent),
-            status: resolveProgressLabel(p.status, prevStatus),
-          };
-          if (idx >= 0) next[idx] = entry;
-          else next.push(entry);
-          next.sort((a, b) => a.taskId - b.taskId);
-          return next;
-        });
-        setStatus((prev) => {
-          if (
-            prev &&
-            !/^(continue|end|starting|in arbeit…)$/i.test(prev.trim()) &&
-            prev !== tr("common.status.inProgress")
-          ) {
-            return prev;
-          }
-          return formatOverallProgressLabel(p.status, prev);
-        });
-      } else {
-        setPercent((prev) =>
-          shouldResetOverallProgressPercent(p.status)
-            ? Math.max(0, Math.min(100, p.percent))
-            : applyMonotonicPercent(prev, p.percent),
-        );
-        const label = resolveProgressLabel(p.status, undefined);
-        setStatus((prev) => formatOverallProgressLabel(p.status, prev));
-        if (shouldClearTaskProgress(p.status) || shouldClearTaskProgress(label)) {
-          setTaskProgress([]);
-        }
-      }
-    }).then((fn) => {
-      unlisten = fn;
-    });
-    return () => {
-      unlisten?.();
-    };
-  }, []);
+  useEncodeProgressListener(() => sessionCancelRequestedRef.current);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -1891,10 +1833,7 @@ function App() {
   const resetProgress = useCallback(() => {
     // A new job starts — a stale cancel would otherwise drop all its encode-progress events.
     sessionCancelRequestedRef.current = false;
-    setPercent(0);
-    setStatus("");
-    setTaskProgress([]);
-    setCreateJobPlan(null);
+    useProgressStore.getState().reset();
     setCreateFailed(false);
   }, []);
 
@@ -2739,10 +2678,6 @@ function App() {
         sdWorkflowUiActive={sdWorkflowUiActive}
         mediaTab={mediaTab}
         setMediaTab={setMediaTab}
-        percent={percent}
-        status={status}
-        taskProgress={taskProgress}
-        createJobPlan={createJobPlan}
         createFailed={createFailed}
         createSuccessOpen={createSuccess !== null}
         cutterOpen={cutterOpen}

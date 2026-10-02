@@ -23,8 +23,7 @@ import { useButtonActionPhaseKind } from "../../hooks/useTimedFlash";
 import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import type { useCreateValidation } from "../../hooks/useCreateValidation";
-import type { TaskProgressState } from "./types";
-import type { CreateJobPlan } from "../../lib/createJobPlan";
+import { useProgressStore } from "../../store/progressStore";
 import { cn } from "../../lib/utils";
 
 type CreateValidation = ReturnType<typeof useCreateValidation>;
@@ -38,10 +37,6 @@ type Props = {
   cutterOpen: boolean;
   mediaTab: "video" | "foto";
   setMediaTab: (tab: "video" | "foto") => void;
-  percent: number;
-  status: string;
-  taskProgress: TaskProgressState[];
-  createJobPlan?: CreateJobPlan | null;
   createFailed?: boolean;
   /** CreateSuccessDialog open — used to trigger Auto-Shrink on close. */
   createSuccessOpen?: boolean;
@@ -69,10 +64,6 @@ export function WorkflowLayout({
   cutterOpen,
   mediaTab,
   setMediaTab,
-  percent,
-  status,
-  taskProgress,
-  createJobPlan = null,
   createFailed = false,
   createSuccessOpen = false,
   onBusyChange,
@@ -94,6 +85,10 @@ export function WorkflowLayout({
   const [uploadCancelRequested, setUploadCancelRequested] = useState(false);
   const [successCloseGeneration, setSuccessCloseGeneration] = useState(0);
   const prevSuccessOpenRef = useRef(createSuccessOpen);
+  const percent = useProgressStore((s) => s.percent);
+  const status = useProgressStore((s) => s.status);
+  const taskProgress = useProgressStore((s) => s.taskProgress);
+  const createJobPlan = useProgressStore((s) => s.createJobPlan);
   const videoList = useVideoStore((s) => s.videoList);
   const photoList = usePhotoStore((s) => s.photoList);
   const videoImporting = useVideoStore((s) => s.importing);
