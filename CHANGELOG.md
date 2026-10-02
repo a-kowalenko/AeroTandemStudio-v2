@@ -10,6 +10,14 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Verbessert
+
+- Start: Startbildschirm erscheint sofort — kein weißer Bildschirm mehr beim Öffnen (auch nach Install oder Update)
+- Große Importe und parallele Hintergrundarbeit: Oberfläche bleibt bedienbar; unter Windows weniger „Keine Rückmeldung“
+- Video-Kodierung und Export: laufen im Hintergrund mit niedrigerer Priorität, damit Klicks und Dialoge flüssig bleiben
+- App startet schlanker: selten genutzte Dialoge werden erst bei Bedarf geladen
+- Fortschritt und Protokoll: weniger Ruckeln der Oberfläche bei vielen parallelen Schritten
+
 ## [0.7.0] - 2026-10-02
 
 ### Neu
