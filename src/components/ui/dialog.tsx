@@ -12,7 +12,7 @@ export const DialogClose = DialogPrimitive.Close;
 /**
  * Overlay stack (keep in sync with Combobox/DateField/Select page portals at 80):
  * 80 page dropdowns → 90 dialog → 100 nested → 110 elevated → 120 toast →
- * 130 system dialogs → 150 setup wizard.
+ * 125 setup wizard → 130 system dialogs (prompts/errors must stay above the wizard).
  * Select lists inside dialogs portal to `[data-ats-dialog-shell]` (not body),
  * so they stay above the panel without raising the global page z-index.
  */
