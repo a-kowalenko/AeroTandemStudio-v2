@@ -22,6 +22,9 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - SD-Import nach Backup: spürbar schneller — bereits gesicherte Dateien werden nicht erneut durchgerechnet
 - Vorgänge → Medien: Liste seitenweise (Standard 50 Einträge)
 - Foto-Vorschau: Vergrößern und Verkleinern mit flüssiger Animation statt getrennter Ansichten
+- Vorgänge: Liste bleibt bedienbar, wenn Netzlaufwerk oder NAS nicht erreichbar ist — fehlende Ordner werden schnell erkannt
+- USB-Kamera-Import: Fortschritt aktualisiert sich gleichmäßiger während des Kopierens
+- Buchungssuche und Server-Anfragen: reagieren zuverlässiger bei Zeitüberschreitung oder Verbindungsproblemen
 
 ### Behoben
 
