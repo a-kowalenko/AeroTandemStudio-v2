@@ -14,6 +14,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Nach Import und SD-Workflow: Abschlusskarte mit Ergebnis und Schritten — blendet sich selbst aus; Maus darüber hält den Timer an
 - Vorgänge → Medien: Vollbild für Fotos und Videos — Pfeiltasten zum Blättern, Escape zum Schließen
+- Upload: Ordner auf dem Server existiert schon — Rückfrage statt Abbruch: als erledigt markieren, unvollständigen Ordner ersetzen und neu hochladen, oder später unter Vorgänge nachholen
 
 ### Verbessert
 
@@ -25,6 +26,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Vorgänge: Liste bleibt bedienbar, wenn Netzlaufwerk oder NAS nicht erreichbar ist — fehlende Ordner werden schnell erkannt
 - USB-Kamera-Import: Fortschritt aktualisiert sich gleichmäßiger während des Kopierens
 - Buchungssuche und Server-Anfragen: reagieren zuverlässiger bei Zeitüberschreitung oder Verbindungsproblemen
+- Erstellen: „Erfolgreich erstellt“ als Karte im Fortschritt statt als Dialog — mit Ergebnis, „Zum Speicherort“ und „Abspielen“; ohne laufenden Upload blendet sie sich selbst aus, Maus darüber hält den Timer an
+- Upload: nach erfolgreichem Hochladen bleibt die Leiste kurz mit dem Ergebnis stehen und blendet sich dann selbst aus; Maus darüber hält den Timer an
 
 ### Behoben
 
