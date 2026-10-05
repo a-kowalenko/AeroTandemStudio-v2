@@ -9,7 +9,6 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { ImageIcon } from "lucide-react";
 import { buildOffsets, sliceVirtualRange } from "../../lib/virtualList";
 import { cn } from "../../lib/utils";
 import type { PhotoItem } from "../../store/photoStore";
@@ -139,12 +138,13 @@ export function PhotoOverviewGrid({
       <div
         className={cn(
           rootClass,
-          "flex flex-col items-center justify-center gap-2 px-4 text-center text-sm text-muted",
+          "flex min-h-0 items-center justify-center px-4 text-center text-sm text-muted",
         )}
         style={style}
+        role="status"
+        aria-label={t("photo.preview.overviewAria")}
       >
-        <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
-        <p>{t("photo.preview.empty")}</p>
+        <p>{t("photo.preview.emptyList")}</p>
       </div>
     );
   }

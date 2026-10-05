@@ -2,13 +2,14 @@
 //! Spec: AMS `docs/HANDOFF.md` §9 — health, lookup, jobs, ready + mDNS discovery.
 //! File handoff works without this module.
 
+mod http;
 mod lookup_map;
 mod mdns;
 
+pub use http::BridgeError;
 pub use mdns::{discover_bridges, DiscoveredBridge};
 
-use std::time::Duration;
-
+use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use uuid::Uuid;
@@ -17,8 +18,8 @@ use crate::model::Kunde;
 use crate::storage::config::AppConfig;
 use crate::util::host::current_computer_name;
 use crate::video::handoff_manifest::StatusOutboxV1;
+use http::{decode_body, Endpoint};
 
-const REQUEST_TIMEOUT_SECS: u64 = 15;
 const ATS_BRIDGE_APP: &str = "AeroTandemStudio";
 
 /// Client-taugliche SMB-Hints für ATS (HANDOFF.md §9.3). Wire-Format bevorzugt `smb://`.
@@ -168,12 +169,18 @@ fn normalize_base_url(raw: &str) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
-fn auth_header(token: &str) -> Result<String, String> {
+fn auth_header(token: &str) -> Result<String, BridgeError> {
     let t = token.trim();
     if t.is_empty() {
-        return Err("AMS-Bridge-Token fehlt.".into());
+        return Err(BridgeError::Config("AMS-Bridge-Token fehlt.".into()));
     }
     Ok(format!("Bearer {t}"))
+}
+
+/// Validated base URL + `Authorization` value for one Bridge call.
+fn prepare(base_url: &str, token: &str) -> Result<(String, String), BridgeError> {
+    let base = normalize_base_url(base_url).map_err(BridgeError::Config)?;
+    Ok((base, auth_header(token)?))
 }
 
 #[derive(Debug, Clone)]
@@ -240,17 +247,6 @@ pub fn bridge_configured(config: &AppConfig) -> bool {
     !config.ams_bridge_url.trim().is_empty() || !config.ams_bridge_last_ok_url.trim().is_empty()
 }
 
-async fn http_client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| e.to_string())
-}
-
-fn is_unreachable(err: &str) -> bool {
-    err.contains("nicht erreichbar")
-}
-
 /// Machine-readable create-preflight gate: customer/booking not found in AMS.
 /// Frontend may soft-confirm and retry with `ams_preflight_ack`.
 pub const AMS_PREFLIGHT_NOT_FOUND_PREFIX: &str = "AMS_PREFLIGHT_NOT_FOUND:";
@@ -277,34 +273,25 @@ pub async fn fetch_health(
     base_url: &str,
     token: &str,
     identity: &AtsBridgeIdentity,
-) -> Result<BridgeHealth, String> {
-    let base = normalize_base_url(base_url)?;
-    let auth = auth_header(token)?;
-    let client = http_client().await?;
-    let resp = client
-        .get(format!("{base}/v1/health"))
-        .header("Authorization", auth)
-        .header("x-ats-instance-id", identity.instance_id.clone())
-        .header("x-ats-hostname", identity.hostname.clone())
-        .header("x-ats-version", identity.ats_version.clone())
-        .header("x-ats-app", identity.ats_app.clone())
-        .send()
-        .await
-        .map_err(|e| format!("AMS-Bridge nicht erreichbar: {e}"))?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("AMS-Bridge: Token ungültig (401).".into());
+) -> Result<BridgeHealth, BridgeError> {
+    let (base, auth) = prepare(base_url, token)?;
+    let resp = http::send::<()>(
+        Endpoint::Health,
+        Method::GET,
+        format!("{base}/v1/health"),
+        &auth,
+        identity,
+        None,
+    )
+    .await?;
+    if !resp.status.is_success() {
+        return Err(BridgeError::Http {
+            endpoint: Endpoint::Health,
+            status: resp.status.as_u16(),
+            snippet: http::body_snippet(&resp.body),
+        });
     }
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        let snippet: String = body.chars().take(200).collect();
-        return Err(format!(
-            "AMS-Bridge health fehlgeschlagen: HTTP {status} {snippet}"
-        ));
-    }
-    resp.json::<BridgeHealth>()
-        .await
-        .map_err(|e| format!("AMS-Bridge health JSON: {e}"))
+    decode_body(Endpoint::Health, resp.status, &resp.body)
 }
 
 pub async fn check_health(config: &AppConfig) -> BridgeHealthResult {
@@ -358,9 +345,9 @@ pub async fn check_health_with(
             health: Some(health),
             base_url: base,
         },
-        Err(message) => BridgeHealthResult {
+        Err(err) => BridgeHealthResult {
             ok: false,
-            message,
+            message: err.to_string(),
             health: None,
             base_url: base,
         },
@@ -372,31 +359,18 @@ pub async fn customer_lookup(
     token: &str,
     request: &LookupRequest,
     identity: &AtsBridgeIdentity,
-) -> Result<LookupResponse, String> {
-    let base = normalize_base_url(base_url)?;
-    let auth = auth_header(token)?;
-    let client = http_client().await?;
-    let resp = client
-        .post(format!("{base}/v1/customer/lookup"))
-        .header("Authorization", auth)
-        .header("x-ats-instance-id", identity.instance_id.clone())
-        .header("x-ats-hostname", identity.hostname.clone())
-        .header("x-ats-version", identity.ats_version.clone())
-        .header("x-ats-app", identity.ats_app.clone())
-        .json(request)
-        .send()
-        .await
-        .map_err(|e| format!("AMS-Bridge Lookup nicht erreichbar: {e}"))?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("AMS-Bridge: Token ungültig (401).".into());
-    }
-    // 4xx/502 may still carry LookupResponse JSON
-    let status = resp.status();
-    let body = resp
-        .json::<LookupResponse>()
-        .await
-        .map_err(|e| format!("AMS-Bridge Lookup JSON (HTTP {status}): {e}"))?;
-    Ok(body)
+) -> Result<LookupResponse, BridgeError> {
+    let (base, auth) = prepare(base_url, token)?;
+    let resp = http::send(
+        Endpoint::Lookup,
+        Method::POST,
+        format!("{base}/v1/customer/lookup"),
+        &auth,
+        identity,
+        Some(request),
+    )
+    .await?;
+    decode_body(Endpoint::Lookup, resp.status, &resp.body)
 }
 
 /// Build lookup request from ATS `Kunde` when API ids/hashes are present.
@@ -505,11 +479,11 @@ pub async fn preflight_customer_lookup_with_opts(
             );
             Ok(None)
         }
-        Err(e) if is_unreachable(&e) => {
+        Err(e) if e.is_unreachable() => {
             // Soft: bridge down must not block file handoff.
             Ok(None)
         }
-        Err(e) => Err(e),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -519,35 +493,32 @@ pub async fn fetch_job_status(
     token: &str,
     correlation_id: &str,
     identity: &AtsBridgeIdentity,
-) -> Result<Option<StatusOutboxV1>, String> {
+) -> Result<Option<StatusOutboxV1>, BridgeError> {
     let cid = correlation_id.trim();
     if cid.is_empty() {
         return Ok(None);
     }
-    let base = normalize_base_url(base_url)?;
-    let auth = auth_header(token)?;
-    let client = http_client().await?;
-    let resp = client
-        .get(format!("{base}/v1/jobs/{cid}"))
-        .header("Authorization", auth)
-        .header("x-ats-instance-id", identity.instance_id.clone())
-        .header("x-ats-hostname", identity.hostname.clone())
-        .header("x-ats-version", identity.ats_version.clone())
-        .header("x-ats-app", identity.ats_app.clone())
-        .send()
-        .await
-        .map_err(|e| format!("AMS-Bridge Job-Status nicht erreichbar: {e}"))?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("AMS-Bridge: Token ungültig (401).".into());
-    }
-    if resp.status() == reqwest::StatusCode::NOT_FOUND {
+    let (base, auth) = prepare(base_url, token)?;
+    let resp = http::send::<()>(
+        Endpoint::JobStatus,
+        Method::GET,
+        format!("{base}/v1/jobs/{cid}"),
+        &auth,
+        identity,
+        None,
+    )
+    .await?;
+    interpret_job_status(resp.status, &resp.body)
+}
+
+fn interpret_job_status(
+    status: StatusCode,
+    body: &[u8],
+) -> Result<Option<StatusOutboxV1>, BridgeError> {
+    if status == StatusCode::NOT_FOUND {
         return Ok(None);
     }
-    let status = resp.status();
-    let body = resp
-        .json::<JobStatusResponse>()
-        .await
-        .map_err(|e| format!("AMS-Bridge Job-Status JSON (HTTP {status}): {e}"))?;
+    let body: JobStatusResponse = decode_body(Endpoint::JobStatus, status, body)?;
     if let Some(job) = body.job {
         return Ok(Some(job));
     }
@@ -562,12 +533,20 @@ pub async fn fetch_job_status(
     {
         return Ok(None);
     }
-    let msg = body
-        .error
-        .as_ref()
-        .map(|e| format!("{}: {}", e.code, e.message))
-        .unwrap_or_else(|| format!("Job-Status fehlgeschlagen (HTTP {status})"));
-    Err(msg)
+    Err(api_error(body.error, "Job-Status", status))
+}
+
+fn api_error(error: Option<LookupErrorBody>, what: &str, status: StatusCode) -> BridgeError {
+    match error {
+        Some(e) => BridgeError::Api {
+            code: e.code,
+            message: e.message,
+        },
+        None => BridgeError::Api {
+            code: String::new(),
+            message: format!("{what} fehlgeschlagen (HTTP {})", status.as_u16()),
+        },
+    }
 }
 
 /// Prefer Bridge job status; fall back to outbox file (P1b). Soft when bridge down.
@@ -588,7 +567,7 @@ pub async fn resolve_handoff_status(
             match fetch_job_status(&base, &config.ams_bridge_token, cid, &identity).await {
                 Ok(Some(job)) => return Ok(Some((job, "bridge"))),
                 Ok(None) => {}
-                Err(e) if is_unreachable(&e) => {}
+                Err(e) if e.is_unreachable() => {}
                 Err(e) => {
                     crate::storage::logging::warn(
                         "bridge",
@@ -609,40 +588,24 @@ pub async fn notify_handoff_ready(
     correlation_id: &str,
     folder_name: Option<&str>,
     identity: &AtsBridgeIdentity,
-) -> Result<HandoffReadyResponse, String> {
-    let base = normalize_base_url(base_url)?;
-    let auth = auth_header(token)?;
-    let client = http_client().await?;
+) -> Result<HandoffReadyResponse, BridgeError> {
+    let (base, auth) = prepare(base_url, token)?;
     let req = HandoffReadyRequest {
         correlation_id: correlation_id.trim().to_string(),
         folder_name: folder_name.unwrap_or("").trim().to_string(),
     };
-    let resp = client
-        .post(format!("{base}/v1/handoff/ready"))
-        .header("Authorization", auth)
-        .header("x-ats-instance-id", identity.instance_id.clone())
-        .header("x-ats-hostname", identity.hostname.clone())
-        .header("x-ats-version", identity.ats_version.clone())
-        .header("x-ats-app", identity.ats_app.clone())
-        .json(&req)
-        .send()
-        .await
-        .map_err(|e| format!("AMS-Bridge handoff/ready nicht erreichbar: {e}"))?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("AMS-Bridge: Token ungültig (401).".into());
-    }
-    let status = resp.status();
-    let body = resp
-        .json::<HandoffReadyResponse>()
-        .await
-        .map_err(|e| format!("AMS-Bridge handoff/ready JSON (HTTP {status}): {e}"))?;
+    let resp = http::send(
+        Endpoint::HandoffReady,
+        Method::POST,
+        format!("{base}/v1/handoff/ready"),
+        &auth,
+        identity,
+        Some(&req),
+    )
+    .await?;
+    let body: HandoffReadyResponse = decode_body(Endpoint::HandoffReady, resp.status, &resp.body)?;
     if !body.ok {
-        let msg = body
-            .error
-            .as_ref()
-            .map(|e| format!("{}: {}", e.code, e.message))
-            .unwrap_or_else(|| format!("handoff/ready fehlgeschlagen (HTTP {status})"));
-        return Err(msg);
+        return Err(api_error(body.error, "handoff/ready", resp.status));
     }
     Ok(body)
 }
@@ -655,41 +618,26 @@ pub async fn notify_handoff_cancel(
     folder_name: Option<&str>,
     reason: Option<&str>,
     identity: &AtsBridgeIdentity,
-) -> Result<HandoffCancelResponse, String> {
-    let base = normalize_base_url(base_url)?;
-    let auth = auth_header(token)?;
-    let client = http_client().await?;
+) -> Result<HandoffCancelResponse, BridgeError> {
+    let (base, auth) = prepare(base_url, token)?;
     let req = HandoffCancelRequest {
         correlation_id: correlation_id.trim().to_string(),
         folder_name: folder_name.unwrap_or("").trim().to_string(),
         reason: reason.unwrap_or("Upload abgebrochen").trim().to_string(),
     };
-    let resp = client
-        .post(format!("{base}/v1/handoff/cancel"))
-        .header("Authorization", auth)
-        .header("x-ats-instance-id", identity.instance_id.clone())
-        .header("x-ats-hostname", identity.hostname.clone())
-        .header("x-ats-version", identity.ats_version.clone())
-        .header("x-ats-app", identity.ats_app.clone())
-        .json(&req)
-        .send()
-        .await
-        .map_err(|e| format!("AMS-Bridge handoff/cancel nicht erreichbar: {e}"))?;
-    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("AMS-Bridge: Token ungültig (401).".into());
-    }
-    let status = resp.status();
-    let body = resp
-        .json::<HandoffCancelResponse>()
-        .await
-        .map_err(|e| format!("AMS-Bridge handoff/cancel JSON (HTTP {status}): {e}"))?;
+    let resp = http::send(
+        Endpoint::HandoffCancel,
+        Method::POST,
+        format!("{base}/v1/handoff/cancel"),
+        &auth,
+        identity,
+        Some(&req),
+    )
+    .await?;
+    let body: HandoffCancelResponse =
+        decode_body(Endpoint::HandoffCancel, resp.status, &resp.body)?;
     if !body.ok {
-        let msg = body
-            .error
-            .as_ref()
-            .map(|e| format!("{}: {}", e.code, e.message))
-            .unwrap_or_else(|| format!("handoff/cancel fehlgeschlagen (HTTP {status})"));
-        return Err(msg);
+        return Err(api_error(body.error, "handoff/cancel", resp.status));
     }
     Ok(body)
 }
@@ -721,7 +669,7 @@ pub async fn maybe_notify_handoff_cancel(
     .await
     {
         Ok(resp) => Ok(Some(resp)),
-        Err(e) if is_unreachable(&e) => Ok(None),
+        Err(e) if e.is_unreachable() => Ok(None),
         Err(e) => {
             crate::storage::logging::warn("bridge", format!("handoff/cancel ignoriert: {e}"));
             Ok(None)
@@ -747,7 +695,7 @@ pub async fn maybe_notify_handoff_ready(
     };
     match notify_handoff_ready(&base, &config.ams_bridge_token, cid, folder_name, &identity).await {
         Ok(resp) => Ok(Some(resp)),
-        Err(e) if is_unreachable(&e) => Ok(None),
+        Err(e) if e.is_unreachable() => Ok(None),
         Err(e) => {
             // Soft: do not fail the export if wake fails (file handoff already done).
             crate::storage::logging::warn(
@@ -807,11 +755,54 @@ mod tests {
     }
 
     #[test]
-    fn unreachable_detection() {
-        assert!(is_unreachable(
-            "AMS-Bridge Job-Status nicht erreichbar: timeout"
-        ));
-        assert!(!is_unreachable("AMS-Bridge: Token ungültig (401)."));
+    fn missing_token_is_config_error_not_unreachable() {
+        let err = prepare("http://10.0.0.5:8787", "  ").unwrap_err();
+        assert!(matches!(err, BridgeError::Config(_)));
+        assert!(!err.is_unreachable());
+        let err = prepare("10.0.0.5:8787", "t").unwrap_err();
+        assert!(matches!(err, BridgeError::Config(_)));
+        let (base, auth) = prepare("http://10.0.0.5:8787/", " t ").unwrap();
+        assert_eq!(base, "http://10.0.0.5:8787");
+        assert_eq!(auth, "Bearer t");
+    }
+
+    #[test]
+    fn job_status_404_and_job_not_found_are_none() {
+        assert_eq!(
+            interpret_job_status(StatusCode::NOT_FOUND, b"<html>nope</html>").unwrap(),
+            None
+        );
+        let body = br#"{"ok":false,"error":{"code":"job_not_found","message":"x"}}"#;
+        assert_eq!(
+            interpret_job_status(StatusCode::OK, body).unwrap(),
+            None
+        );
+        assert_eq!(
+            interpret_job_status(StatusCode::OK, br#"{"ok":true}"#).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn job_status_api_error_keeps_code() {
+        let body = br#"{"ok":false,"error":{"code":"internal","message":"boom"}}"#;
+        let err = interpret_job_status(StatusCode::INTERNAL_SERVER_ERROR, body).unwrap_err();
+        assert_eq!(err.api_code(), Some("internal"));
+        assert_eq!(err.to_string(), "internal: boom");
+        assert!(!err.is_unreachable());
+    }
+
+    #[test]
+    fn job_status_without_error_body_reports_http_status() {
+        let err = interpret_job_status(StatusCode::BAD_GATEWAY, br#"{"ok":false}"#).unwrap_err();
+        assert_eq!(err.to_string(), "Job-Status fehlgeschlagen (HTTP 502)");
+    }
+
+    #[test]
+    fn job_status_html_on_error_is_http() {
+        let err =
+            interpret_job_status(StatusCode::SERVICE_UNAVAILABLE, b"<h1>down</h1>").unwrap_err();
+        assert!(matches!(err, BridgeError::Http { status: 503, .. }));
     }
 
     #[test]

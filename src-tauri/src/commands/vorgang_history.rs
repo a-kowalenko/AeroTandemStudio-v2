@@ -396,7 +396,7 @@ async fn resolve_handoff_status(
                     )));
                 }
                 Ok(None) => {}
-                Err(e) if e.contains("nicht erreichbar") => {}
+                Err(e) if e.is_unreachable() => {}
                 Err(e) => {
                     logging::warn(
                         "vorgang_history",

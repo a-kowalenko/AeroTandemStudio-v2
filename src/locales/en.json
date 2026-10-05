@@ -2082,6 +2082,7 @@
       "prevPhotoAria": "Previous photo",
       "nextPhotoAria": "Next photo",
       "empty": "No photos — add them via drag and drop in the media area",
+      "emptyList": "No photos in the list",
       "loading": "Loading preview…",
       "loadingQr": "QR check in progress — preview follows…",
       "currentPhoto": "Current photo",

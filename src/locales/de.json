@@ -2082,6 +2082,7 @@
       "prevPhotoAria": "Vorheriges Foto",
       "nextPhotoAria": "Nächstes Foto",
       "empty": "Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen",
+      "emptyList": "Keine Fotos in der Liste",
       "loading": "Vorschau wird geladen…",
       "loadingQr": "QR-Prüfung läuft — Vorschau folgt…",
       "currentPhoto": "Aktuelles Foto",

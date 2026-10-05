@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -171,7 +172,11 @@ export function PhotoPreview({
   const [detailPanelHeight, setDetailPanelHeight] = useState<number | null>(
     null,
   );
-  const [isLgOverviewRow, setIsLgOverviewRow] = useState(false);
+  const [isLgOverviewRow, setIsLgOverviewRow] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia(PHOTO_OVERVIEW_LG_MQ).matches,
+  );
 
   const current = currentIndex >= 0 ? photoList[currentIndex] : null;
   const autoExpanded =
@@ -203,7 +208,7 @@ export function PhotoPreview({
     if (missing) void refreshSizes();
   }, [photoList, refreshSizes]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const mq = window.matchMedia(PHOTO_OVERVIEW_LG_MQ);
     const sync = () => setIsLgOverviewRow(mq.matches);
     sync();
@@ -215,7 +220,7 @@ export function PhotoPreview({
     if (photoList.length === 0) setExpandedOverride(null);
   }, [photoList.length]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isLgOverviewRow) {
       setDetailPanelHeight(null);
       return;
@@ -254,7 +259,7 @@ export function PhotoPreview({
 
   const stageHeight = gridWidth > 0 ? (gridWidth * 9) / 16 : 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = layoutGridRef.current;
     if (!el) return;
     const sync = () => setGridWidth(el.clientWidth);
@@ -565,7 +570,12 @@ export function PhotoPreview({
 
       <div
         ref={layoutGridRef}
-        className="grid min-h-0 transition-[grid-template-rows,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+        className={cn(
+          "grid min-h-0 motion-reduce:transition-none",
+          // Only animate after width is known — avoids 0→full flicker on tab mount.
+          stageHeight > 0 &&
+            "transition-[grid-template-rows,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        )}
         style={{
           gridTemplateRows: overviewExpanded
             ? `${stageHeight || 0}px auto`
@@ -619,7 +629,9 @@ export function PhotoPreview({
                       onClick={goPrev}
                       disabled={currentIndex <= 0}
                       aria-label={t("photo.preview.prevPhotoAria")}
-                      tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
+                      tabIndex={
+                        overviewExpanded && !hideStageVisual ? 0 : -1
+                      }
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
@@ -629,7 +641,9 @@ export function PhotoPreview({
                       onClick={goNext}
                       disabled={currentIndex >= photoList.length - 1}
                       aria-label={t("photo.preview.nextPhotoAria")}
-                      tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
+                      tabIndex={
+                        overviewExpanded && !hideStageVisual ? 0 : -1
+                      }
                     >
                       <ChevronRight className="h-5 w-5" />
                     </button>
@@ -639,7 +653,11 @@ export function PhotoPreview({
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/75">
                 <ImageIcon className="h-8 w-8 opacity-50" aria-hidden />
-                <p>{t("photo.preview.empty")}</p>
+                <p>
+                  {photoList.length === 0
+                    ? t("photo.preview.empty")
+                    : t("photo.preview.loading")}
+                </p>
               </div>
             )}
           </div>

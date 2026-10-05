@@ -2082,6 +2082,7 @@
       "prevPhotoAria": "Foto anterior",
       "nextPhotoAria": "Foto siguiente",
       "empty": "No hay fotos — agrégalas arrastrando al área de medios",
+      "emptyList": "No hay fotos en la lista",
       "loading": "Cargando vista previa…",
       "loadingQr": "Comprobación QR en curso — la vista previa sigue…",
       "currentPhoto": "Foto actual",

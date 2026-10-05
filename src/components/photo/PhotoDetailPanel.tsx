@@ -1,6 +1,7 @@
 import { forwardRef, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ImageIcon,
   Maximize2,
   Pencil,
   QrCode,
@@ -111,7 +112,12 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
     const miniSrc = current
       ? (previewSrc ?? photoFileSrcFallback(current.path, revision))
       : null;
-    const miniOpen = showMiniPreview && !miniPreviewCollapsed && Boolean(miniSrc);
+    const miniEmpty =
+      showMiniPreview && !miniPreviewCollapsed && photoCount === 0;
+    const miniOpen =
+      showMiniPreview &&
+      !miniPreviewCollapsed &&
+      (Boolean(miniSrc) || miniEmpty);
 
     return (
       <aside
@@ -123,7 +129,7 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
             {t("photo.preview.detailTitle")}
           </p>
 
-          {showMiniPreview && current && miniSrc && (
+          {showMiniPreview && (miniSrc || miniEmpty) && (
             <div
               className={cn(
                 "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
@@ -134,37 +140,52 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
               aria-hidden={!miniOpen}
             >
               <div className="min-h-0 overflow-hidden">
-                <button
-                  ref={miniPreviewRef}
-                  type="button"
-                  disabled={!miniOpen || !onExpandPreview}
-                  onClick={onExpandPreview}
-                  aria-label={t("photo.preview.expandPreviewAria")}
-                  className={cn(
-                    "group relative aspect-video w-full overflow-hidden rounded-md bg-[var(--ats-preview-stage)] ring-1 ring-border/60",
-                    "text-left transition-[box-shadow,ring-color] duration-200",
-                    "hover:ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    "disabled:pointer-events-none",
-                  )}
-                >
-                  <img
-                    src={miniSrc}
-                    alt={current.filename}
+                {miniEmpty ? (
+                  <div
+                    className="flex aspect-video w-full flex-col items-center justify-center gap-1.5 rounded-md bg-[var(--ats-preview-stage)] px-2 text-center ring-1 ring-border/60"
+                    role="status"
+                  >
+                    <ImageIcon
+                      className="h-5 w-5 text-white/50"
+                      aria-hidden
+                    />
+                    <p className="text-[11px] leading-snug text-white/75">
+                      {t("photo.preview.empty")}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    ref={miniPreviewRef}
+                    type="button"
+                    disabled={!miniOpen || !onExpandPreview}
+                    onClick={onExpandPreview}
+                    aria-label={t("photo.preview.expandPreviewAria")}
                     className={cn(
-                      "pointer-events-none h-full w-full object-contain",
-                      hideMiniVisual && "opacity-0",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-black/50 p-1.5 text-white backdrop-blur-sm",
-                      "opacity-80 transition-opacity duration-200 group-hover:opacity-100",
-                      hideMiniVisual && "opacity-0",
+                      "group relative aspect-video w-full overflow-hidden rounded-md bg-[var(--ats-preview-stage)] ring-1 ring-border/60",
+                      "text-left transition-[box-shadow,ring-color] duration-200",
+                      "hover:ring-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      "disabled:pointer-events-none",
                     )}
                   >
-                    <Maximize2 className="h-3.5 w-3.5" aria-hidden />
-                  </span>
-                </button>
+                    <img
+                      src={miniSrc!}
+                      alt={current!.filename}
+                      className={cn(
+                        "pointer-events-none h-full w-full object-contain",
+                        hideMiniVisual && "opacity-0",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-black/50 p-1.5 text-white backdrop-blur-sm",
+                        "opacity-80 transition-opacity duration-200 group-hover:opacity-100",
+                        hideMiniVisual && "opacity-0",
+                      )}
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -196,9 +217,9 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
                 </div>
               )}
             </dl>
-          ) : (
+          ) : photoCount > 0 ? (
             <p className="text-xs text-muted">{t("photo.preview.detailEmpty")}</p>
-          )}
+          ) : null}
 
           {current && fotoWmNeeded && (
             <button
