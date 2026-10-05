@@ -13,6 +13,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 ### Neu
 
 - Nach Import und SD-Workflow: Abschlusskarte mit Ergebnis und Schritten — blendet sich selbst aus; Maus darüber hält den Timer an
+- Vorgänge → Medien: Vollbild für Fotos und Videos — Pfeiltasten zum Blättern, Escape zum Schließen
 
 ### Verbessert
 
@@ -20,6 +21,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
 - SD-Import nach Backup: spürbar schneller — bereits gesicherte Dateien werden nicht erneut durchgerechnet
 - Vorgänge → Medien: Liste seitenweise (Standard 50 Einträge)
+- Foto-Vorschau: Vergrößern und Verkleinern mit flüssiger Animation statt getrennter Ansichten
+
+### Behoben
+
+- Upload / Nachreichen: bereits abgeschlossene Vorgänge werden nicht erneut zum Hochladen angeboten
 
 ## [0.7.1] - 2026-10-03
 
