@@ -31,7 +31,7 @@ import {
   mediaContextMenuHandler,
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { cn } from "../lib/utils";
 import { PhotoOverviewGrid } from "./photo/PhotoOverviewGrid";
 import { PhotoDetailPanel } from "./photo/PhotoDetailPanel";
@@ -112,6 +112,39 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+function imgSrcOf(img: HTMLImageElement | null | undefined): string {
+  if (!img) return "";
+  return img.currentSrc || img.src || "";
+}
+
+/** Decode (or confirm painted) so FLIP ghost/stage handoff does not hitch on first paint. */
+async function ensureImageDecoded(
+  src: string,
+  hint?: HTMLImageElement | null,
+): Promise<void> {
+  if (!src) return;
+  const hintSrc = imgSrcOf(hint);
+  if (hint && hintSrc === src && hint.complete && hint.naturalWidth > 0) {
+    try {
+      await hint.decode();
+    } catch {
+      // Already painted — treat as ready.
+    }
+    return;
+  }
+  const probe = new Image();
+  probe.src = src;
+  try {
+    await probe.decode();
+  } catch {
+    if (probe.complete && probe.naturalWidth > 0) return;
+    await new Promise<void>((resolve) => {
+      probe.onload = () => resolve();
+      probe.onerror = () => resolve();
+    });
+  }
+}
+
 type PhotoPreviewProps = {
   disabled?: boolean;
   onEditPhoto?: (path: string) => void;
@@ -161,6 +194,10 @@ export function PhotoPreview({
     null,
   );
   const [morph, setMorph] = useState<PreviewMorph | null>(null);
+  /** Hold expand handoff URL past morph teardown so thumb upgrades cannot swap mid-settle. */
+  const [pinnedStageSrc, setPinnedStageSrc] = useState<string | null>(null);
+  /** Freeze grid/mini size transitions while we measure the post-layout morph target. */
+  const [layoutHold, setLayoutHold] = useState(false);
   const detailPanelRef = useRef<HTMLElement>(null);
   const miniPreviewRef = useRef<HTMLButtonElement>(null);
   const layoutGridRef = useRef<HTMLDivElement>(null);
@@ -168,6 +205,9 @@ export function PhotoPreview({
   const lastMiniRelRef = useRef<PreviewBox | null>(null);
   const morphTimerRef = useRef<number | null>(null);
   const morphRafRef = useRef<number | null>(null);
+  const morphGenRef = useRef(0);
+  const pinReleaseRafRef = useRef<number | null>(null);
+  const overviewExpandedRef = useRef(false);
   const [gridWidth, setGridWidth] = useState(0);
   const [detailPanelHeight, setDetailPanelHeight] = useState<number | null>(
     null,
@@ -182,6 +222,7 @@ export function PhotoPreview({
   const autoExpanded =
     photoList.length > 0 && photoList.length <= AUTO_EXPAND_THRESHOLD;
   const overviewExpanded = expandedOverride ?? autoExpanded;
+  overviewExpandedRef.current = overviewExpanded;
 
   const fotoWmNeeded =
     (kunde.handcam_foto && !kunde.ist_bezahlt_handcam_foto) ||
@@ -297,72 +338,150 @@ export function PhotoPreview({
       window.cancelAnimationFrame(morphRafRef.current);
       morphRafRef.current = null;
     }
+    if (pinReleaseRafRef.current != null) {
+      window.cancelAnimationFrame(pinReleaseRafRef.current);
+      pinReleaseRafRef.current = null;
+    }
   }, []);
 
-  const playMorph = useCallback(
+  /** Place the FLIP ghost at `from` without animating (covers the live preview). */
+  const armMorph = useCallback(
     (next: Omit<PreviewMorph, "playing" | "settling">) => {
       clearMorphTimers();
+      if (next.dir === "expand") {
+        setPinnedStageSrc(next.src);
+      } else {
+        setPinnedStageSrc(null);
+      }
       setMorph({ ...next, playing: false, settling: false });
-      morphRafRef.current = window.requestAnimationFrame(() => {
-        morphRafRef.current = window.requestAnimationFrame(() => {
-          morphRafRef.current = null;
-          setMorph((prev) => (prev ? { ...prev, playing: true } : prev));
-          morphTimerRef.current = window.setTimeout(() => {
-            morphTimerRef.current = null;
-            // Paint the real preview under the ghost, then drop the ghost.
-            setMorph((prev) => (prev ? { ...prev, settling: true } : prev));
-            morphRafRef.current = window.requestAnimationFrame(() => {
-              morphRafRef.current = window.requestAnimationFrame(() => {
-                morphRafRef.current = null;
-                setMorph(null);
-              });
-            });
-          }, PREVIEW_MORPH_MS);
-        });
-      });
     },
     [clearMorphTimers],
+  );
+
+  /** After arm + layout target measure: animate ghost to `to`, then settle. */
+  const startMorphPlayback = useCallback(() => {
+    setLayoutHold(false);
+    morphRafRef.current = window.requestAnimationFrame(() => {
+      morphRafRef.current = window.requestAnimationFrame(() => {
+        morphRafRef.current = null;
+        setMorph((prev) => (prev ? { ...prev, playing: true } : prev));
+        morphTimerRef.current = window.setTimeout(() => {
+          morphTimerRef.current = null;
+          // Paint the real preview under the ghost, then drop the ghost.
+          setMorph((prev) => (prev ? { ...prev, settling: true } : prev));
+          morphRafRef.current = window.requestAnimationFrame(() => {
+            morphRafRef.current = window.requestAnimationFrame(() => {
+              morphRafRef.current = null;
+              setMorph(null);
+            });
+          });
+        }, PREVIEW_MORPH_MS);
+      });
+    });
+  }, []);
+
+  const resolveMorphSrc = useCallback(
+    (img: HTMLImageElement | null | undefined) => {
+      // Prefer the painted frame so ghost/stage match what the user already sees.
+      const painted = imgSrcOf(img);
+      if (painted) return painted;
+      const path = current?.path;
+      if (!path) return "";
+      const rev = getMediaRevision(path);
+      return (
+        photoThumbnailQueue.getCached(path, "preview", rev) ??
+        photoFileSrcFallback(path, rev)
+      );
+    },
+    [current?.path, getMediaRevision],
   );
 
   const expandPreview = useCallback(() => {
     if (overviewExpanded) return;
     if (prefersReducedMotion()) {
+      morphGenRef.current += 1;
+      clearMorphTimers();
+      setMorph(null);
+      setPinnedStageSrc(null);
+      setLayoutHold(false);
       setExpandedOverride(true);
       return;
     }
-    const grid = layoutGridRef.current;
+    const img = miniPreviewRef.current?.querySelector("img") ?? null;
+    const src = resolveMorphSrc(img);
     const from = readBox(miniPreviewRef.current);
     snapshotMiniRel();
-    const path = current?.path;
-    const rev = path ? getMediaRevision(path) : 0;
-    const img = miniPreviewRef.current?.querySelector("img");
-    const src =
-      (path
-        ? (photoThumbnailQueue.getCached(path, "preview", rev) ??
-          photoFileSrcFallback(path, rev))
-        : "") ||
-      img?.currentSrc ||
-      img?.src ||
-      "";
-    const width = grid?.clientWidth ?? gridWidth;
-    const height = width > 0 ? (width * 9) / 16 : stageHeight;
-    const to = grid && height > 0 ? stageBox(grid, height) : null;
-    setExpandedOverride(true);
-    if (!from || !to || !src) return;
-    playMorph({ src, from, to, dir: "expand" });
+    if (!from || !src) {
+      setExpandedOverride(true);
+      return;
+    }
+    const pathAtStart = current?.path ?? null;
+    const gen = ++morphGenRef.current;
+    clearMorphTimers();
+    setMorph(null);
+    void (async () => {
+      await ensureImageDecoded(src, img);
+      if (gen !== morphGenRef.current) return;
+      if ((current?.path ?? null) !== pathAtStart) return;
+      if (overviewExpandedRef.current) return;
+      const fromNow = readBox(miniPreviewRef.current) ?? from;
+      snapshotMiniRel();
+      // Cover mini first, then open stage under the ghost and measure.
+      flushSync(() => {
+        setLayoutHold(true);
+        armMorph({ src, from: fromNow, to: fromNow, dir: "expand" });
+      });
+      if (gen !== morphGenRef.current) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      flushSync(() => {
+        setExpandedOverride(true);
+      });
+      if (gen !== morphGenRef.current) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      const gridNow = layoutGridRef.current;
+      const widthNow = gridNow?.clientWidth ?? gridWidth;
+      const heightNow = widthNow > 0 ? (widthNow * 9) / 16 : stageHeight;
+      const toNow =
+        readBox(stageFrameRef.current) ??
+        (gridNow && heightNow > 0 ? stageBox(gridNow, heightNow) : null);
+      if (!toNow) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      flushSync(() => {
+        setMorph((prev) =>
+          prev ? { ...prev, to: toNow, playing: false, settling: false } : prev,
+        );
+      });
+      startMorphPlayback();
+    })();
   }, [
     overviewExpanded,
-    playMorph,
+    armMorph,
+    startMorphPlayback,
     snapshotMiniRel,
     gridWidth,
     stageHeight,
     current?.path,
-    getMediaRevision,
+    resolveMorphSrc,
+    clearMorphTimers,
   ]);
 
   const collapsePreview = useCallback(() => {
     if (!overviewExpanded) return;
     if (prefersReducedMotion()) {
+      morphGenRef.current += 1;
+      clearMorphTimers();
+      setMorph(null);
+      setPinnedStageSrc(null);
+      setLayoutHold(false);
       setExpandedOverride(false);
       return;
     }
@@ -370,33 +489,86 @@ export function PhotoPreview({
     const from =
       readBox(stageFrameRef.current) ??
       (grid && stageHeight > 0 ? stageBox(grid, stageHeight) : null);
-    const rel = lastMiniRelRef.current;
-    const to = grid && rel ? miniBoxFromRel(grid, rel) : null;
-    const path = current?.path;
-    const rev = path ? getMediaRevision(path) : 0;
-    const img = stageFrameRef.current?.querySelector("img");
-    const src =
-      (path
-        ? (photoThumbnailQueue.getCached(path, "preview", rev) ??
-          photoFileSrcFallback(path, rev))
-        : "") ||
-      img?.currentSrc ||
-      img?.src ||
-      "";
-    setExpandedOverride(false);
-    if (!from || !to || !src) return;
-    playMorph({ src, from, to, dir: "collapse" });
+    const img = stageFrameRef.current?.querySelector("img") ?? null;
+    const src = resolveMorphSrc(img);
+    if (!from || !src) {
+      setExpandedOverride(false);
+      return;
+    }
+    const pathAtStart = current?.path ?? null;
+    const gen = ++morphGenRef.current;
+    clearMorphTimers();
+    setMorph(null);
+    void (async () => {
+      await ensureImageDecoded(src, img);
+      if (gen !== morphGenRef.current) return;
+      if ((current?.path ?? null) !== pathAtStart) return;
+      if (!overviewExpandedRef.current) return;
+      const fromNow =
+        readBox(stageFrameRef.current) ??
+        (grid && stageHeight > 0 ? stageBox(grid, stageHeight) : from);
+      // Cover stage first — avoid a blank frame before the ghost exists.
+      flushSync(() => {
+        setLayoutHold(true);
+        armMorph({ src, from: fromNow, to: fromNow, dir: "collapse" });
+      });
+      if (gen !== morphGenRef.current) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      flushSync(() => {
+        setExpandedOverride(false);
+      });
+      if (gen !== morphGenRef.current) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      snapshotMiniRel();
+      const toNow =
+        readBox(miniPreviewRef.current) ??
+        (layoutGridRef.current && lastMiniRelRef.current
+          ? miniBoxFromRel(layoutGridRef.current, lastMiniRelRef.current)
+          : null);
+      if (!toNow) {
+        setLayoutHold(false);
+        setMorph(null);
+        return;
+      }
+      flushSync(() => {
+        setMorph((prev) =>
+          prev ? { ...prev, to: toNow, playing: false, settling: false } : prev,
+        );
+      });
+      startMorphPlayback();
+    })();
   }, [
     overviewExpanded,
-    playMorph,
+    armMorph,
+    startMorphPlayback,
     stageHeight,
     current?.path,
-    getMediaRevision,
+    resolveMorphSrc,
+    clearMorphTimers,
+    snapshotMiniRel,
   ]);
 
   useEffect(() => {
-    return () => clearMorphTimers();
+    return () => {
+      morphGenRef.current += 1;
+      clearMorphTimers();
+    };
   }, [clearMorphTimers]);
+
+  // Drop pin / in-flight morph when the active photo changes (avoid wrong-frame handoff).
+  useEffect(() => {
+    morphGenRef.current += 1;
+    clearMorphTimers();
+    setMorph(null);
+    setPinnedStageSrc(null);
+    setLayoutHold(false);
+  }, [current?.path, clearMorphTimers]);
 
   useEffect(() => {
     if (overviewExpanded) return;
@@ -520,9 +692,43 @@ export function PhotoPreview({
   const stageSrc = current
     ? (previewSrc ?? photoFileSrcFallback(current.path, currentRevision))
     : null;
-  // Keep morph URL during expand (incl. settle) so the handoff never swaps src.
-  const stageDisplaySrc =
-    morph && morph.dir === "expand" ? morph.src : stageSrc;
+  // Pin outlives morph teardown so a late thumb upgrade cannot decode-swap on settle.
+  const stageDisplaySrc = pinnedStageSrc ?? stageSrc;
+
+  // After expand morph ends, keep the pin until the live stage URL is decoded.
+  useEffect(() => {
+    if (morph != null || !pinnedStageSrc) return;
+    let cancelled = false;
+    const pin = pinnedStageSrc;
+    const releaseAfterPaint = () => {
+      if (pinReleaseRafRef.current != null) {
+        window.cancelAnimationFrame(pinReleaseRafRef.current);
+      }
+      pinReleaseRafRef.current = window.requestAnimationFrame(() => {
+        pinReleaseRafRef.current = window.requestAnimationFrame(() => {
+          pinReleaseRafRef.current = null;
+          if (!cancelled) setPinnedStageSrc(null);
+        });
+      });
+    };
+    void (async () => {
+      const target = stageSrc;
+      if (!target || target === pin) {
+        releaseAfterPaint();
+        return;
+      }
+      await ensureImageDecoded(target);
+      if (cancelled) return;
+      releaseAfterPaint();
+    })();
+    return () => {
+      cancelled = true;
+      if (pinReleaseRafRef.current != null) {
+        window.cancelAnimationFrame(pinReleaseRafRef.current);
+        pinReleaseRafRef.current = null;
+      }
+    };
+  }, [morph, pinnedStageSrc, stageSrc]);
 
   void editMarks;
 
@@ -541,23 +747,41 @@ export function PhotoPreview({
 
   // Hide real stage while expand ghost flies; reveal under ghost during settle.
   const hideStageVisual =
-    morph != null &&
-    (morph.dir === "collapse" || (morph.dir === "expand" && !morph.settling));
+    (layoutHold && overviewExpanded) ||
+    (morph != null &&
+      (morph.dir === "collapse" ||
+        (morph.dir === "expand" && !morph.settling)));
   // Hide mini while expand flies / collapse flies; reveal under ghost during settle.
   const hideMiniVisual =
-    morph != null &&
-    (morph.dir === "expand" || (morph.dir === "collapse" && !morph.settling));
-  const morphSx = morph ? morph.to.width / Math.max(morph.from.width, 1) : 1;
-  const morphSy = morph ? morph.to.height / Math.max(morph.from.height, 1) : 1;
+    (layoutHold && !overviewExpanded) ||
+    (morph != null &&
+      (morph.dir === "expand" ||
+        (morph.dir === "collapse" && !morph.settling)));
+  const suppressLayoutMotion = morph != null || layoutHold;
+  // Scale-free box morph: radius stays in screen px (scale() would inflate corners).
+  const morphFromRadius =
+    morph?.dir === "expand" ? MINI_RADIUS_PX : STAGE_RADIUS_PX;
+  const morphToRadius =
+    morph?.dir === "expand" ? STAGE_RADIUS_PX : MINI_RADIUS_PX;
   const morphRadius = morph
     ? morph.playing
-      ? morph.dir === "expand"
-        ? STAGE_RADIUS_PX
-        : MINI_RADIUS_PX
-      : morph.dir === "expand"
-        ? MINI_RADIUS_PX
-        : STAGE_RADIUS_PX
+      ? morphToRadius
+      : morphFromRadius
     : MINI_RADIUS_PX;
+  const morphBox = morph
+    ? morph.playing
+      ? morph.to
+      : morph.from
+    : null;
+  const morphTransition = morph?.playing
+    ? [
+        `left ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`,
+        `top ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`,
+        `width ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`,
+        `height ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`,
+        `border-radius ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`,
+      ].join(", ")
+    : "none";
 
   return (
     <div className="flex flex-col gap-3">
@@ -573,7 +797,9 @@ export function PhotoPreview({
         className={cn(
           "grid min-h-0 motion-reduce:transition-none",
           // Only animate after width is known — avoids 0→full flicker on tab mount.
+          // During FLIP the ghost owns motion; instant row/gap keeps the target box stable.
           stageHeight > 0 &&
+            !suppressLayoutMotion &&
             "transition-[grid-template-rows,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         )}
         style={{
@@ -684,6 +910,7 @@ export function PhotoPreview({
             showMiniPreview
             miniPreviewCollapsed={overviewExpanded}
             hideMiniVisual={hideMiniVisual}
+            suppressMiniLayoutTransition={suppressLayoutMotion}
             effectiveSelectionSize={effectiveSelection.size}
             explicitlySelected={explicitlySelected}
             selectedIndices={selectedIndices}
@@ -717,24 +944,18 @@ export function PhotoPreview({
         </div>
       </div>
 
-      {morph
+      {morph && morphBox
         ? createPortal(
             <div
               aria-hidden
               className="pointer-events-none fixed z-[80] overflow-hidden bg-[var(--ats-preview-stage)] ring-1 ring-border"
               style={{
-                left: 0,
-                top: 0,
-                width: morph.from.width,
-                height: morph.from.height,
+                left: morphBox.left,
+                top: morphBox.top,
+                width: morphBox.width,
+                height: morphBox.height,
                 borderRadius: morphRadius,
-                transform: morph.playing
-                  ? `translate(${morph.to.left}px, ${morph.to.top}px) scale(${morphSx}, ${morphSy})`
-                  : `translate(${morph.from.left}px, ${morph.from.top}px) scale(1, 1)`,
-                transformOrigin: "top left",
-                transition: morph.playing
-                  ? `transform ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}, border-radius ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`
-                  : "none",
+                transition: morphTransition,
               }}
             >
               <img

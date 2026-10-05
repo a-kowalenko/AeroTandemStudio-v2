@@ -1,6 +1,8 @@
 //! Vorgang (created customer) history commands.
 
-use std::path::Path;
+use std::collections::HashMap;
+use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use tauri::{AppHandle, Manager, State};
 
@@ -573,14 +575,99 @@ pub async fn probe_vorgang_folders(
     blocking_hist(move || Ok(probe_vorgang_folders_blocking(items))).await
 }
 
+const FOLDER_PROBE_WORKERS: usize = 4;
+
+/// Volume / share a job folder lives on: `C:\`, `\\server\share\`, or the
+/// first two components on Unix (`/Volumes/NAS`, `/mnt/nas`, `/home/user`).
+fn folder_probe_root(path: &Path) -> Option<PathBuf> {
+    let mut root = PathBuf::new();
+    let mut normal = 0usize;
+    for comp in path.components() {
+        match comp {
+            Component::Prefix(_) | Component::RootDir => root.push(comp.as_os_str()),
+            Component::Normal(part) if !cfg!(windows) && normal < 2 => {
+                root.push(part);
+                normal += 1;
+            }
+            _ => break,
+        }
+    }
+    (!root.as_os_str().is_empty()).then_some(root)
+}
+
+/// Batch folder check. One timed reachability probe per volume/share keeps a
+/// sleeping or offline NAS from stalling every row; rows under a dead root
+/// count as missing (same as a failed `is_dir`, just without the OS timeout).
 fn probe_vorgang_folders_blocking(
     items: Vec<VorgangFolderProbeItem>,
 ) -> Vec<VorgangFolderProbeResult> {
+    probe_vorgang_folders_with(items, |root| {
+        crate::smb::reconnect::path_reachable_timed(
+            root,
+            crate::smb::reconnect::LOCAL_PROBE_TIMEOUT,
+        )
+        .prefers_local()
+    })
+}
+
+fn probe_vorgang_folders_with(
+    items: Vec<VorgangFolderProbeItem>,
+    root_alive: impl Fn(&Path) -> bool + Sync,
+) -> Vec<VorgangFolderProbeResult> {
+    let roots: Vec<Option<PathBuf>> = items
+        .iter()
+        .map(|item| {
+            let dir = item.base_output_dir.trim();
+            if dir.is_empty() {
+                None
+            } else {
+                folder_probe_root(Path::new(dir))
+            }
+        })
+        .collect();
+
+    let mut unique_roots: Vec<PathBuf> = roots.iter().flatten().cloned().collect();
+    unique_roots.sort();
+    unique_roots.dedup();
+    let alive: HashMap<PathBuf, bool> = std::thread::scope(|scope| {
+        let handles: Vec<_> = unique_roots
+            .iter()
+            .map(|root| {
+                let root_alive = &root_alive;
+                (root.clone(), scope.spawn(move || root_alive(root)))
+            })
+            .collect();
+        handles
+            .into_iter()
+            .map(|(root, h)| (root, h.join().unwrap_or(false)))
+            .collect()
+    });
+
+    let missing: Vec<AtomicBool> = items.iter().map(|_| AtomicBool::new(true)).collect();
+    let checks: Vec<usize> = (0..items.len())
+        .filter(|&i| match roots[i].as_ref() {
+            Some(r) => alive.get(r).copied().unwrap_or(false),
+            None => !items[i].base_output_dir.trim().is_empty(),
+        })
+        .collect();
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..FOLDER_PROBE_WORKERS.min(checks.len()) {
+            scope.spawn(|| loop {
+                let k = next.fetch_add(1, Ordering::Relaxed);
+                let Some(&i) = checks.get(k) else { break };
+                let present = !job_folder_missing(&items[i].base_output_dir);
+                missing[i].store(!present, Ordering::Relaxed);
+            });
+        }
+    });
+
     items
-        .into_iter()
-        .map(|item| VorgangFolderProbeResult {
+        .iter()
+        .zip(missing)
+        .map(|(item, m)| VorgangFolderProbeResult {
             vorgang_id: item.vorgang_id,
-            folder_missing: job_folder_missing(&item.base_output_dir),
+            folder_missing: m.into_inner(),
         })
         .collect()
 }
@@ -819,12 +906,15 @@ pub async fn create_append_job(
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_archive_cancelled_hint, job_folder_missing, probe_vorgang_folders_blocking,
-        should_sync_handoff_entry, VorgangFolderProbeItem,
+        apply_archive_cancelled_hint, folder_probe_root, job_folder_missing,
+        probe_vorgang_folders_blocking, probe_vorgang_folders_with, should_sync_handoff_entry,
+        VorgangFolderProbeItem,
     };
     use crate::storage::vorgang_history::VorgangEntry;
     use crate::video::handoff_manifest::{OutboxAmsMeta, StatusOutboxV1};
     use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tempfile::tempdir;
 
     fn handoff_test_entry(
@@ -949,5 +1039,61 @@ mod tests {
         assert!(rows[2].folder_missing);
         assert!(job_folder_missing(""));
         assert!(job_folder_missing("/path/that/does/not/exist/for/ats"));
+    }
+
+    #[test]
+    fn folder_probe_root_picks_volume_or_share() {
+        #[cfg(windows)]
+        {
+            assert_eq!(
+                folder_probe_root(Path::new(r"C:\Jobs\2026\Gast")),
+                Some(PathBuf::from(r"C:\"))
+            );
+            assert_eq!(
+                folder_probe_root(Path::new(r"\\nas\share\Jobs\Gast")),
+                Some(PathBuf::from(r"\\nas\share\"))
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(
+                folder_probe_root(Path::new("/Volumes/NAS/Jobs/Gast")),
+                Some(PathBuf::from("/Volumes/NAS"))
+            );
+            assert_eq!(
+                folder_probe_root(Path::new("/mnt")),
+                Some(PathBuf::from("/mnt"))
+            );
+        }
+        #[cfg(windows)]
+        assert_eq!(folder_probe_root(Path::new(r"relative\dir")), None);
+    }
+
+    #[test]
+    fn probe_vorgang_folders_dead_root_probed_once_and_marks_missing() {
+        let alive_dir = tempdir().unwrap();
+        let present = alive_dir.path().join("job");
+        fs::create_dir(&present).unwrap();
+        let dead_root = folder_probe_root(present.as_path()).unwrap();
+        let calls = AtomicUsize::new(0);
+        let items = vec![
+            VorgangFolderProbeItem {
+                vorgang_id: 1,
+                base_output_dir: present.to_string_lossy().into_owned(),
+            },
+            VorgangFolderProbeItem {
+                vorgang_id: 2,
+                base_output_dir: present.to_string_lossy().into_owned(),
+            },
+        ];
+        let rows = probe_vorgang_folders_with(items.clone(), |root| {
+            calls.fetch_add(1, Ordering::Relaxed);
+            root != dead_root.as_path()
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert!(rows.iter().all(|r| r.folder_missing));
+
+        let rows = probe_vorgang_folders_with(items, |_| true);
+        assert!(rows.iter().all(|r| !r.folder_missing));
     }
 }

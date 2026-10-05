@@ -51,6 +51,11 @@ type Props = {
   miniPreviewCollapsed?: boolean;
   /** Hide mini image while a FLIP ghost is in flight. */
   hideMiniVisual?: boolean;
+  /**
+   * Skip mini open/close size transition (FLIP owns the motion).
+   * Prevents post-collapse grid-rows "rubber" height settle.
+   */
+  suppressMiniLayoutTransition?: boolean;
   miniPreviewRef?: Ref<HTMLButtonElement>;
   effectiveSelectionSize: number;
   explicitlySelected: boolean;
@@ -84,6 +89,7 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
       showMiniPreview,
       miniPreviewCollapsed = false,
       hideMiniVisual = false,
+      suppressMiniLayoutTransition = false,
       miniPreviewRef,
       effectiveSelectionSize,
       explicitlySelected,
@@ -132,7 +138,9 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
           {showMiniPreview && (miniSrc || miniEmpty) && (
             <div
               className={cn(
-                "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+                "grid motion-reduce:transition-none",
+                !suppressMiniLayoutTransition &&
+                  "transition-[grid-template-rows,opacity,margin] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 miniOpen
                   ? "mb-3 grid-rows-[1fr] opacity-100"
                   : "mb-0 grid-rows-[0fr] opacity-0",

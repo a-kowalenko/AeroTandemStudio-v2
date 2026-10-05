@@ -657,6 +657,83 @@ const DCIM_LIST_CACHE_TTL: Duration = Duration::from_secs(45);
 const IDENTITY_CACHE_MAX: usize = 2048;
 const ENRICH_HASH_WORKERS: usize = 3;
 const ENRICH_EMIT_CHUNK: usize = 12;
+const MTP_PROGRESS_MIN_INTERVAL: Duration = Duration::from_millis(150);
+
+/// MTP downloads report per stream chunk; forward to the UI only on file
+/// change, completion, or every [`MTP_PROGRESS_MIN_INTERVAL`].
+struct MtpProgressGate {
+    last_emit: Option<Instant>,
+    last_file_index: u32,
+}
+
+impl MtpProgressGate {
+    fn new() -> Self {
+        Self {
+            last_emit: None,
+            last_file_index: 0,
+        }
+    }
+
+    fn should_emit(&mut self, file_index: u32, bytes_done: u64, bytes_total: u64, now: Instant) -> bool {
+        let file_changed = file_index != self.last_file_index;
+        let complete = bytes_total > 0 && bytes_done >= bytes_total;
+        let due = self
+            .last_emit
+            .map_or(true, |t| now.duration_since(t) >= MTP_PROGRESS_MIN_INTERVAL);
+        if !(file_changed || complete || due) {
+            return false;
+        }
+        self.last_emit = Some(now);
+        self.last_file_index = file_index;
+        true
+    }
+}
+
+/// Queues each downloaded file for identity hashing once it is finished
+/// (next file started or whole transfer complete) — one stat per file.
+struct MtpHashFeed {
+    dest_dir: PathBuf,
+    tx: std::sync::mpsc::Sender<PathBuf>,
+    file_index: u32,
+    name: Option<String>,
+    flushed: bool,
+}
+
+impl MtpHashFeed {
+    fn new(dest_dir: PathBuf, tx: std::sync::mpsc::Sender<PathBuf>) -> Self {
+        Self {
+            dest_dir,
+            tx,
+            file_index: 0,
+            name: None,
+            flushed: false,
+        }
+    }
+
+    fn observe(&mut self, file_index: u32, name: &str, complete: bool) {
+        if file_index != self.file_index {
+            self.flush();
+            self.file_index = file_index;
+            self.name = (!name.is_empty()).then(|| name.to_string());
+            self.flushed = false;
+        } else if self.name.is_none() && !self.flushed && !name.is_empty() {
+            self.name = Some(name.to_string());
+        }
+        if complete {
+            self.flush();
+        }
+    }
+
+    fn flush(&mut self) {
+        if let Some(name) = self.name.take() {
+            self.flushed = true;
+            let p = self.dest_dir.join(name);
+            if p.is_file() {
+                let _ = self.tx.send(p);
+            }
+        }
+    }
+}
 
 pub struct SdCardMonitor {
     monitoring: AtomicBool,
@@ -2191,22 +2268,21 @@ impl SdCardMonitor {
             let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
             let progress_cb = {
                 let on_progress = self.on_progress.lock().unwrap().clone();
-                let hash_tx_progress = hash_tx.clone();
-                let dest_for_hash = backup_path.clone();
+                let mut hash_feed = MtpHashFeed::new(backup_path.clone(), hash_tx.clone());
+                let mut gate = MtpProgressGate::new();
                 move |file_index: u32,
                       file_total_cb: u32,
                       name: String,
                       bytes_done: u64,
                       bytes_total: u64| {
-                    if !name.is_empty() {
-                        let p = dest_for_hash.join(&name);
-                        if p.is_file() {
-                            let _ = hash_tx_progress.send(p);
-                        }
-                    }
+                    let complete = bytes_total > 0 && bytes_done >= bytes_total;
+                    hash_feed.observe(file_index, &name, complete);
                     let Some(cb) = on_progress.as_ref() else {
                         return;
                     };
+                    if !gate.should_emit(file_index, bytes_done, bytes_total, Instant::now()) {
+                        return;
+                    }
                     let done_mb = bytes_done as f64 / (1024.0 * 1024.0);
                     let tot = if bytes_total > 0 {
                         bytes_total as f64 / (1024.0 * 1024.0)
@@ -3186,6 +3262,42 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn mtp_progress_gate_throttles_chunks_but_keeps_file_changes_and_completion() {
+        let mut gate = MtpProgressGate::new();
+        let t0 = Instant::now();
+        assert!(gate.should_emit(1, 64, 1000, t0));
+        assert!(!gate.should_emit(1, 128, 1000, t0 + Duration::from_millis(10)));
+        assert!(!gate.should_emit(1, 192, 1000, t0 + Duration::from_millis(149)));
+        assert!(gate.should_emit(1, 256, 1000, t0 + Duration::from_millis(150)));
+        assert!(gate.should_emit(2, 300, 1000, t0 + Duration::from_millis(160)));
+        assert!(!gate.should_emit(2, 400, 1000, t0 + Duration::from_millis(170)));
+        assert!(gate.should_emit(2, 1000, 1000, t0 + Duration::from_millis(171)));
+    }
+
+    #[test]
+    fn mtp_hash_feed_sends_each_finished_file_once() {
+        let dir = tempdir().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut feed = MtpHashFeed::new(dir.path().to_path_buf(), tx);
+
+        feed.observe(1, "A.MP4", false);
+        feed.observe(1, "A.MP4", false);
+        fs::write(dir.path().join("A.MP4"), b"a").unwrap();
+        feed.observe(1, "A.MP4", false);
+        assert!(rx.try_recv().is_err());
+
+        feed.observe(2, "B.MP4", false);
+        assert_eq!(rx.try_recv().unwrap(), dir.path().join("A.MP4"));
+        assert!(rx.try_recv().is_err());
+
+        fs::write(dir.path().join("B.MP4"), b"b").unwrap();
+        feed.observe(2, "B.MP4", true);
+        assert_eq!(rx.try_recv().unwrap(), dir.path().join("B.MP4"));
+        feed.observe(2, "B.MP4", true);
+        assert!(rx.try_recv().is_err());
+    }
 
     #[test]
     fn generic_volume_names_filtered() {

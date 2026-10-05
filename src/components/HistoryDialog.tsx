@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
@@ -1307,6 +1307,134 @@ export function HistoryDialog({
   );
 }
 
+type VorgangListRowProps = {
+  entry: VorgangEntry;
+  selected: boolean;
+  checked: boolean;
+  /** Selected row's live handoff poll reported offline. */
+  handoffOffline: boolean;
+  folderMissingById: Record<number, boolean>;
+  onSelect: (id: number) => void;
+  onToggleCheck: (id: number) => void;
+};
+
+/** Memoized so status polls on the selected Vorgang do not re-render all rows. */
+const VorgangListRow = memo(function VorgangListRow({
+  entry: e,
+  selected,
+  checked,
+  handoffOffline,
+  folderMissingById,
+  onSelect,
+  onToggleCheck,
+}: VorgangListRowProps) {
+  const badges = productBadges(e);
+  const baseView = viewFromVorgangEntry(e);
+  const effectiveState = effectiveAmsListState(e, baseView?.state ?? e.ams_state);
+  const amsView =
+    baseView != null
+      ? {
+          ...baseView,
+          state: effectiveState,
+          ...(effectiveState.toLowerCase() === "cancelled" &&
+          !isAmsCancelled(baseView)
+            ? {
+                errorCode: "cancelled",
+                errorMessage: tr("history.upload.cancelled"),
+              }
+            : {}),
+        }
+      : null;
+  const amsViewOffline =
+    amsView && handoffOffline ? { ...amsView, offline: true } : amsView;
+  const uploadState = e.upload_state ?? "";
+  const listStatus = resolveListStatusDisplay(e, folderMissingById, effectiveState);
+  const amsProblem =
+    amsViewOffline != null &&
+    (isAmsCancelled(amsViewOffline) ||
+      amsViewOffline.state === "rejected" ||
+      amsViewOffline.state === "failed");
+  const createdTime = formatCreatedAtTime(e.created_at);
+  return (
+    <tr
+      className={cn(
+        "cursor-pointer border-b border-border/40 border-l-2 border-l-transparent hover:bg-muted/40",
+        selected && "bg-primary/10 hover:bg-primary/12 border-l-primary",
+      )}
+      onClick={() => onSelect(e.id)}
+    >
+      <td className="p-0 pl-1 align-middle" onClick={(ev) => ev.stopPropagation()}>
+        <Checkbox checked={checked} onCheckedChange={() => onToggleCheck(e.id)} />
+      </td>
+      <td className="truncate p-2 font-medium" title={e.gast}>
+        {e.gast}
+      </td>
+      <td
+        className="p-2 leading-tight"
+        title={
+          e.datum
+            ? createdTime
+              ? `${e.datum} · ${formatCreatedAt(e.created_at)}`
+              : e.datum
+            : formatCreatedAt(e.created_at)
+        }
+      >
+        <div className="truncate">{e.datum || "—"}</div>
+        {createdTime ? (
+          <div className="truncate text-[10px] tabular-nums text-muted">
+            {createdTime}
+          </div>
+        ) : null}
+      </td>
+      <td className="p-2">
+        {badges.length === 0 ? (
+          "—"
+        ) : (
+          <span className="flex flex-wrap gap-1">
+            {badges.map((b) => (
+              <VorgangProductChip key={b.key} badge={b} />
+            ))}
+          </span>
+        )}
+      </td>
+      <td className="p-2">
+        <span className="flex flex-wrap items-center gap-1">
+          {listStatus === "folder_problem" ? <VorgangFolderChip /> : null}
+          {listStatus === "ams" && amsViewOffline ? (
+            <VorgangAmsChip
+              view={amsViewOffline}
+              compact
+              onClick={
+                amsProblem
+                  ? (ev) => {
+                      ev.stopPropagation();
+                      onSelect(e.id);
+                    }
+                  : undefined
+              }
+            />
+          ) : null}
+          {listStatus === "upload" ? <VorgangUploadChip state={uploadState} /> : null}
+          {listStatus === "upload_done" ? <VorgangCompleteChip /> : null}
+          {listStatus === "local_only" ? <VorgangLocalChip /> : null}
+          {listStatus === "ams_terminal" && amsViewOffline ? (
+            <VorgangAmsChip
+              view={amsViewOffline}
+              compact
+              onClick={(ev) => {
+                ev.stopPropagation();
+                onSelect(e.id);
+              }}
+            />
+          ) : null}
+          {listStatus === "folder_cleaned_up" ? <VorgangArchivedChip /> : null}
+          {listStatus === "none" ? <span className="text-muted">—</span> : null}
+        </span>
+      </td>
+    </tr>
+  );
+});
+
 function seedVorgaengePanel(): {
   entries: VorgangEntry[];
   selectedId: number | null;
@@ -1418,22 +1546,42 @@ function VorgaengePanel({
     useHistoryStore.getState().patchVorgang(id, fn);
   }
 
-  async function probeFolderIntegrity(rows: VorgangEntry[]) {
-    if (rows.length === 0) {
-      useHistoryStore.getState().setFolderMissingById({});
+  /**
+   * `all` re-checks every row; `new` only rows missing from the probe cache.
+   * `replace` drops cached ids not in `rows` (full, unfiltered list only).
+   */
+  async function probeFolderIntegrity(
+    rows: VorgangEntry[],
+    scope: "all" | "new",
+    replace: boolean,
+  ) {
+    const store = useHistoryStore.getState();
+    if (replace && rows.length === 0) {
+      store.setFolderMissingById({});
       return;
     }
+    const known = store.folderMissingById;
+    const targets =
+      scope === "all" ? rows : rows.filter((r) => !(r.id in known));
+    if (targets.length === 0) return;
     try {
-      const results = await probeVorgangFolders(probeItemsFromVorgaenge(rows));
-      useHistoryStore
-        .getState()
-        .setFolderMissingById(folderMissingMapFromProbe(results));
+      const results = await probeVorgangFolders(probeItemsFromVorgaenge(targets));
+      const probed = folderMissingMapFromProbe(results);
+      const state = useHistoryStore.getState();
+      state.setFolderMissingById(
+        replace && scope === "all"
+          ? probed
+          : { ...state.folderMissingById, ...probed },
+      );
     } catch {
       /* keep prior probe cache */
     }
   }
 
-  async function reload(q?: string, opts?: { silent?: boolean }) {
+  async function reload(
+    q?: string,
+    opts?: { silent?: boolean; probe?: "all" | "new" },
+  ) {
     const query = q?.trim() || "";
     const silent =
       Boolean(opts?.silent) && entriesRef.current.length > 0 && !query;
@@ -1453,7 +1601,7 @@ function VorgaengePanel({
         useHistoryStore.getState().setSelectedId(next);
         return next;
       });
-      void probeFolderIntegrity(rows);
+      void probeFolderIntegrity(rows, opts?.probe ?? "new", !query);
     } catch {
       if (!silent) {
         setEntries([]);
@@ -1470,6 +1618,7 @@ function VorgaengePanel({
     const cached = useHistoryStore.getState().vorgaengeLoaded;
     void reload(searchRef.current, {
       silent: cached && !searchRef.current.trim(),
+      probe: "all",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dialogOpen]);
@@ -1958,14 +2107,14 @@ function VorgaengePanel({
       ? Boolean(selected?.handcam_video)
       : Boolean(selected?.outside_video);
 
-  function toggleCheck(id: number) {
+  const toggleCheck = useCallback((id: number) => {
     setChecked((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
+  }, []);
 
   function requestRemoveSelected() {
     if (checked.size === 0) return;
@@ -2168,144 +2317,21 @@ function VorgaengePanel({
               </tr>
             </thead>
             <tbody>
-              {filteredEntries.map((e) => {
-                const badges = productBadges(e);
-                const baseView = viewFromVorgangEntry(e);
-                const effectiveState = effectiveAmsListState(
-                  e,
-                  baseView?.state ?? e.ams_state,
-                );
-                const amsView =
-                  baseView != null
-                    ? {
-                        ...baseView,
-                        state: effectiveState,
-                        ...(effectiveState.toLowerCase() === "cancelled" &&
-                        !isAmsCancelled(baseView)
-                          ? {
-                              errorCode: "cancelled",
-                              errorMessage: tr("history.upload.cancelled"),
-                            }
-                          : {}),
-                      }
-                    : null;
-                const amsViewOffline =
-                  amsView &&
-                  handoffStatus?.correlation_id === e.correlation_id &&
-                  handoffStatus.offline
-                    ? { ...amsView, offline: true }
-                    : amsView;
-                const uploadState = e.upload_state ?? "";
-                const listStatus = resolveListStatusDisplay(
-                  e,
-                  folderMissingById,
-                  effectiveState,
-                );
-                const amsProblem =
-                  amsViewOffline != null &&
-                  (isAmsCancelled(amsViewOffline) ||
-                    amsViewOffline.state === "rejected" ||
-                    amsViewOffline.state === "failed");
-                const createdTime = formatCreatedAtTime(e.created_at);
-                return (
-                  <tr
-                    key={e.id}
-                    className={cn(
-                      "cursor-pointer border-b border-border/40 border-l-2 border-l-transparent hover:bg-muted/40",
-                      selectedId === e.id &&
-                        "bg-primary/10 hover:bg-primary/12 border-l-primary",
-                    )}
-                    onClick={() => setSelectedId(e.id)}
-                  >
-                    <td
-                      className="p-0 pl-1 align-middle"
-                      onClick={(ev) => ev.stopPropagation()}
-                    >
-                      <Checkbox
-                        checked={checked.has(e.id)}
-                        onCheckedChange={() => toggleCheck(e.id)}
-                      />
-                    </td>
-                    <td className="truncate p-2 font-medium" title={e.gast}>
-                      {e.gast}
-                    </td>
-                    <td
-                      className="p-2 leading-tight"
-                      title={
-                        e.datum
-                          ? createdTime
-                            ? `${e.datum} · ${formatCreatedAt(e.created_at)}`
-                            : e.datum
-                          : formatCreatedAt(e.created_at)
-                      }
-                    >
-                      <div className="truncate">{e.datum || "—"}</div>
-                      {createdTime ? (
-                        <div className="truncate text-[10px] tabular-nums text-muted">
-                          {createdTime}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="p-2">
-                      {badges.length === 0 ? (
-                        "—"
-                      ) : (
-                        <span className="flex flex-wrap gap-1">
-                          {badges.map((b) => (
-                            <VorgangProductChip key={b.key} badge={b} />
-                          ))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-2">
-                      <span className="flex flex-wrap items-center gap-1">
-                        {listStatus === "folder_problem" ? (
-                          <VorgangFolderChip />
-                        ) : null}
-                        {listStatus === "ams" && amsViewOffline ? (
-                          <VorgangAmsChip
-                            view={amsViewOffline}
-                            compact
-                            onClick={
-                              amsProblem
-                                ? (ev) => {
-                                    ev.stopPropagation();
-                                    setSelectedId(e.id);
-                                  }
-                                : undefined
-                            }
-                          />
-                        ) : null}
-                        {listStatus === "upload" ? (
-                          <VorgangUploadChip state={uploadState} />
-                        ) : null}
-                        {listStatus === "upload_done" ? (
-                          <VorgangCompleteChip />
-                        ) : null}
-                        {listStatus === "local_only" ? (
-                          <VorgangLocalChip />
-                        ) : null}
-                        {listStatus === "ams_terminal" && amsViewOffline ? (
-                          <VorgangAmsChip
-                            view={amsViewOffline}
-                            compact
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setSelectedId(e.id);
-                            }}
-                          />
-                        ) : null}
-                        {listStatus === "folder_cleaned_up" ? (
-                          <VorgangArchivedChip />
-                        ) : null}
-                        {listStatus === "none" ? (
-                          <span className="text-muted">—</span>
-                        ) : null}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+              {filteredEntries.map((e) => (
+                <VorgangListRow
+                  key={e.id}
+                  entry={e}
+                  selected={selectedId === e.id}
+                  checked={checked.has(e.id)}
+                  handoffOffline={
+                    Boolean(handoffStatus?.offline) &&
+                    handoffStatus?.correlation_id === e.correlation_id
+                  }
+                  folderMissingById={folderMissingById}
+                  onSelect={setSelectedId}
+                  onToggleCheck={toggleCheck}
+                />
+              ))}
               {showEmptyList && (
                 <tr>
                   <td colSpan={5} className="p-4 text-center text-muted">
