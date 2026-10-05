@@ -5,7 +5,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import type { PhotoEditorResult } from "./components/PhotoEditor";
 import type { VideoCutterResult } from "./components/VideoCutter";
-import type { CreateSuccessInfo } from "./components/CreateSuccessDialog";
 import type { IntroMuxFallbackChoice } from "./components/IntroMuxFallbackDialog";
 import type { BodyConcatFallbackChoice } from "./components/BodyConcatFallbackDialog";
 import type { ReencodeConfirmResult, ReencodeConfirmState } from "./components/ReencodeConfirmDialog";
@@ -35,6 +34,7 @@ import { AppShell } from "./components/app/AppShell";
 import { AppDialogs } from "./components/app/AppDialogs";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
+import { useCreateOutcomeStore } from "./store/createOutcomeStore";
 import { useConfigStore } from "./store/configStore";
 import { useLocaleStore } from "./store/localeStore";
 import { normalizeUiLanguage } from "./i18n/types";
@@ -294,7 +294,6 @@ function App() {
   const [appVersion, setAppVersion] = useState(APP_VERSION);
   const [ready, setReady] = useState(false);
   const [setupWizardOpen, setSetupWizardOpen] = useState(false);
-  const [createSuccess, setCreateSuccess] = useState<CreateSuccessInfo | null>(null);
   const quitUploadConfirm = useQuitUploadConfirmState();
   const { onConfirmQuit, onConfirmStay } = useUploadQuitGuard({
     openConfirm: quitUploadConfirm.openConfirm,
@@ -1369,7 +1368,6 @@ function App() {
     if (reencodeConfirm != null) return true;
     if (introMuxFallback != null) return true;
     if (bodyConcatFallback != null) return true;
-    if (createSuccess != null) return true;
     if (bulkUploadSummary != null) return true;
     if (bulkPhase2Session != null) return true;
     if (quitUploadConfirm.open) return true;
@@ -1527,7 +1525,6 @@ function App() {
     reencodeConfirm,
     introMuxFallback,
     bodyConcatFallback,
-    createSuccess,
     bulkUploadSummary,
     bulkPhase2Session,
     quitUploadConfirm.open,
@@ -2303,39 +2300,33 @@ function App() {
             videospringer: kunde.videospringer.trim() || null,
             quietSuccess: false,
           }).then((result) => {
-            setCreateSuccess((prev) => {
-              if (!prev || prev.uploadJobId !== uploadJobId) return prev;
-              if (result === "ok") {
-                return {
-                  ...prev,
-                  uploadInProgress: false,
-                  serverUploaded: true,
-                  uploadDeferred: false,
-                  uploadNote: guestLabel,
-                };
-              }
-              if (result === "cancelled") {
-                return {
-                  ...prev,
-                  uploadInProgress: false,
-                  serverUploaded: false,
-                  uploadDeferred: false,
-                  uploadNote: t("app.upload.bgCancelled"),
-                };
-              }
-              return {
-                ...prev,
+            if (!uploadJobId) return;
+            const { patchCreateOutcomeUpload } = useCreateOutcomeStore.getState();
+            if (result === "ok") {
+              patchCreateOutcomeUpload(uploadJobId, {
                 uploadInProgress: false,
-                serverUploaded: false,
+                serverUploaded: true,
                 uploadDeferred: false,
-                uploadNote: t("app.upload.failedNote"),
-              };
+                uploadFailed: false,
+                uploadNote: guestLabel,
+              });
+              return;
+            }
+            patchCreateOutcomeUpload(uploadJobId, {
+              uploadInProgress: false,
+              serverUploaded: false,
+              uploadDeferred: false,
+              uploadFailed: true,
+              uploadNote:
+                result === "cancelled"
+                  ? t("app.upload.bgCancelled")
+                  : t("app.upload.failedNote"),
             });
           });
         }
       }
 
-      setCreateSuccess({
+      useCreateOutcomeStore.getState().presentCreateOutcome({
         result: res,
         serverUploaded,
         uploadDeferred,
@@ -2719,7 +2710,6 @@ function App() {
         mediaTab={mediaTab}
         setMediaTab={setMediaTab}
         createFailed={createFailed}
-        createSuccessOpen={createSuccess !== null}
         cutterOpen={cutterOpen}
         onBusyChange={setBusy}
         onStatus={setStatus}
@@ -2967,8 +2957,6 @@ function App() {
           closeDialog();
           scheduleSdQueueDrain();
         }}
-        createSuccess={createSuccess}
-        onCreateSuccessClose={() => setCreateSuccess(null)}
         introMuxFallback={introMuxFallback}
         onIntroMuxChoice={onIntroMuxChoice}
         bodyConcatFallback={bodyConcatFallback}

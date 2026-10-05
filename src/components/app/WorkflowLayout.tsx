@@ -31,8 +31,6 @@ type Props = {
   mediaTab: "video" | "foto";
   setMediaTab: (tab: "video" | "foto") => void;
   createFailed?: boolean;
-  /** CreateSuccessDialog open — used to trigger Auto-Shrink on close. */
-  createSuccessOpen?: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
   onProgressReset: () => void;
@@ -58,7 +56,6 @@ export function WorkflowLayout({
   mediaTab,
   setMediaTab,
   createFailed = false,
-  createSuccessOpen = false,
   onBusyChange,
   onStatus,
   onProgressReset,
@@ -313,7 +310,6 @@ export function WorkflowLayout({
         appendActive={appendActive}
         sdWorkflowUiActive={sdWorkflowUiActive}
         createFailed={createFailed}
-        createSuccessOpen={createSuccessOpen}
         onCancelSession={onCancelSession}
         onCancelUpload={onCancelUpload}
         onResetProgress={onResetProgress}

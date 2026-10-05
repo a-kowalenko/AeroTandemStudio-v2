@@ -44,8 +44,6 @@ import {
 
 const COLLAPSE_AFTER_MS = 3500;
 const HIDE_AFTER_MS = 9000;
-/** Auto-shrink after Success-Modal close while background upload still expanded. */
-const BG_AUTO_SHRINK_MS = 5000;
 
 export type WorkflowProgressView = {
   visible: boolean;
@@ -81,6 +79,8 @@ export type WorkflowProgressView = {
   /** Failed background upload held until dismiss. */
   uploadFailedHold: boolean;
   onToggleCollapsed: () => void;
+  /** Upload panel: collapse after the embedded create report expired. */
+  onAutoCollapse: () => void;
   onDismissFailedHold: () => void;
 };
 
@@ -125,8 +125,12 @@ type Input = {
   uploadQueueJobs?: UploadQueueJobPreview[];
   /** Cancel/cleanup phase while slot stays occupied. */
   uploadCancelPhase?: "cancelling" | "cleanup" | null;
-  /** Bumps when CreateSuccessDialog closes (auto-shrink trigger). */
-  successCloseGeneration?: number;
+  /** Create report embedded in the upload panel (expands it on change). */
+  embeddedCreateOutcomeId?: number | null;
+  /** Any create report visible — replaces the session completion panel. */
+  createOutcomeActive?: boolean;
+  /** User toggled the upload panel (cancels the create-report auto-shrink). */
+  onUploadUserToggle?: () => void;
   uploadLastOutcome?: UploadSlotResult | null;
   uploadProgress: UploadProgressEvent | null;
   percent: number;
@@ -162,16 +166,6 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   const wasBgUploadRef = useRef(false);
   const [createReachedIndex, setCreateReachedIndex] = useState(0);
   const createPlanIdRef = useRef<CreateJobPlan | null>(null);
-  const autoShrinkTimerRef = useRef<number | null>(null);
-  const prevSuccessCloseRef = useRef(input.successCloseGeneration ?? 0);
-
-  const clearAutoShrinkTimer = () => {
-    if (autoShrinkTimerRef.current != null) {
-      window.clearTimeout(autoShrinkTimerRef.current);
-      autoShrinkTimerRef.current = null;
-    }
-  };
-
   const sdProgress = useMemo(
     () =>
       resolveSdWorkflowProgress({
@@ -335,8 +329,9 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     }
 
     if (!wasSessionActiveRef.current || sessionDismissed) return;
-    // Leftover encode % while upload runs: don't keep a session completion pill.
-    if (uploadSlotActive || failedHold) {
+    // Leftover encode % while upload runs or a create report is shown:
+    // don't keep a session completion pill.
+    if (uploadSlotActive || failedHold || input.createOutcomeActive) {
       setSessionDismissed(true);
       setSessionCollapsed(false);
       wasSessionActiveRef.current = false;
@@ -363,31 +358,14 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     sessionDismissed,
     uploadSlotActive,
     failedHold,
+    input.createOutcomeActive,
   ]);
 
-  // Auto-shrink 5s after Success-Modal close, only if still expanded.
+  // New create report lands in the upload panel → show it expanded.
   useEffect(() => {
-    const gen = input.successCloseGeneration ?? 0;
-    if (gen === prevSuccessCloseRef.current) return;
-    prevSuccessCloseRef.current = gen;
-
-    clearAutoShrinkTimer();
-    if (!uploadSlotActive) return;
-    if (uploadCollapsed) return;
-
-    autoShrinkTimerRef.current = window.setTimeout(() => {
-      autoShrinkTimerRef.current = null;
-      setUploadCollapsed(true);
-    }, BG_AUTO_SHRINK_MS);
-
-    return clearAutoShrinkTimer;
-  }, [
-    input.successCloseGeneration,
-    uploadSlotActive,
-    uploadCollapsed,
-  ]);
-
-  useEffect(() => () => clearAutoShrinkTimer(), []);
+    if (input.embeddedCreateOutcomeId == null) return;
+    setUploadCollapsed(false);
+  }, [input.embeddedCreateOutcomeId]);
 
   // Reset monotonic create step cursor when a new plan is set.
   useEffect(() => {
@@ -687,8 +665,12 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   );
 
   function onToggleUploadCollapsed() {
-    clearAutoShrinkTimer();
+    input.onUploadUserToggle?.();
     setUploadCollapsed((prev) => !prev);
+  }
+
+  function onAutoCollapseUpload() {
+    setUploadCollapsed(true);
   }
 
   function onDismissFailedHold() {
@@ -738,6 +720,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCompact: EMPTY_UPLOAD_COMPACT,
     uploadFailedHold: false,
     onToggleCollapsed: noop,
+    onAutoCollapse: noop,
     onDismissFailedHold: noop,
   };
 
@@ -764,6 +747,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCompact,
     uploadFailedHold: failedHold,
     onToggleCollapsed: onToggleUploadCollapsed,
+    onAutoCollapse: onAutoCollapseUpload,
     onDismissFailedHold,
   };
 

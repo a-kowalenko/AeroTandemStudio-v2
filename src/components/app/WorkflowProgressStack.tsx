@@ -1,5 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WorkflowProgressPanel } from "../WorkflowProgressPanel";
+import { CreateOutcomeCard } from "../CreateOutcomeCard";
+import { useCreateOutcomeStore } from "../../store/createOutcomeStore";
+import {
+  CREATE_OUTCOME_COLLAPSE_MS,
+  createOutcomeQueuePosition,
+} from "../../lib/createRunOutcome";
 import { useVideoStore } from "../../store/videoStore";
 import { usePhotoStore } from "../../store/photoStore";
 import { useUiStore } from "../../store/uiStore";
@@ -18,8 +24,6 @@ type Props = {
   appendActive: boolean;
   sdWorkflowUiActive: boolean;
   createFailed: boolean;
-  /** CreateSuccessDialog open — used to trigger Auto-Shrink on close. */
-  createSuccessOpen: boolean;
   /** Cancel session work (encode / SD / QR / import) — not upload slot. */
   onCancelSession: () => void;
   /** Cancel background upload slot only. */
@@ -38,7 +42,6 @@ export function WorkflowProgressStack({
   appendActive,
   sdWorkflowUiActive,
   createFailed,
-  createSuccessOpen,
   onCancelSession,
   onCancelUpload,
   onResetProgress,
@@ -46,8 +49,10 @@ export function WorkflowProgressStack({
 }: Props) {
   const [sessionCancelRequested, setSessionCancelRequested] = useState(false);
   const [uploadCancelRequested, setUploadCancelRequested] = useState(false);
-  const [successCloseGeneration, setSuccessCloseGeneration] = useState(0);
-  const prevSuccessOpenRef = useRef(createSuccessOpen);
+  const stackRef = useRef<HTMLDivElement>(null);
+  const createOutcome = useCreateOutcomeStore((s) => s.outcome);
+  const clearCreateOutcome = useCreateOutcomeStore((s) => s.clearCreateOutcome);
+  const prevBusyRef = useRef(busy);
   const percent = useProgressStore((s) => s.percent);
   const status = useProgressStore((s) => s.status);
   const taskProgress = useProgressStore((s) => s.taskProgress);
@@ -112,14 +117,27 @@ export function WorkflowProgressStack({
     setUploadCancelRequested(false);
   }, [uploadActiveId]);
 
-  // Success-Modal close → bump generation for Auto-Shrink (only while expanded).
+  // Next create/append starts → previous report is stale.
   useEffect(() => {
-    const wasOpen = prevSuccessOpenRef.current;
-    prevSuccessOpenRef.current = createSuccessOpen;
-    if (wasOpen && !createSuccessOpen && uploadSlotHasWork) {
-      setSuccessCloseGeneration((n) => n + 1);
-    }
-  }, [createSuccessOpen, uploadSlotHasWork]);
+    const wasBusy = prevBusyRef.current;
+    prevBusyRef.current = busy;
+    if (!wasBusy && busy) clearCreateOutcome();
+  }, [busy, clearCreateOutcome]);
+
+  // Report rides in the upload panel while its upload is active/queued (or
+  // about to be enqueued); otherwise it floats as its own card.
+  const createOutcomeUploadBound = Boolean(
+    createOutcome?.info.uploadJobId &&
+      (uploadSlotHasWork || createOutcome.info.uploadInProgress),
+  );
+  const embeddedCreateOutcome = createOutcomeUploadBound ? createOutcome : null;
+  const standaloneCreateOutcome =
+    createOutcome && !createOutcomeUploadBound ? createOutcome : null;
+  const createOutcomeQueuePos = createOutcomeQueuePosition(
+    embeddedCreateOutcome?.info.uploadJobId,
+    uploadActiveId,
+    uploadQueue.map((j) => j.id),
+  );
 
   // Phase 37.4: upload panel tracks slot independently of session busy/append.
   const { session: sessionView, upload: uploadView } = useWorkflowProgress({
@@ -147,7 +165,11 @@ export function WorkflowProgressStack({
     uploadQueueCount: uploadQueueLen,
     uploadQueueJobs,
     uploadCancelPhase,
-    successCloseGeneration,
+    embeddedCreateOutcomeId: embeddedCreateOutcome?.id ?? null,
+    createOutcomeActive: createOutcome !== null,
+    onUploadUserToggle: () => {
+      if (embeddedCreateOutcome) clearCreateOutcome(embeddedCreateOutcome.id);
+    },
     uploadLastOutcome,
     uploadProgress,
     percent,
@@ -182,27 +204,26 @@ export function WorkflowProgressStack({
     onResetProgress,
   ]);
 
-  /** Bottom padding ≈ stacked panel heights + gap (absolute overlay). */
-  const stackPadPx =
-    (sessionView.visible
-      ? sessionView.collapsed
-        ? 48
-        : sessionView.createPipeline
-          ? 176
-          : 144
-      : 0) +
-    (uploadView.visible
-      ? uploadView.collapsed
-        ? 64
-        : uploadView.createPipeline
-          ? 176
-          : 144
-      : 0) +
-    (sessionView.visible && uploadView.visible ? 8 : 0);
-
+  // Bottom padding = measured overlay height (cards vary with content).
   useLayoutEffect(() => {
-    onStackPadChange(stackPadPx);
-  }, [stackPadPx, onStackPadChange]);
+    const el = stackRef.current;
+    if (!el) return;
+    const report = () => onStackPadChange(Math.ceil(el.offsetHeight));
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [onStackPadChange]);
+
+  function handleCreateOutcomeDone(id: number, embedded: boolean) {
+    if (!embedded) {
+      clearCreateOutcome(id);
+      return;
+    }
+    // Collapse first so the report shrinks away with the details grid.
+    uploadView.onAutoCollapse();
+    window.setTimeout(() => clearCreateOutcome(id), CREATE_OUTCOME_COLLAPSE_MS);
+  }
 
   function handleCancelSession() {
     if (sessionCancelRequested) return;
@@ -217,7 +238,19 @@ export function WorkflowProgressStack({
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex flex-col gap-2">
+    <div
+      ref={stackRef}
+      className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex flex-col gap-2"
+    >
+      {standaloneCreateOutcome ? (
+        <CreateOutcomeCard
+          key={standaloneCreateOutcome.id}
+          outcome={standaloneCreateOutcome}
+          variant="standalone"
+          onDone={() => handleCreateOutcomeDone(standaloneCreateOutcome.id, false)}
+          className="mx-auto w-full max-w-2xl"
+        />
+      ) : null}
       <WorkflowProgressPanel
         view={sessionView}
         onCancel={handleCancelSession}
@@ -227,6 +260,17 @@ export function WorkflowProgressStack({
         view={uploadView}
         onCancel={handleCancelUpload}
         className="mx-auto w-full max-w-2xl"
+        uploadOutcome={
+          embeddedCreateOutcome ? (
+            <CreateOutcomeCard
+              key={embeddedCreateOutcome.id}
+              outcome={embeddedCreateOutcome}
+              variant="embedded"
+              queuePosition={createOutcomeQueuePos}
+              onDone={() => handleCreateOutcomeDone(embeddedCreateOutcome.id, true)}
+            />
+          ) : null
+        }
       />
     </div>
   );

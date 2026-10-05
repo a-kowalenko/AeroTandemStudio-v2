@@ -30,10 +30,6 @@ export const LazySuccessDialog = lazy(() =>
   import("../SuccessDialog").then((m) => ({ default: m.SuccessDialog })),
 );
 
-export const LazyCreateSuccessDialog = lazy(() =>
-  import("../CreateSuccessDialog").then((m) => ({ default: m.CreateSuccessDialog })),
-);
-
 export const LazyUpdateDialog = lazy(() =>
   import("../UpdateDialog").then((m) => ({ default: m.UpdateDialog })),
 );

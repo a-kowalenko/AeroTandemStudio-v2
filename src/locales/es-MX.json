@@ -631,6 +631,7 @@
       "uploadLiveLabel": "Subida",
       "uploadLiveWaiting": "Iniciando…",
       "uploadQueued": "+{{count}} en cola",
+      "queuePosition": "Subida en espera (#{{position}})",
       "uploadPending": "Creado localmente — subida pendiente",
       "uploadPendingHint": "Completa la subida más tarde desde Trabajos.",
       "encoder": "Codificador",
@@ -1429,6 +1430,10 @@
     },
     "sessionOutcome": {
       "aria": "Importación completada",
+      "dismiss": "Cerrar el mensaje de finalización"
+    },
+    "createOutcome": {
+      "aria": "Creación completada",
       "dismiss": "Cerrar el mensaje de finalización"
     }
   },

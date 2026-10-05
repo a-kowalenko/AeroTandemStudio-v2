@@ -1,16 +1,27 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+/** Remaining ms per `persistKey` while a card is unmounted (e.g. moved panel). */
+const remainingByKey = new Map<string, number>();
 
 /**
  * Auto-dismiss with hover pause (JS timer + CSS animation-play-state).
  * Pair with `duration: Infinity` on react-hot-toast so the library does not
  * dismiss while the bar is paused.
+ *
+ * With `persistKey`, the remaining time survives unmount/remount.
  */
 export function usePausableAutoDismiss(
   durationMs: number,
   onDismiss: () => void,
+  persistKey?: string,
 ) {
   const [paused, setPaused] = useState(false);
-  const remainingRef = useRef(durationMs);
+  const startRemaining = useMemo(() => {
+    if (!persistKey) return durationMs;
+    const saved = remainingByKey.get(persistKey);
+    return saved != null ? Math.min(saved, durationMs) : durationMs;
+  }, [persistKey, durationMs]);
+  const remainingRef = useRef(startRemaining);
   const segmentStartedRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
   const dismissedRef = useRef(false);
@@ -28,8 +39,9 @@ export function usePausableAutoDismiss(
     if (dismissedRef.current) return;
     dismissedRef.current = true;
     clearTimer();
+    if (persistKey) remainingByKey.delete(persistKey);
     onDismissRef.current();
-  }, [clearTimer]);
+  }, [clearTimer, persistKey]);
 
   const armTimer = useCallback(
     (ms: number) => {
@@ -45,20 +57,26 @@ export function usePausableAutoDismiss(
     [clearTimer, dismiss],
   );
 
-  useEffect(() => {
-    dismissedRef.current = false;
-    setPaused(false);
-    if (durationMs <= 0) return;
-    armTimer(durationMs);
-    return clearTimer;
-  }, [durationMs, armTimer, clearTimer]);
-
-  function captureRemaining() {
+  const captureRemaining = useCallback(() => {
     if (segmentStartedRef.current == null) return;
     const elapsed = Date.now() - segmentStartedRef.current;
     remainingRef.current = Math.max(0, remainingRef.current - elapsed);
     segmentStartedRef.current = null;
-  }
+  }, []);
+
+  useEffect(() => {
+    dismissedRef.current = false;
+    setPaused(false);
+    if (durationMs <= 0) return;
+    armTimer(startRemaining);
+    return () => {
+      clearTimer();
+      if (persistKey && !dismissedRef.current) {
+        captureRemaining();
+        remainingByKey.set(persistKey, remainingRef.current);
+      }
+    };
+  }, [durationMs, startRemaining, persistKey, armTimer, clearTimer, captureRemaining]);
 
   function onMouseEnter() {
     if (dismissedRef.current || durationMs <= 0 || paused) return;
@@ -79,6 +97,8 @@ export function usePausableAutoDismiss(
 
   return {
     paused,
+    /** Dismiss now (X button); runs `onDismiss` once. */
+    dismiss,
     hoverProps: {
       onMouseEnter,
       onMouseLeave,

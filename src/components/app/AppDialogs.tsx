@@ -16,7 +16,6 @@ import type { ReconnectUploadOfferChoice } from "../ReconnectUploadOfferDialog";
 import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
 import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
-import type { CreateSuccessInfo } from "../CreateSuccessDialog";
 import type { PhotoEditorResult } from "../PhotoEditor";
 import type { VideoCutterResult } from "../VideoCutter";
 import { ErrorDialog } from "../ErrorDialog";
@@ -45,7 +44,6 @@ import type { AppConfig } from "../../lib/tauri";
 import type { QrPreview } from "../../lib/tauri";
 import {
   LazyBulkUploadSummaryDialog,
-  LazyCreateSuccessDialog,
   LazyHistoryDialog,
   LazyPhotoEditor,
   LazyReencodeConfirmDialog,
@@ -132,8 +130,6 @@ export type AppDialogsProps = {
     focus?: SettingsFocusTarget;
   }) => void;
   onSuccessClose: () => void;
-  createSuccess: CreateSuccessInfo | null;
-  onCreateSuccessClose: () => void;
   introMuxFallback: { reason: string; timeoutSecs: number } | null;
   onIntroMuxChoice: (choice: IntroMuxFallbackChoice) => void;
   bodyConcatFallback: { reason: string } | null;
@@ -220,8 +216,6 @@ export function AppDialogs(props: AppDialogsProps) {
     closeDialog,
     openSettings,
     onSuccessClose,
-    createSuccess,
-    onCreateSuccessClose,
     introMuxFallback,
     onIntroMuxChoice,
     bodyConcatFallback,
@@ -371,13 +365,6 @@ export function AppDialogs(props: AppDialogsProps) {
           choices={dialogChoices}
           prompt={dialogPrompt}
           onClose={onSuccessClose}
-        />
-      </DialogChunk>
-      <DialogChunk>
-        <LazyCreateSuccessDialog
-          open={createSuccess !== null}
-          info={createSuccess}
-          onClose={onCreateSuccessClose}
         />
       </DialogChunk>
       <WarningDialog

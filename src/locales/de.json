@@ -631,6 +631,7 @@
       "uploadLiveLabel": "Upload",
       "uploadLiveWaiting": "Wird gestartet…",
       "uploadQueued": "+{{count}} in Warteschlange",
+      "queuePosition": "Upload wartet (#{{position}})",
       "uploadPending": "Lokal erstellt — Upload ausstehend",
       "uploadPendingHint": "Upload später unter Vorgänge nachholen.",
       "encoder": "Encoder",
@@ -1429,6 +1430,10 @@
     },
     "sessionOutcome": {
       "aria": "Import-Abschluss",
+      "dismiss": "Abschlussmeldung schließen"
+    },
+    "createOutcome": {
+      "aria": "Erstellung abgeschlossen",
       "dismiss": "Abschlussmeldung schließen"
     }
   },

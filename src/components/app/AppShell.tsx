@@ -46,7 +46,6 @@ export type AppShellProps = {
   mediaTab: "video" | "foto";
   setMediaTab: (tab: "video" | "foto") => void;
   createFailed?: boolean;
-  createSuccessOpen?: boolean;
   cutterOpen: boolean;
   onBusyChange: (busy: boolean) => void;
   onStatus: (status: string) => void;
@@ -80,7 +79,6 @@ export function AppShell({
   mediaTab,
   setMediaTab,
   createFailed = false,
-  createSuccessOpen = false,
   cutterOpen,
   onBusyChange,
   onStatus,
@@ -297,7 +295,6 @@ export function AppShell({
             mediaTab={mediaTab}
             setMediaTab={setMediaTab}
             createFailed={createFailed}
-            createSuccessOpen={createSuccessOpen}
             onBusyChange={onBusyChange}
             onStatus={onStatus}
             onProgressReset={onProgressReset}

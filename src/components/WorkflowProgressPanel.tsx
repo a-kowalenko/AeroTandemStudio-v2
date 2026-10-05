@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
@@ -40,6 +40,8 @@ type Props = {
   view: WorkflowProgressView;
   onCancel?: () => void;
   className?: string;
+  /** Upload panel only: create report above the compact upload bar. */
+  uploadOutcome?: ReactNode;
 };
 
 function stageIcon(stage: WorkflowProgressStage): LucideIcon {
@@ -255,7 +257,12 @@ function CompactUploadBar({ view }: { view: WorkflowProgressView }) {
   );
 }
 
-export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
+export function WorkflowProgressPanel({
+  view,
+  onCancel,
+  className,
+  uploadOutcome,
+}: Props) {
   const { t } = useTranslation();
   if (!view.visible) return null;
 
@@ -286,6 +293,23 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
         aria-label={t("app.upload.title")}
         aria-busy={cancelling || undefined}
       >
+        {uploadOutcome ? (
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+              view.collapsed
+                ? "grid-rows-[0fr] opacity-0"
+                : "grid-rows-[1fr] opacity-100",
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div className="mb-2.5 border-b border-border/60 pb-2.5">
+                {uploadOutcome}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <CompactUploadBar view={view} />
 
         <div

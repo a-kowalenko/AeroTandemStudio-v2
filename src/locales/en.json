@@ -631,6 +631,7 @@
       "uploadLiveLabel": "Upload",
       "uploadLiveWaiting": "Starting…",
       "uploadQueued": "+{{count}} queued",
+      "queuePosition": "Upload waiting (#{{position}})",
       "uploadPending": "Created locally — upload pending",
       "uploadPendingHint": "Retry the upload later from Jobs.",
       "encoder": "Encoder",
@@ -1429,6 +1430,10 @@
     },
     "sessionOutcome": {
       "aria": "Import complete",
+      "dismiss": "Dismiss completion message"
+    },
+    "createOutcome": {
+      "aria": "Creation complete",
       "dismiss": "Dismiss completion message"
     }
   },
