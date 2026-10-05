@@ -8,6 +8,8 @@ import {
   Film,
   FolderOpen,
   ImageIcon,
+  Maximize,
+  Minimize,
 } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
@@ -19,7 +21,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { VideoPlayer } from "@/components/VideoPlayer";
+import { ImmersiveMediaOverlay } from "@/components/ImmersiveMediaOverlay";
+import {
+  VideoPlayer,
+  type VideoPlayerHandle,
+} from "@/components/VideoPlayer";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
@@ -379,8 +385,14 @@ export function VorgangMediaViewer({
   const { t } = useTranslation();
   const showError = useUiStore((s) => s.showError);
   const [tab, setTab] = useState<MediaTab>("video");
-  const [photoFailed, setPhotoFailed] = useState(false);
+  /** Path that failed to decode — scoped so zap clears the error without a flash. */
+  const [photoFailedPath, setPhotoFailedPath] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<MediaContextMenuState | null>(null);
+  const [immersive, setImmersive] = useState(false);
+  const [videoResumeMs, setVideoResumeMs] = useState(0);
+  const [videoResumePlay, setVideoResumePlay] = useState(false);
+  const stagePlayerRef = useRef<VideoPlayerHandle>(null);
+  const immersivePlayerRef = useRef<VideoPlayerHandle>(null);
 
   const videos = useMemo(
     () => items.filter((item) => item.media_type === "video"),
@@ -421,27 +433,8 @@ export function VorgangMediaViewer({
   }, [open, index, items, videos.length, photos.length]);
 
   useEffect(() => {
-    setPhotoFailed(false);
-  }, [current?.path]);
-
-  useEffect(() => {
-    if (!open || tabItems.length === 0) return;
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
-      ev.preventDefault();
-      if (tabIndex < 0) return;
-      const next =
-        ev.key === "ArrowLeft"
-          ? Math.max(0, tabIndex - 1)
-          : Math.min(tabItems.length - 1, tabIndex + 1);
-      const target = tabItems[next];
-      if (!target) return;
-      const global = items.findIndex((item) => itemKey(item) === itemKey(target));
-      if (global >= 0) onIndexChange(global);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, tabItems, tabIndex, items, onIndexChange]);
+    if (!open) setImmersive(false);
+  }, [open]);
 
   const photoSrc = useMemo(() => {
     if (!current || current.media_type !== "photo") return null;
@@ -451,6 +444,11 @@ export function VorgangMediaViewer({
       return null;
     }
   }, [current]);
+
+  const photoFailed =
+    current?.media_type === "photo" &&
+    photoFailedPath != null &&
+    photoFailedPath === current.path;
 
   const currentVideoPath =
     open && current?.media_type === "video" ? current.path : null;
@@ -511,7 +509,15 @@ export function VorgangMediaViewer({
 
   function selectItem(item: ViewableMediaItem) {
     const global = items.findIndex((row) => itemKey(row) === itemKey(item));
-    if (global >= 0) onIndexChange(global);
+    if (global < 0) return;
+    if (immersive) {
+      setVideoResumeMs(0);
+      setVideoResumePlay(item.media_type === "video");
+    } else if (current && itemKey(item) !== itemKey(current)) {
+      setVideoResumeMs(0);
+      setVideoResumePlay(false);
+    }
+    onIndexChange(global);
   }
 
   function switchTab(next: MediaTab) {
@@ -529,6 +535,40 @@ export function VorgangMediaViewer({
     const target = tabItems[next];
     if (target) selectItem(target);
   }
+
+  useEffect(() => {
+    if (!open || tabItems.length === 0) return;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      ev.preventDefault();
+      goRelative(ev.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // Intentional: rebind when navigation inputs change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, tabItems, tabIndex, immersive, items, onIndexChange]);
+
+  const enterImmersive = useCallback(() => {
+    if (!current) return;
+    if (current.media_type === "video") {
+      const player = stagePlayerRef.current;
+      setVideoResumeMs(player?.getCurrentTimeMs() ?? 0);
+      setVideoResumePlay(player?.isPlaying() ?? true);
+      player?.pause();
+    }
+    setImmersive(true);
+  }, [current]);
+
+  const exitImmersive = useCallback(() => {
+    if (current?.media_type === "video") {
+      const player = immersivePlayerRef.current;
+      setVideoResumeMs(player?.getCurrentTimeMs() ?? 0);
+      setVideoResumePlay(player?.isPlaying() ?? false);
+      player?.pause();
+    }
+    setImmersive(false);
+  }, [current?.media_type]);
 
   const canOpenFolder = Boolean(folderPath?.trim());
   const onTileContextMenu = (path: string) => mediaContextMenuHandler(path, setCtxMenu);
@@ -724,28 +764,56 @@ export function VorgangMediaViewer({
                         <p>{t("history.viewer.emptyTab")}</p>
                       </div>
                     ) : current?.media_type === "video" && tabId === "video" ? (
-                      <VideoPlayer
-                        key={current.path}
-                        srcPath={open ? current.path : null}
-                        cacheKey={current.size_bytes ?? 0}
-                        className="h-full w-full"
-                        chrome="playback"
-                        autoPlay={autoPlayVideo}
-                        delaySrcUntilAutoPlay
-                        fillAvailable
-                      />
+                      immersive ? (
+                        <div className="flex h-full w-full items-center justify-center text-sm text-white/50">
+                          {t("history.viewer.immersiveActive")}
+                        </div>
+                      ) : (
+                        <VideoPlayer
+                          key={`${current.path}:stage`}
+                          ref={stagePlayerRef}
+                          srcPath={open ? current.path : null}
+                          cacheKey={current.size_bytes ?? 0}
+                          className="h-full w-full"
+                          chrome="playback"
+                          autoPlay={
+                            videoResumeMs > 0 ? videoResumePlay : autoPlayVideo
+                          }
+                          delaySrcUntilAutoPlay={videoResumeMs <= 0}
+                          fillAvailable
+                          startAtMs={videoResumeMs}
+                          onToggleFullscreen={enterImmersive}
+                          isFullscreen={false}
+                        />
+                      )
                     ) : current?.media_type === "photo" &&
                       tabId === "foto" &&
                       stagePhotoDisplay &&
                       !photoFailed ? (
                       <>
-                        <img
-                          src={stagePhotoDisplay}
-                          alt={current.filename}
-                          className="max-h-full max-w-full object-contain"
-                          draggable={false}
-                          onError={() => setPhotoFailed(true)}
-                        />
+                        <button
+                          type="button"
+                          className="flex h-full max-h-full w-full max-w-full cursor-zoom-in items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60"
+                          aria-label={t("common.actions.fullscreen")}
+                          onClick={enterImmersive}
+                        >
+                          <img
+                            key={current.path}
+                            src={stagePhotoDisplay}
+                            alt={current.filename}
+                            className="max-h-full max-w-full object-contain"
+                            draggable={false}
+                            onError={() => setPhotoFailedPath(current.path)}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 rounded-lg bg-black/45 p-2 text-white backdrop-blur-sm transition hover:bg-black/65"
+                          aria-label={t("common.actions.fullscreen")}
+                          onClick={enterImmersive}
+                        >
+                          <Maximize className="h-4 w-4" />
+                        </button>
                         {tabItems.length > 1 ? (
                           <>
                             <button
@@ -811,6 +879,134 @@ export function VorgangMediaViewer({
         onError={(message) => showError(message)}
         className="z-[110]"
       />
+
+      <ImmersiveMediaOverlay
+        open={immersive && current != null}
+        onClose={exitImmersive}
+        ariaLabel={
+          current
+            ? t("history.viewer.fullscreenNamed", { name: current.filename })
+            : t("common.actions.fullscreen")
+        }
+      >
+        {current?.media_type === "video" ? (
+          <div className="relative flex h-full w-full flex-col">
+            <VideoPlayer
+              key={`${current.path}:immersive`}
+              ref={immersivePlayerRef}
+              srcPath={current.path}
+              cacheKey={current.size_bytes ?? 0}
+              className="h-full w-full"
+              chrome="playback"
+              autoPlay={videoResumePlay}
+              fillAvailable
+              startAtMs={videoResumeMs}
+              onToggleFullscreen={exitImmersive}
+              isFullscreen
+            />
+            {tabItems.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40"
+                  onClick={() => goRelative(-1)}
+                  disabled={!canPrev}
+                  aria-label={t("history.viewer.prev")}
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40"
+                  onClick={() => goRelative(1)}
+                  disabled={!canNext}
+                  aria-label={t("history.viewer.next")}
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : current?.media_type === "photo" ? (
+          <div className="relative flex h-full w-full items-center justify-center">
+            <button
+              type="button"
+              className="absolute inset-0 cursor-zoom-out"
+              aria-label={t("common.actions.exitFullscreen")}
+              onClick={exitImmersive}
+            />
+            {photoFailed ? (
+              <p className="relative z-[1] text-sm text-white/70">
+                {t("history.viewer.loadError")}
+              </p>
+            ) : photoSrc || stagePhotoDisplay ? (
+              <img
+                key={current.path}
+                src={photoSrc ?? stagePhotoDisplay ?? undefined}
+                alt={current.filename}
+                className="relative z-[1] max-h-full max-w-full cursor-zoom-out object-contain"
+                draggable={false}
+                onClick={exitImmersive}
+                onError={() => setPhotoFailedPath(current.path)}
+              />
+            ) : (
+              <ImageIcon
+                className="relative z-[1] h-10 w-10 text-white/45"
+                aria-hidden
+              />
+            )}
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 bg-gradient-to-b from-black/70 to-transparent px-4 pt-4 pb-10">
+              <div className="min-w-0 pointer-events-none">
+                <p className="truncate text-sm font-medium text-white">
+                  {current.filename}
+                </p>
+                {tabItems.length > 1 ? (
+                  <p className="text-xs text-white/60">
+                    {t("history.viewer.counter", {
+                      current: tabIndex + 1,
+                      total: tabItems.length,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="pointer-events-auto rounded-full bg-white/10 p-2.5 text-white transition hover:bg-white/20"
+                aria-label={t("common.actions.exitFullscreen")}
+                onClick={exitImmersive}
+              >
+                <Minimize className="h-5 w-5" />
+              </button>
+            </div>
+            {tabItems.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="absolute left-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40"
+                  onClick={() => goRelative(-1)}
+                  disabled={!canPrev}
+                  aria-label={t("history.viewer.prev")}
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </button>
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 z-20 -translate-y-1/2 rounded-full bg-black/50 p-3 text-white backdrop-blur-sm transition hover:bg-black/70 disabled:opacity-40"
+                  onClick={() => goRelative(1)}
+                  disabled={!canNext}
+                  aria-label={t("history.viewer.next")}
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex h-full items-center justify-center text-sm text-white/70">
+            {t("history.viewer.loadError")}
+          </div>
+        )}
+      </ImmersiveMediaOverlay>
     </Dialog>
   );
 }

@@ -1696,7 +1696,9 @@
       "unavailableCleanedUp": "Media no longer local — output folder was removed",
       "unavailableEmpty": "No local delivery media available",
       "rowSourceHint": "Source file (not a delivery product)",
-      "rowMissingHint": "File no longer local"
+      "rowMissingHint": "File no longer local",
+      "fullscreenNamed": "{{name}} fullscreen",
+      "immersiveActive": "Fullscreen active"
     }
   },
   "ams": {

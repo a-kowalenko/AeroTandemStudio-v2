@@ -8,7 +8,16 @@
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Pause, Play, Volume, Volume1, Volume2, VolumeX } from "lucide-react";
+import {
+  Maximize,
+  Minimize,
+  Pause,
+  Play,
+  Volume,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { videoFileSrc } from "../lib/mediaUrl";
 import {
@@ -53,6 +62,7 @@ function VolumeLevelIcon({
 export type VideoPlayerHandle = {
   getCurrentTimeMs: () => number;
   getDurationMs: () => number;
+  isPlaying: () => boolean;
   seekMs: (ms: number) => void;
   pause: () => void;
   play: () => void;
@@ -118,6 +128,15 @@ type VideoPlayerProps = {
   /** Optional seek snap (e.g. nearest keyframe in split mode). */
   snapSeekMs?: (ms: number) => number;
   disabled?: boolean;
+  /**
+   * Seek once metadata is ready (e.g. resume after moving into immersive overlay).
+   * Ignored when ≤ 0.
+   */
+  startAtMs?: number;
+  /** When set, shows a fullscreen toggle in playback chrome. */
+  onToggleFullscreen?: () => void;
+  /** Swaps Maximize ↔ Minimize icon when true. */
+  isFullscreen?: boolean;
 };
 
 /** Precise clock for trim / scrub bubbles. */
@@ -241,6 +260,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       rangeHandleTheme = "trim",
       snapSeekMs,
       disabled,
+      startAtMs,
+      onToggleFullscreen,
+      isFullscreen = false,
     },
     ref,
   ) {
@@ -328,6 +350,9 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       [onTimeUpdate],
     );
 
+    const startAtMsRef = useRef(startAtMs);
+    startAtMsRef.current = startAtMs;
+
     useImperativeHandle(ref, () => ({
       getCurrentTimeMs: () => {
         const v = videoRef.current;
@@ -336,6 +361,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
       getDurationMs: () => {
         const v = videoRef.current;
         return v && Number.isFinite(v.duration) ? v.duration * 1000 : durationMsRef.current;
+      },
+      isPlaying: () => {
+        const v = videoRef.current;
+        return Boolean(v && !v.paused && !v.ended);
       },
       seekMs: (ms: number) => {
         const snapped = applySeekSnap(Math.max(0, ms));
@@ -879,27 +908,44 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                 e.currentTarget.muted = mutedRef.current;
                 e.currentTarget.volume = mutedRef.current ? 0 : volumeRef.current;
                 const d = e.currentTarget.duration * 1000;
-                emitTime(0, d);
-                setBufferedRatio(bufferedEndRatio(e.currentTarget, d));
-                // WKWebView / Safari: metadata alone often leaves a black frame.
-                if (!autoPlayRef.current) {
+                const resumeMs = startAtMsRef.current;
+                const v = e.currentTarget;
+                if (
+                  resumeMs != null &&
+                  Number.isFinite(resumeMs) &&
+                  resumeMs > 0 &&
+                  d > 0
+                ) {
+                  const clamped = Math.min(resumeMs, Math.max(0, d - 1));
                   try {
-                    const v = e.currentTarget;
-                    if (v.currentTime === 0) {
-                      markLinuxUserSeek();
-                      v.currentTime = Math.min(
-                        WEBKIT_FIRST_FRAME_SEEK_SEC,
-                        Number.isFinite(v.duration) && v.duration > 0
-                          ? v.duration * 0.001
-                          : WEBKIT_FIRST_FRAME_SEEK_SEC,
-                      );
-                    }
+                    markLinuxUserSeek();
+                    v.currentTime = clamped / 1000;
                   } catch {
                     /* ignore seek failures */
                   }
+                  emitTime(clamped, d);
+                } else {
+                  emitTime(0, d);
+                  // WKWebView / Safari: metadata alone often leaves a black frame.
+                  if (!autoPlayRef.current) {
+                    try {
+                      if (v.currentTime === 0) {
+                        markLinuxUserSeek();
+                        v.currentTime = Math.min(
+                          WEBKIT_FIRST_FRAME_SEEK_SEC,
+                          Number.isFinite(v.duration) && v.duration > 0
+                            ? v.duration * 0.001
+                            : WEBKIT_FIRST_FRAME_SEEK_SEC,
+                        );
+                      }
+                    } catch {
+                      /* ignore seek failures */
+                    }
+                  }
                 }
+                setBufferedRatio(bufferedEndRatio(v, d));
                 if (autoPlayRef.current && !disabled) {
-                  void e.currentTarget.play().catch(() => {
+                  void v.play().catch(() => {
                     /* autoplay may be blocked until user gesture */
                   });
                 }
@@ -1071,7 +1117,33 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     <span className="text-white/50"> / </span>
                     {formatClockMs(durationMs)}
                   </span>
-                  <div className="ml-auto">{renderVolumeControl()}</div>
+                  <div className="ml-auto flex items-center gap-0.5">
+                    {renderVolumeControl()}
+                    {onToggleFullscreen ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-9 w-9 shrink-0 rounded-full text-white hover:bg-white/15 hover:text-white"
+                        disabled={disabled || !hasMediaSurface}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleFullscreen();
+                        }}
+                        aria-label={
+                          isFullscreen
+                            ? t("common.actions.exitFullscreen")
+                            : t("common.actions.fullscreen")
+                        }
+                      >
+                        {isFullscreen ? (
+                          <Minimize className="h-4 w-4" />
+                        ) : (
+                          <Maximize className="h-4 w-4" />
+                        )}
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>

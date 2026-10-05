@@ -1696,7 +1696,9 @@
       "unavailableCleanedUp": "Medios ya no locales — se eliminó la carpeta de salida",
       "unavailableEmpty": "No hay medios de entrega locales",
       "rowSourceHint": "Archivo fuente (no es producto de entrega)",
-      "rowMissingHint": "Archivo ya no local"
+      "rowMissingHint": "Archivo ya no local",
+      "fullscreenNamed": "{{name}} pantalla completa",
+      "immersiveActive": "Pantalla completa activa"
     }
   },
   "ams": {

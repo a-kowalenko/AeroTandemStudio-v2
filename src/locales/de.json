@@ -1696,7 +1696,9 @@
       "unavailableCleanedUp": "Medien nicht mehr lokal — Ausgabeordner wurde entfernt",
       "unavailableEmpty": "Keine lokalen Liefermedien vorhanden",
       "rowSourceHint": "Quelldatei (nicht Lieferprodukt)",
-      "rowMissingHint": "Datei nicht mehr lokal"
+      "rowMissingHint": "Datei nicht mehr lokal",
+      "fullscreenNamed": "{{name}} Vollbild",
+      "immersiveActive": "Vollbild aktiv"
     }
   },
   "ams": {
