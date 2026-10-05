@@ -21,12 +21,16 @@ import { scanQrPhoto } from "../lib/tauri";
 import { maybeRemoveQrPhoto } from "../lib/qrCleanup";
 import { presentQrHit } from "../lib/qrPresent";
 import { requestKundenIdFocus } from "../lib/kundenIdFocus";
-import { PHOTO_THUMB_PRIORITY } from "../lib/photoThumbnailQueue";
+import {
+  PHOTO_THUMB_PRIORITY,
+  photoThumbnailQueue,
+} from "../lib/photoThumbnailQueue";
 import {
   MediaFileContextMenu,
   mediaContextMenuHandler,
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
+import { createPortal } from "react-dom";
 import { cn } from "../lib/utils";
 import { PhotoOverviewGrid } from "./photo/PhotoOverviewGrid";
 import { PhotoDetailPanel } from "./photo/PhotoDetailPanel";
@@ -41,6 +45,71 @@ const AUTO_EXPAND_THRESHOLD = 8;
 const PHOTO_OVERVIEW_LG_MQ = "(min-width: 1024px)";
 /** Sensible floor so the thumb grid stays usable (~2 rows). */
 const PHOTO_OVERVIEW_MIN_PX = 256;
+const PREVIEW_MORPH_MS = 300;
+const PREVIEW_MORPH_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const PREVIEW_GAP_PX = 12;
+const MINI_RADIUS_PX = 6;
+const STAGE_RADIUS_PX = 12;
+
+type PreviewBox = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+type PreviewMorph = {
+  src: string;
+  from: PreviewBox;
+  to: PreviewBox;
+  playing: boolean;
+  /** Ghost still covers the real preview; real layer is already painted underneath. */
+  settling: boolean;
+  dir: "expand" | "collapse";
+};
+
+function readBox(el: HTMLElement | null): PreviewBox | null {
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  if (r.width < 8 || r.height < 8) return null;
+  return { left: r.left, top: r.top, width: r.width, height: r.height };
+}
+
+function relTo(el: HTMLElement, parent: HTMLElement): PreviewBox | null {
+  const a = readBox(el);
+  if (!a) return null;
+  const p = parent.getBoundingClientRect();
+  return {
+    left: a.left - p.left,
+    top: a.top - p.top,
+    width: a.width,
+    height: a.height,
+  };
+}
+
+function stageBox(grid: HTMLElement, stageH: number): PreviewBox {
+  const r = grid.getBoundingClientRect();
+  return {
+    left: r.left,
+    top: r.top,
+    width: grid.clientWidth,
+    height: stageH,
+  };
+}
+
+function miniBoxFromRel(grid: HTMLElement, rel: PreviewBox): PreviewBox {
+  const r = grid.getBoundingClientRect();
+  return {
+    left: r.left + rel.left,
+    top: r.top + rel.top,
+    width: rel.width,
+    height: rel.height,
+  };
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
 
 type PhotoPreviewProps = {
   disabled?: boolean;
@@ -90,7 +159,15 @@ export function PhotoPreview({
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(
     null,
   );
+  const [morph, setMorph] = useState<PreviewMorph | null>(null);
   const detailPanelRef = useRef<HTMLElement>(null);
+  const miniPreviewRef = useRef<HTMLButtonElement>(null);
+  const layoutGridRef = useRef<HTMLDivElement>(null);
+  const stageFrameRef = useRef<HTMLDivElement>(null);
+  const lastMiniRelRef = useRef<PreviewBox | null>(null);
+  const morphTimerRef = useRef<number | null>(null);
+  const morphRafRef = useRef<number | null>(null);
+  const [gridWidth, setGridWidth] = useState(0);
   const [detailPanelHeight, setDetailPanelHeight] = useState<number | null>(
     null,
   );
@@ -175,6 +252,18 @@ export function PhotoPreview({
   const overviewGridClassName =
     isLgOverviewRow && detailPanelHeight != null ? "max-h-none" : undefined;
 
+  const stageHeight = gridWidth > 0 ? (gridWidth * 9) / 16 : 0;
+
+  useEffect(() => {
+    const el = layoutGridRef.current;
+    if (!el) return;
+    const sync = () => setGridWidth(el.clientWidth);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [photoList.length, overviewExpanded]);
+
   const goPrev = useCallback(() => {
     if (currentIndex > 0) setCurrentIndex(currentIndex - 1);
   }, [currentIndex, setCurrentIndex]);
@@ -185,8 +274,147 @@ export function PhotoPreview({
     }
   }, [currentIndex, photoList.length, setCurrentIndex]);
 
-  const expandPreview = useCallback(() => setExpandedOverride(true), []);
-  const collapsePreview = useCallback(() => setExpandedOverride(false), []);
+  const snapshotMiniRel = useCallback(() => {
+    const mini = miniPreviewRef.current;
+    const grid = layoutGridRef.current;
+    if (!mini || !grid) return lastMiniRelRef.current;
+    const rel = relTo(mini, grid);
+    if (rel) lastMiniRelRef.current = rel;
+    return lastMiniRelRef.current;
+  }, []);
+
+  const clearMorphTimers = useCallback(() => {
+    if (morphTimerRef.current != null) {
+      window.clearTimeout(morphTimerRef.current);
+      morphTimerRef.current = null;
+    }
+    if (morphRafRef.current != null) {
+      window.cancelAnimationFrame(morphRafRef.current);
+      morphRafRef.current = null;
+    }
+  }, []);
+
+  const playMorph = useCallback(
+    (next: Omit<PreviewMorph, "playing" | "settling">) => {
+      clearMorphTimers();
+      setMorph({ ...next, playing: false, settling: false });
+      morphRafRef.current = window.requestAnimationFrame(() => {
+        morphRafRef.current = window.requestAnimationFrame(() => {
+          morphRafRef.current = null;
+          setMorph((prev) => (prev ? { ...prev, playing: true } : prev));
+          morphTimerRef.current = window.setTimeout(() => {
+            morphTimerRef.current = null;
+            // Paint the real preview under the ghost, then drop the ghost.
+            setMorph((prev) => (prev ? { ...prev, settling: true } : prev));
+            morphRafRef.current = window.requestAnimationFrame(() => {
+              morphRafRef.current = window.requestAnimationFrame(() => {
+                morphRafRef.current = null;
+                setMorph(null);
+              });
+            });
+          }, PREVIEW_MORPH_MS);
+        });
+      });
+    },
+    [clearMorphTimers],
+  );
+
+  const expandPreview = useCallback(() => {
+    if (overviewExpanded) return;
+    if (prefersReducedMotion()) {
+      setExpandedOverride(true);
+      return;
+    }
+    const grid = layoutGridRef.current;
+    const from = readBox(miniPreviewRef.current);
+    snapshotMiniRel();
+    const path = current?.path;
+    const rev = path ? getMediaRevision(path) : 0;
+    const img = miniPreviewRef.current?.querySelector("img");
+    const src =
+      (path
+        ? (photoThumbnailQueue.getCached(path, "preview", rev) ??
+          photoFileSrcFallback(path, rev))
+        : "") ||
+      img?.currentSrc ||
+      img?.src ||
+      "";
+    const width = grid?.clientWidth ?? gridWidth;
+    const height = width > 0 ? (width * 9) / 16 : stageHeight;
+    const to = grid && height > 0 ? stageBox(grid, height) : null;
+    setExpandedOverride(true);
+    if (!from || !to || !src) return;
+    playMorph({ src, from, to, dir: "expand" });
+  }, [
+    overviewExpanded,
+    playMorph,
+    snapshotMiniRel,
+    gridWidth,
+    stageHeight,
+    current?.path,
+    getMediaRevision,
+  ]);
+
+  const collapsePreview = useCallback(() => {
+    if (!overviewExpanded) return;
+    if (prefersReducedMotion()) {
+      setExpandedOverride(false);
+      return;
+    }
+    const grid = layoutGridRef.current;
+    const from =
+      readBox(stageFrameRef.current) ??
+      (grid && stageHeight > 0 ? stageBox(grid, stageHeight) : null);
+    const rel = lastMiniRelRef.current;
+    const to = grid && rel ? miniBoxFromRel(grid, rel) : null;
+    const path = current?.path;
+    const rev = path ? getMediaRevision(path) : 0;
+    const img = stageFrameRef.current?.querySelector("img");
+    const src =
+      (path
+        ? (photoThumbnailQueue.getCached(path, "preview", rev) ??
+          photoFileSrcFallback(path, rev))
+        : "") ||
+      img?.currentSrc ||
+      img?.src ||
+      "";
+    setExpandedOverride(false);
+    if (!from || !to || !src) return;
+    playMorph({ src, from, to, dir: "collapse" });
+  }, [
+    overviewExpanded,
+    playMorph,
+    stageHeight,
+    current?.path,
+    getMediaRevision,
+  ]);
+
+  useEffect(() => {
+    return () => clearMorphTimers();
+  }, [clearMorphTimers]);
+
+  useEffect(() => {
+    if (overviewExpanded) return;
+    const mini = miniPreviewRef.current;
+    const grid = layoutGridRef.current;
+    if (!mini || !grid) return;
+    let ready = false;
+    const timer = window.setTimeout(() => {
+      ready = true;
+      const rel = relTo(mini, grid);
+      if (rel) lastMiniRelRef.current = rel;
+    }, PREVIEW_MORPH_MS + 40);
+    const ro = new ResizeObserver(() => {
+      if (!ready) return;
+      const rel = relTo(mini, grid);
+      if (rel) lastMiniRelRef.current = rel;
+    });
+    ro.observe(mini);
+    return () => {
+      window.clearTimeout(timer);
+      ro.disconnect();
+    };
+  }, [overviewExpanded, currentIndex]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -280,12 +508,16 @@ export function PhotoPreview({
     currentRevision,
     PHOTO_THUMB_PRIORITY.stageUpgrade,
     {
-      enabled: Boolean(current) && overviewExpanded && !qrScanBusy,
+      // Keep warm so expand handoff does not swap/decode a new URL.
+      enabled: Boolean(current) && !qrScanBusy,
     },
   );
   const stageSrc = current
     ? (previewSrc ?? photoFileSrcFallback(current.path, currentRevision))
     : null;
+  // Keep morph URL during expand (incl. settle) so the handoff never swaps src.
+  const stageDisplaySrc =
+    morph && morph.dir === "expand" ? morph.src : stageSrc;
 
   void editMarks;
 
@@ -302,6 +534,26 @@ export function PhotoPreview({
     [],
   );
 
+  // Hide real stage while expand ghost flies; reveal under ghost during settle.
+  const hideStageVisual =
+    morph != null &&
+    (morph.dir === "collapse" || (morph.dir === "expand" && !morph.settling));
+  // Hide mini while expand flies / collapse flies; reveal under ghost during settle.
+  const hideMiniVisual =
+    morph != null &&
+    (morph.dir === "expand" || (morph.dir === "collapse" && !morph.settling));
+  const morphSx = morph ? morph.to.width / Math.max(morph.from.width, 1) : 1;
+  const morphSy = morph ? morph.to.height / Math.max(morph.from.height, 1) : 1;
+  const morphRadius = morph
+    ? morph.playing
+      ? morph.dir === "expand"
+        ? STAGE_RADIUS_PX
+        : MINI_RADIUS_PX
+      : morph.dir === "expand"
+        ? MINI_RADIUS_PX
+        : STAGE_RADIUS_PX
+    : MINI_RADIUS_PX;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -312,48 +564,54 @@ export function PhotoPreview({
       </div>
 
       <div
-        className={cn(
-          "grid min-h-0 transition-[grid-template-rows,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-          overviewExpanded
-            ? "grid-rows-[1fr_auto] gap-3"
-            : "grid-rows-[0fr_auto] gap-0",
-        )}
+        ref={layoutGridRef}
+        className="grid min-h-0 transition-[grid-template-rows,gap] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+        style={{
+          gridTemplateRows: overviewExpanded
+            ? `${stageHeight || 0}px auto`
+            : "0px auto",
+          gap: overviewExpanded ? PREVIEW_GAP_PX : 0,
+        }}
       >
         <div
           className={cn(
-            "min-h-0 overflow-hidden transition-opacity duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-            overviewExpanded
+            "min-h-0 overflow-hidden",
+            overviewExpanded && !hideStageVisual
               ? "opacity-100"
               : "pointer-events-none opacity-0",
           )}
-          aria-hidden={!overviewExpanded}
+          aria-hidden={!overviewExpanded || hideStageVisual}
         >
           <div
+            ref={stageFrameRef}
             className="relative aspect-video w-full overflow-hidden rounded-xl bg-[var(--ats-preview-stage)] ring-1 ring-border"
-            tabIndex={overviewExpanded ? 0 : -1}
+            tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
             onContextMenu={
               current
                 ? mediaContextMenuHandler(current.path, setCtxMenu)
                 : undefined
             }
           >
-            {stageSrc ? (
+            {stageDisplaySrc ? (
               <>
                 <img
-                  src={stageSrc}
+                  src={stageDisplaySrc}
                   alt={current?.filename ?? t("common.labels.photo")}
                   className="h-full w-full object-contain"
+                  draggable={false}
                 />
-                <button
-                  type="button"
-                  className="absolute right-2 top-2 z-[1] rounded-lg bg-black/45 p-2 text-white backdrop-blur-sm transition hover:bg-black/65"
-                  onClick={collapsePreview}
-                  aria-label={t("photo.preview.collapsePreviewAria")}
-                  tabIndex={overviewExpanded ? 0 : -1}
-                >
-                  <Minimize2 className="h-4 w-4" aria-hidden />
-                </button>
-                {photoList.length > 1 && (
+                {morph == null && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 z-[1] rounded-lg bg-black/45 p-2 text-white backdrop-blur-sm transition hover:bg-black/65"
+                    onClick={collapsePreview}
+                    aria-label={t("photo.preview.collapsePreviewAria")}
+                    tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
+                  >
+                    <Minimize2 className="h-4 w-4" aria-hidden />
+                  </button>
+                )}
+                {morph == null && photoList.length > 1 && (
                   <>
                     <button
                       type="button"
@@ -361,7 +619,7 @@ export function PhotoPreview({
                       onClick={goPrev}
                       disabled={currentIndex <= 0}
                       aria-label={t("photo.preview.prevPhotoAria")}
-                      tabIndex={overviewExpanded ? 0 : -1}
+                      tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </button>
@@ -371,7 +629,7 @@ export function PhotoPreview({
                       onClick={goNext}
                       disabled={currentIndex >= photoList.length - 1}
                       aria-label={t("photo.preview.nextPhotoAria")}
-                      tabIndex={overviewExpanded ? 0 : -1}
+                      tabIndex={overviewExpanded && !hideStageVisual ? 0 : -1}
                     >
                       <ChevronRight className="h-5 w-5" />
                     </button>
@@ -390,6 +648,7 @@ export function PhotoPreview({
         <div className="flex min-h-0 flex-col gap-3 lg:flex-row lg:items-start">
           <PhotoDetailPanel
             ref={detailPanelRef}
+            miniPreviewRef={miniPreviewRef}
             current={current ?? null}
             currentIndex={currentIndex}
             photoCount={photoList.length}
@@ -406,6 +665,7 @@ export function PhotoPreview({
             disabled={disabled}
             showMiniPreview
             miniPreviewCollapsed={overviewExpanded}
+            hideMiniVisual={hideMiniVisual}
             effectiveSelectionSize={effectiveSelection.size}
             explicitlySelected={explicitlySelected}
             selectedIndices={selectedIndices}
@@ -438,6 +698,36 @@ export function PhotoPreview({
           </div>
         </div>
       </div>
+
+      {morph
+        ? createPortal(
+            <div
+              aria-hidden
+              className="pointer-events-none fixed z-[80] overflow-hidden bg-[var(--ats-preview-stage)] ring-1 ring-border"
+              style={{
+                left: 0,
+                top: 0,
+                width: morph.from.width,
+                height: morph.from.height,
+                borderRadius: morphRadius,
+                transform: morph.playing
+                  ? `translate(${morph.to.left}px, ${morph.to.top}px) scale(${morphSx}, ${morphSy})`
+                  : `translate(${morph.from.left}px, ${morph.from.top}px) scale(1, 1)`,
+                transformOrigin: "top left",
+                transition: morph.playing
+                  ? `transform ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}, border-radius ${PREVIEW_MORPH_MS}ms ${PREVIEW_MORPH_EASE}`
+                  : "none",
+              }}
+            >
+              <img
+                src={morph.src}
+                alt=""
+                className="h-full w-full object-contain"
+              />
+            </div>,
+            document.body,
+          )
+        : null}
 
       <MediaFileContextMenu
         state={ctxMenu}

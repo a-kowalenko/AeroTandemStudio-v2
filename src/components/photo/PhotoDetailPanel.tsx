@@ -1,4 +1,4 @@
-import { forwardRef } from "react";
+import { forwardRef, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Maximize2,
@@ -48,6 +48,9 @@ type Props = {
   showMiniPreview: boolean;
   /** When true, mini preview collapses (large stage is open above). */
   miniPreviewCollapsed?: boolean;
+  /** Hide mini image while a FLIP ghost is in flight. */
+  hideMiniVisual?: boolean;
+  miniPreviewRef?: Ref<HTMLButtonElement>;
   effectiveSelectionSize: number;
   explicitlySelected: boolean;
   selectedIndices: number[];
@@ -79,6 +82,8 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
       disabled,
       showMiniPreview,
       miniPreviewCollapsed = false,
+      hideMiniVisual = false,
+      miniPreviewRef,
       effectiveSelectionSize,
       explicitlySelected,
       selectedIndices,
@@ -130,6 +135,7 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
             >
               <div className="min-h-0 overflow-hidden">
                 <button
+                  ref={miniPreviewRef}
                   type="button"
                   disabled={!miniOpen || !onExpandPreview}
                   onClick={onExpandPreview}
@@ -144,12 +150,16 @@ export const PhotoDetailPanel = forwardRef<HTMLElement, Props>(
                   <img
                     src={miniSrc}
                     alt={current.filename}
-                    className="pointer-events-none h-full w-full object-contain"
+                    className={cn(
+                      "pointer-events-none h-full w-full object-contain",
+                      hideMiniVisual && "opacity-0",
+                    )}
                   />
                   <span
                     className={cn(
                       "pointer-events-none absolute right-1.5 top-1.5 rounded-md bg-black/50 p-1.5 text-white backdrop-blur-sm",
                       "opacity-80 transition-opacity duration-200 group-hover:opacity-100",
+                      hideMiniVisual && "opacity-0",
                     )}
                   >
                     <Maximize2 className="h-3.5 w-3.5" aria-hidden />
