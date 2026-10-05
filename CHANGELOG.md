@@ -28,6 +28,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Buchungssuche und Server-Anfragen: reagieren zuverlässiger bei Zeitüberschreitung oder Verbindungsproblemen
 - Erstellen: „Erfolgreich erstellt“ als Karte im Fortschritt statt als Dialog — mit Ergebnis, „Zum Speicherort“ und „Abspielen“; ohne laufenden Upload blendet sie sich selbst aus, Maus darüber hält den Timer an
 - Upload: nach erfolgreichem Hochladen bleibt die Leiste kurz mit dem Ergebnis stehen und blendet sich dann selbst aus; Maus darüber hält den Timer an
+- Vorgänge → Medien: Fotos im Vollbild schärfer und flüssiger beim Blättern — Nachbarbilder werden vorbereitet
 
 ### Behoben
 
