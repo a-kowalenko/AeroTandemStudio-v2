@@ -24,6 +24,7 @@ import type { useVideoCutApply } from "../../hooks/useVideoCutApply";
 import type { usePhotoEditApply } from "../../hooks/usePhotoEditApply";
 import type { useCreateValidation } from "../../hooks/useCreateValidation";
 import { useProgressStore } from "../../store/progressStore";
+import { useSessionRunStore } from "../../store/sessionRunStore";
 import { cn } from "../../lib/utils";
 
 type CreateValidation = ReturnType<typeof useCreateValidation>;
@@ -106,6 +107,8 @@ export function WorkflowLayout({
   const qrScanOrder = useQrScanStore((s) => s.scanOrder);
   const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
   const qrVideoEdgeLimited = useQrScanStore((s) => s.videoEdgeLimited);
+  const sessionOutcome = useSessionRunStore((s) => s.outcome);
+  const clearSessionRun = useSessionRunStore((s) => s.clearSessionRun);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
   const uploadProgress = useServerStore((s) => s.uploadProgress);
   const uploadSlotActive = useUploadQueueStore((s) => s.active !== null);
@@ -213,7 +216,13 @@ export function WorkflowLayout({
     uploadCancelRequested,
     createJobPlan,
     createFailed,
+    sessionOutcome,
+    onDismissSessionOutcome: clearSessionRun,
   });
+
+  useEffect(() => {
+    if (busy || appendActive) clearSessionRun();
+  }, [busy, appendActive, clearSessionRun]);
 
   useEffect(() => {
     if (busy || appendActive || uploadSlotHasWork) return;

@@ -1364,6 +1364,10 @@
   },
   "workflow": {
     "progress": "Progreso",
+    "sessionOutcome": {
+      "aria": "Importación completada",
+      "dismiss": "Cerrar el mensaje de finalización"
+    },
     "stage": {
       "preview": "Se está generando la vista previa",
       "cut": "Se está aplicando la edición",

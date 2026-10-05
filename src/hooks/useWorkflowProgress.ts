@@ -33,6 +33,7 @@ import {
   type UploadSlotResult,
   type UploadQueueJobPreview,
 } from "../lib/uploadQueue";
+import type { SessionRunOutcome } from "../lib/sessionRunOutcome";
 import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
@@ -53,6 +54,9 @@ export type WorkflowProgressView = {
   subtitle: string;
   snapshot: WorkflowProgressSnapshot | null;
   tasks: WorkflowTaskProgress[];
+  /** Informational import/SD report (no focus trap). */
+  sessionOutcome: SessionRunOutcome | null;
+  onDismissSessionOutcome: () => void;
   encodeLabel: string;
   canCancel: boolean;
   /** Cancel clicked; job still winding down cooperatively. */
@@ -136,6 +140,9 @@ type Input = {
   createJobPlan?: CreateJobPlan | null;
   /** Create job ended in error (not cancel). */
   createFailed?: boolean;
+  /** Last SD/import report to keep on the session panel. */
+  sessionOutcome?: SessionRunOutcome | null;
+  onDismissSessionOutcome?: () => void;
 };
 
 const EMPTY_UPLOAD_COMPACT: UploadCompactParts = {
@@ -272,11 +279,15 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.appendActive ||
     input.qrScanBusy;
 
+  const sessionOutcome = input.sessionOutcome ?? null;
+  const showingOutcome = Boolean(sessionOutcome) && !sessionWorkActive;
+
   const hasSessionCompletionState =
     !input.encodeBusy &&
     !input.appendActive &&
     !uploadSlotActive &&
     !failedHold &&
+    !showingOutcome &&
     (input.percent > 0 ||
       input.taskProgress.length > 0 ||
       Boolean(input.status.trim()));
@@ -301,11 +312,22 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
 
   const shouldShowSession =
     !sessionDismissed &&
-    (sessionWorkActive || hasSessionCompletionState || showEncodeProgress);
+    (sessionWorkActive ||
+      showingOutcome ||
+      hasSessionCompletionState ||
+      showEncodeProgress);
 
   // Classic collapse/hide for session jobs only (not while upload-only).
   useEffect(() => {
     if (sessionWorkActive) {
+      wasSessionActiveRef.current = true;
+      setSessionDismissed(false);
+      setSessionCollapsed(false);
+      return;
+    }
+
+    if (sessionOutcome) {
+      // Auto-hide + hover-pause live in SessionOutcomeCard.
       wasSessionActiveRef.current = true;
       setSessionDismissed(false);
       setSessionCollapsed(false);
@@ -337,6 +359,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     };
   }, [
     sessionWorkActive,
+    sessionOutcome,
     sessionDismissed,
     uploadSlotActive,
     failedHold,
@@ -375,31 +398,37 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     }
   }, [input.createJobPlan]);
 
-  const stage = inferWorkflowStage({
-    sdWorkflowActive: input.sdWorkflowActive,
-    sdPhase: input.sdPhase,
-    qrScanBusy: input.qrScanBusy,
-    manualImport: showManualImport,
-    manualQr: showManualQr,
-    encodeBusy: input.encodeBusy,
-    appendActive: input.appendActive,
-    appendUploading: input.appendUploading,
-    status: input.status,
-    sdProgress,
-  });
+  const stage = showingOutcome
+    ? "done"
+    : inferWorkflowStage({
+        sdWorkflowActive: input.sdWorkflowActive,
+        sdPhase: input.sdPhase,
+        qrScanBusy: input.qrScanBusy,
+        manualImport: showManualImport,
+        manualQr: showManualQr,
+        encodeBusy: input.encodeBusy,
+        appendActive: input.appendActive,
+        appendUploading: input.appendUploading,
+        status: input.status,
+        sdProgress,
+      });
 
-  const sessionSubtitle = workflowStageSubtitle(stage, {
-    sdWorkflowActive: input.sdWorkflowActive,
-    sdPhase: input.sdPhase,
-    qrScanBusy: input.qrScanBusy,
-    encodeBusy: input.encodeBusy,
-    appendActive: input.appendActive,
-    appendGuest: input.appendGuest,
-    appendUploading: false,
-    createUploading: false,
-    manualImport: showManualImport,
-    manualQr: showManualQr,
-  });
+  const sessionSubtitle = showingOutcome
+    ? sessionOutcome?.highlight ||
+      sessionOutcome?.title ||
+      tr("workflow.stage.done")
+    : workflowStageSubtitle(stage, {
+        sdWorkflowActive: input.sdWorkflowActive,
+        sdPhase: input.sdPhase,
+        qrScanBusy: input.qrScanBusy,
+        encodeBusy: input.encodeBusy,
+        appendActive: input.appendActive,
+        appendGuest: input.appendGuest,
+        appendUploading: false,
+        createUploading: false,
+        manualImport: showManualImport,
+        manualQr: showManualQr,
+      });
 
   const uploadSubtitle = failedHold
     ? tr("workflow.upload.failedHold")
@@ -420,6 +449,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   const sessionPipelineBase = useMemo((): CreateJobPipelineView | null => {
     const plan = input.createJobPlan ?? null;
     if (!plan) return null;
+    if (showingOutcome) return null;
     if (input.appendActive) return null;
     if (
       !input.encodeBusy &&
@@ -456,6 +486,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.encodeBusy,
     input.sessionCancelRequested,
     input.status,
+    showingOutcome,
     stage,
     uploadSlotActive,
   ]);
@@ -550,7 +581,13 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
 
   // --- Session snapshot (never upload progress) ---
   let sessionSnapshot: WorkflowProgressSnapshot | null = null;
-  if (input.encodeBusy || input.appendActive) {
+  if (showingOutcome && sessionOutcome) {
+    sessionSnapshot = {
+      percent: 100,
+      label: sessionOutcome.title,
+      hidePercent: true,
+    };
+  } else if (input.encodeBusy || input.appendActive) {
     const activityOnly = isActivityOnlyProgress(input.status);
     sessionSnapshot = {
       percent: input.percent,
@@ -579,14 +616,15 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     };
   }
 
-  const sessionTasks: WorkflowTaskProgress[] =
-    input.encodeBusy ||
-    input.appendActive ||
-    (!showSdProgress &&
-      !showManualImport &&
-      !showManualQr &&
-      showEncodeProgress &&
-      !uploadSlotActive)
+  const sessionTasks: WorkflowTaskProgress[] = showingOutcome
+    ? []
+    : input.encodeBusy ||
+        input.appendActive ||
+        (!showSdProgress &&
+          !showManualImport &&
+          !showManualQr &&
+          showEncodeProgress &&
+          !uploadSlotActive)
       ? input.taskProgress.map((t) => ({
           taskId: t.taskId,
           percent: t.percent,
@@ -604,6 +642,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
 
   const sdClearing = input.sdWorkflowActive && input.sdPhase === "clearing";
   const sessionCanCancel =
+    !showingOutcome &&
     !sdClearing &&
     (input.encodeBusy ||
       input.appendActive ||
@@ -617,7 +656,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
   );
 
   const sessionEffectiveCollapsed =
-    sessionCollapsed && !sessionWorkActive;
+    sessionCollapsed && !sessionWorkActive && !showingOutcome;
 
   // --- Upload snapshot (never session percent/status) ---
   let uploadSnapshot: WorkflowProgressSnapshot | null = null;
@@ -656,9 +695,21 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     setFailedHold(false);
   }
 
+  function onDismissSessionOutcome() {
+    input.onDismissSessionOutcome?.();
+    setSessionDismissed(true);
+    setSessionCollapsed(false);
+    wasSessionActiveRef.current = false;
+  }
+
   const sessionVisible =
     shouldShowSession &&
-    Boolean(sessionSnapshot || sessionTasks.length > 0 || sessionPipeline);
+    Boolean(
+      showingOutcome ||
+        sessionSnapshot ||
+        sessionTasks.length > 0 ||
+        sessionPipeline,
+    );
 
   const session: WorkflowProgressView = {
     visible: sessionVisible,
@@ -669,6 +720,8 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       : sessionSubtitle,
     snapshot: sessionSnapshot,
     tasks: sessionTasks,
+    sessionOutcome: showingOutcome ? sessionOutcome : null,
+    onDismissSessionOutcome,
     encodeLabel,
     canCancel: sessionCanCancel,
     cancelling: sessionCancelling,
@@ -677,7 +730,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     bodyConcatMode: sessionPipeline
       ? (input.createJobPlan?.bodyConcatMode ?? null)
       : null,
-    hideOverallBar: false,
+    hideOverallBar: showingOutcome,
     backgroundUpload: false,
     uploadQueueCount: 0,
     uploadQueueJobs: [],
@@ -695,6 +748,8 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     subtitle: uploadSubtitle,
     snapshot: uploadSnapshot,
     tasks: [],
+    sessionOutcome: null,
+    onDismissSessionOutcome: noop,
     encodeLabel: tr("app.upload.title"),
     canCancel: uploadSlotActive && !failedHold,
     cancelling: uploadCancelling,

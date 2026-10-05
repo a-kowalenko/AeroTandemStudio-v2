@@ -27,6 +27,7 @@ import { useKundeStore } from "../store/kundeStore";
 import { useConfigStore } from "../store/configStore";
 import { useUiStore } from "../store/uiStore";
 import { useSdStore } from "../store/sdStore";
+import { useSessionRunStore } from "../store/sessionRunStore";
 import { useAppendStore } from "../store/appendStore";
 import { photoEdgeScanPaths, videoEdgeScanPaths, withQrScanProgress } from "../store/qrScanStore";
 import {
@@ -105,7 +106,6 @@ export function MediaDropZone({
   const config = useConfigStore((s) => s.config);
   const persistConfig = useConfigStore((s) => s.persist);
   const showError = useUiStore((s) => s.showError);
-  const showSuccess = useUiStore((s) => s.showSuccess);
   const showWarning = useUiStore((s) => s.showWarning);
 
   const dropLockedRef = useRef(false);
@@ -214,6 +214,7 @@ export function MediaDropZone({
       if (paths.length === 0) return;
       clearError();
       setStatusMsg(null);
+      useSessionRunStore.getState().clearSessionRun();
       clearManualImportProgress();
       setExpanding(true);
 
@@ -302,14 +303,12 @@ export function MediaDropZone({
             );
             if (outcome.attempted && outcome.found) {
               const qrActions = outcome.successOptions?.actions ?? [];
-              showSuccess("", outcome.successTitle ?? t("app.qr.recognized"), {
-                ...outcome.successOptions,
-                variant: "qr",
+              useSessionRunStore.getState().presentSessionRun({
+                title: outcome.successTitle ?? t("app.qr.recognized"),
                 highlight:
                   outcome.successOptions?.highlight ||
                   outcome.kundeName ||
                   t("app.sd.customerRecognized"),
-                autoCloseSecs: outcome.successOptions?.autoCloseSecs ?? 5,
                 actions: [
                   ...qrActions,
                   {
@@ -382,7 +381,6 @@ export function MediaDropZone({
       onImported,
       onRemoveVideo,
       showError,
-      showSuccess,
       t,
     ],
   );

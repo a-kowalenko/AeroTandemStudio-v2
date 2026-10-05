@@ -1364,6 +1364,10 @@
   },
   "workflow": {
     "progress": "Fortschritt",
+    "sessionOutcome": {
+      "aria": "Import-Abschluss",
+      "dismiss": "Abschlussmeldung schließen"
+    },
     "stage": {
       "preview": "Vorschau wird erzeugt",
       "cut": "Schnitt wird angewendet",

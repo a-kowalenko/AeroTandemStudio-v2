@@ -42,6 +42,7 @@ import { tr } from "@/i18n";
 import { useKundeStore } from "./store/kundeStore";
 import { useUiStore, type DialogActionStatus } from "./store/uiStore";
 import { useSdStore, isSdPipelineBusy } from "./store/sdStore";
+import { useSessionRunStore } from "./store/sessionRunStore";
 import { useServerStore } from "./store/serverStore";
 import { useAppendStore } from "./store/appendStore";
 import { usePreviewCacheStore, previewEncodingSignature, getPreviewReusePlan } from "./store/previewCacheStore";
@@ -868,6 +869,7 @@ function App() {
     }
 
     hooks?.onStart?.();
+    useSessionRunStore.getState().clearSessionRun();
     useSdStore.getState().setWorkflowActive(true);
     useSdStore.getState().beginWorkflowMount(drive);
     setLoading(true, t("app.sd.processing"));
@@ -997,7 +999,7 @@ function App() {
           res.copied_dest_paths.length === 0;
         if (!importNeedsSd) {
           await tryEjectSd({
-            // Toast only while more work (import/QR) continues — final dialog covers end-of-run.
+            // Toast only while more work (import/QR) continues — completion card covers end-of-run.
             midWorkflowToast: Boolean(doImport && importPaths.length > 0),
           });
         }
@@ -1056,15 +1058,15 @@ function App() {
                 : t("common.status.success");
 
         const queuedNext = useSdStore.getState().jobQueue.length > 0;
-        showSuccess("", title, {
-          ...(qrHit?.applied || qrHit?.keptExisting
-            ? (qrHit.successOptions ?? {
-                variant: "qr" as const,
-                highlight: qrHit.kundeName || t("app.sd.customerRecognized"),
-              })
-            : {}),
-          // Free the pipeline sooner when another SD is waiting.
-          autoCloseSecs: queuedNext ? 2 : 5,
+        useSessionRunStore.getState().presentSessionRun({
+          title,
+          highlight:
+            qrHit?.applied || qrHit?.keptExisting
+              ? qrHit.successOptions?.highlight ||
+                qrHit.kundeName ||
+                t("app.sd.customerRecognized")
+              : qrHit?.successOptions?.highlight,
+          queuedNext,
           actions: statusActions,
         });
       }
@@ -2631,6 +2633,7 @@ function App() {
       return false;
     }
     clearSdQueue();
+    useSessionRunStore.getState().clearSessionRun();
     videoCuts.clearUndoState();
     clearVideos({ deleteFiles: false });
     clearPhotos({ deleteFiles: false });

@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
 import { Button } from "./ui/button";
+import { SessionOutcomeCard } from "./SessionOutcomeCard";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
 import {
@@ -343,6 +344,16 @@ export function WorkflowProgressPanel({ view, onCancel, className }: Props) {
           </div>
         </div>
       </section>
+    );
+  }
+
+  if (view.sessionOutcome) {
+    return (
+      <SessionOutcomeCard
+        outcome={view.sessionOutcome}
+        onDismiss={view.onDismissSessionOutcome}
+        className={className}
+      />
     );
   }
 

@@ -283,6 +283,22 @@
   animation: ats-progress-float-in 200ms ease-out;
 }
 
+@keyframes ats-progress-float-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.ats-progress-float-out {
+  animation: ats-progress-float-out 280ms ease-in forwards;
+  pointer-events: none;
+}
+
 @keyframes ats-toast-progress {
   from {
     transform: scaleX(1);

@@ -1,17 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AlertTriangle,
-  Archive,
-  CheckCircle2,
-  Download,
-  Eraser,
-  MinusCircle,
-  QrCode,
-  Search,
-  Server,
-  XCircle,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, QrCode } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,13 +10,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DialogActionRows } from "@/components/DialogActionRows";
 import { QrSpotlightPreview } from "@/components/QrSpotlightPreview";
 import { cn } from "@/lib/utils";
 import type { QrPreview } from "@/lib/tauri";
 import type {
-  DialogActionKind,
   DialogActionStatus,
-  DialogActionTone,
   DialogChoicesOptions,
   DialogConfirmOptions,
   DialogPromptOptions,
@@ -36,22 +24,6 @@ import type {
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Input } from "@/components/ui/input";
-
-/** Classic macOS / SF Symbol eject glyph (triangle over bar). */
-function EjectIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-      aria-hidden
-    >
-      <path d="M12 4.2 4.85 14.4A1.1 1.1 0 0 0 5.78 16h12.44a1.1 1.1 0 0 0 .93-1.6L12 4.2Z" />
-      <rect x="5.25" y="17.6" width="13.5" height="2.35" rx="0.7" />
-    </svg>
-  );
-}
 
 type Props = {
   open: boolean;
@@ -74,104 +46,6 @@ type Props = {
   prompt?: DialogPromptOptions | null;
   onClose: () => void;
 };
-
-function actionKindIcon(kind: DialogActionKind): ReactNode {
-  const cls = "h-4 w-4 shrink-0";
-  switch (kind) {
-    case "qr":
-      return <QrCode className={cls} aria-hidden />;
-    case "backup":
-      return <Archive className={cls} aria-hidden />;
-    case "import":
-      return <Download className={cls} aria-hidden />;
-    case "clear":
-      return <Eraser className={cls} aria-hidden />;
-    case "eject":
-      return <EjectIcon className={cls} />;
-    case "server":
-      return <Server className={cls} aria-hidden />;
-    case "ams":
-      return <Search className={cls} aria-hidden />;
-  }
-}
-
-function toneStatusIcon(tone: DialogActionTone): ReactNode {
-  const cls = "h-4 w-4 shrink-0";
-  switch (tone) {
-    case "success":
-      return <CheckCircle2 className={cn(cls, "text-success")} aria-hidden />;
-    case "error":
-      return <XCircle className={cn(cls, "text-destructive")} aria-hidden />;
-    case "warning":
-      return <AlertTriangle className={cn(cls, "text-warning")} aria-hidden />;
-    case "skipped":
-      return <MinusCircle className={cn(cls, "text-muted")} aria-hidden />;
-  }
-}
-
-function toneLabelKey(tone: DialogActionTone): string {
-  switch (tone) {
-    case "success":
-      return "dialogs.success.tone.success";
-    case "error":
-      return "dialogs.success.tone.error";
-    case "warning":
-      return "common.status.warning";
-    case "skipped":
-      return "dialogs.success.tone.skipped";
-  }
-}
-
-function ActionRow({ action }: { action: DialogActionStatus }) {
-  const { t } = useTranslation();
-  const toneText = t(toneLabelKey(action.tone));
-  return (
-    <li
-      className={cn(
-        "flex min-w-0 gap-2.5 rounded-md border px-3 py-2.5",
-        action.tone === "error" && "border-destructive/40 bg-destructive/5",
-        action.tone === "warning" && "border-warning/40 bg-warning/5",
-        action.tone === "success" && "border-border/50 bg-muted/20",
-        action.tone === "skipped" && "border-border/40 bg-muted/10 opacity-80",
-      )}
-    >
-      <span
-        className={cn(
-          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-          action.tone === "success" && "bg-success/15 text-success",
-          action.tone === "error" && "bg-destructive/15 text-destructive",
-          action.tone === "warning" && "bg-warning/15 text-warning",
-          action.tone === "skipped" && "bg-muted text-muted",
-        )}
-        aria-hidden
-      >
-        {actionKindIcon(action.kind)}
-      </span>
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="min-w-0 break-words text-sm font-medium text-foreground">
-            {action.label}
-          </p>
-          <span className="flex shrink-0 items-center gap-1" title={toneText}>
-            <span className="sr-only">{toneText}</span>
-            {toneStatusIcon(action.tone)}
-          </span>
-        </div>
-        <p className="mt-0.5 break-words text-sm text-foreground/90">
-          {action.summary}
-        </p>
-        {action.detail?.trim() ? (
-          <p
-            className="mt-1 whitespace-pre-wrap break-words text-xs text-muted"
-            title={action.detail}
-          >
-            {action.detail}
-          </p>
-        ) : null}
-      </div>
-    </li>
-  );
-}
 
 export function SuccessDialog({
   open,
@@ -413,16 +287,7 @@ export function SuccessDialog({
               </p>
             ) : null}
 
-            {hasActions ? (
-              <ul className="min-w-0 space-y-2">
-                {actions.map((action) => (
-                  <ActionRow
-                    key={`${action.kind}-${action.label}-${action.summary}`}
-                    action={action}
-                  />
-                ))}
-              </ul>
-            ) : null}
+            {hasActions ? <DialogActionRows actions={actions} /> : null}
 
             {messageText && hasActions ? (
               <p className="mt-3 whitespace-pre-wrap break-words text-sm text-muted [overflow-wrap:anywhere]">
