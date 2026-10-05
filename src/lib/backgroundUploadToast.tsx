@@ -1,5 +1,6 @@
 import toast from "react-hot-toast";
 import { BackgroundUploadToastCard } from "../components/BackgroundUploadToastCard";
+import { TOAST_DURATION_MANAGED } from "../hooks/usePausableAutoDismiss";
 
 const OK_MS = 4000;
 const FAIL_MS = 7000;
@@ -20,7 +21,7 @@ export function showBackgroundUploadDoneToast(opts: {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: OK_MS, id: `${TOAST_ID}-ok` },
+    { duration: TOAST_DURATION_MANAGED, id: `${TOAST_ID}-ok` },
   );
 }
 
@@ -39,7 +40,7 @@ export function showBackgroundUploadFailToast(opts: {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: FAIL_MS, id: `${TOAST_ID}-fail` },
+    { duration: TOAST_DURATION_MANAGED, id: `${TOAST_ID}-fail` },
   );
 }
 
@@ -59,6 +60,6 @@ export function showSecondaryBackupCancelledToast(opts: {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: 5000, id: "secondary-backup-cancelled" },
+    { duration: TOAST_DURATION_MANAGED, id: "secondary-backup-cancelled" },
   );
 }

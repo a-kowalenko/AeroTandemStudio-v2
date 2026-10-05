@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   Archive,
@@ -13,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { QrPreview } from "@/lib/tauri";
 import type {
   DialogActionKind,
   DialogActionStatus,
@@ -82,20 +84,57 @@ function toneLabelKey(tone: DialogActionTone): string {
   }
 }
 
+/** Fits typical action-row height; must not grow the tile. */
+function QrActionThumb({ preview }: { preview: QrPreview }) {
+  const { t } = useTranslation();
+  const spot = preview.spotlight;
+  return (
+    <div className="relative h-[4.25rem] w-[6.5rem] shrink-0 self-center overflow-hidden rounded-md border border-border/60 bg-black">
+      <img
+        src={convertFileSrc(preview.path)}
+        alt={t("qr.spotlight.frameAlt")}
+        className="h-full w-full object-cover"
+        draggable={false}
+      />
+      {spot ? (
+        <div
+          className="pointer-events-none absolute rounded-[1px] border border-success"
+          style={{
+            left: `${spot.x * 100}%`,
+            top: `${spot.y * 100}%`,
+            width: `${spot.size * 100}%`,
+            aspectRatio: "1",
+          }}
+          aria-hidden
+        />
+      ) : null}
+    </div>
+  );
+}
+
 function ActionRow({
   action,
   compact,
+  qrPreview,
 }: {
   action: DialogActionStatus;
   compact?: boolean;
+  qrPreview?: QrPreview | null;
 }) {
   const { t } = useTranslation();
   const toneText = t(toneLabelKey(action.tone));
+  const showQrThumb =
+    action.kind === "qr" && Boolean(qrPreview?.path?.trim());
   return (
     <li
       className={cn(
         "flex min-w-0 gap-2.5 rounded-md border",
-        compact ? "px-2.5 py-1.5" : "px-3 py-2.5",
+        // Minimal vertical pad when QR thumb is present so it fills the tile.
+        showQrThumb
+          ? "px-2.5 py-0.5"
+          : compact
+            ? "px-2.5 py-1.5"
+            : "px-3 py-2.5",
         action.tone === "error" && "border-destructive/40 bg-destructive/5",
         action.tone === "warning" && "border-warning/40 bg-warning/5",
         action.tone === "success" && "border-border/50 bg-muted/20",
@@ -105,7 +144,7 @@ function ActionRow({
       <span
         className={cn(
           "mt-0.5 flex shrink-0 items-center justify-center rounded-full",
-          compact ? "h-7 w-7" : "h-8 w-8",
+          compact || showQrThumb ? "h-7 w-7" : "h-8 w-8",
           action.tone === "success" && "bg-success/15 text-success",
           action.tone === "error" && "bg-destructive/15 text-destructive",
           action.tone === "warning" && "bg-warning/15 text-warning",
@@ -116,15 +155,9 @@ function ActionRow({
         {actionKindIcon(action.kind)}
       </span>
       <div className="min-w-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 items-start justify-between gap-2">
-          <p className="min-w-0 break-words text-sm font-medium text-foreground">
-            {action.label}
-          </p>
-          <span className="flex shrink-0 items-center gap-1" title={toneText}>
-            <span className="sr-only">{toneText}</span>
-            {toneStatusIcon(action.tone)}
-          </span>
-        </div>
+        <p className="min-w-0 break-words text-sm font-medium text-foreground">
+          {action.label}
+        </p>
         <p className="mt-0.5 break-words text-sm text-foreground/90">
           {action.summary}
         </p>
@@ -137,6 +170,14 @@ function ActionRow({
           </p>
         ) : null}
       </div>
+      {showQrThumb && qrPreview ? <QrActionThumb preview={qrPreview} /> : null}
+      <span
+        className="mt-0.5 flex shrink-0 items-center gap-1 self-start"
+        title={toneText}
+      >
+        <span className="sr-only">{toneText}</span>
+        {toneStatusIcon(action.tone)}
+      </span>
     </li>
   );
 }
@@ -145,10 +186,13 @@ export function DialogActionRows({
   actions,
   compact,
   className,
+  qrPreview,
 }: {
   actions: DialogActionStatus[];
   compact?: boolean;
   className?: string;
+  /** Shown on the QR action row when present. */
+  qrPreview?: QrPreview | null;
 }) {
   if (actions.length === 0) return null;
   return (
@@ -158,6 +202,7 @@ export function DialogActionRows({
           key={`${action.kind}-${action.label}-${action.summary}`}
           action={action}
           compact={compact}
+          qrPreview={qrPreview}
         />
       ))}
     </ul>

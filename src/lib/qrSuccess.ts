@@ -41,9 +41,8 @@ export type FormatQrSuccessInput = {
 export function buildQrSuccessAction(
   input: FormatQrSuccessInput,
 ): DialogActionStatus {
+  // No source filename — generic camera names are noise; thumb covers the hit.
   const detailParts: string[] = [];
-  const src = fileBaseName(input.sourcePath);
-  if (src) detailParts.push(tr("app.qr.source", { name: src }));
   for (const note of input.notes ?? []) {
     const trimmed = note.trim();
     if (trimmed) detailParts.push(trimmed);

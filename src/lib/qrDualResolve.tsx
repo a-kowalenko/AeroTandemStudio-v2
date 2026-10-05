@@ -15,6 +15,7 @@ import {
 } from "@/lib/amsLookup";
 import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
 import { StatusToastCard } from "@/components/StatusToastCard";
+import { TOAST_DURATION_MANAGED } from "@/hooks/usePausableAutoDismiss";
 import { tr } from "@/i18n";
 import {
   amsBridgeCustomerLookup,
@@ -52,7 +53,7 @@ function showStatusToast(id: string, title: string, message: string): void {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: durationMs, id },
+    { duration: TOAST_DURATION_MANAGED, id },
   );
 }
 

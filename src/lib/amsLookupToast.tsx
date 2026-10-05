@@ -1,5 +1,6 @@
 import toast from "react-hot-toast";
 import { AmsLookupToastCard } from "../components/AmsLookupToastCard";
+import { TOAST_DURATION_MANAGED } from "../hooks/usePausableAutoDismiss";
 import { formatAmsLookupFoundToast } from "./amsLookup";
 import type { Kunde } from "./tauri";
 
@@ -19,6 +20,6 @@ export function showAmsLookupFoundToast(kunde: Kunde): void {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: DURATION_MS, id: "ams-lookup-found" },
+    { duration: TOAST_DURATION_MANAGED, id: "ams-lookup-found" },
   );
 }

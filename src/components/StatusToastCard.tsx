@@ -1,5 +1,7 @@
 import { Check, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ToastProgressBar } from "@/components/ToastProgressBar";
+import { usePausableAutoDismiss } from "@/hooks/usePausableAutoDismiss";
 import { cn } from "@/lib/utils";
 
 export type StatusToastCardProps = {
@@ -19,10 +21,12 @@ export function StatusToastCard({
   onDismiss,
 }: StatusToastCardProps) {
   const { t } = useTranslation();
+  const { paused, hoverProps } = usePausableAutoDismiss(durationMs, onDismiss);
   return (
     <div
       role="status"
       aria-live="polite"
+      {...hoverProps}
       className={cn(
         "pointer-events-auto relative w-[min(22.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl",
         "border shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] backdrop-blur-xl",
@@ -59,14 +63,11 @@ export function StatusToastCard({
         </button>
       </div>
 
-      {durationMs > 0 ? (
-        <div className="h-0.5 w-full bg-foreground/[0.06]" aria-hidden>
-          <div
-            className="ats-toast-progress h-full origin-left bg-success/70"
-            style={{ animationDuration: `${durationMs}ms` }}
-          />
-        </div>
-      ) : null}
+      <ToastProgressBar
+        durationMs={durationMs}
+        paused={paused}
+        className="bg-success/70"
+      />
     </div>
   );
 }

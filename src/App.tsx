@@ -118,7 +118,6 @@ import {
   shouldAutoQrAfterImport,
   type AutoQrScanOutcome,
 } from "./lib/autoQrScan";
-import { fileBaseName } from "./lib/qrSuccess";
 import {
   requestKundenIdFocus,
   requestKundenIdFocusAfterImport,
@@ -781,7 +780,6 @@ function App() {
 
       if (qr.found) {
         const fromOptions = qr.successOptions?.actions?.find((a) => a.kind === "qr");
-        const src = fileBaseName(qr.source_path);
         return {
           importAction,
           qrAction: fromOptions ?? {
@@ -789,7 +787,6 @@ function App() {
             label: t("app.qr.label"),
             tone: "success",
             summary: t("app.qr.applied"),
-            detail: src ? t("app.qr.source", { name: src }) : undefined,
           },
           qrHit: qr,
         };
@@ -887,10 +884,11 @@ function App() {
         useSdStore.getState().markWorkflowMountReleased();
         statusActions.push({
           kind: "eject",
-          label: t("app.sd.ejectLabel"),
+          label: t("app.sd.ejectDoneLabel"),
           tone: "success",
-          summary: t("app.sd.ejectSuccess"),
-          detail: ejectDetail,
+          summary: ejectDetail
+            ? t("app.sd.ejectSuccessDrive", { drive: ejectDetail })
+            : t("app.sd.ejectSafeRemove"),
         });
         if (opts?.midWorkflowToast) {
           showSdEjectToast({ drive, detail: ejectDetail, ok: true });
@@ -900,7 +898,9 @@ function App() {
           kind: "eject",
           label: t("app.sd.ejectLabel"),
           tone: "error",
-          summary: t("app.sd.ejectFailed"),
+          summary: ejectDetail
+            ? `${ejectDetail} · ${t("app.sd.ejectFailed")}`
+            : t("app.sd.ejectFailed"),
           detail: t("app.sd.ejectFailedDetail", { error: String(e) }),
         });
         if (opts?.midWorkflowToast) {
@@ -939,14 +939,14 @@ function App() {
           }
           return true;
         }
+        // No backup paths in the completion card — only skip/warning signals.
         const backupDetails = [
-          res.backup_path ?? "",
-          res.secondary_backup_path
-            ? t("app.sd.secondPath", { path: res.secondary_backup_path })
-            : res.secondary_async_started
-              ? t("app.sd.secondPathBackground")
-              : "",
-          res.skipped_count ? t("app.sd.skippedCount", { count: res.skipped_count }) : "",
+          res.skipped_count
+            ? t("app.sd.skippedCount", { count: res.skipped_count })
+            : "",
+          res.secondary_async_started && !res.secondary_backup_path
+            ? t("app.sd.secondPathBackground")
+            : "",
           res.secondary_warning
             ? presentSdUserMessage(res.secondary_warning, { drive })
             : "",
@@ -1068,6 +1068,7 @@ function App() {
               : qrHit?.successOptions?.highlight,
           queuedNext,
           actions: statusActions,
+          qrPreview: qrHit?.successOptions?.qrPreview ?? null,
         });
       }
       return true;

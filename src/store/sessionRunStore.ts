@@ -3,6 +3,7 @@ import {
   buildSessionRunOutcome,
   type SessionRunOutcome,
 } from "@/lib/sessionRunOutcome";
+import type { QrPreview } from "@/lib/tauri";
 import type { DialogActionStatus } from "@/store/uiStore";
 
 type SessionRunState = {
@@ -12,6 +13,7 @@ type SessionRunState = {
     highlight?: string;
     actions: DialogActionStatus[];
     queuedNext?: boolean;
+    qrPreview?: QrPreview | null;
   }) => void;
   clearSessionRun: () => void;
 };

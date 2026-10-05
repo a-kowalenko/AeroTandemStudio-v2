@@ -309,6 +309,7 @@ export function MediaDropZone({
                   outcome.successOptions?.highlight ||
                   outcome.kundeName ||
                   t("app.sd.customerRecognized"),
+                qrPreview: outcome.successOptions?.qrPreview ?? null,
                 actions: [
                   ...qrActions,
                   {

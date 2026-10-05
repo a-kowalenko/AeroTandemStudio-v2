@@ -1,3 +1,4 @@
+import type { QrPreview } from "@/lib/tauri";
 import type { DialogActionStatus } from "@/store/uiStore";
 
 /** Informational end-of-run report shown on the session progress panel. */
@@ -8,6 +9,8 @@ export type SessionRunOutcome = {
   actions: DialogActionStatus[];
   tone: "success" | "warning";
   queuedNext?: boolean;
+  /** QR hit-frame for a compact thumb in the card header. */
+  qrPreview?: QrPreview | null;
 };
 
 export const SESSION_OUTCOME_HIDE_MS = 8000;
@@ -40,8 +43,10 @@ export function buildSessionRunOutcome(opts: {
   highlight?: string;
   actions: DialogActionStatus[];
   queuedNext?: boolean;
+  qrPreview?: QrPreview | null;
 }): SessionRunOutcome {
   const highlight = opts.highlight?.trim() ?? "";
+  const previewPath = opts.qrPreview?.path?.trim() ?? "";
   return {
     id: nextSessionRunId++,
     title: opts.title.trim(),
@@ -49,5 +54,6 @@ export function buildSessionRunOutcome(opts: {
     actions: [...opts.actions],
     tone: sessionRunOutcomeTone(opts.actions),
     queuedNext: Boolean(opts.queuedNext),
+    qrPreview: previewPath && opts.qrPreview ? opts.qrPreview : null,
   };
 }

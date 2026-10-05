@@ -144,9 +144,11 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
           <X className="h-4 w-4" aria-hidden />
         </Button>
       </div>
-      <div className="max-h-56 overflow-y-auto pr-0.5">
-        <DialogActionRows actions={outcome.actions} compact />
-      </div>
+      <DialogActionRows
+        actions={outcome.actions}
+        compact
+        qrPreview={outcome.qrPreview}
+      />
 
       <div
         className={cn(

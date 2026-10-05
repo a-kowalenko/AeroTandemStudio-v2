@@ -1,5 +1,7 @@
 import { Check, AlertTriangle, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ToastProgressBar } from "@/components/ToastProgressBar";
+import { usePausableAutoDismiss } from "@/hooks/usePausableAutoDismiss";
 import { cn } from "@/lib/utils";
 
 export type BackgroundUploadToastCardProps = {
@@ -21,10 +23,12 @@ export function BackgroundUploadToastCard({
   onDismiss,
 }: BackgroundUploadToastCardProps) {
   const { t } = useTranslation();
+  const { paused, hoverProps } = usePausableAutoDismiss(durationMs, onDismiss);
   return (
     <div
       role="status"
       aria-live="polite"
+      {...hoverProps}
       className={cn(
         "pointer-events-auto relative w-[min(22.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl",
         "border shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] backdrop-blur-xl",
@@ -82,17 +86,11 @@ export function BackgroundUploadToastCard({
         </button>
       </div>
 
-      {durationMs > 0 ? (
-        <div className="h-0.5 w-full bg-foreground/[0.06]" aria-hidden>
-          <div
-            className={cn(
-              "ats-toast-progress h-full origin-left",
-              ok ? "bg-success/70" : "bg-destructive/70",
-            )}
-            style={{ animationDuration: `${durationMs}ms` }}
-          />
-        </div>
-      ) : null}
+      <ToastProgressBar
+        durationMs={durationMs}
+        paused={paused}
+        className={ok ? "bg-success/70" : "bg-destructive/70"}
+      />
     </div>
   );
 }

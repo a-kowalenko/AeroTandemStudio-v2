@@ -1,5 +1,6 @@
 import toast from "react-hot-toast";
 import { StatusToastCard } from "../components/StatusToastCard";
+import { TOAST_DURATION_MANAGED } from "../hooks/usePausableAutoDismiss";
 
 const DURATION_MS = 3500;
 const TOAST_ID = "session-reset";
@@ -16,6 +17,6 @@ export function showSessionResetToast(title: string, message: string): void {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: DURATION_MS, id: TOAST_ID },
+    { duration: TOAST_DURATION_MANAGED, id: TOAST_ID },
   );
 }

@@ -69,13 +69,30 @@ describe("sessionRunOutcome", () => {
       highlight: "  Müller  ",
       actions,
       queuedNext: true,
+      qrPreview: {
+        path: "C:/tmp/qr.jpg",
+        width: 1920,
+        height: 1080,
+        spotlight: null,
+      },
     });
     assert.notEqual(a.id, b.id);
     assert.equal(b.title, "QR");
     assert.equal(b.highlight, "Müller");
     assert.equal(b.queuedNext, true);
+    assert.equal(b.qrPreview?.path, "C:/tmp/qr.jpg");
+    assert.equal(a.qrPreview, null);
     assert.notEqual(a.actions, actions);
     actions.push(row({ kind: "qr", tone: "warning" }));
     assert.equal(a.actions.length, 1);
+  });
+
+  it("drops qrPreview without a path", () => {
+    const o = buildSessionRunOutcome({
+      title: "OK",
+      actions: [row({ kind: "import", tone: "success" })],
+      qrPreview: { path: "  ", width: 1, height: 1, spotlight: null },
+    });
+    assert.equal(o.qrPreview, null);
   });
 });

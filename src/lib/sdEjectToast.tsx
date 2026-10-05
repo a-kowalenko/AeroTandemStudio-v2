@@ -1,6 +1,7 @@
 import toast from "react-hot-toast";
 import { tr } from "@/i18n";
 import { SdEjectToastCard } from "../components/SdEjectToastCard";
+import { TOAST_DURATION_MANAGED } from "../hooks/usePausableAutoDismiss";
 import { playEjectSound } from "./ejectSound";
 import { listDriveLabel, compactDriveLabel } from "./sdDriveLabel";
 import { useSdStore } from "../store/sdStore";
@@ -49,7 +50,7 @@ export function showSdEjectToast(opts: {
       />
     ),
     {
-      duration: durationMs,
+      duration: TOAST_DURATION_MANAGED,
       id: `sd-eject-${opts.drive}-${opts.ok ? "ok" : "fail"}`,
     },
   );

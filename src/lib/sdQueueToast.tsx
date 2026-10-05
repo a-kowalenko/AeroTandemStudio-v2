@@ -1,5 +1,6 @@
 import toast from "react-hot-toast";
 import { SdQueueToastCard } from "../components/SdQueueToastCard";
+import { TOAST_DURATION_MANAGED } from "../hooks/usePausableAutoDismiss";
 import { resolveSdEjectDetail } from "./sdEjectToast";
 
 export function showSdQueuedToast(drive: string): void {
@@ -15,7 +16,7 @@ export function showSdQueuedToast(drive: string): void {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: durationMs, id: `sd-queue-${drive}` },
+    { duration: TOAST_DURATION_MANAGED, id: `sd-queue-${drive}` },
   );
 }
 
@@ -32,6 +33,6 @@ export function showSdQueueDroppedToast(drive: string): void {
         onDismiss={() => toast.dismiss(t.id)}
       />
     ),
-    { duration: durationMs, id: `sd-queue-drop-${drive}` },
+    { duration: TOAST_DURATION_MANAGED, id: `sd-queue-drop-${drive}` },
   );
 }
