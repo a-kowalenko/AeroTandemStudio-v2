@@ -1549,7 +1549,12 @@
       "last7": "Últimos 7 días",
       "lastMonth": "Último mes",
       "lastYear": "Último año",
-      "removeAll": "Quitar todo"
+      "removeAll": "Quitar todo",
+      "pageSize": "{{count}} / página",
+      "pageSizeAria": "Entradas por página",
+      "pageRange": "{{from}}–{{to}} de {{total}}",
+      "pagePrev": "Página anterior",
+      "pageNext": "Página siguiente"
     },
     "role": {
       "sourceVideo": "Video de origen",

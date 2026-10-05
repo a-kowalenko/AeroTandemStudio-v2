@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Eye, FolderOpen, Images, MoreHorizontal } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FolderOpen,
+  Images,
+  MoreHorizontal,
+} from "lucide-react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Dialog,
@@ -2759,6 +2766,9 @@ function VorgaengePanel({
   );
 }
 
+const MEDIA_PAGE_SIZE_DEFAULT = 50;
+const MEDIA_PAGE_SIZES = [25, 50, 100, 200] as const;
+
 function MedienPanel({
   dialogOpen,
   onRequestConfirm,
@@ -2774,6 +2784,8 @@ function MedienPanel({
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [period, setPeriod] = useState<PeriodFilter>("all");
+  const [pageSize, setPageSize] = useState<number>(MEDIA_PAGE_SIZE_DEFAULT);
+  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(
     () => !useHistoryStore.getState().medienLoaded,
@@ -2845,6 +2857,25 @@ function MedienPanel({
       return true;
     });
   }, [entries, typeFilter, period]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, typeFilter, period, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize) || 1);
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages - 1));
+  }, [totalPages]);
+
+  const pageItems = useMemo(() => {
+    const start = page * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const pageFrom = filtered.length === 0 ? 0 : page * pageSize + 1;
+  const pageTo = Math.min(filtered.length, (page + 1) * pageSize);
+  const canPrevPage = page > 0;
+  const canNextPage = page < totalPages - 1 && filtered.length > 0;
 
   const stats = useMemo(() => {
     const videos = filtered.filter((e) => e.media_type === "video").length;
@@ -3003,7 +3034,7 @@ function MedienPanel({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e) => (
+            {pageItems.map((e) => (
               <tr key={e.id} className="border-b border-border/40 hover:bg-muted/40">
                 <td className="p-2 align-middle">
                   <div className="flex h-4 w-4 items-center justify-center">
@@ -3050,6 +3081,60 @@ function MedienPanel({
           </tbody>
         </table>
       </div>
+
+      {filtered.length > 0 ? (
+        <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
+          <Select
+            value={String(pageSize)}
+            onValueChange={(v) => setPageSize(Number(v))}
+          >
+            <SelectTrigger
+              className="h-8 w-[7.5rem] text-xs"
+              aria-label={t("history.media.pageSizeAria")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MEDIA_PAGE_SIZES.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {t("history.media.pageSize", { count: n })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="ml-auto text-xs tabular-nums text-muted">
+            {t("history.media.pageRange", {
+              from: pageFrom,
+              to: pageTo,
+              total: filtered.length,
+            })}
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 px-2"
+              disabled={!canPrevPage}
+              aria-label={t("history.media.pagePrev")}
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 px-2"
+              disabled={!canNextPage}
+              aria-label={t("history.media.pageNext")}
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

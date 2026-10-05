@@ -10,6 +10,17 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+### Neu
+
+- Nach Import und SD-Workflow: Abschlusskarte mit Ergebnis und Schritten — blendet sich selbst aus; Maus darüber hält den Timer an
+
+### Verbessert
+
+- Status-Hinweise und Toasts: Auto-Ausblenden pausiert beim Darüberfahren; einheitlicher Fortschrittsbalken
+- SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
+- SD-Import nach Backup: spürbar schneller — bereits gesicherte Dateien werden nicht erneut durchgerechnet
+- Vorgänge → Medien: Liste seitenweise (Standard 50 Einträge)
+
 ## [0.7.1] - 2026-10-03
 
 ### Verbessert

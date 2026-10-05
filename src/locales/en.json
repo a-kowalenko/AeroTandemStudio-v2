@@ -1549,7 +1549,12 @@
       "last7": "Last 7 days",
       "lastMonth": "Last month",
       "lastYear": "Last year",
-      "removeAll": "Remove all"
+      "removeAll": "Remove all",
+      "pageSize": "{{count}} / page",
+      "pageSizeAria": "Entries per page",
+      "pageRange": "{{from}}–{{to}} of {{total}}",
+      "pagePrev": "Previous page",
+      "pageNext": "Next page"
     },
     "role": {
       "sourceVideo": "Source video",
