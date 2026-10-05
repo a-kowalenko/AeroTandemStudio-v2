@@ -38,7 +38,10 @@ import {
 } from "@/lib/vorgangMediaPlaylist";
 import { usePhotoThumbnailSrc } from "@/components/photo/usePhotoThumbnailSrc";
 import { useVideoThumbnailSrc } from "@/hooks/useVideoThumbnailSrc";
-import { PHOTO_THUMB_PRIORITY } from "@/lib/photoThumbnailQueue";
+import {
+  PHOTO_THUMB_PRIORITY,
+  photoThumbnailQueue,
+} from "@/lib/photoThumbnailQueue";
 import { previewThumbnailQueue, THUMB_PRIORITY } from "@/lib/thumbnailQueue";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
@@ -66,6 +69,29 @@ function formatBytes(n: number | null | undefined): string {
 
 function itemKey(item: ViewableMediaItem): string {
   return `${item.id ?? "x"}:${item.path}`;
+}
+
+/** Preview thumbs warmed around the current photo so the next zap is already sharp. */
+const STAGE_PHOTO_PREVIEW_RADIUS = 3;
+/** Full originals are large; only decode the immediate neighbors ahead of time. */
+const STAGE_PHOTO_FULL_RADIUS = 1;
+
+function convertPhotoSrc(path: string): string | null {
+  try {
+    return convertFileSrc(path);
+  } catch {
+    return null;
+  }
+}
+
+async function decodeImageElement(img: HTMLImageElement, src: string): Promise<boolean> {
+  if (!img.getAttribute("src")) img.src = src;
+  try {
+    await img.decode();
+  } catch {
+    if (!(img.complete && img.naturalWidth > 0)) return false;
+  }
+  return img.naturalWidth > 0;
 }
 
 function useTileInView(): [(node: HTMLButtonElement | null) => void, boolean] {
@@ -393,6 +419,15 @@ export function VorgangMediaViewer({
   const [videoResumePlay, setVideoResumePlay] = useState(false);
   const stagePlayerRef = useRef<VideoPlayerHandle>(null);
   const immersivePlayerRef = useRef<VideoPlayerHandle>(null);
+  const stagePhotoPathRef = useRef<string | null>(null);
+  /** +1 forward, -1 back. Neighbor decode and preview priority follow the last zap. */
+  const zapDirectionRef = useRef<1 | -1>(1);
+  const fullWindowRef = useRef(new Set<string>());
+  const fullImageRef = useRef(new Map<string, HTMLImageElement>());
+  const decodedFullRef = useRef(new Set<string>());
+  const fullDecodeWaiters = useRef(new Map<string, Promise<void>>());
+  /** Forces a re-render once the current original has decoded. */
+  const [fullReadyPath, setFullReadyPath] = useState<string | null>(null);
 
   const videos = useMemo(
     () => items.filter((item) => item.media_type === "video"),
@@ -489,27 +524,172 @@ export function VorgangMediaViewer({
   const videoThumbsArmed = currentVideoPath == null || autoPlayVideo;
 
   const stagePhotoPath = open && current?.media_type === "photo" ? current.path : null;
-  const stagePhotoThumb = usePhotoThumbnailSrc(
-    stagePhotoPath,
-    "hq",
-    current?.size_bytes ?? 0,
-    PHOTO_THUMB_PRIORITY.stageUpgrade,
-    { enabled: stagePhotoPath != null, fallbackToFile: false },
-  );
-  const [stagePhotoFullFor, setStagePhotoFullFor] = useState<string | null>(null);
+  const stagePhotoBust = current?.media_type === "photo" ? (current.size_bytes ?? 0) : 0;
+  stagePhotoPathRef.current = stagePhotoPath;
+
+  const cachedStagePreview = stagePhotoPath
+    ? photoThumbnailQueue.getCached(stagePhotoPath, "preview", stagePhotoBust)
+    : null;
+  // Tile HQ (160px) already in memory — scaled up to the stage until preview arrives.
+  const cachedStageHq =
+    stagePhotoPath && !cachedStagePreview
+      ? photoThumbnailQueue.getCached(stagePhotoPath, "hq", stagePhotoBust)
+      : null;
+  const [loadedStagePreview, setLoadedStagePreview] = useState<{
+    path: string;
+    src: string;
+  } | null>(null);
+  const stagePreviewSrc =
+    cachedStagePreview ??
+    (loadedStagePreview?.path === stagePhotoPath ? loadedStagePreview.src : null) ??
+    cachedStageHq;
+
+  // 960px preview for the current photo. Cache hits paint on the first frame;
+  // a miss must not reuse the previous photo's URL.
   useEffect(() => {
     if (!stagePhotoPath) return;
-    const delay = stagePhotoThumb ? 400 : 2500;
-    const id = window.setTimeout(() => setStagePhotoFullFor(stagePhotoPath), delay);
-    return () => window.clearTimeout(id);
-  }, [stagePhotoPath, stagePhotoThumb]);
+    if (photoThumbnailQueue.getCached(stagePhotoPath, "preview", stagePhotoBust)) return;
+    let cancelled = false;
+    void photoThumbnailQueue
+      .request(
+        stagePhotoPath,
+        "preview",
+        PHOTO_THUMB_PRIORITY.stageUpgrade,
+        stagePhotoBust,
+      )
+      .then((src) => {
+        if (!cancelled && src) setLoadedStagePreview({ path: stagePhotoPath, src });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [stagePhotoPath, stagePhotoBust]);
 
+  // Warm ±3 preview thumbs. The side we're zapping toward is requested first.
+  useEffect(() => {
+    if (!open || tab !== "foto" || tabIndex < 0) return;
+    const dir = zapDirectionRef.current;
+    const deltas: number[] = [];
+    for (let step = 1; step <= STAGE_PHOTO_PREVIEW_RADIUS; step += 1) {
+      deltas.push(dir * step);
+    }
+    for (let step = 1; step <= STAGE_PHOTO_PREVIEW_RADIUS; step += 1) {
+      deltas.push(-dir * step);
+    }
+    for (const delta of deltas) {
+      const item = tabItems[tabIndex + delta];
+      if (!item || item.media_type !== "photo") continue;
+      const bust = item.size_bytes ?? 0;
+      if (photoThumbnailQueue.getCached(item.path, "preview", bust)) continue;
+      const priority =
+        delta === dir ? PHOTO_THUMB_PRIORITY.stageUpgrade : PHOTO_THUMB_PRIORITY.warm;
+      void photoThumbnailQueue
+        .request(item.path, "preview", priority, bust)
+        .catch(() => undefined);
+    }
+  }, [open, tab, tabIndex, tabItems]);
+
+  // Decode the current original and the next one in zap direction together.
+  // The opposite neighbor starts after that pair, so a fast zap does not pile up.
+  useEffect(() => {
+    if (!open || tab !== "foto" || tabIndex < 0) {
+      fullWindowRef.current = new Set();
+      fullImageRef.current.clear();
+      decodedFullRef.current.clear();
+      setFullReadyPath(null);
+      return;
+    }
+    const currentItem = tabItems[tabIndex];
+    if (!currentItem || currentItem.media_type !== "photo") return;
+
+    const wanted = new Set<string>([currentItem.path]);
+    for (let step = 1; step <= STAGE_PHOTO_FULL_RADIUS; step += 1) {
+      for (const delta of [step, -step]) {
+        const item = tabItems[tabIndex + delta];
+        if (!item || item.media_type !== "photo") continue;
+        wanted.add(item.path);
+      }
+    }
+    fullWindowRef.current = wanted;
+    for (const path of [...fullImageRef.current.keys()]) {
+      if (!wanted.has(path)) {
+        fullImageRef.current.delete(path);
+        decodedFullRef.current.delete(path);
+      }
+    }
+
+    const decodeOne = (item: ViewableMediaItem): Promise<void> => {
+      const pending = fullDecodeWaiters.current.get(item.path);
+      if (pending) return pending;
+      if (decodedFullRef.current.has(item.path) && fullImageRef.current.has(item.path)) {
+        return Promise.resolve();
+      }
+      const job = (async () => {
+        const src = convertPhotoSrc(item.path);
+        if (!src) return;
+        let img = fullImageRef.current.get(item.path);
+        if (!img) {
+          img = new Image();
+          fullImageRef.current.set(item.path, img);
+        }
+        const ok = await decodeImageElement(img, src);
+        if (!ok || !fullWindowRef.current.has(item.path)) {
+          fullImageRef.current.delete(item.path);
+          decodedFullRef.current.delete(item.path);
+          return;
+        }
+        decodedFullRef.current.add(item.path);
+        if (item.path === stagePhotoPathRef.current) {
+          setFullReadyPath(item.path);
+        }
+      })().finally(() => {
+        fullDecodeWaiters.current.delete(item.path);
+      });
+      fullDecodeWaiters.current.set(item.path, job);
+      return job;
+    };
+
+    const dir = zapDirectionRef.current;
+    const ahead = tabItems[tabIndex + dir];
+    const behind = tabItems[tabIndex - dir];
+    const parallel: ViewableMediaItem[] = [currentItem];
+    if (ahead?.media_type === "photo" && ahead.path !== currentItem.path) {
+      parallel.push(ahead);
+    }
+    const behindItem =
+      behind?.media_type === "photo" && behind.path !== currentItem.path ? behind : null;
+
+    let cancelled = false;
+    void (async () => {
+      await Promise.all(parallel.map((item) => decodeOne(item)));
+      if (cancelled || !behindItem) return;
+      await decodeOne(behindItem);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tab, tabIndex, tabItems]);
+
+  const stagePhotoFullReady =
+    stagePhotoPath != null &&
+    (decodedFullRef.current.has(stagePhotoPath) || fullReadyPath === stagePhotoPath);
   const stagePhotoDisplay =
-    stagePhotoFullFor === stagePhotoPath ? photoSrc : stagePhotoThumb;
+    stagePhotoFullReady && photoSrc ? photoSrc : stagePreviewSrc;
+
+  const onStagePhotoError = () => {
+    if (stagePhotoPath && decodedFullRef.current.has(stagePhotoPath)) {
+      setPhotoFailedPath(stagePhotoPath);
+    }
+  };
 
   function selectItem(item: ViewableMediaItem) {
     const global = items.findIndex((row) => itemKey(row) === itemKey(item));
     if (global < 0) return;
+    const nextInTab = tabItems.findIndex((row) => itemKey(row) === itemKey(item));
+    if (tabIndex >= 0 && nextInTab >= 0 && nextInTab !== tabIndex) {
+      zapDirectionRef.current = nextInTab > tabIndex ? 1 : -1;
+    }
     if (immersive) {
       setVideoResumeMs(0);
       setVideoResumePlay(item.media_type === "video");
@@ -793,7 +973,7 @@ export function VorgangMediaViewer({
                       <>
                         <button
                           type="button"
-                          className="flex h-full max-h-full w-full max-w-full cursor-zoom-in items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60"
+                          className="absolute inset-0 h-full w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60"
                           aria-label={t("common.actions.fullscreen")}
                           onClick={enterImmersive}
                         >
@@ -801,9 +981,9 @@ export function VorgangMediaViewer({
                             key={current.path}
                             src={stagePhotoDisplay}
                             alt={current.filename}
-                            className="max-h-full max-w-full object-contain"
+                            className="absolute inset-0 h-full w-full object-contain"
                             draggable={false}
-                            onError={() => setPhotoFailedPath(current.path)}
+                            onError={onStagePhotoError}
                           />
                         </button>
                         <button
@@ -939,15 +1119,15 @@ export function VorgangMediaViewer({
               <p className="relative z-[1] text-sm text-white/70">
                 {t("history.viewer.loadError")}
               </p>
-            ) : photoSrc || stagePhotoDisplay ? (
+            ) : stagePhotoDisplay ? (
               <img
                 key={current.path}
-                src={photoSrc ?? stagePhotoDisplay ?? undefined}
+                src={stagePhotoDisplay}
                 alt={current.filename}
-                className="relative z-[1] max-h-full max-w-full cursor-zoom-out object-contain"
+                className="absolute inset-0 z-[1] h-full w-full cursor-zoom-out object-contain"
                 draggable={false}
                 onClick={exitImmersive}
-                onError={() => setPhotoFailedPath(current.path)}
+                onError={onStagePhotoError}
               />
             ) : (
               <ImageIcon
