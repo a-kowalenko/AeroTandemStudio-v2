@@ -103,6 +103,7 @@ import {
   isMtpDrive,
   listSdFiles,
   scanSdDrives,
+  type CopiedFileIdentity,
   type SdWorkflowActions,
 } from "./lib/sdCard";
 import { presentSdUserMessage } from "./lib/sdMessages";
@@ -650,7 +651,7 @@ function App() {
 
   async function importPathsIntoApp(
     paths: string[],
-    opts?: { scanQr?: boolean },
+    opts?: { scanQr?: boolean; identities?: CopiedFileIdentity[] | null },
   ): Promise<{
     importAction: DialogActionStatus;
     qrAction: DialogActionStatus | null;
@@ -676,7 +677,21 @@ function App() {
     const beforeVideoPaths = useVideoStore.getState().videoList.map((v) => v.path);
     const beforePhotoPaths = usePhotoStore.getState().photoList.map((p) => p.path);
 
-    const result = await importSdFiles(paths);
+    // Seed progress so the SD panel never falls back to indeterminate
+    // "Importiere…" while history is marked (OPT-25).
+    useSdStore.getState().setWorkflowProgress({
+      stage: "import",
+      current: 0,
+      total: paths.length,
+      percent: 0,
+      label: "Verlauf aktualisieren…",
+      file_index: 0,
+      file_total: paths.length,
+      file_name: null,
+    });
+    setLoading(true, t("app.sd.updatingHistory"));
+    const result = await importSdFiles(paths, opts?.identities ?? null);
+    setLoading(true, t("app.sd.importing"));
     try {
       if (result.imported_videos.length > 0) {
         await addVideos(result.imported_videos);
@@ -873,6 +888,7 @@ function App() {
     const statusActions: DialogActionStatus[] = [];
     let qrHit: AutoQrScanOutcome | null = null;
     let ejected = false;
+    let importIdentities: CopiedFileIdentity[] | null = null;
 
     async function tryEjectSd(opts?: { midWorkflowToast?: boolean }): Promise<void> {
       if (!doEject || ejected) return;
@@ -990,6 +1006,9 @@ function App() {
             res.copied_dest_paths.length > 0
               ? res.copied_dest_paths
               : selectedPaths ?? [];
+          if (res.copied_identities?.length) {
+            importIdentities = res.copied_identities;
+          }
         }
 
         // Free the card as soon as import no longer needs SD paths.
@@ -1019,10 +1038,9 @@ function App() {
         } else {
           setPhase("importing");
           useSdStore.getState().setBackupProgress(null);
-          useSdStore.getState().setWorkflowProgress(null);
-          setLoading(true, t("app.sd.importing"));
           const imported = await importPathsIntoApp(importPaths, {
             scanQr: actions.scanQr,
+            identities: importIdentities,
           });
           statusActions.push(imported.importAction);
           if (imported.qrAction) statusActions.push(imported.qrAction);

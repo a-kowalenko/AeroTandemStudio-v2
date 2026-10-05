@@ -109,6 +109,7 @@ const RAW_TO_I18N: Record<string, string> = {
   "Exportiere Video ohne Intro…": "progress.rust.exportWithoutIntro",
   "SD wird bereinigt…": "progress.rust.sdClearing",
   "Backup wird abgeschlossen…": "progress.rust.backupFinishing",
+  "Verlauf aktualisieren…": "progress.rust.updatingHistory",
   "USB-Kamera wird bereinigt…": "progress.rust.usbClearing",
   "Fotos übernommen": "progress.rust.photosTakenOver",
   "Übernehme vorbereitete Medien…": "progress.rust.takePreparedMedia",

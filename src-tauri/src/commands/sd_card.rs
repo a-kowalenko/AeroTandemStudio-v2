@@ -10,10 +10,10 @@ use crate::media::http_server::MediaServerState;
 use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
 use crate::sd_card::autoplay;
 use crate::sd_card::monitor::{
-    find_dcim_drives, BackupProgress, BackupResult, ImportSdResult, ListSdFilesResult, SdDriveInfo,
-    SdFileEnrichProgress, SdFileEnrichment, SdInsertedPayload, WorkflowProgress,
-    EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_FILE_ENRICH_PROGRESS, EVENT_SD_INSERTED,
-    EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
+    find_dcim_drives, BackupProgress, BackupResult, CopiedFileIdentity, ImportSdResult,
+    ListSdFilesResult, SdDriveInfo, SdFileEnrichProgress, SdFileEnrichment, SdInsertedPayload,
+    WorkflowProgress, EVENT_BACKUP_PROGRESS, EVENT_BACKUP_STATUS, EVENT_FILE_ENRICH_PROGRESS,
+    EVENT_SD_INSERTED, EVENT_SD_REMOVED, EVENT_WORKFLOW_PROGRESS, SD_MONITOR,
 };
 use crate::sd_card::secondary_backup::{
     SecondaryBackupEvent, EVENT_SECONDARY_BACKUP, SECONDARY_BACKUP,
@@ -342,11 +342,24 @@ pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
 }
 
 #[tauri::command]
-pub async fn import_sd_files(paths: Vec<String>) -> Result<ImportSdResult, String> {
-    logging::info("sd", format!("SD-Import start: {} Datei(en)", paths.len()));
-    let result = tauri::async_runtime::spawn_blocking(move || SD_MONITOR.import_files(&paths))
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn import_sd_files(
+    paths: Vec<String>,
+    identities: Option<Vec<CopiedFileIdentity>>,
+) -> Result<ImportSdResult, String> {
+    let id_count = identities.as_ref().map(|v| v.len()).unwrap_or(0);
+    logging::info(
+        "sd",
+        format!(
+            "SD-Import start: {} Datei(en), identities={}",
+            paths.len(),
+            id_count
+        ),
+    );
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        SD_MONITOR.import_files(&paths, identities.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
 
     match result {
         Ok(res) => {

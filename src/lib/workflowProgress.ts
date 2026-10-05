@@ -105,12 +105,14 @@ export function resolveSdWorkflowProgress(opts: {
       workflowProgress.stage === "import" ||
       workflowProgress.stage === "backup")
   ) {
+    // Prefer Rust stage labels over the generic loading message (OPT-25),
+    // so "Verlauf aktualisieren…" / "Kopiere Fotos…" are not masked.
     const fallback =
       workflowProgress.stage === "clear"
         ? tr("progress.rust.sdClearing")
         : workflowProgress.stage === "backup"
           ? tr("progress.rust.backupFinishing")
-          : msg || tr("media.drop.importing");
+          : tr("media.drop.importing");
     return {
       percent: workflowProgress.percent,
       label: formatWorkflowLabel(workflowProgress, fallback),

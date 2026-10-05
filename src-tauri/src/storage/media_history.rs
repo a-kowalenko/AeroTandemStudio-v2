@@ -390,27 +390,66 @@ impl MediaHistoryStore {
         Ok(())
     }
 
-    pub fn mark_imported_batch(&self, file_paths: &[PathBuf]) -> Result<(), MediaHistoryError> {
+    /// One SQLite connection + transaction. `entries` is `(filename, identity_hash, size)`.
+    /// Sets `imported_at`; preserves existing `backed_up_at`.
+    pub fn mark_imported_identities(
+        &self,
+        entries: &[(String, String, u64)],
+    ) -> Result<usize, MediaHistoryError> {
+        if entries.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.connect()?;
         let now = utc_now_iso();
+        let tx = conn.unchecked_transaction()?;
+        for (filename, hash, size) in entries {
+            let media_type = media_type_from_filename(filename);
+            Self::upsert_on(
+                &tx,
+                hash,
+                filename,
+                *size,
+                media_type,
+                None,
+                Some(&now),
+                None,
+            )?;
+        }
+        tx.commit()?;
         logging::info(
             "history",
             format!(
                 "Verlauf: markiere {} Datei(en) als importiert",
-                file_paths.len()
+                entries.len()
             ),
         );
-        for path in file_paths {
-            let Ok((hash, size)) = Self::compute_identity(path) else {
+        Ok(entries.len())
+    }
+
+    /// Hash paths (parallel) then mark imported. Prefer [`Self::mark_imported_identities`]
+    /// when hashes are already known (e.g. right after backup).
+    pub fn mark_imported_batch(&self, file_paths: &[PathBuf]) -> Result<(), MediaHistoryError> {
+        if file_paths.is_empty() {
+            return Ok(());
+        }
+        let workers = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(2)
+            .clamp(2, 4);
+        let identities = Self::compute_identities_parallel(file_paths, workers);
+        let mut entries = Vec::with_capacity(file_paths.len());
+        for (i, ident) in identities.into_iter().enumerate() {
+            let Some((hash, size)) = ident else {
                 continue;
             };
-            let filename = path
+            let filename = file_paths[i]
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string();
-            let media_type = media_type_from_filename(&filename);
-            self.upsert(&hash, &filename, size, media_type, None, Some(&now), None)?;
+            entries.push((filename, hash, size));
         }
+        self.mark_imported_identities(&entries)?;
         Ok(())
     }
 
@@ -551,6 +590,24 @@ mod tests {
         assert!(store.contains(&"bb".repeat(20)).unwrap());
         let list = store.list_entries(10, None).unwrap();
         assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn mark_imported_identities_preserves_backed_up_at() {
+        let dir = tempdir().unwrap();
+        let store = MediaHistoryStore::open_at(dir.path().join("h.db")).unwrap();
+        let hash = "cc".repeat(20);
+        store
+            .mark_backed_up_identities(&[("shot.jpg".into(), hash.clone(), 42)])
+            .unwrap();
+        store
+            .mark_imported_identities(&[("shot.jpg".into(), hash.clone(), 42)])
+            .unwrap();
+        assert!(store.was_imported(&hash).unwrap());
+        let list = store.list_entries(10, None).unwrap();
+        assert_eq!(list.len(), 1);
+        assert!(list[0].backed_up_at.is_some());
+        assert!(list[0].imported_at.is_some());
     }
 
     #[test]

@@ -11,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use once_cell::sync::Lazy;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::media::datetime::resolve_video_display_epoch;
@@ -397,6 +397,16 @@ pub fn workflow_progress_import_probe(
     }
 }
 
+/// Content identity from a successful backup copy (partial SHA-1 + size).
+/// Passed into `import_sd_files` so the import path can set `imported_at` without re-reading files.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CopiedFileIdentity {
+    pub path: String,
+    pub filename: String,
+    pub identity_hash: String,
+    pub size_bytes: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BackupResult {
     pub success: bool,
@@ -408,6 +418,8 @@ pub struct BackupResult {
     pub copied_dest_paths: Vec<String>,
     /// Source paths on the SD card that were successfully copied.
     pub copied_source_paths: Vec<String>,
+    /// Identities for `copied_dest_paths` (same order / path keys) — OPT-25 hash reuse.
+    pub copied_identities: Vec<CopiedFileIdentity>,
     /// Second backup destination when server mirror succeeded (remote path / display).
     pub secondary_backup_path: Option<String>,
     /// Soft-fail message for the optional server mirror (primary may still succeed).
@@ -430,12 +442,25 @@ impl BackupResult {
             skipped_count: skipped,
             copied_dest_paths: Vec::new(),
             copied_source_paths: Vec::new(),
+            copied_identities: Vec::new(),
             secondary_backup_path: None,
             secondary_warning: None,
             secondary_async_started: false,
             clear_deleted_count: None,
             clear_warning: None,
         }
+    }
+}
+
+/// Normalize path strings for identity lookup (Windows: case + slash insensitive).
+fn identity_path_key(path: &str) -> String {
+    #[cfg(windows)]
+    {
+        path.replace('/', "\\").to_ascii_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string()
     }
 }
 
@@ -1825,6 +1850,7 @@ impl SdCardMonitor {
                     skipped_count,
                     copied_dest_paths: Vec::new(),
                     copied_source_paths: Vec::new(),
+                    copied_identities: Vec::new(),
                     secondary_backup_path: None,
                     secondary_warning: None,
                     secondary_async_started: false,
@@ -1906,6 +1932,7 @@ impl SdCardMonitor {
                         skipped_count,
                         copied_dest_paths: Vec::new(),
                         copied_source_paths: Vec::new(),
+                        copied_identities: Vec::new(),
                         secondary_backup_path: None,
                         secondary_warning: None,
                         secondary_async_started: false,
@@ -1918,21 +1945,27 @@ impl SdCardMonitor {
 
         drop(hash_tx);
         let hashed = hash_join.join().unwrap_or_default();
+        let mut copied_identities = Vec::with_capacity(copied_dests.len());
+        let entries: Vec<(String, String, u64)> = copied_dests
+            .iter()
+            .filter_map(|p| {
+                let pb = Path::new(p);
+                let name = pb.file_name()?.to_str()?.to_string();
+                let (h, s) = if let Some((h, s)) = hashed.get(&name) {
+                    (h.clone(), *s)
+                } else {
+                    MediaHistoryStore::compute_identity(pb).ok()?
+                };
+                copied_identities.push(CopiedFileIdentity {
+                    path: p.clone(),
+                    filename: name.clone(),
+                    identity_hash: h.clone(),
+                    size_bytes: s,
+                });
+                Some((name, h, s))
+            })
+            .collect();
         if let Ok(hist) = self.history.lock() {
-            let entries: Vec<(String, String, u64)> = copied_dests
-                .iter()
-                .filter_map(|p| {
-                    let pb = Path::new(p);
-                    let name = pb.file_name()?.to_str()?.to_string();
-                    if let Some((h, s)) = hashed.get(&name) {
-                        Some((name, h.clone(), *s))
-                    } else {
-                        MediaHistoryStore::compute_identity(pb)
-                            .ok()
-                            .map(|(h, s)| (name, h, s))
-                    }
-                })
-                .collect();
             let _ = hist.mark_backed_up_identities(&entries);
         }
 
@@ -2042,6 +2075,7 @@ impl SdCardMonitor {
             skipped_count,
             copied_dest_paths: copied_dests,
             copied_source_paths: copied_sources,
+            copied_identities,
             secondary_backup_path,
             secondary_warning,
             secondary_async_started,
@@ -2216,6 +2250,7 @@ impl SdCardMonitor {
                     skipped_count: 0,
                     copied_dest_paths: Vec::new(),
                     copied_source_paths: Vec::new(),
+                    copied_identities: Vec::new(),
                     secondary_backup_path: None,
                     secondary_warning: None,
                     secondary_async_started: false,
@@ -2289,6 +2324,7 @@ impl SdCardMonitor {
 
             let mut copied_dests: Vec<String> = Vec::new();
             let mut copied_sources: Vec<String> = Vec::new();
+            let mut copied_identities: Vec<CopiedFileIdentity> = Vec::new();
             let mut manifest_entries = Vec::new();
             let mut used_names = HashSet::new();
             let mut hist_entries: Vec<(String, String, u64)> = Vec::new();
@@ -2314,7 +2350,8 @@ impl SdCardMonitor {
                     .to_string_lossy()
                     .into_owned();
                 copied_sources.push(src_virtual.clone());
-                copied_dests.push(final_dest.to_string_lossy().into_owned());
+                let dest_path = final_dest.to_string_lossy().into_owned();
+                copied_dests.push(dest_path.clone());
                 manifest_entries.push(ManifestEntry {
                     dest: dst_filename.clone(),
                     src: Some(src_virtual),
@@ -2323,9 +2360,16 @@ impl SdCardMonitor {
                 let ident = hashed
                     .get(&original_name)
                     .cloned()
+                    .or_else(|| hashed.get(&dst_filename).cloned())
                     .or_else(|| MediaHistoryStore::compute_identity(&final_dest).ok());
                 if let Some((hash, size)) = ident {
-                    hist_entries.push((dst_filename.clone(), hash, size));
+                    hist_entries.push((dst_filename.clone(), hash.clone(), size));
+                    copied_identities.push(CopiedFileIdentity {
+                        path: dest_path,
+                        filename: dst_filename,
+                        identity_hash: hash,
+                        size_bytes: size,
+                    });
                 }
             }
 
@@ -2383,6 +2427,7 @@ impl SdCardMonitor {
                 skipped_count: 0,
                 copied_dest_paths: copied_dests,
                 copied_source_paths: copied_sources,
+                copied_identities,
                 secondary_backup_path,
                 secondary_warning,
                 secondary_async_started,
@@ -2554,12 +2599,30 @@ impl SdCardMonitor {
     }
 
     /// Import selected SD/backup files: mark history + return video/photo paths for UI.
-    pub fn import_files(&self, paths: &[String]) -> Result<ImportSdResult, SdError> {
+    pub fn import_files(
+        &self,
+        paths: &[String],
+        identities: Option<&[CopiedFileIdentity]>,
+    ) -> Result<ImportSdResult, SdError> {
         let mut videos = Vec::new();
         let mut photos = Vec::new();
         let mut skipped = 0usize;
         let cfg = self.config();
         let history = self.history.lock().unwrap();
+
+        let mut precomputed: HashMap<String, (String, String, u64)> = HashMap::new();
+        if let Some(ids) = identities {
+            for id in ids {
+                precomputed.insert(
+                    identity_path_key(&id.path),
+                    (
+                        id.filename.clone(),
+                        id.identity_hash.clone(),
+                        id.size_bytes,
+                    ),
+                );
+            }
+        }
 
         for path in paths {
             let pb = Path::new(path);
@@ -2574,7 +2637,15 @@ impl SdCardMonitor {
                 .unwrap_or_default();
 
             if cfg.sd_skip_processed {
-                if let Ok((hash, _)) = MediaHistoryStore::compute_identity(pb) {
+                let hash_opt = precomputed
+                    .get(&identity_path_key(path))
+                    .map(|(_, h, _)| h.clone())
+                    .or_else(|| {
+                        MediaHistoryStore::compute_identity(pb)
+                            .ok()
+                            .map(|(h, _)| h)
+                    });
+                if let Some(hash) = hash_opt {
                     if history.was_imported(&hash).unwrap_or(false) {
                         skipped += 1;
                         continue;
@@ -2597,15 +2668,96 @@ impl SdCardMonitor {
             .chain(photos.iter())
             .map(PathBuf::from)
             .collect();
-        if let Ok(hist) = self.history.lock() {
-            let _ = hist.mark_imported_batch(&all_paths);
-        }
+        self.mark_imported_paths_with_progress(&all_paths, &precomputed);
 
         Ok(ImportSdResult {
             imported_videos: videos,
             imported_photos: photos,
             skipped,
         })
+    }
+
+    /// Mark paths as imported: reuse precomputed identities when present, otherwise
+    /// parallel-hash unknown paths and emit workflow progress (OPT-25).
+    fn mark_imported_paths_with_progress(
+        &self,
+        paths: &[PathBuf],
+        precomputed: &HashMap<String, (String, String, u64)>,
+    ) {
+        if paths.is_empty() {
+            return;
+        }
+        let total = paths.len() as u64;
+        const LABEL: &str = "Verlauf aktualisieren…";
+        self.emit_workflow(workflow_progress_import_probe(0, total, "", LABEL));
+
+        let mut known: Vec<(String, String, u64)> = Vec::new();
+        let mut unknown: Vec<PathBuf> = Vec::new();
+        for p in paths {
+            let key = identity_path_key(&p.to_string_lossy());
+            if let Some((fname, hash, size)) = precomputed.get(&key) {
+                known.push((fname.clone(), hash.clone(), *size));
+            } else {
+                unknown.push(p.clone());
+            }
+        }
+
+        if !known.is_empty() {
+            if let Ok(hist) = self.history.lock() {
+                let _ = hist.mark_imported_identities(&known);
+            }
+            self.emit_workflow(workflow_progress_import_probe(
+                known.len() as u64,
+                total,
+                "",
+                LABEL,
+            ));
+        }
+
+        if !unknown.is_empty() {
+            let workers = std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(2)
+                .clamp(2, 4);
+            // Chunk so we can emit progress between parallel batches.
+            let chunk_size = (unknown.len() / workers).max(8).min(32);
+            let mut done = known.len() as u64;
+            let mut last_emit = Instant::now()
+                .checked_sub(Duration::from_secs(1))
+                .unwrap_or_else(Instant::now);
+            for chunk in unknown.chunks(chunk_size) {
+                let results = MediaHistoryStore::compute_identities_parallel(chunk, workers);
+                let mut entries = Vec::with_capacity(chunk.len());
+                let mut last_name = String::new();
+                for (i, ident) in results.into_iter().enumerate() {
+                    let Some((hash, size)) = ident else {
+                        continue;
+                    };
+                    let filename = chunk[i]
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    last_name = filename.clone();
+                    entries.push((filename, hash, size));
+                }
+                if let Ok(hist) = self.history.lock() {
+                    let _ = hist.mark_imported_identities(&entries);
+                }
+                done = (done + chunk.len() as u64).min(total);
+                if last_emit.elapsed() >= Duration::from_millis(100) || done >= total {
+                    self.emit_workflow(workflow_progress_import_probe(
+                        done,
+                        total,
+                        &last_name,
+                        LABEL,
+                    ));
+                    last_emit = Instant::now();
+                }
+            }
+        }
+
+        self.emit_workflow(workflow_progress_import_probe(total, total, "", LABEL));
     }
 
     pub fn history(&self) -> Result<std::sync::MutexGuard<'_, MediaHistoryStore>, SdError> {
@@ -3218,6 +3370,12 @@ mod tests {
         assert!(primary.join("b.jpg").is_file());
         assert_eq!(result.copied_dest_paths.len(), 2);
         assert_eq!(result.copied_source_paths.len(), 2);
+        assert_eq!(result.copied_identities.len(), 2);
+        for id in &result.copied_identities {
+            assert!(result.copied_dest_paths.iter().any(|p| p == &id.path));
+            assert_eq!(id.identity_hash.len(), 40);
+            assert!(id.size_bytes > 0);
+        }
         assert!(primary
             .join(crate::media::dji_paths::BACKUP_MANIFEST_NAME)
             .is_file());

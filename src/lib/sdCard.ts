@@ -81,6 +81,14 @@ export function isEmptyCatalogMessage(msg: string): boolean {
   );
 }
 
+/** Content identity from a successful backup copy (OPT-25 hash reuse). */
+export type CopiedFileIdentity = {
+  path: string;
+  filename: string;
+  identity_hash: string;
+  size_bytes: number;
+};
+
 export type BackupResult = {
   success: boolean;
   backup_path: string | null;
@@ -89,6 +97,8 @@ export type BackupResult = {
   skipped_count: number;
   copied_dest_paths: string[];
   copied_source_paths: string[];
+  /** Identities for dest paths — pass into import to skip re-hash. */
+  copied_identities: CopiedFileIdentity[];
   secondary_backup_path: string | null;
   secondary_warning: string | null;
   /** True when second-path mirror was queued in the background. */
@@ -255,8 +265,14 @@ export async function backupSdCard(
   });
 }
 
-export async function importSdFiles(paths: string[]): Promise<ImportSdResult> {
-  return invoke<ImportSdResult>("import_sd_files", { paths });
+export async function importSdFiles(
+  paths: string[],
+  identities?: CopiedFileIdentity[] | null,
+): Promise<ImportSdResult> {
+  return invoke<ImportSdResult>("import_sd_files", {
+    paths,
+    identities: identities ?? null,
+  });
 }
 
 export async function clearSdFiles(paths: string[]): Promise<number> {
