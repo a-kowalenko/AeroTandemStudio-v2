@@ -53,6 +53,7 @@ import {
   bulkSummaryItemFromScanEntry,
   bulkOkItemFromEntry,
   setVorgangUploadState,
+  healVorgangUploadAlreadyFinished,
   refreshPendingUploadCount,
   type BulkPhase2Session,
   type BulkScanEntry,
@@ -95,6 +96,7 @@ import type {
 } from "@/lib/uploadPreflight";
 import {
   canOfferPartialUpload,
+  isAlreadyFinishedPreflight,
   missingFilePathsFromPreflight,
   primaryPreflightReasonCode,
 } from "@/lib/uploadPreflight";
@@ -524,6 +526,19 @@ export function HistoryDialog({
     setRetryPreflightBusy(true);
     try {
       const result = await preflightVorgangUpload(entry.id);
+      if (isAlreadyFinishedPreflight(result)) {
+        try {
+          await healVorgangUploadAlreadyFinished(entry);
+        } catch (e) {
+          console.error("heal upload_state after AMS completed failed:", e);
+        }
+        finishBulkPhase2Entry(
+          "skipped",
+          entry,
+          primaryPreflightReasonCode(result.hard_errors.map((i) => i.code)),
+        );
+        return;
+      }
       if (!result.ok || result.hard_errors.length > 0) {
         if (canOfferPartialUpload(result.hard_errors)) {
           pendingRetryEntryRef.current = entry;
@@ -701,6 +716,29 @@ export function HistoryDialog({
     pf: UploadPreflightResult,
     opts: { omitted: number; includedExtraCount?: number },
   ) {
+    if (isAlreadyFinishedPreflight(pf)) {
+      try {
+        await healVorgangUploadAlreadyFinished(entry);
+        const code = primaryPreflightReasonCode(
+          pf.hard_errors.map((i) => i.code),
+        );
+        if (bulkPhase2ModeRef.current) {
+          finishBulkPhase2Entry("skipped", entry, code);
+        } else {
+          showSuccess(
+            t(`dialogs.uploadPreflightFail.codes.${code}`),
+            t("history.upload.retryTitle"),
+          );
+          void refreshPendingUploadCount(uploadToServerEnabled).catch(() => {});
+        }
+      } catch (e) {
+        showError(String(e), t("history.upload.retryTitle"));
+        if (bulkPhase2ModeRef.current) {
+          finishBulkPhase2Entry("skipped", entry, "preflight_error");
+        }
+      }
+      return;
+    }
     if (!pf.ok || pf.hard_errors.length > 0) {
       if (canOfferPartialUpload(pf.hard_errors)) {
         pendingRetryEntryRef.current = entry;
@@ -750,6 +788,22 @@ export function HistoryDialog({
     setRetryPreflightBusy(true);
     try {
       const result = await preflightVorgangUpload(entry.id);
+      if (isAlreadyFinishedPreflight(result)) {
+        try {
+          await healVorgangUploadAlreadyFinished(entry);
+          const code = primaryPreflightReasonCode(
+            result.hard_errors.map((i) => i.code),
+          );
+          showSuccess(
+            t(`dialogs.uploadPreflightFail.codes.${code}`),
+            t("history.upload.retryTitle"),
+          );
+          void refreshPendingUploadCount(uploadToServerEnabled).catch(() => {});
+        } catch (e) {
+          showError(String(e), t("history.upload.retryTitle"));
+        }
+        return;
+      }
       if (!result.ok || result.hard_errors.length > 0) {
         if (canOfferPartialUpload(result.hard_errors)) {
           pendingRetryEntryRef.current = entry;

@@ -152,6 +152,7 @@ import {
   listVorgaenge,
   pendingUploadCandidates,
   scanBulkUploadCandidates,
+  healVorgangUploadAlreadyFinished,
   type BulkPhase2Session,
   type BulkUploadScanResult,
   type BulkUploadSummary,
@@ -160,6 +161,7 @@ import {
 } from "./lib/vorgangHistory";
 import {
   classifyBulkPreflight,
+  isAlreadyFinishedPreflight,
   primaryPreflightReasonCode,
 } from "./lib/uploadPreflight";
 import {
@@ -2510,6 +2512,22 @@ function App() {
 
       try {
         const pf = await preflightVorgangUpload(entry.id);
+        if (isAlreadyFinishedPreflight(pf)) {
+          try {
+            await healVorgangUploadAlreadyFinished(entry);
+          } catch (e) {
+            console.error("heal upload_state after AMS completed failed:", e);
+          }
+          summary.skipped += 1;
+          summary.skippedItems.push({
+            guest: entry.gast,
+            vorgangId: entry.id,
+            reasonCode: primaryPreflightReasonCode(
+              pf.hard_errors.map((i) => i.code),
+            ),
+          });
+          continue;
+        }
         const cls = classifyBulkPreflight(pf);
         if (cls.bucket !== "ready") {
           summary.skipped += 1;

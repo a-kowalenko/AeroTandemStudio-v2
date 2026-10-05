@@ -605,7 +605,6 @@ export function CustomerForm({
   const clearKundenIdFocus = useKundeStore((s) => s.clearKundenIdFocus);
   const crewAttentionAfterQr = useKundeStore((s) => s.crewAttentionAfterQr);
   const dialogKind = useUiStore((s) => s.dialogKind);
-  const dialogVariant = useUiStore((s) => s.dialogVariant);
   const settingsOpen = useUiStore((s) => s.settingsOpen);
   const loading = useUiStore((s) => s.loading);
   const hasPhotos = usePhotoStore((s) => s.photoList.length > 0);
@@ -677,8 +676,8 @@ export function CustomerForm({
   const [nameLocked, setNameLocked] = useState(true);
   const [lookupShakeTick, setLookupShakeTick] = useState(0);
   const crewSectionRef = useRef<HTMLDivElement>(null);
-  const qrSuccessDialogWasOpen = useRef(false);
-  const focusedAmsLookupRevision = useRef(0);
+  /** Last QR/AMS revision we already focused crew for (avoids double-focus). */
+  const crewFocusGenRef = useRef("");
 
   const isQrMode = kunde.form_mode === "kunde";
   const busy = Boolean(disabled);
@@ -740,33 +739,31 @@ export function CustomerForm({
     }
   }, [lookupStatus.kind, lookupStatus.text]);
 
-  // After QR success dialog closes: scroll/focus first missing crew field.
+  // After QR/AMS apply: scroll/focus first missing crew field once overlays clear.
+  // (Was tied to SuccessDialog close; session outcome card is non-modal.)
   useEffect(() => {
-    const open = dialogKind === "success" && dialogVariant === "qr";
-    let focusTimer: number | undefined;
-    if (qrSuccessDialogWasOpen.current && !open) {
-      focusTimer = scheduleCrewAttentionFocus(crewSectionRef);
-    }
-    qrSuccessDialogWasOpen.current = open;
-    return () => {
-      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
-    };
-  }, [dialogKind, dialogVariant]);
-
-  // After AMS apply (dialogs already closed): same crew scroll/focus.
-  useEffect(() => {
-    if (amsLookupRevision <= 0) {
-      focusedAmsLookupRevision.current = 0;
+    if (!crewAttentionAfterQr) {
+      crewFocusGenRef.current = "";
       return;
     }
-    if (focusedAmsLookupRevision.current >= amsLookupRevision) return;
-    if (dialogKind != null) return;
-    focusedAmsLookupRevision.current = amsLookupRevision;
+    if (dialogKind != null || settingsOpen || loading) return;
+
+    const gen = `${qrRevision}:${amsLookupRevision}`;
+    if (crewFocusGenRef.current === gen) return;
+    crewFocusGenRef.current = gen;
+
     const focusTimer = scheduleCrewAttentionFocus(crewSectionRef);
     return () => {
       if (focusTimer !== undefined) window.clearTimeout(focusTimer);
     };
-  }, [amsLookupRevision, dialogKind]);
+  }, [
+    amsLookupRevision,
+    crewAttentionAfterQr,
+    dialogKind,
+    loading,
+    qrRevision,
+    settingsOpen,
+  ]);
 
   // After import without QR / QR miss: focus Kunden-ID once overlays close.
   useEffect(() => {

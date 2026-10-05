@@ -161,17 +161,13 @@ export function isUploadSuccessfullyComplete(
   entry: VorgangLike,
   amsState: string | null | undefined,
 ): boolean {
-  const upload = normalizeUploadState(entry.upload_state);
   const cid = entry.correlation_id?.trim() ?? "";
   if (!cid) {
-    return upload === "done";
+    return normalizeUploadState(entry.upload_state) === "done";
   }
-  const s = effectiveAmsListState(entry, amsState).toLowerCase();
-  if (s !== "completed") {
-    return false;
-  }
-  // AMS completed — upload_state may be stale (none/pending) on legacy or unsynced rows.
-  return upload === "done" || upload === "none" || upload === "pending";
+  // AMS completed — SMB upload is done even if upload_state is still stale
+  // (failed/pending after cable-pull / late sync).
+  return effectiveAmsListState(entry, amsState).toLowerCase() === "completed";
 }
 
 /** Terminal AMS problem states that still deserve a list chip (cancelled / rejected / failed). */
@@ -209,11 +205,12 @@ export function resolveListStatusDisplay(
   if (isFolderMissingProblem(entry, folderMissingById)) {
     return "folder_problem";
   }
-  if (isListUploadStatus(upload)) {
-    return "upload";
-  }
+  // AMS completed beats a stale SMB failed/pending chip (heal may lag one tick).
   if (isUploadSuccessfullyComplete(entry, amsState)) {
     return "upload_done";
+  }
+  if (isListUploadStatus(upload)) {
+    return "upload";
   }
   if (isLocalOnlyVorgang(entry)) {
     return "local_only";

@@ -901,6 +901,12 @@ impl VorgangHistoryStore {
                 format!("AMS-Status Update: kein Vorgang für correlation_id={cid}"),
             );
         }
+        // AMS completed ⇒ SMB upload is done. Heal stale failed/pending/… so
+        // Historie does not keep offering “Upload nachholen” (split-brain after
+        // cable pull / late AMS sync).
+        if n > 0 && update.state.trim().eq_ignore_ascii_case("completed") {
+            heal_upload_state_after_ams_completed(&conn, vorgang_id, cid)?;
+        }
         if !cid.is_empty() {
             let _ = conn.execute(
                 "UPDATE vorgang_appends SET
@@ -1453,6 +1459,57 @@ fn initial_upload_state(upload_to_server: bool, correlation_id: &str) -> &'stati
     } else {
         "none"
     }
+}
+
+/// When AMS Erst-Handoff is completed, clear stale SMB retry states → `done`.
+/// Same row filter as `update_ams_handoff_status` (does not touch append-only updates).
+fn heal_upload_state_after_ams_completed(
+    conn: &rusqlite::Connection,
+    vorgang_id: Option<i64>,
+    correlation_id: &str,
+) -> Result<(), VorgangHistoryError> {
+    const STALE: &str = "('pending','uploading','failed','cancelled','ignored')";
+    let cid = correlation_id.trim();
+    let healed = if let Some(id) = vorgang_id {
+        if cid.is_empty() {
+            conn.execute(
+                &format!(
+                    "UPDATE vorgaenge SET upload_state = 'done' \
+                     WHERE id = ?1 AND lower(upload_state) IN {STALE}"
+                ),
+                params![id],
+            )?
+        } else {
+            conn.execute(
+                &format!(
+                    "UPDATE vorgaenge SET upload_state = 'done' \
+                     WHERE id = ?1 AND correlation_id = ?2 \
+                       AND lower(upload_state) IN {STALE}"
+                ),
+                params![id, cid],
+            )?
+        }
+    } else if !cid.is_empty() {
+        conn.execute(
+            &format!(
+                "UPDATE vorgaenge SET upload_state = 'done' \
+                 WHERE correlation_id = ?1 AND lower(upload_state) IN {STALE}"
+            ),
+            params![cid],
+        )?
+    } else {
+        0
+    };
+    if healed > 0 {
+        logging::info(
+            "vorgang_history",
+            format!(
+                "upload_state heal after AMS completed: {healed} row(s) → done (id={:?}, cid={})",
+                vorgang_id, cid
+            ),
+        );
+    }
+    Ok(())
 }
 
 fn normalize_upload_state(raw: &str) -> Result<&'static str, VorgangHistoryError> {
@@ -2280,6 +2337,89 @@ mod tests {
             .expect("local row");
         assert_eq!(local_row.upload_state, "none");
         assert!(local_row.correlation_id.is_empty());
+    }
+
+    #[test]
+    fn ams_completed_heals_stale_upload_state_to_done() {
+        let dir = tempdir().unwrap();
+        let store = VorgangHistoryStore::open_at(dir.path().join("v.db")).unwrap();
+        let id = store
+            .insert_vorgang(
+                &sample_kunde(),
+                &sample_result(),
+                "oldschool",
+                &[],
+                None,
+                true,
+            )
+            .unwrap();
+        let cid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+        store
+            .update_upload_state(Some(id), "", "failed")
+            .unwrap();
+        assert_eq!(
+            store.list_vorgaenge(10, None).unwrap()[0].upload_state,
+            "failed"
+        );
+
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                cid,
+                &AmsHandoffStatusUpdate {
+                    state: "completed".into(),
+                    updated_at: "2026-10-05T12:00:00Z".into(),
+                    verified_at: "2026-10-05T12:00:01Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: "erfolg".into(),
+                    source: "bridge".into(),
+                },
+            )
+            .unwrap();
+
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.ams_state, "completed");
+        assert_eq!(entry.upload_state, "done");
+
+        // Append correlation must not rewrite parent upload_state via mismatched WHERE.
+        let append_cid = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+        store
+            .record_append(
+                id,
+                append_cid,
+                "Max_nachreichung_01",
+                "/tmp/Max_nachreichung_01",
+                1,
+                0,
+                &[],
+            )
+            .unwrap();
+        store
+            .update_upload_state(Some(id), "", "failed")
+            .unwrap();
+        store
+            .update_ams_handoff_status(
+                Some(id),
+                append_cid,
+                &AmsHandoffStatusUpdate {
+                    state: "completed".into(),
+                    updated_at: "2026-10-05T13:00:00Z".into(),
+                    verified_at: "2026-10-05T13:00:01Z".into(),
+                    error_code: String::new(),
+                    error_message: String::new(),
+                    archive: String::new(),
+                    source: "bridge".into(),
+                },
+            )
+            .unwrap();
+        let entry = &store.list_vorgaenge(10, None).unwrap()[0];
+        assert_eq!(entry.ams_state, "completed");
+        assert_eq!(
+            entry.upload_state, "failed",
+            "append AMS completed must not heal parent via id+append_cid"
+        );
+        assert_eq!(entry.last_append_ams_state, "completed");
     }
 
     #[test]

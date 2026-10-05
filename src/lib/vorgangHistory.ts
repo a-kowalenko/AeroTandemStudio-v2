@@ -9,6 +9,7 @@ import {
 import { isFolderMissingProblem } from "@/lib/vorgangLifecycle";
 import {
   classifyBulkPreflight,
+  isAlreadyFinishedPreflight,
   primaryPreflightReasonCode,
 } from "./uploadPreflight";
 import {
@@ -23,6 +24,7 @@ export {
   canRetryVorgangUpload,
   canStartVorgangUpload,
   canUploadLocalVorgang,
+  isAmsErstHandoffComplete,
   isListUploadStatus,
   isLocalOnlyUploadState,
   isOutstandingUploadState,
@@ -227,6 +229,20 @@ export async function preflightVorgangUpload(
   });
 }
 
+/**
+ * Persist + patch `upload_state=done` when Preflight/AMS says the job is
+ * already finished (stale failed/pending after AMS completed).
+ */
+export async function healVorgangUploadAlreadyFinished(
+  entry: Pick<VorgangEntry, "id">,
+): Promise<void> {
+  await setVorgangUploadState("done", { vorgangId: entry.id });
+  useHistoryStore.getState().patchVorgang(entry.id, (row) => ({
+    ...row,
+    upload_state: "done",
+  }));
+}
+
 export type DeliveryResyncReport = {
   removed_paths: string[];
   file_count: number;
@@ -374,6 +390,15 @@ export async function scanBulkUploadCandidates(
   for (const entry of entries) {
     try {
       const pf = await preflightVorgangUpload(entry.id);
+      if (isAlreadyFinishedPreflight(pf)) {
+        try {
+          await healVorgangUploadAlreadyFinished(entry);
+        } catch (e) {
+          console.error("heal upload_state after AMS completed failed:", e);
+        }
+        // Already done — omit from ready / needs / blocked.
+        continue;
+      }
       const cls = classifyBulkPreflight(pf);
       if (cls.bucket === "ready") {
         ready.push(entry);

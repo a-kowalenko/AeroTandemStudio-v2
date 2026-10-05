@@ -17,6 +17,21 @@ export function primaryPreflightReasonCode(codes: string[]): string {
   return codes[0] ?? "unknown";
 }
 
+/** Hard errors that mean “already finished” — heal upload_state, do not retry SMB. */
+export const UPLOAD_PREFLIGHT_ALREADY_FINISHED = new Set([
+  "ams_completed",
+  "already_done",
+]);
+
+/** True when every hard error is an already-finished code (no real blocker). */
+export function isAlreadyFinishedPreflight(
+  result: UploadPreflightLike,
+): boolean {
+  const hard = result.hard_errors;
+  if (hard.length === 0) return false;
+  return hard.every((e) => UPLOAD_PREFLIGHT_ALREADY_FINISHED.has(e.code));
+}
+
 /** Sort bulk candidates into ready / needs user decision / blocked (Phase 31.6). */
 export function classifyBulkPreflight(
   result: UploadPreflightLike,

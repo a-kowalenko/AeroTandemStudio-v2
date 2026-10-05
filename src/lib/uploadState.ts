@@ -4,6 +4,8 @@ export type UploadStateLike = {
   correlation_id?: string | null;
   base_output_dir?: string | null;
   upload_state?: string | null;
+  /** When AMS Erst-Handoff is completed, SMB retry is obsolete. */
+  ams_state?: string | null;
 };
 
 /** Normalize for comparisons; empty → "". */
@@ -70,6 +72,13 @@ export function entryHasUploadTarget(entry: UploadStateLike): boolean {
   );
 }
 
+/** AMS Erst-Handoff finished — do not offer / count SMB retry. */
+export function isAmsErstHandoffComplete(
+  entry: Pick<UploadStateLike, "ams_state">,
+): boolean {
+  return (entry.ams_state ?? "").trim().toLowerCase() === "completed";
+}
+
 /** Whether Historie may offer “Upload nachholen” for this row. */
 export function canRetryVorgangUpload(
   entry: UploadStateLike,
@@ -77,6 +86,7 @@ export function canRetryVorgangUpload(
 ): boolean {
   if (!uploadToServer) return false;
   if (!entryHasUploadTarget(entry)) return false;
+  if (isAmsErstHandoffComplete(entry)) return false;
   return isRetryableUploadState(entry.upload_state);
 }
 
@@ -111,5 +121,6 @@ export function isOutstandingVorgangUpload(
 ): boolean {
   if (!uploadToServer) return false;
   if (!entryHasUploadTarget(entry)) return false;
+  if (isAmsErstHandoffComplete(entry)) return false;
   return isOutstandingUploadState(entry.upload_state);
 }

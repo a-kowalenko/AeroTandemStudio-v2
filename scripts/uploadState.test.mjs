@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   canRetryVorgangUpload,
+  isAmsErstHandoffComplete,
   isListUploadStatus,
   isOutstandingUploadState,
   isOutstandingVorgangUpload,
   isRetryableUploadState,
 } from "../src/lib/uploadState.ts";
+import { isAlreadyFinishedPreflight } from "../src/lib/uploadPreflight.ts";
 import { partitionReconnectUploadSelection } from "../src/lib/reconnectUploadOffer.ts";
 
 function entry(overrides = {}) {
@@ -15,6 +17,7 @@ function entry(overrides = {}) {
     correlation_id: "cid-1",
     base_output_dir: "C:/out/job",
     upload_state: "pending",
+    ams_state: "",
     ...overrides,
   };
 }
@@ -56,6 +59,45 @@ describe("upload_state cancelled / ignored vs outstanding (Phase 31.8 / 31.10)",
     assert.equal(isListUploadStatus("done"), false);
     assert.equal(isListUploadStatus("none"), false);
     assert.equal(isListUploadStatus(""), false);
+  });
+});
+
+describe("AMS completed heals stale SMB failed (split-brain)", () => {
+  it("failed + AMS completed is not outstanding and not retryable", () => {
+    const row = entry({
+      upload_state: "failed",
+      ams_state: "completed",
+    });
+    assert.equal(isAmsErstHandoffComplete(row), true);
+    assert.equal(isOutstandingVorgangUpload(row, true), false);
+    assert.equal(canRetryVorgangUpload(row, true), false);
+  });
+
+  it("preflight hard errors ams_completed / already_done are already-finished", () => {
+    assert.equal(
+      isAlreadyFinishedPreflight({
+        ok: false,
+        hard_errors: [{ code: "ams_completed" }],
+        soft_warnings: [],
+      }),
+      true,
+    );
+    assert.equal(
+      isAlreadyFinishedPreflight({
+        ok: false,
+        hard_errors: [{ code: "already_done" }, { code: "ams_completed" }],
+        soft_warnings: [],
+      }),
+      true,
+    );
+    assert.equal(
+      isAlreadyFinishedPreflight({
+        ok: false,
+        hard_errors: [{ code: "ams_completed" }, { code: "file_missing" }],
+        soft_warnings: [],
+      }),
+      false,
+    );
   });
 });
 
