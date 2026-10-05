@@ -36,8 +36,6 @@ export type CreateOutcomeRow = {
 };
 
 export const CREATE_OUTCOME_HIDE_MS = 8000;
-/** Grid collapse (upload panel) before the outcome leaves the store. */
-export const CREATE_OUTCOME_COLLAPSE_MS = 320;
 
 let nextCreateOutcomeId = 1;
 
@@ -76,7 +74,6 @@ export function buildCreateOutcomeRows(
       label: result.reused_preview
         ? t("create.success.videoFromPreview")
         : t("create.success.videoCreated"),
-      detail: pathBasename(result.video_output),
       tone: "success",
     });
   }
@@ -108,7 +105,7 @@ export function buildCreateOutcomeRows(
       rows.push({ label: t("create.success.uploadRunning"), detail: note, tone: "success" });
     }
   } else if (serverUploaded) {
-    rows.push({ label: t("create.success.uploaded"), detail: note, tone: "success" });
+    rows.push({ label: t("create.success.uploaded"), tone: "success" });
   } else if (uploadDeferred) {
     rows.push({
       label: t("create.success.uploadPending"),

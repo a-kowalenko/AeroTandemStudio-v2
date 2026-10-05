@@ -79,6 +79,9 @@ import {
   resetWorkflowCancel,
   runStartupChecks,
   uploadToServer,
+  classifyRemoteJobConflict,
+  deleteRemoteJobFolder,
+  amsBridgeHandoffReady,
   validateCreateJob,
   probeCreateOutputFolder,
   probeOutroAsset,
@@ -171,6 +174,12 @@ import {
   type ReconnectUploadOfferState,
 } from "./lib/reconnectUploadOffer";
 import type { ReconnectUploadOfferChoice } from "./components/ReconnectUploadOfferDialog";
+import type { RemoteJobConflictChoice } from "./components/RemoteJobConflictDialog";
+import {
+  asConflictDialogAction,
+  isRemoteJobExistsError,
+  type RemoteJobConflictDialogState,
+} from "./lib/remoteJobConflict";
 import {
   showBackgroundUploadDoneToast,
   showBackgroundUploadFailToast,
@@ -318,6 +327,11 @@ function App() {
     useState<AmsPreflightConfirmState | null>(null);
   const [reconnectUploadOffer, setReconnectUploadOffer] =
     useState<ReconnectUploadOfferState | null>(null);
+  const [remoteJobConflict, setRemoteJobConflict] =
+    useState<RemoteJobConflictDialogState | null>(null);
+  const remoteJobConflictResolveRef = useRef<
+    ((choice: RemoteJobConflictChoice) => void) | null
+  >(null);
   const [bulkUploadSummary, setBulkUploadSummary] =
     useState<BulkUploadSummary | null>(null);
   const [bulkPhase2Session, setBulkPhase2Session] =
@@ -1365,6 +1379,7 @@ function App() {
     if (amsPreflightConfirm != null) return true;
     if (lowMediaConfirm != null) return true;
     if (folderConflictConfirm != null) return true;
+    if (remoteJobConflict != null) return true;
     if (reencodeConfirm != null) return true;
     if (introMuxFallback != null) return true;
     if (bodyConcatFallback != null) return true;
@@ -1522,6 +1537,7 @@ function App() {
     amsPreflightConfirm,
     lowMediaConfirm,
     folderConflictConfirm,
+    remoteJobConflict,
     reencodeConfirm,
     introMuxFallback,
     bodyConcatFallback,
@@ -1790,33 +1806,154 @@ function App() {
       }
       return "ok";
     } catch (uploadErr) {
-      if (isCancellationError(uploadErr) || uploadCancelRequestedRef.current) {
+      const finishCancelled = async () => {
         await persistUploadState("cancelled");
         setServerPhase("connected");
         setUploadProgress(null);
         uploadProgressActiveRef.current = false;
         useUploadQueueStore.getState().setCancelPhase(null);
         if (!job.quietSuccess) {
-          showWarning(
-            t("app.upload.bgCancelled"),
-            t("app.upload.title"),
-          );
+          showWarning(t("app.upload.bgCancelled"), t("app.upload.title"));
         }
-        return "cancelled";
+        return "cancelled" as const;
+      };
+      const finishFailed = async (err: unknown) => {
+        await persistUploadState("failed");
+        setServerPhase("error");
+        useUploadQueueStore.getState().setCancelPhase(null);
+        if (!job.quietSuccess) {
+          const detail = String(err).trim();
+          showBackgroundUploadFailToast({
+            title: t("app.upload.bgFailTitle"),
+            message: detail
+              ? t("app.upload.bgFailMessage", { detail: `${detail}.` })
+              : t("app.upload.bgFailHint"),
+          });
+        }
+        return "failed" as const;
+      };
+
+      if (isCancellationError(uploadErr) || uploadCancelRequestedRef.current) {
+        return finishCancelled();
       }
-      await persistUploadState("failed");
-      setServerPhase("error");
-      useUploadQueueStore.getState().setCancelPhase(null);
-      if (!job.quietSuccess) {
-        const detail = String(uploadErr).trim();
-        showBackgroundUploadFailToast({
-          title: t("app.upload.bgFailTitle"),
-          message: detail
-            ? t("app.upload.bgFailMessage", { detail: `${detail}.` })
-            : t("app.upload.bgFailHint"),
-        });
+
+      if (isRemoteJobExistsError(uploadErr)) {
+        setServerPhase("connected");
+        setUploadProgress(null);
+        uploadProgressActiveRef.current = false;
+        useUploadQueueStore.getState().setCancelPhase(null);
+
+        let action = "unclear";
+        let reason = "probe_failed";
+        let folderName =
+          folderLabel || job.folderName?.trim() || "";
+        try {
+          const probe = await classifyRemoteJobConflict(
+            job.localDir,
+            job.vorgangId,
+          );
+          action = probe.action;
+          reason = probe.reason;
+          folderName = probe.folder_name?.trim() || folderName;
+        } catch (e) {
+          console.error("classify remote job conflict failed:", e);
+        }
+
+        const uploadAgain = async (deleteFirst: boolean) => {
+          if (uploadCancelRequestedRef.current) return finishCancelled();
+          setServerPhase("uploading");
+          uploadProgressActiveRef.current = true;
+          if (deleteFirst) {
+            await deleteRemoteJobFolder(job.localDir);
+          }
+          if (uploadCancelRequestedRef.current) return finishCancelled();
+          const uploaded = await uploadToServer(job.localDir, undefined, {
+            correlation_id: job.correlationId,
+            folder_name: job.folderName,
+          });
+          if (uploadCancelRequestedRef.current) return finishCancelled();
+          await persistUploadState("done");
+          setServerPhase("connected");
+          if (!job.quietSuccess) {
+            showBackgroundUploadDoneToast({
+              title: t("app.upload.bgDoneTitle"),
+              message: deleteFirst
+                ? t("app.upload.remoteReplaced")
+                : folderLabel ||
+                  uploaded.remote_path ||
+                  uploaded.message ||
+                  undefined,
+            });
+          }
+          return "ok" as const;
+        };
+
+        if (action !== "retry") {
+          const choice = await askRemoteJobConflict({
+            action: asConflictDialogAction(action),
+            reason,
+            folderName,
+          });
+          if (choice === "proceed" && (action === "heal" || action === "heal_handoff")) {
+            await persistUploadState("done");
+            setServerPhase("connected");
+            if (action === "heal_handoff" && job.correlationId?.trim()) {
+              try {
+                await amsBridgeHandoffReady(
+                  job.correlationId,
+                  job.folderName ?? undefined,
+                );
+              } catch (e) {
+                console.error("handoff after remote conflict failed:", e);
+                if (!job.quietSuccess) {
+                  showWarning(
+                    t("app.upload.remoteHandoffFailed"),
+                    t("app.upload.title"),
+                  );
+                }
+                return "ok";
+              }
+            }
+            if (!job.quietSuccess) {
+              showBackgroundUploadDoneToast({
+                title: t("app.upload.bgDoneTitle"),
+                message: t("app.upload.remoteMarkedDone"),
+              });
+            }
+            return "ok";
+          }
+          if (choice === "proceed" && action === "replace") {
+            try {
+              return await uploadAgain(true);
+            } catch (retryErr) {
+              if (
+                isCancellationError(retryErr) ||
+                uploadCancelRequestedRef.current
+              ) {
+                return finishCancelled();
+              }
+              return finishFailed(retryErr);
+            }
+          }
+          await persistUploadState("failed");
+          setServerPhase("connected");
+          return "failed";
+        }
+
+        try {
+          return await uploadAgain(false);
+        } catch (retryErr) {
+          if (
+            isCancellationError(retryErr) ||
+            uploadCancelRequestedRef.current
+          ) {
+            return finishCancelled();
+          }
+          return finishFailed(retryErr);
+        }
       }
-      return "failed";
+
+      return finishFailed(uploadErr);
     } finally {
       uploadProgressActiveRef.current = false;
       setUploadProgress(null);
@@ -1920,6 +2057,22 @@ function App() {
     if (choice === "proceed") {
       void runCreateJob();
     }
+  }
+
+  function askRemoteJobConflict(
+    state: RemoteJobConflictDialogState,
+  ): Promise<RemoteJobConflictChoice> {
+    return new Promise((resolve) => {
+      remoteJobConflictResolveRef.current = resolve;
+      setRemoteJobConflict(state);
+    });
+  }
+
+  function onRemoteJobConflictChoice(choice: RemoteJobConflictChoice) {
+    setRemoteJobConflict(null);
+    const resolve = remoteJobConflictResolveRef.current;
+    remoteJobConflictResolveRef.current = null;
+    resolve?.(choice);
   }
 
   function onFolderConflictChoice(choice: FolderConflictConfirmChoice) {
@@ -2973,6 +3126,8 @@ function App() {
         onAmsPreflightChoice={onAmsPreflightChoice}
         reconnectUploadOffer={reconnectUploadOffer}
         onReconnectUploadOfferChoice={onReconnectUploadOfferChoice}
+        remoteJobConflict={remoteJobConflict}
+        onRemoteJobConflictChoice={onRemoteJobConflictChoice}
         loading={loading}
         sdWorkflowUiActive={sdWorkflowUiActive}
         loadingMessage={loadingMessage}

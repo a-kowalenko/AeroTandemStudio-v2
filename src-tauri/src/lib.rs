@@ -43,7 +43,9 @@ use commands::sd_card::{
     init_sd_monitor, list_processed_files, list_sd_files, purge_processed_files, scan_sd_drives,
     start_sd_monitor, stop_sd_monitor,
 };
-use commands::smb::{test_server_connection, upload_to_server};
+use commands::smb::{
+    classify_remote_job_conflict, delete_remote_job_folder, test_server_connection, upload_to_server,
+};
 use commands::video::{
     cancel_encode, cancel_secondary_backup, cancel_speculative_create, cancel_upload_slot,
     clear_video_cut_undo, concat_videos, create_job, create_video, cut_video,
@@ -271,6 +273,8 @@ pub fn run() {
             delete_vorgang_extra_files,
             test_server_connection,
             upload_to_server,
+            classify_remote_job_conflict,
+            delete_remote_job_folder,
             get_updater_status,
             get_updater_install_hint,
             check_for_updates,

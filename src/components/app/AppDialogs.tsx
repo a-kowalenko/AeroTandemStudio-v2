@@ -14,6 +14,9 @@ import type { AmsPreflightConfirmChoice } from "../AmsPreflightConfirmDialog";
 import type { AmsPreflightConfirmState } from "@/lib/amsPreflightConfirm";
 import type { ReconnectUploadOfferChoice } from "../ReconnectUploadOfferDialog";
 import type { ReconnectUploadOfferState } from "@/lib/reconnectUploadOffer";
+import type { RemoteJobConflictChoice } from "../RemoteJobConflictDialog";
+import { RemoteJobConflictDialog } from "../RemoteJobConflictDialog";
+import type { RemoteJobConflictDialogState } from "@/lib/remoteJobConflict";
 import type { BulkPhase2Session, BulkUploadScanResult, BulkUploadSummary, VorgangEntry, VorgangUploadRetryOptions } from "@/lib/vorgangHistory";
 import { defaultEncodeProfile } from "@/lib/encodeProfile";
 import type { PhotoEditorResult } from "../PhotoEditor";
@@ -146,6 +149,8 @@ export type AppDialogsProps = {
   onAmsPreflightChoice: (choice: AmsPreflightConfirmChoice) => void;
   reconnectUploadOffer: ReconnectUploadOfferState | null;
   onReconnectUploadOfferChoice: (choice: ReconnectUploadOfferChoice) => void;
+  remoteJobConflict: RemoteJobConflictDialogState | null;
+  onRemoteJobConflictChoice: (choice: RemoteJobConflictChoice) => void;
   loading: boolean;
   sdWorkflowUiActive: boolean;
   loadingMessage: string;
@@ -232,6 +237,8 @@ export function AppDialogs(props: AppDialogsProps) {
     onAmsPreflightChoice,
     reconnectUploadOffer,
     onReconnectUploadOfferChoice,
+    remoteJobConflict,
+    onRemoteJobConflictChoice,
     loading,
     sdWorkflowUiActive,
     loadingMessage,
@@ -434,6 +441,10 @@ export function AppDialogs(props: AppDialogsProps) {
         offer={reconnectUploadOffer}
         variant="reconnect"
         onChoose={onReconnectUploadOfferChoice}
+      />
+      <RemoteJobConflictDialog
+        state={remoteJobConflict}
+        onChoose={onRemoteJobConflictChoice}
       />
       <DialogChunk>
         <LazyBulkUploadSummaryDialog

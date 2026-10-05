@@ -9,6 +9,7 @@ pub mod host_lock;
 pub mod parallel_upload;
 pub mod quiet_budget;
 pub mod reconnect;
+pub mod remote_conflict;
 pub mod session_pool;
 pub mod staging_gc;
 pub mod unix_mapping;

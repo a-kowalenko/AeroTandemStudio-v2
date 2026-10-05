@@ -2,10 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { WorkflowProgressPanel } from "../WorkflowProgressPanel";
 import { CreateOutcomeCard } from "../CreateOutcomeCard";
 import { useCreateOutcomeStore } from "../../store/createOutcomeStore";
-import {
-  CREATE_OUTCOME_COLLAPSE_MS,
-  createOutcomeQueuePosition,
-} from "../../lib/createRunOutcome";
+import { createOutcomeQueuePosition } from "../../lib/createRunOutcome";
 import { useVideoStore } from "../../store/videoStore";
 import { usePhotoStore } from "../../store/photoStore";
 import { useUiStore } from "../../store/uiStore";
@@ -130,9 +127,18 @@ export function WorkflowProgressStack({
     createOutcome?.info.uploadJobId &&
       (uploadSlotHasWork || createOutcome.info.uploadInProgress),
   );
-  const embeddedCreateOutcome = createOutcomeUploadBound ? createOutcome : null;
+  const uploadDoneHold = Boolean(
+    createOutcome?.info.uploadJobId &&
+      createOutcome.info.serverUploaded &&
+      !createOutcome.info.uploadInProgress &&
+      !uploadSlotHasWork,
+  );
+  const embeddedCreateOutcome =
+    createOutcome && (createOutcomeUploadBound || uploadDoneHold)
+      ? createOutcome
+      : null;
   const standaloneCreateOutcome =
-    createOutcome && !createOutcomeUploadBound ? createOutcome : null;
+    createOutcome && !embeddedCreateOutcome ? createOutcome : null;
   const createOutcomeQueuePos = createOutcomeQueuePosition(
     embeddedCreateOutcome?.info.uploadJobId,
     uploadActiveId,
@@ -167,9 +173,7 @@ export function WorkflowProgressStack({
     uploadCancelPhase,
     embeddedCreateOutcomeId: embeddedCreateOutcome?.id ?? null,
     createOutcomeActive: createOutcome !== null,
-    onUploadUserToggle: () => {
-      if (embeddedCreateOutcome) clearCreateOutcome(embeddedCreateOutcome.id);
-    },
+    uploadDoneHold,
     uploadLastOutcome,
     uploadProgress,
     percent,
@@ -189,6 +193,8 @@ export function WorkflowProgressStack({
 
   useEffect(() => {
     if (busy || appendActive || uploadSlotHasWork) return;
+    // Keep the create plan until the outcome card is gone (finished-upload steps).
+    if (createOutcome) return;
     if (percent <= 0 && taskProgress.length === 0 && !status.trim()) return;
     if (sessionView.visible || uploadView.visible) return;
     onResetProgress();
@@ -199,6 +205,7 @@ export function WorkflowProgressStack({
     percent,
     taskProgress.length,
     status,
+    createOutcome,
     sessionView.visible,
     uploadView.visible,
     onResetProgress,
@@ -220,9 +227,8 @@ export function WorkflowProgressStack({
       clearCreateOutcome(id);
       return;
     }
-    // Collapse first so the report shrinks away with the details grid.
+    // Hide with the panel. Data stays so expanding shows it again.
     uploadView.onAutoCollapse();
-    window.setTimeout(() => clearCreateOutcome(id), CREATE_OUTCOME_COLLAPSE_MS);
   }
 
   function handleCancelSession() {
@@ -260,6 +266,11 @@ export function WorkflowProgressStack({
         view={uploadView}
         onCancel={handleCancelUpload}
         className="mx-auto w-full max-w-2xl"
+        onUploadDone={
+          uploadDoneHold && embeddedCreateOutcome
+            ? () => clearCreateOutcome(embeddedCreateOutcome.id)
+            : undefined
+        }
         uploadOutcome={
           embeddedCreateOutcome ? (
             <CreateOutcomeCard

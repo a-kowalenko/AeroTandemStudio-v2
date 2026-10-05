@@ -939,6 +939,23 @@
       "videosMany": "{{count}} archivos de video en la carpeta",
       "videosOne": "{{count}} archivo de video en la carpeta"
     },
+    "remoteJobConflict": {
+      "healTitle": "Ya está en el servidor",
+      "healBody": "La carpeta “{{name}}” ya está en el servidor. No hace falta subirla otra vez.",
+      "healHintActive": "La nube ya está tomando este trabajo.",
+      "healHintCompleted": "La nube ya terminó este trabajo.",
+      "healHintHandoff": "Se iniciará la entrega a la nube.",
+      "healHintMatch": "Los archivos en el servidor coinciden con el trabajo local.",
+      "markDone": "Marcar como listo",
+      "replaceTitle": "Carpeta incompleta en el servidor",
+      "replaceBody": "Ya hay una carpeta “{{name}}” en el servidor, pero no está completa. Por eso no se pudo terminar la subida.",
+      "replaceHint": "“Reemplazar y subir” borra solo esa carpeta del servidor y vuelve a subir el trabajo local.",
+      "replace": "Reemplazar y subir",
+      "unclearTitle": "Carpeta del servidor poco clara",
+      "unclearBody": "La carpeta “{{name}}” existe en el servidor, pero no se pudo comprobar su contenido con seguridad.",
+      "unclearHint": "Reintenta más tarde desde Trabajos.",
+      "later": "Más tarde"
+    },
     "offlineCreate": {
       "body": "La subida está activa, pero el servidor está fuera de línea. Aún puedes crear el trabajo localmente; la subida quedará pendiente.",
       "hint": "Más tarde puedes completar la subida desde Trabajos cuando el servidor vuelva.",
@@ -1152,7 +1169,10 @@
       "bgFailMessage": "{{detail}} Reintentar en Trabajos.",
       "bgFailHint": "Reintenta desde Trabajos.",
       "bgCancelled": "Subida cancelada — se puede reintentar en Trabajos.",
-      "titleLater": "Subida · después"
+      "titleLater": "Subida · después",
+      "remoteMarkedDone": "Marcado como listo — la carpeta ya está en el servidor.",
+      "remoteReplaced": "Carpeta del servidor reemplazada y subida.",
+      "remoteHandoffFailed": "Marcado como listo. No se pudo iniciar la entrega a la nube — revisa el estado más tarde en Trabajos."
     },
     "job": {
       "section": "Trabajo",
@@ -1370,6 +1390,10 @@
   },
   "workflow": {
     "progress": "Progreso",
+    "createOutcome": {
+      "aria": "Creación completada",
+      "dismiss": "Cerrar el mensaje de finalización"
+    },
     "stage": {
       "preview": "Se está generando la vista previa",
       "cut": "Se está aplicando la edición",
@@ -1430,10 +1454,6 @@
     },
     "sessionOutcome": {
       "aria": "Importación completada",
-      "dismiss": "Cerrar el mensaje de finalización"
-    },
-    "createOutcome": {
-      "aria": "Creación completada",
       "dismiss": "Cerrar el mensaje de finalización"
     }
   },
@@ -2087,7 +2107,6 @@
       "prevPhotoAria": "Foto anterior",
       "nextPhotoAria": "Foto siguiente",
       "empty": "No hay fotos — agrégalas arrastrando al área de medios",
-      "emptyList": "No hay fotos en la lista",
       "loading": "Cargando vista previa…",
       "loadingQr": "Comprobación QR en curso — la vista previa sigue…",
       "currentPhoto": "Foto actual",
@@ -2117,7 +2136,8 @@
       "collapsePreviewAria": "Reducir vista previa",
       "wmPreviewHint": "Exportar con sello de marca de agua",
       "wmPreviewLabel": "Vista previa",
-      "wmToggleAria": "Foto de vista previa con sello de marca de agua"
+      "wmToggleAria": "Foto de vista previa con sello de marca de agua",
+      "emptyList": "No hay fotos en la lista"
     },
     "editor": {
       "warning": {

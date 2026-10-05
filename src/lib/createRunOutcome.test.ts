@@ -32,7 +32,7 @@ describe("createRunOutcome", () => {
     const standalone = buildCreateOutcomeRows(running, t, { embedded: false });
     assert.ok(!embedded.some((r) => r.label === "create.success.uploadRunning"));
     assert.ok(standalone.some((r) => r.label === "create.success.uploadRunning"));
-    assert.equal(embedded[0].detail, "Mueller.mp4");
+    assert.equal(embedded[0].detail, undefined);
     assert.ok(embedded.some((r) => r.label === "create.success.photosCopiedMany:3"));
   });
 

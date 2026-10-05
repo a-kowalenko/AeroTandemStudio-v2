@@ -1547,6 +1547,26 @@ export async function uploadToServer(
   });
 }
 
+export type RemoteJobConflictDto = {
+  action: string;
+  reason: string;
+  folder_name: string;
+};
+
+export async function classifyRemoteJobConflict(
+  localPath: string,
+  vorgangId?: number | null,
+): Promise<RemoteJobConflictDto> {
+  return invoke<RemoteJobConflictDto>("classify_remote_job_conflict", {
+    localPath,
+    vorgangId: vorgangId ?? null,
+  });
+}
+
+export async function deleteRemoteJobFolder(localPath: string): Promise<void> {
+  return invoke("delete_remote_job_folder", { localPath });
+}
+
 export async function getUpdaterStatus(): Promise<UpdaterStatus> {
   return invoke<UpdaterStatus>("get_updater_status");
 }

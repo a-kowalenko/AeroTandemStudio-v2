@@ -164,7 +164,9 @@ pub async fn upload_to_server(
     if !upload_failure_is_cancelled(&result.message) {
         if let (Some(host), Some(share)) = (result.smb_host.as_deref(), result.smb_share.as_deref())
         {
-            crate::smb::health_event::publish(result.success, host, share, &result.message);
+            let reached = result.success
+                || crate::smb::remote_conflict::is_remote_job_exists_message(&result.message);
+            crate::smb::health_event::publish(reached, host, share, &result.message);
         }
     }
 
@@ -199,9 +201,206 @@ pub async fn upload_to_server(
                 result.staging_root.as_deref(),
             )
             .await;
+        } else if crate::smb::remote_conflict::is_remote_job_exists_message(&result.message) {
+            logging::info(
+                "smb",
+                "Zielordner existiert bereits — Konfliktprüfung".to_string(),
+            );
         } else {
             logging::error("smb", format!("Upload fehlgeschlagen: {}", result.message));
         }
         Err(result.message)
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RemoteJobConflictDto {
+    pub action: String,
+    pub reason: String,
+    pub folder_name: String,
+}
+
+/// Classify an existing remote job folder after `REMOTE_JOB_EXISTS`.
+///
+/// Does not delete anything. `retry` means the folder is already gone.
+#[tauri::command]
+pub async fn classify_remote_job_conflict(
+    state: State<'_, ConfigState>,
+    local_path: String,
+    vorgang_id: Option<i64>,
+) -> Result<RemoteJobConflictDto, String> {
+    let config = crate::commands::config::ensure_ams_bridge_identity(&state)?;
+    let local = PathBuf::from(local_path.trim());
+    let (job_dir, correlation_id, cached_state, cached_source) =
+        load_conflict_context(&local, vorgang_id)?;
+    let folder_name = job_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            local
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_default();
+
+    let snapshot = match crate::smb::client::snapshot_upload_destination(
+        &config.server_url,
+        &config.server_login,
+        &config.server_password,
+        config.smb_auto_mount_enabled,
+        &job_dir,
+    )
+    .await
+    {
+        Ok(s) => s,
+        Err(e) => {
+            logging::warn("smb", format!("Remote-Konflikt nicht lesbar: {e}"));
+            return Ok(RemoteJobConflictDto {
+                action: crate::smb::remote_conflict::ACTION_UNCLEAR.into(),
+                reason: crate::smb::remote_conflict::REASON_PROBE_FAILED.into(),
+                folder_name,
+            });
+        }
+    };
+
+    let (ams_state, ams_source) =
+        resolve_conflict_ams(&config, &correlation_id, &job_dir, &cached_state, &cached_source)
+            .await;
+    let ams_state = crate::smb::remote_conflict::ams_state_for_conflict(&ams_state, &ams_source);
+    let required = read_manifest_paths(&job_dir);
+    let manifest_match = crate::smb::remote_conflict::manifest_paths_covered(
+        &required,
+        &snapshot.relative_files,
+    );
+    let decision = crate::smb::remote_conflict::classify_remote_job(
+        &crate::smb::remote_conflict::RemoteJobFacts {
+            folder_present: snapshot.folder_present,
+            listed: snapshot.listed,
+            truncated: snapshot.truncated,
+            has_fertig: snapshot.has_fertig,
+            has_processing: snapshot.has_processing,
+            manifest_match,
+            ams_state,
+        },
+    );
+    logging::info(
+        "smb",
+        format!(
+            "Remote-Konflikt {} → {} ({})",
+            folder_name, decision.action, decision.reason
+        ),
+    );
+    Ok(RemoteJobConflictDto {
+        action: decision.action.into(),
+        reason: decision.reason.into(),
+        folder_name,
+    })
+}
+
+/// Delete the remote job folder named like `local_path` so a confirmed replace can upload again.
+#[tauri::command]
+pub async fn delete_remote_job_folder(
+    state: State<'_, ConfigState>,
+    local_path: String,
+) -> Result<(), String> {
+    let path = PathBuf::from(local_path.trim());
+    if path
+        .file_name()
+        .map(|n| n.to_string_lossy().trim().is_empty())
+        .unwrap_or(true)
+    {
+        return Err("Kein Job-Ordnername".into());
+    }
+    let (url, login, password, auto_mount) = {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        (
+            cache.server_url.clone(),
+            cache.server_login.clone(),
+            cache.server_password.clone(),
+            cache.smb_auto_mount_enabled,
+        )
+    };
+    logging::warn(
+        "smb",
+        format!("Remote-Job ersetzen: {}", file_name(&local_path)),
+    );
+    crate::smb::cleanup_remote_upload_folder(&path, &url, &login, &password, auto_mount).await
+}
+
+fn load_conflict_context(
+    local: &std::path::Path,
+    vorgang_id: Option<i64>,
+) -> Result<(PathBuf, String, String, String), String> {
+    let store = crate::storage::vorgang_history::VorgangHistoryStore::open_default()
+        .map_err(|e| e.to_string())?;
+    if let Some(id) = vorgang_id {
+        if let Some(entry) = store.get_by_id(id).map_err(|e| e.to_string())? {
+            let dir = entry.base_output_dir.trim();
+            let job_dir = if dir.is_empty() {
+                local.to_path_buf()
+            } else {
+                PathBuf::from(dir)
+            };
+            return Ok((
+                job_dir,
+                entry.correlation_id,
+                entry.ams_state,
+                entry.ams_source,
+            ));
+        }
+    }
+    Ok((
+        local.to_path_buf(),
+        String::new(),
+        String::new(),
+        String::new(),
+    ))
+}
+
+async fn resolve_conflict_ams(
+    config: &crate::storage::config::AppConfig,
+    correlation_id: &str,
+    job_dir: &std::path::Path,
+    cached_state: &str,
+    cached_source: &str,
+) -> (String, String) {
+    let cid = correlation_id.trim();
+    if cid.is_empty() {
+        return (String::new(), String::new());
+    }
+    if crate::bridge::bridge_configured(config) {
+        if let Ok(base) = crate::bridge::resolve_bridge_base_url(config) {
+            let identity = crate::bridge::build_ats_bridge_identity(config);
+            match crate::bridge::fetch_job_status(&base, &config.ams_bridge_token, cid, &identity)
+                .await
+            {
+                Ok(Some(job)) => return (job.state, "bridge".into()),
+                Ok(None) => {}
+                Err(e) => {
+                    logging::warn("smb", format!("AMS-Status für Konflikt: {e}"));
+                }
+            }
+        }
+    }
+    let roots = crate::video::handoff_manifest::handoff_share_roots(job_dir, &config.speicherort);
+    match crate::video::handoff_manifest::read_status_outbox_any(&roots, cid) {
+        Ok(Some(job)) => return (job.state, "outbox".into()),
+        Ok(None) => {}
+        Err(e) => logging::warn("smb", format!("AMS-Outbox für Konflikt: {e}")),
+    }
+    (cached_state.to_string(), cached_source.to_string())
+}
+
+fn read_manifest_paths(job_dir: &std::path::Path) -> Vec<String> {
+    let path = job_dir.join(crate::video::handoff_manifest::MANIFEST_FILENAME);
+    let raw = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    match serde_json::from_str::<crate::video::handoff_manifest::HandoffManifestV1>(&raw) {
+        Ok(doc) => doc.integrity.files.into_iter().map(|f| f.path).collect(),
+        Err(_) => Vec::new(),
     }
 }

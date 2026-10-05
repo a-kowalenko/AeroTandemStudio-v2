@@ -939,6 +939,23 @@
       "videosMany": "{{count}} Video-Dateien im Ordner",
       "videosOne": "{{count}} Video-Datei im Ordner"
     },
+    "remoteJobConflict": {
+      "healTitle": "Liegt schon auf dem Server",
+      "healBody": "Der Ordner „{{name}}“ ist auf dem Server schon vorhanden. Ein erneuter Upload ist nicht nötig.",
+      "healHintActive": "Die Cloud übernimmt den Vorgang bereits.",
+      "healHintCompleted": "Die Cloud hat den Vorgang bereits abgeschlossen.",
+      "healHintHandoff": "Die Übergabe an die Cloud wird angestoßen.",
+      "healHintMatch": "Die Dateien auf dem Server passen zum lokalen Vorgang.",
+      "markDone": "Als erledigt markieren",
+      "replaceTitle": "Unvollständiger Ordner auf dem Server",
+      "replaceBody": "Auf dem Server liegt schon ein Ordner „{{name}}“, aber er ist nicht vollständig. Deshalb konnte der Upload nicht abgeschlossen werden.",
+      "replaceHint": "„Ersetzen und hochladen“ löscht nur diesen Server-Ordner und lädt den lokalen Vorgang neu hoch.",
+      "replace": "Ersetzen und hochladen",
+      "unclearTitle": "Server-Ordner unklar",
+      "unclearBody": "Der Ordner „{{name}}“ existiert auf dem Server, der Inhalt ließ sich aber nicht sicher prüfen.",
+      "unclearHint": "Später unter Vorgänge nachholen.",
+      "later": "Später"
+    },
     "offlineCreate": {
       "body": "Upload ist aktiv, aber der Server ist offline. Du kannst den Vorgang trotzdem lokal erstellen; der Upload bleibt ausstehend.",
       "hint": "Später unter Vorgänge nachholen (wenn der Server wieder da ist).",
@@ -1152,7 +1169,10 @@
       "bgFailMessage": "{{detail}} Nachholen unter Vorgänge.",
       "bgFailHint": "Bitte unter Vorgänge nachholen.",
       "bgCancelled": "Upload abgebrochen — unter Vorgänge nachholbar.",
-      "titleLater": "Upload · später"
+      "titleLater": "Upload · später",
+      "remoteMarkedDone": "Als erledigt markiert — der Ordner liegt schon auf dem Server.",
+      "remoteReplaced": "Server-Ordner ersetzt und hochgeladen.",
+      "remoteHandoffFailed": "Als erledigt markiert. Die Cloud-Übergabe konnte nicht angestoßen werden — Status später unter Vorgänge prüfen."
     },
     "job": {
       "section": "Vorgang",
@@ -1370,6 +1390,10 @@
   },
   "workflow": {
     "progress": "Fortschritt",
+    "createOutcome": {
+      "aria": "Erstellung abgeschlossen",
+      "dismiss": "Abschlussmeldung schließen"
+    },
     "stage": {
       "preview": "Vorschau wird erzeugt",
       "cut": "Schnitt wird angewendet",
@@ -1430,10 +1454,6 @@
     },
     "sessionOutcome": {
       "aria": "Import-Abschluss",
-      "dismiss": "Abschlussmeldung schließen"
-    },
-    "createOutcome": {
-      "aria": "Erstellung abgeschlossen",
       "dismiss": "Abschlussmeldung schließen"
     }
   },
@@ -2087,7 +2107,6 @@
       "prevPhotoAria": "Vorheriges Foto",
       "nextPhotoAria": "Nächstes Foto",
       "empty": "Keine Fotos — per Drag & Drop im Medien-Bereich hinzufügen",
-      "emptyList": "Keine Fotos in der Liste",
       "loading": "Vorschau wird geladen…",
       "loadingQr": "QR-Prüfung läuft — Vorschau folgt…",
       "currentPhoto": "Aktuelles Foto",
@@ -2117,7 +2136,8 @@
       "collapsePreviewAria": "Vorschau verkleinern",
       "wmPreviewHint": "Mit Wasserzeichen-Stempel exportieren",
       "wmPreviewLabel": "Preview",
-      "wmToggleAria": "Preview-Foto mit Wasserzeichen-Stempel"
+      "wmToggleAria": "Preview-Foto mit Wasserzeichen-Stempel",
+      "emptyList": "Keine Fotos in der Liste"
     },
     "editor": {
       "warning": {

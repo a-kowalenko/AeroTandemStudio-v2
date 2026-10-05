@@ -31,6 +31,7 @@ use super::reconnect::{
     self, note_smb2_bridge, probe_local, start_prefer_local_promote, ProbeOutcome,
     LOCAL_PROBE_TIMEOUT,
 };
+use super::remote_conflict;
 use super::session_pool;
 use super::staging_gc::{
     dequeue_staging_gc, enqueue_new_staging_gc, list_due_staging_gc, record_gc_attempt,
@@ -1360,10 +1361,15 @@ fn upload_local<F: FnMut(UploadProgress)>(
     let final_job = dest_root.join(&job_name);
     if final_job.exists() {
         cleanup_local_staging(&staging_base);
-        return UploadResult::fail(format!("Ziel existiert bereits: {}", final_job.display()));
+        return UploadResult::fail(remote_conflict::remote_job_exists_message());
     }
     if let Err(e) = fs::rename(&staged_job, &final_job) {
         cleanup_local_staging(&staging_base);
+        if e.kind() == std::io::ErrorKind::AlreadyExists
+            || remote_conflict::is_remote_job_exists_message(&e.to_string())
+        {
+            return UploadResult::fail(remote_conflict::remote_job_exists_message());
+        }
         return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {e}"));
     }
     cleanup_local_staging(&staging_base);
@@ -1819,13 +1825,25 @@ async fn upload_smb<F: FnMut(UploadProgress) + Send + 'static>(
         }
     };
 
+    if remote_job_presence(&mut client, &mut tree, &final_job).await == RemotePresence::Present {
+        session_pool::disconnect_owned(client, tree).await;
+        session_pool::invalidate(host, port, share, login).await;
+        schedule_staging_gc(host, port, share, &staging_root, login, password);
+        return UploadResult::fail(remote_conflict::remote_job_exists_message())
+            .with_staging(Some(staging_root));
+    }
+
     if let Err(e) = client.rename(&mut tree, &staged_job, &final_job).await {
         let msg = e.to_string();
         session_pool::disconnect_owned(client, tree).await;
         session_pool::invalidate(host, port, share, login).await;
         schedule_staging_gc(host, port, share, &staging_root, login, password);
-        return UploadResult::fail(format!("Staging-Promote fehlgeschlagen: {msg}"))
-            .with_staging(Some(staging_root));
+        let message = if remote_conflict::is_remote_job_exists_message(&msg) {
+            remote_conflict::remote_job_exists_message()
+        } else {
+            format!("Staging-Promote fehlgeschlagen: {msg}")
+        };
+        return UploadResult::fail(message).with_staging(Some(staging_root));
     }
 
     // Best-effort remove empty `.ats_staging/<id>` parent.
@@ -2250,6 +2268,250 @@ fn smb_path_not_found(err: &str) -> bool {
 fn smb_sharing_violation(err: &str) -> bool {
     let e = err.to_ascii_lowercase();
     e.contains("sharing_violation") || e.contains("directory_not_empty")
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RemotePresence {
+    Present,
+    Absent,
+    Unknown,
+}
+
+async fn remote_job_presence(
+    client: &mut SmbClient,
+    tree: &mut smb2::client::Tree,
+    path: &str,
+) -> RemotePresence {
+    match client.list_directory(tree, path).await {
+        Ok(_) => RemotePresence::Present,
+        Err(e) if smb_path_not_found(&e.to_string()) => RemotePresence::Absent,
+        Err(_) => RemotePresence::Unknown,
+    }
+}
+
+const REMOTE_SNAPSHOT_MAX_FILES: usize = 8000;
+const REMOTE_SNAPSHOT_MAX_DEPTH: usize = 16;
+
+#[derive(Debug, Clone)]
+pub(crate) struct RemoteJobSnapshot {
+    pub folder_present: bool,
+    pub listed: bool,
+    pub truncated: bool,
+    pub has_fertig: bool,
+    pub has_processing: bool,
+    pub relative_files: Vec<String>,
+}
+
+struct RemoteListAcc {
+    folder_present: bool,
+    listed: bool,
+    truncated: bool,
+    has_fertig: bool,
+    has_processing: bool,
+    files: Vec<String>,
+}
+
+impl RemoteListAcc {
+    fn new() -> Self {
+        Self {
+            folder_present: true,
+            listed: true,
+            truncated: false,
+            has_fertig: false,
+            has_processing: false,
+            files: Vec::new(),
+        }
+    }
+
+    fn into_snapshot(self) -> RemoteJobSnapshot {
+        let listed = if self.folder_present { self.listed } else { true };
+        RemoteJobSnapshot {
+            folder_present: self.folder_present,
+            listed,
+            truncated: self.truncated,
+            has_fertig: self.has_fertig,
+            has_processing: self.has_processing,
+            relative_files: self.files,
+        }
+    }
+}
+
+/// List the configured destination job folder (local map or smb2).
+pub(crate) async fn snapshot_upload_destination(
+    server_url: &str,
+    login: &str,
+    password: &str,
+    auto_mount_enabled: bool,
+    local_job: &Path,
+) -> Result<RemoteJobSnapshot, String> {
+    let job_name = local_job
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "Kein Job-Ordnername".to_string())?;
+    let target = resolve_server_target_blocking(server_url, auto_mount_enabled, login, password)
+        .await?;
+    match target {
+        ServerTarget::Local { path } => Ok(snapshot_local_job(&path, &job_name)),
+        ServerTarget::Smb {
+            host,
+            port,
+            share,
+            subpath,
+        } => snapshot_smb_job(&host, port, &share, &subpath, login, password, &job_name).await,
+    }
+}
+
+fn snapshot_local_job(dest_root: &Path, job_name: &str) -> RemoteJobSnapshot {
+    let top = dest_root.join(job_name);
+    if !top.exists() {
+        let mut acc = RemoteListAcc::new();
+        acc.folder_present = false;
+        return acc.into_snapshot();
+    }
+    if !top.is_dir() {
+        let mut acc = RemoteListAcc::new();
+        acc.listed = false;
+        return acc.into_snapshot();
+    }
+    let mut acc = RemoteListAcc::new();
+    walk_local_job(&top, "", 0, &mut acc);
+    acc.into_snapshot()
+}
+
+fn walk_local_job(dir: &Path, prefix: &str, depth: usize, acc: &mut RemoteListAcc) {
+    if acc.truncated || !acc.listed {
+        return;
+    }
+    if depth > REMOTE_SNAPSHOT_MAX_DEPTH {
+        acc.truncated = true;
+        return;
+    }
+    let rd = match fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => {
+            acc.listed = false;
+            return;
+        }
+    };
+    for ent in rd.flatten() {
+        if acc.truncated || !acc.listed {
+            return;
+        }
+        let name = ent.file_name().to_string_lossy().into_owned();
+        if name == "." || name == ".." {
+            continue;
+        }
+        let rel = if prefix.is_empty() {
+            name.clone()
+        } else {
+            format!("{prefix}/{name}")
+        };
+        let is_dir = ent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if is_dir {
+            if name.eq_ignore_ascii_case(".ams-handoff") {
+                continue;
+            }
+            walk_local_job(&ent.path(), &rel, depth + 1, acc);
+        } else {
+            note_root_marker(prefix, &name, acc);
+            acc.files.push(rel);
+            if acc.files.len() >= REMOTE_SNAPSHOT_MAX_FILES {
+                acc.truncated = true;
+                return;
+            }
+        }
+    }
+}
+
+fn note_root_marker(prefix: &str, name: &str, acc: &mut RemoteListAcc) {
+    if !prefix.is_empty() {
+        return;
+    }
+    if name.eq_ignore_ascii_case(remote_conflict::MARKER_FERTIG) {
+        acc.has_fertig = true;
+    } else if name.eq_ignore_ascii_case(remote_conflict::MARKER_PROCESSING) {
+        acc.has_processing = true;
+    }
+}
+
+async fn snapshot_smb_job(
+    host: &str,
+    port: u16,
+    share: &str,
+    subpath: &str,
+    login: &str,
+    password: &str,
+    job_name: &str,
+) -> Result<RemoteJobSnapshot, String> {
+    let _host_lock = host_lock::acquire(host).await;
+    let mut pooled =
+        session_pool::acquire(host, port, share, login, password, SMB_CONNECT_TIMEOUT).await?;
+    let job_root = join_smb_path(subpath, job_name);
+    let mut acc = RemoteListAcc::new();
+    {
+        let (client, tree) = pooled.parts_mut();
+        walk_smb_job(client, tree, &job_root, "", 0, &mut acc).await;
+    }
+    pooled.release().await;
+    Ok(acc.into_snapshot())
+}
+
+fn walk_smb_job<'a>(
+    client: &'a mut SmbClient,
+    tree: &'a mut smb2::client::Tree,
+    path: &'a str,
+    prefix: &'a str,
+    depth: usize,
+    acc: &'a mut RemoteListAcc,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+        if acc.truncated || !acc.listed {
+            return;
+        }
+        if depth > REMOTE_SNAPSHOT_MAX_DEPTH {
+            acc.truncated = true;
+            return;
+        }
+        let entries = match client.list_directory(tree, path).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                if prefix.is_empty() && smb_path_not_found(&e.to_string()) {
+                    acc.folder_present = false;
+                } else {
+                    acc.listed = false;
+                }
+                return;
+            }
+        };
+        for entry in entries {
+            if acc.truncated || !acc.listed {
+                return;
+            }
+            if entry.name == "." || entry.name == ".." {
+                continue;
+            }
+            let rel = if prefix.is_empty() {
+                entry.name.clone()
+            } else {
+                format!("{prefix}/{}", entry.name)
+            };
+            if entry.is_directory {
+                if entry.name.eq_ignore_ascii_case(".ams-handoff") {
+                    continue;
+                }
+                let child = format!("{path}/{}", entry.name);
+                walk_smb_job(client, tree, &child, &rel, depth + 1, acc).await;
+            } else {
+                note_root_marker(prefix, &entry.name, acc);
+                acc.files.push(rel);
+                if acc.files.len() >= REMOTE_SNAPSHOT_MAX_FILES {
+                    acc.truncated = true;
+                    return;
+                }
+            }
+        }
+    })
 }
 
 async fn cleanup_smb_job_root(

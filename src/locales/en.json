@@ -939,6 +939,23 @@
       "videosMany": "{{count}} video files in the folder",
       "videosOne": "{{count}} video file in the folder"
     },
+    "remoteJobConflict": {
+      "healTitle": "Already on the server",
+      "healBody": "The folder “{{name}}” is already on the server. Another upload is not needed.",
+      "healHintActive": "The cloud is already taking this job.",
+      "healHintCompleted": "The cloud has already finished this job.",
+      "healHintHandoff": "The handoff to the cloud will be started.",
+      "healHintMatch": "The files on the server match the local job.",
+      "markDone": "Mark as done",
+      "replaceTitle": "Incomplete folder on the server",
+      "replaceBody": "A folder “{{name}}” is already on the server, but it is not complete. That is why the upload could not finish.",
+      "replaceHint": "“Replace and upload” deletes only that server folder and uploads the local job again.",
+      "replace": "Replace and upload",
+      "unclearTitle": "Server folder unclear",
+      "unclearBody": "The folder “{{name}}” exists on the server, but its contents could not be checked reliably.",
+      "unclearHint": "Retry later from Jobs.",
+      "later": "Later"
+    },
     "offlineCreate": {
       "body": "Upload is on, but the server is offline. You can still create the job locally; the upload will stay pending.",
       "hint": "Retry later from Jobs when the server is back.",
@@ -1152,7 +1169,10 @@
       "bgFailMessage": "{{detail}} Retry from Jobs.",
       "bgFailHint": "Please retry from Jobs.",
       "bgCancelled": "Upload cancelled — can retry in Jobs.",
-      "titleLater": "Upload · later"
+      "titleLater": "Upload · later",
+      "remoteMarkedDone": "Marked as done — the folder is already on the server.",
+      "remoteReplaced": "Server folder replaced and uploaded.",
+      "remoteHandoffFailed": "Marked as done. The cloud handoff could not be started — check the status later under Jobs."
     },
     "job": {
       "section": "Job",
@@ -1370,6 +1390,10 @@
   },
   "workflow": {
     "progress": "Progress",
+    "createOutcome": {
+      "aria": "Creation complete",
+      "dismiss": "Dismiss completion message"
+    },
     "stage": {
       "preview": "Preview is being generated",
       "cut": "Edit is being applied",
@@ -1430,10 +1454,6 @@
     },
     "sessionOutcome": {
       "aria": "Import complete",
-      "dismiss": "Dismiss completion message"
-    },
-    "createOutcome": {
-      "aria": "Creation complete",
       "dismiss": "Dismiss completion message"
     }
   },
@@ -2087,7 +2107,6 @@
       "prevPhotoAria": "Previous photo",
       "nextPhotoAria": "Next photo",
       "empty": "No photos — add them via drag and drop in the media area",
-      "emptyList": "No photos in the list",
       "loading": "Loading preview…",
       "loadingQr": "QR check in progress — preview follows…",
       "currentPhoto": "Current photo",
@@ -2117,7 +2136,8 @@
       "collapsePreviewAria": "Shrink preview",
       "wmPreviewHint": "Export with watermark stamp",
       "wmPreviewLabel": "Preview",
-      "wmToggleAria": "Preview photo with watermark stamp"
+      "wmToggleAria": "Preview photo with watermark stamp",
+      "emptyList": "No photos in the list"
     },
     "editor": {
       "warning": {

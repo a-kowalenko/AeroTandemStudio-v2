@@ -29,6 +29,8 @@ import {
   type UploadQueueJobPreview,
 } from "../lib/uploadQueue";
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
+import { usePausableAutoDismiss } from "../hooks/usePausableAutoDismiss";
+import { CREATE_OUTCOME_HIDE_MS } from "../lib/createRunOutcome";
 import {
   bodyConcatModeLabelKey,
   bodyConcatModeShortLabelKey,
@@ -42,6 +44,8 @@ type Props = {
   className?: string;
   /** Upload panel only: create report above the compact upload bar. */
   uploadOutcome?: ReactNode;
+  /** Clears the finished-upload report when its timer ends. */
+  onUploadDone?: () => void;
 };
 
 function stageIcon(stage: WorkflowProgressStage): LucideIcon {
@@ -148,6 +152,31 @@ function BodyConcatModeBadge({
   );
 }
 
+function UploadCollapseButton({ view }: { view: WorkflowProgressView }) {
+  const { t } = useTranslation();
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-8 w-8 shrink-0 p-0"
+      aria-expanded={!view.collapsed}
+      aria-label={
+        view.collapsed
+          ? t("workflow.upload.expand")
+          : t("workflow.upload.collapse")
+      }
+      onClick={view.onToggleCollapsed}
+    >
+      {view.collapsed ? (
+        <ChevronUp className="h-4 w-4" aria-hidden />
+      ) : (
+        <ChevronDown className="h-4 w-4" aria-hidden />
+      )}
+    </Button>
+  );
+}
+
 function CompactUploadBar({ view }: { view: WorkflowProgressView }) {
   const { t } = useTranslation();
   const compact = view.uploadCompact;
@@ -160,31 +189,10 @@ function CompactUploadBar({ view }: { view: WorkflowProgressView }) {
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2 gap-y-1.5"
+      className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1.5"
       role="status"
       aria-live="polite"
     >
-      {/* Chevron on the left — away from bottom-right Cancel in expanded view. */}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-8 w-8 shrink-0 p-0"
-        aria-expanded={!view.collapsed}
-        aria-label={
-          view.collapsed
-            ? t("workflow.upload.expand")
-            : t("workflow.upload.collapse")
-        }
-        onClick={view.onToggleCollapsed}
-      >
-        {view.collapsed ? (
-          <ChevronUp className="h-4 w-4" aria-hidden />
-        ) : (
-          <ChevronDown className="h-4 w-4" aria-hidden />
-        )}
-      </Button>
-
       <Upload
         className="h-4 w-4 shrink-0 text-primary"
         aria-hidden
@@ -262,8 +270,13 @@ export function WorkflowProgressPanel({
   onCancel,
   className,
   uploadOutcome,
+  onUploadDone,
 }: Props) {
   const { t } = useTranslation();
+  const { paused: donePaused, hoverProps: doneHover } = usePausableAutoDismiss(
+    view.uploadDoneHold ? CREATE_OUTCOME_HIDE_MS : 0,
+    () => onUploadDone?.(),
+  );
   if (!view.visible) return null;
 
   const Icon = stageIcon(view.stage);
@@ -288,11 +301,31 @@ export function WorkflowProgressPanel({
       <section
         className={cn(
           "ats-surface pointer-events-auto rounded-xl border border-border/80 px-3 py-2.5 shadow-lg backdrop-blur-md ats-progress-float-in",
+          view.uploadDoneHold && "relative overflow-hidden pb-3.5",
           className,
         )}
         aria-label={t("app.upload.title")}
         aria-busy={cancelling || undefined}
+        {...(view.uploadDoneHold ? doneHover : {})}
       >
+        {view.uploadDoneHold ? (
+          <div>
+            {uploadOutcome}
+            {pipeline ? (
+              <div className="mt-2.5 border-t border-border/60 pt-2.5">
+                <CreateJobPipelineStepper view={pipeline} />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+        <div
+          className={cn(
+            "flex gap-2",
+            view.collapsed && !pipeline ? "items-center" : "items-start",
+          )}
+        >
+          <UploadCollapseButton view={view} />
+          <div className="min-w-0 flex-1">
         {uploadOutcome ? (
           <div
             className={cn(
@@ -312,6 +345,44 @@ export function WorkflowProgressPanel({
 
         <CompactUploadBar view={view} />
 
+        {pipeline || (view.canCancel && !view.collapsed && onCancel) ? (
+          <div className="flex items-center gap-3 pt-2.5">
+            <div
+              className={cn(
+                "min-w-0 flex-1",
+                cancelling && "opacity-55",
+              )}
+            >
+              {pipeline ? <CreateJobPipelineStepper view={pipeline} /> : null}
+            </div>
+            {view.canCancel && !view.collapsed && onCancel ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="shrink-0"
+                disabled={cancelling}
+                aria-busy={cancelling || undefined}
+                onClick={onCancel}
+              >
+                {cancelling ? (
+                  <>
+                    <Loader2
+                      className="h-3.5 w-3.5 shrink-0 animate-spin"
+                      aria-hidden
+                    />
+                    {view.uploadCancelPhase === "cleanup"
+                      ? t("workflow.upload.cleaningUp")
+                      : t("common.actions.cancelling")}
+                  </>
+                ) : (
+                  t("common.actions.cancel")
+                )}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+
         <div
           className={cn(
             "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
@@ -321,52 +392,36 @@ export function WorkflowProgressPanel({
           )}
         >
           <div className="min-h-0 overflow-hidden">
-            <div className="flex items-end gap-3 pt-2.5">
-              <div className="min-w-0 flex-1 space-y-2.5">
+            <div className="space-y-2.5 pt-2.5">
+              {subtitle ? (
                 <p className="text-xs text-muted" aria-live="polite">
                   {subtitle}
                 </p>
-                {pipeline ? (
-                  <div
-                    className={cn(
-                      "transition-opacity duration-300",
-                      cancelling && "opacity-55",
-                    )}
-                  >
-                    <CreateJobPipelineStepper view={pipeline} />
-                  </div>
-                ) : null}
-                {/* Bytes/speed live in CompactUploadBar — skip snapshot.detail duplicate. */}
-                <UploadQueueCollapsible jobs={view.uploadQueueJobs} />
-              </div>
-              {view.canCancel && onCancel ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={cancelling}
-                  aria-busy={cancelling || undefined}
-                  onClick={onCancel}
-                >
-                  {cancelling ? (
-                    <>
-                      <Loader2
-                        className="h-3.5 w-3.5 shrink-0 animate-spin"
-                        aria-hidden
-                      />
-                      {view.uploadCancelPhase === "cleanup"
-                        ? t("workflow.upload.cleaningUp")
-                        : t("common.actions.cancelling")}
-                    </>
-                  ) : (
-                    t("common.actions.cancel")
-                  )}
-                </Button>
               ) : null}
+              <UploadQueueCollapsible jobs={view.uploadQueueJobs} />
             </div>
           </div>
         </div>
+          </div>
+        </div>
+        )}
+        {view.uploadDoneHold ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-success/20"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={t("dialogs.autoCloseAria")}
+          >
+            <div
+              className="h-full w-full origin-left bg-success ats-toast-progress"
+              style={{
+                animationDuration: `${CREATE_OUTCOME_HIDE_MS}ms`,
+                animationPlayState: donePaused ? "paused" : "running",
+              }}
+            />
+          </div>
+        ) : null}
       </section>
     );
   }

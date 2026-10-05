@@ -29,7 +29,6 @@ import {
 } from "../lib/uploadProgress";
 import type { UploadProgressEvent } from "../lib/tauri";
 import {
-  formatUploadJobLine,
   type UploadSlotResult,
   type UploadQueueJobPreview,
 } from "../lib/uploadQueue";
@@ -78,6 +77,8 @@ export type WorkflowProgressView = {
   uploadCompact: UploadCompactParts;
   /** Failed background upload held until dismiss. */
   uploadFailedHold: boolean;
+  /** Upload finished; panel stays open with a dismiss timer. */
+  uploadDoneHold: boolean;
   onToggleCollapsed: () => void;
   /** Upload panel: collapse after the embedded create report expired. */
   onAutoCollapse: () => void;
@@ -129,6 +130,8 @@ type Input = {
   embeddedCreateOutcomeId?: number | null;
   /** Any create report visible — replaces the session completion panel. */
   createOutcomeActive?: boolean;
+  /** Create upload finished and the slot is idle — keep the panel for the timer. */
+  uploadDoneHold?: boolean;
   /** User toggled the upload panel (cancels the create-report auto-shrink). */
   onUploadUserToggle?: () => void;
   uploadLastOutcome?: UploadSlotResult | null;
@@ -302,7 +305,13 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     wasBgUploadRef.current = false;
   }, [uploadSlotActive, input.uploadLastOutcome]);
 
-  const showUploadChrome = uploadSlotActive || failedHold;
+  const uploadDoneHold = Boolean(input.uploadDoneHold);
+  const showUploadChrome = uploadSlotActive || failedHold || uploadDoneHold;
+
+  useEffect(() => {
+    if (!uploadDoneHold) return;
+    setUploadCollapsed(false);
+  }, [uploadDoneHold]);
 
   const shouldShowSession =
     !sessionDismissed &&
@@ -415,13 +424,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       : input.uploadCancelPhase === "cancelling" ||
           Boolean(input.uploadCancelRequested)
         ? tr("workflow.stage.cancelling")
-        : input.uploadActiveJob
-          ? formatUploadJobLine(
-              input.uploadActiveJob,
-              tr,
-              "workflow.stage.createUploading",
-            )
-          : tr("workflow.stage.createUploading");
+        : "";
 
   // Session pipeline: encode / append / completion (not background-upload-only).
   const sessionPipelineBase = useMemo((): CreateJobPipelineView | null => {
@@ -474,17 +477,18 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     const plan = input.createJobPlan ?? null;
     if (!plan) return null;
     if (input.encodeBusy || input.appendActive) return null;
-    if (!uploadSlotActive && !failedHold) return null;
+    if (!uploadSlotActive && !failedHold && !uploadDoneHold) return null;
 
     const cancelled =
       Boolean(input.uploadCancelRequested) ||
       /abgebrochen|cancelled/i.test(input.status.trim());
+    const stillRunning = !uploadDoneHold;
 
     return resolveCreateJobPipeline({
       plan,
       status: input.status,
-      uploading: true,
-      busy: true,
+      uploading: stillRunning,
+      busy: stillRunning,
       cancelled,
       failed: Boolean(input.createFailed) || failedHold,
       reachedIndex: 0,
@@ -497,6 +501,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.encodeBusy,
     input.status,
     input.uploadCancelRequested,
+    uploadDoneHold,
     uploadSlotActive,
   ]);
 
@@ -551,11 +556,18 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       );
       if (uploadIdx >= 0) activeIndex = uploadIdx;
     }
+    if (uploadDoneHold && !uploadPipelineBase.cancelled && !uploadPipelineBase.failed) {
+      return {
+        ...uploadPipelineBase,
+        completed: true,
+        activeIndex: Math.max(0, uploadPipelineBase.steps.length - 1),
+      };
+    }
     return {
       ...uploadPipelineBase,
       activeIndex,
     };
-  }, [uploadPipelineBase, createReachedIndex]);
+  }, [uploadDoneHold, uploadPipelineBase, createReachedIndex]);
 
   // --- Session snapshot (never upload progress) ---
   let sessionSnapshot: WorkflowProgressSnapshot | null = null;
@@ -719,6 +731,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCancelPhase: null,
     uploadCompact: EMPTY_UPLOAD_COMPACT,
     uploadFailedHold: false,
+    uploadDoneHold: false,
     onToggleCollapsed: noop,
     onAutoCollapse: noop,
     onDismissFailedHold: noop,
@@ -746,6 +759,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCancelPhase: input.uploadCancelPhase ?? null,
     uploadCompact,
     uploadFailedHold: failedHold,
+    uploadDoneHold,
     onToggleCollapsed: onToggleUploadCollapsed,
     onAutoCollapse: onAutoCollapseUpload,
     onDismissFailedHold,
