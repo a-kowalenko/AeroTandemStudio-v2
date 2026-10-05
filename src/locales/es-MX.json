@@ -532,7 +532,6 @@
   "errors": {
     "server": {
       "connected": "✓ Conectado",
-      "reachableUnverified": "Accesible – inicio de sesión sin verificar",
       "notChecked": "No verificado",
       "notConnected": "Sin conexión",
       "checking": "Verificando…",
@@ -553,7 +552,8 @@
       "unreachableHostNotFound": "Servidor no accesible (host no encontrado)",
       "unreachableNetwork": "Servidor no accesible (red)",
       "unreachableRefused": "Servidor no accesible (conexión rechazada)",
-      "unreachableTimeout": "Servidor no accesible (tiempo agotado)"
+      "unreachableTimeout": "Servidor no accesible (tiempo agotado)",
+      "reachableUnverified": "Accesible – inicio de sesión sin verificar"
     }
   },
   "create": {
@@ -734,8 +734,8 @@
       "legacyMpegTs": "Unión legacy (MPEG-TS)…",
       "sdClearing": "Limpiando SD…",
       "backupFinishing": "Finalizando respaldo…",
-      "updatingHistory": "Actualizando historial…",
       "reencodeWaiting": "Recodificación — esperando confirmación…",
+      "updatingHistory": "Actualizando historial…",
       "usbClearing": "Limpiando cámara USB…",
       "copyVideos": "Copiando videos…",
       "analyseVideos": "Analizando videos…",
@@ -1005,7 +1005,7 @@
   "splash": {
     "appName": "Aero Tandem Studio",
     "tagline": "Jump. Cut. Done.",
-    "loading": "Cargando interfaz…",
+    "loading": "Cargando…",
     "version": "Versión {{version}}",
     "copyright": "© Andreas Kowalenko"
   },
@@ -1021,8 +1021,8 @@
     },
     "server": {
       "connected": "Conectado",
-      "reachable": "Accesible",
-      "uploadPercent": "Subida {{percent}}%"
+      "uploadPercent": "Subida {{percent}}%",
+      "reachable": "Accesible"
     }
   },
   "app": {
@@ -1070,16 +1070,12 @@
       "ejecting": "Expulsando tarjeta SD…",
       "backingUp": "Respaldo de SD en curso…",
       "importing": "Importando archivos de SD…",
-      "updatingHistory": "Actualizando historial…",
       "searchingQr": "Buscando código QR…",
       "noFiles": "Sin archivos.",
       "clearOnlyAfterBackup": "Limpiar solo es posible tras un respaldo.",
       "noActionSelected": "No hay acción seleccionada.",
       "pickBackupFolder": "Elige una carpeta de respaldo en la configuración.",
       "ejectSuccess": "Tarjeta SD expulsada — se puede retirar",
-      "ejectDoneLabel": "Expulsada",
-      "ejectSuccessDrive": "{{drive}} — se puede retirar",
-      "ejectSafeRemove": "Se puede retirar",
       "ejectFailed": "Falló la expulsión",
       "ejectFailedDetail": "{{error}}\nRetira la tarjeta a mano de forma segura.",
       "backupCancelled": "Respaldo de SD cancelado.",
@@ -1099,6 +1095,10 @@
       "backupLabel": "Respaldo",
       "clearLabel": "Limpiar",
       "title": "SD",
+      "updatingHistory": "Actualizando historial…",
+      "ejectDoneLabel": "Expulsada",
+      "ejectSuccessDrive": "{{drive}} — se puede retirar",
+      "ejectSafeRemove": "Se puede retirar",
       "mtpImportNeedsBackup": "Cámaras USB: la importación solo es posible junto con el respaldo."
     },
     "import": {
@@ -1369,10 +1369,6 @@
   },
   "workflow": {
     "progress": "Progreso",
-    "sessionOutcome": {
-      "aria": "Importación completada",
-      "dismiss": "Cerrar el mensaje de finalización"
-    },
     "stage": {
       "preview": "Se está generando la vista previa",
       "cut": "Se está aplicando la edición",
@@ -1430,6 +1426,10 @@
       "labelApple": "HEVC Apple (hvc1)",
       "shortAuto": "Auto",
       "shortApple": "hvc1"
+    },
+    "sessionOutcome": {
+      "aria": "Importación completada",
+      "dismiss": "Cerrar el mensaje de finalización"
     }
   },
   "history": {
@@ -1777,7 +1777,6 @@
       "serverWithDetail": "Servidor: {{detail}}",
       "serverWithDetailMultiline": "Servidor:\n{{detail}}",
       "serverConnected": "Servidor: conectado",
-      "serverReachableUnverified": "Servidor: accesible – inicio de sesión sin verificar",
       "serverNotConfigured": "Servidor: no configurado",
       "serverNotChecked": "Servidor: no verificado",
       "amsChecking": "{{title}}: comprobando…",
@@ -1816,7 +1815,8 @@
         "body": "Tras una actualización, macOS a veces bloquea la conexión de la app. Reinicia el Mac para solucionarlo.",
         "ok": "Entendido",
         "title": "Conexión tras actualización"
-      }
+      },
+      "serverReachableUnverified": "Servidor: accesible – inicio de sesión sin verificar"
     },
     "backupPopover": {
       "cancelledLocalRemains": "El respaldo local se conserva."
@@ -2103,13 +2103,12 @@
         "size": "Tamaño",
         "watermark": "Marca de agua"
       },
-      "overview": "Resumen",
       "overviewAria": "Resumen de fotos",
       "removeCount": "Quitar {{count}}",
-      "review": "Revisión",
       "sessionTitle": "Sesión",
       "undoEdit": "Deshacer edición",
-      "viewModeAria": "Vista de fotos",
+      "expandPreviewAria": "Ampliar vista previa",
+      "collapsePreviewAria": "Reducir vista previa",
       "wmPreviewHint": "Exportar con sello de marca de agua",
       "wmPreviewLabel": "Vista previa",
       "wmToggleAria": "Foto de vista previa con sello de marca de agua"

@@ -532,7 +532,6 @@
   "errors": {
     "server": {
       "connected": "✓ Connected",
-      "reachableUnverified": "Reachable – login not checked",
       "notChecked": "Not checked",
       "notConnected": "Not connected",
       "checking": "Checking…",
@@ -553,7 +552,8 @@
       "unreachableHostNotFound": "Server unreachable (host not found)",
       "unreachableNetwork": "Server unreachable (network)",
       "unreachableRefused": "Server unreachable (connection refused)",
-      "unreachableTimeout": "Server unreachable (timeout)"
+      "unreachableTimeout": "Server unreachable (timeout)",
+      "reachableUnverified": "Reachable – login not checked"
     }
   },
   "create": {
@@ -734,8 +734,8 @@
       "legacyMpegTs": "Legacy join (MPEG-TS)…",
       "sdClearing": "Clearing SD…",
       "backupFinishing": "Finishing backup…",
-      "updatingHistory": "Updating history…",
       "reencodeWaiting": "Re-encoding — waiting for confirmation…",
+      "updatingHistory": "Updating history…",
       "usbClearing": "Clearing USB camera…",
       "copyVideos": "Copying videos…",
       "analyseVideos": "Analyzing videos…",
@@ -1005,7 +1005,7 @@
   "splash": {
     "appName": "Aero Tandem Studio",
     "tagline": "Jump. Cut. Done.",
-    "loading": "Loading interface…",
+    "loading": "Loading…",
     "version": "Version {{version}}",
     "copyright": "© Andreas Kowalenko"
   },
@@ -1021,8 +1021,8 @@
     },
     "server": {
       "connected": "Connected",
-      "reachable": "Reachable",
-      "uploadPercent": "Upload {{percent}}%"
+      "uploadPercent": "Upload {{percent}}%",
+      "reachable": "Reachable"
     }
   },
   "app": {
@@ -1070,16 +1070,12 @@
       "ejecting": "Ejecting SD card…",
       "backingUp": "SD backup in progress…",
       "importing": "Importing SD files…",
-      "updatingHistory": "Updating history…",
       "searchingQr": "Searching for QR code…",
       "noFiles": "No files.",
       "clearOnlyAfterBackup": "Clearing is only possible after a backup.",
       "noActionSelected": "No action selected.",
       "pickBackupFolder": "Please choose a backup folder in settings.",
       "ejectSuccess": "SD card ejected — safe to remove",
-      "ejectDoneLabel": "Ejected",
-      "ejectSuccessDrive": "{{drive}} — safe to remove",
-      "ejectSafeRemove": "Safe to remove",
       "ejectFailed": "Eject failed",
       "ejectFailedDetail": "{{error}}\nPlease remove the card safely by hand.",
       "backupCancelled": "SD backup cancelled.",
@@ -1099,6 +1095,10 @@
       "backupLabel": "Backup",
       "clearLabel": "Clear",
       "title": "SD",
+      "updatingHistory": "Updating history…",
+      "ejectDoneLabel": "Ejected",
+      "ejectSuccessDrive": "{{drive}} — safe to remove",
+      "ejectSafeRemove": "Safe to remove",
       "mtpImportNeedsBackup": "USB cameras: import is only possible together with backup."
     },
     "import": {
@@ -1369,10 +1369,6 @@
   },
   "workflow": {
     "progress": "Progress",
-    "sessionOutcome": {
-      "aria": "Import complete",
-      "dismiss": "Dismiss completion message"
-    },
     "stage": {
       "preview": "Preview is being generated",
       "cut": "Edit is being applied",
@@ -1430,6 +1426,10 @@
       "labelApple": "HEVC Apple (hvc1)",
       "shortAuto": "Auto",
       "shortApple": "hvc1"
+    },
+    "sessionOutcome": {
+      "aria": "Import complete",
+      "dismiss": "Dismiss completion message"
     }
   },
   "history": {
@@ -1777,7 +1777,6 @@
       "serverWithDetail": "Server: {{detail}}",
       "serverWithDetailMultiline": "Server:\n{{detail}}",
       "serverConnected": "Server: connected",
-      "serverReachableUnverified": "Server: reachable – login not checked",
       "serverNotConfigured": "Server: not configured",
       "serverNotChecked": "Server: not checked",
       "amsChecking": "{{title}}: checking…",
@@ -1816,7 +1815,8 @@
         "body": "After an update, macOS may block this app's connection. Restart your Mac to fix it.",
         "ok": "Got it",
         "title": "Connection after update"
-      }
+      },
+      "serverReachableUnverified": "Server: reachable – login not checked"
     },
     "backupPopover": {
       "cancelledLocalRemains": "Local backup remains."
@@ -2103,13 +2103,12 @@
         "size": "Size",
         "watermark": "Watermark"
       },
-      "overview": "Overview",
       "overviewAria": "Photo overview",
       "removeCount": "Remove {{count}}",
-      "review": "Review",
       "sessionTitle": "Session",
       "undoEdit": "Undo edit",
-      "viewModeAria": "Photo view",
+      "expandPreviewAria": "Enlarge preview",
+      "collapsePreviewAria": "Shrink preview",
       "wmPreviewHint": "Export with watermark stamp",
       "wmPreviewLabel": "Preview",
       "wmToggleAria": "Preview photo with watermark stamp"
