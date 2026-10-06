@@ -15,6 +15,7 @@ import {
 } from "@/lib/qrSuccess";
 import { tr } from "@/i18n";
 import { useKundeStore } from "@/store/kundeStore";
+import { useSessionRunStore } from "@/store/sessionRunStore";
 import {
   useUiStore,
   type DialogOptions,
@@ -33,8 +34,9 @@ export type PresentQrHitInput = {
    */
   runCleanup: () => QrCleanupResult | Promise<QrCleanupResult>;
   /**
-   * When true (default), show SuccessDialog after apply / for confirms.
-   * When false, only confirm dialogs use SuccessDialog; caller embeds success options.
+   * When true (default), show the session outcome card after apply, keep, or cancel.
+   * Switch / override confirms still use SuccessDialog.
+   * When false, the caller embeds the result (import or SD card adds extra rows).
    */
   showDialog?: boolean;
 };
@@ -294,9 +296,31 @@ function askManualOverride(opts: {
   });
 }
 
+/** Same card as auto QR after import: title, customer highlight, action row, thumb. */
+function presentQrSessionOutcome(result: PresentQrHitResult): void {
+  const highlight =
+    result.successOptions.highlight?.trim() ||
+    result.kundeName.trim() ||
+    tr("app.sd.customerRecognized");
+  useSessionRunStore.getState().presentSessionRun({
+    title: result.successTitle || tr("app.qr.recognized"),
+    highlight,
+    qrPreview: result.successOptions.qrPreview ?? null,
+    actions: result.successOptions.actions ?? [],
+  });
+}
+
+function deliverQrOutcome(
+  result: PresentQrHitResult,
+  showOnSession: boolean,
+): PresentQrHitResult {
+  if (showOnSession) presentQrSessionOutcome(result);
+  return result;
+}
+
 /**
  * Apply QR kundedata (with switch / manual-override confirm when needed),
- * run cleanup, optionally show the success dialog.
+ * run cleanup, and show the session outcome card for a manual scan.
  * Dual-family QR resolves AMS hash-lookup + type choice first (Phase 45).
  * Numeric URL-only QR resolves AMS `mode=id` lookup into manual form.
  */
@@ -312,29 +336,32 @@ export async function presentQrHit(
     const numeric = await resolveQrNumericIds(input.kunde, true);
     if (numeric.kind === "cancelled") {
       discardQrPreviewBestEffort(input.preview?.path);
-      return {
-        applied: false,
-        keptExisting: false,
-        switchConfirmShown: false,
-        kundeName: "",
-        cleanup: emptyCleanup(),
-        successTitle: qrSuccessTitle(),
-        successOptions: {
-          variant: "qr",
-          highlight: tr("qr.confirm.keepExistingSummary"),
-          autoCloseSecs: 5,
-          actions: [
-            {
-              kind: "qr",
-              label: tr("qr.confirm.label"),
-              tone: "skipped",
-              summary: tr("common.actions.cancel"),
-              detail: tr("qr.dual.cancelled"),
-            },
-          ],
+      return deliverQrOutcome(
+        {
+          applied: false,
+          keptExisting: false,
+          switchConfirmShown: false,
+          kundeName: "",
+          cleanup: emptyCleanup(),
+          successTitle: qrSuccessTitle(),
+          successOptions: {
+            variant: "qr",
+            highlight: tr("qr.confirm.keepExistingSummary"),
+            autoCloseSecs: 5,
+            actions: [
+              {
+                kind: "qr",
+                label: tr("qr.confirm.label"),
+                tone: "skipped",
+                summary: tr("common.actions.cancel"),
+                detail: tr("qr.dual.cancelled"),
+              },
+            ],
+          },
+          message: "",
         },
-        message: "",
-      };
+        showDialog,
+      );
     }
     if (numeric.kind === "resolved") {
       scanned = numeric.kunde;
@@ -344,29 +371,32 @@ export async function presentQrHit(
     const dual = await resolveQrDualFamily(input.kunde, input.dualFamily);
     if (dual.kind === "cancelled") {
       discardQrPreviewBestEffort(input.preview?.path);
-      return {
-        applied: false,
-        keptExisting: false,
-        switchConfirmShown: false,
-        kundeName: "",
-        cleanup: emptyCleanup(),
-        successTitle: qrSuccessTitle(),
-        successOptions: {
-          variant: "qr",
-          highlight: tr("qr.confirm.keepExistingSummary"),
-          autoCloseSecs: 5,
-          actions: [
-            {
-              kind: "qr",
-              label: tr("qr.confirm.label"),
-              tone: "skipped",
-              summary: tr("common.actions.cancel"),
-              detail: tr("qr.dual.cancelled"),
-            },
-          ],
+      return deliverQrOutcome(
+        {
+          applied: false,
+          keptExisting: false,
+          switchConfirmShown: false,
+          kundeName: "",
+          cleanup: emptyCleanup(),
+          successTitle: qrSuccessTitle(),
+          successOptions: {
+            variant: "qr",
+            highlight: tr("qr.confirm.keepExistingSummary"),
+            autoCloseSecs: 5,
+            actions: [
+              {
+                kind: "qr",
+                label: tr("qr.confirm.label"),
+                tone: "skipped",
+                summary: tr("common.actions.cancel"),
+                detail: tr("qr.dual.cancelled"),
+              },
+            ],
+          },
+          message: "",
         },
-        message: "",
-      };
+        showDialog,
+      );
     }
     scanned = dual.kind === "resolved" ? dual.kunde : input.kunde;
   }
@@ -387,14 +417,17 @@ export async function presentQrHit(
 
     if (choice === "keep") {
       discardQrPreviewBestEffort(input.preview?.path);
-      return buildKeptResult({
-        previousLabel: previousName,
-        nextName,
-        summary: tr("qr.confirm.keepExistingSummary"),
-        detail: nextName
-          ? tr("qr.confirm.ignoredScanNamed", { name: nextName })
-          : tr("qr.confirm.ignoredScan"),
-      });
+      return deliverQrOutcome(
+        buildKeptResult({
+          previousLabel: previousName,
+          nextName,
+          summary: tr("qr.confirm.keepExistingSummary"),
+          detail: nextName
+            ? tr("qr.confirm.ignoredScanNamed", { name: nextName })
+            : tr("qr.confirm.ignoredScan"),
+        }),
+        showDialog,
+      );
     }
   } else if (needsManualOverrideConfirm(current, scanned)) {
     const previousLabel = manualKundeLabel(current);
@@ -407,14 +440,17 @@ export async function presentQrHit(
 
     if (choice === "keep") {
       discardQrPreviewBestEffort(input.preview?.path);
-      return buildKeptResult({
-        previousLabel,
-        nextName,
-        summary: tr("qr.confirm.keepManualSummary"),
-        detail: nextName
-          ? tr("qr.confirm.ignoredQrNamed", { name: nextName })
-          : tr("qr.confirm.ignoredQr"),
-      });
+      return deliverQrOutcome(
+        buildKeptResult({
+          previousLabel,
+          nextName,
+          summary: tr("qr.confirm.keepManualSummary"),
+          detail: nextName
+            ? tr("qr.confirm.ignoredQrNamed", { name: nextName })
+            : tr("qr.confirm.ignoredQr"),
+        }),
+        showDialog,
+      );
     }
   }
 
@@ -439,10 +475,5 @@ export async function presentQrHit(
     input.notes,
     confirmShown,
   );
-  if (showDialog) {
-    useUiStore
-      .getState()
-      .showSuccess(result.message, result.successTitle, result.successOptions);
-  }
-  return result;
+  return deliverQrOutcome(result, showDialog);
 }
