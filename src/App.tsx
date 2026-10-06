@@ -2809,7 +2809,7 @@ function App() {
     if (busy || appendActive || loading || sdWorkflowUiActive || qrScanBusy) {
       showWarning(
         t("app.session.resetBlocked"),
-        t("common.actions.reset"),
+        t("app.chrome.reset"),
       );
       return false;
     }
@@ -2838,7 +2838,7 @@ function App() {
     setAmsPreflightConfirm(null);
     setReconnectUploadOffer(null);
     showSessionResetToast(
-      t("common.actions.reset"),
+      t("app.chrome.reset"),
       t("app.session.resetDone"),
     );
     return true;

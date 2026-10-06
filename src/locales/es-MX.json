@@ -1060,6 +1060,7 @@
     },
     "chrome": {
       "historyTitle": "Trabajos y medios",
+      "reset": "Reset",
       "resetTitle": "Restablecer formulario y medios",
       "encoder": "Codificador: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1177,6 +1178,7 @@
     "job": {
       "section": "Trabajo",
       "clear": "Vaciar",
+      "autoReset": "Auto-Reset",
       "clearTitle": "Restablecer formulario y medios al crear",
       "createUploadTitle": "Crear trabajo y subir al servidor",
       "uploadAria": "Subida al servidor",
@@ -1215,8 +1217,8 @@
       "resetBlocked": "No se puede restablecer mientras hay un proceso en curso.",
       "resetConfirm": "¿Restablecer todo?\n\nSe descartarán el formulario y todos los videos y fotos importados.\nTandem master / video jumper se conservan según la configuración.",
       "resetDone": "Sesión restablecida.",
-      "resetting": "Restableciendo…",
-      "resetFlash": "Restablecido"
+      "resetting": "Reset…",
+      "resetFlash": "Reset"
     },
     "server": {
       "title": "Servidor"
@@ -1814,11 +1816,15 @@
       "titleFailed": "Sin conexión",
       "titleServerOk": "Servidor conectado",
       "titleAmsOk": "Búsqueda de reserva conectada",
-      "serverLabel": "Servidor",
+      "serverLabel": "Servidor de subida",
+      "serverBackupLabel": "Servidor de respaldo",
+      "backupUrlMissing": "Falta la URL de respaldo",
+      "backupUrlMissingDetail": "Configure smb://… en el perfil de servidor.",
       "serverOk": "Accesible",
       "serverOkLocal": "Accesible (local)",
       "serverOkRemote": "Conectado",
       "amsOk": "Conectado",
+      "amsOkNamed": "Conectado · {{name}}",
       "titleAmsOkNamed": "{{name}} conectada",
       "backupFailedHint": "Clic: cerrar aviso y comprobar · clic derecho: URL de respaldo",
       "backupSettingsHint": "Clic derecho: URL de respaldo en configuración",

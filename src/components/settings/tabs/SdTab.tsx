@@ -13,12 +13,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUiStore } from "@/store/uiStore";
-import { useServerStore } from "@/store/serverStore";
 import { presentServerConnectionAction } from "@/lib/headerConnectionStatus";
 import {
   displayServerProfileLabel,
-  getActiveServerProfile,
+  resolveActiveServerBackupTarget,
 } from "@/lib/serverProfile";
+import { testServerConnection } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { showAdvanced } from "@/lib/settingsUi";
 import { FolderPathField } from "../FolderPathField";
@@ -26,26 +26,15 @@ import { SettingsHintIcon } from "../SettingsHintIcon";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
 
-function activeProfileBackupTarget(draft: SettingsTabBaseProps["draft"]) {
-  const profile = getActiveServerProfile(draft);
-  const url = profile?.backup_url?.trim() ?? "";
-  const login =
-    profile?.backup_login?.trim() || draft.server_login || "";
-  const password =
-    (profile?.backup_password ?? "") || draft.server_password || "";
-  return { profile, url, login, password };
-}
-
 export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: SettingsTabBaseProps) {
   const { t } = useTranslation();
   const advanced = showAdvanced(disclosure);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
   const openSettings = useUiStore((s) => s.openSettings);
-  const checkConnection = useServerStore((s) => s.checkConnection);
   const [testingBackupUrl, setTestingBackupUrl] = useState(false);
 
-  const backupTarget = activeProfileBackupTarget(draft);
+  const backupTarget = resolveActiveServerBackupTarget(draft);
   const profileBackupUrl = backupTarget.url;
 
   async function pickFolder(key: "speicherort" | "sd_backup_folder") {
@@ -57,7 +46,7 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
     if (testingBackupUrl || !profileBackupUrl) return;
     setTestingBackupUrl(true);
     try {
-      const result = await checkConnection({
+      const result = await testServerConnection({
         server_url: profileBackupUrl,
         server_login: backupTarget.login,
         server_password: backupTarget.password,
@@ -68,6 +57,9 @@ export function SdTab({ draft, patch, patchNow, commitNow, disclosure }: Setting
         serverUrl: profileBackupUrl,
         login: backupTarget.login,
         password: backupTarget.password,
+        label: t("header.connection.serverBackupLabel"),
+        kind: "backup",
+        settingsFocus: "server-backup-url",
       });
       if (result.ok) {
         showSuccess("", t("header.connection.titleServerOk"), {

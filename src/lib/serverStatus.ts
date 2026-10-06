@@ -168,6 +168,8 @@ export function presentServerConnectionError(opts: {
   login: string;
   password: string;
   omitSettingsAction?: boolean;
+  /** Override Settings deep-link (e.g. backup URL instead of upload URL). */
+  settingsFocus?: SettingsFocusTarget;
 }): ServerErrorPresentation {
   const detail = mapServerErrorDetail(opts.rawMessage);
   const urlMissing = !opts.serverUrl.trim();
@@ -176,6 +178,9 @@ export function presentServerConnectionError(opts: {
   const invalidUrl = tr("errors.server.invalidUrl");
   const isAuthFailure = detail.text === loginFailed;
   const isInvalidUrl = detail.text === invalidUrl;
+  const urlFocus: SettingsFocusTarget = opts.settingsFocus ?? "server-url";
+  const credsFocus: SettingsFocusTarget =
+    opts.settingsFocus ?? "server-credentials";
 
   const withAction = (
     label: string,
@@ -192,18 +197,18 @@ export function presentServerConnectionError(opts: {
     const hint = urlMissing ? serverUrlMissingHint() : null;
     return {
       message: hint ? `${detail.text}\n\n${hint}` : detail.text,
-      focus: "server-url",
-      primaryAction: withAction(tr("errors.server.openUrl"), "server-url"),
+      focus: urlFocus,
+      primaryAction: withAction(tr("errors.server.openUrl"), urlFocus),
     };
   }
 
   if (isAuthFailure) {
     return {
       message: `${detail.text}\n\n${serverAuthHint()}`,
-      focus: "server-credentials",
+      focus: credsFocus,
       primaryAction: withAction(
         tr("errors.server.checkCredentials"),
-        "server-credentials",
+        credsFocus,
       ),
     };
   }
@@ -211,18 +216,20 @@ export function presentServerConnectionError(opts: {
   if (detail.kind === "unreachable" && credsMissing) {
     return {
       message: `${detail.text}\n\n${serverCredentialsSoftHint()}`,
-      focus: "server-credentials",
+      focus: credsFocus,
       primaryAction: withAction(
         tr("errors.server.openCredentials"),
-        "server-credentials",
+        credsFocus,
       ),
     };
   }
 
   return {
     message: detail.text,
-    focus: null,
-    primaryAction: null,
+    focus: opts.settingsFocus ?? null,
+    primaryAction: opts.settingsFocus
+      ? withAction(tr("errors.server.openUrl"), opts.settingsFocus)
+      : null,
   };
 }
 

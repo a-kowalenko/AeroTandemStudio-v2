@@ -1,6 +1,7 @@
 import type { AmsBridgePhase } from "@/store/amsBridgeStore";
 import type { ServerPhase } from "@/store/serverStore";
 import type {
+  DialogActionKind,
   DialogActionStatus,
   DialogPrimaryAction,
   SettingsFocusTarget,
@@ -10,9 +11,7 @@ import { tr } from "@/i18n";
 import {
   amsOperatorTitle,
   amsBridgeStatusErrorTooltip,
-  amsConnectionLabel,
   formatAmsConnectedTooltip,
-  formatAmsConnectionDialogTitle,
   presentAmsBridgeError,
 } from "./amsBridgeStatus";
 import {
@@ -429,6 +428,13 @@ export type HeaderRetryOutcome = {
 };
 
 const CONNECTION_SUCCESS_AUTO_CLOSE_SECS = 3;
+const CONNECTION_SUCCESS_AUTO_CLOSE_SECS_MANY = 5;
+
+function successAutoCloseSecs(actionCount: number): number {
+  return actionCount >= 3
+    ? CONNECTION_SUCCESS_AUTO_CLOSE_SECS_MANY
+    : CONNECTION_SUCCESS_AUTO_CLOSE_SECS;
+}
 
 /** Extract path/share detail from Rust connection success messages. */
 export function parseServerSuccessDetail(raw: string): {
@@ -459,8 +465,12 @@ export function presentServerConnectionAction(opts: {
   serverUrl: string;
   login: string;
   password: string;
+  label?: string;
+  kind?: Extract<DialogActionKind, "server" | "backup">;
+  settingsFocus?: SettingsFocusTarget;
 }): DialogActionStatus {
-  const label = tr("header.connection.serverLabel");
+  const label = opts.label ?? tr("header.connection.serverLabel");
+  const kind = opts.kind ?? "server";
   if (opts.ok) {
     const parsed = parseServerSuccessDetail(opts.rawMessage);
     const summary =
@@ -470,7 +480,7 @@ export function presentServerConnectionAction(opts: {
           ? tr("header.connection.serverOkRemote")
           : tr("header.connection.serverOk");
     return {
-      kind: "server",
+      kind,
       label,
       tone: "success",
       summary,
@@ -484,6 +494,7 @@ export function presentServerConnectionAction(opts: {
     login: opts.login,
     password: opts.password,
     omitSettingsAction: true,
+    settingsFocus: opts.settingsFocus,
   });
   const lines = presented.message
     .split(/\n+/)
@@ -493,7 +504,7 @@ export function presentServerConnectionAction(opts: {
   const pathDetail =
     parsed.mode === "local" && parsed.detail ? parsed.detail : null;
   return {
-    kind: "server",
+    kind,
     label,
     tone: "error",
     summary: lines[0] ?? mapServerErrorLabel(opts.rawMessage),
@@ -504,18 +515,34 @@ export function presentServerConnectionAction(opts: {
   };
 }
 
+export function presentBackupUrlMissingAction(): DialogActionStatus {
+  return {
+    kind: "backup",
+    label: tr("header.connection.serverBackupLabel"),
+    tone: "warning",
+    summary: tr("header.connection.backupUrlMissing"),
+    detail: tr("header.connection.backupUrlMissingDetail"),
+  };
+}
+
 export function presentAmsConnectionAction(opts: {
   ok: boolean;
   rawMessage: string;
   displayName?: string | null;
+  baseUrl?: string | null;
 }): DialogActionStatus {
-  const label = amsConnectionLabel(opts.displayName);
+  const label = amsOperatorTitle();
   if (opts.ok) {
+    const name = opts.displayName?.trim();
+    const detail = opts.baseUrl?.trim();
     return {
       kind: "ams",
       label,
       tone: "success",
-      summary: tr("header.connection.amsOk"),
+      summary: name
+        ? tr("header.connection.amsOkNamed", { name })
+        : tr("header.connection.amsOk"),
+      detail: detail || undefined,
     };
   }
   const presented = presentAmsBridgeError({
@@ -535,18 +562,34 @@ export function presentAmsConnectionAction(opts: {
   };
 }
 
+export type HeaderRetryBackupInput = {
+  enabled: boolean;
+  url: string;
+  login: string;
+  password: string;
+  result: ConnectionTestResult | null;
+};
+
 export function presentHeaderRetryOutcome(opts: {
   smb: ConnectionTestResult | null;
   ams: AmsBridgeHealthResult | null;
   serverUrl: string;
   login: string;
   password: string;
+  backup?: HeaderRetryBackupInput | null;
 }): HeaderRetryOutcome | null {
   const { smb, ams } = opts;
-  if (!smb && !ams) return null;
+  const backup = opts.backup?.enabled ? opts.backup : null;
+  const backupUrl = backup?.url.trim() ?? "";
+  const backupMissing = Boolean(backup && !backupUrl);
+  const backupResult = backup && backupUrl ? backup.result : null;
+  const backupChecked = Boolean(backup);
+  if (!smb && !ams && !backupChecked) return null;
 
   const smbOk = !smb || smb.ok;
   const amsOk = !ams || ams.ok;
+  const backupOk =
+    !backupChecked || (Boolean(backupUrl) && Boolean(backupResult?.ok));
   const smbPresented = smb && !smb.ok
     ? presentServerConnectionError({
         rawMessage: smb.message,
@@ -555,6 +598,25 @@ export function presentHeaderRetryOutcome(opts: {
         password: opts.password,
       })
     : null;
+  const backupPresented = backupMissing
+    ? {
+        primaryAction: {
+          label: tr("settings.sd.backup.setInServerProfile"),
+          openSettings: {
+            tab: "server" as const,
+            focus: "server-backup-url" as const,
+          },
+        },
+      }
+    : backupResult && !backupResult.ok
+      ? presentServerConnectionError({
+          rawMessage: backupResult.message,
+          serverUrl: backupUrl,
+          login: backup?.login ?? "",
+          password: backup?.password ?? "",
+          settingsFocus: "server-backup-url",
+        })
+      : null;
   const amsPresented = ams && !ams.ok
     ? presentAmsBridgeError({ rawMessage: ams.message })
     : null;
@@ -571,86 +633,70 @@ export function presentHeaderRetryOutcome(opts: {
       }),
     );
   }
+  if (backupMissing) {
+    actions.push(presentBackupUrlMissingAction());
+  } else if (backupResult) {
+    actions.push(
+      presentServerConnectionAction({
+        ok: backupResult.ok,
+        rawMessage: backupResult.message,
+        serverUrl: backupUrl,
+        login: backup?.login ?? "",
+        password: backup?.password ?? "",
+        label: tr("header.connection.serverBackupLabel"),
+        kind: "backup",
+        settingsFocus: "server-backup-url",
+      }),
+    );
+  }
   if (ams) {
     actions.push(
       presentAmsConnectionAction({
         ok: ams.ok,
         rawMessage: ams.message,
         displayName: ams.health?.display_name,
+        baseUrl: ams.base_url,
       }),
     );
   }
 
-  if (smbOk && amsOk) {
+  if (smbOk && backupOk && amsOk) {
+    const checkedCount = [smb, backupResult, ams].filter(Boolean).length;
     const title =
-      smb && ams
+      checkedCount >= 2
         ? tr("header.connection.titleAllOk")
-        : smb
+        : smb || backupResult
           ? tr("header.connection.titleServerOk")
-          : formatAmsConnectionDialogTitle(ams?.health?.display_name);
+          : tr("header.connection.titleAmsOk");
     return {
       kind: "success",
       title,
       message: "",
       actions,
       primaryAction: null,
-      autoCloseSecs: CONNECTION_SUCCESS_AUTO_CLOSE_SECS,
+      autoCloseSecs: successAutoCloseSecs(actions.length),
     };
   }
 
   const primaryAction =
-    smbPresented?.primaryAction ?? amsPresented?.primaryAction ?? null;
+    smbPresented?.primaryAction ??
+    backupPresented?.primaryAction ??
+    amsPresented?.primaryAction ??
+    null;
 
-  if (!smbOk && !amsOk && smb && ams) {
-    return {
-      kind: "error",
-      title: tr("header.connection.titleFailed"),
-      message: "",
-      actions,
-      primaryAction,
-      autoCloseSecs: null,
-    };
-  }
-
-  if (!smbOk && smb && ams && amsOk) {
-    return {
-      kind: "error",
-      title: tr("header.connection.titlePartial"),
-      message: "",
-      actions,
-      primaryAction: smbPresented?.primaryAction ?? null,
-      autoCloseSecs: null,
-    };
-  }
-
-  if (!amsOk && ams && smb && smbOk) {
-    return {
-      kind: "error",
-      title: tr("header.connection.titlePartial"),
-      message: "",
-      actions,
-      primaryAction: amsPresented?.primaryAction ?? null,
-      autoCloseSecs: null,
-    };
-  }
-
-  if (!smbOk) {
-    return {
-      kind: "error",
-      title: tr("header.connection.titleFailed"),
-      message: "",
-      actions,
-      primaryAction: smbPresented?.primaryAction ?? null,
-      autoCloseSecs: null,
-    };
-  }
+  const anyOk =
+    Boolean(smb?.ok) || Boolean(backupResult?.ok) || Boolean(ams?.ok);
+  const title =
+    anyOk || backupMissing
+      ? tr("header.connection.titlePartial")
+      : tr("header.connection.titleFailed");
 
   return {
     kind: "error",
-    title: tr("header.connection.titleFailed"),
+    title,
     message: "",
     actions,
-    primaryAction: amsPresented?.primaryAction ?? null,
+    primaryAction,
     autoCloseSecs: null,
   };
 }

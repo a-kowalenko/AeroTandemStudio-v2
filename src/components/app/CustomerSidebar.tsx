@@ -175,7 +175,7 @@ export function CustomerSidebar({
               title={t("app.job.clearTitle")}
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-              {t("app.job.clear")}
+              {t("app.job.autoReset")}
               <Switch
                 id="vorgang-clear"
                 className="h-4 w-7 [&_span]:h-3 [&_span]:w-3 [&_span]:data-[state=checked]:translate-x-3"

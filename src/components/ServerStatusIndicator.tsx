@@ -24,8 +24,9 @@ import {
   formatSecondaryBackupCompactParts,
   formatUploadProgressTooltip,
 } from "../lib/uploadProgress";
-import { cancelSecondaryBackup } from "../lib/tauri";
+import { cancelSecondaryBackup, testServerConnection } from "../lib/tauri";
 import { presentSdUserMessage } from "../lib/sdMessages";
+import { resolveActiveServerBackupTarget } from "../lib/serverProfile";
 import {
   CancelSecondaryBackupConfirmDialog,
   type CancelSecondaryBackupConfirmChoice,
@@ -277,8 +278,22 @@ export function ServerStatusIndicator({
     if (!canClickRetry) return;
     setRetrying(true);
     try {
-      const [smbResult, amsResult] = await Promise.all([
+      const backupEnabled = Boolean(config?.sd_server_backup_enabled);
+      const backupTarget = config
+        ? resolveActiveServerBackupTarget(config)
+        : { url: "", login: "", password: "" };
+      const [smbResult, backupResult, amsResult] = await Promise.all([
         serverUrl.trim() ? checkConnection() : Promise.resolve(null),
+        backupEnabled && backupTarget.url
+          ? testServerConnection({
+              server_url: backupTarget.url,
+              server_login: backupTarget.login,
+              server_password: backupTarget.password,
+            }).catch((e) => ({
+              ok: false,
+              message: String(e),
+            }))
+          : Promise.resolve(null),
         amsConfigured ? checkAmsHealth() : Promise.resolve(null),
       ]);
       const outcome = presentHeaderRetryOutcome({
@@ -287,6 +302,15 @@ export function ServerStatusIndicator({
         serverUrl,
         login,
         password,
+        backup: backupEnabled
+          ? {
+              enabled: true,
+              url: backupTarget.url,
+              login: backupTarget.login,
+              password: backupTarget.password,
+              result: backupResult,
+            }
+          : null,
       });
       if (!outcome) return;
       const options = {

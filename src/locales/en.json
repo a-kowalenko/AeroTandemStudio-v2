@@ -1060,6 +1060,7 @@
     },
     "chrome": {
       "historyTitle": "Jobs and media",
+      "reset": "Reset",
       "resetTitle": "Reset form and media",
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1177,6 +1178,7 @@
     "job": {
       "section": "Job",
       "clear": "Clear",
+      "autoReset": "Auto-Reset",
       "clearTitle": "Reset form and media after creating",
       "createUploadTitle": "Create job and upload to the server",
       "uploadAria": "Server upload",
@@ -1216,7 +1218,7 @@
       "resetConfirm": "Reset everything?\n\nThe form and all imported videos and photos will be discarded.\nTandem master / video jumper are kept according to settings.",
       "resetDone": "Session reset.",
       "resetting": "Resetting…",
-      "resetFlash": "Reset done"
+      "resetFlash": "Reset"
     },
     "server": {
       "title": "Server"
@@ -1814,11 +1816,15 @@
       "titleFailed": "No connection",
       "titleServerOk": "Server connected",
       "titleAmsOk": "Booking lookup connected",
-      "serverLabel": "Server",
+      "serverLabel": "Upload server",
+      "serverBackupLabel": "Backup server",
+      "backupUrlMissing": "Backup URL missing",
+      "backupUrlMissingDetail": "Set smb://… in the server profile.",
       "serverOk": "Reachable",
       "serverOkLocal": "Reachable (local)",
       "serverOkRemote": "Connected",
       "amsOk": "Connected",
+      "amsOkNamed": "Connected · {{name}}",
       "titleAmsOkNamed": "{{name}} connected",
       "backupFailedHint": "Click: dismiss & recheck · right click: backup URL",
       "backupSettingsHint": "Right click: backup URL in settings",

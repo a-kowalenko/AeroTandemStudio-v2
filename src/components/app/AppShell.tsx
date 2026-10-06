@@ -248,7 +248,7 @@ export function AppShell({
                     ? t("app.session.resetting")
                     : resetPhase === "done"
                       ? t("app.session.resetFlash")
-                      : t("common.actions.reset")}
+                      : t("app.chrome.reset")}
                 </span>
               </Button>
               <SettingsCluster

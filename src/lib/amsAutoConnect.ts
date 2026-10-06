@@ -277,6 +277,7 @@ export async function runAmsAutoConnect(opts: {
             ok: true,
             rawMessage: "",
             displayName,
+            baseUrl: chosenBaseUrl,
           }),
         ],
         autoCloseSecs: 3,

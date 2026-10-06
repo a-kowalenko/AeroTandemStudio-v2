@@ -169,6 +169,7 @@ export function ServerTab({
         ok: result.ok,
         rawMessage: result.message,
         displayName: result.health?.display_name ?? refreshed.ams_bridge_display_name,
+        baseUrl: result.base_url,
       });
       if (result.ok) {
         setBridgeLabel(action.summary);
@@ -295,6 +296,7 @@ export function ServerTab({
             ok: true,
             rawMessage: result.message,
             displayName,
+            baseUrl: result.base_url,
           });
           setBridgeLabel(action.summary);
           showSuccess(
@@ -363,6 +365,7 @@ export function ServerTab({
               ok: result.ok,
               rawMessage: result.message,
               displayName,
+              baseUrl: result.base_url,
             });
             if (result.ok) {
               setBridgeLabel(action.summary);

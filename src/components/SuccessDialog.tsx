@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { usePausableAutoDismiss } from "@/hooks/usePausableAutoDismiss";
 import { AlertTriangle, CheckCircle2, QrCode } from "lucide-react";
 import {
   Dialog,
@@ -24,6 +25,16 @@ import type {
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Input } from "@/components/ui/input";
+
+function actionsA11ySummary(actions: DialogActionStatus[]): string {
+  return actions
+    .map((action) =>
+      [action.label, action.summary, action.detail?.trim()]
+        .filter((part): part is string => Boolean(part?.trim()))
+        .join(": "),
+    )
+    .join(". ");
+}
 
 type Props = {
   open: boolean;
@@ -67,13 +78,12 @@ export function SuccessDialog({
     !confirm && !choices && !prompt && autoCloseSecs && autoCloseSecs > 0
       ? autoCloseSecs
       : null;
-  const [remaining, setRemaining] = useState(timeoutSecs ?? 0);
-  const [barActive, setBarActive] = useState(false);
   const [promptValue, setPromptValue] = useState("");
   const [promptBusy, setPromptBusy] = useState(false);
   const closedRef = useRef(false);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const dismissSafeRef = useRef<() => void>(() => {});
   const confirmRef = useRef(confirm);
   confirmRef.current = confirm;
   const choicesRef = useRef(choices);
@@ -103,35 +113,21 @@ export function SuccessDialog({
     setPromptBusy(false);
   }, [open, prompt?.initialValue]);
 
-  useEffect(() => {
-    if (!open || !timeoutSecs) {
-      closedRef.current = false;
-      setRemaining(timeoutSecs ?? 0);
-      setBarActive(false);
-      return;
-    }
+  const durationMs = open && timeoutSecs ? timeoutSecs * 1000 : 0;
+  const autoCloseResetKey = `${resolvedTitle}\0${message}\0${variant}\0${highlightText}\0${actions
+    .map((a) => `${a.kind}:${a.tone}:${a.summary}`)
+    .join("|")}`;
+  const { paused, remainingMs, remainingSec, hoverProps } =
+    usePausableAutoDismiss(
+      durationMs,
+      () => dismissSafeRef.current(),
+      undefined,
+      autoCloseResetKey,
+    );
 
-    closedRef.current = false;
-    setRemaining(timeoutSecs);
-    setBarActive(false);
-    const startRaf = window.requestAnimationFrame(() => setBarActive(true));
-    const started = Date.now();
-    const id = window.setInterval(() => {
-      const left = Math.max(
-        0,
-        timeoutSecs - Math.floor((Date.now() - started) / 1000),
-      );
-      setRemaining(left);
-      if (left <= 0 && !closedRef.current) {
-        closedRef.current = true;
-        onCloseRef.current();
-      }
-    }, 250);
-    return () => {
-      window.cancelAnimationFrame(startRaf);
-      window.clearInterval(id);
-    };
-  }, [open, timeoutSecs, message, resolvedTitle, variant, highlightText, actions]);
+  useEffect(() => {
+    if (open) closedRef.current = false;
+  }, [open, autoCloseResetKey]);
 
   function dismissSafe() {
     if (closedRef.current || promptBusy) return;
@@ -154,6 +150,7 @@ export function SuccessDialog({
     }
     onCloseRef.current();
   }
+  dismissSafeRef.current = dismissSafe;
 
   function onPrimaryConfirm() {
     if (closedRef.current) return;
@@ -209,6 +206,7 @@ export function SuccessDialog({
           accent === "warning" && "border-l-4 border-l-warning",
         )}
         overlayClassName="z-[130]"
+        {...hoverProps}
       >
         <DialogHeader>
           {isQr ? (
@@ -270,7 +268,10 @@ export function SuccessDialog({
             </DialogDescription>
           ) : (
             <DialogDescription className="sr-only">
-              {messageText || t("dialogs.success.actionsSummary")}
+              {messageText ||
+                (hasActions
+                  ? actionsA11ySummary(actions)
+                  : t("dialogs.success.actionsSummary"))}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -415,13 +416,13 @@ export function SuccessDialog({
           ) : (
             <Button className="shrink-0" onClick={close}>
               {t("common.actions.ok")}
-              {timeoutSecs && remaining > 0
-                ? t("dialogs.countdownSuffix", { seconds: remaining })
+              {timeoutSecs && remainingSec > 0
+                ? t("dialogs.countdownSuffix", { seconds: remainingSec })
                 : ""}
             </Button>
           )}
         </DialogFooter>
-        {timeoutSecs ? (
+        {timeoutSecs && open ? (
           <div
             className={cn(
               "pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden",
@@ -431,22 +432,21 @@ export function SuccessDialog({
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={
-              barActive
-                ? Math.round(((timeoutSecs - remaining) / timeoutSecs) * 100)
+              durationMs > 0
+                ? Math.round(((durationMs - remainingMs) / durationMs) * 100)
                 : 0
             }
             aria-label={t("dialogs.autoCloseAria")}
           >
             <div
+              key={autoCloseResetKey}
               className={cn(
-                "h-full origin-left",
+                "h-full w-full origin-left ats-toast-progress",
                 accent === "success" ? "bg-success" : "bg-warning",
               )}
               style={{
-                transform: barActive ? "scaleX(1)" : "scaleX(0)",
-                transition: barActive
-                  ? `transform ${timeoutSecs}s linear`
-                  : "none",
+                animationDuration: `${durationMs}ms`,
+                animationPlayState: paused ? "paused" : "running",
               }}
             />
           </div>

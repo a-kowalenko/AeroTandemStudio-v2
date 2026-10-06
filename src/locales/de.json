@@ -1060,6 +1060,7 @@
     },
     "chrome": {
       "historyTitle": "Vorgänge und Medien",
+      "reset": "Reset",
       "resetTitle": "Formular und Medien zurücksetzen",
       "encoder": "Encoder: {{label}}",
       "softwareSuffix": " (Software)",
@@ -1177,6 +1178,7 @@
     "job": {
       "section": "Vorgang",
       "clear": "Leeren",
+      "autoReset": "Auto-Reset",
       "clearTitle": "Nach Erstellen Formular und Medien zurücksetzen",
       "createUploadTitle": "Vorgang erstellen und auf den Server hochladen",
       "uploadAria": "Server-Upload",
@@ -1215,8 +1217,8 @@
       "resetBlocked": "Zurücksetzen ist während einer laufenden Verarbeitung nicht möglich.",
       "resetConfirm": "Alles zurücksetzen?\n\nFormular sowie alle importierten Videos und Fotos werden verworfen.\nTandemmaster/Videospringer werden je nach Einstellung beibehalten.",
       "resetDone": "Session zurückgesetzt.",
-      "resetting": "Zurücksetzen…",
-      "resetFlash": "Zurückgesetzt"
+      "resetting": "Reset…",
+      "resetFlash": "Reset"
     },
     "server": {
       "title": "Server"
@@ -1814,11 +1816,15 @@
       "titleFailed": "Keine Verbindung",
       "titleServerOk": "Server verbunden",
       "titleAmsOk": "Buchungssuche verbunden",
-      "serverLabel": "Server",
+      "serverLabel": "Upload-Server",
+      "serverBackupLabel": "Backup-Server",
+      "backupUrlMissing": "Backup-URL fehlt",
+      "backupUrlMissingDetail": "Bitte smb://… im Server-Profil setzen.",
       "serverOk": "Erreichbar",
       "serverOkLocal": "Erreichbar (lokal)",
       "serverOkRemote": "Verbunden",
       "amsOk": "Verbunden",
+      "amsOkNamed": "Verbunden · {{name}}",
       "titleAmsOkNamed": "{{name}} verbunden",
       "backupFailedHint": "Klicken: Hinweis schließen & erneut prüfen · Rechtsklick: Backup-URL",
       "backupSettingsHint": "Rechtsklick: Backup-URL in den Einstellungen",

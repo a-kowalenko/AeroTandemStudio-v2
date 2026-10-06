@@ -63,6 +63,22 @@ export function getActiveServerProfile(
   );
 }
 
+/** Backup share from the active profile; login falls back to upload-server creds. */
+export function resolveActiveServerBackupTarget(config: AppConfig): {
+  profile: ServerProfile | undefined;
+  url: string;
+  login: string;
+  password: string;
+} {
+  const profile = getActiveServerProfile(config);
+  return {
+    profile,
+    url: profile?.backup_url?.trim() ?? "",
+    login: profile?.backup_login?.trim() || config.server_login || "",
+    password: (profile?.backup_password ?? "") || config.server_password || "",
+  };
+}
+
 export function displayServerProfileLabel(profile: ServerProfile): string {
   const label = profile.label.trim();
   if (label) return label;
