@@ -1,5 +1,10 @@
 import { create } from "zustand";
 import { tr } from "@/i18n";
+import {
+  capQrLiveFrames,
+  markLiveFramesRemoved,
+  retainLiveFramesForFollowup,
+} from "@/lib/qrLivePresent";
 
 export type QrScanPhase =
   | "pending"
@@ -485,23 +490,13 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     if (hitKey in byPath) {
       byPath[hitKey] = "hit";
     }
-    const kept = get()
-      .liveFrames.filter((f) => f.key === hitKey)
-      .map((f) => ({ ...f, tone: "hit" as const }));
-    const liveFrames =
-      kept.length > 0
-        ? kept
-        : hitPath.trim()
-          ? [
-              {
-                key: hitKey,
-                mediaPath: hitPath,
-                livePath: hitPath,
-                gen: 1,
-                tone: "hit" as const,
-              },
-            ]
-          : [];
+    // Keep the thumbs that are already on screen. Moving the hit into the
+    // center, or dropping the others, remounts the strip.
+    const liveFrames = retainLiveFramesForFollowup(
+      get().liveFrames,
+      hitKey,
+      hitPath,
+    );
     set({
       busy: true,
       stage: "followup",
@@ -607,7 +602,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     };
     const rest = get().liveFrames.filter((f) => f.key !== key);
     rest.push(next);
-    set({ liveFrames: rest.slice(-6) });
+    set({ liveFrames: capQrLiveFrames(rest) });
   },
 
   clearLiveFrame: (path) => {
@@ -629,29 +624,21 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     if (paths.length === 0) return;
     const byPath = { ...get().byPath };
     const clipProgress = { ...get().clipProgress };
-    for (const path of paths) {
-      const key = normalizeMediaPath(path);
-      byPath[key] = "removed";
-      delete clipProgress[key];
-    }
-    const existing = new Map(get().liveFrames.map((f) => [f.key, f]));
-    const liveFrames: QrLiveFrame[] = [];
+    const removeKeys = new Set<string>();
     for (const path of paths) {
       const key = normalizeMediaPath(path);
       if (!key) continue;
-      const prev = existing.get(key);
-      liveFrames.push({
-        key,
-        mediaPath: path,
-        livePath: prev?.livePath || path,
-        gen: (prev?.gen ?? 0) + 1,
-        tone: "removed",
-      });
+      removeKeys.add(key);
+      byPath[key] = "removed";
+      delete clipProgress[key];
     }
+    // Same DOM tiles: tone only. A new gen would reload the JPEG and restart
+    // the crossfade on top of the red state.
+    const liveFrames = markLiveFramesRemoved(get().liveFrames, removeKeys);
     set({
       byPath,
       clipProgress,
-      liveFrames: liveFrames.slice(-6),
+      liveFrames,
     });
   },
 

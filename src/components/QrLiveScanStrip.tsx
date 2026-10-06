@@ -3,6 +3,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { Check, Eraser, QrCode } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { mediaKind } from "@/lib/media";
 import { fileBaseName } from "@/lib/qrSuccess";
 import {
   alignVideoLiveThumbs,
@@ -10,14 +11,49 @@ import {
   type PlacedQrLive,
 } from "@/lib/qrLiveLayout";
 import {
+  QR_LIVE_MISS_FADE_MS,
+  QR_LIVE_TONE_SETTLE_MS,
+  isTerminalQrLiveTone,
+  presentedQrLiveTone,
+  videoPlaceholderFrames,
+} from "@/lib/qrLivePresent";
+import { previewThumbnailQueue } from "@/lib/thumbnailQueue";
+import { videoPosterBustKey } from "@/hooks/useVideoThumbnailSrc";
+import { useVideoStore } from "@/store/videoStore";
+import {
+  normalizeMediaPath,
   useQrScanStore,
   type QrLiveFrame,
   type QrLiveTone,
+  type QrScanPhase,
 } from "@/store/qrScanStore";
 
-const MISS_HOLD_MS = 980;
-const REMOVED_HOLD_MS = 720;
 const CROSSFADE_MS = 480;
+
+/**
+ * Photos hold the first scan so a fast miss never opens a tile. Video paints
+ * that first scan at once. A later hit still waits, and miss or removal paint
+ * immediately.
+ */
+function usePresentedQrTone(
+  tone: QrLiveTone,
+  immediateScan: boolean,
+): QrLiveTone | null {
+  const [shown, setShown] = useState<QrLiveTone | null>(() =>
+    presentedQrLiveTone(null, tone, 0, QR_LIVE_TONE_SETTLE_MS, immediateScan),
+  );
+
+  useEffect(() => {
+    if (isTerminalQrLiveTone(tone) || (immediateScan && tone === "scan")) {
+      setShown(tone);
+      return;
+    }
+    const id = window.setTimeout(() => setShown(tone), QR_LIVE_TONE_SETTLE_MS);
+    return () => window.clearTimeout(id);
+  }, [tone, immediateScan]);
+
+  return shown;
+}
 
 function liveSrc(frame: QrLiveFrame): string {
   return `${convertFileSrc(frame.livePath)}?g=${frame.gen}`;
@@ -39,7 +75,14 @@ function useCrossfadeSrc(src: string): {
   incomingRef.current = incoming;
 
   useEffect(() => {
-    if (src === shownRef.current || src === incoming) return;
+    if (!src || src === shownRef.current || src === incoming) return;
+    if (!shownRef.current) {
+      shownRef.current = src;
+      setBase(src);
+      setIncoming(null);
+      setReady(false);
+      return;
+    }
     setIncoming(src);
     setReady(false);
   }, [src, incoming]);
@@ -77,10 +120,25 @@ function useCrossfadeSrc(src: string): {
   return { base, incoming, ready, onIncomingLoad, onIncomingError };
 }
 
+/** Import poster already in memory. Does not start a new FFmpeg job. */
+function useCachedVideoPoster(mediaKey: string): string | null {
+  return useVideoStore((s) => {
+    const video = s.videoList.find(
+      (v) => normalizeMediaPath(v.path) === mediaKey,
+    );
+    if (!video) return null;
+    const bust = videoPosterBustKey(
+      video.size_bytes,
+      video.duration_secs,
+      s.getMediaRevision(video.path),
+    );
+    return previewThumbnailQueue.getCached(video.path, bust);
+  });
+}
+
 function LiveTile({
   frame,
   inward = false,
-  anchor = false,
   fill = false,
   index = -1,
   total = 0,
@@ -89,8 +147,6 @@ function LiveTile({
   frame: QrLiveFrame;
   /** Right-hand side: sweep the scanline back toward the list middle. */
   inward?: boolean;
-  /** Follow-up hit, centered and slightly larger. */
-  anchor?: boolean;
   /** Sit in a progress-bar column instead of the fixed strip size. */
   fill?: boolean;
   /** 0-based list index. Shown inside photo tiles only. */
@@ -100,30 +156,53 @@ function LiveTile({
 }) {
   const { t } = useTranslation();
   const clearLiveFrame = useQrScanStore((s) => s.clearLiveFrame);
-  const src = liveSrc(frame);
+  const stage = useQrScanStore((s) => s.stage);
+  const immediateScan =
+    stage === "scanning_videos" ||
+    (stage === "scanning" && mediaKind(frame.mediaPath) === "video");
+  const presented = usePresentedQrTone(frame.tone, immediateScan);
+  const poster = useCachedVideoPoster(frame.key);
+  const staying =
+    presented === "scan" || presented === "hit" || presented === "removed";
+  const openedRef = useRef(false);
+  if (staying) openedRef.current = true;
+  const src = frame.livePath.trim() ? liveSrc(frame) : (poster ?? "");
   const { base, incoming, ready, onIncomingLoad, onIncomingError } = useCrossfadeSrc(src);
   const name = fileBaseName(frame.mediaPath);
-  const tone = frame.tone;
+  const tone = presented ?? "scan";
   const hasPosition = showPosition && index >= 0 && total > 0;
   const positionLabel = hasPosition
     ? t("qr.progress.liveIndex", { index: index + 1, total })
     : null;
-  const layoutMotion = !fill && !anchor;
-  const leaving = tone === "miss";
+  const layoutMotion = !fill;
+  const leaving = presented === "miss" && openedRef.current;
   const [open, setOpen] = useState(false);
   const leftRef = useRef(false);
 
   useEffect(() => {
-    const id = window.requestAnimationFrame(() => setOpen(true));
-    return () => window.cancelAnimationFrame(id);
-  }, []);
+    if (!src) return;
+    const img = new Image();
+    img.src = src;
+  }, [src]);
 
   useEffect(() => {
-    if (tone !== "miss" && tone !== "removed") return;
-    const ms = tone === "removed" ? REMOVED_HOLD_MS : MISS_HOLD_MS;
-    const id = window.setTimeout(() => clearLiveFrame(frame.mediaPath), ms);
+    if (!staying) return;
+    const id = window.requestAnimationFrame(() => setOpen(true));
+    return () => window.cancelAnimationFrame(id);
+  }, [staying]);
+
+  useEffect(() => {
+    if (presented !== "miss") return;
+    if (!openedRef.current) {
+      clearLiveFrame(frame.mediaPath);
+      return;
+    }
+    const id = window.setTimeout(
+      () => clearLiveFrame(frame.mediaPath),
+      QR_LIVE_MISS_FADE_MS,
+    );
     return () => window.clearTimeout(id);
-  }, [tone, frame.mediaPath, clearLiveFrame]);
+  }, [presented, frame.mediaPath, clearLiveFrame]);
 
   const finishLeave = () => {
     if (leftRef.current) return;
@@ -136,17 +215,18 @@ function LiveTile({
       ? t("qr.progress.liveHit")
       : tone === "removed"
         ? t("qr.progress.liveRemoved")
-        : tone === "miss"
-          ? t("qr.progress.liveMiss")
-          : t("qr.progress.liveScanning");
+        : t("qr.progress.liveScanning");
+  const quiet = tone === "hit" || tone === "miss" || tone === "removed";
+
+  if (!staying && !leaving) return null;
 
   return (
     <div
       className={cn(
         "ats-qr-live-frame",
+        immediateScan && "ats-qr-live-frame-video",
         fill && "ats-qr-live-frame-fill",
-        anchor && "ats-qr-live-frame-anchor",
-        inward && !anchor && "ats-qr-live-frame-end",
+        inward && "ats-qr-live-frame-end",
         open && !leaving && "is-open",
         leaving && "is-leaving",
       )}
@@ -154,7 +234,11 @@ function LiveTile({
         if (!leaving) return;
         if (layoutMotion) {
           if (e.target !== e.currentTarget || e.propertyName !== "width") return;
-        } else if (e.propertyName !== "opacity") {
+        } else if (
+          e.propertyName !== "opacity" ||
+          !(e.target instanceof Element) ||
+          !e.target.classList.contains("ats-qr-live-motion")
+        ) {
           return;
         }
         finishLeave();
@@ -166,19 +250,20 @@ function LiveTile({
             "ats-qr-live-tile",
             toneClass(tone),
             inward && "ats-qr-live-tile-inward",
-            anchor && "ats-qr-live-tile-anchor",
             fill && "ats-qr-live-tile-fill",
           )}
           data-tone={tone}
           title={positionLabel ? `${name} — ${badge} — ${positionLabel}` : `${name} — ${badge}`}
         >
           <div className="ats-qr-live-media">
-            <img
-              src={base}
-              alt={t("qr.progress.liveAlt", { name })}
-              className="ats-qr-live-img"
-              draggable={false}
-            />
+            {base ? (
+              <img
+                src={base}
+                alt={t("qr.progress.liveAlt", { name })}
+                className="ats-qr-live-img"
+                draggable={false}
+              />
+            ) : null}
             {incoming ? (
               <img
                 src={incoming}
@@ -198,11 +283,14 @@ function LiveTile({
           </div>
           <div className="ats-qr-live-vignette" aria-hidden />
           <span
-            className={cn("ats-qr-live-scanline", tone === "removed" && "is-off")}
+            className={cn("ats-qr-live-scanline", quiet && "is-off")}
             aria-hidden
           />
           <span
-            className={cn("ats-qr-live-reticle", tone === "removed" && "is-off")}
+            className={cn(
+              "ats-qr-live-reticle",
+              (tone === "removed" || tone === "miss") && "is-off",
+            )}
             aria-hidden
           />
           {tone === "removed" ? (
@@ -214,16 +302,18 @@ function LiveTile({
               <span className="ats-qr-live-pos-total">{total}</span>
             </span>
           ) : null}
-          <span className="ats-qr-live-badge">
-            {tone === "hit" ? (
-              <Check className="h-3 w-3" aria-hidden />
-            ) : tone === "removed" ? (
-              <Eraser className="h-3 w-3" aria-hidden />
-            ) : (
-              <QrCode className="h-3 w-3" aria-hidden />
-            )}
-            <span>{badge}</span>
-          </span>
+          {tone === "miss" ? null : (
+            <span className="ats-qr-live-badge">
+              {tone === "hit" ? (
+                <Check className="h-3 w-3" aria-hidden />
+              ) : tone === "removed" ? (
+                <Eraser className="h-3 w-3" aria-hidden />
+              ) : (
+                <QrCode className="h-3 w-3" aria-hidden />
+              )}
+              <span>{badge}</span>
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -264,7 +354,21 @@ function Dock({
   );
 }
 
-/** Reserved slot above one video progress bar. Empty until that clip has a frame. */
+function placeholderFor(
+  mediaKey: string,
+  phase: QrScanPhase | null,
+  mediaPath: string,
+): QrLiveFrame | null {
+  const [frame] = videoPlaceholderFrames(
+    [mediaKey],
+    phase ? { [mediaKey]: phase } : {},
+    new Set(),
+    () => mediaPath,
+  );
+  return frame ?? null;
+}
+
+/** Reserved slot above one video progress bar. Poster or scanline as soon as the clip starts. */
 export function QrSegmentLiveSlot({
   mediaKey,
   inward = false,
@@ -275,9 +379,16 @@ export function QrSegmentLiveSlot({
   const frame = useQrScanStore(
     (s) => s.liveFrames.find((f) => f.key === mediaKey) ?? null,
   );
+  const phase = useQrScanStore((s) => s.byPath[mediaKey] ?? null);
+  const mediaPath = useVideoStore(
+    (s) =>
+      s.videoList.find((v) => normalizeMediaPath(v.path) === mediaKey)?.path ??
+      mediaKey,
+  );
+  const display = frame ?? placeholderFor(mediaKey, phase, mediaPath);
   return (
     <div className="ats-qr-live-slot">
-      {frame ? <LiveTile frame={frame} inward={inward} fill /> : null}
+      {display ? <LiveTile frame={display} inward={inward} fill /> : null}
     </div>
   );
 }
@@ -287,22 +398,37 @@ export function QrLiveScanStrip() {
   const { t } = useTranslation();
   const busy = useQrScanStore((s) => s.busy);
   const frames = useQrScanStore((s) => s.liveFrames);
+  const byPath = useQrScanStore((s) => s.byPath);
   const scanOrder = useQrScanStore((s) => s.scanOrder);
   const stage = useQrScanStore((s) => s.stage);
-  const anchorKey = useQrScanStore((s) => s.liveAnchorKey);
+  const videoPaths = useVideoStore((s) => s.videoList);
+  const showPlaceholders = stage === "scanning_videos" || stage === "scanning";
+  const displayFrames = showPlaceholders
+    ? [
+        ...frames,
+        ...videoPlaceholderFrames(
+          scanOrder,
+          byPath,
+          new Set(frames.map((f) => f.key)),
+          (key) =>
+            videoPaths.find((v) => normalizeMediaPath(v.path) === key)?.path ??
+            key,
+        ).filter(
+          (f) =>
+            stage === "scanning_videos" || mediaKind(f.mediaPath) === "video",
+        ),
+      ]
+    : frames;
   if (
     !busy ||
-    frames.length === 0 ||
+    displayFrames.length === 0 ||
     alignVideoLiveThumbs(stage, scanOrder.length)
   ) {
     return null;
   }
 
-  const layout = placeQrLiveFrames(
-    frames,
-    scanOrder,
-    stage === "followup" ? anchorKey : null,
-  );
+  // The hit stays in its dock. Pulling it into the center remounts the tile.
+  const layout = placeQrLiveFrames(displayFrames, scanOrder);
   const bothSides = layout.start.length > 0 && layout.end.length > 0;
   const showPosition = stage === "scanning_photos" || stage === "followup";
 
@@ -318,15 +444,7 @@ export function QrLiveScanStrip() {
         showPosition={showPosition}
       />
       <div className="ats-qr-live-center">
-        {layout.hit ? (
-          <LiveTile
-            frame={layout.hit.item}
-            anchor
-            index={layout.hit.index}
-            total={layout.total}
-            showPosition={showPosition}
-          />
-        ) : bothSides ? (
+        {bothSides ? (
           <span className="ats-qr-live-bridge-gap" aria-hidden>
             ···
           </span>
