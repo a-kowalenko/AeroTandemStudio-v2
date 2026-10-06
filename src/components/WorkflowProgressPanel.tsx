@@ -465,7 +465,7 @@ export function WorkflowProgressPanel({
   return (
     <section
       className={cn(
-        "ats-surface pointer-events-auto rounded-xl border border-border/80 p-4 shadow-lg backdrop-blur-md ats-progress-float-in",
+        "ats-surface pointer-events-auto overflow-hidden rounded-xl border border-border/80 p-4 shadow-lg backdrop-blur-md ats-progress-float-in",
         className,
       )}
       aria-label={t("workflow.progress")}

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Check, Eraser, QrCode } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -15,11 +15,66 @@ import {
   type QrLiveTone,
 } from "@/store/qrScanStore";
 
-const MISS_HOLD_MS = 420;
+const MISS_HOLD_MS = 980;
 const REMOVED_HOLD_MS = 720;
+const CROSSFADE_MS = 480;
 
 function liveSrc(frame: QrLiveFrame): string {
   return `${convertFileSrc(frame.livePath)}?g=${frame.gen}`;
+}
+
+/** Keep the last frame on screen until the next JPEG has decoded, then dissolve. */
+function useCrossfadeSrc(src: string): {
+  base: string;
+  incoming: string | null;
+  ready: boolean;
+  onIncomingLoad: () => void;
+  onIncomingError: () => void;
+} {
+  const shownRef = useRef(src);
+  const incomingRef = useRef<string | null>(null);
+  const [base, setBase] = useState(src);
+  const [incoming, setIncoming] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+  incomingRef.current = incoming;
+
+  useEffect(() => {
+    if (src === shownRef.current || src === incoming) return;
+    setIncoming(src);
+    setReady(false);
+  }, [src, incoming]);
+
+  useEffect(() => {
+    if (!incoming || !ready) return;
+    let raf = 0;
+    const id = window.setTimeout(() => {
+      shownRef.current = incoming;
+      setBase(incoming);
+      raf = window.requestAnimationFrame(() => {
+        setIncoming((cur) => (cur === incoming ? null : cur));
+        setReady(false);
+      });
+    }, CROSSFADE_MS);
+    return () => {
+      window.clearTimeout(id);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [incoming, ready]);
+
+  const onIncomingLoad = () => {
+    const current = incomingRef.current;
+    if (!current) return;
+    setReady(true);
+  };
+
+  const onIncomingError = () => {
+    const current = incomingRef.current;
+    if (!current) return;
+    setIncoming((cur) => (cur === current ? null : cur));
+    setReady(false);
+  };
+
+  return { base, incoming, ready, onIncomingLoad, onIncomingError };
 }
 
 function LiveTile({
@@ -46,20 +101,22 @@ function LiveTile({
   const { t } = useTranslation();
   const clearLiveFrame = useQrScanStore((s) => s.clearLiveFrame);
   const src = liveSrc(frame);
-  const [shownSrc, setShownSrc] = useState(src);
-  const [fadeKey, setFadeKey] = useState(frame.gen);
+  const { base, incoming, ready, onIncomingLoad, onIncomingError } = useCrossfadeSrc(src);
   const name = fileBaseName(frame.mediaPath);
   const tone = frame.tone;
   const hasPosition = showPosition && index >= 0 && total > 0;
   const positionLabel = hasPosition
     ? t("qr.progress.liveIndex", { index: index + 1, total })
     : null;
+  const layoutMotion = !fill && !anchor;
+  const leaving = tone === "miss";
+  const [open, setOpen] = useState(false);
+  const leftRef = useRef(false);
 
   useEffect(() => {
-    if (src === shownSrc) return;
-    setShownSrc(src);
-    setFadeKey(frame.gen);
-  }, [src, shownSrc, frame.gen]);
+    const id = window.requestAnimationFrame(() => setOpen(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     if (tone !== "miss" && tone !== "removed") return;
@@ -67,6 +124,12 @@ function LiveTile({
     const id = window.setTimeout(() => clearLiveFrame(frame.mediaPath), ms);
     return () => window.clearTimeout(id);
   }, [tone, frame.mediaPath, clearLiveFrame]);
+
+  const finishLeave = () => {
+    if (leftRef.current) return;
+    leftRef.current = true;
+    clearLiveFrame(frame.mediaPath);
+  };
 
   const badge =
     tone === "hit"
@@ -78,52 +141,90 @@ function LiveTile({
           : t("qr.progress.liveScanning");
 
   return (
-    <div className={cn("ats-qr-live-frame", fill && "ats-qr-live-frame-fill")}>
-      <div
-        className={cn(
-          "ats-qr-live-tile",
-          toneClass(tone),
-          inward && "ats-qr-live-tile-inward",
-          anchor && "ats-qr-live-tile-anchor",
-          fill && "ats-qr-live-tile-fill",
-        )}
-        data-tone={tone}
-        data-side={anchor ? "hit" : inward ? "end" : "start"}
-        title={positionLabel ? `${name} — ${badge} — ${positionLabel}` : `${name} — ${badge}`}
-      >
-        <img
-          key={fadeKey}
-          src={shownSrc}
-          alt={t("qr.progress.liveAlt", { name })}
-          className="ats-qr-live-img"
-          draggable={false}
-        />
-        <div className="ats-qr-live-vignette" aria-hidden />
-        {tone === "scan" ? (
-          <>
-            <span className="ats-qr-live-scanline" aria-hidden />
-            <span className="ats-qr-live-reticle" aria-hidden />
-          </>
-        ) : null}
-        {tone === "removed" ? (
-          <span className="ats-qr-live-wipe" aria-hidden />
-        ) : null}
-        {hasPosition ? (
-          <span className="ats-qr-live-pos" aria-hidden>
-            <span className="ats-qr-live-pos-index">{index + 1}</span>
-            <span className="ats-qr-live-pos-total">{total}</span>
-          </span>
-        ) : null}
-        <span className="ats-qr-live-badge">
-          {tone === "hit" ? (
-            <Check className="h-3 w-3" aria-hidden />
-          ) : tone === "removed" ? (
-            <Eraser className="h-3 w-3" aria-hidden />
-          ) : (
-            <QrCode className="h-3 w-3" aria-hidden />
+    <div
+      className={cn(
+        "ats-qr-live-frame",
+        fill && "ats-qr-live-frame-fill",
+        anchor && "ats-qr-live-frame-anchor",
+        inward && !anchor && "ats-qr-live-frame-end",
+        open && !leaving && "is-open",
+        leaving && "is-leaving",
+      )}
+      onTransitionEnd={(e) => {
+        if (!leaving) return;
+        if (layoutMotion) {
+          if (e.target !== e.currentTarget || e.propertyName !== "width") return;
+        } else if (e.propertyName !== "opacity") {
+          return;
+        }
+        finishLeave();
+      }}
+    >
+      <div className="ats-qr-live-motion">
+        <div
+          className={cn(
+            "ats-qr-live-tile",
+            toneClass(tone),
+            inward && "ats-qr-live-tile-inward",
+            anchor && "ats-qr-live-tile-anchor",
+            fill && "ats-qr-live-tile-fill",
           )}
-          <span>{badge}</span>
-        </span>
+          data-tone={tone}
+          title={positionLabel ? `${name} — ${badge} — ${positionLabel}` : `${name} — ${badge}`}
+        >
+          <div className="ats-qr-live-media">
+            <img
+              src={base}
+              alt={t("qr.progress.liveAlt", { name })}
+              className="ats-qr-live-img"
+              draggable={false}
+            />
+            {incoming ? (
+              <img
+                src={incoming}
+                alt=""
+                aria-hidden
+                className={cn(
+                  "ats-qr-live-img ats-qr-live-img-next",
+                  ready && "is-in",
+                )}
+                draggable={false}
+                onLoad={(e) => {
+                  if (e.currentTarget.getAttribute("src") === incoming) onIncomingLoad();
+                }}
+                onError={() => onIncomingError()}
+              />
+            ) : null}
+          </div>
+          <div className="ats-qr-live-vignette" aria-hidden />
+          <span
+            className={cn("ats-qr-live-scanline", tone === "removed" && "is-off")}
+            aria-hidden
+          />
+          <span
+            className={cn("ats-qr-live-reticle", tone === "removed" && "is-off")}
+            aria-hidden
+          />
+          {tone === "removed" ? (
+            <span className="ats-qr-live-wipe" aria-hidden />
+          ) : null}
+          {hasPosition ? (
+            <span className="ats-qr-live-pos" aria-hidden>
+              <span className="ats-qr-live-pos-index">{index + 1}</span>
+              <span className="ats-qr-live-pos-total">{total}</span>
+            </span>
+          ) : null}
+          <span className="ats-qr-live-badge">
+            {tone === "hit" ? (
+              <Check className="h-3 w-3" aria-hidden />
+            ) : tone === "removed" ? (
+              <Eraser className="h-3 w-3" aria-hidden />
+            ) : (
+              <QrCode className="h-3 w-3" aria-hidden />
+            )}
+            <span>{badge}</span>
+          </span>
+        </div>
       </div>
     </div>
   );
