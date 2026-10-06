@@ -182,17 +182,11 @@ function FileSegments({
     ) : null;
 
   // Always keep one stripe per file (removed/hit must stay visible).
-  // Dense batches: tighter gaps and hide under-stripe Prüfpunkte labels.
+  // Dense batches: tighter gaps and no under-stripe Prüfpunkte labels.
+  // Pace scans (video/photo) keep the label line mounted — blank or "…" —
+  // so the floating panel does not jump when frame counts appear.
   const dense = segments.length > 24;
-  const showPointLabels =
-    !dense &&
-    segments.some(
-      (s) =>
-        s.phase === "active" &&
-        s.framesTotal != null &&
-        s.framesTotal > 0 &&
-        s.pace !== "prepare",
-    );
+  const reservePointLabels = !dense && legend === "pace";
 
   return (
     <div className="space-y-1.5">
@@ -221,16 +215,16 @@ function FileSegments({
               : isActive
                 ? 40
                 : 0;
-          const pointLabel =
-            showPointLabels &&
-            isActive &&
-            seg.framesTotal != null &&
-            seg.framesTotal > 0 &&
-            pace !== "prepare"
+          const pointLabel = !reservePointLabels
+            ? null
+            : isActive &&
+                seg.framesTotal != null &&
+                seg.framesTotal > 0 &&
+                pace !== "prepare"
               ? `${seg.frame ?? 0}/${seg.framesTotal}`
-              : showPointLabels && isActive && pace === "prepare"
+              : isActive && pace === "prepare"
                 ? "…"
-                : "\u00a0";
+                : null;
           const title = removed
             ? t("progress.seg.removed")
             : hit
@@ -296,16 +290,16 @@ function FileSegments({
                   />
                 ) : null}
               </div>
-              {showPointLabels ? (
+              {reservePointLabels ? (
                 <p
                   className={
-                    isActive && pointLabel !== "\u00a0"
-                      ? "text-center text-[10px] leading-tight tabular-nums text-foreground"
-                      : "text-center text-[10px] leading-tight tabular-nums text-transparent"
+                    pointLabel
+                      ? "h-3.5 text-center text-[10px] leading-[14px] tabular-nums text-foreground"
+                      : "h-3.5 text-center text-[10px] leading-[14px] tabular-nums text-transparent"
                   }
-                  aria-hidden={pointLabel === "\u00a0"}
+                  aria-hidden={pointLabel == null}
                 >
-                  {pointLabel}
+                  {pointLabel ?? "\u00a0"}
                 </p>
               ) : null}
             </div>
