@@ -345,8 +345,8 @@ export function ServerStatusIndicator({
   }
 
   function onContextMenu(e: MouseEvent) {
-    if (!view.contextMenuFocus) return;
     e.preventDefault();
+    if (!view.contextMenuFocus) return;
     openSettings({
       tab: "server",
       focus: view.contextMenuFocus,

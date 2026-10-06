@@ -52,6 +52,7 @@ import { useSdCardMonitor } from "./hooks/useSdCardMonitor";
 import { useVideoCutApply } from "./hooks/useVideoCutApply";
 import { usePhotoEditApply } from "./hooks/usePhotoEditApply";
 import { useLogListener } from "./hooks/useLogListener";
+import { usePreventDefaultContextMenu } from "./hooks/usePreventDefaultContextMenu";
 import { useServerHealthPoll } from "./hooks/useServerHealthPoll";
 import { useAmsHandoffPoll } from "./hooks/useAmsHandoffPoll";
 import { useAutoCleanupRetention } from "./hooks/useAutoCleanupRetention";
@@ -362,6 +363,7 @@ function App() {
   const photoEdits = usePhotoEditApply();
   useQrScanProgressListener();
   useLogListener();
+  usePreventDefaultContextMenu();
   const consoleOpen = useLogStore((s) => s.open);
   const toggleConsole = useLogStore((s) => s.toggleOpen);
   const setConsoleOpen = useLogStore((s) => s.setOpen);
