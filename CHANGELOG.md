@@ -23,6 +23,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - QR-Scan: nach Erkennung Abschlusskarte im Fortschritt statt Dialog — mit Kundenname; blendet sich selbst aus, Maus darüber hält den Timer an
 - QR-Scan: Live-Bilder sitzen über dem Streifen der jeweiligen Datei und wechseln weich; die Anzeige springt nicht mehr, wenn die Prüfpunkte erscheinen
 - QR-Scan Live-Vorschau: Videos zeigen schon während der Prüfung eine Kachel; Treffer und „entfernt“ flackern weniger, Miss-Kacheln blenden kurz aus
+- Rechtsklick: kein Browser-Kontextmenü mehr in der fertigen App (außer in Eingabefeldern); eigene Menüs und Copy/Paste bleiben
 - Status-Hinweise und Toasts: Auto-Ausblenden pausiert beim Darüberfahren; einheitlicher Fortschrittsbalken
 - SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
 - SD-Import nach Backup: spürbar schneller — bereits gesicherte Dateien werden nicht erneut durchgerechnet
