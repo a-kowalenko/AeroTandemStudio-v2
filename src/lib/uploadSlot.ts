@@ -53,6 +53,9 @@ export function enqueueUpload(
     guestLabel: input.guestLabel ?? null,
     tandemmaster: input.tandemmaster?.trim() || null,
     videospringer: input.videospringer?.trim() || null,
+    videoPath: input.videoPath?.trim() || null,
+    photosCopied: input.photosCopied,
+    hasVideo: input.hasVideo,
     quietSuccess: input.quietSuccess,
   };
 

@@ -2,7 +2,7 @@ import type { CreateJobResult } from "@/lib/tauri";
 
 type CreateOutcomeTranslate = (
   key: string,
-  options?: { count?: number },
+  options?: { count?: number; name?: string },
 ) => string;
 
 export type CreateSuccessInfo = {
@@ -21,6 +21,8 @@ export type CreateSuccessInfo = {
   uploadFailed?: boolean;
   vorname?: string | null;
   nachname?: string | null;
+  tandemmaster?: string | null;
+  videospringer?: string | null;
 };
 
 /** Non-modal create report: embedded in the upload panel or standalone card. */
@@ -53,6 +55,69 @@ export function createOutcomeCustomerName(info: CreateSuccessInfo): string {
     .map((s) => s?.trim())
     .filter(Boolean)
     .join(" ");
+}
+
+/** Compact crew line (only set roles), e.g. "TM: A · VS: B". */
+export function createOutcomeCrewLine(
+  info: Pick<CreateSuccessInfo, "tandemmaster" | "videospringer">,
+  t: (key: string, options?: { name: string }) => string,
+): string {
+  const parts: string[] = [];
+  const tm = info.tandemmaster?.trim();
+  const vs = info.videospringer?.trim();
+  if (tm) parts.push(t("create.success.crewTm", { name: tm }));
+  if (vs) parts.push(t("create.success.crewVs", { name: vs }));
+  return parts.join(" · ");
+}
+
+/**
+ * Embedded success meta (no upload bullet — title / Fertig chip cover that).
+ */
+export function buildCreateOutcomeEmbeddedMeta(
+  info: CreateSuccessInfo,
+  t: CreateOutcomeTranslate,
+): string[] {
+  const parts: string[] = [];
+  const videoPath = info.result.video_output?.trim() ?? "";
+  if (videoPath) {
+    parts.push(
+      info.result.reused_preview
+        ? t("create.success.videoFromPreview")
+        : t("create.success.videoCreated"),
+    );
+  }
+  const photos = info.result.photos_copied;
+  if (photos > 0) {
+    parts.push(
+      t(
+        photos === 1
+          ? "create.success.photosCopied"
+          : "create.success.photosCopiedMany",
+        { count: photos },
+      ),
+    );
+  }
+  return parts;
+}
+
+/** Panel headline after upload finishes vs. local create summary. */
+export function createOutcomeSuccessTitleKey(
+  info: Pick<CreateSuccessInfo, "serverUploaded">,
+): string {
+  return info.serverUploaded
+    ? "create.success.uploadTitle"
+    : "create.success.title";
+}
+
+/**
+ * When the create-outcome panel is still bound to this job, it is the success
+ * UI — skip the redundant background-upload done toast.
+ */
+export function createOutcomeSuppressesUploadDoneToast(
+  outcome: CreateRunOutcome | null | undefined,
+  jobId: string,
+): boolean {
+  return outcome?.info.uploadJobId === jobId;
 }
 
 /**
@@ -105,7 +170,7 @@ export function buildCreateOutcomeRows(
       rows.push({ label: t("create.success.uploadRunning"), detail: note, tone: "success" });
     }
   } else if (serverUploaded) {
-    rows.push({ label: t("create.success.uploaded"), tone: "success" });
+    // Title / Fertig chip already signal upload success — no redundant row.
   } else if (uploadDeferred) {
     rows.push({
       label: t("create.success.uploadPending"),

@@ -35,6 +35,7 @@ import { AppDialogs } from "./components/app/AppDialogs";
 import { useVideoStore } from "./store/videoStore";
 import { usePhotoStore } from "./store/photoStore";
 import { useCreateOutcomeStore } from "./store/createOutcomeStore";
+import { createOutcomeSuppressesUploadDoneToast } from "./lib/createRunOutcome";
 import { useConfigStore } from "./store/configStore";
 import { useLocaleStore } from "./store/localeStore";
 import { normalizeUiLanguage } from "./i18n/types";
@@ -1796,7 +1797,13 @@ function App() {
           .catch(() => {});
       }
       setServerPhase("connected");
-      if (!job.quietSuccess) {
+      if (
+        !job.quietSuccess &&
+        !createOutcomeSuppressesUploadDoneToast(
+          useCreateOutcomeStore.getState().outcome,
+          job.id,
+        )
+      ) {
         showBackgroundUploadDoneToast({
           title: t("app.upload.bgDoneTitle"),
           message:
@@ -1876,7 +1883,13 @@ function App() {
           if (uploadCancelRequestedRef.current) return finishCancelled();
           await persistUploadState("done");
           setServerPhase("connected");
-          if (!job.quietSuccess) {
+          if (
+            !job.quietSuccess &&
+            !createOutcomeSuppressesUploadDoneToast(
+              useCreateOutcomeStore.getState().outcome,
+              job.id,
+            )
+          ) {
             showBackgroundUploadDoneToast({
               title: t("app.upload.bgDoneTitle"),
               message: deleteFirst
@@ -1916,7 +1929,13 @@ function App() {
                 return "ok";
               }
             }
-            if (!job.quietSuccess) {
+            if (
+              !job.quietSuccess &&
+              !createOutcomeSuppressesUploadDoneToast(
+                useCreateOutcomeStore.getState().outcome,
+                job.id,
+              )
+            ) {
               showBackgroundUploadDoneToast({
                 title: t("app.upload.bgDoneTitle"),
                 message: t("app.upload.remoteMarkedDone"),
@@ -2453,6 +2472,9 @@ function App() {
             guestLabel,
             tandemmaster: kunde.tandemmaster.trim() || null,
             videospringer: kunde.videospringer.trim() || null,
+            videoPath: res.video_output?.trim() || null,
+            photosCopied: res.photos_copied,
+            hasVideo: Boolean(res.video_output?.trim()),
             quietSuccess: false,
           }).then((result) => {
             if (!uploadJobId) return;
@@ -2490,6 +2512,8 @@ function App() {
         uploadNote,
         vorname: kunde.vorname,
         nachname: kunde.nachname,
+        tandemmaster: kunde.tandemmaster.trim() || null,
+        videospringer: kunde.videospringer.trim() || null,
       });
       setPercent(100);
       setStatus(t("create.job.done"));
@@ -2764,15 +2788,26 @@ function App() {
 
     // Outcomes stay on the upload channel (toasts / fail-hold / Success note).
     // Do not write session percent/status — Create may be running in parallel.
+    const folderName = entry.base_filename?.trim() || null;
+    const hasVideo =
+      entry.body_clips > 0 || entry.handcam_video || entry.outside_video;
+    const dir = entry.base_output_dir.replace(/[\\/]+$/, "");
+    const sep = dir.includes("\\") ? "\\" : "/";
+    const videoPath =
+      hasVideo && folderName ? `${dir}${sep}${folderName}.mp4` : null;
+
     return enqueueUpload({
       source: opts.quietSuccess ? "bulk" : "history",
       localDir: entry.base_output_dir,
-      folderName: entry.base_filename?.trim() || null,
+      folderName,
       correlationId: entry.correlation_id?.trim() || null,
       vorgangId: entry.id,
       guestLabel,
       tandemmaster: entry.tandemmaster?.trim() || null,
       videospringer: entry.videospringer?.trim() || null,
+      videoPath,
+      photosCopied: entry.photos_copied,
+      hasVideo,
       quietSuccess: opts.quietSuccess,
     });
   }

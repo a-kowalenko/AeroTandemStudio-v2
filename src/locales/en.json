@@ -617,6 +617,7 @@
     },
     "success": {
       "title": "Created successfully",
+      "uploadTitle": "Upload successful",
       "description": "Summary of created files and folders.",
       "folder": "Folder",
       "videoFromPreview": "Video taken from preview",
@@ -637,7 +638,9 @@
       "encoder": "Encoder",
       "dirCreated": "Directory was created",
       "openLocation": "Go to location",
-      "play": "Play"
+      "play": "Play",
+      "crewTm": "TM: {{name}}",
+      "crewVs": "VS: {{name}}"
     },
     "speculative": {
       "preparing": "Preparing…",
@@ -1430,6 +1433,8 @@
       "collapse": "Hide upload details",
       "queueWaiting": "{{count}} more waiting in queue",
       "failedHold": "Upload failed — retry from Jobs",
+      "failedHoldTitle": "Upload failed",
+      "failedHoldHint": "Please retry from Jobs.",
       "cleaningUp": "Finishing upload…"
     },
     "createSteps": {

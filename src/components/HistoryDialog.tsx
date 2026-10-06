@@ -964,6 +964,8 @@ export function HistoryDialog({
             guestLabel,
             tandemmaster: vorgang.tandemmaster?.trim() || null,
             videospringer: vorgang.videospringer?.trim() || null,
+            photosCopied: 0,
+            hasVideo: false,
             quietSuccess: false,
           });
         }

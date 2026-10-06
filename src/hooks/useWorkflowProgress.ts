@@ -79,6 +79,8 @@ export type WorkflowProgressView = {
   uploadFailedHold: boolean;
   /** Upload finished; panel stays open with a dismiss timer. */
   uploadDoneHold: boolean;
+  /** Active slot job (Nachholen / append header). */
+  uploadActiveJob: UploadQueueJobPreview | null;
   onToggleCollapsed: () => void;
   /** Upload panel: collapse after the embedded create report expired. */
   onAutoCollapse: () => void;
@@ -732,6 +734,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCompact: EMPTY_UPLOAD_COMPACT,
     uploadFailedHold: false,
     uploadDoneHold: false,
+    uploadActiveJob: null,
     onToggleCollapsed: noop,
     onAutoCollapse: noop,
     onDismissFailedHold: noop,
@@ -760,6 +763,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     uploadCompact,
     uploadFailedHold: failedHold,
     uploadDoneHold,
+    uploadActiveJob: input.uploadActiveJob ?? null,
     onToggleCollapsed: onToggleUploadCollapsed,
     onAutoCollapse: onAutoCollapseUpload,
     onDismissFailedHold,

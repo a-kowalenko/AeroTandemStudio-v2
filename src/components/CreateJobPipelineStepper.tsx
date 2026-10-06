@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { AlertCircle, Check, Loader2, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,8 @@ type Props = {
   view: CreateJobPipelineView;
   className?: string;
 };
+
+const DONE_FLASH_MS = 520;
 
 function stepChipClass(opts: {
   reached: boolean;
@@ -29,6 +32,21 @@ function stepChipClass(opts: {
 export function CreateJobPipelineStepper({ view, className }: Props) {
   const { t } = useTranslation();
   const { steps, activeIndex, completed, cancelled, failed } = view;
+  const wasCompletedRef = useRef(false);
+  const [doneFlash, setDoneFlash] = useState(false);
+
+  useEffect(() => {
+    if (completed && !wasCompletedRef.current) {
+      wasCompletedRef.current = true;
+      setDoneFlash(true);
+      const id = window.setTimeout(() => setDoneFlash(false), DONE_FLASH_MS);
+      return () => window.clearTimeout(id);
+    }
+    if (!completed) {
+      wasCompletedRef.current = false;
+      setDoneFlash(false);
+    }
+  }, [completed]);
 
   const visibleSteps = cancelled
     ? steps
@@ -48,6 +66,7 @@ export function CreateJobPipelineStepper({ view, className }: Props) {
             (completed ? i <= activeIndex : i < activeIndex);
           const current =
             !failed && !cancelled && !completed && i === activeIndex;
+          const isDoneChip = step.id === "done" && completed && reached;
           return (
             <li key={step.id} className="flex items-center gap-0.5">
               {visibleIdx > 0 ? (
@@ -64,6 +83,7 @@ export function CreateJobPipelineStepper({ view, className }: Props) {
                   "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 transition-colors duration-300",
                   stepChipClass({ reached, current, failed }),
                   current && "ams-chip-active",
+                  isDoneChip && doneFlash && "ams-chip-success-flash",
                 )}
                 aria-current={current ? "step" : undefined}
               >

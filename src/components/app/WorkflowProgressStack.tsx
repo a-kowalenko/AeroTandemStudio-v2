@@ -278,7 +278,13 @@ export function WorkflowProgressStack({
               outcome={embeddedCreateOutcome}
               variant="embedded"
               queuePosition={createOutcomeQueuePos}
-              onDone={() => handleCreateOutcomeDone(embeddedCreateOutcome.id, true)}
+              onDone={() => {
+                if (uploadDoneHold) {
+                  clearCreateOutcome(embeddedCreateOutcome.id);
+                  return;
+                }
+                handleCreateOutcomeDone(embeddedCreateOutcome.id, true);
+              }}
             />
           ) : null
         }

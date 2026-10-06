@@ -17,17 +17,28 @@ export type UploadQueueJob = {
   tandemmaster?: string | null;
   /** Snapshotted at enqueue for queue UI (Compact-Bar). */
   videospringer?: string | null;
+  /** Product video path for Abspielen (when known). */
+  videoPath?: string | null;
+  /** Photos copied count for header meta. */
+  photosCopied?: number;
+  /** True when a product video exists / was created. */
+  hasVideo?: boolean;
   /** Suppress success toast (bulk quiet phase). */
   quietSuccess?: boolean;
 };
 
-/** Waiting-job row for Compact-Bar queue collapsible. */
+/** Waiting-job row for Compact-Bar queue collapsible / active header. */
 export type UploadQueueJobPreview = {
   id: string;
+  source: UploadJobSource;
+  localDir: string;
   guestLabel: string | null;
   folderName: string | null;
   tandemmaster: string | null;
   videospringer: string | null;
+  videoPath: string | null;
+  photosCopied: number;
+  hasVideo: boolean;
 };
 
 export function toUploadQueueJobPreview(
@@ -35,10 +46,15 @@ export function toUploadQueueJobPreview(
 ): UploadQueueJobPreview {
   return {
     id: job.id,
+    source: job.source,
+    localDir: job.localDir,
     guestLabel: job.guestLabel?.trim() || null,
     folderName: job.folderName?.trim() || null,
     tandemmaster: job.tandemmaster?.trim() || null,
     videospringer: job.videospringer?.trim() || null,
+    videoPath: job.videoPath?.trim() || null,
+    photosCopied: job.photosCopied ?? 0,
+    hasVideo: Boolean(job.hasVideo ?? job.videoPath?.trim()),
   };
 }
 

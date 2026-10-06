@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { CreateJobResult } from "./tauri.ts";
 import {
+  buildCreateOutcomeEmbeddedMeta,
   buildCreateOutcomeRows,
   buildCreateRunOutcome,
+  createOutcomeCrewLine,
   createOutcomeQueuePosition,
+  createOutcomeSuccessTitleKey,
+  createOutcomeSuppressesUploadDoneToast,
   type CreateSuccessInfo,
 } from "./createRunOutcome.ts";
 
-const t = (key: string, opts?: { count?: number }) =>
-  opts?.count != null ? `${key}:${opts.count}` : key;
+const t = (key: string, opts?: { count?: number; name?: string }) => {
+  if (opts?.count != null) return `${key}:${opts.count}`;
+  if (opts?.name != null) return `${key}:${opts.name}`;
+  return key;
+};
 
 function info(over: Partial<CreateSuccessInfo> = {}): CreateSuccessInfo {
   return {
@@ -58,5 +65,44 @@ describe("createRunOutcome", () => {
     assert.equal(createOutcomeQueuePosition("a", "a", ["b"]), null);
     assert.equal(createOutcomeQueuePosition("z", "a", ["b"]), null);
     assert.equal(createOutcomeQueuePosition(null, "a", []), null);
+  });
+
+  it("switches success title after server upload", () => {
+    assert.equal(createOutcomeSuccessTitleKey({}), "create.success.title");
+    assert.equal(
+      createOutcomeSuccessTitleKey({ serverUploaded: true }),
+      "create.success.uploadTitle",
+    );
+  });
+
+  it("suppresses done toast only while outcome is bound to the job", () => {
+    const outcome = buildCreateRunOutcome(info({ uploadJobId: "create-1" }));
+    assert.equal(createOutcomeSuppressesUploadDoneToast(outcome, "create-1"), true);
+    assert.equal(createOutcomeSuppressesUploadDoneToast(outcome, "other"), false);
+    assert.equal(createOutcomeSuppressesUploadDoneToast(null, "create-1"), false);
+  });
+
+  it("omits the uploaded row when server upload succeeded", () => {
+    const rows = buildCreateOutcomeRows(
+      info({ serverUploaded: true }),
+      t,
+      { embedded: false },
+    );
+    assert.ok(!rows.some((r) => r.label === "create.success.uploaded"));
+  });
+
+  it("builds embedded meta without an upload bullet", () => {
+    assert.deepEqual(
+      buildCreateOutcomeEmbeddedMeta(info({ serverUploaded: true }), t),
+      ["create.success.videoCreated", "create.success.photosCopiedMany:3"],
+    );
+  });
+
+  it("formats crew line from set roles only", () => {
+    assert.equal(createOutcomeCrewLine({}, t), "");
+    assert.equal(
+      createOutcomeCrewLine({ tandemmaster: "Ada", videospringer: " Bob " }, t),
+      "create.success.crewTm:Ada · create.success.crewVs:Bob",
+    );
   });
 });

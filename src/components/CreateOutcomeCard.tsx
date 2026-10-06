@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, FolderOpen, Play, X } from "lucide-react";
 import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -8,8 +8,11 @@ import { usePausableAutoDismiss } from "@/hooks/usePausableAutoDismiss";
 import { SESSION_OUTCOME_EXIT_MS } from "@/lib/sessionRunOutcome";
 import {
   CREATE_OUTCOME_HIDE_MS,
+  buildCreateOutcomeEmbeddedMeta,
   buildCreateOutcomeRows,
+  createOutcomeCrewLine,
   createOutcomeCustomerName,
+  createOutcomeSuccessTitleKey,
   pathBasename,
   type CreateRunOutcome,
 } from "@/lib/createRunOutcome";
@@ -20,6 +23,13 @@ type Props = {
   variant: "embedded" | "standalone";
   /** 1-based waiting position when this job is not the active upload. */
   queuePosition?: number | null;
+  /** Controls after Abspielen/Ordner (e.g. Abbrechen). */
+  headerEnd?: ReactNode;
+  /**
+   * Replaces the default dismiss X (e.g. collapse chevron while upload runs).
+   * Pass `null` to hide; omit for the default X.
+   */
+  trailingControl?: ReactNode;
   onDone: () => void;
   className?: string;
 };
@@ -27,11 +37,14 @@ type Props = {
 /**
  * Non-modal create report (replaces the old success dialog). Hover pauses the
  * auto-hide; the timer survives moving between upload panel and standalone.
+ * Layout mirrors WorkflowProgressPanel "Fortschritt" header geometry.
  */
 export function CreateOutcomeCard({
   outcome,
   variant,
   queuePosition = null,
+  headerEnd,
+  trailingControl,
   onDone,
   className,
 }: Props) {
@@ -55,11 +68,22 @@ export function CreateOutcomeCard({
   );
 
   const rows = buildCreateOutcomeRows(info, t, { embedded });
-  const warning = rows.some((r) => r.tone === "warning");
+  const warning =
+    Boolean(info.uploadFailed) ||
+    Boolean(info.uploadDeferred) ||
+    rows.some((r) => r.tone === "warning");
   const OutcomeIcon = warning ? AlertTriangle : CheckCircle2;
+  const title = t(createOutcomeSuccessTitleKey(info));
   const customerName = createOutcomeCustomerName(info);
+  const crewLine = createOutcomeCrewLine(info, t);
   const outputDir = info.result.base_output_dir?.trim() ?? "";
   const videoPath = info.result.video_output?.trim() ?? "";
+  const embeddedMeta = buildCreateOutcomeEmbeddedMeta(info, t);
+  const metaParts = [
+    ...(embedded ? embeddedMeta : []),
+    ...(crewLine ? [crewLine] : []),
+  ];
+  const subtitle = metaParts.join(" · ");
 
   async function openOutputDir() {
     if (!outputDir) return;
@@ -79,58 +103,41 @@ export function CreateOutcomeCard({
     }
   }
 
-  const actions = (
-    <div className="mt-3 flex flex-wrap gap-2">
+  const dismissControl =
+    trailingControl !== undefined ? (
+      trailingControl
+    ) : (
       <Button
         type="button"
-        variant="secondary"
+        variant="ghost"
         size="sm"
-        disabled={!outputDir}
-        onClick={() => void openOutputDir()}
+        className="h-8 w-8 shrink-0 p-0"
+        aria-label={t("workflow.createOutcome.dismiss")}
+        disabled={exiting}
+        onClick={dismiss}
       >
-        <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-        {t("create.success.openLocation")}
+        <X className="h-4 w-4" aria-hidden />
       </Button>
-      {videoPath ? (
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          className="border-success/35 bg-success/10 text-success hover:bg-success/20"
-          onClick={() => void playVideo()}
-          title={pathBasename(videoPath)}
-        >
-          <Play className="h-3.5 w-3.5 shrink-0" />
-          {t("create.success.play")}
-        </Button>
-      ) : null}
-    </div>
-  );
+    );
 
-  if (embedded) {
-    const photos = info.result.photos_copied;
-    const bullets: string[] = [];
-    if (videoPath) bullets.push(t("create.success.videoCreated"));
-    if (photos > 0) {
-      bullets.push(
-        t(photos === 1 ? "create.success.photosCopied" : "create.success.photosCopiedMany", {
-          count: photos,
-        }),
-      );
-    }
-    if (info.serverUploaded) bullets.push(t("create.success.uploaded"));
-    return (
-      <div
-        className={className}
-        role="status"
-        aria-live="polite"
-        aria-label={t("workflow.createOutcome.aria")}
-        {...hoverProps}
-      >
+  const header = (
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-success" aria-hidden />
-          <h2 className="text-sm font-semibold tracking-wide text-success uppercase">
-            {t("create.success.title")}
+          <OutcomeIcon
+            className={cn(
+              "h-4 w-4 shrink-0",
+              warning ? "text-warning" : "text-success",
+            )}
+            aria-hidden
+          />
+          <h2
+            className={cn(
+              "text-sm font-semibold tracking-wide uppercase",
+              warning ? "text-warning" : "text-success",
+            )}
+          >
+            {title}
           </h2>
           {queuePosition != null ? (
             <span className="text-[11px] text-muted">
@@ -139,96 +146,84 @@ export function CreateOutcomeCard({
           ) : null}
         </div>
         {customerName ? (
-          <p className="mt-1 break-words text-lg font-semibold tracking-tight text-foreground">
+          <p className="mt-1 text-sm font-medium text-foreground">
             {customerName}
           </p>
         ) : null}
-        {bullets.length > 0 ? (
+        {subtitle ? (
+          <p className="mt-1 text-xs text-muted">{subtitle}</p>
+        ) : null}
+        {!embedded ? (
           <ul className="mt-2 space-y-1">
-            {bullets.map((label) => (
-              <li key={label} className="flex items-center gap-2 text-xs text-foreground">
-                <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" aria-hidden />
-                {label}
+            {rows.map((row) => (
+              <li
+                key={`${row.label}-${row.detail ?? ""}`}
+                className="flex min-w-0 items-baseline gap-2 text-xs"
+              >
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 translate-y-[-1px] rounded-full",
+                    row.tone === "warning" ? "bg-warning" : "bg-success",
+                  )}
+                  aria-hidden
+                />
+                <span className="shrink-0 font-medium text-foreground">
+                  {row.label}
+                </span>
+                {row.detail ? (
+                  <span
+                    className="min-w-0 truncate text-muted"
+                    title={row.detail}
+                  >
+                    {row.detail}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
         ) : null}
-        {actions}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+        {videoPath ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void playVideo()}
+            title={pathBasename(videoPath)}
+          >
+            <Play className="h-3.5 w-3.5 shrink-0" />
+            {t("create.success.play")}
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={!outputDir}
+          onClick={() => void openOutputDir()}
+        >
+          <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+          {t("create.success.folder")}
+        </Button>
+        {headerEnd}
+        {dismissControl}
+      </div>
+    </div>
+  );
+
+  if (embedded) {
+    return (
+      <div
+        className={className}
+        role="status"
+        aria-live="polite"
+        aria-label={t("workflow.createOutcome.aria")}
+        {...hoverProps}
+      >
+        {header}
       </div>
     );
   }
-
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <OutcomeIcon
-              className={cn(
-                "h-4 w-4 shrink-0",
-                warning ? "text-warning" : "text-success",
-              )}
-              aria-hidden
-            />
-            <h2
-              className={cn(
-                "text-sm font-semibold tracking-wide uppercase",
-                warning ? "text-warning" : "text-success",
-              )}
-            >
-              {t("create.success.title")}
-            </h2>
-            {queuePosition != null ? (
-              <span className="text-[11px] text-muted">
-                {t("create.success.queuePosition", { position: queuePosition })}
-              </span>
-            ) : null}
-          </div>
-          {customerName ? (
-            <p className="mt-1 break-words text-lg font-semibold tracking-tight text-foreground">
-              {customerName}
-            </p>
-          ) : null}
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 w-8 shrink-0 p-0"
-          aria-label={t("workflow.createOutcome.dismiss")}
-          disabled={exiting}
-          onClick={dismiss}
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </Button>
-      </div>
-
-      <ul className="mt-2 space-y-1">
-        {rows.map((row) => (
-          <li
-            key={`${row.label}-${row.detail ?? ""}`}
-            className="flex min-w-0 items-baseline gap-2 text-xs"
-          >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 shrink-0 translate-y-[-1px] rounded-full",
-                row.tone === "warning" ? "bg-warning" : "bg-success",
-              )}
-              aria-hidden
-            />
-            <span className="shrink-0 font-medium text-foreground">{row.label}</span>
-            {row.detail ? (
-              <span className="min-w-0 truncate text-muted" title={row.detail}>
-                {row.detail}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
-
-      {actions}
-    </>
-  );
 
   return (
     <section
@@ -243,7 +238,7 @@ export function CreateOutcomeCard({
       aria-label={t("workflow.createOutcome.aria")}
       {...hoverProps}
     >
-      {body}
+      {header}
     </section>
   );
 }

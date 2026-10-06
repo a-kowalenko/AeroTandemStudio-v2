@@ -617,6 +617,7 @@
     },
     "success": {
       "title": "Erfolgreich erstellt",
+      "uploadTitle": "Upload erfolgreich",
       "description": "Zusammenfassung der erstellten Dateien und Ordner.",
       "folder": "Ordner",
       "videoFromPreview": "Video aus Vorschau übernommen",
@@ -637,7 +638,9 @@
       "encoder": "Encoder",
       "dirCreated": "Verzeichnis wurde erstellt",
       "openLocation": "Zum Speicherort",
-      "play": "Abspielen"
+      "play": "Abspielen",
+      "crewTm": "TM: {{name}}",
+      "crewVs": "VS: {{name}}"
     },
     "speculative": {
       "preparing": "Vorbereitung…",
@@ -1430,6 +1433,8 @@
       "collapse": "Upload-Details ausblenden",
       "queueWaiting": "{{count}} weitere in der Warteschlange",
       "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge",
+      "failedHoldTitle": "Upload fehlgeschlagen",
+      "failedHoldHint": "Bitte unter Vorgänge nachholen.",
       "cleaningUp": "Upload wird beendet…"
     },
     "createSteps": {

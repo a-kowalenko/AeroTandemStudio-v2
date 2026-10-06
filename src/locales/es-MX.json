@@ -617,6 +617,7 @@
     },
     "success": {
       "title": "Creado correctamente",
+      "uploadTitle": "Subida correcta",
       "description": "Resumen de archivos y carpetas creados.",
       "folder": "Carpeta",
       "videoFromPreview": "Video tomado de la vista previa",
@@ -637,7 +638,9 @@
       "encoder": "Codificador",
       "dirCreated": "Se creó el directorio",
       "openLocation": "Ir a la ubicación",
-      "play": "Reproducir"
+      "play": "Reproducir",
+      "crewTm": "TM: {{name}}",
+      "crewVs": "VS: {{name}}"
     },
     "speculative": {
       "preparing": "Preparando…",
@@ -1430,6 +1433,8 @@
       "collapse": "Ocultar detalles de la subida",
       "queueWaiting": "{{count}} más en cola",
       "failedHold": "Subida fallida — reintentar en Trabajos",
+      "failedHoldTitle": "Subida fallida",
+      "failedHoldHint": "Reintenta desde Trabajos.",
       "cleaningUp": "Finalizando la subida…"
     },
     "createSteps": {
