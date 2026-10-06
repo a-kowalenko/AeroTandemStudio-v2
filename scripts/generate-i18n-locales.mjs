@@ -1956,6 +1956,7 @@ const catalog = {
   "qr.dual.productsCheck": { de: "Produkte bitte prüfen", en: "Please verify products", "es-MX": "Verifica los productos" },
   "qr.progress.fastPhoto": { de: "Schnelle Foto-Prüfung…", en: "Quick photo check…", "es-MX": "Revisión rápida de foto…" },
   "qr.progress.thoroughPhoto": { de: "Gründliche Foto-Prüfung…", en: "Thorough photo check…", "es-MX": "Revisión detallada de foto…" },
+  "qr.progress.liveIndex": { de: "{{index}} von {{total}}", en: "{{index}} of {{total}}", "es-MX": "{{index}} de {{total}}" },
   "sd.drive.import": { de: "Importieren", en: "Import", "es-MX": "Importar" },
   "sd.selector.clearSelection": { de: "Aufheben", en: "Clear", "es-MX": "Quitar" },
   "sd.selector.clearSelectionPhotos": { de: "Fotos aufheben", en: "Clear photos", "es-MX": "Quitar fotos" },

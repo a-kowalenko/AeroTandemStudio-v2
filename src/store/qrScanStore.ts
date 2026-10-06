@@ -70,6 +70,8 @@ type QrScanState = {
   clipProgress: Record<string, QrClipFrameProgress>;
   /** Decode-frame previews currently on screen (max one per active worker). */
   liveFrames: QrLiveFrame[];
+  /** Follow-up only: original hit stays centered between the two neighbor sides. */
+  liveAnchorKey: string | null;
   followup: QrFollowupStatus | null;
   /** True when photo stripes are only list-end candidates (N=20 per side). */
   photoEdgeLimited: boolean;
@@ -448,6 +450,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   scanOrder: [],
   clipProgress: {},
   liveFrames: [],
+  liveAnchorKey: null,
   followup: null,
   photoEdgeLimited: false,
   videoEdgeLimited: false,
@@ -465,6 +468,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: unique,
       clipProgress: {},
       liveFrames: [],
+      liveAnchorKey: null,
       followup: stage === "followup" ? emptyFollowup() : null,
       photoEdgeLimited: Boolean(options?.photoEdgeLimited),
       videoEdgeLimited: Boolean(options?.videoEdgeLimited),
@@ -505,6 +509,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: unique,
       clipProgress: {},
       liveFrames,
+      liveAnchorKey: hitKey || null,
       followup: emptyFollowup(),
       photoEdgeLimited: false,
       videoEdgeLimited: false,
@@ -658,6 +663,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       scanOrder: [],
       clipProgress: {},
       liveFrames: [],
+      liveAnchorKey: null,
       followup: null,
       photoEdgeLimited: false,
       videoEdgeLimited: false,

@@ -1910,7 +1910,8 @@
       "liveScanning": "Scan",
       "liveHit": "Hit",
       "liveMiss": "No code",
-      "liveRemoved": "Removing"
+      "liveRemoved": "Removing",
+      "liveIndex": "{{index}} of {{total}}"
     },
     "confirm": {
       "currentCustomer": "Current customer",

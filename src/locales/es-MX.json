@@ -1910,7 +1910,8 @@
       "liveScanning": "Escaneo",
       "liveHit": "Hallazgo",
       "liveMiss": "Sin código",
-      "liveRemoved": "Quitando"
+      "liveRemoved": "Quitando",
+      "liveIndex": "{{index}} de {{total}}"
     },
     "confirm": {
       "currentCustomer": "Cliente actual",

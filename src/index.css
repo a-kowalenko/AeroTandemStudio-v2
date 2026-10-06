@@ -260,15 +260,40 @@
 }
 
 .ats-qr-live-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.75rem;
+}
+
+.ats-qr-live-dock {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.ats-qr-live-dock-end {
+  justify-content: flex-end;
+}
+
+.ats-qr-live-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ats-qr-live-bridge-gap {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--ats-muted);
 }
 
 .ats-qr-live-tile {
   position: relative;
   height: 5.25rem;
-  aspect-ratio: 16 / 9;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   border-radius: 0.5rem;
   background: #050807;
@@ -276,6 +301,91 @@
     0 0 0 1px color-mix(in srgb, var(--ats-primary) 35%, transparent),
     0 10px 22px rgba(0, 0, 0, 0.28);
   animation: ats-qr-live-in 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ats-qr-live-frame {
+  display: flex;
+  width: calc(5.25rem * 16 / 9);
+  min-width: 0;
+  flex: 0 1 calc(5.25rem * 16 / 9);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.3rem;
+}
+
+.ats-qr-live-frame-fill {
+  width: 100%;
+  height: 100%;
+  flex: none;
+}
+
+.ats-qr-live-frame:has(.ats-qr-live-tile-anchor) {
+  width: calc(6.15rem * 16 / 9);
+  flex-basis: calc(6.15rem * 16 / 9);
+}
+
+.ats-qr-live-pos {
+  position: absolute;
+  top: 0.38rem;
+  left: 50%;
+  z-index: 2;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.18rem;
+  max-width: calc(100% - 1.5rem);
+  padding: 0.1rem 0.42rem 0.12rem;
+  border-radius: 999px;
+  line-height: 1;
+  color: white;
+  pointer-events: none;
+  background: color-mix(in srgb, #050807 42%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, white 18%, transparent);
+  backdrop-filter: blur(10px);
+  transform: translateX(-50%);
+}
+
+.ats-qr-live-pos-index {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.ats-qr-live-pos-total {
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.62;
+}
+
+.ats-qr-live-pos-total::before {
+  content: "/";
+  margin-right: 0.1rem;
+}
+
+.ats-qr-live-tile-anchor {
+  height: 6.15rem;
+  width: calc(6.15rem * 16 / 9);
+  flex-basis: calc(6.15rem * 16 / 9);
+  z-index: 1;
+}
+
+.ats-qr-live-tile-inward .ats-qr-live-scanline {
+  animation-direction: reverse;
+}
+
+.ats-qr-live-slot {
+  position: relative;
+  width: 100%;
+  height: 5.25rem;
+}
+
+.ats-qr-live-tile-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  flex: none;
 }
 
 .ats-qr-live-img {

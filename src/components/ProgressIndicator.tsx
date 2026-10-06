@@ -1,9 +1,12 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import type {
-  QrClipScanPace,
-  QrFileProgress,
-  QrScanLegend,
+import { QrSegmentLiveSlot } from "./QrLiveScanStrip";
+import { alignVideoLiveThumbs } from "../lib/qrLiveLayout";
+import {
+  useQrScanStore,
+  type QrClipScanPace,
+  type QrFileProgress,
+  type QrScanLegend,
 } from "../store/qrScanStore";
 
 type TaskProgress = {
@@ -171,8 +174,10 @@ function FileSegments({
   legend?: QrScanLegend;
 }) {
   const { t } = useTranslation();
+  const stage = useQrScanStore((s) => s.stage);
   const { segments, finished, total } = progress;
   if (total <= 0 || segments.length === 0) return null;
+  const alignThumbs = alignVideoLiveThumbs(stage, segments.length);
 
   const legendEl =
     legend === "pace" ? (
@@ -195,7 +200,7 @@ function FileSegments({
         role="group"
         aria-label={t("progress.filesAria", { finished, total })}
       >
-        {segments.map((seg) => {
+        {segments.map((seg, index) => {
           const removed = seg.phase === "removed";
           const done = seg.phase === "done" || seg.phase === "hit";
           const isActive = seg.phase === "active";
@@ -249,9 +254,19 @@ function FileSegments({
           return (
             <div
               key={seg.key}
-              className="flex min-w-0 flex-1 flex-col items-stretch gap-0.5"
+              className={
+                alignThumbs
+                  ? "flex min-w-0 flex-1 flex-col items-stretch gap-1"
+                  : "flex min-w-0 flex-1 flex-col items-stretch gap-0.5"
+              }
               title={title}
             >
+              {alignThumbs ? (
+                <QrSegmentLiveSlot
+                  mediaKey={seg.key}
+                  inward={index >= segments.length / 2}
+                />
+              ) : null}
               <div
                 className={
                   dense
