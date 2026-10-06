@@ -1582,6 +1582,13 @@
       "removeJobAll": "¿Quitar los {{count}} trabajos?",
       "removeJobAllBody": "Todos los trabajos cargados se eliminan de la lista. Los archivos en disco se conservan; se quitan fotogramas QR de la app."
     },
+    "jobs": {
+      "pageSize": "{{count}} / página",
+      "pageSizeAria": "Entradas por página",
+      "pageRange": "{{from}}–{{to}} de {{total}}",
+      "pagePrev": "Página anterior",
+      "pageNext": "Página siguiente"
+    },
     "media": {
       "stats": "{{total}} entradas ({{videos}} videos, {{photos}} fotos)",
       "empty": "Sin entradas",

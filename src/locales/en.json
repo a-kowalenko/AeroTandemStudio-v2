@@ -1582,6 +1582,13 @@
       "removeJobAll": "Remove all {{count}} jobs?",
       "removeJobAllBody": "All loaded jobs will be removed from the list. Files on disk are kept; related app QR scan frames are removed."
     },
+    "jobs": {
+      "pageSize": "{{count}} / page",
+      "pageSizeAria": "Entries per page",
+      "pageRange": "{{from}}–{{to}} of {{total}}",
+      "pagePrev": "Previous page",
+      "pageNext": "Next page"
+    },
     "media": {
       "stats": "{{total}} entries ({{videos}} videos, {{photos}} photos)",
       "empty": "No entries",

@@ -1437,6 +1437,9 @@ const VorgangListRow = memo(function VorgangListRow({
   );
 });
 
+const JOBS_PAGE_SIZE_DEFAULT = 25;
+const JOBS_PAGE_SIZES = [25, 50, 100, 200] as const;
+
 function seedVorgaengePanel(): {
   entries: VorgangEntry[];
   selectedId: number | null;
@@ -1503,6 +1506,8 @@ function VorgaengePanel({
   );
   const [search, setSearch] = useState("");
   const [amsFilter, setAmsFilter] = useState<AmsStatusFilter>("all");
+  const [pageSize, setPageSize] = useState<number>(JOBS_PAGE_SIZE_DEFAULT);
+  const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<number | null>(
     () => seedVorgaengePanel().selectedId,
   );
@@ -1713,6 +1718,30 @@ function VorgaengePanel({
     () => entries.filter((e) => matchesAmsStatusFilter(e, amsFilter)),
     [entries, amsFilter],
   );
+
+  useEffect(() => {
+    setPage(0);
+  }, [search, amsFilter, pageSize]);
+
+  useEffect(() => {
+    if (!dialogOpen) setPage(0);
+  }, [dialogOpen]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredEntries.length / pageSize) || 1);
+  useEffect(() => {
+    setPage((p) => Math.min(p, totalPages - 1));
+  }, [totalPages]);
+
+  const pageItems = useMemo(() => {
+    const start = page * pageSize;
+    return filteredEntries.slice(start, start + pageSize);
+  }, [filteredEntries, page, pageSize]);
+
+  const pageFrom =
+    filteredEntries.length === 0 ? 0 : page * pageSize + 1;
+  const pageTo = Math.min(filteredEntries.length, (page + 1) * pageSize);
+  const canPrevPage = page > 0;
+  const canNextPage = page < totalPages - 1 && filteredEntries.length > 0;
 
   // Keep selection inside the visible AMS filter set.
   useEffect(() => {
@@ -2300,59 +2329,114 @@ function VorgaengePanel({
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <div className="min-h-0 overflow-y-auto overflow-x-hidden rounded-md border border-border/60">
-          <table className="w-full table-fixed text-left text-xs">
-            <colgroup>
-              <col style={{ width: "1.5rem" }} />
-              <col className="w-[30%]" />
-              <col className="w-[16%]" />
-              <col className="w-[16%]" />
-              <col />
-            </colgroup>
-            <thead className="sticky top-0 bg-card">
-              <tr className="border-b border-border/60">
-                <th className="p-0" />
-                <th className="p-2">{t("history.col.guest")}</th>
-                <th className="p-2">{t("history.col.date")}</th>
-                <th className="p-2">{t("history.col.products")}</th>
-                <th className="p-2">{t("history.col.status")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEntries.map((e) => (
-                <VorgangListRow
-                  key={e.id}
-                  entry={e}
-                  selected={selectedId === e.id}
-                  checked={checked.has(e.id)}
-                  handoffOffline={
-                    Boolean(handoffStatus?.offline) &&
-                    handoffStatus?.correlation_id === e.correlation_id
-                  }
-                  folderMissingById={folderMissingById}
-                  onSelect={setSelectedId}
-                  onToggleCheck={toggleCheck}
-                />
-              ))}
-              {showEmptyList && (
-                <tr>
-                  <td colSpan={5} className="p-4 text-center text-muted">
-                    {amsFilter !== "all" && entries.length > 0
-                      ? t("history.emptyFilter")
-                      : t("history.emptyJobs")}
-                  </td>
+        <div className="flex min-h-0 flex-col gap-2">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-md border border-border/60">
+            <table className="w-full table-fixed text-left text-xs">
+              <colgroup>
+                <col style={{ width: "1.5rem" }} />
+                <col className="w-[30%]" />
+                <col className="w-[16%]" />
+                <col className="w-[16%]" />
+                <col />
+              </colgroup>
+              <thead className="sticky top-0 bg-card">
+                <tr className="border-b border-border/60">
+                  <th className="p-0" />
+                  <th className="p-2">{t("history.col.guest")}</th>
+                  <th className="p-2">{t("history.col.date")}</th>
+                  <th className="p-2">{t("history.col.products")}</th>
+                  <th className="p-2">{t("history.col.status")}</th>
                 </tr>
-              )}
-              {!ready && filteredEntries.length === 0 &&
-                Array.from({ length: 8 }, (_, i) => (
-                  <tr key={`sk-${i}`}>
-                    <td colSpan={5} className="p-2">
-                      <div className="h-4 animate-pulse rounded bg-muted/50" />
+              </thead>
+              <tbody>
+                {pageItems.map((e) => (
+                  <VorgangListRow
+                    key={e.id}
+                    entry={e}
+                    selected={selectedId === e.id}
+                    checked={checked.has(e.id)}
+                    handoffOffline={
+                      Boolean(handoffStatus?.offline) &&
+                      handoffStatus?.correlation_id === e.correlation_id
+                    }
+                    folderMissingById={folderMissingById}
+                    onSelect={setSelectedId}
+                    onToggleCheck={toggleCheck}
+                  />
+                ))}
+                {showEmptyList && (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-muted">
+                      {amsFilter !== "all" && entries.length > 0
+                        ? t("history.emptyFilter")
+                        : t("history.emptyJobs")}
                     </td>
                   </tr>
-                ))}
-            </tbody>
-          </table>
+                )}
+                {!ready && filteredEntries.length === 0 &&
+                  Array.from({ length: 8 }, (_, i) => (
+                    <tr key={`sk-${i}`}>
+                      <td colSpan={5} className="p-2">
+                        <div className="h-4 animate-pulse rounded bg-muted/50" />
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+          {filteredEntries.length > 0 ? (
+            <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => setPageSize(Number(v))}
+              >
+                <SelectTrigger
+                  className="h-8 w-[7.5rem] text-xs"
+                  aria-label={t("history.jobs.pageSizeAria")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {JOBS_PAGE_SIZES.map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {t("history.jobs.pageSize", { count: n })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="ml-auto text-xs tabular-nums text-muted">
+                {t("history.jobs.pageRange", {
+                  from: pageFrom,
+                  to: pageTo,
+                  total: filteredEntries.length,
+                })}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-2"
+                  disabled={!canPrevPage}
+                  aria-label={t("history.jobs.pagePrev")}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 px-2"
+                  disabled={!canNextPage}
+                  aria-label={t("history.jobs.pageNext")}
+                  onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="min-h-0 overflow-y-auto overflow-x-hidden rounded-md border border-border/60">

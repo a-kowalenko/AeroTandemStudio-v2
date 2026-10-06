@@ -1582,6 +1582,13 @@
       "removeJobAll": "Alle {{count}} Vorgänge entfernen?",
       "removeJobAllBody": "Alle geladenen Vorgänge werden aus der Liste gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt."
     },
+    "jobs": {
+      "pageSize": "{{count}} / Seite",
+      "pageSizeAria": "Einträge pro Seite",
+      "pageRange": "{{from}}–{{to}} von {{total}}",
+      "pagePrev": "Vorherige Seite",
+      "pageNext": "Nächste Seite"
+    },
     "media": {
       "stats": "{{total}} Einträge ({{videos}} Videos, {{photos}} Fotos)",
       "empty": "Keine Einträge",
