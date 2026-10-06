@@ -102,6 +102,8 @@ type SdState = {
       already_processed: boolean;
     }>,
   ) => void;
+  /** Drop paths from the open confirm catalog after a successful on-card delete. */
+  removeSelectorPaths: (paths: string[]) => void;
   /** Start a new enrich generation; returns the id to pass to `enrichSdFiles`. */
   beginSelectorEnrich: () => number;
   closeSelector: () => void;
@@ -262,6 +264,20 @@ export const useSdStore = create<SdState>((set, get) => ({
         };
       });
       return changed ? { selectorFiles } : state;
+    }),
+  removeSelectorPaths: (paths) =>
+    set((state) => {
+      if (!paths.length || !state.selectorOpen) return state;
+      const remove = new Set(paths);
+      const selectorFiles = state.selectorFiles.filter((f) => !remove.has(f.path));
+      if (selectorFiles.length === state.selectorFiles.length) return state;
+      const totalBytes = selectorFiles.reduce((sum, f) => sum + f.size_bytes, 0);
+      return {
+        selectorFiles,
+        selectorTotalMb: totalBytes / (1024 * 1024),
+        selectorEmptyReason:
+          selectorFiles.length === 0 ? "no_media" : state.selectorEmptyReason,
+      };
     }),
   beginSelectorEnrich: () => {
     const selectorEnrichGen = get().selectorEnrichGen + 1;

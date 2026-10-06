@@ -57,6 +57,8 @@ type PhotoTileProps = {
   captureLabel: string;
   isVideo: boolean;
   selected: boolean;
+  /** Right-click marquee / delete-intent selection (red chrome). */
+  dangerSelected?: boolean;
   alreadyProcessed: boolean;
   showNewBadge: boolean;
   density: Density;
@@ -74,6 +76,7 @@ export const SdPhotoTile = memo(function SdPhotoTile({
   captureLabel,
   isVideo,
   selected,
+  dangerSelected = false,
   alreadyProcessed,
   showNewBadge,
   density,
@@ -101,7 +104,9 @@ export const SdPhotoTile = memo(function SdPhotoTile({
       className={cn(
         "relative flex h-full flex-col overflow-hidden rounded-md text-left transition",
         selected
-          ? "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
+          ? dangerSelected
+            ? "border-2 border-destructive bg-destructive/15 ring-[3px] ring-destructive/55"
+            : "border-2 border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
           : "border border-border/70",
       )}
     >
@@ -126,7 +131,12 @@ export const SdPhotoTile = memo(function SdPhotoTile({
             onPointerDown={(e) => onCheckboxPointerDown(path, e)}
             onCheckedChange={() => onCheckboxCheckedChange(path)}
             aria-label={t("common.actions.selectNamed", { name: filename })}
-            className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+            className={cn(
+              "h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm",
+              dangerSelected
+                ? "data-[state=checked]:border-destructive data-[state=checked]:bg-destructive"
+                : "data-[state=checked]:border-primary data-[state=checked]:bg-primary",
+            )}
           />
         </div>
         <FileStatusBadge
@@ -176,11 +186,13 @@ type DetailsRowProps = {
   dateLabel: string;
   typeLabel: string;
   selected: boolean;
+  dangerSelected?: boolean;
   alreadyProcessed: boolean;
   showNewBadge: boolean;
   density: Density;
   loader: SdThumbnailLoader;
   onSelect: (path: string, shiftKey: boolean) => void;
+  onContextMenu?: (path: string, e: React.MouseEvent) => void;
   onCheckboxPointerDown: (path: string, e: React.PointerEvent) => void;
   onCheckboxCheckedChange: (path: string) => void;
   registerEl: (path: string, el: HTMLElement | null) => void;
@@ -193,11 +205,13 @@ export const SdDetailsRow = memo(function SdDetailsRow({
   dateLabel,
   typeLabel,
   selected,
+  dangerSelected = false,
   alreadyProcessed,
   showNewBadge,
   density,
   loader,
   onSelect,
+  onContextMenu,
   onCheckboxPointerDown,
   onCheckboxCheckedChange,
   registerEl,
@@ -218,7 +232,7 @@ export const SdDetailsRow = memo(function SdDetailsRow({
       role="row"
       className={cn(
         "grid h-full cursor-pointer items-center gap-2 border-b border-border/40 px-2 hover:bg-black/5",
-        selected && "bg-primary-soft",
+        selected && (dangerSelected ? "bg-destructive/15" : "bg-primary-soft"),
         compact ? "text-[11px]" : "text-xs",
       )}
       style={{
@@ -227,6 +241,7 @@ export const SdDetailsRow = memo(function SdDetailsRow({
           : "32px 56px minmax(0,1fr) 72px 80px 140px",
       }}
       onClick={(e) => onSelect(path, e.shiftKey)}
+      onContextMenu={(e) => onContextMenu?.(path, e)}
     >
       <div
         onClick={(e) => e.stopPropagation()}

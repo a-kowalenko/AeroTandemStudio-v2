@@ -910,6 +910,17 @@
       "keep": "Seguir en curso",
       "cancel": "Cancelar respaldo"
     },
+    "sdDelete": {
+      "titleOne": "¿Eliminar archivo de la tarjeta SD?",
+      "titleMany": "¿Eliminar {{count}} archivos de la tarjeta SD?",
+      "bodyOne": "“{{name}}” se eliminará permanentemente de la tarjeta o cámara.",
+      "bodyMany": "Los archivos seleccionados se eliminarán permanentemente de la tarjeta o cámara.",
+      "andMore": "… y {{count}} más",
+      "hint": "También se eliminan proxies/sidecars relacionados. No se puede deshacer.",
+      "confirmOne": "Eliminar",
+      "confirmMany": "Eliminar {{count}}",
+      "deleting": "Eliminando…"
+    },
     "bulkUploadSummary": {
       "aborted": "{{count}} no iniciadas (cancelado o servidor fuera de línea).",
       "blocked": "{{count}} no posibles",
@@ -2269,7 +2280,11 @@
       "today": "Hoy",
       "unknownDate": "Sin fecha",
       "yesterday": "Ayer",
-      "importNeedsBackupMtp": "Cámara USB: importación solo junto con el respaldo"
+      "importNeedsBackupMtp": "Cámara USB: importación solo junto con el respaldo",
+      "contextDeleteOne": "Eliminar de la SD…",
+      "contextDeleteMany": "Eliminar {{count}} de la SD…",
+      "contextSelectionCount": "{{count}} archivos seleccionados",
+      "deleteFailed": "Error al eliminar"
     },
     "catalog": {
       "filteredOnly": "No hay medios importables (solo timelapse/proxies).",

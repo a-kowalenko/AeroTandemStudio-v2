@@ -17,7 +17,11 @@ import {
   SelectValue,
 } from "./ui/select";
 import type { SdWorkflowActions } from "../lib/sdCard";
-import { emptyCatalogLabel, isMtpDrive } from "../lib/sdCard";
+import {
+  deleteSdMediaFiles,
+  emptyCatalogLabel,
+  isMtpDrive,
+} from "../lib/sdCard";
 import { tr } from "@/i18n";
 import { createSdThumbnailLoader } from "../lib/sdThumbnailLoader";
 import {
@@ -46,6 +50,14 @@ import { useSdStore } from "../store/sdStore";
 import { SdVideoTile } from "./SdVideoTile";
 import { DateGroupHeader, SdDetailsRow, SdPhotoTile } from "./SdPhotoTile";
 import {
+  SdMediaContextMenu,
+  type SdMediaContextMenuState,
+} from "./SdMediaContextMenu";
+import {
+  SdDeleteConfirmDialog,
+  type SdDeleteConfirmChoice,
+} from "./SdDeleteConfirmDialog";
+import {
   Check,
   Film,
   HardDrive,
@@ -69,6 +81,8 @@ type Props = {
 
 type SelectMode = "toggle" | "range";
 type MarqueeMod = "replace" | "add" | "remove";
+type MarqueeKind = "select" | "delete";
+type SelectionTone = "normal" | "danger";
 
 function formatEpoch(epoch: number): string {
   if (!epoch) return "—";
@@ -235,6 +249,13 @@ export function SdFileSelector({
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selectionTone, setSelectionTone] = useState<SelectionTone>("normal");
+  const selectionToneRef = useRef<SelectionTone>("normal");
+  selectionToneRef.current = selectionTone;
+  const [ctxMenu, setCtxMenu] = useState<SdMediaContextMenuState | null>(null);
+  const [deletePaths, setDeletePaths] = useState<string[] | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [actions, setActions] = useState<SdWorkflowActions>({
     backup: true,
     import: true,
@@ -242,6 +263,7 @@ export function SdFileSelector({
     eject: false,
     scanQr: false,
   });
+  const removeSelectorPaths = useSdStore((s) => s.removeSelectorPaths);
   const config = useConfigStore((s) => s.config);
   // Keep scanQr default in sync with sessionHasQrKunde() inputs.
   const formMode = useKundeStore((s) => s.kunde.form_mode);
@@ -277,9 +299,13 @@ export function SdFileSelector({
     clientX0: number;
     clientY0: number;
     mod: MarqueeMod;
+    kind: MarqueeKind;
+    targetPath: string | null;
   } | null>(null);
   const marqueeModRef = useRef<MarqueeMod>("replace");
+  const marqueeKindRef = useRef<MarqueeKind>("select");
   const suppressClickRef = useRef(false);
+  const suppressContextMenuRef = useRef(false);
   const dragBoxRef = useRef<{
     x0: number;
     y0: number;
@@ -303,7 +329,10 @@ export function SdFileSelector({
   }, []);
 
   const paintMarqueeOverlay = useCallback(
-    (box: { x0: number; y0: number; x1: number; y1: number } | null) => {
+    (
+      box: { x0: number; y0: number; x1: number; y1: number } | null,
+      kind: MarqueeKind = "select",
+    ) => {
       const el = marqueeOverlayRef.current;
       if (!el) return;
       if (!box) {
@@ -311,6 +340,11 @@ export function SdFileSelector({
         return;
       }
       el.style.display = "block";
+      el.dataset.marqueeKind = kind;
+      el.classList.toggle("border-primary", kind === "select");
+      el.classList.toggle("bg-primary/25", kind === "select");
+      el.classList.toggle("border-destructive", kind === "delete");
+      el.classList.toggle("bg-destructive/25", kind === "delete");
       el.style.left = `${Math.min(box.x0, box.x1)}px`;
       el.style.top = `${Math.min(box.y0, box.y1)}px`;
       el.style.width = `${Math.abs(box.x1 - box.x0)}px`;
@@ -661,6 +695,12 @@ export function SdFileSelector({
     };
   }, [open, viewMode, gridEl, detailsEl, drive, listing, filteredPathsKey]);
 
+  /** Keep danger chrome while adjusting an RMB selection; clear when empty. */
+  function syncToneAfterEdit(nextSize: number) {
+    if (selectionToneRef.current !== "danger") return;
+    if (nextSize === 0) setSelectionTone("normal");
+  }
+
   const selectPath = useCallback(
     (path: string, mode: SelectMode) => {
       if (suppressClickRef.current) return;
@@ -675,6 +715,7 @@ export function SdFileSelector({
             const next = new Set(prev);
             if (next.has(path)) next.delete(path);
             else next.add(path);
+            syncToneAfterEdit(next.size);
             return next;
           });
           anchorPathRef.current = path;
@@ -685,6 +726,7 @@ export function SdFileSelector({
         setSelected((prev) => {
           const next = new Set(prev);
           for (let i = lo; i <= hi; i++) next.add(filtered[i].path);
+          syncToneAfterEdit(next.size);
           return next;
         });
         return;
@@ -694,6 +736,7 @@ export function SdFileSelector({
         const next = new Set(prev);
         if (next.has(path)) next.delete(path);
         else next.add(path);
+        syncToneAfterEdit(next.size);
         return next;
       });
       anchorPathRef.current = path;
@@ -739,6 +782,7 @@ export function SdFileSelector({
   }, []);
 
   function selectAllFiltered() {
+    setSelectionTone("normal");
     setSelected((prev) => {
       const next = new Set(prev);
       for (const f of filtered) next.add(f.path);
@@ -749,6 +793,7 @@ export function SdFileSelector({
   }
 
   function selectOnlyNew() {
+    setSelectionTone("normal");
     const newPaths = new Set(newInFiltered.map((f) => f.path));
     setSelected((prev) => {
       const next = new Set(prev);
@@ -764,6 +809,7 @@ export function SdFileSelector({
 
   /** Clear selection only for the current filter; keep other media types. */
   function clearSelection() {
+    setSelectionTone("normal");
     const filteredPaths = new Set(filtered.map((f) => f.path));
     setSelected((prev) => {
       const next = new Set<string>();
@@ -776,6 +822,7 @@ export function SdFileSelector({
   }
 
   function invertSelection() {
+    setSelectionTone("normal");
     const filteredPaths = new Set(filtered.map((f) => f.path));
     setSelected((prev) => {
       const next = new Set<string>();
@@ -790,6 +837,7 @@ export function SdFileSelector({
   }
 
   function toggleGroupSelection(paths: string[]) {
+    setSelectionTone("normal");
     setSelected((prev) => {
       const allOn = paths.length > 0 && paths.every((p) => prev.has(p));
       const next = new Set(prev);
@@ -801,6 +849,71 @@ export function SdFileSelector({
       return next;
     });
     anchorPathRef.current = paths[paths.length - 1] ?? null;
+  }
+
+  function openCtxMenuAt(
+    x: number,
+    y: number,
+    path: string,
+    paths: string[],
+  ) {
+    setCtxMenu({ x, y, path, paths });
+  }
+
+  /**
+   * Prepare selection for a context menu: keep multi if path is selected, else solo.
+   * Returns the paths the menu should act on (resolved synchronously).
+   */
+  function prepareCtxSelection(path: string): string[] {
+    setSelectionTone("danger");
+    if (selected.has(path) && selected.size > 0) {
+      anchorPathRef.current = path;
+      return [...selected];
+    }
+    setSelected(new Set([path]));
+    anchorPathRef.current = path;
+    return [path];
+  }
+
+  function onDetailsContextMenu(path: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const paths = prepareCtxSelection(path);
+    openCtxMenuAt(e.clientX, e.clientY, path, paths);
+  }
+
+  function requestDelete(paths: string[]) {
+    if (paths.length === 0 || !drive) return;
+    setDeleteError(null);
+    setDeletePaths(paths);
+  }
+
+  async function onDeleteConfirm(choice: SdDeleteConfirmChoice) {
+    if (choice === "cancel" || !deletePaths?.length || !drive) {
+      setDeletePaths(null);
+      setDeleting(false);
+      return;
+    }
+    const paths = deletePaths;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteSdMediaFiles(drive, paths);
+      removeSelectorPaths(paths);
+      for (const p of paths) loaderRef.current.invalidate(p);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const p of paths) next.delete(p);
+        return next;
+      });
+      setSelectionTone("normal");
+      setDeletePaths(null);
+    } catch (e) {
+      setDeleteError(String(e));
+      setDeletePaths(null);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function patchAction<K extends keyof SdWorkflowActions>(key: K, value: boolean) {
@@ -854,10 +967,15 @@ export function SdFileSelector({
     return "replace";
   }
 
-  function commitMarquee(mod: MarqueeMod, hits: string[]) {
+  function commitMarquee(
+    mod: MarqueeMod,
+    hits: string[],
+    kind: MarqueeKind,
+  ) {
     if (hits.length === 0) return;
+    setSelectionTone(kind === "delete" ? "danger" : "normal");
     setSelected((prev) => {
-      if (mod === "replace") return new Set(hits);
+      if (mod === "replace" || kind === "delete") return new Set(hits);
       if (mod === "add") {
         const next = new Set(prev);
         for (const p of hits) next.add(p);
@@ -871,28 +989,44 @@ export function SdFileSelector({
   }
 
   function onGridPointerDown(e: React.PointerEvent) {
-    if (e.button !== 0 || viewMode !== "thumbnail") return;
+    if (viewMode !== "thumbnail") return;
+    if (e.button !== 0 && e.button !== 2) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-controls]")) return;
     if (target.closest("[data-no-marquee]")) return;
     if (target.closest('[role="checkbox"]')) return;
     if (target.closest("[data-sd-immersive-overlay]")) return;
 
-    const onMarqueeOk = target.closest("[data-marquee-ok]");
-    const onTile = target.closest("[data-tile]");
-    // Empty chrome / group headers always; tiles only via data-marquee-ok.
-    if (onTile && !onMarqueeOk) return;
+    const kind: MarqueeKind = e.button === 2 ? "delete" : "select";
+    const tileEl = target.closest("[data-tile]") as HTMLElement | null;
+    const targetPath =
+      tileEl?.dataset.thumbPath ??
+      (target.closest("[data-thumb-path]") as HTMLElement | null)?.dataset
+        .thumbPath ??
+      null;
+
+    if (kind === "select") {
+      const onMarqueeOk = target.closest("[data-marquee-ok]");
+      // Empty chrome / group headers always; tiles only via data-marquee-ok.
+      if (tileEl && !onMarqueeOk) return;
+    } else {
+      // RMB: allow starting on tile media (for click-menu or drag).
+      e.preventDefault();
+    }
 
     const pt = gridLocalPoint(e);
     if (!pt) return;
     window.getSelection()?.removeAllRanges();
+    setCtxMenu(null);
     pendingMarqueeRef.current = {
       pointerId: e.pointerId,
       x0: pt.x,
       y0: pt.y,
       clientX0: e.clientX,
       clientY0: e.clientY,
-      mod: marqueeModFromEvent(e),
+      mod: kind === "delete" ? "replace" : marqueeModFromEvent(e),
+      kind,
+      targetPath,
     };
   }
 
@@ -906,7 +1040,11 @@ export function SdFileSelector({
         const pt = gridLocalPoint(e);
         if (!pt) return;
         marqueeModRef.current = pending.mod;
+        marqueeKindRef.current = pending.kind;
         suppressClickRef.current = true;
+        if (pending.kind === "delete") {
+          suppressContextMenuRef.current = true;
+        }
         const next = {
           x0: pending.x0,
           y0: pending.y0,
@@ -915,7 +1053,7 @@ export function SdFileSelector({
         };
         dragBoxRef.current = next;
         setSelectionDragging(true);
-        paintMarqueeOverlay(next);
+        paintMarqueeOverlay(next, pending.kind);
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }
       return;
@@ -926,10 +1064,17 @@ export function SdFileSelector({
     if (!pt) return;
     const next = { ...dragBoxRef.current, x1: pt.x, y1: pt.y };
     dragBoxRef.current = next;
-    paintMarqueeOverlay(next);
+    paintMarqueeOverlay(next, marqueeKindRef.current);
   }
 
-  function endMarqueeGesture(activeBox: typeof dragBoxRef.current) {
+  function endMarqueeGesture(
+    activeBox: typeof dragBoxRef.current,
+    clientX: number,
+    clientY: number,
+  ) {
+    const pending = pendingMarqueeRef.current;
+    const kind = pending?.kind ?? marqueeKindRef.current;
+    const targetPath = pending?.targetPath ?? null;
     pendingMarqueeRef.current = null;
     dragBoxRef.current = null;
     paintMarqueeOverlay(null);
@@ -938,19 +1083,38 @@ export function SdFileSelector({
         layoutTilesRef.current,
         activeBox,
       );
-      commitMarquee(marqueeModRef.current, hits);
+      commitMarquee(marqueeModRef.current, hits, kind);
       setSelectionDragging(false);
+      if (kind === "delete" && hits.length > 0) {
+        const anchor = hits[hits.length - 1] ?? targetPath;
+        if (anchor) {
+          suppressContextMenuRef.current = true;
+          openCtxMenuAt(clientX, clientY, anchor, hits);
+        }
+      }
       window.setTimeout(() => {
         suppressClickRef.current = false;
-      }, 0);
+        suppressContextMenuRef.current = false;
+      }, 50);
       return;
     }
+
+    // RMB click without drag → context menu on the tile under the cursor.
+    if (kind === "delete" && targetPath) {
+      suppressContextMenuRef.current = true;
+      const paths = prepareCtxSelection(targetPath);
+      openCtxMenuAt(clientX, clientY, targetPath, paths);
+      window.setTimeout(() => {
+        suppressContextMenuRef.current = false;
+      }, 50);
+    }
+
     setSelectionDragging(false);
     suppressClickRef.current = false;
   }
 
-  function onGridPointerUp() {
-    endMarqueeGesture(dragBoxRef.current);
+  function onGridPointerUp(e: React.PointerEvent) {
+    endMarqueeGesture(dragBoxRef.current, e.clientX, e.clientY);
   }
 
   function onGridPointerCancel() {
@@ -959,6 +1123,22 @@ export function SdFileSelector({
     paintMarqueeOverlay(null);
     setSelectionDragging(false);
     suppressClickRef.current = false;
+    suppressContextMenuRef.current = false;
+  }
+
+  function onGridContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    // Prefer pointer-up handling for RMB click/drag; only use contextmenu as fallback
+    // when no gesture is in flight (e.g. keyboard / assistive).
+    if (suppressContextMenuRef.current || pendingMarqueeRef.current) return;
+    if (dragBoxRef.current) return;
+    const target = e.target as HTMLElement;
+    const path =
+      (target.closest("[data-thumb-path]") as HTMLElement | null)?.dataset
+        .thumbPath ?? null;
+    if (!path) return;
+    const paths = prepareCtxSelection(path);
+    openCtxMenuAt(e.clientX, e.clientY, path, paths);
   }
 
   const title =
@@ -1273,7 +1453,14 @@ export function SdFileSelector({
                 photos: selectedStats.photos,
               })}
             >
-              <div className="inline-flex h-8 items-center gap-2 rounded-md border border-primary/35 bg-card px-2.5 shadow-sm">
+              <div
+                className={cn(
+                  "inline-flex h-8 items-center gap-2 rounded-md border bg-card px-2.5 shadow-sm",
+                  selectionTone === "danger"
+                    ? "border-destructive/45"
+                    : "border-primary/35",
+                )}
+              >
                 <span className="text-xs font-semibold tabular-nums text-foreground">
                   {selectedStats.total}
                 </span>
@@ -1329,6 +1516,7 @@ export function SdFileSelector({
             onPointerMove={onGridPointerMove}
             onPointerUp={onGridPointerUp}
             onPointerCancel={onGridPointerCancel}
+            onContextMenu={onGridContextMenu}
           >
             <div
               className="relative"
@@ -1391,6 +1579,7 @@ export function SdFileSelector({
                   zIndex: 1,
                 };
 
+                const danger = isSel && selectionTone === "danger";
                 if (file.is_video) {
                   return (
                     <div key={file.path} style={style}>
@@ -1400,6 +1589,7 @@ export function SdFileSelector({
                         sizeLabel={formatBytes(file.size_bytes)}
                         captureLabel={captureLabel}
                         selected={isSel}
+                        dangerSelected={danger}
                         alreadyProcessed={file.already_processed}
                         showNewBadge={showNewBadges}
                         isActive={activeVideoPath === file.path}
@@ -1427,6 +1617,7 @@ export function SdFileSelector({
                       captureLabel={captureLabel}
                       isVideo={file.is_video}
                       selected={isSel}
+                      dangerSelected={danger}
                       alreadyProcessed={file.already_processed}
                       showNewBadge={showNewBadges}
                       density={density}
@@ -1501,11 +1692,15 @@ export function SdFileSelector({
                           : t("common.labels.photo")
                       }
                       selected={selected.has(file.path)}
+                      dangerSelected={
+                        selected.has(file.path) && selectionTone === "danger"
+                      }
                       alreadyProcessed={file.already_processed}
                       showNewBadge={showNewBadges}
                       density={density}
                       loader={loader}
                       onSelect={onTileSelect}
+                      onContextMenu={onDetailsContextMenu}
                       onCheckboxPointerDown={onCheckboxPointerDown}
                       onCheckboxCheckedChange={onCheckboxCheckedChange}
                       registerEl={registerThumbEl}
@@ -1627,6 +1822,35 @@ export function SdFileSelector({
           </div>
         </div>
       </DialogContent>
+
+      <SdMediaContextMenu
+        state={ctxMenu}
+        onClose={() => setCtxMenu(null)}
+        onDelete={requestDelete}
+        disabled={deleting || listing}
+      />
+      <SdDeleteConfirmDialog
+        open={Boolean(deletePaths?.length)}
+        paths={deletePaths ?? []}
+        busy={deleting}
+        onChoose={(choice) => void onDeleteConfirm(choice)}
+      />
+      {deleteError ? (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 z-[140] max-w-md -translate-x-1/2 rounded-md border border-destructive/40 bg-card px-4 py-3 text-sm text-destructive shadow-lg"
+        >
+          <p className="font-medium">{t("sd.selector.deleteFailed")}</p>
+          <p className="mt-1 break-words text-muted">{deleteError}</p>
+          <button
+            type="button"
+            className="mt-2 text-xs font-medium text-foreground underline"
+            onClick={() => setDeleteError(null)}
+          >
+            {t("common.actions.ok")}
+          </button>
+        </div>
+      ) : null}
     </Dialog>
   );
 }

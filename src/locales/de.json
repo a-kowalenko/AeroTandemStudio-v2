@@ -910,6 +910,17 @@
       "keep": "Weiterlaufen lassen",
       "cancel": "Backup abbrechen"
     },
+    "sdDelete": {
+      "titleOne": "Datei von der SD-Karte löschen?",
+      "titleMany": "{{count}} Dateien von der SD-Karte löschen?",
+      "bodyOne": "„{{name}}“ wird dauerhaft von der Karte bzw. Kamera entfernt.",
+      "bodyMany": "Die ausgewählten Dateien werden dauerhaft von der Karte bzw. Kamera entfernt.",
+      "andMore": "… und {{count}} weitere",
+      "hint": "Zugehörige Proxies/Sidecars werden mitgelöscht. Das lässt sich nicht rückgängig machen.",
+      "confirmOne": "Löschen",
+      "confirmMany": "{{count}} löschen",
+      "deleting": "Wird gelöscht…"
+    },
     "bulkUploadSummary": {
       "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline).",
       "blocked": "{{count}} nicht möglich",
@@ -2269,7 +2280,11 @@
       "today": "Heute",
       "unknownDate": "Ohne Datum",
       "yesterday": "Gestern",
-      "importNeedsBackupMtp": "USB-Kamera: Import nur zusammen mit Backup möglich"
+      "importNeedsBackupMtp": "USB-Kamera: Import nur zusammen mit Backup möglich",
+      "contextDeleteOne": "Von SD löschen…",
+      "contextDeleteMany": "{{count}} von SD löschen…",
+      "contextSelectionCount": "{{count}} Dateien ausgewählt",
+      "deleteFailed": "Löschen fehlgeschlagen"
     },
     "catalog": {
       "filteredOnly": "Keine importierbaren Medien (nur Timelapse/Proxies).",

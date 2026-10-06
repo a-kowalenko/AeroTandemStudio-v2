@@ -341,6 +341,35 @@ pub fn clear_sd_files(paths: Vec<String>) -> Result<usize, String> {
     }
 }
 
+/// User-confirmed delete from the SD file selector (volume or MTP).
+#[tauri::command]
+pub async fn delete_sd_media_files(drive: String, paths: Vec<String>) -> Result<usize, String> {
+    logging::info(
+        "sd",
+        format!(
+            "SD-Dateien löschen (Confirm): drive={drive}, {} Datei(en)",
+            paths.len()
+        ),
+    );
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        SD_MONITOR.delete_selected_media_files(&drive, &paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match result {
+        Ok(n) => {
+            logging::info("sd", format!("SD-Dateien gelöscht: {n}"));
+            Ok(n)
+        }
+        Err(e) => {
+            let msg = e.to_string();
+            logging::error("sd", format!("SD-Dateien löschen fehlgeschlagen: {msg}"));
+            Err(msg)
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn import_sd_files(
     paths: Vec<String>,

@@ -452,6 +452,24 @@ impl BackupResult {
     }
 }
 
+/// True when `path` is on the volume identified by `drive` (`E:`, `/Volumes/…`, …).
+fn path_on_volume_drive(path: &str, drive: &str) -> bool {
+    let drive = drive.trim_end_matches(['/', '\\']);
+    if drive.is_empty() || path.is_empty() {
+        return false;
+    }
+    let path_n = path.replace('\\', "/");
+    let drive_n = drive.replace('\\', "/");
+    #[cfg(windows)]
+    let (p, d) = (
+        path_n.to_ascii_lowercase(),
+        drive_n.to_ascii_lowercase(),
+    );
+    #[cfg(not(windows))]
+    let (p, d) = (path_n, drive_n);
+    p == d || p.starts_with(&format!("{d}/"))
+}
+
 /// Normalize path strings for identity lookup (Windows: case + slash insensitive).
 fn identity_path_key(path: &str) -> String {
     #[cfg(windows)]
@@ -2666,12 +2684,126 @@ impl SdCardMonitor {
         }
     }
 
-    /// Standalone SD wipe is intentionally disabled — clear only after a successful backup.
+    /// Standalone SD wipe via the legacy `clear_sd_files` command — clear only after backup.
     #[allow(dead_code)]
     pub fn clear_media_files(&self, _paths: &[String]) -> Result<usize, SdError> {
         Err(SdError::Message(
             "SD-Bereinigung ist nur nach erfolgreichem Backup erlaubt".into(),
         ))
+    }
+
+    /// Interactive delete from the SD confirm dialog (user-confirmed selection).
+    /// Validates paths belong to `drive`, expands volume sidecars, then deletes.
+    pub fn delete_selected_media_files(
+        &self,
+        drive: &str,
+        paths: &[String],
+    ) -> Result<usize, SdError> {
+        if drive.trim().is_empty() {
+            return Err(SdError::Message("Kein Laufwerk angegeben".into()));
+        }
+        if paths.is_empty() {
+            return Ok(0);
+        }
+
+        if is_mtp_source(drive) {
+            for path in paths {
+                let pb = Path::new(path);
+                let Some((source_id, _)) =
+                    crate::sd_card::mtp::catalog::parse_mtp_virtual_media_path(pb)
+                else {
+                    return Err(SdError::Message(format!(
+                        "Pfad gehört nicht zur USB-Kamera: {path}"
+                    )));
+                };
+                if source_id != drive {
+                    return Err(SdError::Message(format!(
+                        "Pfad gehört zu einer anderen Kamera: {path}"
+                    )));
+                }
+            }
+            let deleted = self.delete_mtp_media_quiet(drive, paths)?;
+            self.invalidate_list_cache_for(&[drive.to_string()]);
+            return Ok(deleted);
+        }
+
+        for path in paths {
+            if !path_on_volume_drive(path, drive) {
+                return Err(SdError::Message(format!(
+                    "Pfad liegt nicht auf dem gewählten Laufwerk: {path}"
+                )));
+            }
+        }
+
+        let expanded = expand_files_for_sd_clear(paths);
+        let mut deleted = 0usize;
+        for path in &expanded {
+            let pb = Path::new(path);
+            if !pb.is_file() {
+                continue;
+            }
+            if fs::remove_file(pb).is_ok() {
+                deleted += 1;
+            }
+        }
+        // Remove empty dirs deepest-first (same as clear_sd_files).
+        let mut dirs: HashSet<PathBuf> = HashSet::new();
+        for path in &expanded {
+            if let Some(parent) = Path::new(path).parent() {
+                dirs.insert(parent.to_path_buf());
+            }
+        }
+        let mut sorted: Vec<_> = dirs.into_iter().collect();
+        sorted.sort_by_key(|p| std::cmp::Reverse(p.components().count()));
+        for dir in sorted {
+            if fs::read_dir(&dir)
+                .map(|mut d| d.next().is_none())
+                .unwrap_or(false)
+            {
+                let _ = fs::remove_dir(&dir);
+            }
+        }
+
+        if deleted == 0 {
+            return Err(SdError::Message(
+                "Keine Dateien gelöscht (bereits entfernt oder nicht erreichbar).".into(),
+            ));
+        }
+        self.invalidate_list_cache_for(&[drive.to_string()]);
+        Ok(deleted)
+    }
+
+    /// MTP/USB delete without workflow progress events (confirm-dialog use).
+    fn delete_mtp_media_quiet(&self, drive: &str, paths: &[String]) -> Result<usize, SdError> {
+        let names = expand_basenames_for_camera_clear(paths);
+        if names.is_empty() {
+            return Ok(0);
+        }
+        let label = usb_camera_label_for(drive).unwrap_or_else(|| drive.to_string());
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::sd_card::mtp::macos_ica::delete_camera_files_named;
+            delete_camera_files_named(drive, &label, &names, None)
+                .map_err(|e| SdError::Message(e.to_string()))
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use crate::sd_card::mtp::windows_wpd::delete_camera_files_named;
+            delete_camera_files_named(drive, &label, &names, None)
+                .map_err(|e| SdError::Message(e.to_string()))
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = (drive, label, names);
+            Err(SdError::Message(
+                "Kamera-Löschen über USB ist auf dieser Plattform noch nicht verfügbar. \
+                 Bitte MicroSD im Kartenleser nutzen."
+                    .into(),
+            ))
+        }
     }
 
     /// Import selected SD/backup files: mark history + return video/photo paths for UI.
@@ -3262,6 +3394,15 @@ pub fn find_dcim_drives() -> Vec<SdDriveInfo> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn path_on_volume_drive_accepts_children() {
+        assert!(path_on_volume_drive("E:/DCIM/x.MP4", "E:"));
+        assert!(path_on_volume_drive(r"E:\DCIM\x.MP4", "E:"));
+        assert!(path_on_volume_drive("/Volumes/GOPRO/DCIM/x.MP4", "/Volumes/GOPRO"));
+        assert!(!path_on_volume_drive("F:/DCIM/x.MP4", "E:"));
+        assert!(!path_on_volume_drive("/Volumes/OTHER/x.MP4", "/Volumes/GOPRO"));
+    }
 
     #[test]
     fn mtp_progress_gate_throttles_chunks_but_keeps_file_changes_and_completion() {

@@ -910,6 +910,17 @@
       "keep": "Keep running",
       "cancel": "Cancel backup"
     },
+    "sdDelete": {
+      "titleOne": "Delete file from the SD card?",
+      "titleMany": "Delete {{count}} files from the SD card?",
+      "bodyOne": "“{{name}}” will be permanently removed from the card or camera.",
+      "bodyMany": "The selected files will be permanently removed from the card or camera.",
+      "andMore": "… and {{count}} more",
+      "hint": "Related proxies/sidecars are deleted too. This cannot be undone.",
+      "confirmOne": "Delete",
+      "confirmMany": "Delete {{count}}",
+      "deleting": "Deleting…"
+    },
     "bulkUploadSummary": {
       "aborted": "{{count}} not started (cancelled or server offline).",
       "blocked": "{{count}} not possible",
@@ -2269,7 +2280,11 @@
       "today": "Today",
       "unknownDate": "No date",
       "yesterday": "Yesterday",
-      "importNeedsBackupMtp": "USB camera: import only together with backup"
+      "importNeedsBackupMtp": "USB camera: import only together with backup",
+      "contextDeleteOne": "Delete from SD…",
+      "contextDeleteMany": "Delete {{count}} from SD…",
+      "contextSelectionCount": "{{count}} files selected",
+      "deleteFailed": "Delete failed"
     },
     "catalog": {
       "filteredOnly": "No importable media (timelapse/proxies only).",

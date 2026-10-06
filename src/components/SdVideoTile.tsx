@@ -65,6 +65,8 @@ type Props = {
   /** Compact capture time shown right-aligned next to file size. */
   captureLabel?: string;
   selected: boolean;
+  /** Right-click marquee / delete-intent selection (red chrome). */
+  dangerSelected?: boolean;
   alreadyProcessed?: boolean;
   /** When true and file is not known, show a Neu badge (mixed known+new list). */
   showNewBadge?: boolean;
@@ -114,6 +116,7 @@ export const SdVideoTile = memo(function SdVideoTile({
   sizeLabel,
   captureLabel,
   selected,
+  dangerSelected = false,
   alreadyProcessed,
   showNewBadge = false,
   isActive,
@@ -694,7 +697,9 @@ export const SdVideoTile = memo(function SdVideoTile({
         // border-2 always — avoids 1px→2px layout jump on select
         "relative flex h-full flex-col overflow-hidden rounded-md border-2 text-left transition-colors",
         selected
-          ? "border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
+          ? dangerSelected
+            ? "border-destructive bg-destructive/15 ring-[3px] ring-destructive/55"
+            : "border-primary bg-primary-soft/50 ring-[3px] ring-primary/55"
           : "border-border/70",
         // Ring only when pinned (not mere hover-preview) — no flash on play start
         pinned && isActive && !selected && "ring-2 ring-primary/50",
@@ -740,7 +745,12 @@ export const SdVideoTile = memo(function SdVideoTile({
               onSelect(path, false);
             }}
             aria-label={t("common.actions.selectNamed", { name: filename })}
-            className="h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary"
+            className={cn(
+              "h-5 w-5 border-2 border-white/90 bg-black/50 shadow-sm",
+              dangerSelected
+                ? "data-[state=checked]:border-destructive data-[state=checked]:bg-destructive"
+                : "data-[state=checked]:border-primary data-[state=checked]:bg-primary",
+            )}
           />
         </div>
 

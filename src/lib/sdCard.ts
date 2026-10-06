@@ -279,6 +279,14 @@ export async function clearSdFiles(paths: string[]): Promise<number> {
   return invoke<number>("clear_sd_files", { paths });
 }
 
+/** User-confirmed delete from the SD confirm dialog (volume or MTP). */
+export async function deleteSdMediaFiles(
+  drive: string,
+  paths: string[],
+): Promise<number> {
+  return invoke<number>("delete_sd_media_files", { drive, paths });
+}
+
 export async function declineSdBackup(drive: string): Promise<void> {
   return invoke("decline_sd_backup", { drive });
 }
