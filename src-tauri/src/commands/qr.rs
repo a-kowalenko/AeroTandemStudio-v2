@@ -7,10 +7,11 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::model::Kunde;
 use crate::qr::analyser::{
-    discard_qr_preview, scan_photo, scan_video_clip_with_progress, CleanupDirection, QrPreview,
-    QrScanOptions, QrScanResult as CoreResult, QrSpotlight,
+    discard_qr_preview, scan_photo_with_progress, scan_video_clip_with_progress, CleanupDirection,
+    QrPreview, QrScanOptions, QrScanResult as CoreResult, QrSpotlight,
 };
 use crate::qr::followup::scan_series_followup_hits;
+use crate::qr::live;
 use crate::qr::parallel::{
     ends_first_edge_jobs, scan_photos_hybrid_with_progress, scan_videos_hybrid_with_progress,
     PHOTO_EDGE_SCAN_PER_SIDE, VIDEO_EDGE_SCAN_PER_SIDE,
@@ -84,6 +85,14 @@ pub struct QrScanProgressEvent {
     pub frames_total: u32,
 }
 
+/// Unthrottled live decode-frame path for the progress UI (tiny JPEG or original photo).
+#[derive(Debug, Clone, Serialize)]
+pub struct QrScanLiveEvent {
+    pub path: String,
+    pub live_path: String,
+    pub gen: u64,
+}
+
 /// Live status while removing neighboring QR carrier photos after a hit.
 #[derive(Debug, Clone, Serialize)]
 pub struct QrFollowupProgressEvent {
@@ -110,6 +119,29 @@ impl From<CoreResult> for QrScanResultDto {
             numeric_ids: r.numeric_ids,
         }
     }
+}
+
+struct LiveSinkGuard;
+
+impl Drop for LiveSinkGuard {
+    fn drop(&mut self) {
+        live::teardown();
+    }
+}
+
+fn install_live_sink(app: &AppHandle) -> LiveSinkGuard {
+    let emit_app = app.clone();
+    live::set_sink(Some(Arc::new(move |path, live_path, gen| {
+        let _ = emit_app.emit(
+            "qr-scan-live",
+            QrScanLiveEvent {
+                path,
+                live_path,
+                gen,
+            },
+        );
+    })));
+    LiveSinkGuard
 }
 
 fn resolve_ffmpeg(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -230,6 +262,7 @@ pub async fn scan_qr_video(
     let ffmpeg = resolve_ffmpeg(&app)?;
     let opts = options_from_config(&read_config(&config));
     let on_progress = make_progress_cb(app.clone());
+    let _live = install_live_sink(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         on_progress(&path, "start", 0, 0);
@@ -266,10 +299,15 @@ pub async fn scan_qr_photo(
     let mut opts = options_from_config(&read_config(&config));
     opts.photo_try_harder = true;
     let on_progress = make_progress_cb(app.clone());
+    let _live = install_live_sink(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         on_progress(&path, "start", 0, 0);
-        let res = scan_photo(&ffmpeg, &path, &opts, None).map_err(|e| e.to_string())?;
+        let progress = |p: &str, phase: &str, frame: u32, total: u32| {
+            on_progress(p, phase, frame, total);
+        };
+        let res = scan_photo_with_progress(&ffmpeg, &path, &opts, None, Some(&progress))
+            .map_err(|e| e.to_string())?;
         on_progress(&path, if res.found { "hit" } else { "done" }, 0, 0);
         Ok::<_, String>((path, res))
     })
@@ -319,6 +357,7 @@ pub async fn scan_qr_videos(
         }
     });
     let on_progress = make_progress_cb(app.clone());
+    let _live = install_live_sink(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let cb = |path: &str, phase: &str, frame: u32, frames_total: u32| {
@@ -398,6 +437,7 @@ pub async fn scan_qr_photos(
         }
     });
     let on_progress = make_progress_cb(app.clone());
+    let _live = install_live_sink(&app);
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let cb = |path: &str, phase: &str, frame: u32, frames_total: u32| {
@@ -471,6 +511,7 @@ pub async fn scan_qr_photo_followups(
     );
 
     let app_progress = app.clone();
+    let _live = install_live_sink(&app);
     let hits = tauri::async_runtime::spawn_blocking(move || {
         let cb = |path: &str, phase: &str, scanned: usize, extra_hits: usize| {
             let _ = app_progress.emit(

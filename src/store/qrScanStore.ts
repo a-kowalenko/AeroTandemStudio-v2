@@ -41,6 +41,24 @@ export type QrClipFrameProgress = {
 /** Color legend under QR stripes. */
 export type QrScanLegend = "pace" | "followup";
 
+export type QrLiveTone = "scan" | "hit" | "miss" | "removed";
+
+export type QrLiveFrame = {
+  key: string;
+  mediaPath: string;
+  livePath: string;
+  gen: number;
+  tone: QrLiveTone;
+};
+
+function patchLiveTone(
+  frames: QrLiveFrame[],
+  key: string,
+  tone: QrLiveTone,
+): QrLiveFrame[] {
+  return frames.map((f) => (f.key === key ? { ...f, tone } : f));
+}
+
 type QrScanState = {
   busy: boolean;
   stage: QrScanJobStage;
@@ -50,6 +68,8 @@ type QrScanState = {
   scanOrder: string[];
   /** Normalized path → frame progress for active video clips. */
   clipProgress: Record<string, QrClipFrameProgress>;
+  /** Decode-frame previews currently on screen (max one per active worker). */
+  liveFrames: QrLiveFrame[];
   followup: QrFollowupStatus | null;
   /** True when photo stripes are only list-end candidates (N=20 per side). */
   photoEdgeLimited: boolean;
@@ -71,6 +91,8 @@ type QrScanState = {
     mode?: QrClipScanPace,
   ) => void;
   clearClipProgress: (path: string) => void;
+  setLiveFrame: (mediaPath: string, livePath: string, gen: number) => void;
+  clearLiveFrame: (path: string) => void;
   setFollowup: (status: QrFollowupStatus) => void;
   /** Paint stripes red before photos leave the media list. */
   markRemoved: (paths: string[]) => void;
@@ -425,6 +447,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   byPath: {},
   scanOrder: [],
   clipProgress: {},
+  liveFrames: [],
   followup: null,
   photoEdgeLimited: false,
   videoEdgeLimited: false,
@@ -441,6 +464,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       byPath,
       scanOrder: unique,
       clipProgress: {},
+      liveFrames: [],
       followup: stage === "followup" ? emptyFollowup() : null,
       photoEdgeLimited: Boolean(options?.photoEdgeLimited),
       videoEdgeLimited: Boolean(options?.videoEdgeLimited),
@@ -457,12 +481,30 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     if (hitKey in byPath) {
       byPath[hitKey] = "hit";
     }
+    const kept = get()
+      .liveFrames.filter((f) => f.key === hitKey)
+      .map((f) => ({ ...f, tone: "hit" as const }));
+    const liveFrames =
+      kept.length > 0
+        ? kept
+        : hitPath.trim()
+          ? [
+              {
+                key: hitKey,
+                mediaPath: hitPath,
+                livePath: hitPath,
+                gen: 1,
+                tone: "hit" as const,
+              },
+            ]
+          : [];
     set({
       busy: true,
       stage: "followup",
       byPath,
       scanOrder: unique,
       clipProgress: {},
+      liveFrames,
       followup: emptyFollowup(),
       photoEdgeLimited: false,
       videoEdgeLimited: false,
@@ -485,17 +527,24 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     const key = normalizeMediaPath(path);
     if (!get().byPath[key] && !get().busy) return;
     const clipProgress = { ...get().clipProgress };
-    if (
-      phase === "done" ||
-      phase === "hit" ||
-      phase === "pending" ||
-      phase === "removed"
-    ) {
+    let liveFrames = get().liveFrames;
+    if (phase === "pending") {
       delete clipProgress[key];
+      liveFrames = liveFrames.filter((f) => f.key !== key);
+    } else if (phase === "done") {
+      delete clipProgress[key];
+      liveFrames = patchLiveTone(liveFrames, key, "miss");
+    } else if (phase === "hit") {
+      delete clipProgress[key];
+      liveFrames = patchLiveTone(liveFrames, key, "hit");
+    } else if (phase === "removed") {
+      delete clipProgress[key];
+      liveFrames = patchLiveTone(liveFrames, key, "removed");
     }
     set({
       byPath: { ...get().byPath, [key]: phase },
       clipProgress,
+      liveFrames,
     });
   },
 
@@ -536,6 +585,33 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     set({ clipProgress });
   },
 
+  setLiveFrame: (mediaPath, livePath, gen) => {
+    const key = normalizeMediaPath(mediaPath);
+    const path = livePath.trim();
+    if (!key || !path) return;
+    const phase = get().byPath[key];
+    if (!get().busy || phase === "removed") return;
+    const tone: QrLiveTone =
+      phase === "hit" ? "hit" : phase === "done" ? "miss" : "scan";
+    const next: QrLiveFrame = {
+      key,
+      mediaPath,
+      livePath: path,
+      gen: Math.max(0, Math.floor(gen)),
+      tone,
+    };
+    const rest = get().liveFrames.filter((f) => f.key !== key);
+    rest.push(next);
+    set({ liveFrames: rest.slice(-6) });
+  },
+
+  clearLiveFrame: (path) => {
+    const key = normalizeMediaPath(path);
+    const liveFrames = get().liveFrames.filter((f) => f.key !== key);
+    if (liveFrames.length === get().liveFrames.length) return;
+    set({ liveFrames });
+  },
+
   setFollowup: (status) => {
     set({
       stage: "followup",
@@ -553,7 +629,25 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       byPath[key] = "removed";
       delete clipProgress[key];
     }
-    set({ byPath, clipProgress });
+    const existing = new Map(get().liveFrames.map((f) => [f.key, f]));
+    const liveFrames: QrLiveFrame[] = [];
+    for (const path of paths) {
+      const key = normalizeMediaPath(path);
+      if (!key) continue;
+      const prev = existing.get(key);
+      liveFrames.push({
+        key,
+        mediaPath: path,
+        livePath: prev?.livePath || path,
+        gen: (prev?.gen ?? 0) + 1,
+        tone: "removed",
+      });
+    }
+    set({
+      byPath,
+      clipProgress,
+      liveFrames: liveFrames.slice(-6),
+    });
   },
 
   end: () =>
@@ -563,6 +657,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       byPath: {},
       scanOrder: [],
       clipProgress: {},
+      liveFrames: [],
       followup: null,
       photoEdgeLimited: false,
       videoEdgeLimited: false,

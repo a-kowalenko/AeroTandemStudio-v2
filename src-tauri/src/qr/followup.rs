@@ -78,6 +78,7 @@ fn walk_direction(
         if let Some(cb) = on_progress {
             cb(path, "start", scanned_before, hits_before);
         }
+        super::live::publish_photo(path);
 
         let found = detect(path);
         let scanned_after = scans_used.fetch_add(1, Ordering::SeqCst) + 1;
@@ -123,6 +124,7 @@ pub fn scan_series_followup_hits(
     let Some(hit_idx) = hit_index_in_list(ordered_paths, hit_path) else {
         return Ok(Vec::new());
     };
+    super::live::publish_photo(hit_path);
 
     let visited = Mutex::new({
         let mut s = HashSet::new();

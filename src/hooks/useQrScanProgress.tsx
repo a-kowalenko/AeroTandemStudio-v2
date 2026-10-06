@@ -16,6 +16,12 @@ export type QrScanProgressPayload = {
   frames_total?: number;
 };
 
+export type QrScanLivePayload = {
+  path: string;
+  live_path: string;
+  gen: number;
+};
+
 export type QrFollowupProgressPayload = {
   path: string;
   phase: string;
@@ -28,10 +34,12 @@ export function useQrScanProgressListener() {
   const setPhase = useQrScanStore((s) => s.setPhase);
   const setClipProgress = useQrScanStore((s) => s.setClipProgress);
   const setFollowup = useQrScanStore((s) => s.setFollowup);
+  const setLiveFrame = useQrScanStore((s) => s.setLiveFrame);
 
   useEffect(() => {
     let unlistenScan: (() => void) | undefined;
     let unlistenFollowup: (() => void) | undefined;
+    let unlistenLive: (() => void) | undefined;
 
     void listen<QrScanProgressPayload>("qr-scan-progress", (event) => {
       const { path, phase, frame, frames_total } = event.payload;
@@ -89,11 +97,20 @@ export function useQrScanProgressListener() {
       unlistenFollowup = fn;
     });
 
+    void listen<QrScanLivePayload>("qr-scan-live", (event) => {
+      const { path, live_path, gen } = event.payload;
+      if (!path || !live_path) return;
+      setLiveFrame(path, live_path, Number(gen) || 0);
+    }).then((fn) => {
+      unlistenLive = fn;
+    });
+
     return () => {
       unlistenScan?.();
       unlistenFollowup?.();
+      unlistenLive?.();
     };
-  }, [setPhase, setClipProgress, setFollowup]);
+  }, [setPhase, setClipProgress, setFollowup, setLiveFrame]);
 }
 
 export function QrScanRowBar({ path }: { path: string }) {

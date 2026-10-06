@@ -20,6 +20,7 @@ import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ProgressIndicator } from "./ProgressIndicator";
 import { CreateJobPipelineStepper } from "./CreateJobPipelineStepper";
+import { QrLiveScanStrip } from "./QrLiveScanStrip";
 import { Button } from "./ui/button";
 import { SessionOutcomeCard } from "./SessionOutcomeCard";
 import { cn } from "../lib/utils";
@@ -529,6 +530,7 @@ export function WorkflowProgressPanel({
             cancelling && "opacity-55",
           )}
         >
+          <QrLiveScanStrip />
           <ProgressIndicator
             percent={snapshot.percent}
             label={snapshot.label}

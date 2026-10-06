@@ -125,8 +125,8 @@ export async function maybeRemoveQrPhoto(
 
     const removeList = [...toRemove];
     store.markRemoved(removeList);
-    // Brief pause so red stripes are readable before list rows disappear.
-    await sleep(900);
+    // Hold so red stripes + live remove animation are readable.
+    await sleep(950);
     result.removedPhotos = removePhotosByPaths(removeList);
   } finally {
     store.end();

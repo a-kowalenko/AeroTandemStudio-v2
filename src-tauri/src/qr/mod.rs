@@ -2,5 +2,6 @@
 
 pub mod analyser;
 pub mod followup;
+pub mod live;
 pub mod parallel;
 pub mod series;

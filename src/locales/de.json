@@ -1904,7 +1904,13 @@
       "unitPhotos": "Fotos",
       "unitVideos": "Videos",
       "fastPhoto": "Schnelle Foto-Prüfung…",
-      "thoroughPhoto": "Gründliche Foto-Prüfung…"
+      "thoroughPhoto": "Gründliche Foto-Prüfung…",
+      "liveAria": "Aktuelles QR-Prüfframe",
+      "liveAlt": "QR-Prüfung: {{name}}",
+      "liveScanning": "Scan",
+      "liveHit": "Treffer",
+      "liveMiss": "Kein Code",
+      "liveRemoved": "Entfernen"
     },
     "confirm": {
       "currentCustomer": "Aktueller Kunde",

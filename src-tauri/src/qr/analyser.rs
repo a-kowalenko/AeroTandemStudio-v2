@@ -1417,6 +1417,7 @@ pub fn scan_photo_with_progress(
 
     // Caller already wants full cascade (manual single scan) — one thorough pass.
     if options.photo_try_harder {
+        super::live::publish_photo(path);
         notify("thorough", 1, 1);
         return decode_photo_at(
             path,
@@ -1428,6 +1429,7 @@ pub fn scan_photo_with_progress(
         );
     }
 
+    super::live::publish_photo(path);
     notify("fast", 1, 2);
     let fast = decode_photo_at(path, options.max_photo_width, false)?;
     if fast.found || fast.cancelled {
@@ -1437,6 +1439,7 @@ pub fn scan_photo_with_progress(
         return Ok(QrScanResult::cancelled());
     }
 
+    super::live::publish_photo(path);
     notify("thorough", 2, 2);
     logging::debug(
         "qr",
@@ -1794,6 +1797,7 @@ fn try_quick_anchor_pass(
         if !frame_path.is_file() {
             continue;
         }
+        super::live::publish_image(path, &frame_path);
 
         if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, max_width)? {
             logging::info(
@@ -1968,6 +1972,7 @@ fn scan_video_topk_hq_pass(
         if !frame_path.is_file() {
             continue;
         }
+        super::live::publish_image(path, &frame_path);
         notify(progress_phase, (i as u32).saturating_add(1), frames_total);
 
         if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
@@ -2045,6 +2050,7 @@ fn scan_video_clip_seek_fallback(
             continue;
         }
         frames_read += 1;
+        super::live::publish_image(path, &frame_path);
         notify("thorough", (i as u32).saturating_add(1), frames_total);
 
         if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
@@ -2082,6 +2088,7 @@ fn scan_video_clip_seek_fallback(
             if !frame_path.is_file() {
                 continue;
             }
+            super::live::publish_image(path, &frame_path);
             notify("thorough", (i as u32).saturating_add(1), seq_total);
             if let Some((parsed, preview)) = decode_kunde_from_image_path(&frame_path, hq_w)? {
                 logging::info(
