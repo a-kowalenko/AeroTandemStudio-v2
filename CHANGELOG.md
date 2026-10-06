@@ -15,6 +15,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Nach Import und SD-Workflow: Abschlusskarte mit Ergebnis und Schritten — blendet sich selbst aus; Maus darüber hält den Timer an
 - Vorgänge → Medien: Vollbild für Fotos und Videos — Pfeiltasten zum Blättern, Escape zum Schließen
 - Upload: Ordner auf dem Server existiert schon — Rückfrage statt Abbruch: als erledigt markieren, unvollständigen Ordner ersetzen und neu hochladen, oder später unter Vorgänge nachholen
+- SD- und USB-Import: ausgewählte Dateien direkt von der Karte bzw. Kamera löschen — mit Rückfrage
+- QR-Scan: Live-Vorschau der geprüften Bilder im Fortschritt — erkennbar, ob Code gefunden, nicht gefunden oder Foto entfernt wurde
 
 ### Verbessert
 
@@ -29,13 +31,11 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Erstellen: „Erfolgreich erstellt“ als Karte im Fortschritt statt als Dialog — mit Ergebnis, „Zum Speicherort“ und „Abspielen“; ohne laufenden Upload blendet sie sich selbst aus, Maus darüber hält den Timer an
 - Upload: nach erfolgreichem Hochladen bleibt die Leiste kurz mit dem Ergebnis stehen und blendet sich dann selbst aus; Maus darüber hält den Timer an
 - Vorgänge → Medien: Fotos im Vollbild schärfer und flüssiger beim Blättern — Nachbarbilder werden vorbereitet
+- Server-Status: optionale zweite Freigabe (Backup-URL im Profil) wird mitgeprüft — fehlende URL und Verbindungsfehler klar in der Kopfzeile
 
 ### Behoben
 
 - Upload / Nachreichen: bereits abgeschlossene Vorgänge werden nicht erneut zum Hochladen angeboten
-
-
-
 
 
 ## [0.8.0-beta.1] - 2026-10-06
