@@ -243,13 +243,7 @@ export function AppShell({
                 ) : (
                   <RotateCcw className="h-3.5 w-3.5" aria-hidden />
                 )}
-                <span>
-                  {resetPhase === "loading"
-                    ? t("app.session.resetting")
-                    : resetPhase === "done"
-                      ? t("app.session.resetFlash")
-                      : t("app.chrome.reset")}
-                </span>
+                <span>{t("app.chrome.reset")}</span>
               </Button>
               <SettingsCluster
                 disabled={!ready}
