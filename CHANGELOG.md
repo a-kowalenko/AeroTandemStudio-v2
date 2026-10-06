@@ -27,21 +27,20 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Status-Hinweise und Toasts: Auto-Ausblenden pausiert beim Darüberfahren; einheitlicher Fortschrittsbalken
 - SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
 - SD-Import nach Backup: spürbar schneller — bereits gesicherte Dateien werden nicht erneut durchgerechnet
-- Vorgänge → Medien: Liste seitenweise (Standard 50 Einträge)
+- Vorgänge: Liste seitenweise (Standard 25 Einträge); Medien seitenweise (Standard 50)
 - Foto-Vorschau: Vergrößern und Verkleinern mit flüssiger Animation statt getrennter Ansichten
 - Vorgänge: Liste bleibt bedienbar, wenn Netzlaufwerk oder NAS nicht erreichbar ist — fehlende Ordner werden schnell erkannt
 - USB-Kamera-Import: Fortschritt aktualisiert sich gleichmäßiger während des Kopierens
 - Buchungssuche und Server-Anfragen: reagieren zuverlässiger bei Zeitüberschreitung oder Verbindungsproblemen
 - Erstellen: „Erfolgreich erstellt“ als Karte im Fortschritt statt als Dialog — mit Ergebnis, „Zum Speicherort“ und „Abspielen“; ohne laufenden Upload blendet sie sich selbst aus, Maus darüber hält den Timer an
-- Upload: nach erfolgreichem Hochladen bleibt die Leiste kurz mit dem Ergebnis stehen und blendet sich dann selbst aus; Maus darüber hält den Timer an
+- Upload / Nachholen: Kopfzeile mit Gast, Medien und Crew — „Abspielen“ und Ordner öffnen; Fortschritt mit Prozent, Größe und Tempo
+- Upload: nach Erfolg bleibt die Leiste kurz mit dem Ergebnis stehen und blendet sich dann selbst aus; bei Fehler Hinweis zum Nachholen unter Vorgänge; keine doppelte Erfolgsmeldung mehr
 - Vorgänge → Medien: Fotos im Vollbild schärfer und flüssiger beim Blättern — Nachbarbilder werden vorbereitet
 - Server-Status: optionale zweite Freigabe (Backup-URL im Profil) wird mitgeprüft — fehlende URL und Verbindungsfehler klar in der Kopfzeile
 
 ### Behoben
 
 - Upload / Nachreichen: bereits abgeschlossene Vorgänge werden nicht erneut zum Hochladen angeboten
-
-
 
 
 
