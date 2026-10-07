@@ -6,6 +6,7 @@ import {
   canRunAmsIdLookup,
   formatTypeChoiceDetail,
   isAmsBridgeConfigured,
+  isCloudLookupAvailable,
   isLookupIdPairReady,
   applyBridgeCustomerToKunde,
 } from "@/lib/amsLookup";
@@ -95,6 +96,7 @@ export async function resolveQrNumericIds(
     configured: isAmsBridgeConfigured(config),
     connected: ams.connected,
     capabilities: ams.capabilities,
+    cloudLookupAvailable: isCloudLookupAvailable(config),
   });
 
   if (!lookupLive) {

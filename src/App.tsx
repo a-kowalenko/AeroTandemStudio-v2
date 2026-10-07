@@ -1079,6 +1079,7 @@ function App() {
           import: 4,
           server: 5,
           ams: 6,
+          cloud: 7,
         };
         statusActions.sort((a, b) => order[a.kind] - order[b.kind]);
 

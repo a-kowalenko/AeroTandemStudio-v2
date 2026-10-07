@@ -23,9 +23,17 @@ import {
 } from "@/lib/amsBridgeStatus";
 import {
   presentAmsConnectionAction,
+  presentCloudLookupProbeAction,
+  presentHeaderRetryOutcome,
   presentServerConnectionAction,
 } from "@/lib/headerConnectionStatus";
-import { amsBridgeDiscover, amsBridgeHealth, getConfig } from "@/lib/tauri";
+import { syncCloudLookupConfigLocal } from "@/lib/bookingLookupGate";
+import {
+  amsBridgeDiscover,
+  amsBridgeHealth,
+  cloudLookupProbe,
+  getConfig,
+} from "@/lib/tauri";
 import type { AmsBridgeDiscovered } from "@/lib/tauri";
 import { showAdvanced } from "@/lib/settingsUi";
 import { SettingsHintIcon } from "../SettingsHintIcon";
@@ -51,6 +59,7 @@ export function ServerTab({
   const closeDialog = useUiStore((s) => s.closeDialog);
   const checkConnection = useServerStore((s) => s.checkConnection);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
+  const applyCloudProbe = useAmsBridgeStore((s) => s.applyCloudProbe);
   const persistConfig = useConfigStore((s) => s.persist);
   const serverPhase = useServerStore((s) => s.phase);
   const serverMessage = useServerStore((s) => s.message);
@@ -148,12 +157,24 @@ export function ServerTab({
         return;
       }
       setDraft(saved);
+      // AMS first (may refresh JWT), then Cloud probe with stored token.
       const result = await checkAmsHealth();
+      const cloudProbe = await cloudLookupProbe().catch((e) => ({
+        ok: false,
+        status: "error" as const,
+        message: String(e),
+        cloud_base_url: "",
+        token_cleared: false,
+      }));
+      applyCloudProbe(cloudProbe);
       const refreshed = await getConfig();
       useConfigStore.getState().updateLocal({
         ams_bridge_instance_id: refreshed.ams_bridge_instance_id,
         ams_bridge_display_name: refreshed.ams_bridge_display_name,
         ams_bridge_server_instance_id: refreshed.ams_bridge_server_instance_id,
+      });
+      syncCloudLookupConfigLocal(refreshed, (patchCloud) => {
+        useConfigStore.getState().updateLocal(patchCloud);
       });
       setDraft((current) =>
         current
@@ -162,39 +183,77 @@ export function ServerTab({
               ams_bridge_instance_id: refreshed.ams_bridge_instance_id,
               ams_bridge_display_name: refreshed.ams_bridge_display_name,
               ams_bridge_server_instance_id: refreshed.ams_bridge_server_instance_id,
+              cloud_lookup_access_token: refreshed.cloud_lookup_access_token,
+              cloud_lookup_expires_at: refreshed.cloud_lookup_expires_at,
+              cloud_lookup_cloud_base_url: refreshed.cloud_lookup_cloud_base_url,
+              cloud_lookup_ams_server_instance_id:
+                refreshed.cloud_lookup_ams_server_instance_id,
             }
           : current,
       );
-      const action = presentAmsConnectionAction({
+      const outcome = presentHeaderRetryOutcome({
+        smb: null,
+        ams: result,
+        cloud: cloudProbe,
+        serverUrl: "",
+        login: "",
+        password: "",
+      });
+      const amsAction = presentAmsConnectionAction({
         ok: result.ok,
         rawMessage: result.message,
         displayName: result.health?.display_name ?? refreshed.ams_bridge_display_name,
         baseUrl: result.base_url,
       });
+      const cloudAction =
+        cloudProbe.status !== "no_token"
+          ? presentCloudLookupProbeAction(cloudProbe)
+          : null;
       if (result.ok) {
-        setBridgeLabel(action.summary);
-        showSuccess(
-          "",
-          formatAmsConnectionDialogTitle(
-            result.health?.display_name ?? refreshed.ams_bridge_display_name,
-          ),
-          {
-            actions: [action],
-            autoCloseSecs: 3,
-          },
-        );
+        setBridgeLabel(amsAction.summary);
         if (result.base_url) {
           patch("ams_bridge_last_ok_url", result.base_url);
         }
+      } else if (cloudProbe.ok) {
+        setBridgeLabel(cloudAction?.summary ?? t("ams.status.viaCloud"));
       } else {
         const presented = presentAmsBridgeError({
           rawMessage: result.message,
           omitSettingsAction: true,
         });
         setBridgeLabel(presented.message);
-        showSuccess("", t("header.connection.titleFailed"), {
-          actions: [action],
+      }
+      if (outcome) {
+        showSuccess("", outcome.title, {
+          actions: outcome.actions,
+          autoCloseSecs: outcome.autoCloseSecs ?? undefined,
+          confirm:
+            outcome.kind === "error" && outcome.primaryAction
+              ? {
+                  secondaryLabel: t("common.actions.ok"),
+                  primaryLabel: outcome.primaryAction.label,
+                  onSecondary: () => closeDialog(),
+                  onPrimary: () => {
+                    const focus = outcome.primaryAction?.openSettings;
+                    closeDialog();
+                    if (focus) useUiStore.getState().openSettings(focus);
+                  },
+                }
+              : null,
         });
+      } else {
+        showSuccess(
+          "",
+          result.ok
+            ? formatAmsConnectionDialogTitle(
+                result.health?.display_name ?? refreshed.ams_bridge_display_name,
+              )
+            : t("header.connection.titleFailed"),
+          {
+            actions: [amsAction, ...(cloudAction ? [cloudAction] : [])],
+            autoCloseSecs: result.ok ? 3 : undefined,
+          },
+        );
       }
     } catch (err) {
       const presented = presentAmsBridgeError({

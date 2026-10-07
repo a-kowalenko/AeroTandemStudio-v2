@@ -8,6 +8,7 @@ import {
   amsLookupStatusSearching,
   askAmsTypeChoice,
   canRunAmsIdLookup,
+  isCloudLookupAvailable,
   formatAmsLookupFoundLine,
   formatTypeChoiceDetail,
   isAmsBridgeConfigured,
@@ -108,6 +109,7 @@ export function useAmsIdLookup(opts: {
     configured: bridgeConfigured,
     connected: amsConnected,
     capabilities: amsCapabilities,
+    cloudLookupAvailable: isCloudLookupAvailable(config),
   });
   const bridgeKey = `${config?.ams_bridge_url ?? ""}\0${config?.ams_bridge_token ?? ""}\0${config?.ams_bridge_last_ok_url ?? ""}`;
   const idsMatchApplied =

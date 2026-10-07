@@ -320,6 +320,18 @@ pub struct AppConfig {
     /// Stable UUID of the connected AMS server (from health / mDNS).
     #[serde(default)]
     pub ams_bridge_server_instance_id: String,
+    /// Phase 53: Cloud-Lookup JWT (`customer.lookup`). Never log this value.
+    #[serde(default)]
+    pub cloud_lookup_access_token: String,
+    /// Phase 53: RFC3339 expiry of `cloud_lookup_access_token`.
+    #[serde(default)]
+    pub cloud_lookup_expires_at: String,
+    /// Phase 53: Cloud origin for lookup (`https://…`), from AMS client-token.
+    #[serde(default)]
+    pub cloud_lookup_cloud_base_url: String,
+    /// Phase 53: AMS instance that issued the Cloud-Lookup JWT.
+    #[serde(default)]
+    pub cloud_lookup_ams_server_instance_id: String,
     /// macOS post-update hint: set before `update.install()`, cleared on „Verstanden“.
     #[serde(default)]
     pub post_update_hint_pending_version: String,
@@ -846,6 +858,24 @@ impl AppConfig {
             sanitize_instructor_foto_filename(&self.instructor_foto_filename);
     }
 
+    /// Phase 53: trim Cloud-Lookup JWT fields; clear dependents when token empty.
+    pub fn sync_cloud_lookup_token(&mut self) {
+        self.cloud_lookup_access_token = self.cloud_lookup_access_token.trim().to_string();
+        self.cloud_lookup_expires_at = self.cloud_lookup_expires_at.trim().to_string();
+        self.cloud_lookup_cloud_base_url = self
+            .cloud_lookup_cloud_base_url
+            .trim()
+            .trim_end_matches('/')
+            .to_string();
+        self.cloud_lookup_ams_server_instance_id =
+            self.cloud_lookup_ams_server_instance_id.trim().to_string();
+        if self.cloud_lookup_access_token.is_empty() {
+            self.cloud_lookup_expires_at.clear();
+            self.cloud_lookup_cloud_base_url.clear();
+            self.cloud_lookup_ams_server_instance_id.clear();
+        }
+    }
+
     /// Canonicalize `settings_ui_mode` to `simple` | `advanced`.
     pub fn sync_settings_ui_mode(&mut self) {
         self.settings_ui_mode = if self
@@ -1071,6 +1101,28 @@ impl AppConfig {
             }
         }
     }
+
+    /// Keep Cloud-Lookup JWT when the UI omits the hidden fields on save.
+    pub fn preserve_cloud_lookup_token_from(&mut self, existing: &AppConfig) {
+        if !self.cloud_lookup_access_token.trim().is_empty() {
+            return;
+        }
+        let token = existing.cloud_lookup_access_token.trim();
+        if token.is_empty() {
+            return;
+        }
+        self.cloud_lookup_access_token = token.to_string();
+        if self.cloud_lookup_expires_at.trim().is_empty() {
+            self.cloud_lookup_expires_at = existing.cloud_lookup_expires_at.clone();
+        }
+        if self.cloud_lookup_cloud_base_url.trim().is_empty() {
+            self.cloud_lookup_cloud_base_url = existing.cloud_lookup_cloud_base_url.clone();
+        }
+        if self.cloud_lookup_ams_server_instance_id.trim().is_empty() {
+            self.cloud_lookup_ams_server_instance_id =
+                existing.cloud_lookup_ams_server_instance_id.clone();
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -1147,6 +1199,10 @@ impl Default for AppConfig {
             ams_bridge_last_ok_url: String::new(),
             ams_bridge_display_name: String::new(),
             ams_bridge_server_instance_id: String::new(),
+            cloud_lookup_access_token: String::new(),
+            cloud_lookup_expires_at: String::new(),
+            cloud_lookup_cloud_base_url: String::new(),
+            cloud_lookup_ams_server_instance_id: String::new(),
             post_update_hint_pending_version: String::new(),
             post_update_hint_ack_version: String::new(),
             auto_cleanup_jobs_enabled: false,
@@ -1420,6 +1476,7 @@ impl ConfigStore {
         normalized.sync_sd_server_backup_mode();
         normalized.sync_outro();
         normalized.sync_instructor_foto();
+        normalized.sync_cloud_lookup_token();
         normalized.push_active_profile_from_flat();
         normalized.sync_server_profiles();
         crate::storage::logging::apply_min_level_from_config(&normalized.log_min_level);
@@ -2014,6 +2071,40 @@ mod tests {
             incoming.ams_bridge_instance_id,
             "22222222-2222-4222-8222-222222222222"
         );
+    }
+
+    #[test]
+    fn preserve_cloud_lookup_token_keeps_existing_when_incoming_empty() {
+        let mut incoming = AppConfig::default();
+        let mut existing = AppConfig::default();
+        existing.cloud_lookup_access_token = "jwt-secret".into();
+        existing.cloud_lookup_expires_at = "2026-10-09T12:00:00.000Z".into();
+        existing.cloud_lookup_cloud_base_url = "https://cloud.example".into();
+        existing.cloud_lookup_ams_server_instance_id = "ams-1".into();
+
+        incoming.preserve_cloud_lookup_token_from(&existing);
+        assert_eq!(incoming.cloud_lookup_access_token, "jwt-secret");
+        assert_eq!(incoming.cloud_lookup_expires_at, "2026-10-09T12:00:00.000Z");
+        assert_eq!(incoming.cloud_lookup_cloud_base_url, "https://cloud.example");
+        assert_eq!(incoming.cloud_lookup_ams_server_instance_id, "ams-1");
+
+        incoming.cloud_lookup_access_token = "newer".into();
+        incoming.preserve_cloud_lookup_token_from(&existing);
+        assert_eq!(incoming.cloud_lookup_access_token, "newer");
+    }
+
+    #[test]
+    fn sync_cloud_lookup_token_clears_dependents_when_token_empty() {
+        let mut cfg = AppConfig::default();
+        cfg.cloud_lookup_access_token = "  ".into();
+        cfg.cloud_lookup_expires_at = "2026-10-09T12:00:00.000Z".into();
+        cfg.cloud_lookup_cloud_base_url = "https://cloud.example/".into();
+        cfg.cloud_lookup_ams_server_instance_id = "ams-1".into();
+        cfg.sync_cloud_lookup_token();
+        assert!(cfg.cloud_lookup_access_token.is_empty());
+        assert!(cfg.cloud_lookup_expires_at.is_empty());
+        assert!(cfg.cloud_lookup_cloud_base_url.is_empty());
+        assert!(cfg.cloud_lookup_ams_server_instance_id.is_empty());
     }
 
     #[test]

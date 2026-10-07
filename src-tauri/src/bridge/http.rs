@@ -22,6 +22,9 @@ const SNIPPET_CHARS: usize = 200;
 pub enum Endpoint {
     Health,
     Lookup,
+    /// Direct Cloud booking lookup (Phase 53 / T1); same budget as AMS Lookup.
+    CloudLookup,
+    ClientToken,
     JobStatus,
     HandoffReady,
     HandoffCancel,
@@ -32,19 +35,26 @@ impl Endpoint {
         match self {
             Endpoint::Health => "health",
             Endpoint::Lookup => "Lookup",
+            Endpoint::CloudLookup => "Cloud-Lookup",
+            Endpoint::ClientToken => "client-token",
             Endpoint::JobStatus => "Job-Status",
             Endpoint::HandoffReady => "handoff/ready",
             Endpoint::HandoffCancel => "handoff/cancel",
         }
     }
 
+    /// True for Cloud endpoints (Display prefix differs from AMS-Bridge).
+    pub fn is_cloud(self) -> bool {
+        matches!(self, Endpoint::CloudLookup)
+    }
+
     /// Total request budget (connect is capped separately by `CONNECT_TIMEOUT`).
-    /// Lookup may wait on the AMS upstream booking API, so it gets the longest budget.
+    /// Lookup / client-token / Cloud-Lookup may wait on upstream, so they get the longest budget.
     pub fn timeout(self) -> Duration {
         Duration::from_secs(match self {
             Endpoint::Health | Endpoint::JobStatus => 5,
             Endpoint::HandoffReady | Endpoint::HandoffCancel => 8,
-            Endpoint::Lookup => 12,
+            Endpoint::Lookup | Endpoint::CloudLookup | Endpoint::ClientToken => 12,
         })
     }
 }
@@ -94,21 +104,47 @@ impl fmt::Display for BridgeError {
         match self {
             BridgeError::Config(msg) => f.write_str(msg),
             BridgeError::Unreachable { endpoint, detail } => {
-                write!(f, "AMS-Bridge {} nicht erreichbar: {detail}", endpoint.label())
+                if endpoint.is_cloud() {
+                    write!(f, "Cloud-Lookup nicht erreichbar: {detail}")
+                } else {
+                    write!(
+                        f,
+                        "AMS-Bridge {} nicht erreichbar: {detail}",
+                        endpoint.label()
+                    )
+                }
             }
-            BridgeError::Timeout { endpoint } => write!(
-                f,
-                "AMS-Bridge {} nicht erreichbar: Zeitüberschreitung nach {}s",
-                endpoint.label(),
-                endpoint.timeout().as_secs()
-            ),
+            BridgeError::Timeout { endpoint } => {
+                if endpoint.is_cloud() {
+                    write!(
+                        f,
+                        "Cloud-Lookup nicht erreichbar: Zeitüberschreitung nach {}s",
+                        endpoint.timeout().as_secs()
+                    )
+                } else {
+                    write!(
+                        f,
+                        "AMS-Bridge {} nicht erreichbar: Zeitüberschreitung nach {}s",
+                        endpoint.label(),
+                        endpoint.timeout().as_secs()
+                    )
+                }
+            }
             BridgeError::Unauthorized => f.write_str("AMS-Bridge: Token ungültig (401)."),
             BridgeError::Http {
                 endpoint,
                 status,
                 snippet,
             } => {
-                write!(f, "AMS-Bridge {} fehlgeschlagen: HTTP {status}", endpoint.label())?;
+                if endpoint.is_cloud() {
+                    write!(f, "Cloud-Lookup fehlgeschlagen: HTTP {status}")?;
+                } else {
+                    write!(
+                        f,
+                        "AMS-Bridge {} fehlgeschlagen: HTTP {status}",
+                        endpoint.label()
+                    )?;
+                }
                 if !snippet.is_empty() {
                     write!(f, " {snippet}")?;
                 }
@@ -118,11 +154,17 @@ impl fmt::Display for BridgeError {
                 endpoint,
                 status,
                 detail,
-            } => write!(
-                f,
-                "AMS-Bridge {} JSON (HTTP {status}): {detail}",
-                endpoint.label()
-            ),
+            } => {
+                if endpoint.is_cloud() {
+                    write!(f, "Cloud-Lookup JSON (HTTP {status}): {detail}")
+                } else {
+                    write!(
+                        f,
+                        "AMS-Bridge {} JSON (HTTP {status}): {detail}",
+                        endpoint.label()
+                    )
+                }
+            }
             BridgeError::Api { code, message } => {
                 if code.is_empty() {
                     f.write_str(message)
@@ -409,6 +451,8 @@ mod tests {
         for ep in [
             Endpoint::Health,
             Endpoint::Lookup,
+            Endpoint::CloudLookup,
+            Endpoint::ClientToken,
             Endpoint::JobStatus,
             Endpoint::HandoffReady,
             Endpoint::HandoffCancel,
@@ -416,5 +460,25 @@ mod tests {
             assert!(ep.timeout() < Duration::from_secs(15));
             assert!(ep.timeout() > CONNECT_TIMEOUT);
         }
+    }
+
+    #[test]
+    fn cloud_lookup_timeout_matches_ams_lookup() {
+        assert_eq!(Endpoint::CloudLookup.timeout(), Endpoint::Lookup.timeout());
+        assert_eq!(Endpoint::CloudLookup.timeout(), Duration::from_secs(12));
+        assert!(Endpoint::CloudLookup.is_cloud());
+        assert!(!Endpoint::Lookup.is_cloud());
+    }
+
+    #[test]
+    fn cloud_lookup_display_uses_cloud_prefix() {
+        let unreachable = BridgeError::Unreachable {
+            endpoint: Endpoint::CloudLookup,
+            detail: "connection refused".into(),
+        };
+        let msg = unreachable.to_string();
+        assert!(msg.starts_with("Cloud-Lookup"));
+        assert!(msg.contains("nicht erreichbar"));
+        assert!(!msg.starts_with("AMS-Bridge"));
     }
 }

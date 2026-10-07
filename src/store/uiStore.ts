@@ -21,7 +21,8 @@ export type DialogActionKind =
   | "clear"
   | "eject"
   | "server"
-  | "ams";
+  | "ams"
+  | "cloud";
 
 export type DialogActionTone = "success" | "error" | "warning" | "skipped";
 

@@ -66,8 +66,8 @@ pub fn is_lookup_id_ready(id: &str) -> bool {
     t.len() >= MIN_LOOKUP_ID_DIGITS && t.chars().all(|c| c.is_ascii_digit())
 }
 
-/// Frontend gate: URL configured is not enough — AMS must be up (and advertise lookup).
-pub fn can_run_ams_id_lookup(configured: bool, connected: bool, capabilities: &[&str]) -> bool {
+/// AMS path live: configured, connected, and lookup capability (empty caps = legacy allow).
+pub fn is_ams_lookup_live(configured: bool, connected: bool, capabilities: &[&str]) -> bool {
     if !configured || !connected {
         return false;
     }
@@ -75,6 +75,17 @@ pub fn can_run_ams_id_lookup(configured: bool, connected: bool, capabilities: &[
         return true;
     }
     capabilities.iter().any(|c| *c == "lookup")
+}
+
+/// Booking ID-lookup gate (Phase 53 / T3): AMS live **or** usable Cloud JWT.
+/// Mirrored in `src/lib/amsLookup.ts` (`canRunAmsIdLookup`).
+pub fn can_run_ams_id_lookup(
+    configured: bool,
+    connected: bool,
+    capabilities: &[&str],
+    cloud_lookup_available: bool,
+) -> bool {
+    is_ams_lookup_live(configured, connected, capabilities) || cloud_lookup_available
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,12 +203,39 @@ mod tests {
     }
 
     #[test]
-    fn id_lookup_stays_silent_when_ams_is_down() {
-        assert!(!can_run_ams_id_lookup(true, false, &["lookup"]));
-        assert!(!can_run_ams_id_lookup(false, true, &["lookup"]));
-        assert!(can_run_ams_id_lookup(true, true, &[]));
-        assert!(can_run_ams_id_lookup(true, true, &["lookup", "ready"]));
-        assert!(!can_run_ams_id_lookup(true, true, &["ready", "append-v1"]));
+    fn id_lookup_stays_silent_when_ams_is_down_without_cloud() {
+        assert!(!can_run_ams_id_lookup(true, false, &["lookup"], false));
+        assert!(!can_run_ams_id_lookup(false, true, &["lookup"], false));
+        assert!(can_run_ams_id_lookup(true, true, &[], false));
+        assert!(can_run_ams_id_lookup(true, true, &["lookup", "ready"], false));
+        assert!(!can_run_ams_id_lookup(
+            true,
+            true,
+            &["ready", "append-v1"],
+            false
+        ));
+    }
+
+    #[test]
+    fn id_lookup_allows_cloud_when_ams_is_down() {
+        assert!(can_run_ams_id_lookup(true, false, &["lookup"], true));
+        assert!(can_run_ams_id_lookup(false, false, &[], true));
+        assert!(!is_ams_lookup_live(true, false, &["lookup"]));
+        assert!(is_ams_lookup_live(true, true, &["lookup"]));
+    }
+
+    /// Phase 53 / T4 — gate mirrors Master §6 (`amsLive || cloudLookupAvailable`).
+    #[test]
+    fn acceptance_gate_ams_or_cloud_never_requires_both() {
+        // AMS only
+        assert!(can_run_ams_id_lookup(true, true, &["lookup"], false));
+        // Cloud only
+        assert!(can_run_ams_id_lookup(false, false, &[], true));
+        // Both
+        assert!(can_run_ams_id_lookup(true, true, &["lookup"], true));
+        // Neither
+        assert!(!can_run_ams_id_lookup(true, false, &["lookup"], false));
+        assert!(!can_run_ams_id_lookup(false, false, &[], false));
     }
 
     #[test]

@@ -15,7 +15,11 @@ import {
   resolveCreateValidation,
   type CreateReadyBanner,
 } from "../lib/createReadyHints";
-import { canRunAmsIdLookup, isAmsBridgeConfigured } from "../lib/amsLookup";
+import {
+  canRunAmsIdLookup,
+  isAmsBridgeConfigured,
+  isCloudLookupAvailable,
+} from "../lib/amsLookup";
 
 type Options = {
   ready: boolean;
@@ -153,6 +157,7 @@ export function useCreateValidation({
     configured: isAmsBridgeConfigured(config),
     connected: amsConnected,
     capabilities: amsCapabilities,
+    cloudLookupAvailable: isCloudLookupAvailable(config),
   });
 
   const hintsInSync = hintsManualEntryMode === manualEntryMode;

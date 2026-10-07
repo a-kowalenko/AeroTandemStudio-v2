@@ -7,6 +7,7 @@
 | `@AGENTS.md` | Immer (dieses File) |
 | `@docs/IMPLEMENTATION_PLAN.md` | Index / Tracker (schlank) |
 | `@docs/phases/open/…` | **Die eine offene Phase-Spec** |
+| `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
 | `@docs/phases/ARCHIVE.md` | Nur Regression / erledigte Spec |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt) |
 | `@docs/opt/open/…` | **Die eine offene OPT-Spec** |
@@ -71,8 +72,9 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 50** Outro (User-Asset am Videoende; Foto/Video, Mux wie Intro, Intro+Outro erlaubt, Existenz-Gate, i18n) · Spec: `@docs/phases/open/50-outro.md`
 - ✅ **Phase 51** Instructor-Foto (Settings Erweitert; Copy beim Foto-Export) · Spec: `@docs/phases/open/51-instructor-foto.md`
 - ✅ **Phase 52** Foto EXIF-Orientation (Preview-Thumbs, Wasserzeichen, QR; Thumb-Cache-Rev) · Spec: `@docs/phases/open/52-photo-exif-orientation.md`
+- ✅ **Phase 53** Cloud-Lookup-Fallback (ATS T0–T4; E2E manuell nach Cloud+AMS) · Spec: `@docs/phases/open/53-cloud-lookup-fallback.md` · Master: `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md`
 
-**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3  
+**Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 53 E2E nach Cloud+AMS-Deploy  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
 
 ### Performance-Backlog
@@ -119,6 +121,11 @@ Nur 50.
 Implementiere Phase 51 aus @docs/phases/open/51-instructor-foto.md
 Regeln: @AGENTS.md
 Nur 51.
+```
+
+```
+Phase 53 ATS T0–T4 ✅ — E2E-Abnahme (Master §10) nach Cloud C* + AMS A* Deploy.
+Spec: @docs/phases/open/53-cloud-lookup-fallback.md
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 

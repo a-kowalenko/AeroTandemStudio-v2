@@ -6,11 +6,17 @@ import type {
   DialogPrimaryAction,
   SettingsFocusTarget,
 } from "@/store/uiStore";
-import type { AmsBridgeHealthResult, ConnectionTestResult } from "@/lib/tauri";
+import type {
+  AmsBridgeHealthResult,
+  CloudLookupProbeResult,
+  ConnectionTestResult,
+} from "@/lib/tauri";
 import { tr } from "@/i18n";
 import {
   amsOperatorTitle,
   amsBridgeStatusErrorTooltip,
+  formatAmsCloudLookupLabel,
+  formatAmsCloudLookupTooltip,
   formatAmsConnectedTooltip,
   presentAmsBridgeError,
 } from "./amsBridgeStatus";
@@ -110,9 +116,19 @@ function smbDot(
   return "idle";
 }
 
-function amsDot(phase: AmsBridgePhase, connected: boolean): ConnectionDot {
+function amsDot(
+  phase: AmsBridgePhase,
+  connected: boolean,
+  cloudLookupLive: boolean,
+): ConnectionDot {
   if (phase === "checking") return "checking";
+  // AMS live → green.
   if (phase === "connected" || connected) return "ok";
+  // AMS down, Cloud usable → amber.
+  if (cloudLookupLive && (phase === "error" || phase === "idle")) {
+    return "partial";
+  }
+  // Neither AMS nor Cloud → red.
   if (phase === "error") return "error";
   return "idle";
 }
@@ -152,15 +168,19 @@ function amsTooltipLine(
   message: string,
   displayName?: string,
   refreshing?: boolean,
+  cloudLookupLive?: boolean,
 ): string {
   if (phase === "checking" || refreshing) {
     return tr("header.connection.amsChecking", { title: amsOperatorTitle() });
   }
-  if (phase === "error") {
-    return amsBridgeStatusErrorTooltip(message);
-  }
   if (phase === "connected" || connected) {
     return formatAmsConnectedTooltip(displayName);
+  }
+  if (cloudLookupLive) {
+    return formatAmsCloudLookupTooltip();
+  }
+  if (phase === "error") {
+    return amsBridgeStatusErrorTooltip(message);
   }
   return tr("header.connection.amsNotChecked", { title: amsOperatorTitle() });
 }
@@ -185,6 +205,13 @@ export function presentHeaderConnection(input: {
   /** Quiet background revalidation — label stays; UI may show a spinner. */
   amsRefreshing?: boolean;
   amsDisplayName?: string;
+  /** Phase 53: Cloud JWT present and not proven dead by last probe. */
+  cloudLookupAvailable?: boolean;
+  /**
+   * Last Cloud Lookup probe: `null` = unknown (JWT alone is optimistic),
+   * `false` = probe failed → treat Cloud as down for chip color.
+   */
+  cloudProbeOk?: boolean | null;
   serverUrl: string;
   login: string;
   password: string;
@@ -195,9 +222,15 @@ export function presentHeaderConnection(input: {
   const backupFailed = backup?.state === "failed";
   const backupCancelled = backup?.state === "cancelled";
   const uploading = input.smbPhase === "uploading";
+  const cloudLookupAvailable = Boolean(input.cloudLookupAvailable);
+  // Proven Cloud down overrides a still-cached JWT for chip/tooltip.
+  const cloudLookupLive =
+    cloudLookupAvailable && input.cloudProbeOk !== false;
 
   const smbVisible = !(input.smbPhase === "idle" && !input.smbConnected);
-  const amsVisible = input.amsConfigured && input.amsPhase !== "idle";
+  const amsVisible =
+    (input.amsConfigured && input.amsPhase !== "idle") ||
+    (cloudLookupLive && input.amsConfigured);
   const backupVisible =
     backupActive || backupDone || backupFailed || backupCancelled;
   const visible = smbVisible || amsVisible || backupVisible;
@@ -211,7 +244,13 @@ export function presentHeaderConnection(input: {
   const smbLoginVerified = input.smbLoginVerified ?? true;
   const amsOk = input.amsConnected || input.amsPhase === "connected";
   const smbError = input.smbPhase === "error";
-  const amsError = input.amsConfigured && input.amsPhase === "error";
+  // Neither AMS nor live Cloud → hard failure (red).
+  const amsError =
+    input.amsConfigured &&
+    input.amsPhase === "error" &&
+    !cloudLookupLive;
+  const amsCloudOnly =
+    cloudLookupLive && !amsOk && input.amsConfigured && !amsChecking;
 
   let label = tr("app.server.title");
   let toneClass = "text-muted";
@@ -296,6 +335,9 @@ export function presentHeaderConnection(input: {
   } else if (amsOk) {
     label = tr("chrome.server.connected");
     toneClass = "text-success";
+  } else if (amsCloudOnly) {
+    label = formatAmsCloudLookupLabel();
+    toneClass = "text-warning";
   }
 
   // Active transfer / done/cancelled flash / failed detail: no reconnect click.
@@ -352,6 +394,7 @@ export function presentHeaderConnection(input: {
         input.amsMessage,
         input.amsDisplayName,
         amsRefreshing,
+        cloudLookupLive,
       ),
     );
   }
@@ -407,7 +450,7 @@ export function presentHeaderConnection(input: {
     liveMessage,
     smbDot: smbDot(input.smbPhase, input.smbConnected, smbLoginVerified),
     amsDot: input.amsConfigured
-      ? amsDot(input.amsPhase, input.amsConnected)
+      ? amsDot(input.amsPhase, input.amsConnected, cloudLookupLive)
       : null,
     title: lines.join("\n"),
     canRetry,
@@ -562,6 +605,57 @@ export function presentAmsConnectionAction(opts: {
   };
 }
 
+/** Phase 53: Cloud Lookup probe row (green when reachable). */
+export function presentCloudLookupProbeAction(
+  probe: CloudLookupProbeResult,
+): DialogActionStatus {
+  const label = tr("header.connection.cloudLookupLabel");
+  const detail = probe.cloud_base_url.trim() || undefined;
+  if (probe.ok) {
+    return {
+      kind: "cloud",
+      label,
+      tone: "success",
+      summary: tr("header.connection.cloudLookupOk"),
+      detail,
+    };
+  }
+  if (probe.status === "no_token") {
+    return {
+      kind: "cloud",
+      label,
+      tone: "skipped",
+      summary: tr("header.connection.cloudLookupNoToken"),
+      detail,
+    };
+  }
+  if (probe.status === "token_invalid") {
+    return {
+      kind: "cloud",
+      label,
+      tone: "error",
+      summary: tr("header.connection.cloudLookupTokenInvalid"),
+      detail,
+    };
+  }
+  if (probe.status === "unreachable") {
+    return {
+      kind: "cloud",
+      label,
+      tone: "error",
+      summary: tr("header.connection.cloudLookupUnreachable"),
+      detail: probe.message.trim() || detail,
+    };
+  }
+  return {
+    kind: "cloud",
+    label,
+    tone: "error",
+    summary: tr("header.connection.cloudLookupError"),
+    detail: probe.message.trim() || detail,
+  };
+}
+
 export type HeaderRetryBackupInput = {
   enabled: boolean;
   url: string;
@@ -573,21 +667,27 @@ export type HeaderRetryBackupInput = {
 export function presentHeaderRetryOutcome(opts: {
   smb: ConnectionTestResult | null;
   ams: AmsBridgeHealthResult | null;
+  /** Phase 53: Cloud JWT probe; omit/`no_token` → no cloud row. */
+  cloud?: CloudLookupProbeResult | null;
   serverUrl: string;
   login: string;
   password: string;
   backup?: HeaderRetryBackupInput | null;
 }): HeaderRetryOutcome | null {
   const { smb, ams } = opts;
+  const cloud =
+    opts.cloud && opts.cloud.status !== "no_token" ? opts.cloud : null;
   const backup = opts.backup?.enabled ? opts.backup : null;
   const backupUrl = backup?.url.trim() ?? "";
   const backupMissing = Boolean(backup && !backupUrl);
   const backupResult = backup && backupUrl ? backup.result : null;
   const backupChecked = Boolean(backup);
-  if (!smb && !ams && !backupChecked) return null;
+  if (!smb && !ams && !backupChecked && !cloud) return null;
 
   const smbOk = !smb || smb.ok;
   const amsOk = !ams || ams.ok;
+  // Cloud ok softens AMS-down for overall success only when AMS was checked and failed.
+  const cloudOk = !cloud || cloud.ok;
   const backupOk =
     !backupChecked || (Boolean(backupUrl) && Boolean(backupResult?.ok));
   const smbPresented = smb && !smb.ok
@@ -659,8 +759,13 @@ export function presentHeaderRetryOutcome(opts: {
       }),
     );
   }
+  if (cloud) {
+    actions.push(presentCloudLookupProbeAction(cloud));
+  }
 
-  if (smbOk && backupOk && amsOk) {
+  // Full green only when AMS (if checked) is up — Cloud alone is degraded.
+  const primaryTargetsOk = smbOk && backupOk && amsOk;
+  if (primaryTargetsOk) {
     const checkedCount = [smb, backupResult, ams].filter(Boolean).length;
     const title =
       checkedCount >= 2
@@ -685,9 +790,13 @@ export function presentHeaderRetryOutcome(opts: {
     null;
 
   const anyOk =
-    Boolean(smb?.ok) || Boolean(backupResult?.ok) || Boolean(ams?.ok);
+    Boolean(smb?.ok) ||
+    Boolean(backupResult?.ok) ||
+    Boolean(ams?.ok) ||
+    Boolean(cloud?.ok);
+  // AMS down + Cloud probe ok → partial (amber cloud), not hard fail.
   const title =
-    anyOk || backupMissing
+    anyOk || backupMissing || (Boolean(ams && !ams.ok) && cloudOk && Boolean(cloud))
       ? tr("header.connection.titlePartial")
       : tr("header.connection.titleFailed");
 

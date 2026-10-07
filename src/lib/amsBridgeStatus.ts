@@ -206,6 +206,15 @@ export function formatAmsConnectedTooltip(displayName?: string): string {
   return tr("ams.status.connectedTooltip", { title: amsOperatorTitle() });
 }
 
+/** Phase 53 / T3: AMS down, Cloud JWT usable — calm status line. */
+export function formatAmsCloudLookupTooltip(): string {
+  return tr("ams.status.viaCloudTooltip", { title: amsOperatorTitle() });
+}
+
+export function formatAmsCloudLookupLabel(): string {
+  return tr("ams.status.viaCloud");
+}
+
 /** Instance label in connection dialogs (AMS display name or operator title). */
 export function amsConnectionLabel(displayName?: string | null): string {
   const name = displayName?.trim();

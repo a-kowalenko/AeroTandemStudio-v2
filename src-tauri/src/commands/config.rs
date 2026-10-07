@@ -31,6 +31,7 @@ impl ConfigState {
 /// When the frontend saves settings it does not edit hidden bridge identity fields; merge from cache/disk.
 fn preserve_ams_bridge_identity(state: &ConfigState, config: &mut AppConfig) -> Result<(), String> {
     preserve_ams_bridge_instance_id(state, config)?;
+    preserve_cloud_lookup_token(state, config)?;
     if !config.ams_bridge_display_name.trim().is_empty()
         && !config.ams_bridge_server_instance_id.trim().is_empty()
     {
@@ -47,6 +48,25 @@ fn preserve_ams_bridge_identity(state: &ConfigState, config: &mut AppConfig) -> 
         if let Ok(disk) = store.load() {
             config.preserve_ams_bridge_server_identity_from(&disk);
         }
+    }
+    Ok(())
+}
+
+/// Frontend settings saves omit Cloud-Lookup JWT fields; keep them from cache/disk.
+fn preserve_cloud_lookup_token(state: &ConfigState, config: &mut AppConfig) -> Result<(), String> {
+    if !config.cloud_lookup_access_token.trim().is_empty() {
+        return Ok(());
+    }
+    {
+        let cache = state.cache.lock().map_err(|e| e.to_string())?;
+        config.preserve_cloud_lookup_token_from(&cache);
+        if !config.cloud_lookup_access_token.trim().is_empty() {
+            return Ok(());
+        }
+    }
+    let store = state.store.lock().map_err(|e| e.to_string())?;
+    if let Ok(disk) = store.load() {
+        config.preserve_cloud_lookup_token_from(&disk);
     }
     Ok(())
 }

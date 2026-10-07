@@ -190,6 +190,14 @@ export type AppConfig = {
   ams_bridge_display_name: string;
   /** Stable UUID of the connected AMS server. */
   ams_bridge_server_instance_id: string;
+  /** Phase 53: Cloud-Lookup JWT (scoped customer.lookup). Do not log. */
+  cloud_lookup_access_token: string;
+  /** Phase 53: RFC3339 expiry of cloud_lookup_access_token. */
+  cloud_lookup_expires_at: string;
+  /** Phase 53: Cloud origin for lookup, from AMS client-token. */
+  cloud_lookup_cloud_base_url: string;
+  /** Phase 53: AMS instance that issued the Cloud-Lookup JWT. */
+  cloud_lookup_ams_server_instance_id: string;
   /** macOS post-update hint pending until acknowledged (set before install). */
   post_update_hint_pending_version: string;
   /** macOS post-update connection hint acknowledged for this app version. */
@@ -1382,6 +1390,10 @@ export type AmsBridgeAtsPaths = {
   backup_smb_url?: string;
 };
 
+export type AmsBridgeCloudLookupHint = {
+  base_url: string;
+};
+
 export type AmsBridgeHealth = {
   online: boolean;
   version: string;
@@ -1389,6 +1401,8 @@ export type AmsBridgeHealth = {
   instance_id?: string;
   monitor_path: string;
   ats_paths?: AmsBridgeAtsPaths | null;
+  /** Present when AMS can issue Cloud JWTs (cloud-lookup-v1). */
+  cloud_lookup?: AmsBridgeCloudLookupHint | null;
   capabilities: string[];
 };
 
@@ -1439,6 +1453,26 @@ export async function amsBridgeHealth(
         }
       : null,
   });
+}
+
+/** Phase 53: Cloud Lookup connectivity probe (dummy ids + stored JWT). */
+export type CloudLookupProbeStatus =
+  | "ok"
+  | "no_token"
+  | "token_invalid"
+  | "unreachable"
+  | "error";
+
+export type CloudLookupProbeResult = {
+  ok: boolean;
+  status: CloudLookupProbeStatus;
+  message: string;
+  cloud_base_url: string;
+  token_cleared: boolean;
+};
+
+export async function cloudLookupProbe(): Promise<CloudLookupProbeResult> {
+  return invoke<CloudLookupProbeResult>("cloud_lookup_probe");
 }
 
 export async function amsBridgeCustomerLookup(args: {

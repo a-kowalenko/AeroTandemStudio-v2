@@ -6,8 +6,11 @@ import {
   askAmsTypeChoice,
   canRunAmsIdLookup,
   classifyTypedHits,
+  clearCloudLookupConfigLocal,
   formatTypeChoiceDetail,
   isAmsBridgeConfigured,
+  isCloudLookupAvailable,
+  isCloudLookupTokenInvalid,
   isLookupNotFound,
   isLookupUnreachable,
   type AmsBridgeCustomer,
@@ -138,6 +141,11 @@ async function lookupOneHash(
     };
   } catch (e) {
     const message = String(e);
+    if (isCloudLookupTokenInvalid(message)) {
+      clearCloudLookupConfigLocal((patch) =>
+        useConfigStore.getState().updateLocal(patch),
+      );
+    }
     if (isLookupUnreachable(message)) {
       return { kind: "unreachable", markerType };
     }
@@ -216,6 +224,7 @@ export async function resolveQrDualFamily(
     configured: isAmsBridgeConfigured(config),
     connected: ams.connected,
     capabilities: ams.capabilities,
+    cloudLookupAvailable: isCloudLookupAvailable(config),
   });
 
   const runOffline = async (

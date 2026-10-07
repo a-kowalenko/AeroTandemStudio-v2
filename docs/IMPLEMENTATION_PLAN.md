@@ -23,6 +23,8 @@
 | `@docs/phases/open/50-outro.md` | Phase 50 (Outro) |
 | `@docs/phases/open/51-instructor-foto.md` | Phase 51 (Instructor-Foto) |
 | `@docs/phases/open/52-photo-exif-orientation.md` | Phase 52 (Foto EXIF-Orientation) |
+| `@docs/phases/open/53-cloud-lookup-fallback.md` | Phase 53 (Cloud-Lookup-Fallback) |
+| `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
 | `@docs/optimization_plan.md` | OPT-Index / Tracker |
@@ -54,6 +56,7 @@ Desktop-App zur automatisierten Erstellung von Tandem-Fallschirmsprung-Videos (I
 |-----------|-------|------|--------|
 | 1 | **31.5** Extra-Dateien (Resync / optional löschen) | [`phases/open/31.5-extra-files.md`](phases/open/31.5-extra-files.md) | ⬜ |
 | 2 | **23.2h / 23.3** USB-MTP (Overrides / Linux libmtp) | [`phases/open/23-usb-mtp.md`](phases/open/23-usb-mtp.md) | 🔄 |
+| 3 | **53** Cloud-Lookup-Fallback (E2E nach Cloud+AMS) | [`phases/open/53`](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) | ✅ ATS T0–T4; manuell offen |
 | later | **14** ML Foto-Klassifikation | [`phases/open/14-ml-photo.md`](phases/open/14-ml-photo.md) | ⬜ |
 | done | **48** Vorgang Medien-Viewer (lokal) | [`phases/open/48-vorgang-media-viewer.md`](phases/open/48-vorgang-media-viewer.md) | ✅ |
 | done | **50** Outro (User-Asset am Videoende) | [`phases/open/50-outro.md`](phases/open/50-outro.md) | ✅ |
@@ -115,6 +118,7 @@ Details: `@AGENTS.md`
 | 50 | Outro (User-Asset am Videoende) | ✅ | [open/50](phases/open/50-outro.md) |
 | 51 | Instructor-Foto (mit Foto-Export) | ✅ | [open/51](phases/open/51-instructor-foto.md) |
 | 52 | Foto EXIF-Orientation (Preview, Wasserzeichen, QR) | ✅ | [open/52](phases/open/52-photo-exif-orientation.md) |
+| 53 | Cloud-Lookup-Fallback (Buchungssuche ohne AMS) | ✅ ATS T0–T4 | [open/53](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -165,4 +169,4 @@ Nur 51.
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-09-15 (Phase 51 Instructor-Foto).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-07 (Phase 53 T4 Tests + Abnahme).*

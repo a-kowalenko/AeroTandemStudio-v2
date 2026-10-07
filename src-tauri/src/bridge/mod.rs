@@ -2,6 +2,9 @@
 //! Spec: AMS `docs/HANDOFF.md` §9 — health, lookup, jobs, ready + mDNS discovery.
 //! File handoff works without this module.
 
+pub mod client_token;
+pub mod cloud_lookup;
+pub mod lookup_router;
 mod http;
 mod lookup_map;
 mod mdns;
@@ -30,6 +33,12 @@ pub struct AtsPathsHint {
     pub backup_smb_url: String,
 }
 
+/// Optional Cloud-Lookup hint from AMS health (HANDOFF §9.4). Never includes tokens.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct CloudLookupHint {
+    pub base_url: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BridgeHealth {
     pub online: bool,
@@ -41,6 +50,9 @@ pub struct BridgeHealth {
     pub monitor_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ats_paths: Option<AtsPathsHint>,
+    /// Present when AMS can issue Cloud JWTs (`cloud-lookup-v1`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud_lookup: Option<CloudLookupHint>,
     pub capabilities: Vec<String>,
 }
 
@@ -52,6 +64,16 @@ impl BridgeHealth {
         } else {
             name.to_string()
         }
+    }
+
+    /// True when AMS advertises Cloud client-token issue (capability or hint).
+    pub fn supports_cloud_lookup(&self) -> bool {
+        client_token::health_supports_cloud_lookup(&self.capabilities)
+            || self
+                .cloud_lookup
+                .as_ref()
+                .map(|h| !h.base_url.trim().is_empty())
+                .unwrap_or(false)
     }
 }
 
@@ -833,10 +855,12 @@ mod tests {
         }"#;
         let health: BridgeHealth = serde_json::from_str(json).expect("parse health");
         assert!(health.ats_paths.is_some());
-        let paths = health.ats_paths.unwrap();
+        let paths = health.ats_paths.as_ref().unwrap();
         assert_eq!(paths.primary_smb_url, "smb://169.254.169.254/aktuell");
         assert_eq!(paths.backup_smb_url, "smb://169.254.169.254/aktuell-backup");
         assert!(health.capabilities.contains(&"paths-v1".to_string()));
+        assert!(health.cloud_lookup.is_none());
+        assert!(!health.supports_cloud_lookup());
     }
 
     #[test]
@@ -849,5 +873,24 @@ mod tests {
         }"#;
         let health: BridgeHealth = serde_json::from_str(json).expect("parse health");
         assert!(health.ats_paths.is_none());
+    }
+
+    #[test]
+    fn health_deserializes_cloud_lookup_hint() {
+        let json = r#"{
+            "online": true,
+            "version": "0.5.0",
+            "display_name": "AMS",
+            "instance_id": "inst-2",
+            "monitor_path": "D:\\Shares\\aktuell",
+            "cloud_lookup": { "base_url": "https://cloud.example" },
+            "capabilities": ["lookup", "cloud-lookup-v1"]
+        }"#;
+        let health: BridgeHealth = serde_json::from_str(json).expect("parse health");
+        assert!(health.supports_cloud_lookup());
+        assert_eq!(
+            health.cloud_lookup.as_ref().unwrap().base_url,
+            "https://cloud.example"
+        );
     }
 }

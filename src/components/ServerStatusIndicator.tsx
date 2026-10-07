@@ -12,7 +12,10 @@ import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { useSdStore } from "../store/sdStore";
 import { useServerStore } from "../store/serverStore";
 import { useUiStore } from "../store/uiStore";
-import { isAmsBridgeConfigured } from "../lib/amsLookup";
+import {
+  isAmsBridgeConfigured,
+  isCloudLookupAvailable,
+} from "../lib/amsLookup";
 import { AMS_HEALTH_SPINNER_DELAY_MS } from "../lib/amsBridgeStatus";
 import {
   presentHeaderConnection,
@@ -24,7 +27,13 @@ import {
   formatSecondaryBackupCompactParts,
   formatUploadProgressTooltip,
 } from "../lib/uploadProgress";
-import { cancelSecondaryBackup, testServerConnection } from "../lib/tauri";
+import {
+  cancelSecondaryBackup,
+  cloudLookupProbe,
+  getConfig,
+  testServerConnection,
+} from "../lib/tauri";
+import { syncCloudLookupConfigLocal } from "../lib/bookingLookupGate";
 import { presentSdUserMessage } from "../lib/sdMessages";
 import { resolveActiveServerBackupTarget } from "../lib/serverProfile";
 import {
@@ -129,6 +138,8 @@ export function ServerStatusIndicator({
   const amsRefreshing = useAmsBridgeStore((s) => s.refreshing);
   const amsStoreDisplayName = useAmsBridgeStore((s) => s.displayName);
   const checkAmsHealth = useAmsBridgeStore((s) => s.checkHealth);
+  const cloudProbeOk = useAmsBridgeStore((s) => s.cloudProbeOk);
+  const applyCloudProbe = useAmsBridgeStore((s) => s.applyCloudProbe);
 
   const config = useConfigStore((s) => s.config);
   const showSuccess = useUiStore((s) => s.showSuccess);
@@ -139,6 +150,7 @@ export function ServerStatusIndicator({
   const password = config?.server_password ?? "";
   const serverUrl = config?.server_url ?? "";
   const amsConfigured = isAmsBridgeConfigured(config);
+  const cloudLookupAvailable = isCloudLookupAvailable(config);
   const amsDisplayName =
     amsStoreDisplayName.trim() ||
     config?.ams_bridge_display_name?.trim() ||
@@ -165,6 +177,8 @@ export function ServerStatusIndicator({
     smbRefreshing,
     amsRefreshing,
     amsDisplayName,
+    cloudLookupAvailable,
+    cloudProbeOk,
     serverUrl,
     login,
     password,
@@ -296,9 +310,29 @@ export function ServerStatusIndicator({
           : Promise.resolve(null),
         amsConfigured ? checkAmsHealth() : Promise.resolve(null),
       ]);
+      // After AMS health (may refresh JWT), probe Cloud Lookup if a token exists.
+      const cloudResult = await cloudLookupProbe().catch((e) => ({
+        ok: false,
+        status: "error" as const,
+        message: String(e),
+        cloud_base_url: "",
+        token_cleared: false,
+      }));
+      applyCloudProbe(cloudResult);
+      if (cloudResult.token_cleared || cloudResult.status !== "no_token") {
+        try {
+          const refreshed = await getConfig();
+          syncCloudLookupConfigLocal(refreshed, (patch) => {
+            useConfigStore.getState().updateLocal(patch);
+          });
+        } catch {
+          /* best-effort */
+        }
+      }
       const outcome = presentHeaderRetryOutcome({
         smb: smbResult,
         ams: amsResult,
+        cloud: cloudResult,
         serverUrl,
         login,
         password,

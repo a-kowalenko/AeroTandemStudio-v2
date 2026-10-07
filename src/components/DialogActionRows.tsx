@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Archive,
   CheckCircle2,
+  Cloud,
   Download,
   Eraser,
   MinusCircle,
@@ -54,6 +55,8 @@ function actionKindIcon(kind: DialogActionKind): ReactNode {
       return <Server className={cls} aria-hidden />;
     case "ams":
       return <Search className={cls} aria-hidden />;
+    case "cloud":
+      return <Cloud className={cls} aria-hidden />;
   }
 }
 

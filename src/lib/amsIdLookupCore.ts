@@ -3,6 +3,8 @@
 import {
   AMS_ID_LOOKUP_TYPES,
   classifyTypedHits,
+  clearCloudLookupConfigLocal,
+  isCloudLookupTokenInvalid,
   isLookupNotFound,
   isLookupUnreachable,
   type AmsBridgeCustomer,
@@ -10,6 +12,14 @@ import {
 } from "@/lib/amsLookup";
 import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
 import { amsBridgeCustomerLookup } from "@/lib/tauri";
+import { useConfigStore } from "@/store/configStore";
+
+function syncClearedCloudTokenIfNeeded(message: string): void {
+  if (!isCloudLookupTokenInvalid(message)) return;
+  clearCloudLookupConfigLocal((patch) =>
+    useConfigStore.getState().updateLocal(patch),
+  );
+}
 
 export type AmsIdLookupAttempt =
   | { kind: "hit"; markerType: AmsMarkerType; customer: AmsBridgeCustomer }
@@ -55,6 +65,7 @@ export async function lookupOneAmsId(
     };
   } catch (e) {
     const message = String(e);
+    syncClearedCloudTokenIfNeeded(message);
     if (isLookupUnreachable(message)) {
       return { kind: "unreachable", markerType };
     }

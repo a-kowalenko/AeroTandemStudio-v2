@@ -20,6 +20,7 @@ use commands::app::{
 use commands::bridge::{
     ams_bridge_customer_lookup, ams_bridge_discover, ams_bridge_handoff_cancel,
     ams_bridge_handoff_ready, ams_bridge_health, ams_bridge_job_status, ams_bridge_preflight,
+    cloud_lookup_probe,
 };
 use commands::config::{
     ensure_default_media_dirs_cmd, get_config, get_config_paths, propose_default_media_dirs_cmd,
@@ -215,6 +216,7 @@ pub fn run() {
             ams_bridge_handoff_ready,
             ams_bridge_handoff_cancel,
             ams_bridge_discover,
+            cloud_lookup_probe,
             scan_qr_video,
             scan_qr_photo,
             scan_qr_videos,

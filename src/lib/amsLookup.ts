@@ -5,6 +5,18 @@ import { tr } from "@/i18n";
 import { kundeDisplayName } from "@/lib/qrSuccess";
 import { useUiStore } from "@/store/uiStore";
 
+export {
+  bookingLookupPath,
+  canRunAmsIdLookup,
+  clearCloudLookupConfigLocal,
+  isAmsLookupLive,
+  isCloudLookupAvailable,
+  isCloudLookupTokenInvalid,
+  isLookupUnreachable,
+  syncCloudLookupConfigLocal,
+  type BookingLookupPath,
+} from "./bookingLookupGate";
+
 export type { AmsBridgeCustomer };
 
 export const AMS_LOOKUP_DEBOUNCE_MS = 1000;
@@ -216,22 +228,6 @@ export function isAmsBridgeConfigured(config: {
     (config.ams_bridge_url ?? "").trim() ||
       (config.ams_bridge_last_ok_url ?? "").trim(),
   );
-}
-
-/** ID-lookup only when AMS is actually up (header already knows). Offline → silent. */
-export function canRunAmsIdLookup(opts: {
-  configured: boolean;
-  connected: boolean;
-  capabilities?: readonly string[] | null;
-}): boolean {
-  if (!opts.configured || !opts.connected) return false;
-  const caps = opts.capabilities ?? [];
-  if (caps.length === 0) return true;
-  return caps.includes("lookup");
-}
-
-export function isLookupUnreachable(message: string): boolean {
-  return message.includes("nicht erreichbar");
 }
 
 export function isLookupNotFound(
