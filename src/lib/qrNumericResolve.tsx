@@ -1,4 +1,4 @@
-/** Numeric URL-only QR (`/qr/{n}?b={n}`) → AMS `mode=id` lookup. */
+/** Numeric URL-only QR (`/q/{n}/{n}` or legacy `/qr/{n}?b={n}`) → AMS `mode=id` lookup. */
 
 import toast from "react-hot-toast";
 import {

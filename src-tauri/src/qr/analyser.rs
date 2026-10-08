@@ -110,7 +110,7 @@ pub struct ParsedQrKunde {
     pub kunde: Kunde,
     /// Both Handcam and Outside present; product flags are left empty for AMS resolve.
     pub dual_family: bool,
-    /// URL-only numeric IDs (`/qr/{n}?b={n}`); AMS `mode=id` — not hash QR mode.
+    /// URL-only numeric IDs (`/q/{n}/{n}` or legacy `/qr/{n}?b={n}`); AMS `mode=id`.
     pub numeric_ids: bool,
 }
 
@@ -127,7 +127,7 @@ pub struct QrScanResult {
     /// QR media was dual-family (`hc_ou` / `ou_hc`); not persisted to SQLite.
     #[serde(default)]
     pub dual_family: bool,
-    /// URL-only numeric customer/booking IDs; not persisted to SQLite.
+    /// URL-only numeric customer/booking IDs (`/q/…/…` or legacy query); not persisted.
     #[serde(default)]
     pub numeric_ids: bool,
 }
@@ -545,8 +545,8 @@ enum ParsedQrMedia {
 ///
 /// Supports:
 /// - **Legacy:** `Customer_ID`, `Booking_ID`, `vorname`, `nachname`, `media`
-/// - **Compact:** `c`/`b`/`v`/`n`/`m`, or hashes from `/qr/{id}` + `?b=` / `?booking_id=`
-/// - **Numeric URL-only:** `https://…/qr/{n}?b={n}` (both IDs required, digits only) → plain IDs
+/// - **Compact:** `c`/`b`/`v`/`n`/`m`, or hashes from `/q|qr/{id}` + path booking / `?b=` / `?booking_id=`
+/// - **Numeric URL-only:** `https://…/q/{n}/{n}` or legacy `…/qr/{n}?b={n}` (digits only) → plain IDs
 pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, QrScanError> {
     let trimmed = qr_daten_str.trim();
     match trimmed.split_once('#') {
@@ -559,7 +559,8 @@ pub fn parse_kunde_from_qr_string(qr_daten_str: &str) -> Result<ParsedQrKunde, Q
 
 fn looks_like_qr_landing_url(s: &str) -> bool {
     let lower = s.to_ascii_lowercase();
-    lower.contains("/qr/")
+    let has_ticket_path = lower.contains("/qr/") || lower.contains("/q/");
+    has_ticket_path
         && (lower.starts_with("http://") || lower.starts_with("https://") || lower.contains("://"))
 }
 
@@ -571,11 +572,15 @@ fn is_ascii_numeric_id(s: &str) -> bool {
 fn parse_numeric_ids_from_url(url: &str) -> Result<ParsedQrKunde, QrScanError> {
     let customer = extract_qr_customer_id_from_url(url)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| QrScanError::Parse("missing Customer_ID in URL path /qr/{id}".into()))?;
+        .ok_or_else(|| {
+            QrScanError::Parse("missing Customer_ID in URL path /q/{id} or /qr/{id}".into())
+        })?;
     let booking = extract_qr_booking_id_from_url(url)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| {
-            QrScanError::Parse("missing Booking_ID in URL query (b= or booking_id=)".into())
+            QrScanError::Parse(
+                "missing Booking_ID in URL path /q/{c}/{b} or query (b= or booking_id=)".into(),
+            )
         })?;
     if !is_ascii_numeric_id(&customer) {
         return Err(QrScanError::Parse(format!(
@@ -723,21 +728,44 @@ fn json_field_string(daten: &serde_json::Value, keys: &[&str]) -> Option<String>
     None
 }
 
-/// Customer hash from `/qr/{id}` path segment (compact payloads omit JSON id).
-fn extract_qr_customer_id_from_url(url: &str) -> Option<String> {
+/// Rest of the URL after `/qr/` or `/q/` (prefers `/qr/` when both could match).
+/// `/q/` is not a substring of `/qr/`, so both prefixes are unambiguous.
+fn qr_ticket_path_rest(url: &str) -> Option<&str> {
     let lower = url.to_ascii_lowercase();
-    let idx = lower.find("/qr/")?;
-    let rest = &url[idx + "/qr/".len()..];
-    let segment = rest.split(['?', '#', '/']).next().unwrap_or("").trim();
-    if segment.is_empty() {
-        None
-    } else {
-        Some(segment.to_string())
+    if let Some(idx) = lower.find("/qr/") {
+        return Some(&url[idx + "/qr/".len()..]);
     }
+    if let Some(idx) = lower.find("/q/") {
+        return Some(&url[idx + "/q/".len()..]);
+    }
+    None
 }
 
-/// Booking hash from `b` or `booking_id` query (compact prefers `b=`).
+/// Path segments after `/q/` or `/qr/` (before `?` / `#`).
+fn extract_qr_path_segments(url: &str) -> (Option<String>, Option<String>) {
+    let Some(rest) = qr_ticket_path_rest(url) else {
+        return (None, None);
+    };
+    let path_part = rest.split(['?', '#']).next().unwrap_or("");
+    let mut segs = path_part
+        .split('/')
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let customer = segs.next().map(str::to_string);
+    let booking = segs.next().map(str::to_string);
+    (customer, booking)
+}
+
+/// Customer id/hash from `/q/{id}` or `/qr/{id}` (compact payloads may omit JSON id).
+fn extract_qr_customer_id_from_url(url: &str) -> Option<String> {
+    extract_qr_path_segments(url).0
+}
+
+/// Booking from path `/q|qr/{c}/{b}`, else query `b=` / `booking_id=` (compact prefers `b=`).
 fn extract_qr_booking_id_from_url(url: &str) -> Option<String> {
+    if let Some(booking) = extract_qr_path_segments(url).1 {
+        return Some(booking);
+    }
     let query = url.split_once('?')?.1;
     let query = query.split('#').next().unwrap_or(query);
     let mut booking_id_long: Option<String> = None;
@@ -2401,6 +2429,29 @@ mod tests {
     }
 
     #[test]
+    fn parse_kunde_numeric_url_path_ids() {
+        let payload = "HTTPS://SKYDIVE.DE/Q/12345/67890";
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        assert!(parsed.numeric_ids);
+        assert!(!parsed.dual_family);
+        let k = &parsed.kunde;
+        assert_eq!(k.kunden_id.as_deref(), Some("12345"));
+        assert_eq!(k.booking_id.as_deref(), Some("67890"));
+        assert!(k.kunden_id_hash.is_none());
+        assert!(k.booking_id_hash.is_none());
+        assert_eq!(k.form_mode, "manual");
+    }
+
+    #[test]
+    fn parse_kunde_numeric_url_path_ids_lowercase_qr_prefix() {
+        let payload = "https://skydive.de/qr/12345/67890";
+        let parsed = parse_kunde_from_qr_string(payload).unwrap();
+        assert!(parsed.numeric_ids);
+        assert_eq!(parsed.kunde.kunden_id.as_deref(), Some("12345"));
+        assert_eq!(parsed.kunde.booking_id.as_deref(), Some("67890"));
+    }
+
+    #[test]
     fn parse_kunde_numeric_url_booking_id_query() {
         let payload = "https://www.skydive-kassel.de/qr/99?booking_id=88";
         let parsed = parse_kunde_from_qr_string(payload).unwrap();
@@ -2432,6 +2483,14 @@ mod tests {
         )
         .unwrap_err()
         .to_string();
+        assert!(err.contains("numeric"));
+    }
+
+    #[test]
+    fn parse_kunde_numeric_url_rejects_hash_path_ids() {
+        let err = parse_kunde_from_qr_string("https://skydive.de/q/Aq1UcXLKnrTg18VJ/xkJWr3o4cuiYVZIA")
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("numeric"));
     }
 
@@ -2497,6 +2556,19 @@ mod tests {
         assert_eq!(
             extract_qr_booking_id_from_url("https://x/qr/y?booking_id=long&other=1").as_deref(),
             Some("long")
+        );
+        assert_eq!(
+            extract_qr_customer_id_from_url("HTTPS://SKYDIVE.DE/Q/12345/67890").as_deref(),
+            Some("12345")
+        );
+        assert_eq!(
+            extract_qr_booking_id_from_url("HTTPS://SKYDIVE.DE/Q/12345/67890").as_deref(),
+            Some("67890")
+        );
+        // Path booking wins over query when both present.
+        assert_eq!(
+            extract_qr_booking_id_from_url("https://x/q/1/2?b=99").as_deref(),
+            Some("2")
         );
         assert!(extract_qr_customer_id_from_url("https://example.com/app").is_none());
     }
