@@ -1143,6 +1143,8 @@
       "label": "QR-Code",
       "cancelled": "QR-Scan abgebrochen.",
       "applied": "Kundendaten übernommen",
+      "idsOnlyApplied": "Nur IDs übernommen — Buchungssuche ohne Treffer",
+      "idsOnlyHighlight": "Nur Kunden-/Buchungs-ID",
       "source": "Quelle: {{name}}",
       "notFound": "Kein QR-Code gefunden.",
       "scanFailed": "Scan fehlgeschlagen",

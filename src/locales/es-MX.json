@@ -1143,6 +1143,8 @@
       "label": "Código QR",
       "cancelled": "Escaneo QR cancelado.",
       "applied": "Datos del cliente aplicados",
+      "idsOnlyApplied": "Solo IDs — búsqueda de reserva sin resultado",
+      "idsOnlyHighlight": "Solo ID de cliente / reserva",
       "source": "Origen: {{name}}",
       "notFound": "No se encontró código QR.",
       "scanFailed": "El escaneo falló",

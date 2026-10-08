@@ -7,10 +7,7 @@ import {
 } from "@/lib/qrCleanup";
 import { discardQrPreviewBestEffort } from "@/lib/qrPreviewSession";
 import { resolveQrDualFamily } from "@/lib/qrDualResolve";
-import {
-  createQrLookupUiController,
-  updateQrLookupFound,
-} from "@/lib/qrLookupProgress";
+import { createQrLookupUiController } from "@/lib/qrLookupProgress";
 import { resolveQrNumericIds } from "@/lib/qrNumericResolve";
 import {
   formatQrSuccess,
@@ -166,6 +163,8 @@ function buildAppliedResult(
   preview: QrPreview | null | undefined,
   notes: string[] | undefined,
   switchConfirmShown: boolean,
+  /** Numeric URL QR without AMS enrichment — warning completion tile. */
+  numericIdsOnly = false,
 ): PresentQrHitResult {
   const formatted = formatQrSuccess({
     kunde,
@@ -173,6 +172,7 @@ function buildAppliedResult(
     sourcePath,
     preview,
     notes,
+    numericIdsOnly,
   });
   return {
     applied: true,
@@ -431,13 +431,6 @@ export async function presentQrHit(
     }
 
     const named = kundeDisplayName(scanned);
-    if (named) {
-      updateQrLookupFound({
-        highlight: named,
-        summary: tr("ams.lookup.foundTitle"),
-      });
-    }
-
     const current = useKundeStore.getState().kunde;
     const nextName = named || manualKundeLabel(scanned);
 
@@ -504,6 +497,8 @@ export async function presentQrHit(
       });
     }
     const cleanup = await awaitCleanup(cleanupPromise, input.runCleanup);
+    // Hash/compact/legacy: never ids-only. Numeric: warn only when AMS missed.
+    const numericIdsOnly = Boolean(input.numericIds) && !fromAms;
     const result = buildAppliedResult(
       scanned,
       cleanup,
@@ -511,6 +506,7 @@ export async function presentQrHit(
       input.preview,
       input.notes,
       confirmShown,
+      numericIdsOnly,
     );
     return deliverQrOutcome(result, showDialog);
   } finally {

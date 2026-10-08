@@ -1143,6 +1143,8 @@
       "label": "QR code",
       "cancelled": "QR scan cancelled.",
       "applied": "Customer data applied",
+      "idsOnlyApplied": "IDs only — booking lookup found nothing",
+      "idsOnlyHighlight": "Customer / booking ID only",
       "source": "Source: {{name}}",
       "notFound": "No QR code found.",
       "scanFailed": "Scan failed",

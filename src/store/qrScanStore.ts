@@ -57,7 +57,7 @@ export type QrLiveFrame = {
 };
 
 /** AMS/Cloud booking lookup while the QR progress panel stays open. */
-export type QrLookupUiPhase = "searching" | "found";
+export type QrLookupUiPhase = "searching" | "found" | "miss" | "error";
 
 export type QrLookupUi = {
   phase: QrLookupUiPhase;

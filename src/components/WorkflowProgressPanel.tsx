@@ -648,15 +648,33 @@ export function WorkflowProgressPanel({
           />
           {qrLookup ? (
             <div
-              className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-2.5 py-1.5"
+              className={cn(
+                "flex items-start gap-2 rounded-md border px-2.5 py-1.5",
+                qrLookup.phase === "error" &&
+                  "border-destructive/40 bg-destructive/5",
+                qrLookup.phase === "miss" && "border-warning/40 bg-warning/5",
+                qrLookup.phase === "found" && "border-border/50 bg-muted/20",
+                qrLookup.phase === "searching" &&
+                  "border-border/50 bg-muted/20",
+              )}
               aria-live="polite"
               aria-busy={qrLookup.phase === "searching" || undefined}
             >
               {qrLookup.phase === "searching" ? (
                 <Spinner size={14} className="mt-0.5 shrink-0 border-[1.5px]" />
-              ) : (
+              ) : qrLookup.phase === "found" ? (
                 <CheckCircle2
                   className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+                  aria-hidden
+                />
+              ) : qrLookup.phase === "error" ? (
+                <AlertTriangle
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"
+                  aria-hidden
+                />
+              ) : (
+                <AlertTriangle
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
                   aria-hidden
                 />
               )}
@@ -667,6 +685,11 @@ export function WorkflowProgressPanel({
                 {qrLookup.highlight.trim() ? (
                   <p className="mt-0.5 text-xs text-muted">
                     {qrLookup.highlight}
+                  </p>
+                ) : qrLookup.phase === "miss" ||
+                  qrLookup.phase === "error" ? (
+                  <p className="mt-0.5 text-xs text-muted">
+                    {t("ams.status.unreachableHint")}
                   </p>
                 ) : null}
               </div>

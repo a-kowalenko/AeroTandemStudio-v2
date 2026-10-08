@@ -246,27 +246,35 @@ export async function resolveQrDualFamily(
   };
 
   if (!lookupLive || !customerHash) {
+    hooks?.onLookupResult?.({ kind: "offline" });
     return runOffline();
   }
 
   hooks?.onLookupStart?.();
-  let combined: ReturnType<typeof combineHashAttempts>;
-  try {
-    const attempts = await Promise.all(
-      AMS_ID_LOOKUP_TYPES.map((markerType) =>
-        lookupOneHash(customerHash, bookingHash, markerType),
-      ),
-    );
-    combined = combineHashAttempts(attempts);
-  } finally {
-    hooks?.onLookupSettled?.();
-  }
+  const attempts = await Promise.all(
+    AMS_ID_LOOKUP_TYPES.map((markerType) =>
+      lookupOneHash(customerHash, bookingHash, markerType),
+    ),
+  );
+  const combined = combineHashAttempts(attempts);
 
   if (combined.kind === "fallback") {
+    hooks?.onLookupResult?.({
+      kind: combined.bridgeError ? "error" : "unreachable",
+      message: combined.bridgeError,
+    });
     return runOffline(combined.bridgeError);
   }
 
   if (combined.kind === "hit") {
+    const name = [combined.customer.first_name, combined.customer.last_name]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    hooks?.onLookupResult?.({
+      kind: "found",
+      highlight: name || undefined,
+    });
     return {
       kind: "resolved",
       kunde: applyAmsHitToQrKunde(scanned, combined.customer, combined.videoMode),
@@ -283,6 +291,14 @@ export async function resolveQrDualFamily(
     typeChoice === "outside"
       ? { customer: combined.outside, videoMode: "outside" as const }
       : { customer: combined.handcam, videoMode: "handcam" as const };
+  const name = [picked.customer.first_name, picked.customer.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  hooks?.onLookupResult?.({
+    kind: "found",
+    highlight: name || undefined,
+  });
   return {
     kind: "resolved",
     kunde: applyAmsHitToQrKunde(scanned, picked.customer, picked.videoMode),

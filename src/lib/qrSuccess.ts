@@ -28,21 +28,39 @@ export function fileBaseName(path: string | null | undefined): string {
 }
 
 export type FormatQrSuccessInput = {
-  kunde?: Pick<Kunde, "vorname" | "nachname"> | null;
+  kunde?: Pick<
+    Kunde,
+    "vorname" | "nachname" | "kunden_id" | "booking_id"
+  > | null;
   cleanup?: QrCleanupResult;
   sourcePath?: string | null;
   /** Extra detail lines (e.g. "Datei nicht importiert.") */
   notes?: string[];
   /** Hit-frame preview for SuccessDialog spotlight. */
   preview?: QrPreview | null;
+  /**
+   * Numeric URL QR only: IDs applied, AMS did not return customer payload.
+   * Must stay unset/false for hash/compact/legacy QR (unchanged success UX).
+   */
+  numericIdsOnly?: boolean;
 };
 
-/** QR action tile (same shape as SD „Vorher bestätigen“ dialog). */
-export function buildQrSuccessAction(
-  input: FormatQrSuccessInput,
-): DialogActionStatus {
-  // No source filename — generic camera names are noise; thumb covers the hit.
+function numericIdsHighlight(
+  kunde: Pick<Kunde, "kunden_id" | "booking_id"> | null | undefined,
+): string {
+  if (!kunde) return "";
+  const id = (kunde.kunden_id ?? "").trim();
+  const booking = (kunde.booking_id ?? "").trim();
+  return [id && `#${id}`, booking && `Booking #${booking}`]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function collectQrSuccessDetail(input: FormatQrSuccessInput): string | undefined {
   const detailParts: string[] = [];
+  if (input.numericIdsOnly) {
+    detailParts.push(tr("ams.status.unreachableHint"));
+  }
   for (const note of input.notes ?? []) {
     const trimmed = note.trim();
     if (trimmed) detailParts.push(trimmed);
@@ -51,13 +69,30 @@ export function buildQrSuccessAction(
     ? formatQrCleanupSummary(input.cleanup).replace(/^\n/, "").trim().replace(/\.$/, "")
     : "";
   if (cleanup) detailParts.push(cleanup);
+  return detailParts.length ? detailParts.join("\n") : undefined;
+}
+
+/** QR action tile (same shape as SD „Vorher bestätigen“ dialog). */
+export function buildQrSuccessAction(
+  input: FormatQrSuccessInput,
+): DialogActionStatus {
+  // No source filename — generic camera names are noise; thumb covers the hit.
+  if (input.numericIdsOnly) {
+    return {
+      kind: "qr",
+      label: tr("app.qr.label"),
+      tone: "warning",
+      summary: tr("app.qr.idsOnlyApplied"),
+      detail: collectQrSuccessDetail(input),
+    };
+  }
 
   return {
     kind: "qr",
     label: tr("app.qr.label"),
     tone: "success",
     summary: tr("app.qr.applied"),
-    detail: detailParts.length ? detailParts.join("\n") : undefined,
+    detail: collectQrSuccessDetail(input),
   };
 }
 
@@ -69,6 +104,9 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
 } {
   const name = kundeDisplayName(input.kunde);
   const action = buildQrSuccessAction(input);
+  const highlight = input.numericIdsOnly
+    ? numericIdsHighlight(input.kunde) || tr("app.qr.idsOnlyHighlight")
+    : name || tr("app.sd.customerRecognized");
 
   return {
     title: qrSuccessTitle(),
@@ -76,7 +114,7 @@ export function formatQrSuccess(input: FormatQrSuccessInput): {
     message: "",
     options: {
       variant: "qr",
-      highlight: name || tr("app.sd.customerRecognized"),
+      highlight,
       autoCloseSecs: 5,
       qrPreview: input.preview ?? null,
       actions: [action],

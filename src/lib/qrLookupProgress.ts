@@ -1,21 +1,65 @@
 /** AMS/Cloud lookup progress inside the QR scan panel (no second card / overlay). */
 
 import { tr } from "@/i18n";
-import { useQrScanStore } from "@/store/qrScanStore";
+import { useQrScanStore, type QrLookupUiPhase } from "@/store/qrScanStore";
 import { useUiStore } from "@/store/uiStore";
+
+export type QrLookupResultKind =
+  | "found"
+  | "not_found"
+  | "unreachable"
+  | "error"
+  | "offline";
+
+export type QrLookupResult = {
+  kind: QrLookupResultKind;
+  /** Customer name when found; otherwise optional detail. */
+  highlight?: string;
+  /** Override summary (e.g. bridge error text). */
+  message?: string;
+};
 
 export type QrLookupHooks = {
   /** Network lookup is about to start. */
   onLookupStart?: () => void;
-  /** Network settled; UI may still show type-choice / confirms. */
-  onLookupSettled?: () => void;
+  /** Final lookup outcome (never call with a fake "found"). */
+  onLookupResult?: (result: QrLookupResult) => void;
 };
 
 export type QrLookupUiController = {
   hooks: QrLookupHooks;
-  /** Clear lookup row; end panel if this flow opened it alone. */
+  /** Clear lookup row; end panel if this flow pinned busy. */
   finish: () => void;
 };
+
+function phaseForResult(kind: QrLookupResultKind): QrLookupUiPhase {
+  switch (kind) {
+    case "found":
+      return "found";
+    case "not_found":
+    case "offline":
+      return "miss";
+    case "unreachable":
+    case "error":
+      return "error";
+  }
+}
+
+function summaryForResult(result: QrLookupResult): string {
+  const custom = result.message?.trim();
+  if (custom) return custom;
+  switch (result.kind) {
+    case "found":
+      return tr("ams.lookup.foundTitle");
+    case "not_found":
+      return tr("ams.lookup.notFound");
+    case "unreachable":
+    case "offline":
+      return tr("ams.status.unreachableLabel");
+    case "error":
+      return tr("ams.status.lookupErrorFallback");
+  }
+}
 
 /**
  * Drive booking-lookup status on the existing QR progress panel.
@@ -25,7 +69,6 @@ export function createQrLookupUiController(opts: {
   highlight: string;
 }): QrLookupUiController {
   const highlight = opts.highlight.trim();
-  /** True if this controller (or follow-up) left us responsible for ending busy. */
   let pinBusy = false;
 
   return {
@@ -35,8 +78,6 @@ export function createQrLookupUiController(opts: {
           useUiStore.getState().setLoading(false);
         }
         const store = useQrScanStore.getState();
-        // Always pin: even when the scan job is already busy, cleanup may
-        // endFollowup while lookup still runs — we must keep the panel open.
         store.ensureLookupBusy();
         pinBusy = true;
         store.setLookup({
@@ -45,13 +86,16 @@ export function createQrLookupUiController(opts: {
           summary: tr("ams.lookup.searching"),
         });
       },
-      onLookupSettled: () => {
+      onLookupResult: (result) => {
         const store = useQrScanStore.getState();
-        const prev = store.lookup;
+        if (!store.lookup) {
+          store.ensureLookupBusy();
+          pinBusy = true;
+        }
         store.setLookup({
-          phase: "found",
-          highlight: prev?.highlight?.trim() || highlight,
-          summary: tr("ams.lookup.searching"),
+          phase: phaseForResult(result.kind),
+          highlight: (result.highlight ?? highlight).trim(),
+          summary: summaryForResult(result),
         });
       },
     },
@@ -59,24 +103,9 @@ export function createQrLookupUiController(opts: {
       const store = useQrScanStore.getState();
       store.setLookup(null);
       if (pinBusy) {
-        // Safe even if withQrScanProgress will end() again in its finally.
         store.end();
       }
       pinBusy = false;
     },
   };
-}
-
-/** Update highlight/summary after AMS returned a customer name (panel stays). */
-export function updateQrLookupFound(opts: {
-  highlight: string;
-  summary?: string;
-}): void {
-  const store = useQrScanStore.getState();
-  if (!store.lookup) return;
-  store.setLookup({
-    phase: "found",
-    highlight: opts.highlight.trim() || store.lookup.highlight,
-    summary: opts.summary?.trim() || tr("ams.lookup.foundTitle"),
-  });
 }

@@ -102,21 +102,24 @@ export async function resolveQrNumericIds(
   });
 
   if (!lookupLive) {
+    hooks?.onLookupResult?.({ kind: "offline" });
     return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
 
   hooks?.onLookupStart?.();
-  let combined: Awaited<ReturnType<typeof runAmsIdPairLookup>>;
-  try {
-    combined = await runAmsIdPairLookup(customerId, bookingId);
-  } finally {
-    hooks?.onLookupSettled?.();
+  const combined = await runAmsIdPairLookup(customerId, bookingId);
+
+  if (combined.kind === "unreachable") {
+    hooks?.onLookupResult?.({ kind: "unreachable" });
+    return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
 
-  if (combined.kind === "unreachable" || combined.kind === "error") {
-    if (combined.kind === "error") {
-      showStatusToast("qr-numeric-bridge-error", tr("app.qr.label"), combined.message);
-    }
+  if (combined.kind === "error") {
+    showStatusToast("qr-numeric-bridge-error", tr("app.qr.label"), combined.message);
+    hooks?.onLookupResult?.({
+      kind: "error",
+      message: combined.message,
+    });
     return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
 
@@ -126,6 +129,7 @@ export async function resolveQrNumericIds(
       tr("app.qr.label"),
       tr("ams.lookup.notFound"),
     );
+    hooks?.onLookupResult?.({ kind: "not_found" });
     return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
 
@@ -145,8 +149,18 @@ export async function resolveQrNumericIds(
   }
 
   if (!customer) {
+    hooks?.onLookupResult?.({ kind: "not_found" });
     return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
+
+  const name = [customer.first_name, customer.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  hooks?.onLookupResult?.({
+    kind: "found",
+    highlight: name || undefined,
+  });
 
   return {
     kind: "resolved",
