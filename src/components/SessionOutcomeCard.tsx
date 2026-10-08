@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DialogActionRows } from "@/components/DialogActionRows";
+import { Spinner } from "@/components/Spinner";
 import { cn } from "@/lib/utils";
 import {
   SESSION_OUTCOME_EXIT_MS,
@@ -66,13 +67,21 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
     [beginExit, clearTimer],
   );
 
+  const holding = Boolean(outcome.hold);
+
   useEffect(() => {
     dismissedRef.current = false;
     setExiting(false);
     setPaused(false);
+    if (holding) {
+      clearTimer();
+      remainingRef.current = totalMs;
+      segmentStartedRef.current = null;
+      return clearTimer;
+    }
     armTimer(totalMs);
     return clearTimer;
-  }, [outcome.id, totalMs, armTimer, clearTimer]);
+  }, [outcome.id, holding, totalMs, armTimer, clearTimer]);
 
   function captureRemaining() {
     if (segmentStartedRef.current == null) return;
@@ -82,14 +91,14 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
   }
 
   function onMouseEnter() {
-    if (exiting || dismissedRef.current || paused) return;
+    if (holding || exiting || dismissedRef.current || paused) return;
     setPaused(true);
     clearTimer();
     captureRemaining();
   }
 
   function onMouseLeave() {
-    if (exiting || dismissedRef.current || !paused) return;
+    if (holding || exiting || dismissedRef.current || !paused) return;
     setPaused(false);
     if (remainingRef.current <= 0) {
       beginExit();
@@ -108,6 +117,7 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
       )}
       role="status"
       aria-live="polite"
+      aria-busy={holding || undefined}
       aria-label={t("workflow.sessionOutcome.aria")}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -115,13 +125,17 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <OutcomeIcon
-              className={cn(
-                "h-4 w-4 shrink-0",
-                warning ? "text-warning" : "text-success",
-              )}
-              aria-hidden
-            />
+            {holding ? (
+              <Spinner size={16} className="shrink-0 border-[1.5px]" />
+            ) : (
+              <OutcomeIcon
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  warning ? "text-warning" : "text-success",
+                )}
+                aria-hidden
+              />
+            )}
             <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
               {outcome.title || t("common.status.success")}
             </h2>
@@ -138,7 +152,7 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
           size="sm"
           className="h-8 w-8 shrink-0 p-0"
           aria-label={t("workflow.sessionOutcome.dismiss")}
-          disabled={exiting}
+          disabled={exiting || holding}
           onClick={beginExit}
         >
           <X className="h-4 w-4" aria-hidden />
@@ -150,29 +164,31 @@ export function SessionOutcomeCard({ outcome, onDismiss, className }: Props) {
         qrPreview={outcome.qrPreview}
       />
 
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden",
-          warning ? "bg-warning/20" : "bg-success/20",
-        )}
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label={t("dialogs.autoCloseAria")}
-      >
+      {!holding ? (
         <div
-          key={outcome.id}
           className={cn(
-            "h-full w-full origin-left ats-toast-progress",
-            warning ? "bg-warning" : "bg-success",
+            "pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden",
+            warning ? "bg-warning/20" : "bg-success/20",
           )}
-          style={{
-            animationDuration: `${totalMs}ms`,
-            animationPlayState:
-              paused || exiting ? "paused" : "running",
-          }}
-        />
-      </div>
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={t("dialogs.autoCloseAria")}
+        >
+          <div
+            key={outcome.id}
+            className={cn(
+              "h-full w-full origin-left ats-toast-progress",
+              warning ? "bg-warning" : "bg-success",
+            )}
+            style={{
+              animationDuration: `${totalMs}ms`,
+              animationPlayState:
+                paused || exiting ? "paused" : "running",
+            }}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

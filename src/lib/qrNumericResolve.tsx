@@ -11,13 +11,13 @@ import {
   applyBridgeCustomerToKunde,
 } from "@/lib/amsLookup";
 import { runAmsIdPairLookup } from "@/lib/amsIdLookupCore";
+import type { QrLookupHooks } from "@/lib/qrLookupProgress";
 import { StatusToastCard } from "@/components/StatusToastCard";
 import { TOAST_DURATION_MANAGED } from "@/hooks/usePausableAutoDismiss";
 import { tr } from "@/i18n";
 import type { Kunde } from "@/lib/tauri";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
-import { useUiStore } from "@/store/uiStore";
 
 export type QrNumericResolveResult =
   | { kind: "resolved"; kunde: Kunde; fromAms: boolean }
@@ -71,10 +71,12 @@ export function applyNumericQrIdsOnly(scanned: Kunde): Kunde {
 /**
  * When `numericIds`, resolve via AMS ID-lookup (or keep IDs only offline).
  * Non-numeric → `{ kind: "skip" }`.
+ * Progress UI is owned by the caller (`hooks` / session outcome card).
  */
 export async function resolveQrNumericIds(
   scanned: Kunde,
   numericIds: boolean | null | undefined,
+  hooks?: QrLookupHooks,
 ): Promise<QrNumericResolveResult> {
   if (!numericIds) return { kind: "skip" };
 
@@ -103,18 +105,12 @@ export async function resolveQrNumericIds(
     return { kind: "resolved", kunde: idsOnly, fromAms: false };
   }
 
-  const ui = useUiStore.getState();
-  const wasLoading = ui.loading;
-  if (!wasLoading) {
-    ui.setLoading(true, tr("ams.lookup.searching"));
-  }
+  hooks?.onLookupStart?.();
   let combined: Awaited<ReturnType<typeof runAmsIdPairLookup>>;
   try {
     combined = await runAmsIdPairLookup(customerId, bookingId);
   } finally {
-    if (!wasLoading) {
-      useUiStore.getState().setLoading(false);
-    }
+    hooks?.onLookupSettled?.();
   }
 
   if (combined.kind === "unreachable" || combined.kind === "error") {

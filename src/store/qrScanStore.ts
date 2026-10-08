@@ -56,6 +56,16 @@ export type QrLiveFrame = {
   tone: QrLiveTone;
 };
 
+/** AMS/Cloud booking lookup while the QR progress panel stays open. */
+export type QrLookupUiPhase = "searching" | "found";
+
+export type QrLookupUi = {
+  phase: QrLookupUiPhase;
+  /** IDs or customer name under the progress label. */
+  highlight: string;
+  summary: string;
+};
+
 function patchLiveTone(
   frames: QrLiveFrame[],
   key: string,
@@ -82,6 +92,8 @@ type QrScanState = {
   photoEdgeLimited: boolean;
   /** True when video stripes are only list-end candidates (N=2 per side). */
   videoEdgeLimited: boolean;
+  /** Booking lookup status shown inside the QR progress panel (not a second card). */
+  lookup: QrLookupUi | null;
   begin: (
     paths: string[],
     stage?: QrScanJobStage,
@@ -89,6 +101,13 @@ type QrScanState = {
   ) => void;
   /** Re-open stripe UI for photo neighbor follow-up (full list + original hit). */
   beginFollowup: (paths: string[], hitPath: string) => void;
+  /**
+   * Keep the QR progress panel open for AMS lookup when the scan job already ended.
+   * @returns true if this call set `busy` (caller should `end` when lookup UI finishes
+   *   and no follow-up took over).
+   */
+  ensureLookupBusy: () => boolean;
+  setLookup: (lookup: QrLookupUi | null) => void;
   setStage: (stage: QrScanJobStage) => void;
   setPhase: (path: string, phase: QrScanPhase) => void;
   setClipProgress: (
@@ -103,6 +122,11 @@ type QrScanState = {
   setFollowup: (status: QrFollowupStatus) => void;
   /** Paint stripes red before photos leave the media list. */
   markRemoved: (paths: string[]) => void;
+  /**
+   * End neighbor follow-up chrome. If a booking lookup is still showing, keep
+   * `busy` so the progress panel does not vanish mid-lookup.
+   */
+  endFollowup: () => void;
   end: () => void;
   phaseFor: (path: string) => QrScanPhase | null;
 };
@@ -285,6 +309,22 @@ export type QrScanProgressSummary = {
   fileProgress?: QrFileProgress;
 };
 
+/** Lookup row is rendered separately in the panel; only adjust label when lookup-only. */
+function withLookupDetail(
+  summary: QrScanProgressSummary,
+  lookup: QrLookupUi | null | undefined,
+): QrScanProgressSummary {
+  if (!lookup) return summary;
+  if (summary.fileProgress == null || summary.fileProgress.total === 0) {
+    return {
+      ...summary,
+      label: lookup.summary,
+      detail: lookup.highlight.trim() || summary.detail,
+    };
+  }
+  return summary;
+}
+
 /** Human-readable progress for SD confirm dialog / loading UI (no % — scan may stop early). */
 export function summarizeQrScanProgress(
   byPath: Record<string, QrScanPhase>,
@@ -294,6 +334,7 @@ export function summarizeQrScanProgress(
   scanOrder: string[] = [],
   photoEdgeLimited = false,
   videoEdgeLimited = false,
+  lookup: QrLookupUi | null = null,
 ): QrScanProgressSummary {
   const entries = Object.entries(byPath);
   // Stripes follow the media list order; ends-first only affects which paths go active.
@@ -334,25 +375,30 @@ export function summarizeQrScanProgress(
       } else {
         parts.push(name);
       }
-    } else if (removedCount === 0) {
+    } else if (removedCount === 0 && order.length > 0) {
       parts.push(tr("qr.progress.neighborSeries"));
     }
     const total = fileProgress?.total ?? order.length;
     const finished = fileProgress?.finished ?? 0;
-    return {
-      label:
-        removedCount > 0
-          ? tr("qr.progress.removingQrPhotos")
-          : tr("qr.progress.checkingNeighbors"),
-      detail: parts.join(" · "),
-      percent: 0,
-      indeterminate: true,
-      hidePercent: true,
-      metric: total > 0 ? `${finished}/${total}` : undefined,
-      metricLabel: total > 0 ? tr("qr.progress.unitPhotos") : undefined,
-      legend: fileProgress && fileProgress.total > 0 ? "followup" : undefined,
-      fileProgress,
-    };
+    return withLookupDetail(
+      {
+        label:
+          removedCount > 0
+            ? tr("qr.progress.removingQrPhotos")
+            : order.length === 0 && lookup
+              ? lookup.summary
+              : tr("qr.progress.checkingNeighbors"),
+        detail: parts.join(" · "),
+        percent: 0,
+        indeterminate: true,
+        hidePercent: true,
+        metric: total > 0 ? `${finished}/${total}` : undefined,
+        metricLabel: total > 0 ? tr("qr.progress.unitPhotos") : undefined,
+        legend: fileProgress && fileProgress.total > 0 ? "followup" : undefined,
+        fileProgress,
+      },
+      lookup,
+    );
   }
 
   const total = order.length > 0 ? order.length : entries.length;
@@ -429,23 +475,26 @@ export function summarizeQrScanProgress(
     parts.push(tr("qr.progress.preparing"));
   }
 
-  return {
-    label,
-    detail: parts.join(" · "),
-    percent: 0,
-    indeterminate: true,
-    hidePercent: true,
-    metric,
-    metricLabel,
-    // Pace legend for video + photo (Schnell/Gründlich stripes).
-    legend:
-      (stage === "scanning_videos" || stage === "scanning_photos") &&
-      fileProgress &&
-      fileProgress.total > 0
-        ? "pace"
-        : undefined,
-    fileProgress,
-  };
+  return withLookupDetail(
+    {
+      label,
+      detail: parts.join(" · "),
+      percent: 0,
+      indeterminate: true,
+      hidePercent: true,
+      metric,
+      metricLabel,
+      // Pace legend for video + photo (Schnell/Gründlich stripes).
+      legend:
+        (stage === "scanning_videos" || stage === "scanning_photos") &&
+        fileProgress &&
+        fileProgress.total > 0
+          ? "pace"
+          : undefined,
+      fileProgress,
+    },
+    lookup,
+  );
 }
 
 export const useQrScanStore = create<QrScanState>((set, get) => ({
@@ -459,6 +508,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   followup: null,
   photoEdgeLimited: false,
   videoEdgeLimited: false,
+  lookup: null,
 
   begin: (paths, stage = "scanning", options) => {
     const unique = dedupeNormalizedPaths(paths);
@@ -477,6 +527,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       followup: stage === "followup" ? emptyFollowup() : null,
       photoEdgeLimited: Boolean(options?.photoEdgeLimited),
       videoEdgeLimited: Boolean(options?.videoEdgeLimited),
+      lookup: null,
     });
   },
 
@@ -508,8 +559,29 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       followup: emptyFollowup(),
       photoEdgeLimited: false,
       videoEdgeLimited: false,
+      // Keep an in-flight AMS lookup row across follow-up takeover.
+      lookup: get().lookup,
     });
   },
+
+  ensureLookupBusy: () => {
+    if (get().busy) return false;
+    set({
+      busy: true,
+      stage: "followup",
+      followup: emptyFollowup(),
+      byPath: {},
+      scanOrder: [],
+      clipProgress: {},
+      liveFrames: [],
+      liveAnchorKey: null,
+      photoEdgeLimited: false,
+      videoEdgeLimited: false,
+    });
+    return true;
+  },
+
+  setLookup: (lookup) => set({ lookup }),
 
   setStage: (stage) => {
     const followup = stage === "followup" ? emptyFollowup() : get().followup;
@@ -642,6 +714,25 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
     });
   },
 
+  endFollowup: () => {
+    if (get().lookup) {
+      set({
+        busy: true,
+        stage: "followup",
+        byPath: {},
+        scanOrder: [],
+        clipProgress: {},
+        liveFrames: [],
+        liveAnchorKey: null,
+        followup: emptyFollowup(),
+        photoEdgeLimited: false,
+        videoEdgeLimited: false,
+      });
+      return;
+    }
+    get().end();
+  },
+
   end: () =>
     set({
       busy: false,
@@ -654,6 +745,7 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
       followup: null,
       photoEdgeLimited: false,
       videoEdgeLimited: false,
+      lookup: null,
     }),
 
   phaseFor: (path) => get().byPath[normalizeMediaPath(path)] ?? null,

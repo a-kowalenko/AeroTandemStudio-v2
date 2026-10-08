@@ -34,6 +34,8 @@ export type DialogActionStatus = {
   summary: string;
   /** Optional detail (path, error text). */
   detail?: string;
+  /** Show a spinner instead of the tone icon (e.g. AMS lookup in progress). */
+  busy?: boolean;
 };
 
 export type DialogChoiceOption = {

@@ -11,6 +11,11 @@ export type SessionRunOutcome = {
   queuedNext?: boolean;
   /** QR hit-frame for a compact thumb in the card header. */
   qrPreview?: QrPreview | null;
+  /**
+   * When true, the card stays open (no auto-hide) — e.g. AMS lookup in progress.
+   * Cleared when the final outcome is presented.
+   */
+  hold?: boolean;
 };
 
 export const SESSION_OUTCOME_HIDE_MS = 8000;
@@ -44,16 +49,20 @@ export function buildSessionRunOutcome(opts: {
   actions: DialogActionStatus[];
   queuedNext?: boolean;
   qrPreview?: QrPreview | null;
+  hold?: boolean;
+  /** Reuse an existing card id (in-place phase update without remount animation). */
+  id?: number;
 }): SessionRunOutcome {
   const highlight = opts.highlight?.trim() ?? "";
   const previewPath = opts.qrPreview?.path?.trim() ?? "";
   return {
-    id: nextSessionRunId++,
+    id: opts.id ?? nextSessionRunId++,
     title: opts.title.trim(),
     highlight: highlight || undefined,
     actions: [...opts.actions],
     tone: sessionRunOutcomeTone(opts.actions),
     queuedNext: Boolean(opts.queuedNext),
     qrPreview: previewPath && opts.qrPreview ? opts.qrPreview : null,
+    hold: Boolean(opts.hold),
   };
 }

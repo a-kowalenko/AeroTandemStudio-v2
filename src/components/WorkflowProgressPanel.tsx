@@ -31,6 +31,7 @@ import { UploadJobHeader } from "./UploadJobHeader";
 import { QrLiveScanStrip } from "./QrLiveScanStrip";
 import { Button } from "./ui/button";
 import { SessionOutcomeCard } from "./SessionOutcomeCard";
+import { Spinner } from "./Spinner";
 import { cn } from "../lib/utils";
 import type { WorkflowProgressStage } from "../lib/workflowProgress";
 import {
@@ -40,6 +41,7 @@ import {
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 import { usePausableAutoDismiss } from "../hooks/usePausableAutoDismiss";
 import { CREATE_OUTCOME_HIDE_MS } from "../lib/createRunOutcome";
+import { useQrScanStore } from "../store/qrScanStore";
 import {
   bodyConcatModeLabelKey,
   bodyConcatModeShortLabelKey,
@@ -282,6 +284,7 @@ export function WorkflowProgressPanel({
   onUploadDone,
 }: Props) {
   const { t } = useTranslation();
+  const qrLookup = useQrScanStore((s) => s.lookup);
   const { paused: donePaused, hoverProps: doneHover } = usePausableAutoDismiss(
     view.uploadDoneHold ? CREATE_OUTCOME_HIDE_MS : 0,
     () => onUploadDone?.(),
@@ -643,6 +646,32 @@ export function WorkflowProgressPanel({
             fileProgress={snapshot.fileProgress}
             tasks={showTasks ? view.tasks : undefined}
           />
+          {qrLookup ? (
+            <div
+              className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/20 px-2.5 py-1.5"
+              aria-live="polite"
+              aria-busy={qrLookup.phase === "searching" || undefined}
+            >
+              {qrLookup.phase === "searching" ? (
+                <Spinner size={14} className="mt-0.5 shrink-0 border-[1.5px]" />
+              ) : (
+                <CheckCircle2
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+                  aria-hidden
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  {qrLookup.summary}
+                </p>
+                {qrLookup.highlight.trim() ? (
+                  <p className="mt-0.5 text-xs text-muted">
+                    {qrLookup.highlight}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {snapshot.detail ? (
             <p className="text-xs tabular-nums text-muted" aria-live="polite">
               {snapshot.detail}

@@ -14,6 +14,7 @@ import {
   Server,
   XCircle,
 } from "lucide-react";
+import { Spinner } from "@/components/Spinner";
 import { cn } from "@/lib/utils";
 import type { QrPreview } from "@/lib/tauri";
 import type {
@@ -176,10 +177,16 @@ function ActionRow({
       {showQrThumb && qrPreview ? <QrActionThumb preview={qrPreview} /> : null}
       <span
         className="mt-0.5 flex shrink-0 items-center gap-1 self-start"
-        title={toneText}
+        title={action.busy ? action.summary : toneText}
       >
-        <span className="sr-only">{toneText}</span>
-        {toneStatusIcon(action.tone)}
+        <span className="sr-only">
+          {action.busy ? action.summary : toneText}
+        </span>
+        {action.busy ? (
+          <Spinner size={16} className="border-[1.5px]" />
+        ) : (
+          toneStatusIcon(action.tone)
+        )}
       </span>
     </li>
   );

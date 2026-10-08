@@ -95,4 +95,21 @@ describe("sessionRunOutcome", () => {
     });
     assert.equal(o.qrPreview, null);
   });
+
+  it("supports hold and stable id for in-place updates", () => {
+    const first = buildSessionRunOutcome({
+      title: "QR",
+      hold: true,
+      actions: [row({ kind: "ams", tone: "success" })],
+    });
+    assert.equal(first.hold, true);
+    const second = buildSessionRunOutcome({
+      title: "QR",
+      hold: false,
+      id: first.id,
+      actions: [row({ kind: "qr", tone: "success" })],
+    });
+    assert.equal(second.id, first.id);
+    assert.equal(second.hold, false);
+  });
 });

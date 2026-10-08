@@ -37,6 +37,7 @@ import {
   summarizeQrScanProgress,
   type QrClipFrameProgress,
   type QrFollowupStatus,
+  type QrLookupUi,
   type QrScanJobStage,
   type QrScanPhase,
 } from "../store/qrScanStore";
@@ -113,6 +114,7 @@ type Input = {
   qrScanOrder: string[];
   qrPhotoEdgeLimited: boolean;
   qrVideoEdgeLimited: boolean;
+  qrLookup: QrLookupUi | null;
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
@@ -187,6 +189,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
         qrScanOrder: input.qrScanOrder,
         qrPhotoEdgeLimited: input.qrPhotoEdgeLimited,
         qrVideoEdgeLimited: input.qrVideoEdgeLimited,
+        qrLookup: input.qrLookup,
       }),
     [
       input.sdWorkflowActive,
@@ -202,6 +205,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrScanOrder,
       input.qrPhotoEdgeLimited,
       input.qrVideoEdgeLimited,
+      input.qrLookup,
     ],
   );
 
@@ -243,6 +247,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrScanOrder,
       input.qrPhotoEdgeLimited,
       input.qrVideoEdgeLimited,
+      input.qrLookup,
     );
   }, [
     input.qrScanBusy,
@@ -254,6 +259,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.qrScanOrder,
     input.qrPhotoEdgeLimited,
     input.qrVideoEdgeLimited,
+    input.qrLookup,
   ]);
 
   const showSdProgress = Boolean(input.sdWorkflowActive && sdProgress);

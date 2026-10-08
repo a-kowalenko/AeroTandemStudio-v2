@@ -1816,7 +1816,7 @@
       "notFound": "Cliente no encontrado",
       "overrideBody": "Anterior: {{previous}}\nReserva: {{next}}\n\n¿Aplicar estos datos?\nLugar, fecha y equipo se conservan.",
       "photoPaid": "Foto (pagada)",
-      "searching": "Buscando…",
+      "searching": "Cargando datos del cliente…",
       "typeChoiceBody": "Estos IDs tienen datos Handcam y Outside.\nElige el tipo de medio.",
       "typeChoiceTitle": "Elegir tipo de medio",
       "videoPaid": "Video (pagado)"

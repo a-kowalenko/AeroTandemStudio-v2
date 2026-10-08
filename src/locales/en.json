@@ -1816,7 +1816,7 @@
       "notFound": "Customer not found",
       "overrideBody": "Previous: {{previous}}\nBooking: {{next}}\n\nApply this data?\nLocation, date and crew are kept.",
       "photoPaid": "Photo (paid)",
-      "searching": "Searching…",
+      "searching": "Loading customer data…",
       "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
       "typeChoiceTitle": "Choose media type",
       "videoPaid": "Video (paid)"

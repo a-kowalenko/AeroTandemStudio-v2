@@ -6,6 +6,7 @@ import {
   type QrClipFrameProgress,
   type QrFileProgress,
   type QrFollowupStatus,
+  type QrLookupUi,
   type QrScanJobStage,
   type QrScanLegend,
   type QrScanPhase,
@@ -93,6 +94,7 @@ export function resolveSdWorkflowProgress(opts: {
   qrScanOrder?: string[];
   qrPhotoEdgeLimited?: boolean;
   qrVideoEdgeLimited?: boolean;
+  qrLookup?: QrLookupUi | null;
 }): WorkflowProgressSnapshot | null {
   if (!opts.active) return null;
 
@@ -169,6 +171,7 @@ export function resolveSdWorkflowProgress(opts: {
       opts.qrScanOrder,
       opts.qrPhotoEdgeLimited,
       opts.qrVideoEdgeLimited,
+      opts.qrLookup ?? null,
     );
     return {
       percent: summary.percent,

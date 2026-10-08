@@ -17,6 +17,7 @@ import {
   type AmsMarkerType,
 } from "@/lib/amsLookup";
 import { presentAmsLookupError } from "@/lib/amsBridgeStatus";
+import type { QrLookupHooks } from "@/lib/qrLookupProgress";
 import { StatusToastCard } from "@/components/StatusToastCard";
 import { TOAST_DURATION_MANAGED } from "@/hooks/usePausableAutoDismiss";
 import { tr } from "@/i18n";
@@ -26,7 +27,6 @@ import {
 } from "@/lib/tauri";
 import { useAmsBridgeStore } from "@/store/amsBridgeStore";
 import { useConfigStore } from "@/store/configStore";
-import { useUiStore } from "@/store/uiStore";
 
 type LookupAttempt =
   | { kind: "hit"; markerType: AmsMarkerType; customer: AmsBridgeCustomer }
@@ -209,10 +209,12 @@ function toastProductsCheck(): void {
 /**
  * When `dualFamily`, resolve Handcam/Outside via AMS hash-lookup (or offline choice).
  * Non-dual → `{ kind: "skip" }` (caller keeps scanned kunde as-is).
+ * Progress UI is owned by the caller (`hooks` / session outcome card).
  */
 export async function resolveQrDualFamily(
   scanned: Kunde,
   dualFamily: boolean | null | undefined,
+  hooks?: QrLookupHooks,
 ): Promise<QrDualResolveResult> {
   if (!dualFamily) return { kind: "skip" };
 
@@ -247,11 +249,7 @@ export async function resolveQrDualFamily(
     return runOffline();
   }
 
-  const ui = useUiStore.getState();
-  const wasLoading = ui.loading;
-  if (!wasLoading) {
-    ui.setLoading(true, tr("ams.lookup.searching"));
-  }
+  hooks?.onLookupStart?.();
   let combined: ReturnType<typeof combineHashAttempts>;
   try {
     const attempts = await Promise.all(
@@ -261,9 +259,7 @@ export async function resolveQrDualFamily(
     );
     combined = combineHashAttempts(attempts);
   } finally {
-    if (!wasLoading) {
-      useUiStore.getState().setLoading(false);
-    }
+    hooks?.onLookupSettled?.();
   }
 
   if (combined.kind === "fallback") {

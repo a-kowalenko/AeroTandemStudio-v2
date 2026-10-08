@@ -129,7 +129,8 @@ export async function maybeRemoveQrPhoto(
     await sleep(950);
     result.removedPhotos = removePhotosByPaths(removeList);
   } finally {
-    store.end();
+    // Do not tear down an in-flight AMS lookup row (parallel with cleanup).
+    store.endFollowup();
   }
 
   return result;

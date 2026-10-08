@@ -1816,7 +1816,7 @@
       "notFound": "Kunde nicht gefunden",
       "overrideBody": "Bisher: {{previous}}\nBuchung: {{next}}\n\nDiese Daten übernehmen?\nOrt, Datum und Crew bleiben erhalten.",
       "photoPaid": "Foto (bezahlt)",
-      "searching": "Suche…",
+      "searching": "Kundendaten werden geladen…",
       "typeChoiceBody": "Für diese IDs gibt es Handcam- und Outside-Daten.\nBitte den Medien-Typ wählen.",
       "typeChoiceTitle": "Medien-Typ wählen",
       "videoPaid": "Video (bezahlt)"
