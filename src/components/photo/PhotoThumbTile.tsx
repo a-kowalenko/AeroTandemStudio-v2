@@ -59,7 +59,10 @@ export function PhotoThumbTile({
 }: PhotoThumbTileProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [inView, setInView] = useState(forceLoad);
-  const [hqReady, setHqReady] = useState(false);
+  // Sync with queue so remounted tiles skip the LQ→HQ delay when HQ is cached.
+  const [hqReady, setHqReady] = useState(
+    () => Boolean(photoThumbnailQueue.getCached(path, "hq", revision)),
+  );
 
   useEffect(() => {
     if (forceLoad) {
@@ -137,6 +140,7 @@ export function PhotoThumbTile({
       setHqReady(true);
       return;
     }
+    setHqReady(false);
     const timer = window.setTimeout(() => setHqReady(true), PHOTO_THUMB_HQ_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [loading, path, revision]);
@@ -184,7 +188,7 @@ export function PhotoThumbTile({
           src={thumbSrc}
           alt={filename}
           className="h-full w-full object-cover"
-          loading="lazy"
+          decoding="async"
         />
       ) : (
         <div

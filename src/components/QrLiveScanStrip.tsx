@@ -36,19 +36,23 @@ const CROSSFADE_MS = 480;
 /** Keep a little air so the active scan is not clipped by the panel edge. */
 const DOCK_SCAN_PAD_PX = 10;
 
+/**
+ * Scroll the dock only when the active scan would clip. Works for LTR start
+ * docks and RTL end docks (overflow runs out toward that list edge).
+ */
 function ensureScanVisibleInDock(el: HTMLElement, pad = DOCK_SCAN_PAD_PX) {
   const dock = el.closest(".ats-qr-live-dock");
   if (!(dock instanceof HTMLElement)) return;
   const dockBox = dock.getBoundingClientRect();
   const tileBox = el.getBoundingClientRect();
-  let delta = 0;
-  if (tileBox.left < dockBox.left + pad) {
-    delta = tileBox.left - dockBox.left - pad;
-  } else if (tileBox.right > dockBox.right - pad) {
-    delta = tileBox.right - dockBox.right + pad;
-  }
-  if (delta === 0) return;
-  dock.scrollBy({ left: delta, behavior: "smooth" });
+  const clipped =
+    tileBox.left < dockBox.left + pad || tileBox.right > dockBox.right - pad;
+  if (!clipped) return;
+  el.scrollIntoView({
+    inline: "nearest",
+    block: "nearest",
+    behavior: "smooth",
+  });
 }
 
 /**
@@ -413,9 +417,12 @@ function Dock({
   inward?: boolean;
   showPosition?: boolean;
 }) {
+  // End dock is `direction: rtl` — reverse DOM so visual order stays index-LTR
+  // while packing/overflow runs toward the right list edge.
+  const ordered = inward ? [...frames].reverse() : frames;
   return (
     <div className={cn("ats-qr-live-dock", inward && "ats-qr-live-dock-end")}>
-      {frames.map((placed) => (
+      {ordered.map((placed) => (
         <LiveTile
           key={placed.item.key}
           frame={placed.item}

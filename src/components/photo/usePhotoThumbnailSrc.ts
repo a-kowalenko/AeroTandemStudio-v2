@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ThumbQuality } from "../../lib/sdCard";
 import { photoThumbnailQueue } from "../../lib/photoThumbnailQueue";
@@ -11,6 +11,9 @@ export function photoFileSrcFallback(path: string, revision: number): string {
 /**
  * Queued thumbnail (OPT-11): strip/grid/warm share limited concurrent jobs;
  * main stage uses file src + low-priority preview upgrade (LQ tiles win).
+ *
+ * Cache hits via `useSyncExternalStore` so virtualized tile remounts paint
+ * synchronously without clearing to a spinner.
  */
 export function usePhotoThumbnailSrc(
   path: string | null,
@@ -25,39 +28,57 @@ export function usePhotoThumbnailSrc(
 ): string | null {
   const enabled = opts?.enabled !== false;
   const fallbackToFile = opts?.fallbackToFile !== false;
-  const [url, setUrl] = useState<string | null>(() =>
-    path && enabled
-      ? photoThumbnailQueue.getCached(path, quality, revision)
-      : null,
+
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!path) return () => {};
+      return photoThumbnailQueue.subscribe(
+        path,
+        quality,
+        revision,
+        onStoreChange,
+      );
+    },
+    [path, quality, revision],
   );
+
+  const getSnapshot = useCallback(() => {
+    if (!path) return null;
+    return photoThumbnailQueue.getCached(path, quality, revision);
+  }, [path, quality, revision]);
+
+  const cachedUrl = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!path) {
-      setUrl(null);
+      setFallbackUrl(null);
       return;
     }
-    const cached = photoThumbnailQueue.getCached(path, quality, revision);
     if (!enabled) {
-      if (cached) setUrl(cached);
+      setFallbackUrl(null);
       return;
     }
+    if (photoThumbnailQueue.getCached(path, quality, revision)) {
+      setFallbackUrl(null);
+      return;
+    }
+
     let cancelled = false;
-    if (cached) {
-      setUrl(cached);
-      return;
-    }
-    setUrl(null);
+    setFallbackUrl(null);
 
     void photoThumbnailQueue
       .request(path, quality, priority, revision)
       .then((displayUrl) => {
         if (cancelled) return;
-        if (displayUrl) setUrl(displayUrl);
-        else if (fallbackToFile) setUrl(photoFileSrcFallback(path, revision));
+        // Cache notify updates `cachedUrl`; only need local fallback on empty.
+        if (!displayUrl && fallbackToFile) {
+          setFallbackUrl(photoFileSrcFallback(path, revision));
+        }
       })
       .catch(() => {
         if (cancelled) return;
-        if (fallbackToFile) setUrl(photoFileSrcFallback(path, revision));
+        if (fallbackToFile) setFallbackUrl(photoFileSrcFallback(path, revision));
       });
 
     return () => {
@@ -65,5 +86,7 @@ export function usePhotoThumbnailSrc(
     };
   }, [path, quality, revision, priority, enabled, fallbackToFile]);
 
-  return url;
+  if (cachedUrl) return cachedUrl;
+  if (!enabled) return null;
+  return fallbackUrl;
 }

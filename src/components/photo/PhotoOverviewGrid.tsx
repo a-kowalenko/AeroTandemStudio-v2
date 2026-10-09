@@ -10,13 +10,25 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { buildOffsets, sliceVirtualRange } from "../../lib/virtualList";
+import {
+  PHOTO_THUMB_PRIORITY,
+  photoThumbnailQueue,
+} from "../../lib/photoThumbnailQueue";
 import { cn } from "../../lib/utils";
 import type { PhotoItem } from "../../store/photoStore";
 import { PhotoThumbTile } from "./PhotoThumbTile";
 
 const GAP = 8;
 const MIN_CELL = 96;
-const OVERSCAN_ROWS = 2;
+/** Keep enough rows mounted that moderate scroll does not remount thumbs. */
+const OVERSCAN_ROWS = 6;
+/** Prefetch LQ a few rows past the overscan window while scrolling. */
+const WARM_EXTRA_ROWS = 4;
+/**
+ * Below this count, mount the full grid (no virtual window). Small imports
+ * stay stable; large sets still use the virtual list.
+ */
+const VIRTUALIZE_MIN_COUNT = 36;
 
 type Props = {
   photos: PhotoItem[];
@@ -95,6 +107,7 @@ export function PhotoOverviewGrid({
   }, [metrics.width, columns]);
   const rowHeight = cellSize + GAP;
   const rowCount = Math.ceil(photos.length / columns) || 0;
+  const virtualize = photos.length >= VIRTUALIZE_MIN_COUNT;
 
   const rowHeights = useMemo(
     () => Array.from({ length: rowCount }, () => rowHeight),
@@ -104,15 +117,55 @@ export function PhotoOverviewGrid({
 
   const virtualSlice = useMemo(
     () =>
-      sliceVirtualRange(
-        rowCount,
-        rowOffsets,
-        metrics.scrollTop,
-        metrics.height,
-        OVERSCAN_ROWS,
-      ),
-    [rowCount, rowOffsets, metrics.scrollTop, metrics.height],
+      virtualize
+        ? sliceVirtualRange(
+            rowCount,
+            rowOffsets,
+            metrics.scrollTop,
+            metrics.height,
+            OVERSCAN_ROWS,
+          )
+        : {
+            start: 0,
+            end: rowCount,
+            padTop: 0,
+            padBottom: 0,
+            totalHeight: rowOffsets[rowCount] ?? 0,
+          },
+    [
+      virtualize,
+      rowCount,
+      rowOffsets,
+      metrics.scrollTop,
+      metrics.height,
+    ],
   );
+
+  // Prefetch LQ just beyond the mounted window so the next scroll paints from cache.
+  useEffect(() => {
+    if (!virtualize || photos.length === 0 || columns <= 0) return;
+    const warmStart = virtualSlice.end * columns;
+    const warmEnd = Math.min(
+      photos.length,
+      (virtualSlice.end + WARM_EXTRA_ROWS) * columns,
+    );
+    for (let i = warmStart; i < warmEnd; i++) {
+      const p = photos[i];
+      if (!p) continue;
+      photoThumbnailQueue.boost(
+        p.path,
+        "lq",
+        PHOTO_THUMB_PRIORITY.warm,
+        getMediaRevision(p.path),
+      );
+    }
+  }, [
+    virtualize,
+    photos,
+    columns,
+    virtualSlice.end,
+    getMediaRevision,
+  ]);
 
   useEffect(() => {
     if (currentIndex < 0 || !listEl || rowCount === 0) return;
@@ -152,6 +205,51 @@ export function PhotoOverviewGrid({
   const rows: number[] = [];
   for (let r = virtualSlice.start; r < virtualSlice.end; r++) rows.push(r);
 
+  const renderRow = (row: number): ReactNode => {
+    const startIdx = row * columns;
+    const cells: ReactNode[] = [];
+    for (let c = 0; c < columns; c++) {
+      const i = startIdx + c;
+      if (i >= photos.length) break;
+      const p = photos[i]!;
+      const isCurrent = i === currentIndex;
+      const isSelected = explicitlySelected && selected.has(i);
+      const isWm = fotoWmNeeded && watermarkIndices.has(i);
+      cells.push(
+        <PhotoThumbTile
+          key={p.path}
+          path={p.path}
+          filename={p.filename}
+          revision={getMediaRevision(p.path)}
+          isCurrent={isCurrent}
+          isSelected={isSelected}
+          isWm={isWm}
+          editMark={getEditMark(p.path)}
+          scrollRootRef={scrollRootRef}
+          forceLoad
+          className="aspect-square w-full shrink-0"
+          onClick={(e) => onThumbClick(i, e)}
+          onContextMenu={onContextMenu(p.path)}
+        />,
+      );
+    }
+    return (
+      <div
+        key={row}
+        className="grid"
+        style={{
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          gap: GAP,
+          height: rowHeight,
+          paddingBottom: GAP,
+          boxSizing: "border-box",
+        }}
+      >
+        {cells}
+      </div>
+    );
+  };
+
   return (
     <div
       ref={attachRef}
@@ -168,50 +266,7 @@ export function PhotoOverviewGrid({
           className="absolute inset-x-0 top-0"
           style={{ transform: `translateY(${virtualSlice.padTop}px)` }}
         >
-          {rows.map((row) => {
-            const startIdx = row * columns;
-            const cells: ReactNode[] = [];
-            for (let c = 0; c < columns; c++) {
-              const i = startIdx + c;
-              if (i >= photos.length) break;
-              const p = photos[i]!;
-              const isCurrent = i === currentIndex;
-              const isSelected = explicitlySelected && selected.has(i);
-              const isWm = fotoWmNeeded && watermarkIndices.has(i);
-              cells.push(
-                <PhotoThumbTile
-                  key={p.path}
-                  path={p.path}
-                  filename={p.filename}
-                  revision={getMediaRevision(p.path)}
-                  isCurrent={isCurrent}
-                  isSelected={isSelected}
-                  isWm={isWm}
-                  editMark={getEditMark(p.path)}
-                  scrollRootRef={scrollRootRef}
-                  forceLoad
-                  className="aspect-square w-full shrink-0"
-                  onClick={(e) => onThumbClick(i, e)}
-                  onContextMenu={onContextMenu(p.path)}
-                />,
-              );
-            }
-            return (
-              <div
-                key={row}
-                className="grid"
-                style={{
-                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                  gap: GAP,
-                  height: rowHeight,
-                  paddingBottom: GAP,
-                  boxSizing: "border-box",
-                }}
-              >
-                {cells}
-              </div>
-            );
-          })}
+          {rows.map(renderRow)}
         </div>
       </div>
     </div>

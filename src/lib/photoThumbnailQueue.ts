@@ -65,6 +65,8 @@ class PhotoThumbnailQueue {
   private inFlight = new Set<string>();
   private inFlightWaiters = new Map<string, Waiter[]>();
   private cache = new Map<string, string>();
+  /** Per-cache-key listeners for `useSyncExternalStore` (tile remounts). */
+  private listeners = new Map<string, Set<() => void>>();
   private active = 0;
   /**
    * When true, only LQ (strip) and active-priority jobs may start.
@@ -87,6 +89,32 @@ class PhotoThumbnailQueue {
     bustKey?: string | number | null,
   ): string | null {
     return this.cache.get(memKey(path, quality, String(bustKey ?? ""))) ?? null;
+  }
+
+  /** Subscribe to one cache entry; fires when that LQ/HQ/preview URL is stored. */
+  subscribe(
+    path: string,
+    quality: ThumbQuality,
+    bustKey: string | number | null | undefined,
+    onStoreChange: () => void,
+  ): () => void {
+    const key = memKey(path, quality, String(bustKey ?? ""));
+    let set = this.listeners.get(key);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(key, set);
+    }
+    set.add(onStoreChange);
+    return () => {
+      set!.delete(onStoreChange);
+      if (set!.size === 0) this.listeners.delete(key);
+    };
+  }
+
+  private notify(key: string) {
+    const set = this.listeners.get(key);
+    if (!set) return;
+    for (const cb of set) cb();
   }
 
   /**
@@ -301,6 +329,7 @@ class PhotoThumbnailQueue {
       const res = await getMediaThumbnail(item.path, item.quality);
       const displayUrl = thumbnailDisplayUrl(res);
       this.cache.set(flightKey, displayUrl);
+      this.notify(flightKey);
       for (const w of item.resolvers) w.resolve(displayUrl);
       for (const w of extra) w.resolve(displayUrl);
     } catch (e) {

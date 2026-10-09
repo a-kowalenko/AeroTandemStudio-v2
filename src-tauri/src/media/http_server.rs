@@ -8,7 +8,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
@@ -138,7 +138,10 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
         );
     }
 
-    // Open file and serve with no-store so in-place trims are not cached by the browser.
+    // Live media: no-store so in-place trims are not sticky in the browser.
+    // Generated thumb JPEGs (content-addressed under …/thumbnails/): allow a short
+    // private cache so virtualized photo tiles do not re-fetch on every remount.
+    let cache_control = cache_control_for(&path);
     let mut file = File::open(&path).map_err(|e| e.to_string())?;
     let len = file.metadata().map_err(|e| e.to_string())?.len();
     let mime = mime_for_path(&path);
@@ -162,7 +165,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
             &[
                 ("Access-Control-Allow-Origin", "*"),
                 ("Accept-Ranges", "bytes"),
-                ("Cache-Control", "no-store"),
+                ("Cache-Control", cache_control),
                 ("ETag", &etag),
                 ("Content-Type", mime),
                 ("Content-Length", &len.to_string()),
@@ -208,7 +211,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
             &[
                 ("Access-Control-Allow-Origin", "*"),
                 ("Accept-Ranges", "bytes"),
-                ("Cache-Control", "no-store"),
+                ("Cache-Control", cache_control),
                 ("ETag", &etag),
                 ("Content-Type", mime),
                 ("Content-Range", &content_range),
@@ -230,7 +233,7 @@ fn handle_connection(mut stream: TcpStream) -> Result<(), String> {
         &[
             ("Access-Control-Allow-Origin", "*"),
             ("Accept-Ranges", "bytes"),
-            ("Cache-Control", "no-store"),
+            ("Cache-Control", cache_control),
             ("ETag", &etag),
             ("Content-Type", mime),
             ("Content-Length", &len.to_string()),
@@ -275,6 +278,22 @@ fn map_write_err(err: std::io::Error) -> Result<(), String> {
 fn path_from_request_target(target: &str) -> Option<PathBuf> {
     let path_part = target.split('?').next().unwrap_or(target);
     path_from_uri(path_part)
+}
+
+/// Disk-cached thumbs under `{app_config}/thumbnails/` (hash includes mtime/size/rev).
+/// Do not match MTP `.thumbs` — those paths can be reused after replug with new bytes.
+fn is_generated_thumb_cache(path: &Path) -> bool {
+    path.components().any(|c| {
+        matches!(c, std::path::Component::Normal(s) if s == "thumbnails")
+    })
+}
+
+fn cache_control_for(path: &Path) -> &'static str {
+    if is_generated_thumb_cache(path) {
+        "private, max-age=86400"
+    } else {
+        "no-store"
+    }
 }
 
 fn write_headers_only(
@@ -371,6 +390,19 @@ mod tests {
         assert!(url.starts_with("http://127.0.0.1:9/"));
         assert!(url.contains("%2Ftmp%2F"));
         assert!(url.contains("a%20b") || url.contains("a%2520b") || url.contains("%20"));
+    }
+
+    #[test]
+    fn thumb_cache_allows_browser_cache_live_media_does_not() {
+        let thumb = PathBuf::from("/Users/x/Library/Application Support/ats/thumbnails/abc.jpg");
+        let media = PathBuf::from("/Users/x/Movies/clip.mp4");
+        let mtp_thumb = PathBuf::from("/tmp/aero_tandem_mtp/src/.thumbs/foo.jpg");
+        assert!(is_generated_thumb_cache(&thumb));
+        assert!(!is_generated_thumb_cache(&media));
+        assert!(!is_generated_thumb_cache(&mtp_thumb));
+        assert_eq!(cache_control_for(&thumb), "private, max-age=86400");
+        assert_eq!(cache_control_for(&media), "no-store");
+        assert_eq!(cache_control_for(&mtp_thumb), "no-store");
     }
 
     #[test]
