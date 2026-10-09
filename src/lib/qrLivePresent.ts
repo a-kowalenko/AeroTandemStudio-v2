@@ -1,8 +1,21 @@
 /** How long a non-terminal thumb tone must stay before it is painted. */
 export const QR_LIVE_TONE_SETTLE_MS = 200;
 
-/** Miss tiles that were already open fade out for this long, then leave. */
+/** Video / fill leave fallback (fast column collapse). */
 export const QR_LIVE_MISS_FADE_MS = 200;
+
+/** Photo-strip miss leave: width collapse. */
+export const QR_LIVE_LEAVE_MS = 640;
+
+/** Removed: brief red mark before the discard motion starts. */
+export const QR_LIVE_REMOVED_HOLD_MS = 380;
+
+/** Removed: scale/fade + width collapse duration. */
+export const QR_LIVE_REMOVED_LEAVE_MS = 420;
+
+/** Hold + discard — wait this long before tearing down follow-up UI. */
+export const QR_LIVE_REMOVED_EXIT_MS =
+  QR_LIVE_REMOVED_HOLD_MS + QR_LIVE_REMOVED_LEAVE_MS;
 
 /** On-screen live thumbs. Hit and removal stay; older scan/miss frames drop first. */
 export const QR_LIVE_FRAME_CAP = 6;
@@ -69,17 +82,50 @@ export function videoPlaceholderFrames(
   return out;
 }
 
+/**
+ * Cap on-screen live thumbs.
+ *
+ * Hit/removed stay preferentially, but the newest `scan` frame is always kept
+ * — during neighbor follow-up a new scan after a hit must not vanish when the
+ * strip is already full of pinned hits.
+ */
 export function capQrLiveFrames<T extends { key: string; tone: string }>(
   frames: readonly T[],
   max = QR_LIVE_FRAME_CAP,
 ): T[] {
   if (frames.length <= max) return [...frames];
-  const pinned = frames.filter((f) => f.tone === "hit" || f.tone === "removed");
-  const rest = frames.filter((f) => f.tone !== "hit" && f.tone !== "removed");
-  const room = Math.max(0, max - pinned.length);
+
+  const newestScan = [...frames].reverse().find((f) => f.tone === "scan");
+  const mustKeep = new Set<string>(newestScan ? [newestScan.key] : []);
+
+  const removed = frames.filter((f) => f.tone === "removed");
+  const hits = frames.filter(
+    (f) => f.tone === "hit" && !mustKeep.has(f.key),
+  );
+  // Always leave room for the active scan when one exists.
+  const reserved = mustKeep.size;
+  const pinBudget = Math.max(0, max - reserved);
+  const removedKeep = removed.slice(-pinBudget);
+  const hitBudget = Math.max(0, pinBudget - removedKeep.length);
+  const hitKeep = hits.slice(-hitBudget);
+
+  const pinnedKeys = new Set(
+    [...removedKeep, ...hitKeep].map((f) => f.key),
+  );
+  for (const key of mustKeep) pinnedKeys.add(key);
+
+  const rest = frames.filter(
+    (f) =>
+      f.tone !== "hit" &&
+      f.tone !== "removed" &&
+      !mustKeep.has(f.key),
+  );
+  const room = Math.max(0, max - pinnedKeys.size);
   const keptRest = new Set(rest.slice(-room).map((f) => f.key));
-  const pinnedKeys = new Set(pinned.map((f) => f.key));
-  return frames.filter((f) => pinnedKeys.has(f.key) || keptRest.has(f.key));
+
+  return frames.filter(
+    (f) => pinnedKeys.has(f.key) || keptRest.has(f.key),
+  );
 }
 
 /** Keep the current thumbs. The hit stays on its image and only changes tone. */

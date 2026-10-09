@@ -5,6 +5,7 @@ import { useConfigStore } from "@/store/configStore";
 import { usePhotoStore } from "@/store/photoStore";
 import { useVideoStore } from "@/store/videoStore";
 import { useQrScanStore } from "@/store/qrScanStore";
+import { QR_LIVE_REMOVED_EXIT_MS } from "@/lib/qrLivePresent";
 import { scanQrPhotoFollowups } from "@/lib/tauri";
 
 export type QrCleanupResult = {
@@ -125,8 +126,8 @@ export async function maybeRemoveQrPhoto(
 
     const removeList = [...toRemove];
     store.markRemoved(removeList);
-    // Same hold as before. Thumbs stay red until end() — no extra wait.
-    await sleep(950);
+    // Red mark, then discard leave — wait until tiles have collapsed.
+    await sleep(QR_LIVE_REMOVED_EXIT_MS);
     result.removedPhotos = removePhotosByPaths(removeList);
   } finally {
     // Do not tear down an in-flight AMS lookup row (parallel with cleanup).

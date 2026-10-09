@@ -11,7 +11,10 @@ import {
   type PlacedQrLive,
 } from "@/lib/qrLiveLayout";
 import {
+  QR_LIVE_LEAVE_MS,
   QR_LIVE_MISS_FADE_MS,
+  QR_LIVE_REMOVED_HOLD_MS,
+  QR_LIVE_REMOVED_LEAVE_MS,
   QR_LIVE_TONE_SETTLE_MS,
   isTerminalQrLiveTone,
   presentedQrLiveTone,
@@ -29,6 +32,24 @@ import {
 } from "@/store/qrScanStore";
 
 const CROSSFADE_MS = 480;
+
+/** Keep a little air so the active scan is not clipped by the panel edge. */
+const DOCK_SCAN_PAD_PX = 10;
+
+function ensureScanVisibleInDock(el: HTMLElement, pad = DOCK_SCAN_PAD_PX) {
+  const dock = el.closest(".ats-qr-live-dock");
+  if (!(dock instanceof HTMLElement)) return;
+  const dockBox = dock.getBoundingClientRect();
+  const tileBox = el.getBoundingClientRect();
+  let delta = 0;
+  if (tileBox.left < dockBox.left + pad) {
+    delta = tileBox.left - dockBox.left - pad;
+  } else if (tileBox.right > dockBox.right - pad) {
+    delta = tileBox.right - dockBox.right + pad;
+  }
+  if (delta === 0) return;
+  dock.scrollBy({ left: delta, behavior: "smooth" });
+}
 
 /**
  * Photos hold the first scan so a fast miss never opens a tile. Video paints
@@ -158,12 +179,16 @@ function LiveTile({
   const clearLiveFrame = useQrScanStore((s) => s.clearLiveFrame);
   const stage = useQrScanStore((s) => s.stage);
   const immediateScan =
+    stage === "followup" ||
     stage === "scanning_videos" ||
     (stage === "scanning" && mediaKind(frame.mediaPath) === "video");
   const presented = usePresentedQrTone(frame.tone, immediateScan);
   const poster = useCachedVideoPoster(frame.key);
+  const [dismissRemoved, setDismissRemoved] = useState(false);
   const staying =
-    presented === "scan" || presented === "hit" || presented === "removed";
+    presented === "scan" ||
+    presented === "hit" ||
+    (presented === "removed" && !dismissRemoved);
   const openedRef = useRef(false);
   if (staying) openedRef.current = true;
   const src = frame.livePath.trim() ? liveSrc(frame) : (poster ?? "");
@@ -175,9 +200,12 @@ function LiveTile({
     ? t("qr.progress.liveIndex", { index: index + 1, total })
     : null;
   const layoutMotion = !fill;
-  const leaving = presented === "miss" && openedRef.current;
+  const leavingRemoved = presented === "removed" && dismissRemoved;
+  const leaving =
+    (presented === "miss" || leavingRemoved) && openedRef.current;
   const [open, setOpen] = useState(false);
   const leftRef = useRef(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!src) return;
@@ -191,18 +219,64 @@ function LiveTile({
     return () => window.cancelAnimationFrame(id);
   }, [staying]);
 
+  // Scroll only when the active scan would clip — after open width settles,
+  // with padding so it is not cut off by the panel edge.
   useEffect(() => {
-    if (presented !== "miss") return;
+    if (presented !== "scan" || fill || !open) return;
+    const el = frameRef.current;
+    if (!el) return;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      ensureScanVisibleInDock(el);
+    };
+    const raf = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(run);
+    });
+    // Width open is 640ms; re-check once the tile has its full size.
+    const later = window.setTimeout(run, QR_LIVE_LEAVE_MS);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(later);
+    };
+  }, [presented, frame.key, open, fill]);
+
+  useEffect(() => {
+    if (presented !== "removed") {
+      setDismissRemoved(false);
+      return;
+    }
+    const id = window.setTimeout(
+      () => setDismissRemoved(true),
+      QR_LIVE_REMOVED_HOLD_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [presented]);
+
+  useEffect(() => {
+    if (presented !== "miss" && !leavingRemoved) return;
     if (!openedRef.current) {
       clearLiveFrame(frame.mediaPath);
       return;
     }
+    const leaveMs = leavingRemoved
+      ? QR_LIVE_REMOVED_LEAVE_MS
+      : layoutMotion
+        ? QR_LIVE_LEAVE_MS
+        : QR_LIVE_MISS_FADE_MS;
     const id = window.setTimeout(
       () => clearLiveFrame(frame.mediaPath),
-      QR_LIVE_MISS_FADE_MS,
+      leaveMs,
     );
     return () => window.clearTimeout(id);
-  }, [presented, frame.mediaPath, clearLiveFrame]);
+  }, [
+    presented,
+    leavingRemoved,
+    frame.mediaPath,
+    clearLiveFrame,
+    layoutMotion,
+  ]);
 
   const finishLeave = () => {
     if (leftRef.current) return;
@@ -222,13 +296,14 @@ function LiveTile({
 
   return (
     <div
+      ref={frameRef}
       className={cn(
         "ats-qr-live-frame",
         immediateScan && "ats-qr-live-frame-video",
         fill && "ats-qr-live-frame-fill",
         inward && "ats-qr-live-frame-end",
         open && !leaving && "is-open",
-        leaving && "is-leaving",
+        leaving && (leavingRemoved ? "is-leaving-removed" : "is-leaving"),
       )}
       onTransitionEnd={(e) => {
         if (!leaving) return;
@@ -294,7 +369,7 @@ function LiveTile({
             aria-hidden
           />
           {tone === "removed" ? (
-            <span className="ats-qr-live-wipe" aria-hidden />
+            <span className="ats-qr-live-discard" aria-hidden />
           ) : null}
           {hasPosition ? (
             <span className="ats-qr-live-pos" aria-hidden>
@@ -429,12 +504,18 @@ export function QrLiveScanStrip() {
 
   // The hit stays in its dock. Pulling it into the center remounts the tile.
   const layout = placeQrLiveFrames(displayFrames, scanOrder);
-  const bothSides = layout.start.length > 0 && layout.end.length > 0;
+  const hasStart = layout.start.length > 0;
+  const hasEnd = layout.end.length > 0;
+  const bothSides = hasStart && hasEnd;
   const showPosition = stage === "scanning_photos" || stage === "followup";
 
   return (
     <div
-      className="ats-qr-live-strip"
+      className={cn(
+        "ats-qr-live-strip",
+        hasStart && !hasEnd && "is-start-only",
+        hasEnd && !hasStart && "is-end-only",
+      )}
       role="group"
       aria-label={t("qr.progress.liveAria")}
     >

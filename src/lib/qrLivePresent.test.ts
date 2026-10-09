@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   QR_LIVE_FRAME_CAP,
+  QR_LIVE_REMOVED_EXIT_MS,
+  QR_LIVE_REMOVED_HOLD_MS,
+  QR_LIVE_REMOVED_LEAVE_MS,
   QR_LIVE_TONE_SETTLE_MS,
   capQrLiveFrames,
   markLiveFramesRemoved,
@@ -130,5 +133,28 @@ describe("capQrLiveFrames", () => {
       false,
     );
     assert.equal(next[next.length - 1]?.key, `s${QR_LIVE_FRAME_CAP - 1}`);
+  });
+
+  it("keeps the newest scan even when the strip is full of hits", () => {
+    const frames = [
+      ...Array.from({ length: QR_LIVE_FRAME_CAP }, (_, i) =>
+        frame(`h${i}`, "hit"),
+      ),
+      frame("next", "scan"),
+    ];
+    const next = capQrLiveFrames(frames);
+    assert.equal(next.length, QR_LIVE_FRAME_CAP);
+    assert.equal(next.some((f) => f.key === "next" && f.tone === "scan"), true);
+    assert.equal(next.some((f) => f.key === "h0"), false);
+  });
+});
+
+describe("removed exit timing", () => {
+  it("holds the red mark briefly, then runs the discard leave", () => {
+    assert.ok(QR_LIVE_REMOVED_HOLD_MS > QR_LIVE_TONE_SETTLE_MS);
+    assert.equal(
+      QR_LIVE_REMOVED_EXIT_MS,
+      QR_LIVE_REMOVED_HOLD_MS + QR_LIVE_REMOVED_LEAVE_MS,
+    );
   });
 });
