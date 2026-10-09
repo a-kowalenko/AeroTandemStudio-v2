@@ -17,12 +17,15 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Upload: Ordner auf dem Server existiert schon — Rückfrage statt Abbruch: als erledigt markieren, unvollständigen Ordner ersetzen und neu hochladen, oder später unter Vorgänge nachholen
 - SD- und USB-Import: ausgewählte Dateien direkt von der Karte bzw. Kamera löschen — mit Rückfrage
 - QR-Scan: Live-Vorschau der geprüften Bilder im Fortschritt — erkennbar, ob Code gefunden, nicht gefunden oder Foto entfernt wurde
+- Buchungssuche über Cloud: fällt die lokale Suche aus, werden Kundendaten über die Cloud geladen — Status in der Kopfzeile
 
 ### Verbessert
 
 - QR-Scan: nach Erkennung Abschlusskarte im Fortschritt statt Dialog — mit Kundenname; blendet sich selbst aus, Maus darüber hält den Timer an
 - QR-Scan: Live-Bilder sitzen über dem Streifen der jeweiligen Datei und wechseln weich; die Anzeige springt nicht mehr, wenn die Prüfpunkte erscheinen
-- QR-Scan Live-Vorschau: Videos zeigen schon während der Prüfung eine Kachel; Treffer und „entfernt“ flackern weniger, Miss-Kacheln blenden kurz aus
+- QR-Scan Live-Vorschau: Videos zeigen schon während der Prüfung eine Kachel; Treffer und „entfernt“ flackern weniger, Miss- und Entfernen-Kacheln blenden weicher aus; die laufende Prüfung bleibt im Streifen sichtbar
+- QR-Scan: während der Kundensuche Fortschritt „Kundendaten werden geladen…“; Abschlusskarte wartet auf das Ergebnis
+- QR-Scan mit Kunden-/Buchungs-ID in der URL: Zahlen-Codes werden erkannt; ohne Treffer in der Buchungssuche bleiben die IDs mit Warnhinweis übernommen
 - Rechtsklick: kein Browser-Kontextmenü mehr in der fertigen App (außer in Eingabefeldern); eigene Menüs und Copy/Paste bleiben
 - Status-Hinweise und Toasts: Auto-Ausblenden pausiert beim Darüberfahren; einheitlicher Fortschrittsbalken
 - SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
