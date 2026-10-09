@@ -1234,7 +1234,12 @@ pub async fn create_job(
     let kunde_for_history = kunde.clone();
     let videos_for_history = video_paths.clone();
     let photos_for_history = photo_paths.clone();
-    let manual_entry_mode_for_history = config.manual_entry_mode.clone();
+    // Numeric QR → ID scan: persist provenance in history (not typed Manuell/ID).
+    let manual_entry_mode_for_history = if opts.qr_numeric_session {
+        "qr_id".to_string()
+    } else {
+        config.manual_entry_mode.clone()
+    };
     let config_for_ready = config.clone();
     let qr_preview_for_history = qr_preview.filter(|p| !p.path.trim().is_empty());
 

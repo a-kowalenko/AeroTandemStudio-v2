@@ -370,12 +370,14 @@ export function CustomerFormToolbar({
   const formMode = useKundeStore((s) => s.kunde.form_mode);
   const kunde = useKundeStore((s) => s.kunde);
   const qrSnapshot = useKundeStore((s) => s.qrSnapshot);
+  const qrNumericActive = useKundeStore((s) => s.qrNumericActive);
   const qrPreview = useKundeStore((s) => s.qrPreview);
   const qrPreviewSource = useKundeStore((s) => s.qrPreviewSource);
   const switchFormMode = useKundeStore((s) => s.switchFormMode);
   const busy = Boolean(modeToggleDisabled ?? disabled);
-  const isQrMode = formMode === "kunde";
-  const canSwitchToQr = Boolean(qrSnapshot);
+  /** Hash-QR mode or numeric-QR scan provenance (ID fields still shown). */
+  const isQrHighlight = formMode === "kunde" || qrNumericActive;
+  const canSwitchToQr = Boolean(qrSnapshot) || qrNumericActive;
   const [scanOpen, setScanOpen] = useState(false);
   const [showShadow, setShowShadow] = useState(true);
   const hasPreview = Boolean(qrPreview?.path?.trim());
@@ -484,8 +486,8 @@ export function CustomerFormToolbar({
         className="inline-flex shrink-0 items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
       >
         {FORM_MODES.map(({ id, icon: Icon }) => {
-          const active = id === "kunde" ? isQrMode : !isQrMode;
-          const qrDisabled = id === "kunde" && !isQrMode && !canSwitchToQr;
+          const active = id === "kunde" ? isQrHighlight : !isQrHighlight;
+          const qrDisabled = id === "kunde" && !isQrHighlight && !canSwitchToQr;
           const label =
             id === "kunde" ? t("form.toolbar.qr") : t("form.toolbar.manual");
           return (
@@ -498,8 +500,12 @@ export function CustomerFormToolbar({
                 qrDisabled
                   ? t("form.toolbar.noQrSession")
                   : id === "kunde"
-                    ? t("form.toolbar.restoreQr")
-                    : t("form.toolbar.manualEntry")
+                    ? qrNumericActive
+                      ? t("form.toolbar.qrIdActive")
+                      : t("form.toolbar.restoreQr")
+                    : qrNumericActive
+                      ? t("form.toolbar.manualFromQrId")
+                      : t("form.toolbar.manualEntry")
               }
               onClick={() => switchFormMode(id)}
               className={cn(
@@ -524,6 +530,8 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   const { t } = useTranslation();
   const patch = useKundeStore((s) => s.patch);
   const clearAmsLookup = useKundeStore((s) => s.clearAmsLookup);
+  const clearQrNumericActive = useKundeStore((s) => s.clearQrNumericActive);
+  const qrNumericActive = useKundeStore((s) => s.qrNumericActive);
   const config = useConfigStore((s) => s.config);
   const persistConfig = useConfigStore((s) => s.persist);
   const entryMode = normalizeManualEntryMode(
@@ -536,6 +544,10 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
     if (!config || entryMode === next) return;
     await persistConfig(withManualEntryMode(config, next));
     clearAmsLookup();
+    // Leaving ID ends numeric-QR scan provenance (Kontakt/Lokal are typed paths).
+    if (next !== "id") {
+      clearQrNumericActive();
+    }
     if (next === "id") {
       patch({ email: null, telefon: null });
     } else if (next === "lokal") {
@@ -553,7 +565,9 @@ function ManualEntryModeToggle({ disabled }: { disabled?: boolean }) {
   return (
     <div
       role="group"
-      aria-label={t("form.manual.modeAria")}
+      aria-label={
+        qrNumericActive ? t("form.manual.modeAriaQrId") : t("form.manual.modeAria")
+      }
       className="flex w-full items-center rounded-md bg-card-elevated p-0.5 ring-1 ring-border"
     >
       {MANUAL_ENTRY_MODES.map((id) => {

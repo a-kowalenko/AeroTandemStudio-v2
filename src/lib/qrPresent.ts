@@ -10,8 +10,10 @@ import { resolveQrDualFamily } from "@/lib/qrDualResolve";
 import { createQrLookupUiController } from "@/lib/qrLookupProgress";
 import { resolveQrNumericIds } from "@/lib/qrNumericResolve";
 import {
+  formatKundeIdHighlight,
   formatQrSuccess,
   kundeDisplayName,
+  kundeIdChips,
   qrSuccessTitle,
 } from "@/lib/qrSuccess";
 import { tr } from "@/i18n";
@@ -67,13 +69,8 @@ export function manualKundeLabel(kunde: Kunde): string {
   const name = kundeDisplayName(kunde);
   if (name) return name;
 
-  const id = trimField(kunde.kunden_id);
-  const booking = trimField(kunde.booking_id);
-  if (id || booking) {
-    return [id && `#${id}`, booking && `Booking #${booking}`]
-      .filter(Boolean)
-      .join(" · ");
-  }
+  const idLabel = formatKundeIdHighlight(kunde);
+  if (idLabel) return idLabel;
 
   const email = trimField(kunde.email);
   if (email) return email;
@@ -165,6 +162,8 @@ function buildAppliedResult(
   switchConfirmShown: boolean,
   /** Numeric URL QR without AMS enrichment — warning completion tile. */
   numericIdsOnly = false,
+  /** Numeric URL QR path (IDs / AMS) — success copy uses QR→ID wording. */
+  numericQr = false,
 ): PresentQrHitResult {
   const formatted = formatQrSuccess({
     kunde,
@@ -173,6 +172,7 @@ function buildAppliedResult(
     preview,
     notes,
     numericIdsOnly,
+    numericQr,
   });
   return {
     applied: true,
@@ -364,8 +364,12 @@ export async function presentQrHit(
   let fromAms = false;
   let scanned: Kunde = input.kunde;
 
-  const lookupHighlight = manualKundeLabel(input.kunde);
-  const lookupUi = createQrLookupUiController({ highlight: lookupHighlight });
+  // Name when known; plain IDs as chips (not `#id · Booking #…`).
+  const lookupHighlight = kundeDisplayName(input.kunde);
+  const lookupUi = createQrLookupUiController({
+    highlight: lookupHighlight,
+    idChips: kundeIdChips(input.kunde),
+  });
 
   const currentAtHit = useKundeStore.getState().kunde;
   const cleanupDuringLookup = canCleanupDuringLookup(
@@ -498,7 +502,8 @@ export async function presentQrHit(
     }
     const cleanup = await awaitCleanup(cleanupPromise, input.runCleanup);
     // Hash/compact/legacy: never ids-only. Numeric: warn only when AMS missed.
-    const numericIdsOnly = Boolean(input.numericIds) && !fromAms;
+    const numericQr = Boolean(input.numericIds);
+    const numericIdsOnly = numericQr && !fromAms;
     const result = buildAppliedResult(
       scanned,
       cleanup,
@@ -507,6 +512,7 @@ export async function presentQrHit(
       input.notes,
       confirmShown,
       numericIdsOnly,
+      numericQr,
     );
     return deliverQrOutcome(result, showDialog);
   } finally {

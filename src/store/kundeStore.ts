@@ -75,6 +75,12 @@ type KundeState = {
   /** Bumps on each successful QR apply (for UI lock sync). */
   qrRevision: number;
   /**
+   * Numeric URL QR session (`/q/{n}/{n}`): form stays `manual` + ID fields /
+   * `api_id`, but toolbar treats Scan as active (not typed Manuell).
+   * Cleared on hash-QR apply, session reset, or explicit switch to Manuell.
+   */
+  qrNumericActive: boolean;
+  /**
    * After QR or AMS identity apply: soft-highlight empty crew fields until
    * filled or session reset. Scroll/focus runs when blocking dialogs close
    * (QR success) or immediately after AMS apply.
@@ -139,6 +145,8 @@ type KundeState = {
   relockAmsLookup: () => void;
   /** Drop AMS lock without touching QR state. */
   clearAmsLookup: () => void;
+  /** Leave numeric-QR provenance (keep IDs); used when switching entry submodes. */
+  clearQrNumericActive: () => void;
   markAmsLookupSettled: () => void;
   resetAmsLookupSettled: () => void;
   /** Toggle QR ↔ manual; restoring QR re-applies qrSnapshot (manual identity edits discarded). */
@@ -158,6 +166,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   qrPreview: null,
   qrPreviewSource: null,
   qrRevision: 0,
+  qrNumericActive: false,
   crewAttentionAfterQr: false,
   amsLookupLocked: false,
   amsLookupRevision: 0,
@@ -387,6 +396,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
+      qrNumericActive: false,
       crewAttentionAfterQr: true,
       qrSnapshot: { ...next },
       qrPreview: preview,
@@ -432,6 +442,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
+      qrNumericActive: true,
       crewAttentionAfterQr: true,
       qrSnapshot: null,
       qrPreview: preview,
@@ -443,6 +454,20 @@ export const useKundeStore = create<KundeState>((set, get) => ({
       kundenIdFocusPending: !fromAms,
       sessionTouched: true,
       kunde: next,
+    });
+    // Numeric QR is ID-identity — force config submode so Kontakt/Lokal chrome cannot linger.
+    void Promise.all([
+      import("./configStore"),
+      import("../lib/tauri"),
+    ]).then(([{ useConfigStore }, { normalizeManualEntryMode, withManualEntryMode }]) => {
+      const { config, persist } = useConfigStore.getState();
+      if (!config) return;
+      const mode = normalizeManualEntryMode(
+        config.manual_entry_mode,
+        config.oldschool_mode ?? false,
+      );
+      if (mode === "id") return;
+      void persist(withManualEntryMode(config, "id"));
     });
     void import("../lib/syncProductsFromMedia").then(({ syncProductsFromMedia }) => {
       syncProductsFromMedia();
@@ -489,6 +514,11 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     });
   },
 
+  clearQrNumericActive: () => {
+    if (!get().qrNumericActive) return;
+    set({ qrNumericActive: false });
+  },
+
   markAmsLookupSettled: () => {
     if (get().amsLookupSettled) return;
     set({ amsLookupSettled: true });
@@ -500,13 +530,20 @@ export const useKundeStore = create<KundeState>((set, get) => ({
   },
 
   switchFormMode: (mode) => {
-    const { kunde, qrSnapshot } = get();
+    const { kunde, qrSnapshot, qrNumericActive } = get();
     if (mode === "manual") {
-      if (kunde.form_mode === "manual") return;
+      if (kunde.form_mode === "manual") {
+        // Numeric QR session: drop Scan provenance → typed Manuell (keep IDs).
+        if (qrNumericActive) {
+          set({ qrNumericActive: false, sessionTouched: true });
+        }
+        return;
+      }
       // Capture current QR state (incl. in-form edits) before leaving.
       const snapshot = { ...kunde, form_mode: "kunde" as const };
       set({
         qrSnapshot: snapshot,
+        qrNumericActive: false,
         amsLookupLocked: false,
         amsLookupRevision: 0,
         amsLookupIds: null,
@@ -537,6 +574,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     clearMediaAutoEnabled();
     set({
       qrRevision: get().qrRevision + 1,
+      qrNumericActive: false,
       amsLookupLocked: false,
       amsLookupRevision: 0,
       amsLookupIds: null,
@@ -558,6 +596,7 @@ export const useKundeStore = create<KundeState>((set, get) => ({
     clearMediaAutoEnabled();
     set({
       qrRevision: 0,
+      qrNumericActive: false,
       crewAttentionAfterQr: false,
       qrSnapshot: null,
       qrPreview: null,

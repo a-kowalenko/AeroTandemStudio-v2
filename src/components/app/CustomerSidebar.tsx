@@ -76,8 +76,10 @@ export function CustomerSidebar({
     videoImporting ||
     photoImporting;
 
+  const qrNumericActive = useKundeStore((s) => s.qrNumericActive);
   const customerFormLocked =
-    busy || (kunde.form_mode === "kunde" && pipelineActive);
+    busy ||
+    ((kunde.form_mode === "kunde" || qrNumericActive) && pipelineActive);
   const sessionStripLocked = busy;
   const formModeToggleLocked = busy || pipelineActive;
 

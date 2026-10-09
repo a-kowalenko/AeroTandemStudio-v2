@@ -1,7 +1,12 @@
 /** AMS/Cloud lookup progress inside the QR scan panel (no second card / overlay). */
 
 import { tr } from "@/i18n";
-import { useQrScanStore, type QrLookupUiPhase } from "@/store/qrScanStore";
+import type { QrIdChip } from "@/lib/qrSuccess";
+import {
+  useQrScanStore,
+  type QrLookupIdChip,
+  type QrLookupUiPhase,
+} from "@/store/qrScanStore";
 import { useUiStore } from "@/store/uiStore";
 
 export type QrLookupResultKind =
@@ -67,8 +72,16 @@ function summaryForResult(result: QrLookupResult): string {
  */
 export function createQrLookupUiController(opts: {
   highlight: string;
+  /** Plain Kunden-/Booking-IDs as chips (kept across search → result). */
+  idChips?: QrIdChip[];
 }): QrLookupUiController {
   const highlight = opts.highlight.trim();
+  const idChips: QrLookupIdChip[] = (opts.idChips ?? [])
+    .map((c) => ({
+      label: c.label.trim(),
+      value: c.value.trim(),
+    }))
+    .filter((c) => c.label && c.value);
   let pinBusy = false;
 
   return {
@@ -84,6 +97,7 @@ export function createQrLookupUiController(opts: {
           phase: "searching",
           highlight,
           summary: tr("ams.lookup.searching"),
+          idChips: idChips.length ? idChips : undefined,
         });
       },
       onLookupResult: (result) => {
@@ -96,6 +110,7 @@ export function createQrLookupUiController(opts: {
           phase: phaseForResult(result.kind),
           highlight: (result.highlight ?? highlight).trim(),
           summary: summaryForResult(result),
+          idChips: idChips.length ? idChips : undefined,
         });
       },
     },

@@ -375,6 +375,8 @@ function entryModeLabel(formMode: string, manualEntryMode: string): string | nul
     return form ? formMode.trim() : null;
   }
   switch (manualEntryMode.trim().toLowerCase()) {
+    case "qr_id":
+      return tr("history.mode.qrId");
     case "id":
       return tr("history.mode.manualId");
     case "oldschool":

@@ -2406,6 +2406,7 @@ function App() {
     setPercent(1);
     try {
       const codec = (config?.video_codec ?? "auto") as "auto" | "h264" | "h265";
+      const kundeSession = useKundeStore.getState();
       const res: CreateJobResult = await createJob(
         kunde,
         paths,
@@ -2433,10 +2434,13 @@ function App() {
           use_speculative_staging: Boolean(
             config?.speculative_create_enabled !== false,
           ),
-          ams_lookup_verified: useKundeStore.getState().amsLookupLocked,
+          ams_lookup_verified: kundeSession.amsLookupLocked,
           ams_preflight_ack: amsPreflightAckRef.current,
+          qr_numeric_session: kundeSession.qrNumericActive,
         },
-        kunde.form_mode === "kunde" ? qrPreview : null,
+        kunde.form_mode === "kunde" || kundeSession.qrNumericActive
+          ? qrPreview
+          : null,
       );
 
       let uploadNote: string | null = null;

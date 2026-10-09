@@ -59,11 +59,19 @@ export type QrLiveFrame = {
 /** AMS/Cloud booking lookup while the QR progress panel stays open. */
 export type QrLookupUiPhase = "searching" | "found" | "miss" | "error";
 
+/** Labeled plain ID shown as a chip under the lookup summary. */
+export type QrLookupIdChip = {
+  label: string;
+  value: string;
+};
+
 export type QrLookupUi = {
   phase: QrLookupUiPhase;
-  /** IDs or customer name under the progress label. */
+  /** Customer name (or empty); IDs prefer `idChips`. */
   highlight: string;
   summary: string;
+  /** Kunden-ID / Booking-ID chips (numeric QR lookup). */
+  idChips?: QrLookupIdChip[];
 };
 
 function patchLiveTone(

@@ -86,6 +86,7 @@ function setQrStage(
 export function sessionHasQrKunde(): boolean {
   const s = useKundeStore.getState();
   if (s.kunde.form_mode === "kunde") return true;
+  if (s.qrNumericActive) return true;
   if (s.amsLookupLocked) return true;
   if (
     s.qrRevision > 0 &&

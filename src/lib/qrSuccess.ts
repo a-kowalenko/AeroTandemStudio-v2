@@ -43,17 +43,49 @@ export type FormatQrSuccessInput = {
    * Must stay unset/false for hash/compact/legacy QR (unchanged success UX).
    */
   numericIdsOnly?: boolean;
+  /**
+   * Numeric URL QR with AMS (or IDs-only) apply — success copy mentions QR→ID.
+   * Hash/compact/legacy leave this unset.
+   */
+  numericQr?: boolean;
 };
+
+/** Labeled ID pair for lookup/success UI (Kunde / Booking). */
+export type QrIdChip = {
+  label: string;
+  value: string;
+};
+
+/** Build Kunden-ID / Booking-ID chips from plain numeric IDs. */
+export function kundeIdChips(
+  kunde: Pick<Kunde, "kunden_id" | "booking_id"> | null | undefined,
+): QrIdChip[] {
+  if (!kunde) return [];
+  const chips: QrIdChip[] = [];
+  const id = (kunde.kunden_id ?? "").trim();
+  const booking = (kunde.booking_id ?? "").trim();
+  if (id) {
+    chips.push({ label: tr("form.customer.customerId"), value: id });
+  }
+  if (booking) {
+    chips.push({ label: tr("form.customer.bookingId"), value: booking });
+  }
+  return chips;
+}
+
+/** Compact labeled string when chips are not available (e.g. success highlight). */
+export function formatKundeIdHighlight(
+  kunde: Pick<Kunde, "kunden_id" | "booking_id"> | null | undefined,
+): string {
+  return kundeIdChips(kunde)
+    .map((c) => `${c.label} ${c.value}`)
+    .join(" · ");
+}
 
 function numericIdsHighlight(
   kunde: Pick<Kunde, "kunden_id" | "booking_id"> | null | undefined,
 ): string {
-  if (!kunde) return "";
-  const id = (kunde.kunden_id ?? "").trim();
-  const booking = (kunde.booking_id ?? "").trim();
-  return [id && `#${id}`, booking && `Booking #${booking}`]
-    .filter(Boolean)
-    .join(" · ");
+  return formatKundeIdHighlight(kunde);
 }
 
 function collectQrSuccessDetail(input: FormatQrSuccessInput): string | undefined {
@@ -91,7 +123,9 @@ export function buildQrSuccessAction(
     kind: "qr",
     label: tr("app.qr.label"),
     tone: "success",
-    summary: tr("app.qr.applied"),
+    summary: input.numericQr
+      ? tr("app.qr.numericApplied")
+      : tr("app.qr.applied"),
     detail: collectQrSuccessDetail(input),
   };
 }

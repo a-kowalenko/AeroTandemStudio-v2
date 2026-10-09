@@ -1143,7 +1143,8 @@
       "label": "QR-Code",
       "cancelled": "QR-Scan abgebrochen.",
       "applied": "Kundendaten übernommen",
-      "idsOnlyApplied": "Nur IDs übernommen — Buchungssuche ohne Treffer",
+      "numericApplied": "Kundendaten übernommen (QR → ID)",
+      "idsOnlyApplied": "Nur IDs übernommen (QR → ID) — Buchungssuche ohne Treffer",
       "idsOnlyHighlight": "Nur Kunden-/Buchungs-ID",
       "source": "Quelle: {{name}}",
       "notFound": "Kein QR-Code gefunden.",
@@ -1256,11 +1257,14 @@
       "noQrSession": "Kein QR in dieser Session — zuerst scannen",
       "restoreQr": "QR-Daten wiederherstellen",
       "manualEntry": "Zur manuellen Eingabe",
+      "manualFromQrId": "Zur getippten Eingabe (Scan-Herkunft verwerfen)",
+      "qrIdActive": "QR → ID aktiv (Plain-IDs aus Scan)",
       "qr": "QR",
       "manual": "Manuell"
     },
     "manual": {
       "modeAria": "Manueller Eingabemodus",
+      "modeAriaQrId": "Identität aus QR-Scan (ID)",
       "id": "ID",
       "contact": "Kontakt",
       "local": "Lokal"
@@ -1623,6 +1627,7 @@
     },
     "mode": {
       "qr": "QR",
+      "qrId": "QR · ID",
       "manualId": "Manuell · ID",
       "manualContact": "Manuell · Kontakt",
       "manualLocal": "Manuell · Lokal",

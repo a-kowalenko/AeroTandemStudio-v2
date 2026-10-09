@@ -649,7 +649,7 @@ export function WorkflowProgressPanel({
           {qrLookup ? (
             <div
               className={cn(
-                "flex items-start gap-2 rounded-md border px-2.5 py-1.5",
+                "flex items-center gap-2 rounded-md border px-2.5 py-1.5",
                 qrLookup.phase === "error" &&
                   "border-destructive/40 bg-destructive/5",
                 qrLookup.phase === "miss" && "border-warning/40 bg-warning/5",
@@ -661,33 +661,52 @@ export function WorkflowProgressPanel({
               aria-busy={qrLookup.phase === "searching" || undefined}
             >
               {qrLookup.phase === "searching" ? (
-                <Spinner size={14} className="mt-0.5 shrink-0 border-[1.5px]" />
+                <Spinner size={14} className="shrink-0 border-[1.5px]" />
               ) : qrLookup.phase === "found" ? (
                 <CheckCircle2
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success"
+                  className="h-3.5 w-3.5 shrink-0 text-success"
                   aria-hidden
                 />
               ) : qrLookup.phase === "error" ? (
                 <AlertTriangle
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive"
+                  className="h-3.5 w-3.5 shrink-0 text-destructive"
                   aria-hidden
                 />
               ) : (
                 <AlertTriangle
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning"
+                  className="h-3.5 w-3.5 shrink-0 text-warning"
                   aria-hidden
                 />
               )}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">
-                  {qrLookup.summary}
-                </p>
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <p className="shrink-0 text-sm font-medium text-foreground">
+                    {qrLookup.summary}
+                  </p>
+                  {qrLookup.idChips && qrLookup.idChips.length > 0
+                    ? qrLookup.idChips.map((chip) => (
+                        <span
+                          key={`${chip.label}:${chip.value}`}
+                          className="inline-flex max-w-full items-baseline gap-1 rounded-md border border-border/60 bg-card/80 px-2 py-0.5 text-[11px] leading-tight text-foreground"
+                        >
+                          <span className="shrink-0 font-medium text-muted">
+                            {chip.label}
+                          </span>
+                          <span className="min-w-0 truncate font-semibold tabular-nums">
+                            {chip.value}
+                          </span>
+                        </span>
+                      ))
+                    : null}
+                </div>
                 {qrLookup.highlight.trim() ? (
                   <p className="mt-0.5 text-xs text-muted">
                     {qrLookup.highlight}
                   </p>
-                ) : qrLookup.phase === "miss" ||
-                  qrLookup.phase === "error" ? (
+                ) : null}
+                {!qrLookup.idChips?.length &&
+                (qrLookup.phase === "miss" || qrLookup.phase === "error") &&
+                !qrLookup.highlight.trim() ? (
                   <p className="mt-0.5 text-xs text-muted">
                     {t("ams.status.unreachableHint")}
                   </p>

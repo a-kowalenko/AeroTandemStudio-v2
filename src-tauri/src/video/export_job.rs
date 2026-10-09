@@ -62,6 +62,9 @@ pub struct CreateJobOptions {
     /// Skip AMS create-preflight: user confirmed proceed after not-found.
     #[serde(default)]
     pub ams_preflight_ack: bool,
+    /// Numeric URL QR session: history `manual_entry_mode` → `qr_id`.
+    #[serde(default)]
+    pub qr_numeric_session: bool,
     #[serde(default, flatten)]
     pub video: CreateVideoOptions,
 }
@@ -82,6 +85,7 @@ impl Default for CreateJobOptions {
             use_speculative_staging: true,
             ams_lookup_verified: false,
             ams_preflight_ack: false,
+            qr_numeric_session: false,
             video: CreateVideoOptions::default(),
         }
     }

@@ -620,6 +620,11 @@ export type CreateJobOptions = {
   ams_lookup_verified?: boolean;
   /** Skip AMS create-preflight: user confirmed proceed after not-found. */
   ams_preflight_ack?: boolean;
+  /**
+   * Numeric URL QR session: history stores `manual_entry_mode=qr_id`
+   * (Scan→ID) instead of plain typed `id`.
+   */
+  qr_numeric_session?: boolean;
 };
 
 export type CreateJobResult = {
@@ -887,7 +892,7 @@ export async function createJob(
   videoPaths: string[],
   photoPaths: string[],
   options?: CreateJobOptions,
-  /** QR hit-frame for Vorgang history (QR mode only). */
+  /** QR hit-frame for Vorgang history (hash QR or numeric-QR session). */
   qrPreview?: QrPreview | null,
 ): Promise<CreateJobResult> {
   return invoke<CreateJobResult>("create_job", {
