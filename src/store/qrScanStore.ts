@@ -343,13 +343,15 @@ export function summarizeQrScanProgress(
   photoEdgeLimited = false,
   videoEdgeLimited = false,
   lookup: QrLookupUi | null = null,
+  /** True only after `beginFollowup` took over the photo list. */
+  neighborFollowup = false,
 ): QrScanProgressSummary {
   const entries = Object.entries(byPath);
   // Stripes follow the media list order; ends-first only affects which paths go active.
   const order = scanOrder.length > 0 ? scanOrder : entries.map(([path]) => path);
   const fileProgress = buildFileProgress(order, byPath, clipProgress);
 
-  if (stage === "followup") {
+  if (stage === "followup" && neighborFollowup) {
     const fu = followup ?? emptyFollowup();
     const parts: string[] = [];
     if (fu.scanned > 0) {
@@ -359,11 +361,13 @@ export function summarizeQrScanProgress(
           : tr("qr.progress.photosCheckedMany", { count: fu.scanned }),
       );
     }
-    parts.push(
-      fu.extraHits === 1
-        ? tr("qr.progress.extraHitsOne")
-        : tr("qr.progress.extraHitsMany", { count: fu.extraHits }),
-    );
+    if (fu.scanned > 0 || fu.extraHits > 0) {
+      parts.push(
+        fu.extraHits === 1
+          ? tr("qr.progress.extraHitsOne")
+          : tr("qr.progress.extraHitsMany", { count: fu.extraHits }),
+      );
+    }
     const removedCount = entries.filter(([, p]) => p === "removed").length;
     if (removedCount > 0) {
       parts.push(
@@ -419,16 +423,19 @@ export function summarizeQrScanProgress(
     clipProgress,
   );
 
+  const removedCount = entries.filter(([, p]) => p === "removed").length;
   const label =
-    frames?.mode === "prepare"
-      ? tr("qr.progress.readingVideo")
-      : frames?.mode === "thorough"
-        ? tr("qr.progress.thorough")
-        : stage === "scanning_videos"
-          ? tr("qr.progress.scanVideos")
-          : stage === "scanning_photos"
-            ? tr("qr.progress.scanPhotos")
-            : tr("qr.progress.scanGeneric");
+    stage === "scanning_videos" && removedCount > 0
+      ? tr("qr.progress.removingQrVideo")
+      : frames?.mode === "prepare"
+        ? tr("qr.progress.readingVideo")
+        : frames?.mode === "thorough"
+          ? tr("qr.progress.thorough")
+          : stage === "scanning_videos"
+            ? tr("qr.progress.scanVideos")
+            : stage === "scanning_photos"
+              ? tr("qr.progress.scanPhotos")
+              : tr("qr.progress.scanGeneric");
 
   let metric: string | undefined;
   let metricLabel: string | undefined;

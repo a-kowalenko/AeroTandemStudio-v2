@@ -187,10 +187,13 @@ export async function runAutoQrAfterImport(
         preview: result.preview,
         showDialog: false,
         runCleanup: () => {
-          setQrStage("followup");
-          return maybeRemoveQrVideo(result.source_path, {
+          const cleanup = maybeRemoveQrVideo(result.source_path, {
             onBeforeRemove: input.onBeforeRemoveVideo,
           });
+          if (cleanup.removedVideos.length > 0) {
+            useQrScanStore.getState().markRemoved(cleanup.removedVideos);
+          }
+          return cleanup;
         },
       });
       return {

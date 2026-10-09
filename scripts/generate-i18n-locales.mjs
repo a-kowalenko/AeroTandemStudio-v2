@@ -1413,6 +1413,7 @@ const catalog = {
   "qr.progress.preparingClip": { de: "Clip wird vorbereitet…", en: "Preparing clip…", "es-MX": "Preparando clip…" },
   "qr.progress.readingVideo": { de: "Video wird für die QR-Suche gelesen…", en: "Reading video for QR search…", "es-MX": "Leyendo video para búsqueda QR…" },
   "qr.progress.removingQrPhotos": { de: "QR-Fotos werden aus der Liste entfernt…", en: "Removing QR photos from list…", "es-MX": "Quitando fotos QR de la lista…" },
+  "qr.progress.removingQrVideo": { de: "QR-Clip wird aus der Liste entfernt…", en: "Removing QR clip from the list…", "es-MX": "Quitando el clip QR de la lista…" },
   "qr.progress.scanGeneric": { de: "QR-Code suchen…", en: "Searching for QR code…", "es-MX": "Buscando código QR…" },
   "qr.progress.scanPhotos": { de: "QR-Code in Fotos suchen…", en: "Searching for QR code in photos…", "es-MX": "Buscando código QR en fotos…" },
   "qr.progress.scanVideos": { de: "QR-Code in Videos suchen…", en: "Searching for QR code in videos…", "es-MX": "Buscando código QR en videos…" },

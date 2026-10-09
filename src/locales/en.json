@@ -1922,6 +1922,7 @@
       "preparingClip": "Preparing clip…",
       "readingVideo": "Reading video for QR search…",
       "removingQrPhotos": "Removing QR photos from list…",
+      "removingQrVideo": "Removing QR clip from the list…",
       "scanGeneric": "Searching for QR code…",
       "scanPhotos": "Searching for QR code in photos…",
       "scanVideos": "Searching for QR code in videos…",

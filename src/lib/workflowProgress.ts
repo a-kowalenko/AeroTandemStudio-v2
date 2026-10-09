@@ -95,6 +95,8 @@ export function resolveSdWorkflowProgress(opts: {
   qrPhotoEdgeLimited?: boolean;
   qrVideoEdgeLimited?: boolean;
   qrLookup?: QrLookupUi | null;
+  /** Photo neighbor follow-up has taken over the stripe list. */
+  qrNeighborFollowup?: boolean;
 }): WorkflowProgressSnapshot | null {
   if (!opts.active) return null;
 
@@ -172,6 +174,7 @@ export function resolveSdWorkflowProgress(opts: {
       opts.qrPhotoEdgeLimited,
       opts.qrVideoEdgeLimited,
       opts.qrLookup ?? null,
+      Boolean(opts.qrNeighborFollowup),
     );
     return {
       percent: summary.percent,

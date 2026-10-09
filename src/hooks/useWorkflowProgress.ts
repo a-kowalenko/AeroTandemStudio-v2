@@ -115,6 +115,8 @@ type Input = {
   qrPhotoEdgeLimited: boolean;
   qrVideoEdgeLimited: boolean;
   qrLookup: QrLookupUi | null;
+  /** Photo neighbor follow-up has taken over the stripe list. */
+  qrNeighborFollowup: boolean;
   videoImporting: boolean;
   photoImporting: boolean;
   encodeBusy: boolean;
@@ -190,6 +192,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
         qrPhotoEdgeLimited: input.qrPhotoEdgeLimited,
         qrVideoEdgeLimited: input.qrVideoEdgeLimited,
         qrLookup: input.qrLookup,
+        qrNeighborFollowup: input.qrNeighborFollowup,
       }),
     [
       input.sdWorkflowActive,
@@ -206,6 +209,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrPhotoEdgeLimited,
       input.qrVideoEdgeLimited,
       input.qrLookup,
+      input.qrNeighborFollowup,
     ],
   );
 
@@ -248,6 +252,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
       input.qrPhotoEdgeLimited,
       input.qrVideoEdgeLimited,
       input.qrLookup,
+      input.qrNeighborFollowup,
     );
   }, [
     input.qrScanBusy,
@@ -260,6 +265,7 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     input.qrPhotoEdgeLimited,
     input.qrVideoEdgeLimited,
     input.qrLookup,
+    input.qrNeighborFollowup,
   ]);
 
   const showSdProgress = Boolean(input.sdWorkflowActive && sdProgress);

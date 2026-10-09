@@ -69,6 +69,7 @@ export function WorkflowProgressStack({
   const qrPhotoEdgeLimited = useQrScanStore((s) => s.photoEdgeLimited);
   const qrVideoEdgeLimited = useQrScanStore((s) => s.videoEdgeLimited);
   const qrLookup = useQrScanStore((s) => s.lookup);
+  const qrNeighborFollowup = useQrScanStore((s) => s.liveAnchorKey != null);
   const sessionOutcome = useSessionRunStore((s) => s.outcome);
   const clearSessionRun = useSessionRunStore((s) => s.clearSessionRun);
   const appendGuest = useAppendStore((s) => s.context?.guest ?? null);
@@ -162,6 +163,7 @@ export function WorkflowProgressStack({
     qrPhotoEdgeLimited,
     qrVideoEdgeLimited,
     qrLookup,
+    qrNeighborFollowup,
     videoImporting,
     photoImporting,
     encodeBusy: busy,
