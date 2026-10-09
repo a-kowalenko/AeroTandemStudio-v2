@@ -204,7 +204,7 @@ function LiveTile({
   showPosition = false,
 }: {
   frame: QrLiveFrame;
-  /** Right-hand side: sweep the scanline back toward the list middle. */
+  /** Right-hand side: exit toward the list edge, not the middle. */
   inward?: boolean;
   /** Sit in a progress-bar column instead of the fixed strip size. */
   fill?: boolean;
@@ -361,7 +361,6 @@ function LiveTile({
           className={cn(
             "ats-qr-live-tile",
             toneClass(tone),
-            inward && "ats-qr-live-tile-inward",
             fill && "ats-qr-live-tile-fill",
           )}
           data-tone={tone}

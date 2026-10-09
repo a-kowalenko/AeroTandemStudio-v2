@@ -551,10 +551,6 @@
   z-index: 1;
 }
 
-.ats-qr-live-tile-inward .ats-qr-live-scanline {
-  animation-direction: reverse;
-}
-
 .ats-qr-live-slot {
   position: relative;
   width: 100%;
