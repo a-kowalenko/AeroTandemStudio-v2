@@ -322,6 +322,19 @@ export async function getMediaThumbnail(
   return invoke<MediaThumbnailResult>("get_media_thumbnail", { path, quality });
 }
 
+/** Poster already on disk. Does not start FFmpeg when the cache file is missing. */
+export async function getCachedMediaThumbnail(
+  path: string,
+  quality: ThumbQuality = "preview",
+): Promise<MediaThumbnailResult | null> {
+  const res = await invoke<MediaThumbnailResult>("get_media_thumbnail", {
+    path,
+    quality,
+    cacheOnly: true,
+  });
+  return thumbnailDisplayUrl(res) ? res : null;
+}
+
 export async function listProcessedFiles(
   limit?: number,
   search?: string,

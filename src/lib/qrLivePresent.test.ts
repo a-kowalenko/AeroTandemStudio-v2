@@ -63,18 +63,24 @@ describe("presentedQrLiveTone", () => {
 });
 
 describe("videoPlaceholderFrames", () => {
-  it("adds a tile only for clips that have started and have no decode frame", () => {
+  it("adds a tile for pending and active clips that have no decode frame", () => {
     const frames = videoPlaceholderFrames(
-      ["a.mp4", "b.mp4", "c.mp4"],
-      { "a.mp4": "active", "b.mp4": "pending", "c.mp4": "hit" },
+      ["a.mp4", "b.mp4", "c.mp4", "d.mp4"],
+      {
+        "a.mp4": "active",
+        "b.mp4": "pending",
+        "c.mp4": "hit",
+        "d.mp4": "done",
+      },
       new Set(["c.mp4"]),
       (key) => key,
     );
     assert.deepEqual(
       frames.map((f) => f.key),
-      ["a.mp4"],
+      ["a.mp4", "b.mp4"],
     );
     assert.equal(frames[0]?.tone, "scan");
+    assert.equal(frames[1]?.tone, "scan");
     assert.equal(frames[0]?.livePath, "");
   });
 });

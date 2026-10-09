@@ -2,7 +2,9 @@ import { create } from "zustand";
 import type { VideoMetadata } from "../lib/tauri";
 import { tr } from "@/i18n";
 import { deleteWorkingCopy, deleteWorkingCopies, importVideos, probeVideo } from "../lib/tauri";
-import { previewThumbnailQueue } from "../lib/thumbnailQueue";
+import { videoPosterBustKey } from "../hooks/useVideoThumbnailSrc";
+import { previewThumbnailQueue, primeQrEdgePosters } from "../lib/thumbnailQueue";
+import { videoEdgeScanPaths } from "./qrScanStore";
 import { syncProductsFromMedia } from "../lib/syncProductsFromMedia";
 import { isCancellationError } from "../lib/utils";
 
@@ -76,6 +78,8 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
   addVideos: async (paths: string[]) => {
     if (paths.length === 0) return;
     set({ importing: true, importError: null });
+    // Overlap the copy/probe so the QR tiles already have a frame when the panel opens.
+    primeQrEdgePosters(paths);
     try {
       const imported = await importVideos(paths);
       const existing = new Set(get().videoList.map((v) => v.path.toLowerCase()));
@@ -93,6 +97,23 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       get().ensureDefaultWatermarkClip();
       if (fresh.length > 0) {
         syncProductsFromMedia({ hasVideos: true });
+        const edge = new Set(
+          videoEdgeScanPaths(fresh.map((v) => v.path)).paths.map((p) =>
+            p.replace(/\\/g, "/").toLowerCase(),
+          ),
+        );
+        for (const v of fresh) {
+          if (!edge.has(v.path.replace(/\\/g, "/").toLowerCase())) continue;
+          previewThumbnailQueue.bindImportedPoster(
+            v.path,
+            videoPosterBustKey(
+              v.size_bytes,
+              v.duration_secs,
+              get().getMediaRevision(v.path),
+            ),
+            v.filename,
+          );
+        }
         // Stagger FFmpeg poster warm (OPT-10) — first clip first, max 2 concurrent.
         previewThumbnailQueue.scheduleWarmAfterImport(
           fresh.map((v) => v.path),

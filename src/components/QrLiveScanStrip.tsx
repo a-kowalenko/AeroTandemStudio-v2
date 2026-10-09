@@ -20,7 +20,10 @@ import {
   presentedQrLiveTone,
   videoPlaceholderFrames,
 } from "@/lib/qrLivePresent";
-import { previewThumbnailQueue } from "@/lib/thumbnailQueue";
+import {
+  previewThumbnailQueue,
+  qrEdgeThumbPriorityForPath,
+} from "@/lib/thumbnailQueue";
 import { videoPosterBustKey } from "@/hooks/useVideoThumbnailSrc";
 import { useVideoStore } from "@/store/videoStore";
 import {
@@ -145,20 +148,51 @@ function useCrossfadeSrc(src: string): {
   return { base, incoming, ready, onIncomingLoad, onIncomingError };
 }
 
-/** Import poster already in memory. Does not start a new FFmpeg job. */
-function useCachedVideoPoster(mediaKey: string): string | null {
-  return useVideoStore((s) => {
-    const video = s.videoList.find(
-      (v) => normalizeMediaPath(v.path) === mediaKey,
-    );
-    if (!video) return null;
-    const bust = videoPosterBustKey(
-      video.size_bytes,
-      video.duration_secs,
-      s.getMediaRevision(video.path),
-    );
-    return previewThumbnailQueue.getCached(video.path, bust);
-  });
+/**
+ * Clip poster started while the file was still importing.
+ * Joins that extract so the tile can open with a decoded frame.
+ */
+function useQrVideoPoster(mediaKey: string): string | null {
+  const video = useVideoStore(
+    (s) =>
+      s.videoList.find((v) => normalizeMediaPath(v.path) === mediaKey) ?? null,
+  );
+  const revision = useVideoStore((s) =>
+    video ? s.getMediaRevision(video.path) : 0,
+  );
+  const path = video?.path ?? "";
+  const bust = video
+    ? videoPosterBustKey(video.size_bytes, video.duration_secs, revision)
+    : "";
+  const scanOrder = useQrScanStore((s) => s.scanOrder);
+  const cached = path ? previewThumbnailQueue.getCached(path, bust) : null;
+  const [url, setUrl] = useState<string | null>(cached);
+  const priority = path ? qrEdgeThumbPriorityForPath(path, scanOrder) : 0;
+
+  useEffect(() => {
+    if (!path) {
+      setUrl(null);
+      return;
+    }
+    let cancelled = false;
+    const apply = () => {
+      if (cancelled) return;
+      const next = previewThumbnailQueue.getCached(path, bust);
+      if (next) setUrl(next);
+    };
+    apply();
+    const unsubscribe = previewThumbnailQueue.subscribe(apply);
+    void previewThumbnailQueue
+      .request(path, priority, bust)
+      .then(() => apply())
+      .catch(() => apply());
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [path, bust, priority]);
+
+  return url ?? cached;
 }
 
 function LiveTile({
@@ -187,15 +221,20 @@ function LiveTile({
     stage === "scanning_videos" ||
     (stage === "scanning" && mediaKind(frame.mediaPath) === "video");
   const presented = usePresentedQrTone(frame.tone, immediateScan);
-  const poster = useCachedVideoPoster(frame.key);
+  const poster = useQrVideoPoster(frame.key);
   const [dismissRemoved, setDismissRemoved] = useState(false);
   const staying =
     presented === "scan" ||
     presented === "hit" ||
     (presented === "removed" && !dismissRemoved);
   const openedRef = useRef(false);
-  if (staying) openedRef.current = true;
+  const [open, setOpen] = useState(false);
   const src = frame.livePath.trim() ? liveSrc(frame) : (poster ?? "");
+  const waitForFrame =
+    immediateScan && mediaKind(frame.mediaPath) === "video";
+  // Existing clip thumb is already decoded in the list. Open with that frame.
+  const shownOpen = waitForFrame ? src.length > 0 : open;
+  if (staying && shownOpen) openedRef.current = true;
   const { base, incoming, ready, onIncomingLoad, onIncomingError } = useCrossfadeSrc(src);
   const name = fileBaseName(frame.mediaPath);
   const tone = presented ?? "scan";
@@ -207,26 +246,19 @@ function LiveTile({
   const leavingRemoved = presented === "removed" && dismissRemoved;
   const leaving =
     (presented === "miss" || leavingRemoved) && openedRef.current;
-  const [open, setOpen] = useState(false);
   const leftRef = useRef(false);
   const frameRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!src) return;
-    const img = new Image();
-    img.src = src;
-  }, [src]);
-
-  useEffect(() => {
-    if (!staying) return;
+    if (!staying || waitForFrame) return;
     const id = window.requestAnimationFrame(() => setOpen(true));
     return () => window.cancelAnimationFrame(id);
-  }, [staying]);
+  }, [staying, waitForFrame]);
 
   // Scroll only when the active scan would clip — after open width settles,
   // with padding so it is not cut off by the panel edge.
   useEffect(() => {
-    if (presented !== "scan" || fill || !open) return;
+    if (presented !== "scan" || fill || !shownOpen) return;
     const el = frameRef.current;
     if (!el) return;
     let cancelled = false;
@@ -244,7 +276,7 @@ function LiveTile({
       window.cancelAnimationFrame(raf);
       window.clearTimeout(later);
     };
-  }, [presented, frame.key, open, fill]);
+  }, [presented, frame.key, shownOpen, fill]);
 
   useEffect(() => {
     if (presented !== "removed") {
@@ -304,9 +336,10 @@ function LiveTile({
       className={cn(
         "ats-qr-live-frame",
         immediateScan && "ats-qr-live-frame-video",
+        waitForFrame && "ats-qr-live-frame-hold",
         fill && "ats-qr-live-frame-fill",
         inward && "ats-qr-live-frame-end",
-        open && !leaving && "is-open",
+        shownOpen && !leaving && "is-open",
         leaving && (leavingRemoved ? "is-leaving-removed" : "is-leaving"),
       )}
       onTransitionEnd={(e) => {
@@ -450,7 +483,7 @@ function placeholderFor(
   return frame ?? null;
 }
 
-/** Reserved slot above one video progress bar. Poster or scanline as soon as the clip starts. */
+/** Reserved slot above one video progress bar. Poster paints with the panel. */
 export function QrSegmentLiveSlot({
   mediaKey,
   inward = false,

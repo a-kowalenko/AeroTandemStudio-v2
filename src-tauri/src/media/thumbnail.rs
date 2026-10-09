@@ -179,6 +179,20 @@ pub fn generate_thumbnail_jpeg(
     generate_thumbnail_cached(path, quality)
 }
 
+/// Disk JPEG only. Does not start FFmpeg or an image decode.
+pub fn read_cached_thumbnail(path: &Path, quality: ThumbQuality) -> Option<CachedThumbnail> {
+    let (mtime, size) = file_identity(path).ok()?;
+    let dir = thumbnails_dir().ok()?;
+    let cache_path = dir.join(cache_file_name(path, mtime, size, quality));
+    let bytes = fs::read(&cache_path).ok()?;
+    // Ignore empty leftovers from earlier failed Windows locked writes.
+    if bytes.len() <= 32 {
+        let _ = fs::remove_file(&cache_path);
+        return None;
+    }
+    Some(CachedThumbnail { bytes, cache_path })
+}
+
 /// Preferred API: quality-aware generation with disk cache.
 pub fn generate_thumbnail_cached(
     path: &Path,
@@ -193,20 +207,11 @@ pub fn generate_thumbnail_cached_with_ffmpeg(
     quality: ThumbQuality,
     ffmpeg: Option<&Path>,
 ) -> Result<CachedThumbnail, ThumbnailError> {
-    let (mtime, size) = file_identity(path)?;
-    if let Ok(dir) = thumbnails_dir() {
-        let cache_path = dir.join(cache_file_name(path, mtime, size, quality));
-        if cache_path.is_file() {
-            if let Ok(bytes) = fs::read(&cache_path) {
-                // Ignore empty leftovers from earlier failed Windows locked writes.
-                if bytes.len() > 32 {
-                    return Ok(CachedThumbnail { bytes, cache_path });
-                }
-                let _ = fs::remove_file(&cache_path);
-            }
-        }
+    if let Some(cached) = read_cached_thumbnail(path, quality) {
+        return Ok(cached);
     }
 
+    let (mtime, size) = file_identity(path)?;
     let jpeg = generate_thumbnail_bytes(path, quality, ffmpeg)?;
     let cache_path = if let Ok(dir) = thumbnails_dir() {
         let cache_path = dir.join(cache_file_name(path, mtime, size, quality));
@@ -400,10 +405,14 @@ mod tests {
         let path = dir.path().join("test.png");
         let img = RgbImage::from_pixel(120, 80, Rgb([10, 20, 30]));
         img.save(&path).unwrap();
+        assert!(read_cached_thumbnail(&path, ThumbQuality::Lq).is_none());
         let cached = generate_thumbnail_cached(&path, ThumbQuality::Lq).unwrap();
         assert!(!cached.bytes.is_empty());
         assert!(cached.cache_path.is_file());
         assert!(to_data_url(&cached.bytes).starts_with("data:image/jpeg;base64,"));
+        let again = read_cached_thumbnail(&path, ThumbQuality::Lq).unwrap();
+        assert!(again.bytes.len() > 32);
+        assert_eq!(again.cache_path, cached.cache_path);
     }
 
     #[test]

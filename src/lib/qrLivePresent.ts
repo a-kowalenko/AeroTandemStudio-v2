@@ -59,7 +59,10 @@ export function presentedQrLiveTone(
   return shown;
 }
 
-/** Clips whose scan has started and that do not have a decode frame yet. */
+/**
+ * Video tiles for the open scan panel.
+ * Pending clips paint with the bars; active and hit stay until a decode frame exists.
+ */
 export function videoPlaceholderFrames(
   scanOrder: readonly string[],
   byPath: Readonly<Record<string, string>>,
@@ -70,7 +73,7 @@ export function videoPlaceholderFrames(
   for (const key of scanOrder) {
     if (!key || liveKeys.has(key)) continue;
     const phase = byPath[key];
-    if (phase !== "active" && phase !== "hit") continue;
+    if (phase !== "pending" && phase !== "active" && phase !== "hit") continue;
     out.push({
       key,
       mediaPath: mediaPathFor(key) || key,

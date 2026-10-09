@@ -124,6 +124,8 @@ import {
   shouldAutoQrAfterImport,
   type AutoQrScanOutcome,
 } from "./lib/autoQrScan";
+import { mediaKind } from "./lib/media";
+import { primeQrEdgePosters } from "./lib/thumbnailQueue";
 import {
   requestKundenIdFocus,
   requestKundenIdFocusAfterImport,
@@ -708,6 +710,7 @@ function App() {
       file_name: null,
     });
     setLoading(true, t("app.sd.updatingHistory"));
+    primeQrEdgePosters(paths.filter((p) => mediaKind(p) === "video"));
     const result = await importSdFiles(paths, opts?.identities ?? null);
     setLoading(true, t("app.sd.importing"));
     try {

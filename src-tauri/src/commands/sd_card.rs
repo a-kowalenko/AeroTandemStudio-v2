@@ -7,7 +7,9 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::commands::config::ConfigState;
 use crate::media::http_server::MediaServerState;
-use crate::media::thumbnail::{generate_thumbnail_cached_with_ffmpeg, ThumbQuality};
+use crate::media::thumbnail::{
+    generate_thumbnail_cached_with_ffmpeg, read_cached_thumbnail, ThumbQuality,
+};
 use crate::sd_card::autoplay;
 use crate::sd_card::monitor::{
     find_dcim_drives, BackupProgress, BackupResult, CopiedFileIdentity, ImportSdResult,
@@ -446,16 +448,32 @@ pub async fn get_media_thumbnail(
     app: AppHandle,
     path: String,
     quality: Option<String>,
+    cache_only: Option<bool>,
     media: tauri::State<'_, MediaServerState>,
 ) -> Result<ThumbnailResult, String> {
     let q = ThumbQuality::parse(quality.as_deref().unwrap_or("lq"));
+    let cache_only = cache_only.unwrap_or(false);
     let resource_dir = app.path().resource_dir().ok();
-    let ffmpeg = find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok();
+    let ffmpeg = if cache_only {
+        None
+    } else {
+        find_ffmpeg_with_resource_dir(resource_dir.as_deref()).ok()
+    };
     let media_server = media.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         use crate::sd_card::mtp::catalog::is_preview_staging;
 
         let p = std::path::Path::new(&path);
+        if cache_only {
+            let Some(cached) = read_cached_thumbnail(p, q) else {
+                return Ok(ThumbnailResult {
+                    path,
+                    url: None,
+                    data_url: None,
+                });
+            };
+            return thumbnail_result_from_cache(&path, &media_server, cached.cache_path);
+        }
         if p.is_file() && !is_preview_staging(p) {
             match generate_thumbnail_cached_with_ffmpeg(p, q, ffmpeg.as_deref()) {
                 Ok(cached) => thumbnail_result_from_cache(&path, &media_server, cached.cache_path),
