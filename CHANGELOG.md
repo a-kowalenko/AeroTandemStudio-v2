@@ -25,7 +25,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - QR-Scan: Live-Bilder sitzen über dem Streifen der jeweiligen Datei und wechseln weich; die Anzeige springt nicht mehr, wenn die Prüfpunkte erscheinen
 - QR-Scan Live-Vorschau: Videos zeigen schon während der Prüfung eine Kachel; Treffer und „entfernt“ flackern weniger, Miss- und Entfernen-Kacheln blenden weicher aus; die laufende Prüfung bleibt im Streifen sichtbar
 - QR-Scan: während der Kundensuche Fortschritt „Kundendaten werden geladen…“; Abschlusskarte wartet auf das Ergebnis
-- QR-Scan mit Kunden-/Buchungs-ID in der URL: Zahlen-Codes werden erkannt; ohne Treffer in der Buchungssuche bleiben die IDs mit Warnhinweis übernommen
+- QR-Scan mit Kunden-/Buchungs-ID in der URL: Zahlen-Codes werden erkannt; Formular bleibt als „QR → ID“ gekennzeichnet (IDs als Chips); ohne Treffer in der Buchungssuche Warnhinweis; Vorgänge zeigen „QR · ID“
+- Foto-Übersicht: Vorschaubilder laden und schärfen schneller beim Scrollen — weniger Stocken in großen Grids
 - Rechtsklick: kein Browser-Kontextmenü mehr in der fertigen App (außer in Eingabefeldern); eigene Menüs und Copy/Paste bleiben
 - Status-Hinweise und Toasts: Auto-Ausblenden pausiert beim Darüberfahren; einheitlicher Fortschrittsbalken
 - SD-Import: Fortschritt „Verlauf aktualisieren…“ statt langer Wartezeit ohne Anzeige
