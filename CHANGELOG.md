@@ -10,6 +10,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-09
+
 ### Neu
 
 - Nach Import und SD-Workflow: Abschlusskarte mit Ergebnis und Schritten — blendet sich selbst aus; Maus darüber hält den Timer an
