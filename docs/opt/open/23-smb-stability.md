@@ -269,6 +269,39 @@ OS-Mappings häufiger treffen, Health leichter machen, Hänger/Thread-Stau nach 
 
 ---
 
+#### Slice G — Auto-Mount nicht-blockierend + Fehlerklassen
+
+**Anlass:** macOS-Log: `NetFSMountURLSync failed (1: Operation not permitted)`, danach `mount_smbfs timed out after 20s`. Jeder Verbindungstest (auch Quiet-Poll) und jede neue Share-URL zahlte bis zu 20 s, bevor smb2 lief.
+
+##### Entscheidungen
+
+| # | Thema | Entscheidung |
+|---|--------|--------------|
+| G1 | Resolve | macOS/Linux: `apply_os_smb_mapping` mountet nie synchron; `schedule_background_mount` startet einen Hintergrund-Thread, der laufende Request bleibt auf smb2. **Windows** mountet inline (WNet < 1 s), damit schon der erste Request Local läuft |
+| G2 | Fehlerklassen | NetFS-EPERM ist **kein** Endzustand (beobachtet: NetFS EPERM, `mount_smbfs` im selben Kontext OK). `Auth` (EACCES/EAUTH/ENEEDAUTH, Win32 1326/86) und `AlreadyMounted` (EEXIST / „File exists“) beenden die Kette. `Permission` (Host-Sperre für die Sitzung) nur, wenn auch die letzte Methode „Operation not permitted“ meldet |
+| G3 | Backoff | 60 s, verdoppelt pro Fehlschlag, max. 10 min; geänderte Zugangsdaten setzen den Backoff zurück |
+| G4 | Single-Flight | ein Mountversuch pro Host; weitere Shares desselben Hosts bleiben solange auf smb2 |
+| G5 | Passwort ohne argv | Mount-Helper laufen mit `setsid`. `mount_smbfs` bekommt ein privates PTY als Controlling-TTY; der Passwort-Prompt wird einmal über das PTY beantwortet (nie argv/env/Log, kein Keychain-Eintrag). Timeout 10 s |
+| G6 | Aufräumen | `diskutil unmount` nur, wenn der Mountpoint wirklich gemountet ist; sonst leeren Ordner entfernen |
+| G7 | macOS-Kette | 1) NetFS `MountAtMountDir` im App-Ordner → 2) NetFS wie Finder (macOS wählt `/Volumes/<share>`, Pfad aus `mountpoints`) → 3) `mount_smbfs` via PTY im App-Ordner. App-gemountete Pfade werden registriert und beim Beenden ausgehängt |
+| G8 | Bereits gemountet | EEXIST → vorhandenen Mount über die Mount-Tabelle finden und nutzen; **nicht** registrieren / nicht aushängen |
+
+##### Scope
+
+- [x] `auto_mount.rs`: G1–G8
+- [x] `client.rs`: Resolve inline (Windows) / `schedule_background_mount` (macOS/Linux)
+- [x] Unit-Tests: Fehlerklassen (inkl. EEXIST), Backoff, Credential-Reset, Single-Flight, Host-Sperre, Mountpoint-Erkennung, Passwort-Prompt
+- [ ] manuell macOS (Dev-Build), Windows, Linux
+
+##### Akzeptanz
+
+- [ ] macOS: nach erstem Test Log „SMB auto-mounted … in N ms“, folgende Tests „SMB via OS mount“
+- [ ] macOS: Share bereits im Finder gemountet → „already mounted … reusing“, beim Beenden nicht ausgehängt
+- [ ] Windows: erster Test bereits Local
+- [x] `cargo test --lib smb::auto_mount smb::client` grün
+
+---
+
 #### Betroffene Dateien (erwartet)
 
 | Slice | Dateien |

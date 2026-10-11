@@ -1846,6 +1846,7 @@
       "retryOrSettings": "Click: retry · right click: settings",
       "retry": "Click to check again",
       "connectionTitle": "Connection",
+      "probeTitle": "Connection check",
       "titleAllOk": "All connected",
       "titlePartial": "Partial",
       "titleFailed": "No connection",

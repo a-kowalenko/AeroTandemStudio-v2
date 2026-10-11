@@ -1846,6 +1846,7 @@
       "retryOrSettings": "Clic: reintentar · clic derecho: configuración",
       "retry": "Clic para volver a comprobar",
       "connectionTitle": "Conexión",
+      "probeTitle": "Prueba de conexión",
       "titleAllOk": "Todo conectado",
       "titlePartial": "Parcial",
       "titleFailed": "Sin conexión",

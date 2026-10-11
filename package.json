@@ -19,6 +19,7 @@
     "test:path-hints": "node --experimental-strip-types --test scripts/amsPathHints.test.mjs",
     "test:settings-ui": "node --experimental-strip-types --test src/lib/settingsUi.test.ts",
     "test:booking-lookup-gate": "node --experimental-strip-types --test src/lib/bookingLookupGate.test.ts",
+    "test:header-connection-probe": "node --experimental-strip-types --test src/lib/headerConnectionProbe.test.ts",
     "tauri:build:ci": "tauri build --config src-tauri/tauri.conf.ci.json"
   },
   "dependencies": {

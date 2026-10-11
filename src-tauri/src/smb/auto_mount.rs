@@ -31,12 +31,15 @@ const REGISTRY_FILE: &str = "smb_app_mounts.json";
 /// Subdir under [`crate::storage::app_config_dir`] for macOS mount points (OPT-20A).
 #[cfg(any(test, target_os = "macos"))]
 const SMB_MOUNTS_SUBDIR: &str = "smb-mounts";
+/// First retry delay after a failed mount; doubles per consecutive failure.
 const FAILURE_BACKOFF: Duration = Duration::from_secs(60);
+const FAILURE_BACKOFF_MAX: Duration = Duration::from_secs(10 * 60);
 const MOUNT_SETTLE_POLL: Duration = Duration::from_millis(200);
 const MOUNT_SETTLE_MAX: Duration = Duration::from_secs(8);
 /// OPT-23F: a credential prompt must not block the worker indefinitely.
+/// Children run without a controlling TTY, so a prompt fails instead of waiting.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
-const OS_MOUNT_CMD_TIMEOUT: Duration = Duration::from_secs(20);
+const OS_MOUNT_CMD_TIMEOUT: Duration = Duration::from_secs(10);
 /// Encode bytes that are not RFC 3986 unreserved. Dots stay so `nas.local` is literal.
 #[cfg(any(test, target_os = "macos", target_os = "linux"))]
 const SMB_ENCODE: &AsciiSet = &NON_ALPHANUMERIC
@@ -76,16 +79,198 @@ struct AttemptState {
     /// Last successful mount for this share-root UNC (this process).
     succeeded: bool,
     last_failure: Option<Instant>,
+    /// Consecutive failures — drives exponential backoff.
+    failures: u32,
+    /// Fingerprint of the credentials used; a change allows an immediate retry.
+    cred_key: u64,
 }
 
 static ATTEMPTS: Lazy<Mutex<std::collections::HashMap<String, AttemptState>>> =
     Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
 
+/// Hosts where every mount method was refused by the OS ("Operation not
+/// permitted"). Session-wide: retrying cannot succeed until the app restarts.
+static BLOCKED_HOSTS: Lazy<Mutex<std::collections::HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
+
+/// One OS mount attempt per host at a time; a second caller keeps smb2.
+static IN_FLIGHT_HOSTS: Lazy<Mutex<std::collections::HashSet<String>>> =
+    Lazy::new(|| Mutex::new(std::collections::HashSet::new()));
+
+/// Why an OS mount failed — decides fallback and retry policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MountFailureKind {
+    /// The last mount method was refused by the OS. Host blocked for the session.
+    Permission,
+    /// Server rejected the credentials. Retry only after backoff or a credential change.
+    Auth,
+    /// The share is already mounted for this user (EEXIST) — reuse that mount.
+    AlreadyMounted,
+    /// Network, timeout, settle, or unknown — fallback and backoff apply.
+    Transient,
+}
+
+#[derive(Debug, Clone)]
+struct MountError {
+    kind: MountFailureKind,
+    message: String,
+}
+
+impl MountError {
+    fn from_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            kind: classify_mount_error_message(&message),
+            message,
+        }
+    }
+}
+
+/// Classify a mount helper error text (mount_smbfs / gio / WNet wrappers).
+fn classify_mount_error_message(message: &str) -> MountFailureKind {
+    let m = message.to_ascii_lowercase();
+    if m.contains("file exists") {
+        MountFailureKind::AlreadyMounted
+    } else if m.contains("operation not permitted") {
+        MountFailureKind::Permission
+    } else if m.contains("authentication error")
+        || m.contains("authentication failed")
+        || m.contains("logon failure")
+        || m.contains("permission denied")
+        || m.contains("access denied")
+        || m.contains("win32 1326")
+        || m.contains("win32 86")
+    {
+        MountFailureKind::Auth
+    } else {
+        MountFailureKind::Transient
+    }
+}
+
+/// Classify a `NetFSMountURLSync` errno.
+#[cfg(any(test, target_os = "macos"))]
+fn classify_netfs_rc(rc: i32) -> MountFailureKind {
+    match rc {
+        // EPERM — this NetFS variant was refused; other methods may still work.
+        1 => MountFailureKind::Permission,
+        // EACCES, EAUTH, ENEEDAUTH — server-side credential rejection.
+        13 | 80 | 81 => MountFailureKind::Auth,
+        // EEXIST — the share is already mounted for this user.
+        17 => MountFailureKind::AlreadyMounted,
+        _ => MountFailureKind::Transient,
+    }
+}
+
+fn backoff_for(failures: u32) -> Duration {
+    let shift = failures.saturating_sub(1).min(8);
+    FAILURE_BACKOFF
+        .saturating_mul(1u32 << shift)
+        .min(FAILURE_BACKOFF_MAX)
+}
+
+fn credential_key(login: &str, password: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    login.trim().hash(&mut h);
+    password.hash(&mut h);
+    h.finish()
+}
+
+fn host_key(host: &str) -> String {
+    host.trim().to_ascii_lowercase()
+}
+
+fn host_blocked(host: &str) -> Option<String> {
+    BLOCKED_HOSTS
+        .lock()
+        .ok()
+        .and_then(|map| map.get(&host_key(host)).cloned())
+}
+
+fn block_host(host: &str, reason: &str) {
+    if let Ok(mut map) = BLOCKED_HOSTS.lock() {
+        map.insert(host_key(host), reason.to_string());
+    }
+}
+
+/// RAII marker: at most one mount attempt per host.
+struct HostFlight(String);
+
+impl HostFlight {
+    fn try_begin(host: &str) -> Option<Self> {
+        let key = host_key(host);
+        let mut set = IN_FLIGHT_HOSTS.lock().ok()?;
+        if !set.insert(key.clone()) {
+            return None;
+        }
+        Some(Self(key))
+    }
+}
+
+impl Drop for HostFlight {
+    fn drop(&mut self) {
+        if let Ok(mut set) = IN_FLIGHT_HOSTS.lock() {
+            set.remove(&self.0);
+        }
+    }
+}
+
+fn host_in_flight(host: &str) -> bool {
+    IN_FLIGHT_HOSTS
+        .lock()
+        .map(|set| set.contains(&host_key(host)))
+        .unwrap_or(false)
+}
+
+/// Ask for an OS mount without blocking the caller (Health, Upload, cleanup).
+///
+/// The caller keeps its current target (smb2) for this request; once the mount
+/// is ready, the next resolve picks it up as `ServerTarget::Local`. Skips
+/// instantly when the host is blocked, in backoff, or already mounting.
+#[cfg_attr(windows, allow(dead_code))]
+pub fn schedule_background_mount(host: &str, share: &str, subpath: &str, login: &str, password: &str) {
+    let host = host.trim();
+    let share = share.trim();
+    if host.is_empty() || share.is_empty() {
+        return;
+    }
+    if host_blocked(host).is_some() || host_in_flight(host) {
+        return;
+    }
+    let share_unc = unc_from_smb_parts(host, share, "");
+    if should_skip_after_failure(&share_unc, credential_key(login, password)) {
+        return;
+    }
+
+    let host = host.to_string();
+    let share = share.to_string();
+    let subpath = subpath.to_string();
+    let login = login.to_string();
+    let password = password.to_string();
+    let spawned = std::thread::Builder::new()
+        .name("ats-smb-auto-mount".into())
+        .spawn(move || {
+            let _ = ensure_os_smb_mount(
+                &host,
+                &share,
+                &subpath,
+                AutoMountParams {
+                    enabled: true,
+                    login: &login,
+                    password: &password,
+                },
+            );
+        });
+    if let Err(e) = spawned {
+        crate::storage::logging::warn("smb", format!("SMB auto-mount thread: {e}"));
+    }
+}
+
 /// Ensure an OS mount exists for the SMB share root when enabled and needed.
 ///
 /// Returns `Ok(Some(local))` when a reachable mapping exists after ensure,
-/// `Ok(None)` when auto-mount is off / skipped / failed (caller keeps smb2),
-/// never hard-blocks the transfer path.
+/// `Ok(None)` when auto-mount is off / skipped / failed (caller keeps smb2).
+/// Blocking — production callers go through [`schedule_background_mount`].
 pub fn ensure_os_smb_mount(
     host: &str,
     share: &str,
@@ -112,9 +297,6 @@ pub fn ensure_os_smb_mount(
     }
 
     let share_unc = unc_from_smb_parts(host, share, "");
-    if should_skip_after_failure(&share_unc) {
-        return Ok(None);
-    }
 
     // Idempotent: share-root already mapped (subpath join failed above only if dead).
     if let Some(existing) = lookup_mapped_local_path(&share_unc) {
@@ -129,16 +311,29 @@ pub fn ensure_os_smb_mount(
         return Ok(None);
     }
 
+    if host_blocked(host).is_some() {
+        return Ok(None);
+    }
+    let cred_key = credential_key(params.login, params.password);
+    if should_skip_after_failure(&share_unc, cred_key) {
+        return Ok(None);
+    }
+    let Some(_flight) = HostFlight::try_begin(host) else {
+        return Ok(None);
+    };
+
+    let started = Instant::now();
     match mount_share_root(host, share, &share_unc, params.login, params.password) {
         Ok(local_root) => {
-            mark_attempt_ok(&share_unc);
+            mark_attempt_ok(&share_unc, cred_key);
             register_owned(&share_unc, &local_root);
             crate::storage::logging::info(
                 "smb",
                 format!(
-                    "SMB auto-mounted {} ({})",
+                    "SMB auto-mounted {} ({}) in {} ms",
                     display_local(&local_root),
-                    share_unc
+                    share_unc,
+                    started.elapsed().as_millis()
                 ),
             );
             if let Some(full) = lookup_mapped_local_path(&config_unc) {
@@ -154,17 +349,66 @@ pub fn ensure_os_smb_mount(
             }
         }
         Err(e) => {
-            mark_attempt_failed(&share_unc);
-            crate::storage::logging::warn(
-                "smb",
-                format!(
-                    "SMB auto-mount failed ({share_unc}): {}; using smb2",
-                    redact_for_log(&e, params.password)
-                ),
-            );
+            let detail = redact_for_log(&e.message, params.password);
+            match e.kind {
+                MountFailureKind::AlreadyMounted => {
+                    // Another mount of this share exists (Finder, earlier session):
+                    // use it, but it is not ours — never register / unmount it.
+                    if let Some(existing) = lookup_mapped_local_path(&share_unc) {
+                        if super::reconnect::prefer_local_now(&existing) {
+                            mark_attempt_ok(&share_unc, cred_key);
+                            crate::storage::logging::info(
+                                "smb",
+                                format!(
+                                    "SMB share already mounted at {} ({share_unc}) — reusing",
+                                    display_local(&existing)
+                                ),
+                            );
+                            return Ok(Some(join_subpath(&existing, subpath)));
+                        }
+                    }
+                    let failures = mark_attempt_failed(&share_unc, cred_key);
+                    crate::storage::logging::warn(
+                        "smb",
+                        format!(
+                            "SMB auto-mount ({share_unc}): share reported as already mounted but no mount found: {detail}; using smb2, retry in {}s",
+                            backoff_for(failures).as_secs()
+                        ),
+                    );
+                }
+                MountFailureKind::Permission => {
+                    block_host(host, &detail);
+                    crate::storage::logging::warn(
+                        "smb",
+                        format!(
+                            "SMB auto-mount for {host} disabled for this session — {}: {detail}; using smb2",
+                            permission_hint()
+                        ),
+                    );
+                }
+                kind => {
+                    let failures = mark_attempt_failed(&share_unc, cred_key);
+                    let label = if kind == MountFailureKind::Auth {
+                        "credentials rejected"
+                    } else {
+                        "failed"
+                    };
+                    crate::storage::logging::warn(
+                        "smb",
+                        format!(
+                            "SMB auto-mount {label} ({share_unc}): {detail}; using smb2, retry in {}s",
+                            backoff_for(failures).as_secs()
+                        ),
+                    );
+                }
+            }
             Ok(None)
         }
     }
+}
+
+fn permission_hint() -> &'static str {
+    "the OS refused every mount method"
 }
 
 /// Drop unreachable App-owned registry rows (crash leftovers). Does not unmount.
@@ -225,24 +469,29 @@ fn mount_share_root(
     share_unc: &str,
     login: &str,
     password: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, MountError> {
     #[cfg(windows)]
     {
         let _ = (host, share);
-        mount_windows(share_unc, login, password)
+        mount_windows(share_unc, login, password).map_err(MountError::from_message)
     }
     #[cfg(target_os = "macos")]
     {
+        let _ = share_unc;
         mount_macos(host, share, login, password)
     }
     #[cfg(target_os = "linux")]
     {
-        mount_linux_gvfs(host, share, login, password)
+        let _ = share_unc;
+        mount_linux_gvfs(host, share, login, password).map_err(MountError::from_message)
     }
     #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
     {
         let _ = (host, share, share_unc, login, password);
-        Err("SMB auto-mount unsupported on this platform".into())
+        Err(MountError {
+            kind: MountFailureKind::Permission,
+            message: "SMB auto-mount unsupported on this platform".into(),
+        })
     }
 }
 
@@ -417,55 +666,105 @@ fn find_free_drive_letter() -> Option<char> {
 }
 
 #[cfg(target_os = "macos")]
-fn mount_macos(host: &str, share: &str, login: &str, password: &str) -> Result<PathBuf, String> {
+fn mount_macos(
+    host: &str,
+    share: &str,
+    login: &str,
+    password: &str,
+) -> Result<PathBuf, MountError> {
     let prepared = prepare_os_mount(host, share, login, password);
     let (user, pass, domain) = split_creds(login, password);
+    let share_unc = unc_from_smb_parts(host, share, "");
 
     // OPT-20A: writable user path — never mkdir under /Volumes (EACCES).
-    let mounts_root = smb_mounts_root()?;
-    fs::create_dir_all(&mounts_root)
-        .map_err(|e| format!("smb-mounts root {}: {e}", mounts_root.display()))?;
+    let mounts_root = smb_mounts_root().map_err(MountError::from_message)?;
+    fs::create_dir_all(&mounts_root).map_err(|e| {
+        MountError::from_message(format!("smb-mounts root {}: {e}", mounts_root.display()))
+    })?;
     let mount_point = pick_user_mount_point(&mounts_root, share);
-    ensure_mount_point_dir(&mount_point)?;
+    ensure_mount_point_dir(&mount_point).map_err(MountError::from_message)?;
 
+    // Three methods, cheapest first. EPERM from one NetFS variant does not mean
+    // the others fail (observed: NetFS at our dir EPERM, mount_smbfs OK).
+    // Only Auth / AlreadyMounted stop the chain — every method would repeat them.
+    let mut tried: Vec<String> = Vec::new();
+
+    // 1) NetFS at our mount dir.
     match netfs::mount_url(
         &prepared.smb_url,
-        &mount_point,
+        Some(&mount_point),
         &user,
         &pass,
         &domain,
         prepared.guest,
     ) {
-        Ok(()) => match wait_until_reachable(&mount_point) {
+        Ok(_) => match wait_until_reachable(&mount_point) {
             Ok(()) => return Ok(mount_point),
             Err(wait_err) => {
-                crate::storage::logging::warn(
-                    "smb",
-                    format!(
-                        "NetFS auto-mount did not become reachable ({}), falling back to mount_smbfs: {}",
-                        unc_from_smb_parts(host, share, ""),
-                        redact_for_log(&wait_err, password)
-                    ),
-                );
-                let _ = unmount_macos(&mount_point.to_string_lossy());
-                ensure_mount_point_dir(&mount_point)?;
+                tried.push(format!("NetFS: {wait_err}"));
+                release_failed_mount_point(&mount_point);
             }
         },
         Err(e) => {
-            crate::storage::logging::warn(
-                "smb",
-                format!(
-                    "NetFS auto-mount failed ({}), falling back to mount_smbfs: {}",
-                    unc_from_smb_parts(host, share, ""),
-                    redact_for_log(&e, password)
-                ),
-            );
-            let _ = unmount_macos(&mount_point.to_string_lossy());
-            ensure_mount_point_dir(&mount_point)?;
+            if let Some(stop) = netfs_chain_stop(&e) {
+                release_failed_mount_point(&mount_point);
+                return Err(stop);
+            }
+            tried.push(format!("NetFS: {}", e.message));
+            release_failed_mount_point(&mount_point);
         }
     }
 
-    mount_macos_smbfs(&prepared, &mount_point, password)
+    // 2) NetFS like Finder: macOS picks /Volumes/<share>.
+    match netfs::mount_url(&prepared.smb_url, None, &user, &pass, &domain, prepared.guest) {
+        Ok(paths) => match paths.into_iter().next().map(PathBuf::from) {
+            Some(system_mount) => match wait_until_reachable(&system_mount) {
+                Ok(()) => return Ok(system_mount),
+                Err(wait_err) => {
+                    tried.push(format!("NetFS system mount: {wait_err}"));
+                    let _ = unmount_macos(&system_mount.to_string_lossy());
+                }
+            },
+            None => tried.push("NetFS system mount: no mount point returned".into()),
+        },
+        Err(e) => {
+            if let Some(stop) = netfs_chain_stop(&e) {
+                return Err(stop);
+            }
+            tried.push(format!("NetFS system mount: {}", e.message));
+        }
+    }
+
+    crate::storage::logging::info(
+        "smb",
+        format!(
+            "NetFS mount not possible ({share_unc}): {}; trying mount_smbfs",
+            redact_for_log(&tried.join("; "), password)
+        ),
+    );
+
+    // 3) mount_smbfs at our mount dir (password via PTY, never argv).
+    ensure_mount_point_dir(&mount_point).map_err(MountError::from_message)?;
+    mount_macos_smbfs(&prepared, &mount_point, &pass).map_err(|smbfs_err| {
+        // Classify by the last method only; keep the NetFS reasons for the log.
+        let kind = classify_mount_error_message(&smbfs_err);
+        MountError {
+            kind,
+            message: format!("{smbfs_err} (before: {})", tried.join("; ")),
+        }
+    })
+}
+
+/// Auth / AlreadyMounted from NetFS end the method chain.
+#[cfg(target_os = "macos")]
+fn netfs_chain_stop(e: &netfs::NetFsError) -> Option<MountError> {
+    match classify_netfs_rc(e.rc) {
+        kind @ (MountFailureKind::Auth | MountFailureKind::AlreadyMounted) => Some(MountError {
+            kind,
+            message: e.message.clone(),
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -477,8 +776,33 @@ fn ensure_mount_point_dir(mount_point: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Unmount only when something is actually mounted there; otherwise just drop
+/// the empty dir (a `diskutil unmount` on a plain dir costs ~1s and fails).
+#[cfg(target_os = "macos")]
+fn release_failed_mount_point(mount_point: &Path) {
+    if is_mount_point(mount_point) {
+        let _ = unmount_macos(&mount_point.to_string_lossy());
+    } else {
+        maybe_remove_app_mount_dir(mount_point);
+    }
+}
+
+/// A directory is a mount point when its device differs from its parent's.
+#[cfg(all(unix, any(test, target_os = "macos")))]
+fn is_mount_point(path: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    match (fs::metadata(path), fs::metadata(parent)) {
+        (Ok(m), Ok(p)) => m.dev() != p.dev(),
+        _ => false,
+    }
+}
+
 /// `mount_smbfs` without a password in argv. Guest uses `-N`. Authenticated
-/// mounts rely on the Keychain; stdin is null so a prompt cannot hang forever.
+/// mounts answer the `/dev/tty` password prompt through a private PTY, so the
+/// password never appears in `ps` and no Keychain entry is required.
 #[cfg(target_os = "macos")]
 fn mount_macos_smbfs(
     prepared: &PreparedOsMount,
@@ -490,22 +814,30 @@ fn mount_macos_smbfs(
         mount_point,
         prepared.smbfs_no_prompt,
     );
-    let output = run_command_timeout(
-        "mount_smbfs",
-        &args,
-        None,
-        OS_MOUNT_CMD_TIMEOUT,
-        "mount_smbfs",
-        password,
-    )?;
+    let (success, transcript) = if prepared.guest {
+        let output = run_command_timeout(
+            "mount_smbfs",
+            &args,
+            None,
+            OS_MOUNT_CMD_TIMEOUT,
+            "mount_smbfs",
+            password,
+        )?;
+        let text = format!(
+            "{} {}",
+            String::from_utf8_lossy(&output.stderr).trim(),
+            String::from_utf8_lossy(&output.stdout).trim()
+        );
+        (output.status.success(), text)
+    } else {
+        pty::run_with_password("mount_smbfs", &args, password, OS_MOUNT_CMD_TIMEOUT)?
+    };
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
+    if !success {
         let _ = fs::remove_dir(mount_point);
         return Err(format!(
             "mount_smbfs failed: {}",
-            redact_for_log(&format!("{} {}", stderr.trim(), stdout.trim()), password)
+            redact_for_log(transcript.trim(), password)
         ));
     }
 
@@ -926,6 +1258,10 @@ fn userinfo_prefix_len(s: &str) -> Option<usize> {
 /// Stdin is either null (guest / Keychain) or a pipe that is closed after
 /// `stdin_data` is written. Output pipes are collected on a helper thread so a
 /// full buffer cannot deadlock the wait.
+///
+/// The child starts a new session (`setsid`) and so has no controlling TTY:
+/// `mount_smbfs` reads passwords from `/dev/tty`, not stdin, and would
+/// otherwise block on the dev terminal until the timeout.
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn run_command_timeout(
     program: &str,
@@ -936,10 +1272,12 @@ fn run_command_timeout(
     secret: &str,
 ) -> Result<Output, String> {
     use std::io::Write;
+    use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::thread;
 
-    let mut child = Command::new(program)
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdin(if stdin_data.is_some() {
             Stdio::piped()
@@ -947,7 +1285,15 @@ fn run_command_timeout(
             Stdio::null()
         })
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::piped());
+    // SAFETY: `setsid` is async-signal-safe; nothing else runs before exec.
+    unsafe {
+        command.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+    let mut child = command
         .spawn()
         .map_err(|e| format!("{label} unavailable: {e}"))?;
 
@@ -986,15 +1332,9 @@ fn run_command_timeout(
 fn mount_timeout_message(label: &str, timeout: Duration, stderr: &str, secret: &str) -> String {
     let detail = redact_for_log(stderr, secret);
     if detail.is_empty() {
-        format!(
-            "{label} timed out after {}s — credential prompt did not finish",
-            timeout.as_secs()
-        )
+        format!("{label} timed out after {}s", timeout.as_secs())
     } else {
-        format!(
-            "{label} timed out after {}s — credential prompt did not finish: {detail}",
-            timeout.as_secs()
-        )
+        format!("{label} timed out after {}s: {detail}", timeout.as_secs())
     }
 }
 
@@ -1070,21 +1410,24 @@ fn wait_until_reachable(path: &Path) -> Result<(), String> {
     }
 }
 
-fn should_skip_after_failure(share_unc: &str) -> bool {
+/// In backoff after a failure with the same credentials. A credential change
+/// (Settings fix) retries immediately.
+fn should_skip_after_failure(share_unc: &str, cred_key: u64) -> bool {
     let key = canonicalize_unc(share_unc);
     let Ok(map) = ATTEMPTS.lock() else {
         return false;
     };
     match map.get(&key) {
         Some(s) if s.succeeded => false,
+        Some(s) if s.cred_key != cred_key => false,
         Some(s) => s
             .last_failure
-            .is_some_and(|t| t.elapsed() < FAILURE_BACKOFF),
+            .is_some_and(|t| t.elapsed() < backoff_for(s.failures)),
         None => false,
     }
 }
 
-fn mark_attempt_ok(share_unc: &str) {
+fn mark_attempt_ok(share_unc: &str, cred_key: u64) {
     let key = canonicalize_unc(share_unc);
     if let Ok(mut map) = ATTEMPTS.lock() {
         map.insert(
@@ -1092,22 +1435,33 @@ fn mark_attempt_ok(share_unc: &str) {
             AttemptState {
                 succeeded: true,
                 last_failure: None,
+                failures: 0,
+                cred_key,
             },
         );
     }
 }
 
-fn mark_attempt_failed(share_unc: &str) {
+/// Records a failure and returns the consecutive failure count.
+fn mark_attempt_failed(share_unc: &str, cred_key: u64) -> u32 {
     let key = canonicalize_unc(share_unc);
-    if let Ok(mut map) = ATTEMPTS.lock() {
-        map.insert(
-            key,
-            AttemptState {
-                succeeded: false,
-                last_failure: Some(Instant::now()),
-            },
-        );
-    }
+    let Ok(mut map) = ATTEMPTS.lock() else {
+        return 1;
+    };
+    let failures = match map.get(&key) {
+        Some(s) if !s.succeeded && s.cred_key == cred_key => s.failures.saturating_add(1),
+        _ => 1,
+    };
+    map.insert(
+        key,
+        AttemptState {
+            succeeded: false,
+            last_failure: Some(Instant::now()),
+            failures,
+            cred_key,
+        },
+    );
+    failures
 }
 
 fn registry_path() -> Result<PathBuf, String> {
@@ -1181,6 +1535,161 @@ fn now_rfc3339() -> String {
     format!("{secs}")
 }
 
+/// `mount_smbfs` asks `Password for <host>:` on its controlling terminal.
+#[cfg(any(test, target_os = "macos"))]
+fn is_password_prompt(transcript: &str) -> bool {
+    transcript.to_ascii_lowercase().contains("password")
+}
+
+/// Run a command whose controlling terminal is a private PTY and answer its
+/// password prompt once. The secret is written to the PTY only — never argv,
+/// env, or logs.
+#[cfg(target_os = "macos")]
+mod pty {
+    use std::fs::File;
+    use std::io::{Read, Write};
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    use super::{is_password_prompt, mount_timeout_message, redact_for_log};
+
+    /// Returns `(exit success, terminal transcript)`.
+    pub(super) fn run_with_password(
+        program: &str,
+        args: &[String],
+        password: &str,
+        timeout: Duration,
+    ) -> Result<(bool, String), String> {
+        let mut master_fd: libc::c_int = -1;
+        let mut slave_fd: libc::c_int = -1;
+        let rc = unsafe {
+            libc::openpty(
+                &mut master_fd,
+                &mut slave_fd,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if rc != 0 {
+            return Err(format!(
+                "{program}: openpty failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        // SAFETY: openpty succeeded; we own both descriptors.
+        let master = unsafe { OwnedFd::from_raw_fd(master_fd) };
+        let slave = unsafe { OwnedFd::from_raw_fd(slave_fd) };
+        // The child gets the slave only via dup2 onto 0/1/2.
+        unsafe {
+            libc::fcntl(master_fd, libc::F_SETFD, libc::FD_CLOEXEC);
+            libc::fcntl(slave_fd, libc::F_SETFD, libc::FD_CLOEXEC);
+        }
+
+        let clone = |fd: &OwnedFd| -> Result<Stdio, String> {
+            fd.try_clone()
+                .map(Stdio::from)
+                .map_err(|e| format!("{program}: pty dup failed: {e}"))
+        };
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .stdin(clone(&slave)?)
+            .stdout(clone(&slave)?)
+            .stderr(clone(&slave)?);
+        // SAFETY: setsid / ioctl are async-signal-safe; nothing else runs before exec.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::ioctl(0, libc::TIOCSCTTY.into(), 0) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut child = command
+            .spawn()
+            .map_err(|e| format!("{program} unavailable: {e}"))?;
+        // Close every parent-side slave handle so reads see EOF when the child exits.
+        drop(command);
+        drop(slave);
+
+        let mut term = File::from(master);
+        let deadline = Instant::now() + timeout;
+        let mut transcript: Vec<u8> = Vec::new();
+        let mut sent = false;
+        let mut closed = false;
+        let mut buf = [0u8; 1024];
+
+        loop {
+            if let Ok(Some(status)) = child.try_wait() {
+                if !closed {
+                    drain(&mut term, &mut transcript);
+                }
+                let text = String::from_utf8_lossy(&transcript).into_owned();
+                return Ok((status.success(), redact_for_log(&text, password)));
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                let _ = child.kill();
+                let _ = child.wait();
+                let text = String::from_utf8_lossy(&transcript).into_owned();
+                return Err(mount_timeout_message(program, timeout, text.trim(), password));
+            }
+            let wait_ms = deadline.saturating_duration_since(now).as_millis().min(100) as i32;
+            if closed {
+                std::thread::sleep(Duration::from_millis(wait_ms.max(1) as u64));
+                continue;
+            }
+            let mut pfd = libc::pollfd {
+                fd: term.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let ready = unsafe { libc::poll(&mut pfd, 1, wait_ms) };
+            if ready <= 0 || pfd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) == 0 {
+                continue;
+            }
+            match term.read(&mut buf) {
+                Ok(n) if n > 0 => {
+                    transcript.extend_from_slice(&buf[..n]);
+                    if !sent && is_password_prompt(&String::from_utf8_lossy(&transcript)) {
+                        sent = true;
+                        let mut line = String::with_capacity(password.len() + 1);
+                        line.push_str(password);
+                        line.push('\n');
+                        let _ = term.write_all(line.as_bytes());
+                    }
+                }
+                // EOF / EIO: the child closed the terminal; wait for its exit.
+                _ => closed = true,
+            }
+        }
+    }
+
+    fn drain(term: &mut File, transcript: &mut Vec<u8>) {
+        let mut buf = [0u8; 1024];
+        loop {
+            let mut pfd = libc::pollfd {
+                fd: term.as_raw_fd(),
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            if unsafe { libc::poll(&mut pfd, 1, 0) } <= 0 {
+                return;
+            }
+            match term.read(&mut buf) {
+                Ok(n) if n > 0 => transcript.extend_from_slice(&buf[..n]),
+                _ => return,
+            }
+        }
+    }
+}
+
 /// `NetFSMountURLSync` — password is a CFString parameter, not a process argument.
 #[cfg(target_os = "macos")]
 mod netfs {
@@ -1230,6 +1739,15 @@ mod netfs {
         ) -> *const c_void;
 
         fn CFDictionarySetValue(dict: *const c_void, key: *const c_void, value: *const c_void);
+
+        fn CFArrayGetCount(array: *const c_void) -> isize;
+        fn CFArrayGetValueAtIndex(array: *const c_void, idx: isize) -> *const c_void;
+        fn CFStringGetCString(
+            s: *const c_void,
+            buffer: *mut std::os::raw::c_char,
+            buffer_size: isize,
+            encoding: u32,
+        ) -> u8;
 
         fn CFRelease(cf: *const c_void);
     }
@@ -1349,16 +1867,60 @@ mod netfs {
         key.release_now();
     }
 
+    /// `rc` is the errno from `NetFSMountURLSync` (`-1` for setup failures).
+    pub(super) struct NetFsError {
+        pub rc: i32,
+        pub message: String,
+    }
+
+    impl From<String> for NetFsError {
+        fn from(message: String) -> Self {
+            Self { rc: -1, message }
+        }
+    }
+
+    impl From<&str> for NetFsError {
+        fn from(message: &str) -> Self {
+            Self {
+                rc: -1,
+                message: message.to_string(),
+            }
+        }
+    }
+
+    /// Paths from the `mountpoints` CFArray (CFStrings).
+    fn cf_string_array(array: *const c_void) -> Vec<String> {
+        let count = unsafe { CFArrayGetCount(array) };
+        let mut out = Vec::new();
+        for i in 0..count {
+            let item = unsafe { CFArrayGetValueAtIndex(array, i) };
+            if item.is_null() {
+                continue;
+            }
+            let mut buf = vec![0 as std::os::raw::c_char; 4096];
+            let ok = unsafe {
+                CFStringGetCString(item, buf.as_mut_ptr(), buf.len() as isize, K_CF_STRING_ENCODING_UTF8)
+            };
+            if ok != 0 {
+                let s = unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) };
+                out.push(s.to_string_lossy().into_owned());
+            }
+        }
+        out
+    }
+
+    /// `mount_point = None` lets macOS choose (Finder-style, `/Volumes/<share>`).
+    /// Returns the mount paths reported by NetFS.
     pub(super) fn mount_url(
         smb_url: &str,
-        mount_point: &Path,
+        mount_point: Option<&Path>,
         user: &str,
         password: &str,
         domain: &str,
         guest: bool,
-    ) -> Result<(), String> {
+    ) -> Result<Vec<String>, NetFsError> {
         let url = cf_url_string(smb_url)?;
-        let mount_url = cf_url_dir(mount_point)?;
+        let mount_url = mount_point.map(cf_url_dir).transpose()?;
 
         let k_true = unsafe { kCFBooleanTrue };
         if k_true.is_null() {
@@ -1374,9 +1936,14 @@ mod netfs {
             dict_set_borrowed(&open_opts, &mut guest_key, k_true);
         }
 
-        let mount_opts = cf_dict()?;
-        let mut at_key = cf_string("MountAtMountDir")?;
-        dict_set_borrowed(&mount_opts, &mut at_key, k_true);
+        let mount_opts = if mount_url.is_some() {
+            let opts = cf_dict()?;
+            let mut at_key = cf_string("MountAtMountDir")?;
+            dict_set_borrowed(&opts, &mut at_key, k_true);
+            Some(opts)
+        } else {
+            None
+        };
 
         let user_cf = if guest {
             None
@@ -1395,22 +1962,29 @@ mod netfs {
         let rc = unsafe {
             NetFSMountURLSync(
                 url.as_ptr(),
-                mount_url.as_ptr(),
+                mount_url.as_ref().map(Cf::as_ptr).unwrap_or(ptr::null()),
                 user_ptr,
                 pass_ptr,
                 open_opts.as_ptr(),
-                mount_opts.as_ptr(),
+                mount_opts.as_ref().map(Cf::as_ptr).unwrap_or(ptr::null()),
                 &mut mounted,
             )
         };
-        if !mounted.is_null() {
+        let paths = if mounted.is_null() {
+            Vec::new()
+        } else {
+            let paths = cf_string_array(mounted);
             unsafe { CFRelease(mounted) };
-        }
+            paths
+        };
         if rc != 0 {
             let err = std::io::Error::from_raw_os_error(rc);
-            return Err(format!("NetFSMountURLSync failed ({rc}: {err})"));
+            return Err(NetFsError {
+                rc,
+                message: format!("NetFSMountURLSync failed ({rc}: {err})"),
+            });
         }
-        Ok(())
+        Ok(paths)
     }
 }
 
@@ -1672,10 +2246,132 @@ mod tests {
     #[test]
     fn backoff_skips_recent_failure() {
         let unc = r"\\opt19-backoff-test.invalid\share";
-        mark_attempt_failed(unc);
-        assert!(should_skip_after_failure(unc));
+        let creds = credential_key("u", "p");
+        mark_attempt_failed(unc, creds);
+        assert!(should_skip_after_failure(unc, creds));
         // Fresh UNC not failed.
-        assert!(!should_skip_after_failure(r"\\other-opt19.invalid\x"));
+        assert!(!should_skip_after_failure(r"\\other-opt19.invalid\x", creds));
+    }
+
+    #[test]
+    fn backoff_resets_when_credentials_change() {
+        let unc = r"\\backoff-creds.invalid\share";
+        let old = credential_key("u", "old");
+        mark_attempt_failed(unc, old);
+        assert!(should_skip_after_failure(unc, old));
+        assert!(!should_skip_after_failure(unc, credential_key("u", "new")));
+    }
+
+    #[test]
+    fn consecutive_failures_grow_backoff() {
+        let unc = r"\\backoff-grow.invalid\share";
+        let creds = credential_key("u", "p");
+        assert_eq!(mark_attempt_failed(unc, creds), 1);
+        assert_eq!(mark_attempt_failed(unc, creds), 2);
+        assert_eq!(mark_attempt_failed(unc, creds), 3);
+        mark_attempt_ok(unc, creds);
+        assert_eq!(mark_attempt_failed(unc, creds), 1);
+    }
+
+    #[test]
+    fn backoff_doubles_and_caps() {
+        assert_eq!(backoff_for(1), Duration::from_secs(60));
+        assert_eq!(backoff_for(2), Duration::from_secs(120));
+        assert_eq!(backoff_for(3), Duration::from_secs(240));
+        assert_eq!(backoff_for(5), FAILURE_BACKOFF_MAX);
+        assert_eq!(backoff_for(u32::MAX), FAILURE_BACKOFF_MAX);
+    }
+
+    #[test]
+    fn netfs_rc_classification() {
+        assert_eq!(classify_netfs_rc(1), MountFailureKind::Permission);
+        assert_eq!(classify_netfs_rc(13), MountFailureKind::Auth);
+        assert_eq!(classify_netfs_rc(80), MountFailureKind::Auth);
+        assert_eq!(classify_netfs_rc(17), MountFailureKind::AlreadyMounted);
+        assert_eq!(classify_netfs_rc(60), MountFailureKind::Transient);
+        assert_eq!(classify_netfs_rc(-1), MountFailureKind::Transient);
+    }
+
+    #[test]
+    fn mount_message_classification() {
+        assert_eq!(
+            classify_mount_error_message(
+                "NetFSMountURLSync failed (1: Operation not permitted (os error 1))"
+            ),
+            MountFailureKind::Permission
+        );
+        assert_eq!(
+            classify_mount_error_message(
+                "mount_smbfs failed: server rejected the connection: Authentication error"
+            ),
+            MountFailureKind::Auth
+        );
+        assert_eq!(
+            classify_mount_error_message("WNetAddConnection2W failed: Win32 1326"),
+            MountFailureKind::Auth
+        );
+        assert_eq!(
+            classify_mount_error_message("mount_smbfs timed out after 10s"),
+            MountFailureKind::Transient
+        );
+        assert_eq!(
+            classify_mount_error_message("Permission denied (os error 13)"),
+            MountFailureKind::Auth
+        );
+        assert_eq!(
+            classify_mount_error_message(
+                "mount_smbfs failed: mount_smbfs: mount error: /Volumes/aktuell: File exists"
+            ),
+            MountFailureKind::AlreadyMounted
+        );
+    }
+
+    #[test]
+    fn detects_mount_smbfs_password_prompt() {
+        assert!(is_password_prompt("Password for 192.168.178.89: "));
+        assert!(!is_password_prompt(""));
+        assert!(!is_password_prompt("mount_smbfs: server connection failed"));
+    }
+
+    #[test]
+    fn host_flight_is_single_per_host() {
+        let first = HostFlight::try_begin("Flight-Test.invalid").expect("first wins");
+        assert!(host_in_flight("flight-test.invalid"));
+        assert!(HostFlight::try_begin("flight-test.invalid").is_none());
+        assert!(HostFlight::try_begin("other-flight.invalid").is_some());
+        drop(first);
+        assert!(!host_in_flight("flight-test.invalid"));
+        assert!(HostFlight::try_begin("flight-test.invalid").is_some());
+    }
+
+    #[test]
+    fn blocked_host_skips_mount_attempts() {
+        block_host("Blocked-Test.invalid", "EPERM");
+        assert!(host_blocked("blocked-test.invalid").is_some());
+        let r = ensure_os_smb_mount(
+            "blocked-test.invalid",
+            "share",
+            "",
+            AutoMountParams {
+                enabled: true,
+                login: "u",
+                password: "p",
+            },
+        )
+        .unwrap();
+        assert!(r.is_none());
+        // Background scheduling returns immediately for a blocked host.
+        schedule_background_mount("blocked-test.invalid", "share", "", "u", "p");
+        assert!(!host_in_flight("blocked-test.invalid"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn plain_dir_is_not_mount_point() {
+        let dir = std::env::temp_dir().join(format!("ats-mp-{}", now_unix_secs()));
+        fs::create_dir_all(&dir).unwrap();
+        assert!(!is_mount_point(&dir));
+        let _ = fs::remove_dir(&dir);
     }
 
     #[test]

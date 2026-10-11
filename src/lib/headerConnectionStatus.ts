@@ -664,6 +664,10 @@ export type HeaderRetryBackupInput = {
   result: ConnectionTestResult | null;
 };
 
+/**
+ * Dialog outcome for Settings connection checks.
+ * Header chip retry uses `runHeaderConnectionProbe` + ConnectionProbePopover instead.
+ */
 export function presentHeaderRetryOutcome(opts: {
   smb: ConnectionTestResult | null;
   ams: AmsBridgeHealthResult | null;

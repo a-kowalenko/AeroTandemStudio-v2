@@ -1846,6 +1846,7 @@
       "retryOrSettings": "Klicken: erneut prüfen · Rechtsklick: Einstellungen",
       "retry": "Klicken zum erneuten Prüfen",
       "connectionTitle": "Verbindung",
+      "probeTitle": "Verbindungstest",
       "titleAllOk": "Alles verbunden",
       "titlePartial": "Teilweise",
       "titleFailed": "Keine Verbindung",

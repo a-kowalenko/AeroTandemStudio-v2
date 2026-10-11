@@ -20,7 +20,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::video::ffmpeg::{is_upload_cancelled, UploadCancelPolicy, WORKFLOW_CANCELLED};
 
-use super::auto_mount::{ensure_os_smb_mount, AutoMountParams};
+use super::auto_mount::AutoMountParams;
 use super::health_event;
 use super::host_lock;
 use super::parallel_upload::{partition_upload_phases, upload_smb_media_parallel};
@@ -265,9 +265,10 @@ pub fn parse_server_target(server_url: &str) -> Result<ServerTarget, String> {
 
 /// Like [`parse_server_target`], but remaps `Smb` → `Local` when the UNC is
 /// already available as an OS mapping: Windows drive map (OPT-17) or
-/// macOS/Linux SMB mount (OPT-18). With [`AutoMountParams::enabled`], may
-/// create an App-owned OS mount (OPT-19) before remapping. Dead/unreachable
-/// maps and mount failures fall back to `Smb` (smb2).
+/// macOS/Linux SMB mount (OPT-18). With [`AutoMountParams::enabled`], creates
+/// an App-owned OS mount (OPT-19): inline on Windows, in the background on
+/// macOS/Linux (returns `Smb` until it exists). Dead/unreachable maps fall back
+/// to `Smb` (smb2).
 pub fn resolve_server_target(
     server_url: &str,
     auto_mount: Option<AutoMountParams<'_>>,
@@ -340,8 +341,11 @@ fn apply_os_smb_mapping(
         return local;
     }
 
+    // Windows: WNet connects in well under a second — mount inline so the first
+    // request already runs Local.
+    #[cfg(windows)]
     if let Some(params) = auto_mount.filter(|p| p.enabled) {
-        match ensure_os_smb_mount(host, share, subpath, params) {
+        match super::auto_mount::ensure_os_smb_mount(host, share, subpath, params) {
             Ok(Some(path)) => {
                 return local_via_os_map(path, &config_unc, ProbeOutcome::Reachable);
             }
@@ -353,6 +357,19 @@ fn apply_os_smb_mapping(
                 );
             }
         }
+    }
+
+    // macOS / Linux: mount helpers can take seconds — never block Health / Upload;
+    // this request stays on smb2, the next resolve picks up the mount.
+    #[cfg(not(windows))]
+    if let Some(params) = auto_mount.filter(|p| p.enabled) {
+        super::auto_mount::schedule_background_mount(
+            host,
+            share,
+            subpath,
+            params.login,
+            params.password,
+        );
     }
 
     target

@@ -11,7 +11,7 @@ import { useConfigStore } from "../store/configStore";
 import { useAmsBridgeStore } from "../store/amsBridgeStore";
 import { useSdStore } from "../store/sdStore";
 import { useServerStore } from "../store/serverStore";
-import { useUiStore } from "../store/uiStore";
+import { useUiStore, type DialogActionStatus } from "../store/uiStore";
 import {
   isAmsBridgeConfigured,
   isCloudLookupAvailable,
@@ -19,9 +19,13 @@ import {
 import { AMS_HEALTH_SPINNER_DELAY_MS } from "../lib/amsBridgeStatus";
 import {
   presentHeaderConnection,
-  presentHeaderRetryOutcome,
   type ConnectionDot,
 } from "../lib/headerConnectionStatus";
+import {
+  buildHeaderConnectionProbePlan,
+  probeSuccessAutoCloseMs,
+  runHeaderConnectionProbe,
+} from "../lib/headerConnectionProbe";
 import { cn } from "../lib/utils";
 import {
   formatSecondaryBackupCompactParts,
@@ -40,6 +44,7 @@ import {
   CancelSecondaryBackupConfirmDialog,
   type CancelSecondaryBackupConfirmChoice,
 } from "./CancelSecondaryBackupConfirmDialog";
+import { ConnectionProbePopover } from "./ConnectionProbePopover";
 import { SecondaryBackupPopover } from "./SecondaryBackupPopover";
 import { PostUpdateConnectionHintPopover } from "./PostUpdateConnectionHintPopover";
 import { usePostUpdateConnectionHint } from "../hooks/usePostUpdateConnectionHint";
@@ -116,8 +121,12 @@ export function ServerStatusIndicator({
   const { t } = useTranslation();
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const probeSeqRef = useRef(0);
   const [retrying, setRetrying] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [probeOpen, setProbeOpen] = useState(false);
+  const [probeRows, setProbeRows] = useState<DialogActionStatus[]>([]);
+  const [probeAllPrimaryOk, setProbeAllPrimaryOk] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -142,8 +151,6 @@ export function ServerStatusIndicator({
   const applyCloudProbe = useAmsBridgeStore((s) => s.applyCloudProbe);
 
   const config = useConfigStore((s) => s.config);
-  const showSuccess = useUiStore((s) => s.showSuccess);
-  const closeDialog = useUiStore((s) => s.closeDialog);
   const openSettings = useUiStore((s) => s.openSettings);
 
   const login = config?.server_login ?? "";
@@ -198,12 +205,17 @@ export function ServerStatusIndicator({
 
   const liveMessage = useSparseLiveMessage(view.liveMessage, view.percentText);
 
-  // Close popover when backup chip leaves; keep open across progress updates.
+  // Close backup popover when backup chip leaves; keep open across progress updates.
   useEffect(() => {
     if (!view.canOpenBackupPopover) {
       setPopoverOpen(false);
       setConfirmOpen(false);
       setCancelling(false);
+    } else {
+      // Backup transfer takes the chip — dismiss connection probe.
+      setProbeOpen(false);
+      probeSeqRef.current += 1;
+      setRetrying(false);
     }
   }, [view.canOpenBackupPopover]);
 
@@ -216,19 +228,29 @@ export function ServerStatusIndicator({
     return () => window.clearTimeout(id);
   }, [secondaryBackup?.state, secondaryBackup?.job_id, popoverOpen]);
 
-  // Click outside + Escape.
+  // Auto-close probe popover only when every primary target is OK.
+  const probeAutoCloseMs =
+    probeAllPrimaryOk && !retrying
+      ? probeSuccessAutoCloseMs(probeRows.length)
+      : null;
+
+  const anyPopoverOpen = popoverOpen || probeOpen;
+
+  // Click outside + Escape (backup or connection probe).
   useEffect(() => {
-    if (!popoverOpen) return;
+    if (!anyPopoverOpen) return;
     function onPointerDown(e: PointerEvent) {
       if (confirmOpen) return;
       const el = rootRef.current;
       if (!el) return;
       if (e.target instanceof Node && el.contains(e.target)) return;
       setPopoverOpen(false);
+      setProbeOpen(false);
     }
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape" && !confirmOpen) {
         setPopoverOpen(false);
+        setProbeOpen(false);
       }
     }
     document.addEventListener("pointerdown", onPointerDown, true);
@@ -237,7 +259,7 @@ export function ServerStatusIndicator({
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [popoverOpen, confirmOpen]);
+  }, [anyPopoverOpen, confirmOpen]);
 
   // Clear cancelling when terminal event arrives.
   useEffect(() => {
@@ -257,9 +279,11 @@ export function ServerStatusIndicator({
 
   const canClickRetry = view.canRetry && !retrying;
   const canClickPopover = view.canOpenBackupPopover;
-  const interactive = canClickRetry || canClickPopover || retrying;
+  const interactive =
+    canClickRetry || canClickPopover || retrying || probeOpen;
 
   const backupPopoverActive = popoverOpen && Boolean(secondaryBackup);
+  const probePopoverActive = probeOpen && !backupPopoverActive;
   const postUpdateHint = usePostUpdateConnectionHint({
     enabled: postUpdateHintEnabled,
     appVersion,
@@ -290,89 +314,99 @@ export function ServerStatusIndicator({
 
   async function onRetry() {
     if (!canClickRetry) return;
+    const seq = ++probeSeqRef.current;
+    const isCurrent = () => seq === probeSeqRef.current;
+
     setRetrying(true);
+    setProbeOpen(true);
+    setProbeAllPrimaryOk(false);
+    setProbeRows([]);
+
+    const backupEnabled = Boolean(config?.sd_server_backup_enabled);
+    const backupTarget = config
+      ? resolveActiveServerBackupTarget(config)
+      : { url: "", login: "", password: "" };
+    const plan = buildHeaderConnectionProbePlan({
+      serverUrl,
+      backupEnabled,
+      backupUrl: backupTarget.url,
+      backupLogin: backupTarget.login,
+      backupPassword: backupTarget.password,
+      amsConfigured,
+    });
+
     try {
-      const backupEnabled = Boolean(config?.sd_server_backup_enabled);
-      const backupTarget = config
-        ? resolveActiveServerBackupTarget(config)
-        : { url: "", login: "", password: "" };
-      const [smbResult, backupResult, amsResult] = await Promise.all([
-        serverUrl.trim() ? checkConnection() : Promise.resolve(null),
-        backupEnabled && backupTarget.url
-          ? testServerConnection({
-              server_url: backupTarget.url,
-              server_login: backupTarget.login,
-              server_password: backupTarget.password,
-            }).catch((e) => ({
-              ok: false,
-              message: String(e),
-            }))
-          : Promise.resolve(null),
-        amsConfigured ? checkAmsHealth() : Promise.resolve(null),
-      ]);
-      // After AMS health (may refresh JWT), probe Cloud Lookup if a token exists.
-      const cloudResult = await cloudLookupProbe().catch((e) => ({
-        ok: false,
-        status: "error" as const,
-        message: String(e),
-        cloud_base_url: "",
-        token_cleared: false,
-      }));
-      applyCloudProbe(cloudResult);
-      if (cloudResult.token_cleared || cloudResult.status !== "no_token") {
-        try {
-          const refreshed = await getConfig();
-          syncCloudLookupConfigLocal(refreshed, (patch) => {
-            useConfigStore.getState().updateLocal(patch);
-          });
-        } catch {
-          /* best-effort */
-        }
-      }
-      const outcome = presentHeaderRetryOutcome({
-        smb: smbResult,
-        ams: amsResult,
-        cloud: cloudResult,
+      const result = await runHeaderConnectionProbe({
+        plan,
         serverUrl,
         login,
         password,
-        backup: backupEnabled
-          ? {
-              enabled: true,
-              url: backupTarget.url,
-              login: backupTarget.login,
-              password: backupTarget.password,
-              result: backupResult,
+        isCurrent,
+        onRows: (rows) => {
+          if (!isCurrent()) return;
+          setProbeRows(rows);
+        },
+        runSmb: async () =>
+          serverUrl.trim() ? checkConnection() : null,
+        runBackup: async () => {
+          if (!backupEnabled || !backupTarget.url.trim()) return null;
+          try {
+            return await testServerConnection({
+              server_url: backupTarget.url,
+              server_login: backupTarget.login,
+              server_password: backupTarget.password,
+            });
+          } catch (e) {
+            return { ok: false, message: String(e) };
+          }
+        },
+        runAms: async () =>
+          amsConfigured ? checkAmsHealth() : null,
+        runCloud: async () => {
+          const cloudResult = await cloudLookupProbe().catch((e) => ({
+            ok: false,
+            status: "error" as const,
+            message: String(e),
+            cloud_base_url: "",
+            token_cleared: false,
+          }));
+          if (!isCurrent()) return cloudResult;
+          applyCloudProbe(cloudResult);
+          if (cloudResult.token_cleared || cloudResult.status !== "no_token") {
+            try {
+              const refreshed = await getConfig();
+              if (!isCurrent()) return cloudResult;
+              syncCloudLookupConfigLocal(refreshed, (patch) => {
+                useConfigStore.getState().updateLocal(patch);
+              });
+            } catch {
+              /* best-effort */
             }
-          : null,
+          }
+          return cloudResult;
+        },
       });
-      if (!outcome) return;
-      const options = {
-        actions: outcome.actions,
-        autoCloseSecs: outcome.autoCloseSecs ?? undefined,
-        confirm:
-          outcome.kind === "error" && outcome.primaryAction
-            ? {
-                secondaryLabel: t("common.actions.ok"),
-                primaryLabel: outcome.primaryAction.label,
-                onSecondary: () => closeDialog(),
-                onPrimary: () => {
-                  const focus = outcome.primaryAction?.openSettings;
-                  closeDialog();
-                  if (focus) openSettings(focus);
-                },
-              }
-            : null,
-      };
-      showSuccess(outcome.message, outcome.title, options);
+      if (!isCurrent()) return;
+      setProbeRows(result.rows);
+      setProbeAllPrimaryOk(result.allPrimaryOk);
     } finally {
-      setRetrying(false);
+      if (isCurrent()) setRetrying(false);
     }
+  }
+
+  function onDismissProbe() {
+    probeSeqRef.current += 1;
+    setProbeOpen(false);
+    setRetrying(false);
   }
 
   function onChipClick() {
     if (canClickPopover) {
       setPopoverOpen((v) => !v);
+      return;
+    }
+    if (probeOpen && !retrying) {
+      onDismissProbe();
       return;
     }
     void onRetry();
@@ -426,6 +460,8 @@ export function ServerStatusIndicator({
       : view.leftIcon === "check"
         ? Check
         : Server;
+
+  const popoverExpanded = backupPopoverActive || probePopoverActive;
 
   const body = (
     <>
@@ -510,8 +546,8 @@ export function ServerStatusIndicator({
           aria-busy={
             view.transferBusy || loudChecking || quietRefreshing || undefined
           }
-          aria-expanded={canClickPopover ? popoverOpen : undefined}
-          aria-controls={canClickPopover ? popoverId : undefined}
+          aria-expanded={popoverExpanded || undefined}
+          aria-controls={popoverExpanded ? popoverId : undefined}
           onClick={onChipClick}
           onContextMenu={onContextMenu}
         >
@@ -549,6 +585,12 @@ export function ServerStatusIndicator({
           cancelling={cancelling}
           onCancelRequest={onCancelRequest}
           onDismiss={onDismissBackup}
+        />
+        <ConnectionProbePopover
+          open={probePopoverActive}
+          rows={probeRows}
+          autoCloseMs={probeAutoCloseMs}
+          onDismiss={onDismissProbe}
         />
         <PostUpdateConnectionHintPopover
           open={postUpdateHint.open}
