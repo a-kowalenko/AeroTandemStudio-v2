@@ -283,6 +283,8 @@ export async function resolveQrDualFamily(
   }
 
   const typeChoice = await askAmsTypeChoice({
+    handcam: combined.handcam,
+    outside: combined.outside,
     handcamDetail: formatTypeChoiceDetail(combined.handcam, "handcam"),
     outsideDetail: formatTypeChoiceDetail(combined.outside, "outside"),
   });

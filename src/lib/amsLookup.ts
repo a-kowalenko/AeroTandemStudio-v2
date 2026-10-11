@@ -61,6 +61,28 @@ export function hasMediaFlags(customer: AmsBridgeCustomer): boolean {
   );
 }
 
+/** True when both typed hits exist only as identity (nothing booked). */
+export function isUnbookedTypeChoice(
+  handcam: AmsBridgeCustomer,
+  outside: AmsBridgeCustomer,
+): boolean {
+  return !hasMediaFlags(handcam) && !hasMediaFlags(outside);
+}
+
+function hasKundeMediaFlags(
+  kunde: Pick<
+    Kunde,
+    "handcam_foto" | "handcam_video" | "outside_foto" | "outside_video"
+  >,
+): boolean {
+  return Boolean(
+    kunde.handcam_foto ||
+      kunde.handcam_video ||
+      kunde.outside_foto ||
+      kunde.outside_video,
+  );
+}
+
 function typeToVideoMode(customerType: string | null | undefined): "handcam" | "outside" | "" {
   const t = (customerType ?? "").trim().toLowerCase();
   if (t === "handcam" || t === "handycam") return "handcam";
@@ -90,16 +112,25 @@ export type ClassifiedLookupHits =
       outside: AmsBridgeCustomer;
     };
 
-/** Two typed AMS responses: never merge families — ask when both have media flags. */
+/**
+ * Two typed AMS responses: never merge families.
+ * Media on both → choice; media on one → that family; identity-only (nothing
+ * booked) → same Handcam/Outside choice (no auto type from `customer.type`).
+ */
 export function classifyTypedHits(opts: {
   handcam?: AmsBridgeCustomer | null;
   outside?: AmsBridgeCustomer | null;
 }): ClassifiedLookupHits {
-  const h = opts.handcam && hasMediaFlags(opts.handcam) ? opts.handcam : null;
-  const o = opts.outside && hasMediaFlags(opts.outside) ? opts.outside : null;
+  const hRaw = opts.handcam ?? null;
+  const oRaw = opts.outside ?? null;
+  const h = hRaw && hasMediaFlags(hRaw) ? hRaw : null;
+  const o = oRaw && hasMediaFlags(oRaw) ? oRaw : null;
   if (h && o) return { kind: "choice", handcam: h, outside: o };
   if (h) return { kind: "one", customer: h, videoMode: "handcam" };
   if (o) return { kind: "one", customer: o, videoMode: "outside" };
+  if (hRaw && oRaw) return { kind: "choice", handcam: hRaw, outside: oRaw };
+  if (hRaw) return { kind: "choice", handcam: hRaw, outside: hRaw };
+  if (oRaw) return { kind: "choice", handcam: oRaw, outside: oRaw };
   return { kind: "none" };
 }
 
@@ -129,11 +160,28 @@ export function formatTypeChoiceDetail(
   return name ? `${name} · ${media}` : media;
 }
 
+/** Body for Handcam/Outside dialog (booked dual vs identity-only). */
+export function amsTypeChoiceBody(
+  handcam?: AmsBridgeCustomer | null,
+  outside?: AmsBridgeCustomer | null,
+): string {
+  if (
+    handcam &&
+    outside &&
+    isUnbookedTypeChoice(handcam, outside)
+  ) {
+    return tr("ams.lookup.typeChoiceBodyUnbooked");
+  }
+  return tr("ams.lookup.typeChoiceBody");
+}
+
 /** Dual-family type choice (AMS ID-lookup + QR hash-lookup). */
 export function askAmsTypeChoice(opts: {
   handcamDetail?: string | null;
   outsideDetail?: string | null;
   body?: string;
+  handcam?: AmsBridgeCustomer | null;
+  outside?: AmsBridgeCustomer | null;
 }): Promise<"handcam" | "outside" | "cancel"> {
   return new Promise((resolve) => {
     let settled = false;
@@ -144,7 +192,7 @@ export function askAmsTypeChoice(opts: {
       resolve(choice);
     };
     useUiStore.getState().showSuccess(
-      opts.body ?? tr("ams.lookup.typeChoiceBody"),
+      opts.body ?? amsTypeChoiceBody(opts.handcam, opts.outside),
       tr("ams.lookup.typeChoiceTitle"),
       {
         autoCloseSecs: 0,
@@ -312,6 +360,9 @@ export function amsLookupFoundTitle(): string {
 
 export function formatAmsLookupFoundLine(kunde: Kunde): string {
   const name = kundeDisplayName(kunde) || tr("ams.lookup.customerFallback");
+  if (!hasKundeMediaFlags(kunde)) {
+    return tr("ams.lookup.foundLineUnbooked", { name });
+  }
   const media = mediaStatusLabel(kunde);
   return media
     ? tr("ams.lookup.foundLineMedia", { name, media })
@@ -326,7 +377,9 @@ export function formatAmsLookupFoundToast(kunde: Kunde): {
   return {
     title: amsLookupFoundTitle(),
     name: kundeDisplayName(kunde) || tr("ams.lookup.customerFallback"),
-    media: mediaToastLabel(kunde),
+    media: hasKundeMediaFlags(kunde)
+      ? mediaToastLabel(kunde)
+      : tr("ams.lookup.unbooked"),
   };
 }
 

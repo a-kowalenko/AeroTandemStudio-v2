@@ -102,6 +102,8 @@ pub enum ClassifiedLookupHits {
 }
 
 /// Two typed AMS responses: never merge families.
+/// Media on both → choice; one → that family; identity-only (nothing booked) →
+/// choice so the UI asks Handcam/Outside (no auto `type`).
 pub fn classify_typed_hits(
     handcam: Option<&BridgeCustomer>,
     outside: Option<&BridgeCustomer>,
@@ -121,7 +123,21 @@ pub fn classify_typed_hits(
             customer: b.clone(),
             video_mode: "outside",
         },
-        (None, None) => ClassifiedLookupHits::None,
+        (None, None) => match (handcam, outside) {
+            (Some(a), Some(b)) => ClassifiedLookupHits::Choice {
+                handcam: a.clone(),
+                outside: b.clone(),
+            },
+            (Some(a), None) => ClassifiedLookupHits::Choice {
+                handcam: a.clone(),
+                outside: a.clone(),
+            },
+            (None, Some(b)) => ClassifiedLookupHits::Choice {
+                handcam: b.clone(),
+                outside: b.clone(),
+            },
+            (None, None) => ClassifiedLookupHits::None,
+        },
     }
 }
 
@@ -251,8 +267,10 @@ mod tests {
             outside_foto: true,
             ..BridgeCustomer::default()
         };
-        let nameless = BridgeCustomer {
-            first_name: Some("Ignorieren".into()),
+        let identity_only = BridgeCustomer {
+            first_name: Some("Roland".into()),
+            last_name: Some("Roy".into()),
+            customer_type: Some("outside".into()),
             ..BridgeCustomer::default()
         };
         match classify_typed_hits(Some(&handcam), Some(&outside)) {
@@ -267,11 +285,24 @@ mod tests {
             }
             other => panic!("expected choice, got {other:?}"),
         }
-        assert!(matches!(
-            classify_typed_hits(Some(&nameless), None),
-            ClassifiedLookupHits::None
-        ));
-        match classify_typed_hits(Some(&handcam), Some(&nameless)) {
+        // Nothing booked → still a hit; UI must ask Handcam/Outside (no auto type).
+        match classify_typed_hits(Some(&identity_only), None) {
+            ClassifiedLookupHits::Choice {
+                handcam: h,
+                outside: o,
+            } => {
+                assert_eq!(h.first_name.as_deref(), Some("Roland"));
+                assert_eq!(o.first_name.as_deref(), Some("Roland"));
+                assert!(!has_media_flags(&h));
+                assert!(!has_media_flags(&o));
+            }
+            other => panic!("expected unbooked choice, got {other:?}"),
+        }
+        match classify_typed_hits(Some(&identity_only), Some(&identity_only)) {
+            ClassifiedLookupHits::Choice { .. } => {}
+            other => panic!("expected unbooked dual choice, got {other:?}"),
+        }
+        match classify_typed_hits(Some(&handcam), Some(&identity_only)) {
             ClassifiedLookupHits::One { video_mode, .. } => {
                 assert_eq!(video_mode, "handcam");
             }

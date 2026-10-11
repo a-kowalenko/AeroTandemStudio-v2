@@ -180,6 +180,8 @@ export function useAmsIdLookup(opts: {
         };
         if (combined.kind === "choice") {
           const typeChoice = await askAmsTypeChoice({
+            handcam: combined.handcam,
+            outside: combined.outside,
             handcamDetail: formatTypeChoiceDetail(combined.handcam, "handcam"),
             outsideDetail: formatTypeChoiceDetail(combined.outside, "outside"),
           });

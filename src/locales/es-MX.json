@@ -1816,6 +1816,7 @@
       "customerFallback": "Cliente",
       "foundLine": "Encontrado: {{name}}",
       "foundLineMedia": "Encontrado: {{name}} · {{media}}",
+      "foundLineUnbooked": "Encontrado: {{name}} · nada reservado",
       "foundTitle": "Cliente encontrado",
       "keep": "Conservar",
       "lanMultipleBody": "Se encontraron varias búsquedas de reserva (AMS) en la LAN.\nElige qué instancia usar.",
@@ -1825,7 +1826,9 @@
       "photoPaid": "Foto (pagada)",
       "searching": "Cargando datos del cliente…",
       "typeChoiceBody": "Estos IDs tienen datos Handcam y Outside.\nElige el tipo de medio.",
+      "typeChoiceBodyUnbooked": "Cliente encontrado, pero nada reservado.\nElige Handcam u Outside.",
       "typeChoiceTitle": "Elegir tipo de medio",
+      "unbooked": "nada reservado",
       "videoPaid": "Video (pagado)"
     }
   },

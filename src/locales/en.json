@@ -1816,6 +1816,7 @@
       "customerFallback": "Customer",
       "foundLine": "Found: {{name}}",
       "foundLineMedia": "Found: {{name}} · {{media}}",
+      "foundLineUnbooked": "Found: {{name}} · nothing booked",
       "foundTitle": "Customer found",
       "keep": "Keep",
       "lanMultipleBody": "Multiple booking lookups (AMS) found on the LAN.\nPlease choose which instance to use.",
@@ -1825,7 +1826,9 @@
       "photoPaid": "Photo (paid)",
       "searching": "Loading customer data…",
       "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
+      "typeChoiceBodyUnbooked": "Customer found, but nothing booked.\nPlease choose Handcam or Outside.",
       "typeChoiceTitle": "Choose media type",
+      "unbooked": "nothing booked",
       "videoPaid": "Video (paid)"
     }
   },
