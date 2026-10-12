@@ -51,7 +51,7 @@ export function UploadJobHeader({
 
   const titleKey =
     job.source === "history" || job.source === "bulk"
-      ? "history.retryTitle"
+      ? "history.upload.retryTitle"
       : "app.upload.title";
 
   async function openOutputDir() {

@@ -2100,18 +2100,40 @@ fn pending_needs_photos(inner: &SlotInner, photos_fp: &str) -> bool {
         .is_some_and(|p| p.photos_fp == photos_fp && inner.photos_fp != photos_fp)
 }
 
+/// Photo-half statuses that would light the Fotos chip (monotonic stepper).
+fn is_photo_pipeline_status(status: &str) -> bool {
+    let s = status.to_lowercase();
+    s.contains("kopiere foto")
+        || s.contains("fotos kopiert")
+        || s.contains("fotos übernommen")
+        || s.contains("fotos bereit")
+        || s.contains("copying photo")
+        || s.contains("photos copied")
+}
+
+/// When CapCut Intro/Outro still runs at commit, do not park the stepper on Fotos.
+fn attach_status_for_deferred_mux(status: String, deferred_mux: bool) -> String {
+    if deferred_mux && is_photo_pipeline_status(&status) {
+        "Videoclips vorbereitet".into()
+    } else {
+        status
+    }
+}
+
 /// Wait for a matching running/ready slot (body + photos).
 ///
 /// Once Ready and photos match, artifacts are handed off even if a WM-only pending
 /// remains — commit regenerates WM if needed.
 ///
 /// While Running after attach: do **not** cancel an in-flight WM encode. Body/Fotos
-/// steps are announced as soon as those halves exist; live FFmpeg % for WM is
-/// forwarded until Ready, then commit reuses the finished Preview video.
+/// steps are announced as soon as those halves exist (unless `deferred_mux` — CapCut
+/// Intro/Outro still runs at commit); live FFmpeg % for WM is forwarded until Ready,
+/// then commit reuses the finished Preview video.
 pub(crate) fn wait_for_matching(
     ffmpeg: &Path,
     body_fp: &str,
     photos_fp: &str,
+    deferred_mux: bool,
     on_progress: &ProgressCallback,
 ) -> Result<Option<StagingArtifacts>, ProcessorError> {
     let slot = {
@@ -2180,7 +2202,8 @@ pub(crate) fn wait_for_matching(
         }
 
         if let Ok(mut sink) = ATTACH_PROGRESS.lock() {
-            if let Some(p) = sink.take() {
+            if let Some(mut p) = sink.take() {
+                p.status = attach_status_for_deferred_mux(p.status, deferred_mux);
                 on_progress(p);
             }
         }
@@ -2192,7 +2215,8 @@ pub(crate) fn wait_for_matching(
             }
             match inner.phase {
                 SpeculativePhase::Ready => {
-                    let status = inner.status.clone();
+                    let status =
+                        attach_status_for_deferred_mux(inner.status.clone(), deferred_mux);
                     let pct = inner.percent;
                     let photos_ready_match = inner.photos_fp == photos_fp;
                     let need_photo_drain = pending_needs_photos(&inner, photos_fp);
@@ -2248,27 +2272,40 @@ pub(crate) fn wait_for_matching(
                     let photos_ready = inner.photos_ready;
                     let photos_match = inner.photos_fp == photos_fp;
                     let pct = inner.percent;
-                    let status = inner.status.clone();
+                    let status =
+                        attach_status_for_deferred_mux(inner.status.clone(), deferred_mux);
                     let staging_id = inner.staging_id.clone();
                     drop(inner);
 
                     // Body+photos already on disk — mark create steps done while WM FFmpeg continues.
+                    // When CapCut Intro/Outro still runs at commit, do NOT emit "Video fertig" /
+                    // "Fotos kopiert" (monotonic stepper would leap past Intro+Video / Audio).
                     if video_ready && photos_ready && photos_match && !announced_body_photos {
                         announced_body_photos = true;
-                        on_progress(EncodeProgress {
-                            percent: 100.0,
-                            current_secs: 100.0,
-                            total_secs: 100.0,
-                            status: "Video fertig".into(),
-                            task_id: None,
-                        });
-                        on_progress(EncodeProgress {
-                            percent: 100.0,
-                            current_secs: 100.0,
-                            total_secs: 100.0,
-                            status: "Fotos kopiert".into(),
-                            task_id: None,
-                        });
+                        if deferred_mux {
+                            on_progress(EncodeProgress {
+                                percent: 5.0,
+                                current_secs: 5.0,
+                                total_secs: 100.0,
+                                status: "Videoclips vorbereitet".into(),
+                                task_id: None,
+                            });
+                        } else {
+                            on_progress(EncodeProgress {
+                                percent: 100.0,
+                                current_secs: 100.0,
+                                total_secs: 100.0,
+                                status: "Video fertig".into(),
+                                task_id: None,
+                            });
+                            on_progress(EncodeProgress {
+                                percent: 100.0,
+                                current_secs: 100.0,
+                                total_secs: 100.0,
+                                status: "Fotos kopiert".into(),
+                                task_id: None,
+                            });
+                        }
                         if !announced_waiting_wm {
                             announced_waiting_wm = true;
                             log_event(
@@ -2515,6 +2552,20 @@ pub(crate) fn commit_from_staging(
             fs::create_dir_all(&dest).map_err(|e| ProcessorError::Message(e.to_string()))?;
             promote_tree(&src, &dest).map_err(ProcessorError::Message)?;
         }
+    }
+
+    // Announce photos after deferred CapCut/Intro mux so the stepper does not leap
+    // past Intro+Video while FFmpeg is still encoding (see try_promote deferred_mux).
+    let deferred_mux = options.video.intro_enabled
+        || (options.video.outro_enabled && !options.video.outro_path.trim().is_empty());
+    if photos_copied > 0 && deferred_mux {
+        on_progress(EncodeProgress {
+            percent: 100.0,
+            current_secs: 100.0,
+            total_secs: 100.0,
+            status: "Fotos kopiert".into(),
+            task_id: None,
+        });
     }
 
     // Also promote any other leftover product dirs (e.g. video subdir empties).
@@ -2872,7 +2923,14 @@ pub fn try_promote_into_create_job(
         return Ok(None);
     };
 
-    let Some(artifacts) = wait_for_matching(ffmpeg, &body_fp, &photos_fp, &on_progress)? else {
+    // When CapCut Intro/Outro still runs at commit, do NOT emit "Video fertig" /
+    // "Fotos kopiert" early — monotonic stepper would leap past Intro+Video / Audio.
+    let deferred_mux = options.video.intro_enabled
+        || (options.video.outro_enabled && !options.video.outro_path.trim().is_empty());
+
+    let Some(artifacts) =
+        wait_for_matching(ffmpeg, &body_fp, &photos_fp, deferred_mux, &on_progress)?
+    else {
         return Ok(None);
     };
 
@@ -2889,11 +2947,7 @@ pub fn try_promote_into_create_job(
         return Ok(None);
     }
 
-    // Fast-forward body/photo stages for hit UX.
-    // When CapCut Intro/Outro still runs at commit, do NOT emit "Video fertig" —
-    // that used to light the Audio chip (monotonic) while mux was still encoding.
-    let deferred_mux = options.video.intro_enabled
-        || (options.video.outro_enabled && !options.video.outro_path.trim().is_empty());
+    // Fast-forward body/photo stages for hit UX (photos only when mux is not deferred).
     on_progress(EncodeProgress {
         percent: if deferred_mux { 5.0 } else { 100.0 },
         current_secs: if deferred_mux { 5.0 } else { 100.0 },
@@ -2905,7 +2959,7 @@ pub fn try_promote_into_create_job(
         },
         task_id: None,
     });
-    if needs_foto_product(kunde) {
+    if needs_foto_product(kunde) && !deferred_mux {
         on_progress(EncodeProgress {
             percent: 100.0,
             current_secs: 100.0,

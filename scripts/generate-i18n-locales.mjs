@@ -1288,6 +1288,21 @@ const catalog = {
     en: "{{count}} more waiting in queue",
     "es-MX": "{{count}} más en cola",
   },
+  "workflow.upload.queueExpand": {
+    de: "Warteschlange einblenden",
+    en: "Show upload queue",
+    "es-MX": "Mostrar cola de subida",
+  },
+  "workflow.upload.queueCollapse": {
+    de: "Warteschlange ausblenden",
+    en: "Hide upload queue",
+    "es-MX": "Ocultar cola de subida",
+  },
+  "workflow.upload.queueUntitled": {
+    de: "Ohne Namen",
+    en: "Untitled",
+    "es-MX": "Sin nombre",
+  },
   "workflow.upload.failedHold": {
     de: "Upload fehlgeschlagen — Nachholen unter Vorgänge",
     en: "Upload failed — retry from Jobs",

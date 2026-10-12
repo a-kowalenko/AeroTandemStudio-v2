@@ -617,7 +617,6 @@
     },
     "success": {
       "title": "Erfolgreich erstellt",
-      "uploadTitle": "Upload erfolgreich",
       "description": "Zusammenfassung der erstellten Dateien und Ordner.",
       "folder": "Ordner",
       "videoFromPreview": "Video aus Vorschau übernommen",
@@ -639,6 +638,7 @@
       "dirCreated": "Verzeichnis wurde erstellt",
       "openLocation": "Zum Speicherort",
       "play": "Abspielen",
+      "uploadTitle": "Upload erfolgreich",
       "crewTm": "TM: {{name}}",
       "crewVs": "VS: {{name}}"
     },
@@ -913,17 +913,6 @@
       "keep": "Weiterlaufen lassen",
       "cancel": "Backup abbrechen"
     },
-    "sdDelete": {
-      "titleOne": "Datei von der SD-Karte löschen?",
-      "titleMany": "{{count}} Dateien von der SD-Karte löschen?",
-      "bodyOne": "„{{name}}“ wird dauerhaft von der Karte bzw. Kamera entfernt.",
-      "bodyMany": "Die ausgewählten Dateien werden dauerhaft von der Karte bzw. Kamera entfernt.",
-      "andMore": "… und {{count}} weitere",
-      "hint": "Zugehörige Proxies/Sidecars werden mitgelöscht. Das lässt sich nicht rückgängig machen.",
-      "confirmOne": "Löschen",
-      "confirmMany": "{{count}} löschen",
-      "deleting": "Wird gelöscht…"
-    },
     "bulkUploadSummary": {
       "aborted": "{{count}} nicht gestartet (abgebrochen oder Server offline).",
       "blocked": "{{count}} nicht möglich",
@@ -1032,6 +1021,17 @@
       "scanning": "Ausstehende Uploads prüfen…",
       "selectionHint": "Nicht markierte werden nicht mehr vorgeschlagen. Upload weiter unter Vorgänge möglich.",
       "title": "Server wieder online"
+    },
+    "sdDelete": {
+      "titleOne": "Datei von der SD-Karte löschen?",
+      "titleMany": "{{count}} Dateien von der SD-Karte löschen?",
+      "bodyOne": "„{{name}}“ wird dauerhaft von der Karte bzw. Kamera entfernt.",
+      "bodyMany": "Die ausgewählten Dateien werden dauerhaft von der Karte bzw. Kamera entfernt.",
+      "andMore": "… und {{count}} weitere",
+      "hint": "Zugehörige Proxies/Sidecars werden mitgelöscht. Das lässt sich nicht rückgängig machen.",
+      "confirmOne": "Löschen",
+      "confirmMany": "{{count}} löschen",
+      "deleting": "Wird gelöscht…"
     }
   },
   "splash": {
@@ -1143,9 +1143,6 @@
       "label": "QR-Code",
       "cancelled": "QR-Scan abgebrochen.",
       "applied": "Kundendaten übernommen",
-      "numericApplied": "Kundendaten übernommen (QR → ID)",
-      "idsOnlyApplied": "Nur IDs übernommen (QR → ID) — Buchungssuche ohne Treffer",
-      "idsOnlyHighlight": "Nur Kunden-/Buchungs-ID",
       "source": "Quelle: {{name}}",
       "notFound": "Kein QR-Code gefunden.",
       "scanFailed": "Scan fehlgeschlagen",
@@ -1156,6 +1153,9 @@
         "removedVideos": "{{count}} Clip aus Liste entfernt",
         "removedVideosMany": "{{count}} Clips aus Liste entfernt"
       },
+      "numericApplied": "Kundendaten übernommen (QR → ID)",
+      "idsOnlyApplied": "Nur IDs übernommen (QR → ID) — Buchungssuche ohne Treffer",
+      "idsOnlyHighlight": "Nur Kunden-/Buchungs-ID",
       "notFoundInNew": "Kein QR-Code in den neuen Dateien gefunden."
     },
     "storage": {
@@ -1257,17 +1257,17 @@
       "noQrSession": "Kein QR in dieser Session — zuerst scannen",
       "restoreQr": "QR-Daten wiederherstellen",
       "manualEntry": "Zur manuellen Eingabe",
-      "manualFromQrId": "Zur getippten Eingabe (Scan-Herkunft verwerfen)",
-      "qrIdActive": "QR → ID aktiv (Plain-IDs aus Scan)",
       "qr": "QR",
-      "manual": "Manuell"
+      "manual": "Manuell",
+      "manualFromQrId": "Zur getippten Eingabe (Scan-Herkunft verwerfen)",
+      "qrIdActive": "QR → ID aktiv (Plain-IDs aus Scan)"
     },
     "manual": {
       "modeAria": "Manueller Eingabemodus",
-      "modeAriaQrId": "Identität aus QR-Scan (ID)",
       "id": "ID",
       "contact": "Kontakt",
-      "local": "Lokal"
+      "local": "Lokal",
+      "modeAriaQrId": "Identität aus QR-Scan (ID)"
     },
     "customer": {
       "section": "Kunde",
@@ -1438,10 +1438,13 @@
       "expand": "Upload-Details einblenden",
       "collapse": "Upload-Details ausblenden",
       "queueWaiting": "{{count}} weitere in der Warteschlange",
+      "queueExpand": "Warteschlange einblenden",
+      "queueCollapse": "Warteschlange ausblenden",
+      "queueUntitled": "Ohne Namen",
       "failedHold": "Upload fehlgeschlagen — Nachholen unter Vorgänge",
+      "cleaningUp": "Upload wird beendet…",
       "failedHoldTitle": "Upload fehlgeschlagen",
-      "failedHoldHint": "Bitte unter Vorgänge nachholen.",
-      "cleaningUp": "Upload wird beendet…"
+      "failedHoldHint": "Bitte unter Vorgänge nachholen."
     },
     "createSteps": {
       "aria": "Schritte beim Erstellen",
@@ -1588,13 +1591,6 @@
       "removeJobAll": "Alle {{count}} Vorgänge entfernen?",
       "removeJobAllBody": "Alle geladenen Vorgänge werden aus der Liste gelöscht. Dateien auf dem Speicherort bleiben erhalten; zugehörige QR-Scan-Frames der App werden mit entfernt."
     },
-    "jobs": {
-      "pageSize": "{{count}} / Seite",
-      "pageSizeAria": "Einträge pro Seite",
-      "pageRange": "{{from}}–{{to}} von {{total}}",
-      "pagePrev": "Vorherige Seite",
-      "pageNext": "Nächste Seite"
-    },
     "media": {
       "stats": "{{total}} Einträge ({{videos}} Videos, {{photos}} Fotos)",
       "empty": "Keine Einträge",
@@ -1627,11 +1623,11 @@
     },
     "mode": {
       "qr": "QR",
-      "qrId": "QR · ID",
       "manualId": "Manuell · ID",
       "manualContact": "Manuell · Kontakt",
       "manualLocal": "Manuell · Lokal",
-      "manual": "Manuell"
+      "manual": "Manuell",
+      "qrId": "QR · ID"
     },
     "paidTitle": "{{label}} bezahlt",
     "ta": "TA: {{name}}",
@@ -1726,6 +1722,13 @@
     },
     "appendTitleCloudOffline": "Keine Serververbindung — Nachreichen in die Cloud, sobald die Verbindung steht",
     "appendTitleUploadOff": "Cloud-Upload ist deaktiviert — in den Einstellungen aktivieren, um nachzureichen",
+    "jobs": {
+      "pageSize": "{{count}} / Seite",
+      "pageSizeAria": "Einträge pro Seite",
+      "pageRange": "{{from}}–{{to}} von {{total}}",
+      "pagePrev": "Vorherige Seite",
+      "pageNext": "Nächste Seite"
+    },
     "removeAll": "Alle entfernen",
     "moreActions": "Weitere Aktionen",
     "viewer": {
@@ -1775,13 +1778,13 @@
       "unreachableHint": "Kundendaten bitte von Hand eintragen.",
       "lookupErrorFallback": "Kunde konnte nicht geladen werden",
       "healthOk": "Buchungssuche verbunden",
-      "viaCloud": "Buchungssuche über Cloud",
-      "viaCloudTooltip": "{{title}}: über Cloud",
       "connectedTooltip": "{{title}}: verbunden",
       "onlineOnly": "Nur bei Online-Vorgängen, nicht bei Lokal",
       "customerNotFound": "Kunde in der Buchung nicht gefunden",
       "connectedTooltipNamed": "{{title}}: {{name}}",
-      "healthOkNamed": "{{name}} verbunden"
+      "healthOkNamed": "{{name}} verbunden",
+      "viaCloud": "Buchungssuche über Cloud",
+      "viaCloudTooltip": "{{title}}: über Cloud"
     },
     "handoff": {
       "steps": {
@@ -1824,7 +1827,7 @@
       "notFound": "Kunde nicht gefunden",
       "overrideBody": "Bisher: {{previous}}\nBuchung: {{next}}\n\nDiese Daten übernehmen?\nOrt, Datum und Crew bleiben erhalten.",
       "photoPaid": "Foto (bezahlt)",
-      "searching": "Kundendaten werden geladen…",
+      "searching": "Suche…",
       "typeChoiceBody": "Für diese IDs gibt es Handcam- und Outside-Daten.\nBitte den Medien-Typ wählen.",
       "typeChoiceBodyUnbooked": "Kunde gefunden, aber nichts gebucht.\nBitte Handcam oder Outside wählen.",
       "typeChoiceTitle": "Medien-Typ wählen",
@@ -1846,7 +1849,6 @@
       "retryOrSettings": "Klicken: erneut prüfen · Rechtsklick: Einstellungen",
       "retry": "Klicken zum erneuten Prüfen",
       "connectionTitle": "Verbindung",
-      "probeTitle": "Verbindungstest",
       "titleAllOk": "Alles verbunden",
       "titlePartial": "Teilweise",
       "titleFailed": "Keine Verbindung",
@@ -1862,12 +1864,6 @@
       "amsOk": "Verbunden",
       "amsOkNamed": "Verbunden · {{name}}",
       "titleAmsOkNamed": "{{name}} verbunden",
-      "cloudLookupLabel": "Buchungssuche über Cloud",
-      "cloudLookupOk": "Erreichbar",
-      "cloudLookupNoToken": "Kein Cloud-Token",
-      "cloudLookupTokenInvalid": "Token ungültig",
-      "cloudLookupUnreachable": "Nicht erreichbar",
-      "cloudLookupError": "Prüfung fehlgeschlagen",
       "backupFailedHint": "Klicken: Hinweis schließen & erneut prüfen · Rechtsklick: Backup-URL",
       "backupSettingsHint": "Rechtsklick: Backup-URL in den Einstellungen",
       "backupPopoverHint": "Klicken: Details · Rechtsklick: Backup-URL",
@@ -1889,6 +1885,13 @@
         "ok": "Verstanden",
         "title": "Verbindung nach Update"
       },
+      "probeTitle": "Verbindungstest",
+      "cloudLookupLabel": "Buchungssuche über Cloud",
+      "cloudLookupOk": "Erreichbar",
+      "cloudLookupNoToken": "Kein Cloud-Token",
+      "cloudLookupTokenInvalid": "Token ungültig",
+      "cloudLookupUnreachable": "Nicht erreichbar",
+      "cloudLookupError": "Prüfung fehlgeschlagen",
       "serverReachableUnverified": "Server: erreichbar – Login nicht geprüft"
     },
     "backupPopover": {
@@ -1937,13 +1940,13 @@
       "unitVideos": "Videos",
       "fastPhoto": "Schnelle Foto-Prüfung…",
       "thoroughPhoto": "Gründliche Foto-Prüfung…",
+      "liveIndex": "{{index}} von {{total}}",
       "liveAria": "Aktuelles QR-Prüfframe",
       "liveAlt": "QR-Prüfung: {{name}}",
       "liveScanning": "Scan",
       "liveHit": "Treffer",
       "liveMiss": "Kein Code",
-      "liveRemoved": "Entfernen",
-      "liveIndex": "{{index}} von {{total}}"
+      "liveRemoved": "Entfernen"
     },
     "confirm": {
       "currentCustomer": "Aktueller Kunde",

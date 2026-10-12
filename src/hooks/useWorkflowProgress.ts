@@ -523,7 +523,12 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
     const base = sessionPipelineBase ?? uploadPipelineBase;
     if (!base) return;
     setCreateReachedIndex((prev) => {
-      let next = Math.max(prev, base.activeIndex);
+      // Allow pull-back when resolveCreateJobPipeline regresses for live CapCut mux
+      // after a speculative early "Fotos kopiert" (see createJobPlan.ts).
+      let next =
+        base.activeIndex < prev && !base.completed && !base.cancelled && !base.failed
+          ? base.activeIndex
+          : Math.max(prev, base.activeIndex);
       if (
         uploadPipelineBase &&
         uploadPipelineBase.steps.some((s) => s.id === "upload")
@@ -545,12 +550,17 @@ export function useWorkflowProgress(input: Input): DualWorkflowProgress {
 
   const sessionPipeline = useMemo((): CreateJobPipelineView | null => {
     if (!sessionPipelineBase) return null;
+    // Prefer resolve() when it pulled back onto a live mux chip.
+    const activeIndex =
+      sessionPipelineBase.activeIndex < createReachedIndex &&
+      !sessionPipelineBase.completed &&
+      !sessionPipelineBase.cancelled &&
+      !sessionPipelineBase.failed
+        ? sessionPipelineBase.activeIndex
+        : Math.max(sessionPipelineBase.activeIndex, createReachedIndex);
     return {
       ...sessionPipelineBase,
-      activeIndex: Math.max(
-        sessionPipelineBase.activeIndex,
-        createReachedIndex,
-      ),
+      activeIndex,
     };
   }, [sessionPipelineBase, createReachedIndex]);
 

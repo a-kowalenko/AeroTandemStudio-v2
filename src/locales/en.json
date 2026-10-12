@@ -617,7 +617,6 @@
     },
     "success": {
       "title": "Created successfully",
-      "uploadTitle": "Upload successful",
       "description": "Summary of created files and folders.",
       "folder": "Folder",
       "videoFromPreview": "Video taken from preview",
@@ -639,6 +638,7 @@
       "dirCreated": "Directory was created",
       "openLocation": "Go to location",
       "play": "Play",
+      "uploadTitle": "Upload successful",
       "crewTm": "TM: {{name}}",
       "crewVs": "VS: {{name}}"
     },
@@ -913,17 +913,6 @@
       "keep": "Keep running",
       "cancel": "Cancel backup"
     },
-    "sdDelete": {
-      "titleOne": "Delete file from the SD card?",
-      "titleMany": "Delete {{count}} files from the SD card?",
-      "bodyOne": "“{{name}}” will be permanently removed from the card or camera.",
-      "bodyMany": "The selected files will be permanently removed from the card or camera.",
-      "andMore": "… and {{count}} more",
-      "hint": "Related proxies/sidecars are deleted too. This cannot be undone.",
-      "confirmOne": "Delete",
-      "confirmMany": "Delete {{count}}",
-      "deleting": "Deleting…"
-    },
     "bulkUploadSummary": {
       "aborted": "{{count}} not started (cancelled or server offline).",
       "blocked": "{{count}} not possible",
@@ -1032,6 +1021,17 @@
       "scanning": "Checking pending uploads…",
       "selectionHint": "Unchecked jobs will not be suggested again. You can still upload them from Jobs.",
       "title": "Server back online"
+    },
+    "sdDelete": {
+      "titleOne": "Delete file from the SD card?",
+      "titleMany": "Delete {{count}} files from the SD card?",
+      "bodyOne": "“{{name}}” will be permanently removed from the card or camera.",
+      "bodyMany": "The selected files will be permanently removed from the card or camera.",
+      "andMore": "… and {{count}} more",
+      "hint": "Related proxies/sidecars are deleted too. This cannot be undone.",
+      "confirmOne": "Delete",
+      "confirmMany": "Delete {{count}}",
+      "deleting": "Deleting…"
     }
   },
   "splash": {
@@ -1143,9 +1143,6 @@
       "label": "QR code",
       "cancelled": "QR scan cancelled.",
       "applied": "Customer data applied",
-      "numericApplied": "Customer data applied (QR → ID)",
-      "idsOnlyApplied": "IDs only (QR → ID) — booking lookup found nothing",
-      "idsOnlyHighlight": "Customer / booking ID only",
       "source": "Source: {{name}}",
       "notFound": "No QR code found.",
       "scanFailed": "Scan failed",
@@ -1156,6 +1153,9 @@
         "removedVideos": "{{count}} clip removed from list",
         "removedVideosMany": "{{count}} clips removed from list"
       },
+      "numericApplied": "Customer data applied (QR → ID)",
+      "idsOnlyApplied": "IDs only (QR → ID) — booking lookup found nothing",
+      "idsOnlyHighlight": "Customer / booking ID only",
       "notFoundInNew": "No QR code found in the new files."
     },
     "storage": {
@@ -1257,17 +1257,17 @@
       "noQrSession": "No QR in this session — scan first",
       "restoreQr": "Restore QR data",
       "manualEntry": "Switch to manual entry",
-      "manualFromQrId": "Switch to typed entry (discard scan provenance)",
-      "qrIdActive": "QR → ID active (plain IDs from scan)",
       "qr": "QR",
-      "manual": "Manual"
+      "manual": "Manual",
+      "manualFromQrId": "Switch to typed entry (discard scan provenance)",
+      "qrIdActive": "QR → ID active (plain IDs from scan)"
     },
     "manual": {
       "modeAria": "Manual entry mode",
-      "modeAriaQrId": "Identity from QR scan (ID)",
       "id": "ID",
       "contact": "Contact",
-      "local": "Local"
+      "local": "Local",
+      "modeAriaQrId": "Identity from QR scan (ID)"
     },
     "customer": {
       "section": "Customer",
@@ -1438,10 +1438,13 @@
       "expand": "Show upload details",
       "collapse": "Hide upload details",
       "queueWaiting": "{{count}} more waiting in queue",
+      "queueExpand": "Show upload queue",
+      "queueCollapse": "Hide upload queue",
+      "queueUntitled": "Untitled",
       "failedHold": "Upload failed — retry from Jobs",
+      "cleaningUp": "Finishing upload…",
       "failedHoldTitle": "Upload failed",
-      "failedHoldHint": "Please retry from Jobs.",
-      "cleaningUp": "Finishing upload…"
+      "failedHoldHint": "Please retry from Jobs."
     },
     "createSteps": {
       "aria": "Create job steps",
@@ -1588,13 +1591,6 @@
       "removeJobAll": "Remove all {{count}} jobs?",
       "removeJobAllBody": "All loaded jobs will be removed from the list. Files on disk are kept; related app QR scan frames are removed."
     },
-    "jobs": {
-      "pageSize": "{{count}} / page",
-      "pageSizeAria": "Entries per page",
-      "pageRange": "{{from}}–{{to}} of {{total}}",
-      "pagePrev": "Previous page",
-      "pageNext": "Next page"
-    },
     "media": {
       "stats": "{{total}} entries ({{videos}} videos, {{photos}} photos)",
       "empty": "No entries",
@@ -1627,11 +1623,11 @@
     },
     "mode": {
       "qr": "QR",
-      "qrId": "QR · ID",
       "manualId": "Manual · ID",
       "manualContact": "Manual · Contact",
       "manualLocal": "Manual · Local",
-      "manual": "Manual"
+      "manual": "Manual",
+      "qrId": "QR · ID"
     },
     "paidTitle": "{{label}} paid",
     "ta": "TM: {{name}}",
@@ -1726,6 +1722,13 @@
     },
     "appendTitleCloudOffline": "No server connection — append to the cloud once connected",
     "appendTitleUploadOff": "Cloud upload is disabled — enable it in settings to append media",
+    "jobs": {
+      "pageSize": "{{count}} / page",
+      "pageSizeAria": "Entries per page",
+      "pageRange": "{{from}}–{{to}} of {{total}}",
+      "pagePrev": "Previous page",
+      "pageNext": "Next page"
+    },
     "removeAll": "Remove all",
     "moreActions": "More actions",
     "viewer": {
@@ -1775,13 +1778,13 @@
       "unreachableHint": "Please enter customer data manually.",
       "lookupErrorFallback": "Customer could not be loaded",
       "healthOk": "Booking lookup connected",
-      "viaCloud": "Booking lookup via Cloud",
-      "viaCloudTooltip": "{{title}}: via Cloud",
       "connectedTooltip": "{{title}}: connected",
       "onlineOnly": "Only for online jobs, not local",
       "customerNotFound": "Customer not found in booking",
       "connectedTooltipNamed": "{{title}}: {{name}}",
-      "healthOkNamed": "{{name}} connected"
+      "healthOkNamed": "{{name}} connected",
+      "viaCloud": "Booking lookup via Cloud",
+      "viaCloudTooltip": "{{title}}: via Cloud"
     },
     "handoff": {
       "steps": {
@@ -1824,7 +1827,7 @@
       "notFound": "Customer not found",
       "overrideBody": "Previous: {{previous}}\nBooking: {{next}}\n\nApply this data?\nLocation, date and crew are kept.",
       "photoPaid": "Photo (paid)",
-      "searching": "Loading customer data…",
+      "searching": "Searching…",
       "typeChoiceBody": "These IDs have both Handcam and Outside data.\nPlease choose the media type.",
       "typeChoiceBodyUnbooked": "Customer found, but nothing booked.\nPlease choose Handcam or Outside.",
       "typeChoiceTitle": "Choose media type",
@@ -1846,7 +1849,6 @@
       "retryOrSettings": "Click: retry · right click: settings",
       "retry": "Click to check again",
       "connectionTitle": "Connection",
-      "probeTitle": "Connection check",
       "titleAllOk": "All connected",
       "titlePartial": "Partial",
       "titleFailed": "No connection",
@@ -1862,12 +1864,6 @@
       "amsOk": "Connected",
       "amsOkNamed": "Connected · {{name}}",
       "titleAmsOkNamed": "{{name}} connected",
-      "cloudLookupLabel": "Booking lookup via Cloud",
-      "cloudLookupOk": "Reachable",
-      "cloudLookupNoToken": "No Cloud token",
-      "cloudLookupTokenInvalid": "Token invalid",
-      "cloudLookupUnreachable": "Unreachable",
-      "cloudLookupError": "Check failed",
       "backupFailedHint": "Click: dismiss & recheck · right click: backup URL",
       "backupSettingsHint": "Right click: backup URL in settings",
       "backupPopoverHint": "Click: details · right click: backup URL",
@@ -1889,6 +1885,13 @@
         "ok": "Got it",
         "title": "Connection after update"
       },
+      "probeTitle": "Connection check",
+      "cloudLookupLabel": "Booking lookup via Cloud",
+      "cloudLookupOk": "Reachable",
+      "cloudLookupNoToken": "No Cloud token",
+      "cloudLookupTokenInvalid": "Token invalid",
+      "cloudLookupUnreachable": "Unreachable",
+      "cloudLookupError": "Check failed",
       "serverReachableUnverified": "Server: reachable – login not checked"
     },
     "backupPopover": {
@@ -1937,13 +1940,13 @@
       "unitVideos": "Videos",
       "fastPhoto": "Quick photo check…",
       "thoroughPhoto": "Thorough photo check…",
+      "liveIndex": "{{index}} of {{total}}",
       "liveAria": "Current QR check frame",
       "liveAlt": "QR check: {{name}}",
       "liveScanning": "Scan",
       "liveHit": "Hit",
       "liveMiss": "No code",
-      "liveRemoved": "Removing",
-      "liveIndex": "{{index}} of {{total}}"
+      "liveRemoved": "Removing"
     },
     "confirm": {
       "currentCustomer": "Current customer",

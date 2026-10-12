@@ -1,8 +1,8 @@
 /** Dynamic create-job pipeline steps for the Workflow Progress Panel. */
 
-import { normalizeBodyConcatMode } from "./bodyConcatMode";
-import { usesUnifiedIntroEncode } from "./introMuxMode";
-import type { BodyConcatMode, Kunde } from "./tauri";
+import { normalizeBodyConcatMode } from "./bodyConcatMode.ts";
+import { usesUnifiedIntroEncode } from "./introMuxMode.ts";
+import type { BodyConcatMode, Kunde } from "./tauri.ts";
 
 export type CreateJobStepId =
   | "folder"
@@ -335,9 +335,15 @@ function stepIndex(plan: CreateJobPlan, id: CreateJobStepId): number {
   return plan.steps.findIndex((s) => s.id === id);
 }
 
+/** Body / CapCut mux chips — status here must win over a speculative early Fotos leap. */
+function isMuxSubStepId(id: CreateJobStepId): boolean {
+  return id === "body-join" || id === "intro-video" || id === "intro-audio";
+}
+
 /**
  * Resolve pipeline view from a frozen plan + live status flags.
- * Active index only moves forward (monotonic) except on cancel/fail.
+ * Active index only moves forward (monotonic) except on cancel/fail, and except
+ * when a live mux status needs to pull back past a speculative early "Fotos kopiert".
  *
  * Note: Rust emits "Vorgang fertig" at the end of `create_job`, before the
  * optional SMB upload in the frontend. That must not light the Fertig chip
@@ -406,7 +412,17 @@ export function resolveCreateJobPipeline(opts: {
         ) {
           idx = uploadIdx;
         }
-        activeIndex = Math.max(activeIndex, idx);
+        // Speculative hit used to emit "Fotos kopiert" before CapCut commit. If the
+        // live status is clearly still on body/Intro mux, pull the chip back.
+        if (
+          opts.busy &&
+          isMuxSubStepId(fromStatus) &&
+          idx < activeIndex
+        ) {
+          activeIndex = idx;
+        } else {
+          activeIndex = Math.max(activeIndex, idx);
+        }
       }
     }
   }

@@ -127,4 +127,37 @@ describe("createStepIdFromStatus CapCut/Outro", () => {
       "intro-audio",
     );
   });
+
+  it("pulls back from Fotos when CapCut Intro+Video status arrives after speculative Fotos kopiert", () => {
+    const plan = buildCreateJobPlan({
+      kunde: baseKunde({ handcam_foto: true, ist_bezahlt_handcam_foto: true }),
+      videoCount: 1,
+      photoCount: 2,
+      watermarkPhotoCount: 0,
+      uploadToServer: true,
+      manualEntryMode: "lokal",
+      introEnabled: true,
+      outroEnabled: false,
+      introMuxMode: "capcut",
+    });
+    assert.ok(plan.steps.some((s) => s.id === "photos"));
+
+    const afterEarlyPhotos = resolveCreateJobPipeline({
+      plan,
+      status: "Fotos kopiert",
+      uploading: false,
+      busy: true,
+      reachedIndex: 0,
+    });
+    assert.equal(afterEarlyPhotos?.steps[afterEarlyPhotos.activeIndex]?.id, "photos");
+
+    const duringCapCut = resolveCreateJobPipeline({
+      plan,
+      status: "Exportiere Intro+Video (Universal, Audio-Copy)…",
+      uploading: false,
+      busy: true,
+      reachedIndex: afterEarlyPhotos!.activeIndex,
+    });
+    assert.equal(duringCapCut?.steps[duringCapCut.activeIndex]?.id, "intro-video");
+  });
 });
