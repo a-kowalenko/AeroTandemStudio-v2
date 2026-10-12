@@ -15,6 +15,10 @@ use serde::Serialize;
 use thiserror::Error;
 
 use super::body_concat_fallback::{BodyConcatAskFn, BodyConcatChoice};
+use super::encode_profile::EncodeProfile;
+use super::encoding_quality::{
+    build_encode_output_params, majority_body_codec, resolve_output_codec, VideoCodecPreference,
+};
 use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, indicates_disk_full, is_cancelled, is_disk_full_error,
     probe_duration_secs, run_ffmpeg, run_ffmpeg_capture_stderr, run_ffmpeg_checked, FfmpegError,
@@ -1036,6 +1040,189 @@ pub fn build_concat_demuxer_reencode_args(
         args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
     }
     args.extend([
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output.to_string(),
+    ]);
+    args
+}
+
+/// How the body applies per-clip edit rotation (OPT-26) at export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyRotationRoute {
+    /// No clip rotated — unchanged pipeline.
+    None,
+    /// Every clip rotated by the same clockwise degrees: stream-copy body +
+    /// `-display_rotation` remux (no encode).
+    Display(u32),
+    /// Mixed rotation (or display metadata not usable): one `filter_complex` encode.
+    Bake,
+}
+
+/// Pick the rotation route. `display_ok` is false when a later stage re-encodes the
+/// body (intro / outro / forced codec) or a clip already carries soft rotation.
+pub fn body_rotation_route(rotations: &[u32], display_ok: bool) -> BodyRotationRoute {
+    let Some(&first) = rotations.first() else {
+        return BodyRotationRoute::None;
+    };
+    if rotations.iter().all(|&d| d == 0) {
+        return BodyRotationRoute::None;
+    }
+    if display_ok && rotations.iter().all(|&d| d == first) {
+        BodyRotationRoute::Display(first)
+    } else {
+        BodyRotationRoute::Bake
+    }
+}
+
+/// `-display_rotation` is counter-clockwise; edit rotation is clockwise.
+pub fn display_rotation_ccw_for_clockwise(clockwise_deg: u32) -> u32 {
+    (360 - clockwise_deg % 360) % 360
+}
+
+/// Stream-copy remux that sets the display matrix (`-display_rotation` before `-i`).
+pub fn build_display_rotation_remux_args(
+    input: &str,
+    output: &str,
+    clockwise_deg: u32,
+    has_audio: bool,
+    video_tag: Option<&str>,
+) -> Vec<String> {
+    let mut args: Vec<String> = vec![
+        "-y".into(),
+        "-hide_banner".into(),
+        "-display_rotation".into(),
+        display_rotation_ccw_for_clockwise(clockwise_deg).to_string(),
+        "-i".into(),
+        input.to_string(),
+        "-map".into(),
+        "0:v:0".into(),
+    ];
+    map_audio_if(has_audio, &mut args);
+    args.extend(["-c".into(), "copy".into()]);
+    if let Some(tag) = video_tag.filter(|t| !t.is_empty()) {
+        args.extend(["-tag:v".into(), tag.to_string()]);
+    }
+    args.extend([
+        "-movflags".into(),
+        "+faststart".into(),
+        "-progress".into(),
+        "pipe:1".into(),
+        "-nostats".into(),
+        output.to_string(),
+    ]);
+    args
+}
+
+/// Decoded size after a clockwise quarter-turn.
+pub fn rotated_dims(width: u32, height: u32, clockwise_deg: u32) -> (u32, u32) {
+    if clockwise_deg % 180 == 90 {
+        (height, width)
+    } else {
+        (width, height)
+    }
+}
+
+/// Common output canvas when rotated clips disagree in size (first clip wins).
+/// `dims` are post-autorotate decoded sizes; `None` when all clips already match.
+pub fn rotation_concat_canvas(dims: &[(u32, u32)], rotations: &[u32]) -> Option<(u32, u32)> {
+    let out: Vec<(u32, u32)> = dims
+        .iter()
+        .enumerate()
+        .map(|(i, &(w, h))| rotated_dims(w, h, rotations.get(i).copied().unwrap_or(0)))
+        .collect();
+    let first = *out.first()?;
+    if out.iter().all(|&d| d == first) {
+        None
+    } else {
+        Some(first)
+    }
+}
+
+/// `filter_complex` graph: per-clip `transpose` (+ optional letterbox / pix_fmt) → `concat`.
+pub fn build_rotation_concat_filter(
+    rotations: &[u32],
+    has_audio: bool,
+    canvas: Option<(u32, u32)>,
+    pix_fmt: Option<&str>,
+) -> Result<String, String> {
+    let n = rotations.len();
+    let mut chains: Vec<String> = Vec::with_capacity(n + 1);
+    let mut concat_in = String::new();
+    for (i, &deg) in rotations.iter().enumerate() {
+        let mut steps: Vec<String> = Vec::new();
+        if deg != 0 {
+            steps.push(super::rotate::transpose_filter_for_degrees(deg).map_err(|e| e.to_string())?);
+        }
+        if let Some((w, h)) = canvas {
+            steps.push(format!(
+                "scale={w}:{h}:force_original_aspect_ratio=decrease:force_divisible_by=2,\
+                 pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+            ));
+        }
+        if let Some(fmt) = pix_fmt {
+            steps.push(format!("format={fmt}"));
+        }
+        if steps.is_empty() {
+            steps.push("null".into());
+        }
+        chains.push(format!("[{i}:v:0]{}[v{i}]", steps.join(",")));
+        concat_in.push_str(&format!("[v{i}]"));
+        if has_audio {
+            concat_in.push_str(&format!("[{i}:a:0]"));
+        }
+    }
+    let a = u8::from(has_audio);
+    let outs = if has_audio { "[vout][aout]" } else { "[vout]" };
+    chains.push(format!("{concat_in}concat=n={n}:v=1:a={a}{outs}"));
+    Ok(chains.join(";"))
+}
+
+/// Per-input decode args for the rotation graph. `decode_accel` must come from
+/// [`super::hw_accel::HwAccelInfo::hwaccel_for_cpu_filters`]: no `-hwaccel_output_format`, so frames
+/// reach `transpose` / `scale` in system memory.
+fn rotation_decode_input_params(decode_accel: Option<&str>) -> Vec<String> {
+    match decode_accel {
+        Some(accel) => vec!["-hwaccel".into(), accel.to_string()],
+        None => Vec::new(),
+    }
+}
+
+/// One re-encode pass over N inputs with a `filter_complex` graph
+/// ([`build_rotation_concat_filter`]). Audio is re-encoded (concat filter output).
+pub fn build_concat_filter_complex_reencode_args(
+    inputs: &[String],
+    filter_graph: &str,
+    output: &str,
+    params: &EncodingParams,
+    has_audio: bool,
+) -> Vec<String> {
+    let mut args: Vec<String> = vec!["-y".into(), "-hide_banner".into()];
+    for input in inputs {
+        args.extend(params.input_params.iter().cloned());
+        args.extend(["-i".into(), input.clone()]);
+    }
+    args.extend([
+        "-filter_complex".into(),
+        filter_graph.to_string(),
+        "-map".into(),
+        "[vout]".into(),
+    ]);
+    if has_audio {
+        args.extend(["-map".into(), "[aout]".into()]);
+    }
+    args.extend(params.output_params.iter().cloned());
+    if has_audio {
+        args.extend(["-c:a".into(), "aac".into(), "-b:a".into(), "192k".into()]);
+    } else {
+        args.push("-an".into());
+    }
+    args.extend([
+        "-metadata:s:v:0".into(),
+        "rotate=0".into(),
         "-movflags".into(),
         "+faststart".into(),
         "-progress".into(),
@@ -2227,6 +2414,10 @@ fn concat_stream_copy_compatible(
 
     let clean = compatible_clips_are_clean(&keys);
     let mixed_encoders = keys.iter().any(|k| k.encoder != keys[0].encoder);
+    if let Some(reason) = mixed_encoders_reencode_reason(vcodec, hevc_tag, mixed_encoders) {
+        logging::info("concat", "compatible: mixed encoders + hvc1 → reencode");
+        return Err(ConcatError::NeedsReencode { reason });
+    }
     if clean {
         logging::info("concat", "compatible: clean-pass");
         match concat_compatible_clean_pass(
@@ -2295,6 +2486,23 @@ fn concat_stream_copy_compatible(
         ts_prep_merge_hevc_tag(mixed_encoders, hevc_tag),
     )?;
     maybe_ensure_output_hevc_hvc1_tag(ffmpeg, output, vcodec, hevc_tag, has_audio, on_progress)
+}
+
+/// Mixed HEVC encoders cannot be stream-copied into `hvc1`: only the `hvcC` parameter
+/// sets of clip 1 apply, so clips after the seam decode as a frozen frame.
+pub fn mixed_encoders_reencode_reason(
+    vcodec: VideoCodec,
+    hevc_tag: &str,
+    mixed_encoders: bool,
+) -> Option<String> {
+    if mixed_encoders
+        && vcodec == VideoCodec::Hevc
+        && hevc_tag.eq_ignore_ascii_case(hevc_apple_video_tag())
+    {
+        Some("Gemischte HEVC-Encoder mit hvc1 erfordern Neu-Kodierung".into())
+    } else {
+        None
+    }
 }
 
 /// HEVC tag for the TS-prep → MP4 merge.
@@ -2701,6 +2909,209 @@ pub fn concat_videos_with_opts(
     }
 }
 
+fn resolve_probes(ffmpeg: &Path, paths: &[String]) -> Result<Vec<CachedClipProbe>, ConcatError> {
+    probe_cache::resolve_clips_parallel(ffmpeg, paths, |_, _, _| {})
+        .map(|(probes, _)| probes)
+        .map_err(|e| match e {
+            ParallelError::Cancelled => ConcatError::Ffmpeg(FfmpegError::Cancelled),
+            ParallelError::Message(m) => ConcatError::Message(m),
+        })
+}
+
+/// True when any clip carries non-zero (or unreadable) soft rotation metadata.
+pub fn clips_have_soft_rotation(ffmpeg: &Path, paths: &[String]) -> Result<bool, ConcatError> {
+    Ok(resolve_probes(ffmpeg, paths)?
+        .iter()
+        .any(|p| p.compatible_key.rotation.known_degrees() != Some(0)))
+}
+
+/// Stream-copy `input` → `output` with a clockwise display rotation (OPT-26).
+/// `input == output` is allowed (temp sibling + rename).
+pub fn remux_with_display_rotation(
+    ffmpeg: &Path,
+    input: &str,
+    output: &str,
+    clockwise_deg: u32,
+    on_progress: ProgressCallback,
+) -> Result<(), ConcatError> {
+    let probe = probe_clip_for_concat(ffmpeg, input)?;
+    let tag = match probe.vcodec {
+        VideoCodec::Hevc | VideoCodec::H264 => Some(probe.compatible_key.tag.as_str()),
+        VideoCodec::Other => None,
+    };
+    let in_place = Path::new(input) == Path::new(output);
+    let target = if in_place {
+        format!("{output}.rot.mp4")
+    } else {
+        output.to_string()
+    };
+    logging::info(
+        "concat",
+        format!("rotation: display {clockwise_deg}° (stream-copy)"),
+    );
+    emit(&on_progress, 0.0, "Drehung übernehmen (ohne Neu-Kodierung)…");
+    let args = build_display_rotation_remux_args(input, &target, clockwise_deg, probe.has_audio, tag);
+    if let Err(e) = run_ffmpeg(ffmpeg, &args, probe.duration_secs.max(0.1), on_progress.clone()) {
+        let _ = fs::remove_file(&target);
+        if is_disk_full_error(&e) {
+            return Err(ConcatError::Ffmpeg(disk_full_error()));
+        }
+        return Err(ConcatError::Ffmpeg(e));
+    }
+    if in_place {
+        fs::rename(&target, output)?;
+    }
+    emit(&on_progress, 100.0, "end");
+    Ok(())
+}
+
+/// Rotate + join clips in one `filter_complex` encode (OPT-26 mixed rotation).
+///
+/// Asks via `on_reencode` (Rotate kind); retries in software when HW encode fails.
+#[allow(clippy::too_many_arguments)]
+pub fn concat_videos_rotated_reencode(
+    ffmpeg: &Path,
+    paths: &[String],
+    rotations: &[u32],
+    output: &str,
+    codec_pref: VideoCodecPreference,
+    crf: u8,
+    hw_accel_enabled: bool,
+    on_progress: ProgressCallback,
+    on_reencode: Option<&ReencodeAskFn>,
+) -> Result<ConcatOutcome, ConcatError> {
+    if paths.is_empty() {
+        return Err(ConcatError::Message("no input paths".into()));
+    }
+    for p in paths {
+        if !Path::new(p).is_file() {
+            return Err(ConcatError::Message(format!("input file not found: {p}")));
+        }
+    }
+    let rotations: Vec<u32> = (0..paths.len())
+        .map(|i| rotations.get(i).copied().unwrap_or(0))
+        .collect();
+    let probes = resolve_probes(ffmpeg, paths)?;
+    let total_secs: f64 = probes.iter().map(|p| p.duration_secs).sum();
+    let has_audio = probes.iter().all(|p| p.has_audio);
+    let codecs: Vec<VideoCodec> = probes.iter().map(|p| normalize_vcodec_name(&p.codec)).collect();
+    let body_codec = match majority_body_codec(&codecs) {
+        VideoCodec::Hevc => "hevc",
+        _ => "h264",
+    };
+    // Autorotate applies source soft rotation on decode → swap coded dims accordingly.
+    let dims: Vec<(u32, u32)> = probes
+        .iter()
+        .map(|p| {
+            let k = &p.compatible_key;
+            rotated_dims(k.width, k.height, k.rotation.known_degrees().unwrap_or(0))
+        })
+        .collect();
+    let canvas = rotation_concat_canvas(&dims, &rotations);
+
+    let hw = detect_hardware();
+    let target_hint = match codec_pref {
+        VideoCodecPreference::H264 => "h264",
+        VideoCodecPreference::H265 => "h265",
+        VideoCodecPreference::Auto => body_codec,
+    };
+    let recommended = EncodeProfile::recommend(
+        ReencodeKind::Rotate,
+        crf,
+        hw_accel_enabled && hw.available,
+        Some(target_hint),
+    );
+    let reason = "Gedrehte Clips werden beim Erstellen einmal neu kodiert";
+    let degs: Vec<String> = rotations.iter().map(|d| format!("{d}°")).collect();
+    let mut details = vec![format!("Drehung pro Clip: {}", degs.join(", "))];
+    if let Some((w, h)) = canvas {
+        details.push(format!("Ausgabe {w}×{h} (Letterbox für abweichende Ausrichtung)"));
+    }
+    let intent = ReencodeIntent::new(ReencodeKind::Rotate, reason)
+        .with_params(ReencodeParams {
+            clip_count: Some(paths.len()),
+            strategy: Some("rotate_filter_complex".into()),
+            details,
+            ..Default::default()
+        })
+        .with_recommended(recommended);
+    emit(&on_progress, 0.0, "Neu-Kodierung — warte auf Bestätigung…");
+    let profile = reencode_confirm::require_confirm(on_reencode, &intent)
+        .map_err(|_| ConcatError::Ffmpeg(FfmpegError::Cancelled))?;
+
+    let out_codec = resolve_output_codec(profile.codec_preference(), body_codec);
+    let pix_fmt = (out_codec == VideoCodec::H264).then_some("yuv420p");
+    let graph = build_rotation_concat_filter(&rotations, has_audio, canvas, pix_fmt)
+        .map_err(ConcatError::Message)?;
+    logging::info(
+        "concat",
+        format!("rotation: filter_complex re-encode ({})", degs.join(",")),
+    );
+
+    let run = |encoder: String,
+               mut output_params: Vec<String>,
+               decode_accel: Option<&str>|
+     -> Result<String, FfmpegError> {
+        if out_codec == VideoCodec::Hevc && !output_params.iter().any(|a| a == "-tag:v") {
+            output_params.extend(["-tag:v".into(), hevc_apple_video_tag().into()]);
+        }
+        let params = EncodingParams {
+            input_params: rotation_decode_input_params(decode_accel),
+            output_params,
+            encoder: encoder.clone(),
+        };
+        let args = build_concat_filter_complex_reencode_args(paths, &graph, output, &params, has_audio);
+        run_ffmpeg(ffmpeg, &args, total_secs.max(0.1), on_progress.clone()).map(|()| encoder)
+    };
+
+    emit(&on_progress, 1.0, &format!("Kodiere neu: {reason}"));
+    let (encoder, output_params) = profile.to_encode_output_params(&hw, out_codec);
+    let used_hw = !encoder.to_ascii_lowercase().starts_with("lib");
+    let decode_accel = if used_hw { hw.hwaccel_for_cpu_filters() } else { None };
+    logging::info(
+        "concat",
+        format!(
+            "rotation: encoder={encoder} hwaccel={}",
+            decode_accel.unwrap_or("none")
+        ),
+    );
+    let encoder = match run(encoder.clone(), output_params, decode_accel) {
+        Ok(enc) => enc,
+        Err(e) if is_disk_full_error(&e) => {
+            let _ = fs::remove_file(output);
+            return Err(ConcatError::Ffmpeg(disk_full_error()));
+        }
+        Err(FfmpegError::Cancelled) => {
+            let _ = fs::remove_file(output);
+            return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
+        }
+        Err(e) if used_hw => {
+            logging::warn(
+                "concat",
+                format!(
+                    "rotation: hw encode failed ({encoder}): {} — software retry",
+                    e.to_string().lines().next().unwrap_or("unknown")
+                ),
+            );
+            let (sw_enc, sw_params) = build_encode_output_params(&hw, out_codec, profile.crf, true);
+            run(sw_enc, sw_params, None).map_err(|e| {
+                let _ = fs::remove_file(output);
+                ConcatError::Ffmpeg(e)
+            })?
+        }
+        Err(e) => {
+            let _ = fs::remove_file(output);
+            return Err(ConcatError::Ffmpeg(e));
+        }
+    };
+    emit(&on_progress, 100.0, "end");
+    Ok(ConcatOutcome {
+        method: "re-encode-rotate".into(),
+        codec: encoder,
+        reencode_reason: Some(reason.into()),
+    })
+}
+
 fn concat_stream_copy(
     ffmpeg: &Path,
     paths: &[String],
@@ -2959,7 +3370,7 @@ pub fn trim_video(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::video::hw_accel::EncodingParams;
+    use crate::video::hw_accel::{EncodingParams, HwAccelInfo};
 
     #[test]
     fn normalize_vcodec_hevc_aliases() {
@@ -3649,6 +4060,132 @@ Input #0, mov, from 'a.mp4':
         assert_eq!(ts_prep_merge_hevc_tag(true, "hev1"), "hev1");
         assert_eq!(ts_prep_merge_hevc_tag(false, "hvc1"), "hvc1");
         assert_eq!(ts_prep_merge_hevc_tag(false, "hev1"), "hev1");
+    }
+
+    #[test]
+    fn mixed_encoders_hvc1_needs_reencode() {
+        assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hvc1", true).is_some());
+        assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hev1", true).is_none());
+        assert!(mixed_encoders_reencode_reason(VideoCodec::Hevc, "hvc1", false).is_none());
+        assert!(mixed_encoders_reencode_reason(VideoCodec::H264, "hvc1", true).is_none());
+        assert!(mixed_encoders_reencode_reason(VideoCodec::H264, "hev1", true).is_none());
+    }
+
+    #[test]
+    fn body_rotation_route_switch() {
+        use BodyRotationRoute::*;
+        assert_eq!(body_rotation_route(&[], true), None);
+        assert_eq!(body_rotation_route(&[0, 0, 0], true), None);
+        assert_eq!(body_rotation_route(&[0, 0], false), None);
+        assert_eq!(body_rotation_route(&[90, 90], true), Display(90));
+        assert_eq!(body_rotation_route(&[180], true), Display(180));
+        assert_eq!(body_rotation_route(&[90, 90], false), Bake);
+        assert_eq!(body_rotation_route(&[180, 0], true), Bake);
+        assert_eq!(body_rotation_route(&[0, 270], true), Bake);
+    }
+
+    #[test]
+    fn display_rotation_is_counter_clockwise() {
+        assert_eq!(display_rotation_ccw_for_clockwise(0), 0);
+        assert_eq!(display_rotation_ccw_for_clockwise(90), 270);
+        assert_eq!(display_rotation_ccw_for_clockwise(180), 180);
+        assert_eq!(display_rotation_ccw_for_clockwise(270), 90);
+    }
+
+    #[test]
+    fn display_rotation_remux_args_order_and_copy() {
+        let args = build_display_rotation_remux_args("in.mp4", "out.mp4", 90, true, Some("hvc1"));
+        let rot = args.iter().position(|a| a == "-display_rotation").unwrap();
+        let i = args.iter().position(|a| a == "-i").unwrap();
+        assert!(rot < i, "display_rotation must be an input option");
+        assert_eq!(args[rot + 1], "270");
+        assert!(args.windows(2).any(|w| w[0] == "-c" && w[1] == "copy"));
+        assert!(args.windows(2).any(|w| w[0] == "-tag:v" && w[1] == "hvc1"));
+        assert!(args.contains(&"0:a:0".into()));
+        assert_eq!(args.last().unwrap(), "out.mp4");
+
+        let no_audio = build_display_rotation_remux_args("in.mp4", "out.mp4", 180, false, None);
+        assert!(!no_audio.contains(&"0:a:0".into()));
+        assert!(!no_audio.contains(&"-tag:v".into()));
+    }
+
+    #[test]
+    fn rotation_canvas_only_when_sizes_differ() {
+        let dims = [(1920, 1080), (1920, 1080)];
+        assert_eq!(rotation_concat_canvas(&dims, &[180, 0]), None);
+        assert_eq!(rotation_concat_canvas(&dims, &[90, 270]), None);
+        assert_eq!(rotation_concat_canvas(&dims, &[0, 90]), Some((1920, 1080)));
+        assert_eq!(rotation_concat_canvas(&dims, &[90, 0]), Some((1080, 1920)));
+        assert_eq!(rotated_dims(1920, 1080, 270), (1080, 1920));
+        assert_eq!(rotated_dims(1920, 1080, 180), (1920, 1080));
+    }
+
+    #[test]
+    fn rotation_concat_filter_uses_transpose_per_clip() {
+        let g = build_rotation_concat_filter(&[180, 0, 90], true, None, None).unwrap();
+        assert_eq!(
+            g,
+            "[0:v:0]hflip,vflip[v0];[1:v:0]null[v1];[2:v:0]transpose=1[v2];\
+             [v0][0:a:0][v1][1:a:0][v2][2:a:0]concat=n=3:v=1:a=1[vout][aout]"
+        );
+        let g = build_rotation_concat_filter(&[270, 0], false, Some((1080, 1920)), Some("yuv420p"))
+            .unwrap();
+        assert!(g.starts_with("[0:v:0]transpose=2,scale=1080:1920:"));
+        assert!(g.contains("pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v1]"));
+        assert!(g.ends_with("[v0][v1]concat=n=2:v=1:a=0[vout]"));
+        assert!(build_rotation_concat_filter(&[45], true, None, None).is_err());
+    }
+
+    #[test]
+    fn filter_complex_reencode_args_inputs_maps_encoder() {
+        let params = EncodingParams::software();
+        let inputs = vec!["a.mp4".to_string(), "b.mp4".to_string()];
+        let args =
+            build_concat_filter_complex_reencode_args(&inputs, "GRAPH", "out.mp4", &params, true);
+        assert_eq!(args.iter().filter(|a| *a == "-i").count(), 2);
+        let fc = args.iter().position(|a| a == "-filter_complex").unwrap();
+        assert_eq!(args[fc + 1], "GRAPH");
+        let last_i = args.iter().rposition(|a| a == "-i").unwrap();
+        assert!(last_i < fc);
+        assert!(args.windows(2).any(|w| w[0] == "-map" && w[1] == "[vout]"));
+        assert!(args.windows(2).any(|w| w[0] == "-map" && w[1] == "[aout]"));
+        assert!(args.contains(&"libx264".into()));
+        assert!(args.windows(2).any(|w| w[0] == "-c:a" && w[1] == "aac"));
+        assert!(args.contains(&"rotate=0".into()));
+
+        let silent =
+            build_concat_filter_complex_reencode_args(&inputs, "GRAPH", "out.mp4", &params, false);
+        assert!(!silent.contains(&"[aout]".into()));
+        assert!(silent.contains(&"-an".into()));
+    }
+
+    #[test]
+    fn rotation_reencode_hwaccel_per_input_without_output_format() {
+        let hw = HwAccelInfo::videotoolbox();
+        let params = EncodingParams {
+            input_params: rotation_decode_input_params(hw.hwaccel_for_cpu_filters()),
+            output_params: vec!["-c:v".into(), "h264_videotoolbox".into()],
+            encoder: "h264_videotoolbox".into(),
+        };
+        let inputs = vec!["a.mp4".to_string(), "b.mp4".to_string()];
+        let args =
+            build_concat_filter_complex_reencode_args(&inputs, "GRAPH", "out.mp4", &params, true);
+        let hwaccels: Vec<usize> = args
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| *a == "-hwaccel")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(hwaccels.len(), 2);
+        for i in hwaccels {
+            assert_eq!(args[i + 1], "videotoolbox");
+            assert_eq!(args[i + 2], "-i");
+        }
+        assert!(!args.iter().any(|a| a == "-hwaccel_output_format"));
+
+        let nvidia = rotation_decode_input_params(HwAccelInfo::nvidia().hwaccel_for_cpu_filters());
+        assert!(nvidia.is_empty());
+        assert!(rotation_decode_input_params(None).is_empty());
     }
 
     #[test]

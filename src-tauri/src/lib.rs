@@ -55,7 +55,7 @@ use commands::video::{
     get_video_filmstrip, has_video_cut_undo, import_videos, list_video_cut_marks,
     list_video_keyframes, probe_create_output_folder, probe_outro_asset, probe_video,
     reset_upload_slot_cancel, reset_workflow_cancel, resolve_body_concat_fallback,
-    resolve_intro_mux_fallback, resolve_reencode_confirm, rotate_video, speculative_create_status,
+    resolve_intro_mux_fallback, resolve_reencode_confirm, speculative_create_status,
     split_video, start_speculative_create, trim_video, undo_all_video_cuts, undo_last_video_cut,
     undo_video_cut_for_path, validate_create_job,
 };
@@ -172,7 +172,6 @@ pub fn run() {
             trim_video,
             cut_video,
             split_video,
-            rotate_video,
             undo_last_video_cut,
             undo_video_cut_for_path,
             undo_all_video_cuts,

@@ -737,6 +737,7 @@ pub fn generate_preview(
         config.outro_enabled,
         &config.outro_path,
         f64::from(config.outro_dauer),
+        "",
     );
     let fingerprint =
         preview_reuse::create_content_fingerprint_with_tag(kunde, video_paths, &enc_tag)
@@ -783,6 +784,7 @@ pub fn generate_preview(
             body_concat_mode: config.body_concat_mode.clone(),
             hw_accel_enabled: config.hardware_acceleration_enabled,
             defer_forced_reencode: false,
+            clip_rotations: Vec::new(),
         };
         let result = processor::create_video(
             ffmpeg,

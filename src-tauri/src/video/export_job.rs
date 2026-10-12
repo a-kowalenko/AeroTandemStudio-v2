@@ -597,6 +597,7 @@ pub fn create_job(
                     options.video.outro_enabled,
                     &options.video.outro_path,
                     options.video.outro_dauer,
+                    &options.video.rotation_tag(video_paths.len()),
                 ),
             ) {
                 Ok(true) => {
@@ -685,7 +686,15 @@ pub fn create_job(
                     outer(q);
                 })
             };
-            let enc = create_video_with_watermark(ffmpeg, &clip, &wm_str, resource_dir, stage_cb)?;
+            let wm_rotation = options.video.rotation_for_path(video_paths, &clip);
+            let enc = create_video_with_watermark(
+                ffmpeg,
+                &clip,
+                &wm_str,
+                wm_rotation,
+                resource_dir,
+                stage_cb,
+            )?;
             if encoder.is_empty() {
                 encoder = enc;
             }

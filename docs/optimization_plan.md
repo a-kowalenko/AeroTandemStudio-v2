@@ -19,6 +19,7 @@
 | `@docs/opt/open/23-smb-stability.md` | OPT-23 (SMB-Stabilität / Mapping; ein Slice pro Session) |
 | `@docs/opt/open/24-startup-ui-responsiveness.md` | OPT-24 (Kaltstart + UI-Responsiveness; **alle Slices in einer Session**) |
 | `@docs/opt/open/25-sd-import-history-progress.md` | OPT-25 (SD-Import History-Progress + Hash-Reuse) |
+| `@docs/opt/open/26-rotation-export.md` | OPT-26 (Drehung: Freeze-Fix + Rotation beim Export; ein Slice pro Session) |
 | `@docs/optimization_plan.md` | Index / Tracker (optional) |
 | `@docs/opt/ARCHIVE.md` | Regression / erledigte OPT-Spec (gezielt, nicht ganz) |
 | `@docs/PERF_BASELINE.md` | OPT-0 Messungen / Vorher-Nachher |
@@ -31,8 +32,9 @@
 
 | Priorität | OPT | Spec | Status |
 |-----------|-----|------|--------|
-| 1 | **25** SD-Import History-Progress + Hash-Reuse | [`opt/open/25-sd-import-history-progress.md`](opt/open/25-sd-import-history-progress.md) | ✅ A–C (Code) |
-| 2 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
+| — | **26A–D** Freeze-Fix + Drehung als Edit-Wert, Rotation im Export (manuell iPhone/QuickTime offen) | [`opt/open/26-rotation-export.md`](opt/open/26-rotation-export.md) | ✅ Code |
+| — | **25** SD-Import History-Progress + Hash-Reuse | [`opt/open/25-sd-import-history-progress.md`](opt/open/25-sd-import-history-progress.md) | ✅ A–C (Code) |
+| 1 | **21B–E** CapCut-Export (RC, Ein-Durchlauf, HW, 1080p-Cap) | [`opt/open/21-capcut-export.md`](opt/open/21-capcut-export.md) | 🔄 0+A ✅ |
 | — | **24** Kaltstart + UI-Responsiveness (A–F Code ✅) | [`opt/open/24-startup-ui-responsiveness.md`](opt/open/24-startup-ui-responsiveness.md) | ✅ Code |
 | — | **23** SMB-Stabilität (A–F Code ✅; manuell macOS/Linux offen) | [`opt/open/23-smb-stability.md`](opt/open/23-smb-stability.md) | ✅ Code |
 | done | **0–20, 22** Import, Thumbs, SMB, … | [`opt/ARCHIVE.md`](opt/ARCHIVE.md) | ✅ (OPT-13 entfernt) |
@@ -71,6 +73,7 @@
 | OPT-23 | SMB: Stabilität, Mapping-Treffer, Session-Hygiene | hoch | M–L | niedrig–mittel | OPT-17–22 | [open/23](opt/open/23-smb-stability.md) |
 | OPT-24 | Kaltstart-Splash + UI-Responsiveness (Main-Thread, Priorität, Events) | hoch | L | niedrig–mittel | OPT-5, 6, 8, 10, 11 | [open/24](opt/open/24-startup-ui-responsiveness.md) |
 | OPT-25 | SD-Import: History-Progress + Hash-Reuse nach Backup | hoch | M | niedrig | OPT-3, 12 | [open/25](opt/open/25-sd-import-history-progress.md) |
+| OPT-26 | Video-Drehung: Freeze-Fix + Rotation erst beim Export | hoch | S (A) / L (B–D) | niedrig / mittel | Phase 43, 49, OPT-16 | [open/26](opt/open/26-rotation-export.md) |
 
 ---
 
@@ -115,6 +118,8 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-22 | ✅ Slice A+B+C | ARCHIVE |
 | OPT-23 | ✅ Slice A–F (Code); manuell macOS/Linux offen | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
 | OPT-24 | ✅ Slice A–F (Code); manuelle Abnahme offen | [open/24-startup-ui-responsiveness.md](opt/open/24-startup-ui-responsiveness.md) |
+| OPT-25 | ✅ Slice A–C (Code) | [open/25-sd-import-history-progress.md](opt/open/25-sd-import-history-progress.md) |
+| OPT-26 | ✅ Slice A–E (Code); manuell iPhone/QuickTime offen · ⬜ F (ein Encode bei Drehung + Intro/Outro) | [open/26-rotation-export.md](opt/open/26-rotation-export.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 
@@ -128,6 +133,12 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 ---
 
 ## 5. Schnell-Prompt
+
+```
+Implementiere OPT-21 Slice B aus @docs/opt/open/21-capcut-export.md
+Regeln: @AGENTS.md
+Nur OPT-21B. Danach cargo test --manifest-path src-tauri/Cargo.toml.
+```
 
 ```
 Implementiere OPT-24 (alle Slices A–F) aus @docs/opt/open/24-startup-ui-responsiveness.md

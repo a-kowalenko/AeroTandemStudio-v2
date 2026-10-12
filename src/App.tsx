@@ -205,6 +205,19 @@ import {
 } from "./hooks/useUploadQuitGuard";
 import "./App.css";
 
+/** Shared across StrictMode double-mount so FFmpeg/HW checks run once per process. */
+let startupChecksOnce: ReturnType<typeof runStartupChecks> | null = null;
+
+function runStartupChecksOnce(): ReturnType<typeof runStartupChecks> {
+  if (!startupChecksOnce) {
+    startupChecksOnce = runStartupChecks(false).catch((e) => {
+      startupChecksOnce = null;
+      throw e;
+    });
+  }
+  return startupChecksOnce;
+}
+
 function App() {
   const { t } = useTranslation();
   const videoList = useVideoStore((s) => s.videoList);
@@ -1244,7 +1257,7 @@ function App() {
         }
 
         setSplashStatus(t("app.splash.checkFfmpeg"));
-        const checks = await runStartupChecks(false);
+        const checks = await runStartupChecksOnce();
         if (cancelled) return;
 
         if (checks.hw) setHwInfo(checks.hw);
@@ -2428,6 +2441,7 @@ function App() {
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
           body_concat_mode: config?.body_concat_mode ?? "auto",
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
+          clip_rotations: useVideoStore.getState().getClipRotations(),
           reuse_preview_path: canReusePreview ? cachedPreviewPath : null,
           reuse_preview_fingerprint: canReusePreview
             ? cachedPreviewFingerprint
@@ -3033,11 +3047,7 @@ function App() {
               onStatus: setStatus,
             });
           } else if (result.action === "apply_rotate") {
-            void videoCuts.applyRotate(path, result.degrees, {
-              onBusyChange: setBusy,
-              onProgressReset: resetProgress,
-              onStatus: setStatus,
-            });
+            videoCuts.applyRotate(path, result.degrees);
           } else if (result.action === "apply_photos") {
             void (async () => {
               try {

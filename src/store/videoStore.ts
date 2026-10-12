@@ -12,6 +12,14 @@ export type CutMarkKind = "trim" | "split" | "rotate";
 
 export type VideoSortKey = "name" | "duration" | "size";
 
+/** Clockwise quarter-turn applied at export (file bytes stay untouched). */
+export type ClipRotation = 0 | 90 | 180 | 270;
+
+export function normalizeClipRotation(degrees: number): ClipRotation {
+  const d = ((Math.round(degrees / 90) * 90) % 360 + 360) % 360;
+  return d as ClipRotation;
+}
+
 function normPath(path: string): string {
   return path.replace(/\\/g, "/").toLowerCase();
 }
@@ -28,6 +36,8 @@ type VideoListState = {
   cutMarks: Record<string, CutMarkKind>;
   /** path(lower) → bumped when file bytes change in place (player cache bust) */
   mediaRevision: Record<string, number>;
+  /** path(lower) → pending export rotation (only non-zero entries). */
+  rotations: Record<string, ClipRotation>;
   addVideos: (paths: string[]) => Promise<void>;
   removeVideo: (path: string) => void;
   reorderVideos: (activePath: string, overPath: string) => void;
@@ -53,10 +63,27 @@ type VideoListState = {
   clearCutMarksFor: (paths: string[]) => void;
   clearAllCutMarks: () => void;
   bumpMediaRevision: (path: string) => void;
+  setRotation: (path: string, degrees: number) => void;
+  clearRotationsFor: (paths: string[]) => void;
+  clearAllRotations: () => void;
   getCutMark: (path: string) => CutMarkKind | null;
   getMediaRevision: (path: string) => number;
+  getRotation: (path: string) => ClipRotation;
+  /** Rotation per clip in `videoList` order (export options). */
+  getClipRotations: () => ClipRotation[];
   hasAnyCutMarks: () => boolean;
 };
+
+function withRotation(
+  map: Record<string, ClipRotation>,
+  path: string,
+  degrees: number,
+): Record<string, ClipRotation> {
+  const k = normPath(path);
+  const { [k]: _old, ...rest } = map;
+  const deg = normalizeClipRotation(degrees);
+  return deg === 0 ? rest : { ...rest, [k]: deg };
+}
 
 function bumpRev(
   map: Record<string, number>,
@@ -74,6 +101,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
   listSort: null,
   cutMarks: {},
   mediaRevision: {},
+  rotations: {},
 
   addVideos: async (paths: string[]) => {
     if (paths.length === 0) return;
@@ -143,7 +171,8 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     const k = normPath(path);
     const { [k]: _m, ...cutMarks } = get().cutMarks;
     const { [k]: _r, ...mediaRevision } = get().mediaRevision;
-    set({ videoList: next, watermarkClipIndex: wm, cutMarks, mediaRevision });
+    const { [k]: _rot, ...rotations } = get().rotations;
+    set({ videoList: next, watermarkClipIndex: wm, cutMarks, mediaRevision, rotations });
     void deleteWorkingCopy(path);
     if (next.length === 0) syncProductsFromMedia();
   },
@@ -212,12 +241,18 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       cutMarks[newK] = cutMarks[oldK]!;
       delete cutMarks[oldK];
     }
+    let rotations = get().rotations;
+    const oldDeg = rotations[oldK];
+    if (oldK !== newK && oldDeg) {
+      rotations = withRotation(withRotation(rotations, oldPath, 0), meta.path, oldDeg);
+    }
     set({
       videoList: get().videoList.map((v) =>
         v.path.toLowerCase() === oldPath.toLowerCase() ? meta : v,
       ),
       cutMarks,
       mediaRevision,
+      rotations,
     });
   },
 
@@ -231,7 +266,11 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     list.splice(idx, 1, part1, part2);
     let wm = get().watermarkClipIndex;
     if (wm != null && wm > idx) wm += 1;
-    set({ videoList: list, watermarkClipIndex: wm });
+    const deg = get().getRotation(oldPath);
+    let rotations = withRotation(get().rotations, oldPath, 0);
+    rotations = withRotation(rotations, part1.path, deg);
+    rotations = withRotation(rotations, part2.path, deg);
+    set({ videoList: list, watermarkClipIndex: wm, rotations });
   },
 
   restoreAfterSplitUndo: (part1Path, part2Path, restored) => {
@@ -282,6 +321,7 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
       listSort: null,
       cutMarks: {},
       mediaRevision: {},
+      rotations: {},
     });
     if (deleteFiles && paths.length > 0) {
       void deleteWorkingCopies(paths);
@@ -324,10 +364,9 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
 
   markRotated: (path) => {
     const k = normPath(path);
-    set({
-      cutMarks: { ...get().cutMarks, [k]: "rotate" },
-      mediaRevision: bumpRev(get().mediaRevision, path),
-    });
+    // Trim/split marks stay: they own the working-copy undo backup.
+    if (get().cutMarks[k]) return;
+    set({ cutMarks: { ...get().cutMarks, [k]: "rotate" } });
   },
 
   markSplit: (part1, part2, originalPath) => {
@@ -358,9 +397,25 @@ export const useVideoStore = create<VideoListState>((set, get) => ({
     set({ mediaRevision: bumpRev(get().mediaRevision, path) });
   },
 
+  setRotation: (path, degrees) => {
+    set({ rotations: withRotation(get().rotations, path, degrees) });
+  },
+
+  clearRotationsFor: (paths) => {
+    let rotations = get().rotations;
+    for (const p of paths) rotations = withRotation(rotations, p, 0);
+    set({ rotations });
+  },
+
+  clearAllRotations: () => set({ rotations: {} }),
+
   getCutMark: (path) => get().cutMarks[normPath(path)] ?? null,
 
   getMediaRevision: (path) => get().mediaRevision[normPath(path)] ?? 0,
+
+  getRotation: (path) => get().rotations[normPath(path)] ?? 0,
+
+  getClipRotations: () => get().videoList.map((v) => get().getRotation(v.path)),
 
   hasAnyCutMarks: () => Object.keys(get().cutMarks).length > 0,
 }));

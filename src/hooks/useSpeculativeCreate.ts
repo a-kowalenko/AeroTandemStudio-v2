@@ -72,6 +72,7 @@ export function useSpeculativeCreate({
   const amsLookupSettled = useKundeStore((s) => s.amsLookupSettled);
   const videoList = useVideoStore((s) => s.videoList);
   const mediaRevision = useVideoStore((s) => s.mediaRevision);
+  const rotations = useVideoStore((s) => s.rotations);
   const photoList = usePhotoStore((s) => s.photoList);
   const photoMediaRevision = usePhotoStore((s) => s.mediaRevision);
   const watermarkClipIndex = useVideoStore((s) => s.watermarkClipIndex);
@@ -84,6 +85,9 @@ export function useSpeculativeCreate({
   const lastReconcileKey = useRef<string>("");
 
   const videoPaths = videoList.map((v) => v.path);
+  const clipRotations = videoPaths.map(
+    (p) => rotations[p.replace(/\\/g, "/").toLowerCase()] ?? 0,
+  );
   const photoPaths = photoList.map((p) => p.path);
   const mediaTag = buildMediaRevisionTag(
     videoPaths,
@@ -123,6 +127,7 @@ export function useSpeculativeCreate({
   /** Body/photos/encode — excludes WM *photo* selection (marks must not restart staging). */
   const coreKey = [
     videoPaths.join("|"),
+    clipRotations.join(","),
     photoPaths.join("|"),
     mediaTag,
     kunde.handcam_video,
@@ -181,6 +186,7 @@ export function useSpeculativeCreate({
           intro_mux_mode: config?.intro_mux_mode ?? "capcut",
           body_concat_mode: bodyMode,
           hw_accel_enabled: config?.hardware_acceleration_enabled ?? false,
+          clip_rotations: clipRotations,
         },
       });
       if (gen !== requestGen.current) return;

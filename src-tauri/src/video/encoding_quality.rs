@@ -190,9 +190,11 @@ pub fn build_hw_quality_params(
         }
         HwType::Videotoolbox => {
             let q = (100i32 - i32::from(crf)).clamp(40, 90);
+            // hevc_videotoolbox only accepts main / main10.
+            let profile = if hevc { "main" } else { "high" };
             let mut params = vec![
                 "-profile:v".into(),
-                "high".into(),
+                profile.into(),
                 "-q:v".into(),
                 q.to_string(),
                 "-b:v".into(),
@@ -403,6 +405,23 @@ mod tests {
         assert!(p.contains(&"-cq".into()));
         assert!(p.contains(&"18".into()));
         assert!(p.contains(&"p4".into()));
+    }
+
+    #[test]
+    fn videotoolbox_hevc_uses_main_profile() {
+        let hw = HwAccelInfo::videotoolbox();
+        let p = build_hw_quality_params(&hw, "hevc_videotoolbox", 20, VideoCodec::Hevc);
+        let i = p.iter().position(|a| a == "-profile:v").expect("profile");
+        assert_eq!(p[i + 1], "main");
+        assert!(!p.contains(&"high".into()));
+    }
+
+    #[test]
+    fn videotoolbox_h264_uses_high_profile() {
+        let hw = HwAccelInfo::videotoolbox();
+        let p = build_hw_quality_params(&hw, "h264_videotoolbox", 20, VideoCodec::H264);
+        let i = p.iter().position(|a| a == "-profile:v").expect("profile");
+        assert_eq!(p[i + 1], "high");
     }
 
     #[test]

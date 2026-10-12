@@ -4,6 +4,7 @@ import { Check, Eraser, QrCode } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { mediaKind } from "@/lib/media";
+import { previewRotateCoverStyles } from "@/lib/mediaPreviewRotate";
 import { fileBaseName } from "@/lib/qrSuccess";
 import {
   alignVideoLiveThumbs,
@@ -222,6 +223,10 @@ function LiveTile({
     (stage === "scanning" && mediaKind(frame.mediaPath) === "video");
   const presented = usePresentedQrTone(frame.tone, immediateScan);
   const poster = useQrVideoPoster(frame.key);
+  const rotateDeg = useVideoStore((s) =>
+    mediaKind(frame.mediaPath) === "video" ? s.getRotation(frame.mediaPath) : 0,
+  );
+  const rotate = previewRotateCoverStyles(rotateDeg);
   const [dismissRemoved, setDismissRemoved] = useState(false);
   const staying =
     presented === "scan" ||
@@ -366,12 +371,13 @@ function LiveTile({
           data-tone={tone}
           title={positionLabel ? `${name} — ${badge} — ${positionLabel}` : `${name} — ${badge}`}
         >
-          <div className="ats-qr-live-media">
+          <div className="ats-qr-live-media" style={rotate.container}>
             {base ? (
               <img
                 src={base}
                 alt={t("qr.progress.liveAlt", { name })}
                 className="ats-qr-live-img"
+                style={rotate.media}
                 draggable={false}
               />
             ) : null}
@@ -384,6 +390,7 @@ function LiveTile({
                   "ats-qr-live-img ats-qr-live-img-next",
                   ready && "is-in",
                 )}
+                style={rotate.media}
                 draggable={false}
                 onLoad={(e) => {
                   if (e.currentTarget.getAttribute("src") === incoming) onIncomingLoad();

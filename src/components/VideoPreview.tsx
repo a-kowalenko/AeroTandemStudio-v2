@@ -71,6 +71,7 @@ import {
   type MediaContextMenuState,
 } from "./MediaFileContextMenu";
 import { cn } from "../lib/utils";
+import { previewRotateThumbStyle } from "../lib/mediaPreviewRotate";
 
 /** Snappy ease-out — close to iOS spring settle without extra deps. */
 const CLIP_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -160,6 +161,7 @@ function ClipPosterFace({
     ? previewThumbnailQueue.getCached(video.path, bustKey)
     : null;
   const src = overlay ? overlaySrc : thumbSrc;
+  const rotation = useVideoStore((s) => s.getRotation(video.path));
 
   return (
     <>
@@ -169,6 +171,7 @@ function ClipPosterFace({
             src={src}
             alt=""
             className="h-full w-full object-cover"
+            style={previewRotateThumbStyle(rotation)}
             draggable={false}
           />
         ) : (
@@ -695,6 +698,9 @@ export function VideoPreview({
   }
 
   const current = videoList[activeClip];
+  const currentRotation = useVideoStore((s) =>
+    current ? s.getRotation(current.path) : 0,
+  );
 
   function selectClip(index: number, autoPlay = false) {
     setPlayerMode("clip");
@@ -815,6 +821,8 @@ export function VideoPreview({
           disabled={busy}
           autoPlay={playOnLoad && !playbackSuspended}
           onEnded={handleClipEnded}
+          previewRotateDeg={currentRotation === 0 ? null : currentRotation}
+          previewRotateTransition={false}
         />
       ) : (
         <div className="relative flex aspect-video w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--ats-preview-stage)] text-sm text-white/75 ring-1 ring-border">

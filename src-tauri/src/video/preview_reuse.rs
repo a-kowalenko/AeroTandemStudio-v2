@@ -51,7 +51,13 @@ pub fn create_content_fingerprint_with_tag(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-/// Encoding-relevant tag so preview reuse invalidates when mux/intro/outro settings change.
+/// Encoding-relevant tag so preview reuse invalidates when mux/intro/outro settings
+/// or clip rotations change.
+///
+/// `rotation_tag` comes from [`CreateVideoOptions::rotation_tag`]; the preview is
+/// rendered unrotated (empty tag), so any rotated export never matches it.
+///
+/// [`CreateVideoOptions::rotation_tag`]: crate::video::processor::CreateVideoOptions::rotation_tag
 pub fn preview_encoding_tag(
     intro_enabled: bool,
     intro_dauer: f64,
@@ -59,11 +65,12 @@ pub fn preview_encoding_tag(
     outro_enabled: bool,
     outro_path: &str,
     outro_dauer: f64,
+    rotation_tag: &str,
 ) -> String {
     let mux = crate::storage::config::normalize_intro_mux_mode(intro_mux_mode);
     // Outro is effective only with a non-empty path.
     let outro_on = outro_enabled && !outro_path.trim().is_empty();
-    format!(
+    let mut tag = format!(
         "intro={}|dauer={:.3}|mux={}|outro={}|outropath={}|outrodauer={:.3}",
         intro_enabled as u8,
         intro_dauer,
@@ -71,7 +78,12 @@ pub fn preview_encoding_tag(
         outro_on as u8,
         if outro_on { outro_path.trim() } else { "" },
         outro_dauer,
-    )
+    );
+    if !rotation_tag.is_empty() {
+        tag.push_str("|rot=");
+        tag.push_str(rotation_tag);
+    }
+    tag
 }
 
 /// Copy `reuse_path` → `dest` when fingerprint still matches and the file exists.
@@ -135,6 +147,50 @@ mod tests {
             create_content_fingerprint_with_tag(&k, &[path.clone()], "mux=stream_copy").unwrap();
         let b = create_content_fingerprint_with_tag(&k, &[path], "mux=reencode").unwrap();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn encoding_tag_includes_rotation_only_when_rotated() {
+        let tag = |rot: &str| preview_encoding_tag(false, 3.0, "stream_copy", false, "", 5.0, rot);
+        assert!(!tag("").contains("rot="));
+        assert!(tag("90,0").ends_with("|rot=90,0"));
+        assert_eq!(tag("90,0"), tag("90,0"));
+        assert_ne!(tag("90,0"), tag("180,0"));
+    }
+
+    #[test]
+    fn rotated_export_does_not_match_unrotated_preview() {
+        let src = write_temp(b"preview-bytes");
+        let src_path = src.path().to_string_lossy().to_string();
+        let k = Kunde::default();
+        let preview_tag = preview_encoding_tag(false, 3.0, "stream_copy", false, "", 5.0, "");
+        let fp = create_content_fingerprint_with_tag(&k, &[src_path.clone()], &preview_tag)
+            .unwrap();
+        let dest_dir = tempfile::tempdir().unwrap();
+        let dest = dest_dir.path().join("final.mp4");
+
+        let rotated_tag = preview_encoding_tag(false, 3.0, "stream_copy", false, "", 5.0, "90");
+        let reused = try_reuse_preview_with_tag(
+            &src_path,
+            &fp,
+            &k,
+            &[src_path.clone()],
+            &dest,
+            &rotated_tag,
+        )
+        .unwrap();
+        assert!(!reused);
+
+        let reused = try_reuse_preview_with_tag(
+            &src_path,
+            &fp,
+            &k,
+            &[src_path.clone()],
+            &dest,
+            &preview_tag,
+        )
+        .unwrap();
+        assert!(reused);
     }
 
     #[test]

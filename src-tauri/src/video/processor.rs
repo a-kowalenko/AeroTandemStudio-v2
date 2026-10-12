@@ -24,7 +24,7 @@ use super::ffmpeg::{
     disk_full_error, ffmpeg_probe_stderr, is_cancelled, is_disk_full_error, probe_duration_secs,
     run_ffmpeg, run_ffmpeg_checked, run_ffmpeg_tagged, FfmpegError, ProgressCallback,
 };
-use super::hw_accel::{detect_hardware, HwAccelInfo, HwType};
+use super::hw_accel::{detect_hardware, hwaccel_safe_with_cpu_filters, HwAccelInfo, HwType};
 use super::intro_mux_fallback::IntroMuxChoice;
 use super::parallel::{ParallelError, ParallelVideoProcessor};
 use super::probe;
@@ -96,6 +96,43 @@ pub struct CreateVideoOptions {
     /// target-codec re-encode so Erstellen can reuse the staged body and confirm then.
     #[serde(default)]
     pub defer_forced_reencode: bool,
+    /// OPT-26: clockwise rotation per body clip (`0 | 90 | 180 | 270`), parallel to
+    /// `video_paths`. Missing / short ⇒ 0. Source files stay unrotated.
+    #[serde(default)]
+    pub clip_rotations: Vec<i32>,
+}
+
+impl CreateVideoOptions {
+    /// Normalized rotation of body clip `index` (0 when unset or invalid).
+    pub fn clip_rotation(&self, index: usize) -> u32 {
+        self.clip_rotations
+            .get(index)
+            .and_then(|d| super::rotate::normalize_rotation_degrees(*d).ok())
+            .unwrap_or(0)
+    }
+
+    /// Rotation of the first body clip whose path equals `path` (0 when not in the list).
+    pub fn rotation_for_path(&self, video_paths: &[String], path: &str) -> u32 {
+        video_paths
+            .iter()
+            .position(|p| p == path)
+            .map(|i| self.clip_rotation(i))
+            .unwrap_or(0)
+    }
+
+    /// Fingerprint tag of the normalized body rotations (`"90,0,180"`).
+    /// Empty when no clip is rotated, so unrotated fingerprints stay unchanged.
+    pub fn rotation_tag(&self, clip_count: usize) -> String {
+        let rotations: Vec<u32> = (0..clip_count).map(|i| self.clip_rotation(i)).collect();
+        if rotations.iter().all(|&d| d == 0) {
+            return String::new();
+        }
+        rotations
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    }
 }
 
 fn default_intro_dauer() -> f64 {
@@ -136,6 +173,7 @@ impl Default for CreateVideoOptions {
             body_concat_mode: default_body_concat_mode(),
             hw_accel_enabled: false,
             defer_forced_reencode: false,
+            clip_rotations: Vec::new(),
         }
     }
 }
@@ -556,9 +594,15 @@ impl CapcutNormalizePlan {
         self.scale_pad || self.fps || self.format
     }
 
-    /// Safe to attach `-hwaccel` on this input (no CPU normalize left).
+    /// Safe to attach any `-hwaccel` on this input (no CPU normalize left).
     pub fn allow_hwaccel_decode(self) -> bool {
         !self.needs_cpu_normalize()
+    }
+
+    /// `accel` may decode this input: always when no CPU normalize remains, otherwise
+    /// only decoders whose frames feed CPU filters safely (VideoToolbox).
+    pub fn permits_hwaccel(self, accel: &str) -> bool {
+        self.allow_hwaccel_decode() || hwaccel_safe_with_cpu_filters(accel)
     }
 }
 
@@ -596,16 +640,18 @@ pub fn capcut_normalize_plan(
     }
 }
 
-/// NVENC/VideoToolbox decode accel name when normalize filters are fully skipped.
+/// Decode accel name for a CapCut body input: CUDA only when normalize filters are
+/// fully skipped; VideoToolbox also in front of CPU scale/pad/fps/format.
 pub fn capcut_hwaccel_for_decode(hw: &HwAccelInfo, plan: CapcutNormalizePlan) -> Option<&str> {
-    if !plan.allow_hwaccel_decode() || !hw.available {
+    if !hw.available {
         return None;
     }
-    match hw.hw_type {
-        HwType::Nvidia => Some("cuda"),
-        HwType::Videotoolbox => Some("videotoolbox"),
-        HwType::Software => None,
-    }
+    let accel = match hw.hw_type {
+        HwType::Nvidia => "cuda",
+        HwType::Videotoolbox => "videotoolbox",
+        HwType::Software => return None,
+    };
+    plan.permits_hwaccel(accel).then_some(accel)
 }
 
 /// Build `[idx:v]…[label]` CapCut video branch with conditional scale/pad/fps/format.
@@ -782,8 +828,8 @@ pub enum SinglePassAudioMode {
 /// Inputs: `0` = background still, `1` = body, `2` = silent AAC source (`anullsrc`).
 ///
 /// OPT-21A: when `body_source` matches target WxH / fps / pix_fmt, body skips
-/// scale/pad/fps/format. `body_hwaccel` (`cuda` / `videotoolbox`) is only safe when
-/// those filters are fully skipped — callers must not pass it when CPU normalize remains.
+/// scale/pad/fps/format. `body_hwaccel` is dropped when CPU normalize remains, unless it
+/// is VideoToolbox (frames are downloaded before the CPU filters).
 pub fn build_intro_body_single_pass_args(
     hintergrund_path: &str,
     body_path: &str,
@@ -811,12 +857,8 @@ pub fn build_intro_body_single_pass_args(
     let fps = &v_params.fps;
 
     let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
-    // Never attach broken HW-decode when CPU normalize remains (ENOSYS risk).
-    let body_hwaccel = if body_plan.allow_hwaccel_decode() {
-        body_hwaccel
-    } else {
-        None
-    };
+    // CUDA + CPU normalize returned ENOSYS on Windows/NVIDIA.
+    let body_hwaccel = body_hwaccel.filter(|a| body_plan.permits_hwaccel(a));
 
     // Intro still always needs scale/pad/drawtext/format/fps (PNG → video).
     let intro_v = format!(
@@ -978,7 +1020,7 @@ pub struct SinglePassOutroInput {
 /// are filtergraph branches (no pre-rendered segment MP4s).
 ///
 /// OPT-21A: `body_source` / `outro_source` skip redundant scale/pad/fps/format when matching.
-/// `body_hwaccel` only applies when the body plan allows HW decode.
+/// `body_hwaccel` is filtered via [`CapcutNormalizePlan::permits_hwaccel`].
 ///
 /// Input order:
 /// 1. optional Intro still (`-loop 1`)
@@ -1031,11 +1073,7 @@ pub fn build_intro_body_outro_single_pass_args(
     let silence_idx = next_idx;
 
     let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
-    let body_hwaccel = if body_plan.allow_hwaccel_decode() {
-        body_hwaccel
-    } else {
-        None
-    };
+    let body_hwaccel = body_hwaccel.filter(|a| body_plan.permits_hwaccel(a));
     // Photo outro always normalizes; video outro may skip when source matches.
     let outro_plan = match outro.kind {
         OutroKind::Photo => CapcutNormalizePlan::full(),
@@ -2044,6 +2082,33 @@ fn resolve_mixed_body_target_pref(
 // Pipeline
 // ---------------------------------------------------------------------------
 
+/// CRF headroom for the rotated body when a CapCut pass re-encodes it afterwards.
+const ROTATION_INTERMEDIATE_CRF_HEADROOM: u8 = 4;
+
+/// Codec + CRF for the rotated body concat.
+///
+/// When a CapCut pass (intro `capcut` mode or outro) re-encodes the body anyway,
+/// encode the intermediate in the CapCut target codec (H.264 unless H.265 is forced)
+/// at higher quality — avoids a slow HEVC pass and limits generation loss.
+fn rotation_body_encode_target(
+    codec: VideoCodecPreference,
+    crf: u8,
+    intro_enabled: bool,
+    intro_mux_mode: &str,
+    outro_active: bool,
+) -> (VideoCodecPreference, u8) {
+    let capcut_follows =
+        outro_active || (intro_enabled && normalized_intro_mux_mode(intro_mux_mode) == "capcut");
+    if !capcut_follows {
+        return (codec, crf);
+    }
+    let target = match codec {
+        VideoCodecPreference::H265 => VideoCodecPreference::H265,
+        _ => VideoCodecPreference::H264,
+    };
+    (target, crf.saturating_sub(ROTATION_INTERMEDIATE_CRF_HEADROOM))
+}
+
 /// Create final MP4: optional intro + body clips → `output`.
 ///
 /// Default mux: encode intro clip, stream-copy join with body (fast).
@@ -2118,7 +2183,46 @@ pub fn create_video(
     } else {
         output.to_string()
     };
-    let body_path = if video_paths.len() == 1 {
+    // OPT-26: display matrix only survives when no later stage re-encodes the body
+    // and no clip already carries soft rotation (autorotate would double-apply).
+    let rotations: Vec<u32> = (0..video_paths.len())
+        .map(|i| options.clip_rotation(i))
+        .collect();
+    let rotation_route = if rotations.iter().all(|&d| d == 0) {
+        concat::BodyRotationRoute::None
+    } else {
+        let display_ok = !options.intro_enabled
+            && !outro_active
+            && matches!(options.video_codec, VideoCodecPreference::Auto)
+            && !concat::clips_have_soft_rotation(ffmpeg, video_paths)?;
+        concat::body_rotation_route(&rotations, display_ok)
+    };
+    let body_path = if rotation_route == concat::BodyRotationRoute::Bake {
+        if video_paths.len() > 1 {
+            emit_step_start(&on_progress, "Drehe und füge Clips zusammen…");
+        }
+        let cb = body_concat_overall_progress(Arc::clone(&on_progress));
+        let (rot_codec, rot_crf) = rotation_body_encode_target(
+            options.video_codec,
+            options.crf,
+            options.intro_enabled,
+            &options.intro_mux_mode,
+            outro_active,
+        );
+        let outcome = concat::concat_videos_rotated_reencode(
+            ffmpeg,
+            video_paths,
+            &rotations,
+            &body_target,
+            rot_codec,
+            rot_crf,
+            hw_accel_enabled,
+            cb,
+            on_reencode.as_ref(),
+        )?;
+        encoder_used = outcome.codec;
+        body_target
+    } else if video_paths.len() == 1 {
         video_paths[0].clone()
     } else if options.parallel_enabled && !body_codecs_compatible(ffmpeg, video_paths) {
         // Mixed codecs → per_clip encode in parallel, then stream-copy concat.
@@ -2228,6 +2332,15 @@ pub fn create_video(
             on_reencode.as_ref(),
         )?;
         body_target
+    };
+    let body_path = if let concat::BodyRotationRoute::Display(deg) = rotation_route {
+        // `display_ok` implies no intro/outro/forced codec → body goes straight to `output`.
+        let cb = body_concat_overall_progress(Arc::clone(&on_progress));
+        concat::remux_with_display_rotation(ffmpeg, &body_path, output, deg, cb)?;
+        encoder_used = "copy".into();
+        output.to_string()
+    } else {
+        body_path
     };
     if options.intro_enabled {
         // When Outro follows, do not pin the bar at 100% — CapCut mux is still ahead.
@@ -3535,6 +3648,58 @@ fn mux_with_outro(
 mod tests {
     use super::*;
 
+    #[test]
+    fn rotation_target_capcut_intro_uses_h264_with_headroom() {
+        let (codec, crf) =
+            rotation_body_encode_target(VideoCodecPreference::Auto, 20, true, "capcut", false);
+        assert_eq!(codec, VideoCodecPreference::H264);
+        assert_eq!(crf, 16);
+    }
+
+    #[test]
+    fn rotation_target_outro_keeps_forced_h265() {
+        let (codec, crf) =
+            rotation_body_encode_target(VideoCodecPreference::H265, 2, false, "capcut", true);
+        assert_eq!(codec, VideoCodecPreference::H265);
+        assert_eq!(crf, 0);
+    }
+
+    #[test]
+    fn rotation_target_without_capcut_is_unchanged() {
+        let (codec, crf) =
+            rotation_body_encode_target(VideoCodecPreference::Auto, 20, false, "capcut", false);
+        assert_eq!(codec, VideoCodecPreference::Auto);
+        assert_eq!(crf, 20);
+    }
+
+    #[test]
+    fn clip_rotations_parse_and_normalize() {
+        let opts: CreateVideoOptions =
+            serde_json::from_str(r#"{"clip_rotations":[0,90,-90,45,360]}"#).unwrap();
+        assert_eq!(opts.clip_rotation(0), 0);
+        assert_eq!(opts.clip_rotation(1), 90);
+        assert_eq!(opts.clip_rotation(2), 270);
+        assert_eq!(opts.clip_rotation(3), 0);
+        assert_eq!(opts.clip_rotation(4), 0);
+        assert_eq!(opts.clip_rotation(9), 0);
+        let legacy: CreateVideoOptions = serde_json::from_str("{}").unwrap();
+        assert!(legacy.clip_rotations.is_empty());
+    }
+
+    #[test]
+    fn rotation_tag_and_path_lookup() {
+        let mut opts = CreateVideoOptions::default();
+        assert_eq!(opts.rotation_tag(3), "");
+        opts.clip_rotations = vec![0, 0, 0];
+        assert_eq!(opts.rotation_tag(3), "");
+        opts.clip_rotations = vec![0, -90];
+        assert_eq!(opts.rotation_tag(3), "0,270,0");
+        let paths = vec!["a.mp4".to_string(), "b.mp4".to_string()];
+        assert_eq!(opts.rotation_for_path(&paths, "b.mp4"), 270);
+        assert_eq!(opts.rotation_for_path(&paths, "a.mp4"), 0);
+        assert_eq!(opts.rotation_for_path(&paths, "c.mp4"), 0);
+    }
+
     fn sample_kunde() -> Kunde {
         let mut k = Kunde::default();
         k.gast = "Max Mustermann".into();
@@ -4282,6 +4447,54 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             capcut_hwaccel_for_decode(&HwAccelInfo::software(), CapcutNormalizePlan::none()),
             None
         );
+    }
+
+    #[test]
+    fn capcut_videotoolbox_hwaccel_also_with_cpu_normalize() {
+        let vt = HwAccelInfo::videotoolbox();
+        assert_eq!(
+            capcut_hwaccel_for_decode(&vt, CapcutNormalizePlan::full()),
+            Some("videotoolbox")
+        );
+        assert!(CapcutNormalizePlan::full().permits_hwaccel("videotoolbox"));
+        assert!(!CapcutNormalizePlan::full().permits_hwaccel("cuda"));
+        assert!(CapcutNormalizePlan::none().permits_hwaccel("cuda"));
+    }
+
+    #[test]
+    fn single_pass_keeps_videotoolbox_decode_on_mismatch() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("h264_videotoolbox", 18, true);
+        let src = CapcutSourceVideo {
+            width: 1280,
+            height: 720,
+            fps: "60".into(),
+            pix_fmt: "yuv420p10le".into(),
+        };
+        let args = build_intro_body_single_pass_args(
+            "bg.png",
+            "body.mp4",
+            "out.mp4",
+            5.0,
+            10.0,
+            &v,
+            "drawtext=text='x'",
+            "h264_videotoolbox",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+            Some(&src),
+            Some("videotoolbox"),
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("[1:v]scale=1920:1080"));
+        let hw_i = args.iter().position(|a| a == "-hwaccel").expect("hwaccel");
+        assert_eq!(args.get(hw_i + 1).map(String::as_str), Some("videotoolbox"));
+        assert_eq!(args.get(hw_i + 3).map(String::as_str), Some("body.mp4"));
+        assert!(!args.iter().any(|a| a == "-hwaccel_output_format"));
     }
 
     #[test]

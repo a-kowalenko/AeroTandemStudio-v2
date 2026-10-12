@@ -1997,7 +1997,7 @@
       "success": {
         "trim": "Trim applied. Undo from the clip or Undo all edits.",
         "split": "Video split. Undo from a part clip or Undo all edits.",
-        "rotate": "Rotation applied. Undo from the clip or Undo all edits.",
+        "rotate": "Rotation saved — applied when creating. Undo from the clip or Undo all edits.",
         "undoOne": "Edit for this clip undone.",
         "undoAll": "Undid {{count}} edit(s)."
       },

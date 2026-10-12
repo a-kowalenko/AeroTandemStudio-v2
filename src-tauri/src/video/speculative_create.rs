@@ -252,6 +252,7 @@ pub fn build_fingerprint_with_instructor(
         watermark_photo_indices,
         resource_dir,
         None,
+        video_opts,
     )?;
     Ok(combine_fingerprints(&body, &photos, &wm))
 }
@@ -297,6 +298,10 @@ pub fn build_body_fingerprint(
         video_opts.parallel_enabled as u8,
         video_opts.hw_accel_enabled as u8,
     ));
+    let rot = video_opts.rotation_tag(video_paths.len());
+    if !rot.is_empty() {
+        payload.push_str(&format!("rot:{rot}\n"));
+    }
     append_rev_lines(&mut payload, media_revision_tag, 'v');
     hash_payload(&payload)
 }
@@ -349,6 +354,7 @@ pub fn build_wm_video_fingerprint(
     watermark_clip_index: Option<usize>,
     resource_dir: Option<&Path>,
     resolved_wm_clip: Option<&str>,
+    video_opts: &CreateVideoOptions,
 ) -> Result<String, String> {
     let mut payload = String::with_capacity(256);
     let need_wm_video = video_unpaid(kunde) && !video_paths.is_empty();
@@ -357,24 +363,34 @@ pub fn build_wm_video_fingerprint(
         payload.push_str(&format!("stamp:{}\n", stamp_identity(resource_dir)));
         if let Some(path) = resolved_wm_clip {
             append_file_identity(&mut payload, "wm_clip", path)?;
+            append_wm_rotation(&mut payload, video_opts.rotation_for_path(video_paths, path));
         } else if let Some(i) = watermark_clip_index {
             payload.push_str(&format!("clip_idx:{watermark_clip_index:?}\n"));
             if i < video_paths.len() {
                 append_file_identity(&mut payload, "wm_clip", &video_paths[i])?;
+                append_wm_rotation(&mut payload, video_opts.clip_rotation(i));
             } else {
                 payload.push_str("wm_clip:oob\n");
             }
         } else {
             // No resolved pick yet — fingerprint all candidates (default = longest).
             payload.push_str("clip_idx:None\n");
-            for path in video_paths {
+            for (i, path) in video_paths.iter().enumerate() {
                 append_file_identity(&mut payload, "wm_clip_cand", path)?;
+                append_wm_rotation(&mut payload, video_opts.clip_rotation(i));
             }
         }
     } else {
         payload.push_str("wm_video:none\n");
     }
     hash_payload(&payload)
+}
+
+/// Only non-zero rotations are written so unrotated WM fingerprints stay unchanged.
+fn append_wm_rotation(payload: &mut String, degrees: u32) {
+    if degrees != 0 {
+        payload.push_str(&format!("wm_rot:{degrees}\n"));
+    }
 }
 
 /// WM-photos half (selection + unpaid foto + stamp). Changes on WM photo toggle.
@@ -431,6 +447,7 @@ pub fn build_wm_fingerprint(
     watermark_photo_indices: &[usize],
     resource_dir: Option<&Path>,
     resolved_wm_clip: Option<&str>,
+    video_opts: &CreateVideoOptions,
 ) -> Result<String, String> {
     let v = build_wm_video_fingerprint(
         kunde,
@@ -438,6 +455,7 @@ pub fn build_wm_fingerprint(
         watermark_clip_index,
         resource_dir,
         resolved_wm_clip,
+        video_opts,
     )?;
     let p = build_wm_photos_fingerprint(kunde, photo_paths, watermark_photo_indices, resource_dir)?;
     Ok(combine_wm_halves(&v, &p))
@@ -712,6 +730,7 @@ pub fn start_staging(
         request.watermark_clip_index,
         resource_dir,
         resolved_wm_clip.as_deref(),
+        &request.video,
     )?;
     let wm_photos_fp = build_wm_photos_fingerprint(
         kunde,
@@ -1638,7 +1657,15 @@ fn stage_watermarks(
                         });
                     })
                 };
-                encoder = create_video_with_watermark(ffmpeg, &clip, &wm_str, resource_dir, on_wm)?;
+                let wm_rotation = request.video.rotation_for_path(video_paths, &clip);
+                encoder = create_video_with_watermark(
+                    ffmpeg,
+                    &clip,
+                    &wm_str,
+                    wm_rotation,
+                    resource_dir,
+                    on_wm,
+                )?;
                 video_rel = Some(
                     wm_path
                         .strip_prefix(&layout.base_dir)
@@ -2584,6 +2611,7 @@ pub(crate) fn commit_from_staging(
         options.watermark_clip_index,
         resource_dir,
         resolved_wm_clip.as_deref(),
+        &options.video,
     )
     .unwrap_or_default();
     let want_wm_photos = build_wm_photos_fingerprint(
@@ -2642,6 +2670,7 @@ pub(crate) fn commit_from_staging(
                     ffmpeg,
                     &clip,
                     &wm_str,
+                    options.video.rotation_for_path(video_paths, &clip),
                     resource_dir,
                     Arc::clone(&on_progress),
                 )?;
@@ -3092,6 +3121,62 @@ mod tests {
     }
 
     #[test]
+    fn body_fp_changes_on_rotation_and_is_stable_for_same_rotation() {
+        let v1 = write_temp(b"video-a");
+        let v2 = write_temp(b"video-b");
+        let k = base_kunde();
+        let paths: Vec<String> = vec![
+            v1.path().to_string_lossy().into(),
+            v2.path().to_string_lossy().into(),
+        ];
+        let upright = opts();
+        let mut zeros = opts();
+        zeros.clip_rotations = vec![0, 0];
+        let mut rot_a = opts();
+        rot_a.clip_rotations = vec![90, 0];
+        let mut rot_a_again = opts();
+        rot_a_again.clip_rotations = vec![-270, 0];
+        let mut rot_b = opts();
+        rot_b.clip_rotations = vec![0, 90];
+
+        let fp_upright = build_body_fingerprint(&k, &paths, &upright, "").unwrap();
+        let fp_zeros = build_body_fingerprint(&k, &paths, &zeros, "").unwrap();
+        let fp_a = build_body_fingerprint(&k, &paths, &rot_a, "").unwrap();
+        let fp_a_again = build_body_fingerprint(&k, &paths, &rot_a_again, "").unwrap();
+        let fp_b = build_body_fingerprint(&k, &paths, &rot_b, "").unwrap();
+
+        assert_eq!(fp_upright, fp_zeros, "explicit 0° must match unset");
+        assert_ne!(fp_upright, fp_a, "rotating must invalidate the staged body");
+        assert_eq!(fp_a, fp_a_again, "same normalized rotation → same body");
+        assert_ne!(fp_a, fp_b, "rotation on a different clip → different body");
+        assert_ne!(
+            fp(&k, &paths, &[], &upright, ""),
+            fp(&k, &paths, &[], &rot_a, ""),
+        );
+    }
+
+    #[test]
+    fn wm_video_fp_follows_rotation_of_wm_clip_only() {
+        let v_wm = write_temp(b"wm-source-clip");
+        let v_other = write_temp(b"other-clip-bytes");
+        let mut k = base_kunde();
+        k.ist_bezahlt_handcam_video = false;
+        let wm = v_wm.path().to_string_lossy().to_string();
+        let other = v_other.path().to_string_lossy().to_string();
+        let paths = vec![other, wm.clone()];
+        let wm_fp = |rotations: Vec<i32>| {
+            let mut o = opts();
+            o.clip_rotations = rotations;
+            build_wm_video_fingerprint(&k, &paths, Some(1), None, Some(&wm), &o).unwrap()
+        };
+        let upright = wm_fp(vec![]);
+        assert_eq!(upright, wm_fp(vec![0, 0]));
+        assert_eq!(upright, wm_fp(vec![90, 0]), "other clip rotated → WM unchanged");
+        assert_ne!(upright, wm_fp(vec![0, 180]));
+        assert_eq!(wm_fp(vec![0, 180]), wm_fp(vec![90, -180]));
+    }
+
+    #[test]
     fn photos_fp_changes_on_instructor_settings() {
         let p = write_temp(b"photo");
         let instructor = write_temp(b"instructor");
@@ -3139,8 +3224,8 @@ mod tests {
             p1.path().to_string_lossy().into(),
             p2.path().to_string_lossy().into(),
         ];
-        let a = build_wm_fingerprint(&k, &[vp.clone()], &photos, None, &[], None, None).unwrap();
-        let b = build_wm_fingerprint(&k, &[vp], &photos, None, &[0], None, None).unwrap();
+        let a = build_wm_fingerprint(&k, &[vp.clone()], &photos, None, &[], None, None, &opts()).unwrap();
+        let b = build_wm_fingerprint(&k, &[vp], &photos, None, &[0], None, None, &opts()).unwrap();
         assert_ne!(a, b);
         let body =
             build_body_fingerprint(&k, &[v.path().to_string_lossy().into()], &opts(), "").unwrap();
@@ -3165,8 +3250,8 @@ mod tests {
             p1.path().to_string_lossy().into(),
             p2.path().to_string_lossy().into(),
         ];
-        let video_a = build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap();
-        let video_b = build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap();
+        let video_a = build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp), &opts()).unwrap();
+        let video_b = build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp), &opts()).unwrap();
         assert_eq!(video_a, video_b);
         let photos_a = build_wm_photos_fingerprint(&k, &photos, &[0], None).unwrap();
         let photos_b = build_wm_photos_fingerprint(&k, &photos, &[0, 1], None).unwrap();
@@ -3174,7 +3259,7 @@ mod tests {
         assert_eq!(
             combine_wm_halves(&video_a, &photos_a),
             combine_wm_halves(
-                &build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp)).unwrap(),
+                &build_wm_video_fingerprint(&k, &[vp.clone()], None, None, Some(&vp), &opts()).unwrap(),
                 &photos_a
             )
         );
@@ -3194,9 +3279,9 @@ mod tests {
         let other = v_other.path().to_string_lossy().to_string();
         // Same resolved file; FE remaps index after deleting an earlier clip (1 → 0).
         let with_both =
-            build_wm_video_fingerprint(&k, &[other, wm.clone()], Some(1), None, Some(&wm)).unwrap();
+            build_wm_video_fingerprint(&k, &[other, wm.clone()], Some(1), None, Some(&wm), &opts()).unwrap();
         let wm_only =
-            build_wm_video_fingerprint(&k, &[wm.clone()], Some(0), None, Some(&wm)).unwrap();
+            build_wm_video_fingerprint(&k, &[wm.clone()], Some(0), None, Some(&wm), &opts()).unwrap();
         assert_eq!(with_both, wm_only);
     }
 
@@ -3208,10 +3293,10 @@ mod tests {
         k.ist_bezahlt_handcam_video = false;
         let a = v_a.path().to_string_lossy().to_string();
         let b = v_b.path().to_string_lossy().to_string();
-        let fp_a = build_wm_video_fingerprint(&k, &[a.clone(), b.clone()], Some(0), None, Some(&a))
+        let fp_a = build_wm_video_fingerprint(&k, &[a.clone(), b.clone()], Some(0), None, Some(&a), &opts())
             .unwrap();
         let fp_b =
-            build_wm_video_fingerprint(&k, &[a, b.clone()], Some(1), None, Some(&b)).unwrap();
+            build_wm_video_fingerprint(&k, &[a, b.clone()], Some(1), None, Some(&b), &opts()).unwrap();
         assert_ne!(fp_a, fp_b);
     }
 

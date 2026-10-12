@@ -79,11 +79,15 @@ pub struct ExtractedFrame {
 }
 
 /// Build FFmpeg argv for one full-resolution JPEG (no `-nostdin`; runner adds it).
+///
+/// `rotation_deg` is the clip's edit rotation (OPT-26); the file itself stays
+/// unrotated, so the frame is transposed here to match preview and export.
 pub fn build_extract_frame_args(
     input: &str,
     seek_secs: f64,
     output: &str,
     mode: FrameSeekMode,
+    rotation_deg: u32,
 ) -> Vec<String> {
     let seek = format_seek_secs(seek_secs);
     let mut args = vec![
@@ -105,6 +109,10 @@ pub fn build_extract_frame_args(
             args.push("-ss".into());
             args.push(seek);
         }
+    }
+    if let Ok(vf) = crate::video::rotate::transpose_filter_for_degrees(rotation_deg) {
+        args.push("-vf".into());
+        args.push(vf);
     }
     args.extend([
         "-an".into(),
@@ -175,12 +183,13 @@ fn run_extract_one(
     seek_secs: f64,
     out_path: &Path,
     mode: FrameSeekMode,
+    rotation_deg: u32,
 ) -> Result<(), FrameExtractError> {
     if is_cancelled() {
         return Err(FrameExtractError::cancelled());
     }
     let out_str = out_path.to_string_lossy().into_owned();
-    let args = build_extract_frame_args(input, seek_secs, &out_str, mode);
+    let args = build_extract_frame_args(input, seek_secs, &out_str, mode, rotation_deg);
     match run_ffmpeg_checked(ffmpeg, &args) {
         Ok(()) => {}
         Err(e) => {
@@ -190,8 +199,13 @@ fn run_extract_one(
             }
             if mode == FrameSeekMode::Fast {
                 // Accurate fallback when keyframe seek fails.
-                let accurate =
-                    build_extract_frame_args(input, seek_secs, &out_str, FrameSeekMode::Accurate);
+                let accurate = build_extract_frame_args(
+                    input,
+                    seek_secs,
+                    &out_str,
+                    FrameSeekMode::Accurate,
+                    rotation_deg,
+                );
                 match run_ffmpeg_checked(ffmpeg, &accurate) {
                     Ok(()) => {}
                     Err(e2) => {
@@ -232,6 +246,7 @@ pub fn extract_frames_at_times<F>(
     times_secs: &[f64],
     ffmpeg: Option<&Path>,
     seek_mode: FrameSeekMode,
+    rotation_deg: u32,
     mut on_progress: F,
 ) -> Result<Vec<ExtractedFrame>, FrameExtractError>
 where
@@ -302,7 +317,7 @@ where
                 }
                 let t = times_secs[i];
                 let out = &out_paths[i];
-                match run_extract_one(ffmpeg, &in_str, t, out, seek_mode) {
+                match run_extract_one(ffmpeg, &in_str, t, out, seek_mode, rotation_deg) {
                     Ok(()) => {
                         let epoch = frame_capture_epoch(clip_base, t);
                         let _ = set_file_mtime_epoch(out, epoch);
@@ -356,12 +371,14 @@ pub fn extract_frame_at(
     video_path: &Path,
     time_secs: f64,
     ffmpeg: Option<&Path>,
+    rotation_deg: u32,
 ) -> Result<ExtractedFrame, FrameExtractError> {
     let frames = extract_frames_at_times(
         video_path,
         &[time_secs.max(0.0)],
         ffmpeg,
         FrameSeekMode::Accurate,
+        rotation_deg,
         |_, _, _| {},
     )?;
     frames
@@ -429,8 +446,14 @@ mod tests {
 
     #[test]
     fn build_extract_frame_args_accurate_seek_order() {
-        let args =
-            build_extract_frame_args(r"C:\clip.mp4", 12.5, r"C:\out.jpg", FrameSeekMode::Accurate);
+        let args = build_extract_frame_args(
+            r"C:\clip.mp4",
+            12.5,
+            r"C:\out.jpg",
+            FrameSeekMode::Accurate,
+            0,
+        );
+        assert!(!args.iter().any(|a| a == "-vf"));
         let i_pos = args.iter().position(|a| a == "-i").expect("-i");
         let ss_pos = args.iter().position(|a| a == "-ss").expect("-ss");
         assert!(
@@ -445,13 +468,24 @@ mod tests {
     #[test]
     fn build_extract_frame_args_fast_seek_order() {
         let args =
-            build_extract_frame_args(r"C:\clip.mp4", 3.0, r"C:\out.jpg", FrameSeekMode::Fast);
+            build_extract_frame_args(r"C:\clip.mp4", 3.0, r"C:\out.jpg", FrameSeekMode::Fast, 0);
         let i_pos = args.iter().position(|a| a == "-i").expect("-i");
         let ss_pos = args.iter().position(|a| a == "-ss").expect("-ss");
         assert!(
             ss_pos < i_pos,
             "fast seek: -ss must precede -i (got {args:?})"
         );
+    }
+
+    #[test]
+    fn build_extract_frame_args_bakes_clip_rotation() {
+        let args =
+            build_extract_frame_args("clip.mp4", 1.0, "out.jpg", FrameSeekMode::Accurate, 270);
+        let vf = args.iter().position(|a| a == "-vf").expect("-vf");
+        assert_eq!(args[vf + 1], "transpose=2");
+        let i_pos = args.iter().position(|a| a == "-i").unwrap();
+        assert!(vf > i_pos, "-vf is an output option");
+        assert_eq!(args.last().map(String::as_str), Some("out.jpg"));
     }
 
     #[test]
@@ -524,6 +558,7 @@ mod tests {
             &[0.0, 0.5, 1.0],
             Some(&ffmpeg),
             FrameSeekMode::Fast,
+            0,
             |_, _, _| {},
         )
         .expect("extract");

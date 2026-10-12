@@ -26,10 +26,27 @@ import {
 } from "../lib/thumbnailQueue";
 import { cn, isLinuxHost } from "../lib/utils";
 import {
+  previewRotateCoverStyles,
   previewRotateMediaStyle,
   previewRotateStageClass,
 } from "../lib/mediaPreviewRotate";
 import { FILMSTRIP_FRAME_COUNT } from "../lib/filmstripPrefetch";
+
+/** Filmstrip frames are extracted unrotated; the clip's edit rotation is applied here. */
+function FilmstripTile({ url, rotateDeg }: { url: string; rotateDeg: number }) {
+  const rotate = previewRotateCoverStyles(rotateDeg);
+  return (
+    <div
+      className="relative h-full min-w-0 flex-1 overflow-hidden"
+      style={rotate.container}
+    >
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${url})`, ...rotate.media }}
+      />
+    </div>
+  );
+}
 
 function FilmstripSkeleton({ count = FILMSTRIP_FRAME_COUNT }: { count?: number }) {
   return (
@@ -1223,10 +1240,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     <div className="absolute inset-0 flex bg-neutral-800">
                       {filmstripFrames && filmstripFrames.length > 0 ? (
                         filmstripFrames.map((url, i) => (
-                          <div
+                          <FilmstripTile
                             key={`fs-${i}`}
-                            className="h-full min-w-0 flex-1 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${url})` }}
+                            url={url}
+                            rotateDeg={rotateStageDeg}
                           />
                         ))
                       ) : (
@@ -1348,10 +1365,10 @@ export const VideoPlayer = forwardRef<VideoPlayerHandle, VideoPlayerProps>(
                     <div className="absolute inset-0 flex bg-neutral-800">
                       {filmstripFrames && filmstripFrames.length > 0 ? (
                         filmstripFrames.map((url, i) => (
-                          <div
+                          <FilmstripTile
                             key={`fs-split-${i}`}
-                            className="h-full min-w-0 flex-1 bg-cover bg-center"
-                            style={{ backgroundImage: `url(${url})` }}
+                            url={url}
+                            rotateDeg={rotateStageDeg}
                           />
                         ))
                       ) : (

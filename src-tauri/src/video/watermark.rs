@@ -16,11 +16,15 @@ use crate::video::hw_accel::detect_hardware;
 use crate::video::processor::{find_asset, ProcessorError};
 
 /// Build FFmpeg args for 320×240 preview video with centered stamp overlay.
+///
+/// `rotation_deg` is the clip's edit rotation (OPT-26); it is baked before scaling
+/// so the stamp stays upright.
 pub fn build_watermark_video_args(
     input: &str,
     stamp: &str,
     output: &str,
     force_software: bool,
+    rotation_deg: u32,
 ) -> (String, Vec<String>) {
     let hw = detect_hardware();
     let (encoder, mut enc_params) =
@@ -38,11 +42,14 @@ pub fn build_watermark_video_args(
         ];
     }
 
-    let filter = concat!(
-        "[0]scale=320:240:force_original_aspect_ratio=decrease,",
-        "pad=320:240:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p[v];",
-        "[1]scale=320:240:force_original_aspect_ratio=decrease:eval=init[wm_scaled];",
-        "[v][wm_scaled]overlay=(W-w)/2:(H-h)/2"
+    let rotate = crate::video::rotate::transpose_filter_for_degrees(rotation_deg)
+        .map(|t| format!("{t},"))
+        .unwrap_or_default();
+    let filter = format!(
+        "[0]{rotate}scale=320:240:force_original_aspect_ratio=decrease,\
+         pad=320:240:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p[v];\
+         [1]scale=320:240:force_original_aspect_ratio=decrease:eval=init[wm_scaled];\
+         [v][wm_scaled]overlay=(W-w)/2:(H-h)/2"
     );
 
     let mut args = vec![
@@ -52,7 +59,7 @@ pub fn build_watermark_video_args(
         "-i".into(),
         stamp.to_string(),
         "-filter_complex".into(),
-        filter.to_string(),
+        filter,
     ];
     args.extend(enc_params);
     args.extend([
@@ -72,19 +79,30 @@ pub fn create_video_with_watermark(
     ffmpeg: &Path,
     input: &str,
     output: &str,
+    rotation_deg: u32,
     resource_dir: Option<&Path>,
     on_progress: ProgressCallback,
 ) -> Result<String, ProcessorError> {
     let stamp = find_asset(ASSET_PREVIEW_STEMPEL, resource_dir)?;
     let duration = probe_duration_secs(ffmpeg, input).unwrap_or(1.0);
-    let (encoder, args) =
-        build_watermark_video_args(input, stamp.to_string_lossy().as_ref(), output, false);
+    let (encoder, args) = build_watermark_video_args(
+        input,
+        stamp.to_string_lossy().as_ref(),
+        output,
+        false,
+        rotation_deg,
+    );
 
     if let Err(e) = run_ffmpeg(ffmpeg, &args, duration, Arc::clone(&on_progress)) {
         // Retry software if HW failed
         if !matches!(e, FfmpegError::Cancelled) {
-            let (_, args_sw) =
-                build_watermark_video_args(input, stamp.to_string_lossy().as_ref(), output, true);
+            let (_, args_sw) = build_watermark_video_args(
+                input,
+                stamp.to_string_lossy().as_ref(),
+                output,
+                true,
+                rotation_deg,
+            );
             run_ffmpeg(ffmpeg, &args_sw, duration, on_progress)?;
             return Ok("libx264".into());
         }
@@ -173,13 +191,25 @@ mod tests {
 
     #[test]
     fn watermark_video_args_contain_overlay() {
-        let (enc, args) = build_watermark_video_args("in.mp4", "stamp.png", "out.mp4", true);
+        let (enc, args) = build_watermark_video_args("in.mp4", "stamp.png", "out.mp4", true, 0);
         assert_eq!(enc, "libx264");
         assert!(args.iter().any(|a| a.contains("overlay")));
+        assert!(!args.iter().any(|a| a.contains("transpose")));
+        assert!(args.iter().any(|a| a.starts_with("[0]scale=320:240")));
         assert!(args.contains(&"-an".to_string()));
         assert!(args.contains(&"-progress".to_string()));
         assert!(args.contains(&"pipe:1".to_string()));
         assert_eq!(args.last().unwrap(), "out.mp4");
+    }
+
+    #[test]
+    fn watermark_video_args_bake_clip_rotation_before_scale() {
+        let (_, args) = build_watermark_video_args("in.mp4", "stamp.png", "out.mp4", true, 90);
+        let fc = args.iter().position(|a| a == "-filter_complex").unwrap();
+        assert!(args[fc + 1].starts_with("[0]transpose=1,scale=320:240"));
+        let (_, args) = build_watermark_video_args("in.mp4", "stamp.png", "out.mp4", true, 180);
+        let fc = args.iter().position(|a| a == "-filter_complex").unwrap();
+        assert!(args[fc + 1].starts_with("[0]hflip,vflip,scale="));
     }
 
     #[test]

@@ -1997,7 +1997,7 @@
       "success": {
         "trim": "Recorte aplicado. Deshazlo desde el clip o con Deshacer todas las ediciones.",
         "split": "Video dividido. Deshazlo desde un clip parcial o con Deshacer todas las ediciones.",
-        "rotate": "Rotación aplicada. Deshazla desde el clip o con Deshacer todas las ediciones.",
+        "rotate": "Rotación guardada — se aplica al crear. Deshazla desde el clip o con Deshacer todas las ediciones.",
         "undoOne": "Se deshizo la edición de este clip.",
         "undoAll": "Se deshicieron {{count}} edición(es)."
       },

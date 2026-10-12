@@ -60,6 +60,52 @@ export function previewRotateMediaStyle(
 }
 
 /**
+ * Static thumb in a fixed 16:9 tile. Quarter turns are letterboxed (portrait result
+ * fits the tile height); pre-rotate box is 56.25% × 56.25% of the tile.
+ */
+export function previewRotateThumbStyle(degrees: number): CSSProperties | undefined {
+  const turn = normalizePreviewRotateDeg(degrees);
+  if (turn === 0) return undefined;
+  if (turn === 180) return { transform: "rotate(180deg)" };
+  return {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    width: "56.25%",
+    height: "56.25%",
+    objectFit: "contain",
+    transform: `translate(-50%, -50%) rotate(${turn}deg)`,
+  };
+}
+
+/**
+ * Cover-fit media (filmstrip tile, QR live tile) rotated inside a clipped box.
+ * Quarter turns size the pre-rotate box with container units (cqh × cqw), so the
+ * container needs `container-type: size` — returned as `container`.
+ */
+export function previewRotateCoverStyles(degrees: number): {
+  container?: CSSProperties;
+  media?: CSSProperties;
+} {
+  const turn = normalizePreviewRotateDeg(degrees);
+  if (turn === 0) return {};
+  if (turn === 180) return { media: { transform: "rotate(180deg)" } };
+  return {
+    container: { containerType: "size" },
+    media: {
+      position: "absolute",
+      left: "50%",
+      top: "50%",
+      right: "auto",
+      bottom: "auto",
+      width: "100cqh",
+      height: "100cqw",
+      transform: `translate(-50%, -50%) rotate(${turn}deg)`,
+    },
+  };
+}
+
+/**
  * CSS rotate when the parent frame is already sized to the *post*-rotation aspect
  * (e.g. PhotoEditor contain-box). Uses px so Tailwind w/h-full cannot fight percentages.
  *

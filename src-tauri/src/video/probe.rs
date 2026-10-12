@@ -41,9 +41,10 @@ static STREAM_ENCODER_RE: Lazy<Regex> =
 static ROTATE_TAG_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?im)^\s*rotate\s*:\s*(-?\d+(?:\.\d+)?)\s*$").unwrap());
 
-/// `displaymatrix: rotation of -90.00 degrees` (stream side data).
+/// `displaymatrix: rotation of -90.00 degrees` (stream side data; FFmpeg ≥ 8 prints
+/// `Display Matrix: rotation of …`).
 static DISPLAYMATRIX_ROT_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?i)displaymatrix:\s*rotation\s+of\s+(-?\d+(?:\.\d+)?)\s+degrees").unwrap()
+    Regex::new(r"(?i)display\s?matrix:\s*rotation\s+of\s+(-?\d+(?:\.\d+)?)\s+degrees").unwrap()
 });
 
 /// Explicit edit-list mentions in FFmpeg `-i` stderr (rare but decisive).
@@ -648,6 +649,11 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from '0_qr_neu.mp4':
 "#;
         assert_eq!(
             probe_video_rotation_degrees(stderr),
+            VideoRotationProbe::Known(270)
+        );
+        let ffmpeg9 = "    Side data:\n      Display Matrix: rotation of -90.00 degrees\n";
+        assert_eq!(
+            probe_video_rotation_degrees(ffmpeg9),
             VideoRotationProbe::Known(270)
         );
     }

@@ -112,6 +112,9 @@ export function VideoCutter({
     );
     return item?.fps && item.fps > 1 ? item.fps : 30;
   });
+  const baseRotateDeg = useVideoStore((s) =>
+    videoPath ? s.getRotation(videoPath) : 0,
+  );
   const [mode, setMode] = useState<VideoEditMode>("trim");
   const [startMs, setStartMs] = useState(0);
   const [endMs, setEndMs] = useState(0);
@@ -482,6 +485,7 @@ export function VideoCutter({
     ) : mode === "photos" && videoPath ? (
       <VideoCutterPhotosControls
         videoPath={videoPath}
+        rotationDeg={baseRotateDeg}
         playheadMs={playheadMs}
         durationMs={durationMs}
         rangeStartMs={startMs}
@@ -550,7 +554,7 @@ export function VideoCutter({
           filmstripFrames={filmstripFrames}
           // Always pass a number (0 outside rotate) so absolute centering stays
           // mounted — toggling null↔layout + transition-transform slides the video.
-          previewRotateDeg={pendingRotateDeg}
+          previewRotateDeg={baseRotateDeg + pendingRotateDeg}
           previewRotateTransition={rotateActive}
           onTrimChange={
             trimActive || photosActive ? handleTrimChange : undefined

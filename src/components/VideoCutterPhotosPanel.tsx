@@ -8,6 +8,7 @@ import { MediaEditToolReset } from "./MediaEditRotateBar";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { videoFileSrc } from "../lib/mediaUrl";
+import { normalizePreviewRotateDeg } from "../lib/mediaPreviewRotate";
 import { cn, isCancellationError } from "../lib/utils";
 import {
   cancelEncode,
@@ -33,6 +34,8 @@ type ItemsUpdater =
 
 type VideoCutterPhotosPanelProps = {
   videoPath: string;
+  /** Clip edit rotation (clockwise °); extracted JPEGs are baked upright. */
+  rotationDeg?: number;
   playheadMs: number;
   durationMs: number;
   /** Active trim range when set in trim mode; used as interval default. */
@@ -101,6 +104,7 @@ async function hydrateThumbUrls(
 
 export function VideoCutterPhotosControls({
   videoPath,
+  rotationDeg = 0,
   playheadMs,
   durationMs,
   rangeStartMs,
@@ -164,7 +168,11 @@ export function VideoCutterPhotosControls({
         onError(t("video.cutter.photos.noFrames"), t("video.cutter.photos.title"));
         return;
       }
-      const frames = await extractVideoFrames(videoPath, times);
+      const frames = await extractVideoFrames(
+        videoPath,
+        times,
+        normalizePreviewRotateDeg(rotationDeg),
+      );
       const mapped: FramePreviewItem[] = frames.map((f) => ({
         id: `f-${idSeq.current++}`,
         path: f.path,
@@ -203,7 +211,11 @@ export function VideoCutterPhotosControls({
     setCancelling(false);
     setProgress({ done: 0, total: 1, time_secs: tSecs });
     try {
-      const frame = await extractVideoFrameAt(videoPath, tSecs);
+      const frame = await extractVideoFrameAt(
+        videoPath,
+        tSecs,
+        normalizePreviewRotateDeg(rotationDeg),
+      );
       const item: FramePreviewItem = {
         id: `f-${idSeq.current++}`,
         path: frame.path,

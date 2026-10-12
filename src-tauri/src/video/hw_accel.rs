@@ -69,6 +69,17 @@ impl HwAccelInfo {
         }
     }
 
+    /// `-hwaccel` decoder usable in front of CPU filters (`transpose`, `scale`, `pad`,
+    /// `format`). Without `-hwaccel_output_format`, VideoToolbox frames are downloaded
+    /// to system memory. CUDA stays excluded: Windows/NVIDIA setups returned ENOSYS
+    /// (`Function not implemented`) for CPU filter graphs.
+    pub fn hwaccel_for_cpu_filters(&self) -> Option<&'static str> {
+        match (self.available, &self.hw_type) {
+            (true, HwType::Videotoolbox) => Some("videotoolbox"),
+            _ => None,
+        }
+    }
+
     #[allow(dead_code)]
     pub fn label(&self) -> &'static str {
         match self.hw_type {
@@ -77,6 +88,11 @@ impl HwAccelInfo {
             HwType::Software => "Software (libx264)",
         }
     }
+}
+
+/// Whether a `-hwaccel` name may feed CPU filters (see [`HwAccelInfo::hwaccel_for_cpu_filters`]).
+pub fn hwaccel_safe_with_cpu_filters(accel: &str) -> bool {
+    accel == "videotoolbox"
 }
 
 /// Encoding parameter sets used when building FFmpeg CLI args.
@@ -323,6 +339,18 @@ mod tests {
     fn videotoolbox_with_hwaccel_decode_adds_videotoolbox() {
         let params = EncodingParams::from_hw(&HwAccelInfo::videotoolbox(), true);
         assert_eq!(params.input_params, vec!["-hwaccel", "videotoolbox"]);
+    }
+
+    #[test]
+    fn hwaccel_for_cpu_filters_only_videotoolbox() {
+        assert_eq!(
+            HwAccelInfo::videotoolbox().hwaccel_for_cpu_filters(),
+            Some("videotoolbox")
+        );
+        assert_eq!(HwAccelInfo::nvidia().hwaccel_for_cpu_filters(), None);
+        assert_eq!(HwAccelInfo::software().hwaccel_for_cpu_filters(), None);
+        assert!(hwaccel_safe_with_cpu_filters("videotoolbox"));
+        assert!(!hwaccel_safe_with_cpu_filters("cuda"));
     }
 
     #[test]

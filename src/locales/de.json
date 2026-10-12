@@ -1997,7 +1997,7 @@
       "success": {
         "trim": "Schnitt übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
         "split": "Video geteilt. Rückgängig über einen Teil-Clip oder Alle Bearbeitungen rückgängig.",
-        "rotate": "Drehung übernommen. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
+        "rotate": "Drehung gespeichert — wird beim Erstellen angewendet. Rückgängig über den Clip oder Alle Bearbeitungen rückgängig.",
         "undoOne": "Bearbeitung für diesen Clip rückgängig gemacht.",
         "undoAll": "{{count}} Bearbeitung(en) rückgängig gemacht."
       },

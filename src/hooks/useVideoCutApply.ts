@@ -1,16 +1,14 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { tr } from "@/i18n";
-import { parseHardwareEncodeFailure } from "@/lib/hwEncodeError";
 import {
   cutVideo,
   probeVideo,
-  rotateVideo,
   splitVideo,
   undoAllVideoCuts,
   undoVideoCutForPath,
   type UndoCutResult,
 } from "../lib/tauri";
-import { useVideoStore } from "../store/videoStore";
+import { normalizeClipRotation, useVideoStore } from "../store/videoStore";
 import { useUiStore } from "../store/uiStore";
 
 type ApplyOptions = {
@@ -18,8 +16,6 @@ type ApplyOptions = {
   onProgressReset?: () => void;
   /** Status line for the sticky progress panel (no full-screen overlay). */
   onStatus?: (message: string) => void;
-  /** Encode with software only (retry after hardware-encode failure). */
-  forceSoftware?: boolean;
 };
 
 function beginProgress(opts: ApplyOptions | undefined, message: string) {
@@ -36,7 +32,13 @@ async function applyUndoResult(res: UndoCutResult) {
   const replaceVideo = useVideoStore.getState().replaceVideo;
   const restoreAfterSplitUndo = useVideoStore.getState().restoreAfterSplitUndo;
   const clearCutMarksFor = useVideoStore.getState().clearCutMarksFor;
+  const clearRotationsFor = useVideoStore.getState().clearRotationsFor;
 
+  clearRotationsFor([
+    res.restore_path,
+    ...res.removed_paths,
+    ...(res.cleared_mark_paths ?? []),
+  ]);
   if (res.kind === "split" && res.removed_paths.length >= 2) {
     const meta = await probeVideo(res.restore_path);
     restoreAfterSplitUndo(res.removed_paths[0]!, res.removed_paths[1]!, meta);
@@ -64,6 +66,10 @@ export function useVideoCutApply() {
   const markRotated = useVideoStore((s) => s.markRotated);
   const markSplit = useVideoStore((s) => s.markSplit);
   const clearAllCutMarks = useVideoStore((s) => s.clearAllCutMarks);
+  const clearCutMarksFor = useVideoStore((s) => s.clearCutMarksFor);
+  const setRotation = useVideoStore((s) => s.setRotation);
+  const clearRotationsFor = useVideoStore((s) => s.clearRotationsFor);
+  const clearAllRotations = useVideoStore((s) => s.clearAllRotations);
   const showError = useUiStore((s) => s.showError);
   const showSuccess = useUiStore((s) => s.showSuccess);
 
@@ -140,73 +146,40 @@ export function useVideoCutApply() {
     [applying, applySplitInList, markSplit, showError, showSuccess],
   );
 
-  type RotateFn = (
-    sourcePath: string,
-    degrees: number,
-    opts?: ApplyOptions,
-  ) => Promise<void>;
-  const applyRotateRef = useRef<RotateFn | null>(null);
-
+  /** Edit value only — pixels are rotated once in the export encode. */
   const applyRotate = useCallback(
-    async (sourcePath: string, degrees: number, opts?: ApplyOptions) => {
+    (sourcePath: string, degrees: number) => {
       if (applying) return;
-      setApplying(true);
-      const forceSoftware = opts?.forceSoftware === true;
-      beginProgress(
-        opts,
-        forceSoftware
-          ? tr("video.edit.progress.rotateSoftware")
-          : tr("video.edit.progress.rotate"),
-      );
-      try {
-        await rotateVideo({
-          input: sourcePath,
-          degrees,
-          overwrite: true,
-          forceSoftware,
-        });
-        const meta = await probeVideo(sourcePath);
-        replaceVideo(sourcePath, meta);
+      const store = useVideoStore.getState();
+      const next = normalizeClipRotation(store.getRotation(sourcePath) + degrees);
+      setRotation(sourcePath, next);
+      if (next !== 0) {
         markRotated(sourcePath);
-        opts?.onStatus?.(tr("video.edit.progress.rotateDone"));
-        showSuccess(
-          tr("video.edit.success.rotate"),
-          tr("common.actions.edit"),
-          { autoCloseSecs: 5 },
-        );
-      } catch (e) {
-        const raw = String(e);
-        const hwDetails = !forceSoftware
-          ? parseHardwareEncodeFailure(raw)
-          : null;
-        if (hwDetails) {
-          showError(tr("video.edit.error.hwFailed"), tr("video.edit.error.rotate"), {
-            details: hwDetails,
-            primaryAction: {
-              label: tr("video.edit.error.retryWithoutHw"),
-              onClick: () => {
-                void applyRotateRef.current?.(sourcePath, degrees, {
-                  ...opts,
-                  forceSoftware: true,
-                });
-              },
-            },
-          });
-        } else {
-          showError(raw, tr("video.edit.error.rotate"));
-        }
-      } finally {
-        setApplying(false);
-        endProgress(opts);
+      } else if (store.getCutMark(sourcePath) === "rotate") {
+        clearCutMarksFor([sourcePath]);
       }
+      showSuccess(
+        tr("video.edit.success.rotate"),
+        tr("common.actions.edit"),
+        { autoCloseSecs: 5 },
+      );
     },
-    [applying, replaceVideo, markRotated, showError, showSuccess],
+    [applying, setRotation, markRotated, clearCutMarksFor, showSuccess],
   );
-  applyRotateRef.current = applyRotate;
 
   const undoForPath = useCallback(
     async (path: string, opts?: ApplyOptions) => {
       if (applying) return;
+      if (useVideoStore.getState().getCutMark(path) === "rotate") {
+        clearRotationsFor([path]);
+        clearCutMarksFor([path]);
+        showSuccess(
+          tr("video.edit.success.undoOne"),
+          tr("common.actions.undo"),
+          { autoCloseSecs: 5 },
+        );
+        return;
+      }
       setApplying(true);
       beginProgress(opts, tr("video.edit.progress.undoOne"));
       try {
@@ -225,7 +198,7 @@ export function useVideoCutApply() {
         endProgress(opts);
       }
     },
-    [applying, showError, showSuccess],
+    [applying, clearRotationsFor, clearCutMarksFor, showError, showSuccess],
   );
 
   const undoAll = useCallback(
@@ -234,14 +207,18 @@ export function useVideoCutApply() {
       setApplying(true);
       beginProgress(opts, tr("video.edit.progress.undoAll"));
       try {
-        const results = await undoAllVideoCuts();
+        const marks = Object.values(useVideoStore.getState().cutMarks);
+        const rotateOnly = marks.filter((m) => m === "rotate").length;
+        const results =
+          marks.length > rotateOnly ? await undoAllVideoCuts() : [];
         for (const res of results) {
           await applyUndoResult(res);
         }
+        clearAllRotations();
         clearAllCutMarks();
         opts?.onStatus?.(tr("video.edit.progress.undoDone"));
         showSuccess(
-          tr("video.edit.success.undoAll", { count: results.length }),
+          tr("video.edit.success.undoAll", { count: results.length + rotateOnly }),
           tr("common.actions.undo"),
           { autoCloseSecs: 5 },
         );
@@ -252,7 +229,7 @@ export function useVideoCutApply() {
         endProgress(opts);
       }
     },
-    [applying, canUndo, clearAllCutMarks, showError, showSuccess],
+    [applying, canUndo, clearAllCutMarks, clearAllRotations, showError, showSuccess],
   );
 
   /** @deprecated use undoAll — kept for callers that expected single undo */

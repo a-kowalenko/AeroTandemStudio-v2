@@ -248,7 +248,7 @@ fn write_watermark_preview(
         let dest_str = dest.to_string_lossy().to_string();
         let src_str = src.to_string_lossy().to_string();
         let cb = Arc::clone(on_progress);
-        create_video_with_watermark(ffmpeg, &src_str, &dest_str, resource_dir, cb)?;
+        create_video_with_watermark(ffmpeg, &src_str, &dest_str, 0, resource_dir, cb)?;
         return Ok(());
     }
 

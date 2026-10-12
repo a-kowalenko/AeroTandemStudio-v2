@@ -580,6 +580,8 @@ export type CreateVideoOptions = {
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
+  /** OPT-26: clockwise rotation per clip (parallel to `videoPaths`), applied at export. */
+  clip_rotations?: number[];
 };
 
 export type CreateVideoResult = {
@@ -607,6 +609,8 @@ export type CreateJobOptions = {
   body_concat_mode?: BodyConcatMode | string;
   /** Use NVENC/VideoToolbox when available. */
   hw_accel_enabled?: boolean;
+  /** OPT-26: clockwise rotation per clip (parallel to `videoPaths`), applied at export. */
+  clip_rotations?: number[];
   /** Path from last matching `generate_preview` (backend verifies fingerprint). */
   reuse_preview_path?: string | null;
   reuse_preview_fingerprint?: string | null;
@@ -734,25 +738,32 @@ export async function previewFrameExtractTimes(
   });
 }
 
-/** Batch-extract full-resolution JPEGs; listen to `frame-extract-progress`. */
+/**
+ * Batch-extract full-resolution JPEGs; listen to `frame-extract-progress`.
+ * `rotation`: clip edit rotation (clockwise °), baked into the JPEGs.
+ */
 export async function extractVideoFrames(
   path: string,
   timesSecs: number[],
+  rotation = 0,
 ): Promise<ExtractedFrame[]> {
   return invoke<ExtractedFrame[]>("extract_video_frames", {
     path,
     timesSecs,
+    rotation,
   });
 }
 
-/** Extract one full-resolution JPEG at playhead time. */
+/** Extract one full-resolution JPEG at playhead time (`rotation` as above). */
 export async function extractVideoFrameAt(
   path: string,
   timeSecs: number,
+  rotation = 0,
 ): Promise<ExtractedFrame> {
   return invoke<ExtractedFrame>("extract_video_frame_at", {
     path,
     timeSecs,
+    rotation,
   });
 }
 
@@ -1048,24 +1059,6 @@ export async function cutVideo(opts: {
     output: opts.output ?? null,
     overwrite: opts.overwrite ?? false,
     precise: opts.precise ?? false,
-  });
-}
-
-/** Rotate video by 90° steps (re-encode). With `overwrite` replaces the source. */
-export async function rotateVideo(opts: {
-  input: string;
-  degrees: number;
-  output?: string | null;
-  overwrite?: boolean;
-  /** Re-open confirm with HW recommended off (retry after HW failure). */
-  forceSoftware?: boolean;
-}): Promise<CutResult> {
-  return invoke<CutResult>("rotate_video", {
-    input: opts.input,
-    degrees: opts.degrees,
-    output: opts.output ?? null,
-    overwrite: opts.overwrite ?? false,
-    forceSoftware: opts.forceSoftware ?? false,
   });
 }
 

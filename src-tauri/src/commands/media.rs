@@ -520,6 +520,7 @@ pub async fn extract_video_frames(
     app: AppHandle,
     path: String,
     times_secs: Vec<f64>,
+    rotation: Option<i32>,
 ) -> Result<Vec<ExtractedFrame>, String> {
     if path.trim().is_empty() {
         return Err("path is required".into());
@@ -530,6 +531,7 @@ pub async fn extract_video_frames(
     if times_secs.is_empty() {
         return Ok(Vec::new());
     }
+    let rotation_deg = clip_rotation_deg(rotation)?;
     let ffmpeg = resolve_ffmpeg(&app)?;
     reset_cancel_flag();
     let app_progress = app.clone();
@@ -547,6 +549,7 @@ pub async fn extract_video_frames(
             &times_secs,
             Some(&ffmpeg),
             frame_extract::FrameSeekMode::Fast,
+            rotation_deg,
             |done, total, time_secs| {
                 let _ = app_progress.emit(
                     EVENT_FRAME_EXTRACT_PROGRESS,
@@ -570,6 +573,7 @@ pub async fn extract_video_frame_at(
     app: AppHandle,
     path: String,
     time_secs: f64,
+    rotation: Option<i32>,
 ) -> Result<ExtractedFrame, String> {
     if path.trim().is_empty() {
         return Err("path is required".into());
@@ -577,14 +581,20 @@ pub async fn extract_video_frame_at(
     if !Path::new(&path).is_file() {
         return Err(format!("input file not found: {path}"));
     }
+    let rotation_deg = clip_rotation_deg(rotation)?;
     let ffmpeg = resolve_ffmpeg(&app)?;
     reset_cancel_flag();
     tauri::async_runtime::spawn_blocking(move || {
-        frame_extract::extract_frame_at(Path::new(&path), time_secs, Some(&ffmpeg))
+        frame_extract::extract_frame_at(Path::new(&path), time_secs, Some(&ffmpeg), rotation_deg)
             .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn clip_rotation_deg(rotation: Option<i32>) -> Result<u32, String> {
+    crate::video::rotate::normalize_rotation_degrees(rotation.unwrap_or(0))
+        .map_err(|e| e.to_string())
 }
 
 /// Copy already-named photo files into a user-chosen folder (additional export).
