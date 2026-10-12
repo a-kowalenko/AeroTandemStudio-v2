@@ -41,6 +41,7 @@ import {
 import type { WorkflowProgressView } from "../hooks/useWorkflowProgress";
 import { usePausableAutoDismiss } from "../hooks/usePausableAutoDismiss";
 import { CREATE_OUTCOME_HIDE_MS } from "../lib/createRunOutcome";
+import { hasQrCarrierLiveThumb } from "../lib/qrScanSettle";
 import { useQrScanStore } from "../store/qrScanStore";
 import {
   bodyConcatModeLabelKey,
@@ -285,6 +286,9 @@ export function WorkflowProgressPanel({
 }: Props) {
   const { t } = useTranslation();
   const qrLookup = useQrScanStore((s) => s.lookup);
+  const carrierThumb = useQrScanStore((s) => hasQrCarrierLiveThumb(s.liveFrames));
+  /** After removed leave: collapse thumb row and let lookup fill the space. */
+  const lookupExpanded = Boolean(qrLookup) && !carrierThumb;
   const { paused: donePaused, hoverProps: doneHover } = usePausableAutoDismiss(
     view.uploadDoneHold ? CREATE_OUTCOME_HIDE_MS : 0,
     () => onUploadDone?.(),
@@ -644,77 +648,88 @@ export function WorkflowProgressPanel({
             metricLabel={snapshot.metricLabel}
             legend={snapshot.legend}
             fileProgress={snapshot.fileProgress}
+            collapseScanChrome={lookupExpanded}
             tasks={showTasks ? view.tasks : undefined}
           />
           {qrLookup ? (
             <div
               className={cn(
-                "flex items-center gap-2 rounded-md border px-2.5 py-1.5",
-                qrLookup.phase === "error" &&
-                  "border-destructive/40 bg-destructive/5",
-                qrLookup.phase === "miss" && "border-warning/40 bg-warning/5",
-                qrLookup.phase === "found" && "border-border/50 bg-muted/20",
-                qrLookup.phase === "searching" &&
-                  "border-border/50 bg-muted/20",
+                "ats-qr-lookup",
+                lookupExpanded ? "is-expanded" : "is-compact",
+                qrLookup.phase === "searching" && "is-searching",
+                qrLookup.phase === "found" && "is-found",
+                qrLookup.phase === "miss" && "is-miss",
+                qrLookup.phase === "error" && "is-error",
               )}
               aria-live="polite"
               aria-busy={qrLookup.phase === "searching" || undefined}
             >
-              {qrLookup.phase === "searching" ? (
-                <Spinner size={14} className="shrink-0 border-[1.5px]" />
-              ) : qrLookup.phase === "found" ? (
-                <CheckCircle2
-                  className="h-3.5 w-3.5 shrink-0 text-success"
-                  aria-hidden
-                />
-              ) : qrLookup.phase === "error" ? (
-                <AlertTriangle
-                  className="h-3.5 w-3.5 shrink-0 text-destructive"
-                  aria-hidden
-                />
-              ) : (
-                <AlertTriangle
-                  className="h-3.5 w-3.5 shrink-0 text-warning"
-                  aria-hidden
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  <p className="shrink-0 text-sm font-medium text-foreground">
-                    {qrLookup.summary}
-                  </p>
-                  {qrLookup.idChips && qrLookup.idChips.length > 0
-                    ? qrLookup.idChips.map((chip) => (
+              <div className="ats-qr-lookup-head">
+                {qrLookup.phase === "searching" ? (
+                  <Spinner
+                    size={lookupExpanded ? 18 : 14}
+                    className="ats-qr-lookup-icon shrink-0 border-[1.5px]"
+                  />
+                ) : qrLookup.phase === "found" ? (
+                  <CheckCircle2
+                    className="ats-qr-lookup-icon shrink-0 text-success"
+                    aria-hidden
+                  />
+                ) : qrLookup.phase === "error" ? (
+                  <AlertTriangle
+                    className="ats-qr-lookup-icon shrink-0 text-destructive"
+                    aria-hidden
+                  />
+                ) : (
+                  <AlertTriangle
+                    className="ats-qr-lookup-icon shrink-0 text-warning"
+                    aria-hidden
+                  />
+                )}
+                <div className="ats-qr-lookup-copy min-w-0 flex-1">
+                  <p className="ats-qr-lookup-summary">{qrLookup.summary}</p>
+                  {qrLookup.highlight.trim() ? (
+                    <p
+                      className={cn(
+                        "ats-qr-lookup-highlight",
+                        qrLookup.phase === "found" && "is-name",
+                      )}
+                    >
+                      {qrLookup.highlight}
+                    </p>
+                  ) : null}
+                  {!qrLookup.idChips?.length &&
+                  (qrLookup.phase === "miss" || qrLookup.phase === "error") &&
+                  !qrLookup.highlight.trim() ? (
+                    <p className="ats-qr-lookup-hint">
+                      {t("ams.status.unreachableHint")}
+                    </p>
+                  ) : null}
+                  {qrLookup.idChips && qrLookup.idChips.length > 0 ? (
+                    <div className="ats-qr-lookup-chips">
+                      {qrLookup.idChips.map((chip) => (
                         <span
                           key={`${chip.label}:${chip.value}`}
-                          className="inline-flex max-w-full items-baseline gap-1 rounded-md border border-border/60 bg-card/80 px-2 py-0.5 text-[11px] leading-tight text-foreground"
+                          className="ats-qr-lookup-chip"
                         >
-                          <span className="shrink-0 font-medium text-muted">
+                          <span className="ats-qr-lookup-chip-label">
                             {chip.label}
                           </span>
-                          <span className="min-w-0 truncate font-semibold tabular-nums">
+                          <span className="ats-qr-lookup-chip-value">
                             {chip.value}
                           </span>
                         </span>
-                      ))
-                    : null}
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-                {qrLookup.highlight.trim() ? (
-                  <p className="mt-0.5 text-xs text-muted">
-                    {qrLookup.highlight}
-                  </p>
-                ) : null}
-                {!qrLookup.idChips?.length &&
-                (qrLookup.phase === "miss" || qrLookup.phase === "error") &&
-                !qrLookup.highlight.trim() ? (
-                  <p className="mt-0.5 text-xs text-muted">
-                    {t("ams.status.unreachableHint")}
-                  </p>
-                ) : null}
               </div>
+              {qrLookup.phase === "searching" ? (
+                <div className="ats-qr-lookup-pulse" aria-hidden />
+              ) : null}
             </div>
           ) : null}
-          {snapshot.detail ? (
+          {snapshot.detail && !lookupExpanded ? (
             <p className="text-xs tabular-nums text-muted" aria-live="polite">
               {snapshot.detail}
             </p>

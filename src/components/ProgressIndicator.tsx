@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { QrSegmentLiveSlot } from "./QrLiveScanStrip";
 import { alignVideoLiveThumbs } from "../lib/qrLiveLayout";
 import {
@@ -37,6 +38,11 @@ type ProgressIndicatorProps = {
   legend?: QrScanLegend;
   /** Discrete file segments for batch QR progress (media list order). */
   fileProgress?: QrFileProgress;
+  /**
+   * Collapse the whole QR scan chrome (thumbs + segment bars + legend)
+   * after the carrier leaves so lookup can own the panel.
+   */
+  collapseScanChrome?: boolean;
   /** Per-task bars when parallel encoding is active */
   tasks?: TaskProgress[];
 };
@@ -336,6 +342,7 @@ export function ProgressIndicator({
   metricLabel,
   legend,
   fileProgress,
+  collapseScanChrome = false,
   tasks,
 }: ProgressIndicatorProps) {
   const { t } = useTranslation();
@@ -351,62 +358,84 @@ export function ProgressIndicator({
         ? undefined
         : `${clamped.toFixed(1)}%`;
 
-  const showOverallChrome = !hideBar || Boolean(label) || Boolean(fileProgress);
+  const showLabelRow = !collapseScanChrome;
+  const showOverallChrome =
+    !collapseScanChrome &&
+    (!hideBar || Boolean(label) || Boolean(fileProgress));
 
   return (
     <div className="space-y-3">
-      {showOverallChrome ? (
+      {showOverallChrome || (fileProgress && fileProgress.total > 0) ? (
         <div
-          role={hideBar ? "status" : "progressbar"}
-          aria-valuenow={hideBar || useActivity ? undefined : clamped}
-          aria-valuemin={hideBar || useActivity ? undefined : 0}
-          aria-valuemax={hideBar || useActivity ? undefined : 100}
+          role={hideBar || collapseScanChrome ? "status" : "progressbar"}
+          aria-valuenow={
+            hideBar || useActivity || collapseScanChrome ? undefined : clamped
+          }
+          aria-valuemin={
+            hideBar || useActivity || collapseScanChrome ? undefined : 0
+          }
+          aria-valuemax={
+            hideBar || useActivity || collapseScanChrome ? undefined : 100
+          }
           aria-valuetext={
-            hidePercent && metric
-              ? metricLabel
-                ? `${metric} ${metricLabel}`
-                : metric
-              : undefined
+            collapseScanChrome
+              ? undefined
+              : hidePercent && metric
+                ? metricLabel
+                  ? `${metric} ${metricLabel}`
+                  : metric
+                : undefined
           }
           aria-label={label ?? t("progress.overallAria")}
+          aria-hidden={collapseScanChrome || undefined}
           className="space-y-1.5"
         >
-          <div className="flex items-baseline justify-between gap-3">
-            {label ? (
-              <p
-                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
-                title={label}
-              >
-                {label}
-              </p>
-            ) : (
-              <span />
-            )}
-            {!hideBar && hidePercent && metric ? (
-              <p className="shrink-0 text-right">
-                <span className="text-sm font-semibold tabular-nums text-foreground">
-                  {metric}
-                </span>
-                {metricLabel ? (
-                  <span className="ml-1.5 text-[11px] text-muted">
-                    {metricLabel}
+          {showLabelRow ? (
+            <div className="flex items-baseline justify-between gap-3">
+              {label ? (
+                <p
+                  className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+                  title={label}
+                >
+                  {label}
+                </p>
+              ) : (
+                <span />
+              )}
+              {!hideBar && hidePercent && metric ? (
+                <p className="shrink-0 text-right">
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {metric}
                   </span>
-                ) : null}
-              </p>
-            ) : !hideBar && !hidePercent ? (
-              <p className="shrink-0 text-sm tabular-nums text-muted">
-                {statusText ?? (indeterminate ? "…" : `${clamped.toFixed(1)}%`)}
-              </p>
-            ) : !hideBar ? (
-              <p className="shrink-0 text-sm text-muted" aria-hidden>
-                ···
-              </p>
-            ) : null}
-          </div>
+                  {metricLabel ? (
+                    <span className="ml-1.5 text-[11px] text-muted">
+                      {metricLabel}
+                    </span>
+                  ) : null}
+                </p>
+              ) : !hideBar && !hidePercent ? (
+                <p className="shrink-0 text-sm tabular-nums text-muted">
+                  {statusText ??
+                    (indeterminate ? "…" : `${clamped.toFixed(1)}%`)}
+                </p>
+              ) : !hideBar ? (
+                <p className="shrink-0 text-sm text-muted" aria-hidden>
+                  ···
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {!hideBar ? (
             fileProgress && fileProgress.total > 0 ? (
-              <FileSegments progress={fileProgress} legend={legend} />
-            ) : (
+              <div
+                className={cn(
+                  "ats-qr-scan-chrome",
+                  collapseScanChrome && "is-collapsed",
+                )}
+              >
+                <FileSegments progress={fileProgress} legend={legend} />
+              </div>
+            ) : collapseScanChrome ? null : (
               <Bar percent={clamped} indeterminate={useActivity} />
             )
           ) : null}

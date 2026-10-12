@@ -18,6 +18,7 @@ import {
 } from "@/lib/qrSuccess";
 import { tr } from "@/i18n";
 import { useKundeStore } from "@/store/kundeStore";
+import { useQrScanStore } from "@/store/qrScanStore";
 import { useSessionRunStore } from "@/store/sessionRunStore";
 import { useUiStore, type DialogOptions } from "@/store/uiStore";
 
@@ -363,6 +364,9 @@ export async function presentQrHit(
 
   let fromAms = false;
   let scanned: Kunde = input.kunde;
+
+  // Sibling thumbs leave scan mode immediately; cleanup + AMS lookup stay parallel.
+  useQrScanStore.getState().settleAfterHit(input.sourcePath);
 
   // Name when known; plain IDs as chips (not `#id · Booking #…`).
   const lookupHighlight = kundeDisplayName(input.kunde);

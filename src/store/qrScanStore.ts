@@ -5,6 +5,15 @@ import {
   markLiveFramesRemoved,
   retainLiveFramesForFollowup,
 } from "@/lib/qrLivePresent";
+import {
+  retainHitRemovedLiveFrames,
+  settleByPathAfterHit,
+} from "@/lib/qrScanSettle";
+
+export {
+  retainHitRemovedLiveFrames,
+  settleByPathAfterHit,
+} from "@/lib/qrScanSettle";
 
 export type QrScanPhase =
   | "pending"
@@ -111,10 +120,17 @@ type QrScanState = {
   beginFollowup: (paths: string[], hitPath: string) => void;
   /**
    * Keep the QR progress panel open for AMS lookup when the scan job already ended.
-   * @returns true if this call set `busy` (caller should `end` when lookup UI finishes
-   *   and no follow-up took over).
+   * When a scan job is already busy, settles sibling thumbs (keeps hit/removed).
+   * Neighbor follow-up (`stage === "followup"`) is left unchanged.
+   * @returns true if this call opened busy or transitioned a scan job for lookup
+   *   (caller should `end` when lookup UI finishes and no follow-up took over).
    */
   ensureLookupBusy: () => boolean;
+  /**
+   * Mark non-hit clips done and drop their live scan thumbs.
+   * No-op during photo neighbor follow-up.
+   */
+  settleAfterHit: (hitPath?: string | null) => void;
   setLookup: (lookup: QrLookupUi | null) => void;
   setStage: (stage: QrScanJobStage) => void;
   setPhase: (path: string, phase: QrScanPhase) => void;
@@ -154,6 +170,20 @@ function dedupeNormalizedPaths(paths: string[]): string[] {
 
 function isFinishedPhase(phase: QrScanPhase): boolean {
   return phase === "done" || phase === "hit" || phase === "removed";
+}
+
+function resolveHitKey(
+  byPath: Record<string, QrScanPhase>,
+  liveFrames: QrLiveFrame[],
+  hitPath?: string | null,
+): string | null {
+  const fromArg = hitPath?.trim() ? normalizeMediaPath(hitPath) : "";
+  if (fromArg) return fromArg;
+  for (const [key, phase] of Object.entries(byPath)) {
+    if (phase === "hit" || phase === "removed") return key;
+  }
+  const live = liveFrames.find((f) => f.tone === "hit" || f.tone === "removed");
+  return live?.key ?? null;
 }
 
 export function normalizeMediaPath(path: string): string {
@@ -317,20 +347,22 @@ export type QrScanProgressSummary = {
   fileProgress?: QrFileProgress;
 };
 
-/** Lookup row is rendered separately in the panel; only adjust label when lookup-only. */
+/**
+ * Lookup owns the panel title. Keep all file stripes so the carrier thumb
+ * stays in its original slot width (do not collapse to one segment).
+ */
 function withLookupDetail(
   summary: QrScanProgressSummary,
   lookup: QrLookupUi | null | undefined,
+  clearPaceLegend = false,
 ): QrScanProgressSummary {
   if (!lookup) return summary;
-  if (summary.fileProgress == null || summary.fileProgress.total === 0) {
-    return {
-      ...summary,
-      label: lookup.summary,
-      detail: lookup.highlight.trim() || summary.detail,
-    };
-  }
-  return summary;
+  return {
+    ...summary,
+    label: lookup.summary,
+    detail: lookup.highlight.trim() || summary.detail,
+    legend: clearPaceLegend ? undefined : summary.legend,
+  };
 }
 
 /** Human-readable progress for SD confirm dialog / loading UI (no % — scan may stop early). */
@@ -410,6 +442,7 @@ export function summarizeQrScanProgress(
         fileProgress,
       },
       lookup,
+      false,
     );
   }
 
@@ -509,6 +542,7 @@ export function summarizeQrScanProgress(
       fileProgress,
     },
     lookup,
+    Boolean(lookup),
   );
 }
 
@@ -580,20 +614,51 @@ export const useQrScanStore = create<QrScanState>((set, get) => ({
   },
 
   ensureLookupBusy: () => {
-    if (get().busy) return false;
-    set({
-      busy: true,
-      stage: "followup",
-      followup: emptyFollowup(),
-      byPath: {},
-      scanOrder: [],
-      clipProgress: {},
-      liveFrames: [],
-      liveAnchorKey: null,
-      photoEdgeLimited: false,
-      videoEdgeLimited: false,
-    });
+    if (!get().busy) {
+      set({
+        busy: true,
+        stage: "followup",
+        followup: emptyFollowup(),
+        byPath: {},
+        scanOrder: [],
+        clipProgress: {},
+        liveFrames: [],
+        liveAnchorKey: null,
+        photoEdgeLimited: false,
+        videoEdgeLimited: false,
+      });
+      return true;
+    }
+    // Photo neighbor follow-up owns the stripes; only the lookup row is added.
+    if (get().stage === "followup") return false;
+    get().settleAfterHit(null);
     return true;
+  },
+
+  settleAfterHit: (hitPath) => {
+    if (!get().busy) return;
+    // Neighbor series scan must keep pending/active paths.
+    if (get().stage === "followup") return;
+
+    const hitKey = resolveHitKey(get().byPath, get().liveFrames, hitPath);
+    const byPath = settleByPathAfterHit(get().byPath, hitKey);
+    const clipProgress = { ...get().clipProgress };
+    for (const key of Object.keys(clipProgress)) {
+      if (byPath[key] !== "active") delete clipProgress[key];
+    }
+
+    let liveFrames = get().liveFrames.map((f) => {
+      if (f.tone === "hit" || f.tone === "removed") return f;
+      if (hitKey && f.key === hitKey) return { ...f, tone: "hit" as const };
+      return f;
+    });
+    liveFrames = retainHitRemovedLiveFrames(liveFrames);
+
+    set({
+      byPath,
+      clipProgress,
+      liveFrames,
+    });
   },
 
   setLookup: (lookup) => set({ lookup }),

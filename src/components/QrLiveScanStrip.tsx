@@ -515,15 +515,21 @@ export function QrLiveScanStrip() {
   const byPath = useQrScanStore((s) => s.byPath);
   const scanOrder = useQrScanStore((s) => s.scanOrder);
   const stage = useQrScanStore((s) => s.stage);
+  const lookup = useQrScanStore((s) => s.lookup);
   const videoPaths = useVideoStore((s) => s.videoList);
-  const showPlaceholders = stage === "scanning_videos" || stage === "scanning";
+  // During AMS lookup only hit/removed tiles stay; no pending scan placeholders.
+  const showPlaceholders =
+    !lookup && (stage === "scanning_videos" || stage === "scanning");
+  const baseFrames = lookup
+    ? frames.filter((f) => f.tone === "hit" || f.tone === "removed")
+    : frames;
   const displayFrames = showPlaceholders
     ? [
-        ...frames,
+        ...baseFrames,
         ...videoPlaceholderFrames(
           scanOrder,
           byPath,
-          new Set(frames.map((f) => f.key)),
+          new Set(baseFrames.map((f) => f.key)),
           (key) =>
             videoPaths.find((v) => normalizeMediaPath(v.path) === key)?.path ??
             key,
@@ -532,7 +538,7 @@ export function QrLiveScanStrip() {
             stage === "scanning_videos" || mediaKind(f.mediaPath) === "video",
         ),
       ]
-    : frames;
+    : baseFrames;
   if (
     !busy ||
     displayFrames.length === 0 ||
