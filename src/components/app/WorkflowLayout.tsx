@@ -100,7 +100,7 @@ export function WorkflowLayout({
   return (
     <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4"
+        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 [scrollbar-gutter:stable]"
         style={
           stackPadPx > 0
             ? { paddingBottom: `calc(1rem + ${stackPadPx}px)` }

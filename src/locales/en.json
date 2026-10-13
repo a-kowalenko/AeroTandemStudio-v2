@@ -1236,8 +1236,8 @@
     },
     "media": {
       "kindAria": "Media type",
-      "clearVideos": "Clear videos",
-      "clearPhotos": "Clear photos",
+      "clearVideos": "Clear all videos",
+      "clearPhotos": "Clear all photos",
       "clearingVideos": "Clearing…",
       "clearingPhotos": "Clearing…",
       "clearedVideos": "Videos cleared",
