@@ -2491,6 +2491,9 @@ pub(crate) fn commit_from_staging(
             // CapCut also applies the target codec; skip a separate forced remux.
             let mut video_opts = options.video.clone();
             video_opts.defer_forced_reencode = false;
+            // Staged body already applied edit rotation (baked pixels or display matrix).
+            // Re-applying clip_rotations would rotate it a second time inside CapCut.
+            video_opts.clip_rotations.clear();
             log_event("speculative_hit", "deferred_intro_outro_on_staged_body");
             match create_video(
                 ffmpeg,

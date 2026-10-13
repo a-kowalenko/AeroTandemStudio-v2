@@ -119,7 +119,7 @@ Details: `@AGENTS.md` · Abgelehnte Themen: `@docs/opt/OUT_OF_SCOPE.md`
 | OPT-23 | ✅ Slice A–F (Code); manuell macOS/Linux offen | [open/23-smb-stability.md](opt/open/23-smb-stability.md) |
 | OPT-24 | ✅ Slice A–F (Code); manuelle Abnahme offen | [open/24-startup-ui-responsiveness.md](opt/open/24-startup-ui-responsiveness.md) |
 | OPT-25 | ✅ Slice A–C (Code) | [open/25-sd-import-history-progress.md](opt/open/25-sd-import-history-progress.md) |
-| OPT-26 | ✅ Slice A–E (Code); manuell iPhone/QuickTime offen · ⬜ F (ein Encode bei Drehung + Intro/Outro) | [open/26-rotation-export.md](opt/open/26-rotation-export.md) |
+| OPT-26 | ✅ Slice A–F (Code); manuell iPhone/QuickTime offen | [open/26-rotation-export.md](opt/open/26-rotation-export.md) |
 
 **Nachher-Messung (2026-08-20, v0.2.17, Windows 11, libx264):** Vollständige Tabelle → **`docs/PERF_BASELINE.md`** (Abschnitt „Nach OPT-0 … OPT-10“).
 

@@ -564,6 +564,146 @@ impl CapcutSourceVideo {
     }
 }
 
+/// One body input of the CapCut single-pass graph. Several clips (OPT-26F: rotated clips
+/// without a pre-baked `body_concat.mp4`) are joined inside the same encode.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CapcutBodyClip {
+    pub path: String,
+    pub dauer: f64,
+    /// Clockwise edit rotation (`0 | 90 | 180 | 270`); `transpose` runs before normalize.
+    pub rotation: u32,
+    pub has_audio: bool,
+    /// Geometry after soft + edit rotation; `None` → full normalize.
+    pub source: Option<CapcutSourceVideo>,
+}
+
+impl CapcutBodyClip {
+    /// Stream-copy / pre-encoded body file (no edit rotation).
+    pub fn single(
+        path: &str,
+        dauer: f64,
+        has_audio: bool,
+        source: Option<CapcutSourceVideo>,
+    ) -> Self {
+        Self {
+            path: path.to_string(),
+            dauer,
+            rotation: 0,
+            has_audio,
+            source,
+        }
+    }
+
+    /// Source clip with edit rotation, from `ffmpeg -i` stderr. Autorotate applies the
+    /// soft rotation on decode, so both rotations swap the decoded geometry.
+    pub fn rotated_from_probe(path: &str, stderr: &str, rotation: u32) -> Self {
+        let p = intro_params_from_probe(stderr, "h264");
+        let soft = probe::parse_video_rotation_degrees(stderr).unwrap_or(0);
+        let (w, h) = concat::rotated_dims(p.width, p.height, soft);
+        let (width, height) = concat::rotated_dims(w, h, rotation);
+        Self {
+            path: path.to_string(),
+            dauer: super::progress::parse_duration(stderr).unwrap_or(0.0),
+            rotation,
+            has_audio: AUDIO_STREAM_RE.is_match(stderr),
+            source: Some(CapcutSourceVideo {
+                width,
+                height,
+                fps: p.fps,
+                pix_fmt: p.pix_fmt,
+            }),
+        }
+    }
+}
+
+fn body_total_dauer(body: &[CapcutBodyClip]) -> f64 {
+    body.iter().map(|c| c.dauer.max(0.0)).sum::<f64>().max(0.05)
+}
+
+fn body_all_have_audio(body: &[CapcutBodyClip]) -> bool {
+    !body.is_empty() && body.iter().all(|c| c.has_audio)
+}
+
+/// Decode accel for one body clip: rotation adds a CPU `transpose`, so only accels that
+/// download frames before CPU filters stay (VideoToolbox).
+fn body_clip_hwaccel<'a>(
+    clip: &CapcutBodyClip,
+    plan: CapcutNormalizePlan,
+    accel: Option<&'a str>,
+) -> Option<&'a str> {
+    accel.filter(|a| {
+        plan.permits_hwaccel(a) && (clip.rotation == 0 || hwaccel_safe_with_cpu_filters(a))
+    })
+}
+
+/// Body video branches → `[bodyv]`, plus `[bodya]` when `aformat` is set. Inputs start at
+/// `first_idx`. Several clips are joined per segment (`concat` v+a) so A/V stays aligned
+/// at every seam. Every emitted chain ends with `;`.
+fn push_capcut_body_branches(
+    fc: &mut String,
+    body: &[CapcutBodyClip],
+    first_idx: usize,
+    v_params: &IntroVideoParams,
+    target_pix_fmt: &str,
+    aformat: Option<&str>,
+) {
+    let single = body.len() == 1;
+    let mut seg_concat = String::new();
+    for (k, clip) in body.iter().enumerate() {
+        let idx = first_idx + k;
+        let plan = capcut_normalize_plan(clip.source.as_ref(), v_params, target_pix_fmt);
+        let transpose = if clip.rotation == 0 {
+            None
+        } else {
+            super::rotate::transpose_filter_for_degrees(clip.rotation).ok()
+        };
+        let pre: Vec<&str> = transpose.as_deref().into_iter().collect();
+        let (v_label, a_label) = if single {
+            ("bodyv".to_string(), "bodya".to_string())
+        } else {
+            (format!("bodyv{k}"), format!("bodya{k}"))
+        };
+        fc.push_str(&build_capcut_segment_vfilter(
+            idx,
+            &v_label,
+            plan,
+            v_params.width,
+            v_params.height,
+            &v_params.fps,
+            target_pix_fmt,
+            &pre,
+            &[],
+        ));
+        fc.push(';');
+        seg_concat.push_str(&format!("[{v_label}]"));
+        if let Some(af) = aformat {
+            fc.push_str(&format!("[{idx}:a]asetpts=PTS-STARTPTS,{af}[{a_label}];"));
+            seg_concat.push_str(&format!("[{a_label}]"));
+        }
+    }
+    if !single {
+        let n = body.len();
+        if aformat.is_some() {
+            fc.push_str(&format!("{seg_concat}concat=n={n}:v=1:a=1[bodyv][bodya];"));
+        } else {
+            fc.push_str(&format!("{seg_concat}concat=n={n}:v=1:a=0[bodyv];"));
+        }
+    }
+}
+
+fn push_body_inputs(
+    args: &mut Vec<String>,
+    body: &[CapcutBodyClip],
+    v_params: &IntroVideoParams,
+    target_pix_fmt: &str,
+    accel: Option<&str>,
+) {
+    for clip in body {
+        let plan = capcut_normalize_plan(clip.source.as_ref(), v_params, target_pix_fmt);
+        push_media_input(args, &clip.path, body_clip_hwaccel(clip, plan, accel));
+    }
+}
+
 /// Which CapCut video-normalize filters are still required for one segment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CapcutNormalizePlan {
@@ -663,10 +803,16 @@ pub fn build_capcut_segment_vfilter(
     height: u32,
     fps: &str,
     target_pix_fmt: &str,
+    // Filters before normalize (e.g. edit-rotation `transpose`).
+    pre_filters: &[&str],
     // Extra filters after normalize, before setpts (e.g. drawtext, trim).
     mid_filters: &[&str],
 ) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    let mut parts: Vec<String> = pre_filters
+        .iter()
+        .filter(|f| !f.is_empty())
+        .map(|f| (*f).to_string())
+        .collect();
     if plan.scale_pad {
         parts.push(format!(
             "scale={width}:{height}:force_original_aspect_ratio=decrease"
@@ -689,6 +835,13 @@ pub fn build_capcut_segment_vfilter(
     format!("[{input_idx}:v]{}[{out_label}]", parts.join(","))
 }
 
+/// Baked edit rotation must not leave a display matrix on the encoded output.
+fn push_baked_rotation_metadata(args: &mut Vec<String>, body: &[CapcutBodyClip]) {
+    if body.iter().any(|c| c.rotation != 0) {
+        args.extend(["-metadata:s:v:0".into(), "rotate=0".into()]);
+    }
+}
+
 fn push_media_input(args: &mut Vec<String>, path: &str, hwaccel: Option<&str>) {
     if let Some(accel) = hwaccel {
         args.push("-hwaccel".into());
@@ -696,6 +849,37 @@ fn push_media_input(args: &mut Vec<String>, path: &str, hwaccel: Option<&str>) {
     }
     args.push("-i".into());
     args.push(path.to_string());
+}
+
+/// Raw decode accel for a CapCut attempt. Per-clip CPU filters drop it later
+/// ([`body_clip_hwaccel`]); CUDA stays only when a clip has no CPU filter left.
+fn capcut_decode_accel(hw: &HwAccelInfo) -> Option<&'static str> {
+    if !hw.available {
+        return None;
+    }
+    match hw.hw_type {
+        HwType::Nvidia => Some("cuda"),
+        HwType::Videotoolbox => Some("videotoolbox"),
+        HwType::Software => None,
+    }
+}
+
+fn log_capcut_body_plans(
+    body: &[CapcutBodyClip],
+    v_params: &IntroVideoParams,
+    target_pix: &str,
+    accel: Option<&str>,
+) {
+    for (k, clip) in body.iter().enumerate() {
+        let plan = capcut_normalize_plan(clip.source.as_ref(), v_params, target_pix);
+        let used = body_clip_hwaccel(clip, plan, accel);
+        let segment = if body.len() == 1 {
+            "body".to_string()
+        } else {
+            format!("body{k}")
+        };
+        log_capcut_filter_plan(&segment, plan, used);
+    }
 }
 
 fn log_capcut_filter_plan(segment: &str, plan: CapcutNormalizePlan, hwaccel: Option<&str>) {
@@ -825,23 +1009,22 @@ pub enum SinglePassAudioMode {
 
 /// One continuous encode: intro overlay + full body → single MP4 bitstream.
 ///
-/// Inputs: `0` = background still, `1` = body, `2` = silent AAC source (`anullsrc`).
+/// Inputs: `0` = background still, `1..=N` = body clips, `N+1` = silent AAC source
+/// (`anullsrc`).
 ///
-/// OPT-21A: when `body_source` matches target WxH / fps / pix_fmt, body skips
-/// scale/pad/fps/format. `body_hwaccel` is dropped when CPU normalize remains, unless it
-/// is VideoToolbox (frames are downloaded before the CPU filters).
+/// OPT-21A: when a clip's `source` matches target WxH / fps / pix_fmt, it skips
+/// scale/pad/fps/format. `body_hwaccel` is dropped per clip when CPU filters remain, unless
+/// it is VideoToolbox (frames are downloaded before the CPU filters).
 pub fn build_intro_body_single_pass_args(
     hintergrund_path: &str,
-    body_path: &str,
+    body: &[CapcutBodyClip],
     output_path: &str,
     intro_dauer: f64,
-    body_dauer: f64,
     v_params: &IntroVideoParams,
     drawtext_filter: &str,
     encoder: &str,
     quality_params: &[String],
     audio_mode: SinglePassAudioMode,
-    body_source: Option<&CapcutSourceVideo>,
     body_hwaccel: Option<&str>,
 ) -> Vec<String> {
     let target_pix_fmt = match v_params.pix_fmt.as_str() {
@@ -849,16 +1032,13 @@ pub fn build_intro_body_single_pass_args(
         _ => "yuv420p".into(),
     };
     let intro_dauer = intro_dauer.max(0.1);
-    let body_dauer = body_dauer.max(0.05);
+    let body_dauer = body_total_dauer(body);
     let total = intro_dauer + body_dauer;
     let fps_int = parse_fps_int(&v_params.fps);
     let w = v_params.width;
     let h = v_params.height;
     let fps = &v_params.fps;
-
-    let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
-    // CUDA + CPU normalize returned ENOSYS on Windows/NVIDIA.
-    let body_hwaccel = body_hwaccel.filter(|a| body_plan.permits_hwaccel(a));
+    let silence_idx = 1 + body.len();
 
     // Intro still always needs scale/pad/drawtext/format/fps (PNG → video).
     let intro_v = format!(
@@ -867,31 +1047,37 @@ pub fn build_intro_body_single_pass_args(
          {drawtext_filter},format={target_pix_fmt},fps={fps},\
          trim=duration={intro_dauer},setpts=PTS-STARTPTS,setsar=1[introv]"
     );
-    let body_v =
-        build_capcut_segment_vfilter(1, "bodyv", body_plan, w, h, fps, &target_pix_fmt, &[]);
-    let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
     let aformat = format!(
         "aformat=sample_rates={}:channel_layouts={}",
         v_params.sample_rate, v_params.channel_layout
     );
+    let mut body_fc = String::new();
+    push_capcut_body_branches(
+        &mut body_fc,
+        body,
+        1,
+        v_params,
+        &target_pix_fmt,
+        (audio_mode == SinglePassAudioMode::EncodeAac).then_some(aformat.as_str()),
+    );
+    let v_concat = "[introv][bodyv]concat=n=2:v=1:a=0[v]";
 
     let filter_complex = match audio_mode {
         SinglePassAudioMode::EncodeAac => {
             format!(
-                "{intro_v};{body_v};{v_concat};\
-                 [2:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS,{aformat}[introa];\
-                 [1:a]asetpts=PTS-STARTPTS,{aformat}[bodya];\
+                "{intro_v};{body_fc}{v_concat};\
+                 [{silence_idx}:a]atrim=0:{intro_dauer},asetpts=PTS-STARTPTS,{aformat}[introa];\
                  [introa][bodya]concat=n=2:v=0:a=1[a]"
             )
         }
         SinglePassAudioMode::EncodeSilence => {
             format!(
-                "{intro_v};{body_v};{v_concat};\
-                 [2:a]atrim=0:{total},asetpts=PTS-STARTPTS[a]"
+                "{intro_v};{body_fc}{v_concat};\
+                 [{silence_idx}:a]atrim=0:{total},asetpts=PTS-STARTPTS[a]"
             )
         }
         SinglePassAudioMode::VideoOnly => {
-            format!("{intro_v};{body_v};{v_concat}")
+            format!("{intro_v};{body_fc}{v_concat}")
         }
     };
 
@@ -903,7 +1089,7 @@ pub fn build_intro_body_single_pass_args(
         "-i".into(),
         hintergrund_path.to_string(),
     ];
-    push_media_input(&mut args, body_path, body_hwaccel);
+    push_body_inputs(&mut args, body, v_params, &target_pix_fmt, body_hwaccel);
     args.extend([
         "-f".into(),
         "lavfi".into(),
@@ -960,6 +1146,9 @@ pub fn build_intro_body_single_pass_args(
         "cfr".into(),
         "-force_key_frames".into(),
         format!("expr:eq(n,0)+gte(t,{intro_dauer})"),
+    ]);
+    push_baked_rotation_metadata(&mut args, body);
+    args.extend([
         "-movflags".into(),
         "+faststart".into(),
         "-progress".into(),
@@ -1019,25 +1208,26 @@ pub struct SinglePassOutroInput {
 /// Same principle as [`build_intro_body_single_pass_args`]: body is encoded once; Intro/Outro
 /// are filtergraph branches (no pre-rendered segment MP4s).
 ///
-/// OPT-21A: `body_source` / `outro_source` skip redundant scale/pad/fps/format when matching.
-/// `body_hwaccel` is filtered via [`CapcutNormalizePlan::permits_hwaccel`].
+/// OPT-21A: a clip's `source` / `outro_source` skip redundant scale/pad/fps/format when
+/// matching. `body_hwaccel` is filtered per clip ([`body_clip_hwaccel`]).
+///
+/// OPT-26F: `body` is one clip per source file. Edit rotation is a `transpose` on that
+/// clip, then the clips are concatenated inside this encode (no `body_concat.mp4`).
 ///
 /// Input order:
 /// 1. optional Intro still (`-loop 1`)
-/// 2. Body
+/// 2. Body clips
 /// 3. Outro (still with `-loop 1`, or video)
 /// 4. optional `anullsrc` when audio is encoded in-graph
 pub fn build_intro_body_outro_single_pass_args(
     intro: Option<(&str, &str, f64)>,
-    body_path: &str,
-    body_dauer: f64,
+    body: &[CapcutBodyClip],
     outro: &SinglePassOutroInput,
     output_path: &str,
     v_params: &IntroVideoParams,
     encoder: &str,
     quality_params: &[String],
     audio_mode: SinglePassAudioMode,
-    body_source: Option<&CapcutSourceVideo>,
     outro_source: Option<&CapcutSourceVideo>,
     body_hwaccel: Option<&str>,
 ) -> Vec<String> {
@@ -1045,7 +1235,7 @@ pub fn build_intro_body_outro_single_pass_args(
         "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.clone(),
         _ => "yuv420p".into(),
     };
-    let body_dauer = body_dauer.max(0.05);
+    let body_dauer = body_total_dauer(body);
     let outro_dauer = outro.dauer.max(0.1);
     let intro_dauer = intro.map(|(_, _, d)| d.max(0.1)).unwrap_or(0.0);
     let total = intro_dauer + body_dauer + outro_dauer;
@@ -1066,14 +1256,12 @@ pub fn build_intro_body_outro_single_pass_args(
     } else {
         None
     };
-    let body_idx = next_idx;
-    next_idx += 1;
+    let body_first = next_idx;
+    next_idx += body.len();
     let outro_idx = next_idx;
     next_idx += 1;
     let silence_idx = next_idx;
 
-    let body_plan = capcut_normalize_plan(body_source, v_params, &target_pix_fmt);
-    let body_hwaccel = body_hwaccel.filter(|a| body_plan.permits_hwaccel(a));
     // Photo outro always normalizes; video outro may skip when source matches.
     let outro_plan = match outro.kind {
         OutroKind::Photo => CapcutNormalizePlan::full(),
@@ -1102,17 +1290,14 @@ pub fn build_intro_body_outro_single_pass_args(
         ));
         v_n += 1;
     }
-    fc.push_str(&build_capcut_segment_vfilter(
-        body_idx,
-        "bodyv",
-        body_plan,
-        w,
-        h,
-        fps,
+    push_capcut_body_branches(
+        &mut fc,
+        body,
+        body_first,
+        v_params,
         &target_pix_fmt,
-        &[],
-    ));
-    fc.push(';');
+        (audio_mode == SinglePassAudioMode::EncodeAac).then_some(aformat.as_str()),
+    );
     v_n += 1;
     match outro.kind {
         OutroKind::Photo => {
@@ -1131,6 +1316,7 @@ pub fn build_intro_body_outro_single_pass_args(
                 h,
                 fps,
                 &target_pix_fmt,
+                &[],
                 &[],
             ));
             fc.push(';');
@@ -1187,9 +1373,7 @@ pub fn build_intro_body_outro_single_pass_args(
                 a_concat.push_str("[introa]");
                 a_n += 1;
             }
-            fc.push_str(&format!(
-                "[{body_idx}:a]asetpts=PTS-STARTPTS,{aformat}[bodya];"
-            ));
+            // `[bodya]` is emitted by `push_capcut_body_branches` (one clip or a segment concat).
             a_concat.push_str("[bodya]");
             a_n += 1;
             if outro.has_audio {
@@ -1230,7 +1414,7 @@ pub fn build_intro_body_outro_single_pass_args(
             hintergrund.to_string(),
         ]);
     }
-    push_media_input(&mut args, body_path, body_hwaccel);
+    push_body_inputs(&mut args, body, v_params, &target_pix_fmt, body_hwaccel);
     match outro.kind {
         OutroKind::Photo => {
             args.extend(["-loop".into(), "1".into(), "-i".into(), outro.path.clone()]);
@@ -1289,6 +1473,9 @@ pub fn build_intro_body_outro_single_pass_args(
         "cfr".into(),
         "-force_key_frames".into(),
         format!("expr:{kf}"),
+    ]);
+    push_baked_rotation_metadata(&mut args, body);
+    args.extend([
         "-movflags".into(),
         "+faststart".into(),
         "-progress".into(),
@@ -2106,7 +2293,84 @@ fn rotation_body_encode_target(
         VideoCodecPreference::H265 => VideoCodecPreference::H265,
         _ => VideoCodecPreference::H264,
     };
-    (target, crf.saturating_sub(ROTATION_INTERMEDIATE_CRF_HEADROOM))
+    (
+        target,
+        crf.saturating_sub(ROTATION_INTERMEDIATE_CRF_HEADROOM),
+    )
+}
+
+/// Probe source clips for a CapCut encode that bakes edit rotation itself (OPT-26F).
+///
+/// No intermediate file. The returned profile is the Rotate confirm (abort cancels);
+/// the caller applies its CRF / HW flag to the single CapCut pass.
+fn prepare_folded_rotation_body(
+    ffmpeg: &Path,
+    paths: &[String],
+    rotations: &[u32],
+    crf: u8,
+    hw_accel_enabled: bool,
+    on_progress: &ProgressCallback,
+    on_reencode: Option<&ReencodeAskFn>,
+) -> Result<(Vec<CapcutBodyClip>, EncodeProfile), ProcessorError> {
+    let mut clips = Vec::with_capacity(paths.len());
+    for (i, path) in paths.iter().enumerate() {
+        let stderr = ffmpeg_probe_stderr(ffmpeg, path).map_err(ProcessorError::Ffmpeg)?;
+        let deg = rotations.get(i).copied().unwrap_or(0);
+        clips.push(CapcutBodyClip::rotated_from_probe(path, &stderr, deg));
+    }
+    let dims: Vec<(u32, u32)> = clips
+        .iter()
+        .map(|c| {
+            c.source
+                .as_ref()
+                .map(|s| (s.width, s.height))
+                .unwrap_or((0, 0))
+        })
+        .collect();
+    let letterbox = dims
+        .first()
+        .is_some_and(|first| dims.iter().any(|d| d != first));
+
+    let hw = detect_hardware();
+    let recommended = EncodeProfile::recommend(
+        ReencodeKind::Rotate,
+        crf,
+        hw_accel_enabled && hw.available,
+        None,
+    );
+    let reason = "Gedrehte Clips werden beim Erstellen einmal neu kodiert";
+    let degs: Vec<String> = rotations.iter().map(|d| format!("{d}°")).collect();
+    let mut details = vec![format!("Drehung pro Clip: {}", degs.join(", "))];
+    if let Some((w, h)) = dims.first().copied().filter(|_| letterbox) {
+        details.push(format!(
+            "Ausgabe {w}×{h} (Letterbox für abweichende Ausrichtung)"
+        ));
+    }
+    let intent = ReencodeIntent::new(ReencodeKind::Rotate, reason)
+        .with_params(ReencodeParams {
+            clip_count: Some(paths.len()),
+            strategy: Some("rotate_capcut_single_pass".into()),
+            details,
+            ..Default::default()
+        })
+        .with_recommended(recommended);
+    on_progress(progress_from_times(
+        0.0,
+        100.0,
+        "Neu-Kodierung — warte auf Bestätigung…",
+    ));
+    let profile = reencode_confirm::require_confirm(on_reencode, &intent)
+        .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+    logging::info(
+        "encode",
+        format!(
+            "rotation: capcut single-pass ({}) encoder_crf={} hw={}",
+            degs.join(","),
+            profile.crf,
+            profile.hw_accel
+        ),
+    );
+    Ok((clips, profile))
 }
 
 /// Create final MP4: optional intro + body clips → `output`.
@@ -2197,7 +2461,40 @@ pub fn create_video(
             && !concat::clips_have_soft_rotation(ffmpeg, video_paths)?;
         concat::body_rotation_route(&rotations, display_ok)
     };
-    let body_path = if rotation_route == concat::BodyRotationRoute::Bake {
+    // OPT-26F: Intro/Outro re-encodes the body anyway. Bake the rotation inside that
+    // pass (one encode) instead of writing `body_concat.mp4` first. Fast intro mux
+    // stream-copies the body, so it still needs the pixels baked beforehand.
+    let intro_mux_norm = normalized_intro_mux_mode(&options.intro_mux_mode);
+    let fold_rotation = rotation_route == concat::BodyRotationRoute::Bake
+        && (outro_active
+            || (options.intro_enabled
+                && (intro_mux_norm == "capcut" || intro_mux_norm == "single_pass")));
+    let mut folded_clips: Option<Vec<CapcutBodyClip>> = None;
+    let mut rotation_encode: Option<EncodeProfile> = None;
+    if fold_rotation {
+        let (clips, profile) = prepare_folded_rotation_body(
+            ffmpeg,
+            video_paths,
+            &rotations,
+            options.crf,
+            hw_accel_enabled,
+            &on_progress,
+            on_reencode.as_ref(),
+        )?;
+        folded_clips = Some(clips);
+        rotation_encode = Some(profile);
+    }
+    let export_crf = rotation_encode
+        .as_ref()
+        .map(|p| p.crf)
+        .unwrap_or(options.crf);
+    let export_hw = rotation_encode
+        .as_ref()
+        .map(|p| p.hw_accel)
+        .unwrap_or(hw_accel_enabled);
+    let body_path = if folded_clips.is_some() {
+        video_paths[0].clone()
+    } else if rotation_route == concat::BodyRotationRoute::Bake {
         if video_paths.len() > 1 {
             emit_step_start(&on_progress, "Drehe und füge Clips zusammen…");
         }
@@ -2373,6 +2670,29 @@ pub fn create_video(
         VideoCodec::Hevc => "hevc".into(),
         _ => "h264".into(),
     };
+    // Folded clips: canvas is the first clip after soft + edit rotation (letterbox target).
+    if let Some(src) = folded_clips
+        .as_ref()
+        .and_then(|clips| clips.first())
+        .and_then(|c| c.source.as_ref())
+    {
+        v_params.width = src.width.max(2);
+        v_params.height = src.height.max(2);
+    }
+    let passthrough_body = if folded_clips.is_none() {
+        vec![CapcutBodyClip::single(
+            &body_path,
+            super::progress::parse_duration(&body_stderr).unwrap_or(0.05),
+            AUDIO_STREAM_RE.is_match(&body_stderr),
+            Some(CapcutSourceVideo::from_intro_params(&v_params)),
+        )]
+    } else {
+        Vec::new()
+    };
+    let body_inputs: &[CapcutBodyClip] = match folded_clips.as_ref() {
+        Some(clips) => clips,
+        None => &passthrough_body,
+    };
 
     let final_body = if outro_active {
         // Phase 50: [Intro?] → Body → Outro in one continuous, phone-safe encode
@@ -2392,10 +2712,8 @@ pub fn create_video(
             VideoCodec::Hevc => "hevc".into(),
             _ => "h264".into(),
         };
-        // OPT-21A: source geometry before forcing phone-safe pix_fmt.
-        let body_source = CapcutSourceVideo::from_intro_params(&v_params);
         capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe
-        let profile = EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
+        let profile = EncodeProfile::capcut_export(export_hw, export_crf, capcut_codec_str);
 
         // Intro strings must outlive the mux call; declared here, filled when enabled.
         let hintergrund_s: String;
@@ -2412,7 +2730,7 @@ pub fn create_video(
         let outcome = mux_with_outro(
             ffmpeg,
             intro_opt,
-            &body_path,
+            body_inputs,
             &outro_path,
             outro_kind,
             options.outro_dauer,
@@ -2420,7 +2738,6 @@ pub fn create_video(
             &capcut_params,
             &hw,
             &profile,
-            Some(&body_source),
             &work,
             Arc::clone(&on_progress),
         )?;
@@ -2551,7 +2868,7 @@ pub fn create_video(
                     mux_intro_body_single_pass(
                         ffmpeg,
                         &hintergrund_s,
-                        &body_path,
+                        body_inputs,
                         output,
                         options.dauer,
                         &v_params,
@@ -2559,7 +2876,6 @@ pub fn create_video(
                         &hw,
                         encode_crf,
                         encode_hw,
-                        None,
                         None,
                         &work,
                         Arc::clone(&mux_cb),
@@ -2587,14 +2903,12 @@ pub fn create_video(
                 VideoCodec::Hevc => "hevc".into(),
                 _ => "h264".into(),
             };
-            let body_source = CapcutSourceVideo::from_intro_params(&v_params);
             capcut_params.pix_fmt = "yuv420p".into(); // 8-bit 4:2:0 — iOS-safe (H.264 & HEVC Main)
-            let profile =
-                EncodeProfile::capcut_export(hw_accel_enabled, options.crf, capcut_codec_str);
+            let profile = EncodeProfile::capcut_export(export_hw, export_crf, capcut_codec_str);
             mux_intro_body_single_pass(
                 ffmpeg,
                 &hintergrund_s,
-                &body_path,
+                body_inputs,
                 output,
                 options.dauer,
                 &capcut_params,
@@ -2603,45 +2917,49 @@ pub fn create_video(
                 profile.crf,
                 profile.hw_accel,
                 Some(&profile),
-                Some(&body_source),
                 &work,
                 Arc::clone(&mux_cb),
             )
         } else if force_single_pass {
             // Max splice safety: one continuous encode + optional confirm dialog.
-            let intent = ReencodeIntent::new(
-                ReencodeKind::IntroMux,
-                "Intro+Body durchgängig kodieren (max. Schnitt-Kompatibilität)",
-            )
-            .with_params(ReencodeParams {
-                crf: Some(options.crf),
-                hw_accel: Some(hw_accel_enabled),
-                clip_count: Some(video_paths.len()),
-                intro_duration_secs: Some(options.dauer),
-                intro_mux_mode: Some(options.intro_mux_mode.clone()),
-                strategy: Some("single_pass_intro_body".into()),
-                target_codec: Some(v_params.vcodec.clone()),
-                ..Default::default()
-            });
-            on_progress(progress_from_times(
-                0.0,
-                100.0,
-                "Neu-Kodierung — warte auf Bestätigung…",
-            ));
-            let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
-                .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+            // Rotation already asked (OPT-26F); don't ask a second time.
+            let (pass_crf, pass_hw) = if let Some(profile) = rotation_encode.as_ref() {
+                (profile.crf, profile.hw_accel)
+            } else {
+                let intent = ReencodeIntent::new(
+                    ReencodeKind::IntroMux,
+                    "Intro+Body durchgängig kodieren (max. Schnitt-Kompatibilität)",
+                )
+                .with_params(ReencodeParams {
+                    crf: Some(options.crf),
+                    hw_accel: Some(hw_accel_enabled),
+                    clip_count: Some(video_paths.len()),
+                    intro_duration_secs: Some(options.dauer),
+                    intro_mux_mode: Some(options.intro_mux_mode.clone()),
+                    strategy: Some("single_pass_intro_body".into()),
+                    target_codec: Some(v_params.vcodec.clone()),
+                    ..Default::default()
+                });
+                on_progress(progress_from_times(
+                    0.0,
+                    100.0,
+                    "Neu-Kodierung — warte auf Bestätigung…",
+                ));
+                let profile = reencode_confirm::require_confirm(on_reencode.as_ref(), &intent)
+                    .map_err(|_| ProcessorError::Ffmpeg(FfmpegError::Cancelled))?;
+                (profile.crf, profile.hw_accel)
+            };
             mux_intro_body_single_pass(
                 ffmpeg,
                 &hintergrund_s,
-                &body_path,
+                body_inputs,
                 output,
                 options.dauer,
                 &v_params,
                 &drawtext,
                 &hw,
-                profile.crf,
-                profile.hw_accel,
-                None,
+                pass_crf,
+                pass_hw,
                 None,
                 &work,
                 Arc::clone(&mux_cb),
@@ -3128,7 +3446,7 @@ fn log_encode_fail(kind: &str, err: &impl std::fmt::Display) {
 fn mux_intro_body_single_pass(
     ffmpeg: &Path,
     hintergrund: &str,
-    body_path: &str,
+    body: &[CapcutBodyClip],
     output: &str,
     intro_dauer: f64,
     v_params: &IntroVideoParams,
@@ -3137,23 +3455,29 @@ fn mux_intro_body_single_pass(
     crf: u8,
     hw_accel_enabled: bool,
     encode_profile: Option<&EncodeProfile>,
-    body_source: Option<&CapcutSourceVideo>,
     work: &Path,
     on_progress: ProgressCallback,
 ) -> Result<concat::ConcatOutcome, ConcatError> {
     if is_cancelled() {
         return Err(ConcatError::Ffmpeg(FfmpegError::Cancelled));
     }
+    if body.is_empty() {
+        return Err(ConcatError::Message("no body clips".into()));
+    }
 
-    let has_audio = concat::probe_has_audio(ffmpeg, body_path)?;
-    let body_dur = probe_duration_secs(ffmpeg, body_path)
-        .unwrap_or(0.0)
-        .max(0.05);
+    // Audio-copy extracts one body file. Several clips (OPT-26F) encode AAC in the graph.
+    let single = body.len() == 1;
+    let has_audio = if single {
+        body[0].has_audio
+    } else {
+        body_all_have_audio(body)
+    };
+    let body_dur = body_total_dauer(body);
     let intro_dauer = intro_dauer.max(0.1);
     // Small headroom: short/wrong container duration must not make the bar race to 99%
     // in the first seconds (live ticks are also capped at 99% until FFmpeg `end`).
     let total = progress_encode_total_secs(&[intro_dauer, body_dur]);
-    let copy_audio = has_audio && body_audio_is_aac_copyable(v_params);
+    let copy_audio = single && has_audio && body_audio_is_aac_copyable(v_params);
 
     let audio_mode = if copy_audio {
         SinglePassAudioMode::VideoOnly
@@ -3238,27 +3562,22 @@ fn mux_intro_body_single_pass(
             "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.as_str(),
             _ => "yuv420p",
         };
-        let body_plan = capcut_normalize_plan(body_source, v_params, target_pix);
-        let body_hwaccel = if !force_sw && encode_hw {
-            capcut_hwaccel_for_decode(hw, body_plan)
-        } else {
-            None
-        };
+        let body_hwaccel = (!force_sw && encode_hw)
+            .then(|| capcut_decode_accel(hw))
+            .flatten();
         if capcut && attempt_i == 0 {
-            log_capcut_filter_plan("body", body_plan, body_hwaccel);
+            log_capcut_body_plans(body, v_params, target_pix, body_hwaccel);
         }
         let args = build_intro_body_single_pass_args(
             hintergrund,
-            body_path,
+            body,
             &video_target,
             intro_dauer,
-            body_dur,
             v_params,
             drawtext,
             &encoder,
             &quality,
             audio_mode,
-            body_source,
             body_hwaccel,
         );
         match run_ffmpeg(ffmpeg, &args, total, Arc::clone(&on_progress)) {
@@ -3285,7 +3604,7 @@ fn mux_intro_body_single_pass(
     if copy_audio {
         assemble_silent_plus_body_audio(
             ffmpeg,
-            body_path,
+            &body[0].path,
             &video_target,
             output,
             intro_dauer,
@@ -3440,7 +3759,7 @@ fn assemble_silent_plus_body_audio(
 fn mux_with_outro(
     ffmpeg: &Path,
     intro: Option<(&str, &str, f64)>,
-    body_path: &str,
+    body: &[CapcutBodyClip],
     outro_path: &str,
     outro_kind: OutroKind,
     outro_dauer: f64,
@@ -3448,12 +3767,14 @@ fn mux_with_outro(
     v_params: &IntroVideoParams,
     hw: &HwAccelInfo,
     capcut_profile: &EncodeProfile,
-    body_source: Option<&CapcutSourceVideo>,
     work: &Path,
     on_progress: ProgressCallback,
 ) -> Result<concat::ConcatOutcome, ProcessorError> {
     if is_cancelled() {
         return Err(ProcessorError::Ffmpeg(FfmpegError::Cancelled));
+    }
+    if body.is_empty() {
+        return Err(ProcessorError::Message("no body clips".into()));
     }
     let codec = match v_params.vcodec.as_str() {
         "hevc" | "h265" => VideoCodec::Hevc,
@@ -3461,10 +3782,14 @@ fn mux_with_outro(
     };
     let fps_int = parse_fps_int(&v_params.fps);
 
-    let body_has_audio = concat::probe_has_audio(ffmpeg, body_path).unwrap_or(false);
-    let body_dur = probe_duration_secs(ffmpeg, body_path)
-        .unwrap_or(0.0)
-        .max(0.05);
+    // Audio-copy extracts one body file. Several clips (OPT-26F) encode AAC in the graph.
+    let single = body.len() == 1;
+    let body_has_audio = if single {
+        body[0].has_audio
+    } else {
+        body_all_have_audio(body)
+    };
+    let body_dur = body_total_dauer(body);
     let intro_dauer = intro.map(|(_, _, d)| d.max(0.1)).unwrap_or(0.0);
 
     let outro_has_audio = match outro_kind {
@@ -3486,7 +3811,8 @@ fn mux_with_outro(
 
     // AAC copy only when body audio is copyable AND Outro does not bring its own audio
     // (photo / silent video → trailing silence via stream-copy assemble).
-    let copy_audio = body_has_audio && body_audio_is_aac_copyable(v_params) && !outro_has_audio;
+    let copy_audio =
+        single && body_has_audio && body_audio_is_aac_copyable(v_params) && !outro_has_audio;
 
     let audio_mode = if copy_audio {
         SinglePassAudioMode::VideoOnly
@@ -3563,26 +3889,21 @@ fn mux_with_outro(
             "yuv420p" | "yuvj420p" | "yuv420p10le" => v_params.pix_fmt.as_str(),
             _ => "yuv420p",
         };
-        let body_plan = capcut_normalize_plan(body_source, v_params, target_pix);
-        let body_hwaccel = if !force_sw && encode_hw {
-            capcut_hwaccel_for_decode(hw, body_plan)
-        } else {
-            None
-        };
+        let body_hwaccel = (!force_sw && encode_hw)
+            .then(|| capcut_decode_accel(hw))
+            .flatten();
         if attempt_i == 0 {
-            log_capcut_filter_plan("body", body_plan, body_hwaccel);
+            log_capcut_body_plans(body, v_params, target_pix, body_hwaccel);
         }
         let args = build_intro_body_outro_single_pass_args(
             intro,
-            body_path,
-            body_dur,
+            body,
             &outro_input,
             &video_target,
             v_params,
             &encoder,
             &quality,
             audio_mode,
-            body_source,
             None, // outro geometry not probed here — full normalize (safe)
             body_hwaccel,
         );
@@ -3613,7 +3934,7 @@ fn mux_with_outro(
     if copy_audio {
         assemble_silent_plus_body_audio(
             ffmpeg,
-            body_path,
+            &body[0].path,
             &video_target,
             output,
             intro_dauer,
@@ -3754,18 +4075,17 @@ mod tests {
     fn single_pass_args_structure_encode_aac() {
         let v = IntroVideoParams::for_1080p30("h264");
         let quality = intro_quality_params("libx264", 18, false);
+        let body = [CapcutBodyClip::single(r"C:\body.mp4", 10.0, true, None)];
         let args = build_intro_body_single_pass_args(
             r"C:\assets\bg.png",
-            r"C:\body.mp4",
+            &body,
             r"C:\out\final.mp4",
             5.0,
-            10.0,
             &v,
             "drawtext=text='Gast'",
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
-            None,
             None,
         );
         assert!(args.contains(&"-filter_complex".into()));
@@ -3781,6 +4101,7 @@ mod tests {
         assert!(fc.matches("setsar=1").count() >= 2);
         assert!(args.contains(&"aac".into()));
         assert!(args.iter().any(|a| a == "15" || a.starts_with("15.")));
+        assert!(!args.iter().any(|a| a == "rotate=0"));
         assert_eq!(args.last().unwrap(), r"C:\out\final.mp4");
     }
 
@@ -3788,18 +4109,17 @@ mod tests {
     fn single_pass_args_video_only_for_audio_copy() {
         let v = IntroVideoParams::for_1080p30("h264");
         let quality = intro_quality_params("libx264", 18, false);
+        let body = [CapcutBodyClip::single("body.mp4", 7.0, true, None)];
         let args = build_intro_body_single_pass_args(
             "bg.png",
-            "body.mp4",
+            &body,
             "v.mp4",
             3.0,
-            7.0,
             &v,
             "drawtext=text='x'",
             "libx264",
             &quality,
             SinglePassAudioMode::VideoOnly,
-            None,
             None,
         );
         assert!(args.contains(&"-an".into()));
@@ -4104,7 +4424,12 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     #[test]
     fn body_clip_args_carry_thread_cap_for_parallel_libx264() {
         let params = IntroVideoParams::for_1080p30("h264");
-        let mut quality = vec!["-preset".into(), "medium".into(), "-crf".into(), "18".into()];
+        let mut quality = vec![
+            "-preset".into(),
+            "medium".into(),
+            "-crf".into(),
+            "18".into(),
+        ];
         quality.extend(parallel_sw_thread_args("libx264", 2, 2));
         let args = build_body_clip_encode_args("in.mp4", "out.mp4", &params, "libx264", &quality);
         let pos = args.iter().position(|a| a == "-threads").expect("-threads");
@@ -4138,17 +4463,16 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             dauer: 4.0,
             has_audio: false,
         };
+        let body = [CapcutBodyClip::single(r"C:\body.mp4", 60.0, true, None)];
         let args = build_intro_body_outro_single_pass_args(
             Some((r"C:\assets\bg.png", "drawtext=text='Gast'", 5.0)),
-            r"C:\body.mp4",
-            60.0,
+            &body,
             &outro,
             r"C:\out\final.mp4",
             &v,
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
-            None,
             None,
             None,
         );
@@ -4187,17 +4511,16 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             dauer: 3.0,
             has_audio: false,
         };
+        let body = [CapcutBodyClip::single("body.mp4", 10.0, true, None)];
         let args = build_intro_body_outro_single_pass_args(
             None,
-            "body.mp4",
-            10.0,
+            &body,
             &outro,
             "v.mp4",
             &v,
             "libx264",
             &quality,
             SinglePassAudioMode::VideoOnly,
-            None,
             None,
             None,
         );
@@ -4222,17 +4545,16 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             dauer: 8.0,
             has_audio: true,
         };
+        let body = [CapcutBodyClip::single("body.mp4", 20.0, true, None)];
         let args = build_intro_body_outro_single_pass_args(
             Some(("bg.png", "drawtext=text='x'", 5.0)),
-            "body.mp4",
-            20.0,
+            &body,
             &outro,
             "final.mp4",
             &v,
             "libx264",
             &quality,
             SinglePassAudioMode::EncodeAac,
-            None,
             None,
             None,
         );
@@ -4471,18 +4793,17 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             fps: "60".into(),
             pix_fmt: "yuv420p10le".into(),
         };
+        let body = [CapcutBodyClip::single("body.mp4", 10.0, true, Some(src))];
         let args = build_intro_body_single_pass_args(
             "bg.png",
-            "body.mp4",
+            &body,
             "out.mp4",
             5.0,
-            10.0,
             &v,
             "drawtext=text='x'",
             "h264_videotoolbox",
             &quality,
             SinglePassAudioMode::EncodeAac,
-            Some(&src),
             Some("videotoolbox"),
         );
         let fc = args
@@ -4502,18 +4823,17 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
         let v = IntroVideoParams::for_1080p30("h264");
         let quality = intro_quality_params("libx264", 18, false);
         let src = CapcutSourceVideo::from_intro_params(&v);
+        let body = [CapcutBodyClip::single("body.mp4", 10.0, true, Some(src))];
         let args = build_intro_body_single_pass_args(
             "bg.png",
-            "body.mp4",
+            &body,
             "out.mp4",
             5.0,
-            10.0,
             &v,
             "drawtext=text='x'",
             "h264_nvenc",
             &quality,
             SinglePassAudioMode::VideoOnly,
-            Some(&src),
             Some("cuda"),
         );
         let fc = args
@@ -4546,18 +4866,17 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
             fps: "60".into(),
             pix_fmt: "yuv420p10le".into(),
         };
+        let body = [CapcutBodyClip::single("body.mp4", 10.0, true, Some(src))];
         let args = build_intro_body_single_pass_args(
             "bg.png",
-            "body.mp4",
+            &body,
             "out.mp4",
             5.0,
-            10.0,
             &v,
             "drawtext=text='x'",
             "h264_nvenc",
             &quality,
             SinglePassAudioMode::EncodeAac,
-            Some(&src),
             Some("cuda"), // must be ignored — CPU normalize remains
         );
         let fc = args
@@ -4574,16 +4893,175 @@ Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'body.mp4':
     #[test]
     fn build_capcut_segment_vfilter_match_vs_mismatch() {
         let match_plan = CapcutNormalizePlan::none();
-        let s =
-            build_capcut_segment_vfilter(1, "bodyv", match_plan, 1920, 1080, "30", "yuv420p", &[]);
+        let s = build_capcut_segment_vfilter(
+            1,
+            "bodyv",
+            match_plan,
+            1920,
+            1080,
+            "30",
+            "yuv420p",
+            &[],
+            &[],
+        );
         assert_eq!(s, "[1:v]setpts=PTS-STARTPTS,setsar=1[bodyv]");
 
         let full = CapcutNormalizePlan::full();
-        let s = build_capcut_segment_vfilter(0, "v0", full, 1920, 1080, "30", "yuv420p", &[]);
+        let s = build_capcut_segment_vfilter(0, "v0", full, 1920, 1080, "30", "yuv420p", &[], &[]);
         assert!(s.starts_with("[0:v]scale=1920:1080"));
         assert!(s.contains("pad=1920:1080"));
         assert!(s.contains("fps=30"));
         assert!(s.contains("format=yuv420p"));
         assert!(s.ends_with("[v0]"));
+
+        let turned = build_capcut_segment_vfilter(
+            0,
+            "v0",
+            CapcutNormalizePlan::none(),
+            1920,
+            1080,
+            "30",
+            "yuv420p",
+            &["hflip,vflip"],
+            &[],
+        );
+        assert_eq!(turned, "[0:v]hflip,vflip,setpts=PTS-STARTPTS,setsar=1[v0]");
+    }
+
+    #[test]
+    fn folded_rotation_joins_clips_inside_intro_graph() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let landscape = CapcutSourceVideo {
+            width: 1920,
+            height: 1080,
+            fps: "30".into(),
+            pix_fmt: "yuv420p".into(),
+        };
+        let portrait = CapcutSourceVideo {
+            width: 1080,
+            height: 1920,
+            fps: "30".into(),
+            pix_fmt: "yuv420p".into(),
+        };
+        let body = [
+            CapcutBodyClip {
+                path: "a.mp4".into(),
+                dauer: 10.0,
+                rotation: 180,
+                has_audio: true,
+                source: Some(landscape),
+            },
+            CapcutBodyClip {
+                path: "b.mp4".into(),
+                dauer: 8.0,
+                rotation: 90,
+                has_audio: true,
+                source: Some(portrait),
+            },
+        ];
+        let args = build_intro_body_single_pass_args(
+            "bg.png",
+            &body,
+            "out.mp4",
+            5.0,
+            &v,
+            "drawtext=text='x'",
+            "libx264",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+            Some("cuda"),
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("[1:v]hflip,vflip,setpts=PTS-STARTPTS,setsar=1[bodyv0]"));
+        assert!(fc.contains("[2:v]transpose=1,scale=1920:1080"));
+        assert!(fc.contains("concat=n=2:v=1:a=1[bodyv][bodya]"));
+        assert!(fc.contains("[introv][bodyv]concat=n=2:v=1:a=0[v]"));
+        assert!(fc.contains("[introa][bodya]concat=n=2:v=0:a=1[a]"));
+        // Rotation is a CPU filter → CUDA decode is dropped on every clip.
+        assert!(!args.iter().any(|a| a == "-hwaccel"));
+        assert!(args.windows(2).any(|w| w[0] == "-i" && w[1] == "a.mp4"));
+        assert!(args.windows(2).any(|w| w[0] == "-i" && w[1] == "b.mp4"));
+        assert!(args
+            .windows(2)
+            .any(|w| w[0] == "-metadata:s:v:0" && w[1] == "rotate=0"));
+        // intro 5 + clips 10 + 8
+        assert!(args.iter().any(|a| a == "23" || a.starts_with("23.")));
+    }
+
+    #[test]
+    fn folded_rotation_joins_clips_inside_outro_graph() {
+        let v = IntroVideoParams::for_1080p30("h264");
+        let quality = intro_quality_params("libx264", 18, false);
+        let src = CapcutSourceVideo::from_intro_params(&v);
+        let body = [
+            CapcutBodyClip {
+                path: "a.mp4".into(),
+                dauer: 4.0,
+                rotation: 180,
+                has_audio: true,
+                source: Some(src.clone()),
+            },
+            CapcutBodyClip {
+                path: "b.mp4".into(),
+                dauer: 6.0,
+                rotation: 0,
+                has_audio: true,
+                source: Some(src),
+            },
+        ];
+        let outro = SinglePassOutroInput {
+            path: "outro.png".into(),
+            kind: OutroKind::Photo,
+            dauer: 3.0,
+            has_audio: false,
+        };
+        let args = build_intro_body_outro_single_pass_args(
+            None,
+            &body,
+            &outro,
+            "out.mp4",
+            &v,
+            "h264_videotoolbox",
+            &quality,
+            SinglePassAudioMode::EncodeAac,
+            None,
+            Some("videotoolbox"),
+        );
+        let fc = args
+            .iter()
+            .position(|a| a == "-filter_complex")
+            .and_then(|i| args.get(i + 1))
+            .expect("filter_complex");
+        assert!(fc.contains("[0:v]hflip,vflip"));
+        assert!(fc.contains("[1:v]setpts=PTS-STARTPTS,setsar=1[bodyv1]"));
+        assert!(fc.contains("concat=n=2:v=1:a=1[bodyv][bodya]"));
+        assert!(fc.contains("[bodyv][outrov]concat=n=2:v=1:a=0[v]"));
+        // VideoToolbox downloads frames before CPU filters, so it stays on the rotated clip.
+        assert!(args.iter().any(|a| a == "videotoolbox"));
+        // Keyframe at the body/outro seam: 4 + 6 = 10.
+        assert!(args.iter().any(|a| a.contains("gte(t,10)")));
+    }
+
+    #[test]
+    fn rotated_from_probe_swaps_canvas_for_quarter_turn() {
+        let stderr = "\
+Duration: 00:00:12.50, start: 0.000000, bitrate: 1000 kb/s
+  Stream #0:0: Video: hevc (Main), yuv420p(tv), 1920x1080, 30 fps, 30 tbr, 90k tbn
+  Stream #0:1: Audio: aac (LC), 48000 Hz, stereo
+    Side data:
+      Display Matrix: rotation of -90.00 degrees";
+        let clip = CapcutBodyClip::rotated_from_probe("clip.mp4", stderr, 90);
+        assert!((clip.dauer - 12.5).abs() < 0.01);
+        assert!(clip.has_audio);
+        assert_eq!(clip.rotation, 90);
+        let src = clip.source.expect("source");
+        // Display −90° is 270° clockwise (swaps 1920×1080); edit 90° swaps back.
+        assert_eq!((src.width, src.height), (1920, 1080));
+        assert_eq!(src.pix_fmt, "yuv420p");
     }
 }
