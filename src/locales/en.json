@@ -61,15 +61,16 @@
       "photos": "Photos",
       "themeLight": "Light",
       "themeDark": "Dark",
-      "themeTeamSpirit": "Team Spirit",
-      "themeSpirit2": "Spirit 2",
+      "themeTeamSpirit": "Dark Spirit",
+      "themeSpirit2": "Liquid Spirit",
       "themeRoyalNavy": "Royal Navy",
-      "themeRoyalFlag": "Royal Flag",
+      "themeRoyalFlag": "Royal Blue",
       "themeRoseNoir": "Rose Noir",
       "themeRoseBlush": "Rose Blush",
-      "themeMilitaryOlive": "Military Olive",
-      "themeMilitaryKhaki": "Military Khaki",
-      "themeFsz": "FSZ",
+      "themeMilitaryOlive": "Olive",
+      "themeMilitaryKhaki": "Khaki",
+      "themeFsz": "FSZ Dark",
+      "themeFszLight": "FSZ Light",
       "language": "Language",
       "storageLocation": "Storage location",
       "dropzonePlaceholder": "Drop zone…",
@@ -118,6 +119,7 @@
     },
     "areas": {
       "workplace": "Personal",
+      "appearance": "Appearance",
       "media": "Media",
       "connection": "Connection",
       "output": "Output",
@@ -134,7 +136,26 @@
     "general": {
       "appearance": {
         "title": "Appearance",
-        "description": "Interface design (light, dark, or specialty)."
+        "description": "Interface design (light, dark, or specialty).",
+        "groups": {
+          "base": "Basics",
+          "specials": "Specials",
+          "looks": "Looks"
+        },
+        "hints": {
+          "light": "Standard · Light",
+          "dark": "Standard · Dark",
+          "teamSpirit": "Dark · Gold",
+          "spirit2": "Glass · Gold",
+          "royalNavy": "Deep blue",
+          "royalFlag": "Bright blue",
+          "roseNoir": "Dark · Rose",
+          "roseBlush": "Soft · Pink",
+          "militaryOlive": "Matte · Green",
+          "militaryKhaki": "Warm · Sand",
+          "fsz": "Glass · Red",
+          "fszLight": "Glass · Red"
+        }
       },
       "language": {
         "description": "App interface language."
@@ -2394,7 +2415,7 @@
       "sd": "Backup, clear/eject, auto-import, and limits are optional and can be changed later.",
       "qr": "QR scan options can be configured later in settings.",
       "server": "Server access can be configured later.",
-      "workplace": "You can change appearance, drop zone, and operator later at any time.",
+      "workplace": "You can change drop zone and operator later at any time.",
       "media": "Backup, import, eject, and QR scan are optional and can be changed later.",
       "output": "Output settings are optional — defaults stay if you skip.",
       "import": "Backup, import, eject, and QR scan are optional and can be changed later."
@@ -2433,21 +2454,32 @@
       "serverMissing": "— server missing —",
       "storageMissingHint": "Without a storage location, jobs cannot be saved. You can set it later in settings."
     },
-    "finish": "Finish setup",
+    "finish": "Get started",
     "skipAll": "Skip entire setup",
     "complete": "Setup completed.",
     "completeTitle": "Success",
+    "celebration": {
+      "eyebrow": "Done",
+      "title": "You're all set",
+      "headline": "Setup complete",
+      "body": "You can create jobs and process media now.",
+      "toApp": "Go to app",
+      "progressAria": "Setup complete",
+      "serverConnected": "Server connected",
+      "serverLater": "Server later"
+    },
     "import": {
       "backupHint": "Imports the card through the recommended workflow using a local copy.",
       "qrHint": "QR files stay in place by default. Scan duration and cleanup are under More options.",
       "backupPcNameHint": "Backup folders are labeled with “{{name}}”."
     },
     "intro": {
-      "appearance": "Welcome to Aero Tandem Studio. Set appearance, drop zone, and operator. Everything else can be adjusted later in settings.",
+      "appearance": "Choose the look of the app. You can change it later in settings at any time.",
       "import": "Set the import defaults here: backup, clear, import, and eject. QR cleanup and further details can be adjusted later in settings.",
       "storage": "Completed jobs are saved to the storage location.",
       "upload": "Upload is optional. If you do not need it right now, leave it off and set up the server later.",
-      "workplaceSimple": "Appearance, drop zone, and your name. Storage folders and media use the defaults.",
+      "workplace": "Drop zone and your name. Everything else can be adjusted later in settings.",
+      "workplaceSimple": "Drop zone and your name. Storage folders and media use the defaults.",
       "connectionSimple": "We search for the server on the network. Enter the token and connect — you can change this later.",
       "mode": "How should setup run? You can change the mode later in settings.",
       "media": "Set backup, auto-import, eject, and QR scan. USB, size warning, and QR details are under More options.",
@@ -2475,7 +2507,7 @@
     },
     "standardFolderTitle": "Default folder",
     "steps": {
-      "appearance": "Welcome",
+      "appearance": "Appearance",
       "mode": "Setup mode",
       "workplace": "Personal",
       "storage": "Storage",

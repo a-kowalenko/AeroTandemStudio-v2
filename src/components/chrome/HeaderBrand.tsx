@@ -123,7 +123,7 @@ export function HeaderBrand({
 
   const collapsedToLogoOnly = !showTitle && !showSubtitle;
   const logoSizeClass =
-    themeId === "fsz"
+    themeId === "fsz" || themeId === "fsz-light"
       ? "h-[34px] w-[34px]"
       : themeId === "team-spirit" || themeId === "spirit-2"
         ? "h-[30px] w-[30px]"

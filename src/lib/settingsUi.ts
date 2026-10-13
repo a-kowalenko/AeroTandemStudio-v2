@@ -4,12 +4,13 @@ export type SettingsUiMode = "simple" | "advanced";
 
 export type SettingsArea =
   | "workplace"
+  | "appearance"
   | "media"
   | "connection"
   | "output"
   | "maintenance";
 
-/** Accepts legacy tab IDs and the five Phase-47 areas. */
+/** Accepts legacy tab IDs and the Phase-47 areas (+ appearance). */
 export type SettingsTab =
   | SettingsArea
   | "allgemein"
@@ -29,6 +30,7 @@ export type SettingsFocusTarget =
 
 export const SETTINGS_AREAS: readonly SettingsArea[] = [
   "workplace",
+  "appearance",
   "media",
   "connection",
   "output",
@@ -55,6 +57,7 @@ const TAB_TO_AREA: Record<string, SettingsArea> = {
   workplace: "workplace",
   allgemein: "workplace",
   crew: "workplace",
+  appearance: "appearance",
   media: "media",
   qr: "media",
   sd: "media",
@@ -114,24 +117,24 @@ export function isFocusRevealed(
 export type WizardStepId =
   | "mode"
   | "workplace"
+  | "appearance"
   | "storage"
   | "media"
   | "connection"
-  | "output"
-  | "finish";
+  | "output";
 
 export function wizardStepsForMode(mode: SettingsUiMode): WizardStepId[] {
   if (mode === "simple") {
-    return ["mode", "workplace", "connection", "finish"];
+    return ["mode", "workplace", "appearance", "connection"];
   }
   return [
     "mode",
     "workplace",
+    "appearance",
     "storage",
     "media",
     "connection",
     "output",
-    "finish",
   ];
 }
 
@@ -158,21 +161,22 @@ export function applySimpleWizardMediaDefaults<
 }
 
 export function isWizardStepSkippable(id: WizardStepId): boolean {
-  return id !== "mode" && id !== "finish";
+  return id !== "mode";
 }
 
 export const WIZARD_STEP_TITLE_KEY: Record<WizardStepId, string> = {
   mode: "setupWizard.steps.mode",
   workplace: "setupWizard.steps.workplace",
+  appearance: "setupWizard.steps.appearance",
   storage: "setupWizard.steps.storage",
   media: "setupWizard.steps.media",
   connection: "setupWizard.steps.connection",
   output: "setupWizard.steps.output",
-  finish: "setupWizard.steps.finish",
 };
 
 export const WIZARD_STEP_HINT_KEY: Partial<Record<WizardStepId, string>> = {
   workplace: "setupWizard.stepHint.workplace",
+  appearance: "setupWizard.stepHint.appearance",
   storage: "setupWizard.stepHint.storage",
   media: "setupWizard.stepHint.media",
   connection: "setupWizard.stepHint.server",

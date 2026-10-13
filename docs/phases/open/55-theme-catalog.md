@@ -42,7 +42,7 @@ Siehe `src/index.css` Blöcke `[data-theme="…"]`. FSZ-Primary = Logo-Rot `#a10
 | `index.css` | Token + Ambient (FSZ, Camo) + Glass-Gruppen |
 | `index.html` | Boot KNOWN/BASE_DARK + Splash-Vars + FSZ-Logo |
 | `themeLogo.ts` | FSZ (+ Team Spirit) |
-| Settings / Wizard | Icons für alle Themes |
+| Settings / Wizard | `ThemePicker` (Swatches + Gruppen) |
 | i18n | Labels de/en/es-MX |
 
 ---

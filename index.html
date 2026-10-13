@@ -19,6 +19,7 @@
           "military-olive": 1,
           "military-khaki": 1,
           fsz: 1,
+          "fsz-light": 1,
         };
         var BASE_DARK = {
           dark: 1,
@@ -62,10 +63,11 @@
       html.dark[data-theme="royal-navy"] { background-color: #0a1220; }
       html.dark[data-theme="royal-flag"] { background-color: #0c1830; }
       html.dark[data-theme="rose-noir"] { background-color: #100e10; }
-      html[data-theme="rose-blush"] { background-color: #faf6f7; }
+      html[data-theme="rose-blush"] { background-color: #fdf5f7; }
       html.dark[data-theme="military-olive"] { background-color: #161a12; }
       html.dark[data-theme="military-khaki"] { background-color: #1a1812; }
       html.dark[data-theme="fsz"] { background-color: #141012; }
+      html[data-theme="fsz-light"] { background-color: #f0eeee; }
       #boot-splash {
         --bs-bg: #eef4f2; --bs-glow: #cfe8e2; --bs-primary: #009d8b;
         --bs-soft: rgba(0, 157, 139, 0.12); --bs-ring: rgba(0, 157, 139, 0.25);
@@ -109,9 +111,9 @@
         --bs-muted: #c9b8be; --bs-muted-80: rgba(201, 184, 190, 0.8); --bs-muted-70: rgba(201, 184, 190, 0.7); --bs-border: rgba(250, 246, 247, 0.18);
       }
       html[data-theme="rose-blush"] #boot-splash {
-        --bs-bg: #faf6f7; --bs-glow: #f0d8e0; --bs-primary: #5c3d48;
-        --bs-soft: rgba(92, 61, 72, 0.12); --bs-ring: rgba(92, 61, 72, 0.25);
-        --bs-muted: #6a545c; --bs-muted-80: rgba(106, 84, 92, 0.8); --bs-muted-70: rgba(106, 84, 92, 0.7); --bs-border: rgba(26, 18, 22, 0.14);
+        --bs-bg: #fdf5f7; --bs-glow: #f8d4e0; --bs-primary: #a84d6a;
+        --bs-soft: rgba(168, 77, 106, 0.14); --bs-ring: rgba(168, 77, 106, 0.28);
+        --bs-muted: #8a6574; --bs-muted-80: rgba(138, 101, 116, 0.8); --bs-muted-70: rgba(138, 101, 116, 0.7); --bs-border: rgba(196, 90, 120, 0.22);
       }
       html.dark[data-theme="military-olive"] #boot-splash {
         --bs-bg: #161a12; --bs-glow: #243018; --bs-primary: #7a8f3e;
@@ -127,6 +129,11 @@
         --bs-bg: #141012; --bs-glow: #3a1820; --bs-primary: #f0ecec;
         --bs-soft: rgba(240, 236, 236, 0.16); --bs-ring: rgba(240, 236, 236, 0.28);
         --bs-muted: #c4b8b9; --bs-muted-80: rgba(196, 184, 185, 0.8); --bs-muted-70: rgba(196, 184, 185, 0.7); --bs-border: rgba(247, 244, 244, 0.26);
+      }
+      html[data-theme="fsz-light"] #boot-splash {
+        --bs-bg: #f0eeee; --bs-glow: #e8b4b4; --bs-primary: #141414;
+        --bs-soft: rgba(164, 12, 32, 0.12); --bs-ring: rgba(164, 12, 32, 0.35);
+        --bs-muted: #5e5a5a; --bs-muted-80: rgba(94, 90, 90, 0.8); --bs-muted-70: rgba(94, 90, 90, 0.7); --bs-border: rgba(164, 12, 32, 0.18);
       }
       #boot-splash .bs-col {
         display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -185,7 +192,7 @@
             var logo = document.getElementById("bs-logo-img");
             if (logo && (theme === "team-spirit" || theme === "spirit-2")) {
               logo.src = "/themes/team-spirit/logo.svg";
-            } else if (logo && theme === "fsz") {
+            } else if (logo && (theme === "fsz" || theme === "fsz-light")) {
               logo.src = "/themes/fsz/logo.png";
             }
           })();

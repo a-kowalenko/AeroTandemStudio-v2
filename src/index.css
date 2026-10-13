@@ -294,33 +294,33 @@ html.dark[data-theme="rose-noir"] {
   --ats-scrollbar-track: transparent;
 }
 
-/* Phase 55 — Rose Blush (UI chrome = plum charcoal; rose accent/progress) */
+/* Phase 55 — Rose Blush (soft pink paper; solid plates, no liquid glass) */
 html[data-theme="rose-blush"] {
   color-scheme: light;
-  --ats-bg: #faf6f7;
-  --ats-fg: #1a1216;
-  --ats-card: #ffffff;
-  --ats-card-elevated: #f3ecee;
-  --ats-muted: #6a545c;
-  --ats-border: rgba(26, 18, 22, 0.14);
-  --ats-primary: #5c3d48;
+  --ats-bg: #fdf5f7;
+  --ats-fg: #2a1520;
+  --ats-card: #fffafb;
+  --ats-card-elevated: #f8eef2;
+  --ats-muted: #8a6574;
+  --ats-border: rgba(196, 90, 120, 0.22);
+  --ats-primary: #a84d6a;
   --ats-primary-fg: #ffffff;
-  --ats-primary-soft: rgba(92, 61, 72, 0.12);
-  --ats-accent: #c45a78;
+  --ats-primary-soft: rgba(168, 77, 106, 0.14);
+  --ats-accent: #e8a0b0;
   --ats-destructive: #b42318;
   --ats-success: #5a8a5a;
   --ats-warning: #9a6700;
-  --ats-ring: rgba(92, 61, 72, 0.4);
-  --ats-surface: rgba(255, 255, 255, 0.88);
-  --ats-header: rgba(255, 255, 255, 0.92);
-  --ats-sidebar: rgba(255, 250, 251, 0.78);
-  --ats-bg-glow-1: #f0d8e0;
-  --ats-bg-glow-2: #e8e0f0;
+  --ats-ring: rgba(168, 77, 106, 0.4);
+  --ats-surface: rgba(255, 250, 251, 0.94);
+  --ats-header: rgba(255, 250, 251, 0.96);
+  --ats-sidebar: rgba(253, 245, 247, 0.92);
+  --ats-bg-glow-1: #f8d4e0;
+  --ats-bg-glow-2: #f0e0f4;
   --ats-progress-from: #c45a78;
-  --ats-progress-to: #e8a0b0;
+  --ats-progress-to: #f0b8c8;
   --ats-preview-stage: #2a2226;
-  --ats-scrollbar-thumb: rgba(26, 18, 22, 0.24);
-  --ats-scrollbar-thumb-hover: rgba(92, 61, 72, 0.5);
+  --ats-scrollbar-thumb: rgba(168, 77, 106, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(168, 77, 106, 0.5);
   --ats-scrollbar-track: transparent;
 }
 
@@ -470,6 +470,66 @@ html.dark[data-theme="fsz"] {
 }
 
 /*
+ * Phase 55 — FSZ Light (cool sport glass; distinct from Rose Blush pink paper)
+ * Near-white / graphite chrome + punchy logo red — not mauve/plum.
+ */
+html[data-theme="fsz-light"] {
+  color-scheme: light;
+  /* Neutral cool base — red only via logo hex (low G/B), not rose/magenta */
+  --ats-bg: #f0eeee;
+  --ats-fg: #141414;
+  --ats-muted: #5e5a5a;
+  --ats-border: rgba(164, 12, 32, 0.18);
+  --ats-primary: #141414;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(164, 12, 32, 0.12);
+  --ats-accent: #a40c20;
+  --ats-destructive: #c41e2a;
+  --ats-success: #178a4e;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(164, 12, 32, 0.4);
+  --ats-card: #f7f5f5;
+  --ats-card-elevated: #ffffff;
+  --ats-overlay: rgba(247, 245, 245, 0.74);
+  --ats-glass-shine: rgba(255, 255, 255, 0.8);
+  --ats-glass-tint: rgba(164, 12, 32, 0.1);
+  --ats-glass-edge: rgba(164, 12, 32, 0.16);
+  --ats-glass-seam: rgba(164, 12, 32, 0.1);
+  --ats-surface: rgba(255, 255, 255, 0.4);
+  --ats-header: rgba(255, 255, 255, 0.48);
+  --ats-sidebar: rgba(240, 238, 238, 0.44);
+  --ats-panel-filter: blur(48px) saturate(1.5) brightness(1.02);
+  --ats-float-filter: blur(36px) saturate(1.35);
+  --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
+  --ats-panel-shadow-float:
+    0 0 0 0.5px var(--ats-glass-edge),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.85),
+    0 12px 36px rgba(60, 12, 20, 0.12),
+    0 2px 6px rgba(60, 12, 20, 0.06);
+  /* True red wash (G≈B) — avoids pink/magenta cast */
+  --ats-bg-glow-1: #e8b4b4;
+  --ats-bg-glow-2: #f0c0c0;
+  --ats-progress-from: #a40c20;
+  --ats-progress-to: #d42838;
+  --ats-preview-stage: #141414;
+  --ats-scrollbar-thumb: rgba(164, 12, 32, 0.24);
+  --ats-scrollbar-thumb-hover: rgba(164, 12, 32, 0.5);
+  --ats-scrollbar-track: transparent;
+
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #34d399;
+  --color-emerald-500: #178a4e;
+  --color-emerald-600: #147a45;
+  --color-emerald-700: #11653a;
+  --color-emerald-800: #0e5230;
+  --color-emerald-900: #0b4227;
+  --color-emerald-950: #062416;
+}
+
+/*
  * Spirit ambient mark — oversized SVG, centered behind the UI.
  * Black disk vanishes into the bg; white / gold / red stay as ghost branding.
  * Visibility relies on glass surfaces (translucent --ats-card / surface).
@@ -498,7 +558,8 @@ html.dark[data-theme="spirit-2"]::before {
   opacity: 0.12;
 }
 
-html.dark[data-theme="fsz"]::before {
+html.dark[data-theme="fsz"]::before,
+html[data-theme="fsz-light"]::before {
   content: "";
   position: fixed;
   z-index: 0;
@@ -515,6 +576,10 @@ html.dark[data-theme="fsz"]::before {
     transparent 82%
   );
   mask-image: radial-gradient(circle at center, #000 32%, transparent 82%);
+}
+
+html[data-theme="fsz-light"]::before {
+  opacity: 0.11;
 }
 
 /* Team Spirit v1 — light frost on shell only (A/B baseline) */
@@ -543,7 +608,8 @@ html.dark[data-theme="spirit-2"],
 html.dark[data-theme="royal-navy"],
 html.dark[data-theme="royal-flag"],
 html.dark[data-theme="rose-noir"],
-html.dark[data-theme="fsz"] {
+html.dark[data-theme="fsz"],
+html[data-theme="fsz-light"] {
   --ats-liquid-glass-bg:
     linear-gradient(
       155deg,
@@ -561,9 +627,19 @@ html.dark[data-theme="fsz"] {
     0 1px 4px rgba(0, 0, 0, 0.22);
 }
 
-/* Spirit 2 + FSZ: airy shell glass + denser float plates (QR / progress / upload) */
+/* Light FSZ: softer float shadow (no heavy black plate) */
+html[data-theme="fsz-light"] {
+  --ats-liquid-glass-shadow:
+    0 0 0 0.5px var(--ats-glass-edge),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.75),
+    0 12px 36px rgba(26, 18, 20, 0.12),
+    0 2px 6px rgba(26, 18, 20, 0.06);
+}
+
+/* Spirit 2 + FSZ (dark/light): airy shell glass */
 html.dark[data-theme="spirit-2"],
-html.dark[data-theme="fsz"] {
+html.dark[data-theme="fsz"],
+html[data-theme="fsz-light"] {
   --ats-liquid-glass-bg:
     linear-gradient(
       155deg,
@@ -589,7 +665,10 @@ html.dark[data-theme="spirit-2"] .ats-sidebar-bg,
 html.dark[data-theme="spirit-2"] .ats-header-bg,
 html.dark[data-theme="fsz"] .ats-surface,
 html.dark[data-theme="fsz"] .ats-sidebar-bg,
-html.dark[data-theme="fsz"] .ats-header-bg {
+html.dark[data-theme="fsz"] .ats-header-bg,
+html[data-theme="fsz-light"] .ats-surface,
+html[data-theme="fsz-light"] .ats-sidebar-bg,
+html[data-theme="fsz-light"] .ats-header-bg {
   background: var(--ats-panel-bg);
   -webkit-backdrop-filter: var(--ats-panel-filter);
   backdrop-filter: var(--ats-panel-filter);
@@ -599,13 +678,15 @@ html.dark[data-theme="fsz"] .ats-header-bg {
 
 /* Quiet seams — present, not loud */
 html.dark[data-theme="spirit-2"] .ats-header-bg,
-html.dark[data-theme="fsz"] .ats-header-bg {
+html.dark[data-theme="fsz"] .ats-header-bg,
+html[data-theme="fsz-light"] .ats-header-bg {
   border-bottom: none;
   box-shadow: inset 0 -0.5px 0 var(--ats-glass-seam);
 }
 
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg,
-html.dark[data-theme="fsz"] .ats-sidebar-bg {
+html.dark[data-theme="fsz"] .ats-sidebar-bg,
+html[data-theme="fsz-light"] .ats-sidebar-bg {
   border-right: none;
   box-shadow: inset -0.5px 0 0 var(--ats-glass-seam);
 }
@@ -615,12 +696,16 @@ html.dark[data-theme="spirit-2"] .ats-sidebar-bg .border-t,
 html.dark[data-theme="spirit-2"] .ats-surface .border-b,
 html.dark[data-theme="fsz"] .ats-sidebar-bg .border-b,
 html.dark[data-theme="fsz"] .ats-sidebar-bg .border-t,
-html.dark[data-theme="fsz"] .ats-surface .border-b {
+html.dark[data-theme="fsz"] .ats-surface .border-b,
+html[data-theme="fsz-light"] .ats-sidebar-bg .border-b,
+html[data-theme="fsz-light"] .ats-sidebar-bg .border-t,
+html[data-theme="fsz-light"] .ats-surface .border-b {
   border-color: var(--ats-glass-seam) !important;
 }
 
 html.dark[data-theme="spirit-2"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg),
-html.dark[data-theme="fsz"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg) {
+html.dark[data-theme="fsz"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg),
+html[data-theme="fsz-light"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg) {
   border-radius: 0.75rem;
   background: var(--ats-panel-bg);
   -webkit-backdrop-filter: var(--ats-panel-filter);
@@ -629,18 +714,21 @@ html.dark[data-theme="fsz"] main .ats-surface:not(.ats-progress-float-in):not(.s
 }
 
 html.dark[data-theme="spirit-2"] main .ats-surface [class*="bg-card-elevated"],
-html.dark[data-theme="fsz"] main .ats-surface [class*="bg-card-elevated"] {
+html.dark[data-theme="fsz"] main .ats-surface [class*="bg-card-elevated"],
+html[data-theme="fsz-light"] main .ats-surface [class*="bg-card-elevated"] {
   background-color: color-mix(in srgb, var(--ats-card) 45%, transparent) !important;
 }
 
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg [class*="from-card"],
-html.dark[data-theme="fsz"] .ats-sidebar-bg [class*="from-card"] {
+html.dark[data-theme="fsz"] .ats-sidebar-bg [class*="from-card"],
+html[data-theme="fsz-light"] .ats-sidebar-bg [class*="from-card"] {
   --tw-gradient-from: color-mix(in srgb, var(--ats-card) 55%, transparent) !important;
   border-color: var(--ats-glass-seam) !important;
 }
 
 html.dark[data-theme="spirit-2"] .border-t.border-border.bg-card\/95,
-html.dark[data-theme="fsz"] .border-t.border-border.bg-card\/95 {
+html.dark[data-theme="fsz"] .border-t.border-border.bg-card\/95,
+html[data-theme="fsz-light"] .border-t.border-border.bg-card\/95 {
   border-top-color: var(--ats-glass-seam) !important;
   background-color: color-mix(in srgb, var(--ats-card) 72%, transparent) !important;
   box-shadow: none !important;
@@ -648,7 +736,8 @@ html.dark[data-theme="fsz"] .border-t.border-border.bg-card\/95 {
 
 /* Non-progress floats (e.g. other shadow-lg plates); progress uses dense rule below */
 html.dark[data-theme="spirit-2"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out),
-html.dark[data-theme="fsz"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out) {
+html.dark[data-theme="fsz"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out),
+html[data-theme="fsz-light"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out) {
   background: var(--ats-liquid-glass-bg);
   -webkit-backdrop-filter: var(--ats-float-filter);
   backdrop-filter: var(--ats-float-filter);
@@ -669,10 +758,17 @@ html.dark[data-theme="fsz"] a.border {
   border-color: rgba(247, 244, 244, 0.32);
 }
 
+html[data-theme="fsz-light"] button.border,
+html[data-theme="fsz-light"] a.border {
+  border-color: rgba(18, 18, 20, 0.18);
+}
+
 html.dark[data-theme="spirit-2"] button.bg-card:hover,
 html.dark[data-theme="spirit-2"] a.bg-card:hover,
 html.dark[data-theme="fsz"] button.bg-card:hover,
-html.dark[data-theme="fsz"] a.bg-card:hover {
+html.dark[data-theme="fsz"] a.bg-card:hover,
+html[data-theme="fsz-light"] button.bg-card:hover,
+html[data-theme="fsz-light"] a.bg-card:hover {
   background-color: var(--ats-card-elevated);
 }
 
@@ -686,6 +782,11 @@ html.dark[data-theme="fsz"] a.bg-card:hover {
   border-color: rgba(247, 244, 244, 0.42);
 }
 
+html[data-theme="fsz-light"] button.bg-card:hover,
+html[data-theme="fsz-light"] a.bg-card:hover {
+  border-color: rgba(18, 18, 20, 0.28);
+}
+
 html.dark[data-theme="spirit-2"] button.bg-transparent:hover,
 html.dark[data-theme="spirit-2"] a.bg-transparent:hover {
   background-color: var(--ats-primary-soft);
@@ -696,6 +797,12 @@ html.dark[data-theme="fsz"] button.bg-transparent:hover,
 html.dark[data-theme="fsz"] a.bg-transparent:hover {
   background-color: var(--ats-primary-soft);
   border-color: rgba(240, 236, 236, 0.35);
+}
+
+html[data-theme="fsz-light"] button.bg-transparent:hover,
+html[data-theme="fsz-light"] a.bg-transparent:hover {
+  background-color: var(--ats-primary-soft);
+  border-color: rgba(164, 12, 32, 0.28);
 }
 
 html.dark[data-theme="spirit-2"] input,
@@ -712,6 +819,13 @@ html.dark[data-theme="fsz"] button[role="combobox"] {
   border-color: rgba(247, 244, 244, 0.3);
 }
 
+html[data-theme="fsz-light"] input,
+html[data-theme="fsz-light"] textarea,
+html[data-theme="fsz-light"] [role="combobox"],
+html[data-theme="fsz-light"] button[role="combobox"] {
+  border-color: rgba(18, 18, 20, 0.16);
+}
+
 html.dark[data-theme="spirit-2"] input:hover,
 html.dark[data-theme="spirit-2"] textarea:hover,
 html.dark[data-theme="spirit-2"] [role="combobox"]:hover,
@@ -726,15 +840,24 @@ html.dark[data-theme="fsz"] button[role="combobox"]:hover {
   border-color: rgba(247, 244, 244, 0.42);
 }
 
+html[data-theme="fsz-light"] input:hover,
+html[data-theme="fsz-light"] textarea:hover,
+html[data-theme="fsz-light"] [role="combobox"]:hover,
+html[data-theme="fsz-light"] button[role="combobox"]:hover {
+  border-color: rgba(18, 18, 20, 0.26);
+}
+
 html.dark[data-theme="spirit-2"] input:focus-visible,
 html.dark[data-theme="spirit-2"] textarea:focus-visible,
 html.dark[data-theme="fsz"] input:focus-visible,
-html.dark[data-theme="fsz"] textarea:focus-visible {
+html.dark[data-theme="fsz"] textarea:focus-visible,
+html[data-theme="fsz-light"] input:focus-visible,
+html[data-theme="fsz-light"] textarea:focus-visible {
   border-color: color-mix(in srgb, var(--ats-primary) 55%, transparent);
 }
 
 /*
- * Liquid glass — brand dark skins (Spirit + Phase 55 glass group).
+ * Liquid glass — brand skins (Spirit + FSZ dark/light + Phase 55 glass group).
  * Light / Dark / Rose Blush / Military keep solid plates.
  */
 html.dark[data-theme="team-spirit"] .ats-liquid-glass,
@@ -743,24 +866,28 @@ html.dark[data-theme="royal-navy"] .ats-liquid-glass,
 html.dark[data-theme="royal-flag"] .ats-liquid-glass,
 html.dark[data-theme="rose-noir"] .ats-liquid-glass,
 html.dark[data-theme="fsz"] .ats-liquid-glass,
+html[data-theme="fsz-light"] .ats-liquid-glass,
 html.dark[data-theme="team-spirit"] [role="dialog"],
 html.dark[data-theme="spirit-2"] [role="dialog"],
 html.dark[data-theme="royal-navy"] [role="dialog"],
 html.dark[data-theme="royal-flag"] [role="dialog"],
 html.dark[data-theme="rose-noir"] [role="dialog"],
 html.dark[data-theme="fsz"] [role="dialog"],
+html[data-theme="fsz-light"] [role="dialog"],
 html.dark[data-theme="team-spirit"] [role="listbox"],
 html.dark[data-theme="spirit-2"] [role="listbox"],
 html.dark[data-theme="royal-navy"] [role="listbox"],
 html.dark[data-theme="royal-flag"] [role="listbox"],
 html.dark[data-theme="rose-noir"] [role="listbox"],
 html.dark[data-theme="fsz"] [role="listbox"],
+html[data-theme="fsz-light"] [role="listbox"],
 html.dark[data-theme="team-spirit"] [role="menu"],
 html.dark[data-theme="spirit-2"] [role="menu"],
 html.dark[data-theme="royal-navy"] [role="menu"],
 html.dark[data-theme="royal-flag"] [role="menu"],
 html.dark[data-theme="rose-noir"] [role="menu"],
-html.dark[data-theme="fsz"] [role="menu"] {
+html.dark[data-theme="fsz"] [role="menu"],
+html[data-theme="fsz-light"] [role="menu"] {
   background: var(--ats-liquid-glass-bg);
   -webkit-backdrop-filter: var(--ats-liquid-glass-filter);
   backdrop-filter: var(--ats-liquid-glass-filter);
@@ -817,7 +944,8 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
 @media (prefers-reduced-motion: no-preference) {
   html.dark[data-theme="team-spirit"]::before,
   html.dark[data-theme="spirit-2"]::before,
-  html.dark[data-theme="fsz"]::before {
+  html.dark[data-theme="fsz"]::before,
+  html[data-theme="fsz-light"]::before {
     animation: ats-spirit-mark-drift 30s ease-in-out infinite alternate;
   }
 }
@@ -2109,6 +2237,47 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
     box-shadow:
       0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent),
       0 0 0 0 color-mix(in srgb, var(--ats-primary) 0%, transparent);
+  }
+}
+
+@keyframes ats-wizard-celebrate-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes ats-wizard-celebrate-check {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ats-wizard-celebrate {
+  animation: ats-wizard-celebrate-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.ats-wizard-celebrate-check {
+  animation: ats-wizard-celebrate-check 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ats-wizard-celebrate,
+  .ats-wizard-celebrate-check {
+    animation: none;
   }
 }
 

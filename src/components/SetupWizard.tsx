@@ -1,26 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
-  Anchor,
   Check,
-  Crosshair,
-  Flag,
-  Flame,
-  Flower2,
+  CheckCircle2,
   FolderOpen,
-  Heart,
   Info,
   Languages,
   Loader2,
-  Moon,
-  Shield,
-  Sparkles,
-  Star,
-  Sun,
-  type LucideIcon,
 } from "lucide-react";
+import { ThemePicker } from "@/components/ThemePicker";
 import { Button } from "@/components/ui/button";
+import { usePausableAutoDismiss } from "@/hooks/usePausableAutoDismiss";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,15 +32,14 @@ import {
   proposeDefaultMediaDirs,
   upsertCrewMember,
 } from "@/lib/tauri";
-import { UI_LANGUAGE_OPTIONS, uiLanguageLabel } from "@/lib/uiLanguageOptions";
+import { UI_LANGUAGE_OPTIONS } from "@/lib/uiLanguageOptions";
 import { useConfigStore } from "@/store/configStore";
 import { useLocaleStore } from "@/store/localeStore";
 import { useServerStore } from "@/store/serverStore";
-import { THEMES, themeMeta, useThemeStore, type ThemeId } from "@/store/themeStore";
+import { themeMeta, useThemeStore } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import {
-  activeServerProfileSummary,
   DEFAULT_SERVER_PROFILE_ID,
   ensureWizardServerProfiles,
   switchServerProfile,
@@ -92,16 +82,6 @@ function WizardOptionGroup({
       {children}
     </div>
   );
-}
-
-function encodingCodecLabel(
-  codec: string,
-  t: (key: string) => string,
-): string {
-  if (codec === "auto") return t("settings.encoding.codecAuto");
-  if (codec === "h264") return "H.264";
-  if (codec === "h265") return "H.265";
-  return codec;
 }
 
 function pathsEqual(a: string, b: string): boolean {
@@ -348,20 +328,6 @@ type OperatorRoleDraft = {
 const SKIP_BTN_CLASS =
   "border-orange-300/90 bg-orange-100 text-orange-950 hover:bg-orange-200/90 dark:border-orange-400/35 dark:bg-orange-400/15 dark:text-orange-50 dark:hover:bg-orange-400/25";
 
-const WIZARD_THEME_ICONS: Record<ThemeId, LucideIcon> = {
-  light: Sun,
-  dark: Moon,
-  "team-spirit": Sparkles,
-  "spirit-2": Star,
-  "royal-navy": Anchor,
-  "royal-flag": Flag,
-  "rose-noir": Heart,
-  "rose-blush": Flower2,
-  "military-olive": Shield,
-  "military-khaki": Crosshair,
-  fsz: Flame,
-};
-
 export function SetupWizard({ open, onComplete }: Props) {
   const { t } = useTranslation();
   const config = useConfigStore((s) => s.config);
@@ -375,6 +341,7 @@ export function SetupWizard({ open, onComplete }: Props) {
   const serverConnected = useServerStore((s) => s.connected);
 
   const [step, setStep] = useState(0);
+  const [phase, setPhase] = useState<"steps" | "done">("steps");
   const [draft, setDraft] = useState<AppConfig | null>(null);
   const [skippedSteps, setSkippedSteps] = useState<Set<WizardStepId>>(
     () => new Set(),
@@ -431,6 +398,7 @@ export function SetupWizard({ open, onComplete }: Props) {
     );
     setDraft(next);
     setStep(0);
+    setPhase("steps");
     setSkippedSteps(new Set());
     setFieldErrors({});
     setMediaDirsProposal(null);
@@ -505,6 +473,34 @@ export function SetupWizard({ open, onComplete }: Props) {
       alert.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
   }, [fieldErrors, step]);
+
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  const celebrateClosedRef = useRef(false);
+
+  useEffect(() => {
+    if (phase === "done") celebrateClosedRef.current = false;
+  }, [phase]);
+
+  const leaveToApp = useCallback(() => {
+    if (celebrateClosedRef.current) return;
+    celebrateClosedRef.current = true;
+    onCompleteRef.current();
+  }, []);
+
+  const celebrateDurationMs = open && phase === "done" ? 5000 : 0;
+  const {
+    paused: celebratePaused,
+    remainingMs: celebrateRemainingMs,
+    remainingSec: celebrateRemainingSec,
+    pauseProps: celebratePauseProps,
+    dismiss: dismissCelebration,
+  } = usePausableAutoDismiss(
+    celebrateDurationMs,
+    leaveToApp,
+    undefined,
+    phase === "done" ? "setup-wizard-celebrate" : "setup-wizard-idle",
+  );
 
   if (!open || !draft) return null;
 
@@ -809,11 +805,11 @@ export function SetupWizard({ open, onComplete }: Props) {
     };
   }
 
-  async function finish(markCompleted: boolean) {
+  async function finish(opts: { celebrate: boolean }) {
     if (!draft || finishing) return;
     setFinishing(true);
     try {
-      let toSave = prepareForSave(markCompleted);
+      let toSave = prepareForSave(true);
       if (!toSave) return;
       if (normalizeSettingsUiMode(toSave.settings_ui_mode) === "simple") {
         toSave = applySimpleWizardMediaDefaults(toSave);
@@ -821,6 +817,7 @@ export function SetupWizard({ open, onComplete }: Props) {
           try {
             const result = await applyDefaultMediaDirsSilent();
             toSave = adoptSilentDirResult(toSave, result);
+            setDraft((prev) => (prev ? adoptSilentDirResult(prev, result) : prev));
           } catch {
             /* keep empty paths — settings can fill them later */
           }
@@ -828,56 +825,61 @@ export function SetupWizard({ open, onComplete }: Props) {
       }
       const saved = await persist(toSave);
       if (!saved) {
-        showError(t("setupWizard.saveFailed"), t("setupWizard.steps.finish"));
+        showError(t("setupWizard.saveFailed"));
         return;
       }
-      if (markCompleted) {
-        showSuccess(t("setupWizard.complete"), t("setupWizard.completeTitle"), {
-          autoCloseSecs: 5,
-        });
+      if (opts.celebrate) {
+        setPhase("done");
+      } else {
+        onComplete();
       }
-      onComplete();
     } finally {
       setFinishing(false);
     }
   }
 
   function onSkipAll() {
-    if (
-      !window.confirm(
-        t("setupWizard.skipAllConfirm"),
-      )
-    ) {
+    if (!window.confirm(t("setupWizard.skipAllConfirm"))) {
       return;
     }
-    void finish(true);
+    void finish({ celebrate: false });
   }
 
-  function finishFromSummary() {
+  function finishFromLastStep() {
     if (!draft) return;
-    const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
-    const steps = wizardStepsForMode(uiMode);
-    const checks = steps.filter(
+    const mode = normalizeSettingsUiMode(draft.settings_ui_mode);
+    const allSteps = wizardStepsForMode(mode);
+    const checks = allSteps.filter(
       (id) => isWizardStepSkippable(id) && !skippedSteps.has(id),
     );
     for (const id of checks) {
       const errors = collectFieldErrors(id);
       if (hasFieldErrors(errors)) {
         applyValidationErrors(errors, id);
-        const idx = steps.indexOf(id);
+        const idx = allSteps.indexOf(id);
         if (idx >= 0) setStep(idx);
         return;
       }
     }
-    void finish(true);
+    void finish({ celebrate: true });
   }
 
   const busy = saving || finishing;
   const uiMode = normalizeSettingsUiMode(draft.settings_ui_mode);
   const steps = wizardStepsForMode(uiMode);
   const stepId = steps[Math.min(step, steps.length - 1)] ?? "mode";
-  const canSkipStep = isWizardStepSkippable(stepId);
+  const canSkipStep = phase === "steps" && isWizardStepSkippable(stepId);
   const skipHint = WIZARD_STEP_HINT_KEY[stepId];
+  const isDone = phase === "done";
+  const celebrationChips = [
+    draft.operator_name.trim() || null,
+    draft.ort.trim() || null,
+    t(themeMeta(themeMode).labelKey),
+  ].filter((v): v is string => Boolean(v));
+  const storageMissing = !draft.speicherort.trim();
+  const serverSkipped = skippedSteps.has("connection");
+  const serverReady =
+    serverConnected || Boolean(draft.ams_bridge_last_ok_url.trim());
 
   return (
     <div
@@ -890,45 +892,58 @@ export function SetupWizard({ open, onComplete }: Props) {
       aria-modal="true"
       aria-labelledby="setup-wizard-title"
     >
-      <div className="flex h-[min(720px,92vh)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg">
+      <div
+        className="relative flex h-[min(720px,92vh)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+        {...(isDone ? celebratePauseProps : {})}
+      >
         <div className="shrink-0 border-b border-border px-6 py-4">
           <p className="text-xs uppercase tracking-wide text-muted">
-            {t("setupWizard.progress", {
-              current: step + 1,
-              total: steps.length,
-            })}
+            {isDone
+              ? t("setupWizard.celebration.eyebrow")
+              : t("setupWizard.progress", {
+                  current: step + 1,
+                  total: steps.length,
+                })}
           </p>
           <h2
             id="setup-wizard-title"
             className="mt-1 font-display text-xl font-bold tracking-tight text-primary"
           >
-            {t(WIZARD_STEP_TITLE_KEY[stepId])}
+            {isDone
+              ? t("setupWizard.celebration.title")
+              : t(WIZARD_STEP_TITLE_KEY[stepId])}
           </h2>
           <div
             className="mt-3 flex h-2 items-center gap-1.5"
             role="progressbar"
             aria-valuemin={1}
             aria-valuemax={steps.length}
-            aria-valuenow={step + 1}
-            aria-label={t("setupWizard.progressAria", {
-              current: step + 1,
-              total: steps.length,
-            })}
+            aria-valuenow={isDone ? steps.length : step + 1}
+            aria-label={
+              isDone
+                ? t("setupWizard.celebration.progressAria")
+                : t("setupWizard.progressAria", {
+                    current: step + 1,
+                    total: steps.length,
+                  })
+            }
           >
             {steps.map((id, i) => (
               <span
                 key={id}
                 title={t(WIZARD_STEP_TITLE_KEY[id])}
-                aria-current={i === step ? "step" : undefined}
+                aria-current={!isDone && i === step ? "step" : undefined}
                 className={cn(
                   "flex-1 self-center rounded-full transition-[height,background-color,box-shadow] duration-300 ease-out",
-                  i === step
-                    ? "h-2 bg-primary shadow-[inset_0_0_0_1px] shadow-primary/40"
-                    : skippedSteps.has(id)
-                      ? "h-1.5 bg-primary/30"
-                      : i < step
-                        ? "h-1.5 bg-primary/55"
-                        : "h-1.5 bg-border",
+                  isDone
+                    ? "h-1.5 bg-primary"
+                    : i === step
+                      ? "h-2 bg-primary shadow-[inset_0_0_0_1px] shadow-primary/40"
+                      : skippedSteps.has(id)
+                        ? "h-1.5 bg-primary/30"
+                        : i < step
+                          ? "h-1.5 bg-primary/55"
+                          : "h-1.5 bg-border",
                 )}
               />
             ))}
@@ -939,7 +954,59 @@ export function SetupWizard({ open, onComplete }: Props) {
           ref={stepContentRef}
           className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5"
         >
-          {stepId === "mode" ? (
+          {isDone ? (
+            <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-2 text-center">
+              <div className="ats-wizard-celebrate flex w-full max-w-sm flex-col items-center">
+                <div
+                  className="ats-wizard-celebrate-check relative mb-5 flex size-16 items-center justify-center rounded-full bg-primary-soft text-primary shadow-[0_0_40px] shadow-primary/25"
+                  aria-hidden
+                >
+                  <CheckCircle2 className="size-9" strokeWidth={1.75} />
+                </div>
+                <p className="font-display text-2xl font-bold tracking-tight text-foreground">
+                  {t("setupWizard.celebration.headline")}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-muted">
+                  {t("setupWizard.celebration.body")}
+                </p>
+                {celebrationChips.length > 0 ? (
+                  <ul className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    {celebrationChips.map((chip) => (
+                      <li
+                        key={chip}
+                        className="rounded-full border border-border bg-background/70 px-3 py-1 text-xs font-medium text-foreground"
+                      >
+                        {chip}
+                      </li>
+                    ))}
+                    {serverReady && !serverSkipped ? (
+                      <li className="rounded-full border border-emerald-500/35 bg-emerald-500/12 px-3 py-1 text-xs font-medium text-emerald-900 dark:text-emerald-50">
+                        {draft.ams_bridge_display_name.trim() ||
+                          t("setupWizard.celebration.serverConnected")}
+                      </li>
+                    ) : null}
+                    {serverSkipped ? (
+                      <li className="rounded-full border border-border bg-background/70 px-3 py-1 text-xs text-muted">
+                        {t("setupWizard.celebration.serverLater")}
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
+                {storageMissing ? (
+                  <p
+                    className="mt-4 max-w-xs text-xs leading-snug text-amber-800 dark:text-amber-100"
+                    role="status"
+                  >
+                    {t("setupWizard.summary.storageMissingHint")}
+                  </p>
+                ) : null}
+                <p className="mt-4 text-[11px] text-muted/80">
+                  {t("setupWizard.finishHint")}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {!isDone && stepId === "mode" ? (
             <>
               <div className="space-y-2">
                 <Label>{t("common.labels.language")}</Label>
@@ -1034,39 +1101,15 @@ export function SetupWizard({ open, onComplete }: Props) {
             </>
           ) : null}
 
-          {stepId === "workplace" ? (
+          {!isDone && stepId === "workplace" ? (
             <>
               <p className="text-sm text-foreground">
                 {t(
                   uiMode === "simple"
                     ? "setupWizard.intro.workplaceSimple"
-                    : "setupWizard.intro.appearance",
+                    : "setupWizard.intro.workplace",
                 )}
               </p>
-              <div className="space-y-2">
-                <Label>{t("settings.general.appearance.title")}</Label>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {THEMES.map(({ id, labelKey }) => {
-                    const Icon = WIZARD_THEME_ICONS[id];
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setThemeMode(id)}
-                        className={cn(
-                          "flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors",
-                          themeMode === id
-                            ? "border-primary bg-primary-soft text-primary"
-                            : "border-border bg-background text-foreground hover:bg-muted/30",
-                        )}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{t(labelKey)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
               <Combobox
                 label={t("settings.general.storage.defaultDropzone")}
                 value={draft.ort}
@@ -1120,7 +1163,19 @@ export function SetupWizard({ open, onComplete }: Props) {
             </>
           ) : null}
 
-          {stepId === "storage" ? (
+          {!isDone && stepId === "appearance" ? (
+            <>
+              <p className="text-sm text-foreground">
+                {t("setupWizard.intro.appearance")}
+              </p>
+              <div className="space-y-2">
+                <Label>{t("settings.general.appearance.title")}</Label>
+                <ThemePicker value={themeMode} onChange={setThemeMode} />
+              </div>
+            </>
+          ) : null}
+
+          {!isDone && stepId === "storage" ? (
             <>
               <p className="text-sm text-muted">
                 {t("setupWizard.intro.storage")}
@@ -1173,7 +1228,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             </>
           ) : null}
 
-          {stepId === "media" ? (
+          {!isDone && stepId === "media" ? (
             <>
               <p className="text-sm text-muted">
                 {t("setupWizard.intro.media")}
@@ -1487,7 +1542,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             </>
           ) : null}
 
-          {stepId === "connection" ? (
+          {!isDone && stepId === "connection" ? (
             uiMode === "simple" ? (
               <>
                 <p className="text-sm text-foreground">
@@ -1595,7 +1650,7 @@ export function SetupWizard({ open, onComplete }: Props) {
             )
           ) : null}
 
-          {stepId === "output" ? (
+          {!isDone && stepId === "output" ? (
             <>
               <p className="text-sm text-muted">{t("setupWizard.intro.output")}</p>
               <EncodingTab
@@ -1612,249 +1667,109 @@ export function SetupWizard({ open, onComplete }: Props) {
               />
             </>
           ) : null}
+        </div>
 
-          {stepId === "finish" ? (
+        <div
+          className={cn(
+            "shrink-0 flex flex-col gap-3 border-t border-border px-6 py-4",
+            isDone && "pb-5",
+          )}
+        >
+          {isDone ? (
+            <div className="flex justify-center">
+              <Button type="button" onClick={dismissCelebration}>
+                {t("setupWizard.finish")}
+                {celebrateRemainingSec > 0
+                  ? t("dialogs.countdownSuffix", {
+                      seconds: celebrateRemainingSec,
+                    })
+                  : ""}
+              </Button>
+            </div>
+          ) : (
             <>
-              <p className="text-sm text-muted">{t("setupWizard.summary.description")}</p>
-              <dl className="space-y-2 rounded-lg border border-border bg-background/60 px-3 py-3 text-sm">
-                <SummaryRow
-                  label={t("setupWizard.summary.mode")}
-                  value={
-                    uiMode === "advanced"
-                      ? t("setupWizard.mode.customTitle")
-                      : t("setupWizard.mode.simpleTitle")
-                  }
-                />
-                <SummaryRow
-                  label={t("common.labels.language")}
-                  value={uiLanguageLabel(draft.ui_language)}
-                />
-                <SummaryRow
-                  label={t("settings.general.appearance.title")}
-                  value={t(themeMeta(themeMode).labelKey)}
-                />
-                <SummaryRow
-                  label={t("settings.crew.who.label")}
-                  value={draft.operator_name.trim() || "—"}
-                />
-                <SummaryRow
-                  label={t("settings.general.storage.defaultDropzone")}
-                  value={draft.ort || "—"}
-                />
-                <SummaryRow
-                  label={t("common.labels.storageLocation")}
-                  value={
-                    skippedSteps.has("storage") && !draft.speicherort.trim()
-                      ? t("setupWizard.summary.skipped")
-                      : draft.speicherort || t("setupWizard.summary.notSet")
-                  }
-                />
-                {uiMode === "simple" ? (
-                  <>
-                    <SummaryRow
-                      label={t("settings.sd.backup.title")}
-                      value={
-                        draft.sd_backup_folder ||
-                        t("setupWizard.summary.notSet")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("setupWizard.steps.media")}
-                      value={t("setupWizard.summary.mediaDefaults")}
-                    />
-                    <SummaryRow
-                      label={t("settings.server.upload.title")}
-                      value={
-                        skippedSteps.has("connection")
-                          ? t("setupWizard.summary.skipped")
-                          : draft.ams_bridge_display_name.trim() ||
-                            activeServerProfileSummary(draft) ||
-                            draft.server_url ||
-                            t("setupWizard.summary.serverMissing")
-                      }
-                    />
-                  </>
-                ) : (
-                  <>
-                    <SummaryRow
-                      label={t("settings.sd.backup.title")}
-                      value={
-                        skippedSteps.has("media") && !draft.sd_auto_backup
-                          ? t("setupWizard.summary.skipped")
-                          : draft.sd_auto_backup
-                            ? draft.sd_backup_folder ||
-                              t("setupWizard.summary.missingFolder")
-                            : t("setupWizard.summary.disabled")
-                      }
-                    />
-                    {draft.sd_auto_backup ? (
-                      <SummaryRow
-                        label={t("settings.sd.backup.pcName")}
-                        value={
-                          resolveSdPcName(
-                            draft.sd_pc_name,
-                            computerName,
-                            draft.operator_name,
-                          ) || t("setupWizard.summary.notSet")
-                        }
-                      />
-                    ) : null}
-                    <SummaryRow
-                      label={t("settings.sd.backup.clearAfter")}
-                      value={
-                        draft.sd_auto_backup && draft.sd_clear_after_backup
-                          ? t("setupWizard.summary.on")
-                          : t("setupWizard.summary.off")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("settings.sd.import.auto")}
-                      value={
-                        draft.sd_auto_import
-                          ? t("setupWizard.summary.on")
-                          : t("setupWizard.summary.off")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("settings.sd.import.eject")}
-                      value={
-                        draft.sd_eject_after_workflow
-                          ? t("setupWizard.summary.on")
-                          : t("setupWizard.summary.off")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("setupWizard.summary.qrScan")}
-                      value={
-                        skippedSteps.has("media")
-                          ? t("setupWizard.summary.skipped")
-                          : [
-                              draft.qr_check_enabled
-                                ? t("common.labels.video")
-                                : null,
-                              draft.photo_qr_check_enabled
-                                ? t("common.labels.photo")
-                                : null,
-                            ]
-                              .filter(Boolean)
-                              .join(", ") || t("setupWizard.summary.off")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("settings.server.upload.title")}
-                      value={
-                        skippedSteps.has("connection")
-                          ? t("setupWizard.summary.skipped")
-                          : draft.upload_to_server
-                            ? activeServerProfileSummary(draft) ||
-                              draft.server_url ||
-                              t("setupWizard.summary.serverMissing")
-                            : t("setupWizard.summary.disabled")
-                      }
-                    />
-                    <SummaryRow
-                      label={t("settings.sd.backup.secondPath")}
-                      value={
-                        skippedSteps.has("connection")
-                          ? t("setupWizard.summary.skipped")
-                          : draft.sd_server_backup_enabled
-                            ? t("setupWizard.summary.on")
-                            : t("setupWizard.summary.off")
-                      }
-                    />
-                    {draft.upload_to_server &&
-                    draft.ams_bridge_display_name.trim() ? (
-                      <SummaryRow
-                        label={t("settings.server.ams.title")}
-                        value={draft.ams_bridge_display_name}
-                      />
-                    ) : null}
-                    {draft.upload_to_server ? (
-                      <SummaryRow
-                        label={t("settings.server.smb.login")}
-                        value={draft.server_login ? draft.server_login : "—"}
-                      />
-                    ) : null}
-                    <SummaryRow
-                      label={t("settings.encoding.codec")}
-                      value={
-                        skippedSteps.has("output")
-                          ? t("setupWizard.summary.skipped")
-                          : encodingCodecLabel(draft.video_codec, t)
-                      }
-                    />
-                  </>
-                )}
-              </dl>
-              <p className="text-xs text-muted">{t("setupWizard.finishHint")}</p>
-              {!draft.speicherort.trim() ? (
-                <p className="text-xs text-muted">
-                  {t("setupWizard.summary.storageMissingHint")}
+              {canSkipStep && skipHint ? (
+                <p className="text-[11px] leading-snug text-muted/80">
+                  {t(skipHint)}
                 </p>
               ) : null}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={step === 0 || busy}
+                  onClick={goBack}
+                >
+                  {t("common.actions.back")}
+                </Button>
+                {canSkipStep ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={skipCurrentStep}
+                    className={SKIP_BTN_CLASS}
+                  >
+                    {t("common.actions.skip")}
+                  </Button>
+                ) : (
+                  <span className="w-0 flex-1" aria-hidden />
+                )}
+                {step < steps.length - 1 ? (
+                  <Button type="button" disabled={busy} onClick={goNext}>
+                    {t("common.actions.next")}
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    disabled={busy}
+                    onClick={finishFromLastStep}
+                  >
+                    {busy
+                      ? t("common.actions.saving")
+                      : t("common.actions.next")}
+                  </Button>
+                )}
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onSkipAll}
+                className="self-center text-[11px] text-muted/70 underline-offset-2 hover:text-muted hover:underline disabled:opacity-50"
+              >
+                {t("setupWizard.skipAll")}
+              </button>
             </>
-          ) : null}
+          )}
         </div>
-
-        <div className="shrink-0 flex flex-col gap-3 border-t border-border px-6 py-4">
-          {canSkipStep && skipHint ? (
-            <p className="text-[11px] leading-snug text-muted/80">{t(skipHint)}</p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={step === 0 || busy}
-              onClick={goBack}
-            >
-              {t("common.actions.back")}
-            </Button>
-            {canSkipStep ? (
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={busy}
-                onClick={skipCurrentStep}
-                className={SKIP_BTN_CLASS}
-              >
-                {t("common.actions.skip")}
-              </Button>
-            ) : (
-              <span className="w-0 flex-1" aria-hidden />
-            )}
-            {step < steps.length - 1 ? (
-              <Button type="button" disabled={busy} onClick={goNext}>
-                {t("common.actions.next")}
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                disabled={busy}
-                onClick={finishFromSummary}
-              >
-                {busy ? t("common.actions.saving") : t("setupWizard.finish")}
-              </Button>
-            )}
-          </div>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onSkipAll}
-            className="self-center text-[11px] text-muted/70 underline-offset-2 hover:text-muted hover:underline disabled:opacity-50"
+        {isDone ? (
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-primary/15"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={
+              celebrateDurationMs > 0
+                ? Math.round(
+                    ((celebrateDurationMs - celebrateRemainingMs) /
+                      celebrateDurationMs) *
+                      100,
+                  )
+                : 0
+            }
+            aria-label={t("dialogs.autoCloseAria")}
           >
-            {t("setupWizard.skipAll")}
-          </button>
-        </div>
+            <div
+              key="setup-wizard-celebrate"
+              className="ats-toast-progress h-full w-full origin-left bg-primary"
+              style={{
+                animationDuration: `${celebrateDurationMs}ms`,
+                animationPlayState: celebratePaused ? "paused" : "running",
+              }}
+            />
+          </div>
+        ) : null}
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex gap-3">
-      <dt className="w-28 shrink-0 text-muted">{label}</dt>
-      <dd className="min-w-0 break-all text-foreground">{value}</dd>
     </div>
   );
 }

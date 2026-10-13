@@ -16,7 +16,9 @@ export const Switch = React.forwardRef<
   >
     <SwitchPrimitives.Thumb
       className={cn(
-        "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0 dark:bg-foreground",
+        // Unchecked: light thumb on muted track. Checked: primary-fg so themes
+        // with a light primary (e.g. FSZ dark) keep thumb contrast.
+        "pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform data-[state=checked]:translate-x-4 data-[state=checked]:bg-primary-foreground data-[state=unchecked]:translate-x-0 dark:bg-foreground dark:data-[state=checked]:bg-primary-foreground",
       )}
     />
   </SwitchPrimitives.Root>

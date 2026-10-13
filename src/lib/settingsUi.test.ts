@@ -15,7 +15,7 @@ import {
 } from "./settingsUi.ts";
 
 describe("resolveSettingsArea", () => {
-  it("maps legacy tabs onto the five areas", () => {
+  it("maps legacy tabs onto the settings areas", () => {
     assert.equal(resolveSettingsArea("allgemein"), "workplace");
     assert.equal(resolveSettingsArea("crew"), "workplace");
     assert.equal(resolveSettingsArea("qr"), "media");
@@ -27,6 +27,7 @@ describe("resolveSettingsArea", () => {
 
   it("keeps new area IDs", () => {
     assert.equal(resolveSettingsArea("workplace"), "workplace");
+    assert.equal(resolveSettingsArea("appearance"), "appearance");
     assert.equal(resolveSettingsArea("media"), "media");
     assert.equal(resolveSettingsArea("connection"), "connection");
     assert.equal(resolveSettingsArea("output"), "output");
@@ -60,15 +61,17 @@ describe("settingsAreasForMode", () => {
   it("omits output in simple mode", () => {
     assert.deepEqual(settingsAreasForMode("simple"), [
       "workplace",
+      "appearance",
       "media",
       "connection",
       "maintenance",
     ]);
   });
 
-  it("keeps all five areas in advanced mode", () => {
+  it("keeps all areas in advanced mode", () => {
     assert.deepEqual(settingsAreasForMode("advanced"), [
       "workplace",
+      "appearance",
       "media",
       "connection",
       "output",
@@ -116,26 +119,25 @@ describe("wizardStepsForMode", () => {
     assert.deepEqual(wizardStepsForMode("simple"), [
       "mode",
       "workplace",
+      "appearance",
       "connection",
-      "finish",
     ]);
   });
 
-  it("adds output on the custom path", () => {
+  it("adds output on the custom path (no finish step — celebration after save)", () => {
     assert.deepEqual(wizardStepsForMode("advanced"), [
       "mode",
       "workplace",
+      "appearance",
       "storage",
       "media",
       "connection",
       "output",
-      "finish",
     ]);
   });
 
-  it("does not allow skipping mode or finish", () => {
+  it("does not allow skipping mode", () => {
     assert.equal(isWizardStepSkippable("mode"), false);
-    assert.equal(isWizardStepSkippable("finish"), false);
     assert.equal(isWizardStepSkippable("storage"), true);
     assert.equal(isWizardStepSkippable("output"), true);
   });

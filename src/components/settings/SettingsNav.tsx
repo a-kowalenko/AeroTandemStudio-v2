@@ -1,4 +1,11 @@
-import { Cable, Clapperboard, HardDrive, User, Wrench } from "lucide-react";
+import {
+  Cable,
+  Clapperboard,
+  HardDrive,
+  Palette,
+  User,
+  Wrench,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SettingsArea } from "@/lib/settingsUi";
 import { SETTINGS_AREAS } from "@/lib/settingsUi";
@@ -9,6 +16,7 @@ const AREA_ICONS: Record<
   typeof User
 > = {
   workplace: User,
+  appearance: Palette,
   media: HardDrive,
   connection: Cable,
   output: Clapperboard,
@@ -17,6 +25,7 @@ const AREA_ICONS: Record<
 
 const AREA_LABEL_KEY: Record<SettingsArea, string> = {
   workplace: "settings.areas.workplace",
+  appearance: "settings.areas.appearance",
   media: "settings.areas.media",
   connection: "settings.areas.connection",
   output: "settings.areas.output",

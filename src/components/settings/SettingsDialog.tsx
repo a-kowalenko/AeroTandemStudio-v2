@@ -31,6 +31,7 @@ import { useHistoryStore } from "@/store/historyStore";
 import { useCrewEditor } from "./hooks/useCrewEditor";
 import { useReleaseList } from "./hooks/useReleaseList";
 import { useSettingsDraft } from "./hooks/useSettingsDraft";
+import { AppearanceTab } from "./tabs/AppearanceTab";
 import { CrewTab } from "./tabs/CrewTab";
 import { EncodingTab } from "./tabs/EncodingTab";
 import { GeneralTab } from "./tabs/GeneralTab";
@@ -445,6 +446,7 @@ export function SettingsDialog({
                     <CrewTab {...areaProps} crewEditor={crewEditor} />
                   </>
                 ) : null}
+                {area === "appearance" ? <AppearanceTab /> : null}
                 {area === "media" ? (
                   <>
                     <SdTab {...areaProps} />

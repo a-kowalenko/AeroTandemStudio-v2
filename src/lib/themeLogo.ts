@@ -10,7 +10,7 @@ export function resolveThemeLogo(themeId: ThemeId): string {
   if (themeId === "team-spirit" || themeId === "spirit-2") {
     return TEAM_SPIRIT_LOGO;
   }
-  if (themeId === "fsz") {
+  if (themeId === "fsz" || themeId === "fsz-light") {
     return FSZ_LOGO;
   }
   return DEFAULT_LOGO;

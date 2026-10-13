@@ -61,15 +61,16 @@
       "photos": "Fotos",
       "themeLight": "Hell",
       "themeDark": "Dunkel",
-      "themeTeamSpirit": "Team Spirit",
-      "themeSpirit2": "Spirit 2",
+      "themeTeamSpirit": "Dark Spirit",
+      "themeSpirit2": "Liquid Spirit",
       "themeRoyalNavy": "Royal Navy",
-      "themeRoyalFlag": "Royal Flag",
+      "themeRoyalFlag": "Royal Blue",
       "themeRoseNoir": "Rose Noir",
       "themeRoseBlush": "Rose Blush",
-      "themeMilitaryOlive": "Military Olive",
-      "themeMilitaryKhaki": "Military Khaki",
-      "themeFsz": "FSZ",
+      "themeMilitaryOlive": "Olive",
+      "themeMilitaryKhaki": "Khaki",
+      "themeFsz": "FSZ Dunkel",
+      "themeFszLight": "FSZ Hell",
       "language": "Sprache",
       "storageLocation": "Speicherort",
       "dropzonePlaceholder": "Dropzone…",
@@ -118,6 +119,7 @@
     },
     "areas": {
       "workplace": "Persönlich",
+      "appearance": "Darstellung",
       "media": "Medien",
       "connection": "Verbindung",
       "output": "Ausgabe",
@@ -134,7 +136,26 @@
     "general": {
       "appearance": {
         "title": "Darstellung",
-        "description": "Design der Oberfläche (Hell, Dunkel oder Spezial)."
+        "description": "Design der Oberfläche (Hell, Dunkel oder Spezial).",
+        "groups": {
+          "base": "Basis",
+          "specials": "Spezial",
+          "looks": "Optik"
+        },
+        "hints": {
+          "light": "Standard · Hell",
+          "dark": "Standard · Dunkel",
+          "teamSpirit": "Dunkel · Gold",
+          "spirit2": "Glass · Gold",
+          "royalNavy": "Tiefblau",
+          "royalFlag": "Leuchtblau",
+          "roseNoir": "Dunkel · Rose",
+          "roseBlush": "Soft · Rosa",
+          "militaryOlive": "Matt · Grün",
+          "militaryKhaki": "Warm · Sand",
+          "fsz": "Glass · Rot",
+          "fszLight": "Glass · Rot"
+        }
       },
       "language": {
         "description": "Sprache der App-Oberfläche."
@@ -2394,7 +2415,7 @@
       "sd": "Backup, Leeren/Auswerfen, Auto-Import und Limits sind optional und später änderbar.",
       "qr": "QR-Scan-Optionen können später in den Einstellungen gesetzt werden.",
       "server": "Server-Zugang kann später eingerichtet werden.",
-      "workplace": "Darstellung, Dropzone und Operator kannst du später jederzeit ändern.",
+      "workplace": "Dropzone und Operator kannst du später jederzeit ändern.",
       "media": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar.",
       "output": "Ausgabe-Einstellungen sind optional — Vorgabewerte bleiben, wenn du überspringst.",
       "import": "Backup, Import, Auswerfen und QR-Scan sind optional und später änderbar."
@@ -2433,21 +2454,32 @@
       "serverMissing": "— Server fehlt —",
       "storageMissingHint": "Ohne Speicherort können Vorgänge nicht abgelegt werden. Du kannst ihn jederzeit in den Einstellungen setzen."
     },
-    "finish": "Einrichtung abschließen",
+    "finish": "Loslegen",
     "skipAll": "Gesamte Einrichtung überspringen",
     "complete": "Einrichtung abgeschlossen.",
     "completeTitle": "Erfolg",
+    "celebration": {
+      "eyebrow": "Fertig",
+      "title": "Alles bereit",
+      "headline": "Einrichtung abgeschlossen",
+      "body": "Du kannst jetzt Vorgänge anlegen und Medien verarbeiten.",
+      "toApp": "Zur App",
+      "progressAria": "Einrichtung abgeschlossen",
+      "serverConnected": "Server verbunden",
+      "serverLater": "Server später"
+    },
     "import": {
       "backupHint": "Importiert die Karte im empfohlenen Workflow über eine lokale Kopie.",
       "qrHint": "QR-Dateien bleiben standardmäßig erhalten. Scan-Dauer und Aufräumen liegen unter Weitere Optionen.",
       "backupPcNameHint": "Backup-Ordner werden mit „{{name}}“ markiert."
     },
     "intro": {
-      "appearance": "Willkommen bei Aero Tandem Studio. Lege Darstellung, Dropzone und Operator fest. Alles Weitere kannst du später in den Einstellungen anpassen.",
+      "appearance": "Wähle das Erscheinungsbild der App. Du kannst es später jederzeit in den Einstellungen ändern.",
       "import": "Lege hier die Import-Standards fest: Backup, Leeren, Import und Auswerfen. QR-Löschregeln und weitere Details findest du später in den Einstellungen.",
       "storage": "Fertige Vorgänge werden im Speicherort abgelegt.",
       "upload": "Upload ist optional. Wenn du ihn jetzt nicht brauchst, lass ihn einfach aus und richte den Server später ein.",
-      "workplaceSimple": "Darstellung, Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
+      "workplace": "Dropzone und dein Name. Alles Weitere kannst du später in den Einstellungen anpassen.",
+      "workplaceSimple": "Dropzone und dein Name. Speicherordner und Medien laufen mit den Vorgaben.",
       "connectionSimple": "Wir suchen den Server im Netzwerk. Token eingeben und verbinden — später jederzeit änderbar.",
       "mode": "Wie soll die Einrichtung ablaufen? Den Modus kannst du später in den Einstellungen ändern.",
       "media": "Lege Backup, Auto-Import, Auswerfen und QR-Scan fest. USB, Größenwarnung und QR-Details liegen unter Weitere Optionen.",
@@ -2475,7 +2507,7 @@
     },
     "standardFolderTitle": "Standardordner",
     "steps": {
-      "appearance": "Willkommen",
+      "appearance": "Darstellung",
       "mode": "Einrichtungsmodus",
       "workplace": "Persönlich",
       "storage": "Speicherort",

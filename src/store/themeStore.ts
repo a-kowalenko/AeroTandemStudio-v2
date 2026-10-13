@@ -11,7 +11,8 @@ export type ThemeId =
   | "rose-blush"
   | "military-olive"
   | "military-khaki"
-  | "fsz";
+  | "fsz"
+  | "fsz-light";
 
 /** @deprecated Prefer ThemeId — kept for gradual call-site updates. */
 export type ThemeMode = ThemeId;
@@ -28,14 +29,14 @@ export const THEMES: readonly ThemeMeta[] = [
   { id: "light", base: "light", labelKey: "common.labels.themeLight" },
   { id: "dark", base: "dark", labelKey: "common.labels.themeDark" },
   {
-    id: "team-spirit",
-    base: "dark",
-    labelKey: "common.labels.themeTeamSpirit",
-  },
-  {
     id: "spirit-2",
     base: "dark",
     labelKey: "common.labels.themeSpirit2",
+  },
+  {
+    id: "team-spirit",
+    base: "dark",
+    labelKey: "common.labels.themeTeamSpirit",
   },
   {
     id: "royal-navy",
@@ -48,14 +49,14 @@ export const THEMES: readonly ThemeMeta[] = [
     labelKey: "common.labels.themeRoyalFlag",
   },
   {
-    id: "rose-noir",
-    base: "dark",
-    labelKey: "common.labels.themeRoseNoir",
-  },
-  {
     id: "rose-blush",
     base: "light",
     labelKey: "common.labels.themeRoseBlush",
+  },
+  {
+    id: "rose-noir",
+    base: "dark",
+    labelKey: "common.labels.themeRoseNoir",
   },
   {
     id: "military-olive",
@@ -66,6 +67,11 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "military-khaki",
     base: "dark",
     labelKey: "common.labels.themeMilitaryKhaki",
+  },
+  {
+    id: "fsz-light",
+    base: "light",
+    labelKey: "common.labels.themeFszLight",
   },
   {
     id: "fsz",

@@ -61,15 +61,16 @@
       "photos": "Fotos",
       "themeLight": "Claro",
       "themeDark": "Oscuro",
-      "themeTeamSpirit": "Team Spirit",
-      "themeSpirit2": "Spirit 2",
+      "themeTeamSpirit": "Dark Spirit",
+      "themeSpirit2": "Liquid Spirit",
       "themeRoyalNavy": "Royal Navy",
-      "themeRoyalFlag": "Royal Flag",
+      "themeRoyalFlag": "Royal Blue",
       "themeRoseNoir": "Rose Noir",
       "themeRoseBlush": "Rose Blush",
-      "themeMilitaryOlive": "Military Olive",
-      "themeMilitaryKhaki": "Military Khaki",
-      "themeFsz": "FSZ",
+      "themeMilitaryOlive": "Oliva",
+      "themeMilitaryKhaki": "Caqui",
+      "themeFsz": "FSZ Oscuro",
+      "themeFszLight": "FSZ Claro",
       "language": "Idioma",
       "storageLocation": "Ubicación de almacenamiento",
       "dropzonePlaceholder": "Zona de entrega…",
@@ -118,6 +119,7 @@
     },
     "areas": {
       "workplace": "Personal",
+      "appearance": "Apariencia",
       "media": "Medios",
       "connection": "Conexión",
       "output": "Salida",
@@ -134,7 +136,26 @@
     "general": {
       "appearance": {
         "title": "Apariencia",
-        "description": "Diseño de la interfaz (claro, oscuro o especial)."
+        "description": "Diseño de la interfaz (claro, oscuro o especial).",
+        "groups": {
+          "base": "Básicos",
+          "specials": "Especiales",
+          "looks": "Estilos"
+        },
+        "hints": {
+          "light": "Estándar · Claro",
+          "dark": "Estándar · Oscuro",
+          "teamSpirit": "Oscuro · Oro",
+          "spirit2": "Glass · Oro",
+          "royalNavy": "Azul profundo",
+          "royalFlag": "Azul brillante",
+          "roseNoir": "Oscuro · Rosa",
+          "roseBlush": "Suave · Rosa",
+          "militaryOlive": "Mate · Verde",
+          "militaryKhaki": "Cálido · Arena",
+          "fsz": "Glass · Rojo",
+          "fszLight": "Glass · Rojo"
+        }
       },
       "language": {
         "description": "Idioma de la interfaz de la app."
@@ -2394,7 +2415,7 @@
       "sd": "Respaldo, limpiar/expulsar, importación automática y límites son opcionales y se pueden cambiar después.",
       "qr": "Las opciones de escaneo QR se pueden configurar después.",
       "server": "El acceso al servidor se puede configurar después.",
-      "workplace": "Puedes cambiar la apariencia, la zona de salto y el operador después en cualquier momento.",
+      "workplace": "Puedes cambiar la zona de salto y el operador después en cualquier momento.",
       "media": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después.",
       "output": "Los ajustes de salida son opcionales; si omites, se conservan los valores predeterminados.",
       "import": "Respaldo, importación, expulsión y escaneo QR son opcionales y se pueden cambiar después."
@@ -2433,21 +2454,32 @@
       "serverMissing": "— falta servidor —",
       "storageMissingHint": "Sin una ubicación de almacenamiento, los trabajos no se pueden guardar. Puedes definirla después en la configuración."
     },
-    "finish": "Finalizar configuración",
+    "finish": "Empezar",
     "skipAll": "Omitir toda la configuración",
     "complete": "Configuración completada.",
     "completeTitle": "Éxito",
+    "celebration": {
+      "eyebrow": "Listo",
+      "title": "Todo listo",
+      "headline": "Configuración completada",
+      "body": "Ya puedes crear trabajos y procesar medios.",
+      "toApp": "Ir a la app",
+      "progressAria": "Configuración completada",
+      "serverConnected": "Servidor conectado",
+      "serverLater": "Servidor después"
+    },
     "import": {
       "backupHint": "Importa la tarjeta con el flujo recomendado usando una copia local.",
       "qrHint": "Los archivos QR se conservan por defecto. Duración del escaneo y limpieza están en Más opciones.",
       "backupPcNameHint": "Las carpetas de respaldo se marcan con «{{name}}»."
     },
     "intro": {
-      "appearance": "Bienvenido a Aero Tandem Studio. Define apariencia, zona de salto y operador. Todo lo demás se puede ajustar después en la configuración.",
+      "appearance": "Elige el aspecto de la app. Puedes cambiarlo después en la configuración en cualquier momento.",
       "import": "Configura aquí los valores de importación: respaldo, limpiar, importar y expulsar. Las reglas de borrado QR y más detalles se pueden ajustar después.",
       "storage": "Los trabajos terminados se guardan en la ubicación de almacenamiento.",
       "upload": "La subida es opcional. Si no la necesitas ahora, déjala apagada y configura el servidor después.",
-      "workplaceSimple": "Apariencia, zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
+      "workplace": "Zona de salto y tu nombre. Todo lo demás se puede ajustar después en la configuración.",
+      "workplaceSimple": "Zona de salto y tu nombre. Las carpetas y los medios usan los valores predeterminados.",
       "connectionSimple": "Buscamos el servidor en la red. Introduce el token y conéctate — lo puedes cambiar después.",
       "mode": "¿Cómo debe ser la configuración? Puedes cambiar el modo después en ajustes.",
       "media": "Define respaldo, importación automática, expulsión y escaneo QR. USB, aviso de tamaño y detalles QR están en Más opciones.",
@@ -2475,7 +2507,7 @@
     },
     "standardFolderTitle": "Carpeta predeterminada",
     "steps": {
-      "appearance": "Bienvenida",
+      "appearance": "Apariencia",
       "mode": "Modo de configuración",
       "workplace": "Personal",
       "storage": "Almacenamiento",
