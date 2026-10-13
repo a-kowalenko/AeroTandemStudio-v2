@@ -107,15 +107,15 @@ html.dark[data-theme="team-spirit"] {
    */
   --ats-card: #1a1a1a;
   --ats-card-elevated: #222222;
-  /* Liquid-glass plate fill (used with heavy backdrop-filter) */
-  --ats-overlay: rgba(18, 18, 18, 0.72);
+  /* Liquid-glass plate fill — lighter shell so ambient mark reads through */
+  --ats-overlay: rgba(18, 18, 18, 0.58);
   --ats-glass-shine: rgba(255, 255, 255, 0.1);
   --ats-glass-tint: rgba(181, 149, 70, 0.06);
   /* Hairline like macOS vibrancy — not a chalky white stroke */
   --ats-glass-edge: rgba(255, 255, 255, 0.09);
-  --ats-surface: rgba(18, 18, 18, 0.28);
-  --ats-header: rgba(8, 8, 8, 0.36);
-  --ats-sidebar: rgba(10, 10, 10, 0.3);
+  --ats-surface: rgba(18, 18, 18, 0.16);
+  --ats-header: rgba(8, 8, 8, 0.22);
+  --ats-sidebar: rgba(10, 10, 10, 0.18);
   --ats-bg-glow-1: #2a2210;
   --ats-bg-glow-2: #2a0c0c;
   --ats-progress-from: #b59546;
@@ -147,22 +147,22 @@ html.dark[data-theme="spirit-2"] {
   --ats-warning: #e0b84a;
   --ats-ring: rgba(208, 176, 86, 0.45);
   /*
-   * Two tiers (polished):
-   * - Shell: soft liquid glass, quiet seams
-   * - Float: denser readable plates
+   * Two tiers:
+   * - Shell: airier glass (ambient mark shows through)
+   * - Float / progress: denser plates stay readable
    */
   --ats-card: #26261f;
   --ats-card-elevated: #35352c;
-  --ats-overlay: rgba(22, 22, 18, 0.92);
-  --ats-glass-shine: rgba(255, 248, 230, 0.08);
-  --ats-glass-tint: rgba(196, 160, 82, 0.05);
-  --ats-glass-edge: rgba(255, 248, 230, 0.14);
-  --ats-glass-seam: rgba(255, 248, 230, 0.07);
-  --ats-surface: rgba(16, 16, 12, 0.18);
-  --ats-header: rgba(8, 8, 6, 0.2);
-  --ats-sidebar: rgba(10, 10, 8, 0.16);
-  --ats-panel-filter: blur(48px) saturate(1.55) brightness(1.04);
-  --ats-float-filter: blur(36px) saturate(1.4);
+  --ats-overlay: rgba(22, 22, 18, 0.55);
+  --ats-glass-shine: rgba(255, 248, 230, 0.14);
+  --ats-glass-tint: rgba(196, 160, 82, 0.07);
+  --ats-glass-edge: rgba(255, 248, 230, 0.16);
+  --ats-glass-seam: rgba(255, 248, 230, 0.08);
+  --ats-surface: rgba(16, 16, 12, 0.1);
+  --ats-header: rgba(8, 8, 6, 0.14);
+  --ats-sidebar: rgba(10, 10, 8, 0.11);
+  --ats-panel-filter: blur(56px) saturate(1.7) brightness(1.06);
+  --ats-float-filter: blur(44px) saturate(1.55);
   --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
   --ats-panel-shadow-float:
     0 0 0 0.5px var(--ats-glass-edge),
@@ -430,16 +430,16 @@ html.dark[data-theme="fsz"] {
   --ats-ring: rgba(240, 236, 236, 0.4);
   --ats-card: #2e2628;
   --ats-card-elevated: #3a3032;
-  --ats-overlay: rgba(28, 20, 22, 0.92);
-  --ats-glass-shine: rgba(255, 255, 255, 0.1);
-  --ats-glass-tint: rgba(164, 12, 32, 0.05);
+  --ats-overlay: rgba(28, 20, 22, 0.55);
+  --ats-glass-shine: rgba(255, 255, 255, 0.12);
+  --ats-glass-tint: rgba(164, 12, 32, 0.06);
   --ats-glass-edge: rgba(255, 255, 255, 0.14);
   --ats-glass-seam: rgba(255, 255, 255, 0.07);
-  --ats-surface: rgba(28, 20, 22, 0.18);
-  --ats-header: rgba(16, 12, 14, 0.2);
-  --ats-sidebar: rgba(18, 14, 16, 0.16);
-  --ats-panel-filter: blur(48px) saturate(1.55) brightness(1.04);
-  --ats-float-filter: blur(36px) saturate(1.4);
+  --ats-surface: rgba(28, 20, 22, 0.1);
+  --ats-header: rgba(16, 12, 14, 0.14);
+  --ats-sidebar: rgba(18, 14, 16, 0.11);
+  --ats-panel-filter: blur(56px) saturate(1.7) brightness(1.06);
+  --ats-float-filter: blur(44px) saturate(1.55);
   --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
   --ats-panel-shadow-float:
     0 0 0 0.5px var(--ats-glass-edge),
@@ -490,16 +490,16 @@ html[data-theme="fsz-light"] {
   --ats-ring: rgba(164, 12, 32, 0.4);
   --ats-card: #f7f5f5;
   --ats-card-elevated: #ffffff;
-  --ats-overlay: rgba(247, 245, 245, 0.74);
+  --ats-overlay: rgba(247, 245, 245, 0.58);
   --ats-glass-shine: rgba(255, 255, 255, 0.8);
   --ats-glass-tint: rgba(164, 12, 32, 0.1);
   --ats-glass-edge: rgba(164, 12, 32, 0.16);
   --ats-glass-seam: rgba(164, 12, 32, 0.1);
-  --ats-surface: rgba(255, 255, 255, 0.4);
-  --ats-header: rgba(255, 255, 255, 0.48);
-  --ats-sidebar: rgba(240, 238, 238, 0.44);
-  --ats-panel-filter: blur(48px) saturate(1.5) brightness(1.02);
-  --ats-float-filter: blur(36px) saturate(1.35);
+  --ats-surface: rgba(255, 255, 255, 0.28);
+  --ats-header: rgba(255, 255, 255, 0.36);
+  --ats-sidebar: rgba(240, 238, 238, 0.3);
+  --ats-panel-filter: blur(56px) saturate(1.6) brightness(1.03);
+  --ats-float-filter: blur(44px) saturate(1.45);
   --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
   --ats-panel-shadow-float:
     0 0 0 0.5px var(--ats-glass-edge),
@@ -545,17 +545,17 @@ html.dark[data-theme="spirit-2"]::before {
   height: min(92vmin, 820px);
   pointer-events: none;
   background: url("/themes/team-spirit/logo.svg") center / contain no-repeat;
-  opacity: 0.2;
+  opacity: 0.28;
   -webkit-mask-image: radial-gradient(
     circle at center,
-    #000 32%,
-    transparent 82%
+    #000 40%,
+    transparent 95%
   );
-  mask-image: radial-gradient(circle at center, #000 32%, transparent 82%);
+  mask-image: radial-gradient(circle at center, #000 40%, transparent 95%);
 }
 
 html.dark[data-theme="spirit-2"]::before {
-  opacity: 0.12;
+  opacity: 0.24;
 }
 
 html.dark[data-theme="fsz"]::before,
@@ -569,17 +569,17 @@ html[data-theme="fsz-light"]::before {
   height: min(92vmin, 820px);
   pointer-events: none;
   background: url("/themes/fsz/logo.png") center / contain no-repeat;
-  opacity: 0.12;
+  opacity: 0.2;
   -webkit-mask-image: radial-gradient(
     circle at center,
-    #000 32%,
-    transparent 82%
+    #000 40%,
+    transparent 95%
   );
-  mask-image: radial-gradient(circle at center, #000 32%, transparent 82%);
+  mask-image: radial-gradient(circle at center, #000 40%, transparent 95%);
 }
 
 html[data-theme="fsz-light"]::before {
-  opacity: 0.11;
+  opacity: 0.15;
 }
 
 /* Team Spirit v1 — light frost on shell only (A/B baseline) */
