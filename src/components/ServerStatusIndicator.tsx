@@ -121,6 +121,8 @@ export function ServerStatusIndicator({
   const { t } = useTranslation();
   const popoverId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const backupPanelRef = useRef<HTMLElement | null>(null);
+  const probePanelRef = useRef<HTMLElement | null>(null);
   const probeSeqRef = useRef(0);
   const [retrying, setRetrying] = useState(false);
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -237,13 +239,16 @@ export function ServerStatusIndicator({
   const anyPopoverOpen = popoverOpen || probeOpen;
 
   // Click outside + Escape (backup or connection probe).
+  // Panels portal to document.body — must treat panelRef as inside, not only rootRef.
   useEffect(() => {
     if (!anyPopoverOpen) return;
     function onPointerDown(e: PointerEvent) {
       if (confirmOpen) return;
-      const el = rootRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && el.contains(e.target)) return;
+      const target = e.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      if (backupPanelRef.current?.contains(target)) return;
+      if (probePanelRef.current?.contains(target)) return;
       setPopoverOpen(false);
       setProbeOpen(false);
     }
@@ -570,6 +575,7 @@ export function ServerStatusIndicator({
         <SecondaryBackupPopover
           open={backupPopoverActive}
           anchorRef={rootRef}
+          panelRef={backupPanelRef}
           compact={backupCompact}
           state={secondaryBackup?.state ?? ""}
           filesLabel={filesLabel}
@@ -590,6 +596,7 @@ export function ServerStatusIndicator({
         <ConnectionProbePopover
           open={probePopoverActive}
           anchorRef={rootRef}
+          panelRef={probePanelRef}
           rows={probeRows}
           autoCloseMs={probeAutoCloseMs}
           onDismiss={onDismissProbe}

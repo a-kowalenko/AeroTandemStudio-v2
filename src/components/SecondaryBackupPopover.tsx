@@ -11,6 +11,8 @@ export type SecondaryBackupPopoverProps = {
   open: boolean;
   /** Chip / root under the titlebar — portal escapes header backdrop-filter. */
   anchorRef?: RefObject<HTMLElement | null>;
+  /** Panel DOM (portaled) — for click-outside that still treats the panel as inside. */
+  panelRef?: RefObject<HTMLElement | null>;
   compact: UploadCompactParts;
   state: string;
   filesLabel: string | null;
@@ -29,6 +31,7 @@ export type SecondaryBackupPopoverProps = {
 export function SecondaryBackupPopover({
   open,
   anchorRef,
+  panelRef,
   compact,
   state,
   filesLabel,
@@ -59,6 +62,7 @@ export function SecondaryBackupPopover({
 
   const panel = (
     <div
+      ref={panelRef}
       role="dialog"
       aria-label={t("header.connection.chipServerBackup")}
       style={pos ? { top: pos.top, left: pos.left } : undefined}
