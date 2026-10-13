@@ -74,6 +74,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 52** Foto EXIF-Orientation (Preview-Thumbs, Wasserzeichen, QR; Thumb-Cache-Rev) · Spec: `@docs/phases/open/52-photo-exif-orientation.md`
 - ✅ **Phase 53** Cloud-Lookup-Fallback (ATS T0–T4; E2E manuell nach Cloud+AMS) · Spec: `@docs/phases/open/53-cloud-lookup-fallback.md` · Master: `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md`
 - ✅ **Phase 54** UI-Themes (Light/Dark + Team Spirit Spezialdesign, Logo, Boot-Splash) · Spec: `@docs/phases/open/54-ui-themes.md`
+- ✅ **Phase 55** Theme-Katalog (Royal×2, Rose×2, Military×2, FSZ) + Settings-only · Spec: `@docs/phases/open/55-theme-catalog.md`
 
 **Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 53 E2E nach Cloud+AMS-Deploy  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*

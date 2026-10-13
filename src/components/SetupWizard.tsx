@@ -2,12 +2,19 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
+  Anchor,
   Check,
+  Crosshair,
+  Flag,
+  Flame,
+  Flower2,
   FolderOpen,
+  Heart,
   Info,
   Languages,
   Loader2,
   Moon,
+  Shield,
   Sparkles,
   Star,
   Sun,
@@ -346,6 +353,13 @@ const WIZARD_THEME_ICONS: Record<ThemeId, LucideIcon> = {
   dark: Moon,
   "team-spirit": Sparkles,
   "spirit-2": Star,
+  "royal-navy": Anchor,
+  "royal-flag": Flag,
+  "rose-noir": Heart,
+  "rose-blush": Flower2,
+  "military-olive": Shield,
+  "military-khaki": Crosshair,
+  fsz: Flame,
 };
 
 export function SetupWizard({ open, onComplete }: Props) {
@@ -1031,7 +1045,7 @@ export function SetupWizard({ open, onComplete }: Props) {
               </p>
               <div className="space-y-2">
                 <Label>{t("settings.general.appearance.title")}</Label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {THEMES.map(({ id, labelKey }) => {
                     const Icon = WIZARD_THEME_ICONS[id];
                     return (

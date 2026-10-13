@@ -7,11 +7,38 @@
     <title>Aero Tandem Studio</title>
     <script>
       (function () {
-        var KNOWN = { light: 1, dark: 1, "team-spirit": 1, "spirit-2": 1 };
-        var BASE_DARK = { dark: 1, "team-spirit": 1, "spirit-2": 1 };
+        var KNOWN = {
+          light: 1,
+          dark: 1,
+          "team-spirit": 1,
+          "spirit-2": 1,
+          "royal-navy": 1,
+          "royal-flag": 1,
+          "rose-noir": 1,
+          "rose-blush": 1,
+          "military-olive": 1,
+          "military-khaki": 1,
+          fsz: 1,
+        };
+        var BASE_DARK = {
+          dark: 1,
+          "team-spirit": 1,
+          "spirit-2": 1,
+          "royal-navy": 1,
+          "royal-flag": 1,
+          "rose-noir": 1,
+          "military-olive": 1,
+          "military-khaki": 1,
+          fsz: 1,
+        };
+        var LEGACY = { "military-od": "military-olive", "military-camo": "military-khaki" };
         var mode = null;
         try {
           var v = localStorage.getItem("ats-theme");
+          if (v && LEGACY[v]) {
+            v = LEGACY[v];
+            try { localStorage.setItem("ats-theme", v); } catch (e2) {}
+          }
           if (v && KNOWN[v]) mode = v;
         } catch (e) {}
         if (!mode) {
@@ -32,6 +59,13 @@
       html.dark { background-color: #0c1210; }
       html.dark[data-theme="team-spirit"] { background-color: #0a0a0a; }
       html.dark[data-theme="spirit-2"] { background-color: #080808; }
+      html.dark[data-theme="royal-navy"] { background-color: #0a1220; }
+      html.dark[data-theme="royal-flag"] { background-color: #0c1830; }
+      html.dark[data-theme="rose-noir"] { background-color: #100e10; }
+      html[data-theme="rose-blush"] { background-color: #faf6f7; }
+      html.dark[data-theme="military-olive"] { background-color: #161a12; }
+      html.dark[data-theme="military-khaki"] { background-color: #1a1812; }
+      html.dark[data-theme="fsz"] { background-color: #141012; }
       #boot-splash {
         --bs-bg: #eef4f2; --bs-glow: #cfe8e2; --bs-primary: #009d8b;
         --bs-soft: rgba(0, 157, 139, 0.12); --bs-ring: rgba(0, 157, 139, 0.25);
@@ -58,6 +92,41 @@
         --bs-bg: #080808; --bs-glow: #2c2412; --bs-primary: #c4a052;
         --bs-soft: rgba(196, 160, 82, 0.18); --bs-ring: rgba(196, 160, 82, 0.28);
         --bs-muted: #a8a498; --bs-muted-80: rgba(168, 164, 152, 0.8); --bs-muted-70: rgba(168, 164, 152, 0.7); --bs-border: rgba(247, 245, 240, 0.12);
+      }
+      html.dark[data-theme="royal-navy"] #boot-splash {
+        --bs-bg: #0a1220; --bs-glow: #152848; --bs-primary: #3b6ae8;
+        --bs-soft: rgba(59, 106, 232, 0.18); --bs-ring: rgba(59, 106, 232, 0.28);
+        --bs-muted: #8fa3bc; --bs-muted-80: rgba(143, 163, 188, 0.8); --bs-muted-70: rgba(143, 163, 188, 0.7); --bs-border: rgba(244, 247, 251, 0.14);
+      }
+      html.dark[data-theme="royal-flag"] #boot-splash {
+        --bs-bg: #0c1830; --bs-glow: #1a3a70; --bs-primary: #2f5bff;
+        --bs-soft: rgba(47, 91, 255, 0.22); --bs-ring: rgba(47, 91, 255, 0.3);
+        --bs-muted: #9ab0d0; --bs-muted-80: rgba(154, 176, 208, 0.8); --bs-muted-70: rgba(154, 176, 208, 0.7); --bs-border: rgba(245, 248, 255, 0.18);
+      }
+      html.dark[data-theme="rose-noir"] #boot-splash {
+        --bs-bg: #100e10; --bs-glow: #2a181e; --bs-primary: #f0e6e8;
+        --bs-soft: rgba(240, 230, 232, 0.16); --bs-ring: rgba(240, 230, 232, 0.28);
+        --bs-muted: #c9b8be; --bs-muted-80: rgba(201, 184, 190, 0.8); --bs-muted-70: rgba(201, 184, 190, 0.7); --bs-border: rgba(250, 246, 247, 0.18);
+      }
+      html[data-theme="rose-blush"] #boot-splash {
+        --bs-bg: #faf6f7; --bs-glow: #f0d8e0; --bs-primary: #5c3d48;
+        --bs-soft: rgba(92, 61, 72, 0.12); --bs-ring: rgba(92, 61, 72, 0.25);
+        --bs-muted: #6a545c; --bs-muted-80: rgba(106, 84, 92, 0.8); --bs-muted-70: rgba(106, 84, 92, 0.7); --bs-border: rgba(26, 18, 22, 0.14);
+      }
+      html.dark[data-theme="military-olive"] #boot-splash {
+        --bs-bg: #161a12; --bs-glow: #243018; --bs-primary: #7a8f3e;
+        --bs-soft: rgba(122, 143, 62, 0.24); --bs-ring: rgba(122, 143, 62, 0.28);
+        --bs-muted: #9aa68a; --bs-muted-80: rgba(154, 166, 138, 0.8); --bs-muted-70: rgba(154, 166, 138, 0.7); --bs-border: rgba(232, 234, 220, 0.16);
+      }
+      html.dark[data-theme="military-khaki"] #boot-splash {
+        --bs-bg: #1a1812; --bs-glow: #2e2818; --bs-primary: #c4a35a;
+        --bs-soft: rgba(196, 163, 90, 0.24); --bs-ring: rgba(196, 163, 90, 0.28);
+        --bs-muted: #b0a890; --bs-muted-80: rgba(176, 168, 144, 0.8); --bs-muted-70: rgba(176, 168, 144, 0.7); --bs-border: rgba(240, 235, 224, 0.16);
+      }
+      html.dark[data-theme="fsz"] #boot-splash {
+        --bs-bg: #141012; --bs-glow: #3a1820; --bs-primary: #f0ecec;
+        --bs-soft: rgba(240, 236, 236, 0.16); --bs-ring: rgba(240, 236, 236, 0.28);
+        --bs-muted: #c4b8b9; --bs-muted-80: rgba(196, 184, 185, 0.8); --bs-muted-70: rgba(196, 184, 185, 0.7); --bs-border: rgba(247, 244, 244, 0.26);
       }
       #boot-splash .bs-col {
         display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -116,6 +185,8 @@
             var logo = document.getElementById("bs-logo-img");
             if (logo && (theme === "team-spirit" || theme === "spirit-2")) {
               logo.src = "/themes/team-spirit/logo.svg";
+            } else if (logo && theme === "fsz") {
+              logo.src = "/themes/fsz/logo.png";
             }
           })();
         </script>

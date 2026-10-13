@@ -347,7 +347,7 @@ export function WorkflowProgressPanel({
                   {t("workflow.upload.failedHoldTitle")}
                 </h2>
               </div>
-              <p className="mt-1 text-xs text-muted">
+              <p className="mt-1 text-xs text-foreground/70">
                 {t("workflow.upload.failedHoldHint")}
               </p>
             </div>
@@ -467,7 +467,7 @@ export function WorkflowProgressPanel({
         ) : null}
 
         {!headerOwnsChrome && !view.collapsed && subtitle ? (
-          <p className="mb-3 text-xs text-muted" aria-live="polite">
+          <p className="mb-3 text-xs text-foreground/70" aria-live="polite">
             {subtitle}
           </p>
         ) : null}
@@ -582,14 +582,14 @@ export function WorkflowProgressPanel({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-            <h2 className="text-sm font-semibold tracking-wide text-muted uppercase">
+            <h2 className="text-sm font-semibold tracking-wide text-foreground/85 uppercase">
               {t("workflow.progress")}
             </h2>
             {view.bodyConcatMode ? (
               <BodyConcatModeBadge mode={view.bodyConcatMode} />
             ) : null}
           </div>
-          <p className="mt-1 text-xs text-muted" aria-live="polite">
+          <p className="mt-1 text-xs text-foreground/70" aria-live="polite">
             {subtitle}
           </p>
         </div>

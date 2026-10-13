@@ -1,4 +1,18 @@
-import { Languages, Moon, Sparkles, Star, Sun, type LucideIcon } from "lucide-react";
+import {
+  Anchor,
+  Crosshair,
+  Flag,
+  Flame,
+  Flower2,
+  Heart,
+  Languages,
+  Moon,
+  Shield,
+  Sparkles,
+  Star,
+  Sun,
+  type LucideIcon,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_LANGUAGES, type UiLanguage } from "@/i18n/types";
 import { UI_LANGUAGE_OPTIONS } from "@/lib/uiLanguageOptions";
@@ -13,6 +27,13 @@ const THEME_ICONS: Record<ThemeId, LucideIcon> = {
   dark: Moon,
   "team-spirit": Sparkles,
   "spirit-2": Star,
+  "royal-navy": Anchor,
+  "royal-flag": Flag,
+  "rose-noir": Heart,
+  "rose-blush": Flower2,
+  "military-olive": Shield,
+  "military-khaki": Crosshair,
+  fsz: Flame,
 };
 
 export function GeneralTab({ draft, patchNow }: SettingsTabBaseProps) {
@@ -52,7 +73,7 @@ export function GeneralTab({ draft, patchNow }: SettingsTabBaseProps) {
       </SettingsSection>
 
       <SettingsSection title={t("settings.general.appearance.title")}>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {THEMES.map(({ id, labelKey }) => {
             const Icon = THEME_ICONS[id];
             return (

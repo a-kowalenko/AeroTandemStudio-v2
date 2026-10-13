@@ -90,7 +90,7 @@ html.dark[data-theme="team-spirit"] {
   color-scheme: dark;
   --ats-bg: #0a0a0a;
   --ats-fg: #f5f5f5;
-  --ats-muted: #a3a39a;
+  --ats-muted: #b5b5aa;
   --ats-border: rgba(245, 245, 245, 0.12);
   --ats-primary: #b59546;
   --ats-primary-fg: #0a0a0a;
@@ -192,6 +192,283 @@ html.dark[data-theme="spirit-2"] {
   --color-emerald-950: #0e2200;
 }
 
+/* Phase 55 — Royal Navy (luxury) */
+html.dark[data-theme="royal-navy"] {
+  color-scheme: dark;
+  --ats-bg: #0a1220;
+  --ats-fg: #f4f7fb;
+  --ats-muted: #8fa3bc;
+  --ats-border: rgba(244, 247, 251, 0.14);
+  --ats-primary: #3b6ae8;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(59, 106, 232, 0.18);
+  --ats-accent: #e8eef8;
+  --ats-destructive: #e85a5a;
+  --ats-success: #3dd68c;
+  --ats-warning: #fac515;
+  --ats-ring: rgba(59, 106, 232, 0.45);
+  --ats-card: #121c2e;
+  --ats-card-elevated: #1a2740;
+  --ats-overlay: rgba(12, 18, 32, 0.78);
+  --ats-glass-shine: rgba(255, 255, 255, 0.12);
+  --ats-glass-tint: rgba(59, 106, 232, 0.07);
+  --ats-glass-edge: rgba(232, 238, 248, 0.12);
+  --ats-surface: rgba(14, 22, 36, 0.32);
+  --ats-header: rgba(8, 14, 24, 0.4);
+  --ats-sidebar: rgba(10, 16, 28, 0.34);
+  --ats-bg-glow-1: #152848;
+  --ats-bg-glow-2: #1a1e40;
+  --ats-progress-from: #3b6ae8;
+  --ats-progress-to: #c5d4ff;
+  --ats-preview-stage: #060a12;
+  --ats-scrollbar-thumb: rgba(244, 247, 251, 0.18);
+  --ats-scrollbar-thumb-hover: rgba(59, 106, 232, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55 — Royal Flag (brighter blue + white) */
+html.dark[data-theme="royal-flag"] {
+  color-scheme: dark;
+  --ats-bg: #0c1830;
+  --ats-fg: #f5f8ff;
+  --ats-muted: #9ab0d0;
+  --ats-border: rgba(245, 248, 255, 0.18);
+  --ats-primary: #2f5bff;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(47, 91, 255, 0.22);
+  --ats-accent: #f5f8ff;
+  --ats-destructive: #ff6b6b;
+  --ats-success: #3dd68c;
+  --ats-warning: #fac515;
+  --ats-ring: rgba(47, 91, 255, 0.5);
+  --ats-card: #152648;
+  --ats-card-elevated: #1e3360;
+  --ats-overlay: rgba(14, 24, 48, 0.8);
+  --ats-glass-shine: rgba(255, 255, 255, 0.14);
+  --ats-glass-tint: rgba(47, 91, 255, 0.08);
+  --ats-glass-edge: rgba(245, 248, 255, 0.14);
+  --ats-surface: rgba(16, 28, 52, 0.3);
+  --ats-header: rgba(10, 18, 36, 0.38);
+  --ats-sidebar: rgba(12, 22, 42, 0.32);
+  --ats-bg-glow-1: #1a3a70;
+  --ats-bg-glow-2: #203060;
+  --ats-progress-from: #2f5bff;
+  --ats-progress-to: #f0f4ff;
+  --ats-preview-stage: #070e1c;
+  --ats-scrollbar-thumb: rgba(245, 248, 255, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(47, 91, 255, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55 — Rose Noir (UI chrome = cream; rose only accent/progress) */
+html.dark[data-theme="rose-noir"] {
+  color-scheme: dark;
+  --ats-bg: #100e10;
+  --ats-fg: #faf6f7;
+  --ats-muted: #c9b8be;
+  --ats-border: rgba(250, 246, 247, 0.18);
+  --ats-primary: #f0e6e8;
+  --ats-primary-fg: #1a1014;
+  --ats-primary-soft: rgba(240, 230, 232, 0.16);
+  --ats-accent: #e8b8c4;
+  --ats-destructive: #e0455c;
+  --ats-success: #7ba17a;
+  --ats-warning: #e0b84a;
+  --ats-ring: rgba(240, 230, 232, 0.4);
+  --ats-card: #1a1618;
+  --ats-card-elevated: #242022;
+  --ats-overlay: rgba(18, 14, 16, 0.88);
+  --ats-glass-shine: rgba(255, 240, 245, 0.1);
+  --ats-glass-tint: rgba(232, 184, 196, 0.06);
+  --ats-glass-edge: rgba(250, 246, 247, 0.12);
+  --ats-surface: rgba(18, 14, 16, 0.3);
+  --ats-header: rgba(10, 8, 10, 0.38);
+  --ats-sidebar: rgba(12, 10, 12, 0.32);
+  --ats-bg-glow-1: #2a181e;
+  --ats-bg-glow-2: #1c1018;
+  --ats-progress-from: #d4788e;
+  --ats-progress-to: #f2c4ce;
+  --ats-preview-stage: #080608;
+  --ats-scrollbar-thumb: rgba(250, 246, 247, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(240, 230, 232, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55 — Rose Blush (UI chrome = plum charcoal; rose accent/progress) */
+html[data-theme="rose-blush"] {
+  color-scheme: light;
+  --ats-bg: #faf6f7;
+  --ats-fg: #1a1216;
+  --ats-card: #ffffff;
+  --ats-card-elevated: #f3ecee;
+  --ats-muted: #6a545c;
+  --ats-border: rgba(26, 18, 22, 0.14);
+  --ats-primary: #5c3d48;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(92, 61, 72, 0.12);
+  --ats-accent: #c45a78;
+  --ats-destructive: #b42318;
+  --ats-success: #5a8a5a;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(92, 61, 72, 0.4);
+  --ats-surface: rgba(255, 255, 255, 0.88);
+  --ats-header: rgba(255, 255, 255, 0.92);
+  --ats-sidebar: rgba(255, 250, 251, 0.78);
+  --ats-bg-glow-1: #f0d8e0;
+  --ats-bg-glow-2: #e8e0f0;
+  --ats-progress-from: #c45a78;
+  --ats-progress-to: #e8a0b0;
+  --ats-preview-stage: #2a2226;
+  --ats-scrollbar-thumb: rgba(26, 18, 22, 0.24);
+  --ats-scrollbar-thumb-hover: rgba(92, 61, 72, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55 — Military Olive */
+html.dark[data-theme="military-olive"] {
+  color-scheme: dark;
+  --ats-bg: #161a12;
+  --ats-fg: #e8eadc;
+  --ats-muted: #9aa68a;
+  --ats-border: rgba(232, 234, 220, 0.16);
+  --ats-primary: #7a8f3e;
+  --ats-primary-fg: #0e1208;
+  --ats-primary-soft: rgba(122, 143, 62, 0.24);
+  --ats-accent: #a8b86a;
+  --ats-destructive: #a84828;
+  --ats-success: #8aaa44;
+  --ats-warning: #c9a227;
+  --ats-ring: rgba(122, 143, 62, 0.45);
+  --ats-card: #22281a;
+  --ats-card-elevated: #2e3622;
+  --ats-surface: rgba(34, 40, 26, 0.94);
+  --ats-header: rgba(20, 24, 16, 0.95);
+  --ats-sidebar: rgba(22, 26, 18, 0.95);
+  --ats-bg-glow-1: #243018;
+  --ats-bg-glow-2: #1c2414;
+  --ats-progress-from: #7a8f3e;
+  --ats-progress-to: #a8b86a;
+  --ats-preview-stage: #0c1008;
+  --ats-scrollbar-thumb: rgba(232, 234, 220, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(122, 143, 62, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  --color-emerald-50: #f0f4e6;
+  --color-emerald-100: #dce4c4;
+  --color-emerald-200: #c0cc90;
+  --color-emerald-300: #8fa84a;
+  --color-emerald-400: #7a9438;
+  --color-emerald-500: #7a8f3e;
+  --color-emerald-600: #5f7030;
+  --color-emerald-700: #485626;
+  --color-emerald-800: #36401c;
+  --color-emerald-900: #262c14;
+  --color-emerald-950: #14180c;
+}
+
+/* Phase 55 — Military Khaki (warm sand / tan) */
+html.dark[data-theme="military-khaki"] {
+  color-scheme: dark;
+  --ats-bg: #1a1812;
+  --ats-fg: #f0ebe0;
+  --ats-muted: #b0a890;
+  --ats-border: rgba(240, 235, 224, 0.16);
+  --ats-primary: #c4a35a;
+  --ats-primary-fg: #1a160c;
+  --ats-primary-soft: rgba(196, 163, 90, 0.24);
+  --ats-accent: #dcc896;
+  --ats-destructive: #a84828;
+  --ats-success: #8aaa44;
+  --ats-warning: #d4b040;
+  --ats-ring: rgba(196, 163, 90, 0.45);
+  --ats-card: #28241a;
+  --ats-card-elevated: #353024;
+  --ats-surface: rgba(40, 36, 26, 0.94);
+  --ats-header: rgba(24, 22, 16, 0.95);
+  --ats-sidebar: rgba(26, 24, 18, 0.95);
+  --ats-bg-glow-1: #2e2818;
+  --ats-bg-glow-2: #241c12;
+  --ats-progress-from: #c4a35a;
+  --ats-progress-to: #e8d4a0;
+  --ats-preview-stage: #100e0a;
+  --ats-scrollbar-thumb: rgba(240, 235, 224, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(196, 163, 90, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  --color-emerald-50: #f4f0e6;
+  --color-emerald-100: #e4dcc4;
+  --color-emerald-200: #d0c490;
+  --color-emerald-300: #b8a85a;
+  --color-emerald-400: #c4a35a;
+  --color-emerald-500: #a89048;
+  --color-emerald-600: #8a7438;
+  --color-emerald-700: #6c5a2c;
+  --color-emerald-800: #504422;
+  --color-emerald-900: #383018;
+  --color-emerald-950: #1c1810;
+}
+
+/*
+ * Phase 55 — FSZ (Spirit-2 liquid-glass shell tier)
+ * Logo red only for destructive + progress brand bars (not primary chrome).
+ */
+html.dark[data-theme="fsz"] {
+  color-scheme: dark;
+  --ats-bg: #141012;
+  --ats-fg: #f7f4f4;
+  --ats-muted: #c4b8b9;
+  --ats-border: rgba(247, 244, 244, 0.26);
+  --ats-primary: #f0ecec;
+  --ats-primary-fg: #1a1214;
+  --ats-primary-soft: rgba(240, 236, 236, 0.18);
+  --ats-accent: #d8d0d0;
+  /* Danger: bright UI red (readable); logo #a40c20 stays on progress bars */
+  --ats-destructive: #e84555;
+  /* Success: cool mint — clear “ok”, not gray, not clashing with brand red */
+  --ats-success: #3dd68c;
+  --ats-warning: #fac515;
+  --ats-ring: rgba(240, 236, 236, 0.4);
+  --ats-card: #2e2628;
+  --ats-card-elevated: #3a3032;
+  --ats-overlay: rgba(28, 20, 22, 0.92);
+  --ats-glass-shine: rgba(255, 255, 255, 0.1);
+  --ats-glass-tint: rgba(164, 12, 32, 0.05);
+  --ats-glass-edge: rgba(255, 255, 255, 0.14);
+  --ats-glass-seam: rgba(255, 255, 255, 0.07);
+  --ats-surface: rgba(28, 20, 22, 0.18);
+  --ats-header: rgba(16, 12, 14, 0.2);
+  --ats-sidebar: rgba(18, 14, 16, 0.16);
+  --ats-panel-filter: blur(48px) saturate(1.55) brightness(1.04);
+  --ats-float-filter: blur(36px) saturate(1.4);
+  --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
+  --ats-panel-shadow-float:
+    0 0 0 0.5px var(--ats-glass-edge),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.08),
+    0 12px 36px rgba(0, 0, 0, 0.48),
+    0 2px 6px rgba(0, 0, 0, 0.24);
+  --ats-bg-glow-1: #3a1820;
+  --ats-bg-glow-2: #2a1418;
+  --ats-progress-from: #a40c20;
+  --ats-progress-to: #e05058;
+  --ats-preview-stage: #100c0e;
+  --ats-scrollbar-thumb: rgba(247, 244, 244, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(240, 236, 236, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  /* Emerald chips (connected / media-ok) follow success mint */
+  --color-emerald-50: #ecfdf5;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-200: #a7f3d0;
+  --color-emerald-300: #6ee7b7;
+  --color-emerald-400: #4ade9a;
+  --color-emerald-500: #3dd68c;
+  --color-emerald-600: #22b87a;
+  --color-emerald-700: #189463;
+  --color-emerald-800: #14724d;
+  --color-emerald-900: #115c40;
+  --color-emerald-950: #0a3324;
+}
+
 /*
  * Spirit ambient mark — oversized SVG, centered behind the UI.
  * Black disk vanishes into the bg; white / gold / red stay as ghost branding.
@@ -221,10 +498,38 @@ html.dark[data-theme="spirit-2"]::before {
   opacity: 0.12;
 }
 
+html.dark[data-theme="fsz"]::before {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  margin: auto;
+  width: min(92vmin, 820px);
+  height: min(92vmin, 820px);
+  pointer-events: none;
+  background: url("/themes/fsz/logo.png") center / contain no-repeat;
+  opacity: 0.12;
+  -webkit-mask-image: radial-gradient(
+    circle at center,
+    #000 32%,
+    transparent 82%
+  );
+  mask-image: radial-gradient(circle at center, #000 32%, transparent 82%);
+}
+
 /* Team Spirit v1 — light frost on shell only (A/B baseline) */
 html.dark[data-theme="team-spirit"] .ats-surface,
 html.dark[data-theme="team-spirit"] .ats-sidebar-bg,
-html.dark[data-theme="team-spirit"] .ats-header-bg {
+html.dark[data-theme="team-spirit"] .ats-header-bg,
+html.dark[data-theme="royal-navy"] .ats-surface,
+html.dark[data-theme="royal-navy"] .ats-sidebar-bg,
+html.dark[data-theme="royal-navy"] .ats-header-bg,
+html.dark[data-theme="royal-flag"] .ats-surface,
+html.dark[data-theme="royal-flag"] .ats-sidebar-bg,
+html.dark[data-theme="royal-flag"] .ats-header-bg,
+html.dark[data-theme="rose-noir"] .ats-surface,
+html.dark[data-theme="rose-noir"] .ats-sidebar-bg,
+html.dark[data-theme="rose-noir"] .ats-header-bg {
   -webkit-backdrop-filter: blur(28px) saturate(1.25);
   backdrop-filter: blur(28px) saturate(1.25);
 }
@@ -234,7 +539,11 @@ html.dark[data-theme="team-spirit"] .ats-header-bg {
  * Prefer portaled to body so backdrop is not clipped by titlebar frost.
  */
 html.dark[data-theme="team-spirit"],
-html.dark[data-theme="spirit-2"] {
+html.dark[data-theme="spirit-2"],
+html.dark[data-theme="royal-navy"],
+html.dark[data-theme="royal-flag"],
+html.dark[data-theme="rose-noir"],
+html.dark[data-theme="fsz"] {
   --ats-liquid-glass-bg:
     linear-gradient(
       155deg,
@@ -252,8 +561,9 @@ html.dark[data-theme="spirit-2"] {
     0 1px 4px rgba(0, 0, 0, 0.22);
 }
 
-/* Spirit 2: airy shell glass + denser float plates (QR / progress / upload) */
-html.dark[data-theme="spirit-2"] {
+/* Spirit 2 + FSZ: airy shell glass + denser float plates (QR / progress / upload) */
+html.dark[data-theme="spirit-2"],
+html.dark[data-theme="fsz"] {
   --ats-liquid-glass-bg:
     linear-gradient(
       155deg,
@@ -276,7 +586,10 @@ html.dark[data-theme="spirit-2"] {
 
 html.dark[data-theme="spirit-2"] .ats-surface,
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg,
-html.dark[data-theme="spirit-2"] .ats-header-bg {
+html.dark[data-theme="spirit-2"] .ats-header-bg,
+html.dark[data-theme="fsz"] .ats-surface,
+html.dark[data-theme="fsz"] .ats-sidebar-bg,
+html.dark[data-theme="fsz"] .ats-header-bg {
   background: var(--ats-panel-bg);
   -webkit-backdrop-filter: var(--ats-panel-filter);
   backdrop-filter: var(--ats-panel-filter);
@@ -285,23 +598,29 @@ html.dark[data-theme="spirit-2"] .ats-header-bg {
 }
 
 /* Quiet seams — present, not loud */
-html.dark[data-theme="spirit-2"] .ats-header-bg {
+html.dark[data-theme="spirit-2"] .ats-header-bg,
+html.dark[data-theme="fsz"] .ats-header-bg {
   border-bottom: none;
   box-shadow: inset 0 -0.5px 0 var(--ats-glass-seam);
 }
 
-html.dark[data-theme="spirit-2"] .ats-sidebar-bg {
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg,
+html.dark[data-theme="fsz"] .ats-sidebar-bg {
   border-right: none;
   box-shadow: inset -0.5px 0 0 var(--ats-glass-seam);
 }
 
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg .border-b,
 html.dark[data-theme="spirit-2"] .ats-sidebar-bg .border-t,
-html.dark[data-theme="spirit-2"] .ats-surface .border-b {
+html.dark[data-theme="spirit-2"] .ats-surface .border-b,
+html.dark[data-theme="fsz"] .ats-sidebar-bg .border-b,
+html.dark[data-theme="fsz"] .ats-sidebar-bg .border-t,
+html.dark[data-theme="fsz"] .ats-surface .border-b {
   border-color: var(--ats-glass-seam) !important;
 }
 
-html.dark[data-theme="spirit-2"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg) {
+html.dark[data-theme="spirit-2"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg),
+html.dark[data-theme="fsz"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg) {
   border-radius: 0.75rem;
   background: var(--ats-panel-bg);
   -webkit-backdrop-filter: var(--ats-panel-filter);
@@ -309,23 +628,27 @@ html.dark[data-theme="spirit-2"] main .ats-surface:not(.ats-progress-float-in):n
   box-shadow: var(--ats-panel-shadow-shell);
 }
 
-html.dark[data-theme="spirit-2"] main .ats-surface [class*="bg-card-elevated"] {
+html.dark[data-theme="spirit-2"] main .ats-surface [class*="bg-card-elevated"],
+html.dark[data-theme="fsz"] main .ats-surface [class*="bg-card-elevated"] {
   background-color: color-mix(in srgb, var(--ats-card) 45%, transparent) !important;
 }
 
-html.dark[data-theme="spirit-2"] .ats-sidebar-bg [class*="from-card"] {
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg [class*="from-card"],
+html.dark[data-theme="fsz"] .ats-sidebar-bg [class*="from-card"] {
   --tw-gradient-from: color-mix(in srgb, var(--ats-card) 55%, transparent) !important;
   border-color: var(--ats-glass-seam) !important;
 }
 
-html.dark[data-theme="spirit-2"] .border-t.border-border.bg-card\/95 {
+html.dark[data-theme="spirit-2"] .border-t.border-border.bg-card\/95,
+html.dark[data-theme="fsz"] .border-t.border-border.bg-card\/95 {
   border-top-color: var(--ats-glass-seam) !important;
   background-color: color-mix(in srgb, var(--ats-card) 72%, transparent) !important;
   box-shadow: none !important;
 }
 
-html.dark[data-theme="spirit-2"] .ats-surface.ats-progress-float-in,
-html.dark[data-theme="spirit-2"] .ats-surface.shadow-lg {
+/* Non-progress floats (e.g. other shadow-lg plates); progress uses dense rule below */
+html.dark[data-theme="spirit-2"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out),
+html.dark[data-theme="fsz"] .ats-surface.shadow-lg:not(.ats-progress-float-in):not(.ats-progress-float-out) {
   background: var(--ats-liquid-glass-bg);
   -webkit-backdrop-filter: var(--ats-float-filter);
   backdrop-filter: var(--ats-float-filter);
@@ -341,16 +664,38 @@ html.dark[data-theme="spirit-2"] a.border {
   border-color: rgba(247, 245, 240, 0.32);
 }
 
+html.dark[data-theme="fsz"] button.border,
+html.dark[data-theme="fsz"] a.border {
+  border-color: rgba(247, 244, 244, 0.32);
+}
+
+html.dark[data-theme="spirit-2"] button.bg-card:hover,
+html.dark[data-theme="spirit-2"] a.bg-card:hover,
+html.dark[data-theme="fsz"] button.bg-card:hover,
+html.dark[data-theme="fsz"] a.bg-card:hover {
+  background-color: var(--ats-card-elevated);
+}
+
 html.dark[data-theme="spirit-2"] button.bg-card:hover,
 html.dark[data-theme="spirit-2"] a.bg-card:hover {
-  background-color: var(--ats-card-elevated);
   border-color: rgba(247, 245, 240, 0.42);
+}
+
+html.dark[data-theme="fsz"] button.bg-card:hover,
+html.dark[data-theme="fsz"] a.bg-card:hover {
+  border-color: rgba(247, 244, 244, 0.42);
 }
 
 html.dark[data-theme="spirit-2"] button.bg-transparent:hover,
 html.dark[data-theme="spirit-2"] a.bg-transparent:hover {
   background-color: var(--ats-primary-soft);
   border-color: rgba(208, 176, 86, 0.35);
+}
+
+html.dark[data-theme="fsz"] button.bg-transparent:hover,
+html.dark[data-theme="fsz"] a.bg-transparent:hover {
+  background-color: var(--ats-primary-soft);
+  border-color: rgba(240, 236, 236, 0.35);
 }
 
 html.dark[data-theme="spirit-2"] input,
@@ -360,6 +705,13 @@ html.dark[data-theme="spirit-2"] button[role="combobox"] {
   border-color: rgba(247, 245, 240, 0.3);
 }
 
+html.dark[data-theme="fsz"] input,
+html.dark[data-theme="fsz"] textarea,
+html.dark[data-theme="fsz"] [role="combobox"],
+html.dark[data-theme="fsz"] button[role="combobox"] {
+  border-color: rgba(247, 244, 244, 0.3);
+}
+
 html.dark[data-theme="spirit-2"] input:hover,
 html.dark[data-theme="spirit-2"] textarea:hover,
 html.dark[data-theme="spirit-2"] [role="combobox"]:hover,
@@ -367,23 +719,48 @@ html.dark[data-theme="spirit-2"] button[role="combobox"]:hover {
   border-color: rgba(247, 245, 240, 0.42);
 }
 
+html.dark[data-theme="fsz"] input:hover,
+html.dark[data-theme="fsz"] textarea:hover,
+html.dark[data-theme="fsz"] [role="combobox"]:hover,
+html.dark[data-theme="fsz"] button[role="combobox"]:hover {
+  border-color: rgba(247, 244, 244, 0.42);
+}
+
 html.dark[data-theme="spirit-2"] input:focus-visible,
-html.dark[data-theme="spirit-2"] textarea:focus-visible {
+html.dark[data-theme="spirit-2"] textarea:focus-visible,
+html.dark[data-theme="fsz"] input:focus-visible,
+html.dark[data-theme="fsz"] textarea:focus-visible {
   border-color: color-mix(in srgb, var(--ats-primary) 55%, transparent);
 }
 
 /*
- * Liquid glass — Spirit themes only.
- * Light / Dark keep solid bg-card / ats-surface (no global glass leak).
+ * Liquid glass — brand dark skins (Spirit + Phase 55 glass group).
+ * Light / Dark / Rose Blush / Military keep solid plates.
  */
 html.dark[data-theme="team-spirit"] .ats-liquid-glass,
 html.dark[data-theme="spirit-2"] .ats-liquid-glass,
+html.dark[data-theme="royal-navy"] .ats-liquid-glass,
+html.dark[data-theme="royal-flag"] .ats-liquid-glass,
+html.dark[data-theme="rose-noir"] .ats-liquid-glass,
+html.dark[data-theme="fsz"] .ats-liquid-glass,
 html.dark[data-theme="team-spirit"] [role="dialog"],
 html.dark[data-theme="spirit-2"] [role="dialog"],
+html.dark[data-theme="royal-navy"] [role="dialog"],
+html.dark[data-theme="royal-flag"] [role="dialog"],
+html.dark[data-theme="rose-noir"] [role="dialog"],
+html.dark[data-theme="fsz"] [role="dialog"],
 html.dark[data-theme="team-spirit"] [role="listbox"],
 html.dark[data-theme="spirit-2"] [role="listbox"],
+html.dark[data-theme="royal-navy"] [role="listbox"],
+html.dark[data-theme="royal-flag"] [role="listbox"],
+html.dark[data-theme="rose-noir"] [role="listbox"],
+html.dark[data-theme="fsz"] [role="listbox"],
 html.dark[data-theme="team-spirit"] [role="menu"],
-html.dark[data-theme="spirit-2"] [role="menu"] {
+html.dark[data-theme="spirit-2"] [role="menu"],
+html.dark[data-theme="royal-navy"] [role="menu"],
+html.dark[data-theme="royal-flag"] [role="menu"],
+html.dark[data-theme="rose-noir"] [role="menu"],
+html.dark[data-theme="fsz"] [role="menu"] {
   background: var(--ats-liquid-glass-bg);
   -webkit-backdrop-filter: var(--ats-liquid-glass-filter);
   backdrop-filter: var(--ats-liquid-glass-filter);
@@ -393,8 +770,12 @@ html.dark[data-theme="spirit-2"] [role="menu"] {
   box-shadow: var(--ats-liquid-glass-shadow);
 }
 
-/* Light / Dark: marker class → solid plate (header popovers etc.) */
-html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"]) .ats-liquid-glass {
+/* Solid plate themes: marker class → opaque card */
+html[data-theme="light"] .ats-liquid-glass,
+html[data-theme="dark"] .ats-liquid-glass,
+html[data-theme="rose-blush"] .ats-liquid-glass,
+html[data-theme="military-olive"] .ats-liquid-glass,
+html[data-theme="military-khaki"] .ats-liquid-glass {
   background-color: var(--ats-card);
   border: 1px solid var(--ats-border);
   box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.35);
@@ -402,16 +783,26 @@ html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"]) .ats-liquid-gl
   backdrop-filter: none;
 }
 
-/* Light / Dark float panels (progress / upload / import outcome): solid card */
-html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
-  .ats-surface.ats-progress-float-in,
-html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
-  .ats-surface.ats-progress-float-out,
-html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
-  .ats-surface.shadow-lg {
-  background: var(--ats-card);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+/*
+ * Progress / upload / import floats — dense plates on every theme.
+ * Translucent shell glass washes out text-muted labels; floats stay readable.
+ */
+html .ats-surface.ats-progress-float-in,
+html .ats-surface.ats-progress-float-out {
+  background: color-mix(in srgb, var(--ats-card) 94%, var(--ats-fg) 6%);
+  border-color: color-mix(in srgb, var(--ats-border) 80%, var(--ats-fg) 20%);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: blur(24px) saturate(1.2);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ats-border) 70%, transparent),
+    0 14px 40px rgba(0, 0, 0, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.22);
+}
+
+/* Collapsed pill chips (bg-card/95) — bump opacity for the same reason */
+html .ats-progress-float-in.bg-card\/95,
+html .ats-progress-float-out.bg-card\/95 {
+  background-color: color-mix(in srgb, var(--ats-card) 96%, var(--ats-fg) 4%) !important;
 }
 
 /* Spirit 2 toasts — tinted float plate (same tier as QR / progress) */
@@ -425,7 +816,8 @@ html.dark[data-theme="spirit-2"] .ats-toast-card {
 
 @media (prefers-reduced-motion: no-preference) {
   html.dark[data-theme="team-spirit"]::before,
-  html.dark[data-theme="spirit-2"]::before {
+  html.dark[data-theme="spirit-2"]::before,
+  html.dark[data-theme="fsz"]::before {
     animation: ats-spirit-mark-drift 30s ease-in-out infinite alternate;
   }
 }

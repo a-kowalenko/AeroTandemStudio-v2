@@ -152,7 +152,7 @@ function ActionRow({
           action.tone === "success" && "bg-success/15 text-success",
           action.tone === "error" && "bg-destructive/15 text-destructive",
           action.tone === "warning" && "bg-warning/15 text-warning",
-          action.tone === "skipped" && "bg-muted text-muted",
+          action.tone === "skipped" && "bg-muted/15 text-muted",
         )}
         aria-hidden
       >

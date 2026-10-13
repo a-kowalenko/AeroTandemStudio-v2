@@ -408,18 +408,18 @@ export function ProgressIndicator({
                     {metric}
                   </span>
                   {metricLabel ? (
-                    <span className="ml-1.5 text-[11px] text-muted">
+                    <span className="ml-1.5 text-[11px] text-foreground/65">
                       {metricLabel}
                     </span>
                   ) : null}
                 </p>
               ) : !hideBar && !hidePercent ? (
-                <p className="shrink-0 text-sm tabular-nums text-muted">
+                <p className="shrink-0 text-sm tabular-nums text-foreground/75">
                   {statusText ??
                     (indeterminate ? "…" : `${clamped.toFixed(1)}%`)}
                 </p>
               ) : !hideBar ? (
-                <p className="shrink-0 text-sm text-muted" aria-hidden>
+                <p className="shrink-0 text-sm text-foreground/65" aria-hidden>
                   ···
                 </p>
               ) : null}
@@ -463,12 +463,12 @@ export function ProgressIndicator({
               >
                 <div className="flex items-baseline justify-between gap-2">
                   <p
-                    className="min-w-0 flex-1 truncate text-xs text-muted"
+                    className="min-w-0 flex-1 truncate text-xs text-foreground/75"
                     title={taskLabel}
                   >
                     {taskLabel}
                   </p>
-                  <p className="shrink-0 text-xs tabular-nums text-muted">
+                  <p className="shrink-0 text-xs tabular-nums text-foreground/75">
                     {pct.toFixed(1)}%
                   </p>
                 </div>

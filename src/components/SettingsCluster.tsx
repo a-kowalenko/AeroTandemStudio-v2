@@ -9,7 +9,6 @@ import {
 import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { LogConsoleToggleButton } from "@/components/LogConsole";
 import { useLogStore } from "@/store/logStore";
 import { cn } from "@/lib/utils";
@@ -159,12 +158,6 @@ export function SettingsCluster({
         <div
           className="ats-settings-cluster-item"
           style={{ ["--ats-cluster-i" as string]: 0 }}
-        >
-          <ThemeToggle className={cn(HEADER_ICON_BTN, "shadow-md")} />
-        </div>
-        <div
-          className="ats-settings-cluster-item"
-          style={{ ["--ats-cluster-i" as string]: 1 }}
         >
           <LogConsoleToggleButton
             disabled={disabled}

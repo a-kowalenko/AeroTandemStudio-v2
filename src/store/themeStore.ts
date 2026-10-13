@@ -1,6 +1,17 @@
 import { create } from "zustand";
 
-export type ThemeId = "light" | "dark" | "team-spirit" | "spirit-2";
+export type ThemeId =
+  | "light"
+  | "dark"
+  | "team-spirit"
+  | "spirit-2"
+  | "royal-navy"
+  | "royal-flag"
+  | "rose-noir"
+  | "rose-blush"
+  | "military-olive"
+  | "military-khaki"
+  | "fsz";
 
 /** @deprecated Prefer ThemeId — kept for gradual call-site updates. */
 export type ThemeMode = ThemeId;
@@ -26,9 +37,50 @@ export const THEMES: readonly ThemeMeta[] = [
     base: "dark",
     labelKey: "common.labels.themeSpirit2",
   },
+  {
+    id: "royal-navy",
+    base: "dark",
+    labelKey: "common.labels.themeRoyalNavy",
+  },
+  {
+    id: "royal-flag",
+    base: "dark",
+    labelKey: "common.labels.themeRoyalFlag",
+  },
+  {
+    id: "rose-noir",
+    base: "dark",
+    labelKey: "common.labels.themeRoseNoir",
+  },
+  {
+    id: "rose-blush",
+    base: "light",
+    labelKey: "common.labels.themeRoseBlush",
+  },
+  {
+    id: "military-olive",
+    base: "dark",
+    labelKey: "common.labels.themeMilitaryOlive",
+  },
+  {
+    id: "military-khaki",
+    base: "dark",
+    labelKey: "common.labels.themeMilitaryKhaki",
+  },
+  {
+    id: "fsz",
+    base: "dark",
+    labelKey: "common.labels.themeFsz",
+  },
 ] as const;
 
 const STORAGE_KEY = "ats-theme";
+
+/** Renames from earlier Phase-55 IDs. */
+const LEGACY_THEME_IDS: Record<string, ThemeId> = {
+  "military-od": "military-olive",
+  "military-camo": "military-khaki",
+};
 
 const THEME_IDS = new Set<string>(THEMES.map((t) => t.id));
 
@@ -43,7 +95,17 @@ export function themeMeta(id: ThemeId): ThemeMeta {
 function readStored(): ThemeId | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v && isThemeId(v)) return v;
+    if (!v) return null;
+    if (isThemeId(v)) return v;
+    const migrated = LEGACY_THEME_IDS[v];
+    if (migrated) {
+      try {
+        localStorage.setItem(STORAGE_KEY, migrated);
+      } catch {
+        /* ignore */
+      }
+      return migrated;
+    }
   } catch {
     /* ignore */
   }
@@ -70,10 +132,9 @@ export function initTheme(): ThemeId {
 type ThemeState = {
   mode: ThemeId;
   setMode: (mode: ThemeId) => void;
-  toggle: () => void;
 };
 
-export const useThemeStore = create<ThemeState>((set, get) => ({
+export const useThemeStore = create<ThemeState>((set) => ({
   mode: "light",
   setMode: (mode) => {
     applyDom(mode);
@@ -83,10 +144,5 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       /* ignore */
     }
     set({ mode });
-  },
-  toggle: () => {
-    const idx = THEMES.findIndex((t) => t.id === get().mode);
-    const next = THEMES[(idx + 1) % THEMES.length] ?? THEMES[0];
-    get().setMode(next.id);
   },
 }));
