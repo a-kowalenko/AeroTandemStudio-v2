@@ -26,10 +26,10 @@ export const THEME_GROUPS: readonly ThemeGroup[] = [
     themeIds: [
       "sky-horizon",
       "sky-dusk",
-      "sunset",
       "arctic",
-      "forest",
       "graphite",
+      "sunset",
+      "forest",
       "royal-navy",
       "royal-flag",
       "rose-blush",

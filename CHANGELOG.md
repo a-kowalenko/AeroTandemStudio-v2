@@ -14,6 +14,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Buchungssuche: Kunde gefunden, aber nichts gebucht — Auswahl Handcam oder Outside statt Abbruch
 - Server-Status in der Kopfzeile: Verbindungstest mit Live-Ergebnis für Freigabe, Backup und Buchungssuche
+- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Sky, Sunset, Arctic, Forest, Graphite und FSZ (Hell/Dunkel); auch im Setup-Assistenten
 
 ### Verbessert
 
@@ -22,6 +23,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - QR-Scan: nach Treffer räumen sich die Live-Kacheln der anderen Dateien auf; während der Kundensuche bleibt die Anzeige ruhiger
 - Netzlaufwerk: zuverlässigeres Einbinden und klarere Hinweise bei Verbindungsproblemen
 - Erstellen mit Intro: Fortschrittsschritte folgen dem tatsächlichen Stand zuverlässiger (kein vorzeitiges „fertig“)
+- Medien leeren: Buttons klarer als „Alle Videos leeren“ und „Alle Fotos leeren“
+- Arbeitsfläche: Scrollbalken springt weniger beim Ein- und Ausblenden
 
 ### Behoben
 
