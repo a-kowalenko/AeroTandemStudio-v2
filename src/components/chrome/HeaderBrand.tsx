@@ -122,6 +122,12 @@ export function HeaderBrand({
   }, [appVersion, subtitleFull]);
 
   const collapsedToLogoOnly = !showTitle && !showSubtitle;
+  const logoSizeClass =
+    themeId === "fsz"
+      ? "h-[34px] w-[34px]"
+      : themeId === "team-spirit" || themeId === "spirit-2"
+        ? "h-[30px] w-[30px]"
+        : "h-[22px] w-[22px]";
 
   return (
     <div
@@ -135,7 +141,7 @@ export function HeaderBrand({
         <img
           src={logoSrc}
           alt=""
-          className="h-[22px] w-[22px] object-contain drop-shadow-sm"
+          className={cn("object-contain drop-shadow-sm", logoSizeClass)}
           onError={(e) => {
             (e.target as HTMLImageElement).style.display = "none";
           }}
