@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Check, FolderOpen, Info, Languages, Loader2, Moon, Sun } from "lucide-react";
+import {
+  Check,
+  FolderOpen,
+  Info,
+  Languages,
+  Loader2,
+  Moon,
+  Sparkles,
+  Star,
+  Sun,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +38,7 @@ import { UI_LANGUAGE_OPTIONS, uiLanguageLabel } from "@/lib/uiLanguageOptions";
 import { useConfigStore } from "@/store/configStore";
 import { useLocaleStore } from "@/store/localeStore";
 import { useServerStore } from "@/store/serverStore";
-import { useThemeStore, type ThemeMode } from "@/store/themeStore";
+import { THEMES, themeMeta, useThemeStore, type ThemeId } from "@/store/themeStore";
 import { useUiStore } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 import {
@@ -329,6 +340,13 @@ type OperatorRoleDraft = {
 
 const SKIP_BTN_CLASS =
   "border-orange-300/90 bg-orange-100 text-orange-950 hover:bg-orange-200/90 dark:border-orange-400/35 dark:bg-orange-400/15 dark:text-orange-50 dark:hover:bg-orange-400/25";
+
+const WIZARD_THEME_ICONS: Record<ThemeId, LucideIcon> = {
+  light: Sun,
+  dark: Moon,
+  "team-spirit": Sparkles,
+  "spirit-2": Star,
+};
 
 export function SetupWizard({ open, onComplete }: Props) {
   const { t } = useTranslation();
@@ -1014,35 +1032,25 @@ export function SetupWizard({ open, onComplete }: Props) {
               <div className="space-y-2">
                 <Label>{t("settings.general.appearance.title")}</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      {
-                        mode: "light" as ThemeMode,
-                        label: t("common.labels.themeLight"),
-                        Icon: Sun,
-                      },
-                      {
-                        mode: "dark" as ThemeMode,
-                        label: t("common.labels.themeDark"),
-                        Icon: Moon,
-                      },
-                    ] as const
-                  ).map(({ mode, label, Icon }) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setThemeMode(mode)}
-                      className={cn(
-                        "flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors",
-                        themeMode === mode
-                          ? "border-primary bg-primary-soft text-primary"
-                          : "border-border bg-background text-foreground hover:bg-muted/30",
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {label}
-                    </button>
-                  ))}
+                  {THEMES.map(({ id, labelKey }) => {
+                    const Icon = WIZARD_THEME_ICONS[id];
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setThemeMode(id)}
+                        className={cn(
+                          "flex items-center justify-center gap-2 rounded-lg border px-3 py-3 text-sm transition-colors",
+                          themeMode === id
+                            ? "border-primary bg-primary-soft text-primary"
+                            : "border-border bg-background text-foreground hover:bg-muted/30",
+                        )}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{t(labelKey)}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <Combobox
@@ -1609,11 +1617,7 @@ export function SetupWizard({ open, onComplete }: Props) {
                 />
                 <SummaryRow
                   label={t("settings.general.appearance.title")}
-                  value={
-                    themeMode === "dark"
-                      ? t("common.labels.themeDark")
-                      : t("common.labels.themeLight")
-                  }
+                  value={t(themeMeta(themeMode).labelKey)}
                 />
                 <SummaryRow
                   label={t("settings.crew.who.label")}

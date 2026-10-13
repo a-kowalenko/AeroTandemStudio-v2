@@ -85,6 +85,360 @@
   --ats-scrollbar-track: transparent;
 }
 
+/* Phase 54 — Team Spirit v1 (unchanged baseline for A/B) */
+html.dark[data-theme="team-spirit"] {
+  color-scheme: dark;
+  --ats-bg: #0a0a0a;
+  --ats-fg: #f5f5f5;
+  --ats-muted: #a3a39a;
+  --ats-border: rgba(245, 245, 245, 0.12);
+  --ats-primary: #b59546;
+  --ats-primary-fg: #0a0a0a;
+  --ats-primary-soft: rgba(181, 149, 70, 0.16);
+  --ats-accent: #c9a84c;
+  --ats-destructive: #d80000;
+  --ats-success: #3dd68c;
+  --ats-warning: #fac515;
+  --ats-ring: rgba(181, 149, 70, 0.45);
+  /*
+   * Glass on shell only (surface/sidebar/header). Cards stay nearly opaque:
+   * popovers use `bg-card/95` — if --ats-card is already translucent, /95
+   * washes the plate out completely.
+   */
+  --ats-card: #1a1a1a;
+  --ats-card-elevated: #222222;
+  /* Liquid-glass plate fill (used with heavy backdrop-filter) */
+  --ats-overlay: rgba(18, 18, 18, 0.72);
+  --ats-glass-shine: rgba(255, 255, 255, 0.1);
+  --ats-glass-tint: rgba(181, 149, 70, 0.06);
+  /* Hairline like macOS vibrancy — not a chalky white stroke */
+  --ats-glass-edge: rgba(255, 255, 255, 0.09);
+  --ats-surface: rgba(18, 18, 18, 0.28);
+  --ats-header: rgba(8, 8, 8, 0.36);
+  --ats-sidebar: rgba(10, 10, 10, 0.3);
+  --ats-bg-glow-1: #2a2210;
+  --ats-bg-glow-2: #2a0c0c;
+  --ats-progress-from: #b59546;
+  --ats-progress-to: #d4bc6a;
+  --ats-preview-stage: #050505;
+  --ats-scrollbar-thumb: rgba(245, 245, 245, 0.18);
+  --ats-scrollbar-thumb-hover: rgba(181, 149, 70, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/*
+ * Phase 54 — Spirit 2 (refined A/B): warmer whites, brighter gold,
+ * softer Spirit-red for UI, olive-gold success (replaces mint green).
+ * Also remaps Tailwind emerald-* so chips / “connected” / media-ok follow.
+ */
+html.dark[data-theme="spirit-2"] {
+  color-scheme: dark;
+  --ats-bg: #080808;
+  --ats-fg: #f7f5f0;
+  --ats-muted: #b8b3a6;
+  /* Clearer control edges (buttons / inputs) without chalky rims */
+  --ats-border: rgba(247, 245, 240, 0.28);
+  --ats-primary: #d0b056;
+  --ats-primary-fg: #0a0a08;
+  --ats-primary-soft: rgba(208, 176, 86, 0.28);
+  --ats-accent: #dfc36a;
+  --ats-destructive: #e04a4a;
+  --ats-success: #48a800;
+  --ats-warning: #e0b84a;
+  --ats-ring: rgba(208, 176, 86, 0.45);
+  /*
+   * Two tiers (polished):
+   * - Shell: soft liquid glass, quiet seams
+   * - Float: denser readable plates
+   */
+  --ats-card: #26261f;
+  --ats-card-elevated: #35352c;
+  --ats-overlay: rgba(22, 22, 18, 0.92);
+  --ats-glass-shine: rgba(255, 248, 230, 0.08);
+  --ats-glass-tint: rgba(196, 160, 82, 0.05);
+  --ats-glass-edge: rgba(255, 248, 230, 0.14);
+  --ats-glass-seam: rgba(255, 248, 230, 0.07);
+  --ats-surface: rgba(16, 16, 12, 0.18);
+  --ats-header: rgba(8, 8, 6, 0.2);
+  --ats-sidebar: rgba(10, 10, 8, 0.16);
+  --ats-panel-filter: blur(48px) saturate(1.55) brightness(1.04);
+  --ats-float-filter: blur(36px) saturate(1.4);
+  --ats-panel-shadow-shell: 0 0 0 0.5px var(--ats-glass-seam);
+  --ats-panel-shadow-float:
+    0 0 0 0.5px var(--ats-glass-edge),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.08),
+    0 12px 36px rgba(0, 0, 0, 0.48),
+    0 2px 6px rgba(0, 0, 0, 0.24);
+  --ats-bg-glow-1: #221c10;
+  --ats-bg-glow-2: #1c1010;
+  --ats-progress-from: #d0b056;
+  --ats-progress-to: #e0c878;
+  --ats-preview-stage: #050504;
+  --ats-scrollbar-thumb: rgba(247, 245, 240, 0.22);
+  --ats-scrollbar-thumb-hover: rgba(208, 176, 86, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  /* Emerald → #48a800 family */
+  --color-emerald-50: #f0f8e6;
+  --color-emerald-100: #dcedc4;
+  --color-emerald-200: #c0de90;
+  --color-emerald-300: #8fc94a;
+  --color-emerald-400: #6bb81a;
+  --color-emerald-500: #48a800;
+  --color-emerald-600: #3a8a00;
+  --color-emerald-700: #2e6c00;
+  --color-emerald-800: #245400;
+  --color-emerald-900: #1a3c00;
+  --color-emerald-950: #0e2200;
+}
+
+/*
+ * Spirit ambient mark — oversized SVG, centered behind the UI.
+ * Black disk vanishes into the bg; white / gold / red stay as ghost branding.
+ * Visibility relies on glass surfaces (translucent --ats-card / surface).
+ */
+html.dark[data-theme="team-spirit"]::before,
+html.dark[data-theme="spirit-2"]::before {
+  content: "";
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  margin: auto;
+  width: min(92vmin, 820px);
+  height: min(92vmin, 820px);
+  pointer-events: none;
+  background: url("/themes/team-spirit/logo.svg") center / contain no-repeat;
+  opacity: 0.2;
+  -webkit-mask-image: radial-gradient(
+    circle at center,
+    #000 32%,
+    transparent 82%
+  );
+  mask-image: radial-gradient(circle at center, #000 32%, transparent 82%);
+}
+
+html.dark[data-theme="spirit-2"]::before {
+  opacity: 0.12;
+}
+
+/* Team Spirit v1 — light frost on shell only (A/B baseline) */
+html.dark[data-theme="team-spirit"] .ats-surface,
+html.dark[data-theme="team-spirit"] .ats-sidebar-bg,
+html.dark[data-theme="team-spirit"] .ats-header-bg {
+  -webkit-backdrop-filter: blur(28px) saturate(1.25);
+  backdrop-filter: blur(28px) saturate(1.25);
+}
+
+/*
+ * Liquid glass shared vars (popovers / dialogs).
+ * Prefer portaled to body so backdrop is not clipped by titlebar frost.
+ */
+html.dark[data-theme="team-spirit"],
+html.dark[data-theme="spirit-2"] {
+  --ats-liquid-glass-bg:
+    linear-gradient(
+      155deg,
+      var(--ats-glass-shine) 0%,
+      transparent 42%,
+      var(--ats-glass-tint) 100%
+    ),
+    var(--ats-overlay);
+  --ats-liquid-glass-filter: blur(48px) saturate(1.9) brightness(1.08);
+  --ats-liquid-glass-shadow:
+    0 0 0 0.5px var(--ats-glass-edge),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -0.5px 0 rgba(0, 0, 0, 0.28),
+    0 10px 36px rgba(0, 0, 0, 0.42),
+    0 1px 4px rgba(0, 0, 0, 0.22);
+}
+
+/* Spirit 2: airy shell glass + denser float plates (QR / progress / upload) */
+html.dark[data-theme="spirit-2"] {
+  --ats-liquid-glass-bg:
+    linear-gradient(
+      155deg,
+      var(--ats-glass-shine) 0%,
+      transparent 42%,
+      var(--ats-glass-tint) 100%
+    ),
+    var(--ats-overlay);
+  --ats-liquid-glass-filter: var(--ats-float-filter);
+  --ats-liquid-glass-shadow: var(--ats-panel-shadow-float);
+  --ats-panel-bg:
+    linear-gradient(
+      155deg,
+      var(--ats-glass-shine) 0%,
+      transparent 45%,
+      var(--ats-glass-tint) 100%
+    ),
+    var(--ats-surface);
+}
+
+html.dark[data-theme="spirit-2"] .ats-surface,
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg,
+html.dark[data-theme="spirit-2"] .ats-header-bg {
+  background: var(--ats-panel-bg);
+  -webkit-backdrop-filter: var(--ats-panel-filter);
+  backdrop-filter: var(--ats-panel-filter);
+  border-color: transparent;
+  box-shadow: var(--ats-panel-shadow-shell);
+}
+
+/* Quiet seams — present, not loud */
+html.dark[data-theme="spirit-2"] .ats-header-bg {
+  border-bottom: none;
+  box-shadow: inset 0 -0.5px 0 var(--ats-glass-seam);
+}
+
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg {
+  border-right: none;
+  box-shadow: inset -0.5px 0 0 var(--ats-glass-seam);
+}
+
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg .border-b,
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg .border-t,
+html.dark[data-theme="spirit-2"] .ats-surface .border-b {
+  border-color: var(--ats-glass-seam) !important;
+}
+
+html.dark[data-theme="spirit-2"] main .ats-surface:not(.ats-progress-float-in):not(.shadow-lg) {
+  border-radius: 0.75rem;
+  background: var(--ats-panel-bg);
+  -webkit-backdrop-filter: var(--ats-panel-filter);
+  backdrop-filter: var(--ats-panel-filter);
+  box-shadow: var(--ats-panel-shadow-shell);
+}
+
+html.dark[data-theme="spirit-2"] main .ats-surface [class*="bg-card-elevated"] {
+  background-color: color-mix(in srgb, var(--ats-card) 45%, transparent) !important;
+}
+
+html.dark[data-theme="spirit-2"] .ats-sidebar-bg [class*="from-card"] {
+  --tw-gradient-from: color-mix(in srgb, var(--ats-card) 55%, transparent) !important;
+  border-color: var(--ats-glass-seam) !important;
+}
+
+html.dark[data-theme="spirit-2"] .border-t.border-border.bg-card\/95 {
+  border-top-color: var(--ats-glass-seam) !important;
+  background-color: color-mix(in srgb, var(--ats-card) 72%, transparent) !important;
+  box-shadow: none !important;
+}
+
+html.dark[data-theme="spirit-2"] .ats-surface.ats-progress-float-in,
+html.dark[data-theme="spirit-2"] .ats-surface.shadow-lg {
+  background: var(--ats-liquid-glass-bg);
+  -webkit-backdrop-filter: var(--ats-float-filter);
+  backdrop-filter: var(--ats-float-filter);
+  box-shadow: var(--ats-panel-shadow-float);
+}
+
+/*
+ * Controls — clearer borders + hover steps (secondary / outline / ghost).
+ * Card → elevated is a real step; primary-soft is stronger for ghost.
+ */
+html.dark[data-theme="spirit-2"] button.border,
+html.dark[data-theme="spirit-2"] a.border {
+  border-color: rgba(247, 245, 240, 0.32);
+}
+
+html.dark[data-theme="spirit-2"] button.bg-card:hover,
+html.dark[data-theme="spirit-2"] a.bg-card:hover {
+  background-color: var(--ats-card-elevated);
+  border-color: rgba(247, 245, 240, 0.42);
+}
+
+html.dark[data-theme="spirit-2"] button.bg-transparent:hover,
+html.dark[data-theme="spirit-2"] a.bg-transparent:hover {
+  background-color: var(--ats-primary-soft);
+  border-color: rgba(208, 176, 86, 0.35);
+}
+
+html.dark[data-theme="spirit-2"] input,
+html.dark[data-theme="spirit-2"] textarea,
+html.dark[data-theme="spirit-2"] [role="combobox"],
+html.dark[data-theme="spirit-2"] button[role="combobox"] {
+  border-color: rgba(247, 245, 240, 0.3);
+}
+
+html.dark[data-theme="spirit-2"] input:hover,
+html.dark[data-theme="spirit-2"] textarea:hover,
+html.dark[data-theme="spirit-2"] [role="combobox"]:hover,
+html.dark[data-theme="spirit-2"] button[role="combobox"]:hover {
+  border-color: rgba(247, 245, 240, 0.42);
+}
+
+html.dark[data-theme="spirit-2"] input:focus-visible,
+html.dark[data-theme="spirit-2"] textarea:focus-visible {
+  border-color: color-mix(in srgb, var(--ats-primary) 55%, transparent);
+}
+
+/*
+ * Liquid glass — Spirit themes only.
+ * Light / Dark keep solid bg-card / ats-surface (no global glass leak).
+ */
+html.dark[data-theme="team-spirit"] .ats-liquid-glass,
+html.dark[data-theme="spirit-2"] .ats-liquid-glass,
+html.dark[data-theme="team-spirit"] [role="dialog"],
+html.dark[data-theme="spirit-2"] [role="dialog"],
+html.dark[data-theme="team-spirit"] [role="listbox"],
+html.dark[data-theme="spirit-2"] [role="listbox"],
+html.dark[data-theme="team-spirit"] [role="menu"],
+html.dark[data-theme="spirit-2"] [role="menu"] {
+  background: var(--ats-liquid-glass-bg);
+  -webkit-backdrop-filter: var(--ats-liquid-glass-filter);
+  backdrop-filter: var(--ats-liquid-glass-filter);
+  border-width: 0;
+  border-style: none;
+  border-color: transparent;
+  box-shadow: var(--ats-liquid-glass-shadow);
+}
+
+/* Light / Dark: marker class → solid plate (header popovers etc.) */
+html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"]) .ats-liquid-glass {
+  background-color: var(--ats-card);
+  border: 1px solid var(--ats-border);
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Light / Dark float panels (progress / upload / import outcome): solid card */
+html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
+  .ats-surface.ats-progress-float-in,
+html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
+  .ats-surface.ats-progress-float-out,
+html:not([data-theme="team-spirit"]):not([data-theme="spirit-2"])
+  .ats-surface.shadow-lg {
+  background: var(--ats-card);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Spirit 2 toasts — tinted float plate (same tier as QR / progress) */
+html.dark[data-theme="spirit-2"] .ats-toast-card {
+  border-width: 0 !important;
+  border-color: transparent !important;
+  -webkit-backdrop-filter: var(--ats-float-filter);
+  backdrop-filter: var(--ats-float-filter);
+  box-shadow: var(--ats-panel-shadow-float);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.dark[data-theme="team-spirit"]::before,
+  html.dark[data-theme="spirit-2"]::before {
+    animation: ats-spirit-mark-drift 30s ease-in-out infinite alternate;
+  }
+}
+
+@keyframes ats-spirit-mark-drift {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  to {
+    transform: scale(1.03) translate3d(0, -0.8%, 0);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
@@ -122,6 +476,12 @@
   body,
   #root {
     height: 100%;
+  }
+
+  /* Keep chrome above the Spirit corner mark (::before on html). */
+  #root {
+    position: relative;
+    z-index: 1;
   }
 
   body {

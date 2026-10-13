@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Spinner } from "./Spinner";
+import { resolveThemeLogo } from "@/lib/themeLogo";
 import { cn } from "@/lib/utils";
+import { useThemeStore } from "@/store/themeStore";
 
 type Props = {
   open: boolean;
@@ -18,6 +20,8 @@ export function removeBootSplash(): void {
 
 export function SplashScreen({ open, status, version, error, className }: Props) {
   const { t } = useTranslation();
+  const themeId = useThemeStore((s) => s.mode);
+  const logoSrc = resolveThemeLogo(themeId);
   const [visible, setVisible] = useState(open);
   const [fading, setFading] = useState(false);
 
@@ -60,7 +64,7 @@ export function SplashScreen({ open, status, version, error, className }: Props)
       <div className="flex w-[min(400px,90vw)] flex-col items-center px-6 text-center">
         <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-2xl bg-primary-soft ring-1 ring-primary/25">
           <img
-            src="/logo.png"
+            src={logoSrc}
             alt=""
             width={64}
             height={64}

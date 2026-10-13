@@ -1,12 +1,16 @@
+import type { RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, Upload, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { useAnchoredFixedPosition } from "@/hooks/useAnchoredFixedPosition";
 import type { UploadCompactParts } from "@/lib/uploadProgress";
 import { cn } from "@/lib/utils";
 
 export type SecondaryBackupPopoverProps = {
   open: boolean;
-  /** Anchor: popover renders below this wrapper (parent is relative). */
+  /** Chip / root under the titlebar — portal escapes header backdrop-filter. */
+  anchorRef?: RefObject<HTMLElement | null>;
   compact: UploadCompactParts;
   state: string;
   filesLabel: string | null;
@@ -24,6 +28,7 @@ export type SecondaryBackupPopoverProps = {
  */
 export function SecondaryBackupPopover({
   open,
+  anchorRef,
   compact,
   state,
   filesLabel,
@@ -34,6 +39,7 @@ export function SecondaryBackupPopover({
   onDismiss,
 }: SecondaryBackupPopoverProps) {
   const { t } = useTranslation();
+  const pos = useAnchoredFixedPosition(open, anchorRef);
   if (!open) return null;
 
   const active = state === "started" || state === "progress";
@@ -51,13 +57,16 @@ export function SecondaryBackupPopover({
           ? 100
           : 0;
 
-  return (
+  const panel = (
     <div
       role="dialog"
       aria-label={t("header.connection.chipServerBackup")}
+      style={pos ? { top: pos.top, left: pos.left } : undefined}
       className={cn(
-        "absolute top-full left-0 z-50 mt-1.5 w-[min(20rem,calc(100vw-1.5rem))]",
-        "rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md",
+        pos
+          ? "fixed z-[120] w-[min(20rem,calc(100vw-1.5rem))]"
+          : "absolute top-full left-0 z-50 mt-1.5 w-[min(20rem,calc(100vw-1.5rem))]",
+        "ats-liquid-glass rounded-xl border border-border bg-card p-3 shadow-lg",
         "ats-progress-float-in",
       )}
     >
@@ -167,4 +176,9 @@ export function SecondaryBackupPopover({
       </div>
     </div>
   );
+
+  if (typeof document !== "undefined" && anchorRef) {
+    return createPortal(panel, document.body);
+  }
+  return panel;
 }

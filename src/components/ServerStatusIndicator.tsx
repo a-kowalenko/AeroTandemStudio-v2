@@ -569,6 +569,7 @@ export function ServerStatusIndicator({
       <div id={popoverId}>
         <SecondaryBackupPopover
           open={backupPopoverActive}
+          anchorRef={rootRef}
           compact={backupCompact}
           state={secondaryBackup?.state ?? ""}
           filesLabel={filesLabel}
@@ -588,12 +589,14 @@ export function ServerStatusIndicator({
         />
         <ConnectionProbePopover
           open={probePopoverActive}
+          anchorRef={rootRef}
           rows={probeRows}
           autoCloseMs={probeAutoCloseMs}
           onDismiss={onDismissProbe}
         />
         <PostUpdateConnectionHintPopover
           open={postUpdateHint.open}
+          anchorRef={rootRef}
           onAcknowledge={() => void postUpdateHint.acknowledge()}
         />
       </div>

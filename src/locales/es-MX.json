@@ -61,6 +61,8 @@
       "photos": "Fotos",
       "themeLight": "Claro",
       "themeDark": "Oscuro",
+      "themeTeamSpirit": "Team Spirit",
+      "themeSpirit2": "Spirit 2",
       "language": "Idioma",
       "storageLocation": "Ubicación de almacenamiento",
       "dropzonePlaceholder": "Zona de entrega…",
@@ -125,7 +127,7 @@
     "general": {
       "appearance": {
         "title": "Apariencia",
-        "description": "Modo claro u oscuro de la interfaz."
+        "description": "Diseño de la interfaz (claro, oscuro o especial)."
       },
       "language": {
         "description": "Idioma de la interfaz de la app."

@@ -24,6 +24,7 @@
 | `@docs/phases/open/51-instructor-foto.md` | Phase 51 (Instructor-Foto) |
 | `@docs/phases/open/52-photo-exif-orientation.md` | Phase 52 (Foto EXIF-Orientation) |
 | `@docs/phases/open/53-cloud-lookup-fallback.md` | Phase 53 (Cloud-Lookup-Fallback) |
+| `@docs/phases/open/54-ui-themes.md` | Phase 54 (UI-Themes · Team Spirit) |
 | `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md` | Phase 53 Master (ATS · AMS · Cloud) |
 | `@docs/VORGAENGE_DIALOG_PLAN.md` | Phase 38.x (erledigt; Nachschlagen) |
 | `@docs/opt/open/21-capcut-export.md` | OPT-21 (offen) |
@@ -119,6 +120,7 @@ Details: `@AGENTS.md`
 | 51 | Instructor-Foto (mit Foto-Export) | ✅ | [open/51](phases/open/51-instructor-foto.md) |
 | 52 | Foto EXIF-Orientation (Preview, Wasserzeichen, QR) | ✅ | [open/52](phases/open/52-photo-exif-orientation.md) |
 | 53 | Cloud-Lookup-Fallback (Buchungssuche ohne AMS) | ✅ ATS T0–T4 | [open/53](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) |
+| 54 | UI-Themes (Team Spirit Spezialdesign) | ✅ | [open/54](phases/open/54-ui-themes.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 
@@ -164,9 +166,15 @@ Regeln: @AGENTS.md
 Nur 51.
 ```
 
+```
+Implementiere Phase 54 aus @docs/phases/open/54-ui-themes.md
+Regeln: @AGENTS.md
+Nur 54.
+```
+
 **Linux (Phase 15, erledigt):** `@docs/LINUX_BUILD.md`  
 **Performance (OPT-21):** `@docs/opt/open/21-capcut-export.md` · Index `@docs/optimization_plan.md`
 
 ---
 
-*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-07 (Phase 53 T4 Tests + Abnahme).*
+*Struktur: Hybrid A+B — Index hier, offene Specs in `phases/open/`, erledigte Specs in `phases/ARCHIVE.md`. Letzte Aktualisierung: 2026-10-13 (Phase 54 UI-Themes).*

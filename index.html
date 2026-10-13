@@ -7,16 +7,19 @@
     <title>Aero Tandem Studio</title>
     <script>
       (function () {
+        var KNOWN = { light: 1, dark: 1, "team-spirit": 1, "spirit-2": 1 };
+        var BASE_DARK = { dark: 1, "team-spirit": 1, "spirit-2": 1 };
         var mode = null;
         try {
           var v = localStorage.getItem("ats-theme");
-          if (v === "light" || v === "dark") mode = v;
+          if (v && KNOWN[v]) mode = v;
         } catch (e) {}
         if (!mode) {
           mode = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         }
-        document.documentElement.classList.toggle("dark", mode === "dark");
+        document.documentElement.classList.toggle("dark", !!BASE_DARK[mode]);
         document.documentElement.dataset.theme = mode;
+        window.__atsBootTheme = mode;
       })();
     </script>
     <!--
@@ -27,6 +30,8 @@
     <style>
       html { background-color: #eef4f2; }
       html.dark { background-color: #0c1210; }
+      html.dark[data-theme="team-spirit"] { background-color: #0a0a0a; }
+      html.dark[data-theme="spirit-2"] { background-color: #080808; }
       #boot-splash {
         --bs-bg: #eef4f2; --bs-glow: #cfe8e2; --bs-primary: #009d8b;
         --bs-soft: rgba(0, 157, 139, 0.12); --bs-ring: rgba(0, 157, 139, 0.25);
@@ -43,6 +48,16 @@
         --bs-bg: #0c1210; --bs-glow: #14332c; --bs-primary: #1ab5a0;
         --bs-soft: rgba(26, 181, 160, 0.16); --bs-ring: rgba(26, 181, 160, 0.25);
         --bs-muted: #8f9f98; --bs-muted-80: rgba(143, 159, 152, 0.8); --bs-muted-70: rgba(143, 159, 152, 0.7); --bs-border: rgba(232, 239, 236, 0.12);
+      }
+      html.dark[data-theme="team-spirit"] #boot-splash {
+        --bs-bg: #0a0a0a; --bs-glow: #2a2210; --bs-primary: #b59546;
+        --bs-soft: rgba(181, 149, 70, 0.16); --bs-ring: rgba(181, 149, 70, 0.25);
+        --bs-muted: #a3a39a; --bs-muted-80: rgba(163, 163, 154, 0.8); --bs-muted-70: rgba(163, 163, 154, 0.7); --bs-border: rgba(245, 245, 245, 0.12);
+      }
+      html.dark[data-theme="spirit-2"] #boot-splash {
+        --bs-bg: #080808; --bs-glow: #2c2412; --bs-primary: #c4a052;
+        --bs-soft: rgba(196, 160, 82, 0.18); --bs-ring: rgba(196, 160, 82, 0.28);
+        --bs-muted: #a8a498; --bs-muted-80: rgba(168, 164, 152, 0.8); --bs-muted-70: rgba(168, 164, 152, 0.7); --bs-border: rgba(247, 245, 240, 0.12);
       }
       #boot-splash .bs-col {
         display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -77,7 +92,7 @@
   <body>
     <div id="boot-splash" role="status" aria-busy="true">
       <div class="bs-col">
-        <div class="bs-logo"><img src="/logo.png" alt="" width="64" height="64" /></div>
+        <div class="bs-logo"><img id="bs-logo-img" src="/logo.png" alt="" width="64" height="64" /></div>
         <h1>Aero Tandem Studio</h1>
         <p class="bs-tagline">Jump. Cut. Done.</p>
         <div class="bs-spinner"></div>
@@ -97,6 +112,11 @@
             document.getElementById("bs-status").textContent = status[key];
             document.getElementById("bs-version").textContent = verPrefix[key] + " %APP_VERSION%";
             document.documentElement.lang = key === "es" ? "es-MX" : key;
+            var theme = window.__atsBootTheme;
+            var logo = document.getElementById("bs-logo-img");
+            if (logo && (theme === "team-spirit" || theme === "spirit-2")) {
+              logo.src = "/themes/team-spirit/logo.svg";
+            }
           })();
         </script>
         <p class="bs-copy">© Andreas Kowalenko</p>

@@ -202,39 +202,53 @@ export function SuccessDialog({
           hasPreview
             ? "max-w-[min(48rem,calc(100vw-2rem))]"
             : "max-w-[min(28rem,calc(100vw-2rem))]",
-          accent === "success" && "border-l-4 border-l-success",
-          accent === "warning" && "border-l-4 border-l-warning",
         )}
         overlayClassName="z-[130]"
         {...hoverProps}
       >
-        <DialogHeader>
+        {/* Accent bar — survives Spirit liquid-glass (which clears border/box-shadow). */}
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute top-3 bottom-3 left-0 w-1 rounded-full",
+            accent === "success" ? "bg-success" : "bg-warning",
+          )}
+        />
+        <DialogHeader className={cn(isQr && "gap-3 space-y-0")}>
           {isQr ? (
-            <div className="mb-1 flex items-center gap-2.5">
+            <div className="flex items-start gap-3">
               <span
                 className={cn(
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                  "mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1",
                   accent === "success"
-                    ? "bg-success/15 text-success"
-                    : "bg-warning/15 text-warning",
+                    ? "bg-success/20 text-success ring-success/35"
+                    : "bg-warning/20 text-warning ring-warning/35",
                 )}
               >
                 <QrCode className="h-5 w-5" aria-hidden />
               </span>
-              <div className="min-w-0 flex-1">
-                <DialogTitle
+              <div className="min-w-0 flex-1 space-y-2">
+                <DialogTitle className="sr-only">{resolvedTitle}</DialogTitle>
+                <p
                   className={cn(
-                    "flex items-center gap-1.5",
-                    accent === "success" ? "text-success" : "text-warning",
+                    "inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold tracking-[0.08em] uppercase",
+                    accent === "success"
+                      ? "bg-success/18 text-success ring-1 ring-inset ring-success/40"
+                      : "bg-warning/18 text-warning ring-1 ring-inset ring-warning/40",
                   )}
                 >
                   {accent === "success" ? (
-                    <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                   ) : (
-                    <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
                   )}
-                  {resolvedTitle}
-                </DialogTitle>
+                  <span className="min-w-0 truncate">{resolvedTitle}</span>
+                </p>
+                {highlightText ? (
+                  <p className="min-w-0 break-words text-[1.65rem] font-bold leading-tight tracking-tight text-foreground [overflow-wrap:anywhere]">
+                    {highlightText}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -252,16 +266,6 @@ export function SuccessDialog({
               {resolvedTitle}
             </DialogTitle>
           )}
-          {isQr && highlightText ? (
-            <p
-              className={cn(
-                "min-w-0 break-words pt-1.5 text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]",
-                accent === "success" ? "text-primary" : "text-warning",
-              )}
-            >
-              {highlightText}
-            </p>
-          ) : null}
           {!hasPreview && messageText && !hasActions ? (
             <DialogDescription className="whitespace-pre-wrap break-words text-foreground">
               {messageText}

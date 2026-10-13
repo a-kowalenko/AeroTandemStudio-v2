@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { Server, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { DialogActionRows } from "@/components/DialogActionRows";
+import { useAnchoredFixedPosition } from "@/hooks/useAnchoredFixedPosition";
 import type { DialogActionStatus } from "@/store/uiStore";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +14,8 @@ const EXIT_MS = 180;
 export type ConnectionProbePopoverProps = {
   open: boolean;
   rows: DialogActionStatus[];
+  /** Chip / root under the titlebar — portal escapes header backdrop-filter. */
+  anchorRef?: RefObject<HTMLElement | null>;
   /** Auto-dismiss countdown; `null` keeps the popover open until closed manually. */
   autoCloseMs?: number | null;
   onDismiss: () => void;
@@ -23,6 +27,7 @@ export type ConnectionProbePopoverProps = {
 export function ConnectionProbePopover({
   open,
   rows,
+  anchorRef,
   autoCloseMs = null,
   onDismiss,
 }: ConnectionProbePopoverProps) {
@@ -30,6 +35,7 @@ export function ConnectionProbePopover({
   const [rendered, setRendered] = useState(open);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
+  const pos = useAnchoredFixedPosition(open || rendered, anchorRef);
 
   useEffect(() => {
     if (open) {
@@ -53,7 +59,7 @@ export function ConnectionProbePopover({
   const busy = rows.some((r) => r.busy);
   const countdown = open && autoCloseMs != null && autoCloseMs > 0;
 
-  return (
+  const panel = (
     <div
       role="dialog"
       aria-label={t("header.connection.probeTitle")}
@@ -67,9 +73,16 @@ export function ConnectionProbePopover({
           setFocused(false);
         }
       }}
+      style={
+        pos
+          ? { top: pos.top, left: pos.left }
+          : undefined
+      }
       className={cn(
-        "absolute top-full left-0 z-50 mt-1.5 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden",
-        "rounded-xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur-md",
+        pos
+          ? "fixed z-[120] w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden"
+          : "absolute top-full left-0 z-50 mt-1.5 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden",
+        "ats-liquid-glass rounded-xl border border-border bg-card p-3 shadow-lg",
         closing ? "ats-popover-out" : "ats-progress-float-in",
       )}
     >
@@ -109,4 +122,9 @@ export function ConnectionProbePopover({
       ) : null}
     </div>
   );
+
+  if (typeof document !== "undefined" && anchorRef) {
+    return createPortal(panel, document.body);
+  }
+  return panel;
 }

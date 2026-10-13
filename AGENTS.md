@@ -73,6 +73,7 @@ Mapping: `@docs/MIGRATION.md` · alte Plan-Anhänge: `@docs/phases/REFERENCE.md`
 - ✅ **Phase 51** Instructor-Foto (Settings Erweitert; Copy beim Foto-Export) · Spec: `@docs/phases/open/51-instructor-foto.md`
 - ✅ **Phase 52** Foto EXIF-Orientation (Preview-Thumbs, Wasserzeichen, QR; Thumb-Cache-Rev) · Spec: `@docs/phases/open/52-photo-exif-orientation.md`
 - ✅ **Phase 53** Cloud-Lookup-Fallback (ATS T0–T4; E2E manuell nach Cloud+AMS) · Spec: `@docs/phases/open/53-cloud-lookup-fallback.md` · Master: `@docs/CLOUD_LOOKUP_FALLBACK_PLAN.md`
+- ✅ **Phase 54** UI-Themes (Light/Dark + Team Spirit Spezialdesign, Logo, Boot-Splash) · Spec: `@docs/phases/open/54-ui-themes.md`
 
 **Nächster Schritt:** Phase 31.5 · Phase 23.2h / 23.3 · Phase 53 E2E nach Cloud+AMS-Deploy  
 *(AMS-Bridge Historie-Merge: **AeroMediaService-v2** — AMS neu starten nach Deploy; optional Linux-VM / Windows-WPD-Abnahme)*
@@ -126,6 +127,12 @@ Nur 51.
 ```
 Phase 53 ATS T0–T4 ✅ — E2E-Abnahme (Master §10) nach Cloud C* + AMS A* Deploy.
 Spec: @docs/phases/open/53-cloud-lookup-fallback.md
+```
+
+```
+Implementiere Phase 54 aus @docs/phases/open/54-ui-themes.md
+Regeln: @AGENTS.md
+Nur 54.
 ```
 
 **Phase 15 (Linux, erledigt):** Prompt in `@docs/LINUX_BUILD.md` 

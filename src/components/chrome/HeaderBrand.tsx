@@ -9,7 +9,9 @@ import {
   buildHeaderSubtitleFull,
   resolveHeaderSubtitleText,
 } from "@/hooks/headerBrandText";
+import { resolveThemeLogo } from "@/lib/themeLogo";
 import { cn } from "@/lib/utils";
+import { useThemeStore } from "@/store/themeStore";
 
 const APP_TITLE_FULL = "Aero Tandem Studio";
 const APP_TITLE_SHORT = "ATS";
@@ -44,6 +46,8 @@ export function HeaderBrand({
   className,
 }: Props) {
   const { t } = useTranslation();
+  const themeId = useThemeStore((s) => s.mode);
+  const logoSrc = resolveThemeLogo(themeId);
   const measureRef = useRef<HTMLDivElement>(null);
   const row1Ref = useRef<HTMLDivElement>(null);
   const row2Ref = useRef<HTMLParagraphElement>(null);
@@ -129,7 +133,7 @@ export function HeaderBrand({
     >
       <div className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[10px] bg-gradient-to-br from-primary-soft to-primary/10 ring-1 ring-primary/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
         <img
-          src="/logo.png"
+          src={logoSrc}
           alt=""
           className="h-[22px] w-[22px] object-contain drop-shadow-sm"
           onError={(e) => {

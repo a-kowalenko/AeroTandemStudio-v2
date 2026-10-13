@@ -29,7 +29,7 @@ export function AmsLookupToastCard({
       aria-live="polite"
       {...hoverProps}
       className={cn(
-        "pointer-events-auto relative w-[min(22.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl",
+        "ats-toast-card pointer-events-auto relative w-[min(22.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl",
         "border shadow-[0_12px_40px_-12px_rgba(0,0,0,0.35)] backdrop-blur-xl",
         "transition-all duration-300 ease-out",
         visible

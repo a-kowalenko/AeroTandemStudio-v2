@@ -61,6 +61,8 @@
       "photos": "Fotos",
       "themeLight": "Hell",
       "themeDark": "Dunkel",
+      "themeTeamSpirit": "Team Spirit",
+      "themeSpirit2": "Spirit 2",
       "language": "Sprache",
       "storageLocation": "Speicherort",
       "dropzonePlaceholder": "Dropzone…",
@@ -125,7 +127,7 @@
     "general": {
       "appearance": {
         "title": "Darstellung",
-        "description": "Hell- oder Dunkelmodus der Oberfläche."
+        "description": "Design der Oberfläche (Hell, Dunkel oder Spezial)."
       },
       "language": {
         "description": "Sprache der App-Oberfläche."

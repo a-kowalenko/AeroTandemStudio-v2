@@ -1,12 +1,19 @@
-import { Languages, Moon, Sun } from "lucide-react";
+import { Languages, Moon, Sparkles, Star, Sun, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { UI_LANGUAGES, type UiLanguage } from "@/i18n/types";
 import { UI_LANGUAGE_OPTIONS } from "@/lib/uiLanguageOptions";
 import { useLocaleStore } from "@/store/localeStore";
-import { useThemeStore, type ThemeMode } from "@/store/themeStore";
+import { THEMES, useThemeStore, type ThemeId } from "@/store/themeStore";
 import { cn } from "@/lib/utils";
 import { SettingsSection } from "../SettingsSection";
 import type { SettingsTabBaseProps } from "../types";
+
+const THEME_ICONS: Record<ThemeId, LucideIcon> = {
+  light: Sun,
+  dark: Moon,
+  "team-spirit": Sparkles,
+  "spirit-2": Star,
+};
 
 export function GeneralTab({ draft, patchNow }: SettingsTabBaseProps) {
   const { t } = useTranslation();
@@ -46,27 +53,25 @@ export function GeneralTab({ draft, patchNow }: SettingsTabBaseProps) {
 
       <SettingsSection title={t("settings.general.appearance.title")}>
         <div className="grid grid-cols-2 gap-2">
-          {(
-            [
-              { mode: "light" as ThemeMode, labelKey: "common.labels.themeLight", Icon: Sun },
-              { mode: "dark" as ThemeMode, labelKey: "common.labels.themeDark", Icon: Moon },
-            ] as const
-          ).map(({ mode, labelKey, Icon }) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => setThemeMode(mode)}
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
-                themeMode === mode
-                  ? "border-primary bg-primary-soft text-primary"
-                  : "border-border bg-background text-foreground hover:bg-muted/30",
-              )}
-            >
-              <Icon className="h-4 w-4" />
-              {t(labelKey)}
-            </button>
-          ))}
+          {THEMES.map(({ id, labelKey }) => {
+            const Icon = THEME_ICONS[id];
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setThemeMode(id)}
+                className={cn(
+                  "flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                  themeMode === id
+                    ? "border-primary bg-primary-soft text-primary"
+                    : "border-border bg-background text-foreground hover:bg-muted/30",
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="truncate">{t(labelKey)}</span>
+              </button>
+            );
+          })}
         </div>
       </SettingsSection>
     </div>

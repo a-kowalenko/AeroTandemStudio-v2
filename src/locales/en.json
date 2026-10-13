@@ -61,6 +61,8 @@
       "photos": "Photos",
       "themeLight": "Light",
       "themeDark": "Dark",
+      "themeTeamSpirit": "Team Spirit",
+      "themeSpirit2": "Spirit 2",
       "language": "Language",
       "storageLocation": "Storage location",
       "dropzonePlaceholder": "Drop zone…",
@@ -125,7 +127,7 @@
     "general": {
       "appearance": {
         "title": "Appearance",
-        "description": "Light or dark mode for the interface."
+        "description": "Interface design (light, dark, or specialty)."
       },
       "language": {
         "description": "App interface language."

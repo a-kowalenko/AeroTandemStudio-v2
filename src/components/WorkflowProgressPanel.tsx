@@ -328,7 +328,7 @@ export function WorkflowProgressPanel({
       return (
         <section
           className={cn(
-            "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border border-destructive/40 p-4 pb-5 shadow-lg backdrop-blur-md ats-progress-float-in",
+            "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border border-destructive/40 p-4 pb-5 shadow-lg ats-progress-float-in",
             className,
           )}
           aria-label={t("workflow.upload.failedHoldTitle")}
@@ -435,7 +435,7 @@ export function WorkflowProgressPanel({
     return (
       <section
         className={cn(
-          "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border border-border/80 p-4 shadow-lg backdrop-blur-md ats-progress-float-in",
+          "ats-surface relative pointer-events-auto overflow-hidden rounded-xl border border-border/80 p-4 shadow-lg ats-progress-float-in",
           doneHold && "pb-3.5",
           className,
         )}
@@ -572,7 +572,7 @@ export function WorkflowProgressPanel({
   return (
     <section
       className={cn(
-        "ats-surface pointer-events-auto overflow-hidden rounded-xl border border-border/80 p-4 shadow-lg backdrop-blur-md ats-progress-float-in",
+        "ats-surface pointer-events-auto overflow-hidden rounded-xl border border-border/80 p-4 shadow-lg ats-progress-float-in",
         className,
       )}
       aria-label={t("workflow.progress")}
