@@ -122,7 +122,7 @@ Details: `@AGENTS.md`
 | 52 | Foto EXIF-Orientation (Preview, Wasserzeichen, QR) | ✅ | [open/52](phases/open/52-photo-exif-orientation.md) |
 | 53 | Cloud-Lookup-Fallback (Buchungssuche ohne AMS) | ✅ ATS T0–T4 | [open/53](phases/open/53-cloud-lookup-fallback.md) · [Master](CLOUD_LOOKUP_FALLBACK_PLAN.md) |
 | 54 | UI-Themes (Team Spirit Spezialdesign) | ✅ | [open/54](phases/open/54-ui-themes.md) |
-| 55 | Theme-Katalog (Royal/Rose/Military/FSZ) + Settings-only | ✅ | [open/55](phases/open/55-theme-catalog.md) |
+| 55 | Theme-Katalog (Royal/Rose/Military/Sky/Sunset/Arctic/Forest/Graphite/FSZ) + Settings-only | ✅ | [open/55](phases/open/55-theme-catalog.md) |
 
 **Legende:** ⬜ Offen · 🔄 In Arbeit · ✅ Erledigt |
 

@@ -143,9 +143,7 @@ export function CustomerSidebar({
               ) : (
                 <CloudUpload className="h-3.5 w-3.5" aria-hidden />
               )}
-              {uploadBlocked
-                ? t("app.upload.titleLater")
-                : t("app.upload.title")}
+              {t("app.upload.title")}
               <Switch
                 id="vorgang-upload"
                 className={cn(

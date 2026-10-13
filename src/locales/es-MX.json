@@ -69,6 +69,12 @@
       "themeRoseBlush": "Rose Blush",
       "themeMilitaryOlive": "Oliva",
       "themeMilitaryKhaki": "Caqui",
+      "themeSkyHorizon": "Sky Horizon",
+      "themeSkyDusk": "Sky Dusk",
+      "themeSunset": "Sunset",
+      "themeArctic": "Arctic",
+      "themeForest": "Forest",
+      "themeGraphite": "Graphite",
       "themeFsz": "FSZ Oscuro",
       "themeFszLight": "FSZ Claro",
       "language": "Idioma",
@@ -153,6 +159,12 @@
           "roseBlush": "Suave · Rosa",
           "militaryOlive": "Mate · Verde",
           "militaryKhaki": "Cálido · Arena",
+          "skyHorizon": "Claro · Cielo",
+          "skyDusk": "Oscuro · Horizonte",
+          "sunset": "Cálido · Atardecer",
+          "arctic": "Claro · Hielo",
+          "forest": "Oscuro · Dosel",
+          "graphite": "Neutral · Estudio",
           "fsz": "Glass · Rojo",
           "fszLight": "Glass · Rojo"
         }
@@ -1217,7 +1229,6 @@
       "bgFailMessage": "{{detail}} Reintentar en Trabajos.",
       "bgFailHint": "Reintenta desde Trabajos.",
       "bgCancelled": "Subida cancelada — se puede reintentar en Trabajos.",
-      "titleLater": "Subida · después",
       "remoteMarkedDone": "Marcado como listo — la carpeta ya está en el servidor.",
       "remoteReplaced": "Carpeta del servidor reemplazada y subida.",
       "remoteHandoffFailed": "Marcado como listo. No se pudo iniciar la entrega a la nube — revisa el estado más tarde en Trabajos."

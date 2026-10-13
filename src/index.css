@@ -408,6 +408,198 @@ html.dark[data-theme="military-khaki"] {
   --color-emerald-950: #1c1810;
 }
 
+/* Phase 55+ — Sky Horizon (light sky / cloud) */
+html[data-theme="sky-horizon"] {
+  color-scheme: light;
+  --ats-bg: #e8f2fa;
+  --ats-fg: #0f2438;
+  --ats-card: #ffffff;
+  --ats-card-elevated: #f0f6fc;
+  --ats-muted: #5a758c;
+  --ats-border: rgba(43, 127, 212, 0.2);
+  --ats-primary: #2b7fd4;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(43, 127, 212, 0.14);
+  --ats-accent: #7eb8e8;
+  --ats-destructive: #c23a2e;
+  --ats-success: #2a8a62;
+  --ats-warning: #b07a14;
+  --ats-ring: rgba(43, 127, 212, 0.4);
+  --ats-surface: rgba(255, 255, 255, 0.94);
+  --ats-header: rgba(255, 255, 255, 0.96);
+  --ats-sidebar: rgba(232, 242, 250, 0.92);
+  --ats-bg-glow-1: #c8e0f4;
+  --ats-bg-glow-2: #dcecf8;
+  --ats-progress-from: #2b7fd4;
+  --ats-progress-to: #7eb8e8;
+  --ats-preview-stage: #1a3048;
+  --ats-scrollbar-thumb: rgba(43, 127, 212, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(43, 127, 212, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55+ — Sky Dusk (dark horizon blue; softer than Royal) */
+html.dark[data-theme="sky-dusk"] {
+  color-scheme: dark;
+  --ats-bg: #0a1628;
+  --ats-fg: #e8f0f8;
+  --ats-muted: #8fa8c0;
+  --ats-border: rgba(232, 240, 248, 0.14);
+  --ats-primary: #4a9ef0;
+  --ats-primary-fg: #061018;
+  --ats-primary-soft: rgba(74, 158, 240, 0.22);
+  --ats-accent: #8eb8e0;
+  --ats-destructive: #e06058;
+  --ats-success: #3cbc7a;
+  --ats-warning: #e0b040;
+  --ats-ring: rgba(74, 158, 240, 0.45);
+  --ats-card: #142438;
+  --ats-card-elevated: #1c3048;
+  --ats-surface: rgba(20, 36, 56, 0.94);
+  --ats-header: rgba(10, 22, 40, 0.95);
+  --ats-sidebar: rgba(12, 24, 42, 0.95);
+  --ats-bg-glow-1: #183050;
+  --ats-bg-glow-2: #102038;
+  --ats-progress-from: #4a9ef0;
+  --ats-progress-to: #8eb8e0;
+  --ats-preview-stage: #060e18;
+  --ats-scrollbar-thumb: rgba(232, 240, 248, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(74, 158, 240, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55+ — Sunset / Golden Hour (amber-orange, not Spirit gold) */
+html.dark[data-theme="sunset"] {
+  color-scheme: dark;
+  --ats-bg: #1a1210;
+  --ats-fg: #faf0e6;
+  --ats-muted: #c4a090;
+  --ats-border: rgba(250, 240, 230, 0.14);
+  --ats-primary: #e07830;
+  --ats-primary-fg: #1a0e08;
+  --ats-primary-soft: rgba(224, 120, 48, 0.24);
+  --ats-accent: #f0a060;
+  --ats-destructive: #d04038;
+  --ats-success: #5aaa58;
+  --ats-warning: #e0b040;
+  --ats-ring: rgba(224, 120, 48, 0.45);
+  --ats-card: #2a1c16;
+  --ats-card-elevated: #382820;
+  --ats-surface: rgba(42, 28, 22, 0.94);
+  --ats-header: rgba(24, 16, 12, 0.95);
+  --ats-sidebar: rgba(26, 18, 14, 0.95);
+  --ats-bg-glow-1: #402418;
+  --ats-bg-glow-2: #2e1810;
+  --ats-progress-from: #e07830;
+  --ats-progress-to: #f0a060;
+  --ats-preview-stage: #100a08;
+  --ats-scrollbar-thumb: rgba(250, 240, 230, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(224, 120, 48, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55+ — Arctic / Ice (cool light gray-blue; distinct from Sky Horizon) */
+html[data-theme="arctic"] {
+  color-scheme: light;
+  --ats-bg: #f2f5f8;
+  --ats-fg: #1a2430;
+  --ats-card: #ffffff;
+  --ats-card-elevated: #eef2f6;
+  --ats-muted: #6a7888;
+  --ats-border: rgba(61, 106, 138, 0.2);
+  --ats-primary: #3d6a8a;
+  --ats-primary-fg: #ffffff;
+  --ats-primary-soft: rgba(61, 106, 138, 0.14);
+  --ats-accent: #a8c4d8;
+  --ats-destructive: #b42318;
+  --ats-success: #2a7a58;
+  --ats-warning: #9a7000;
+  --ats-ring: rgba(61, 106, 138, 0.4);
+  --ats-surface: rgba(255, 255, 255, 0.96);
+  --ats-header: rgba(255, 255, 255, 0.98);
+  --ats-sidebar: rgba(242, 245, 248, 0.94);
+  --ats-bg-glow-1: #dce6ee;
+  --ats-bg-glow-2: #e8eef4;
+  --ats-progress-from: #3d6a8a;
+  --ats-progress-to: #a8c4d8;
+  --ats-preview-stage: #243040;
+  --ats-scrollbar-thumb: rgba(61, 106, 138, 0.28);
+  --ats-scrollbar-thumb-hover: rgba(61, 106, 138, 0.5);
+  --ats-scrollbar-track: transparent;
+}
+
+/* Phase 55+ — Forest / Canopy (true green; not Military olive) */
+html.dark[data-theme="forest"] {
+  color-scheme: dark;
+  --ats-bg: #0e1610;
+  --ats-fg: #e4eee6;
+  --ats-muted: #8aaa94;
+  --ats-border: rgba(228, 238, 230, 0.14);
+  --ats-primary: #2d8a5a;
+  --ats-primary-fg: #06140c;
+  --ats-primary-soft: rgba(45, 138, 90, 0.24);
+  --ats-accent: #5ab884;
+  --ats-destructive: #c05040;
+  --ats-success: #48b070;
+  --ats-warning: #c9a227;
+  --ats-ring: rgba(45, 138, 90, 0.45);
+  --ats-card: #1a2820;
+  --ats-card-elevated: #243428;
+  --ats-surface: rgba(26, 40, 32, 0.94);
+  --ats-header: rgba(12, 20, 14, 0.95);
+  --ats-sidebar: rgba(14, 22, 16, 0.95);
+  --ats-bg-glow-1: #1a3024;
+  --ats-bg-glow-2: #142018;
+  --ats-progress-from: #2d8a5a;
+  --ats-progress-to: #5ab884;
+  --ats-preview-stage: #080e0a;
+  --ats-scrollbar-thumb: rgba(228, 238, 230, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(45, 138, 90, 0.55);
+  --ats-scrollbar-track: transparent;
+
+  --color-emerald-50: #e8f6ee;
+  --color-emerald-100: #c8ead6;
+  --color-emerald-200: #98d8b4;
+  --color-emerald-300: #5ab884;
+  --color-emerald-400: #3a9e6c;
+  --color-emerald-500: #2d8a5a;
+  --color-emerald-600: #24704a;
+  --color-emerald-700: #1c583a;
+  --color-emerald-800: #14422c;
+  --color-emerald-900: #0e2e1e;
+  --color-emerald-950: #081810;
+}
+
+/* Phase 55+ — Graphite / Studio (neutral pro dark, no club accent) */
+html.dark[data-theme="graphite"] {
+  color-scheme: dark;
+  --ats-bg: #121214;
+  --ats-fg: #e8e8ea;
+  --ats-muted: #9a9aa2;
+  --ats-border: rgba(232, 232, 234, 0.14);
+  --ats-primary: #a8aab0;
+  --ats-primary-fg: #121214;
+  --ats-primary-soft: rgba(168, 170, 176, 0.2);
+  --ats-accent: #c8cad0;
+  --ats-destructive: #d05048;
+  --ats-success: #4aaa78;
+  --ats-warning: #c9a040;
+  --ats-ring: rgba(168, 170, 176, 0.4);
+  --ats-card: #1c1c20;
+  --ats-card-elevated: #28282e;
+  --ats-surface: rgba(28, 28, 32, 0.96);
+  --ats-header: rgba(16, 16, 18, 0.96);
+  --ats-sidebar: rgba(18, 18, 20, 0.96);
+  --ats-bg-glow-1: #222228;
+  --ats-bg-glow-2: #1a1a1e;
+  --ats-progress-from: #8a8c94;
+  --ats-progress-to: #c8cad0;
+  --ats-preview-stage: #0a0a0c;
+  --ats-scrollbar-thumb: rgba(232, 232, 234, 0.2);
+  --ats-scrollbar-thumb-hover: rgba(168, 170, 176, 0.55);
+  --ats-scrollbar-track: transparent;
+}
+
 /*
  * Phase 55 — FSZ (Spirit-2 liquid-glass shell tier)
  * Logo red only for destructive + progress brand bars (not primary chrome).

@@ -69,6 +69,12 @@
       "themeRoseBlush": "Rose Blush",
       "themeMilitaryOlive": "Olive",
       "themeMilitaryKhaki": "Khaki",
+      "themeSkyHorizon": "Sky Horizon",
+      "themeSkyDusk": "Sky Dusk",
+      "themeSunset": "Sunset",
+      "themeArctic": "Arctic",
+      "themeForest": "Forest",
+      "themeGraphite": "Graphite",
       "themeFsz": "FSZ Dark",
       "themeFszLight": "FSZ Light",
       "language": "Language",
@@ -153,6 +159,12 @@
           "roseBlush": "Soft · Pink",
           "militaryOlive": "Matte · Green",
           "militaryKhaki": "Warm · Sand",
+          "skyHorizon": "Light · Sky",
+          "skyDusk": "Dark · Horizon",
+          "sunset": "Warm · Evening",
+          "arctic": "Light · Ice",
+          "forest": "Dark · Canopy",
+          "graphite": "Neutral · Studio",
           "fsz": "Glass · Red",
           "fszLight": "Glass · Red"
         }
@@ -1217,7 +1229,6 @@
       "bgFailMessage": "{{detail}} Retry from Jobs.",
       "bgFailHint": "Please retry from Jobs.",
       "bgCancelled": "Upload cancelled — can retry in Jobs.",
-      "titleLater": "Upload · later",
       "remoteMarkedDone": "Marked as done — the folder is already on the server.",
       "remoteReplaced": "Server folder replaced and uploaded.",
       "remoteHandoffFailed": "Marked as done. The cloud handoff could not be started — check the status later under Jobs."

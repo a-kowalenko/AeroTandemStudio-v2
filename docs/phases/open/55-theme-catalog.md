@@ -15,15 +15,16 @@
 
 | # | Thema | Entscheidung |
 |---|--------|----------------|
-| 1 | Katalog | `royal-navy`, `royal-flag`, `rose-noir`, `rose-blush`, `military-olive`, `military-khaki`, `fsz` (+ bestehende light/dark/team-spirit/spirit-2) |
+| 1 | Katalog | `royal-navy`, `royal-flag`, `rose-noir`, `rose-blush`, `military-olive`, `military-khaki`, `sky-horizon`, `sky-dusk`, `sunset`, `arctic`, `forest`, `graphite`, `fsz` / `fsz-light` (+ light/dark/team-spirit/spirit-2) |
 | 2 | Rosa | beide: `rose-noir` (dark) + `rose-blush` (light) |
 | 3 | Royal | beide: Navy-Luxury + Flag Blue |
 | 4 | Military | Olive (`#7a8f3e`) + Khaki (`#c4a35a`); Legacy-IDs `military-od`/`military-camo` → migriert |
 | 5 | FSZ | Logo-Rot nur Destructive + Progress; Primary = helles Neutral (`#f0ecec`) |
 | 6 | Rosa | Primary ≠ Danger: Noir Cream / Blush Plum; Rose nur Accent + Progress |
 | 7 | Progress-Floats | Alle Themes: dichte Platten + lesbare Labels (`text-foreground/…`) |
-| 6 | Auswahl | kein Header-Cycle; Settings + Wizard Appearance-Grid |
-| 7 | Favicon | bleibt ATS |
+| 8 | Auswahl | kein Header-Cycle; Settings + Wizard Appearance-Grid |
+| 9 | Favicon | bleibt ATS |
+| 10 | Looks+ | Sky Horizon/Dusk, Sunset, Arctic, Forest, Graphite — solid plates (kein Liquid Glass) |
 
 ---
 

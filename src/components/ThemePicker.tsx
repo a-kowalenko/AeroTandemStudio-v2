@@ -7,7 +7,7 @@ import {
   themesInGroup,
 } from "@/lib/themeCatalog";
 import { cn } from "@/lib/utils";
-import type { ThemeId } from "@/store/themeStore";
+import { themeMeta, type ThemeId } from "@/store/themeStore";
 
 type Props = {
   value: ThemeId;
@@ -23,8 +23,7 @@ function ThemeSwatchPreview({
   selected: boolean;
 }) {
   const s = THEME_SWATCHES[themeId];
-  const checkOnDark =
-    themeId !== "light" && themeId !== "rose-blush" && themeId !== "fsz-light";
+  const checkOnDark = themeMeta(themeId).base === "dark";
 
   return (
     <div

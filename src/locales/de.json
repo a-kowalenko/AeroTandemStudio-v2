@@ -69,6 +69,12 @@
       "themeRoseBlush": "Rose Blush",
       "themeMilitaryOlive": "Olive",
       "themeMilitaryKhaki": "Khaki",
+      "themeSkyHorizon": "Sky Horizon",
+      "themeSkyDusk": "Sky Dusk",
+      "themeSunset": "Sunset",
+      "themeArctic": "Arctic",
+      "themeForest": "Forest",
+      "themeGraphite": "Graphite",
       "themeFsz": "FSZ Dunkel",
       "themeFszLight": "FSZ Hell",
       "language": "Sprache",
@@ -153,6 +159,12 @@
           "roseBlush": "Soft · Rosa",
           "militaryOlive": "Matt · Grün",
           "militaryKhaki": "Warm · Sand",
+          "skyHorizon": "Hell · Himmel",
+          "skyDusk": "Dunkel · Horizont",
+          "sunset": "Warm · Abend",
+          "arctic": "Hell · Eis",
+          "forest": "Dunkel · Canopy",
+          "graphite": "Neutral · Studio",
           "fsz": "Glass · Rot",
           "fszLight": "Glass · Rot"
         }
@@ -1217,7 +1229,6 @@
       "bgFailMessage": "{{detail}} Nachholen unter Vorgänge.",
       "bgFailHint": "Bitte unter Vorgänge nachholen.",
       "bgCancelled": "Upload abgebrochen — unter Vorgänge nachholbar.",
-      "titleLater": "Upload · später",
       "remoteMarkedDone": "Als erledigt markiert — der Ordner liegt schon auf dem Server.",
       "remoteReplaced": "Server-Ordner ersetzt und hochgeladen.",
       "remoteHandoffFailed": "Als erledigt markiert. Die Cloud-Übergabe konnte nicht angestoßen werden — Status später unter Vorgänge prüfen."

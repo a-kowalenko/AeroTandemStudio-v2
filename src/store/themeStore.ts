@@ -11,6 +11,12 @@ export type ThemeId =
   | "rose-blush"
   | "military-olive"
   | "military-khaki"
+  | "sky-horizon"
+  | "sky-dusk"
+  | "sunset"
+  | "graphite"
+  | "arctic"
+  | "forest"
   | "fsz"
   | "fsz-light";
 
@@ -67,6 +73,36 @@ export const THEMES: readonly ThemeMeta[] = [
     id: "military-khaki",
     base: "dark",
     labelKey: "common.labels.themeMilitaryKhaki",
+  },
+  {
+    id: "sky-horizon",
+    base: "light",
+    labelKey: "common.labels.themeSkyHorizon",
+  },
+  {
+    id: "sky-dusk",
+    base: "dark",
+    labelKey: "common.labels.themeSkyDusk",
+  },
+  {
+    id: "sunset",
+    base: "dark",
+    labelKey: "common.labels.themeSunset",
+  },
+  {
+    id: "arctic",
+    base: "light",
+    labelKey: "common.labels.themeArctic",
+  },
+  {
+    id: "forest",
+    base: "dark",
+    labelKey: "common.labels.themeForest",
+  },
+  {
+    id: "graphite",
+    base: "dark",
+    labelKey: "common.labels.themeGraphite",
   },
   {
     id: "fsz-light",

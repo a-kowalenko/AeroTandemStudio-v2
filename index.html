@@ -18,6 +18,12 @@
           "rose-blush": 1,
           "military-olive": 1,
           "military-khaki": 1,
+          "sky-horizon": 1,
+          "sky-dusk": 1,
+          sunset: 1,
+          graphite: 1,
+          arctic: 1,
+          forest: 1,
           fsz: 1,
           "fsz-light": 1,
         };
@@ -30,6 +36,10 @@
           "rose-noir": 1,
           "military-olive": 1,
           "military-khaki": 1,
+          "sky-dusk": 1,
+          sunset: 1,
+          graphite: 1,
+          forest: 1,
           fsz: 1,
         };
         var LEGACY = { "military-od": "military-olive", "military-camo": "military-khaki" };
@@ -66,6 +76,12 @@
       html[data-theme="rose-blush"] { background-color: #fdf5f7; }
       html.dark[data-theme="military-olive"] { background-color: #161a12; }
       html.dark[data-theme="military-khaki"] { background-color: #1a1812; }
+      html[data-theme="sky-horizon"] { background-color: #e8f2fa; }
+      html.dark[data-theme="sky-dusk"] { background-color: #0a1628; }
+      html.dark[data-theme="sunset"] { background-color: #1a1210; }
+      html[data-theme="arctic"] { background-color: #f2f5f8; }
+      html.dark[data-theme="forest"] { background-color: #0e1610; }
+      html.dark[data-theme="graphite"] { background-color: #121214; }
       html.dark[data-theme="fsz"] { background-color: #141012; }
       html[data-theme="fsz-light"] { background-color: #f0eeee; }
       #boot-splash {
@@ -124,6 +140,36 @@
         --bs-bg: #1a1812; --bs-glow: #2e2818; --bs-primary: #c4a35a;
         --bs-soft: rgba(196, 163, 90, 0.24); --bs-ring: rgba(196, 163, 90, 0.28);
         --bs-muted: #b0a890; --bs-muted-80: rgba(176, 168, 144, 0.8); --bs-muted-70: rgba(176, 168, 144, 0.7); --bs-border: rgba(240, 235, 224, 0.16);
+      }
+      html[data-theme="sky-horizon"] #boot-splash {
+        --bs-bg: #e8f2fa; --bs-glow: #c8e0f4; --bs-primary: #2b7fd4;
+        --bs-soft: rgba(43, 127, 212, 0.14); --bs-ring: rgba(43, 127, 212, 0.28);
+        --bs-muted: #5a758c; --bs-muted-80: rgba(90, 117, 140, 0.8); --bs-muted-70: rgba(90, 117, 140, 0.7); --bs-border: rgba(43, 127, 212, 0.2);
+      }
+      html.dark[data-theme="sky-dusk"] #boot-splash {
+        --bs-bg: #0a1628; --bs-glow: #183050; --bs-primary: #4a9ef0;
+        --bs-soft: rgba(74, 158, 240, 0.22); --bs-ring: rgba(74, 158, 240, 0.28);
+        --bs-muted: #8fa8c0; --bs-muted-80: rgba(143, 168, 192, 0.8); --bs-muted-70: rgba(143, 168, 192, 0.7); --bs-border: rgba(232, 240, 248, 0.14);
+      }
+      html.dark[data-theme="sunset"] #boot-splash {
+        --bs-bg: #1a1210; --bs-glow: #402418; --bs-primary: #e07830;
+        --bs-soft: rgba(224, 120, 48, 0.24); --bs-ring: rgba(224, 120, 48, 0.28);
+        --bs-muted: #c4a090; --bs-muted-80: rgba(196, 160, 144, 0.8); --bs-muted-70: rgba(196, 160, 144, 0.7); --bs-border: rgba(250, 240, 230, 0.14);
+      }
+      html[data-theme="arctic"] #boot-splash {
+        --bs-bg: #f2f5f8; --bs-glow: #dce6ee; --bs-primary: #3d6a8a;
+        --bs-soft: rgba(61, 106, 138, 0.14); --bs-ring: rgba(61, 106, 138, 0.28);
+        --bs-muted: #6a7888; --bs-muted-80: rgba(106, 120, 136, 0.8); --bs-muted-70: rgba(106, 120, 136, 0.7); --bs-border: rgba(61, 106, 138, 0.2);
+      }
+      html.dark[data-theme="forest"] #boot-splash {
+        --bs-bg: #0e1610; --bs-glow: #1a3024; --bs-primary: #2d8a5a;
+        --bs-soft: rgba(45, 138, 90, 0.24); --bs-ring: rgba(45, 138, 90, 0.28);
+        --bs-muted: #8aaa94; --bs-muted-80: rgba(138, 170, 148, 0.8); --bs-muted-70: rgba(138, 170, 148, 0.7); --bs-border: rgba(228, 238, 230, 0.14);
+      }
+      html.dark[data-theme="graphite"] #boot-splash {
+        --bs-bg: #121214; --bs-glow: #222228; --bs-primary: #a8aab0;
+        --bs-soft: rgba(168, 170, 176, 0.2); --bs-ring: rgba(168, 170, 176, 0.28);
+        --bs-muted: #9a9aa2; --bs-muted-80: rgba(154, 154, 162, 0.8); --bs-muted-70: rgba(154, 154, 162, 0.7); --bs-border: rgba(232, 232, 234, 0.14);
       }
       html.dark[data-theme="fsz"] #boot-splash {
         --bs-bg: #141012; --bs-glow: #3a1820; --bs-primary: #f0ecec;
