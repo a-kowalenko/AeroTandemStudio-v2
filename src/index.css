@@ -408,46 +408,46 @@ html.dark[data-theme="military-khaki"] {
   --color-emerald-950: #241e12;
 }
 
-/* Desert — light sand, strong red */
+/* Desert — light dune sand; khaki’s bright counterpart (terracotta sun, not mud) */
 html[data-theme="desert"] {
   color-scheme: light;
-  --ats-bg: #f2e4c4;
-  --ats-fg: #2c2416;
-  --ats-muted: #6a5840;
-  --ats-border: rgba(44, 36, 22, 0.18);
-  --ats-primary: #8a5a14;
-  --ats-primary-fg: #fffaf2;
-  --ats-primary-soft: rgba(138, 90, 20, 0.16);
-  --ats-accent: #c9a15a;
+  --ats-bg: #f5ebda;
+  --ats-fg: #2a2218;
+  --ats-muted: #7a6a52;
+  --ats-border: rgba(42, 34, 24, 0.16);
+  --ats-primary: #c4782a;
+  --ats-primary-fg: #fffaf4;
+  --ats-primary-soft: rgba(196, 120, 42, 0.16);
+  --ats-accent: #e0b86a;
   --ats-destructive: #b01014;
-  --ats-success: #2f7a28;
-  --ats-warning: #9a5c00;
-  --ats-ring: rgba(138, 90, 20, 0.45);
-  --ats-card: #fbf6ea;
-  --ats-card-elevated: #fffaf2;
-  --ats-surface: rgba(251, 246, 234, 0.96);
-  --ats-header: rgba(247, 237, 216, 0.96);
-  --ats-sidebar: rgba(232, 214, 174, 0.94);
-  --ats-bg-glow-1: #f6e8cc;
-  --ats-bg-glow-2: #edd9a8;
-  --ats-progress-from: #8a5a14;
-  --ats-progress-to: #d4b06a;
+  --ats-success: #3a7a38;
+  --ats-warning: #9a6700;
+  --ats-ring: rgba(196, 120, 42, 0.42);
+  --ats-card: #fffbf4;
+  --ats-card-elevated: #f0e4d0;
+  --ats-surface: rgba(255, 251, 244, 0.96);
+  --ats-header: rgba(255, 251, 244, 0.97);
+  --ats-sidebar: rgba(245, 235, 218, 0.94);
+  --ats-bg-glow-1: #efe0c4;
+  --ats-bg-glow-2: #f0d4a8;
+  --ats-progress-from: #c4782a;
+  --ats-progress-to: #e0b86a;
   --ats-preview-stage: #2a2218;
-  --ats-scrollbar-thumb: rgba(44, 36, 22, 0.28);
-  --ats-scrollbar-thumb-hover: rgba(138, 90, 20, 0.55);
+  --ats-scrollbar-thumb: rgba(42, 34, 24, 0.26);
+  --ats-scrollbar-thumb-hover: rgba(196, 120, 42, 0.5);
   --ats-scrollbar-track: transparent;
 
-  --color-emerald-50: #fbf6ea;
-  --color-emerald-100: #f3e6c8;
-  --color-emerald-200: #e4d0a0;
-  --color-emerald-300: #d4b56a;
-  --color-emerald-400: #c4a04a;
-  --color-emerald-500: #a88430;
-  --color-emerald-600: #8a6818;
-  --color-emerald-700: #6e5214;
-  --color-emerald-800: #5c4318;
-  --color-emerald-900: #3e2e10;
-  --color-emerald-950: #2a1e0a;
+  --color-emerald-50: #fffbf4;
+  --color-emerald-100: #f5ebda;
+  --color-emerald-200: #e8d4b0;
+  --color-emerald-300: #e0b86a;
+  --color-emerald-400: #d49440;
+  --color-emerald-500: #c4782a;
+  --color-emerald-600: #a86222;
+  --color-emerald-700: #8a4e1c;
+  --color-emerald-800: #6e3e18;
+  --color-emerald-900: #4a2c12;
+  --color-emerald-950: #2a1a0c;
 }
 
 /* Lavender — pale lilac, periwinkle, indigo */

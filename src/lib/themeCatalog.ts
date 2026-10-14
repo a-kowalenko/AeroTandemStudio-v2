@@ -124,10 +124,10 @@ export const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
     accent: "#ead6a4",
   },
   desert: {
-    bg: "#f2e4c4",
-    surface: "#fbf6ea",
-    primary: "#8a5a14",
-    accent: "#b01014",
+    bg: "#f5ebda",
+    surface: "#fffbf4",
+    primary: "#c4782a",
+    accent: "#e0b86a",
   },
   neon: {
     bg: "#252a34",
