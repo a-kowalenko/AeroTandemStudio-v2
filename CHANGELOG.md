@@ -14,7 +14,7 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 
 - Buchungssuche: Kunde gefunden, aber nichts gebucht — Auswahl Handcam oder Outside statt Abbruch
 - Server-Status in der Kopfzeile: Verbindungstest mit Live-Ergebnis für Freigabe, Backup und Buchungssuche
-- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite und FSZ (Hell/Dunkel); auch im Setup-Assistenten
+- Einstellungen → Darstellung: Theme-Auswahl mit Vorschau — Hell, Dunkel, Dark Spirit, Liquid Spirit, Royal, Rose, Military, Desert, Lavender, Neon, Petal, Harbor, Ember, Sky, Sunset, Arctic, Forest, Graphite, Prussian Day, Prussian Night und FSZ (Hell/Dunkel); auch im Setup-Assistenten
 - Setup-Assistent → Verbindung: live sichtbar, ob Kabel oder WLAN verbunden ist; wird kein Server gefunden und nur WLAN ist da, Hinweis dass das oft das Internet-WLAN ist und Kabel zuverlässiger ist
 
 ### Verbessert
@@ -28,6 +28,8 @@ Patch-Stable ohne Unreleased-Text: Notes der Vorgängerversion werden übernomme
 - Arbeitsfläche: Scrollbalken springt weniger beim Ein- und Ausblenden
 - SD-Karten-Auswahl: Name des Laufwerks steht neben dem Buchstaben
 - Darstellung: Khaki mit klarerem Kontrast
+- Darstellung: Rose Noir mit klarerem Kontrast
+- Darstellung: Desert wärmer und mit klarerem Kontrast
 
 ### Behoben
 
