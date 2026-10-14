@@ -81,8 +81,8 @@
       "themeArctic": "Arctic",
       "themeForest": "Forest",
       "themeGraphite": "Graphite",
-      "themePrussian": "Prussian",
       "themePrussianDay": "Prussian Day",
+      "themePrussianNight": "Prussian Night",
       "themeFsz": "FSZ Oscuro",
       "themeFszLight": "FSZ Claro",
       "language": "Idioma",
@@ -179,8 +179,8 @@
           "arctic": "Claro · Hielo",
           "forest": "Oscuro · Dosel",
           "graphite": "Neutral · Estudio",
-          "prussian": "Negro · Ámbar",
           "prussianDay": "Claro · Ámbar",
+          "prussianNight": "Noche · Ámbar",
           "fsz": "Glass · Rojo",
           "fszLight": "Glass · Rojo"
         }

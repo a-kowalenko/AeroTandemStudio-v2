@@ -21,8 +21,8 @@ export type ThemeId =
   | "sky-dusk"
   | "sunset"
   | "graphite"
-  | "prussian"
   | "prussian-day"
+  | "prussian-night"
   | "arctic"
   | "forest"
   | "fsz"
@@ -143,14 +143,14 @@ export const THEMES: readonly ThemeMeta[] = [
     labelKey: "common.labels.themeGraphite",
   },
   {
-    id: "prussian",
-    base: "dark",
-    labelKey: "common.labels.themePrussian",
-  },
-  {
     id: "prussian-day",
     base: "light",
     labelKey: "common.labels.themePrussianDay",
+  },
+  {
+    id: "prussian-night",
+    base: "dark",
+    labelKey: "common.labels.themePrussianNight",
   },
   {
     id: "fsz-light",
@@ -171,6 +171,7 @@ const LEGACY_THEME_IDS: Record<string, ThemeId> = {
   "military-od": "military-olive",
   "military-camo": "military-khaki",
   "ember-2": "ember",
+  prussian: "prussian-night",
 };
 
 const THEME_IDS = new Set<string>(THEMES.map((t) => t.id));

@@ -29,7 +29,7 @@ export const THEME_GROUPS: readonly ThemeGroup[] = [
       "arctic",
       "graphite",
       "prussian-day",
-      "prussian",
+      "prussian-night",
       "sunset",
       "forest",
       "royal-navy",
@@ -189,17 +189,17 @@ export const THEME_SWATCHES: Record<ThemeId, ThemeSwatch> = {
     primary: "#a8aab0",
     accent: "#c8cad0",
   },
-  prussian: {
-    bg: "#000000",
-    surface: "#14213d",
-    primary: "#fca311",
-    accent: "#e5e5e5",
-  },
   "prussian-day": {
     bg: "#e5e5e5",
     surface: "#ffffff",
     primary: "#fca311",
     accent: "#14213d",
+  },
+  "prussian-night": {
+    bg: "#000000",
+    surface: "#14213d",
+    primary: "#fca311",
+    accent: "#e5e5e5",
   },
   fsz: {
     bg: "#141012",
@@ -238,8 +238,8 @@ export const THEME_HINT_KEYS: Record<ThemeId, string> = {
   arctic: "settings.general.appearance.hints.arctic",
   forest: "settings.general.appearance.hints.forest",
   graphite: "settings.general.appearance.hints.graphite",
-  prussian: "settings.general.appearance.hints.prussian",
   "prussian-day": "settings.general.appearance.hints.prussianDay",
+  "prussian-night": "settings.general.appearance.hints.prussianNight",
   fsz: "settings.general.appearance.hints.fsz",
   "fsz-light": "settings.general.appearance.hints.fszLight",
 };

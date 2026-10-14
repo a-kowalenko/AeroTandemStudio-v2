@@ -802,8 +802,8 @@ html.dark[data-theme="graphite"] {
   --ats-scrollbar-track: transparent;
 }
 
-/* Prussian — black / prussian-blue / orange / alabaster */
-html.dark[data-theme="prussian"] {
+/* Prussian Night — black / prussian-blue / orange / alabaster */
+html.dark[data-theme="prussian-night"] {
   color-scheme: dark;
   --ats-bg: #000000;
   --ats-fg: #ffffff;
